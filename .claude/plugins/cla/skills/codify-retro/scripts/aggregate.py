@@ -51,9 +51,15 @@ Output schema (all counts over the analyzed window):
       "process_issue_runs": int,                   # runs where codify itself misfired
       "output_chars": {"latest": int|None, "trend": [int, ...], "mean": float},
         # char count of the appended lessons-learned.md report, over records that
-        # carried `output_chars` (optional-additive). A verbosity proxy, NOT a
-        # full token-spend measure — it covers only the printed report text. A
-        # climbing trend is a signal the report template itself is ballooning.
+        # carried a VALID `output_chars` (optional-additive). `trend` is built by
+        # appending only valid values in chronological order, so `latest` is the
+        # most recent VALID value — NOT necessarily the most recent record's
+        # value: a malformed/missing `output_chars` on the newest run silently
+        # falls back to an older valid one rather than reporting `None`. `None`
+        # means no record in the window ever carried a valid value at all.
+        # A verbosity proxy, NOT a full token-spend measure — it covers only the
+        # printed report text. A climbing trend is a signal the report template
+        # itself is ballooning.
       "coerced_fields": int,                        # present-but-malformed count
         # fields (e.g. a string/bool where an int was expected) dropped from the
         # sums; non-zero means the rates above are computed over a thinned sample.

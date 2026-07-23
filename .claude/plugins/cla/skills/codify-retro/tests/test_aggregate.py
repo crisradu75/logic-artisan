@@ -207,6 +207,30 @@ def test_output_chars_type_confused_warns_and_coerces(tmp_path: Path) -> None:
     assert out["coerced_fields"] == 1
 
 
+def test_output_chars_bool_rejected(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"output_chars": True}])
+    out, err = _run(log)
+    assert "output_chars=True is bool" in err
+    assert out["output_chars"] == {"latest": None, "trend": [], "mean": 0.0}
+    assert out["coerced_fields"] == 1
+
+
+def test_output_chars_latest_falls_back_to_last_valid_not_none(tmp_path: Path) -> None:
+    # Pins the documented (surprising) semantics: `latest` is the most recent
+    # VALID value, not the most recent record's value — a malformed newest
+    # record does not reset `latest` to None.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"output_chars": 1000},
+        {"output_chars": "bad"},
+    ])
+    out, err = _run(log)
+    assert "output_chars='bad' not int" in err
+    assert out["output_chars"] == {"latest": 1000, "trend": [1000], "mean": 1000.0}
+    assert out["coerced_fields"] == 1
+
+
 def test_non_string_ts_excluded_with_warning(tmp_path: Path) -> None:
     log = tmp_path / "runs.jsonl"
     _write_log(log, [{"ts": 20260624, "suggestions": {"proposed": 1, "applied": 1}}])

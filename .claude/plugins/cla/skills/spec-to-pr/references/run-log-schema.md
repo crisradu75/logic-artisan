@@ -77,10 +77,16 @@ this; oversize records exit 1).
   silent" heuristic depends on it).
 - `report_chars` (every phase, optional-additive) — the character count of THIS phase's final
   user-facing report text (the printed summary shown to the user for that phase, not the internal
-  reasoning or any sub-agent transcript). A cheap verbosity proxy `aggregate.py` means per phase
-  (`report_chars.<Phase>.mean`) — it approximates the phase's *printed-report* cost, not full
+  reasoning or any sub-agent transcript). A cheap verbosity proxy that `aggregate.py` computes per
+  phase (`report_chars.<Phase>.mean`) — it approximates the phase's *printed-report* cost, not full
   session token spend (which isn't observable from in-context). Omit entirely rather than guess; a
-  missing value is silently excluded from that phase's mean, same as every other optional field.
+  missing value is silently excluded from that phase's mean, same as every other optional field (a
+  present-but-malformed value is excluded too, but counted separately under `report_chars_coerced`
+  so the two cases stay distinguishable). Most phases run under this skill's one-sentence-per-phase-
+  transition rule (no headers/bullets outside the Handoff terminal report — see `SKILL.md`), so
+  Implement/Ship/Archive should sit near a small, near-constant floor; only Propose/Review/Handoff
+  carry substantial variable-length content. A climbing mean on a low-narration phase more likely
+  signals that one-sentence rule being violated than genuine prose growth.
 - On Review: `agents` is REQUIRED in large mode (must contain `["design", "task", "spec"]` or
   equivalent) and MUST be omitted (or empty `[]`) in small mode. Inconsistency between `size_gate`
   and `agents` is counted as `review_gate_pair_mismatches` — non-zero means the producer is buggy.

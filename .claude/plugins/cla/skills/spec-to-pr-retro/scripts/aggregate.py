@@ -74,12 +74,23 @@ Schema of the output (all counts are over the analyzed window):
       "version_bump_misses": int,
       "deferred_to_todo_total": int,
       "report_chars": {<phase>: {"mean": float, "n": int}},    # mean char count
-        # of that phase's user-facing report, over `n` records that carried
-        # `report_chars` (optional-additive — legacy runs omit it and are not
-        # counted in `n`). A verbosity proxy, NOT a full token-spend measure —
-        # it covers only the printed report text, not reasoning/tool output. A
-        # phase whose mean is climbing run-over-run, or is an outlier next to
-        # its siblings, is a trim-this-phase's-prose candidate.
+        # of that phase's user-facing report, over `n` records that carried a
+        # VALID `report_chars` (optional-additive — legacy runs that omit the
+        # field AND current runs that emit a malformed value are both excluded
+        # from `n`; check `report_chars_coerced` to tell the two apart). A
+        # verbosity proxy, NOT a full token-spend measure — it covers only the
+        # printed report text, not reasoning/tool output. Most phases run under
+        # the one-sentence-per-transition rule (SKILL.md), so their mean should
+        # sit near a small, near-constant floor; only Propose/Review/Handoff
+        # carry substantial variable-length content. A climbing mean on a
+        # low-narration phase (Implement/Ship/Archive) more likely signals that
+        # rule being violated than genuine prose growth; a climbing mean on
+        # Propose/Review/Handoff, or an outlier among ITS OWN siblings across
+        # runs, is a trim-this-phase's-prose candidate.
+      "report_chars_coerced": int,                             # `report_chars`
+        # values present but wrong-typed (non-int, bool) this window — surfaced
+        # here (not just stderr) so a piped consumer sees the noise floor; a
+        # non-zero count is current-producer drift, not benign legacy history.
       "skipped_records": int                                   # malformed lines
     }
 
@@ -266,6 +277,7 @@ def aggregate(records: list[dict]) -> dict:
     version_bump_misses = 0
     deferred_total = 0
     report_chars: dict[str, list[int]] = defaultdict(list)
+    report_chars_coerced = 0
     revise_findings: dict[str, dict[str, int]] = defaultdict(
         lambda: {"found": 0, "phantom": 0, "runs": 0})
     revise_findings_records = 0
@@ -294,6 +306,8 @@ def aggregate(records: list[dict]) -> dict:
                               f"negative, clamped to 0", file=sys.stderr)
                         rc = 0
                     report_chars[name].append(rc)
+                else:
+                    report_chars_coerced += 1
             phase_key = name.lower() if isinstance(name, str) else "?"
             if phase_key in cap_total and "rounds_used" in phase:
                 used = _coerce_int(phase["rounds_used"], "rounds_used", f"record {ri} phase {name}")
@@ -472,6 +486,7 @@ def aggregate(records: list[dict]) -> dict:
         "deferred_to_todo_total": deferred_total,
         "report_chars": {name: {"mean": round(statistics.mean(v), 1), "n": len(v)}
                          for name, v in report_chars.items()},
+        "report_chars_coerced": report_chars_coerced,
     }
 
 

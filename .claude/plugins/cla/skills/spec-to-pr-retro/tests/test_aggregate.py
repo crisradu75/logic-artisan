@@ -279,6 +279,21 @@ def test_report_chars_mean_per_phase(tmp_path: Path) -> None:
     assert out["report_chars"] == {"Review": {"mean": 500.0, "n": 2}}
 
 
+def test_report_chars_two_phases_independent(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [
+            {"name": "Review", "status": "ok", "report_chars": 400},
+            {"name": "Test", "status": "ok", "report_chars": 900},
+        ]},
+    ])
+    out, _ = _run(log)
+    assert out["report_chars"] == {
+        "Review": {"mean": 400.0, "n": 1},
+        "Test": {"mean": 900.0, "n": 1},
+    }
+
+
 def test_report_chars_negative_clamped_to_zero(tmp_path: Path) -> None:
     log = tmp_path / "runs.jsonl"
     _write_log(log, [
@@ -289,7 +304,7 @@ def test_report_chars_negative_clamped_to_zero(tmp_path: Path) -> None:
     assert out["report_chars"] == {"Review": {"mean": 0.0, "n": 1}}
 
 
-def test_report_chars_type_confused_warns(tmp_path: Path) -> None:
+def test_report_chars_type_confused_warns_and_coerces(tmp_path: Path) -> None:
     log = tmp_path / "runs.jsonl"
     _write_log(log, [
         {"phases": [{"name": "Review", "status": "ok", "report_chars": "big"}]},
@@ -297,6 +312,29 @@ def test_report_chars_type_confused_warns(tmp_path: Path) -> None:
     out, stderr = _run(log)
     assert "report_chars='big' not int" in stderr
     assert out["report_chars"] == {}
+    assert out["report_chars_coerced"] == 1
+
+
+def test_report_chars_bool_rejected(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Review", "status": "ok", "report_chars": True}]},
+    ])
+    out, stderr = _run(log)
+    assert "report_chars=True is bool" in stderr
+    assert out["report_chars"] == {}
+    assert out["report_chars_coerced"] == 1
+
+
+def test_report_chars_mixed_valid_and_malformed_same_run(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Review", "status": "ok", "report_chars": 400}]},
+        {"phases": [{"name": "Review", "status": "ok", "report_chars": "bad"}]},
+    ])
+    out, _ = _run(log)
+    assert out["report_chars"] == {"Review": {"mean": 400.0, "n": 1}}
+    assert out["report_chars_coerced"] == 1
 
 
 def test_type_confused_rounds_used_warns(tmp_path: Path) -> None:

@@ -26,9 +26,11 @@ JSON
 - `review.verdicts` — the per-change verdict from Phase 4's batch review dispatch (`READY` / `FIX FIRST` / `RETHINK`, same rubric as `review-change/references/checklist.md`). `review.critical`/`.important`/`.suggestion` are the aggregate counts across the whole batch dispatch (Critical+Important is the applied-fix count; Suggestion is informational only, same severity split `spec-to-pr`'s own schema uses).
 - `pr_number` / `final_branch_head` — the shipped PR and the branch-head sha at the point this record was logged, for attributing a ledger line to a concrete tree state (mirrors `multi-pr`'s `final_master_commit` field, scoped to this batch's own branch instead of `master` since this skill never merges).
 - `output_chars` (optional) — total character count of the user-facing reports printed across the
-  whole batch run (the Report phase's own summary plus every per-change proposal report, summed). A
-  verbosity proxy for a future `multi-spec-retro` to trend, NOT a full token-spend measure — it
-  covers only printed report text.
+  whole batch run: sum the Report phase's own summary plus, for each change, whatever status text
+  Phase 3's per-change authoring loop actually prints (that loop runs thin by design — delegating
+  bulk material to a sub-agent — so this is typically a terse per-change status line, not a full
+  proposal dump). A verbosity proxy for a future `multi-spec-retro` to trend, NOT a full
+  token-spend measure — it covers only printed report text.
 
 **Best-effort, non-fatal.** If `log_run.py` exits non-zero (invalid JSON, oversize, or write failure — the stderr names which), note it in the Handoff Issues equivalent and continue: a missing log line never blocks the run, the same non-fatal posture as every sibling in this family.
 
