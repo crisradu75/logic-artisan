@@ -22,6 +22,8 @@ import { spawnSync } from 'node:child_process';
 const SCRIPT_PATH = fileURLToPath(new URL('./mechanical-checks.mjs', import.meta.url));
 
 import {
+  getOverlayPath,
+  DEFAULT_OVERLAY_PATH,
   extractFencedBlockUnderHeading,
   loadConfig,
   checkJsonKeyParity,
@@ -116,6 +118,28 @@ test('extractFencedBlockUnderHeading: a dangling fence AFTER an earlier well-for
     '',
   ].join('\n');
   assert.throws(() => extractFencedBlockUnderHeading(text, HEADING_RE), /never closed/);
+});
+
+test('extractFencedBlockUnderHeading: a fence dangling PAST a real section boundary still throws, even if a later section\'s own fence would otherwise "balance" the backtick count (regression guard)', () => {
+  // The exact bug a retroactive review found in the first version of the
+  // dangling-fence fix: skipping the heading-stop check entirely while inside an
+  // open fence let the scan run straight through a REAL later heading and get
+  // "closed" by a completely unrelated fence in a different section -- silently
+  // merging the two sections' content instead of throwing. Two total ``` markers
+  // after "## Mechanical checks" (even parity) used to read as "cleanly closed";
+  // it must still throw, because the fence that opened under OUR heading never
+  // closed before OUR section ended.
+  const text = [
+    '## Mechanical checks',
+    '```json',
+    '{"checks": []}',
+    '',
+    '## Some other, unrelated later section',
+    'prose intro, then an example fence opens:',
+    '```',
+    'end of doc',
+  ].join('\n');
+  assert.throws(() => extractFencedBlockUnderHeading(text, HEADING_RE), /spans past what looks like a later section/);
 });
 
 test('extractFencedBlockUnderHeading: a "#"-prefixed line INSIDE a fence does not prematurely end the section', () => {
@@ -228,6 +252,45 @@ test('loadConfig: a non-array "checks" field throws with a clear message', () =>
   withOverlay('## Mechanical checks\n\n```json\n{"checks": "oops"}\n```\n', () => {
     assert.throws(() => loadConfig(), /"checks" array/);
   });
+});
+
+test('loadConfig: a dangling fence in the REAL overlay file throws end-to-end (integration, not just the pure function)', () => {
+  // The prior review's headline bug was found via a real loadConfig() run, not
+  // by calling extractFencedBlockUnderHeading directly -- so the regression
+  // guard belongs at this boundary too, not only at the pure-function level.
+  withOverlay(
+    [
+      '## Mechanical checks',
+      '```json',
+      '{"checks": []}',
+      '',
+      '## Some other, unrelated later section',
+      'prose intro, then an example fence opens:',
+      '```',
+      'end of doc',
+    ].join('\n'),
+    () => {
+      assert.throws(() => loadConfig(), /spans past what looks like a later section/);
+    }
+  );
+});
+
+test('loadConfig: error messages name the actual overlay file read, not a hardcoded constant', () => {
+  withOverlay('## Mechanical checks\n\n```json\n{ not json }\n```\n', () => {
+    const overlayPath = getOverlayPath();
+    assert.throws(() => loadConfig(), new RegExp(overlayPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  });
+});
+
+test('getOverlayPath: an empty-string override is treated as unset, not as an empty path', () => {
+  const prev = process.env.MECHANICAL_CHECKS_OVERLAY;
+  process.env.MECHANICAL_CHECKS_OVERLAY = '';
+  try {
+    assert.equal(getOverlayPath(), DEFAULT_OVERLAY_PATH);
+  } finally {
+    if (prev === undefined) delete process.env.MECHANICAL_CHECKS_OVERLAY;
+    else process.env.MECHANICAL_CHECKS_OVERLAY = prev;
+  }
 });
 
 // ── checkJsonKeyParity ────────────────────────────────────────────────────────
@@ -398,6 +461,18 @@ test('checkDerivedKeyConsistency: deriveLocale missing key FAILs', () => {
     });
     assert.equal(result.status, 'FAIL');
     assert.match(result.details, /dashboard\.foo\.prime/);
+  });
+});
+
+test('checkDerivedKeyConsistency: an empty deriveLocale.localeFiles ERRORs instead of vacuously passing', () => {
+  withRoot((root) => {
+    writeFile(root, 'domain.ts', "const KEYS: K[] = ['prime'];");
+    const result = checkDerivedKeyConsistency({
+      sources: [{ kind: 'regex-array', file: 'domain.ts', pattern: 'KEYS\\s*:\\s*K\\[\\]\\s*=\\s*\\[([^\\]]+)\\]', label: 'domain.ts' }],
+      deriveLocale: { template: 'dashboard.foo.{key}', localeFiles: [] },
+    });
+    assert.equal(result.status, 'ERROR');
+    assert.match(result.details, /deriveLocale\.localeFiles is empty/);
   });
 });
 

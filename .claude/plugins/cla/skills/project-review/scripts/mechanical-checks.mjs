@@ -77,7 +77,12 @@ const DEFAULT_OVERLAY_PATH = join(HERE, '..', 'references', 'project-context.md'
 const OVERLAY_RELPATH = 'references/project-context.md';
 // Overridable for the same reason as MECHANICAL_CHECKS_ROOT: lets a test point
 // loadConfig() at a fixture file instead of this skill's own real overlay.
-const getOverlayPath = () => process.env.MECHANICAL_CHECKS_OVERLAY ?? DEFAULT_OVERLAY_PATH;
+// Truthy check (matching getRoot()'s `if (process.env...)` above, not `??`) is
+// deliberate: an empty-string override is never a usable path, so treating it
+// the same as "unset" avoids a silent-override edge case where the env-var-set
+// warning below and the actual override would otherwise disagree on whether
+// anything is overridden at all.
+const getOverlayPath = () => process.env.MECHANICAL_CHECKS_OVERLAY || DEFAULT_OVERLAY_PATH;
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -96,10 +101,12 @@ function walk(dir, exts = ['.ts', '.tsx']) {
   try {
     entries = readdirSync(dir);
   } catch (err) {
-    // A genuinely-absent optional dir (ENOENT) is fine — return no files. But a
-    // real failure (permissions, I/O, a renamed/moved path) must surface: if it
-    // were swallowed here, a walk-based check would scan zero files and PASS
-    // vacuously, which for a trustworthiness tool is worse than a FAIL.
+    // A genuinely-absent optional dir (ENOENT) is fine — return no files (the
+    // caller's own zero-files guard turns that into an ERROR). But a real
+    // failure (permissions, I/O, a renamed/moved path) must surface here
+    // instead: swallowing it would look identical to "genuinely empty dir" and
+    // reach that same ERROR path for the wrong reason, masking a real I/O
+    // problem behind a generic "scanned 0 files" message.
     if (err.code === 'ENOENT') return out;
     throw err;
   }
@@ -115,80 +122,163 @@ function walk(dir, exts = ['.ts', '.tsx']) {
 
 // ── config: read the fenced ```json``` block under the overlay's own heading ──
 
+/** Find every fenced code-block span in `lines` via pure open/close toggling on
+ * ``` delimiters ALONE -- no heading awareness at all. This mirrors real
+ * CommonMark fence semantics (a fence's content is exactly what's between its
+ * open and close delimiters, full stop) and is the only way to unambiguously
+ * tell "a line that looks like a heading" apart from "a line that's actually
+ * fence content that happens to look like one": that distinction can ONLY be
+ * made by first knowing the true fence boundaries, never by scanning for
+ * headings and fences in the same interleaved pass (see the two-pass design
+ * note on `extractFencedBlockUnderHeading` below for why an interleaved scan is
+ * unsound). A fence that opens and is never closed gets `end: -1`. */
+function findFenceSpans(lines) {
+  const spans = []; // { start, end (exclusive; -1 = never closed), lang }
+  let openStart = -1;
+  let openLang = '';
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (openStart === -1 && trimmed.startsWith('```')) {
+      openStart = i;
+      openLang = trimmed.slice(3).trim().toLowerCase();
+    } else if (openStart !== -1 && trimmed.startsWith('```')) {
+      spans.push({ start: openStart, end: i, lang: openLang });
+      openStart = -1;
+    }
+  }
+  if (openStart !== -1) spans.push({ start: openStart, end: -1, lang: openLang });
+  return spans;
+}
+
 /** Extract the fenced code-block body directly under a `## <headingRe>` heading,
  * stopping at the next heading of equal-or-shallower level. Prefers a fence
  * explicitly tagged ```json; falls back to the first fence of any tag if none is
  * json-tagged (so an untagged ``` still works, matching the schema docs' example).
  * Returns null if the heading isn't found, or no fence sits under it at all --
  * that is the documented, silent "no checks configured" state (e.g. a stub
- * overlay carrying only an explanatory HTML comment), NOT a defect. Throws if an
- * OPENED fence under the heading is never closed -- a genuine broken authoring
- * attempt -- regardless of whether an earlier, well-formed fence already exists
- * in the same section: silently keeping that earlier fence's content (which may
- * itself be stale, a leftover example, or an empty stub) and dropping the
- * dangling one with no signal at all is exactly the silent-wrong-config outcome
- * this function exists to prevent. `pathLabel` (the resolved overlay path, or a
- * caller-supplied description for a bare in-memory `text`) is used only in this
- * thrown message. */
+ * overlay carrying only an explanatory HTML comment), NOT a defect. Throws if a
+ * fence that STARTS under the heading is never closed BEFORE the section ends
+ * -- a genuine broken authoring attempt -- regardless of whether an earlier,
+ * well-formed fence already exists in the same section: silently keeping that
+ * earlier fence's content (which may itself be stale, a leftover example, or an
+ * empty stub) and dropping the dangling one with no signal at all is exactly
+ * the silent-wrong-config outcome this function exists to prevent.
+ *
+ * Two-pass by necessity, not by choice: `findFenceSpans` above determines every
+ * TRUE fence span first, using only ``` delimiters (so a fence's own content --
+ * e.g. a shell comment or a quoted markdown heading starting with '#' -- can
+ * never be mistaken for real document structure, however deep inside the fence
+ * it sits). Only THEN is a heading-looking line treated as a real heading, and
+ * only if it does not fall inside any true fence span. A single interleaved
+ * scan cannot make this distinction: whether a `#`-line is "real" or "fence
+ * content" depends on whether ITS OWN fence ever closes, which isn't knowable
+ * until the whole document (not just up to that line) has been scanned for
+ * delimiters -- an earlier single-pass version of this function used the
+ * interleaved shape and was provably unsound (a fence that spans past a real
+ * section boundary could be silently "closed" by an unrelated LATER section's
+ * own fence, merging the two sections' content with no error at all).
+ *
+ * Residual case even THIS two-pass design can't rule out by construction: a
+ * fence dangling under our heading, uncoincidentally "closed" by some later
+ * section's own fence delimiter, reads as a perfectly balanced open/close pair
+ * to pure toggle-counting -- indistinguishable, from inside this function's
+ * own logic, from a genuinely well-formed fence. There is no local, forward-
+ * scanning way to prove a heading-looking line is "real" without already
+ * knowing whether its enclosing fence ever legitimately closes, which is
+ * exactly what's in question. As a targeted (not general) safety net for this
+ * one residual case: since a legitimate JSON config body can never itself
+ * contain a line starting with '#', the SELECTED fence's extracted body is
+ * checked for one after the fact, and throws if found -- see the comment at
+ * that check for why this is sound for this function's actual use case (a
+ * JSON-only config block) without generalizing to arbitrary fence content.
+ *
+ * `pathLabel` (the resolved overlay path, or a caller-supplied description for
+ * a bare in-memory `text`) is used only in thrown messages. */
 function extractFencedBlockUnderHeading(text, headingRe, pathLabel = 'the overlay file') {
   const lines = text.split('\n');
-  const headingIdx = lines.findIndex((l) => headingRe.test(l.trim()));
-  if (headingIdx === -1) return null;
-  // Match against the TRIMMED line, same as the headingIdx search above — a
-  // heading found via its trimmed form must have its level read the same way,
-  // or leading whitespace (rare in practice, but not impossible) would read as
-  // a lower level than the stop-condition comparison below expects.
-  const headingLevel = lines[headingIdx].trim().match(/^#+/)?.[0].length ?? 0;
-  const fences = []; // { lang, body }
-  let fenceStart = -1;
-  let fenceLang = '';
-  for (let i = headingIdx + 1; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
-    // Only treat a line as the section's own end-of-heading stop condition when
-    // NOT already inside an open fence -- a fenced example whose own content
-    // happens to contain a line starting with '#' (a shell comment, a quoted
-    // markdown heading) must not be mistaken for this section terminating.
-    if (fenceStart === -1) {
-      const headingMatch = trimmed.match(/^(#+)\s/);
-      if (headingMatch && headingMatch[1].length <= headingLevel) break;
-    }
-    if (fenceStart === -1 && trimmed.startsWith('```')) {
-      fenceStart = i + 1;
-      fenceLang = trimmed.slice(3).trim().toLowerCase();
-      continue;
-    }
-    if (fenceStart !== -1 && trimmed.startsWith('```')) {
-      fences.push({ lang: fenceLang, body: lines.slice(fenceStart, i).join('\n') });
-      fenceStart = -1;
+  const fenceSpans = findFenceSpans(lines);
+  const insideAnyFence = (lineIdx) =>
+    fenceSpans.some((f) => lineIdx > f.start && (f.end === -1 || lineIdx < f.end));
+
+  const isRealHeadingLine = (lineIdx) => !insideAnyFence(lineIdx) && headingRe.test(lines[lineIdx].trim());
+
+  let headingIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (isRealHeadingLine(i)) {
+      headingIdx = i;
+      break;
     }
   }
-  if (fenceStart !== -1) {
+  if (headingIdx === -1) return null;
+  const headingLevel = lines[headingIdx].trim().match(/^#+/)?.[0].length ?? 0;
+
+  let sectionEnd = lines.length;
+  for (let i = headingIdx + 1; i < lines.length; i++) {
+    if (insideAnyFence(i)) continue;
+    const m = lines[i].trim().match(/^(#+)\s/);
+    if (m && m[1].length <= headingLevel) {
+      sectionEnd = i;
+      break;
+    }
+  }
+
+  // Only fences that START within this section count -- one that starts here
+  // but isn't closed before sectionEnd (or never closes at all) is exactly the
+  // dangling-fence defect this function exists to catch, whether or not some
+  // LATER, unrelated fence's own closing delimiter would otherwise appear to
+  // "balance" it out.
+  const inSection = fenceSpans.filter((f) => f.start > headingIdx && f.start < sectionEnd);
+  if (inSection.some((f) => f.end === -1 || f.end >= sectionEnd)) {
     throw new Error(
       `found an opened fence under the "Mechanical checks" heading in ${pathLabel} that is never closed`
     );
   }
-  if (fences.length === 0) return null;
-  const jsonFence = fences.find((f) => f.lang === 'json');
-  return (jsonFence ?? fences[0]).body;
+  if (inSection.length === 0) return null;
+  const jsonFence = inSection.find((f) => f.lang === 'json') ?? inSection[0];
+  const body = lines.slice(jsonFence.start + 1, jsonFence.end);
+  // Residual case the checks above cannot catch: a fence that opens here, is
+  // never closed within ITS OWN section, but happens to get "closed" by some
+  // unrelated LATER section's own fence delimiter -- toggle-counting alone
+  // sees a balanced open/close pair and no line of this function's other logic
+  // can locally tell that apart from a genuinely well-formed fence (whether a
+  // heading-looking line is "real" or "fence content" is undecidable without
+  // already knowing where its fence closes, which is exactly what's in
+  // question). A legitimate JSON config body can never itself contain a line
+  // starting with '#' (not valid JSON syntax), so if the SELECTED body does,
+  // that is conclusive proof it swallowed real document structure rather than
+  // being a well-formed, self-contained fence -- throw instead of silently
+  // returning the merged content.
+  if (body.some((line) => /^#+\s/.test(line.trim()))) {
+    throw new Error(
+      `found a fence under the "Mechanical checks" heading in ${pathLabel} that spans past what looks ` +
+        'like a later section (its content contains a heading-shaped line) -- check it was actually closed within its own section'
+    );
+  }
+  return body.join('\n');
 }
 
 function loadConfig() {
   const overlayPath = getOverlayPath();
+  // Show the short, friendly repo-relative name in messages for the normal case
+  // (no override), and the actual resolved path only when MECHANICAL_CHECKS_OVERLAY
+  // is active -- so a real run's errors stay readable, while a test pointed at a
+  // tmp fixture still gets a message naming the file it actually read.
+  const overlayLabel = process.env.MECHANICAL_CHECKS_OVERLAY ? overlayPath : OVERLAY_RELPATH;
   if (!existsSync(overlayPath)) return [];
   const text = readFileSync(overlayPath, 'utf8');
-  const block = extractFencedBlockUnderHeading(text, /^#{1,6}\s*mechanical checks/i, overlayPath);
+  const block = extractFencedBlockUnderHeading(text, /^#{1,6}\s*mechanical checks/i, overlayLabel);
   if (block === null || block.trim() === '') return [];
   let parsed;
   try {
     parsed = JSON.parse(block);
   } catch (err) {
     throw new Error(
-      `${overlayPath} "Mechanical checks" config block is not valid JSON: ${err.message}`
+      `${overlayLabel} "Mechanical checks" config block is not valid JSON: ${err.message}`
     );
   }
   if (!Array.isArray(parsed.checks)) {
     throw new Error(
-      `${overlayPath} "Mechanical checks" config block must have a top-level "checks" array`
+      `${overlayLabel} "Mechanical checks" config block must have a top-level "checks" array`
     );
   }
   return parsed.checks;
@@ -300,6 +390,11 @@ function checkDerivedKeyConsistency(cfg) {
   }
   if (cfg.deriveLocale) {
     const { template, localeFiles } = cfg.deriveLocale;
+    // Guard against a vacuous PASS: an empty deriveLocale.localeFiles would
+    // "verify" every derived key against zero locale files -- ERROR, a config gap.
+    if (!localeFiles || localeFiles.length === 0) {
+      return { status: 'ERROR', details: 'deriveLocale.localeFiles is empty — check cannot verify anything' };
+    }
     const locales = localeFiles.map((p) => ({ path: p, data: readJson(r(p)) }));
     for (const k of all) {
       const derived = template.replace('{key}', k);
@@ -415,6 +510,11 @@ function main(argv) {
   // (left over from a debugging session, or an unrelated tool reusing a generic
   // name) would otherwise silently redirect a real run at the wrong repo/overlay
   // with no way to tell from the output alone -- surface it loudly instead.
+  // NOTE: this warning only fires through main() (the CLI entry point) -- a
+  // hypothetical future caller that imports loadConfig()/getRoot() directly
+  // (bypassing main()) would silently honor an override with no warning at all.
+  // Not a live gap today: only this file's own test suite imports those
+  // functions directly, and it does so deliberately.
   if (process.env.MECHANICAL_CHECKS_ROOT || process.env.MECHANICAL_CHECKS_OVERLAY) {
     console.error(
       'warning: MECHANICAL_CHECKS_ROOT/MECHANICAL_CHECKS_OVERLAY is set in the environment -- ' +
@@ -462,7 +562,10 @@ if (isMainModule) {
 
 export {
   getRoot,
+  getOverlayPath,
+  DEFAULT_OVERLAY_PATH,
   walk,
+  findFenceSpans,
   extractFencedBlockUnderHeading,
   loadConfig,
   checkJsonKeyParity,
