@@ -13,6 +13,16 @@ this plugin in via `update-cla` and adapt it to their own context.
 Everything lives under `.claude/plugins/cla/`, nested at that path specifically so `update-cla` can
 consume this repo directly as a sync source.
 
+**Launching a session with the plugin active:** `--plugin-dir` is a per-session CLI flag, not
+something a settings file can wire up permanently. Use the `cla` (POSIX) / `cla.cmd` (Windows)
+launcher at the repo root instead of typing `claude` directly:
+
+```bash
+./cla   # claude --plugin-dir ./.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
+```
+
+Without it, the skills/hooks are just inert files on disk — no `/cla:*` commands, no guard hooks.
+
 ## Commands
 
 Run the full test suite (aggregates every isolated pytest scope):

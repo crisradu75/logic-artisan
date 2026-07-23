@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# cla — launch Claude Code with the cla (Cris Logic Artisan) harness plugin
+# loaded in-place, so the /cla:* skills and the guard hooks are active.
+#
+# POSIX launcher (macOS / Linux / Git Bash). The native-Windows counterpart is
+# `cla.cmd` in this same dir — keep the two in sync.
+#
+# Usage (from anywhere):  path/to/repo/cla [extra claude args...]
+# The plugin path is resolved relative to THIS script, so it works from any cwd.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$here/.claude/plugins/cla"
+# Print the exact command being run so it's easy to confirm what launches.
+echo "+ claude --plugin-dir \"$plugin_dir\" --permission-mode auto --model sonnet --effort medium $*" >&2
+exec claude --plugin-dir "$plugin_dir" --permission-mode auto --model sonnet --effort medium "$@"
