@@ -13,6 +13,22 @@ this plugin in via `update-cla` and adapt it to their own context.
 Everything lives under `.claude/plugins/cla/`, nested at that path specifically so `update-cla` can
 consume this repo directly as a sync source.
 
+**Launching a session with the plugin active:** `claude --plugin-dir` loads the plugin live, in
+place, from this working tree — required because the skills/hooks read and write repo-local state
+(`cla.io/`, the sync lockfile), which a cached marketplace install (`enabledPlugins` + a registered
+marketplace, itself a real settings-file mechanism, just the wrong one for this) can't do. Use the
+`cla` (POSIX) / `cla.cmd` (Windows) launcher at the repo root instead of typing `claude` directly —
+it resolves its own absolute path, so the flag it prints/runs is `--plugin-dir <repo>/.claude/plugins/cla`
+regardless of your cwd:
+
+```bash
+./cla   # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
+```
+
+Without it, the skills/hooks are just inert files on disk — no `/cla:*` commands, no guard hooks.
+**Note:** `--permission-mode auto` bypasses Claude Code's normal per-action confirmation prompts —
+intentional for this harness, but worth knowing before you run it.
+
 ## Commands
 
 Run the full test suite (aggregates every isolated pytest scope):
