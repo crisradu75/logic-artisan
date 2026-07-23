@@ -121,11 +121,16 @@ function walk(dir, exts = ['.ts', '.tsx']) {
  * json-tagged (so an untagged ``` still works, matching the schema docs' example).
  * Returns null if the heading isn't found, or no fence sits under it at all --
  * that is the documented, silent "no checks configured" state (e.g. a stub
- * overlay carrying only an explanatory HTML comment), NOT a warning-worthy
- * defect. Only an OPENED-but-never-closed fence under the heading -- a genuine
- * broken authoring attempt -- gets a warning, since that's the one case where the
- * heading's presence signals real intent that silently produced nothing. */
-function extractFencedBlockUnderHeading(text, headingRe) {
+ * overlay carrying only an explanatory HTML comment), NOT a defect. Throws if an
+ * OPENED fence under the heading is never closed -- a genuine broken authoring
+ * attempt -- regardless of whether an earlier, well-formed fence already exists
+ * in the same section: silently keeping that earlier fence's content (which may
+ * itself be stale, a leftover example, or an empty stub) and dropping the
+ * dangling one with no signal at all is exactly the silent-wrong-config outcome
+ * this function exists to prevent. `pathLabel` (the resolved overlay path, or a
+ * caller-supplied description for a bare in-memory `text`) is used only in this
+ * thrown message. */
+function extractFencedBlockUnderHeading(text, headingRe, pathLabel = 'the overlay file') {
   const lines = text.split('\n');
   const headingIdx = lines.findIndex((l) => headingRe.test(l.trim()));
   if (headingIdx === -1) return null;
@@ -139,8 +144,14 @@ function extractFencedBlockUnderHeading(text, headingRe) {
   let fenceLang = '';
   for (let i = headingIdx + 1; i < lines.length; i++) {
     const trimmed = lines[i].trim();
-    const headingMatch = trimmed.match(/^(#+)\s/);
-    if (headingMatch && headingMatch[1].length <= headingLevel) break;
+    // Only treat a line as the section's own end-of-heading stop condition when
+    // NOT already inside an open fence -- a fenced example whose own content
+    // happens to contain a line starting with '#' (a shell comment, a quoted
+    // markdown heading) must not be mistaken for this section terminating.
+    if (fenceStart === -1) {
+      const headingMatch = trimmed.match(/^(#+)\s/);
+      if (headingMatch && headingMatch[1].length <= headingLevel) break;
+    }
     if (fenceStart === -1 && trimmed.startsWith('```')) {
       fenceStart = i + 1;
       fenceLang = trimmed.slice(3).trim().toLowerCase();
@@ -151,14 +162,12 @@ function extractFencedBlockUnderHeading(text, headingRe) {
       fenceStart = -1;
     }
   }
-  if (fences.length === 0) {
-    if (fenceStart !== -1) {
-      console.error(
-        `warning: found an opened fence under the "Mechanical checks" heading in ${OVERLAY_RELPATH} that is never closed — no checks will run`
-      );
-    }
-    return null;
+  if (fenceStart !== -1) {
+    throw new Error(
+      `found an opened fence under the "Mechanical checks" heading in ${pathLabel} that is never closed`
+    );
   }
+  if (fences.length === 0) return null;
   const jsonFence = fences.find((f) => f.lang === 'json');
   return (jsonFence ?? fences[0]).body;
 }
@@ -167,19 +176,19 @@ function loadConfig() {
   const overlayPath = getOverlayPath();
   if (!existsSync(overlayPath)) return [];
   const text = readFileSync(overlayPath, 'utf8');
-  const block = extractFencedBlockUnderHeading(text, /^#{1,6}\s*mechanical checks/i);
+  const block = extractFencedBlockUnderHeading(text, /^#{1,6}\s*mechanical checks/i, overlayPath);
   if (block === null || block.trim() === '') return [];
   let parsed;
   try {
     parsed = JSON.parse(block);
   } catch (err) {
     throw new Error(
-      `${OVERLAY_RELPATH} "Mechanical checks" config block is not valid JSON: ${err.message}`
+      `${overlayPath} "Mechanical checks" config block is not valid JSON: ${err.message}`
     );
   }
   if (!Array.isArray(parsed.checks)) {
     throw new Error(
-      `${OVERLAY_RELPATH} "Mechanical checks" config block must have a top-level "checks" array`
+      `${overlayPath} "Mechanical checks" config block must have a top-level "checks" array`
     );
   }
   return parsed.checks;
@@ -190,6 +199,11 @@ function loadConfig() {
 // json-key-parity: two JSON files must have the same top-level key set.
 function checkJsonKeyParity(cfg) {
   const [pathA, pathB] = cfg.files;
+  // Guard against a vacuous PASS: a config typo pointing both entries at the same
+  // file trivially "matches" (a file compared to itself), verifying nothing.
+  if (pathA === pathB) {
+    return { status: 'ERROR', details: `files[0] and files[1] are identical (${pathA}) — check config` };
+  }
   const a = new Set(Object.keys(readJson(r(pathA))));
   const b = new Set(Object.keys(readJson(r(pathB))));
   const aOnly = [...a].filter((k) => !b.has(k));
@@ -209,17 +223,18 @@ function checkJsonKeyParity(cfg) {
 function checkJsonKeyUsage(cfg) {
   // Guard against a vacuous PASS: an empty localeFiles list would make every key
   // trivially "resolve" (Array.prototype.some on [] is always false) regardless of
-  // what the source actually contains.
+  // what the source actually contains. This is a config gap, not a review finding
+  // about the repo, so it's ERROR (the check couldn't run meaningfully) not FAIL.
   if (!cfg.localeFiles || cfg.localeFiles.length === 0) {
-    return { status: 'FAIL', details: 'localeFiles is empty — check cannot verify anything' };
+    return { status: 'ERROR', details: 'localeFiles is empty — check cannot verify anything' };
   }
   const locales = cfg.localeFiles.map((p) => readJson(r(p)));
   const callRe = new RegExp(cfg.keyPattern ?? String.raw`\bt\(\s*['"]([^'"]+)['"]`, 'g');
   const files = cfg.sourceDirs.flatMap((base) => walk(r(base), cfg.extensions ?? ['.ts', '.tsx']));
   // Guard against a vacuous PASS: if the scan found nothing, the base paths are
-  // wrong (or empty), not "every key resolves".
+  // wrong (or empty), not "every key resolves" -- ERROR, same reasoning as above.
   if (files.length === 0) {
-    return { status: 'FAIL', details: `scanned 0 source files — check sourceDirs ${cfg.sourceDirs.join(', ')}` };
+    return { status: 'ERROR', details: `scanned 0 source files — check sourceDirs ${cfg.sourceDirs.join(', ')}` };
   }
   const missing = new Set();
   let usagesFound = 0;
@@ -238,9 +253,9 @@ function checkJsonKeyUsage(cfg) {
     }
   }
   // Guard against a vacuous PASS: zero matched usages across nonzero files means
-  // keyPattern itself is likely misconfigured, not "every usage resolves".
+  // keyPattern itself is likely misconfigured, not "every usage resolves" -- ERROR.
   if (usagesFound === 0) {
-    return { status: 'FAIL', details: `matched 0 usages across ${files.length} files — check keyPattern` };
+    return { status: 'ERROR', details: `matched 0 usages across ${files.length} files — check keyPattern` };
   }
   if (missing.size === 0) return { status: 'PASS', details: 'all static usages resolve in every locale file' };
   return { status: 'FAIL', details: `unresolved: [${truncate(missing)}]` };
@@ -272,9 +287,9 @@ function extractKeys(source) {
 // locale file.
 function checkDerivedKeyConsistency(cfg) {
   // Guard against a vacuous PASS: an empty sources list has no keys to disagree,
-  // so it would otherwise report "0 keys" as a silent PASS.
+  // so it would otherwise report "0 keys" as a silent PASS -- ERROR, a config gap.
   if (!cfg.sources || cfg.sources.length === 0) {
-    return { status: 'FAIL', details: 'sources is empty — check cannot verify anything' };
+    return { status: 'ERROR', details: 'sources is empty — check cannot verify anything' };
   }
   const named = cfg.sources.map((s) => ({ label: s.label ?? s.file, keys: new Set(extractKeys(s)) }));
   const all = new Set(named.flatMap((n) => [...n.keys]));
@@ -328,8 +343,11 @@ function specMatches(spec, forbidden) {
 // import-boundary: sourceDir must not import anything matching `forbidden`.
 function checkImportBoundary(cfg) {
   const extensions = cfg.extensions ?? ['.ts', '.tsx'];
+  // Guard against a vacuous PASS: a typo'd/renamed sourceDir (or a too-narrow
+  // extensions list) scans 0 files and would otherwise report "clean" for a
+  // boundary never actually checked -- ERROR, a config gap.
   if (walk(r(cfg.sourceDir), extensions).length === 0) {
-    return { status: 'FAIL', details: `scanned 0 files in ${cfg.sourceDir} — check sourceDir/extensions` };
+    return { status: 'ERROR', details: `scanned 0 files in ${cfg.sourceDir} — check sourceDir/extensions` };
   }
   const violations = [];
   for (const { file, spec } of importsOf(cfg.sourceDir, extensions)) {
@@ -345,16 +363,16 @@ function checkImportBoundary(cfg) {
 // apps that must not import each other's source.
 function checkCrossImportBan(cfg) {
   if (!cfg.pairs || cfg.pairs.length === 0) {
-    return { status: 'FAIL', details: 'pairs is empty — check cannot verify anything' };
+    return { status: 'ERROR', details: 'pairs is empty — check cannot verify anything' };
   }
   const violations = [];
   for (const { sourceDir, forbidden, extensions } of cfg.pairs) {
     const exts = extensions ?? ['.ts', '.tsx'];
     // Guard against a vacuous PASS: a typo'd/renamed sourceDir scans 0 files and
     // would otherwise report "no cross-boundary imports" for a pair never actually
-    // scanned.
+    // scanned -- ERROR, a config gap.
     if (walk(r(sourceDir), exts).length === 0) {
-      return { status: 'FAIL', details: `scanned 0 files in ${sourceDir} — check sourceDir/extensions` };
+      return { status: 'ERROR', details: `scanned 0 files in ${sourceDir} — check sourceDir/extensions` };
     }
     for (const { file, spec } of importsOf(sourceDir, exts)) {
       if (specMatches(spec, forbidden)) violations.push(`cross-boundary import: ${spec} (${file})`);
@@ -393,6 +411,16 @@ function runChecks(checks) {
 }
 
 function main(argv) {
+  // A stray MECHANICAL_CHECKS_ROOT/MECHANICAL_CHECKS_OVERLAY in the environment
+  // (left over from a debugging session, or an unrelated tool reusing a generic
+  // name) would otherwise silently redirect a real run at the wrong repo/overlay
+  // with no way to tell from the output alone -- surface it loudly instead.
+  if (process.env.MECHANICAL_CHECKS_ROOT || process.env.MECHANICAL_CHECKS_OVERLAY) {
+    console.error(
+      'warning: MECHANICAL_CHECKS_ROOT/MECHANICAL_CHECKS_OVERLAY is set in the environment -- ' +
+        'this run is reading overridden locations, not the real repo/overlay'
+    );
+  }
   let checks;
   try {
     checks = loadConfig();
