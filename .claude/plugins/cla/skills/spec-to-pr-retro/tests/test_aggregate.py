@@ -268,6 +268,37 @@ def test_missing_phases_key_warns(tmp_path: Path) -> None:
     assert out["phase_outcomes"] == {}
 
 
+def test_report_chars_mean_per_phase(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Review", "status": "ok", "report_chars": 400}]},
+        {"phases": [{"name": "Review", "status": "ok", "report_chars": 600}]},
+        {"phases": [{"name": "Test", "status": "ok"}]},  # no report_chars — excluded
+    ])
+    out, _ = _run(log)
+    assert out["report_chars"] == {"Review": {"mean": 500.0, "n": 2}}
+
+
+def test_report_chars_negative_clamped_to_zero(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Review", "status": "ok", "report_chars": -5}]},
+    ])
+    out, stderr = _run(log)
+    assert "negative, clamped to 0" in stderr
+    assert out["report_chars"] == {"Review": {"mean": 0.0, "n": 1}}
+
+
+def test_report_chars_type_confused_warns(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Review", "status": "ok", "report_chars": "big"}]},
+    ])
+    out, stderr = _run(log)
+    assert "report_chars='big' not int" in stderr
+    assert out["report_chars"] == {}
+
+
 def test_type_confused_rounds_used_warns(tmp_path: Path) -> None:
     log = tmp_path / "runs.jsonl"
     _write_log(log, [

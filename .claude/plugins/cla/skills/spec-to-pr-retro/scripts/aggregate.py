@@ -73,6 +73,13 @@ Schema of the output (all counts are over the analyzed window):
       "asks": [{"header": str, "choices": {<choice>: n}}],
       "version_bump_misses": int,
       "deferred_to_todo_total": int,
+      "report_chars": {<phase>: {"mean": float, "n": int}},    # mean char count
+        # of that phase's user-facing report, over `n` records that carried
+        # `report_chars` (optional-additive — legacy runs omit it and are not
+        # counted in `n`). A verbosity proxy, NOT a full token-spend measure —
+        # it covers only the printed report text, not reasoning/tool output. A
+        # phase whose mean is climbing run-over-run, or is an outlier next to
+        # its siblings, is a trim-this-phase's-prose candidate.
       "skipped_records": int                                   # malformed lines
     }
 
@@ -258,6 +265,7 @@ def aggregate(records: list[dict]) -> dict:
     asks: dict[str, Counter] = defaultdict(Counter)
     version_bump_misses = 0
     deferred_total = 0
+    report_chars: dict[str, list[int]] = defaultdict(list)
     revise_findings: dict[str, dict[str, int]] = defaultdict(
         lambda: {"found": 0, "phantom": 0, "runs": 0})
     revise_findings_records = 0
@@ -278,6 +286,14 @@ def aggregate(records: list[dict]) -> dict:
             phase_outcomes[name][status] += 1
             if status in ("warn", "fail") and phase.get("reason"):
                 warn_reasons[phase["reason"]] += 1
+            if "report_chars" in phase:
+                rc = _coerce_int(phase["report_chars"], "report_chars", f"record {ri} phase {name}")
+                if rc is not None:
+                    if rc < 0:
+                        print(f"aggregate: record {ri}: {name} `report_chars`={rc} is "
+                              f"negative, clamped to 0", file=sys.stderr)
+                        rc = 0
+                    report_chars[name].append(rc)
             phase_key = name.lower() if isinstance(name, str) else "?"
             if phase_key in cap_total and "rounds_used" in phase:
                 used = _coerce_int(phase["rounds_used"], "rounds_used", f"record {ri} phase {name}")
@@ -454,6 +470,8 @@ def aggregate(records: list[dict]) -> dict:
         "asks": [{"header": h, "choices": dict(c)} for h, c in asks.items()],
         "version_bump_misses": version_bump_misses,
         "deferred_to_todo_total": deferred_total,
+        "report_chars": {name: {"mean": round(statistics.mean(v), 1), "n": len(v)}
+                         for name, v in report_chars.items()},
     }
 
 

@@ -73,7 +73,12 @@ Keep each finding to 1-2 lines. Aim for ~60-80 lines total — comprehensive but
 5. **Append the run to the retro log** (matches the repo's other `*-runs.jsonl` retro-log pattern, so grades are trend-able across runs). Append exactly one JSON line to `cla.io/retro/project-review-runs.jsonl` (create the file if absent):
 
 ```bash
-printf '%s\n' '{"ts":"{ISO-8601 UTC}","mechanical":{"pass":N,"fail":M},"grades":{"vision":"A","structure":"B","requirements":"B","architecture":"A","validation":"C"},"verdict":"STRONG","topRecs":3}' >> cla.io/retro/project-review-runs.jsonl
+printf '%s\n' '{"ts":"{ISO-8601 UTC}","mechanical":{"pass":N,"fail":M},"grades":{"vision":"A","structure":"B","requirements":"B","architecture":"A","validation":"C"},"verdict":"STRONG","topRecs":3,"outputChars":N}' >> cla.io/retro/project-review-runs.jsonl
 ```
 
-Fill in the real values. This is the only state the skill persists; a future `/cla:project-review` can diff against the previous line to see whether any dimension regressed.
+Fill in the real values. `outputChars` is the printed report's own character count (optional — a
+verbosity proxy, not a full token-spend measure) — it directly checks the report against this
+skill's own "~60-80 lines total" target above; a future `/cla:project-review-retro` could trend it
+to flag the report template creeping past its budget. This is the only state the skill persists; a
+future `/cla:project-review` can diff against the previous line to see whether any dimension
+regressed.

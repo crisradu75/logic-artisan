@@ -27,7 +27,9 @@ Input record schema (counts-only; see codify-learnings/scripts/log_run.py):
       "rejected_lessons": [str, ...],               # lessons rejected THIS run
       "maintenance": {"failure_modes_bullets": int, "live_log_entries": int,
                       "trimmed": bool},
-      "process_issue": bool           # Step 3.5 self-check found a codify-process problem
+      "process_issue": bool,          # Step 3.5 self-check found a codify-process problem
+      "output_chars": int             # optional — char count of the report this run
+                                       # appended to lessons-learned.md
     }
 
 Output schema (all counts over the analyzed window):
@@ -47,6 +49,11 @@ Output schema (all counts over the analyzed window):
                       "live_log_entries_latest": int|None,
                       "trim_runs": int},
       "process_issue_runs": int,                   # runs where codify itself misfired
+      "output_chars": {"latest": int|None, "trend": [int, ...], "mean": float},
+        # char count of the appended lessons-learned.md report, over records that
+        # carried `output_chars` (optional-additive). A verbosity proxy, NOT a
+        # full token-spend measure — it covers only the printed report text. A
+        # climbing trend is a signal the report template itself is ballooning.
       "coerced_fields": int,                        # present-but-malformed count
         # fields (e.g. a string/bool where an int was expected) dropped from the
         # sums; non-zero means the rates above are computed over a thinned sample.
@@ -68,6 +75,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import statistics
 import subprocess
 import sys
 from collections import Counter
@@ -198,6 +206,7 @@ def aggregate(records: list[dict]) -> dict:
     trim_runs = 0
     process_issue_runs = 0
     coerced_fields = 0
+    output_chars_trend: list[int] = []
 
     for ri, rec in enumerate(records):
         coerced_fields += _sum_counts(rec, "suggestions",
@@ -269,6 +278,17 @@ def aggregate(records: list[dict]) -> dict:
         if rec.get("process_issue") is True:
             process_issue_runs += 1
 
+        if "output_chars" in rec:
+            oc = _coerce_int(rec["output_chars"], "output_chars", f"record {ri}")
+            if oc is not None:
+                if oc < 0:
+                    print(f"aggregate: record {ri}: output_chars={oc} is negative, "
+                          f"clamped to 0", file=sys.stderr)
+                    oc = 0
+                output_chars_trend.append(oc)
+            else:
+                coerced_fields += 1
+
     proposed = sugg.get("proposed", 0)
     mem_proposed = mem.get("proposed", 0)
     timestamps: list[str] = []
@@ -306,6 +326,11 @@ def aggregate(records: list[dict]) -> dict:
             "trim_runs": trim_runs,
         },
         "process_issue_runs": process_issue_runs,
+        "output_chars": {
+            "latest": output_chars_trend[-1] if output_chars_trend else None,
+            "trend": output_chars_trend,
+            "mean": round(statistics.mean(output_chars_trend), 1) if output_chars_trend else 0.0,
+        },
         "coerced_fields": coerced_fields,
     }
 

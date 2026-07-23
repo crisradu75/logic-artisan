@@ -21,22 +21,23 @@ python3 .claude/plugins/cla/skills/spec-to-pr/scripts/log_run.py <<'JSON'
   "mode": "<description|explore-result|existing-change>",
   "args": {"review_rounds": N, "test_rounds": N, "pr_rounds": N, "auto": true|false},
   "phases": [
-    {"name": "Propose",   "status": "ok|warn|skip|fail", "reason": "<required iff warn/fail>"},
+    {"name": "Propose",   "status": "ok|warn|skip|fail", "reason": "<required iff warn/fail>",
+     "report_chars": N},
     {"name": "Review",    "status": "...", "rounds_used": N, "rounds_cap": N,
      "size_gate": "small|large", "verdict": "READY|FIX FIRST|RETHINK",
      "verified_claims_count": N,
      "agents": ["design", "task", "spec"],   /* large mode only — omit in small */
-     "reason": "<iff warn/fail>"},
-    {"name": "Implement", "status": "...", "reason": "<iff warn/fail>"},
+     "reason": "<iff warn/fail>", "report_chars": N},
+    {"name": "Implement", "status": "...", "reason": "<iff warn/fail>", "report_chars": N},
     {"name": "Test",      "status": "...", "rounds_used": N, "rounds_cap": N,
-     "reason": "<iff warn/fail>"},
+     "reason": "<iff warn/fail>", "report_chars": N},
     {"name": "Ship",      "status": "...", "version_bumped": true,
-     "reason": "<iff warn/fail>"},
+     "reason": "<iff warn/fail>", "report_chars": N},
     {"name": "Revise",    "status": "...", "rounds_used": N, "rounds_cap": N,
      "agents": ["code-reviewer", "silent-failure-hunter", ...],
-     "reason": "<iff warn/fail>"},
-    {"name": "Archive",   "status": "...", "reason": "<iff warn/fail>"},
-    {"name": "Handoff",   "status": "ok"}
+     "reason": "<iff warn/fail>", "report_chars": N},
+    {"name": "Archive",   "status": "...", "reason": "<iff warn/fail>", "report_chars": N},
+    {"name": "Handoff",   "status": "ok", "report_chars": N}
   ],
   "asks": [{"header": "<header>", "choice": "<chosen-option-label>"}],
   "deferred_to_todo": N,
@@ -74,6 +75,12 @@ this; oversize records exit 1).
   `review_size_gate_unknown` / `review_verdicts_unknown` and surface as drift.
 - On Review: `verified_claims_count` is required (the retro skill's "Verified-claims section going
   silent" heuristic depends on it).
+- `report_chars` (every phase, optional-additive) — the character count of THIS phase's final
+  user-facing report text (the printed summary shown to the user for that phase, not the internal
+  reasoning or any sub-agent transcript). A cheap verbosity proxy `aggregate.py` means per phase
+  (`report_chars.<Phase>.mean`) — it approximates the phase's *printed-report* cost, not full
+  session token spend (which isn't observable from in-context). Omit entirely rather than guess; a
+  missing value is silently excluded from that phase's mean, same as every other optional field.
 - On Review: `agents` is REQUIRED in large mode (must contain `["design", "task", "spec"]` or
   equivalent) and MUST be omitted (or empty `[]`) in small mode. Inconsistency between `size_gate`
   and `agents` is counted as `review_gate_pair_mismatches` — non-zero means the producer is buggy.
