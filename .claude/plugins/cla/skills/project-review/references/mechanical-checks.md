@@ -30,7 +30,30 @@ node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs    
 node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs --json  # machine-readable
 ```
 
-Fast (<1s), exit code always 0 (findings are data, not a gate). It performs the deterministic cross-file checks **not** covered by build/lint/test — this repo's exact check list (what each one verifies and its PASS/FAIL wording) lives in `references/project-context.md` ("Mechanical checks — repo specifics").
+Fast (<1s), exit code 0 for a normal run (findings are data, not a gate; only a malformed config block exits non-zero). The script itself is a **generic, repo-agnostic engine** — it hardcodes no paths, packages, or app names. It performs the deterministic cross-file checks **not** covered by build/lint/test, driven entirely by this repo's own check list, which lives in `references/project-context.md` ("Mechanical checks — repo specifics") as a fenced ```json``` block:
+
+```json
+{
+  "checks": [
+    { "type": "json-key-parity", "name": "...", "files": ["path/a.json", "path/b.json"] },
+    { "type": "json-key-usage", "name": "...", "localeFiles": ["path/en.json", "path/ro.json"],
+      "sourceDirs": ["path/to/src"], "keyPattern": "\\bt\\(\\s*['\"]([^'\"]+)['\"]", "extensions": [".ts", ".tsx"] },
+    { "type": "derived-key-consistency", "name": "...",
+      "sources": [
+        { "kind": "regex-array", "file": "path/domain.ts", "pattern": "KEYS\\s*=\\s*\\[([^\\]]+)\\]", "label": "domain.ts" },
+        { "kind": "json-array-field", "file": "path/data.json", "field": "key", "label": "data.json" }
+      ],
+      "deriveLocale": { "template": "dashboard.foo.{key}", "localeFiles": ["path/en.json", "path/ro.json"] } },
+    { "type": "import-boundary", "name": "...", "sourceDir": "path/to/src", "forbidden": ["react", "react-dom"], "reason": "must stay Node-safe" },
+    { "type": "cross-import-ban", "name": "...", "pairs": [
+      { "sourceDir": "apps/a/src", "forbidden": ["apps/b", "b-app-name"] },
+      { "sourceDir": "apps/b/src", "forbidden": ["apps/a", "a-app-name"] }
+    ] }
+  ]
+}
+```
+
+All paths in the config are repo-relative (resolved from the repo root, not this file). `forbidden`/`pairs` entries match by exact string or substring, so pin as loosely or tightly as needed. No block, an empty `checks` array, or a missing overlay all mean "no checks configured" — a trivial PASS, not a crash on paths from wherever this script was first written. Run `/cla:sync-context` to populate this section for a fresh repo (or author it by hand).
 
 ### Not checked here — smoke-test string drift
 Whether an edit-time hook already guards smoke/e2e-script string drift (and what it does vs. doesn't cover) is repo-specific — see `references/project-context.md`. Whether the whole smoke/e2e flow is still *current end-to-end* stays a qualitative call for the Validation dimension regardless.
