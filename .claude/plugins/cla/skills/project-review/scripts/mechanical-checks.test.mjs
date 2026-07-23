@@ -27,6 +27,7 @@ import {
   checkCrossImportBan,
   specMatches,
   runChecks,
+  main,
 } from './mechanical-checks.mjs';
 
 const HEADING_RE = /^#{1,6}\s*mechanical checks/i;
@@ -309,6 +310,23 @@ test('checkDerivedKeyConsistency: a key missing from one source FAILs and lists 
   });
 });
 
+test('checkDerivedKeyConsistency: a "g" flag on a regex-array source is stripped, not left to break capture groups', () => {
+  withRoot((root) => {
+    writeFile(root, 'domain.ts', "const KEYS: K[] = ['prime', 'daytime'];");
+    writeJson(root, 'data.json', [{ key: 'prime' }, { key: 'daytime' }]);
+    // Without stripping 'g', text.match(re) would return whole-match strings
+    // with no capture groups, and `m[1].matchAll(...)` below would throw on
+    // `m[1]` being undefined instead of extracting the two keys.
+    const result = checkDerivedKeyConsistency({
+      sources: [
+        { kind: 'regex-array', file: 'domain.ts', pattern: 'KEYS\\s*:\\s*K\\[\\]\\s*=\\s*\\[([^\\]]+)\\]', flags: 'g', label: 'domain.ts' },
+        { kind: 'json-array-field', file: 'data.json', field: 'key', label: 'data.json' },
+      ],
+    });
+    assert.equal(result.status, 'PASS');
+  });
+});
+
 test('checkDerivedKeyConsistency: deriveLocale missing key FAILs', () => {
   withRoot((root) => {
     writeFile(root, 'domain.ts', "const KEYS: K[] = ['prime'];");
@@ -483,4 +501,82 @@ test('runChecks: one bad check does not stop the others from running', () => {
     assert.equal(results[0].status, 'ERROR');
     assert.equal(results[1].status, 'PASS');
   });
+});
+
+// ── main(): end-to-end CLI contract (argv handling, exit codes, --json shape) ──
+
+/** Run `fn` with console.log/console.error captured instead of printed, restoring
+ * both afterward regardless of how `fn` exits. */
+function captureConsole(fn) {
+  const logs = [];
+  const errors = [];
+  const prevLog = console.log;
+  const prevError = console.error;
+  console.log = (...args) => logs.push(args.join(' '));
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    const returned = fn();
+    return { returned, logs, errors };
+  } finally {
+    console.log = prevLog;
+    console.error = prevError;
+  }
+}
+
+test('main: no checks configured returns 0 and prints the "none configured" message', () => {
+  withRoot(() =>
+    withOverlay('## Mechanical checks\n\nnothing configured yet.\n', () => {
+      const { returned, logs } = captureConsole(() => main([]));
+      assert.equal(returned, 0);
+      assert.ok(logs.some((l) => l.includes('none configured for this repo')));
+    })
+  );
+});
+
+test('main: --json reports accurate pass/fail/error counts and a matching results array', () => {
+  withRoot((root) =>
+    withOverlay(
+      [
+        '## Mechanical checks',
+        '',
+        '```json',
+        JSON.stringify({
+          checks: [
+            { type: 'json-key-parity', name: 'parity', files: ['a.json', 'b.json'] },
+            { type: 'json-key-parity', name: 'mismatch', files: ['a.json', 'c.json'] },
+            { type: 'not-a-real-type', name: 'bogus' },
+          ],
+        }),
+        '```',
+        '',
+      ].join('\n'),
+      () => {
+        writeJson(root, 'a.json', { x: 1 });
+        writeJson(root, 'b.json', { x: 1 });
+        writeJson(root, 'c.json', { x: 1, y: 2 });
+        const { returned, logs } = captureConsole(() => main(['--json']));
+        assert.equal(returned, 0);
+        const output = JSON.parse(logs.join('\n'));
+        assert.equal(output.pass, 1);
+        assert.equal(output.fail, 1);
+        assert.equal(output.error, 1);
+        assert.equal(output.results.length, 3);
+        assert.deepEqual(
+          output.results.map((r) => r.status),
+          ['PASS', 'FAIL', 'ERROR']
+        );
+      }
+    )
+  );
+});
+
+test('main: a malformed config block returns 1 and prints an error, with no results', () => {
+  withRoot(() =>
+    withOverlay('## Mechanical checks\n\n```json\n{ not json }\n```\n', () => {
+      const { returned, logs, errors } = captureConsole(() => main([]));
+      assert.equal(returned, 1);
+      assert.equal(logs.length, 0);
+      assert.ok(errors.some((e) => e.includes('not valid JSON')));
+    })
+  );
 });

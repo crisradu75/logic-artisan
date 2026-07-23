@@ -129,15 +129,18 @@ function extractFencedBlockUnderHeading(text, headingRe) {
   const lines = text.split('\n');
   const headingIdx = lines.findIndex((l) => headingRe.test(l.trim()));
   if (headingIdx === -1) return null;
-  const headingLevel = lines[headingIdx].match(/^#+/)?.[0].length ?? 0;
+  // Match against the TRIMMED line, same as the headingIdx search above — a
+  // heading found via its trimmed form must have its level read the same way,
+  // or leading whitespace (rare in practice, but not impossible) would read as
+  // a lower level than the stop-condition comparison below expects.
+  const headingLevel = lines[headingIdx].trim().match(/^#+/)?.[0].length ?? 0;
   const fences = []; // { lang, body }
   let fenceStart = -1;
   let fenceLang = '';
   for (let i = headingIdx + 1; i < lines.length; i++) {
-    const line = lines[i];
-    const headingMatch = line.match(/^(#+)\s/);
+    const trimmed = lines[i].trim();
+    const headingMatch = trimmed.match(/^(#+)\s/);
     if (headingMatch && headingMatch[1].length <= headingLevel) break;
-    const trimmed = line.trim();
     if (fenceStart === -1 && trimmed.startsWith('```')) {
       fenceStart = i + 1;
       fenceLang = trimmed.slice(3).trim().toLowerCase();
@@ -246,7 +249,13 @@ function checkJsonKeyUsage(cfg) {
 function extractKeys(source) {
   if (source.kind === 'regex-array') {
     const text = readFileSync(r(source.file), 'utf8');
-    const re = new RegExp(source.pattern, source.flags ?? '');
+    // Strip a 'g' flag unconditionally: this code wants text.match(re)'s
+    // single-match-with-capture-groups return shape (m[1]), but with a 'g' flag
+    // match() instead returns an array of whole-match strings with NO capture
+    // groups, silently breaking `m[1]` below. There is exactly one match wanted
+    // here regardless of what a config author passes in `flags`.
+    const flags = (source.flags ?? '').replace(/g/g, '');
+    const re = new RegExp(source.pattern, flags);
     const m = text.match(re);
     if (!m) throw new Error(`pattern did not match in ${source.file} (structure changed?)`);
     return [...m[1].matchAll(/'([^']+)'|"([^"]+)"/g)].map((mm) => mm[1] ?? mm[2]);

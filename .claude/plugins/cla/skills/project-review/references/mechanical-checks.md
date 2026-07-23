@@ -40,7 +40,7 @@ Fast (<1s), exit code 0 for a normal run (`FAIL`/`ERROR` rows are data, not a ga
       "sourceDirs": ["path/to/src"], "keyPattern": "\\bt\\(\\s*['\"]([^'\"]+)['\"]", "extensions": [".ts", ".tsx"] },
     { "type": "derived-key-consistency", "name": "...",
       "sources": [
-        { "kind": "regex-array", "file": "path/domain.ts", "pattern": "KEYS\\s*=\\s*\\[([^\\]]+)\\]", "label": "domain.ts" },
+        { "kind": "regex-array", "file": "path/domain.ts", "pattern": "KEYS\\s*=\\s*\\[([^\\]]+)\\]", "flags": "s", "label": "domain.ts" },
         { "kind": "json-array-field", "file": "path/data.json", "field": "key", "label": "data.json" }
       ],
       "deriveLocale": { "template": "dashboard.foo.{key}", "localeFiles": ["path/en.json", "path/ro.json"] } },
@@ -55,6 +55,8 @@ Fast (<1s), exit code 0 for a normal run (`FAIL`/`ERROR` rows are data, not a ga
 ```
 
 All paths in the config are repo-relative (resolved from the repo root, not this file). `forbidden`/`pairs` entries match by exact string or substring, so pin as loosely or tightly as needed — e.g. `"react"` also matches `"react-dom"` and `"preact"`, so tighten to a more specific token if that's not intended. `import-boundary`/`cross-import-ban` scan `.ts`/`.tsx` by default (override per check, or per pair, via `extensions`) and detect a forbidden specifier via a static `from '...'`, `require('...')`, `import('...')`, or bare `import '...'`. No block, an empty `checks` array, or a missing overlay all mean "no checks configured" — a trivial PASS, not a crash on paths from wherever this script was first written. Run `/cla:sync-context` to populate this section for a fresh repo (or author it by hand). (For test authoring: `MECHANICAL_CHECKS_ROOT` and `MECHANICAL_CHECKS_OVERLAY` env vars override, respectively, the resolved repo root and the overlay file `loadConfig()` reads — see the sibling `mechanical-checks.test.mjs`.)
+
+A `regex-array` source's optional `flags` (e.g. `"s"` to let `.` match newlines) may be any regex flags except `g`, which is always stripped — the pattern is expected to have exactly one capture group and match once (`text.match(re)`), a shape `g` breaks (it returns whole-match strings with no capture groups instead).
 
 Each check's result is `PASS`, `FAIL` (the check ran and found a real problem — e.g. a key mismatch or a forbidden import), or `ERROR` (the check itself couldn't run meaningfully — an unrecognized `type`, or a thrown exception from a bad path/malformed source file/misconfigured field). Treat `ERROR` as "fix the check's config," not as a review finding about the repo.
 

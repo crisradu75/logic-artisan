@@ -316,7 +316,7 @@ The `cla` plugin SHALL provide a `cla-init` skill at `.claude/plugins/cla/skills
 
 `cla-init` SHALL create, when absent, the following `cla.io/` tree under the repo root:
 - the directories `cla.io/decisions/`, `cla.io/feedback/`, `cla.io/retro/`, and `cla.io/lessons-learned/`;
-- one empty (0-byte) retro ledger per retro-logging loop — the skills with a `scripts/log_run.py` that appends per-run records: `cla.io/retro/spec-to-pr-runs.jsonl`, `cla.io/retro/multi-pr-runs.jsonl`, `cla.io/retro/multi-spec-runs.jsonl`, `cla.io/retro/multi-lite-runs.jsonl`, `cla.io/retro/project-review-runs.jsonl`, and `cla.io/retro/codify-runs.jsonl` (an empty file is a valid empty JSONL ledger — no placeholder line);
+- one empty (0-byte) retro ledger per retro-logging loop — each loop appends its own per-run record (via `scripts/log_run.py` for `spec-to-pr`/`multi-spec`/`multi-lite`/`codify-learnings`, `scripts/log_chain_run.py` for `multi-pr`, or a documented manual-append recipe for `project-review`, which has no dedicated logging script): `cla.io/retro/spec-to-pr-runs.jsonl`, `cla.io/retro/multi-pr-runs.jsonl`, `cla.io/retro/multi-spec-runs.jsonl`, `cla.io/retro/multi-lite-runs.jsonl`, `cla.io/retro/project-review-runs.jsonl`, and `cla.io/retro/codify-runs.jsonl` (an empty file is a valid empty JSONL ledger — no placeholder line);
 - the feedback inbox `cla.io/feedback/notes.md` seeded with a minimal header;
 - the rolling lessons-learned log `cla.io/lessons-learned/lessons-learned.md` seeded with a minimal header.
 

@@ -11,12 +11,13 @@ another concurrent session may be using, and `guard-worktree-isolation.py`
 does NOT catch it — that hook only intercepts `git checkout`/`switch`/
 `commit`, never plain file writes.
 
-Observed live (2026-07-11, agentic-air): a session inside a worktree wrote
-new skill files via a hardcoded `C:\\Code\\agentic-air\\.claude\\...` path.
-The mistake was only caught because the OTHER session noticed the new file.
-"Fixing" it by committing in the primary clone too then nearly lost a commit
-to garbage collection when that clone's branch got switched/deleted by the
-other session mid-flight.
+Observed live: a session inside a worktree wrote new skill files via a
+hardcoded absolute path back into the primary clone (e.g.
+`C:\\Code\\<repo>\\.claude\\...`, copy-pasted from before the worktree
+switch). The mistake was only caught because the OTHER session noticed the
+new file. "Fixing" it by committing in the primary clone too then nearly lost
+a commit to garbage collection when that clone's branch got switched/deleted
+by the other session mid-flight.
 
 Detection
 ---------
