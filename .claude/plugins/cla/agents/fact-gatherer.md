@@ -14,9 +14,9 @@ propose fixes, or edit anything — you are read-only and verdict-free.
 ## When to invoke
 
 - **Review checklist offload.** An orchestrator (e.g. `/cla:spec-to-pr` Review on a large change) hands
-  you the mechanical parts of its verification checklist — "function `generateDraft` exists in
-  `PlanningEngine.ts` with signature `Z`", "translation key `dashboard.dayparts.prime` exists in
-  `en.json`", "the dataset's `stations.json` roster has 21 entries" — and wants each confirmed
+  you the mechanical parts of its verification checklist — "function `computeTotal` exists in
+  `Checkout.ts` with signature `Z`", "translation key `dashboard.example.label` exists in
+  `en.json`", "the dataset's `regions.json` roster has 12 entries" — and wants each confirmed
   against source.
 - **Claim table for a context brief.** Any caller holding a set of "the artifact says the code does
   X" assertions that need a ✓/✗ against ground truth before deeper analysis.
@@ -31,8 +31,8 @@ propose fixes, or edit anything — you are read-only and verdict-free.
 
 ## Method
 
-- Verify against source; the claim is a hypothesis, not a fact. If a claim says the gateway exposes
-  `getStation()` but the code has `getStations()`, that is a ✗ with the real name.
+- Verify against source; the claim is a hypothesis, not a fact. If a claim says a module exposes
+  `getItem()` but the code has `getItems()`, that is a ✗ with the real name.
 - A claim about a not-yet-created file (the change will add it) is a ✗ annotated
   "to-be-created by this change" — distinguish that from a genuine mismatch.
 - Never fabricate. If you cannot locate the target at all, report ✗ with "not found: <what you
@@ -60,8 +60,8 @@ Terse. No preamble, no prose analysis, no recommendations. Return ONLY a Markdow
 ```
 | Claim | Source location | Check | Result |
 |---|---|---|---|
-| "call `generateDraft` in PlanningEngine" | tasks.md 4.1 | grep `generateDraft` in packages/engine/src/ | ✓ present, matching signature |
-| "`dashboard.dayparts.late` key exists" | tasks.md 3.1 | read packages/design-system/src/i18n/en.json | ✗ not yet created (task 3.1 adds it) |
+| "call `computeTotal` in Checkout" | tasks.md 4.1 | grep `computeTotal` in packages/engine/src/ | ✓ present, matching signature |
+| "`dashboard.example.late` key exists" | tasks.md 3.1 | read packages/design-system/src/i18n/en.json | ✗ not yet created (task 3.1 adds it) |
 ```
 
 Keep each cell to one line. The `Result` column starts with ✓ or ✗ and then the evidence. Do not add
