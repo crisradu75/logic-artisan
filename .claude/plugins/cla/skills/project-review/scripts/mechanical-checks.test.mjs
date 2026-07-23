@@ -16,8 +16,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+
+const SCRIPT_PATH = fileURLToPath(new URL('./mechanical-checks.mjs', import.meta.url));
 
 import {
+  getOverlayPath,
+  DEFAULT_OVERLAY_PATH,
   extractFencedBlockUnderHeading,
   loadConfig,
   checkJsonKeyParity,
@@ -88,9 +94,68 @@ test('extractFencedBlockUnderHeading: heading with no fence returns null, no thr
   assert.equal(extractFencedBlockUnderHeading(text, HEADING_RE), null);
 });
 
-test('extractFencedBlockUnderHeading: heading with an opened-but-unclosed fence returns null', () => {
+test('extractFencedBlockUnderHeading: an opened-but-unclosed fence throws', () => {
   const text = '## Mechanical checks\n\n```json\n{"checks": []}\n';
-  assert.equal(extractFencedBlockUnderHeading(text, HEADING_RE), null);
+  assert.throws(() => extractFencedBlockUnderHeading(text, HEADING_RE), /never closed/);
+});
+
+test('extractFencedBlockUnderHeading: a dangling fence AFTER an earlier well-formed one still throws (regression guard)', () => {
+  // The bug this guards: if the "unclosed fence" check only fired when fences.length
+  // === 0, a dangling fence following an earlier complete one was silently dropped
+  // and the earlier (possibly stale/wrong) fence's content was returned instead --
+  // with zero signal that the author's later edit never took effect.
+  const text = [
+    '## Mechanical checks',
+    '',
+    'Old stale example (author forgot to delete when editing):',
+    '```json',
+    '{"checks": []}',
+    '```',
+    '',
+    'New real config the author meant to add but forgot to close:',
+    '```json',
+    '{"checks": ["should never surface -- the whole block must throw"]}',
+    '',
+  ].join('\n');
+  assert.throws(() => extractFencedBlockUnderHeading(text, HEADING_RE), /never closed/);
+});
+
+test('extractFencedBlockUnderHeading: a fence dangling PAST a real section boundary still throws, even if a later section\'s own fence would otherwise "balance" the backtick count (regression guard)', () => {
+  // The exact bug a retroactive review found in the first version of the
+  // dangling-fence fix: skipping the heading-stop check entirely while inside an
+  // open fence let the scan run straight through a REAL later heading and get
+  // "closed" by a completely unrelated fence in a different section -- silently
+  // merging the two sections' content instead of throwing. Two total ``` markers
+  // after "## Mechanical checks" (even parity) used to read as "cleanly closed";
+  // it must still throw, because the fence that opened under OUR heading never
+  // closed before OUR section ended.
+  const text = [
+    '## Mechanical checks',
+    '```json',
+    '{"checks": []}',
+    '',
+    '## Some other, unrelated later section',
+    'prose intro, then an example fence opens:',
+    '```',
+    'end of doc',
+  ].join('\n');
+  assert.throws(() => extractFencedBlockUnderHeading(text, HEADING_RE), /spans past what looks like a later section/);
+});
+
+test('extractFencedBlockUnderHeading: a "#"-prefixed line INSIDE a fence does not prematurely end the section', () => {
+  // Guards against treating a fence's own content (e.g. a shell comment, a quoted
+  // markdown heading shown as an example) as this section's heading-stop condition.
+  const text = [
+    '## Mechanical checks',
+    '```bash',
+    '# this looks like a heading but is inside a fence',
+    '```',
+    '```json',
+    '{"checks": ["real"]}',
+    '```',
+    '',
+  ].join('\n');
+  assert.equal(extractFencedBlockUnderHeading(text, HEADING_RE).trim(), '{"checks": ["real"]}');
 });
 
 test('extractFencedBlockUnderHeading: extracts a json-tagged fence', () => {
@@ -189,6 +254,45 @@ test('loadConfig: a non-array "checks" field throws with a clear message', () =>
   });
 });
 
+test('loadConfig: a dangling fence in the REAL overlay file throws end-to-end (integration, not just the pure function)', () => {
+  // The prior review's headline bug was found via a real loadConfig() run, not
+  // by calling extractFencedBlockUnderHeading directly -- so the regression
+  // guard belongs at this boundary too, not only at the pure-function level.
+  withOverlay(
+    [
+      '## Mechanical checks',
+      '```json',
+      '{"checks": []}',
+      '',
+      '## Some other, unrelated later section',
+      'prose intro, then an example fence opens:',
+      '```',
+      'end of doc',
+    ].join('\n'),
+    () => {
+      assert.throws(() => loadConfig(), /spans past what looks like a later section/);
+    }
+  );
+});
+
+test('loadConfig: error messages name the actual overlay file read, not a hardcoded constant', () => {
+  withOverlay('## Mechanical checks\n\n```json\n{ not json }\n```\n', () => {
+    const overlayPath = getOverlayPath();
+    assert.throws(() => loadConfig(), new RegExp(overlayPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  });
+});
+
+test('getOverlayPath: an empty-string override is treated as unset, not as an empty path', () => {
+  const prev = process.env.MECHANICAL_CHECKS_OVERLAY;
+  process.env.MECHANICAL_CHECKS_OVERLAY = '';
+  try {
+    assert.equal(getOverlayPath(), DEFAULT_OVERLAY_PATH);
+  } finally {
+    if (prev === undefined) delete process.env.MECHANICAL_CHECKS_OVERLAY;
+    else process.env.MECHANICAL_CHECKS_OVERLAY = prev;
+  }
+});
+
 // ── checkJsonKeyParity ────────────────────────────────────────────────────────
 
 test('checkJsonKeyParity: matching key sets PASS', () => {
@@ -211,33 +315,53 @@ test('checkJsonKeyParity: mismatched key sets FAIL, listing both sides', () => {
   });
 });
 
+test('checkJsonKeyParity: identical files[0]/files[1] ERRORs instead of vacuously passing', () => {
+  withRoot((root) => {
+    writeJson(root, 'a.json', { x: 1 });
+    const result = checkJsonKeyParity({ files: ['a.json', 'a.json'] });
+    assert.equal(result.status, 'ERROR');
+    assert.match(result.details, /identical/);
+  });
+});
+
 // ── checkJsonKeyUsage ──────────────────────────────────────────────────────────
 
-test('checkJsonKeyUsage: empty localeFiles FAILs instead of vacuously passing', () => {
+test('checkJsonKeyUsage: empty localeFiles ERRORs instead of vacuously passing', () => {
   withRoot((root) => {
     writeFile(root, 'src/App.ts', "t('a.b');");
     const result = checkJsonKeyUsage({ localeFiles: [], sourceDirs: ['src'] });
-    assert.equal(result.status, 'FAIL');
+    assert.equal(result.status, 'ERROR');
     assert.match(result.details, /localeFiles is empty/);
   });
 });
 
-test('checkJsonKeyUsage: zero source files FAILs (regression guard)', () => {
+test('checkJsonKeyUsage: zero source files ERRORs (regression guard)', () => {
   withRoot((root) => {
     writeJson(root, 'en.json', { 'a.b': 'x' });
     const result = checkJsonKeyUsage({ localeFiles: ['en.json'], sourceDirs: ['does-not-exist'] });
-    assert.equal(result.status, 'FAIL');
+    assert.equal(result.status, 'ERROR');
     assert.match(result.details, /scanned 0 source files/);
   });
 });
 
-test('checkJsonKeyUsage: zero matched usages FAILs instead of vacuously passing', () => {
+test('checkJsonKeyUsage: zero matched usages ERRORs instead of vacuously passing', () => {
   withRoot((root) => {
     writeJson(root, 'en.json', { 'a.b': 'x' });
     writeFile(root, 'src/App.ts', 'no translation calls in this file at all');
     const result = checkJsonKeyUsage({ localeFiles: ['en.json'], sourceDirs: ['src'] });
-    assert.equal(result.status, 'FAIL');
+    assert.equal(result.status, 'ERROR');
     assert.match(result.details, /matched 0 usages/);
+  });
+});
+
+test('checkJsonKeyUsage: custom extensions picks up a non-.ts/.tsx file', () => {
+  withRoot((root) => {
+    writeJson(root, 'en.json', { 'a.b': 'x' });
+    writeFile(root, 'src/App.js', "t('a.b');");
+    const withDefaultExts = checkJsonKeyUsage({ localeFiles: ['en.json'], sourceDirs: ['src'] });
+    assert.equal(withDefaultExts.status, 'ERROR'); // scanned 0 files (no .ts/.tsx present)
+    const withJsExt = checkJsonKeyUsage({ localeFiles: ['en.json'], sourceDirs: ['src'], extensions: ['.js'] });
+    assert.equal(withJsExt.status, 'PASS');
   });
 });
 
@@ -273,10 +397,10 @@ test('checkJsonKeyUsage: a dynamically composed key is skipped, not flagged miss
 
 // ── checkDerivedKeyConsistency ─────────────────────────────────────────────────
 
-test('checkDerivedKeyConsistency: empty sources FAILs instead of vacuously passing', () => {
+test('checkDerivedKeyConsistency: empty sources ERRORs instead of vacuously passing', () => {
   withRoot(() => {
     const result = checkDerivedKeyConsistency({ sources: [] });
-    assert.equal(result.status, 'FAIL');
+    assert.equal(result.status, 'ERROR');
     assert.match(result.details, /sources is empty/);
   });
 });
@@ -340,6 +464,18 @@ test('checkDerivedKeyConsistency: deriveLocale missing key FAILs', () => {
   });
 });
 
+test('checkDerivedKeyConsistency: an empty deriveLocale.localeFiles ERRORs instead of vacuously passing', () => {
+  withRoot((root) => {
+    writeFile(root, 'domain.ts', "const KEYS: K[] = ['prime'];");
+    const result = checkDerivedKeyConsistency({
+      sources: [{ kind: 'regex-array', file: 'domain.ts', pattern: 'KEYS\\s*:\\s*K\\[\\]\\s*=\\s*\\[([^\\]]+)\\]', label: 'domain.ts' }],
+      deriveLocale: { template: 'dashboard.foo.{key}', localeFiles: [] },
+    });
+    assert.equal(result.status, 'ERROR');
+    assert.match(result.details, /deriveLocale\.localeFiles is empty/);
+  });
+});
+
 test('checkDerivedKeyConsistency: an unknown source kind throws', () => {
   withRoot(() => {
     assert.throws(
@@ -349,12 +485,25 @@ test('checkDerivedKeyConsistency: an unknown source kind throws', () => {
   });
 });
 
+test('checkDerivedKeyConsistency: a regex-array pattern that does not match throws', () => {
+  withRoot((root) => {
+    writeFile(root, 'domain.ts', 'const KEYS = [1, 2, 3]; // structure changed, no longer matches the pattern below');
+    assert.throws(
+      () =>
+        checkDerivedKeyConsistency({
+          sources: [{ kind: 'regex-array', file: 'domain.ts', pattern: 'KEYS\\s*:\\s*K\\[\\]\\s*=\\s*\\[([^\\]]+)\\]' }],
+        }),
+      /structure changed\?/
+    );
+  });
+});
+
 // ── checkImportBoundary ────────────────────────────────────────────────────────
 
-test('checkImportBoundary: zero files scanned FAILs (regression guard)', () => {
+test('checkImportBoundary: zero files scanned ERRORs (regression guard)', () => {
   withRoot(() => {
     const result = checkImportBoundary({ sourceDir: 'does-not-exist', forbidden: ['react'] });
-    assert.equal(result.status, 'FAIL');
+    assert.equal(result.status, 'ERROR');
     assert.match(result.details, /scanned 0 files/);
   });
 });
@@ -393,11 +542,19 @@ test('checkImportBoundary: a forbidden dynamic import() FAILs', () => {
   });
 });
 
+test('checkImportBoundary: a forbidden bare side-effect import (`import \'...\'`) FAILs', () => {
+  withRoot((root) => {
+    writeFile(root, 'src/index.ts', "import 'react';\n");
+    const result = checkImportBoundary({ sourceDir: 'src', forbidden: ['react'] });
+    assert.equal(result.status, 'FAIL');
+  });
+});
+
 test('checkImportBoundary: custom extensions picks up a non-.ts/.tsx file', () => {
   withRoot((root) => {
     writeFile(root, 'src/index.js', "import { useState } from 'react';\n");
     const withDefaultExts = checkImportBoundary({ sourceDir: 'src', forbidden: ['react'] });
-    assert.equal(withDefaultExts.status, 'FAIL'); // scanned 0 files (no .ts/.tsx present)
+    assert.equal(withDefaultExts.status, 'ERROR'); // scanned 0 files (no .ts/.tsx present)
     assert.match(withDefaultExts.details, /scanned 0 files/);
     const withJsExt = checkImportBoundary({ sourceDir: 'src', forbidden: ['react'], extensions: ['.js'] });
     assert.equal(withJsExt.status, 'FAIL');
@@ -407,15 +564,15 @@ test('checkImportBoundary: custom extensions picks up a non-.ts/.tsx file', () =
 
 // ── checkCrossImportBan ─────────────────────────────────────────────────────────
 
-test('checkCrossImportBan: empty pairs FAILs instead of vacuously passing', () => {
+test('checkCrossImportBan: empty pairs ERRORs instead of vacuously passing', () => {
   withRoot(() => {
     const result = checkCrossImportBan({ pairs: [] });
-    assert.equal(result.status, 'FAIL');
+    assert.equal(result.status, 'ERROR');
     assert.match(result.details, /pairs is empty/);
   });
 });
 
-test('checkCrossImportBan: a pair whose sourceDir scans 0 files FAILs (regression guard)', () => {
+test('checkCrossImportBan: a pair whose sourceDir scans 0 files ERRORs (regression guard)', () => {
   withRoot((root) => {
     writeFile(root, 'apps/a/src/index.ts', 'export const x = 1;\n');
     const result = checkCrossImportBan({
@@ -424,8 +581,23 @@ test('checkCrossImportBan: a pair whose sourceDir scans 0 files FAILs (regressio
         { sourceDir: 'apps/typo-b/src', forbidden: ['apps/a'] },
       ],
     });
-    assert.equal(result.status, 'FAIL');
+    assert.equal(result.status, 'ERROR');
     assert.match(result.details, /scanned 0 files/);
+  });
+});
+
+test('checkCrossImportBan: a per-pair extensions override picks up a non-.ts/.tsx file', () => {
+  withRoot((root) => {
+    writeFile(root, 'apps/a/src/index.js', "import { x } from 'apps/b';\n");
+    writeFile(root, 'apps/b/src/index.ts', 'export const y = 2;\n');
+    const result = checkCrossImportBan({
+      pairs: [
+        { sourceDir: 'apps/a/src', forbidden: ['apps/b'], extensions: ['.js'] },
+        { sourceDir: 'apps/b/src', forbidden: ['apps/a'] },
+      ],
+    });
+    assert.equal(result.status, 'FAIL');
+    assert.match(result.details, /cross-boundary import/);
   });
 });
 
@@ -578,5 +750,97 @@ test('main: a malformed config block returns 1 and prints an error, with no resu
       assert.equal(logs.length, 0);
       assert.ok(errors.some((e) => e.includes('not valid JSON')));
     })
+  );
+});
+
+test('main: the human-readable (non-JSON) table renders marks, padding, and the PASS/FAIL/ERROR summary line', () => {
+  withRoot((root) =>
+    withOverlay(
+      [
+        '## Mechanical checks',
+        '',
+        '```json',
+        JSON.stringify({
+          checks: [
+            { type: 'json-key-parity', name: 'parity', files: ['a.json', 'b.json'] },
+            { type: 'json-key-parity', name: 'mismatch', files: ['a.json', 'c.json'] },
+            { type: 'not-a-real-type', name: 'bogus' },
+          ],
+        }),
+        '```',
+        '',
+      ].join('\n'),
+      () => {
+        writeJson(root, 'a.json', { x: 1 });
+        writeJson(root, 'b.json', { x: 1 });
+        writeJson(root, 'c.json', { x: 1, y: 2 });
+        const { returned, logs } = captureConsole(() => main([]));
+        assert.equal(returned, 0);
+        const out = logs.join('\n');
+        // One row per check, each with its mark + padded status, then its details line.
+        assert.match(out, /✓ PASS {2}\| parity/);
+        assert.match(out, /⚠ FAIL {2}\| mismatch/);
+        assert.match(out, /✗ ERROR \| bogus/);
+        assert.match(out, /unknown check type: not-a-real-type/);
+        assert.match(out, /1 PASS, 1 FAIL, 1 ERROR/);
+      }
+    )
+  );
+});
+
+test('main: warns when MECHANICAL_CHECKS_ROOT/MECHANICAL_CHECKS_OVERLAY is active', () => {
+  withRoot(() =>
+    withOverlay('## Mechanical checks\n\nnothing configured yet.\n', () => {
+      const { errors } = captureConsole(() => main([]));
+      assert.ok(errors.some((e) => e.includes('MECHANICAL_CHECKS_ROOT/MECHANICAL_CHECKS_OVERLAY is set')));
+    })
+  );
+});
+
+// ── CLI subprocess smoke test: the real `node mechanical-checks.mjs` entry point ──
+
+test('CLI subprocess: no checks configured exits 0', () => {
+  withRoot(() =>
+    withOverlay('## Mechanical checks\n\nnothing configured yet.\n', () => {
+      const result = spawnSync(process.execPath, [SCRIPT_PATH], {
+        encoding: 'utf8',
+        env: process.env,
+      });
+      assert.equal(result.status, 0);
+      assert.match(result.stdout, /none configured for this repo/);
+    })
+  );
+});
+
+test('CLI subprocess: a malformed config block exits 1', () => {
+  withRoot(() =>
+    withOverlay('## Mechanical checks\n\n```json\n{ not json }\n```\n', () => {
+      const result = spawnSync(process.execPath, [SCRIPT_PATH], {
+        encoding: 'utf8',
+        env: process.env,
+      });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /not valid JSON/);
+    })
+  );
+});
+
+test('CLI subprocess: --json produces valid, well-shaped JSON on stdout', () => {
+  withRoot((root) =>
+    withOverlay(
+      '## Mechanical checks\n\n```json\n{"checks": [{"type": "json-key-parity", "files": ["a.json", "b.json"]}]}\n```\n',
+      () => {
+        writeJson(root, 'a.json', { x: 1 });
+        writeJson(root, 'b.json', { x: 1 });
+        const result = spawnSync(process.execPath, [SCRIPT_PATH, '--json'], {
+          encoding: 'utf8',
+          env: process.env,
+        });
+        assert.equal(result.status, 0);
+        const output = JSON.parse(result.stdout);
+        assert.equal(output.pass, 1);
+        assert.equal(output.results[0].status, 'PASS');
+      }
+    )
   );
 });
