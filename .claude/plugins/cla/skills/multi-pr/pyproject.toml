@@ -1,0 +1,7 @@
+# Pytest config for the multi-pr skill's test suite.
+# Importability model: rely on `pythonpath = ["scripts"]` (namespace-package style).
+# No __init__.py is required for cross-test imports under this layout.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]

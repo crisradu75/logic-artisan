@@ -1,0 +1,7 @@
+{
+  "name": "cla",
+  "description": "Cris Logic Artisan — proprietary Claude Code dev-workflow harness (spec-to-pr, multi-pr, lite-pr, the retro/codify self-improvement loops, review skills, and the generic git/worktree guard hooks). Loaded in-place via --plugin-dir; repo state (retro logs, lessons-learned) stays project-level.",
+  "version": "0.0.1",
+  "license": "UNLICENSED",
+  "author": { "name": "Cris Radu" }
+}

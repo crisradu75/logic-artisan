@@ -1,0 +1,72 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || exit 0; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-worktree-isolation.py\" --heartbeat",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || exit 0; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-worktree-isolation.py\" --cleanup",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || { echo \"warn: dispatch-edit-write-pretooluse hooks skipped — no python on PATH\" >&2; exit 0; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || { echo \"warn: dispatch-bash-pretooluse hooks skipped — no python on PATH\" >&2; exit 0; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || { echo \"warn: block-unsafe-recursive-delete hook skipped — no python on PATH\" >&2; exit 0; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/block-unsafe-recursive-delete.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || exit 0; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-lint-on-edit.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

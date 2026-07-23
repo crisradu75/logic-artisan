@@ -1,0 +1,8 @@
+# Pytest config for the update-cla skill's test suite.
+# Importability model: rely on `pythonpath = ["scripts"]` (namespace-package style),
+# mirroring the sibling skills (spec-to-pr, multi-pr, ...). No __init__.py is required
+# for cross-test imports under this layout.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]

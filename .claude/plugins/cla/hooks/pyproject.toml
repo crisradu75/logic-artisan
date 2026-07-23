@@ -1,0 +1,7 @@
+# Pytest config for the cla plugin's guard-hook test suite.
+# The hook tests load the hook modules by path (importlib from the hooks dir),
+# so no `pythonpath` is needed — only a rootdir + testpaths so `pytest
+# .claude/plugins/cla/hooks/` collects the suite. Mirrors each skill's own pyproject.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
