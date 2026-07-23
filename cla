@@ -6,10 +6,29 @@
 # `cla.cmd` in this same dir — keep the two in sync.
 #
 # Usage (from anywhere):  path/to/repo/cla [extra claude args...]
-# The plugin path is resolved relative to THIS script, so it works from any cwd.
+# The plugin path is resolved relative to THIS script, so it works from any cwd
+# -- but NOT through a symlink (dirname doesn't resolve one); invoke it by its
+# real path, not a symlinked shortcut on PATH.
+#
+# NOTE: this launches with --permission-mode auto, which bypasses Claude Code's
+# normal per-action confirmation prompts. That's intentional for this harness,
+# but worth knowing before you run it.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 plugin_dir="$here/.claude/plugins/cla"
+
+if [ ! -d "$plugin_dir" ]; then
+  echo "cla: plugin directory not found: $plugin_dir" >&2
+  echo "cla: expected .claude/plugins/cla next to this script -- check it exists (incomplete checkout, or invoked through a symlink?)" >&2
+  exit 1
+fi
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "cla: 'claude' (the Claude Code CLI) was not found on PATH." >&2
+  echo "cla: install it, or make sure it's on PATH, then re-run this script." >&2
+  exit 127
+fi
+
 # Print the exact command being run so it's easy to confirm what launches.
 echo "+ claude --plugin-dir \"$plugin_dir\" --permission-mode auto --model sonnet --effort medium $*" >&2
 exec claude --plugin-dir "$plugin_dir" --permission-mode auto --model sonnet --effort medium "$@"
