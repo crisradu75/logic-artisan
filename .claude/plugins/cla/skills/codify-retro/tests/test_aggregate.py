@@ -179,6 +179,58 @@ def test_non_dict_maintenance_warned_not_swallowed(tmp_path: Path) -> None:
     assert "`maintenance` is str" in err
 
 
+def test_output_chars_trend_and_mean(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"output_chars": 1000},
+        {"output_chars": 2000},
+        {},  # no output_chars — excluded
+    ])
+    out, _ = _run(log)
+    assert out["output_chars"] == {"latest": 2000, "trend": [1000, 2000], "mean": 1500.0}
+
+
+def test_output_chars_negative_clamped_to_zero(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"output_chars": -5}])
+    out, err = _run(log)
+    assert "negative, clamped to 0" in err
+    assert out["output_chars"] == {"latest": 0, "trend": [0], "mean": 0.0}
+
+
+def test_output_chars_type_confused_warns_and_coerces(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"output_chars": "big"}])
+    out, err = _run(log)
+    assert "output_chars='big' not int" in err
+    assert out["output_chars"] == {"latest": None, "trend": [], "mean": 0.0}
+    assert out["coerced_fields"] == 1
+
+
+def test_output_chars_bool_rejected(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"output_chars": True}])
+    out, err = _run(log)
+    assert "output_chars=True is bool" in err
+    assert out["output_chars"] == {"latest": None, "trend": [], "mean": 0.0}
+    assert out["coerced_fields"] == 1
+
+
+def test_output_chars_latest_falls_back_to_last_valid_not_none(tmp_path: Path) -> None:
+    # Pins the documented (surprising) semantics: `latest` is the most recent
+    # VALID value, not the most recent record's value — a malformed newest
+    # record does not reset `latest` to None.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"output_chars": 1000},
+        {"output_chars": "bad"},
+    ])
+    out, err = _run(log)
+    assert "output_chars='bad' not int" in err
+    assert out["output_chars"] == {"latest": 1000, "trend": [1000], "mean": 1000.0}
+    assert out["coerced_fields"] == 1
+
+
 def test_non_string_ts_excluded_with_warning(tmp_path: Path) -> None:
     log = tmp_path / "runs.jsonl"
     _write_log(log, [{"ts": 20260624, "suggestions": {"proposed": 1, "applied": 1}}])

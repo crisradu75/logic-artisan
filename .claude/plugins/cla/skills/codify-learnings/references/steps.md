@@ -30,13 +30,18 @@ Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB):
   ],
   "rejected_lessons": ["<short slug>", "..."],
   "maintenance": {"failure_modes_bullets": N, "live_log_entries": N, "trimmed": true|false},
-  "process_issue": true|false
+  "process_issue": true|false,
+  "output_chars": N
 }
 ```
 
 - `escalated_to` MUST be one of the six escalation-ladder rungs (the aggregator buckets anything else under `escalation_rungs_unknown`).
 - `rejected_lessons` lists the slugs of any suggestions marked REJECTED this run — `/cla:codify-retro` flags a slug rejected ≥2× for retirement.
 - `process_issue` is `true` when the Step 3.5 self-check found a codify-process problem (mis-routing, weak effectiveness check, workflow snag), else `false`.
+- `output_chars` (optional) — the character count of the report this run appended to
+  `lessons-learned.md` (the Step 6 rolling-log entry). A verbosity proxy `/cla:codify-retro` trends
+  over time — a climbing mean signals the report template itself is ballooning, not a full
+  session-token-spend measure. Count the appended entry text only; omit rather than estimate.
 - This step is best-effort: if `log_run.py` exits non-zero (malformed record, write failure), note it and continue — a missing ledger line never blocks the run. Do NOT halt.
 
 ## Prefer-fixes trigger examples
