@@ -30,7 +30,7 @@ node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs    
 node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs --json  # machine-readable
 ```
 
-Fast (<1s), exit code 0 for a normal run (findings are data, not a gate; only a malformed config block exits non-zero). The script itself is a **generic, repo-agnostic engine** — it hardcodes no paths, packages, or app names. It performs the deterministic cross-file checks **not** covered by build/lint/test, driven entirely by this repo's own check list, which lives in `references/project-context.md` ("Mechanical checks — repo specifics") as a fenced ```json``` block:
+Fast (<1s), exit code 0 for a normal run (`FAIL`/`ERROR` rows are data, not a gate; only a malformed config block exits non-zero). The script itself is a **generic, repo-agnostic engine** — it hardcodes no paths, packages, or app names. It performs the deterministic cross-file checks **not** covered by build/lint/test, driven entirely by this repo's own check list, which lives in `references/project-context.md` ("Mechanical checks — repo specifics") as a fenced ```json``` block (an untagged ``` fence also works, but a ```json-tagged one is preferred when more than one fence sits under the heading):
 
 ```json
 {
@@ -44,16 +44,19 @@ Fast (<1s), exit code 0 for a normal run (findings are data, not a gate; only a 
         { "kind": "json-array-field", "file": "path/data.json", "field": "key", "label": "data.json" }
       ],
       "deriveLocale": { "template": "dashboard.foo.{key}", "localeFiles": ["path/en.json", "path/ro.json"] } },
-    { "type": "import-boundary", "name": "...", "sourceDir": "path/to/src", "forbidden": ["react", "react-dom"], "reason": "must stay Node-safe" },
+    { "type": "import-boundary", "name": "...", "sourceDir": "path/to/src", "forbidden": ["react", "react-dom"],
+      "extensions": [".ts", ".tsx"], "reason": "must stay Node-safe", "passMessage": "..." },
     { "type": "cross-import-ban", "name": "...", "pairs": [
-      { "sourceDir": "apps/a/src", "forbidden": ["apps/b", "b-app-name"] },
+      { "sourceDir": "apps/a/src", "forbidden": ["apps/b", "b-app-name"], "extensions": [".ts", ".tsx"] },
       { "sourceDir": "apps/b/src", "forbidden": ["apps/a", "a-app-name"] }
-    ] }
+    ], "passMessage": "..." }
   ]
 }
 ```
 
-All paths in the config are repo-relative (resolved from the repo root, not this file). `forbidden`/`pairs` entries match by exact string or substring, so pin as loosely or tightly as needed. No block, an empty `checks` array, or a missing overlay all mean "no checks configured" — a trivial PASS, not a crash on paths from wherever this script was first written. Run `/cla:sync-context` to populate this section for a fresh repo (or author it by hand).
+All paths in the config are repo-relative (resolved from the repo root, not this file). `forbidden`/`pairs` entries match by exact string or substring, so pin as loosely or tightly as needed — e.g. `"react"` also matches `"react-dom"` and `"preact"`, so tighten to a more specific token if that's not intended. `import-boundary`/`cross-import-ban` scan `.ts`/`.tsx` by default (override per check, or per pair, via `extensions`) and detect a forbidden specifier via a static `from '...'`, `require('...')`, `import('...')`, or bare `import '...'`. No block, an empty `checks` array, or a missing overlay all mean "no checks configured" — a trivial PASS, not a crash on paths from wherever this script was first written. Run `/cla:sync-context` to populate this section for a fresh repo (or author it by hand). (For test authoring: `MECHANICAL_CHECKS_ROOT` and `MECHANICAL_CHECKS_OVERLAY` env vars override, respectively, the resolved repo root and the overlay file `loadConfig()` reads — see the sibling `mechanical-checks.test.mjs`.)
+
+Each check's result is `PASS`, `FAIL` (the check ran and found a real problem — e.g. a key mismatch or a forbidden import), or `ERROR` (the check itself couldn't run meaningfully — an unrecognized `type`, or a thrown exception from a bad path/malformed source file/misconfigured field). Treat `ERROR` as "fix the check's config," not as a review finding about the repo.
 
 ### Not checked here — smoke-test string drift
 Whether an edit-time hook already guards smoke/e2e-script string drift (and what it does vs. doesn't cover) is repo-specific — see `references/project-context.md`. Whether the whole smoke/e2e flow is still *current end-to-end* stays a qualitative call for the Validation dimension regardless.
@@ -73,7 +76,7 @@ Merge Part A + Part B into one table:
 | Workspace lint | PASS/FAIL | {"clean" or count + first offenders} |
 | Workspace tests | PASS/FAIL | {"all pass" or failing tests + project} |
 | {this repo's excluded live-infra suite, if any} | PASS/FAIL/SKIP | {"not run (no local stack)" or result} |
-| {one row per this repo's own static-analysis checks} | PASS/FAIL | {result, or the diff/mismatch} |
+| {one row per this repo's own static-analysis checks} | PASS/FAIL/ERROR | {result, or the diff/mismatch; ERROR means the check's own config is broken, not a repo finding} |
 ```
 
 Print any FAIL to the user immediately:

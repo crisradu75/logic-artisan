@@ -26,7 +26,7 @@ The reusable dev-workflow harness core SHALL live in an in-repo plugin at `.clau
 
 #### Scenario: Core assets are in the plugin, state stays project-level
 
-- **WHEN** the repo is inspected after migration
+- **WHEN** the repo is inspected
 - **THEN** the harness skills, agents, and guard hooks resolve from `.claude/plugins/cla/`
 - **AND** the cla workflow data (`cla.io/retro/*.jsonl`, `cla.io/lessons-learned/`, `cla.io/decisions/`, `cla.io/feedback/`) lives under the top-level `cla.io/` directory
 - **AND** `.claude/worktrees/`, `.claude/settings*.json`, and any other host-repo-specific project-level assets remain under `.claude/`, and none of the above is present inside `.claude/plugins/cla/`
@@ -39,7 +39,7 @@ The `cla` plugin SHALL be activated in place via `claude --plugin-dir ./.claude/
 
 - **WHEN** a session is launched with `--plugin-dir ./.claude/plugins/cla`
 - **THEN** each harness workflow is invocable as `/cla:<skill>` (e.g. `/cla:spec-to-pr`, `/cla:project-review`, `/cla:shape-decision`)
-- **AND** no bare `.claude/commands/*.md` wrapper exists for a migrated skill
+- **AND** no bare `.claude/commands/*.md` wrapper exists for any cla skill
 
 #### Scenario: Internal composition uses the namespace
 

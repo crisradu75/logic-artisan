@@ -42,6 +42,13 @@ silently skipped.
 
 All scripts are stdlib-only Python (no third-party deps beyond pytest itself).
 
+The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
+sibling `node --test` suite (not a pytest scope, so `run_tests.py` doesn't discover it):
+
+```bash
+node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
+```
+
 ## Architecture — the fact/procedure split
 
 CLA is portable across repos because it strictly separates *procedure* (generic, synced
@@ -113,12 +120,14 @@ caution without blocking:
   persists and breaks later calls in the same session; use absolute paths instead.
 - **Blocks:** `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
   `block-worktree-path-escape` (a Write/Edit escaping a worktree boundary from inside one) ·
-  `block-dated-stamps-in-prose` (hardcoded dates rot).
+  `block-dated-stamps-in-prose` (hardcoded dates rot) · `guard-worktree-isolation` (a
+  branch-create/switch/commit in the primary clone while another session is live there too —
+  git's HEAD is per-clone, not per-session, so two concurrent sessions would otherwise collide
+  on one branch; also refreshes/clears this session's presence heartbeat on SessionStart/End).
 - **Warns:** `warn-branch-base` (branched off the wrong base) · `warn-lint-on-edit` (lints the
   edited file, feeds violations back non-blocking) · `warn-smoke-test-drift` · `warn-stacked-pr-merge`
   (a merge that could auto-close an open child PR) · `warn-comment-dates` ·
   `warn-stray-scratch-artifact` (scratch files left in the repo root).
-- `guard-worktree-isolation` runs on SessionStart/End to maintain worktree isolation.
 
 ### Portability
 

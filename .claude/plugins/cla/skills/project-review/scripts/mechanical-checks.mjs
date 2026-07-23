@@ -22,9 +22,18 @@
 //   node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs          # human table
 //   node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs --json   # machine-readable
 //
-// Exit code is 0 for a normal run (FAIL rows are data for the review, not a CI
-// gate) and non-zero only if the overlay's config block itself is malformed --
+// Exit code is 0 for a normal run (FAIL/ERROR rows are data for the review, not a
+// CI gate) and non-zero only if the overlay's config block itself is malformed --
 // that is an authoring defect, not a review finding.
+//
+// Testing: functions below are exported for `node --test` (see the sibling
+// mechanical-checks.test.mjs) and the CLI itself only runs when this file is
+// executed directly (not when imported). `MECHANICAL_CHECKS_ROOT` overrides repo
+// -root resolution (mirrors this plugin's `CLAUDE_RETRO_DIR` convention elsewhere)
+// so tests can point every check at an isolated tmp fixture tree;
+// `MECHANICAL_CHECKS_OVERLAY` similarly overrides which file `loadConfig()` reads,
+// so its JSON-validation error paths are exercisable against fixture content
+// instead of this skill's own real overlay.
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
@@ -37,18 +46,38 @@ import { execSync } from 'node:child_process';
 // ever want the repo root, never a path relative to this file. fileURLToPath (not
 // raw .pathname) so a repo path containing spaces works.
 const HERE = fileURLToPath(new URL('.', import.meta.url));
+
 function resolveRoot() {
   try {
     return execSync('git rev-parse --show-toplevel', { cwd: HERE, encoding: 'utf8' }).trim();
-  } catch {
-    return fileURLToPath(new URL('../../../../../../', import.meta.url));
+  } catch (err) {
+    const fallback = fileURLToPath(new URL('../../../../../../', import.meta.url));
+    console.error(
+      `warning: git rev-parse --show-toplevel failed (${err.message}); falling back to ${fallback}`
+    );
+    return fallback;
   }
 }
-const ROOT = resolveRoot();
-const r = (...p) => join(ROOT, ...p);
 
-const OVERLAY_PATH = join(HERE, '..', 'references', 'project-context.md');
+// Resolved lazily (not cached into a top-level const) so MECHANICAL_CHECKS_ROOT
+// can be set/changed between calls -- the seam `node --test` uses to point every
+// check at an isolated tmp fixture tree without touching the real repo. A single
+// real run only ever calls this a handful of times, so the repeat git/env check
+// costs nothing measurable.
+let _cachedRoot;
+function getRoot() {
+  if (process.env.MECHANICAL_CHECKS_ROOT) return process.env.MECHANICAL_CHECKS_ROOT;
+  if (_cachedRoot) return _cachedRoot;
+  _cachedRoot = resolveRoot();
+  return _cachedRoot;
+}
+const r = (...p) => join(getRoot(), ...p);
+
+const DEFAULT_OVERLAY_PATH = join(HERE, '..', 'references', 'project-context.md');
 const OVERLAY_RELPATH = 'references/project-context.md';
+// Overridable for the same reason as MECHANICAL_CHECKS_ROOT: lets a test point
+// loadConfig() at a fixture file instead of this skill's own real overlay.
+const getOverlayPath = () => process.env.MECHANICAL_CHECKS_OVERLAY ?? DEFAULT_OVERLAY_PATH;
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -87,32 +116,54 @@ function walk(dir, exts = ['.ts', '.tsx']) {
 // ── config: read the fenced ```json``` block under the overlay's own heading ──
 
 /** Extract the fenced code-block body directly under a `## <headingRe>` heading,
- * stopping at the next heading of equal-or-shallower level. Returns null if the
- * heading, or a fence under it, isn't found. */
+ * stopping at the next heading of equal-or-shallower level. Prefers a fence
+ * explicitly tagged ```json; falls back to the first fence of any tag if none is
+ * json-tagged (so an untagged ``` still works, matching the schema docs' example).
+ * Returns null if the heading isn't found, or no fence sits under it at all --
+ * that is the documented, silent "no checks configured" state (e.g. a stub
+ * overlay carrying only an explanatory HTML comment), NOT a warning-worthy
+ * defect. Only an OPENED-but-never-closed fence under the heading -- a genuine
+ * broken authoring attempt -- gets a warning, since that's the one case where the
+ * heading's presence signals real intent that silently produced nothing. */
 function extractFencedBlockUnderHeading(text, headingRe) {
   const lines = text.split('\n');
   const headingIdx = lines.findIndex((l) => headingRe.test(l.trim()));
   if (headingIdx === -1) return null;
   const headingLevel = lines[headingIdx].match(/^#+/)?.[0].length ?? 0;
+  const fences = []; // { lang, body }
   let fenceStart = -1;
+  let fenceLang = '';
   for (let i = headingIdx + 1; i < lines.length; i++) {
     const line = lines[i];
     const headingMatch = line.match(/^(#+)\s/);
     if (headingMatch && headingMatch[1].length <= headingLevel) break;
-    if (fenceStart === -1 && line.trim().startsWith('```')) {
+    const trimmed = line.trim();
+    if (fenceStart === -1 && trimmed.startsWith('```')) {
       fenceStart = i + 1;
+      fenceLang = trimmed.slice(3).trim().toLowerCase();
       continue;
     }
-    if (fenceStart !== -1 && line.trim().startsWith('```')) {
-      return lines.slice(fenceStart, i).join('\n');
+    if (fenceStart !== -1 && trimmed.startsWith('```')) {
+      fences.push({ lang: fenceLang, body: lines.slice(fenceStart, i).join('\n') });
+      fenceStart = -1;
     }
   }
-  return null;
+  if (fences.length === 0) {
+    if (fenceStart !== -1) {
+      console.error(
+        `warning: found an opened fence under the "Mechanical checks" heading in ${OVERLAY_RELPATH} that is never closed — no checks will run`
+      );
+    }
+    return null;
+  }
+  const jsonFence = fences.find((f) => f.lang === 'json');
+  return (jsonFence ?? fences[0]).body;
 }
 
 function loadConfig() {
-  if (!existsSync(OVERLAY_PATH)) return [];
-  const text = readFileSync(OVERLAY_PATH, 'utf8');
+  const overlayPath = getOverlayPath();
+  if (!existsSync(overlayPath)) return [];
+  const text = readFileSync(overlayPath, 'utf8');
   const block = extractFencedBlockUnderHeading(text, /^#{1,6}\s*mechanical checks/i);
   if (block === null || block.trim() === '') return [];
   let parsed;
@@ -153,6 +204,12 @@ function checkJsonKeyParity(cfg) {
 // must resolve in every locale file. Dynamically-built keys are not resolvable
 // statically and are silently skipped -- a known limitation.
 function checkJsonKeyUsage(cfg) {
+  // Guard against a vacuous PASS: an empty localeFiles list would make every key
+  // trivially "resolve" (Array.prototype.some on [] is always false) regardless of
+  // what the source actually contains.
+  if (!cfg.localeFiles || cfg.localeFiles.length === 0) {
+    return { status: 'FAIL', details: 'localeFiles is empty — check cannot verify anything' };
+  }
   const locales = cfg.localeFiles.map((p) => readJson(r(p)));
   const callRe = new RegExp(cfg.keyPattern ?? String.raw`\bt\(\s*['"]([^'"]+)['"]`, 'g');
   const files = cfg.sourceDirs.flatMap((base) => walk(r(base), cfg.extensions ?? ['.ts', '.tsx']));
@@ -162,6 +219,7 @@ function checkJsonKeyUsage(cfg) {
     return { status: 'FAIL', details: `scanned 0 source files — check sourceDirs ${cfg.sourceDirs.join(', ')}` };
   }
   const missing = new Set();
+  let usagesFound = 0;
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
     let m;
@@ -172,8 +230,14 @@ function checkJsonKeyUsage(cfg) {
       // concatenated, not a complete key.
       const after = src.slice(callRe.lastIndex).trimStart();
       if (key.endsWith('.') || after.startsWith('+')) continue;
+      usagesFound++;
       if (locales.some((locale) => !(key in locale))) missing.add(key);
     }
+  }
+  // Guard against a vacuous PASS: zero matched usages across nonzero files means
+  // keyPattern itself is likely misconfigured, not "every usage resolves".
+  if (usagesFound === 0) {
+    return { status: 'FAIL', details: `matched 0 usages across ${files.length} files — check keyPattern` };
   }
   if (missing.size === 0) return { status: 'PASS', details: 'all static usages resolve in every locale file' };
   return { status: 'FAIL', details: `unresolved: [${truncate(missing)}]` };
@@ -198,6 +262,11 @@ function extractKeys(source) {
 // set; optionally, each key must also resolve (via a `{key}` template) in every
 // locale file.
 function checkDerivedKeyConsistency(cfg) {
+  // Guard against a vacuous PASS: an empty sources list has no keys to disagree,
+  // so it would otherwise report "0 keys" as a silent PASS.
+  if (!cfg.sources || cfg.sources.length === 0) {
+    return { status: 'FAIL', details: 'sources is empty — check cannot verify anything' };
+  }
   const named = cfg.sources.map((s) => ({ label: s.label ?? s.file, keys: new Set(extractKeys(s)) }));
   const all = new Set(named.flatMap((n) => [...n.keys]));
   const problems = [];
@@ -221,14 +290,22 @@ function checkDerivedKeyConsistency(cfg) {
   return { status: 'FAIL', details: truncate(problems) };
 }
 
-const IMPORT_RE = /\bfrom\s+['"]([^'"]+)['"]/g;
+// Matches a static `from '...'`, `require('...')`, `import('...')`, or a bare
+// side-effect `import '...'` specifier. Four capture groups, exactly one set per
+// match depending on which shape matched.
+const IMPORT_RE =
+  /\bfrom\s+['"]([^'"]+)['"]|\brequire\(\s*['"]([^'"]+)['"]\s*\)|\bimport\(\s*['"]([^'"]+)['"]\s*\)|\bimport\s+['"]([^'"]+)['"]/g;
 
-function importsOf(base) {
+function importsOf(base, extensions) {
   const specs = [];
-  for (const file of walk(r(base))) {
+  const root = getRoot();
+  for (const file of walk(r(base), extensions)) {
     const src = readFileSync(file, 'utf8');
     let m;
-    while ((m = IMPORT_RE.exec(src)) !== null) specs.push({ file: file.replace(ROOT, ''), spec: m[1] });
+    while ((m = IMPORT_RE.exec(src)) !== null) {
+      const spec = m[1] ?? m[2] ?? m[3] ?? m[4];
+      specs.push({ file: file.replace(root, ''), spec });
+    }
   }
   return specs;
 }
@@ -241,11 +318,12 @@ function specMatches(spec, forbidden) {
 
 // import-boundary: sourceDir must not import anything matching `forbidden`.
 function checkImportBoundary(cfg) {
-  if (walk(r(cfg.sourceDir)).length === 0) {
-    return { status: 'FAIL', details: `scanned 0 files in ${cfg.sourceDir} — check sourceDir` };
+  const extensions = cfg.extensions ?? ['.ts', '.tsx'];
+  if (walk(r(cfg.sourceDir), extensions).length === 0) {
+    return { status: 'FAIL', details: `scanned 0 files in ${cfg.sourceDir} — check sourceDir/extensions` };
   }
   const violations = [];
-  for (const { file, spec } of importsOf(cfg.sourceDir)) {
+  for (const { file, spec } of importsOf(cfg.sourceDir, extensions)) {
     if (specMatches(spec, cfg.forbidden)) {
       violations.push(`${cfg.sourceDir} imports ${spec} (${file})${cfg.reason ? ` — ${cfg.reason}` : ''}`);
     }
@@ -257,9 +335,19 @@ function checkImportBoundary(cfg) {
 // cross-import-ban: several {sourceDir, forbidden} pairs in one check, e.g. two
 // apps that must not import each other's source.
 function checkCrossImportBan(cfg) {
+  if (!cfg.pairs || cfg.pairs.length === 0) {
+    return { status: 'FAIL', details: 'pairs is empty — check cannot verify anything' };
+  }
   const violations = [];
-  for (const { sourceDir, forbidden } of cfg.pairs) {
-    for (const { file, spec } of importsOf(sourceDir)) {
+  for (const { sourceDir, forbidden, extensions } of cfg.pairs) {
+    const exts = extensions ?? ['.ts', '.tsx'];
+    // Guard against a vacuous PASS: a typo'd/renamed sourceDir scans 0 files and
+    // would otherwise report "no cross-boundary imports" for a pair never actually
+    // scanned.
+    if (walk(r(sourceDir), exts).length === 0) {
+      return { status: 'FAIL', details: `scanned 0 files in ${sourceDir} — check sourceDir/extensions` };
+    }
+    for (const { file, spec } of importsOf(sourceDir, exts)) {
       if (specMatches(spec, forbidden)) violations.push(`cross-boundary import: ${spec} (${file})`);
     }
   }
@@ -277,40 +365,77 @@ const CHECK_TYPES = {
 
 // ── run ─────────────────────────────────────────────────────────────────────
 
-let checks;
-try {
-  checks = loadConfig();
-} catch (err) {
-  console.error(`error: ${err.message}`);
-  process.exit(1);
+/** Run every configured check. A thrown exception (bad path, malformed source
+ * file, unknown source kind, ...) or an unrecognized `type` is a config/script
+ * defect, not a review finding -- it gets its own `ERROR` status so it is never
+ * confused with a genuine `FAIL` (a check that ran successfully and found a real
+ * problem in the reviewed repo). */
+function runChecks(checks) {
+  return checks.map((check) => {
+    const fn = CHECK_TYPES[check.type];
+    const name = check.name ?? check.type;
+    if (!fn) return { name, status: 'ERROR', details: `unknown check type: ${check.type}` };
+    try {
+      return { name, ...fn(check) };
+    } catch (err) {
+      return { name, status: 'ERROR', details: `check threw: ${err.message}` };
+    }
+  });
 }
 
-const results = checks.map((check) => {
-  const fn = CHECK_TYPES[check.type];
-  const name = check.name ?? check.type;
-  if (!fn) return { name, status: 'FAIL', details: `unknown check type: ${check.type}` };
+function main(argv) {
+  let checks;
   try {
-    return { name, ...fn(check) };
+    checks = loadConfig();
   } catch (err) {
-    return { name, status: 'FAIL', details: `check threw: ${err.message}` };
+    console.error(`error: ${err.message}`);
+    return 1;
   }
-});
 
-const pass = results.filter((x) => x.status === 'PASS').length;
-const fail = results.length - pass;
+  const results = runChecks(checks);
+  const pass = results.filter((x) => x.status === 'PASS').length;
+  const error = results.filter((x) => x.status === 'ERROR').length;
+  const fail = results.length - pass - error;
 
-if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ pass, fail, results }, null, 2));
-} else if (results.length === 0) {
-  console.log('\nStatic mechanical checks: none configured for this repo.');
-  console.log(`Add a "Mechanical checks" fenced-json block to ${OVERLAY_RELPATH} to configure some`);
-  console.log('(see references/mechanical-checks.md for the schema).\n');
-} else {
-  console.log('\nStatic mechanical checks (fast; build/lint/test are run separately by the workflow)\n');
-  for (const { name, status, details } of results) {
-    const mark = status === 'PASS' ? '✓' : '⚠';
-    console.log(`${mark} ${status.padEnd(4)} | ${name}`);
-    console.log(`         ${details}`);
+  if (argv.includes('--json')) {
+    console.log(JSON.stringify({ pass, fail, error, results }, null, 2));
+  } else if (results.length === 0) {
+    console.log('\nStatic mechanical checks: none configured for this repo.');
+    console.log(`Add a "Mechanical checks" fenced-json block to ${OVERLAY_RELPATH} to configure some`);
+    console.log('(see references/mechanical-checks.md for the schema).\n');
+  } else {
+    console.log('\nStatic mechanical checks (fast; build/lint/test are run separately by the workflow)\n');
+    for (const { name, status, details } of results) {
+      const mark = status === 'PASS' ? '✓' : status === 'ERROR' ? '✗' : '⚠';
+      console.log(`${mark} ${status.padEnd(5)} | ${name}`);
+      console.log(`         ${details}`);
+    }
+    console.log(`\n${pass} PASS, ${fail} FAIL, ${error} ERROR\n`);
   }
-  console.log(`\n${pass} PASS, ${fail} FAIL\n`);
+  return 0;
 }
+
+// Only run the CLI when this file is executed directly (`node mechanical-checks.mjs`),
+// not when imported by a test file -- lets `node --test` import the functions below
+// and call them directly against fixture data without triggering a real run.
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMainModule) {
+  process.exit(main(process.argv.slice(2)));
+}
+
+export {
+  getRoot,
+  walk,
+  extractFencedBlockUnderHeading,
+  loadConfig,
+  checkJsonKeyParity,
+  checkJsonKeyUsage,
+  checkDerivedKeyConsistency,
+  checkImportBoundary,
+  checkCrossImportBan,
+  specMatches,
+  importsOf,
+  runChecks,
+  main,
+  CHECK_TYPES,
+};
