@@ -37,9 +37,9 @@ Parallel batch 2 — After reading artifacts, run ALL verification checks simult
 
 ### High-yield checks (always do — these catch the vast majority of real issues)
 
-0a. **Symbol reality check** — For every task or spec that names a TypeScript function, type, interface, class, exported constant, or React component (e.g., "call `generateDraft` in `PlanningEngine.ts`", "add a field to `InventoryUnit`", "add a prop to `StrategicDashboard`"), grep the affected app/package's `src/` to confirm the symbol exists at the claimed path with the claimed signature. Wrong symbol names are the #1 task-authoring error.
+0a. **Symbol reality check** — For every task or spec that names a TypeScript function, type, interface, class, exported constant, or React component (e.g., "call `computeTotal` in `Checkout.ts`", "add a field to `LineItem`", "add a prop to `OrderSummary`"), grep the affected app/package's `src/` to confirm the symbol exists at the claimed path with the claimed signature. Wrong symbol names are the #1 task-authoring error.
 
-0b. **Reference / config-file reality check** — For every task/spec that names a config or data file (an i18n JSON, a dataset JSON) or asserts its contents (a translation key path like `dashboard.dayparts.prime`, a station name, a segment key), read the file and confirm. Past failure mode: a task references a `t('some.key')` that doesn't exist in the JSON, or a daypart key that the engine's `order` array doesn't include.
+0b. **Reference / config-file reality check** — For every task/spec that names a config or data file (an i18n JSON, a dataset JSON) or asserts its contents (a translation key path like `dashboard.example.label`, a record name, a category key), read the file and confirm. Past failure mode: a task references a `t('some.key')` that doesn't exist in the JSON, or an enum key that the engine's `order` array doesn't include.
 
 0c. **Component / provider wiring check** — For a change that wires a UI component to shared state: for every task that says "wire component X to state Y" or "pass Z down from the app root", read the affected app's root/composition component (see the overlay's affected-file map and this repo's prop/handler names) and confirm the prop/handler is actually threaded, and that a new control re-running a computation calls back through the update handler rather than mutating local state.
 

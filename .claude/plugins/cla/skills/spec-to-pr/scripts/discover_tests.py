@@ -1,23 +1,22 @@
 """Discover the correctness-check invocations for a set of changed paths.
 
-agentic-air is a pnpm workspace monorepo (apps/funnel-demo, apps/chat-server,
-apps/operator, packages/engine, packages/media-schema, packages/design-system),
-but the root `package.json`'s own `build`/`lint`/`test` scripts are themselves
-`pnpm -r --if-present run <script>` — a workspace-wide fan-out. So reading just
-the root `package.json` and emitting `npm run <script>` for whichever of
-`build` (typecheck + build, the primary gate), `lint` (oxlint), `test` (vitest)
-it defines already covers every app/package in one invocation each; there is no
-need for this script to walk `apps/*`/`packages/*` individually. Discovering
-scripts dynamically means it stays correct as the repo gains/loses a suite
-without editing this file.
+In a workspace/monorepo, the root `package.json`'s own `build`/`lint`/`test`
+scripts are commonly themselves a workspace-wide fan-out (e.g. `pnpm -r
+--if-present run <script>` or an npm/yarn workspaces equivalent) — one gate that
+already covers every app/package. So reading just the root `package.json` and
+emitting `npm run <script>` for whichever of `build` (typecheck + build, the
+primary gate), `lint`, `test` it defines already covers the whole repo in one
+invocation each; there is no need for this script to walk individual
+app/package directories itself. Discovering scripts dynamically means it stays
+correct as the repo gains/loses a suite without editing this file.
 
 Returns empty when there is no root `package.json`, when the package defines
 none of those scripts, or when the change touches nothing source-affecting
 (e.g. an openspec-/docs-only change) — the skip-with-warning case.
 
-The Playwright smokes (`apps/funnel-demo/test-app.mjs` etc.) need a running dev
-server, so they are intentionally NOT emitted here — they're an optional/manual
-check the Test phase mentions but does not gate on.
+Any Playwright/e2e smoke scripts need a running dev server, so they are
+intentionally NOT emitted here — they're an optional/manual check the Test
+phase mentions but does not gate on.
 
 Output contract (default) is unchanged from the pytest-era version: a JSON list
 of argv-style command lists, e.g. `[["npm","run","build"],["npm","run","lint"]]`.

@@ -1,11 +1,10 @@
 """Audit that a /spec-to-pr run finalized its discipline metadata — and surface
 any gap to the NEXT run.
 
-This is the agentic-air analogue of the vv-claude-harness SessionEnd→SessionStart
-"discipline audit" loop, but deterministic and hook-independent: hooks in this
-repo have silently not fired before (see the `hooks-not-firing` user memory) and
-a Stop hook would fire on every stop, not just /spec-to-pr, so the audit is an
-in-skill script the orchestrator calls, not a hook.
+Deterministic and hook-independent by design: a hook can silently fail to fire
+(and a Stop hook would fire on every stop, not just /spec-to-pr), so this
+discipline audit is an in-skill script the orchestrator calls directly, not a
+hook.
 
 Two discipline invariants are checked against the repo's retro log:
   (1) the run appended a per-run line to `spec-to-pr-runs.jsonl` — Handoff step 5

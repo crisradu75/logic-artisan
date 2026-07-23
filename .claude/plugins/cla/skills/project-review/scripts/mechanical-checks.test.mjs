@@ -466,7 +466,7 @@ test('specMatches: exact match', () => {
 
 test('specMatches: substring match is intentional (documented "pin loosely" contract)', () => {
   assert.equal(specMatches('react-dom', ['react']), true);
-  assert.equal(specMatches('apps/funnel-demo/src', ['apps/']), true);
+  assert.equal(specMatches('apps/some-app/src', ['apps/']), true);
 });
 
 test('specMatches: no match', () => {
