@@ -41,13 +41,6 @@ part of this repo.
 python3 .claude/plugins/cla/run_tests.py     # every pytest scope, aggregated pass/fail + exit code
 ```
 
-## Known follow-up
-
-`skills/project-review/scripts/mechanical-checks.mjs` is currently written against a specific
-workspace's paths (its original host). It runs as project-review's deterministic static-check pass;
-until it's made overlay/config-driven, adapt its paths per target repo (or let `update-cla` re-adapt
-it on pull).
-
 ---
 
 Proprietary — see `.claude/plugins/cla/.claude-plugin/plugin.json`.

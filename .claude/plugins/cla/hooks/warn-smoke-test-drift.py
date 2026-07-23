@@ -2,12 +2,12 @@
 """PreToolUse hook — warn when an Edit/Write on a component or i18n file removes
 a literal string that test-app.mjs's Playwright smoke test depends on.
 
-test-app.mjs drives the brief -> dashboard flow using literal English UI text
-(e.g. `page.waitForSelector('text=Total Media Budget (EUR)')`). A copy change
-or a removed UI element can silently break the smoke script — it only fails
-much later when someone runs `node test-app.mjs`, not at edit time. This
-already happened once (the "Derived Rate Card" table was removed without
-updating test-app.mjs, and the break went unnoticed for a whole session).
+test-app.mjs drives a UI flow using literal English UI text (e.g.
+`page.waitForSelector('text=Some Screen Label')`). A copy change or a removed
+UI element can silently break the smoke script — it only fails much later when
+someone runs `node test-app.mjs`, not at edit time. This has happened before (a
+named UI element was removed without updating test-app.mjs, and the break went
+unnoticed for a whole session).
 
 Non-blocking: prints an `additionalContext` warning when a locator string
 looks like it's disappearing, and always exits 0. Scoped to component .tsx

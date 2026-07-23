@@ -27,3 +27,12 @@ only the sections its SKILL.md references, delete the rest.
 
 ## Repo file lists
 <!-- enumerated specs/docs/files this skill is expected to touch -->
+
+## Mechanical checks — repo specifics
+<!--
+scripts/mechanical-checks.mjs reads its check list from a fenced ```json``` block
+right under this heading. See references/mechanical-checks.md for the schema and
+supported check types. No block (or an empty "checks" array) means the script
+reports "no checks configured" -- a valid state for a repo with nothing to check.
+-->
+
