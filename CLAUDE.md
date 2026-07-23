@@ -56,7 +56,9 @@ everywhere) from *facts* (per-repo, never synced):
 
 - **Synced core** — `.claude/plugins/cla/{skills,agents,hooks}/`: portable procedure only. A
   pytest **conformance guard** fails if a distinctive project token ever leaks into a synced-core
-  `SKILL.md` or reference file.
+  `SKILL.md` or reference file under `skills/`. It does not scan `hooks/*.py` docstrings — a couple
+  of hooks still carry illustrative product-specific examples from before the guard existed; not
+  mechanically enforced there yet.
 - **Overlays** — each skill's `references/project-context.md` plus any `*.local.md` files: the
   destination repo's own facts and tuned checks. Recognized by name, excluded from sync, never
   overwritten by `update-cla`. In *this* repo they are neutral stubs (this is the source, not a
