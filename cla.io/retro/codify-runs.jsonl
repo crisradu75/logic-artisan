@@ -1,0 +1,1 @@
+{"ts":"2026-07-25","scope":"repo-wide","suggestions":{"proposed":4,"applied":4,"rejected":0},"memory":{"proposed":1,"applied":1},"re_offenses":[{"lesson":"direct-push-to-main-hook-gap","failing_artifact":"hook","escalated_to":"hook"}],"rejected_lessons":[],"maintenance":{"failure_modes_bullets":36,"live_log_entries":1,"trimmed":false},"process_issue":false,"output_chars":4200}
