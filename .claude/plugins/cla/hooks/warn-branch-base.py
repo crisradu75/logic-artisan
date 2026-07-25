@@ -26,12 +26,16 @@ import re
 import subprocess
 import sys
 
+# git GLOBAL options that may sit between `git` and the subcommand — consumed so
+# `git -C /path checkout -b NAME` is not a bypass. Mirrors guard-worktree-isolation.py's `_G`.
+_G = r"(?:(?:-[cC]\s+\S+|-[A-Za-z]|--[A-Za-z][\w-]*(?:=\S+)?)\s+)*"
+
 # git checkout -b NAME   |   git switch -c NAME   |   git switch --create NAME
 # Intentionally NOT matched: `git branch NAME` (creates a ref WITHOUT moving HEAD, so
 # the new branch's base is whatever you later check out — the off-non-master-base hazard
 # this hook guards only arises on the create-and-switch forms above).
 _BRANCH_CREATE = re.compile(
-    r"\bgit\s+(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)"
+    r"\bgit\s+" + _G + r"(?:checkout\s+-b|switch\s+(?:-c|--create))\s+(\S+)"
 )
 
 

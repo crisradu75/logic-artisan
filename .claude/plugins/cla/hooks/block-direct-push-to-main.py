@@ -37,15 +37,20 @@ import subprocess
 import sys
 
 
+# git GLOBAL options that may sit between `git` and `push` — consumed so
+# `git -C /path push origin main` is not a bypass. Mirrors guard-worktree-isolation.py's `_G`.
+_G = r"(?:(?:-[cC]\s+\S+|-[A-Za-z]|--[A-Za-z][\w-]*(?:=\S+)?)\s+)*"
+_GIT_PUSH = r"\bgit\s+" + _G + r"push\b"
+
 # Match any `git push ... <something>:main` / `... main` / same for master.
 # The push refspec is the LAST positional arg after `push` (modulo flags).
 # This regex catches the most common shapes; obscure ones (e.g. via alias)
 # slip past — that's accepted, the hook is advisory-strong, not adversarial.
 _DIRECT_PUSH_PATTERNS = [
     # `git push <remote> main` or `git push <remote> master`
-    re.compile(r"\bgit\s+push\b(?:\s+(?:-[a-zA-Z]+|--\S+))*\s+\S+\s+(?:HEAD:|[\w/.-]+:)?(?:main|master)\b"),
+    re.compile(_GIT_PUSH + r"(?:\s+(?:-[a-zA-Z]+|--\S+))*\s+\S+\s+(?:HEAD:|[\w/.-]+:)?(?:main|master)\b"),
     # `git push origin main:something` (pushing TO main on another ref name)
-    re.compile(r"\bgit\s+push\b(?:\s+(?:-[a-zA-Z]+|--\S+))*\s+\S+\s+(?:main|master):"),
+    re.compile(_GIT_PUSH + r"(?:\s+(?:-[a-zA-Z]+|--\S+))*\s+\S+\s+(?:main|master):"),
 ]
 
 
@@ -83,7 +88,7 @@ def _is_direct_push_to_main(command: str) -> bool:
             return True
     # Bare `git push` (no refspec) → check current branch. If HEAD is main
     # and we're about to push, the upstream is almost certainly origin/main.
-    bare_push = re.search(r"\bgit\s+push\b(?:\s+(?:-[a-zA-Z]+|--\S+))*\s*$", scanned)
+    bare_push = re.search(_GIT_PUSH + r"(?:\s+(?:-[a-zA-Z]+|--\S+))*\s*$", scanned)
     if bare_push:
         branch = _current_branch()
         if branch in ("main", "master"):

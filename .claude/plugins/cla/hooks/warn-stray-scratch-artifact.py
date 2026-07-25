@@ -32,7 +32,10 @@ import re
 import subprocess
 import sys
 
-_GIT_ADD_OR_COMMIT = re.compile(r"\bgit\s+(?:add|commit)\b")
+# git GLOBAL options that may sit between `git` and the subcommand — consumed so
+# `git -C /path commit` is not a bypass. Mirrors guard-worktree-isolation.py's `_G`.
+_G = r"(?:(?:-[cC]\s+\S+|-[A-Za-z]|--[A-Za-z][\w-]*(?:=\S+)?)\s+)*"
+_GIT_ADD_OR_COMMIT = re.compile(r"\bgit\s+" + _G + r"(?:add|commit)\b")
 _SUSPICIOUS_NAME = re.compile(r"AppData|LocalTemp|scratchpad", re.IGNORECASE)
 
 
