@@ -121,6 +121,7 @@ retro over prior runs of another skill.
 | 4. Review & assure | `project-review` | CTO-level review of the whole repo |
 | 5. Learn & improve | `codify-learnings` | Review a session for reusable lessons; propose doc/skill/hook/memory edits `[loop]` |
 | | `codify-retro`, `spec-to-pr-retro` | Meta-review recent runs of a loop and improve the loop itself `[loop]` |
+| Any phase (utility) | `right-model` | Recommend the cheapest model + effort combo for a described task, then optionally start it |
 
 Typical flows: small change → `shape-decision` → `lite-pr` (or straight to `lite-pr`); larger
 change → `shape-decision` → `multi-spec` → `review-change` → `spec-to-pr`; a batch off one
