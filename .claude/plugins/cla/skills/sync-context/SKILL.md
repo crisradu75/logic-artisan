@@ -215,7 +215,7 @@ If any candidate proposal was declined, say so and leave that file untouched.
   `cla.io/project-facts.md` and the one-line pointer additions in overlays.
 - Does **NOT** sync, adapt, or touch any asset-core file (`SKILL.md` bodies, agents, hooks) — that is
   `update-cla`'s job.
-- Does **NOT** silently write anything — every change is proposed and confirmed first (Step 6).
+- Does **NOT** silently write anything — every change is proposed and confirmed first (Step 7).
 - Does **NOT** parse any stack-specific config format with a hardcoded parser — it reads and reasons
   about whatever manifests/config this repo actually has (portability mechanism).
 - Does **NOT** author `cla.io/terminology.md` content from scratch — that's written inline by whichever
