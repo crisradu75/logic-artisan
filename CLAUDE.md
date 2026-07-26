@@ -80,8 +80,10 @@ everywhere) from *facts* (per-repo, never synced):
   overwritten by `update-cla`. In *this* repo they are neutral stubs (this is the source, not a
   consumer).
 - **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, `retro/` run ledgers,
-  `lessons-learned/`, and (in a consuming repo) a consolidated `project-facts.md`. Never part of
-  the synced core; a staleness guard fails when a path named there no longer exists.
+  `lessons-learned/`, and (in a consuming repo) a consolidated `project-facts.md` and `terminology.md`
+  (internal naming disambiguation, format owned by `sync-context`, written inline by other skills as
+  terms resolve). Never part of the synced core; a staleness guard fails when a path named there no
+  longer exists.
 
 ### Skill layout
 

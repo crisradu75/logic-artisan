@@ -41,7 +41,7 @@ Go straight to Implement once the plan is posted — no pause, no "shall I proce
 Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (there's no `tasks.md` to walk; the plan's bullet list from above is the task list). For each item in the plan:
 
 1. Make the code change.
-2. Update the spec.md section(s) the plan named — edit the existing `### Requirement:` / `#### Scenario:` blocks in place if the file already uses that structure; for a genuinely new capability with no existing file, plain prose describing the behavior is fine. Never create a delta file, never touch `openspec/changes/`.
+2. Update the spec.md section(s) the plan named — edit the existing `### Requirement:` / `#### Scenario:` blocks in place if the file already uses that structure; for a genuinely new capability with no existing file, plain prose describing the behavior is fine. Prefer this repo's canonical terms from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term). Never create a delta file, never touch `openspec/changes/`.
 3. Update the `CLAUDE.md` section(s) the plan named (most often "Allocation math" or "Conventions to preserve").
 4. Add or update the test file(s) the plan named.
 

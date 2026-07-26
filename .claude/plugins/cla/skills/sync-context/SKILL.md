@@ -1,6 +1,6 @@
 ---
 name: sync-context
-description: "Populate or reconcile this repo's consolidated cla.io/project-facts.md — the single, repo-wide file holding facts shared across multiple cla skills (workspace member list, dev/build/test commands, ports, the affected-file map, the doc-sweep path list, cross-file lockstep doc sets, test-file locations, i18n layers, env files, dataset/data locations). Reads the repo's own manifests/config directly (an LLM-driven universal extractor, no stack-specific parser), so it works across repos of any tech stack. Self-sufficient — creates cla.io/ and project-facts.md if either is absent, so running it alone on a fresh repo acts as fact-init. Proposes (never silently writes) new project-tokens.local.md entries when a new distinctive app/package name appears. Triggers on /cla:sync-context or natural language like 'sync the project facts', 'refresh cla.io/project-facts.md', 'update the shared repo facts', 'the workspace member list is stale'."
+description: "Populate or reconcile this repo's consolidated cla.io/project-facts.md — the single, repo-wide file holding facts shared across multiple cla skills (workspace member list, dev/build/test commands, ports, the affected-file map, the doc-sweep path list, cross-file lockstep doc sets, test-file locations, i18n layers, env files, dataset/data locations). Reads the repo's own manifests/config directly (an LLM-driven universal extractor, no stack-specific parser), so it works across repos of any tech stack. Self-sufficient — creates cla.io/ and project-facts.md if either is absent, so running it alone on a fresh repo acts as fact-init. Proposes (never silently writes) new project-tokens.local.md entries when a new distinctive app/package name appears. Also owns the entry format and optional drift-reconciliation for the separate cla.io/terminology.md file (internal naming disambiguation, written inline by other skills, not authored here). Triggers on /cla:sync-context or natural language like 'sync the project facts', 'refresh cla.io/project-facts.md', 'update the shared repo facts', 'the workspace member list is stale'."
 argument-hint: "(no args — reads and reconciles the current repo)"
 allowed-tools: Bash, Read, Grep, Glob, Write, Edit, AskUserQuestion
 ---
@@ -87,6 +87,37 @@ find that doesn't fit the categories below):
 - **Repo conventions worth centralizing** — e.g. a fixed worktree directory convention — when you find
   the SAME convention restated verbatim across two or more overlays during reconciliation (see Step 3).
 
+## The domain-terminology file (`cla.io/terminology.md`)
+
+A second, distinct consolidated file — `cla.io/terminology.md` — holds canonical **internal
+naming disambiguation**, not mechanical facts: one-sentence definitions for concepts specific to
+this repo's own codebase or product, each naming any rejected alias terms to avoid. It is narrow
+by design and never holds mechanical facts (that's `project-facts.md`'s job above) or external/
+regulatory/business-reference knowledge (a repo's own hand-authored glossary of that kind, if one
+exists, is untouched — this file neither reads nor supersedes it).
+
+Entry format:
+
+```
+**Term**: one-sentence definition — what it IS, not what it does.
+_Avoid_: rejected-alias-1, rejected-alias-2
+```
+
+**This skill owns the format above and the reconciliation logic below — it is NOT the exclusive
+writer of the file's content.** Unlike `project-facts.md` (populated only by this skill, in a
+batch pass), `cla.io/terminology.md` is written **inline**, in-session, by whichever consuming
+skill resolves a term (`shape-decision` first; potentially others later) — the value of a
+disambiguation is tied to the conversational moment it was resolved in, so capture cannot wait
+for a later `/cla:sync-context` run. This skill's own role toward the file is limited to: (a)
+documenting the format above for consuming skills to follow, and (b) an optional light
+reconciliation pass (Step 5 below) that catches drift — nothing more.
+
+The file is created **lazily** by whichever skill first needs it — never pre-scaffolded empty by
+`cla-init`, and never treated as absent-means-broken: a pointer to it from another skill degrades
+gracefully (use the file's canonical term if present and it covers the concept, otherwise proceed
+using your own best judgement) rather than prompting a populate step the way the `project-facts.md`
+pointer does.
+
 ## Workflow
 
 ### Step 1 — Read the repo's own manifests/config (LLM extraction, no stack-specific parser)
@@ -106,6 +137,8 @@ hardcoded parser — that's what makes this skill portable across differing tech
   above, and whether it already carries the pointer sentence.
 - `.claude/plugins/cla/skills/update-cla/references/project-tokens.local.md`, if present, for the
   conformance guard's current curated token list.
+- `cla.io/terminology.md`, if present — read only for the optional reconciliation pass in Step 5; this
+  skill does not author its content from scratch (see "The domain-terminology file" above).
 
 ### Step 3 — Draft the reconciled `cla.io/project-facts.md`
 
@@ -131,7 +164,16 @@ the pointer exists. **Do not touch anything else in an overlay** — its skill-s
 (incident history, bespoke checks, permission-set intent, illustrative examples) is out of scope for
 this skill.
 
-### Step 5 — Propose new `project-tokens.local.md` entries (never silent)
+### Step 5 — Optionally reconcile `cla.io/terminology.md` (if present)
+
+This skill does not author `cla.io/terminology.md` content from scratch — see "The domain-terminology
+file" above. If the file exists, scan it for near-duplicate terms (two entries naming the same
+underlying concept with different words) or internally conflicting definitions (the same term defined
+two different ways, likely written by different sessions). Draft a proposed merge/reword fix for each
+one found. Skip this step cleanly — no draft, nothing to report — if the file is absent or has no
+issues; this is light maintenance, not a required pass.
+
+### Step 6 — Propose new `project-tokens.local.md` entries (never silent)
 
 If Step 1 surfaced a new, distinctive app/package/service name (or other compound repo-specific token)
 that isn't yet in `.claude/plugins/cla/skills/update-cla/references/project-tokens.local.md`, draft the
@@ -139,7 +181,7 @@ candidate addition(s) — same curation discipline the conformance guard's token
 compound tokens only, never generic words that legitimately appear in portable prose; verify each
 candidate with a grep of the current synced core before proposing it).
 
-### Step 6 — Present the proposal and get confirmation (interactive, not silent)
+### Step 7 — Present the proposal and get confirmation (interactive, not silent)
 
 Show the user, in order:
 
@@ -149,6 +191,7 @@ Show the user, in order:
    heavily-changed file is clearer shown in full).
 3. Each drafted overlay pointer addition, file by file.
 4. Any proposed `project-tokens.local.md` additions, each with its one-line justification.
+5. Any drafted `cla.io/terminology.md` reconciliation fixes from Step 5, if any were found.
 
 Ask the user to confirm before writing anything (`AskUserQuestion` or a plain yes/no in conversation).
 This skill never silently applies its draft — the same "propose, don't silently apply" discipline
@@ -156,11 +199,12 @@ This skill never silently applies its draft — the same "propose, don't silentl
 `Write`/`Edit` each confirmed file. If the user wants changes, revise the draft and re-confirm rather
 than partially applying.
 
-### Step 7 — Report
+### Step 8 — Report
 
 Summarize what changed: `cla.io/project-facts.md` created vs updated (and which sections changed),
-which overlays gained a pointer line, and which `project-tokens.local.md` entries were added (or note
-none were needed). If any candidate proposal was declined, say so and leave that file untouched.
+which overlays gained a pointer line, which `project-tokens.local.md` entries were added (or note none
+were needed), and any `cla.io/terminology.md` reconciliation applied (or note none was needed/found).
+If any candidate proposal was declined, say so and leave that file untouched.
 
 ## Non-goals (pinned — never do these)
 
@@ -174,3 +218,6 @@ none were needed). If any candidate proposal was declined, say so and leave that
 - Does **NOT** silently write anything — every change is proposed and confirmed first (Step 6).
 - Does **NOT** parse any stack-specific config format with a hardcoded parser — it reads and reasons
   about whatever manifests/config this repo actually has (portability mechanism).
+- Does **NOT** author `cla.io/terminology.md` content from scratch — that's written inline by whichever
+  consuming skill resolves a term (see "The domain-terminology file" above); this skill only documents
+  its format and optionally reconciles existing entries for drift/duplicates (Step 5).
