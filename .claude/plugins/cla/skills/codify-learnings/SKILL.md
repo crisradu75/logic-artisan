@@ -63,8 +63,8 @@ A **new** lesson enters at the lowest rung that can prevent it. A lesson that **
 
 **Read `references/step3-template.md` first** — the exact markdown shape to reproduce. Correctness-gating rules (hold these even if the reference isn't reloaded):
 
-- **Number every suggestion sequentially** across all sections (continuing through Memory candidates) so Step 4 can reference them by index (e.g. "y 1,3,5").
-- Every suggestion is **routed** (targets an artifact satisfying the routing rule above — a re-offense targets one rung higher than the artifact that just failed) and **cost-tagged** (`[cost: high|med|low]` = blast radius of the failure it prevents).
+- **Number every suggestion sequentially**, ordered by payoff (most valuable first), across all sections (continuing through Memory candidates) so Step 4 can reference them by index (e.g. "y 1,3,5").
+- Every suggestion is **routed** (targets an artifact satisfying the routing rule above — a re-offense targets one rung higher than the artifact that just failed) and leads with a **plain-language benefit** — what this concretely saves next time — not a `[cost: ...]` tag (found confusing in practice; priority order plus a stated benefit carries the same signal without the jargon).
 - **Skills: SKILL.md-only edits — no script edits.**
 - **Hard exclusions — never propose edits to** `**/scripts/**/*.py` (the skills' own bundled tooling), `openspec/**` (including `opsx:*`), or any vendored framework directory.
 - Memory writes are always proposals, never automatic — they go through Step 4 like any other suggestion.
@@ -72,7 +72,7 @@ A **new** lesson enters at the lowest rung that can prevent it. A lesson that **
 
 ## Step 3.5 — Codify-process self-check (self-improvement)
 
-The loop must be able to improve *itself* between runs, not only the artifacts it audits — `codify-learnings/SKILL.md` and `references/failure-modes.md` are valid suggestion targets (neither is hard-excluded), but nothing prompts a self-edit unless this step does. **Read `references/steps.md`** ("Step 3.5 triggers") for the full trigger list. Fold any resulting suggestion into the Step 3 report (numbered, cost-tagged, routed) so it flows through Step 4 apply. Record non-actionable process observations in the log's `### Codify-process notes` (Step 5) — a clean run gets one line saying so, not an invented self-edit.
+The loop must be able to improve *itself* between runs, not only the artifacts it audits — `codify-learnings/SKILL.md` and `references/failure-modes.md` are valid suggestion targets (neither is hard-excluded), but nothing prompts a self-edit unless this step does. **Read `references/steps.md`** ("Step 3.5 triggers") for the full trigger list. Fold any resulting suggestion into the Step 3 report (numbered, benefit-led, routed) so it flows through Step 4 apply. Record non-actionable process observations in the log's `### Codify-process notes` (Step 5) — a clean run gets one line saying so, not an invented self-edit.
 
 ## Step 4 — Interactive apply
 
