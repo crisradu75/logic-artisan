@@ -448,6 +448,50 @@ Because the consolidated file is per-repo and may be absent (a fresh repo that h
 - **THEN** the reference prompts the reader to run `/cla:sync-context` to populate it (it does not carry an inline duplicate copy of the fact)
 - **AND** the skill's procedure still runs rather than failing on the missing file
 
+### Requirement: Consolidated domain-terminology file
+
+The `cla` plugin SHALL support a single, repo-level **consolidated domain-terminology file** at `cla.io/terminology.md`, distinct in kind from `cla.io/project-facts.md`. Where the project-facts file holds mechanical, build-level facts, the terminology file holds **canonical internal-naming disambiguation**: one-sentence definitions for concepts specific to this repo's own codebase or product, each naming any rejected alias terms to avoid, in the entry format `**Term**: one-sentence definition — what it IS, not what it does. _Avoid_: rejected-alias-1, rejected-alias-2`. The terminology file is narrow by design — it SHALL NOT hold external, regulatory, or business-reference knowledge; a repo's own hand-authored glossary of that kind, if one exists, is untouched by this requirement and is never read, restructured, or superseded by it. It SHALL live in the `cla.io/` per-repo data tree, outside `update-cla`'s sync scan roots (`SCAN_DIRS`), so it is never synced across repos and needs no additional sync-exclusion. Each destination repo owns its own `cla.io/terminology.md`, created **lazily** — only once the first term resolves, not pre-scaffolded empty by `cla-init`.
+
+Unlike `cla.io/project-facts.md`, whose content is populated exclusively by the context-refresh skill in a batch reconcile pass, `cla.io/terminology.md` SHALL be **written inline** by any consuming skill, in-session, the moment a term resolves — never batched to a later pass — because the value of a disambiguation is tied to the conversational moment it was resolved in. The **context-refresh skill** (`sync-context`, per the **Context-refresh skill** requirement) SHALL own the terminology file's entry format and the reconciliation logic for existing entries (de-duplication and conflict-flagging) — as well as documenting that creation is lazy and performed by whichever consuming skill needs the file first, NOT by `sync-context` itself — documented in its own SKILL.md. `sync-context` SHALL NOT be the exclusive writer of the file's content and SHALL NOT itself create the file — any consuming skill applies the documented format directly via its own `Edit`/`Write` calls, without invoking `/cla:sync-context` as a sub-step.
+
+A pointer to `cla.io/terminology.md` SHALL be a **soft, degrade-gracefully reference**: every consuming skill SHALL treat it as an optional enhancement, never a hard requirement — reading the canonical term if the file is present and covers the concept, and proceeding on its own judgement if the file is absent or silent on that term. This is a deliberate divergence from `cla.io/project-facts.md`'s pointer convention (which prompts the reader to run `/cla:sync-context`): the terminology file legitimately stays unpopulated for a long time in a repo that hasn't yet run a skill that writes to it, and prompting "run sync-context to populate it" would mislead, since sync-context does not itself generate terminology content — only documents its format.
+
+#### Scenario: A resolved term is written inline, not batched
+
+- **WHEN** a consuming skill (e.g. `shape-decision`) resolves a naming ambiguity or disambiguates a fuzzy term during a live session
+- **THEN** it writes the entry to `cla.io/terminology.md` directly, in that same session, via `Edit`/`Write`
+- **AND** it does not defer the write to a later `/cla:sync-context` run
+
+#### Scenario: The terminology file is lazily created
+
+- **WHEN** the first term resolves in a repo where `cla.io/terminology.md` does not yet exist
+- **THEN** the consuming skill creates the file at that point, following the entry format `sync-context` documents
+- **AND** `cla-init` does not pre-scaffold an empty `cla.io/terminology.md`
+
+#### Scenario: The terminology file never duplicates an external glossary
+
+- **WHEN** a repo already maintains its own external/regulatory/business-reference glossary (e.g. a hand-authored `docs/glossary.md`)
+- **THEN** `cla.io/terminology.md` holds only internal/product naming disambiguation
+- **AND** no `cla` skill reads, writes, restructures, or supersedes the repo's own external glossary as part of this requirement
+
+#### Scenario: A pointer degrades gracefully without prompting a populate step
+
+- **WHEN** a skill body references `cla.io/terminology.md` in a repo where the file is absent or has no entry covering the term in question
+- **THEN** the skill's procedure still runs to completion, using its own best judgement for naming
+- **AND** the reference does not block on, or insist on, populating the file first (unlike the `project-facts.md` pointer's "run `/cla:sync-context`" prompt)
+
+#### Scenario: sync-context owns the format, not exclusive writes
+
+- **WHEN** any consuming skill writes an entry to `cla.io/terminology.md`
+- **THEN** it follows the entry format and de-duplication/conflict-flagging rules documented in `sync-context`'s SKILL.md
+- **AND** the write itself is performed by the consuming skill directly, not by invoking `/cla:sync-context` as a sub-step
+
+#### Scenario: The terminology file is never synced across repos
+
+- **WHEN** `update-cla` syncs the plugin's portable core
+- **THEN** `cla.io/terminology.md` is not a sync candidate (it lives outside `SCAN_DIRS`)
+- **AND** each destination repo supplies its own `cla.io/terminology.md`
+
 ### Requirement: Context-refresh skill
 
 The `cla` plugin SHALL provide a **context-refresh skill** at `.claude/plugins/cla/skills/sync-context/SKILL.md` (a `SKILL.md`, invoked as `/cla:sync-context` per the plugin's namespacing convention) that reads the current repo and populates or reconciles the fact *content* of `cla.io/project-facts.md`. It SHALL extract facts by reading the repo's own manifests/config directly (an LLM-driven universal extractor), with **no stack-specific parser**, so it works across repos of differing tech stacks. It SHALL resolve the repo root via the plugin's standard repo-state resolution seam (`git rev-parse --show-toplevel`) so it writes to the correct `cla.io/` regardless of the working directory, creating the `cla.io/` directory if it does not exist.
@@ -455,6 +499,8 @@ The `cla` plugin SHALL provide a **context-refresh skill** at `.claude/plugins/c
 The refresh skill SHALL be **self-sufficient**: when `cla.io/project-facts.md` is absent it SHALL create it, so running the skill alone on a fresh repo populates the facts (acting as fact-initialization) rather than requiring pre-existing content. It SHALL **propose** (for user confirmation, not silently apply) new `project-tokens.local.md` entries when it detects a new distinctive app/package token, following the same curation discipline the conformance guard's token list requires.
 
 The refresh skill SHALL own fact **content** only: it populates `cla.io/project-facts.md` (the shared repo-wide facts) and the pointer lines in per-skill overlays. It SHALL NOT take over the structure-scaffolding role of `cla-init`, and the **skill-specific authored body** of a per-skill overlay (a skill's own incident history, bespoke checks, permission-set intent) remains human/LLM authored — `cla-init` scaffolds it as an empty stub, and it is filled independently of the refresh skill. `cla-init` remains unchanged — it scaffolds the `cla.io/` tree and empty per-skill overlay stubs and SHALL NOT populate facts. The documented onboarding order SHALL be `cla-init` (structure) then `/cla:sync-context` (content) then `update-cla` (portable core), stated in the refresh skill's SKILL.md, `update-cla`'s SKILL.md, and `cla-init`'s SKILL.md.
+
+The refresh skill SHALL additionally **document, in its own SKILL.md, the entry format and reconciliation logic for `cla.io/terminology.md`** (per the **Consolidated domain-terminology file** requirement), without being that file's exclusive writer — content is written inline by whichever consuming skill resolves a term. The refresh skill MAY perform a light, optional reconciliation pass over an existing `cla.io/terminology.md` (catching near-duplicate or conflicting entries), but SHALL NOT author its content from scratch.
 
 #### Scenario: Refresh populates the consolidated facts file
 
