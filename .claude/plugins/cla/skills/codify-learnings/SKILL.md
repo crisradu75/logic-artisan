@@ -63,7 +63,7 @@ A **new** lesson enters at the lowest rung that can prevent it. A lesson that **
 
 **Read `references/step3-template.md` first** — the exact markdown shape to reproduce. Correctness-gating rules (hold these even if the reference isn't reloaded):
 
-- **Number every suggestion sequentially**, ordered by payoff (most valuable first), across all sections (continuing through Memory candidates) so Step 4 can reference them by index (e.g. "y 1,3,5").
+- **Number every suggestion sequentially**, ordered by payoff (most valuable first), across the whole list — memory candidates included, no category sections — so Step 4 can reference them by index (e.g. "y 1,3,5").
 - Every suggestion is **routed** (targets an artifact satisfying the routing rule above — a re-offense targets one rung higher than the artifact that just failed) and leads with a **plain-language benefit** — what this concretely saves next time — not a `[cost: ...]` tag (found confusing in practice; priority order plus a stated benefit carries the same signal without the jargon).
 - **Skills: SKILL.md-only edits — no script edits.**
 - **Hard exclusions — never propose edits to** `**/scripts/**/*.py` (the skills' own bundled tooling), `openspec/**` (including `opsx:*`), or any vendored framework directory.
@@ -87,9 +87,8 @@ Apply? (Y = apply all [default] / n = reject all / s = step through individually
 - `n` (or `none`/`reject`) → mark every suggestion **REJECTED**, write nothing.
 - `s` (or `step`/`one`) → fall back to one-at-a-time:
   ```
-  [3/12] Docs — CLAUDE.md
-    Add: "{this repo's own load-bearing-convention example — see references/project-context.md}"
-    Why: today's session needed this and didn't have it.
+  [3/12] {this repo's own load-bearing-convention example — see references/project-context.md} (CLAUDE.md)
+    Benefit: today's session needed this and didn't have it.
   Apply? (y/n/edit)
   ```
   - `y` → apply, mark **APPLIED**. `n` → mark **REJECTED**. `edit` → ask for revised wording, apply.
