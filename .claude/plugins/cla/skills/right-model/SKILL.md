@@ -101,6 +101,10 @@ bar*, say so and pick the cheaper one — state that you're erring cheap and why
 the toss-up is instead "cheaper tier might not meet the bar," that's not a toss-up —
 recommend the tier that meets the bar, per the quality-floor principle above.
 
+## Step 3.5: Check whether the target skill already routes its own dispatched work
+
+If the task will run through a `cla` orchestrator skill, check whether dispatched sub-agent work is already pinned to a model independent of the session model before recommending a session-wide escalation. Concretely: `spec-to-pr` has its own `references/model-routing.md` and routes every dispatched agent (Implement delegates, Review/Revise agent fan-outs) per that table; `multi-spec` explicitly reuses `spec-to-pr`'s copy rather than forking one; `multi-pr` has no routing table of its own and never dispatches an `Agent` directly — it only delegates whole changes via `Skill(cla:spec-to-pr, ...)`, so its dispatched-work routing is entirely inherited from `spec-to-pr` under the hood. In all three cases the practical effect is the same — escalating the whole session only helps with the INLINE judgment moments no routing table covers (e.g. Propose authoring, a borderline Review verdict) — but don't claim a routing file exists where it doesn't; check the actual file (or confirm the skill delegates to one that has it) before citing it. State the split proactively in the recommendation ("dispatched work already runs at X regardless of session model; escalating the session itself only changes Y") rather than waiting for the user to ask whether the escalation is even necessary.
+
 ## Step 4: Offer to start the task with those settings
 
 Ask the user (a short yes/no is enough — use AskUserQuestion only if there's a real

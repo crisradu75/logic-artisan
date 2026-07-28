@@ -45,6 +45,12 @@ python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "chore
 git push
 ```
 
+**Known `commit.py` failure on this commit shape — `did not match any files`.** `commit.py` re-stages its path arguments with `git add -- <paths>`, and `openspec archive` has already moved the change directory off disk. A path that was staged as a rename/delete source therefore no longer exists to re-add, and `git add` fails the whole call. **This is not a scope failure and not a reason to re-stage more broadly.** Confirm the two-sided scope assertion above already passed, then commit the ALREADY-STAGED set directly, bypassing `commit.py`:
+```
+git commit -m "chore: archive <change-name>"
+```
+Do not retry `commit.py` with extra paths, and do not fall back to `git add -A` — the staged set the assertion validated is exactly what should land. Continue to `git push` and the post-check below as normal.
+
 **Push post-check (required):** `git push` exit 0 alone is NOT sufficient — there are real scenarios where it succeeds but the archive commit never reaches the PR (a `pre-push` hook rewrote/skipped the commit and exited 0; the orchestrator drifted onto a leaked branch and pushed *that* branch instead of `feature/<change-name>`; a detached HEAD after a Revise rebase pushed to a non-PR ref). Verify all of (each as a separate Bash call — no shell pipes or `$(...)`):
 ```
 git rev-parse --abbrev-ref HEAD       # must equal feature/<change-name>

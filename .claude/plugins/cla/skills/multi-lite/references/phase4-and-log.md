@@ -24,15 +24,15 @@ python3 .claude/plugins/cla/skills/multi-lite/scripts/log_run.py <<'JSON'
 JSON
 ```
 
-It appends to `cla.io/retro/multi-lite-runs.jsonl`. Then commit **both** the ledger line and the run-notes file. Because `multi-lite` leaves independents' PRs open, Phase 3 normally ends with the primary clone's HEAD on some candidate's feature branch (the dependency-ordered last candidate is typically independent, so it's left open rather than merged) — so **return to `master` first, unconditionally, whatever branch HEAD is on** (this is why the run-log lands cleanly, unlike a naive `--expect-branch master` check that would fail from a feature branch):
+It appends to `cla.io/retro/multi-lite-runs.jsonl`. Then commit **both** the ledger line and the run-notes file. Because `multi-lite` leaves independents' PRs open, Phase 3 normally ends with the primary clone's HEAD on some candidate's feature branch (the dependency-ordered last candidate is typically independent, so it's left open rather than merged) — so **return to `<base-branch>` first, unconditionally, whatever branch HEAD is on** (this is why the run-log lands cleanly, unlike a naive `--expect-branch <base-branch>` check that would fail from a feature branch):
 
 ```
-git checkout master
+git checkout <base-branch>
 git pull
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch master
+python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <base-branch>
 git add cla.io/retro/multi-lite-runs.jsonl cla.io/retro/multi-lite-run-notes-<date>.md
 git commit -m "chore: multi-lite run log"
 git push
 ```
 
-**Verify the push landed** — `git rev-parse HEAD` vs `git ls-remote origin master`, compared in-context — since this is a direct push, not one delegated to `commit-push-pr`. Best-effort and non-fatal — a missing log line never blocks the run; skip entirely if `CLAUDE_RETRO_DIR` points the ledger outside the repo, or if the run finished in a reactive-worktree pivot (it may not be able to reach `master`; note it and move on). **No analyzer skill yet, by design** — same "wait until ~8–10 runs accumulate" posture the sibling chain skills take before proposing a retro analyzer.
+**Verify the push landed** — `git rev-parse HEAD` vs `git ls-remote origin <base-branch>`, compared in-context — since this is a direct push, not one delegated to `commit-push-pr`. Best-effort and non-fatal — a missing log line never blocks the run; skip entirely if `CLAUDE_RETRO_DIR` points the ledger outside the repo, or if the run finished in a reactive-worktree pivot (it may not be able to reach `<base-branch>`; note it and move on). **No analyzer skill yet, by design** — same "wait until ~8–10 runs accumulate" posture the sibling chain skills take before proposing a retro analyzer.

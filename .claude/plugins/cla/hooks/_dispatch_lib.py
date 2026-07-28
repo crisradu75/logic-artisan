@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Shared helpers for the PreToolUse dispatcher scripts.
+"""Shared helpers for the PreToolUse dispatcher scripts, and the hooks package's
+shared git-command-matching library.
 
-Runs several sibling hook scripts' `main()` in-process (one Python interpreter
-instead of one per hook) by importing each as a standalone module — the same
-technique .claude/plugins/cla/hooks/tests/ already uses — and temporarily redirecting
+TWO responsibilities, deliberately in one file. (1) It runs several sibling hook
+scripts' `main()` in-process (one Python interpreter instead of one per hook) by
+importing each as a standalone module — the same technique
+.claude/plugins/cla/hooks/tests/ already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
-modified by this module; it only orchestrates them.
+modified by this module; it only orchestrates them. (2) It also HOSTS
+`strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which four leaf git hooks import.
+So the relationship with those hooks is bidirectional: this module loads them,
+and they import from it. Consequence worth holding onto: keep this module
+import-cheap and side-effect-free, because a failure here takes out both roles
+at once.
 
 A hook that crashes (fails to load, or raises out of `main()`) is still
 treated as fail-open — a guard must never wedge the workflow — but the
@@ -24,6 +31,8 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import re
+import subprocess
 import sys
 import traceback
 from pathlib import Path
@@ -32,8 +41,171 @@ from types import ModuleType
 _HOOKS_DIR = Path(__file__).resolve().parent
 
 
+# --- Git command-line matching helpers --------------------------------------
+# Shared by block-direct-push-to-main.py, warn-branch-base.py,
+# warn-stray-scratch-artifact.py, and guard-worktree-isolation.py. Previously
+# each of those four files carried its own literal copy of this pattern (three
+# linked only by a "mirrors guard-worktree-isolation.py" comment) — a bug fixed
+# in one copy could silently persist in the other three, and did: a long
+# global option with a space-separated (non-`=`) value (`git --work-tree
+# <path> push origin main`) bypassed all of them, and a quoted `-c`/`-C` value
+# containing a space (`git -C "/path with space" checkout -b x`) bypassed the
+# two hooks that didn't call `strip_quoted_spans` before matching. One
+# definition, one fix site closes both classes at once and keeps them closed.
+
+
+def strip_quoted_spans(cmd: str) -> str:
+    """Replaces the contents of every quoted/backtick span with same-length,
+    non-whitespace placeholder characters (the quote delimiters themselves are
+    left in place), so a matcher below doesn't trip on a `git commit` mentioned
+    inside an echoed string or a commit message, AND so a global option's quoted
+    value (`-C "/path with space"`) becomes a single whitespace-free token
+    before `GIT_GLOBAL_OPTS` tries to match it — the value-consuming
+    alternatives below all use `\\S+`, which cannot span an un-stripped
+    internal space on its own.
+
+    Length-preserving is deliberate, not incidental: it's what lets a caller
+    that captures a match GROUP against the scanned string (e.g. a branch
+    name) re-slice the SAME start/end offsets out of the original, unscanned
+    command to recover the real text — a naive collapse-to-`''` would shift
+    every later offset and silently return the placeholder instead of the
+    real value for anything captured after the first quoted span. Note the
+    re-sliced text still carries its surrounding quote characters, so callers
+    strip them (`.strip("'\\"")`) before use.
+
+    Scope, stated precisely so nobody assumes more than it does:
+
+    - NOT handled — heredoc bodies. Those are unquoted text, so a script
+      written via `cat <<'EOF' … git push origin main … EOF` still matches and
+      a block hook will fire on it. This is the most likely real-world false
+      positive of the git hooks; it is accepted, not solved.
+    - NOT handled — escaped or nested quotes (`\\'`, `"a 'b' c"` interactions).
+    - INTENTIONALLY matches shell semantics for a mid-word apostrophe:
+      `echo don't && git push origin main && echo won't` collapses the span
+      between the two apostrophes, so the `git push` disappears from the
+      scanned string and the hook allows it. That is CORRECT — bash reads the
+      same span as one single-quoted literal and never runs the push. Do not
+      "fix" this by requiring quotes to sit at token boundaries; that would
+      make the hooks fire on commands the shell would not execute."""
+
+    def _placeholder(match: re.Match[str]) -> str:
+        span = match.group(0)
+        return span[0] + "#" * (len(span) - 2) + span[-1]
+
+    stripped = re.sub(r"'[^']*'", _placeholder, cmd)
+    stripped = re.sub(r'"[^"]*"', _placeholder, stripped)
+    stripped = re.sub(r"`[^`]*`", _placeholder, stripped)
+    return stripped
+
+
+# git GLOBAL options that may sit between `git` and the subcommand — consumed
+# so `git -c core.x=y commit`, `git -C /path checkout`, `git --work-tree /path
+# push origin main` are not a bypass. `-c KEY=VAL` / `-C PATH` take a
+# following value token (bare, or — once `strip_quoted_spans` has run — a
+# same-length `#`-filled quoted token such as `"################"`, which is
+# whitespace-free and so matches `\S+` as one token). A NAMED, closed set of long options that also
+# take their value as a separate space-delimited token (`--git-dir`,
+# `--work-tree`, `--namespace`, `--super-prefix`) get the same optional
+# space-value treatment; every other short/long flag is a single token
+# (`--long[=val]` only, no bare-space form). The named-option list is
+# deliberately closed rather than "any --long-opt may take a following
+# value" — a blanket rule risks the matcher swallowing the real subcommand
+# token whenever a value-less flag (`--bare`, `--no-pager`, `--paginate`) is
+# immediately followed by it. Best-effort, not an exhaustive git-argument
+# parser: an option shape outside this list, or one this hasn't been tested
+# against, can still slip through — see each hook's own docstring for its
+# specific detection scope.
+_GIT_GLOBAL_VALUE_OPTS = r"(?:git-dir|work-tree|namespace|super-prefix)"
+GIT_GLOBAL_OPTS = (
+    r"(?:"  # outer repetition group — zero or more options, each followed by whitespace
+    r"(?:"  # inner alternation — exactly one option-shape per repetition
+    r"(?:-[cC]\s+\S+)"
+    r"|(?:--" + _GIT_GLOBAL_VALUE_OPTS + r"\b(?:=\S+|\s+\S+)?)"
+    r"|(?:-[A-Za-z])"
+    r"|(?:--[A-Za-z][\w-]*(?:=\S+)?)"
+    r")"
+    r"\s+"
+    r")*"
+)
+
+
+_BASE_BRANCH_CACHE: dict[str | None, str] = {}
+_BASE_BRANCH_FALLBACK = "master"
+
+
+def default_base_branch(cwd: str | None = None) -> str:
+    """Resolve THIS repo's base branch instead of assuming one.
+
+    The harness previously hardcoded `master` throughout. That is not portable —
+    and it is not even correct for every repo that ships the harness: a repo
+    whose default is `main` has no `master` ref at all, so a hardcoded
+    `git rev-list master..HEAD` fails with `unknown revision` rather than
+    producing a wrong answer quietly.
+
+    Resolution order, most authoritative first:
+      1. `refs/remotes/origin/HEAD` — what the remote itself reports as default.
+      2. An existing local or remote `main`, then `master`. `main` is probed
+         first because a repo carrying BOTH is nearly always one that renamed
+         to `main` and kept `master` as a stale leftover.
+      3. `master`, preserving the harness's historical assumption for a repo
+         with no remote and no conventional branch yet.
+
+    Cached per cwd: hook processes are short-lived, but several call sites may
+    ask within one run and this shells out to git.
+    """
+    if cwd in _BASE_BRANCH_CACHE:
+        return _BASE_BRANCH_CACHE[cwd]
+
+    def _git(args: list[str]) -> str | None:
+        try:
+            r = subprocess.run(
+                ["git", *(["-C", cwd] if cwd else []), *args],
+                capture_output=True, text=True, timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return (r.stdout or "").strip() if r.returncode == 0 else None
+
+    resolved = None
+    head_ref = _git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
+    if head_ref and "/" in head_ref:
+        resolved = head_ref.rsplit("/", 1)[-1] or None
+    if resolved is None:
+        for candidate in ("main", "master"):
+            for ref in (f"refs/heads/{candidate}", f"refs/remotes/origin/{candidate}"):
+                if _git(["rev-parse", "--verify", "--quiet", ref]):
+                    resolved = candidate
+                    break
+            if resolved:
+                break
+
+    resolved = resolved or _BASE_BRANCH_FALLBACK
+    _BASE_BRANCH_CACHE[cwd] = resolved
+    return resolved
+
+
+def ensure_hooks_dir_importable() -> None:
+    """Put the hooks dir on `sys.path` if it isn't already.
+
+    Several hook files do `from _dispatch_lib import ...` at module level. That
+    import resolves through `sys.path` — `spec_from_file_location` locates the
+    HOOK by path but does nothing for the hook's OWN imports. Without this, the
+    hooks work only by accident: `hooks.json` happens to invoke the dispatcher
+    as a standalone script living in this dir, so CPython sets `sys.path[0]` to
+    it. That is a property of how the dispatcher is launched, not an invariant —
+    it evaporates under `PYTHONSAFEPATH=1` / `python -I` / `python -P`, or under
+    any future caller that imports `load_hook` from a differently-launched
+    process. Making it explicit here means the guarantee holds by construction
+    rather than by luck, which matters because the failure mode is a guard that
+    silently doesn't run."""
+    hooks_dir = str(_HOOKS_DIR)
+    if hooks_dir not in sys.path:
+        sys.path.insert(0, hooks_dir)
+
+
 def load_hook(filename: str) -> ModuleType:
     """Load a sibling hook file as a fresh module (not cached in sys.modules)."""
+    ensure_hooks_dir_importable()
     path = _HOOKS_DIR / filename
     module_name = path.stem.replace("-", "_")
     spec = importlib.util.spec_from_file_location(module_name, path)

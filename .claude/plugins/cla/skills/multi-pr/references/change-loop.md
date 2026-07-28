@@ -21,19 +21,25 @@ For each change in the confirmed order:
    - Stage and commit the fix on the **same feature branch** (`fix: resolve deferred findings`, following `/cla:spec-to-pr`'s own commit-message-shape convention), after the standard `git_state` check.
    - Re-run the change's full gate (this repo's own build/lint/test commands — see `cla.io/project-facts.md`, falling back to `references/project-context.md` if absent — plus its local-infra-dependent hard gate if the change touches the tables/surfaces it covers) before considering the change done.
    - Prefer landing the fix on the still-open PR over opening a second one when the branch is still live — the original PR hasn't merged yet, so a small follow-up commit on the same branch is simpler than a retroactive fix-PR.
-   - **If the change has ALREADY MERGED** by the time a deferred finding needs fixing (e.g. the policy was clarified or tightened mid-chain, after an earlier change's PR was merged under the looser default), do NOT push directly to `master` — check for a `block-direct-push-to-main.py`-style hook first, and if the repo has one (or on general principle), open a small follow-up branch + PR + merge instead (`fix/<original-change-name>-review-followups` or similar), going through the same full gate (build/lint/test + any local-infra hard gate) before merging it. This is a real, encountered scenario, not a hypothetical.
+   - **If the change has ALREADY MERGED** by the time a deferred finding needs fixing (e.g. the policy was clarified or tightened mid-chain, after an earlier change's PR was merged under the looser default), do NOT push directly to `<base-branch>` — check for a `block-direct-push-to-main.py`-style hook first, and if the repo has one (or on general principle), open a small follow-up branch + PR + merge instead (`fix/<original-change-name>-review-followups` or similar), going through the same full gate (build/lint/test + any local-infra hard gate) before merging it. This is a real, encountered scenario, not a hypothetical.
    - If a deferred finding turns out to be genuinely out of scope for this change (would require a design change, or belongs to a different change entirely), that's a legitimate exception — but it needs the same "surface to the user, don't silently accept" treatment as a Tier A failure, since the strict policy was explicitly requested. Don't unilaterally downgrade back to "deferred is fine."
 
 5. **Merge (only under the "merge before dependents" policy).** Once the change is genuinely done (Tier A clean, Tier B findings resolved per step 4):
    ```
    gh pr merge <#> --squash --delete-branch
    ```
-   Then sync the local checkout with two separate commands (not chained with `&&`, per the inherited bash-discipline rule):
-   ```
-   git checkout master
-   git pull
-   ```
-   Confirm the merge actually landed (`git log --oneline -1` should show the merged commit) before marking the change's task complete and moving to the next one.
+   **Verification branches on whether THIS worktree holds `<base-branch>`/`main`.** `gh pr merge --delete-branch` performs the remote merge first, then tries to switch the *local* checkout to the base branch and delete the local copy of the feature branch:
+   - **If this worktree holds `<base-branch>`/`main`** (the primary clone, or a worktree that legitimately checked it out): the local-checkout switch succeeds. Sync it with two separate commands (not chained with `&&`, per the inherited bash-discipline rule):
+     ```
+     git checkout <base-branch>
+     git pull
+     ```
+     then confirm `git log --oneline -1` shows the merged commit.
+   - **If it does not** (the normal case for a chain run inside a dedicated feature-branch worktree — the usual shape this skill runs in): that second step fails with `fatal: '<base-branch>' is already used by worktree at <primary-clone-path>`. **The remote merge itself already succeeded** — don't treat this error as a failed merge, and don't attempt the `git checkout <base-branch>` / `git log -1` steps above (they don't apply in this worktree). Skip straight to the verification below.
+
+   **Authoritative verification (either path):** `gh pr view <#> --json state,mergedAt` — state `MERGED` confirms the merge landed regardless of which branch this arrives from. In the second case above, if the remote feature branch wasn't deleted as part of that failed local-switch step, delete it explicitly: `git push origin --delete feature/<change-name>`. This repeats on every merge in a chain run from a worktree, so expect it rather than re-diagnosing each time. Only after this verification passes should the change's task be marked complete.
+
+   **Local `<base-branch>`/`main` is never auto-updated by a sibling worktree's merge.** In a worktree that doesn't hold `<base-branch>`/`main` (the second case above), this worktree's local base-branch ref goes stale the moment ANY merge happens — including this chain's own earlier merges — since there's no `git checkout <base-branch> && git pull` step to refresh it. Any later diff-scoping command in this run (e.g. Revise's `git diff <base-branch>..HEAD` for a *subsequent* change in the chain) MUST target `origin/<base-branch>` (after an explicit `git fetch origin <base-branch>`), never the local `<base-branch>`/`main` ref — a stale local ref silently produces a diff padded with every prior change's own files. Confirmed in practice via an ad hoc file-count sanity check against the expected total, but no such check is built into this skill — treat "target `origin/<base-branch>`, always" as the actual safeguard, not the possibility of noticing the padding after the fact.
 
 6. **Capture a real end timestamp** — `date -u +%Y-%m-%dT%H:%M:%SZ` via Bash — closing the window opened in step 2. This spans the change's full per-change loop (the `/cla:spec-to-pr` run, any step 4 fix round, and the step 5 merge), i.e. genuine measured wall-clock for everything this change actually cost, not just its `/cla:spec-to-pr` sub-call. Record the delta in the per-run running-notes file next to the Phase 1c prediction for this change. Mark the change's `TaskCreate` entry `completed`.
 

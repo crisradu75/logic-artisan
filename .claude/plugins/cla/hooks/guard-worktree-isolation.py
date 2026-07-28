@@ -61,6 +61,20 @@ import sys
 import time
 from pathlib import Path
 
+# The `_dispatch_lib` import below resolves through `sys.path`. This hook runs
+# STANDALONE for `--heartbeat` (SessionStart) and `--cleanup` (SessionEnd), i.e.
+# outside the dispatcher entirely, so it cannot lean on the dispatcher having
+# set `sys.path[0]`. An ImportError here would be worse than loud: no heartbeat
+# gets written, every session then sees `others == 0`, takes the "solo" path,
+# and the shared-HEAD collision this guard exists to prevent happens in silence.
+_HOOKS_DIR = str(Path(__file__).resolve().parent)
+if _HOOKS_DIR not in sys.path:
+    sys.path.insert(0, _HOOKS_DIR)
+
+from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
+from _dispatch_lib import default_base_branch  # noqa: E402
+from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
+
 # A heartbeat older than this = the session is gone. Set as a CRASH backstop, not
 # the primary liveness signal: presence is refreshed on SessionStart + every
 # Bash/Edit/Write and REMOVED on SessionEnd, so a cleanly-closed session disappears
@@ -71,23 +85,8 @@ _TTL_SECONDS = 60 * 60
 _GUARD_DIRNAME = ".claude-worktree-guard"
 
 
-def _strip_quoted_spans(cmd: str) -> str:
-    """Remove quoted spans so the matcher does not trip on a `git commit` inside
-    an echoed string / heredoc / commit message. Mirrors block-cd-in-bash.py."""
-    stripped = re.sub(r"'[^']*'", "''", cmd)
-    stripped = re.sub(r'"[^"]*"', '""', stripped)
-    stripped = re.sub(r"`[^`]*`", "``", stripped)
-    return stripped
-
-
 # --- HEAD-mutating command detection ----------------------------------------
 
-# git GLOBAL options that may sit between `git` and the subcommand — consumed so
-# `git -c core.x=y commit`, `git -C /path checkout`, `git --no-pager switch` are not
-# a bypass. `-c KEY=VAL` / `-C PATH` take a following value token; short flags and
-# `--long[=val]` are single tokens. (Exotic/quoted forms still slip — same
-# best-effort posture as the sibling git hooks.)
-_G = r"(?:(?:-[cC]\s+\S+|-[A-Za-z]|--[A-Za-z][\w-]*(?:=\S+)?)\s+)*"
 _GIT = r"\bgit\s+" + _G
 
 # branch create-and-switch: `git checkout -b|-B|--orphan NAME`, `git switch -c|-C|--create NAME`
@@ -104,6 +103,9 @@ _SWITCH_HELP = re.compile(_GIT + r"switch\s+(?:-h|--help)\b")
 _COMMIT = re.compile(_GIT + r"commit(?=\s|$)")
 # `git checkout ARG` where ARG might be a branch/commit-ish (resolved below).
 _CHECKOUT_ARG = re.compile(_GIT + r"checkout\s+((?:(?:-[a-zA-Z]+|--\S+)\s+)*)(\S+)")
+# A STANDALONE `--` token (end-of-options marker), as opposed to the `--` that
+# merely begins a long option like `--work-tree` or `--no-pager`.
+_END_OF_OPTIONS = re.compile(r"(?:^|\s)--(?:\s|$)")
 
 
 def _warn(msg: str) -> None:
@@ -145,10 +147,12 @@ def _is_checkout_switch(cwd: str, arg: str) -> bool:
 def _mutates_shared_head(command: str, cwd: str) -> str | None:
     """Return a short label of the HEAD-mutating op, or None if the command does
     not move the shared branch/HEAD. Covers branch create, branch switch (`git
-    switch` any form, `git checkout <commit-ish>`), and `git commit`. Intentionally
-    NOT covered (accepted, same best-effort posture as the sibling git hooks):
-    `git merge`/`git rebase`/`git reset`, and shapes hidden behind global options
-    (`git -c ... commit`)."""
+    switch` any form, `git checkout <commit-ish>`), and `git commit` — each of
+    those reached either directly or behind git global options, since every
+    pattern is anchored on `_GIT`, which consumes `GIT_GLOBAL_OPTS` (`git -c
+    ... commit`, `git -C /path checkout`, `git --work-tree /path switch` all
+    match). Intentionally NOT covered (accepted, same best-effort posture as
+    the sibling git hooks): `git merge`/`git rebase`/`git reset`."""
     scanned = _strip_quoted_spans(command)
 
     if _BRANCH_CREATE.search(scanned):
@@ -160,13 +164,22 @@ def _mutates_shared_head(command: str, cwd: str) -> str | None:
     if _COMMIT.search(scanned) and "--dry-run" not in scanned:
         return "commit"
 
-    # `git checkout <commit-ish>` (not a file restore). Skip when `--` present
-    # (explicit paths) or a create form (already handled above).
+    # `git checkout <commit-ish>` (not a file restore). Skip on a STANDALONE `--`
+    # (the explicit end-of-options marker, after which args are paths) or a
+    # create form (already handled above). Matching a bare `"--" in scanned`
+    # instead would abandon the check on ANY long option — `git --work-tree
+    # /path checkout main` and `git --no-pager checkout main` both contain
+    # `--` — silently skipping the branch switch this guard is here to catch.
     m = _CHECKOUT_ARG.search(scanned)
-    if m and "--" not in scanned:
+    if m and not _END_OF_OPTIONS.search(scanned):
         flags = m.group(1)
         if "-b" not in flags and "-B" not in flags and "--orphan" not in flags:
-            if _is_checkout_switch(cwd, m.group(2)):
+            # Re-slice group 2 from the ORIGINAL command (strip_quoted_spans is
+            # length-preserving) so a quoted target resolves as its real ref
+            # rather than the scan-time placeholder. The quotes survive the
+            # slice — `_is_checkout_switch` strips them.
+            target = command[m.start(2) : m.end(2)]
+            if _is_checkout_switch(cwd, target):
                 return "switch branches"
     return None
 
@@ -229,8 +242,24 @@ def _remove(guard_dir: Path, my_id: str) -> None:
         pass  # already gone / unreadable — nothing to clean up
 
 
-def _sanitize_session_id(raw: object) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]", "_", str(raw or "unknown-session"))[:128] or "unknown-session"
+def _sanitize_session_id(raw: object) -> str | None:
+    """Filesystem-safe session id, or None when the caller supplied none.
+
+    Returning None (rather than the old `"unknown-session"` placeholder) is the
+    whole point. A placeholder makes every anonymous invocation write the SAME
+    heartbeat file — and because presence is only removed on SessionEnd for a
+    session that owns its id, nothing ever cleans it up. One test run, one agent
+    reproducing a payload, or one manual `--heartbeat` therefore leaves a
+    permanent phantom peer that makes every later commit in the primary clone
+    look like a two-session collision. That happened: a review agent invoking
+    this hook with a sample payload wedged real commits until the stray file was
+    deleted by hand. An unidentifiable session cannot be tracked or cleaned up,
+    so the correct move is to record nothing at all.
+    """
+    if raw is None:
+        return None
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", str(raw))[:128].strip("_")
+    return cleaned or None
 
 
 def _read_payload() -> dict | None:
@@ -264,12 +293,15 @@ def main(argv: list[str] | None = None) -> int:
     guard_dir = _primary_guard_dir(cwd)
 
     # --- presence modes (wired to SessionStart / SessionEnd / Edit|Write) --------
+    # An unidentifiable session writes NOTHING: it could neither be cleaned up
+    # nor distinguished from a real peer, so recording it would only ever
+    # manufacture a false collision (see `_sanitize_session_id`).
     if "--cleanup" in argv:  # SessionEnd: remove our heartbeat immediately
-        if guard_dir is not None:
+        if guard_dir is not None and session_id is not None:
             _remove(guard_dir, session_id)
         return 0
     if "--heartbeat" in argv:  # SessionStart / non-Bash tool use: refresh presence
-        if guard_dir is not None:
+        if guard_dir is not None and session_id is not None:
             _touch(guard_dir, session_id)
         return 0
 
@@ -278,6 +310,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if guard_dir is None:
         return 0  # worktree / not a repo — allow
+    if session_id is None:
+        # Cannot tell our own heartbeat from a peer's, so every live session
+        # would count as "other" and this would block a solo session. Fail open
+        # and say so, rather than blocking on an unanswerable question.
+        _warn("no session_id in the hook payload — presence tracking is off for this call")
+        return 0
 
     tool_input = payload.get("tool_input") or {}
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
@@ -304,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         f"shared object store):\n"
         f"    git worktree add .claude/worktrees/<task> -b feature/<task>\n"
         f"then relaunch this session in .claude/worktrees/<task>. The primary clone "
-        f"stays on master.\n"
+        f"stays on {default_base_branch(cwd)}.\n"
         f"(Escape hatch for a deliberate solo action: ALLOW_SHARED_CLONE_MUTATION=1. "
         f"Hook: guard-worktree-isolation.py)",
         file=sys.stderr,

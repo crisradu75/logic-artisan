@@ -1,7 +1,22 @@
 # Pytest config for the cla plugin's guard-hook test suite.
 # The hook tests load the hook modules by path (importlib from the hooks dir),
-# so no `pythonpath` is needed — only a rootdir + testpaths so `pytest
-# .claude/plugins/cla/hooks/` collects the suite. Mirrors each skill's own pyproject.
+# and several hooks now import their git-command-matching helpers from the
+# shared `_dispatch_lib` sibling module — `pythonpath = ["."]` puts this
+# pyproject's own directory (the hooks dir) on sys.path so that import
+# resolves under pytest.
+#
+# How the same import resolves OUTSIDE pytest, stated precisely because it is
+# the mitigation-of-record for the hooks' one non-stdlib dependency:
+#   - Standalone (`python3 <hooks-dir>/<hook>.py`, the shape hooks.json uses):
+#     CPython sets sys.path[0] to the script's dir. Belt-and-braces, each
+#     affected hook ALSO inserts its own dir explicitly, so the import survives
+#     `PYTHONSAFEPATH=1` / `python -I` / `python -P`, which suppress that.
+#   - Dynamically loaded by `_dispatch_lib.load_hook`: `spec_from_file_location`
+#     locates the HOOK by path but does nothing for the hook's own imports, so
+#     `load_hook` calls `ensure_hooks_dir_importable()` first. It does NOT come
+#     for free from the loader — earlier wording here claimed both paths put the
+#     hooks dir on sys.path "by construction", which was true only of the first.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

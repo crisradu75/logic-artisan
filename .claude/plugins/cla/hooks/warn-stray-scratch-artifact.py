@@ -11,7 +11,12 @@ This recurred twice in one /multi-pr session (2026-07-16), once per delegated
 Implement run, and was only caught by an observant `git status --porcelain`
 read before each Ship-phase commit — this hook makes that check automatic.
 
-Detection: the Bash command runs `git add` or `git commit`. Then `git status
+Detection: the Bash command runs `git add` or `git commit`, optionally behind
+git global options, with quoted spans collapsed first so `echo 'git commit'`
+no longer triggers it. That collapse cuts both ways and the trade is accepted
+for a warn-only hook: a git command wrapped in a quoted sub-shell string
+(`bash -c 'git add .'`) is now INVISIBLE to this hook and will not warn, where
+previously it did. Then `git status
 --porcelain` is scanned for an UNTRACKED (`??`) entry whose path has no path
 separator (`/` or `\\`) — sits at repo root, not inside any real source/doc
 directory — AND whose name contains `AppData`, `LocalTemp`, or `scratchpad`
@@ -32,9 +37,19 @@ import re
 import subprocess
 import sys
 
-# git GLOBAL options that may sit between `git` and the subcommand — consumed so
-# `git -C /path commit` is not a bypass. Mirrors guard-worktree-isolation.py's `_G`.
-_G = r"(?:(?:-[cC]\s+\S+|-[A-Za-z]|--[A-Za-z][\w-]*(?:=\S+)?)\s+)*"
+from pathlib import Path
+
+# The `_dispatch_lib` import below resolves through `sys.path`; running
+# standalone normally puts the hooks dir at `sys.path[0]`, but that is
+# suppressed under `PYTHONSAFEPATH=1` / `python -I` / `python -P`. Insert it
+# explicitly so an import failure can't silently disable this hook.
+_HOOKS_DIR = str(Path(__file__).resolve().parent)
+if _HOOKS_DIR not in sys.path:
+    sys.path.insert(0, _HOOKS_DIR)
+
+from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
+from _dispatch_lib import strip_quoted_spans  # noqa: E402
+
 _GIT_ADD_OR_COMMIT = re.compile(r"\bgit\s+" + _G + r"(?:add|commit)\b")
 _SUSPICIOUS_NAME = re.compile(r"AppData|LocalTemp|scratchpad", re.IGNORECASE)
 
@@ -77,7 +92,7 @@ def main() -> int:
     if not isinstance(cmd, str) or not cmd:
         return 0
 
-    if not _GIT_ADD_OR_COMMIT.search(cmd):
+    if not _GIT_ADD_OR_COMMIT.search(strip_quoted_spans(cmd)):
         return 0
 
     lines = _porcelain_lines()
