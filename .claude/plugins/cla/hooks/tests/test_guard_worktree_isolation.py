@@ -5,6 +5,7 @@ against a throwaway git repo (solo allowed, contended blocked, worktree allowed)
 """
 
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -106,6 +107,59 @@ def test_end_of_options_marker_still_means_file_restore(repo, cmd):
     # The complement of the test above: a standalone `--` marks the args after
     # it as PATHS, so this is a file restore and must stay unguarded.
     assert guard._mutates_shared_head(cmd, str(repo)) is None
+
+
+# --------------------------------------------------------------------------- #
+# session-id handling -- an anonymous caller must not pollute real guard state
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("raw", [None, "", "   ", "___"])
+def test_unidentifiable_session_id_resolves_to_none(raw):
+    # The old placeholder ("unknown-session") made every anonymous invocation
+    # share ONE heartbeat filename that nothing ever cleaned up, leaving a
+    # permanent phantom peer that blocked real commits in the primary clone.
+    assert guard._sanitize_session_id(raw) is None
+
+
+def test_real_session_id_is_still_sanitized_not_dropped():
+    assert guard._sanitize_session_id("abc/../def 123") == "abc_.._def_123"
+
+
+@pytest.mark.parametrize("mode", ["--heartbeat", "--cleanup"])
+def test_presence_modes_write_nothing_without_a_session_id(tmp_path, monkeypatch, mode):
+    # A test run, or an agent reproducing a sample payload, must leave no trace
+    # in the guard dir — this is exactly how a stray heartbeat got created.
+    guard_dir = tmp_path / "guard"
+    guard_dir.mkdir()
+    monkeypatch.setattr(guard, "_primary_guard_dir", lambda cwd: guard_dir)
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": str(tmp_path)})))
+    assert guard.main([mode]) == 0
+    assert list(guard_dir.iterdir()) == [], "an anonymous session must not register presence"
+
+
+def test_presence_mode_writes_a_heartbeat_when_the_session_is_identified(tmp_path, monkeypatch):
+    guard_dir = tmp_path / "guard"
+    guard_dir.mkdir()
+    monkeypatch.setattr(guard, "_primary_guard_dir", lambda cwd: guard_dir)
+    payload = json.dumps({"cwd": str(tmp_path), "session_id": "sess-1"})
+    monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+    assert guard.main(["--heartbeat"]) == 0
+    assert [p.name for p in guard_dir.iterdir()] == ["sess-1"]
+
+
+def test_guard_mode_fails_open_and_warns_without_a_session_id(tmp_path, monkeypatch, capsys):
+    # Without an id the hook cannot tell its own heartbeat from a peer's, so
+    # every live session would count as "other" and a SOLO session would be
+    # blocked. Fail open, but say so.
+    guard_dir = tmp_path / "guard"
+    guard_dir.mkdir()
+    (guard_dir / "someone-else").touch()
+    monkeypatch.setattr(guard, "_primary_guard_dir", lambda cwd: guard_dir)
+    payload = json.dumps({"cwd": str(tmp_path), "tool_input": {"command": "git commit -m x"}})
+    monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+    assert guard.main([]) == 0
+    assert "session_id" in capsys.readouterr().err
 
 
 def test_other_live_sessions_counts_and_prunes(tmp_path):

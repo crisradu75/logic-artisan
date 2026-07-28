@@ -278,6 +278,88 @@ def test_git_hooks_import_the_shared_pattern_instead_of_re_inlining_it(filename)
     )
 
 
+# --------------------------------------------------------------------------- #
+# default_base_branch -- the harness must not assume `master`
+# --------------------------------------------------------------------------- #
+
+
+class _FakeCompleted:
+    def __init__(self, stdout="", returncode=0):
+        self.stdout = stdout
+        self.returncode = returncode
+
+
+def _fake_git(responses):
+    """Build a subprocess.run stand-in driven by an {args-suffix: result} map."""
+    def run(cmd, **kwargs):
+        key = " ".join(cmd[1:]) if cmd and cmd[0] == "git" else " ".join(cmd)
+        for suffix, result in responses.items():
+            if key.endswith(suffix):
+                return result
+        return _FakeCompleted(returncode=1)
+    return run
+
+
+@pytest.fixture(autouse=True)
+def _clear_base_branch_cache():
+    lib._BASE_BRANCH_CACHE.clear()
+    yield
+    lib._BASE_BRANCH_CACHE.clear()
+
+
+def test_default_base_branch_prefers_origin_head(monkeypatch):
+    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
+        "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/trunk\n"),
+    }))
+    assert lib.default_base_branch() == "trunk"
+
+
+def test_default_base_branch_falls_back_to_an_existing_main(monkeypatch):
+    # The live bug this fixes: in a `main`-default repo there is NO `master`
+    # ref, so a hardcoded `master..HEAD` range fails with `unknown revision`
+    # rather than merely returning a wrong answer.
+    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
+        "rev-parse --verify --quiet refs/heads/main": _FakeCompleted("abc123\n"),
+    }))
+    assert lib.default_base_branch() == "main"
+
+
+def test_default_base_branch_still_finds_master_when_that_is_the_convention(monkeypatch):
+    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
+        "rev-parse --verify --quiet refs/remotes/origin/master": _FakeCompleted("abc123\n"),
+    }))
+    assert lib.default_base_branch() == "master"
+
+
+def test_default_base_branch_falls_back_to_master_when_git_says_nothing(monkeypatch):
+    # No remote, no conventional branch — preserve the harness's historical
+    # assumption rather than inventing one.
+    monkeypatch.setattr(lib.subprocess, "run", _fake_git({}))
+    assert lib.default_base_branch() == "master"
+
+
+def test_default_base_branch_survives_git_being_unavailable(monkeypatch):
+    def _raise(*args, **kwargs):
+        raise OSError("git not found")
+
+    monkeypatch.setattr(lib.subprocess, "run", _raise)
+    assert lib.default_base_branch() == "master"
+
+
+def test_default_base_branch_caches_per_cwd(monkeypatch):
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        return _FakeCompleted("refs/remotes/origin/main\n")
+
+    monkeypatch.setattr(lib.subprocess, "run", run)
+    assert lib.default_base_branch("/repo") == "main"
+    first = len(calls)
+    assert lib.default_base_branch("/repo") == "main"
+    assert len(calls) == first, "second call for the same cwd must be cached"
+
+
 @pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
 def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
     # hooks.json invokes these standalone, where the `_dispatch_lib` import

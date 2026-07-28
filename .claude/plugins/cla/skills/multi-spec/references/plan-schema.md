@@ -1,6 +1,6 @@
 # multi-spec — change-plan file schema
 
-Phase 1 derives the grouping this file records; **Phase 2 writes and commits it once, on the batch branch, before any change is authored** — its own small commit ahead of any proposal work, so the grouping/sequencing judgment itself is protected by the same durability discipline as everything downstream. (It's written in Phase 2 rather than Phase 1 because two of its required fields — `batch_slug` and `branch` — are only derived once the branch is set up in Phase 2, and because a Phase-1 commit would land on `master`, which this skill may never push, so a "durability" commit there couldn't actually be pushed to survive a dead disk. See SKILL.md Phase 2's "Persist the plan now, on the branch.")
+Phase 1 derives the grouping this file records; **Phase 2 writes and commits it once, on the batch branch, before any change is authored** — its own small commit ahead of any proposal work, so the grouping/sequencing judgment itself is protected by the same durability discipline as everything downstream. (It's written in Phase 2 rather than Phase 1 because two of its required fields — `batch_slug` and `branch` — are only derived once the branch is set up in Phase 2, and because a Phase-1 commit would land on `<base-branch>`, which this skill may never push, so a "durability" commit there couldn't actually be pushed to survive a dead disk. See SKILL.md Phase 2's "Persist the plan now, on the branch.")
 
 ## Location
 

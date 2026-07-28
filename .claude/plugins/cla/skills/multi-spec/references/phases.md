@@ -10,7 +10,7 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 **Escalate-up on a sub-Opus session.** This grouping judgment sets every change's scope — on a session below Opus, dispatch it to an `opus` `Agent` (same escalate-up rule `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md` documents for Propose authoring) rather than deriving it at a lower tier. No-op on an Opus session.
 
-**Output** a change plan — one row per change: kebab-case `name`, the decision numbers it covers, a one-line scope, and `depends_on` (other change names in this batch, if any) — per `references/plan-schema.md`. Print it before authoring starts. Hold it in working context only — do not write/commit it here. Phase 2 persists it once the branch exists, because two of the plan's required fields (`batch_slug`, `branch`) only exist after Phase 2's branch derivation, and a Phase-1 commit would land on `master` (which this skill never pushes), so it wouldn't survive a dead disk anyway.
+**Output** a change plan — one row per change: kebab-case `name`, the decision numbers it covers, a one-line scope, and `depends_on` (other change names in this batch, if any) — per `references/plan-schema.md`. Print it before authoring starts. Hold it in working context only — do not write/commit it here. Phase 2 persists it once the branch exists, because two of the plan's required fields (`batch_slug`, `branch`) only exist after Phase 2's branch derivation, and a Phase-1 commit would land on `<base-branch>` (which this skill never pushes), so it wouldn't survive a dead disk anyway.
 
 ## Phase 2 — branch preflight + persist the plan
 
@@ -18,7 +18,7 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 **Preflight (`branch.py` is not reusable here — it hardcodes a `feature/` prefix; use plain git calls):**
 1. `git rev-parse --abbrev-ref HEAD` — already on `docs/propose-<batch-slug>` → this is a resume with the upstream already set; skip straight to the persist step below.
-2. On `master`: `git rev-parse --verify docs/propose-<batch-slug>` (local) and `git ls-remote --exit-code --heads origin docs/propose-<batch-slug>` (remote). Either existing → resume, `git checkout docs/propose-<batch-slug>`. Neither → `git checkout -b docs/propose-<batch-slug>`.
+2. On `<base-branch>`: `git rev-parse --verify docs/propose-<batch-slug>` (local) and `git ls-remote --exit-code --heads origin docs/propose-<batch-slug>` (remote). Either existing → resume, `git checkout docs/propose-<batch-slug>`. Neither → `git checkout -b docs/propose-<batch-slug>`.
 3. `git_state.py --expect-branch docs/propose-<batch-slug>` before the first commit (branch-name-agnostic, fully reusable).
 
 **Persist the plan, on the branch.** Assemble the plan JSON (Phase 1's grouping plus `batch_slug`/`branch`) per `references/plan-schema.md`, write to `cla.io/decisions/<stem>.multi-spec-plan.json`, then commit and push:

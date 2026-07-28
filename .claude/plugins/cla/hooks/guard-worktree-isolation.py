@@ -72,6 +72,7 @@ if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
+from _dispatch_lib import default_base_branch  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
 # A heartbeat older than this = the session is gone. Set as a CRASH backstop, not
@@ -241,8 +242,24 @@ def _remove(guard_dir: Path, my_id: str) -> None:
         pass  # already gone / unreadable — nothing to clean up
 
 
-def _sanitize_session_id(raw: object) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]", "_", str(raw or "unknown-session"))[:128] or "unknown-session"
+def _sanitize_session_id(raw: object) -> str | None:
+    """Filesystem-safe session id, or None when the caller supplied none.
+
+    Returning None (rather than the old `"unknown-session"` placeholder) is the
+    whole point. A placeholder makes every anonymous invocation write the SAME
+    heartbeat file — and because presence is only removed on SessionEnd for a
+    session that owns its id, nothing ever cleans it up. One test run, one agent
+    reproducing a payload, or one manual `--heartbeat` therefore leaves a
+    permanent phantom peer that makes every later commit in the primary clone
+    look like a two-session collision. That happened: a review agent invoking
+    this hook with a sample payload wedged real commits until the stray file was
+    deleted by hand. An unidentifiable session cannot be tracked or cleaned up,
+    so the correct move is to record nothing at all.
+    """
+    if raw is None:
+        return None
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", str(raw))[:128].strip("_")
+    return cleaned or None
 
 
 def _read_payload() -> dict | None:
@@ -276,12 +293,15 @@ def main(argv: list[str] | None = None) -> int:
     guard_dir = _primary_guard_dir(cwd)
 
     # --- presence modes (wired to SessionStart / SessionEnd / Edit|Write) --------
+    # An unidentifiable session writes NOTHING: it could neither be cleaned up
+    # nor distinguished from a real peer, so recording it would only ever
+    # manufacture a false collision (see `_sanitize_session_id`).
     if "--cleanup" in argv:  # SessionEnd: remove our heartbeat immediately
-        if guard_dir is not None:
+        if guard_dir is not None and session_id is not None:
             _remove(guard_dir, session_id)
         return 0
     if "--heartbeat" in argv:  # SessionStart / non-Bash tool use: refresh presence
-        if guard_dir is not None:
+        if guard_dir is not None and session_id is not None:
             _touch(guard_dir, session_id)
         return 0
 
@@ -290,6 +310,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if guard_dir is None:
         return 0  # worktree / not a repo — allow
+    if session_id is None:
+        # Cannot tell our own heartbeat from a peer's, so every live session
+        # would count as "other" and this would block a solo session. Fail open
+        # and say so, rather than blocking on an unanswerable question.
+        _warn("no session_id in the hook payload — presence tracking is off for this call")
+        return 0
 
     tool_input = payload.get("tool_input") or {}
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
@@ -316,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         f"shared object store):\n"
         f"    git worktree add .claude/worktrees/<task> -b feature/<task>\n"
         f"then relaunch this session in .claude/worktrees/<task>. The primary clone "
-        f"stays on master.\n"
+        f"stays on {default_base_branch(cwd)}.\n"
         f"(Escape hatch for a deliberate solo action: ALLOW_SHARED_CLONE_MUTATION=1. "
         f"Hook: guard-worktree-isolation.py)",
         file=sys.stderr,

@@ -8,7 +8,7 @@ For each candidate in the confirmed order:
 
 2. **Resume check (keyed off the run-notes ledger, not a guess).** Look this candidate up in `cla.io/retro/multi-lite-run-notes-<date>.md`. If it has a recorded `branch`/`pr_number` from an earlier pass, confirm its real state with `gh pr list --state all --head <recorded-branch>` (use `--state all`, not the default open-only — a merged dependency's branch was deleted by `--delete-branch` and its PR won't show as open). An open or merged PR → treat as done, mark the task complete, skip. Only when there is **no** recorded identifier for this candidate (a fresh session whose notes file was lost) fall back to a best-effort title match, and say so — this arm is explicitly weaker because `multi-lite` can't reconstruct `commit-push-pr`'s branch name.
 
-3. **Ensure the right base.** `git checkout master`, then `git status --porcelain` (empty = clean) before running. Under merge-before-dependents, every candidate in this one's `depends_on` must already be merged into `master` before it runs (step 8 below does that merge as the chain reaches each dependency) — so a dependent candidate branches off a `master` that actually contains its prerequisites. (In a reactive-worktree pivot, substitute the `origin/master`-based worktree idiom from the hoisted rule for the `git checkout master` here.)
+3. **Ensure the right base.** `git checkout <base-branch>`, then `git status --porcelain` (empty = clean) before running. Under merge-before-dependents, every candidate in this one's `depends_on` must already be merged into `<base-branch>` before it runs (step 8 below does that merge as the chain reaches each dependency) — so a dependent candidate branches off a `<base-branch>` that actually contains its prerequisites. (In a reactive-worktree pivot, substitute the `origin/<base-branch>`-based worktree idiom from the hoisted rule for the `git checkout <base-branch>` here.)
 
 4. **Run `/cla:lite-pr` on the candidate:** `Skill(cla:lite-pr, args="<one-line description>")`. Let it run its full Explore→Plan→Implement→Test→Ship→Review cycle uninterrupted — do not intervene mid-phase. **Descriptions must be concrete enough that `/cla:lite-pr`'s optional Explore phase auto-skips** — Phase 1a already requires this. Never let a candidate enter `/cla:lite-pr`'s interactive `Skill(shape-decision)` Q&A during an unattended chain: an under-specified candidate that triggers Explore would block the whole run waiting on input. If a candidate genuinely needs shaping, that's a Phase 1 signal it isn't lite-ready — route it out of scope rather than discovering it here.
 
@@ -28,7 +28,7 @@ For each candidate in the confirmed order:
 8. **Merge if a dependency (only when clean).** If a later candidate in the confirmed plan depends on this one, **merge now** — using the PR number captured in step 6 — so the dependent can branch off it:
    ```
    gh pr merge <captured-pr-number> --squash --delete-branch
-   git checkout master
+   git checkout <base-branch>
    git pull
    ```
    (separate commands, per bash-discipline). Confirm the merge landed (`git log --oneline -1`) before moving on, and update the candidate's run-notes status to `merged`. If **nothing** depends on this candidate, leave its PR **open** — merging is the user's call for independents — and set its status to `open`. Mark the task `completed` either way.

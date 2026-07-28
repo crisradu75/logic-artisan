@@ -11,7 +11,7 @@ Resolve the merged PR's head branch, then query `gh pr list --base <head>
 --state open` for stacked children; warn only if any exist.
 
 This hook only WARNS (exit 0). Stacked PRs are a legitimate flow and the fix
-(`gh pr edit <child> --base master`, or dropping `--delete-branch`) is the user's
+(`gh pr edit <child> --base <base-branch>`, or dropping `--delete-branch`) is the user's
 call, so a hard block would over-fire.
 
 Best-effort: any parse / missing-gh / offline / non-zero-`gh` failure exits 0
@@ -25,6 +25,15 @@ import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
+
+# See the sibling git hooks: the `_dispatch_lib` import resolves through
+# `sys.path`, which standalone runs populate only via `sys.path[0]`.
+_HOOKS_DIR = str(Path(__file__).resolve().parent)
+if _HOOKS_DIR not in sys.path:
+    sys.path.insert(0, _HOOKS_DIR)
+
+from _dispatch_lib import default_base_branch  # noqa: E402
 
 _GH_MERGE = re.compile(r"\bgh\s+pr\s+merge\b")
 _DELETE_BRANCH = re.compile(r"(?:^|\s)(?:--delete-branch|-d)(?:\s|=|$)")
@@ -123,7 +132,8 @@ def main() -> int:
     print(
         f"[warn-stacked-pr-merge] '{head}' is the base of open PR(s) {listed}. "
         f"Merging with --delete-branch auto-closes them and GitHub refuses to reopen. "
-        f"Retarget first: gh pr edit <child> --base master (or drop --delete-branch).",
+        f"Retarget first: gh pr edit <child> --base {default_base_branch()} "
+        f"(or drop --delete-branch).",
         file=sys.stderr,
     )
     return 0

@@ -87,13 +87,35 @@ def test_main_warns_when_branching_off_a_non_master_base(monkeypatch, capsys):
     assert "feature/old" in err
 
 
-def test_main_silent_when_branching_off_master(monkeypatch, capsys):
+@pytest.mark.parametrize("base", ["master", "main", "trunk"])
+def test_main_silent_when_branching_off_the_repos_own_base_branch(monkeypatch, capsys, base):
+    # Parametrized over the base-branch NAME because the hook no longer assumes
+    # `master`: it asks `default_base_branch()`. The bug this covers is a
+    # `main`-default repo, where the old hardcoded comparison warned on every
+    # single branch creation — including the correct `main` -> `feature/x` —
+    # which trains the reader to ignore the hook.
+    monkeypatch.setattr(hook, "default_base_branch", lambda: base)
     monkeypatch.setattr(
         "sys.stdin", io.StringIO('{"tool_input": {"command": "git checkout -b feature/new"}}')
     )
-    monkeypatch.setattr(hook.subprocess, "run", _run_with_head("master"))
+    monkeypatch.setattr(hook.subprocess, "run", _run_with_head(base))
     assert hook.main() == 0
     assert capsys.readouterr().err == ""
+
+
+def test_main_names_the_repos_actual_base_branch_in_the_warning(monkeypatch, capsys):
+    # The remediation the message suggests must be runnable in THIS repo — a
+    # `git switch master` hint in a repo with no `master` ref is worse than no
+    # hint at all.
+    monkeypatch.setattr(hook, "default_base_branch", lambda: "main")
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO('{"tool_input": {"command": "git checkout -b feature/new"}}')
+    )
+    monkeypatch.setattr(hook.subprocess, "run", _run_with_head("feature/old"))
+    assert hook.main() == 0
+    err = capsys.readouterr().err
+    assert "git switch main" in err
+    assert "master" not in err
 
 
 def test_main_silent_on_detached_head(monkeypatch, capsys):

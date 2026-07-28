@@ -99,12 +99,43 @@ def _implement_done(change_name: str) -> bool:
     return bool(data.get("isComplete", False))
 
 
+_base_branch_cache: str | None = None
+
+
+def _base_branch() -> str:
+    """Resolve this repo's base branch instead of assuming `master`.
+
+    A repo whose default is `main` has no `master` ref at all, so the hardcoded
+    `master..<branch>` ranges below used to fail outright with `unknown
+    revision` — not merely return a wrong count. Mirrors the hooks'
+    `_dispatch_lib.default_base_branch()`; kept as a local copy because each
+    skill is its own isolated pytest scope and cannot import from `hooks/`.
+    """
+    global _base_branch_cache
+    if _base_branch_cache is not None:
+        return _base_branch_cache
+    head_ref = _run(["git", "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
+    resolved = None
+    if head_ref.returncode == 0 and "/" in head_ref.stdout:
+        resolved = head_ref.stdout.strip().rsplit("/", 1)[-1] or None
+    if resolved is None:
+        for candidate in ("main", "master"):
+            for ref in (f"refs/heads/{candidate}", f"refs/remotes/origin/{candidate}"):
+                if _run(["git", "rev-parse", "--verify", "--quiet", ref]).returncode == 0:
+                    resolved = candidate
+                    break
+            if resolved:
+                break
+    _base_branch_cache = resolved or "master"
+    return _base_branch_cache
+
+
 def _branch_state(change_name: str) -> bool:
     expected = f"feature/{change_name}"
     res = _run(["git", "rev-parse", "--verify", expected])
     if res.returncode != 0:
         return False
-    ahead = _run(["git", "rev-list", "--count", f"master..{expected}"])
+    ahead = _run(["git", "rev-list", "--count", f"{_base_branch()}..{expected}"])
     if ahead.returncode != 0:
         return False
     try:
@@ -150,7 +181,7 @@ def _pr_state(change_name: str) -> dict:
 
 def _fix_rounds_applied(change_name: str) -> int:
     branch = f"feature/{change_name}"
-    res = _run(["git", "log", "--format=%s", f"master..{branch}"])
+    res = _run(["git", "log", "--format=%s", f"{_base_branch()}..{branch}"])
     if res.returncode != 0:
         return 0
     pat = re.compile(r"^fix: review round (\d+)\b")

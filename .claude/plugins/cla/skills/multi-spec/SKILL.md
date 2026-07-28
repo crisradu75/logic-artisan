@@ -12,6 +12,8 @@ Automates a manual precedent set in this repo's own history (see `references/pro
 
 ## Skill-level rules (hoisted — read first)
 
+- **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** Every command below that names it is a placeholder, not a literal: substitute the real name before running anything. Resolve it once, at the start of the run, with `git symbolic-ref --quiet refs/remotes/origin/HEAD` (take the segment after the last `/`); if that is unset, use whichever of `main` / `master` actually exists. The harness used to hardcode `master`, which silently broke every `main`-default repo — a `master..HEAD` range there fails outright with `unknown revision` rather than returning a wrong answer, and `git checkout master` cannot succeed at all.
+
 - **Commit each change immediately after authoring and validating it — never batch commits to the end.** One `git commit` (and `git push`) per change, before starting the next. This is not a style preference; it is the actual anti-data-loss mechanism.
 - **Never run `git add -A`.** Path-scope every stage (per Phase, name the exact paths: the plan JSON, one `openspec/changes/<name>/`, or the whole `openspec/changes/` only in Phase 4's fixes commit — see `.claude/plugins/cla/skills/spec-to-pr/references/bash-discipline.md`, the same hard rules bind here).
 - **Verify `git_state.py --expect-branch docs/propose-<batch-slug>` before every commit multi-spec makes** (the plan-persist commit, each per-change commit, the review-fixes commit, the run-log commit) — any non-zero exit halts and surfaces via `AskUserQuestion`, never a special-cased "probably fine."
@@ -49,7 +51,7 @@ Once every change is authored, validated, and committed, run **one** 3-agent rev
 
 ## Phase 5 — Open the PR
 
-Opening a PR is not a deployment action (same boundary `/cla:spec-to-pr`'s Ship phase relies on) — only merge/push-to-`master`/publish are out of scope. Full PR-create recipe + the pre-create resume check: `references/phases.md`.
+Opening a PR is not a deployment action (same boundary `/cla:spec-to-pr`'s Ship phase relies on) — only merge/push-to-`<base-branch>`/publish are out of scope. Full PR-create recipe + the pre-create resume check: `references/phases.md`.
 
 ## Report
 
@@ -70,7 +72,7 @@ Every phase resumes from git-tracked repo state, never from a log or the plan fi
 ## What this skill deliberately does not do
 
 - Does not implement anything — no `Skill(cla:spec-to-pr)`, `Skill(cla:lite-pr)`, or `Skill(cla:multi-pr)` call. Proposing and implementing are different unattended-run shapes with different risk profiles; bundling them here would blur that boundary for no benefit.
-- Does not merge the PR it opens, or push to `master` directly.
+- Does not merge the PR it opens, or push to `<base-branch>` directly.
 - Does not build a bespoke resumable-state script the way `multi-pr` has `discover_sequence.py` for ordering — Phase 1's fallback grouping is genuinely open-ended reasoning over prose, so it stays inline/dispatched reasoning rather than a script. This is separate from run logging, which this skill DOES do (see "Log the run" above).
 - Does not build a `multi-spec-retro` analyzer skill yet — same "wait for enough runs" posture noted above.
 

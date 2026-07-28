@@ -32,6 +32,7 @@ import contextlib
 import importlib.util
 import io
 import re
+import subprocess
 import sys
 import traceback
 from pathlib import Path
@@ -126,6 +127,61 @@ GIT_GLOBAL_OPTS = (
     r"\s+"
     r")*"
 )
+
+
+_BASE_BRANCH_CACHE: dict[str | None, str] = {}
+_BASE_BRANCH_FALLBACK = "master"
+
+
+def default_base_branch(cwd: str | None = None) -> str:
+    """Resolve THIS repo's base branch instead of assuming one.
+
+    The harness previously hardcoded `master` throughout. That is not portable —
+    and it is not even correct for every repo that ships the harness: a repo
+    whose default is `main` has no `master` ref at all, so a hardcoded
+    `git rev-list master..HEAD` fails with `unknown revision` rather than
+    producing a wrong answer quietly.
+
+    Resolution order, most authoritative first:
+      1. `refs/remotes/origin/HEAD` — what the remote itself reports as default.
+      2. An existing local or remote `main`, then `master`. `main` is probed
+         first because a repo carrying BOTH is nearly always one that renamed
+         to `main` and kept `master` as a stale leftover.
+      3. `master`, preserving the harness's historical assumption for a repo
+         with no remote and no conventional branch yet.
+
+    Cached per cwd: hook processes are short-lived, but several call sites may
+    ask within one run and this shells out to git.
+    """
+    if cwd in _BASE_BRANCH_CACHE:
+        return _BASE_BRANCH_CACHE[cwd]
+
+    def _git(args: list[str]) -> str | None:
+        try:
+            r = subprocess.run(
+                ["git", *(["-C", cwd] if cwd else []), *args],
+                capture_output=True, text=True, timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return (r.stdout or "").strip() if r.returncode == 0 else None
+
+    resolved = None
+    head_ref = _git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
+    if head_ref and "/" in head_ref:
+        resolved = head_ref.rsplit("/", 1)[-1] or None
+    if resolved is None:
+        for candidate in ("main", "master"):
+            for ref in (f"refs/heads/{candidate}", f"refs/remotes/origin/{candidate}"):
+                if _git(["rev-parse", "--verify", "--quiet", ref]):
+                    resolved = candidate
+                    break
+            if resolved:
+                break
+
+    resolved = resolved or _BASE_BRANCH_FALLBACK
+    _BASE_BRANCH_CACHE[cwd] = resolved
+    return resolved
 
 
 def ensure_hooks_dir_importable() -> None:

@@ -13,9 +13,9 @@ python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py
 
 `check_permissions.py --check` non-zero → surface the missing patterns and apply on approval (the one bootstrap ask, same carve-out the siblings make). `git_state.py` non-zero → resolve before continuing (in-progress rebase/cherry-pick, or a dirty tree with out-of-scope paths). A dirty tree at chain start poisons every subsequent candidate.
 
-**Start from `master`, clean (primary clone).** Check `git rev-parse --abbrev-ref HEAD`. If not on `master`, and the current branch carries local commits unrelated to this run, leave it untouched, then sync to `master` with the two separate commands the hoisted base-management rule requires (`git checkout master` then `git pull` — never `&&`-chained).
+**Start from `<base-branch>`, clean (primary clone).** Check `git rev-parse --abbrev-ref HEAD`. If not on `<base-branch>`, and the current branch carries local commits unrelated to this run, leave it untouched, then sync to `<base-branch>` with the two separate commands the hoisted base-management rule requires (`git checkout <base-branch>` then `git pull` — never `&&`-chained).
 
-Each candidate's `/cla:lite-pr` run must branch off an up-to-date `master`. (Per the hoisted rule: `git checkout master` is valid here because `multi-lite` runs in the primary clone; if a mid-chain guard block forces a reactive worktree pivot, base off `origin/master` via `git worktree add … -b <branch> origin/master` instead.)
+Each candidate's `/cla:lite-pr` run must branch off an up-to-date `<base-branch>`. (Per the hoisted rule: `git checkout <base-branch>` is valid here because `multi-lite` runs in the primary clone; if a mid-chain guard block forces a reactive worktree pivot, base off `origin/<base-branch>` via `git worktree add … -b <branch> origin/<base-branch>` instead.)
 
 ## Phase 2 — Task tracking + the run-notes ledger
 
