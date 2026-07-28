@@ -43,6 +43,9 @@ guard = _load_module()
     "git -c core.hooksPath=x commit -m y",   # global-option prefix must not bypass
     "git -C /some/path commit -m y",
     "git --no-pager switch main",
+    "git --work-tree /some/path commit -m y",   # regression: space-separated long opt
+    "git --git-dir /some/path/.git commit -m y",   # regression: space-separated long opt
+    'git -C "/some/checkout path/with a space" commit -m y',  # regression: quoted value with a space
 ])
 def test_mutating_commands_detected(cmd):
     # cwd is irrelevant for these shapes (no ref resolution needed).
@@ -69,6 +72,16 @@ def test_commit_inside_quotes_not_detected():
     # A `git commit` mentioned inside a quoted string must not trip the matcher.
     cmd = "echo 'run git commit to save' > notes.txt"
     assert guard._mutates_shared_head(cmd, os.getcwd()) is None
+
+
+def test_checkout_of_a_quoted_branch_name_resolves_the_real_target(repo):
+    # `_CHECKOUT_ARG`'s group 2 is re-sliced from the ORIGINAL command (not
+    # `scanned`) specifically so a quoted checkout target still resolves
+    # against the real ref via `git rev-parse` — a naive collapse-to-`''`
+    # would have handed `_is_checkout_switch` the placeholder text instead,
+    # silently misclassifying every quoted-target checkout as a file restore.
+    cmd = "git checkout 'main'"
+    assert guard._mutates_shared_head(cmd, str(repo)) == "switch branches"
 
 
 def test_other_live_sessions_counts_and_prunes(tmp_path):

@@ -7,7 +7,9 @@ refuses no-diff PRs), so the only fix is
 to prevent the push at the moment it would happen.
 
 Detection: scan the Bash command for `git push` shapes that target main/master
-directly. Specifically block:
+directly — including a `push` reached via a git GLOBAL option between `git`
+and the subcommand (`-c`/`-C`/`--work-tree`/etc., see `_dispatch_lib.GIT_GLOBAL_OPTS`),
+not just a bare `git push`. Specifically block:
   - `git push <remote> main` / `git push <remote> master`
   - `git push <remote> HEAD:main` / `git push <remote> HEAD:master`
   - `git push <remote> <branch>:main` / `... :master`
@@ -23,9 +25,11 @@ Exit codes:
   0 — allow
   2 — block with stderr explaining the rule
 
-Best-effort: a `git push` invoked via a sub-shell or alias may slip past it.
-The common offense (`git push origin main` from a session that drifted onto
-main) is caught.
+Best-effort: a `git push` invoked via a sub-shell or alias may slip past it,
+as can a global option shape outside `GIT_GLOBAL_OPTS`'s named, closed set
+(see that helper's own docstring for exactly which shapes are covered). The
+common offense (`git push origin main` from a session that drifted onto
+main, with or without a `-C`/`--work-tree`/`-c` prefix) is caught.
 """
 
 from __future__ import annotations
@@ -36,10 +40,9 @@ import re
 import subprocess
 import sys
 
+from _dispatch_lib import GIT_GLOBAL_OPTS as _G
+from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans
 
-# git GLOBAL options that may sit between `git` and `push` — consumed so
-# `git -C /path push origin main` is not a bypass. Mirrors guard-worktree-isolation.py's `_G`.
-_G = r"(?:(?:-[cC]\s+\S+|-[A-Za-z]|--[A-Za-z][\w-]*(?:=\S+)?)\s+)*"
 _GIT_PUSH = r"\bgit\s+" + _G + r"push\b"
 
 # Match any `git push ... <something>:main` / `... main` / same for master.
@@ -65,19 +68,6 @@ def _current_branch() -> str | None:
     if result.returncode != 0:
         return None
     return (result.stdout or "").strip() or None
-
-
-def _strip_quoted_spans(cmd: str) -> str:
-    """Remove single-, double-, and backtick-quoted spans so the matcher does
-    not trip on a literal `git push origin main` inside echoed prose, a
-    heredoc body, or a string argument. Mirrors `block-cd-in-bash.py`'s
-    `cd_outside_quotes` approach. Doesn't handle escaped or nested quotes
-    perfectly — covers the 99% case where the legitimate offense is the
-    command itself, not a quoted literal."""
-    stripped = re.sub(r"'[^']*'", "''", cmd)
-    stripped = re.sub(r'"[^"]*"', '""', stripped)
-    stripped = re.sub(r"`[^`]*`", "``", stripped)
-    return stripped
 
 
 def _is_direct_push_to_main(command: str) -> bool:

@@ -28,12 +28,18 @@ For each change in the confirmed order:
    ```
    gh pr merge <#> --squash --delete-branch
    ```
-   Then sync the local checkout with two separate commands (not chained with `&&`, per the inherited bash-discipline rule):
-   ```
-   git checkout master
-   git pull
-   ```
-   Confirm the merge actually landed (`git log --oneline -1` should show the merged commit) before marking the change's task complete and moving to the next one.
+   **Verification branches on whether THIS worktree holds `master`/`main`.** `gh pr merge --delete-branch` performs the remote merge first, then tries to switch the *local* checkout to the base branch and delete the local copy of the feature branch:
+   - **If this worktree holds `master`/`main`** (the primary clone, or a worktree that legitimately checked it out): the local-checkout switch succeeds. Sync it with two separate commands (not chained with `&&`, per the inherited bash-discipline rule):
+     ```
+     git checkout master
+     git pull
+     ```
+     then confirm `git log --oneline -1` shows the merged commit.
+   - **If it does not** (the normal case for a chain run inside a dedicated feature-branch worktree — the usual shape this skill runs in): that second step fails with `fatal: 'master' is already used by worktree at <primary-clone-path>`. **The remote merge itself already succeeded** — don't treat this error as a failed merge, and don't attempt the `git checkout master` / `git log -1` steps above (they don't apply in this worktree). Skip straight to the verification below.
+
+   **Authoritative verification (either path):** `gh pr view <#> --json state,mergedAt` — state `MERGED` confirms the merge landed regardless of which branch this arrives from. In the second case above, if the remote feature branch wasn't deleted as part of that failed local-switch step, delete it explicitly: `git push origin --delete feature/<change-name>`. This repeats on every merge in a chain run from a worktree, so expect it rather than re-diagnosing each time. Only after this verification passes should the change's task be marked complete.
+
+   **Local `master`/`main` is never auto-updated by a sibling worktree's merge.** In a worktree that doesn't hold `master`/`main` (the second case above), this worktree's local base-branch ref goes stale the moment ANY merge happens — including this chain's own earlier merges — since there's no `git checkout master && git pull` step to refresh it. Any later diff-scoping command in this run (e.g. Revise's `git diff master..HEAD` for a *subsequent* change in the chain) MUST target `origin/master` (after an explicit `git fetch origin master`), never the local `master`/`main` ref — a stale local ref silently produces a diff padded with every prior change's own files. Confirmed in practice via an ad hoc file-count sanity check against the expected total, but no such check is built into this skill — treat "target `origin/master`, always" as the actual safeguard, not the possibility of noticing the padding after the fact.
 
 6. **Capture a real end timestamp** — `date -u +%Y-%m-%dT%H:%M:%SZ` via Bash — closing the window opened in step 2. This spans the change's full per-change loop (the `/cla:spec-to-pr` run, any step 4 fix round, and the step 5 merge), i.e. genuine measured wall-clock for everything this change actually cost, not just its `/cla:spec-to-pr` sub-call. Record the delta in the per-run running-notes file next to the Phase 1c prediction for this change. Mark the change's `TaskCreate` entry `completed`.
 

@@ -61,6 +61,9 @@ import sys
 import time
 from pathlib import Path
 
+from _dispatch_lib import GIT_GLOBAL_OPTS as _G
+from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans
+
 # A heartbeat older than this = the session is gone. Set as a CRASH backstop, not
 # the primary liveness signal: presence is refreshed on SessionStart + every
 # Bash/Edit/Write and REMOVED on SessionEnd, so a cleanly-closed session disappears
@@ -71,23 +74,8 @@ _TTL_SECONDS = 60 * 60
 _GUARD_DIRNAME = ".claude-worktree-guard"
 
 
-def _strip_quoted_spans(cmd: str) -> str:
-    """Remove quoted spans so the matcher does not trip on a `git commit` inside
-    an echoed string / heredoc / commit message. Mirrors block-cd-in-bash.py."""
-    stripped = re.sub(r"'[^']*'", "''", cmd)
-    stripped = re.sub(r'"[^"]*"', '""', stripped)
-    stripped = re.sub(r"`[^`]*`", "``", stripped)
-    return stripped
-
-
 # --- HEAD-mutating command detection ----------------------------------------
 
-# git GLOBAL options that may sit between `git` and the subcommand — consumed so
-# `git -c core.x=y commit`, `git -C /path checkout`, `git --no-pager switch` are not
-# a bypass. `-c KEY=VAL` / `-C PATH` take a following value token; short flags and
-# `--long[=val]` are single tokens. (Exotic/quoted forms still slip — same
-# best-effort posture as the sibling git hooks.)
-_G = r"(?:(?:-[cC]\s+\S+|-[A-Za-z]|--[A-Za-z][\w-]*(?:=\S+)?)\s+)*"
 _GIT = r"\bgit\s+" + _G
 
 # branch create-and-switch: `git checkout -b|-B|--orphan NAME`, `git switch -c|-C|--create NAME`
@@ -166,7 +154,14 @@ def _mutates_shared_head(command: str, cwd: str) -> str | None:
     if m and "--" not in scanned:
         flags = m.group(1)
         if "-b" not in flags and "-B" not in flags and "--orphan" not in flags:
-            if _is_checkout_switch(cwd, m.group(2)):
+            # Re-slice group 2 from the ORIGINAL command, not `scanned`: a
+            # quoted checkout target (`git checkout "some-branch"`) would
+            # otherwise hand `_is_checkout_switch` the scan-time placeholder
+            # text instead of the real ref name, breaking its `git rev-parse`
+            # classification — `strip_quoted_spans` is length-preserving
+            # specifically so this offset is still valid against `command`.
+            target = command[m.start(2) : m.end(2)]
+            if _is_checkout_switch(cwd, target):
                 return "switch branches"
     return None
 

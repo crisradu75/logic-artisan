@@ -26,9 +26,8 @@ import re
 import subprocess
 import sys
 
-# git GLOBAL options that may sit between `git` and the subcommand — consumed so
-# `git -C /path checkout -b NAME` is not a bypass. Mirrors guard-worktree-isolation.py's `_G`.
-_G = r"(?:(?:-[cC]\s+\S+|-[A-Za-z]|--[A-Za-z][\w-]*(?:=\S+)?)\s+)*"
+from _dispatch_lib import GIT_GLOBAL_OPTS as _G
+from _dispatch_lib import strip_quoted_spans
 
 # git checkout -b NAME   |   git switch -c NAME   |   git switch --create NAME
 # Intentionally NOT matched: `git branch NAME` (creates a ref WITHOUT moving HEAD, so
@@ -44,14 +43,27 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return 0
-    cmd = (payload.get("tool_input") or {}).get("command", "")
+    if not isinstance(payload, dict):
+        return 0
+    tool_input = payload.get("tool_input")
+    cmd = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
     if not isinstance(cmd, str) or not cmd:
         return 0
 
-    m = _BRANCH_CREATE.search(cmd)
+    # Strip quoted spans BEFORE matching: without this, a quoted `-c`/`-C`
+    # value containing a space (`git -C "/path with space" checkout -b x`,
+    # e.g. a worktree living at a checkout path with a space in it) breaks
+    # `_G`'s `\S+` value-token match and lets the branch-create shape slip
+    # past undetected — found in review, since fixed by stripping first.
+    # `strip_quoted_spans` is length-preserving specifically so group 1's
+    # offsets are still valid against the ORIGINAL `cmd` below — re-slicing
+    # from there (not `scanned`) is what keeps the printed branch name real
+    # when it was itself quoted, instead of the scan-time placeholder text.
+    scanned = strip_quoted_spans(cmd)
+    m = _BRANCH_CREATE.search(scanned)
     if not m:
         return 0
-    new_branch = m.group(1).strip("'\"")
+    new_branch = cmd[m.start(1) : m.end(1)].strip("'\"")
 
     try:
         head = subprocess.run(

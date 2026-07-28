@@ -24,12 +24,83 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import re
 import sys
 import traceback
 from pathlib import Path
 from types import ModuleType
 
 _HOOKS_DIR = Path(__file__).resolve().parent
+
+
+# --- Git command-line matching helpers --------------------------------------
+# Shared by block-direct-push-to-main.py, warn-branch-base.py,
+# warn-stray-scratch-artifact.py, and guard-worktree-isolation.py. Previously
+# each of those four files carried its own literal copy of this pattern (three
+# linked only by a "mirrors guard-worktree-isolation.py" comment) — a bug fixed
+# in one copy could silently persist in the other three, and did: a long
+# global option with a space-separated (non-`=`) value (`git --work-tree
+# <path> push origin main`) bypassed all of them, and a quoted `-c`/`-C` value
+# containing a space (`git -C "/path with space" checkout -b x`) bypassed the
+# two hooks that didn't call `strip_quoted_spans` before matching. One
+# definition, one fix site closes both classes at once and keeps them closed.
+
+
+def strip_quoted_spans(cmd: str) -> str:
+    """Replaces the contents of every quoted/backtick span with same-length,
+    non-whitespace placeholder characters (the quote delimiters themselves are
+    left in place), so a matcher below doesn't trip on a `git commit` mentioned
+    inside an echoed string / heredoc / commit message, AND so a global
+    option's quoted value (`-C "/path with space"`) collapses to a single
+    whitespace-free token before `GIT_GLOBAL_OPTS` tries to match it — the
+    value-consuming alternatives below all use `\\S+`, which cannot span an
+    un-stripped internal space on its own.
+
+    Length-preserving is deliberate, not incidental: it's what lets a caller
+    that captures a match GROUP against the scanned string (e.g. a branch
+    name) re-slice the SAME start/end offsets out of the original, unscanned
+    command to recover the real text — a naive collapse-to-`''` would shift
+    every later offset and silently return the placeholder instead of the
+    real value for anything captured after the first quoted span."""
+
+    def _placeholder(match: re.Match[str]) -> str:
+        span = match.group(0)
+        return span[0] + "#" * (len(span) - 2) + span[-1]
+
+    stripped = re.sub(r"'[^']*'", _placeholder, cmd)
+    stripped = re.sub(r'"[^"]*"', _placeholder, stripped)
+    stripped = re.sub(r"`[^`]*`", _placeholder, stripped)
+    return stripped
+
+
+# git GLOBAL options that may sit between `git` and the subcommand — consumed
+# so `git -c core.x=y commit`, `git -C /path checkout`, `git --work-tree /path
+# push origin main` are not a bypass. `-c KEY=VAL` / `-C PATH` take a
+# following value token (bare, or — once `strip_quoted_spans` has run — a
+# collapsed `""`/`''` token). A NAMED, closed set of long options that also
+# take their value as a separate space-delimited token (`--git-dir`,
+# `--work-tree`, `--namespace`, `--super-prefix`) get the same optional
+# space-value treatment; every other short/long flag is a single token
+# (`--long[=val]` only, no bare-space form). The named-option list is
+# deliberately closed rather than "any --long-opt may take a following
+# value" — a blanket rule risks the matcher swallowing the real subcommand
+# token whenever a value-less flag (`--bare`, `--no-pager`, `--paginate`) is
+# immediately followed by it. Best-effort, not an exhaustive git-argument
+# parser: an option shape outside this list, or one this hasn't been tested
+# against, can still slip through — see each hook's own docstring for its
+# specific detection scope.
+_GIT_GLOBAL_VALUE_OPTS = r"(?:git-dir|work-tree|namespace|super-prefix)"
+GIT_GLOBAL_OPTS = (
+    r"(?:"  # outer repetition group — zero or more options, each followed by whitespace
+    r"(?:"  # inner alternation — exactly one option-shape per repetition
+    r"(?:-[cC]\s+\S+)"
+    r"|(?:--" + _GIT_GLOBAL_VALUE_OPTS + r"\b(?:=\S+|\s+\S+)?)"
+    r"|(?:-[A-Za-z])"
+    r"|(?:--[A-Za-z][\w-]*(?:=\S+)?)"
+    r")"
+    r"\s+"
+    r")*"
+)
 
 
 def load_hook(filename: str) -> ModuleType:

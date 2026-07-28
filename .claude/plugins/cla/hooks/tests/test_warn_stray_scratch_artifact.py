@@ -105,6 +105,34 @@ def test_main_warns_on_chained_command(monkeypatch, capsys):
     assert "scratchpad_dump.txt" in capsys.readouterr().err
 
 
+def test_main_warns_on_commit_behind_a_space_separated_long_global_option(monkeypatch, capsys):
+    # Regression: `--work-tree <path>` (space-separated, not `=`) used to
+    # bypass the detection entirely — the hook fired exit 0 with no output.
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO('{"tool_input": {"command": "git --work-tree /some/other/repo commit -m x"}}'),
+    )
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? scratchpad_dump.txt"])
+    assert hook.main() == 0
+    assert "scratchpad_dump.txt" in capsys.readouterr().err
+
+
+def test_main_warns_on_commit_behind_a_quoted_c_value_with_a_space(monkeypatch, capsys):
+    # Regression: a quoted `-c`/`-C` value containing a space (a real,
+    # not-exotic shape — e.g. a checkout path with a space in it) used to
+    # break the match entirely, since this hook never stripped quoted spans
+    # before matching.
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(
+            '{"tool_input": {"command": "git -C \\"/some/checkout path/with a space\\" commit -m x"}}'
+        ),
+    )
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? scratchpad_dump.txt"])
+    assert hook.main() == 0
+    assert "scratchpad_dump.txt" in capsys.readouterr().err
+
+
 def test_main_silent_when_nothing_stray_is_present(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "git commit -m x"}}'))
     monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? README.md"])

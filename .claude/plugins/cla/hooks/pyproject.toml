@@ -1,7 +1,12 @@
 # Pytest config for the cla plugin's guard-hook test suite.
 # The hook tests load the hook modules by path (importlib from the hooks dir),
-# so no `pythonpath` is needed — only a rootdir + testpaths so `pytest
-# .claude/plugins/cla/hooks/` collects the suite. Mirrors each skill's own pyproject.
+# and several hooks now import their git-command-matching helpers from the
+# shared `_dispatch_lib` sibling module — `pythonpath = ["."]` puts this
+# pyproject's own directory (the hooks dir) on sys.path so that import
+# resolves under pytest the same way it already does when a hook runs for
+# real (as a standalone script, or dynamically loaded by `_dispatch_lib`
+# itself — both put the hooks dir on `sys.path` by construction).
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
