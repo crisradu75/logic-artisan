@@ -84,6 +84,30 @@ def test_checkout_of_a_quoted_branch_name_resolves_the_real_target(repo):
     assert guard._mutates_shared_head(cmd, str(repo)) == "switch branches"
 
 
+@pytest.mark.parametrize("cmd", [
+    "git --work-tree /some/path checkout main",
+    "git --git-dir /some/path/.git checkout main",
+    "git --no-pager checkout main",
+    "git --bare checkout main",
+])
+def test_checkout_switch_detected_behind_a_long_global_option(repo, cmd):
+    # The branch-SWITCH path (as opposed to create/commit) used to bail on a
+    # bare `"--" in scanned`, which is true of ANY long option — so every one
+    # of these silently skipped the check and allowed a HEAD move on the shared
+    # primary clone. Only a STANDALONE `--` (end-of-options) should skip it.
+    assert guard._mutates_shared_head(cmd, str(repo)) == "switch branches"
+
+
+@pytest.mark.parametrize("cmd", [
+    "git checkout -- somefile.py",
+    "git checkout -- README.md",
+])
+def test_end_of_options_marker_still_means_file_restore(repo, cmd):
+    # The complement of the test above: a standalone `--` marks the args after
+    # it as PATHS, so this is a file restore and must stay unguarded.
+    assert guard._mutates_shared_head(cmd, str(repo)) is None
+
+
 def test_other_live_sessions_counts_and_prunes(tmp_path):
     gdir = tmp_path / "guard"
     gdir.mkdir()

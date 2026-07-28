@@ -61,8 +61,18 @@ import sys
 import time
 from pathlib import Path
 
-from _dispatch_lib import GIT_GLOBAL_OPTS as _G
-from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans
+# The `_dispatch_lib` import below resolves through `sys.path`. This hook runs
+# STANDALONE for `--heartbeat` (SessionStart) and `--cleanup` (SessionEnd), i.e.
+# outside the dispatcher entirely, so it cannot lean on the dispatcher having
+# set `sys.path[0]`. An ImportError here would be worse than loud: no heartbeat
+# gets written, every session then sees `others == 0`, takes the "solo" path,
+# and the shared-HEAD collision this guard exists to prevent happens in silence.
+_HOOKS_DIR = str(Path(__file__).resolve().parent)
+if _HOOKS_DIR not in sys.path:
+    sys.path.insert(0, _HOOKS_DIR)
+
+from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
+from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
 # A heartbeat older than this = the session is gone. Set as a CRASH backstop, not
 # the primary liveness signal: presence is refreshed on SessionStart + every
@@ -92,6 +102,9 @@ _SWITCH_HELP = re.compile(_GIT + r"switch\s+(?:-h|--help)\b")
 _COMMIT = re.compile(_GIT + r"commit(?=\s|$)")
 # `git checkout ARG` where ARG might be a branch/commit-ish (resolved below).
 _CHECKOUT_ARG = re.compile(_GIT + r"checkout\s+((?:(?:-[a-zA-Z]+|--\S+)\s+)*)(\S+)")
+# A STANDALONE `--` token (end-of-options marker), as opposed to the `--` that
+# merely begins a long option like `--work-tree` or `--no-pager`.
+_END_OF_OPTIONS = re.compile(r"(?:^|\s)--(?:\s|$)")
 
 
 def _warn(msg: str) -> None:
@@ -133,10 +146,12 @@ def _is_checkout_switch(cwd: str, arg: str) -> bool:
 def _mutates_shared_head(command: str, cwd: str) -> str | None:
     """Return a short label of the HEAD-mutating op, or None if the command does
     not move the shared branch/HEAD. Covers branch create, branch switch (`git
-    switch` any form, `git checkout <commit-ish>`), and `git commit`. Intentionally
-    NOT covered (accepted, same best-effort posture as the sibling git hooks):
-    `git merge`/`git rebase`/`git reset`, and shapes hidden behind global options
-    (`git -c ... commit`)."""
+    switch` any form, `git checkout <commit-ish>`), and `git commit` — each of
+    those reached either directly or behind git global options, since every
+    pattern is anchored on `_GIT`, which consumes `GIT_GLOBAL_OPTS` (`git -c
+    ... commit`, `git -C /path checkout`, `git --work-tree /path switch` all
+    match). Intentionally NOT covered (accepted, same best-effort posture as
+    the sibling git hooks): `git merge`/`git rebase`/`git reset`."""
     scanned = _strip_quoted_spans(command)
 
     if _BRANCH_CREATE.search(scanned):
@@ -148,18 +163,20 @@ def _mutates_shared_head(command: str, cwd: str) -> str | None:
     if _COMMIT.search(scanned) and "--dry-run" not in scanned:
         return "commit"
 
-    # `git checkout <commit-ish>` (not a file restore). Skip when `--` present
-    # (explicit paths) or a create form (already handled above).
+    # `git checkout <commit-ish>` (not a file restore). Skip on a STANDALONE `--`
+    # (the explicit end-of-options marker, after which args are paths) or a
+    # create form (already handled above). Matching a bare `"--" in scanned`
+    # instead would abandon the check on ANY long option — `git --work-tree
+    # /path checkout main` and `git --no-pager checkout main` both contain
+    # `--` — silently skipping the branch switch this guard is here to catch.
     m = _CHECKOUT_ARG.search(scanned)
-    if m and "--" not in scanned:
+    if m and not _END_OF_OPTIONS.search(scanned):
         flags = m.group(1)
         if "-b" not in flags and "-B" not in flags and "--orphan" not in flags:
-            # Re-slice group 2 from the ORIGINAL command, not `scanned`: a
-            # quoted checkout target (`git checkout "some-branch"`) would
-            # otherwise hand `_is_checkout_switch` the scan-time placeholder
-            # text instead of the real ref name, breaking its `git rev-parse`
-            # classification — `strip_quoted_spans` is length-preserving
-            # specifically so this offset is still valid against `command`.
+            # Re-slice group 2 from the ORIGINAL command (strip_quoted_spans is
+            # length-preserving) so a quoted target resolves as its real ref
+            # rather than the scan-time placeholder. The quotes survive the
+            # slice — `_is_checkout_switch` strips them.
             target = command[m.start(2) : m.end(2)]
             if _is_checkout_switch(cwd, target):
                 return "switch branches"

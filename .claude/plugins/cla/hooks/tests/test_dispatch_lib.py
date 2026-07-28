@@ -134,18 +134,26 @@ def test_git_global_opts_recognizes_every_documented_prefix_shape(command):
     assert _git_push_pattern().search(command), f"expected a match for: {command!r}"
 
 
-def test_git_global_opts_documented_gap_is_a_known_no_match_not_a_crash():
+def test_git_global_opts_gap_fails_safe_without_eating_the_subcommand():
     # --exec-path is deliberately NOT in the named space-value-taking list
-    # (see GIT_GLOBAL_OPTS's own docstring) — confirms the accepted gap fails
-    # SAFE (simply no match) rather than something worse (a garbled partial
-    # match, or the pattern eating into the real subcommand token).
-    assert not _git_push_pattern().search("git --exec-path /x push origin main")
+    # (see GIT_GLOBAL_OPTS's own docstring). Asserted as a SAFETY property, not
+    # as required behavior: whatever this shape does, it must not produce a
+    # garbled partial match that swallows the real subcommand token. Adding
+    # `exec-path` to the named set later is a strict improvement and must NOT
+    # make this test fail, so don't assert the no-match itself.
+    command = "git --exec-path /x push origin main"
+    m = _git_push_pattern().search(command)
+    if m is not None:
+        assert m.group(0).endswith("push"), (
+            f"pattern matched but did not land on the `push` subcommand: {m.group(0)!r}"
+        )
 
 
-def test_git_global_opts_does_not_false_positive_on_a_plain_non_main_push():
-    # Push-shape detection itself is separate from the main/master-target
-    # check a caller layers on top — just confirming the shared pattern
-    # doesn't refuse to match a legitimate, unrelated push.
+def test_git_global_opts_matches_a_legitimate_non_main_push_shape():
+    # Push-SHAPE detection is separate from the main/master-target check a
+    # caller layers on top. This asserts the shared pattern still matches an
+    # ordinary feature-branch push (the target check is what spares it) — it is
+    # not a false-positive test, despite what an earlier name here implied.
     assert _git_push_pattern().search("git push origin feature/x")
 
 
@@ -188,4 +196,95 @@ def test_strip_quoted_spans_still_hides_a_git_command_mentioned_in_quoted_prose(
     command = 'echo "run git commit -m foo later" && ls'
     scanned = lib.strip_quoted_spans(command)
     assert "git commit" not in scanned
-    assert "git" not in scanned or not re.search(r"\bgit\s+commit\b", scanned)
+
+
+# --------------------------------------------------------------------------- #
+# strip_quoted_spans -- the documented SCOPE of what it does and does not cover
+# --------------------------------------------------------------------------- #
+
+
+def test_strip_quoted_spans_collapses_backtick_spans_too():
+    # Backticks are the third quoting form the helper handles; the other two
+    # had coverage and this one did not.
+    command = "echo `git commit -m x` && ls"
+    scanned = lib.strip_quoted_spans(command)
+    assert "git commit" not in scanned
+    assert len(scanned) == len(command)
+
+
+def test_strip_quoted_spans_does_not_cover_heredoc_bodies():
+    # Pins a NAMED non-coverage, so nobody re-adds the (previously wrong)
+    # docstring claim that heredocs are handled. A heredoc body is unquoted
+    # text, so a git command inside one survives the scan and a caller WILL
+    # match it. This is the git hooks' most likely real-world false positive;
+    # it is accepted, and this test exists so it stays a known quantity.
+    command = "cat > x.sh <<'EOF'\ngit " + "push origin main\nEOF"
+    scanned = lib.strip_quoted_spans(command)
+    assert "push origin main" in scanned
+
+
+def test_strip_quoted_spans_matches_shell_semantics_for_a_midword_apostrophe():
+    # `echo don't && git push origin main && echo won't` — bash reads the span
+    # between the two apostrophes as ONE single-quoted literal and never runs
+    # the push, so a hook that stops seeing the `git push` here is CORRECT, not
+    # bypassed. Pinned because it looks like a bypass on first read: "fixing"
+    # it (e.g. requiring quotes at token boundaries) would make the git hooks
+    # fire on commands the shell would never execute.
+    command = "echo don't && git " + "push origin main && echo won't"
+    scanned = lib.strip_quoted_spans(command)
+    assert "git push" not in scanned
+
+
+# --------------------------------------------------------------------------- #
+# import resolution -- the hooks' one non-stdlib dependency
+# --------------------------------------------------------------------------- #
+
+
+def test_ensure_hooks_dir_importable_is_idempotent_and_adds_the_hooks_dir():
+    import sys
+
+    hooks_dir = str(_HOOKS_DIR)
+    original = list(sys.path)
+    try:
+        sys.path[:] = [p for p in sys.path if p != hooks_dir]
+        lib.ensure_hooks_dir_importable()
+        assert sys.path.count(hooks_dir) == 1
+        lib.ensure_hooks_dir_importable()
+        assert sys.path.count(hooks_dir) == 1, "second call must not duplicate the entry"
+    finally:
+        sys.path[:] = original
+
+
+_GIT_HOOK_FILES = [
+    "block-direct-push-to-main.py",
+    "warn-branch-base.py",
+    "warn-stray-scratch-artifact.py",
+    "guard-worktree-isolation.py",
+]
+
+
+@pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
+def test_git_hooks_import_the_shared_pattern_instead_of_re_inlining_it(filename):
+    # The whole point of consolidating GIT_GLOBAL_OPTS was that a bug fixed in
+    # one copy no longer has to be fixed in four. A behavioral test can't catch
+    # someone pasting a CORRECT duplicate back in — which silently re-creates
+    # the drift this consolidation removed — so assert the structure directly.
+    source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
+    assert "from _dispatch_lib import GIT_GLOBAL_OPTS" in source, (
+        f"{filename} must import the shared pattern, not define its own"
+    )
+    assert not re.search(r"^_G\s*=\s*r?['\"]\(\?:", source, re.MULTILINE), (
+        f"{filename} appears to re-inline a local _G pattern literal"
+    )
+
+
+@pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
+def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
+    # hooks.json invokes these standalone, where the `_dispatch_lib` import
+    # resolves only because CPython sets sys.path[0] to the script's dir — a
+    # property suppressed by PYTHONSAFEPATH=1 / -I / -P. Each hook inserts its
+    # own dir explicitly so an ImportError can never silently disable a guard.
+    source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
+    assert "sys.path.insert(0, _HOOKS_DIR)" in source, (
+        f"{filename} must bootstrap its own sys.path before importing _dispatch_lib"
+    )

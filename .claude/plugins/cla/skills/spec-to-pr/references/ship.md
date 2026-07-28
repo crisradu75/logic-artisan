@@ -14,7 +14,14 @@ FIRST determine the current branch — `git rev-parse --abbrev-ref HEAD` — and
   Exit 3 → branch already exists locally or on origin (and you are NOT on it); record `warn` with the date-suffixed alternative from stderr. **All subsequent phases (Revise AND Archive) become `skip`** because no PR will be opened.
   Exit 5 → remote could not be reached (network/auth/missing-remote); record `warn` and skip the rest of Ship + Revise + Archive (same as exit 3).
   Exit 0 → `git pull` (fast-forward local `master` to `origin/master` — cheap, and prevents branching off a `master` that's gone stale since this session's own last fetch, e.g. because a chained run merged another change in the meantime) then `git checkout -b feature/<change-name>` before staging.
-- **On any other branch** (non-master, non-`feature/<change-name>`) → fail loudly; not the orchestrator's job to disambiguate.
+- **On any other branch** (non-master, non-`feature/<change-name>`) → fail loudly; not the orchestrator's job to disambiguate. **One exception — a fresh `/cla:new-worktree` branch with nothing on it yet.** That skill creates its own branch name, so a run started inside such a worktree lands here through no fault of its own, with zero work at risk. Rename in place rather than failing. All three checks must pass first:
+  ```
+  git fetch origin master
+  git rev-list --count origin/master..HEAD        # must be 0 — no commits to lose
+  git rev-parse --verify --quiet refs/remotes/origin/feature/<change-name>   # must be EMPTY — no remote branch to collide with
+  git rev-parse --verify --quiet refs/heads/feature/<change-name>            # must be EMPTY — no local branch either
+  ```
+  All three clean → `git branch -m feature/<change-name>`, then proceed exactly as the "already on `feature/<change-name>`" case above (skip `branch.py`, stage directly). Any check failing → fail loudly as normal; a non-zero commit count in particular means renaming would silently carry unrelated commits into this change's PR.
 
 **Branch name.** Use `feature/<change-name>` directly. If the change name is verbose enough that the full branch name reads awkwardly in `git log --oneline` or `git branch -v` (typical cutoff: somewhere past 50 characters; use judgment, not a hard rule), pick a shorter form that keeps a recognizable hint of the change. Don't pause for confirmation on routine branch names; the branch name is reversible and low-stakes.
 

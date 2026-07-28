@@ -176,3 +176,27 @@ def test_main_silent_on_subprocess_error(monkeypatch, capsys):
     monkeypatch.setattr(hook.subprocess, "run", _raise)
     assert hook.main() == 0
     assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("command", [
+    "git checkout -b feature/new",
+    "git checkout -B feature/new",
+    "git checkout --orphan feature/new",
+    "git switch -c feature/new",
+    "git switch -C feature/new",
+    "git switch --create feature/new",
+    "git -C /some/path switch -c feature/new",
+    "git --work-tree /some/path checkout -b feature/new",
+])
+def test_warns_on_every_create_and_switch_form(monkeypatch, capsys, command):
+    # The create-form set must match `guard-worktree-isolation.py`'s
+    # `_BRANCH_CREATE`, so the two hooks agree on what "creating a branch"
+    # means. `-B`, `--orphan` and `switch -C` were previously missed here
+    # while the guard caught them — `git checkout -B feature/x` warned in one
+    # hook and not the other.
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO('{"tool_input": {"command": %s}}' % json.dumps(command))
+    )
+    monkeypatch.setattr(hook.subprocess, "run", _run_with_head("feature/old"))
+    assert hook.main() == 0
+    assert "feature/new" in capsys.readouterr().err

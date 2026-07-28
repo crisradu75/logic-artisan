@@ -48,7 +48,9 @@ pytest .claude/plugins/cla/hooks/tests
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
 design. Each skill that ships tests (6 today) plus `hooks/` is its own isolated pytest scope, each
-with its own `pyproject.toml` (`pythonpath = ["scripts"]`, `testpaths = ["tests"]`). Several scopes
+with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a `pythonpath` pointing at that
+scope's importable code — `["scripts"]` for a skill, `["."]` for `hooks/`, whose modules sit at
+the scope root). Several scopes
 ship same-named helper modules (e.g. `scripts/aggregate.py`, `scripts/log_run.py`), so they can't
 share one pytest process — this is why `run_tests.py` exists: it discovers every scope
 (dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once

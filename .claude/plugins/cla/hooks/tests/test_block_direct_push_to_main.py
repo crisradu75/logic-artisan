@@ -74,6 +74,82 @@ def test_allows_non_main_pushes_and_unrelated_commands(command):
     assert hook._is_direct_push_to_main(command) is False
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin refs/heads/main",  # fully-qualified destination
+        "git push origin HEAD:refs/heads/master",
+        "git push origin +main",  # force refspec
+        'git push origin "main"',  # quoted destination
+        "git push origin 'master'",
+        "git push origin :main",  # DELETING the remote default branch
+        "git push origin main:feature/x",  # pushing main's content out
+        "git push --force-with-lease origin main",
+    ],
+)
+def test_blocks_refspec_shapes_that_used_to_slip_past(command):
+    # Every one of these was ALLOWED before the refspec parser replaced the
+    # old substring pattern: it required a literal `main`/`master` immediately
+    # after an optional `<src>:` prefix, so a `refs/heads/` qualification, a
+    # `+` force marker, or quotes around the target all defeated it.
+    assert hook._is_direct_push_to_main(command) is True
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin main-refactor",
+        "git push origin master-list",
+        "git push origin main.old",
+        "git push origin maintenance",
+        "git push origin mainline",
+        "git push origin release/main-ui",
+        "git push origin feature/x:main-thing",
+        # A flag VALUE that merely mentions main is not a push destination.
+        "git push --force-with-lease=origin/main origin feature/x",
+    ],
+)
+def test_does_not_block_branches_that_merely_start_with_main_or_master(command):
+    # This hook BLOCKS, so a false positive wedges the workflow with a
+    # misleading message. The old `(?:main|master)\b` treated `-` and `.` as
+    # word boundaries, so `main-refactor` and `main.old` were both blocked.
+    # Refspecs are now compared as whole normalized refs.
+    assert hook._is_direct_push_to_main(command) is False
+
+
+def test_ignores_a_push_belonging_to_a_later_chained_command(monkeypatch):
+    # Argument collection stops at a shell separator, so the refspecs of a
+    # SUBSEQUENT command are never attributed to this push.
+    monkeypatch.setattr(hook, "_current_branch", lambda: "feature/x")
+    assert hook._is_direct_push_to_main("git push origin feature/x && echo main") is False
+
+
+def test_push_with_remote_but_no_refspec_checks_the_current_branch(monkeypatch):
+    # `git push origin` on main pushes main. The old bare-push pattern required
+    # end-of-string after the flags, so the remote token defeated it entirely.
+    monkeypatch.setattr(hook, "_current_branch", lambda: "main")
+    assert hook._is_direct_push_to_main("git push origin") is True
+    monkeypatch.setattr(hook, "_current_branch", lambda: "feature/x")
+    assert hook._is_direct_push_to_main("git push origin") is False
+
+
+def test_current_branch_passes_a_timeout_and_warns_when_git_is_unusable(monkeypatch, capsys):
+    # Without a timeout a hung `git rev-parse` burns the dispatcher's whole
+    # budget and takes every other guard down with it. And when the branch
+    # can't be resolved the hook allows — that degradation must be visible,
+    # not silent, since it is exactly when it cannot vouch for the push.
+    captured = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        raise OSError("git not found")
+
+    monkeypatch.setattr(hook.subprocess, "run", fake_run)
+    assert hook._current_branch() is None
+    assert captured.get("timeout"), "_current_branch must pass a subprocess timeout"
+    assert "warn" in capsys.readouterr().err.lower()
+
+
 def test_bare_push_checks_current_branch(monkeypatch):
     monkeypatch.setattr(hook, "_current_branch", lambda: "main")
     assert hook._is_direct_push_to_main("git push") is True

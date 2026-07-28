@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Shared helpers for the PreToolUse dispatcher scripts.
+"""Shared helpers for the PreToolUse dispatcher scripts, and the hooks package's
+shared git-command-matching library.
 
-Runs several sibling hook scripts' `main()` in-process (one Python interpreter
-instead of one per hook) by importing each as a standalone module — the same
-technique .claude/plugins/cla/hooks/tests/ already uses — and temporarily redirecting
+TWO responsibilities, deliberately in one file. (1) It runs several sibling hook
+scripts' `main()` in-process (one Python interpreter instead of one per hook) by
+importing each as a standalone module — the same technique
+.claude/plugins/cla/hooks/tests/ already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
-modified by this module; it only orchestrates them.
+modified by this module; it only orchestrates them. (2) It also HOSTS
+`strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which four leaf git hooks import.
+So the relationship with those hooks is bidirectional: this module loads them,
+and they import from it. Consequence worth holding onto: keep this module
+import-cheap and side-effect-free, because a failure here takes out both roles
+at once.
 
 A hook that crashes (fails to load, or raises out of `main()`) is still
 treated as fail-open — a guard must never wedge the workflow — but the
@@ -50,18 +57,35 @@ def strip_quoted_spans(cmd: str) -> str:
     """Replaces the contents of every quoted/backtick span with same-length,
     non-whitespace placeholder characters (the quote delimiters themselves are
     left in place), so a matcher below doesn't trip on a `git commit` mentioned
-    inside an echoed string / heredoc / commit message, AND so a global
-    option's quoted value (`-C "/path with space"`) collapses to a single
-    whitespace-free token before `GIT_GLOBAL_OPTS` tries to match it — the
-    value-consuming alternatives below all use `\\S+`, which cannot span an
-    un-stripped internal space on its own.
+    inside an echoed string or a commit message, AND so a global option's quoted
+    value (`-C "/path with space"`) becomes a single whitespace-free token
+    before `GIT_GLOBAL_OPTS` tries to match it — the value-consuming
+    alternatives below all use `\\S+`, which cannot span an un-stripped
+    internal space on its own.
 
     Length-preserving is deliberate, not incidental: it's what lets a caller
     that captures a match GROUP against the scanned string (e.g. a branch
     name) re-slice the SAME start/end offsets out of the original, unscanned
     command to recover the real text — a naive collapse-to-`''` would shift
     every later offset and silently return the placeholder instead of the
-    real value for anything captured after the first quoted span."""
+    real value for anything captured after the first quoted span. Note the
+    re-sliced text still carries its surrounding quote characters, so callers
+    strip them (`.strip("'\\"")`) before use.
+
+    Scope, stated precisely so nobody assumes more than it does:
+
+    - NOT handled — heredoc bodies. Those are unquoted text, so a script
+      written via `cat <<'EOF' … git push origin main … EOF` still matches and
+      a block hook will fire on it. This is the most likely real-world false
+      positive of the git hooks; it is accepted, not solved.
+    - NOT handled — escaped or nested quotes (`\\'`, `"a 'b' c"` interactions).
+    - INTENTIONALLY matches shell semantics for a mid-word apostrophe:
+      `echo don't && git push origin main && echo won't` collapses the span
+      between the two apostrophes, so the `git push` disappears from the
+      scanned string and the hook allows it. That is CORRECT — bash reads the
+      same span as one single-quoted literal and never runs the push. Do not
+      "fix" this by requiring quotes to sit at token boundaries; that would
+      make the hooks fire on commands the shell would not execute."""
 
     def _placeholder(match: re.Match[str]) -> str:
         span = match.group(0)
@@ -77,7 +101,8 @@ def strip_quoted_spans(cmd: str) -> str:
 # so `git -c core.x=y commit`, `git -C /path checkout`, `git --work-tree /path
 # push origin main` are not a bypass. `-c KEY=VAL` / `-C PATH` take a
 # following value token (bare, or — once `strip_quoted_spans` has run — a
-# collapsed `""`/`''` token). A NAMED, closed set of long options that also
+# same-length `#`-filled quoted token such as `"################"`, which is
+# whitespace-free and so matches `\S+` as one token). A NAMED, closed set of long options that also
 # take their value as a separate space-delimited token (`--git-dir`,
 # `--work-tree`, `--namespace`, `--super-prefix`) get the same optional
 # space-value treatment; every other short/long flag is a single token
@@ -103,8 +128,28 @@ GIT_GLOBAL_OPTS = (
 )
 
 
+def ensure_hooks_dir_importable() -> None:
+    """Put the hooks dir on `sys.path` if it isn't already.
+
+    Several hook files do `from _dispatch_lib import ...` at module level. That
+    import resolves through `sys.path` — `spec_from_file_location` locates the
+    HOOK by path but does nothing for the hook's OWN imports. Without this, the
+    hooks work only by accident: `hooks.json` happens to invoke the dispatcher
+    as a standalone script living in this dir, so CPython sets `sys.path[0]` to
+    it. That is a property of how the dispatcher is launched, not an invariant —
+    it evaporates under `PYTHONSAFEPATH=1` / `python -I` / `python -P`, or under
+    any future caller that imports `load_hook` from a differently-launched
+    process. Making it explicit here means the guarantee holds by construction
+    rather than by luck, which matters because the failure mode is a guard that
+    silently doesn't run."""
+    hooks_dir = str(_HOOKS_DIR)
+    if hooks_dir not in sys.path:
+        sys.path.insert(0, hooks_dir)
+
+
 def load_hook(filename: str) -> ModuleType:
     """Load a sibling hook file as a fresh module (not cached in sys.modules)."""
+    ensure_hooks_dir_importable()
     path = _HOOKS_DIR / filename
     module_name = path.stem.replace("-", "_")
     spec = importlib.util.spec_from_file_location(module_name, path)
