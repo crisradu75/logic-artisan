@@ -310,8 +310,36 @@ def _clear_base_branch_cache():
 def test_default_base_branch_prefers_origin_head(monkeypatch):
     monkeypatch.setattr(lib.subprocess, "run", _fake_git({
         "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/trunk\n"),
+        # The symref is trusted only once its target verifies — see the
+        # dangling-symref test below for why.
+        "rev-parse --verify --quiet refs/remotes/origin/trunk": _FakeCompleted("abc123\n"),
     }))
     assert lib.default_base_branch() == "trunk"
+
+
+def test_default_base_branch_ignores_a_dangling_origin_head(monkeypatch):
+    # `refs/remotes/origin/HEAD` is a clone-time cache git never auto-refreshes,
+    # and `symbolic-ref` exits 0 even when its target is gone. After an upstream
+    # `master`→`main` rename it therefore names a ref that no longer exists —
+    # and trusting it unverified returned `master` in a `main`-default repo,
+    # after which the caller's `master..HEAD` died with `unknown revision`. That
+    # is precisely the failure this resolver exists to prevent.
+    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
+        "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/master\n"),
+        # No stub for `rev-parse --verify --quiet refs/remotes/origin/master` →
+        # rc 1, i.e. the symref dangles. `main` is what actually exists.
+        "rev-parse --verify --quiet refs/heads/main": _FakeCompleted("abc123\n"),
+    }))
+    assert lib.default_base_branch() == "main"
+
+
+def test_default_base_branch_rejects_a_self_referential_origin_head(monkeypatch):
+    # A last segment of `HEAD` is never a branch name.
+    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
+        "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/HEAD\n"),
+        "rev-parse --verify --quiet refs/heads/main": _FakeCompleted("abc123\n"),
+    }))
+    assert lib.default_base_branch() == "main"
 
 
 def test_default_base_branch_falls_back_to_an_existing_main(monkeypatch):
@@ -331,19 +359,33 @@ def test_default_base_branch_still_finds_master_when_that_is_the_convention(monk
     assert lib.default_base_branch() == "master"
 
 
-def test_default_base_branch_falls_back_to_master_when_git_says_nothing(monkeypatch):
+def test_default_base_branch_falls_back_to_master_when_git_says_nothing(monkeypatch, capsys):
     # No remote, no conventional branch — preserve the harness's historical
-    # assumption rather than inventing one.
+    # assumption rather than inventing one, but SAY SO: this arm cannot tell
+    # "this repo genuinely uses master" from "git is unusable and I guessed",
+    # and every range built on the result then fails as `unknown revision`.
     monkeypatch.setattr(lib.subprocess, "run", _fake_git({}))
     assert lib.default_base_branch() == "master"
+    assert "warn" in capsys.readouterr().err.lower()
 
 
-def test_default_base_branch_survives_git_being_unavailable(monkeypatch):
+def test_default_base_branch_survives_git_being_unavailable(monkeypatch, capsys):
     def _raise(*args, **kwargs):
         raise OSError("git not found")
 
     monkeypatch.setattr(lib.subprocess, "run", _raise)
     assert lib.default_base_branch() == "master"
+    assert "warn" in capsys.readouterr().err.lower()
+
+
+def test_a_successful_resolution_is_silent(monkeypatch, capsys):
+    # The note belongs to the guess, not to every call — a warn on the happy
+    # path would train people to ignore it.
+    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
+        "rev-parse --verify --quiet refs/heads/main": _FakeCompleted("abc123\n"),
+    }))
+    assert lib.default_base_branch() == "main"
+    assert capsys.readouterr().err == ""
 
 
 def test_default_base_branch_caches_per_cwd(monkeypatch):

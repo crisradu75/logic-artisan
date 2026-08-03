@@ -26,6 +26,20 @@ def _repo_root(tmp_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(probe_state, "REPO_ROOT", tmp_repo)
 
 
+@pytest.fixture(autouse=True)
+def _reset_module_state() -> None:
+    """`_base_branch_cache` and the two degradation lists are module globals, so
+    one test's resolution would otherwise decide the next one's — and now that
+    `probe()` reports the base branch, every test resolves it."""
+    probe_state._base_branch_cache = None
+    probe_state._missing_tools.clear()
+    probe_state._environment_errors.clear()
+    yield
+    probe_state._base_branch_cache = None
+    probe_state._missing_tools.clear()
+    probe_state._environment_errors.clear()
+
+
 def _stub_run(returns: dict[tuple[str, ...], subprocess.CompletedProcess[str]]):
     def fake(cmd, cwd=None, check=False):
         key = tuple(cmd)
@@ -308,3 +322,153 @@ def test_tools_missing_surfaces_in_result(tmp_repo: Path, monkeypatch):
     )
     assert "openspec" in result["tools_missing"]
     assert result["implement"] is False  # not "complete" — we couldn't tell
+
+
+# --------------------------------------------------------------------------- #
+# Degradation must be reported, never mistaken for a legitimate negative
+# --------------------------------------------------------------------------- #
+
+
+def test_run_survives_an_unusable_working_directory(tmp_repo: Path, monkeypatch):
+    """`cwd=` raises `NotADirectoryError`/`PermissionError` — both `OSError`,
+    neither `FileNotFoundError`. Catching only the latter meant the script died
+    with an uncaught traceback and emitted NO JSON at all, which is strictly
+    worse for a caller that parses stdout than any reported failure."""
+    def raise_not_a_directory(*args, **kwargs):
+        raise NotADirectoryError(20, "Not a directory")
+
+    monkeypatch.setattr(probe_state, "REPO_ROOT", tmp_repo / "openspec" / "config.yaml")
+    monkeypatch.setattr(probe_state.subprocess, "run", raise_not_a_directory)
+    result = probe_state._run(["git", "status"])
+    assert result.returncode == probe_state._ENVIRONMENT_RC
+    assert "working directory unusable" in result.stderr
+
+
+def test_a_bad_cwd_is_not_reported_as_a_missing_tool(tmp_repo: Path, monkeypatch):
+    """A bad cwd that raises `FileNotFoundError` was recorded as
+    `tools_missing: ["git"]` — a false diagnostic pointing at PATH for a
+    problem PATH has nothing to do with."""
+    probe_state._missing_tools.clear()
+    probe_state._environment_errors.clear()
+
+    def raise_not_found(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(probe_state, "REPO_ROOT", tmp_repo / "definitely-not-here")
+    monkeypatch.setattr(probe_state.subprocess, "run", raise_not_found)
+    result = probe_state._run(["git", "status"])
+    assert result.returncode == probe_state._ENVIRONMENT_RC
+    assert probe_state._missing_tools == []
+    assert probe_state._environment_errors, "the environment failure must be recorded"
+
+
+def test_a_genuinely_missing_executable_is_still_reported_as_such(tmp_repo: Path, monkeypatch):
+    probe_state._missing_tools.clear()
+    probe_state._environment_errors.clear()
+
+    def raise_not_found(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr(probe_state.subprocess, "run", raise_not_found)
+    result = probe_state._run(["openspec", "status"])
+    assert result.returncode == probe_state._TOOL_MISSING_RC
+    assert probe_state._missing_tools == ["openspec"]
+    assert probe_state._environment_errors == []
+
+
+def test_run_passes_a_timeout_and_survives_expiry(tmp_repo: Path, monkeypatch):
+    """Unbounded, every `gh` call could hang on a credential prompt — the one
+    failure an orchestrator waiting on stdout can never recover from."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured.update(kwargs)
+        raise subprocess.TimeoutExpired(cmd, 30)
+
+    monkeypatch.setattr(probe_state.subprocess, "run", fake_run)
+    probe_state._environment_errors.clear()
+    result = probe_state._run(["gh", "pr", "view"])
+    assert captured.get("timeout"), "_run must pass a subprocess timeout"
+    assert result.returncode == probe_state._ENVIRONMENT_RC
+    assert probe_state._environment_errors
+
+
+def test_environment_errors_surface_in_the_probe_result(tmp_repo: Path, monkeypatch):
+    def fake_run(cmd, cwd=None, check=False):
+        probe_state._environment_errors.append("working directory unusable: /nope")
+        return subprocess.CompletedProcess(cmd, returncode=probe_state._ENVIRONMENT_RC,
+                                           stdout="", stderr="working directory unusable")
+
+    monkeypatch.setattr(probe_state, "_run", fake_run)
+    result = probe_state.probe("demo")
+    assert "environment_errors" in result
+    assert "tools_missing" not in result
+
+
+def test_probe_reports_the_resolved_base_branch(tmp_repo: Path, monkeypatch):
+    """`branch` and `fix_rounds_applied` are both computed from a
+    `<base>..<branch>` range, so a wrongly-resolved base turns them into
+    plausible-looking negatives. Report the value rather than making the reader
+    infer it from work being redone."""
+    monkeypatch.setattr(probe_state, "_run", _stub_run({
+        ("openspec", "status", "--change", "demo", "--json"):
+            subprocess.CompletedProcess([], 1, "", "no such change"),
+        REPO_VIEW_KEY: REPO_VIEW_FAIL,
+    }))
+    result = probe_state.probe("demo")
+    assert result["base_branch"] == probe_state._base_branch()
+    assert result["base_branch"], "a base branch is always resolved to something"
+
+
+def test_base_branch_ignores_a_dangling_origin_head(tmp_repo: Path, monkeypatch):
+    """`refs/remotes/origin/HEAD` is a clone-time cache git never refreshes and
+    `symbolic-ref` exits 0 on a dangling symref, so after an upstream
+    `master`→`main` rename it names a ref that is gone. Trusting it unverified
+    returned `master` in a `main` repo — and the caller's `master..HEAD` then
+    died with `unknown revision`, the exact failure this resolver prevents."""
+    def fake_run(cmd, cwd=None, check=False):
+        if cmd[:2] == ["git", "symbolic-ref"]:
+            return subprocess.CompletedProcess(cmd, 0, "refs/remotes/origin/master\n", "")
+        if cmd[:4] == ["git", "rev-parse", "--verify", "--quiet"]:
+            ref = cmd[4]
+            ok = ref == "refs/heads/main"
+            return subprocess.CompletedProcess(cmd, 0 if ok else 1, "abc123\n" if ok else "", "")
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+
+    monkeypatch.setattr(probe_state, "_run", fake_run)
+    assert probe_state._base_branch() == "main"
+
+
+def test_base_branch_announces_the_master_guess(tmp_repo: Path, monkeypatch, capsys):
+    monkeypatch.setattr(probe_state, "_run",
+                        lambda cmd, cwd=None, check=False:
+                        subprocess.CompletedProcess(cmd, 1, "", ""))
+    assert probe_state._base_branch() == "master"
+    assert "could not resolve the base branch" in capsys.readouterr().err
+
+
+def test_branch_state_reports_a_failed_range(tmp_repo: Path, monkeypatch, capsys):
+    """`False` reads as "no feature branch yet" and the orchestrator re-runs
+    completed work — so an `unknown revision` from a wrong base must say so."""
+    def fake_run(cmd, cwd=None, check=False):
+        if cmd[:3] == ["git", "rev-parse", "--verify"] and cmd[-1].startswith("feature/"):
+            return subprocess.CompletedProcess(cmd, 0, "abc123\n", "")
+        if cmd[:2] == ["git", "rev-list"]:
+            return subprocess.CompletedProcess(cmd, 128, "", "fatal: unknown revision")
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+
+    monkeypatch.setattr(probe_state, "_run", fake_run)
+    assert probe_state._branch_state("demo") is False
+    assert "unknown revision" in capsys.readouterr().err
+
+
+def test_fix_rounds_reports_a_failed_range(tmp_repo: Path, monkeypatch, capsys):
+    """Same hazard: `0` reads as "no fix rounds applied yet"."""
+    def fake_run(cmd, cwd=None, check=False):
+        if cmd[:2] == ["git", "log"]:
+            return subprocess.CompletedProcess(cmd, 128, "", "fatal: unknown revision")
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+
+    monkeypatch.setattr(probe_state, "_run", fake_run)
+    assert probe_state._fix_rounds_applied("demo") == 0
+    assert "unknown revision" in capsys.readouterr().err

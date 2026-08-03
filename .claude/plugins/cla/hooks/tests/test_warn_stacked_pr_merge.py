@@ -12,6 +12,8 @@ import importlib.util
 import io
 from pathlib import Path
 
+import pytest
+
 _HOOK = Path(__file__).resolve().parent.parent / "warn-stacked-pr-merge.py"
 
 
@@ -103,5 +105,32 @@ def test_main_exits_zero_on_malformed_json(monkeypatch, capsys):
 
 def test_main_no_op_on_unrelated_command(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "git status"}}'))
+    assert hook.main() == 0
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"tool_input": "git status"}',   # a string
+        '{"tool_input": ["git status"]}',  # a list
+        '{"tool_input": 7}',
+        '{"tool_input": null}',
+        "{}",                              # absent entirely
+    ],
+)
+def test_main_exits_zero_on_a_non_dict_tool_input(payload, monkeypatch, capsys):
+    # `(payload.get("tool_input") or {}).get(...)` passed the truthiness test on
+    # a non-dict and then raised AttributeError. The blast radius was far wider
+    # than this hook: `run_hook` catches it, the dispatcher exits 1, and EVERY
+    # Bash call in the session gets a hook-error traceback — from a hook that
+    # only ever warns.
+    monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+    assert hook.main() == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_main_exits_zero_on_a_non_string_command(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": 42}}'))
     assert hook.main() == 0
     assert capsys.readouterr().err == ""

@@ -36,23 +36,57 @@ REPO_ROOT = _repo_root()
 
 
 _TOOL_MISSING_RC = 127
+_ENVIRONMENT_RC = 126
+
+# Bounded so a hung child can't wedge the probe. Sized above the siblings'
+# (`_repo_root` 10s, `_dispatch_lib._git` 5s) because the `gh` calls here are
+# network round-trips and can legitimately sit on a credential prompt — which
+# is exactly the case an unbounded `subprocess.run` never returns from.
+_TIMEOUT_SECONDS = 30
 
 # Track tools that resolved as missing during a single probe(...) call so the
 # JSON output can surface "tool_missing" distinctly from "phase not done".
 _missing_tools: list[str] = []
 
+# Environment failures that are NOT a missing tool (unusable working directory,
+# a timeout). Kept separate because reporting them as `tools_missing` points the
+# reader at PATH for a problem PATH has nothing to do with.
+_environment_errors: list[str] = []
+
 
 def _run(cmd: list[str], cwd: Path | None = None, check: bool = False) -> subprocess.CompletedProcess[str]:
+    """Run a child process, degrading to a synthetic non-zero result rather than
+    raising. Nothing here may raise: the caller parses this script's stdout as
+    JSON, so an uncaught exception yields NO output at all — strictly worse than
+    a reported failure."""
+    target_cwd = cwd if cwd is not None else REPO_ROOT
     try:
-        return subprocess.run(cmd, cwd=cwd if cwd is not None else REPO_ROOT,
-                              check=check, capture_output=True, text=True)
-    except FileNotFoundError:
-        # Executable not on PATH (e.g. openspec.cmd on Windows). Degrade gracefully
-        # and remember which tool was missing so probe() can report it.
-        if cmd and cmd[0] not in _missing_tools:
-            _missing_tools.append(cmd[0])
-        return subprocess.CompletedProcess(cmd, returncode=_TOOL_MISSING_RC, stdout="",
-                                            stderr=f"executable not found: {cmd[0]}")
+        return subprocess.run(cmd, cwd=target_cwd, check=check,
+                              capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError) as exc:
+        # `FileNotFoundError` alone was too narrow: `cwd=` also raises
+        # `NotADirectoryError` / `PermissionError` (both `OSError`, neither
+        # `FileNotFoundError`), which killed the script outright. And a bad cwd
+        # that DOES raise `FileNotFoundError` was recorded as a missing tool —
+        # a false diagnostic aimed at PATH. Distinguish by asking whether the
+        # working directory is usable before blaming the executable.
+        if not Path(target_cwd).is_dir():
+            reason = f"working directory unusable: {target_cwd} ({exc})"
+            if reason not in _environment_errors:
+                _environment_errors.append(reason)
+            return subprocess.CompletedProcess(cmd, returncode=_ENVIRONMENT_RC,
+                                               stdout="", stderr=reason)
+        if isinstance(exc, FileNotFoundError):
+            # Executable not on PATH (e.g. openspec.cmd on Windows).
+            if cmd and cmd[0] not in _missing_tools:
+                _missing_tools.append(cmd[0])
+            return subprocess.CompletedProcess(cmd, returncode=_TOOL_MISSING_RC, stdout="",
+                                               stderr=f"executable not found: {cmd[0]}")
+        reason = f"{cmd[0] if cmd else 'command'} failed to run: {exc}"
+        if reason not in _environment_errors:
+            _environment_errors.append(reason)
+        return subprocess.CompletedProcess(cmd, returncode=_ENVIRONMENT_RC,
+                                           stdout="", stderr=reason)
 
 
 _DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
@@ -110,6 +144,12 @@ def _base_branch() -> str:
     revision` — not merely return a wrong count. Mirrors the hooks'
     `_dispatch_lib.default_base_branch()`; kept as a local copy because each
     skill is its own isolated pytest scope and cannot import from `hooks/`.
+
+    `refs/remotes/origin/HEAD` is verified before it is trusted: it is a
+    clone-time cache git never auto-refreshes, and `symbolic-ref` exits 0 even
+    when the symref dangles, so after an upstream `master`→`main` rename it
+    names a ref that no longer exists — resurrecting the very `unknown
+    revision` failure this function was written to prevent.
     """
     global _base_branch_cache
     if _base_branch_cache is not None:
@@ -117,7 +157,12 @@ def _base_branch() -> str:
     head_ref = _run(["git", "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
     resolved = None
     if head_ref.returncode == 0 and "/" in head_ref.stdout:
-        resolved = head_ref.stdout.strip().rsplit("/", 1)[-1] or None
+        target = head_ref.stdout.strip()
+        candidate = target.rsplit("/", 1)[-1] or None
+        if candidate and candidate != "HEAD" and _run(
+            ["git", "rev-parse", "--verify", "--quiet", target]
+        ).returncode == 0:
+            resolved = candidate
     if resolved is None:
         for candidate in ("main", "master"):
             for ref in (f"refs/heads/{candidate}", f"refs/remotes/origin/{candidate}"):
@@ -126,7 +171,15 @@ def _base_branch() -> str:
                     break
             if resolved:
                 break
-    _base_branch_cache = resolved or "master"
+    if resolved is None:
+        # Announce the guess. This arm cannot tell "this repo genuinely uses
+        # master" from "git is unusable", and every range built on the result
+        # below then fails as `unknown revision` — read by the callers as a
+        # legitimate negative.
+        print("could not resolve the base branch (no usable origin/HEAD, no main, "
+              "no master); assuming 'master'", file=sys.stderr)
+        resolved = "master"
+    _base_branch_cache = resolved
     return _base_branch_cache
 
 
@@ -135,8 +188,16 @@ def _branch_state(change_name: str) -> bool:
     res = _run(["git", "rev-parse", "--verify", expected])
     if res.returncode != 0:
         return False
-    ahead = _run(["git", "rev-list", "--count", f"{_base_branch()}..{expected}"])
+    base = _base_branch()
+    ahead = _run(["git", "rev-list", "--count", f"{base}..{expected}"])
     if ahead.returncode != 0:
+        # `False` here is read by the orchestrator as "no feature branch yet"
+        # and it re-runs completed work. An `unknown revision` from a wrong
+        # base branch produces exactly that, so say which range failed instead
+        # of degrading silently — `_implement_done`/`_pr_state` already do.
+        if ahead.returncode != _TOOL_MISSING_RC and ahead.stderr.strip():
+            print(f"git rev-list {base}..{expected} (rc={ahead.returncode}): "
+                  f"{ahead.stderr.strip()}", file=sys.stderr)
         return False
     try:
         return int(ahead.stdout.strip()) > 0
@@ -181,8 +242,14 @@ def _pr_state(change_name: str) -> dict:
 
 def _fix_rounds_applied(change_name: str) -> int:
     branch = f"feature/{change_name}"
-    res = _run(["git", "log", "--format=%s", f"{_base_branch()}..{branch}"])
+    base = _base_branch()
+    res = _run(["git", "log", "--format=%s", f"{base}..{branch}"])
     if res.returncode != 0:
+        # Same hazard as `_branch_state`: `0` reads as "no fix rounds applied
+        # yet" and the orchestrator re-loops an already-applied round.
+        if res.returncode != _TOOL_MISSING_RC and res.stderr.strip():
+            print(f"git log {base}..{branch} (rc={res.returncode}): "
+                  f"{res.stderr.strip()}", file=sys.stderr)
         return 0
     pat = re.compile(r"^fix: review round (\d+)\b")
     rounds = {int(m.group(1)) for line in res.stdout.splitlines() for m in [pat.match(line)] if m}
@@ -191,6 +258,7 @@ def _fix_rounds_applied(change_name: str) -> int:
 
 def probe(change_name: str) -> dict:
     _missing_tools.clear()
+    _environment_errors.clear()
     result = {
         "change_name": change_name,
         "propose": _propose_done(change_name),
@@ -199,9 +267,17 @@ def probe(change_name: str) -> dict:
         "pr": _pr_state(change_name),
         "fix_rounds_applied": _fix_rounds_applied(change_name),
         "archived": _archived(change_name),
+        # Reported, not merely used: `branch` and `fix_rounds_applied` are both
+        # computed from a `<base>..<branch>` range, so a wrongly-resolved base
+        # turns them into plausible-looking negatives. Surfacing the resolved
+        # value makes that visible instead of something the reader has to infer
+        # from work being redone.
+        "base_branch": _base_branch(),
     }
     if _missing_tools:
         result["tools_missing"] = list(_missing_tools)
+    if _environment_errors:
+        result["environment_errors"] = list(_environment_errors)
     return result
 
 

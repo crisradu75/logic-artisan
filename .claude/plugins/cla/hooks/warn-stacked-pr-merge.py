@@ -99,7 +99,14 @@ def main() -> int:
         return 0
     if not isinstance(payload, dict):
         return 0
-    cmd = (payload.get("tool_input") or {}).get("command", "")
+    # `tool_input` needs its own isinstance check, not just `or {}` — a non-dict
+    # value (a string, a list) passes that truthiness test and then raises
+    # AttributeError on `.get`. `_dispatch_lib.run_hook` catches it and the
+    # dispatcher exits 1, so every Bash call in the session gets a hook-error
+    # traceback — from a hook whose only job is to print a warning. The four
+    # sibling hooks already guard this; this one was missed.
+    tool_input = payload.get("tool_input")
+    cmd = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
     if not isinstance(cmd, str) or not cmd:
         return 0
 
