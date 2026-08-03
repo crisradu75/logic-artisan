@@ -135,7 +135,16 @@ def main() -> int:
     if not isinstance(children, list) or not children:
         return 0
 
-    listed = ", ".join(f"#{c.get('number')}" for c in children if c.get("number"))
+    # `children` came off the CONTAINER isinstance check above, not its
+    # elements — `gh`'s stdout crosses a version/config/alias boundary this
+    # hook doesn't control, so an element that isn't a dict (unlikely, but
+    # `_gh` performs no schema check) must not raise on `.get`. The same crash
+    # class this file was just fixed for, one call away.
+    listed = ", ".join(
+        f"#{c['number']}" for c in children if isinstance(c, dict) and c.get("number")
+    )
+    if not listed:
+        return 0
     print(
         f"[warn-stacked-pr-merge] '{head}' is the base of open PR(s) {listed}. "
         f"Merging with --delete-branch auto-closes them and GitHub refuses to reopen. "

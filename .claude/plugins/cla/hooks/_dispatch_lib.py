@@ -131,6 +131,7 @@ GIT_GLOBAL_OPTS = (
 
 _BASE_BRANCH_CACHE: dict[str | None, str] = {}
 _BASE_BRANCH_FALLBACK = "master"
+_ORIGIN_HEAD_PREFIX = "refs/remotes/origin/"
 
 
 def default_base_branch(cwd: str | None = None) -> str:
@@ -178,9 +179,14 @@ def default_base_branch(cwd: str | None = None) -> str:
 
     resolved = None
     head_ref = _git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
-    if head_ref and "/" in head_ref:
-        candidate = head_ref.rsplit("/", 1)[-1] or None
-        # `HEAD` as the last segment means the symref points at itself or at
+    if head_ref and head_ref.startswith(_ORIGIN_HEAD_PREFIX):
+        # Strip the known prefix rather than `rsplit("/", 1)`: a default branch
+        # name containing its own slash (`release/main`) would otherwise lose
+        # its leading segment, and `rev-parse --verify` on the FULL `head_ref`
+        # (below) succeeds regardless — so the truncated name passed every
+        # check here and still resolved to a branch that doesn't exist.
+        candidate = head_ref[len(_ORIGIN_HEAD_PREFIX):] or None
+        # `HEAD` as the remainder means the symref points at itself or at
         # something unusable — never a branch name.
         if candidate and candidate != "HEAD" and _git(
             ["rev-parse", "--verify", "--quiet", head_ref]

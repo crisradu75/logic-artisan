@@ -333,13 +333,39 @@ def test_run_survives_an_unusable_working_directory(tmp_repo: Path, monkeypatch)
     """`cwd=` raises `NotADirectoryError`/`PermissionError` — both `OSError`,
     neither `FileNotFoundError`. Catching only the latter meant the script died
     with an uncaught traceback and emitted NO JSON at all, which is strictly
-    worse for a caller that parses stdout than any reported failure."""
+    worse for a caller that parses stdout than any reported failure. Uses a
+    real FILE as cwd (not merely a nonexistent path) — the actual "cwd is not
+    a directory" trigger the surrounding code comment describes."""
+    not_a_directory = tmp_repo / "README.md"
+    assert not_a_directory.is_file(), "fixture must provide a real file, not a missing path"
+
     def raise_not_a_directory(*args, **kwargs):
         raise NotADirectoryError(20, "Not a directory")
 
-    monkeypatch.setattr(probe_state, "REPO_ROOT", tmp_repo / "openspec" / "config.yaml")
+    monkeypatch.setattr(probe_state, "REPO_ROOT", not_a_directory)
     monkeypatch.setattr(probe_state.subprocess, "run", raise_not_a_directory)
     result = probe_state._run(["git", "status"])
+    assert result.returncode == probe_state._ENVIRONMENT_RC
+    assert "working directory unusable" in result.stderr
+
+
+def test_run_survives_a_permission_denied_working_directory(tmp_repo: Path, monkeypatch):
+    """`Path.is_dir()` does NOT swallow every `OSError` — `EACCES` is not in its
+    ignored-errno set, so it RE-RAISES a `PermissionError` from `.stat()`. Since
+    the classifier here calls `Path(target_cwd).is_dir()` from inside the
+    `except (OSError, ...)` handling a `PermissionError` from `subprocess.run`,
+    an unguarded call would let that second `PermissionError` escape `_run`
+    entirely — a raise during exception handling, and precisely the "no JSON
+    at all" failure this function's own docstring says must never happen."""
+    def raise_permission_denied(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(probe_state.subprocess, "run", raise_permission_denied)
+    monkeypatch.setattr(
+        probe_state.Path, "is_dir",
+        lambda self: (_ for _ in ()).throw(PermissionError(13, "Permission denied")),
+    )
+    result = probe_state._run(["git", "status"], cwd=tmp_repo)
     assert result.returncode == probe_state._ENVIRONMENT_RC
     assert "working directory unusable" in result.stderr
 
@@ -405,6 +431,23 @@ def test_environment_errors_surface_in_the_probe_result(tmp_repo: Path, monkeypa
     assert "tools_missing" not in result
 
 
+def test_probe_resets_the_base_branch_cache_between_calls(tmp_repo: Path, monkeypatch):
+    # `probe()` clears `_missing_tools`/`_environment_errors` between calls;
+    # `_base_branch_cache` must reset alongside them, or a second `probe()` in
+    # the same process reports a `base_branch` resolved under the PREVIOUS
+    # call's conditions with no re-warning.
+    probe_state._base_branch_cache = "stale-from-a-previous-call"
+    monkeypatch.setattr(probe_state, "_run", _stub_run({
+        ("openspec", "status", "--change", "demo", "--json"):
+            subprocess.CompletedProcess([], 1, "", "no such change"),
+        REPO_VIEW_KEY: REPO_VIEW_FAIL,
+        ("git", "rev-parse", "--verify", "--quiet", "refs/heads/main"):
+            subprocess.CompletedProcess([], 0, "abc123\n", ""),
+    }))
+    result = probe_state.probe("demo")
+    assert result["base_branch"] != "stale-from-a-previous-call"
+
+
 def test_probe_reports_the_resolved_base_branch(tmp_repo: Path, monkeypatch):
     """`branch` and `fix_rounds_applied` are both computed from a
     `<base>..<branch>` range, so a wrongly-resolved base turns them into
@@ -447,6 +490,34 @@ def test_base_branch_announces_the_master_guess(tmp_repo: Path, monkeypatch, cap
     assert "could not resolve the base branch" in capsys.readouterr().err
 
 
+def test_base_branch_handles_a_slash_containing_default_branch(tmp_repo: Path, monkeypatch):
+    # Mirrors the identical fix in `_dispatch_lib.default_base_branch`:
+    # `rsplit("/", 1)[-1]` would truncate `release/main` to `main`, and
+    # `rev-parse --verify` on the FULL target succeeds regardless of what
+    # candidate name was derived from it — so the truncated name passed every
+    # check and resolved to a branch that doesn't exist.
+    def fake_run(cmd, cwd=None, check=False):
+        if cmd[:2] == ["git", "symbolic-ref"]:
+            return subprocess.CompletedProcess(cmd, 0, "refs/remotes/origin/release/main\n", "")
+        if cmd[:4] == ["git", "rev-parse", "--verify", "--quiet"] and cmd[4] == "refs/remotes/origin/release/main":
+            return subprocess.CompletedProcess(cmd, 0, "abc123\n", "")
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+
+    monkeypatch.setattr(probe_state, "_run", fake_run)
+    assert probe_state._base_branch() == "release/main"
+
+
+def test_base_branch_is_silent_on_success(tmp_repo: Path, monkeypatch, capsys):
+    # Mirrors `_dispatch_lib`'s `test_a_successful_resolution_is_silent`: the
+    # stderr note belongs to the GUESS, not to every call.
+    monkeypatch.setattr(probe_state, "_run", _stub_run({
+        ("git", "rev-parse", "--verify", "--quiet", "refs/heads/main"):
+            subprocess.CompletedProcess([], 0, "abc123\n", ""),
+    }))
+    assert probe_state._base_branch() == "main"
+    assert capsys.readouterr().err == ""
+
+
 def test_branch_state_reports_a_failed_range(tmp_repo: Path, monkeypatch, capsys):
     """`False` reads as "no feature branch yet" and the orchestrator re-runs
     completed work — so an `unknown revision` from a wrong base must say so."""
@@ -472,3 +543,40 @@ def test_fix_rounds_reports_a_failed_range(tmp_repo: Path, monkeypatch, capsys):
     monkeypatch.setattr(probe_state, "_run", fake_run)
     assert probe_state._fix_rounds_applied("demo") == 0
     assert "unknown revision" in capsys.readouterr().err
+
+
+def test_branch_state_suppresses_the_diagnostic_when_the_tool_is_already_reported_missing(
+    tmp_repo: Path, monkeypatch, capsys,
+):
+    # A missing tool is already surfaced via `tools_missing` — printing a
+    # SECOND "range failed" diagnostic for the same root cause would be
+    # confusing noise, not a new fact.
+    def fake_run(cmd, cwd=None, check=False):
+        if cmd[:3] == ["git", "rev-parse", "--verify"] and cmd[-1].startswith("feature/"):
+            return subprocess.CompletedProcess(cmd, 0, "abc123\n", "")
+        if cmd[:4] == ["git", "rev-parse", "--verify", "--quiet"] and cmd[4] == "refs/heads/main":
+            return subprocess.CompletedProcess(cmd, 0, "abc123\n", "")  # base branch resolves silently
+        if cmd[:2] == ["git", "rev-list"]:
+            return subprocess.CompletedProcess(
+                cmd, probe_state._TOOL_MISSING_RC, "", "executable not found: git")
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+
+    monkeypatch.setattr(probe_state, "_run", fake_run)
+    assert probe_state._branch_state("demo") is False
+    assert capsys.readouterr().err == ""
+
+
+def test_fix_rounds_suppresses_the_diagnostic_when_the_tool_is_already_reported_missing(
+    tmp_repo: Path, monkeypatch, capsys,
+):
+    def fake_run(cmd, cwd=None, check=False):
+        if cmd[:4] == ["git", "rev-parse", "--verify", "--quiet"] and cmd[4] == "refs/heads/main":
+            return subprocess.CompletedProcess(cmd, 0, "abc123\n", "")  # base branch resolves silently
+        if cmd[:2] == ["git", "log"]:
+            return subprocess.CompletedProcess(
+                cmd, probe_state._TOOL_MISSING_RC, "", "executable not found: git")
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+
+    monkeypatch.setattr(probe_state, "_run", fake_run)
+    assert probe_state._fix_rounds_applied("demo") == 0
+    assert capsys.readouterr().err == ""

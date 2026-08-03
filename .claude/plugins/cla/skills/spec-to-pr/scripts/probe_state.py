@@ -70,7 +70,18 @@ def _run(cmd: list[str], cwd: Path | None = None, check: bool = False) -> subpro
         # that DOES raise `FileNotFoundError` was recorded as a missing tool —
         # a false diagnostic aimed at PATH. Distinguish by asking whether the
         # working directory is usable before blaming the executable.
-        if not Path(target_cwd).is_dir():
+        #
+        # `Path.is_dir()` itself is not exception-proof here: it swallows
+        # ENOENT/ENOTDIR/EBADF/ELOOP but re-raises anything else — EACCES
+        # included — so a permission-denied `cwd` would otherwise escape this
+        # `except` block entirely (a raise during exception handling), which
+        # is the exact "no JSON at all" failure this function exists to
+        # prevent. Catch broadly and treat "can't even stat it" as unusable.
+        try:
+            cwd_is_dir = Path(target_cwd).is_dir()
+        except OSError:
+            cwd_is_dir = False
+        if not cwd_is_dir:
             reason = f"working directory unusable: {target_cwd} ({exc})"
             if reason not in _environment_errors:
                 _environment_errors.append(reason)
@@ -134,6 +145,7 @@ def _implement_done(change_name: str) -> bool:
 
 
 _base_branch_cache: str | None = None
+_ORIGIN_HEAD_PREFIX = "refs/remotes/origin/"
 
 
 def _base_branch() -> str:
@@ -156,9 +168,14 @@ def _base_branch() -> str:
         return _base_branch_cache
     head_ref = _run(["git", "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
     resolved = None
-    if head_ref.returncode == 0 and "/" in head_ref.stdout:
+    if head_ref.returncode == 0 and head_ref.stdout.strip().startswith(_ORIGIN_HEAD_PREFIX):
+        # Strip the known prefix rather than `rsplit("/", 1)`: a default branch
+        # name containing its own slash (`release/main`) would otherwise lose
+        # its leading segment, and `rev-parse --verify` on the FULL target
+        # (below) succeeds regardless — so the truncated name passed every
+        # check here and still resolved to a branch that doesn't exist.
         target = head_ref.stdout.strip()
-        candidate = target.rsplit("/", 1)[-1] or None
+        candidate = target[len(_ORIGIN_HEAD_PREFIX):] or None
         if candidate and candidate != "HEAD" and _run(
             ["git", "rev-parse", "--verify", "--quiet", target]
         ).returncode == 0:
@@ -185,8 +202,16 @@ def _base_branch() -> str:
 
 def _branch_state(change_name: str) -> bool:
     expected = f"feature/{change_name}"
-    res = _run(["git", "rev-parse", "--verify", expected])
+    # `--quiet` matters here, not just cosmetically: without it, `rev-parse
+    # --verify` prints `fatal: Needed a single revision` on the ordinary
+    # "branch doesn't exist yet" path too, which would make a stderr-if-any-
+    # output gate fire on the ordinary negative instead of only on a genuine
+    # anomaly (ref-store corruption, an ambiguous name).
+    res = _run(["git", "rev-parse", "--verify", "--quiet", expected])
     if res.returncode != 0:
+        if res.returncode != _TOOL_MISSING_RC and res.stderr.strip():
+            print(f"git rev-parse --verify {expected} (rc={res.returncode}): "
+                  f"{res.stderr.strip()}", file=sys.stderr)
         return False
     base = _base_branch()
     ahead = _run(["git", "rev-list", "--count", f"{base}..{expected}"])
@@ -257,8 +282,15 @@ def _fix_rounds_applied(change_name: str) -> int:
 
 
 def probe(change_name: str) -> dict:
+    global _base_branch_cache
     _missing_tools.clear()
     _environment_errors.clear()
+    # Cleared alongside the other two: nothing calls `probe()` twice in one
+    # process today, but leaving a stale cache in place would mean a future
+    # second call reports `base_branch` resolved under the PREVIOUS call's
+    # conditions with no re-warning — the exact stale-guess-read-as-fact
+    # failure this file exists to eliminate.
+    _base_branch_cache = None
     result = {
         "change_name": change_name,
         "propose": _propose_done(change_name),

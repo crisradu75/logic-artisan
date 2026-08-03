@@ -333,6 +333,18 @@ def test_default_base_branch_ignores_a_dangling_origin_head(monkeypatch):
     assert lib.default_base_branch() == "main"
 
 
+def test_default_base_branch_handles_a_slash_containing_default_branch(monkeypatch):
+    # `rsplit("/", 1)[-1]` would truncate `release/main` to `main` — and
+    # `rev-parse --verify` on the FULL target still succeeds regardless of
+    # what candidate name was derived from it, so the truncated name passed
+    # every check here and resolved to a branch that doesn't exist.
+    monkeypatch.setattr(lib.subprocess, "run", _fake_git({
+        "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/release/main\n"),
+        "rev-parse --verify --quiet refs/remotes/origin/release/main": _FakeCompleted("abc123\n"),
+    }))
+    assert lib.default_base_branch() == "release/main"
+
+
 def test_default_base_branch_rejects_a_self_referential_origin_head(monkeypatch):
     # A last segment of `HEAD` is never a branch name.
     monkeypatch.setattr(lib.subprocess, "run", _fake_git({

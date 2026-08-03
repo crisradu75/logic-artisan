@@ -134,3 +134,48 @@ def test_main_exits_zero_on_a_non_string_command(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": 42}}'))
     assert hook.main() == 0
     assert capsys.readouterr().err == ""
+
+
+# --------------------------------------------------------------------------- #
+# `gh pr list` output is untrusted the same way `tool_input` is
+# --------------------------------------------------------------------------- #
+
+
+def test_a_non_dict_element_in_gh_output_does_not_crash(monkeypatch, capsys):
+    # `children` was isinstance-checked as a list, but never its ELEMENTS —
+    # `c.get('number')` on a non-dict element raises AttributeError, the exact
+    # crash class this file was just fixed for the `tool_input` check, one call
+    # away. `gh`'s stdout crosses a version/config/alias boundary this hook
+    # doesn't control, so it must be treated as untrusted too.
+    def fake_gh(args):
+        if args[:2] == ["pr", "view"]:
+            return "feature/base"
+        return '[1, "not-a-dict", {"number": 42, "title": "child"}]'
+
+    monkeypatch.setattr(hook, "_gh", fake_gh)
+    monkeypatch.setattr(hook.shutil, "which", lambda name: "/usr/bin/gh")
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO('{"tool_input": {"command": "gh pr merge 305 --squash --delete-branch"}}'),
+    )
+    assert hook.main() == 0
+    err = capsys.readouterr().err
+    assert "#42" in err
+
+
+def test_all_non_dict_elements_yields_no_warning_not_a_crash(monkeypatch, capsys):
+    # No usable PR number anywhere in the list — a warning naming no PRs would
+    # help nobody, so this must be a clean no-op, not an empty-subject message.
+    def fake_gh(args):
+        if args[:2] == ["pr", "view"]:
+            return "feature/base"
+        return '[1, "not-a-dict"]'
+
+    monkeypatch.setattr(hook, "_gh", fake_gh)
+    monkeypatch.setattr(hook.shutil, "which", lambda name: "/usr/bin/gh")
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO('{"tool_input": {"command": "gh pr merge 305 --squash --delete-branch"}}'),
+    )
+    assert hook.main() == 0
+    assert capsys.readouterr().err == ""
