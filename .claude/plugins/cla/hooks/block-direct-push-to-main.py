@@ -6,13 +6,17 @@ A retroactive paperwork-PR after the fact is structurally impossible (GitHub
 refuses no-diff PRs), so the only fix is
 to prevent the push at the moment it would happen.
 
-Detection: locate a `git push` in the Bash command — including a `push` reached
-via a git GLOBAL option between `git` and the subcommand (`-c`/`-C`/
-`--work-tree`/etc., see `_dispatch_lib.GIT_GLOBAL_OPTS`) — then read the
-positional arguments after it. The first is the remote; the rest are refspecs,
-each normalized (surrounding quotes stripped, a leading `+` force-marker
-dropped, a `refs/heads/` prefix removed) before EITHER side of a `src:dst` pair
-is compared against main/master. Blocked shapes therefore include:
+Detection: locate EVERY `git push` in the Bash command — including a `push`
+reached via a git GLOBAL option between `git` and the subcommand (`-c`/`-C`/
+`--work-tree`/etc., see `_dispatch_lib.GIT_GLOBAL_OPTS`) — and read each one's
+own positional arguments, stopping at the shell separator that ends that
+push's argument list. Scanning every match matters: `git push origin
+feature/x && git push origin main` is exactly what a drifted session runs, and
+inspecting only the first match let the second reach the remote unblocked. For
+each push, the first positional is the remote and the rest are refspecs, each
+normalized (surrounding quotes stripped, a leading `+` force-marker dropped, a
+`refs/heads/` prefix removed) before EITHER side of a `src:dst` pair is
+compared against main/master. Blocked shapes therefore include:
   - `git push <remote> main` / `git push <remote> master`
   - `git push <remote> HEAD:main` / `git push <remote> <branch>:main`
   - `git push <remote> main:<branch>` (pushing the main branch's content out)
@@ -22,6 +26,27 @@ is compared against main/master. Blocked shapes therefore include:
   - `git push <remote> "main"` / `'main'` (quoted destination)
   - Same with `--force` / `-f` / `--force-with-lease`
   - `git push` / `git push <remote>` with NO refspec, when HEAD is main/master
+  - `git push <remote> HEAD` / `@` (or either side of a `HEAD:<dst>` pair) when
+    HEAD is main/master. `HEAD` is a positional refspec, so the bare-push
+    current-branch check never ran for it, and as a literal ref name it matches
+    nothing protected — yet `git push origin HEAD` is what a script emits when
+    it does not want to hardcode a branch name, and from main it pushes main.
+  - Any of the above after a `&&`, `;`, `|`, or newline earlier in the command
+  - `git push -o ci.skip <remote>` and friends from main — an option whose
+    value is a separate token has that value consumed, so it cannot pose as a
+    refspec and suppress the refspec-less current-branch check
+
+Which branch counts as "current" is resolved in the command's OWN directory:
+`payload["cwd"]`, overridden by a `-C` / `--work-tree` value when the
+invocation carries one (the same shape `guard-worktree-isolation.py` uses).
+Resolving it in the hook process's cwd instead fails BOTH ways — a session in a
+worktree while the primary clone sits on main allows a real direct push, and
+the inverse blocks a legitimate one.
+
+Resolution stays lazy: a literal refspec (`git push origin main`) is decided
+with NO subprocess call at all, so the guard does not become dependent on git
+being usable to catch its most common offense. Only a `HEAD`/`@` refspec or a
+refspec-less push shells out.
 
 Allow:
   - `git push -u origin feature/...` (any non-main destination)
@@ -67,13 +92,40 @@ if _HOOKS_DIR not in sys.path:
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
-_GIT_PUSH = re.compile(r"\bgit\s+" + _G + r"push\b")
+# Group 1 captures the global-option blob between `git` and `push`, so a
+# `-C`/`--work-tree` belonging to THIS invocation can be recovered per match
+# rather than scanned for anywhere in the command line.
+_GIT_PUSH = re.compile(r"\bgit\s+(" + _G + r")push\b")
 
 # Where the `git push` argument list ends: a shell separator starts a new
 # command, so tokens past it are not this push's refspecs.
 _SHELL_SEPARATOR = re.compile(r"[;&|)\n]")
 
+# A repo-selecting global option's value, read out of one invocation's option
+# blob. `--git-dir` is included because `GIT_GLOBAL_OPTS` already CONSUMES it:
+# leaving it out here made `git --git-dir=/other/.git push origin HEAD` resolve
+# HEAD in the session's directory instead of the repo the command names. Passing
+# a `.git` dir to `git -C` is an approximation of git's own semantics, but a
+# directed one — git recognizes being inside a git dir — and it beats silently
+# answering from the wrong repo. Best-effort and first-match-wins: git applies
+# repeated `-C` cumulatively, which this does not model; the shape worth
+# resolving is the single `git -C <path> push …` a script emits.
+_GIT_DIR_OPT = re.compile(
+    r"(?:^|\s)(?:-C\s+(\S+)|--(?:work-tree|git-dir)(?:=|\s+)(\S+))"
+)
+
+# `git push` options whose value is a SEPARATE token. Dropping the flag alone
+# leaves the value behind as a phantom positional, which makes the token after
+# it read as a refspec and suppresses the refspec-less branch check — so
+# `git push -o ci.skip origin` from main was allowed. A closed set, same posture
+# as `_dispatch_lib._GIT_GLOBAL_VALUE_OPTS`: the `--opt=value` form is a single
+# token and is already dropped by the leading-dash test.
+_PUSH_VALUE_OPTS = ("-o", "--push-option", "--receive-pack", "--exec", "--repo")
+
 _PROTECTED = ("main", "master")
+
+# Positional refspecs that MEAN the current branch rather than naming a ref.
+_HEAD_ALIASES = ("HEAD", "@")
 
 
 def _normalize_ref(ref: str) -> str:
@@ -84,41 +136,141 @@ def _normalize_ref(ref: str) -> str:
     return ref
 
 
-def _refspec_touches_main(refspec: str) -> bool:
+def _refspec_touches_main(
+    refspec: str, work_tree: str | None = None, session_cwd: str | None = None
+) -> bool:
     """True iff either side of `[+][src]:[dst]` (or a bare ref) is main/master.
 
     Both sides count: `<branch>:main` pushes TO the default branch, and
     `main:<branch>` pushes the default branch's content OUT — the convention
     this hook enforces treats both as a direct-to-main operation.
+
+    `HEAD`/`@` on either side is not a ref NAME but a reference to whatever
+    branch is checked out, so it is resolved through `_current_branch`. That
+    resolution is deliberately reached only AFTER the literal comparison fails:
+    the common offense (`git push origin main`) must stay decidable without
+    git being usable at all.
     """
     ref = refspec.strip("'\"").lstrip("+")
     sides = ref.split(":") if ":" in ref else [ref]
-    return any(_normalize_ref(side) in _PROTECTED for side in sides)
+    normalized = [_normalize_ref(side) for side in sides]
+    if any(side in _PROTECTED for side in normalized):
+        return True
+    if any(side in _HEAD_ALIASES for side in normalized):
+        return _branch_for(work_tree, session_cwd) in _PROTECTED
+    return False
 
 
-def _push_arguments(scanned: str, command: str) -> list[str] | None:
-    """Return the whitespace-delimited tokens following `git push`, re-sliced
-    from the ORIGINAL command so a quoted refspec keeps its real text.
+def _push_argument_lists(scanned: str, command: str) -> list[tuple[str | None, list[str]]]:
+    """Return one window per `git push` in the command: its own `-C` /
+    `--work-tree` override (or None) paired with the whitespace-delimited
+    tokens following it, re-sliced from the ORIGINAL command so a quoted
+    refspec keeps its real text.
+
+    One window per match, not just the first: truncating at the first shell
+    separator correctly ends ONE push's argument list, but a `.search()` then
+    made every later push invisible, so `git push origin feature/x && git push
+    origin main` reached the remote unblocked.
 
     `strip_quoted_spans` is length-preserving precisely so these offsets stay
     valid against `command`; matching on `scanned` is what keeps a `git push`
     inside an echoed string from being seen at all.
     """
-    m = _GIT_PUSH.search(scanned)
+    windows: list[tuple[str | None, list[str]]] = []
+    for m in _GIT_PUSH.finditer(scanned):
+        rest = scanned[m.end() :]
+        stop = _SHELL_SEPARATOR.search(rest)
+        if stop:
+            rest = rest[: stop.start()]
+        base = m.end()
+        work_tree = _command_work_tree(m.group(1), command[m.start(1) : m.end(1)])
+        windows.append((
+            work_tree,
+            [command[base + t.start() : base + t.end()] for t in re.finditer(r"\S+", rest)],
+        ))
+    return windows
+
+
+def _command_work_tree(scanned_options: str, raw_options: str) -> str | None:
+    """The `-C` / `--work-tree` path from ONE invocation's global-option blob,
+    or None.
+
+    Matched against the SCANNED text (so a quoted path containing a space is
+    one `\\S+` token) and re-sliced from the RAW text at the same offsets (so
+    the returned value is the real path, not the placeholder fill) — the same
+    length-preserving contract `_push_argument_lists` relies on."""
+    m = _GIT_DIR_OPT.search(scanned_options)
     if not m:
         return None
-    rest = scanned[m.end() :]
-    stop = _SHELL_SEPARATOR.search(rest)
-    if stop:
-        rest = rest[: stop.start()]
-    base = m.end()
-    return [command[base + t.start() : base + t.end()] for t in re.finditer(r"\S+", rest)]
+    idx = 1 if m.group(1) is not None else 2
+    return raw_options[m.start(idx) : m.end(idx)].strip("'\"") or None
 
 
-def _current_branch() -> str | None:
+def _branch_for(work_tree: str | None, session_cwd: str | None) -> str | None:
+    """Resolve the current branch for one push, preferring the directory the
+    command itself names and falling back to the session's.
+
+    Two things this does that a bare `work_tree or session_cwd` did not:
+
+    - **A relative `-C` is composed against the session directory**, the way
+      the shell would. Passed through raw it resolved against whatever cwd the
+      hook PROCESS happens to have — reintroducing, for relative paths, the
+      exact wrong-directory bug this hook was fixed for. Verified regression:
+      from a session in `<repo>/sub`, `git -C .. push` (targeting a repo root
+      sitting on main) resolved to `<repo>/..`, failed, and was ALLOWED.
+    - **A failed command-derived path falls back to the session directory**
+      rather than straight to "unknown". A scraped `-C` value is far likelier
+      to be wrong than the payload's own cwd, and "unknown" means the guard
+      stops guarding (see `_current_branch`'s tri-state note)."""
+    candidates: list[str] = []
+    if work_tree:
+        if session_cwd and not os.path.isabs(work_tree):
+            candidates.append(os.path.join(session_cwd, work_tree))
+        else:
+            candidates.append(work_tree)
+    if session_cwd and session_cwd not in candidates:
+        candidates.append(session_cwd)
+    for candidate in candidates:
+        branch = _current_branch(candidate)
+        if branch is not None:
+            return branch
+    return _current_branch() if not candidates else None
+
+
+def _positional_arguments(tokens: list[str]) -> list[str]:
+    """Drop flags from one push's token list, INCLUDING the separate-token
+    value of an option that takes one (`_PUSH_VALUE_OPTS`).
+
+    Dropping the flag alone left its value behind as a positional, which then
+    read as the remote and pushed the real remote into the refspec slot — so
+    `git push -o ci.skip origin` from main looked like it carried a refspec
+    (`origin`), skipped the refspec-less branch check, and was allowed."""
+    positionals: list[str] = []
+    skip_value = False
+    for token in tokens:
+        if skip_value:
+            skip_value = False
+            continue
+        if token.startswith("-"):
+            skip_value = token in _PUSH_VALUE_OPTS
+            continue
+        positionals.append(token)
+    return positionals
+
+
+def _current_branch(cwd: str | None = None) -> str | None:
+    """The checked-out branch in `cwd` (the session's own directory), NOT in
+    whatever directory this hook process happens to be running from — those
+    differ whenever the session works in a linked worktree, and getting it
+    wrong fails open there.
+
+    Tri-state on purpose: a branch name, or None for "could not determine".
+    Callers collapse None to "not protected" (fail-open, per this hook's
+    stated posture) — which is exactly why every None path here has to be
+    audible on stderr rather than silent."""
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            ["git", *(["-C", cwd] if cwd else []), "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True, text=True, timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
@@ -135,29 +287,43 @@ def _current_branch() -> str | None:
         )
         return None
     if result.returncode != 0:
+        # git EXITS 128 here (bad directory, not a repo, dubious ownership,
+        # unborn HEAD) far more often than it raises, so this — not the
+        # exception branch above — is the common degradation now that the
+        # directory is caller-supplied. Returning None silently made it
+        # indistinguishable from "you are on a feature branch".
+        print(
+            f"[block-direct-push-to-main] warn: `git rev-parse` exited "
+            f"{result.returncode} in {cwd or 'the hook process cwd'} — "
+            "current-branch detection is off for this call.",
+            file=sys.stderr,
+        )
         return None
     return (result.stdout or "").strip() or None
 
 
-def _is_direct_push_to_main(command: str) -> bool:
-    """Return True iff the command shape pushes to main/master directly."""
+def _is_direct_push_to_main(command: str, cwd: str | None = None) -> bool:
+    """Return True iff ANY `git push` in the command pushes to main/master
+    directly. `cwd` is the session's own directory (the hook payload's), used
+    for branch resolution unless a push carries its own `-C`/`--work-tree`."""
     scanned = _strip_quoted_spans(command)
-    tokens = _push_arguments(scanned, command)
-    if tokens is None:
-        return False
+    for work_tree, tokens in _push_argument_lists(scanned, command):
+        # First positional is the remote; anything after it is a refspec. Flags
+        # are dropped — including `--force-with-lease=origin/main`, whose value
+        # is not a push destination.
+        positionals = _positional_arguments(tokens)
+        refspecs = positionals[1:]
 
-    # First positional is the remote; anything after it is a refspec. Flags are
-    # dropped — including `--force-with-lease=origin/main`, whose value is not a
-    # push destination.
-    positionals = [t for t in tokens if not t.startswith("-")]
-    refspecs = positionals[1:]
+        if refspecs:
+            if any(_refspec_touches_main(r, work_tree, cwd) for r in refspecs):
+                return True
+            continue
 
-    if refspecs:
-        return any(_refspec_touches_main(r) for r in refspecs)
-
-    # No refspec (`git push`, `git push --force`, `git push origin`) → the
-    # destination is the current branch's upstream.
-    return _current_branch() in _PROTECTED
+        # No refspec (`git push`, `git push --force`, `git push origin`) → the
+        # destination is the current branch's upstream.
+        if _branch_for(work_tree, cwd) in _PROTECTED:
+            return True
+    return False
 
 
 def main() -> int:
@@ -173,7 +339,10 @@ def main() -> int:
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
     if not isinstance(command, str):
         return 0
-    if not _is_direct_push_to_main(command):
+    cwd = payload.get("cwd") if isinstance(payload, dict) else None
+    if not isinstance(cwd, str) or not cwd:
+        cwd = None
+    if not _is_direct_push_to_main(command, cwd):
         return 0
     print(
         "blocked: `git push` targets main/master directly. No direct commits to "
