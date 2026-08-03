@@ -239,7 +239,14 @@ def _print_worktree_summary(outcomes: list) -> int:
     wrote = [o for o in outcomes if o.status == "wrote"]
     skipped_dirty = [o for o in outcomes if o.status == "skipped_dirty_worktree"]
     skipped_binary = [o for o in outcomes if o.status == "skipped_binary"]
+    skipped_malformed = [o for o in outcomes if o.status == "skipped_malformed"]
     failed = [o for o in outcomes if o.status == "failure"]
+    # A status this printer doesn't recognize must never disappear silently —
+    # that is exactly the failure class `skipped_malformed` itself was almost
+    # introduced as (a new ApplyOutcome status with no bucket here prints
+    # nowhere and is invisible in the count).
+    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "failure"}
+    unrecognized = [o for o in outcomes if o.status not in known]
 
     print()
     print(f"Wrote {len(wrote)} of {len(outcomes)} file(s) to the working tree.")
@@ -253,21 +260,32 @@ def _print_worktree_summary(outcomes: list) -> int:
         print("Skipped (binary placeholder — not safe to write):")
         for o in skipped_binary:
             print(f"  - {o.asset_path}")
+    if skipped_malformed:
+        print("Skipped (doubled-newline corruption fingerprint — NOT written):")
+        for o in skipped_malformed:
+            print(f"  - {o.asset_path}: {o.reason}")
     if failed:
         print("Failed:")
         for o in failed:
             print(f"  - {o.asset_path}: {o.reason}")
+    if unrecognized:
+        print("Unrecognized outcome status (report this as a bug):")
+        for o in unrecognized:
+            print(f"  - {o.asset_path}: status={o.status!r} reason={o.reason}")
     if wrote:
         print()
         print("Review with: git diff")
-    if failed and not wrote:
+    if (failed or skipped_malformed or unrecognized) and not wrote:
         return 1
     return 0
 
 
 def _print_pr_summary(outcomes: list, pr_result) -> int:
     wrote = [o for o in outcomes if o.status == "wrote"]
+    skipped_malformed = [o for o in outcomes if o.status == "skipped_malformed"]
     failed = [o for o in outcomes if o.status == "failure"]
+    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "failure"}
+    unrecognized = [o for o in outcomes if o.status not in known]
 
     print()
     if pr_result.reason and pr_result.pr_url is None:
@@ -276,6 +294,10 @@ def _print_pr_summary(outcomes: list, pr_result) -> int:
             print(f"Branch: {pr_result.branch} (rolled back to default branch where possible)")
         for o in failed:
             print(f"  - {o.asset_path}: {o.reason}")
+        if skipped_malformed:
+            print("Refused (doubled-newline corruption fingerprint — NOT written):")
+            for o in skipped_malformed:
+                print(f"  - {o.asset_path}: {o.reason}")
         return 1
 
     print(f"Wrote {len(wrote)} file(s) and opened PR.")
@@ -285,6 +307,14 @@ def _print_pr_summary(outcomes: list, pr_result) -> int:
         print("Per-file failures:")
         for o in failed:
             print(f"  - {o.asset_path}: {o.reason}")
+    if skipped_malformed:
+        print("Refused (doubled-newline corruption fingerprint — NOT written):")
+        for o in skipped_malformed:
+            print(f"  - {o.asset_path}: {o.reason}")
+    if unrecognized:
+        print("Unrecognized outcome status (report this as a bug):")
+        for o in unrecognized:
+            print(f"  - {o.asset_path}: status={o.status!r} reason={o.reason}")
     print()
     print(f"Branch: {pr_result.branch}")
     if pr_result.pr_url:

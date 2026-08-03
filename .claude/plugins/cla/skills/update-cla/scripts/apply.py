@@ -44,7 +44,7 @@ class GitUnavailableError(Exception):
 @dataclass
 class ApplyOutcome:
     asset_path: str
-    status: str  # "wrote" | "skipped_dirty_worktree" | "skipped_binary" | "failure"
+    status: str  # "wrote" | "skipped_dirty_worktree" | "skipped_binary" | "skipped_malformed" | "failure"
     reason: Optional[str]
 
 
@@ -92,6 +92,70 @@ _BINARY_PLACEHOLDER_PREFIX = "<binary file,"
 
 def _looks_like_binary_placeholder(content: str) -> bool:
     return content.startswith(_BINARY_PLACEHOLDER_PREFIX) and content.rstrip().endswith("bytes>")
+
+
+def _normalize_line_endings(content: str) -> str:
+    """Normalize CRLF/CR to LF before anything else touches `adapted_content`.
+
+    `_write_file` already writes with `newline="\\n"`, so any corruption in a
+    file that reaches disk with doubled blank lines happened UPSTREAM of the
+    write — between the adapting agent's output and this function. A prior
+    sync wrote 19 of 37 files with every `\\r\\n` silently turned into `\\n\\n`
+    (a blank line inserted after every line); byte counts stayed identical, so
+    nothing caught it — not the hook suite, not the guards, not the apply
+    summary. Root cause was never conclusively isolated to one line, so the
+    fix is defensive here rather than a point fix at an unproven origin."""
+    return content.replace("\r\n", "\n").replace("\r", "\n")
+
+
+# A file whose newline count is roughly 2x its non-empty line count is never a
+# legitimate adaptation — it is the fingerprint of the doubled-newline
+# corruption above (every real line gained a spurious blank line after it, so
+# total line breaks roughly doubled while real content lines did not).
+#
+# The math, precisely (this matters — an earlier draft of this constant got
+# it backwards): a file with N non-empty lines and ZERO pre-existing blank
+# lines lands at EXACTLY ratio 2.0 once corrupted (every one of its N
+# newlines becomes two); any pre-existing blank-line formatting only pushes
+# the corrupted ratio HIGHER, never lower. So 2.0 is corruption's FLOOR, not
+# its ceiling — a threshold set BELOW 2.0 (as a prior draft's 1.8 was) is
+# stricter than the corruption signature itself and catches ordinary prose,
+# not just corruption. Confirmed empirically against every file in this
+# plugin's `skills/`/`agents/`/`hooks/` tree with at least
+# `_MALFORMED_MIN_NON_EMPTY_LINES` non-empty lines: the most blank-line-heavy
+# genuine file (one-paragraph-per-line markdown, a blank line between each)
+# sits at ratio 1.955 — see `test_malformed_ratio_never_flags_real_repo_content`,
+# which pins the whole synced-core tree at once so a future doc in this same
+# style can't silently regress this guard.
+#
+# One shape genuinely can't be perfectly separated from corruption by ratio
+# alone at ANY length: prose written as one paragraph per line with a blank
+# line between every single one asymptotically APPROACHES ratio 2.0 as it
+# grows (`(2N-1)/N`, e.g. 1.955 at N=22, 1.99 at N=100) — the same shape a
+# corrupted file has. This repo's OWN `design-tradeoffs.md` is written this
+# way. The mitigation isn't a perfect discriminator (none exists purely from
+# the ratio); it's staying below what real content in this repo's synced
+# core actually reaches at a checkable length — see
+# `test_malformed_ratio_never_flags_real_repo_content`, which scans every
+# real file rather than relying on a hand-built approximation. Empirically,
+# every real file with `_MALFORMED_MIN_NON_EMPTY_LINES`-or-more non-empty
+# lines in this repo tops out at ratio 1.667 (the extreme "blank between
+# every line" style only appears in a handful of SHORT reference docs,
+# already excluded by the minimum). A corrupted file's worst realistic case
+# — no pre-existing blank lines AND no trailing newline on its last line —
+# still lands at `2(N-1)/N`, ≈1.933 at N=30, comfortably above both knobs.
+_MALFORMED_NEWLINE_RATIO = 1.85
+_MALFORMED_MIN_NON_EMPTY_LINES = 30
+
+
+def _looks_malformed_by_doubled_newlines(content: str) -> bool:
+    """True iff `content`'s structure matches the doubled-newline corruption
+    fingerprint described above, on an ALREADY newline-normalized string (so a
+    legitimate CRLF file is never mistaken for this)."""
+    non_empty = sum(1 for line in content.splitlines() if line.strip())
+    if non_empty < _MALFORMED_MIN_NON_EMPTY_LINES:
+        return False
+    return content.count("\n") >= non_empty * _MALFORMED_NEWLINE_RATIO
 
 
 def _read_lock(local_repo: Path) -> dict:
@@ -179,6 +243,15 @@ def apply_worktree(local_repo: Path, adaptations: list[dict], source_name: str) 
                 "adapted_content looks like a binary placeholder; not writing",
             ))
             continue
+        pre_normalize = adapted
+        adapted = _normalize_line_endings(adapted)
+        if _looks_malformed_by_doubled_newlines(adapted):
+            outcomes.append(ApplyOutcome(
+                asset_path, "skipped_malformed",
+                "adapted_content's newline count is ~2x its non-empty line "
+                "count (doubled-newline corruption fingerprint); not writing",
+            ))
+            continue
         try:
             if _file_has_local_edits(local_repo, asset_path):
                 outcomes.append(ApplyOutcome(
@@ -195,7 +268,15 @@ def apply_worktree(local_repo: Path, adaptations: list[dict], source_name: str) 
             continue
         try:
             _write_file(local_repo, asset_path, adapted)
-            outcomes.append(ApplyOutcome(asset_path, "wrote", None))
+            # Before this normalization step, `_write_file`'s `newline="\n"`
+            # meant no translation at all — a CR in `adapted_content` reached
+            # disk byte-for-byte. Report it when normalization actually
+            # changed something (a legitimate CRLF-requiring asset, e.g. a
+            # Windows `.cmd`, would otherwise be silently rewritten with no
+            # trace in the summary) — never on the common case, where it's
+            # only noise.
+            reason = "line endings normalized (CRLF/CR → LF)" if adapted != pre_normalize else None
+            outcomes.append(ApplyOutcome(asset_path, "wrote", reason))
             # Hash the in-memory `adapted` bytes rather than re-reading the file from
             # disk: `_write_file` writes these exact bytes (utf-8, newline="\n" means
             # no translation), so a read-back is redundant — and, worse, a read-back
@@ -296,9 +377,22 @@ def apply_pr(
                 "adapted_content looks like a binary placeholder; not writing",
             ))
             continue
+        pre_normalize = adapted
+        adapted = _normalize_line_endings(adapted)
+        if _looks_malformed_by_doubled_newlines(adapted):
+            outcomes.append(ApplyOutcome(
+                asset_path, "skipped_malformed",
+                "adapted_content's newline count is ~2x its non-empty line "
+                "count (doubled-newline corruption fingerprint); not writing",
+            ))
+            continue
         try:
             _write_file(local_repo, asset_path, adapted)
-            outcomes.append(ApplyOutcome(asset_path, "wrote", None))
+            # See apply_worktree's identical comment: report normalization
+            # only when it actually changed something, so a legitimate
+            # CRLF-requiring asset isn't silently rewritten with no trace.
+            reason = "line endings normalized (CRLF/CR → LF)" if adapted != pre_normalize else None
+            outcomes.append(ApplyOutcome(asset_path, "wrote", reason))
             written.append(a)
             # See apply_worktree's comment: hash the in-memory adapted bytes rather
             # than re-reading from disk, to avoid a read-back OSError producing a

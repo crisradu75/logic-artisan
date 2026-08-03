@@ -65,6 +65,29 @@ is *all* convention-reversal has nothing to pull — leave it untouched and say 
 in the `change_summary`. Overwriting a fork with its sibling is the failure
 mode, not the goal.
 
+**4. A synced SCRIPT's environmental premise must be checked, not assumed.**
+
+Applies only to executable scripts (Python/JS/shell under a skill's `scripts/`
+or `hooks/`), not prose/docs. A script often assumes something about the
+destination repo's environment — a root `package.json`, an interpreter name, a
+particular directory shape — and that assumption can be quietly wrong here even
+though the script itself adapts cleanly (no local content to preserve, no
+syntax problem, every test green). Check: would this script's discovery/gate
+actually produce output in *this* repo, or would it silently return empty? A
+script whose premise fails locally still needs to land (removing a portable
+capability outright is its own regression), but the failure must be **reported
+in `change_summary`**, not adopted silently — the same "trust but verify"
+standard applied to every other adapted file, extended to a script's runtime
+behavior rather than only its text.
+
+This is a recurrence, not a hypothetical: `discover_tests.py` arrived assuming
+a root `package.json`. In a repo with none, both its discovery tiers return
+empty forever, and the Test phase reports `skip` with a *wrong* reason — a
+silent gate rather than an honest "this check doesn't apply here". The same
+script's premise had already failed once before (then it assumed a root
+`pyproject.toml`), so this is the second occurrence of the identical failure
+shape arriving through the same file.
+
 ## Do not
 
 - Rename symbols/variables/functions unless forced by local context.
@@ -89,6 +112,7 @@ content was preserved**. Examples:
 
 - `Adopted source's new --dry-run flag; kept local's Romanian-locale handling.`
 - `Renamed paths to match local plugin name; no local content dropped.`
+- `Adopted verbatim — NOTE: assumes a root package.json, which this repo doesn't have; discovery will silently return empty here (see rule 4).`
 - `New file — adapted source examples to use local IBKR ports instead of mock ones.`
 
 If a file needs no adaptation (the source applies cleanly with no local

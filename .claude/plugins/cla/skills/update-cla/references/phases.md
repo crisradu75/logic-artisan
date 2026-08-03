@@ -120,6 +120,8 @@ Two modes, selected by `--mode`:
 
 Either mode refuses to write a file whose `adapted_content` looks like the binary-placeholder string (`<binary file, N bytes>`); such a file is reported as `skipped_binary`. This is a defense-in-depth — discover already refuses to surface binary content to the LLM, but if a manually edited adaptations.json contained a placeholder, apply would still refuse.
 
+Every `adapted_content` is also normalized (CRLF/CR → LF) before being written — this is where a prior sync's silent corruption actually happened (every `\r\n` became `\n\n`, doubling blank lines across 19 of 37 files with byte counts unchanged, so nothing caught it). After normalization, apply refuses to write content whose newline count is still ~2x its non-empty line count — the fingerprint of that exact corruption, and never a legitimate adaptation. Such a file is reported as `skipped_malformed` and left on disk as-is; its prior lock entry (if any) is unchanged, same as `skipped_binary`.
+
 **Every `wrote` outcome also updates `.claude/plugins/cla/.cla-sync-lock.json`** (`cla-sync-provenance`) — see `references/lockfile.md`. This happens inside `apply.py` itself (both modes), not as a separate step: it's the only place with the exact adapted bytes just written, and (in `pr` mode) the only place that can get the lockfile staged/committed/pushed in the same PR. The lock write is best-effort — a failure prints to stderr but never fails the run, commit, or PR.
 
 **Display the apply summary verbatim.** Per-file write failures isolate — a single bad-permission or read-only path fails just that file and the rest proceed; the final summary lists per-file outcomes.
