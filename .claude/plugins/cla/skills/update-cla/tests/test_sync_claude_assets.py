@@ -696,14 +696,48 @@ def test_normalize_line_endings_is_a_no_op_on_already_lf_content():
 
 def test_looks_malformed_flags_the_doubled_newline_fingerprint():
     apply_mod = _load("apply")
-    real_lines = [f"line {i}" for i in range(20)]  # exactly the minimum
+    real_lines = [f"line {i}" for i in range(apply_mod._MALFORMED_MIN_NON_EMPTY_LINES)]  # exactly the minimum
     corrupted = "".join(f"{line}\n\n" for line in real_lines)
+    assert apply_mod._looks_malformed_by_doubled_newlines(corrupted) is True
+
+
+def test_looks_malformed_flags_a_corrupted_file_missing_its_final_newline():
+    # A corrupted file whose last line lacks a trailing newline drops one of
+    # its doubled newlines, landing at `2(N-1)/N` (≈1.933 at N=30) rather than
+    # a clean `2.0` — the WORST case for this heuristic, and the reason both
+    # knobs (ratio AND minimum line count) were tuned together rather than
+    # the ratio alone.
+    apply_mod = _load("apply")
+    n = apply_mod._MALFORMED_MIN_NON_EMPTY_LINES
+    real_lines = [f"line {i}" for i in range(n)]
+    corrupted = "\n\n".join(real_lines)  # no trailing newline at all
     assert apply_mod._looks_malformed_by_doubled_newlines(corrupted) is True
 
 
 def test_looks_malformed_does_not_flag_ordinary_single_newline_content():
     apply_mod = _load("apply")
     content = "".join(f"line {i}\n" for i in range(30))
+    assert apply_mod._looks_malformed_by_doubled_newlines(content) is False
+
+
+def test_looks_malformed_does_not_flag_a_realistic_long_reference_doc():
+    # Real long docs in this repo mix short and long paragraphs, lists, and
+    # headings rather than blanking every single line — the "one paragraph
+    # per line, blank between EVERY one" style only shows up in this repo's
+    # SHORT reference docs (already excluded by the minimum line count; see
+    # `test_looks_malformed_respects_the_minimum_line_count_guard`), and no
+    # real file at this length reaches this ratio — pinned directly against
+    # the actual synced core by `test_malformed_ratio_never_flags_real_repo_content`
+    # below, not by a hand-built approximation of one specific file's shape
+    # (a shape that, scaled to this length, is mathematically indistinguishable
+    # from corruption by ratio alone — see the constants' own comment).
+    apply_mod = _load("apply")
+    lines = []
+    for i in range(40):
+        lines.append(f"- item {i}: a short bullet with no blank line after it")
+    lines.append("")
+    lines.append("A closing paragraph of ordinary prose, one blank line before it.")
+    content = "\n".join(lines) + "\n"
     assert apply_mod._looks_malformed_by_doubled_newlines(content) is False
 
 
@@ -715,6 +749,37 @@ def test_looks_malformed_respects_the_minimum_line_count_guard():
     real_lines = [f"line {i}" for i in range(apply_mod._MALFORMED_MIN_NON_EMPTY_LINES - 1)]
     corrupted = "".join(f"{line}\n\n" for line in real_lines)
     assert apply_mod._looks_malformed_by_doubled_newlines(corrupted) is False
+
+
+def test_malformed_ratio_never_flags_real_repo_content():
+    # The regression this pins directly: an earlier draft of this heuristic
+    # (ratio 1.8, minimum 20 lines) flagged a genuine, uncorrupted file in
+    # THIS repo's own synced core (`spec-to-pr/references/design-tradeoffs.md`,
+    # ratio 1.955) — a real sync would have silently refused it, forever,
+    # with no error surfaced (see the orchestrate.py summary printers). Scan
+    # every file actually shipped in the synced core so a future doc written
+    # in the same blank-line-heavy style can't silently regress this guard.
+    apply_mod = _load("apply")
+    plugin_root = Path(__file__).resolve().parents[3]  # .../.claude/plugins/cla
+    scan_dirs = ["skills", "agents", "hooks"]
+    flagged = []
+    for scan_dir in scan_dirs:
+        base = plugin_root / scan_dir
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if not path.is_file() or "__pycache__" in path.parts:
+                continue
+            try:
+                content = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            if apply_mod._looks_malformed_by_doubled_newlines(content):
+                flagged.append(str(path.relative_to(plugin_root)))
+    assert flagged == [], (
+        f"{len(flagged)} real file(s) would be silently refused as "
+        f"'skipped_malformed' by the current threshold: {flagged}"
+    )
 
 
 # ---------- apply: worktree mode ----------
@@ -869,9 +934,8 @@ def test_apply_worktree_does_not_flag_a_short_file(synthetic_repos, fake_gh):
 
 def test_apply_worktree_skipped_malformed_leaves_lock_entry_unchanged(synthetic_repos, fake_gh):
     repos = synthetic_repos({"dst": {}})
-    _seed_lock(repos[0], {
-        ".claude/plugins/cla/skills/foo.md": {"last_synced_sha256": "abc", "source": "old-src"},
-    })
+    seeded = {"last_synced_sha256": "abc", "source": "old-src"}
+    _seed_lock(repos[0], {".claude/plugins/cla/skills/foo.md": seeded})
     apply_mod = _load("apply")
     real_lines = [f"line {i}" for i in range(30)]
     corrupted = "".join(f"{line}\n\n" for line in real_lines)
@@ -884,7 +948,12 @@ def test_apply_worktree_skipped_malformed_leaves_lock_entry_unchanged(synthetic_
     lock = json.loads(
         (repos[0] / ".claude/plugins/cla/.cla-sync-lock.json").read_text(encoding="utf-8")
     )
-    assert lock[".claude/plugins/cla/skills/foo.md"]["source"] == "old-src"
+    # Full-dict comparison, not just one field — a future refactor that
+    # started calling `_update_lock` unconditionally (rather than only for
+    # `written` entries) could otherwise still rewrite `last_synced_sha256`
+    # while leaving `source` untouched, and a single-field check wouldn't
+    # catch it.
+    assert lock[".claude/plugins/cla/skills/foo.md"] == seeded
 
 
 def test_apply_pr_normalizes_crlf_before_writing(synthetic_repos, fake_gh, tmp_path):
@@ -906,7 +975,50 @@ def test_apply_pr_normalizes_crlf_before_writing(synthetic_repos, fake_gh, tmp_p
     }]
     outcomes, pr_result = apply_mod.apply_pr(repos[0], adaptations, "src-name", tmp_path)
     assert outcomes[0].status == "wrote"
+    assert outcomes[0].reason == "line endings normalized (CRLF/CR → LF)"
     assert pr_result.pr_url is not None
+    written = (repos[0] / ".claude/plugins/cla/skills/foo.md").read_bytes()
+    assert b"\r" not in written
+    assert written == b"line one\nline two\n"
+
+
+def test_apply_pr_mixed_batch_writes_the_clean_file_and_refuses_the_malformed_one(
+    synthetic_repos, fake_gh, tmp_path,
+):
+    # The real-world shape this hardening is for: NOT every file in a sync is
+    # corrupted (19 of 37, not 37 of 37). One malformed asset must not abort
+    # the whole PR — the clean one still lands.
+    repos = synthetic_repos({"dst": {}})
+    fake_gh["responses"] = [
+        (("status", "--porcelain"), 0, "", ""),
+        (("repo", "view", "--json"), 0, "main\n", ""),
+        (("checkout", "-b"), 0, "", ""),
+        (("add", "-A"), 0, "", ""),
+        (("commit", "-F"), 0, "", ""),
+        (("push", "-u", "origin"), 0, "", ""),
+        (("pr", "create"), 0, "https://example.com/pr/1\n", ""),
+    ]
+    apply_mod = _load("apply")
+    real_lines = [f"line {i}" for i in range(30)]
+    corrupted = "".join(f"{line}\n\n" for line in real_lines)
+    adaptations = [
+        {"asset_path": ".claude/plugins/cla/skills/clean.md",
+         "adapted_content": "hello\n", "change_summary": "clean"},
+        {"asset_path": ".claude/plugins/cla/skills/corrupted.md",
+         "adapted_content": corrupted, "change_summary": "corrupted"},
+    ]
+    outcomes, pr_result = apply_mod.apply_pr(repos[0], adaptations, "src-name", tmp_path)
+    statuses = {o.asset_path: o.status for o in outcomes}
+    assert statuses[".claude/plugins/cla/skills/clean.md"] == "wrote"
+    assert statuses[".claude/plugins/cla/skills/corrupted.md"] == "skipped_malformed"
+    assert pr_result.pr_url is not None
+    assert (repos[0] / ".claude/plugins/cla/skills/clean.md").exists()
+    assert not (repos[0] / ".claude/plugins/cla/skills/corrupted.md").exists()
+    lock = json.loads(
+        (repos[0] / ".claude/plugins/cla/.cla-sync-lock.json").read_text(encoding="utf-8")
+    )
+    assert ".claude/plugins/cla/skills/clean.md" in lock
+    assert ".claude/plugins/cla/skills/corrupted.md" not in lock
 
 
 def test_apply_pr_refuses_doubled_newline_corruption(synthetic_repos, fake_gh, tmp_path):
@@ -1275,6 +1387,68 @@ def test_lockfile_write_failure_is_nonfatal(synthetic_repos, fake_gh, monkeypatc
     outcomes = apply_mod.apply_worktree(repos[0], adaptations, "src-name")
     assert outcomes[0].status == "wrote"
     assert (repos[0] / ".claude/plugins/cla/skills/foo.md").read_text(encoding="utf-8") == "hello\n"
+
+
+# ---------- orchestrate: summary printers surface every outcome status ----------
+
+
+def test_worktree_summary_surfaces_skipped_malformed(capsys):
+    # The refusal this whole PR adds must not be invisible: before this fix,
+    # neither summary printer had a bucket for `skipped_malformed` at all, so
+    # a refused file printed NOWHERE — a PR could open, or a worktree sync
+    # could finish, silently missing a file with zero trace in the summary.
+    orchestrate_mod = _load("orchestrate")
+    apply_mod = _load("apply")
+    outcomes = [
+        apply_mod.ApplyOutcome(".claude/plugins/cla/skills/foo.md", "wrote", None),
+        apply_mod.ApplyOutcome(
+            ".claude/plugins/cla/skills/bad.md", "skipped_malformed",
+            "adapted_content's newline count is ~2x its non-empty line count "
+            "(doubled-newline corruption fingerprint); not writing",
+        ),
+    ]
+    rc = orchestrate_mod._print_worktree_summary(outcomes)
+    out = capsys.readouterr().out
+    assert "bad.md" in out
+    assert "corruption fingerprint" in out
+    assert rc == 0  # a clean file DID write, so this isn't a hard failure
+
+
+def test_worktree_summary_reports_failure_when_only_malformed_and_nothing_wrote(capsys):
+    orchestrate_mod = _load("orchestrate")
+    apply_mod = _load("apply")
+    outcomes = [
+        apply_mod.ApplyOutcome(".claude/plugins/cla/skills/bad.md", "skipped_malformed", "corrupted"),
+    ]
+    rc = orchestrate_mod._print_worktree_summary(outcomes)
+    assert rc == 1
+
+
+def test_pr_summary_surfaces_skipped_malformed_on_the_happy_path(capsys):
+    orchestrate_mod = _load("orchestrate")
+    apply_mod = _load("apply")
+    outcomes = [
+        apply_mod.ApplyOutcome(".claude/plugins/cla/skills/foo.md", "wrote", None),
+        apply_mod.ApplyOutcome(".claude/plugins/cla/skills/bad.md", "skipped_malformed", "corrupted"),
+    ]
+    pr_result = apply_mod.PRResult("sync/from-src", "https://example.com/pr/1", None)
+    rc = orchestrate_mod._print_pr_summary(outcomes, pr_result)
+    out = capsys.readouterr().out
+    assert "bad.md" in out
+    assert rc == 0
+
+
+def test_pr_summary_surfaces_skipped_malformed_on_the_all_refused_path(capsys):
+    orchestrate_mod = _load("orchestrate")
+    apply_mod = _load("apply")
+    outcomes = [
+        apply_mod.ApplyOutcome(".claude/plugins/cla/skills/bad.md", "skipped_malformed", "corrupted"),
+    ]
+    pr_result = apply_mod.PRResult(None, None, "no files written; aborting PR")
+    rc = orchestrate_mod._print_pr_summary(outcomes, pr_result)
+    out = capsys.readouterr().out
+    assert "bad.md" in out
+    assert rc == 1
 
 
 # ---------- orchestrate: end-to-end ----------
