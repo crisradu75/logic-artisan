@@ -31,7 +31,10 @@ compared against main/master. Blocked shapes therefore include:
     current-branch check never ran for it, and as a literal ref name it matches
     nothing protected — yet `git push origin HEAD` is what a script emits when
     it does not want to hardcode a branch name, and from main it pushes main.
-  - Any of the above after a `&&`, `;`, or `|` earlier in the same command
+  - Any of the above after a `&&`, `;`, `|`, or newline earlier in the command
+  - `git push -o ci.skip <remote>` and friends from main — an option whose
+    value is a separate token has that value consumed, so it cannot pose as a
+    refspec and suppress the refspec-less current-branch check
 
 Which branch counts as "current" is resolved in the command's OWN directory:
 `payload["cwd"]`, overridden by a `-C` / `--work-tree` value when the
@@ -98,11 +101,26 @@ _GIT_PUSH = re.compile(r"\bgit\s+(" + _G + r")push\b")
 # command, so tokens past it are not this push's refspecs.
 _SHELL_SEPARATOR = re.compile(r"[;&|)\n]")
 
-# A directory-changing global option's value, read out of one invocation's
-# option blob. Best-effort and first-match-wins: git applies repeated `-C`
-# cumulatively, which this does not model — the shape worth resolving is the
-# single `git -C <path> push …` a script emits.
-_GIT_DIR_OPT = re.compile(r"(?:^|\s)(?:-C\s+(\S+)|--work-tree(?:=|\s+)(\S+))")
+# A repo-selecting global option's value, read out of one invocation's option
+# blob. `--git-dir` is included because `GIT_GLOBAL_OPTS` already CONSUMES it:
+# leaving it out here made `git --git-dir=/other/.git push origin HEAD` resolve
+# HEAD in the session's directory instead of the repo the command names. Passing
+# a `.git` dir to `git -C` is an approximation of git's own semantics, but a
+# directed one — git recognizes being inside a git dir — and it beats silently
+# answering from the wrong repo. Best-effort and first-match-wins: git applies
+# repeated `-C` cumulatively, which this does not model; the shape worth
+# resolving is the single `git -C <path> push …` a script emits.
+_GIT_DIR_OPT = re.compile(
+    r"(?:^|\s)(?:-C\s+(\S+)|--(?:work-tree|git-dir)(?:=|\s+)(\S+))"
+)
+
+# `git push` options whose value is a SEPARATE token. Dropping the flag alone
+# leaves the value behind as a phantom positional, which makes the token after
+# it read as a refspec and suppresses the refspec-less branch check — so
+# `git push -o ci.skip origin` from main was allowed. A closed set, same posture
+# as `_dispatch_lib._GIT_GLOBAL_VALUE_OPTS`: the `--opt=value` form is a single
+# token and is already dropped by the leading-dash test.
+_PUSH_VALUE_OPTS = ("-o", "--push-option", "--receive-pack", "--exec", "--repo")
 
 _PROTECTED = ("main", "master")
 
@@ -118,7 +136,9 @@ def _normalize_ref(ref: str) -> str:
     return ref
 
 
-def _refspec_touches_main(refspec: str, cwd: str | None = None) -> bool:
+def _refspec_touches_main(
+    refspec: str, work_tree: str | None = None, session_cwd: str | None = None
+) -> bool:
     """True iff either side of `[+][src]:[dst]` (or a bare ref) is main/master.
 
     Both sides count: `<branch>:main` pushes TO the default branch, and
@@ -137,7 +157,7 @@ def _refspec_touches_main(refspec: str, cwd: str | None = None) -> bool:
     if any(side in _PROTECTED for side in normalized):
         return True
     if any(side in _HEAD_ALIASES for side in normalized):
-        return _current_branch(cwd) in _PROTECTED
+        return _branch_for(work_tree, session_cwd) in _PROTECTED
     return False
 
 
@@ -186,11 +206,68 @@ def _command_work_tree(scanned_options: str, raw_options: str) -> str | None:
     return raw_options[m.start(idx) : m.end(idx)].strip("'\"") or None
 
 
+def _branch_for(work_tree: str | None, session_cwd: str | None) -> str | None:
+    """Resolve the current branch for one push, preferring the directory the
+    command itself names and falling back to the session's.
+
+    Two things this does that a bare `work_tree or session_cwd` did not:
+
+    - **A relative `-C` is composed against the session directory**, the way
+      the shell would. Passed through raw it resolved against whatever cwd the
+      hook PROCESS happens to have — reintroducing, for relative paths, the
+      exact wrong-directory bug this hook was fixed for. Verified regression:
+      from a session in `<repo>/sub`, `git -C .. push` (targeting a repo root
+      sitting on main) resolved to `<repo>/..`, failed, and was ALLOWED.
+    - **A failed command-derived path falls back to the session directory**
+      rather than straight to "unknown". A scraped `-C` value is far likelier
+      to be wrong than the payload's own cwd, and "unknown" means the guard
+      stops guarding (see `_current_branch`'s tri-state note)."""
+    candidates: list[str] = []
+    if work_tree:
+        if session_cwd and not os.path.isabs(work_tree):
+            candidates.append(os.path.join(session_cwd, work_tree))
+        else:
+            candidates.append(work_tree)
+    if session_cwd and session_cwd not in candidates:
+        candidates.append(session_cwd)
+    for candidate in candidates:
+        branch = _current_branch(candidate)
+        if branch is not None:
+            return branch
+    return _current_branch() if not candidates else None
+
+
+def _positional_arguments(tokens: list[str]) -> list[str]:
+    """Drop flags from one push's token list, INCLUDING the separate-token
+    value of an option that takes one (`_PUSH_VALUE_OPTS`).
+
+    Dropping the flag alone left its value behind as a positional, which then
+    read as the remote and pushed the real remote into the refspec slot — so
+    `git push -o ci.skip origin` from main looked like it carried a refspec
+    (`origin`), skipped the refspec-less branch check, and was allowed."""
+    positionals: list[str] = []
+    skip_value = False
+    for token in tokens:
+        if skip_value:
+            skip_value = False
+            continue
+        if token.startswith("-"):
+            skip_value = token in _PUSH_VALUE_OPTS
+            continue
+        positionals.append(token)
+    return positionals
+
+
 def _current_branch(cwd: str | None = None) -> str | None:
     """The checked-out branch in `cwd` (the session's own directory), NOT in
     whatever directory this hook process happens to be running from — those
     differ whenever the session works in a linked worktree, and getting it
-    wrong fails open there."""
+    wrong fails open there.
+
+    Tri-state on purpose: a branch name, or None for "could not determine".
+    Callers collapse None to "not protected" (fail-open, per this hook's
+    stated posture) — which is exactly why every None path here has to be
+    audible on stderr rather than silent."""
     try:
         result = subprocess.run(
             ["git", *(["-C", cwd] if cwd else []), "rev-parse", "--abbrev-ref", "HEAD"],
@@ -210,6 +287,17 @@ def _current_branch(cwd: str | None = None) -> str | None:
         )
         return None
     if result.returncode != 0:
+        # git EXITS 128 here (bad directory, not a repo, dubious ownership,
+        # unborn HEAD) far more often than it raises, so this — not the
+        # exception branch above — is the common degradation now that the
+        # directory is caller-supplied. Returning None silently made it
+        # indistinguishable from "you are on a feature branch".
+        print(
+            f"[block-direct-push-to-main] warn: `git rev-parse` exited "
+            f"{result.returncode} in {cwd or 'the hook process cwd'} — "
+            "current-branch detection is off for this call.",
+            file=sys.stderr,
+        )
         return None
     return (result.stdout or "").strip() or None
 
@@ -220,22 +308,20 @@ def _is_direct_push_to_main(command: str, cwd: str | None = None) -> bool:
     for branch resolution unless a push carries its own `-C`/`--work-tree`."""
     scanned = _strip_quoted_spans(command)
     for work_tree, tokens in _push_argument_lists(scanned, command):
-        target_dir = work_tree or cwd
-
         # First positional is the remote; anything after it is a refspec. Flags
         # are dropped — including `--force-with-lease=origin/main`, whose value
         # is not a push destination.
-        positionals = [t for t in tokens if not t.startswith("-")]
+        positionals = _positional_arguments(tokens)
         refspecs = positionals[1:]
 
         if refspecs:
-            if any(_refspec_touches_main(r, target_dir) for r in refspecs):
+            if any(_refspec_touches_main(r, work_tree, cwd) for r in refspecs):
                 return True
             continue
 
         # No refspec (`git push`, `git push --force`, `git push origin`) → the
         # destination is the current branch's upstream.
-        if _current_branch(target_dir) in _PROTECTED:
+        if _branch_for(work_tree, cwd) in _PROTECTED:
             return True
     return False
 
