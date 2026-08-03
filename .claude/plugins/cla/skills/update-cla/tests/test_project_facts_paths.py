@@ -45,6 +45,7 @@ is hard-coded here.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -186,9 +187,47 @@ def _looks_like_placeholder_or_glob(token: str) -> bool:
     return any(ch in token for ch in _PLACEHOLDER_CHARS)
 
 
+def _tracked_top_level_names(repo_root: Path) -> set[str] | None:
+    """Top-level entries from the COMMITTED tree (`git ls-tree --name-only
+    HEAD`), or `None` when `repo_root` isn't a git repo, has no commits yet, or
+    git is unavailable.
+
+    This is the deterministic source `_top_level_names` prefers. A live
+    `repo_root.iterdir()` makes the guard's verdict depend on which stray
+    UNTRACKED directories happen to exist in a given checkout — observed
+    concretely: the same overlays passed inside a clean worktree and failed on
+    the primary clone, because that clone happened to contain an empty
+    untracked `docs/`. With no `docs/` present, a bare token `docs/architecture.md`
+    was skipped as "not a repo path"; with it present, the token was checked,
+    didn't resolve, and failed — neither run wrong on its own terms, but the
+    guard wasn't deterministic across checkouts of the identical commit. The
+    committed tree is the same for both checkouts, so keying off it removes
+    the non-determinism at the source rather than leaving it to be reported."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-tree", "--name-only", "HEAD"],
+            cwd=repo_root, capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    names = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    return names or None
+
+
 def _top_level_names(repo_root: Path) -> set[str]:
-    """The repo's own real top-level entries (files + dirs), derived at runtime —
-    NOT a hardcoded prefix list, so this ports to a repo of any layout."""
+    """The repo's own real top-level entries (files + dirs). Prefers the
+    committed tree (`_tracked_top_level_names`) so an untracked scratch
+    directory can neither mask nor manufacture a violation; falls back to a
+    live `repo_root.iterdir()` when `repo_root` isn't a git repo (or git is
+    unavailable) — this module's own self-tests below construct plain
+    `tmp_path` fixtures that are never git repos, so that fallback is not a
+    hypothetical, it's what makes every self-test below still work. Neither
+    path is a hardcoded prefix list, so this ports to a repo of any layout."""
+    tracked = _tracked_top_level_names(repo_root)
+    if tracked is not None:
+        return tracked
     if not repo_root.is_dir():
         return set()
     return {p.name for p in repo_root.iterdir()}
@@ -321,9 +360,16 @@ def test_no_stale_paths_in_project_facts_or_overlays():
         detail = "\n".join(
             f"{rel}:{lineno}  stale path {candidate!r}" for rel, lineno, candidate in stale
         )
+        # Report the derived top-level set too — a candidate's first segment
+        # not being in this set is exactly what makes `_keep_if_path` skip it
+        # (never flag it), so when a genuine staleness IS found here, seeing
+        # which prefixes were recognized makes the result diagnosable rather
+        # than looking like a flaky test tied to this checkout's contents.
+        top_level = ", ".join(sorted(_top_level_names(repo_root))) or "(none)"
         pytest.fail(
             f"{len(stale)} stale path(s) found in cla.io/project-facts.md or a "
-            f"per-skill overlay (path no longer exists on disk):\n{detail}"
+            f"per-skill overlay (path no longer exists on disk):\n{detail}\n"
+            f"(recognized top-level prefixes: {top_level})"
         )
 
 
@@ -473,6 +519,60 @@ def test_top_level_prefix_set_is_repo_derived_not_hardcoded(tmp_path):
     )
     stale = find_stale_paths(tmp_path)
     assert stale == [("cla.io/project-facts.md", 1, "widgets/gone.ts")]
+
+
+def _init_git_repo(repo: Path, tracked_dirs: list[str]) -> None:
+    """Minimal git repo with each of `tracked_dirs` committed as a top-level
+    directory (each gets a placeholder file so git tracks the directory)."""
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    for d in tracked_dirs:
+        (repo / d).mkdir(parents=True, exist_ok=True)
+        (repo / d / "placeholder.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=repo, check=True)
+
+
+def test_untracked_top_level_directory_is_not_recognized_in_a_real_repo(tmp_path):
+    # The exact regression this guards: a live `repo_root.iterdir()` made the
+    # guard's verdict depend on which stray UNTRACKED directories happen to
+    # exist in a given checkout. Observed concretely — the same overlays
+    # passed inside a clean worktree and failed on the primary clone, purely
+    # because that clone contained an empty untracked `docs/`. With `docs/`
+    # only committed, an untracked `stray-scratch/` in the SAME checkout must
+    # not be recognized as a real top-level prefix.
+    _init_git_repo(tmp_path, tracked_dirs=["cla.io", "apps"])
+    (tmp_path / "stray-scratch").mkdir()  # untracked — never `git add`ed
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Skipped (untracked top-level, not in the committed tree): "
+        "`stray-scratch/whatever.ts`.\n",
+        encoding="utf-8",
+    )
+    assert find_stale_paths(tmp_path) == []
+
+
+def test_tracked_top_level_directory_is_recognized_in_a_real_repo(tmp_path):
+    # The positive half of the same fix: a COMMITTED top-level directory is
+    # still recognized (and a stale path under it still flagged) once the
+    # source switches from `iterdir()` to the committed tree.
+    _init_git_repo(tmp_path, tracked_dirs=["cla.io", "apps"])
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Stale: `apps/gone.ts`.\n", encoding="utf-8",
+    )
+    assert find_stale_paths(tmp_path) == [("cla.io/project-facts.md", 1, "apps/gone.ts")]
+
+
+def test_top_level_names_falls_back_to_iterdir_outside_a_git_repo(tmp_path):
+    # This module's OWN self-tests (every test above this one) construct plain
+    # `tmp_path` fixtures that are never git repos — the fallback below is not
+    # hypothetical, it is what keeps all of them passing.
+    (tmp_path / "widgets").mkdir()
+    assert _top_level_names(tmp_path) == {"widgets"}
+
+
+def test_tracked_top_level_names_returns_none_outside_a_git_repo(tmp_path):
+    assert _tracked_top_level_names(tmp_path) is None
 
 
 def test_scan_reports_checked_count_and_is_nonzero_when_facts_present(tmp_path):
