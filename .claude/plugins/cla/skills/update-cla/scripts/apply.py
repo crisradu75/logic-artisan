@@ -44,7 +44,7 @@ class GitUnavailableError(Exception):
 @dataclass
 class ApplyOutcome:
     asset_path: str
-    status: str  # "wrote" | "skipped_dirty_worktree" | "skipped_binary" | "failure"
+    status: str  # "wrote" | "skipped_dirty_worktree" | "skipped_binary" | "skipped_malformed" | "failure"
     reason: Optional[str]
 
 
@@ -92,6 +92,43 @@ _BINARY_PLACEHOLDER_PREFIX = "<binary file,"
 
 def _looks_like_binary_placeholder(content: str) -> bool:
     return content.startswith(_BINARY_PLACEHOLDER_PREFIX) and content.rstrip().endswith("bytes>")
+
+
+def _normalize_line_endings(content: str) -> str:
+    """Normalize CRLF/CR to LF before anything else touches `adapted_content`.
+
+    `_write_file` already writes with `newline="\\n"`, so any corruption in a
+    file that reaches disk with doubled blank lines happened UPSTREAM of the
+    write — between the adapting agent's output and this function. A prior
+    sync wrote 19 of 37 files with every `\\r\\n` silently turned into `\\n\\n`
+    (a blank line inserted after every line); byte counts stayed identical, so
+    nothing caught it — not the hook suite, not the guards, not the apply
+    summary. Root cause was never conclusively isolated to one line, so the
+    fix is defensive here rather than a point fix at an unproven origin."""
+    return content.replace("\r\n", "\n").replace("\r", "\n")
+
+
+# A file whose newline count is roughly 2x its non-empty line count is never a
+# legitimate adaptation — it is the fingerprint of the doubled-newline
+# corruption above (every real line gained a spurious blank line after it, so
+# total line breaks roughly doubled while real content lines did not).
+# Conservative on both knobs, matching Decision E's "on an ambiguous token, err
+# toward NOT flagging" posture (see `test_project_facts_paths.py`): the ratio
+# is pinned below the clean 2.0 doubling to tolerate a few incidental blank
+# lines, and a minimum line count guards a short file's natural blank-line
+# spacing from false-positiving.
+_MALFORMED_NEWLINE_RATIO = 1.8
+_MALFORMED_MIN_NON_EMPTY_LINES = 20
+
+
+def _looks_malformed_by_doubled_newlines(content: str) -> bool:
+    """True iff `content`'s structure matches the doubled-newline corruption
+    fingerprint described above, on an ALREADY newline-normalized string (so a
+    legitimate CRLF file is never mistaken for this)."""
+    non_empty = sum(1 for line in content.splitlines() if line.strip())
+    if non_empty < _MALFORMED_MIN_NON_EMPTY_LINES:
+        return False
+    return content.count("\n") >= non_empty * _MALFORMED_NEWLINE_RATIO
 
 
 def _read_lock(local_repo: Path) -> dict:
@@ -177,6 +214,14 @@ def apply_worktree(local_repo: Path, adaptations: list[dict], source_name: str) 
             outcomes.append(ApplyOutcome(
                 asset_path, "skipped_binary",
                 "adapted_content looks like a binary placeholder; not writing",
+            ))
+            continue
+        adapted = _normalize_line_endings(adapted)
+        if _looks_malformed_by_doubled_newlines(adapted):
+            outcomes.append(ApplyOutcome(
+                asset_path, "skipped_malformed",
+                "adapted_content's newline count is ~2x its non-empty line "
+                "count (doubled-newline corruption fingerprint); not writing",
             ))
             continue
         try:
@@ -296,6 +341,15 @@ def apply_pr(
                 "adapted_content looks like a binary placeholder; not writing",
             ))
             continue
+        adapted = _normalize_line_endings(adapted)
+        if _looks_malformed_by_doubled_newlines(adapted):
+            outcomes.append(ApplyOutcome(
+                asset_path, "skipped_malformed",
+                "adapted_content's newline count is ~2x its non-empty line "
+                "count (doubled-newline corruption fingerprint); not writing",
+            ))
+            continue
+        a = {**a, "adapted_content": adapted}
         try:
             _write_file(local_repo, asset_path, adapted)
             outcomes.append(ApplyOutcome(asset_path, "wrote", None))

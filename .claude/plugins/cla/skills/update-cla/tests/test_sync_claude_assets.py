@@ -680,6 +680,43 @@ def test_lockfile_never_appears_in_divergences(synthetic_repos):
     assert result.deletions == []
 
 
+# ---------- apply: normalization + malformed-content guard (unit) ----------
+
+
+def test_normalize_line_endings_converts_crlf_and_bare_cr():
+    apply_mod = _load("apply")
+    assert apply_mod._normalize_line_endings("a\r\nb\rc\n") == "a\nb\nc\n"
+
+
+def test_normalize_line_endings_is_a_no_op_on_already_lf_content():
+    apply_mod = _load("apply")
+    content = "a\nb\nc\n"
+    assert apply_mod._normalize_line_endings(content) == content
+
+
+def test_looks_malformed_flags_the_doubled_newline_fingerprint():
+    apply_mod = _load("apply")
+    real_lines = [f"line {i}" for i in range(20)]  # exactly the minimum
+    corrupted = "".join(f"{line}\n\n" for line in real_lines)
+    assert apply_mod._looks_malformed_by_doubled_newlines(corrupted) is True
+
+
+def test_looks_malformed_does_not_flag_ordinary_single_newline_content():
+    apply_mod = _load("apply")
+    content = "".join(f"line {i}\n" for i in range(30))
+    assert apply_mod._looks_malformed_by_doubled_newlines(content) is False
+
+
+def test_looks_malformed_respects_the_minimum_line_count_guard():
+    # Fewer than `_MALFORMED_MIN_NON_EMPTY_LINES` non-empty lines -> never
+    # flagged, even at a clean 2x doubling — guards a short file's natural
+    # blank-line spacing from false-positiving.
+    apply_mod = _load("apply")
+    real_lines = [f"line {i}" for i in range(apply_mod._MALFORMED_MIN_NON_EMPTY_LINES - 1)]
+    corrupted = "".join(f"{line}\n\n" for line in real_lines)
+    assert apply_mod._looks_malformed_by_doubled_newlines(corrupted) is False
+
+
 # ---------- apply: worktree mode ----------
 
 
@@ -757,6 +794,140 @@ def test_apply_worktree_skips_binary_placeholder(synthetic_repos, fake_gh):
     outcomes = apply_mod.apply_worktree(repos[0], adaptations, "src-name")
     assert outcomes[0].status == "skipped_binary"
     assert not (repos[0] / ".claude/plugins/cla/skills/foo/icon.png").exists()
+
+
+def test_apply_worktree_normalizes_crlf_before_writing(synthetic_repos, fake_gh):
+    repos = synthetic_repos({"dst": {}})
+    apply_mod = _load("apply")
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": "line one\r\nline two\r\nline three\r\n",
+        "change_summary": "new file",
+    }]
+    outcomes = apply_mod.apply_worktree(repos[0], adaptations, "src-name")
+    assert outcomes[0].status == "wrote"
+    written = (repos[0] / ".claude/plugins/cla/skills/foo.md").read_bytes()
+    assert b"\r" not in written
+    assert written == b"line one\nline two\nline three\n"
+
+
+def test_apply_worktree_refuses_doubled_newline_corruption(synthetic_repos, fake_gh):
+    # The regression this guards: a prior sync silently turned every `\r\n`
+    # into `\n\n` in 19 of 37 files. Byte counts stayed identical, so nothing
+    # caught it. Simulate the fingerprint directly: N real lines, each
+    # followed by a spurious blank line.
+    apply_mod = _load("apply")
+    real_lines = [f"line {i}" for i in range(30)]
+    corrupted = "".join(f"{line}\n\n" for line in real_lines)
+    repos = synthetic_repos({"dst": {}})
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": corrupted,
+        "change_summary": "corrupted",
+    }]
+    outcomes = apply_mod.apply_worktree(repos[0], adaptations, "src-name")
+    assert outcomes[0].status == "skipped_malformed"
+    assert not (repos[0] / ".claude/plugins/cla/skills/foo.md").exists()
+
+
+def test_apply_worktree_does_not_flag_a_normal_file_with_some_blank_lines(synthetic_repos, fake_gh):
+    # A guard against false positives: ordinary prose with occasional blank
+    # lines between paragraphs (not after EVERY line) must not be refused.
+    apply_mod = _load("apply")
+    lines = []
+    for i in range(30):
+        lines.append(f"paragraph {i} line one")
+        lines.append(f"paragraph {i} line two")
+        if i % 3 == 0:
+            lines.append("")  # occasional blank line, not after every line
+    content = "\n".join(lines) + "\n"
+    repos = synthetic_repos({"dst": {}})
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": content,
+        "change_summary": "normal prose",
+    }]
+    outcomes = apply_mod.apply_worktree(repos[0], adaptations, "src-name")
+    assert outcomes[0].status == "wrote"
+
+
+def test_apply_worktree_does_not_flag_a_short_file(synthetic_repos, fake_gh):
+    # A short file naturally blank-line-spaced (e.g. a tiny doc) must not
+    # false-positive just because it happens to have a blank line per line —
+    # the minimum-line-count guard exists for exactly this.
+    apply_mod = _load("apply")
+    content = "title\n\nsubtitle\n\nbody\n"
+    repos = synthetic_repos({"dst": {}})
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": content,
+        "change_summary": "short file",
+    }]
+    outcomes = apply_mod.apply_worktree(repos[0], adaptations, "src-name")
+    assert outcomes[0].status == "wrote"
+
+
+def test_apply_worktree_skipped_malformed_leaves_lock_entry_unchanged(synthetic_repos, fake_gh):
+    repos = synthetic_repos({"dst": {}})
+    _seed_lock(repos[0], {
+        ".claude/plugins/cla/skills/foo.md": {"last_synced_sha256": "abc", "source": "old-src"},
+    })
+    apply_mod = _load("apply")
+    real_lines = [f"line {i}" for i in range(30)]
+    corrupted = "".join(f"{line}\n\n" for line in real_lines)
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": corrupted,
+        "change_summary": "corrupted",
+    }]
+    apply_mod.apply_worktree(repos[0], adaptations, "src-name")
+    lock = json.loads(
+        (repos[0] / ".claude/plugins/cla/.cla-sync-lock.json").read_text(encoding="utf-8")
+    )
+    assert lock[".claude/plugins/cla/skills/foo.md"]["source"] == "old-src"
+
+
+def test_apply_pr_normalizes_crlf_before_writing(synthetic_repos, fake_gh, tmp_path):
+    repos = synthetic_repos({"dst": {}})
+    fake_gh["responses"] = [
+        (("status", "--porcelain"), 0, "", ""),
+        (("repo", "view", "--json"), 0, "main\n", ""),
+        (("checkout", "-b"), 0, "", ""),
+        (("add", "-A"), 0, "", ""),
+        (("commit", "-F"), 0, "", ""),
+        (("push", "-u", "origin"), 0, "", ""),
+        (("pr", "create"), 0, "https://example.com/pr/1\n", ""),
+    ]
+    apply_mod = _load("apply")
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": "line one\r\nline two\r\n",
+        "change_summary": "new file",
+    }]
+    outcomes, pr_result = apply_mod.apply_pr(repos[0], adaptations, "src-name", tmp_path)
+    assert outcomes[0].status == "wrote"
+    assert pr_result.pr_url is not None
+
+
+def test_apply_pr_refuses_doubled_newline_corruption(synthetic_repos, fake_gh, tmp_path):
+    apply_mod = _load("apply")
+    real_lines = [f"line {i}" for i in range(30)]
+    corrupted = "".join(f"{line}\n\n" for line in real_lines)
+    repos = synthetic_repos({"dst": {}})
+    fake_gh["responses"] = [
+        (("status", "--porcelain"), 0, "", ""),
+        (("repo", "view", "--json"), 0, "main\n", ""),
+        (("checkout", "-b"), 0, "", ""),
+    ]
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": corrupted,
+        "change_summary": "corrupted",
+    }]
+    outcomes, pr_result = apply_mod.apply_pr(repos[0], adaptations, "src-name", tmp_path)
+    assert outcomes[0].status == "skipped_malformed"
+    # Nothing else to write -> apply_pr's "no files written; aborting PR" path.
+    assert pr_result.pr_url is None
 
 
 def test_apply_worktree_null_adapted_content_fails(synthetic_repos, fake_gh):
