@@ -384,7 +384,7 @@ The terminal report's "Next steps for you" section names `gh pr merge --squash -
 
 ## Resume / dry-run
 
-- **Implicit resume:** when re-invoked with the same change name, run `python3 .claude/plugins/cla/skills/spec-to-pr/scripts/probe_state.py <change-name>` and skip ahead to the first not-done phase per the JSON it emits (`{propose, implement, branch, pr, fix_rounds_applied, archived, tools_missing?}`). Each phase is idempotent.
+- **Implicit resume:** when re-invoked with the same change name, run `python3 .claude/plugins/cla/skills/spec-to-pr/scripts/probe_state.py <change-name>` and skip ahead to the first not-done phase per the JSON it emits (`{propose, implement, branch, pr, fix_rounds_applied, archived, base_branch, tools_missing?, environment_errors?}`). Each phase is idempotent. `base_branch` is the resolved default branch the `branch`/`fix_rounds_applied` ranges were computed against — check it before trusting a `false`/`0` there, since a wrongly-resolved base makes both read as legitimate negatives. `environment_errors` (unusable working directory, a timed-out child) is distinct from `tools_missing` (not on PATH).
 - **`--dry-run`:** every probe and check runs; every write (commit, push, PR open, openspec apply, file edit) is suppressed. Useful for testing the orchestrator itself.
 
 ## References

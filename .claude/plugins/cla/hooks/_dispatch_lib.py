@@ -131,6 +131,7 @@ GIT_GLOBAL_OPTS = (
 
 _BASE_BRANCH_CACHE: dict[str | None, str] = {}
 _BASE_BRANCH_FALLBACK = "master"
+_ORIGIN_HEAD_PREFIX = "refs/remotes/origin/"
 
 
 def default_base_branch(cwd: str | None = None) -> str:
@@ -143,12 +144,22 @@ def default_base_branch(cwd: str | None = None) -> str:
     producing a wrong answer quietly.
 
     Resolution order, most authoritative first:
-      1. `refs/remotes/origin/HEAD` — what the remote itself reports as default.
+      1. `refs/remotes/origin/HEAD` — what the remote itself reports as default
+         — but only once its target is VERIFIED to exist. That ref is a
+         clone-time cache git never auto-refreshes, and `symbolic-ref` exits 0
+         on a dangling symref, so after an upstream `master`→`main` rename it
+         happily names a ref that is gone. Trusting it unverified reintroduced
+         exactly the failure described above: in a `main`-default repo it
+         returned `master`, and the caller's `git rev-list master..HEAD` then
+         died with `unknown revision`.
       2. An existing local or remote `main`, then `master`. `main` is probed
          first because a repo carrying BOTH is nearly always one that renamed
          to `main` and kept `master` as a stale leftover.
       3. `master`, preserving the harness's historical assumption for a repo
-         with no remote and no conventional branch yet.
+         with no remote and no conventional branch yet — announced on stderr,
+         because this arm cannot tell "this repo genuinely uses master" apart
+         from "git is unusable and I guessed", and the sibling hooks all say so
+         when they degrade.
 
     Cached per cwd: hook processes are short-lived, but several call sites may
     ask within one run and this shells out to git.
@@ -168,8 +179,19 @@ def default_base_branch(cwd: str | None = None) -> str:
 
     resolved = None
     head_ref = _git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
-    if head_ref and "/" in head_ref:
-        resolved = head_ref.rsplit("/", 1)[-1] or None
+    if head_ref and head_ref.startswith(_ORIGIN_HEAD_PREFIX):
+        # Strip the known prefix rather than `rsplit("/", 1)`: a default branch
+        # name containing its own slash (`release/main`) would otherwise lose
+        # its leading segment, and `rev-parse --verify` on the FULL `head_ref`
+        # (below) succeeds regardless — so the truncated name passed every
+        # check here and still resolved to a branch that doesn't exist.
+        candidate = head_ref[len(_ORIGIN_HEAD_PREFIX):] or None
+        # `HEAD` as the remainder means the symref points at itself or at
+        # something unusable — never a branch name.
+        if candidate and candidate != "HEAD" and _git(
+            ["rev-parse", "--verify", "--quiet", head_ref]
+        ):
+            resolved = candidate
     if resolved is None:
         for candidate in ("main", "master"):
             for ref in (f"refs/heads/{candidate}", f"refs/remotes/origin/{candidate}"):
@@ -179,7 +201,15 @@ def default_base_branch(cwd: str | None = None) -> str:
             if resolved:
                 break
 
-    resolved = resolved or _BASE_BRANCH_FALLBACK
+    if resolved is None:
+        print(
+            f"[cla] warn: could not resolve this repo's base branch (no usable "
+            f"origin/HEAD, no main, no master) — falling back to "
+            f"'{_BASE_BRANCH_FALLBACK}'. A command built on it may fail with "
+            f"'unknown revision'.",
+            file=sys.stderr,
+        )
+        resolved = _BASE_BRANCH_FALLBACK
     _BASE_BRANCH_CACHE[cwd] = resolved
     return resolved
 
