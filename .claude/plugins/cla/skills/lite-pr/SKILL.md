@@ -97,7 +97,7 @@ No pause before this runs — continuous by design (see Autonomy below). Use `co
 One pass. Then:
 
 1. Triage every Critical/Important finding: apply a fix via `Edit`/`Write`, or record a one-line deferred rationale if it's genuinely out of scope.
-2. Before staging, re-read the diff for each applied fix, checking specifically whether the same class of issue recurs elsewhere in the change (e.g. a fix to one instance of a pattern — check sibling instances aren't affected too). This is a quick self-read, NOT a re-dispatch of the review agents — one `Read` call, not another agent round.
+2. Before staging, re-read the diff for each applied fix, and grep the SAME FILE for other call sites that consume the same untrusted/unguarded input the fix just guarded (e.g. a fix added an `isinstance` check before one `.get()` on parsed JSON — grep that file for every other `.get()`/attribute access on data from the same untrusted source). A vaguer "check sibling instances aren't affected" self-prompt is easy to satisfy without actually grepping; naming the concrete technique isn't. This is a quick self-read, NOT a re-dispatch of the review agents — one `Read`/`Grep` call, not another agent round.
 3. Stage the fixed files, commit (`fix: address review findings`), push.
 4. Do NOT re-dispatch the review agents afterward — no re-verification loop (step 2's self-read is deliberately lighter than that).
 
