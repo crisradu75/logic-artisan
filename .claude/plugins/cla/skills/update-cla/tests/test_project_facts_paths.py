@@ -44,6 +44,7 @@ is hard-coded here.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -187,10 +188,25 @@ def _looks_like_placeholder_or_glob(token: str) -> bool:
     return any(ch in token for ch in _PLACEHOLDER_CHARS)
 
 
+# Environment variables git itself sets when invoking a hook (`GIT_DIR`,
+# `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`). If this guard
+# ever runs FROM inside a git hook, an inherited `GIT_DIR` overrides discovery
+# and silently retargets `-C repo_root` at a different repository entirely —
+# rc=0, no error, just the wrong answer. Popped rather than trusted.
+_GIT_ENV_OVERRIDES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY")
+
+
+def _clean_git_env() -> dict[str, str]:
+    env = dict(os.environ)
+    for key in _GIT_ENV_OVERRIDES:
+        env.pop(key, None)
+    return env
+
+
 def _tracked_top_level_names(repo_root: Path) -> set[str] | None:
-    """Top-level entries from the COMMITTED tree (`git ls-tree --name-only
-    HEAD`), or `None` when `repo_root` isn't a git repo, has no commits yet, or
-    git is unavailable.
+    """Top-level entries from the git INDEX (`git ls-files --cached`, i.e. what
+    is tracked or staged), or `None` when `repo_root` isn't a git repo or git
+    is unavailable.
 
     This is the deterministic source `_top_level_names` prefers. A live
     `repo_root.iterdir()` makes the guard's verdict depend on which stray
@@ -200,27 +216,56 @@ def _tracked_top_level_names(repo_root: Path) -> set[str] | None:
     untracked `docs/`. With no `docs/` present, a bare token `docs/architecture.md`
     was skipped as "not a repo path"; with it present, the token was checked,
     didn't resolve, and failed — neither run wrong on its own terms, but the
-    guard wasn't deterministic across checkouts of the identical commit. The
-    committed tree is the same for both checkouts, so keying off it removes
-    the non-determinism at the source rather than leaving it to be reported."""
+    guard wasn't deterministic across checkouts of the identical commit.
+
+    The INDEX, not `HEAD` (an earlier draft of this function used `git ls-tree
+    HEAD`), is the reference point: `scan()` existence-checks candidates
+    against the WORKING TREE (`(repo_root / candidate).exists()`), and the
+    index — not the last commit — is what's about to match it. `HEAD` lags
+    behind a freshly-`git add`ed new top-level directory, which would make a
+    path reference added in the SAME uncommitted change silently unrecognized
+    (skipped, never checked) until the next commit — reintroducing a
+    same-shape non-determinism one level down. The index also resolves
+    correctly in a repo with zero commits yet (right after `cla-init`
+    scaffolds `cla.io/` but before the first commit), where `ls-tree HEAD`
+    would simply fail (no revision named `HEAD`).
+
+    `-z` (NUL-terminated, unquoted paths) avoids two failure modes a
+    newline-split `--name-only` reading has: a non-ASCII top-level name
+    (`café/`) that `core.quotePath` would otherwise C-escape into something
+    that can never match a cleaned token again, and a name containing
+    whitespace being corrupted by a per-line `.strip()`.
+
+    Known, accepted residual gaps (same "conservative, err toward not
+    flagging" posture the rest of this guard already takes — see the module
+    docstring's COVERAGE LIMITS): a top-level directory that is genuinely
+    GITIGNORED is invisible to the index just as it was invisible-when-absent
+    to `iterdir()`'s replacement — this only matters if a real path this guard
+    is meant to check ever lived under a gitignored top-level dir, which none
+    of `cla.io/project-facts.md` or the skill overlays do today. A detached
+    `HEAD` or mid-rebase state does not change the index's answer (the index
+    reflects the checked-out working tree regardless), so it is not a
+    residual gap of switching to the index — it was never solved by `HEAD`
+    either."""
     try:
         result = subprocess.run(
-            ["git", "ls-tree", "--name-only", "HEAD"],
+            ["git", "-c", "core.quotePath=false", "ls-files", "-z", "--cached", "--"],
             cwd=repo_root, capture_output=True, text=True, timeout=10,
+            env=_clean_git_env(),
         )
     except (OSError, subprocess.SubprocessError):
         return None
     if result.returncode != 0:
         return None
-    names = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    names = {p.split("/", 1)[0] for p in result.stdout.split("\0") if p}
     return names or None
 
 
 def _top_level_names(repo_root: Path) -> set[str]:
-    """The repo's own real top-level entries (files + dirs). Prefers the
-    committed tree (`_tracked_top_level_names`) so an untracked scratch
-    directory can neither mask nor manufacture a violation; falls back to a
-    live `repo_root.iterdir()` when `repo_root` isn't a git repo (or git is
+    """The repo's own real top-level entries (files + dirs). Prefers the git
+    index (`_tracked_top_level_names`) so an untracked scratch directory can
+    neither mask nor manufacture a violation; falls back to a live
+    `repo_root.iterdir()` when `repo_root` isn't a git repo (or git is
     unavailable) — this module's own self-tests below construct plain
     `tmp_path` fixtures that are never git repos, so that fallback is not a
     hypothetical, it's what makes every self-test below still work. Neither
@@ -573,6 +618,55 @@ def test_top_level_names_falls_back_to_iterdir_outside_a_git_repo(tmp_path):
 
 def test_tracked_top_level_names_returns_none_outside_a_git_repo(tmp_path):
     assert _tracked_top_level_names(tmp_path) is None
+
+
+def test_tracked_top_level_names_returns_none_before_the_first_commit(tmp_path):
+    # A repo right after `cla-init` scaffolds `cla.io/` but before the first
+    # commit has an INDEX (once something is `git add`ed) but no `HEAD` yet —
+    # this is exactly the case an earlier `git ls-tree HEAD`-based draft of
+    # this function got wrong (rc != 0, "unknown revision"). Using the index
+    # instead means a repo with nothing staged yet still correctly falls back
+    # (empty index -> `names or None` -> `None`), rather than returning an
+    # empty set that would make every path candidate silently unrecognized.
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    assert _tracked_top_level_names(tmp_path) is None
+
+
+def test_scan_verdict_is_identical_regardless_of_a_stray_untracked_directory(tmp_path):
+    # The most direct reproduction of the actual reported incident: the SAME
+    # commit, compared with and without an empty untracked scratch directory
+    # present — exactly the "clean worktree vs. primary clone with a stray
+    # untracked docs/" scenario. The verdict must be byte-identical either way.
+    _init_git_repo(tmp_path, tracked_dirs=["cla.io", "apps"])
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Stale: `apps/gone.ts`. Also references `docs/architecture.md`.\n",
+        encoding="utf-8",
+    )
+    without_stray_dir = scan(tmp_path)
+    (tmp_path / "docs").mkdir()  # the exact untracked directory from the incident
+    with_stray_dir = scan(tmp_path)
+    assert without_stray_dir == with_stray_dir
+
+
+def test_a_staged_but_uncommitted_top_level_directory_is_recognized(tmp_path):
+    # The gap `HEAD`-based resolution had and the index closes: a change that
+    # adds a new top-level directory AND references a path under it in the
+    # SAME uncommitted change must not go unrecognized until the next commit
+    # — that would be the identical non-determinism this whole fix targets,
+    # just re-keyed from "stray dirs" to "commit boundaries."
+    _init_git_repo(tmp_path, tracked_dirs=["cla.io"])
+    (tmp_path / "openspec").mkdir()
+    (tmp_path / "openspec" / "new-file.md").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "openspec/new-file.md"], cwd=tmp_path, check=True)
+    # Deliberately NOT committed — this is the state mid-flight in a working
+    # session, before the change lands.
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Stale reference into the not-yet-committed dir: `openspec/gone.md`.\n",
+        encoding="utf-8",
+    )
+    assert find_stale_paths(tmp_path) == [
+        ("cla.io/project-facts.md", 1, "openspec/gone.md"),
+    ]
 
 
 def test_scan_reports_checked_count_and_is_nonzero_when_facts_present(tmp_path):
