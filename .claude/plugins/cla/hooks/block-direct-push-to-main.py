@@ -80,11 +80,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-# The `_dispatch_lib` import below resolves through `sys.path`. Running
-# standalone (`python3 <hooks-dir>/<this>.py`, the shape `hooks.json` uses)
-# normally puts the hooks dir at `sys.path[0]`, but that is suppressed under
-# `PYTHONSAFEPATH=1` / `python -I` / `python -P`. Insert it explicitly so an
-# import failure can never silently disable this guard.
+# The `_dispatch_lib` import below resolves through `sys.path`. `hooks.json`
+# never invokes THIS file directly — it invokes the dispatcher
+# (`dispatch-bash-pretooluse.py`), which loads this hook in-process via
+# `_dispatch_lib.load_hook`; this file's own test suite loads it in-process
+# too (`importlib.util.spec_from_file_location`), never as a standalone
+# process. Neither shape puts the hooks dir at `sys.path[0]` for this file —
+# the dispatcher relies on `_dispatch_lib.ensure_hooks_dir_importable()`,
+# pytest on `hooks/pyproject.toml`'s `pythonpath = ["."]`. Insert it
+# explicitly so this file's own import can never silently disable the guard,
+# independent of either mechanism.
 _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)

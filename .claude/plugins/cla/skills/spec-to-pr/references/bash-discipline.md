@@ -15,7 +15,7 @@ These shapes defeat the project's Bash permission allowlist matching. The skill 
 - ✅ Single-line `-m "<message>"` for trivial commits, or `-F <message-file>` via `commit.py`.
 - ✅ `--body-file <path>` for every PR body and PR edit.
 - ✅ Absolute paths everywhere — never rely on a prior `cd`.
-- ✅ Path-scoped staging: `git add openspec/changes/<name>/ apps/<app>/src/ packages/<package>/src/` (Ship — name the specific `apps/*/src/`/`packages/*/src/` paths the change touched; there is no repo-root `src/`), `git add openspec/` (Archive). Never `git add -A`. If you legitimately need to stage multiple top-level paths, enumerate them on the same `git add` line — never expand to `-A`.
+- ✅ Path-scoped staging: `git add openspec/changes/<name>/ apps/<app>/src/ packages/<package>/src/` (Ship — name the specific `apps/*/src/`/`packages/*/src/` paths the change touched; there is no repo-root `src/`), `git add openspec/changes/<name>/ openspec/changes/archive/<YYYY-MM-DD>-<name>/ openspec/specs/<cap1>/ [openspec/specs/<cap2>/ ...]` (Archive — one specific path group per thing the archive actually produced; see `references/archive.md` for the full recipe). **NEVER a broad `git add openspec/` for Archive** — it stages *untracked* files too, so in a `multi-pr` chain, where every other not-yet-shipped change still sits as an untracked `openspec/changes/<sibling>/` directory in the same worktree, the broad form sweeps those siblings into this change's archive commit. Never `git add -A`. If you legitimately need to stage multiple top-level paths, enumerate them on the same `git add` line — never expand to `-A` or a bare `openspec/`.
 
 ## Conflict resolution discipline (rebase + merge)
 

@@ -12,7 +12,11 @@ sessions' unrelated changes mix on one branch / one PR (observed repeatedly).
 The proper fix is ISOLATION: each concurrent session works in its own
 `git worktree` (own directory, own HEAD, shared object store), and the primary
 clone stays on `main`. This hook enforces that repo-wide, for EVERY session and
-workflow (not just /spec-to-pr), because it is wired in `.claude/settings.json`.
+workflow (not just /spec-to-pr), because it is wired in the plugin's own
+`.claude/plugins/cla/hooks/hooks.json` — directly for the `--heartbeat` /
+`--cleanup` presence modes (SessionStart / SessionEnd), and via the dispatcher
+for the main guard mode (PreToolUse Bash). Not `.claude/settings.json` — that
+file is for project-specific hooks outside the plugin's generic guard set.
 
 Design — contention-based (isolation-first, zero disruption to solo work)
 -------------------------------------------------------------------------
@@ -23,10 +27,13 @@ Design — contention-based (isolation-first, zero disruption to solo work)
   block the HEAD-mutating ops most likely to collide there — branch create,
   branch switch (`git switch` any form, `git checkout <commit-ish>`), and
   `git commit` — and direct the actor to a worktree, the exact moment the
-  shared-HEAD collision would otherwise happen. `git merge`/`rebase`/`reset` and
-  common global-option prefixes are handled (`git -c … commit`, `git -C path
-  checkout`), but `git merge`/`rebase`/`reset` and exotic/quoted shapes are
-  intentionally NOT guarded (same best-effort posture as the sibling git hooks).
+  shared-HEAD collision would otherwise happen. Common global-option prefixes
+  are handled (`git -c … commit`, `git -C path checkout`), and so are quoted
+  targets (`git checkout "feature/x"`) via the shared `strip_quoted_spans` +
+  offset-re-slice machinery every git hook in this plugin uses. `git
+  merge`/`rebase`/`reset` are intentionally NOT guarded (same best-effort
+  posture as the sibling git hooks — see `_mutates_shared_head`'s own
+  docstring for the precise list of what IS covered).
 
 Presence is tracked by per-session heartbeat files under
 `<git-common-dir>/.claude-worktree-guard/<session_id>` (mtime = last-seen). The
@@ -126,9 +133,11 @@ def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess | None:
 
 def _is_checkout_switch(cwd: str, arg: str) -> bool:
     """Return True iff `git checkout <arg>` would move HEAD (branch/tag/sha/DWIM
-    remote branch) rather than restore a file. Covers the cases `_is_local_branch`
-    missed: a DWIM remote-only branch and a detached-HEAD sha both move the shared
-    working tree, so both are treated as switches."""
+    remote branch) rather than restore a file. An existing working-tree path
+    always wins (file restore, not a HEAD move); otherwise `arg` is resolved
+    with `git rev-parse --verify` against `^{commit}` so a DWIM remote-only
+    branch and a detached-HEAD sha are both correctly treated as switches, not
+    just a locally-known branch name."""
     arg = arg.strip("'\"")
     if arg in ("-", "--detach"):  # toggle to previous branch / explicit detach
         return True
