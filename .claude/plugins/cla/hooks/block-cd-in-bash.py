@@ -57,7 +57,7 @@ def main() -> int:
     if not cd_outside_quotes(command):
         return 0
     print(
-        "blocked: Bash command contains `cd`; the working dir is already the "
+        "blocked: shell command contains `cd`; the working dir is already the "
         "project root and `cd` persists across calls, breaking subsequent commands. "
         "Use absolute paths or pass the working dir to the inner tool instead. "
         "(hook: block-cd-in-bash.py)",

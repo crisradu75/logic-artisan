@@ -73,7 +73,7 @@ from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E40
 # Local file read, no network — but bounded anyway, because every subprocess on a
 # per-tool-call path is bounded in this tree (see the handler-budget notes in
 # _dispatch_lib).
-_GIT_TIMEOUT_SECONDS = 3
+_GIT_TIMEOUT_SECONDS = 2
 
 _IDENTITY_BAKING = re.compile(r"\bgit\s+" + _G + r"(?:commit|push)\b")
 
@@ -121,14 +121,30 @@ def main() -> int:
     if not isinstance(cwd, str):
         cwd = os.getcwd()
 
-    actual = _git_email(cwd)
-    if actual is None:
-        # Could not read git at all. Fail open and silent: this hook is an
-        # identity check, not a git-health monitor, and the sibling hooks
-        # already report a broken git loudly.
-        return 0
-
     expected = (os.environ.get("CLA_EXPECTED_GIT_EMAIL") or "").strip()
+    actual = _git_email(cwd)
+
+    if actual is None:
+        # Could not read git at all (not a repo, git missing, or the call timed
+        # out). With no expectation configured, fail open AND silent: this hook
+        # is an identity check, not a git-health monitor, and a second voice
+        # reporting a broken git on every command would be noise.
+        if not expected:
+            return 0
+        # With CLA_EXPECTED_GIT_EMAIL set, silence is the wrong answer. Setting
+        # it is an explicit request that identity be verified before every
+        # commit, and returning 0 here would let an unattended batch bake in
+        # twenty commits under an unverified identity with the guard the user
+        # armed saying nothing at all. Warn rather than ask: we have no evidence
+        # of an actual mismatch, so a prompt would cry wolf.
+        print(
+            "[ask-git-identity] warn: CLA_EXPECTED_GIT_EMAIL is set, but this "
+            "repo's `user.email` could not be read (not a repo, git unavailable, "
+            "or the lookup timed out), so the identity check did NOT run for this "
+            "command. (hook: ask-git-identity.py)",
+            file=sys.stderr,
+        )
+        return 0
 
     if not actual:
         print(

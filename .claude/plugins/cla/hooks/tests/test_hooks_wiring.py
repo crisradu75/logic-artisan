@@ -159,6 +159,77 @@ def test_hooks_json_timeouts_match_the_dispatcher_budget_constant():
     )
 
 
+@pytest.mark.parametrize("dispatcher", _DISPATCHERS)
+def test_enforcing_hooks_fit_inside_the_handler_budget(dispatcher):
+    """The sum that actually matters, and the one nobody was checking.
+
+    Enforcing hooks are never skipped, so if their combined worst case exceeds
+    the handler timeout then no admission policy can save them — Claude Code
+    kills the handler mid-run and whichever hook had not run yet is silently
+    skipped. That is indistinguishable from a guard that ran and allowed the
+    call, which is the worst failure this layer has.
+
+    Before this was asserted, the Bash dispatcher's enforcing hooks summed to
+    17s and the Edit/Write dispatcher's to 21s, both against a 10s handler.
+    """
+    lib = _load_dispatch_lib()
+    dispatcher_path = _HOOKS_DIR / dispatcher
+    advisory = _named_collection(dispatcher_path, "_ADVISORY_HOOKS")
+    hook_files = _hook_files_list(dispatcher_path)
+
+    missing = [n for n in hook_files if n not in lib.HOOK_WORST_CASE_SECONDS]
+    assert not missing, (
+        f"{dispatcher} runs hook(s) with no HOOK_WORST_CASE_SECONDS entry: "
+        f"{missing}. Add the (call sites x timeout) product so the budget can "
+        "be checked."
+    )
+
+    enforcing = [n for n in hook_files if n not in advisory]
+    total = sum(lib.HOOK_WORST_CASE_SECONDS[n] for n in enforcing)
+    budget = lib.HANDLER_TIMEOUT_SECONDS - lib._BUDGET_RESERVE_SECONDS
+    assert total <= budget, (
+        f"{dispatcher}'s enforcing hooks can spend {total}s but only {budget}s "
+        f"of the {lib.HANDLER_TIMEOUT_SECONDS}s handler is usable. These are "
+        "never skipped, so the only fixes are fewer subprocess calls or shorter "
+        f"per-hook timeouts. Enforcing: {enforcing}"
+    )
+
+
+def test_the_budget_table_covers_every_dispatched_hook():
+    """A table entry silently defaulting to 0.0 would make the sum meaningless."""
+    lib = _load_dispatch_lib()
+    dispatched = {
+        name
+        for dispatcher in _DISPATCHERS
+        for name in _hook_files_list(_HOOKS_DIR / dispatcher)
+    }
+    assert dispatched <= set(lib.HOOK_WORST_CASE_SECONDS)
+    # And the table must not accumulate entries for hooks nobody runs.
+    stale = set(lib.HOOK_WORST_CASE_SECONDS) - dispatched
+    assert not stale, f"HOOK_WORST_CASE_SECONDS has stale entries: {sorted(stale)}"
+
+
+def test_powershell_runs_the_same_git_guards_as_bash():
+    """PowerShell is the primary shell on Windows and ran one hook, not nine.
+
+    Every hook on the Bash matcher reads `tool_input.command` and matches the
+    command SHAPE, so `git push --force` is the same text either way. Wiring
+    PowerShell to only `block-unsafe-recursive-delete.py` meant a force-push, a
+    push straight to main, or a wrong-identity commit issued through it bypassed
+    every git guard in the tree.
+    """
+    groups = {
+        group.get("matcher"): group
+        for group in _load_hooks_json()["hooks"]["PreToolUse"]
+    }
+    assert "PowerShell" in groups, "PowerShell has no PreToolUse wiring"
+    commands = " ".join(h.get("command", "") for h in groups["PowerShell"]["hooks"])
+    assert "dispatch-bash-pretooluse.py" in commands, (
+        "PowerShell must route through the shared shell dispatcher, or its git "
+        "guards silently do not apply"
+    )
+
+
 def _changes_the_outcome(hook_source: str) -> bool:
     """True iff a hook can alter whether/how the tool call proceeds.
 

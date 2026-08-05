@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""PreToolUse dispatcher for the Bash matcher.
+"""PreToolUse dispatcher for the Bash and PowerShell matchers.
+
+Both shells are wired to this one dispatcher because every hook below reads
+`tool_input.command` and matches on the COMMAND SHAPE, not on shell syntax —
+`git push --force origin x` is the same text either way. PowerShell is this
+harness's primary shell on Windows, and it previously ran exactly one of these
+hooks, so a force-push, a push straight to main, or a wrong-identity commit
+issued through it bypassed every git guard in the tree.
 
 Runs block-cd-in-bash, block-direct-push-to-main, ask-destructive-git,
 ask-git-identity, block-unsafe-recursive-delete, guard-worktree-isolation,
@@ -17,11 +24,18 @@ Order and semantics preserved exactly:
   - Any hook returning 2 blocks: its stderr message is shown, prefixed with any
     non-blocking warning text already produced by an earlier hook in this same
     run (not silently dropped), then this process exits 2.
-  - If none block but one requests an `ask` escalation (ask-destructive-git.py),
-    the merged decision is re-emitted as this process's own stdout JSON. Only
-    one process's stdout is read per call, so a child's decision that isn't
-    re-emitted here is silently downgraded to an allow. Precedence is
-    deny > ask > allow, matching the documented permission evaluation order.
+  - If none block but one requests an `ask` escalation (ask-destructive-git.py
+    or ask-git-identity.py — both return 0 and escalate via stdout), the merged
+    decision is re-emitted as this process's own stdout JSON. Only one process's
+    stdout is read per call, so a child's decision that isn't re-emitted here is
+    silently downgraded to an allow. Precedence is deny > ask > allow, matching
+    the documented permission evaluation order.
+  - An `ask` forces exit 0 even when a sibling hook errored or advisory hooks
+    were skipped, because a permission decision on stdout is only honoured on
+    exit 0. Reporting an unrelated hook's failure through the exit code would
+    discard the escalation entirely — trading a prompt the user needs for a
+    diagnostic they don't. The diagnostic is folded into the prompt text
+    instead, so nothing is lost either way.
   - If none block, any non-blocking warning stderr text is passed through —
     e.g. from warn-branch-base.py / warn-stacked-pr-merge.py /
     warn-stray-scratch-artifact.py, or guard-worktree-isolation.py's
@@ -32,10 +46,11 @@ Order and semantics preserved exactly:
     exits 1 rather than 0 even when nothing blocked, so the failure is
     visible via Claude Code's hook-error notice instead of being silently
     discarded (exit 0 drops stderr entirely per the documented hook contract).
-  - If the handler budget runs out mid-list, the remaining ADVISORY hooks are
-    skipped and the skip is reported on stderr. Enforcing hooks are never
-    skipped: a late block still blocks, but a block dropped to a handler kill
-    is a silent failure. See `_dispatch_lib.Deadline`.
+  - If too little handler budget remains for an ADVISORY hook's own worst case,
+    it is skipped and the skip is reported. Enforcing hooks are never skipped:
+    a late block still blocks, but a block dropped to a handler kill is a silent
+    failure. A skip exits 1 rather than 0 so the report actually reaches Claude.
+    See `_dispatch_lib.Deadline` and `HOOK_WORST_CASE_SECONDS`.
   - Total stderr is capped to Claude Code's hook output limit, with a blocking
     hook's reason budgeted ahead of any advisory text.
 """
@@ -45,7 +60,13 @@ from __future__ import annotations
 import json
 import sys
 
-from _dispatch_lib import Deadline, compose_output, run_hook_file
+from _dispatch_lib import (
+    HOOK_WORST_CASE_SECONDS,
+    Deadline,
+    compose_output,
+    fit_json_payload,
+    run_hook_file,
+)
 
 _HOOK_FILES = [
     "block-cd-in-bash.py",
@@ -59,14 +80,15 @@ _HOOK_FILES = [
     "warn-stray-scratch-artifact.py",
 ]
 
-# Hooks that can only ever warn, and so may be dropped when the handler budget
-# is spent. Every hook that changes the OUTCOME of the call — one that can
-# return 2, and `ask-destructive-git.py`, which returns 0 but escalates to a
-# permission prompt — is deliberately absent from this set AND ordered ahead of
-# these three in `_HOOK_FILES`, so budget pressure costs warnings before it can
-# cost enforcement. Note the ask hook is the reason the wiring test cannot key
-# on `return 2` alone: skipping it would silently downgrade an ask to an allow,
-# which is an enforcement loss that no exit code would reveal.
+# Hooks that can only ever warn, and so may be dropped when too little handler
+# budget remains for them. Every hook that changes the OUTCOME of the call — one
+# that can return 2, plus `ask-destructive-git.py` and `ask-git-identity.py`,
+# which return 0 but escalate to a permission prompt via stdout — is
+# deliberately absent from this set AND ordered ahead of these three in
+# `_HOOK_FILES`, so budget pressure costs warnings before it can cost
+# enforcement. Note the two ask hooks are why the wiring test cannot key on
+# `return 2` alone: skipping either would silently downgrade an ask to an allow,
+# an enforcement loss no exit code would reveal.
 _ADVISORY_HOOKS = frozenset({
     "warn-branch-base.py",
     "warn-stacked-pr-merge.py",
@@ -106,7 +128,8 @@ def main() -> int:
     errored = False
 
     for filename in _HOOK_FILES:
-        if filename in _ADVISORY_HOOKS and deadline.expired():
+        cost = HOOK_WORST_CASE_SECONDS.get(filename, 0.0)
+        if filename in _ADVISORY_HOOKS and not deadline.has_room(cost):
             skipped.append(filename)
             continue
 
@@ -129,23 +152,51 @@ def main() -> int:
 
     if skipped:
         warnings.append(
-            "[dispatch] handler budget spent before these advisory hooks could "
-            f"run, so they were skipped: {', '.join(skipped)}. Every blocking "
+            "[dispatch] too little handler budget remained for these advisory "
+            f"hooks, so they were skipped: {', '.join(skipped)}. Every blocking "
             "guard still ran — only warnings were lost."
         )
+
+    # A skip is a real degradation, not routine: exiting 0 would put the notice
+    # on stderr, which the hook contract discards, leaving a run with guards
+    # dropped indistinguishable from a clean one.
+    degraded = errored or bool(skipped)
 
     out = compose_output(warnings)
     if out:
         print(out, file=sys.stderr)
+
     if asks:
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "ask",
-                "permissionDecisionReason": compose_output(asks),
-            }
-        }))
-    return 1 if errored else 0
+        # An `ask` is only honoured on exit 0, so the degradation notice cannot
+        # travel as an exit code here without destroying the escalation. It
+        # rides along in the prompt text instead, where the user actually sees
+        # it — strictly more visible than the hook-error notice it replaces.
+        reason = compose_output(asks)
+        if degraded:
+            reason = compose_output(
+                [reason],
+                must_keep=(
+                    "[dispatch] note: some guards did not complete on this call "
+                    "(see the hook output above), so this prompt may not reflect "
+                    "every check."
+                ),
+            )
+        # Measured on the SERIALIZED payload, envelope included — clamping only
+        # the reason string left the printed total over the cap once JSON
+        # escaping expanded it, which sends the whole prompt to a file instead.
+        print(fit_json_payload(
+            lambda text: {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": text,
+                }
+            },
+            reason,
+        ))
+        return 0
+
+    return 1 if degraded else 0
 
 
 if __name__ == "__main__":

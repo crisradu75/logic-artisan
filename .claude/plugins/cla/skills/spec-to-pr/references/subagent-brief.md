@@ -1,9 +1,10 @@
 # The sub-agent brief: five slots
 
 The shared shape for every `Agent` dispatch in this plugin. Owned here because
-`spec-to-pr` has the most dispatch sites, but **not** specific to it — `/cla:lite-pr`,
-`/cla:multi-lite` and `/cla:multi-spec` cite this file rather than restating it, the
-same way `review-change/references/checklist.md` is read by more than its own skill.
+`spec-to-pr` has the most dispatch sites, but **not** specific to it — `/cla:lite-pr`
+cites this file rather than restating it, the same way
+`review-change/references/checklist.md` is read by more than its own skill. Any skill
+that dispatches an agent should cite it; the list of citing skills is not closed.
 
 Cite it; don't paraphrase it. A brief shape re-derived per call site is how the
 quality gradient appeared that this file exists to remove: one dispatch site had three

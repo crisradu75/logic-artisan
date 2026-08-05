@@ -276,7 +276,10 @@ def _current_branch(cwd: str | None = None) -> str | None:
     try:
         result = subprocess.run(
             ["git", *(["-C", cwd] if cwd else []), "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            # 2s bounds a WEDGED git, not a slow one; `rev-parse` is milliseconds.
+            # Charged against the shared handler budget — see
+            # `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
+            capture_output=True, text=True, timeout=2,
         )
     except (OSError, subprocess.SubprocessError):
         # `SubprocessError` covers `TimeoutExpired`. Without the timeout a hung

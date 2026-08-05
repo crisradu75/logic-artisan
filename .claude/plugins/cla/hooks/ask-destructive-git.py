@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: escalate history-destroying git commands to a prompt.
+r"""PreToolUse hook: escalate history-destroying git commands to a prompt.
 
 Why ASK rather than BLOCK
 -------------------------
@@ -35,13 +35,18 @@ both, and puts the rule in the same place as every other git guard here.
 
 Detection scope
 ---------------
-- `git push` carrying `-f` or `--force`. `--force-with-lease` and
-  `--force-if-includes` are deliberately NOT matched: they are the guarded
-  forms that refuse to clobber an unseen remote update, and prompting on them
-  would make the prompt routine — which is how a checkpoint stops being read.
-  The `(?:\s|=|$)` boundary excludes them for free, since `--force` there is
-  followed by `-`.
+- `git push` carrying `--force`, or any bundled short-option cluster
+  containing `f` (`-f`, `-uf`, `-fu`). Bundling is the form a hand-typed push
+  most often takes, and matching only the standalone `-f` token missed it.
+- `git push` with a `+`-prefixed refspec (`git push origin +feat:feat`), which
+  is git's other force syntax and carries no flag at all.
 - `git reset` carrying `--hard`.
+
+`--force-with-lease` and `--force-if-includes` are deliberately NOT matched:
+they are the guarded forms that refuse to clobber an unseen remote update, and
+prompting on them would make the prompt routine — which is how a checkpoint
+stops being read. The `(?:\s|=|$)` boundary excludes them for free, since
+`--force` there is followed by `-`.
 
 Deliberately out of scope: `git clean`, `git checkout -- <path>`, `git restore`.
 They discard uncommitted work too, but they are frequent enough in ordinary
@@ -78,14 +83,23 @@ if _HOOKS_DIR not in sys.path:
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
-# The trailing `[^&|;]*` stops at a shell separator so the flags of a LATER
-# command in the same line are never attributed to this one.
-_PUSH = re.compile(r"\bgit\s+" + _G + r"push\b([^&|;]*)")
-_RESET = re.compile(r"\bgit\s+" + _G + r"reset\b([^&|;]*)")
+# The trailing `[^&|;\n]*` stops at a shell separator so the flags of a LATER
+# command are never attributed to this one. A NEWLINE is a separator too: a
+# multi-line Bash command is ordinary here, and without `\n` in this class a
+# plain `git push` on one line was flagged because of an `-f` on the next.
+_PUSH = re.compile(r"\bgit\s+" + _G + r"push\b([^&|;\n]*)")
+_RESET = re.compile(r"\bgit\s+" + _G + r"reset\b([^&|;\n]*)")
 
-# `(?:\s|=|$)` is what spares `--force-with-lease` / `--force-if-includes`:
-# both are followed by `-`, which the boundary rejects.
-_FORCE_FLAG = re.compile(r"(?:^|\s)(?:-f|--force)(?:\s|=|$)")
+# Two shapes force a push. The long flag, where `(?:\s|=|$)` is what spares
+# `--force-with-lease` / `--force-if-includes` (both are followed by `-`, which
+# the boundary rejects); and a bundled short cluster containing `f`. The
+# `-[A-Za-z]*f[A-Za-z]*` arm cannot reach into `--force-with-lease`, because the
+# character after the leading `-` there is another `-`, not a letter.
+_FORCE_FLAG = re.compile(
+    r"(?:^|\s)(?:--force(?:\s|=|$)|-[A-Za-z]*f[A-Za-z]*(?:\s|$))"
+)
+# `git push origin +feat:feat` — force expressed in the refspec, no flag at all.
+_FORCE_REFSPEC = re.compile(r"(?:^|\s)\+\S+")
 _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 
 
@@ -93,7 +107,10 @@ def _reasons(command: str) -> list[str]:
     """Every destructive shape present in `command`, as human-readable causes."""
     scanned = _strip_quoted_spans(command)
     found: list[str] = []
-    if any(_FORCE_FLAG.search(m.group(1)) for m in _PUSH.finditer(scanned)):
+    if any(
+        _FORCE_FLAG.search(m.group(1)) or _FORCE_REFSPEC.search(m.group(1))
+        for m in _PUSH.finditer(scanned)
+    ):
         found.append(
             "a force-push, which rewrites a remote branch other worktrees or "
             "collaborators may already have based work on"

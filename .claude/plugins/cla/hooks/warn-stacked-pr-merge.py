@@ -68,7 +68,8 @@ def _current_branch() -> str | None:
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            # See `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
+            capture_output=True, text=True, timeout=2,
         )
     except (OSError, subprocess.SubprocessError):
         return None

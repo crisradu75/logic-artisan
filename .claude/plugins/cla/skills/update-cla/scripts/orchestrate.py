@@ -60,6 +60,13 @@ def _source_commit(source_repo: Path) -> Optional[str]:
     Provenance, not a gate: a source that isn't a git checkout (a plain
     directory, an export) is a legitimate sync source, so failure here degrades
     to "no commit recorded" rather than blocking the run.
+
+    A sha from a DIRTY source gets a `-dirty` suffix. The whole value of this
+    field is "diff the local file against the revision it came from", and CLA is
+    designed to be loaded live from a working tree (`--plugin-dir`), so syncing
+    mid-edit is the normal case, not the exotic one. Recording a bare sha then
+    would point at a revision that does not contain the bytes actually copied —
+    worse than recording nothing, because it looks authoritative.
     """
     try:
         r = subprocess.run(
@@ -70,7 +77,21 @@ def _source_commit(source_repo: Path) -> Optional[str]:
         return None
     if r.returncode != 0:
         return None
-    return (r.stdout or "").strip() or None
+    sha = (r.stdout or "").strip()
+    if not sha:
+        return None
+
+    try:
+        status = subprocess.run(
+            ["git", "-C", str(source_repo), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # Cannot tell clean from dirty. Say so rather than implying clean.
+        return f"{sha}-unknown"
+    if status.returncode != 0:
+        return f"{sha}-unknown"
+    return f"{sha}-dirty" if (status.stdout or "").strip() else sha
 
 
 def _state_dir(local_repo: Path, run_id: str) -> Path:

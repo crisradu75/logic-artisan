@@ -31,6 +31,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import json
 import re
 import subprocess
 import sys
@@ -49,11 +50,11 @@ _HOOKS_DIR = Path(__file__).resolve().parent
 # guard that ran and allowed the call.
 #
 # Two things keep the dispatchers inside that ceiling:
-#   1. Every hook's own subprocess timeouts are sized to fit under it. That is
-#      a per-hook property, enforced by review, not by this module.
+#   1. `HOOK_WORST_CASE_SECONDS` below, which states what each hook can spend
+#      in subprocesses and is asserted in aggregate by the wiring test.
 #   2. `Deadline` below, which the dispatchers consult before starting each
-#      ADVISORY hook. When the budget is spent, the remaining advisory hooks
-#      are skipped and SAID SO on stderr rather than being silently lost to a
+#      ADVISORY hook. When too little budget is left for THAT hook's worst
+#      case, it is skipped and SAID SO rather than being silently lost to a
 #      kill mid-run.
 #
 # Only advisory hooks are ever skipped. An enforcing hook always runs, even
@@ -68,6 +69,45 @@ HANDLER_TIMEOUT_SECONDS = 10.0
 # plus interpreter startup before the first one begins. Both fall outside the
 # window `Deadline` can observe.
 _BUDGET_RESERVE_SECONDS = 1.5
+
+# Worst-case wall time each dispatched hook can spend in subprocesses, as
+# (call sites on the hot path) x (that hook's own timeout constant). A hook that
+# spawns nothing is 0.0.
+#
+# Two things consume this table:
+#   - the dispatchers, which admit an ADVISORY hook only when this much budget
+#     is still left. Gating on `expired()` alone was not enough: it let a hook
+#     with a 9s worst case start with 0.1s remaining, so the handler was killed
+#     anyway — the budget check has to be sized against the hook about to run,
+#     not merely against zero.
+#   - `test_hooks_wiring.py`, which asserts each dispatcher's ENFORCING hooks
+#     sum to no more than the budget. Enforcing hooks are never skipped, so if
+#     their sum alone exceeds the ceiling then no admission policy can rescue
+#     them; the only fixes are fewer calls or shorter timeouts. Keeping the
+#     numbers here rather than deriving them means a hook that gains a call site
+#     must update this table, and the test fails until the sum still fits.
+HOOK_WORST_CASE_SECONDS: dict[str, float] = {
+    # Pure text inspection — no subprocess at all.
+    "block-cd-in-bash.py": 0.0,
+    "ask-destructive-git.py": 0.0,
+    "block-unsafe-recursive-delete.py": 0.0,
+    "warn-comment-dates.py": 0.0,
+    "block-dated-stamps-in-prose.py": 0.0,
+    "warn-smoke-test-drift.py": 0.0,
+    # One local git call each.
+    "block-direct-push-to-main.py": 2.0,
+    "ask-git-identity.py": 2.0,
+    "warn-branch-base.py": 2.0,
+    # `git status --porcelain` walks the working tree, so it gets 4s where the
+    # `rev-parse` hooks get 2s.
+    "warn-stray-scratch-artifact.py": 4.0,
+    # Two local git calls: a combined `rev-parse` plus one conditional lookup.
+    "guard-worktree-isolation.py": 4.0,
+    "block-worktree-path-escape.py": 4.0,
+    # One network-bound `gh` call (4s) plus one local git call (2s). The only
+    # hook here that leaves the machine, and the reason it stays advisory.
+    "warn-stacked-pr-merge.py": 6.0,
+}
 
 
 class Deadline:
@@ -91,15 +131,23 @@ class Deadline:
     def expired(self) -> bool:
         return self.remaining() <= 0.0
 
+    def has_room(self, cost_seconds: float) -> bool:
+        """True when a hook whose worst case is `cost_seconds` can still finish.
+
+        A zero-cost hook always has room: it spawns nothing, so it cannot
+        overrun the handler however little budget is left.
+        """
+        return self.remaining() >= cost_seconds
+
 
 # --- Output size ------------------------------------------------------------
 # Claude Code caps a hook's output at 10,000 characters; past that it writes
 # the payload to a file and hands Claude a path plus a preview. For a warn hook
 # that is a silent downgrade — the feedback these hooks exist to deliver stops
 # being in front of Claude and becomes a file it may never open. Several leaf
-# hooks truncate by ITEM count (`hits[:5]`, `_MAX_DIAGS`) but no item is bounded
-# in LENGTH, and the dispatchers then concatenate every hook's output, so the
-# only place the total can be enforced is here at the join.
+# hooks truncate by ITEM count (`hits[:5]` in block-dated-stamps-in-prose.py)
+# but no item is bounded in LENGTH, and the dispatchers then concatenate every
+# hook's output, so the only place the total can be enforced is here at the join.
 
 HOOK_OUTPUT_CHAR_LIMIT = 10_000
 
@@ -108,8 +156,11 @@ def clamp_output(text: str, limit: int = HOOK_OUTPUT_CHAR_LIMIT) -> str:
     """Truncate `text` to `limit` characters, saying so in the space it keeps.
 
     The notice is part of the retained budget, not added on top of it, so the
-    return value is always <= `limit`.
+    return value is always <= `limit`. When `limit` is too small to hold even
+    the notice, the text is truncated bare rather than overshooting — the size
+    guarantee is the one thing this function must not break.
     """
+    limit = max(0, limit)
     if len(text) <= limit:
         return text
     notice = (
@@ -124,17 +175,49 @@ def clamp_output(text: str, limit: int = HOOK_OUTPUT_CHAR_LIMIT) -> str:
     return text[:keep] + notice
 
 
+def fit_json_payload(build, text: str, limit: int = HOOK_OUTPUT_CHAR_LIMIT) -> str:
+    """Serialize `build(text)` so the WHOLE payload fits in `limit` characters.
+
+    The cap applies to what the process prints, envelope included — and JSON
+    escaping can expand a string past a naive pre-clamp — so the size is measured
+    on the serialized result and `text` re-clamped by however much it overshot.
+
+    `build` takes the (possibly shortened) text and returns the payload dict.
+    Both dispatchers need this: one wraps an `additionalContext`, the other a
+    `permissionDecisionReason`, and clamping only the inner string left the
+    printed total over the cap in both cases.
+
+    Converges in one or two passes. The loop is bounded so it always returns; if
+    it somehow has not converged by then, the last attempt is returned rather
+    than looping — an oversized payload is a degraded outcome, a hung hook is a
+    dead one.
+    """
+    for _ in range(4):
+        out = json.dumps(build(text))
+        overflow = len(out) - limit
+        if overflow <= 0:
+            return out
+        text = clamp_output(text, len(text) - overflow)
+    return out
+
+
 def compose_output(
     sections: list[str],
     must_keep: str = "",
     limit: int = HOOK_OUTPUT_CHAR_LIMIT,
 ) -> str:
-    """Join `sections`, guaranteeing `must_keep` survives intact.
+    """Join `sections`, prioritising `must_keep` over the advisory preamble.
 
     `must_keep` is the blocking hook's reason — the one part Claude has to act
     on, and the part that arrives LAST in the stream, so a naive tail-truncation
     would drop precisely it. It is budgeted first and the advisory preamble
     absorbs the loss instead.
+
+    It survives intact whenever it fits. A `must_keep` that is itself at or over
+    `limit` is clamped like anything else and the preamble is dropped entirely —
+    the size cap wins, because overshooting it sends the whole payload to a file
+    Claude may never open, which loses the block reason completely rather than
+    partially.
     """
     must_keep = must_keep or ""
     if len(must_keep) >= limit:
@@ -284,7 +367,7 @@ def default_base_branch(cwd: str | None = None) -> str:
         try:
             r = subprocess.run(
                 ["git", *(["-C", cwd] if cwd else []), *args],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=2,
             )
         except (OSError, subprocess.SubprocessError):
             return None

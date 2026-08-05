@@ -314,7 +314,14 @@ def test_no_project_tokens_in_synced_source():
 #     ban or a `tests/` exemption — `tests/` is exactly where the real leak was.
 
 ABS_PATH_EXEMPT_MARKER = "path-fixture-ok"
-PLACEHOLDER_USERS = frozenset({"me", "you", "user", "username", "someone", "dev"})
+PLACEHOLDER_USERS = frozenset({
+    "me", "you", "user", "username", "someuser", "someone", "dev",
+})
+# Separator-stripped Windows path (`C:UsersaliceAppData...`, path-fixture-ok). The shape
+# `warn-stray-scratch-artifact.py` exists to parse, so its fixtures carry it —
+# and with the separators gone neither pattern below can see it, which is
+# exactly how a real developer username survived the previous sweep.
+MANGLED_WIN_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:Users([A-Za-z0-9]+)")
 # Single drive letter, NOT preceded by another alnum (or a URL scheme matches).
 # Consumes the whole path-ish run, so the placeholder test below can inspect it.
 WIN_ABS_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{1,2}[A-Za-z0-9._<>\\/-]*")
@@ -324,6 +331,17 @@ HOME_ABS_PATH = re.compile(r"(?:^|[\s\"'`(])/(?:Users|home)/([A-Za-z0-9._-]+)/")
 # fixtures that genuinely need a REAL-looking absolute path (parser tests), so the
 # marker keeps meaning "a human decided this one is fine" instead of becoming noise.
 PLACEHOLDER_PATH_HINTS = ("<", "...")
+
+
+def _starts_with_placeholder_user(segment: str) -> bool:
+    """Whether a separator-stripped run begins with an obvious placeholder name.
+
+    With the separators gone the username cannot be delimited, so the run is
+    tested by prefix: ``someuserAppDataLocal`` is a placeholder, ``aliceAppData``
+    names a real person.
+    """
+    low = segment.lower()
+    return any(low.startswith(p) for p in PLACEHOLDER_USERS)
 
 
 def find_absolute_path_leaks(plugin_root: Path):
@@ -345,15 +363,21 @@ def find_absolute_path_leaks(plugin_root: Path):
         for lineno, line in enumerate(text.splitlines(), 1):
             if ABS_PATH_EXEMPT_MARKER in line:
                 continue
-            kind = None
+            # Each shape is tested INDEPENDENTLY. An `elif` chain here meant a
+            # line carrying a placeholder Windows path skipped the home-path
+            # check entirely, so a real `/Users/<name>/` on that same line
+            # shipped unreported.
+            kinds: list[str] = []
             win = WIN_ABS_PATH.search(line)
             if win and not any(h in win.group(0) for h in PLACEHOLDER_PATH_HINTS):
-                kind = "windows-drive-path"
-            elif not win:
-                m = HOME_ABS_PATH.search(line)
-                if m and m.group(1).lower() not in PLACEHOLDER_USERS:
-                    kind = "home-directory-path"
-            if kind:
+                kinds.append("windows-drive-path")
+            home = HOME_ABS_PATH.search(line)
+            if home and home.group(1).lower() not in PLACEHOLDER_USERS:
+                kinds.append("home-directory-path")
+            mangled = MANGLED_WIN_PATH.search(line)
+            if mangled and not _starts_with_placeholder_user(mangled.group(1)):
+                kinds.append("mangled-windows-path")
+            for kind in kinds:
                 excerpt = line.strip()
                 if len(excerpt) > MAX_EXCERPT:
                     excerpt = excerpt[: MAX_EXCERPT - 3] + "..."
@@ -376,6 +400,83 @@ def test_no_absolute_developer_paths_in_synced_source():
             f"path, or mark a deliberate fixture line with `{ABS_PATH_EXEMPT_MARKER}`:"
             f"\n{detail}"
         )
+
+
+# ---------- self-tests of the absolute-path scanner ----------
+#
+# The tree-wide test above asserts the real plugin is CLEAN, which it would also
+# do if this scanner returned nothing at all — a broken regex, an inverted
+# condition and a swallowed exception all pass it identically. These pin the
+# scanner positively, so the guard cannot rot into a no-op.
+
+
+def _scan_one(tmp_path: Path, line: str):
+    """Run the scanner over a single-line source file under a fake plugin root."""
+    (tmp_path / "hooks").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "hooks" / "sample.py").write_text(line + "\n", encoding="utf-8")
+    return find_absolute_path_leaks(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "line, expected_kind",
+    [
+        (r'BASE = "C:\Users\alice\code\thing"', "windows-drive-path"),  # path-fixture-ok
+        ('BASE = "C:/Users/alice/AppData"', "windows-drive-path"),  # path-fixture-ok
+        ('BASE = "/Users/alice/code/thing"', "home-directory-path"),  # path-fixture-ok
+        ('BASE = "/home/alice/code/thing"', "home-directory-path"),  # path-fixture-ok
+        # Separator-stripped — invisible to both patterns above.
+        ('P = "C:UsersaliceAppDataLocalTempscratch.txt"', "mangled-windows-path"),  # path-fixture-ok
+    ],
+)
+def test_absolute_developer_paths_are_flagged(tmp_path, line, expected_kind):
+    leaks = _scan_one(tmp_path, line)
+    assert [k for _, k, _, _ in leaks] == [expected_kind], leaks
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # The empirical finding that retuned this rule: `s:` + `//` satisfies a
+        # naive drive-letter shape. Deleting the `(?<![A-Za-z0-9])` lookbehind
+        # must fail this case.
+        'URL = "https://example.com/x"',
+        'URL = "ftp://example.com/x"',
+        'URL = "file:///tmp/x"',
+        # Placeholder users name nobody.
+        'BASE = "/Users/me/code/thing"',
+        'BASE = "/home/user/code/thing"',
+        'P = "C:UserssomeuserAppDataLocalTempscratch.txt"',
+        # Illustrative prose, not a runnable path.
+        r'# e.g. C:\Code\<repo>\file.py',
+        r"# e.g. C:\Users\...\AppData",
+        # Relative paths are the whole point of the rule.
+        'BASE = "hooks/tests/fixtures"',
+    ],
+)
+def test_non_leaks_are_not_flagged(tmp_path, line):
+    assert _scan_one(tmp_path, line) == []
+
+
+def test_exempt_marker_clears_a_real_looking_path(tmp_path):
+    marked = r'BASE = "C:\Users\alice\code"  # ' + ABS_PATH_EXEMPT_MARKER  # path-fixture-ok
+    assert _scan_one(tmp_path, marked) == []
+
+
+def test_each_shape_on_one_line_is_reported_independently(tmp_path):
+    """A placeholder Windows path must not suppress a real home-path leak.
+
+    This is the `elif` bug: the Windows arm matched, was exempted as a
+    placeholder, and the home-path arm was never reached — so the real leak on
+    the same line shipped.
+    """
+    line = r'# on Windows C:\Code\<repo>\x, on macOS /Users/alice/code/x'  # path-fixture-ok
+    kinds = [k for _, k, _, _ in _scan_one(tmp_path, line)]
+    assert kinds == ["home-directory-path"], kinds
+
+
+def test_the_scanner_is_not_vacuous(tmp_path):
+    """A guard that can never fire would pass every test above by accident."""
+    assert _scan_one(tmp_path, r'BASE = "C:\Users\alice\x"')  # path-fixture-ok
 
 
 # ---------- self-tests of the checker's own machinery ----------

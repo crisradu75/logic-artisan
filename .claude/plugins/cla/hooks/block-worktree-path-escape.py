@@ -53,13 +53,20 @@ import subprocess
 import sys
 
 
-# Every sibling git-touching hook bounds its subprocesses; these three calls
-# were the one exception, and they run on EVERY Edit/Write. An unbounded git is
-# a hook that can hang forever — and the likeliest cause is precisely the state
-# this hook family exists to detect: an index lock held by a concurrent session
-# in the same clone. Expiry is caught below as just another git failure, which
-# this hook already fails open on.
-_GIT_TIMEOUT_SECONDS = 5
+# Every sibling git-touching hook bounds its subprocesses; these calls were the
+# one exception, and they run on EVERY Edit/Write. An unbounded git is a hook
+# that can hang forever — and the likeliest cause is precisely the state this
+# hook family exists to detect: an index lock held by a concurrent session in
+# the same clone. Expiry is caught below as just another git failure, which this
+# hook already fails open on.
+#
+# 2s, not 5s: the bound exists to catch a WEDGED git, not to accommodate a slow
+# one — `rev-parse` on a healthy repo answers in milliseconds. The number has to
+# be small because worst case here is (call sites) x (this timeout), and that
+# product is charged against a 10s handler shared with the other Edit/Write
+# hooks. `_dispatch_lib.HOOK_WORST_CASE_SECONDS` records the product and the
+# wiring test fails if the enforcing hooks stop fitting.
+_GIT_TIMEOUT_SECONDS = 2
 
 
 def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:
@@ -75,13 +82,21 @@ def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | No
 
 
 def _clone_paths(cwd: str) -> tuple[str, str] | None:
-    """Return (git_dir, git_common_dir) as realpaths, or None on failure."""
-    gd = _run_git(cwd, ["rev-parse", "--absolute-git-dir"])
-    gc = _run_git(cwd, ["rev-parse", "--git-common-dir"])
-    if not gd or gd.returncode != 0 or not gc or gc.returncode != 0:
+    """Return (git_dir, git_common_dir) as realpaths, or None on failure.
+
+    One `rev-parse` answering both questions, not two: it prints one line per
+    requested option in argument order. Halving the process count halves this
+    hook's worst-case contribution to the shared handler budget, which is what
+    lets the enforcing hooks fit inside it at all.
+    """
+    r = _run_git(cwd, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
+    if not r or r.returncode != 0:
         return None
-    git_dir = os.path.realpath(gd.stdout.strip())
-    common = gc.stdout.strip()
+    lines = r.stdout.strip().splitlines()
+    if len(lines) < 2:
+        return None
+    git_dir = os.path.realpath(lines[0].strip())
+    common = lines[1].strip()
     if not os.path.isabs(common):
         common = os.path.join(cwd, common)
     return git_dir, os.path.realpath(common)

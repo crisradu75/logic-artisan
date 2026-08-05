@@ -529,3 +529,73 @@ the hook's docstring for whoever adds that check at a slower cadence.
 ### Still open
 
 Chapter 16 (TDD) remains unassessed — the one edge this pass never reached.
+
+---
+
+## Section G: Multi-agent review round
+
+A five-agent review (code, tests, silent-failure, comments, type-design) over the
+finished branch found the audit had **shipped three defects of the same class it
+was written to close** — a guard that looks like coverage while producing nothing.
+All are fixed; findings below are the ones that survived independent verification
+against the branch.
+
+### Critical, all verified by hand before fixing
+
+**G1 — an `ask` was discarded whenever any unrelated hook errored.** A permission
+decision on stdout is honoured only on exit 0, and the dispatcher returned
+`1 if errored else 0` while printing the ask JSON. One sibling with a typo and
+every force-push in the session ran unprompted. Fixed: an ask forces exit 0 and
+the failure notice rides in the prompt text. The same bug applied to the
+Edit/Write dispatcher's `additionalContext`, fixed the same way.
+
+**G2 — the `Deadline` gated starting, not fitting.** Enforcing hooks summed to
+**17s (Bash) and 21s (Edit/Write) against a 10s handler**, so the handler was
+killed before the last hook — always a blocking one — ever ran. Per-hook timeouts
+had been tuned but never summed. Fixed by collapsing the redundant twin
+`rev-parse` calls in both worktree hooks into one (`rev-parse` takes multiple
+options and prints one line each), retuning local-git timeouts to 2s, and adding
+`HOOK_WORST_CASE_SECONDS` plus a test that fails when the enforcing sum stops
+fitting. Now 8.0s against an 8.5s budget.
+
+**G3 — PowerShell, the primary shell on Windows, ran one hook of nine.** Only
+`block-unsafe-recursive-delete` was wired to it, so a force-push, a push straight
+to main, or a wrong-identity commit issued through PowerShell bypassed every git
+guard. This was **pre-existing and the audit missed it entirely** — the pass
+checked what the hooks do, never which matchers they are wired to. Fixed by
+routing PowerShell through the shared dispatcher; every hook there matches on
+command shape, not shell syntax.
+
+### Also fixed
+
+- The developer's real Windows username was still in a synced-core fixture. The
+  new path guard could not see it (separators stripped), so a `mangled-windows-path`
+  shape was added. **The rename in finding 14 fixed the repo name and left the
+  username** — the same line, the same sweep.
+- `ask-destructive-git` silently allowed `git push -uf` (bundled short flags) and
+  `git push origin +feat` (refspec force), and falsely prompted on any multi-line
+  command containing `-f` on a later line. All three verified empirically, before
+  and after.
+- Its module docstring emitted a `SyntaxWarning` (regex in a non-raw string).
+- `find_absolute_path_leaks` had **zero** unit tests; the only test asserted the
+  real tree was clean, which passes identically if the function returns nothing.
+- An `elif` meant a placeholder Windows path on a line suppressed the home-path
+  check for that whole line.
+- `ask-git-identity` failed open *silently* even with `CLA_EXPECTED_GIT_EMAIL`
+  set — an explicit request to verify, answered with silence. Now warns.
+- `source_commit` recorded a bare sha from a dirty source tree, which is the
+  normal state for a `--plugin-dir` repo. Now suffixed `-dirty`.
+
+### The lesson worth keeping
+
+Every G-finding is a **wiring** or **budget** fact, not a logic fact. The audit
+read each hook's code carefully and never asked what the hook was connected to or
+what it cost when summed with its siblings. A guard's correctness is not a
+property of its own file.
+
+Second: I dispatched five review agents with "make no edits" and one checked out
+a different branch mid-review, because I scoped the prohibition to file edits and
+never forbade repository state changes. That is exactly the omission
+`subagent-brief.md`'s **do-not-touch** slot exists to prevent, in the same PR that
+introduced the slot. Agents sharing one working tree need the constraint stated as
+*repository state*, not *files*.

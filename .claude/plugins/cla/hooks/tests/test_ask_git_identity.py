@@ -159,14 +159,42 @@ def test_a_commit_mentioned_inside_a_quoted_string_is_not_an_invocation(repo, mo
     assert payload is None and err.strip() == ""
 
 
-def test_unreadable_git_fails_open_and_silent(tmp_path, monkeypatch, capsys):
-    # Not a repo at all. This hook is an identity check, not a git-health
-    # monitor — the sibling hooks already report a broken git loudly, and a
-    # second voice saying it on every command would be noise.
+def _break_git(monkeypatch):
+    """Force `_git_email` down its None path deterministically.
+
+    `tmp_path` alone is NOT enough: `git config user.email` reports the
+    EFFECTIVE value, so outside a repo it still answers from the machine's
+    global config. Whether that path was reached at all therefore depended on
+    whose machine ran the test.
+    """
+    def _boom(*_a, **_kw):
+        raise subprocess.TimeoutExpired(cmd="git", timeout=1)
+
+    monkeypatch.setattr(hook.subprocess, "run", _boom)
+
+
+def test_unreadable_git_fails_open_and_silent_with_no_expectation(tmp_path, monkeypatch, capsys):
+    # This hook is an identity check, not a git-health monitor — the sibling
+    # hooks already report a broken git loudly, and a second voice saying it on
+    # every command would be noise.
     monkeypatch.delenv("CLA_EXPECTED_GIT_EMAIL", raising=False)
     monkeypatch.delenv("ALLOW_GIT_IDENTITY_MISMATCH", raising=False)
+    _break_git(monkeypatch)
     payload, err = _run("git commit -m x", tmp_path, monkeypatch, capsys)
     assert payload is None and err.strip() == ""
+
+
+def test_unreadable_git_warns_when_an_expectation_is_configured(tmp_path, monkeypatch, capsys):
+    # Setting CLA_EXPECTED_GIT_EMAIL asks for identity to be verified before
+    # every commit. Silently skipping the check is the failure this hook exists
+    # to prevent, so the skip has to be audible.
+    monkeypatch.setenv("CLA_EXPECTED_GIT_EMAIL", "right@example.com")
+    monkeypatch.delenv("ALLOW_GIT_IDENTITY_MISMATCH", raising=False)
+    _break_git(monkeypatch)
+    payload, err = _run("git commit -m x", tmp_path, monkeypatch, capsys)
+    assert payload is None, "no evidence of a mismatch, so it warns rather than asks"
+    assert "did NOT run" in err
+    assert "ask-git-identity.py" in err
 
 
 def test_malformed_payload_fails_open(monkeypatch, capsys):

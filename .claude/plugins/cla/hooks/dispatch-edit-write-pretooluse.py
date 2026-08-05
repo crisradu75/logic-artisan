@@ -39,10 +39,10 @@ import json
 import sys
 
 from _dispatch_lib import (
-    HOOK_OUTPUT_CHAR_LIMIT,
+    HOOK_WORST_CASE_SECONDS,
     Deadline,
-    clamp_output,
     compose_output,
+    fit_json_payload,
     run_hook_file,
 )
 
@@ -93,20 +93,25 @@ def _context_json(contexts: list[str]) -> str:
     measured on the serialized string and the context re-clamped by however much
     it overshot. Converges in one or two passes; bounded so it always returns.
     """
-    merged = "\n\n".join(contexts)
-    out = ""
-    for _ in range(4):
-        out = json.dumps({
+    return fit_json_payload(
+        lambda text: {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "additionalContext": merged,
+                "additionalContext": text,
             }
-        })
-        overflow = len(out) - HOOK_OUTPUT_CHAR_LIMIT
-        if overflow <= 0:
-            return out
-        merged = clamp_output(merged, max(0, len(merged) - overflow))
-    return out
+        },
+        "\n\n".join(contexts),
+    )
+
+
+def _skip_notice(skipped: list[str]) -> str:
+    if not skipped:
+        return ""
+    return (
+        "[dispatch] too little handler budget remained for these advisory "
+        f"hooks, so they were skipped: {', '.join(skipped)}. Every blocking "
+        "guard still ran — only warnings were lost."
+    )
 
 
 def main() -> int:
@@ -118,7 +123,8 @@ def main() -> int:
     errored = False
 
     for filename in _HOOK_FILES:
-        if filename in _ADVISORY_HOOKS and deadline.expired():
+        cost = HOOK_WORST_CASE_SECONDS.get(filename, 0.0)
+        if filename in _ADVISORY_HOOKS and not deadline.has_room(cost):
             skipped.append(filename)
             continue
 
@@ -127,7 +133,11 @@ def main() -> int:
         errored = errored or result.errored
 
         if result.code == 2:
-            preamble = list(warnings) + [
+            # The skip notice belongs here too. The blocking hook sits LAST in
+            # `_HOOK_FILES`, so the common shape is "advisories skipped, then a
+            # block" — reporting the skip only on the non-blocking path meant it
+            # was dropped in exactly the case where it most often applied.
+            preamble = [n for n in (_skip_notice(skipped),) if n] + list(warnings) + [
                 f"[non-blocking warning from an earlier hook this same call]\n{c}"
                 for c in contexts
             ]
@@ -140,19 +150,33 @@ def main() -> int:
         if context:
             contexts.append(context)
 
-    if skipped:
-        warnings.append(
-            "[dispatch] handler budget spent before these advisory hooks could "
-            f"run, so they were skipped: {', '.join(skipped)}. Every blocking "
-            "guard still ran — only warnings were lost."
-        )
+    notice = _skip_notice(skipped)
+    if notice:
+        warnings.append(notice)
+
+    # A skip is a real degradation, not routine: exiting 0 would put the notice
+    # on stderr, which the hook contract discards, leaving a run with guards
+    # dropped indistinguishable from a clean one.
+    degraded = errored or bool(skipped)
 
     err_out = compose_output(warnings)
     if err_out:
         print(err_out, file=sys.stderr)
+
     if contexts:
+        # `additionalContext` on stdout is only read on exit 0, so — exactly as
+        # with the Bash dispatcher's `ask` — the degradation signal cannot ride
+        # the exit code without discarding the context itself. Fold it into the
+        # context, which Claude does see.
+        if degraded:
+            contexts = contexts + [
+                "[dispatch] note: some guards did not complete on this call, so "
+                "this context may be incomplete."
+            ]
         print(_context_json(contexts))
-    return 1 if errored else 0
+        return 0
+
+    return 1 if degraded else 0
 
 
 if __name__ == "__main__":

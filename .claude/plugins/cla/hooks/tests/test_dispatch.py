@@ -21,12 +21,30 @@ _BASH_DISPATCH = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
 _EDIT_WRITE_DISPATCH = _HOOKS_DIR / "dispatch-edit-write-pretooluse.py"
 
 
-def _run(script: Path, payload: dict, cwd: Path | None = None) -> subprocess.CompletedProcess:
+def _run(
+    script: Path,
+    payload: dict,
+    cwd: Path | None = None,
+    extra_env: dict | None = None,
+) -> subprocess.CompletedProcess:
+    # The subprocess inherits this shell's environment, so a developer with
+    # CLA_EXPECTED_GIT_EMAIL or either ALLOW_* override set would flip these
+    # tests' results. Neutralise every switch the dispatched hooks read, and let
+    # a test opt one back in explicitly.
+    env = {
+        **os.environ,
+        "ALLOW_SHARED_CLONE_MUTATION": "",
+        "ALLOW_WORKTREE_PATH_ESCAPE": "",
+        "ALLOW_DESTRUCTIVE_GIT": "",
+        "ALLOW_GIT_IDENTITY_MISMATCH": "",
+        "CLA_EXPECTED_GIT_EMAIL": "",
+    }
+    env.update(extra_env or {})
     return subprocess.run(
         [sys.executable, str(script)],
         input=json.dumps(payload), capture_output=True, text=True,
         cwd=str(cwd) if cwd else None,
-        env={**os.environ, "ALLOW_SHARED_CLONE_MUTATION": "", "ALLOW_WORKTREE_PATH_ESCAPE": ""},
+        env=env,
     )
 
 
@@ -263,6 +281,12 @@ class _ExpiredDeadline:
     def expired(self) -> bool:
         return True
 
+    def has_room(self, cost_seconds: float) -> bool:
+        # Nothing fits in a spent budget — not even a zero-cost hook, which the
+        # real Deadline would admit. Overstating the pressure is right for a
+        # stand-in whose job is to prove enforcement survives the worst case.
+        return False
+
 
 def _load_dispatcher(filename: str):
     """Import a dispatcher in-process so its `Deadline` can be monkeypatched.
@@ -291,7 +315,9 @@ def test_bash_dispatch_skips_advisory_hooks_when_the_budget_is_spent(monkeypatch
     rc = _run_in_process(mod, {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, monkeypatch)
     err = capsys.readouterr().err
 
-    assert rc == 0
+    # Exit 1, not 0: the hook contract discards stderr on exit 0, so reporting a
+    # skip there would not report it at all. See the dedicated exit-code test.
+    assert rc == 1
     # Never silently: a dropped guard the user cannot see is the failure mode
     # this whole mechanism exists to avoid.
     assert "skipped" in err
@@ -369,3 +395,56 @@ def test_bash_dispatch_stays_silent_on_a_guarded_force_push(tmp_path):
     )
     assert r.returncode == 0
     assert r.stdout.strip() == ""
+
+
+def test_an_ask_survives_an_unrelated_hook_crashing(tmp_path):
+    """A permission decision is only honoured on exit 0.
+
+    Reporting an unrelated hook's failure through the exit code discarded the
+    escalation entirely: one sibling with a typo, and every force-push in the
+    session ran unprompted. The failure notice rides in the prompt text instead.
+    """
+    hooks = _hooks_copy(tmp_path)
+    (hooks / "warn-stacked-pr-merge.py").write_text(
+        "this is not valid python(\n", encoding="utf-8"
+    )
+    r = _run(
+        hooks / "dispatch-bash-pretooluse.py",
+        {"tool_input": {"command": "git push --force origin feature/x"},
+         "cwd": str(tmp_path)},
+    )
+    assert r.returncode == 0, "a crashed sibling must not discard the ask"
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "force-push" in nested["permissionDecisionReason"]
+    # The failure still has to be visible somewhere — it moves into the prompt.
+    assert "did not complete" in nested["permissionDecisionReason"]
+
+
+def test_an_ask_survives_a_spent_budget(monkeypatch, capsys, tmp_path):
+    # The block case is covered above; an ask leaves no trace in the exit code,
+    # so losing it to budget pressure would be invisible.
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "")
+    rc = _run_in_process(
+        mod,
+        {"tool_input": {"command": "git push --force origin feature/x"},
+         "cwd": str(tmp_path)},
+        monkeypatch,
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    nested = json.loads(out)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+
+
+def test_a_skipped_advisory_hook_is_reported_through_the_exit_code(monkeypatch, capsys, tmp_path):
+    """Exit 0 discards stderr, so a skip reported there is not reported at all.
+
+    Without this, a run with advisory guards dropped was indistinguishable from
+    a clean one — which defeats the point of saying so.
+    """
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc = _run_in_process(mod, {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, monkeypatch)
+    assert rc == 1, "a dropped guard must reach Claude, and only exit 1 does that"
+    assert "skipped" in capsys.readouterr().err
