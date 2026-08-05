@@ -123,11 +123,13 @@ def test_bash_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     assert "failed to load" in r.stderr
 
 
-def test_bash_dispatch_exits_nonzero_when_a_hook_errors_but_nothing_blocks(tmp_path):
-    # A hook that crashes inside main() (not a load failure) must still make
-    # the dispatcher exit non-zero even when no hook blocked, so the failure
-    # is visible via Claude Code's hook-error notice instead of vanishing
-    # (exit 0 discards all stderr per the documented hook contract).
+def test_bash_dispatch_reports_a_crashed_hook_as_context(tmp_path):
+    """A crashed hook must reach Claude — and exit 1 is the wrong way to do it.
+
+    A non-zero exit discards stdout entirely and surfaces only the FIRST LINE of
+    stderr, so it reports strictly less than additionalContext does. The failure
+    therefore travels as context at exit 0, whole.
+    """
     hooks_dir = _hooks_copy(tmp_path)
     (hooks_dir / "warn-branch-base.py").write_text(
         "def main():\n    raise RuntimeError('boom')\n", encoding="utf-8"
@@ -138,8 +140,11 @@ def test_bash_dispatch_exits_nonzero_when_a_hook_errors_but_nothing_blocks(tmp_p
         input=json.dumps({"tool_input": {"command": "ls -la"}, "cwd": str(tmp_path)}),
         capture_output=True, text=True, cwd=str(tmp_path),
     )
-    assert r.returncode == 1
-    assert "warn-branch-base" in r.stderr
+    assert r.returncode == 0
+    context = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "warn-branch-base" in context
+    assert "boom" in context
+    # Still written to stderr as well, for `claude --debug`.
     assert "boom" in r.stderr
 
 
@@ -256,10 +261,12 @@ def test_edit_write_dispatch_isolates_a_broken_sibling_hook(tmp_path):
         input=json.dumps({"tool_input": {"file_path": str(target), "content": "x = 1\n"}}),
         capture_output=True, text=True, cwd=str(tmp_path),
     )
-    # Nothing else blocks this edit, but the load failure must still be visible.
-    assert r.returncode == 1
-    assert "warn-comment-dates.py" in r.stderr
-    assert "failed to load" in r.stderr
+    # Nothing else blocks this edit, but the load failure must still be visible —
+    # as additionalContext, the only non-blocking channel Claude reads.
+    assert r.returncode == 0
+    context = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "warn-comment-dates.py" in context
+    assert "failed to load" in context
 
 
 # --------------------------------------------------------------------------- #
@@ -313,16 +320,16 @@ def _run_in_process(mod, payload: dict, monkeypatch) -> int:
 def test_bash_dispatch_skips_advisory_hooks_when_the_budget_is_spent(monkeypatch, capsys, tmp_path):
     mod = _load_dispatcher("dispatch-bash-pretooluse.py")
     rc = _run_in_process(mod, {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, monkeypatch)
-    err = capsys.readouterr().err
+    captured = capsys.readouterr()
 
-    # Exit 1, not 0: the hook contract discards stderr on exit 0, so reporting a
-    # skip there would not report it at all. See the dedicated exit-code test.
-    assert rc == 1
+    assert rc == 0
     # Never silently: a dropped guard the user cannot see is the failure mode
-    # this whole mechanism exists to avoid.
-    assert "skipped" in err
+    # this whole mechanism exists to avoid. It has to be in the STDOUT JSON —
+    # stderr on exit 0 goes to the debug log and Claude never sees it.
+    context = json.loads(captured.out)["hookSpecificOutput"]["additionalContext"]
+    assert "skipped" in context
     for advisory in mod._ADVISORY_HOOKS:
-        assert advisory in err, f"{advisory} was skipped without being named"
+        assert advisory in context, f"{advisory} was skipped without being named"
 
 
 def test_bash_dispatch_still_blocks_after_the_budget_is_spent(monkeypatch, capsys, tmp_path):
@@ -417,8 +424,9 @@ def test_an_ask_survives_an_unrelated_hook_crashing(tmp_path):
     nested = json.loads(r.stdout)["hookSpecificOutput"]
     assert nested["permissionDecision"] == "ask"
     assert "force-push" in nested["permissionDecisionReason"]
-    # The failure still has to be visible somewhere — it moves into the prompt.
-    assert "did not complete" in nested["permissionDecisionReason"]
+    # The failure travels alongside it as context, not in place of it: an ask
+    # and advisory text coexist in one hookSpecificOutput object.
+    assert "crashed" in nested["additionalContext"]
 
 
 def test_an_ask_survives_a_spent_budget(monkeypatch, capsys, tmp_path):
@@ -438,13 +446,23 @@ def test_an_ask_survives_a_spent_budget(monkeypatch, capsys, tmp_path):
     assert nested["permissionDecision"] == "ask"
 
 
-def test_a_skipped_advisory_hook_is_reported_through_the_exit_code(monkeypatch, capsys, tmp_path):
-    """Exit 0 discards stderr, so a skip reported there is not reported at all.
+def test_advisory_warnings_travel_on_the_channel_claude_actually_reads(tmp_path):
+    """The defect this closes: the whole Bash warn tier reached nobody.
 
-    Without this, a run with advisory guards dropped was indistinguishable from
-    a clean one — which defeats the point of saying so.
+    Per the hook contract, stderr from a hook exiting 0 goes to the debug log
+    and Claude never sees it. Every warn-* hook on this matcher wrote there and
+    exited 0, so they spawned subprocesses on every call and delivered nothing.
+    Asserted end-to-end rather than in-process, because the bug was entirely
+    about which stream the real process writes to.
     """
-    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
-    rc = _run_in_process(mod, {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, monkeypatch)
-    assert rc == 1, "a dropped guard must reach Claude, and only exit 1 does that"
-    assert "skipped" in capsys.readouterr().err
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": "git commit -m x"}, "cwd": str(repo)}, cwd=repo)
+
+    assert r.returncode == 0
+    assert r.stdout.strip(), (
+        "a warning that exists only on stderr at exit 0 is delivered to nobody"
+    )
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert nested["additionalContext"].strip()

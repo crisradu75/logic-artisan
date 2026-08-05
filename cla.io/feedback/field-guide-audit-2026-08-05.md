@@ -599,3 +599,41 @@ never forbade repository state changes. That is exactly the omission
 `subagent-brief.md`'s **do-not-touch** slot exists to prevent, in the same PR that
 introduced the slot. Agents sharing one working tree need the constraint stated as
 *repository state*, not *files*.
+
+### G4 — the whole Bash warn tier reached nobody (found on the merge check)
+
+Asking "ready to merge?" surfaced a fourth instance of the same class, and the
+worst one. The branch asserted in three docstrings that *"exit 0 drops stderr
+entirely per the documented hook contract"* — and then left every advisory
+warning on stderr at exit 0. Both could not be true.
+
+Confirmed against the published hook reference rather than reasoned about:
+
+> "Stderr from a hook that exits 0 goes to the debug log only, never the
+> transcript, and Claude never sees it."
+>
+> "Any other exit code ... the transcript shows a hook error notice followed by
+> the **first line** of stderr."
+
+So `warn-branch-base`, `warn-stacked-pr-merge`, `warn-stray-scratch-artifact` and
+`guard-worktree-isolation`'s degraded warnings had been spawning subprocesses on
+every Bash call and delivering nothing — including, for one round, **the
+strict-mode warning added earlier the same day to fix a silent fail-open.** The
+fix replaced an invisible failure with an invisible warning.
+
+It also showed the exit-1-on-skip fix from the previous round was the wrong
+instrument: a non-zero exit discards stdout entirely and surfaces only the first
+line of merged multi-hook stderr, so it reports *less*, not more.
+
+Both dispatchers now send everything non-blocking through one stdout JSON object
+at exit 0 — `permissionDecision` for an ask and `additionalContext` for advisory
+text, which coexist in one `hookSpecificOutput`. Neither dispatcher exits
+non-zero unless a hook actually blocked. Verified end-to-end: a warn-only call,
+a force-push, and an identity mismatch all now deliver on a channel Claude reads.
+
+**The lesson.** Three rounds of this audit reasoned from the repo's own
+docstrings about an external contract, and the docstrings were *right* — the code
+just contradicted them. Nobody checked the primary source until the last round.
+A stated contract in a comment is a claim to verify, not a premise to build on;
+when a fix and a comment disagree about the same contract, that disagreement is
+the finding.

@@ -19,16 +19,18 @@ Order and semantics preserved exactly:
     only carries stderr back to Claude, per the documented hook contract, so
     an earlier hook's stdout-JSON warning is folded into stderr as plain text
     here rather than lost), then this process exits 2.
-  - If none block, any collected warning messages are merged into one
-    hookSpecificOutput.additionalContext JSON object on stdout.
+  - If none block, every collected warning is merged into one
+    hookSpecificOutput.additionalContext JSON object on stdout at exit 0. That
+    is the only channel Claude reads: stderr from a hook exiting 0 goes to the
+    debug log only, and a non-zero exit discards stdout while surfacing just the
+    first line of stderr. So this dispatcher never exits non-zero unless a hook
+    actually blocked.
   - If a hook failed to load or crashed, that's isolated to just that hook
-    (the rest still run — see `_dispatch_lib.run_hook_file`) but this process
-    exits 1 rather than 0 when nothing blocked, so the failure is visible via
-    Claude Code's hook-error notice instead of being silently discarded (exit
-    0 drops stderr entirely per the documented hook contract).
-  - If the handler budget runs out mid-list, the remaining ADVISORY hooks are
-    skipped and the skip is reported. Enforcing hooks are never skipped — see
-    `_ADVISORY_HOOKS` below and `_dispatch_lib.Deadline`.
+    (the rest still run — see `_dispatch_lib.run_hook_file`) and the failure is
+    reported as additionalContext, where it arrives whole.
+  - If too little handler budget remains for an ADVISORY hook's worst case, it
+    is skipped and the skip reported the same way. Enforcing hooks are never
+    skipped — see `_ADVISORY_HOOKS` below and `_dispatch_lib.Deadline`.
   - Both output channels are capped to Claude Code's hook output limit, with a
     blocking hook's reason budgeted ahead of any advisory text.
 """
@@ -153,30 +155,29 @@ def main() -> int:
     notice = _skip_notice(skipped)
     if notice:
         warnings.append(notice)
+    if errored:
+        warnings.append(
+            "[dispatch] one or more hooks failed to load or crashed on this "
+            "call, so their checks did not run. Re-run with `claude --debug` "
+            "for the traceback."
+        )
 
-    # A skip is a real degradation, not routine: exiting 0 would put the notice
-    # on stderr, which the hook contract discards, leaving a run with guards
-    # dropped indistinguishable from a clean one.
-    degraded = errored or bool(skipped)
-
+    # stderr here reaches the DEBUG LOG ONLY: per the hook contract, stderr from
+    # a hook that exits 0 is never shown in the transcript and Claude never sees
+    # it. This write exists for `claude --debug`; everything Claude must act on
+    # goes out as stdout JSON below.
     err_out = compose_output(warnings)
     if err_out:
         print(err_out, file=sys.stderr)
 
-    if contexts:
-        # `additionalContext` on stdout is only read on exit 0, so — exactly as
-        # with the Bash dispatcher's `ask` — the degradation signal cannot ride
-        # the exit code without discarding the context itself. Fold it into the
-        # context, which Claude does see.
-        if degraded:
-            contexts = contexts + [
-                "[dispatch] note: some guards did not complete on this call, so "
-                "this context may be incomplete."
-            ]
-        print(_context_json(contexts))
-        return 0
-
-    return 1 if degraded else 0
+    # A warning is only delivered if it travels as additionalContext. Exiting
+    # non-zero to signal a problem would discard stdout altogether and surface
+    # just the FIRST LINE of stderr, so it reports less, not more — the same
+    # reasoning as the Bash dispatcher.
+    merged = contexts + warnings
+    if merged:
+        print(_context_json(merged))
+    return 0
 
 
 if __name__ == "__main__":

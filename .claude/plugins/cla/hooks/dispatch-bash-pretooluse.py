@@ -30,29 +30,28 @@ Order and semantics preserved exactly:
     stdout is read per call, so a child's decision that isn't re-emitted here is
     silently downgraded to an allow. Precedence is deny > ask > allow, matching
     the documented permission evaluation order.
-  - An `ask` forces exit 0 even when a sibling hook errored or advisory hooks
-    were skipped, because a permission decision on stdout is only honoured on
-    exit 0. Reporting an unrelated hook's failure through the exit code would
-    discard the escalation entirely — trading a prompt the user needs for a
-    diagnostic they don't. The diagnostic is folded into the prompt text
-    instead, so nothing is lost either way.
-  - If none block, any non-blocking warning stderr text is passed through —
-    e.g. from warn-branch-base.py / warn-stacked-pr-merge.py /
+  - If none block, EVERYTHING non-blocking leaves as one stdout JSON object at
+    exit 0: `permissionDecision` for an ask, `additionalContext` for advisory
+    text — e.g. from warn-branch-base.py / warn-stacked-pr-merge.py /
     warn-stray-scratch-artifact.py, or guard-worktree-isolation.py's
-    degraded-mode warnings (it fails open with a warning rather than
-    blocking when it can't resolve a checkout target or its heartbeat dir).
+    degraded-mode warnings (it fails open with a warning rather than blocking
+    when it can't resolve a checkout target or its heartbeat dir).
+
+    This is the only channel that works. Per the documented contract, stderr
+    from a hook exiting 0 goes to the debug log and Claude never sees it, so
+    writing a warning there delivers it to nobody; and a non-zero exit discards
+    stdout entirely while surfacing only the FIRST LINE of stderr, which for
+    merged multi-hook output is rarely the useful one. The dispatcher therefore
+    never exits non-zero on the non-blocking path — doing so would report LESS.
   - If a hook failed to load or crashed, that's isolated to just that hook
-    (the rest still run — see `_dispatch_lib.run_hook_file`) but this process
-    exits 1 rather than 0 even when nothing blocked, so the failure is
-    visible via Claude Code's hook-error notice instead of being silently
-    discarded (exit 0 drops stderr entirely per the documented hook contract).
+    (the rest still run — see `_dispatch_lib.run_hook_file`) and the failure is
+    reported as additionalContext, where it arrives whole.
   - If too little handler budget remains for an ADVISORY hook's own worst case,
-    it is skipped and the skip is reported. Enforcing hooks are never skipped:
-    a late block still blocks, but a block dropped to a handler kill is a silent
-    failure. A skip exits 1 rather than 0 so the report actually reaches Claude.
-    See `_dispatch_lib.Deadline` and `HOOK_WORST_CASE_SECONDS`.
-  - Total stderr is capped to Claude Code's hook output limit, with a blocking
-    hook's reason budgeted ahead of any advisory text.
+    it is skipped and the skip reported the same way. Enforcing hooks are never
+    skipped: a late block still blocks, but a block dropped to a handler kill is
+    a silent failure. See `_dispatch_lib.Deadline` and `HOOK_WORST_CASE_SECONDS`.
+  - Both channels are capped to Claude Code's hook output limit, with a blocking
+    hook's reason (or an ask's) budgeted ahead of any advisory text.
 """
 
 from __future__ import annotations
@@ -156,45 +155,51 @@ def main() -> int:
             f"hooks, so they were skipped: {', '.join(skipped)}. Every blocking "
             "guard still ran — only warnings were lost."
         )
+    if errored:
+        warnings.append(
+            "[dispatch] one or more hooks failed to load or crashed on this "
+            "call, so their checks did not run. Re-run with `claude --debug` "
+            "for the traceback."
+        )
 
-    # A skip is a real degradation, not routine: exiting 0 would put the notice
-    # on stderr, which the hook contract discards, leaving a run with guards
-    # dropped indistinguishable from a clean one.
-    degraded = errored or bool(skipped)
+    # stderr here reaches the DEBUG LOG ONLY. Per the hook contract, stderr from
+    # a hook that exits 0 is never shown in the transcript and Claude never sees
+    # it — so everything Claude must act on travels as stdout JSON below, and
+    # this write exists purely for `claude --debug`.
+    if warnings:
+        print(compose_output(warnings), file=sys.stderr)
 
-    out = compose_output(warnings)
-    if out:
-        print(out, file=sys.stderr)
-
-    if asks:
-        # An `ask` is only honoured on exit 0, so the degradation notice cannot
-        # travel as an exit code here without destroying the escalation. It
-        # rides along in the prompt text instead, where the user actually sees
-        # it — strictly more visible than the hook-error notice it replaces.
-        reason = compose_output(asks)
-        if degraded:
-            reason = compose_output(
-                [reason],
-                must_keep=(
-                    "[dispatch] note: some guards did not complete on this call "
-                    "(see the hook output above), so this prompt may not reflect "
-                    "every check."
-                ),
-            )
-        # Measured on the SERIALIZED payload, envelope included — clamping only
-        # the reason string left the printed total over the cap once JSON
-        # escaping expanded it, which sends the whole prompt to a file instead.
-        print(fit_json_payload(
-            lambda text: {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "ask",
-                    "permissionDecisionReason": text,
-                }
-            },
-            reason,
-        ))
+    # Everything non-blocking leaves through ONE stdout JSON object at exit 0 —
+    # the only channel a PreToolUse hook has that Claude actually reads. An
+    # `ask` and advisory text coexist in it: `permissionDecision` carries the
+    # escalation, `additionalContext` the warnings.
+    #
+    # A non-zero exit is never used here, and that is deliberate. It discards
+    # stdout entirely (so the ask would be downgraded to an allow) and surfaces
+    # only the FIRST LINE of stderr, which for merged multi-hook output is
+    # almost never the useful one. Exiting 1 to "report" a failed hook would
+    # therefore cost more information than it conveys; the failure is reported
+    # as context instead, where it arrives whole.
+    reason = compose_output(asks) if asks else ""
+    context = compose_output(warnings) if warnings else ""
+    if not reason and not context:
         return 0
+
+    def _payload(context_text: str) -> dict:
+        nested: dict = {"hookEventName": "PreToolUse"}
+        if reason:
+            nested["permissionDecision"] = "ask"
+            nested["permissionDecisionReason"] = reason
+        if context_text:
+            nested["additionalContext"] = context_text
+        return {"hookSpecificOutput": nested}
+
+    # Measured on the SERIALIZED payload, envelope included — clamping only the
+    # inner strings left the printed total over the cap once JSON escaping
+    # expanded it, which sends the whole thing to a file instead. The advisory
+    # context is the part that shrinks; the ask reason is held whole.
+    print(fit_json_payload(_payload, context))
+    return 0
 
     return 1 if degraded else 0
 
