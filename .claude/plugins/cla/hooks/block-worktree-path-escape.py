@@ -114,7 +114,17 @@ def main() -> int:
     if not isinstance(file_path, str) or not file_path:
         return 0
 
-    cwd = os.getcwd()
+    # The session's directory, not this hook process's. Everything below hinges
+    # on it: the git calls that decide whether we are even IN a linked worktree
+    # run here, and a relative `file_path` resolves against it. Reading it from
+    # the process meant that whenever the two diverged, this hook reasoned about
+    # the wrong tree — and divergence is the normal state for the worktree
+    # sessions it exists to protect. Falls back to the process cwd when the
+    # payload omits it (the hook's own tests set the process cwd instead).
+    cwd = payload.get("cwd") if isinstance(payload, dict) else None
+    if not isinstance(cwd, str) or not cwd:
+        cwd = os.getcwd()
+
     clone_paths = _clone_paths(cwd)
     if clone_paths is None:
         return 0
