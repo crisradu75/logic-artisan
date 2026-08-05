@@ -245,3 +245,53 @@ def test_a_timed_out_git_fails_open(monkeypatch, tmp_path):
 
     monkeypatch.setattr(hook.subprocess, "run", boom)
     assert hook._clone_paths(str(tmp_path)) is None
+
+
+# --------------------------------------------------------------------------- #
+# Path casing — why these guards survive what EnterWorktree does not
+# --------------------------------------------------------------------------- #
+
+
+def test_path_comparison_survives_a_case_only_spelling_difference(worktree_pair, monkeypatch):
+    """The bug that breaks `EnterWorktree` must not reach this hook.
+
+    On a case-insensitive filesystem the same directory has two working
+    spellings: git reports the true on-disk casing while a session's cwd can
+    carry whatever was typed at launch. `EnterWorktree` compares those as
+    literal strings and refuses. This hook is immune ONLY because every path
+    goes through `os.path.realpath` first, which canonicalises to the
+    filesystem's real casing before anything is compared.
+
+    That is a load-bearing implementation detail with no other visible effect,
+    which makes it exactly the kind of call a later cleanup drops as redundant.
+    Pinned here so that removal fails a test instead of silently turning the
+    guard into a no-op on Windows.
+    """
+    primary, linked = worktree_pair
+    swapped = str(linked).swapcase()
+    if not os.path.isdir(swapped) or swapped == str(linked):
+        pytest.skip("filesystem is case-sensitive; this divergence cannot occur here")
+
+    monkeypatch.delenv("ALLOW_WORKTREE_PATH_ESCAPE", raising=False)
+    rc = _run(
+        hook,
+        primary / "seed.txt",     # escape target, primary-clone casing
+        cwd_payload=swapped,      # session cwd, opposite casing — same directory
+        process_cwd=primary,
+        monkeypatch=monkeypatch,
+    )
+    assert rc == 2, (
+        "a case-only difference in the session cwd must not disable the guard; "
+        "check that _clone_paths/_worktree_root/target still realpath their inputs"
+    )
+
+
+def test_is_inside_is_not_a_raw_string_comparison(worktree_pair):
+    """Directly pins the comparison helper against the mixed-case pair, so a
+    failure points at `_is_inside` rather than at the whole hook."""
+    _primary, linked = worktree_pair
+    root = os.path.realpath(str(linked))
+    target = os.path.realpath(os.path.join(str(linked).swapcase(), "seed.txt"))
+    if not os.path.exists(target):
+        pytest.skip("filesystem is case-sensitive; this divergence cannot occur here")
+    assert hook._is_inside(target, root)

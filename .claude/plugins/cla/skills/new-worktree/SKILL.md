@@ -32,6 +32,11 @@ memory `worktree-isolation-file-paths`.)
    already inside a worktree, the tool will refuse — tell the user and stop rather
    than working around it.
 
+   If it refuses for a *different* reason — a "refusing to use ... as an isolation
+   worktree" message naming two paths that look identical — see
+   **When `EnterWorktree` refuses over path casing** below. Don't retry it; it will
+   fail identically every time on that machine.
+
    **Know which base you land on, and say so in the report.** A harness-created
    worktree branches from the *remote's default branch*, not from whatever is checked
    out right now. That is usually what you want — a new worktree starts clean rather
@@ -100,6 +105,71 @@ memory `worktree-isolation-file-paths`.)
    Do not add extra tool calls (`test -d node_modules`, `git status`, etc.) just to
    double-check success; the install command's own exit and the `cp && echo` output already
    confirm it. Only investigate further if an output actually looks wrong.
+
+## When `EnterWorktree` refuses over path casing
+
+**Symptom.** Every `EnterWorktree` call on a given machine fails with a refusal
+naming two paths that differ only in letter case — `C:\Code\<repo>\...` against
+`C:/code/<repo>/...`, or similar.
+
+**Cause.** Those name the same directory. On a case-insensitive filesystem
+(Windows/NTFS, macOS APFS by default) a repo whose real on-disk name is
+capitalised can be reached through a lowercase path, and the two spellings both
+work. `EnterWorktree` compares the session's launch-time project path against
+git's own resolution of it as literal strings, so it sees a mismatch and refuses.
+
+Three things this is **not**, each worth ruling out explicitly so nobody spends
+an afternoon on the wrong one:
+
+- **Not a repo misconfiguration.** `core.ignorecase` is almost certainly already
+  `true`, which is correct for such a filesystem. The comparison never asks git,
+  so the setting cannot help.
+- **Not a git problem.** Plain `git worktree add/list/remove` and `git -C <path>`
+  all resolve these paths correctly. Only the tool's own check is affected.
+- **Not caused by concurrent worktrees.** The mismatch is a property of the path,
+  present on a completely idle repo. If it first appeared on a day with two
+  sessions running, that was coincidence.
+
+**Do not "fix" it by renaming the repo directory to lowercase.** That changes the
+correct side of the mismatch to appease a tool that isn't honouring the
+filesystem's own semantics, breaks any IDE workspace, shortcut, or concurrent
+session pinned to the current name, and leaves the bug in place for the next repo.
+
+Confirm the diagnosis (no side effects) with:
+
+```bash
+python3 .claude/plugins/cla/skills/new-worktree/scripts/manual_worktree.py --diagnose
+```
+
+**Fallback: create the worktree with plain git.** One command, JSON on stdout,
+including the main-checkout path so the rest of this skill's steps need no extra
+lookup:
+
+```bash
+python3 .claude/plugins/cla/skills/new-worktree/scripts/manual_worktree.py --name <name>
+```
+
+It also clears the stale entry a failed `EnterWorktree` leaves behind — the tool
+registers the worktree with git *before* its safety check refuses, so a locked
+entry accumulates at that path on every attempt and blocks the next one. A
+non-empty directory git no longer tracks is never deleted; that is somebody's
+work, and the add fails instead so a human can look.
+
+Then continue with step 2 unchanged — the dependency install and env-file copy
+are the same, run against the returned `worktree_path`.
+
+**One thing genuinely changes, and it must go in the final report.** A session
+that entered via `EnterWorktree` has its `Write`/`Edit`/file-writing `Bash` calls
+redirected into the worktree automatically. A manually created worktree gets none
+of that: the session is still rooted in the primary clone, so **every** subsequent
+path must target the worktree explicitly. `block-worktree-path-escape.py` is no
+backstop here either — it only fires for a session whose cwd *is* the worktree, so
+in this mode the path discipline above is the only thing protecting the boundary.
+
+**The durable fix is upstream.** `EnterWorktree` should normalise both sides
+(`os.path.realpath` and equivalents canonicalise to the filesystem's true casing)
+before comparing. Worth reporting at `https://github.com/anthropics/claude-code/issues`
+if not already tracked. Nothing inside a consuming repo can fix it.
 
 ## Non-goals
 

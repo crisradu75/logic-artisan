@@ -63,7 +63,16 @@ _HOOKS_DIR = Path(__file__).resolve().parent
 #
 # HANDLER_TIMEOUT_SECONDS mirrors the `timeout` in hooks.json; the wiring test
 # asserts the two agree, so raising one without the other fails the suite.
-HANDLER_TIMEOUT_SECONDS = 10.0
+#
+# 15s, not 10s. The ceiling has to be derived from what the guards actually need,
+# not picked first and the guards starved to fit it. Squeezing every git call to
+# 2s did make the sum fit 10s — and made a BLOCKING guard fail open under load,
+# because a `rev-parse` on a busy Windows machine can genuinely exceed 2s once
+# process-spawn cost is counted. A guard that silently allows the thing it exists
+# to block is far worse than a rare slow handler: the ceiling only costs anything
+# in the pathological case (a wedged git), where the alternative is a hook that
+# hangs indefinitely.
+HANDLER_TIMEOUT_SECONDS = 15.0
 
 # Left for the dispatcher's own compose/print work after the last hook returns,
 # plus interpreter startup before the first one begins. Both fall outside the
@@ -95,18 +104,18 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     "block-dated-stamps-in-prose.py": 0.0,
     "warn-smoke-test-drift.py": 0.0,
     # One local git call each.
-    "block-direct-push-to-main.py": 2.0,
-    "ask-git-identity.py": 2.0,
-    "warn-branch-base.py": 2.0,
+    "block-direct-push-to-main.py": 3.0,
+    "ask-git-identity.py": 3.0,
+    "warn-branch-base.py": 3.0,
     # `git status --porcelain` walks the working tree, so it gets 4s where the
-    # `rev-parse` hooks get 2s.
+    # `rev-parse` hooks get 3s.
     "warn-stray-scratch-artifact.py": 4.0,
     # Two local git calls: a combined `rev-parse` plus one conditional lookup.
-    "guard-worktree-isolation.py": 4.0,
-    "block-worktree-path-escape.py": 4.0,
-    # One network-bound `gh` call (4s) plus one local git call (2s). The only
+    "guard-worktree-isolation.py": 6.0,
+    "block-worktree-path-escape.py": 6.0,
+    # One network-bound `gh` call (4s) plus one local git call (3s). The only
     # hook here that leaves the machine, and the reason it stays advisory.
-    "warn-stacked-pr-merge.py": 6.0,
+    "warn-stacked-pr-merge.py": 7.0,
 }
 
 

@@ -279,7 +279,7 @@ def _current_branch(cwd: str | None = None) -> str | None:
             # 2s bounds a WEDGED git, not a slow one; `rev-parse` is milliseconds.
             # Charged against the shared handler budget — see
             # `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
-            capture_output=True, text=True, timeout=2,
+            capture_output=True, text=True, timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
         # `SubprocessError` covers `TimeoutExpired`. Without the timeout a hung

@@ -44,7 +44,7 @@ _PR_NUMBER = re.compile(r"(?:^|\s)(\d+)(?:\s|$)")
 
 # This hook is the only network-bound one in the tree, and it can make TWO gh
 # calls in a single run (`pr view` then `pr list`). At the previous 8s each,
-# that was a 16s worst case inside a 10s handler shared with eight other hooks —
+# that was a 16s worst case inside the handler shared with eight other hooks —
 # so a slow GitHub could get the whole Bash dispatcher killed, taking the
 # BLOCKING guards down with it. Halved so both calls together stay inside the
 # budget; `_dispatch_lib.Deadline` then covers the aggregate case where earlier
@@ -69,7 +69,7 @@ def _current_branch() -> str | None:
         r = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             # See `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
-            capture_output=True, text=True, timeout=2,
+            capture_output=True, text=True, timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
         return None

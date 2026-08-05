@@ -63,10 +63,10 @@ import sys
 # 2s, not 5s: the bound exists to catch a WEDGED git, not to accommodate a slow
 # one — `rev-parse` on a healthy repo answers in milliseconds. The number has to
 # be small because worst case here is (call sites) x (this timeout), and that
-# product is charged against a 10s handler shared with the other Edit/Write
+# product is charged against a 15s handler shared with the other Edit/Write
 # hooks. `_dispatch_lib.HOOK_WORST_CASE_SECONDS` records the product and the
 # wiring test fails if the enforcing hooks stop fitting.
-_GIT_TIMEOUT_SECONDS = 2
+_GIT_TIMEOUT_SECONDS = 3
 
 
 def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:

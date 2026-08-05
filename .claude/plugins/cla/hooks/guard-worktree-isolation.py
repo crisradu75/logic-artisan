@@ -135,10 +135,10 @@ def _warn(msg: str) -> None:
 # open with a warning beats taking the whole handler down.
 #
 # The number is small because worst case is (call sites) x (this timeout), and
-# that product is charged against a 10s handler shared with every other hook on
+# that product is charged against a 15s handler shared with every other hook on
 # the same matcher. `_dispatch_lib.HOOK_WORST_CASE_SECONDS` records it and the
 # wiring test fails if the enforcing hooks stop fitting.
-_GIT_TIMEOUT_SECONDS = 2
+_GIT_TIMEOUT_SECONDS = 3
 
 
 def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess | None:

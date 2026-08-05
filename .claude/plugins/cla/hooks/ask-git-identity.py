@@ -78,7 +78,7 @@ from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E40
 # Local file read, no network — but bounded anyway, because every subprocess on a
 # per-tool-call path is bounded in this tree (see the handler-budget notes in
 # _dispatch_lib).
-_GIT_TIMEOUT_SECONDS = 2
+_GIT_TIMEOUT_SECONDS = 3
 
 _IDENTITY_BAKING = re.compile(r"\bgit\s+" + _G + r"(?:commit|push)\b")
 
