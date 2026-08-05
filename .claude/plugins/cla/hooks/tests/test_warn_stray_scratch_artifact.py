@@ -28,9 +28,9 @@ hook = _load_module()
 # --------------------------------------------------------------------------- #
 
 def test_flags_a_mangled_scratchpad_path_at_repo_root():
-    lines = ['?? "C:UserscrisrAppDataLocalTempclaudeC--Code-agentic-air036dd2a0scratchpaddiff.txt"']
+    lines = ['?? "C:UserscrisrAppDataLocalTempclaudeC--Code-some-repo036dd2a0scratchpaddiff.txt"']
     assert hook._stray_untracked_paths(lines) == [
-        "C:UserscrisrAppDataLocalTempclaudeC--Code-agentic-air036dd2a0scratchpaddiff.txt"
+        "C:UserscrisrAppDataLocalTempclaudeC--Code-some-repo036dd2a0scratchpaddiff.txt"
     ]
 
 

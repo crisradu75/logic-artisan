@@ -76,8 +76,8 @@ def test_does_not_detect_non_matching_commands(command):
 def test_detects_windows_backslash_path():
     # The literal backslash separator must survive -- posix-mode shlex would
     # otherwise treat '\' as an escape char and eat the whole path apart.
-    paths = hook._extract_target_paths(r"rm -rf C:\Code\some-repo\.claude\worktrees\x")
-    assert r"C:\Code\some-repo\.claude\worktrees\x" in paths
+    paths = hook._extract_target_paths(r"rm -rf C:\Code\some-repo\.claude\worktrees\x")  # path-fixture-ok
+    assert r"C:\Code\some-repo\.claude\worktrees\x" in paths  # path-fixture-ok
 
 
 def test_detects_posix_escaped_space_path():
@@ -88,8 +88,8 @@ def test_detects_posix_escaped_space_path():
 
 
 def test_worktree_path_detected_regardless_of_separator():
-    assert hook._is_worktree_path(Path("C:/Code/some-repo/.claude/worktrees/some-change"))
-    assert hook._is_worktree_path(Path(r"C:\Code\some-repo\.claude\worktrees\some-change"))
+    assert hook._is_worktree_path(Path("C:/Code/some-repo/.claude/worktrees/some-change"))  # path-fixture-ok
+    assert hook._is_worktree_path(Path(r"C:\Code\some-repo\.claude\worktrees\some-change"))  # path-fixture-ok
 
 
 def test_non_worktree_path_not_flagged(tmp_path):
