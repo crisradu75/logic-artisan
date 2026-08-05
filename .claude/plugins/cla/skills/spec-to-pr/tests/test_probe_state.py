@@ -17,7 +17,7 @@ from conftest import commit_on_branch, make_change
 
 
 REPO_VIEW_KEY = ("gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner")
-REPO_VIEW_OK = subprocess.CompletedProcess([], 0, "owner/agentic-air\n", "")
+REPO_VIEW_OK = subprocess.CompletedProcess([], 0, "owner/some-repo\n", "")
 REPO_VIEW_FAIL = subprocess.CompletedProcess([], 1, "", "not authenticated")
 
 
@@ -164,7 +164,7 @@ def test_pr_open(tmp_repo: Path, monkeypatch):
         ("openspec", "status", "--change", "demo", "--json"):
             subprocess.CompletedProcess([], 1, "", ""),
         REPO_VIEW_KEY: REPO_VIEW_OK,
-        ("gh", "pr", "view", "feature/demo", "--repo", "owner/agentic-air", "--json", "url,state"):
+        ("gh", "pr", "view", "feature/demo", "--repo", "owner/some-repo", "--json", "url,state"):
             subprocess.CompletedProcess([], 0,
                 json.dumps({"url": "https://example.com/pr/42", "state": "OPEN"}), ""),
     }))
@@ -176,7 +176,7 @@ def test_pr_probe_scoped_to_current_repo(tmp_repo: Path, monkeypatch):
     """Regression: _pr_state must scope `gh pr view` by --repo so a fork or
     multiple-PR-on-same-branch context cannot resolve to the wrong PR.
 
-    Mocks: `gh repo view` returns `owner/agentic-air`. The unscoped form
+    Mocks: `gh repo view` returns `owner/some-repo`. The unscoped form
     (`gh pr view feature/demo --json url,state`) is intentionally NOT in the
     stub map — if _pr_state ever reverts to that shape, the test fixture's
     fallback subprocess will run real `gh` and the assertion still fails (no
@@ -189,13 +189,13 @@ def test_pr_probe_scoped_to_current_repo(tmp_repo: Path, monkeypatch):
         REPO_VIEW_KEY: REPO_VIEW_OK,
         # Only the SCOPED form is wired to a successful response. Unscoped form
         # would 404 / hit the wrong repo.
-        ("gh", "pr", "view", "feature/demo", "--repo", "owner/agentic-air", "--json", "url,state"):
+        ("gh", "pr", "view", "feature/demo", "--repo", "owner/some-repo", "--json", "url,state"):
             subprocess.CompletedProcess([], 0,
-                json.dumps({"url": "https://example.com/owner/agentic-air/pr/7", "state": "OPEN"}), ""),
+                json.dumps({"url": "https://example.com/owner/some-repo/pr/7", "state": "OPEN"}), ""),
     }))
     result = probe_state.probe("demo")
     assert result["pr"]["open"] is True
-    assert result["pr"]["url"] == "https://example.com/owner/agentic-air/pr/7"
+    assert result["pr"]["url"] == "https://example.com/owner/some-repo/pr/7"
 
 
 def test_pr_state_degrades_when_repo_view_returns_empty_stdout(tmp_repo: Path, monkeypatch):
@@ -219,9 +219,9 @@ def test_pr_state_strips_repo_view_trailing_newline(tmp_repo: Path, monkeypatch)
     monkeypatch.setattr(probe_state, "_run", _stub_run({
         ("openspec", "status", "--change", "demo", "--json"):
             subprocess.CompletedProcess([], 1, "", ""),
-        REPO_VIEW_KEY: subprocess.CompletedProcess([], 0, "owner/agentic-air\n", ""),
+        REPO_VIEW_KEY: subprocess.CompletedProcess([], 0, "owner/some-repo\n", ""),
         # If strip is dropped, the lookup key would carry the newline and miss this stub.
-        ("gh", "pr", "view", "feature/demo", "--repo", "owner/agentic-air", "--json", "url,state"):
+        ("gh", "pr", "view", "feature/demo", "--repo", "owner/some-repo", "--json", "url,state"):
             subprocess.CompletedProcess([], 0,
                 json.dumps({"url": "https://example.com/pr/9", "state": "OPEN"}), ""),
     }))

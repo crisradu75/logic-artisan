@@ -45,6 +45,23 @@ Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (th
 3. Update the `CLAUDE.md` section(s) the plan named (most often "Allocation math" or "Conventions to preserve").
 4. Add or update the test file(s) the plan named.
 
+**Show the new test failing before you trust it.** Steps 1–4 write the fix before
+the test, which is the ordering that produces a test passing whether the code is
+right or not. For a **bug fix**, the cheap check is to stash or revert the fix and
+watch the new test go red — a test that never failed against the unfixed code is
+evidence of nothing. Read the failure before accepting it: an import error, a
+broken fixture, or an unrelated test in the same run is a failure of the *test*,
+not proof the test can catch this defect.
+
+Where reverting is impractical — a guard, a scanner, any check whose "feature" is
+detecting something — get the same guarantee structurally instead, with a test
+asserting the check can still fire at all (`test_the_outcome_detector_is_not_vacuous`,
+`test_the_scanner_is_not_vacuous`). That is the stronger form: watching a test fail
+is evidence at one moment, whereas a non-vacuity test keeps holding after a later
+refactor quietly turns the check into a no-op. Prefer it for anything guard-shaped;
+this repo has shipped a guard whose only test would have passed had the function
+returned nothing at all.
+
 **Task tracking:** use `TaskCreate` only when part of the plan is genuinely parallel or independently resumable (e.g. several unrelated files touched at once). Skip it for a straightforward linear implementation — the common case, since lite-pr targets small changes. Ignore generic harness `TaskCreate` nudges when they don't fit this rule.
 
 ### Test
@@ -70,6 +87,15 @@ Then, smoke tier first, then full:
 3. Any failure (in either tier) → diagnose, apply one fix via `Edit`, re-run from the failing tier once.
 4. Still failing after that one retry → **HALT.** Report the failing check(s) and stop — do not proceed to Ship.
 
+**"Diagnose" means state a cause before editing, not pick a plausible edit.** The one-fix-then-one-retry budget above already stops you firing four changes at once, but it bounds *volume*, not reasoning — a single change made without a stated cause is still a guess, and it spends the whole retry budget. Before the `Edit`:
+
+- **Name the cause in one sentence, specifically enough that the fix follows from it.** "The comparison is case-sensitive but the stored value is lower-cased by the column collation" is a cause. "There's a mismatch in the auth check" is a restatement of the symptom.
+- **Read the actual failure output first.** The message usually names the file and line; a stack trace or an assertion diff is the diagnosis, not a hint toward one. Re-reading it beats inferring from the test's name.
+- **Say what you expect the re-run to do, before running it.** If the fix is right the named check passes; if it isn't, you have eliminated a cause rather than burned a retry, and the second hypothesis is better-informed than the first.
+- **A fix that makes the check pass without explaining why it was failing is a symptom fix.** Loosening an assertion, widening a type, adding a try/except around the failing call, or bumping a timeout all turn the suite green without touching the defect. If the only account you can give is "this makes it more robust", treat the check as still failing and halt at step 4 rather than shipping the suppression.
+
+This is the same discipline `/cla:spec-to-pr`'s Revise phase applies to review findings (a finding is discharged only when the defect is *shown* gone), applied to test failures — where lite-pr has no downstream safety net to catch what a symptom fix hides.
+
 This is the one deliberate stop point in the workflow. It deviates from `/cla:spec-to-pr`'s "warn and continue regardless" policy on purpose: that policy is safe there because spec-to-pr's Revise phase and round caps exist to catch a problem later. lite-pr has neither downstream safety net, so an unresolved test failure has to stop the run here.
 
 ### Ship
@@ -93,6 +119,8 @@ No pause before this runs — continuous by design (see Autonomy below). Use `co
 ### Review
 
 **Dispatch the review agents directly — do NOT chain `Skill(pr-review-toolkit:review-pr)`.** That skill is itself a thin dispatcher that calls the same `pr-review-toolkit:*` agents; the hop adds a 1–2 turn skill-load round trip with no extra capability (same economy `/cla:spec-to-pr`'s "When NOT to use `Skill()`" section applies). Pick the agents by diff content — `code-reviewer` + `silent-failure-hunter` for any logic/behavior code; add `pr-test-analyzer` when tests change, `type-design-analyzer` on a new invariant-bearing type, `comment-analyzer` on a substantial prose/doc block, `plugin-dev:skill-reviewer` on a SKILL.md frontmatter/new-skill change — and route each per `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md`. Launch them in parallel in one message; pass each the diff described by file+symbol (let it read the hunks itself), not the raw diff pasted inline.
+
+**Brief each one per `.claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md`** (scope / task / do-not-touch / report / done-when). These run in parallel over one working tree, which makes the do-not-touch slot load-bearing rather than ceremonial: two agents editing the same file overwrite each other with no merge and no warning. These are review agents, so the brief's own instruction is that they report findings and edit nothing — and where an agent type exists in `.claude/agents/`, prefer a `tools:` allowlist that makes that mechanically true instead of relying on the prose holding.
 
 One pass. Then:
 

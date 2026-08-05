@@ -206,29 +206,51 @@ def _write_lock(local_repo: Path, lock: dict) -> None:
         raise
 
 
-def _update_lock(local_repo: Path, written: list[tuple[str, bytes]], source_name: str) -> None:
+def _update_lock(
+    local_repo: Path,
+    written: list[tuple[str, bytes]],
+    source_name: str,
+    source_commit: str | None = None,
+) -> None:
     """Read-merge-write the lockfile for every `wrote` outcome (Decision B): each
     entry records the sha256 of the exact bytes just written to that local file (NOT
     the raw source hash) plus the run's source name. Only entries for files actually
     written this run are touched — every other prior entry survives untouched. This
     is deliberately best-effort: a write failure is reported to stderr but must never
     fail the apply run (nor, in `pr` mode, the commit/push) whose files already
-    landed — the lock is provenance, not a correctness gate."""
+    landed — the lock is provenance, not a correctness gate.
+
+    `source_commit` is the source repo's HEAD at the moment of the sync. Without it
+    the lock could answer "does this file still match what was written?" but not
+    "written from WHAT?" — the source name alone is a moving target, since the same
+    repo produces different content on every commit. Recording the SHA makes a sync
+    reproducible after the fact: you can diff the local file against the exact source
+    revision it came from rather than against whatever that repo's HEAD happens to be
+    now. Optional on purpose — a source that isn't a git repo, or a git that won't
+    run, degrades to the previous behavior rather than failing the sync."""
     if not written:
         return
     try:
         lock = _read_lock(local_repo)
         for asset_path, data in written:
-            lock[asset_path] = {
+            entry = {
                 "last_synced_sha256": hashlib.sha256(data).hexdigest(),
                 "source": source_name,
             }
+            if source_commit:
+                entry["source_commit"] = source_commit
+            lock[asset_path] = entry
         _write_lock(local_repo, lock)
     except OSError as exc:
         print(f"update-cla: failed to update sync lockfile: {exc}", file=sys.stderr)
 
 
-def apply_worktree(local_repo: Path, adaptations: list[dict], source_name: str) -> list[ApplyOutcome]:
+def apply_worktree(
+    local_repo: Path,
+    adaptations: list[dict],
+    source_name: str,
+    source_commit: str | None = None,
+) -> list[ApplyOutcome]:
     outcomes: list[ApplyOutcome] = []
     written: list[tuple[str, bytes]] = []
     for a in adaptations:
@@ -286,7 +308,7 @@ def apply_worktree(local_repo: Path, adaptations: list[dict], source_name: str) 
             written.append((asset_path, adapted.encode("utf-8")))
         except OSError as exc:
             outcomes.append(ApplyOutcome(asset_path, "failure", f"write failed: {exc}"))
-    _update_lock(local_repo, written, source_name)
+    _update_lock(local_repo, written, source_name, source_commit)
     return outcomes
 
 
@@ -340,6 +362,7 @@ def apply_pr(
     adaptations: list[dict],
     source_name: str,
     temp_dir: Path,
+    source_commit: str | None = None,
 ) -> tuple[list[ApplyOutcome], PRResult]:
     """Requires clean working tree; otherwise refuses."""
     outcomes: list[ApplyOutcome] = []
@@ -408,7 +431,7 @@ def apply_pr(
     # and pushed in the same PR (Decision B) — a write here after `git add -A` (or
     # after this function returns, in cmd_apply) would land the provenance update
     # uncommitted on an already-pushed branch and lose it for pr-mode syncs.
-    _update_lock(local_repo, written_bytes, source_name)
+    _update_lock(local_repo, written_bytes, source_name, source_commit)
 
     add = _run(["git", "add", "-A"], cwd=local_repo)
     if add.returncode != 0:

@@ -252,7 +252,17 @@ def main() -> int:
     if not isinstance(command, str) or not command.strip():
         return 0
 
-    cwd = os.getcwd()
+    # Resolve a relative delete target against the SESSION's directory, not this
+    # hook process's. The two differ whenever the session is in a linked
+    # worktree — which is precisely the situation this hook guards, so getting
+    # it from the process was wrong in exactly the case that matters: a relative
+    # `rm -rf` would resolve against the wrong tree and miss the worktree check.
+    # Falls back to the process cwd when the payload omits it (older payload
+    # shapes, and the hook's own tests, which set the process cwd instead).
+    cwd = payload.get("cwd") if isinstance(payload, dict) else None
+    if not isinstance(cwd, str) or not cwd:
+        cwd = os.getcwd()
+
     for raw_target in _extract_target_paths(command):
         try:
             resolved = Path(

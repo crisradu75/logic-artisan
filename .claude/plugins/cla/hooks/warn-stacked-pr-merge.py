@@ -42,10 +42,23 @@ _DELETE_BRANCH = re.compile(r"(?:^|\s)(?:--delete-branch|-d)(?:\s|=|$)")
 _PR_NUMBER = re.compile(r"(?:^|\s)(\d+)(?:\s|$)")
 
 
+# This hook is the only network-bound one in the tree, and it can make TWO gh
+# calls in a single run (`pr view` then `pr list`). At the previous 8s each,
+# that was a 16s worst case inside a 10s handler shared with eight other hooks —
+# so a slow GitHub could get the whole Bash dispatcher killed, taking the
+# BLOCKING guards down with it. Halved so both calls together stay inside the
+# budget; `_dispatch_lib.Deadline` then covers the aggregate case where earlier
+# hooks have already spent most of it.
+_GH_TIMEOUT_SECONDS = 4
+
+
 def _gh(args: list[str]) -> str | None:
     """Run a gh subcommand; return stripped stdout, or None on any failure."""
     try:
-        r = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=8)
+        r = subprocess.run(
+            ["gh", *args], capture_output=True, text=True,
+            timeout=_GH_TIMEOUT_SECONDS,
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     return r.stdout.strip() if r.returncode == 0 else None
@@ -55,7 +68,8 @@ def _current_branch() -> str | None:
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            # See `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
+            capture_output=True, text=True, timeout=2,
         )
     except (OSError, subprocess.SubprocessError):
         return None

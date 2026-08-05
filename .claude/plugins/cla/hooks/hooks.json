@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || { echo \"warn: block-unsafe-recursive-delete hook skipped — no python on PATH\" >&2; exit 0; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/block-unsafe-recursive-delete.py\"",
+            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || { echo \"warn: dispatch-bash-pretooluse hooks skipped — no python on PATH\" >&2; exit 0; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 10
           }
         ]

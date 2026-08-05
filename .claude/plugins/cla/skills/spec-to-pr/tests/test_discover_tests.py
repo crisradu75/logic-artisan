@@ -1,6 +1,6 @@
 """discover_tests.py tests.
 
-agentic-air is a single root npm package; discovery emits `npm run <script>`
+some-repo is a single root npm package; discovery emits `npm run <script>`
 for whichever of `build`/`lint`/`test` the root `package.json` defines, in that
 run order, when at least one changed path is source-affecting. It emits nothing
 otherwise (no package.json, none of those scripts, or an openspec-/docs-only
@@ -26,7 +26,7 @@ def _repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _with_package_json(tmp_path: Path, scripts: dict | None = None) -> None:
-    body = {"name": "agentic-air", "scripts": _BUILD_LINT if scripts is None else scripts}
+    body = {"name": "some-repo", "scripts": _BUILD_LINT if scripts is None else scripts}
     (tmp_path / "package.json").write_text(json.dumps(body) + "\n", encoding="utf-8")
 
 

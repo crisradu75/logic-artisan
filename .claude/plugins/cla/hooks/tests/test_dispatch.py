@@ -7,6 +7,8 @@ the consolidation preserves each sibling hook's original semantics.
 
 from __future__ import annotations
 
+import importlib.util
+import io
 import json
 import os
 import shutil
@@ -19,12 +21,30 @@ _BASH_DISPATCH = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
 _EDIT_WRITE_DISPATCH = _HOOKS_DIR / "dispatch-edit-write-pretooluse.py"
 
 
-def _run(script: Path, payload: dict, cwd: Path | None = None) -> subprocess.CompletedProcess:
+def _run(
+    script: Path,
+    payload: dict,
+    cwd: Path | None = None,
+    extra_env: dict | None = None,
+) -> subprocess.CompletedProcess:
+    # The subprocess inherits this shell's environment, so a developer with
+    # CLA_EXPECTED_GIT_EMAIL or either ALLOW_* override set would flip these
+    # tests' results. Neutralise every switch the dispatched hooks read, and let
+    # a test opt one back in explicitly.
+    env = {
+        **os.environ,
+        "ALLOW_SHARED_CLONE_MUTATION": "",
+        "ALLOW_WORKTREE_PATH_ESCAPE": "",
+        "ALLOW_DESTRUCTIVE_GIT": "",
+        "ALLOW_GIT_IDENTITY_MISMATCH": "",
+        "CLA_EXPECTED_GIT_EMAIL": "",
+    }
+    env.update(extra_env or {})
     return subprocess.run(
         [sys.executable, str(script)],
         input=json.dumps(payload), capture_output=True, text=True,
         cwd=str(cwd) if cwd else None,
-        env={**os.environ, "ALLOW_SHARED_CLONE_MUTATION": "", "ALLOW_WORKTREE_PATH_ESCAPE": ""},
+        env=env,
     )
 
 
@@ -103,11 +123,13 @@ def test_bash_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     assert "failed to load" in r.stderr
 
 
-def test_bash_dispatch_exits_nonzero_when_a_hook_errors_but_nothing_blocks(tmp_path):
-    # A hook that crashes inside main() (not a load failure) must still make
-    # the dispatcher exit non-zero even when no hook blocked, so the failure
-    # is visible via Claude Code's hook-error notice instead of vanishing
-    # (exit 0 discards all stderr per the documented hook contract).
+def test_bash_dispatch_reports_a_crashed_hook_as_context(tmp_path):
+    """A crashed hook must reach Claude — and exit 1 is the wrong way to do it.
+
+    A non-zero exit discards stdout entirely and surfaces only the FIRST LINE of
+    stderr, so it reports strictly less than additionalContext does. The failure
+    therefore travels as context at exit 0, whole.
+    """
     hooks_dir = _hooks_copy(tmp_path)
     (hooks_dir / "warn-branch-base.py").write_text(
         "def main():\n    raise RuntimeError('boom')\n", encoding="utf-8"
@@ -118,8 +140,11 @@ def test_bash_dispatch_exits_nonzero_when_a_hook_errors_but_nothing_blocks(tmp_p
         input=json.dumps({"tool_input": {"command": "ls -la"}, "cwd": str(tmp_path)}),
         capture_output=True, text=True, cwd=str(tmp_path),
     )
-    assert r.returncode == 1
-    assert "warn-branch-base" in r.stderr
+    assert r.returncode == 0
+    context = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "warn-branch-base" in context
+    assert "boom" in context
+    # Still written to stderr as well, for `claude --debug`.
     assert "boom" in r.stderr
 
 
@@ -236,7 +261,208 @@ def test_edit_write_dispatch_isolates_a_broken_sibling_hook(tmp_path):
         input=json.dumps({"tool_input": {"file_path": str(target), "content": "x = 1\n"}}),
         capture_output=True, text=True, cwd=str(tmp_path),
     )
-    # Nothing else blocks this edit, but the load failure must still be visible.
-    assert r.returncode == 1
-    assert "warn-comment-dates.py" in r.stderr
-    assert "failed to load" in r.stderr
+    # Nothing else blocks this edit, but the load failure must still be visible —
+    # as additionalContext, the only non-blocking channel Claude reads.
+    assert r.returncode == 0
+    context = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "warn-comment-dates.py" in context
+    assert "failed to load" in context
+
+
+# --------------------------------------------------------------------------- #
+# Handler budget -- what a spent budget is allowed to drop, and what it is not
+#
+# Claude Code kills a handler at the hooks.json `timeout`, and a killed handler
+# is enforcement that did not run. The dispatchers pre-empt that by skipping
+# ADVISORY hooks once the budget is gone. These tests pin both halves: the
+# warnings do get dropped (loudly), and the blocking guards never do.
+# --------------------------------------------------------------------------- #
+
+
+class _ExpiredDeadline:
+    """Stands in for a budget already spent by earlier hooks in the same run."""
+
+    def remaining(self) -> float:
+        return -1.0
+
+    def expired(self) -> bool:
+        return True
+
+    def has_room(self, cost_seconds: float) -> bool:
+        # Nothing fits in a spent budget — not even a zero-cost hook, which the
+        # real Deadline would admit. Overstating the pressure is right for a
+        # stand-in whose job is to prove enforcement survives the worst case.
+        return False
+
+
+def _load_dispatcher(filename: str):
+    """Import a dispatcher in-process so its `Deadline` can be monkeypatched.
+
+    The subprocess helper used elsewhere in this file runs a fresh interpreter,
+    which gives a test no way to reach that symbol.
+    """
+    if str(_HOOKS_DIR) not in sys.path:
+        sys.path.insert(0, str(_HOOKS_DIR))
+    spec = importlib.util.spec_from_file_location(
+        filename.replace("-", "_")[: -len(".py")], _HOOKS_DIR / filename
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _run_in_process(mod, payload: dict, monkeypatch) -> int:
+    monkeypatch.setattr(mod, "Deadline", lambda *a, **k: _ExpiredDeadline())
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    return mod.main()
+
+
+def test_bash_dispatch_skips_advisory_hooks_when_the_budget_is_spent(monkeypatch, capsys, tmp_path):
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc = _run_in_process(mod, {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, monkeypatch)
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    # Never silently: a dropped guard the user cannot see is the failure mode
+    # this whole mechanism exists to avoid. It has to be in the STDOUT JSON —
+    # stderr on exit 0 goes to the debug log and Claude never sees it.
+    context = json.loads(captured.out)["hookSpecificOutput"]["additionalContext"]
+    assert "skipped" in context
+    for advisory in mod._ADVISORY_HOOKS:
+        assert advisory in context, f"{advisory} was skipped without being named"
+
+
+def test_bash_dispatch_still_blocks_after_the_budget_is_spent(monkeypatch, capsys, tmp_path):
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc = _run_in_process(
+        mod, {"tool_input": {"command": "cd /tmp && ls"}, "cwd": str(tmp_path)}, monkeypatch
+    )
+    assert rc == 2, "an expired budget must never downgrade a block to an allow"
+    assert "block-cd-in-bash.py" in capsys.readouterr().err
+
+
+def test_edit_write_dispatch_still_blocks_after_the_budget_is_spent(monkeypatch, capsys, tmp_path):
+    # Worth its own case: in this dispatcher a BLOCKING hook sits last in
+    # _HOOK_FILES, so list order gives it none of the protection the Bash
+    # dispatcher happens to get. Only its absence from _ADVISORY_HOOKS saves it.
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    target = tmp_path / ".claude" / "notes.md"
+    target.parent.mkdir(parents=True)
+    rc = _run_in_process(
+        mod,
+        {"tool_input": {"file_path": str(target), "content": "(added 2026-01-01)"},
+         "cwd": str(tmp_path)},
+        monkeypatch,
+    )
+    assert rc == 2
+    assert "block-dated-stamps-in-prose.py" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# `ask` escalation -- the middle tier between allow and block
+#
+# Only one process's stdout is read per PreToolUse call, so a child hook's
+# permissionDecision has to be re-emitted by the dispatcher or it is silently
+# downgraded to an allow. These pin that it survives, and that a real block
+# still outranks it.
+# --------------------------------------------------------------------------- #
+
+
+def test_bash_dispatch_reemits_an_ask_escalation(tmp_path):
+    r = _run(
+        _BASH_DISPATCH,
+        {"tool_input": {"command": "git push --force origin feature/x"}, "cwd": str(tmp_path)},
+    )
+    assert r.returncode == 0, "an ask must not block the call"
+    payload = json.loads(r.stdout)
+    nested = payload["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "force-push" in nested["permissionDecisionReason"]
+
+
+def test_bash_dispatch_lets_a_block_outrank_an_ask(tmp_path):
+    # `git push --force origin main` is BOTH a force-push (ask) and a push to
+    # main (block). Deny > ask, so the call is refused outright and no
+    # permission prompt is offered as an alternative.
+    r = _run(
+        _BASH_DISPATCH,
+        {"tool_input": {"command": "git push --force origin main"}, "cwd": str(tmp_path)},
+    )
+    assert r.returncode == 2
+    assert "block-direct-push-to-main.py" in r.stderr
+    assert r.stdout.strip() == "", "a blocked call must not also emit an ask"
+
+
+def test_bash_dispatch_stays_silent_on_a_guarded_force_push(tmp_path):
+    # --force-with-lease is deliberately not escalated; see the hook's docstring.
+    r = _run(
+        _BASH_DISPATCH,
+        {"tool_input": {"command": "git push --force-with-lease origin feature/x"},
+         "cwd": str(tmp_path)},
+    )
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
+
+
+def test_an_ask_survives_an_unrelated_hook_crashing(tmp_path):
+    """A permission decision is only honoured on exit 0.
+
+    Reporting an unrelated hook's failure through the exit code discarded the
+    escalation entirely: one sibling with a typo, and every force-push in the
+    session ran unprompted. The failure notice rides in the prompt text instead.
+    """
+    hooks = _hooks_copy(tmp_path)
+    (hooks / "warn-stacked-pr-merge.py").write_text(
+        "this is not valid python(\n", encoding="utf-8"
+    )
+    r = _run(
+        hooks / "dispatch-bash-pretooluse.py",
+        {"tool_input": {"command": "git push --force origin feature/x"},
+         "cwd": str(tmp_path)},
+    )
+    assert r.returncode == 0, "a crashed sibling must not discard the ask"
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "force-push" in nested["permissionDecisionReason"]
+    # The failure travels alongside it as context, not in place of it: an ask
+    # and advisory text coexist in one hookSpecificOutput object.
+    assert "crashed" in nested["additionalContext"]
+
+
+def test_an_ask_survives_a_spent_budget(monkeypatch, capsys, tmp_path):
+    # The block case is covered above; an ask leaves no trace in the exit code,
+    # so losing it to budget pressure would be invisible.
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "")
+    rc = _run_in_process(
+        mod,
+        {"tool_input": {"command": "git push --force origin feature/x"},
+         "cwd": str(tmp_path)},
+        monkeypatch,
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    nested = json.loads(out)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+
+
+def test_advisory_warnings_travel_on_the_channel_claude_actually_reads(tmp_path):
+    """The defect this closes: the whole Bash warn tier reached nobody.
+
+    Per the hook contract, stderr from a hook exiting 0 goes to the debug log
+    and Claude never sees it. Every warn-* hook on this matcher wrote there and
+    exited 0, so they spawned subprocesses on every call and delivered nothing.
+    Asserted end-to-end rather than in-process, because the bug was entirely
+    about which stream the real process writes to.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": "git commit -m x"}, "cwd": str(repo)}, cwd=repo)
+
+    assert r.returncode == 0
+    assert r.stdout.strip(), (
+        "a warning that exists only on stderr at exit 0 is delivered to nobody"
+    )
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert nested["additionalContext"].strip()

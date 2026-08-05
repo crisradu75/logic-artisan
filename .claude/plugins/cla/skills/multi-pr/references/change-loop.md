@@ -14,6 +14,14 @@ For each change in the confirmed order:
 
    **Tier A — structural failure (halt the chain here).** Ship never opened a PR (branch collision, permission decline, push failure), Archive didn't reach the PR (the push-verification steps in `/cla:spec-to-pr`'s own Archive section failed), or `git_state` returned non-zero at any point and wasn't cleanly resolved. These mean the change isn't in a state later changes can safely depend on. Stop, surface the Handoff report and the specific failure to the user, and do not touch any later change in the sequence (their prerequisite isn't actually shipped). This is a real halt, not a "note and continue."
 
+   **A halt still owes a full status enumeration.** Phase 4's cleanup pass never runs on this path, so the run's only terminal output is whatever this step prints — and "change 3 failed because X" silently leaves the reader to work out what happened to changes 1, 2, 4 and 5 from scrolled-back context. That is the failure mode where a partially-applied chain looks like a cleanly-stopped one. Before stopping, print every change in the planned sequence under exactly one of:
+
+   - **Shipped** — PR number, and whether it merged (step 5 may or may not have run for it).
+   - **Halted here** — this change, plus the specific structural failure and the branch/PR state it left behind, so the user knows what to clean up before re-invoking.
+   - **Never attempted** — the changes after it, named. They are untouched: no branch, no PR, nothing to undo. Say so explicitly rather than leaving it inferable, because "untouched" is the fact that makes a re-invoked `/cla:multi-pr` safe to run.
+
+   The ledger and `TaskUpdate` state already hold this; the point is that the terminal report has to carry it too, since nobody reads a task list to find out what a halted run did.
+
    **Tier B — content findings (fix, don't halt).** The Revise phase found Critical/Important issues and either applied or deferred them; Test needed retries; a review round exhausted its cap with residue. This is normal `/cla:spec-to-pr` operation — proceed to step 4.
 
 4. **No-unresolved-issues enforcement (only under the strict Phase 1 policy).** If the Handoff report's "Deferred Known Issues" or "Deferred to TODO.md" sections are non-empty — under the full-severity default, this includes Suggestion-level residue, not just Critical/Important — don't accept that as final:

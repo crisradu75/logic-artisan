@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1208,6 +1209,40 @@ def test_lockfile_gains_entry_on_wrote_outcome(synthetic_repos, fake_gh):
     assert entry["source"] == "src-name"
 
 
+def test_lockfile_records_the_source_commit_when_one_is_known(synthetic_repos, fake_gh):
+    """Without this the lock can answer "does this file still match what was
+    written?" but not "written from WHAT?" — the source NAME is a moving target,
+    since the same repo produces different content on every commit. Recording the
+    sha is what makes a sync reproducible after the fact."""
+    repos = synthetic_repos({"dst": {}})
+    apply_mod = _load("apply")
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": "hello\n",
+        "change_summary": "new",
+    }]
+    apply_mod.apply_worktree(repos[0], adaptations, "src-name", "a" * 40)
+    entry = _read_test_lock(repos[0])[".claude/plugins/cla/skills/foo.md"]
+    assert entry["source_commit"] == "a" * 40
+
+
+def test_lockfile_omits_the_source_commit_when_there_is_none(synthetic_repos, fake_gh):
+    """A source that isn't a git checkout (a plain directory, an export) is a
+    legitimate sync source. Provenance degrades to the previous shape rather than
+    recording a null or failing the run."""
+    repos = synthetic_repos({"dst": {}})
+    apply_mod = _load("apply")
+    adaptations = [{
+        "asset_path": ".claude/plugins/cla/skills/foo.md",
+        "adapted_content": "hello\n",
+        "change_summary": "new",
+    }]
+    apply_mod.apply_worktree(repos[0], adaptations, "src-name")
+    entry = _read_test_lock(repos[0])[".claude/plugins/cla/skills/foo.md"]
+    assert "source_commit" not in entry
+    assert entry["source"] == "src-name"
+
+
 def test_lockfile_records_written_bytes_not_raw_source_hash(synthetic_repos, fake_gh):
     """The recorded sha is over the ADAPTED content actually written, not whatever a
     (hypothetical) raw source hash would have been — the two differ here on purpose."""
@@ -1321,7 +1356,7 @@ def test_lockfile_written_before_git_add_in_pr_mode(synthetic_repos, fake_gh, tm
     apply_mod = _load("apply")
     real_update_lock = apply_mod._update_lock
 
-    def _recording_update_lock(local_repo, written, source_name):
+    def _recording_update_lock(local_repo, written, source_name, source_commit=None):
         fake_gh["calls"].append(["LOCK_WRITE_MARKER"])
         return real_update_lock(local_repo, written, source_name)
 
@@ -1387,6 +1422,52 @@ def test_lockfile_write_failure_is_nonfatal(synthetic_repos, fake_gh, monkeypatc
     outcomes = apply_mod.apply_worktree(repos[0], adaptations, "src-name")
     assert outcomes[0].status == "wrote"
     assert (repos[0] / ".claude/plugins/cla/skills/foo.md").read_text(encoding="utf-8") == "hello\n"
+
+
+# ---------- orchestrate: source-commit provenance ----------
+
+
+def _init_repo_with_commit(path: Path):
+    subprocess.run(["git", "-C", str(path), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "a@b.c"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "a"], check=True)
+    (path / "seed.txt").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "commit", "-q", "-m", "seed"],
+        check=True, capture_output=True,
+    )
+
+
+def test_source_commit_is_a_bare_sha_when_the_source_is_clean(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    _init_repo_with_commit(src)
+    got = _load("orchestrate")._source_commit(src)
+    assert got and len(got) == 40 and got.isalnum()
+
+
+def test_source_commit_is_marked_dirty_when_the_source_has_uncommitted_work(tmp_path):
+    """CLA is designed to load live from a working tree, so a dirty source is
+    the NORMAL sync case. A bare sha there names a revision that does not
+    contain the bytes actually copied — worse than recording nothing, because
+    it looks authoritative."""
+    src = tmp_path / "src"
+    src.mkdir()
+    _init_repo_with_commit(src)
+    (src / "seed.txt").write_text("edited in the working tree\n", encoding="utf-8")
+
+    got = _load("orchestrate")._source_commit(src)
+    assert got and got.endswith("-dirty"), got
+    assert len(got.removesuffix("-dirty")) == 40
+
+
+def test_source_commit_is_none_when_the_source_is_not_a_repo(tmp_path):
+    # A plain directory or an export is a legitimate sync source, so this
+    # degrades to "no provenance" rather than failing the run.
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert _load("orchestrate")._source_commit(plain) is None
 
 
 # ---------- orchestrate: summary printers surface every outcome status ----------

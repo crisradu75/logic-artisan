@@ -260,6 +260,8 @@ _GIT_HOOK_FILES = [
     "warn-branch-base.py",
     "warn-stray-scratch-artifact.py",
     "guard-worktree-isolation.py",
+    "ask-destructive-git.py",
+    "ask-git-identity.py",
 ]
 
 
@@ -414,12 +416,94 @@ def test_default_base_branch_caches_per_cwd(monkeypatch):
     assert len(calls) == first, "second call for the same cwd must be cached"
 
 
+# --------------------------------------------------------------------------- #
+# Deadline -- keeps a dispatcher inside the hooks.json handler timeout
+# --------------------------------------------------------------------------- #
+
+
+def test_deadline_with_a_spent_budget_reports_expired():
+    assert lib.Deadline(budget_seconds=0.0).expired() is True
+
+
+def test_deadline_with_budget_left_is_not_expired_and_reports_remaining():
+    d = lib.Deadline(budget_seconds=30.0)
+    assert d.expired() is False
+    assert 0 < d.remaining() <= 30.0
+
+
+def test_deadline_defaults_to_less_than_the_handler_timeout():
+    # The default must leave headroom for interpreter startup before the first
+    # hook and the dispatcher's own compose/print after the last — neither of
+    # which the Deadline can observe. A default equal to the handler timeout
+    # would guarantee an overshoot on a fully-spent budget.
+    assert lib.Deadline().remaining() < lib.HANDLER_TIMEOUT_SECONDS
+
+
+# --------------------------------------------------------------------------- #
+# Output caps -- Claude Code truncates hook output past 10,000 chars, writing
+# the payload to a file. For a warn hook that is a silent downgrade, so the
+# dispatchers clamp deliberately and say that they did.
+# --------------------------------------------------------------------------- #
+
+
+def test_clamp_output_leaves_short_text_untouched():
+    assert lib.clamp_output("short", 100) == "short"
+
+
+def test_clamp_output_result_never_exceeds_the_limit():
+    # The truncation notice is spent FROM the budget, not added on top of it —
+    # otherwise clamping to the cap would itself breach the cap.
+    out = lib.clamp_output("x" * 5000, 500)
+    assert len(out) <= 500
+
+
+def test_clamp_output_says_it_truncated():
+    out = lib.clamp_output("x" * 5000, 500)
+    assert "truncated" in out
+    assert "5000" in out, "the notice should name the original size"
+
+
+def test_compose_output_keeps_the_block_reason_whole():
+    # The block reason arrives LAST, so a naive tail-truncation drops exactly
+    # the part Claude has to act on. It is budgeted first instead.
+    reason = "blocked: do not do that. (hook: some-hook.py)"
+    out = lib.compose_output(["w" * 9000], must_keep=reason, limit=1000)
+    assert out.endswith(reason)
+    assert len(out) <= 1000
+    assert "truncated" in out, "the sacrificed preamble should say it was cut"
+
+
+def test_compose_output_drops_advisory_text_when_the_reason_fills_the_budget():
+    reason = "b" * 400
+    out = lib.compose_output(["advisory noise"], must_keep=reason, limit=400)
+    assert "advisory noise" not in out
+    assert len(out) <= 400
+
+
+def test_compose_output_without_a_block_reason_still_caps():
+    out = lib.compose_output(["w" * 9000], limit=800)
+    assert len(out) <= 800
+
+
+def test_compose_output_joins_sections_and_skips_empties():
+    assert lib.compose_output(["a", "", "b"]) == "a\nb"
+
+
+def test_compose_output_with_nothing_to_say_is_empty():
+    # Callers gate their print on a truthy return, so this must not become a
+    # bare newline — that would emit an empty warning block on every clean run.
+    assert lib.compose_output([]) == ""
+
+
 @pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
 def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
-    # hooks.json invokes these standalone, where the `_dispatch_lib` import
-    # resolves only because CPython sets sys.path[0] to the script's dir — a
-    # property suppressed by PYTHONSAFEPATH=1 / -I / -P. Each hook inserts its
-    # own dir explicitly so an ImportError can never silently disable a guard.
+    # These are loaded two ways — in-process by a dispatcher, and directly by
+    # pytest — and hooks.json invokes a few of them standalone. In a standalone
+    # run the `_dispatch_lib` import resolves only because CPython sets
+    # sys.path[0] to the script's dir, a property suppressed by
+    # PYTHONSAFEPATH=1 / -I / -P; in the other two neither mechanism puts the
+    # hooks dir first at all. Each hook therefore inserts its own dir explicitly,
+    # so an ImportError can never silently disable a guard.
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
     assert "sys.path.insert(0, _HOOKS_DIR)" in source, (
         f"{filename} must bootstrap its own sys.path before importing _dispatch_lib"

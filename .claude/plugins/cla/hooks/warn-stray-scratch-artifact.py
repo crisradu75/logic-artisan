@@ -58,7 +58,11 @@ def _porcelain_lines() -> list[str] | None:
     try:
         r = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, timeout=8,
+            # 4s, not 2s like the `rev-parse` hooks: `status` walks the working
+            # tree, so it is genuinely slower on a large repo. Still charged
+            # against the shared budget — see
+            # `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
+            capture_output=True, text=True, timeout=4,
         )
     except (OSError, subprocess.SubprocessError):
         return None

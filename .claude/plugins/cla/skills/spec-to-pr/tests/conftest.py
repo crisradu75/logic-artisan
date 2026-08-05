@@ -21,7 +21,7 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 def tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Initialize a tmp git repo with a basic openspec/ skeleton and a master branch
     pointed at one initial commit. Sets identity locally so commits work.
-    (agentic-air's default branch is `master`.)"""
+    (some-repo's default branch is `master`.)"""
     monkeypatch.chdir(tmp_path)
     _git("init", "-q", "-b", "master", cwd=tmp_path)
     _git("config", "user.email", "test@example.com", cwd=tmp_path)

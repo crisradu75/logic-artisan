@@ -552,11 +552,11 @@ def test_trailing_possessive_is_stripped(tmp_path):
 
 def test_top_level_prefix_set_is_repo_derived_not_hardcoded(tmp_path):
     # Proves the recognized prefixes come from THIS repo's own top-level entries,
-    # not a hardcoded agentic-air list: a path under a fictitious top-level dir that
+    # not a hardcoded some-repo list: a path under a fictitious top-level dir that
     # DOES exist in this tmp repo (`widgets/`) is checked (→ flagged when stale),
     # while a path whose first segment is NOT a real top-level entry is skipped.
     (tmp_path / "cla.io").mkdir()
-    (tmp_path / "widgets").mkdir()  # a top-level dir agentic-air does not have
+    (tmp_path / "widgets").mkdir()  # a top-level dir some-repo does not have
     (tmp_path / "cla.io" / "project-facts.md").write_text(
         "Checked (real top-level): `widgets/gone.ts`. "
         "Skipped (no such top-level): `nonexistent-top/foo.ts`.\n",

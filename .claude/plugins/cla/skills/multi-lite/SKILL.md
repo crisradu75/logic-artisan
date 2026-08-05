@@ -2,6 +2,12 @@
 name: multi-lite
 description: "Chains multiple /cla:lite-pr runs extracted from a decision-shaped markdown doc: pulls out every lite-pr-sized candidate, sequences them dependency-first (falling back to document order), confirms the plan once up front, then runs /cla:lite-pr on each in order — merging a PR before its dependents but leaving independent PRs open, and quarantining a failed candidate plus its downstream subtree while continuing with the rest. Designed for long, unattended small-change runs off a single decisions/feedback doc. Triggers on /cla:multi-lite or natural language like 'extract all lite-pr candidates from this decision file and run them in sequence', 'chain these small changes end to end', 'lite-pr everything in this doc'."
 argument-hint: "[decision-shaped-doc-path | (empty = most recent under cla.io/decisions/)]"
+# Opens and merges pull requests unattended, so it must never self-trigger on a
+# description match — only an explicit `/cla:multi-lite` starts it. Safe to set:
+# this is a top-level entry point that CALLS `Skill(cla:lite-pr)` (which stays
+# model-invocable); nothing invokes multi-lite itself. Also keeps this long
+# description out of the always-loaded skill listing until the command is typed.
+disable-model-invocation: true
 ---
 
 # /cla:multi-lite — chain multiple lite-pr runs from one decision-shaped doc

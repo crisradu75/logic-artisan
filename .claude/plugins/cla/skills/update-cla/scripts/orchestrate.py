@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,46 @@ STATE_ROOT_RELATIVE = "temp/sync-state"
 
 def _state_root(local_repo: Path) -> Path:
     return (local_repo / STATE_ROOT_RELATIVE).resolve()
+
+
+def _source_commit(source_repo: Path) -> Optional[str]:
+    """The source repo's HEAD sha, or None if it cannot be read.
+
+    Provenance, not a gate: a source that isn't a git checkout (a plain
+    directory, an export) is a legitimate sync source, so failure here degrades
+    to "no commit recorded" rather than blocking the run.
+
+    A sha from a DIRTY source gets a `-dirty` suffix. The whole value of this
+    field is "diff the local file against the revision it came from", and CLA is
+    designed to be loaded live from a working tree (`--plugin-dir`), so syncing
+    mid-edit is the normal case, not the exotic one. Recording a bare sha then
+    would point at a revision that does not contain the bytes actually copied —
+    worse than recording nothing, because it looks authoritative.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(source_repo), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    sha = (r.stdout or "").strip()
+    if not sha:
+        return None
+
+    try:
+        status = subprocess.run(
+            ["git", "-C", str(source_repo), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # Cannot tell clean from dirty. Say so rather than implying clean.
+        return f"{sha}-unknown"
+    if status.returncode != 0:
+        return f"{sha}-unknown"
+    return f"{sha}-dirty" if (status.stdout or "").strip() else sha
 
 
 def _state_dir(local_repo: Path, run_id: str) -> Path:
@@ -141,7 +182,15 @@ def cmd_discover(source_arg: str, filter_pattern: Optional[str], local_arg: Opti
 
     payload = {
         "run_id": run_id,
-        "source": {"name": source_repo.name, "path": str(source_repo)},
+        "source": {
+            "name": source_repo.name,
+            "path": str(source_repo),
+            # Captured at DISCOVER time, not apply time: the source repo could be
+            # committed to in between, and the lock has to name the revision the
+            # adapted content was actually derived from. Best-effort — a source
+            # that isn't a git repo simply has no commit to record.
+            "commit": _source_commit(source_repo),
+        },
         "local": {"path": str(local_repo)},
         "filter": filter_pattern,
         "files": [
@@ -216,6 +265,9 @@ def cmd_apply(run_id: str, mode: str, local_arg: Optional[str]) -> int:
         return 2
 
     source_name = divergences_data["source"]["name"]
+    # `.get` rather than `[...]`: a divergences file written by an older run
+    # predates this key, and a resumed apply must not crash on it.
+    source_commit = divergences_data["source"].get("commit")
     adaptations = adaptations_data.get("adaptations", [])
 
     if not adaptations:
@@ -223,12 +275,14 @@ def cmd_apply(run_id: str, mode: str, local_arg: Optional[str]) -> int:
         return 0
 
     if mode == "worktree":
-        outcomes = apply_mod.apply_worktree(local_repo, adaptations, source_name)
+        outcomes = apply_mod.apply_worktree(local_repo, adaptations, source_name, source_commit)
         return _print_worktree_summary(outcomes)
 
     if mode == "pr":
         temp_dir = (local_repo / "temp" / f"sync-{run_id}").resolve()
-        outcomes, pr_result = apply_mod.apply_pr(local_repo, adaptations, source_name, temp_dir)
+        outcomes, pr_result = apply_mod.apply_pr(
+            local_repo, adaptations, source_name, temp_dir, source_commit
+        )
         return _print_pr_summary(outcomes, pr_result)
 
     print(f"error: unknown mode {mode!r}", file=sys.stderr)

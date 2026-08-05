@@ -46,6 +46,7 @@ non-zero otherwise.
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -108,15 +109,29 @@ def _rel(path: Path) -> Path:
     return path.relative_to(base) if path.is_relative_to(base) else path
 
 
-def run_scope(scope: Path, pytest_args: list[str]) -> int:
-    """Run ``pytest`` in ``scope`` as a subprocess, inheriting stdout/stderr for
-    live output. Returns pytest's exit code."""
+_SKIP_COUNT = re.compile(r"(\d+) skipped")
+
+
+def run_scope(scope: Path, pytest_args: list[str]) -> tuple[int, int]:
+    """Run ``pytest`` in ``scope`` as a subprocess. Returns (exit code, skips).
+
+    Output is teed rather than inherited so the skip count can be read back.
+    Skips matter here beyond the usual: several of this plugin's guards are
+    conditional on an overlay file that does not exist in the source repo, so
+    they `pytest.skip` and the summary said PASS — a guard that never executed
+    was indistinguishable from one that passed.
+    """
     print(f"\n{'=' * 70}\n>>> {_rel(scope)}\n{'=' * 70}", flush=True)
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", *pytest_args],
-        cwd=scope,
+        cwd=scope, capture_output=True, text=True,
     )
-    return proc.returncode
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write(proc.stderr)
+    sys.stdout.flush()
+    matches = _SKIP_COUNT.findall(proc.stdout)
+    skipped = int(matches[-1]) if matches else 0
+    return proc.returncode, skipped
 
 
 def main(argv: list[str]) -> int:
@@ -147,11 +162,15 @@ def main(argv: list[str]) -> int:
     # are forwarded (e.g. `-k foo`), exit 5 is expected filtering and stays benign.
     strict_no_tests = not pytest_args
 
-    results: list[tuple[Path, int]] = [(s, run_scope(s, pytest_args)) for s in scopes]
+    results: list[tuple[Path, int, int]] = [
+        (s, *run_scope(s, pytest_args)) for s in scopes
+    ]
 
     print(f"\n{'=' * 70}\nSUMMARY ({len(results)} scopes)\n{'=' * 70}", flush=True)
     failed = 0
-    for scope, code in results:
+    total_skipped = 0
+    for scope, code, skipped in results:
+        total_skipped += skipped
         if code == EXIT_OK:
             label = "PASS"
         elif code == EXIT_NO_TESTS and not strict_no_tests:
@@ -162,7 +181,11 @@ def main(argv: list[str]) -> int:
         else:
             label = f"FAIL (exit {code})"
             failed += 1
-        print(f"  {label:<20} {_rel(scope)}")
+        # The skip count rides on the same line as the verdict: a reader
+        # scanning for "PASS" should not be able to miss that part of the scope
+        # opted out of running.
+        suffix = f"  ({skipped} skipped)" if skipped else ""
+        print(f"  {label:<20} {_rel(scope)}{suffix}")
 
     problems = failed + len(near_misses)
     if problems:
@@ -173,7 +196,13 @@ def main(argv: list[str]) -> int:
             parts.append(f"{len(near_misses)} near-miss scope(s) not run")
         print("\n" + "; ".join(parts) + ".", file=sys.stderr)
         return 1
-    print(f"\nAll {len(results)} scope(s) passed.")
+    if total_skipped:
+        print(
+            f"\nAll {len(results)} scope(s) passed, with {total_skipped} test(s) "
+            "SKIPPED — a skipped guard has not run. Check the list above."
+        )
+    else:
+        print(f"\nAll {len(results)} scope(s) passed.")
     return 0
 
 

@@ -121,11 +121,31 @@ def _warn(msg: str) -> None:
     print(f"[guard-worktree-isolation] warn: {msg}", file=sys.stderr)
 
 
+# This hook runs on EVERY Bash and Edit/Write call and makes at least two git
+# calls per invocation, so its per-call ceiling has to be a fraction of the
+# handler budget rather than equal to it: at the previous 5s, two stuck calls
+# came to exactly `_dispatch_lib.HANDLER_TIMEOUT_SECONDS` and the handler was
+# killed — losing the block this hook exists to produce. `Deadline` cannot
+# rescue this one either, since an enforcing hook is deliberately never skipped.
+#
+# 2s is still generous for what is actually being asked: these `rev-parse` calls
+# read refs and resolve paths, so they answer in milliseconds even on a large
+# repo. A call approaching this bound means git is wedged, which is precisely
+# the concurrent-session contention this hook exists to detect — and failing
+# open with a warning beats taking the whole handler down.
+#
+# The number is small because worst case is (call sites) x (this timeout), and
+# that product is charged against a 10s handler shared with every other hook on
+# the same matcher. `_dispatch_lib.HOOK_WORST_CASE_SECONDS` records it and the
+# wiring test fails if the enforcing hooks stop fitting.
+_GIT_TIMEOUT_SECONDS = 2
+
+
 def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess | None:
     try:
         return subprocess.run(
             ["git", "-C", cwd, *args],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=_GIT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -197,13 +217,21 @@ def _mutates_shared_head(command: str, cwd: str) -> str | None:
 
 
 def _clone_paths(cwd: str) -> tuple[str, str] | None:
-    """Return (git_dir, git_common_dir) as realpaths, or None on failure."""
-    gd = _run_git(cwd, ["rev-parse", "--absolute-git-dir"])
-    gc = _run_git(cwd, ["rev-parse", "--git-common-dir"])
-    if not gd or gd.returncode != 0 or not gc or gc.returncode != 0:
+    """Return (git_dir, git_common_dir) as realpaths, or None on failure.
+
+    One `rev-parse` answering both questions, not two: it prints one line per
+    requested option in argument order. This runs on every Bash call and on
+    every Edit/Write via --heartbeat, so halving the process count here is the
+    single largest saving available against the shared handler budget.
+    """
+    r = _run_git(cwd, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
+    if not r or r.returncode != 0:
         return None
-    git_dir = os.path.realpath(gd.stdout.strip())
-    common = gc.stdout.strip()
+    lines = r.stdout.strip().splitlines()
+    if len(lines) < 2:
+        return None
+    git_dir = os.path.realpath(lines[0].strip())
+    common = lines[1].strip()
     if not os.path.isabs(common):
         common = os.path.join(cwd, common)
     return git_dir, os.path.realpath(common)
