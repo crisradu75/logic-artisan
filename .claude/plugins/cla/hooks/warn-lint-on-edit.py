@@ -46,6 +46,18 @@ LINTABLE_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 # doesn't flood the parent context with a wall of findings.
 _MAX_DIAGS = 10
 
+# Must stay strictly under the `timeout` hooks.json gives this handler
+# (_dispatch_lib.HANDLER_TIMEOUT_SECONDS), with room left for interpreter
+# startup and the parent-directory walk that finds the oxlint binary. This was
+# 20s — twice the handler's own budget — so a slow lint could not report at all:
+# the handler was killed first, and a killed hook produces nothing.
+#
+# Deliberately tight rather than generous. Linting ONE file is normally well
+# under a second; anything approaching this bound is pathological, and dropping
+# an advisory warning is much cheaper than stalling every single edit in the
+# session waiting for it.
+_LINT_TIMEOUT_SECONDS = 6
+
 
 def _binary_candidates() -> tuple[str, ...]:
     """node_modules/.bin shim names to try, most-specific first, per platform."""
@@ -88,7 +100,7 @@ def _run_oxlint(oxlint_bin: Path, package_dir: Path, file_path: Path) -> list[di
             cwd=str(package_dir),
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=_LINT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.SubprocessError):
         return None

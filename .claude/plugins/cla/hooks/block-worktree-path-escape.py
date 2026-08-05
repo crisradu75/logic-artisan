@@ -53,12 +53,24 @@ import subprocess
 import sys
 
 
+# Every sibling git-touching hook bounds its subprocesses; these three calls
+# were the one exception, and they run on EVERY Edit/Write. An unbounded git is
+# a hook that can hang forever — and the likeliest cause is precisely the state
+# this hook family exists to detect: an index lock held by a concurrent session
+# in the same clone. Expiry is caught below as just another git failure, which
+# this hook already fails open on.
+_GIT_TIMEOUT_SECONDS = 5
+
+
 def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:
+    # `subprocess.SubprocessError` is what carries TimeoutExpired; FileNotFoundError
+    # needs no separate arm, being an OSError subclass. Matches the sibling hooks.
     try:
         return subprocess.run(
             ["git", *args], cwd=cwd, capture_output=True, text=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
         )
-    except (OSError, FileNotFoundError):
+    except (OSError, subprocess.SubprocessError):
         return None
 
 

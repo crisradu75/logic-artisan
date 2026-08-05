@@ -121,11 +121,26 @@ def _warn(msg: str) -> None:
     print(f"[guard-worktree-isolation] warn: {msg}", file=sys.stderr)
 
 
+# This hook runs on EVERY Bash and Edit/Write call and makes at least two git
+# calls per invocation, so its per-call ceiling has to be a fraction of the
+# handler budget rather than equal to it: at the previous 5s, two stuck calls
+# came to exactly `_dispatch_lib.HANDLER_TIMEOUT_SECONDS` and the handler was
+# killed — losing the block this hook exists to produce. `Deadline` cannot
+# rescue this one either, since an enforcing hook is deliberately never skipped.
+#
+# 3s is still generous for what is actually being asked: `rev-parse` reads refs
+# and never touches the object store, so it is fast even on a large repo. A call
+# approaching this bound means git is wedged, which is precisely the concurrent-
+# session contention this hook exists to detect — and failing open with a
+# warning beats taking the whole handler down.
+_GIT_TIMEOUT_SECONDS = 3
+
+
 def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess | None:
     try:
         return subprocess.run(
             ["git", "-C", cwd, *args],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=_GIT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.SubprocessError):
         return None

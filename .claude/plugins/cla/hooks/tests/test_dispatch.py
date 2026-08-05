@@ -7,6 +7,8 @@ the consolidation preserves each sibling hook's original semantics.
 
 from __future__ import annotations
 
+import importlib.util
+import io
 import json
 import os
 import shutil
@@ -240,3 +242,84 @@ def test_edit_write_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     assert r.returncode == 1
     assert "warn-comment-dates.py" in r.stderr
     assert "failed to load" in r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Handler budget -- what a spent budget is allowed to drop, and what it is not
+#
+# Claude Code kills a handler at the hooks.json `timeout`, and a killed handler
+# is enforcement that did not run. The dispatchers pre-empt that by skipping
+# ADVISORY hooks once the budget is gone. These tests pin both halves: the
+# warnings do get dropped (loudly), and the blocking guards never do.
+# --------------------------------------------------------------------------- #
+
+
+class _ExpiredDeadline:
+    """Stands in for a budget already spent by earlier hooks in the same run."""
+
+    def remaining(self) -> float:
+        return -1.0
+
+    def expired(self) -> bool:
+        return True
+
+
+def _load_dispatcher(filename: str):
+    """Import a dispatcher in-process so its `Deadline` can be monkeypatched.
+
+    The subprocess helper used elsewhere in this file runs a fresh interpreter,
+    which gives a test no way to reach that symbol.
+    """
+    if str(_HOOKS_DIR) not in sys.path:
+        sys.path.insert(0, str(_HOOKS_DIR))
+    spec = importlib.util.spec_from_file_location(
+        filename.replace("-", "_")[: -len(".py")], _HOOKS_DIR / filename
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _run_in_process(mod, payload: dict, monkeypatch) -> int:
+    monkeypatch.setattr(mod, "Deadline", lambda *a, **k: _ExpiredDeadline())
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    return mod.main()
+
+
+def test_bash_dispatch_skips_advisory_hooks_when_the_budget_is_spent(monkeypatch, capsys, tmp_path):
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc = _run_in_process(mod, {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, monkeypatch)
+    err = capsys.readouterr().err
+
+    assert rc == 0
+    # Never silently: a dropped guard the user cannot see is the failure mode
+    # this whole mechanism exists to avoid.
+    assert "skipped" in err
+    for advisory in mod._ADVISORY_HOOKS:
+        assert advisory in err, f"{advisory} was skipped without being named"
+
+
+def test_bash_dispatch_still_blocks_after_the_budget_is_spent(monkeypatch, capsys, tmp_path):
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc = _run_in_process(
+        mod, {"tool_input": {"command": "cd /tmp && ls"}, "cwd": str(tmp_path)}, monkeypatch
+    )
+    assert rc == 2, "an expired budget must never downgrade a block to an allow"
+    assert "block-cd-in-bash.py" in capsys.readouterr().err
+
+
+def test_edit_write_dispatch_still_blocks_after_the_budget_is_spent(monkeypatch, capsys, tmp_path):
+    # Worth its own case: in this dispatcher a BLOCKING hook sits last in
+    # _HOOK_FILES, so list order gives it none of the protection the Bash
+    # dispatcher happens to get. Only its absence from _ADVISORY_HOOKS saves it.
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    target = tmp_path / ".claude" / "notes.md"
+    target.parent.mkdir(parents=True)
+    rc = _run_in_process(
+        mod,
+        {"tool_input": {"file_path": str(target), "content": "(added 2026-01-01)"},
+         "cwd": str(tmp_path)},
+        monkeypatch,
+    )
+    assert rc == 2
+    assert "block-dated-stamps-in-prose.py" in capsys.readouterr().err

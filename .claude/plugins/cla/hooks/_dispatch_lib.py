@@ -34,11 +34,124 @@ import io
 import re
 import subprocess
 import sys
+import time
 import traceback
 from pathlib import Path
 from types import ModuleType
 
 _HOOKS_DIR = Path(__file__).resolve().parent
+
+
+# --- Handler budget ---------------------------------------------------------
+# Claude Code kills a hook handler at the `timeout` declared for it in
+# hooks.json, and a killed handler is enforcement that did not run — the worst
+# possible outcome, because from the outside it is indistinguishable from a
+# guard that ran and allowed the call.
+#
+# Two things keep the dispatchers inside that ceiling:
+#   1. Every hook's own subprocess timeouts are sized to fit under it. That is
+#      a per-hook property, enforced by review, not by this module.
+#   2. `Deadline` below, which the dispatchers consult before starting each
+#      ADVISORY hook. When the budget is spent, the remaining advisory hooks
+#      are skipped and SAID SO on stderr rather than being silently lost to a
+#      kill mid-run.
+#
+# Only advisory hooks are ever skipped. An enforcing hook always runs, even
+# past the budget — a late block still blocks, whereas a dropped block is a
+# silent failure. Losing a warning is the acceptable half of that trade.
+#
+# HANDLER_TIMEOUT_SECONDS mirrors the `timeout` in hooks.json; the wiring test
+# asserts the two agree, so raising one without the other fails the suite.
+HANDLER_TIMEOUT_SECONDS = 10.0
+
+# Left for the dispatcher's own compose/print work after the last hook returns,
+# plus interpreter startup before the first one begins. Both fall outside the
+# window `Deadline` can observe.
+_BUDGET_RESERVE_SECONDS = 1.5
+
+
+class Deadline:
+    """How much of the hooks.json handler timeout is left.
+
+    Constructed at dispatcher entry, so `remaining()` already excludes the time
+    spent in hooks that ran before the check.
+    """
+
+    __slots__ = ("_start", "_budget")
+
+    def __init__(self, budget_seconds: float | None = None) -> None:
+        self._start = time.monotonic()
+        if budget_seconds is None:
+            budget_seconds = HANDLER_TIMEOUT_SECONDS - _BUDGET_RESERVE_SECONDS
+        self._budget = budget_seconds
+
+    def remaining(self) -> float:
+        return self._budget - (time.monotonic() - self._start)
+
+    def expired(self) -> bool:
+        return self.remaining() <= 0.0
+
+
+# --- Output size ------------------------------------------------------------
+# Claude Code caps a hook's output at 10,000 characters; past that it writes
+# the payload to a file and hands Claude a path plus a preview. For a warn hook
+# that is a silent downgrade — the feedback these hooks exist to deliver stops
+# being in front of Claude and becomes a file it may never open. Several leaf
+# hooks truncate by ITEM count (`hits[:5]`, `_MAX_DIAGS`) but no item is bounded
+# in LENGTH, and the dispatchers then concatenate every hook's output, so the
+# only place the total can be enforced is here at the join.
+
+HOOK_OUTPUT_CHAR_LIMIT = 10_000
+
+
+def clamp_output(text: str, limit: int = HOOK_OUTPUT_CHAR_LIMIT) -> str:
+    """Truncate `text` to `limit` characters, saying so in the space it keeps.
+
+    The notice is part of the retained budget, not added on top of it, so the
+    return value is always <= `limit`.
+    """
+    if len(text) <= limit:
+        return text
+    notice = (
+        f"\n[dispatch] … truncated: {len(text)} characters of hook output "
+        f"exceeded the {limit}-character cap Claude Code applies. Re-run the "
+        f"specific check directly to see the rest.\n"
+    )
+    keep = max(0, limit - len(notice))
+    if keep == 0:
+        # Pathological `limit`; a bare truncation still beats overshooting.
+        return text[:limit]
+    return text[:keep] + notice
+
+
+def compose_output(
+    sections: list[str],
+    must_keep: str = "",
+    limit: int = HOOK_OUTPUT_CHAR_LIMIT,
+) -> str:
+    """Join `sections`, guaranteeing `must_keep` survives intact.
+
+    `must_keep` is the blocking hook's reason — the one part Claude has to act
+    on, and the part that arrives LAST in the stream, so a naive tail-truncation
+    would drop precisely it. It is budgeted first and the advisory preamble
+    absorbs the loss instead.
+    """
+    must_keep = must_keep or ""
+    if len(must_keep) >= limit:
+        # The block reason alone fills the budget. Advisory context is dropped
+        # entirely rather than competing with it.
+        return clamp_output(must_keep, limit)
+
+    body = "\n".join(s for s in sections if s)
+    if not body:
+        return must_keep
+    if not must_keep:
+        return clamp_output(body, limit)
+
+    budget = limit - len(must_keep) - 1  # -1 for the joining newline
+    if budget <= 0:
+        return must_keep
+    return clamp_output(body, budget) + "\n" + must_keep
 
 
 # --- Git command-line matching helpers --------------------------------------

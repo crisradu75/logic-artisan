@@ -26,6 +26,11 @@ Order and semantics preserved exactly:
     exits 1 rather than 0 when nothing blocked, so the failure is visible via
     Claude Code's hook-error notice instead of being silently discarded (exit
     0 drops stderr entirely per the documented hook contract).
+  - If the handler budget runs out mid-list, the remaining ADVISORY hooks are
+    skipped and the skip is reported. Enforcing hooks are never skipped — see
+    `_ADVISORY_HOOKS` below and `_dispatch_lib.Deadline`.
+  - Both output channels are capped to Claude Code's hook output limit, with a
+    blocking hook's reason budgeted ahead of any advisory text.
 """
 
 from __future__ import annotations
@@ -33,7 +38,13 @@ from __future__ import annotations
 import json
 import sys
 
-from _dispatch_lib import run_hook_file
+from _dispatch_lib import (
+    HOOK_OUTPUT_CHAR_LIMIT,
+    Deadline,
+    clamp_output,
+    compose_output,
+    run_hook_file,
+)
 
 _HOOK_FILES = [
     "warn-comment-dates.py",
@@ -42,6 +53,19 @@ _HOOK_FILES = [
     "warn-smoke-test-drift.py",
     "block-worktree-path-escape.py",
 ]
+
+# Skippable when the handler budget is spent. Note what is NOT here:
+# `block-dated-stamps-in-prose.py` and `block-worktree-path-escape.py` can
+# return 2, and `guard-worktree-isolation.py` runs in --heartbeat mode, where
+# its whole job is the side effect of refreshing this session's presence file —
+# skipping it would silently degrade the contention detection every other
+# worktree guard depends on. Unlike the Bash dispatcher, a blocking hook sits
+# LAST in `_HOOK_FILES` here, so membership of this set is the only thing
+# protecting it; order is not a backstop.
+_ADVISORY_HOOKS = frozenset({
+    "warn-comment-dates.py",
+    "warn-smoke-test-drift.py",
+})
 
 
 def _extract_context(stdout_text: str) -> str | None:
@@ -61,23 +85,53 @@ def _extract_context(stdout_text: str) -> str | None:
     return None
 
 
+def _context_json(contexts: list[str]) -> str:
+    """Serialize the merged additionalContext, capped as a WHOLE.
+
+    The cap applies to what this process prints, envelope included — and JSON
+    escaping can expand the payload past a naive pre-clamp — so the size is
+    measured on the serialized string and the context re-clamped by however much
+    it overshot. Converges in one or two passes; bounded so it always returns.
+    """
+    merged = "\n\n".join(contexts)
+    out = ""
+    for _ in range(4):
+        out = json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": merged,
+            }
+        })
+        overflow = len(out) - HOOK_OUTPUT_CHAR_LIMIT
+        if overflow <= 0:
+            return out
+        merged = clamp_output(merged, max(0, len(merged) - overflow))
+    return out
+
+
 def main() -> int:
     stdin_text = sys.stdin.read()
+    deadline = Deadline()
     warnings: list[str] = []
     contexts: list[str] = []
+    skipped: list[str] = []
     errored = False
 
     for filename in _HOOK_FILES:
+        if filename in _ADVISORY_HOOKS and deadline.expired():
+            skipped.append(filename)
+            continue
+
         argv = ["--heartbeat"] if filename == "guard-worktree-isolation.py" else None
         result = run_hook_file(filename, stdin_text, argv=argv)
         errored = errored or result.errored
 
         if result.code == 2:
-            for w in warnings:
-                print(w, file=sys.stderr)
-            for c in contexts:
-                print(f"[non-blocking warning from an earlier hook this same call]\n{c}", file=sys.stderr)
-            sys.stderr.write(result.stderr)
+            preamble = list(warnings) + [
+                f"[non-blocking warning from an earlier hook this same call]\n{c}"
+                for c in contexts
+            ]
+            sys.stderr.write(compose_output(preamble, must_keep=result.stderr))
             return 2
 
         if result.stderr.strip():
@@ -86,15 +140,18 @@ def main() -> int:
         if context:
             contexts.append(context)
 
-    for w in warnings:
-        print(w, file=sys.stderr)
+    if skipped:
+        warnings.append(
+            "[dispatch] handler budget spent before these advisory hooks could "
+            f"run, so they were skipped: {', '.join(skipped)}. Every blocking "
+            "guard still ran — only warnings were lost."
+        )
+
+    err_out = compose_output(warnings)
+    if err_out:
+        print(err_out, file=sys.stderr)
     if contexts:
-        print(json.dumps({
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "additionalContext": "\n\n".join(contexts),
-            }
-        }))
+        print(_context_json(contexts))
     return 1 if errored else 0
 
 

@@ -27,13 +27,19 @@ Order and semantics preserved exactly:
     exits 1 rather than 0 even when nothing blocked, so the failure is
     visible via Claude Code's hook-error notice instead of being silently
     discarded (exit 0 drops stderr entirely per the documented hook contract).
+  - If the handler budget runs out mid-list, the remaining ADVISORY hooks are
+    skipped and the skip is reported on stderr. Enforcing hooks are never
+    skipped: a late block still blocks, but a block dropped to a handler kill
+    is a silent failure. See `_dispatch_lib.Deadline`.
+  - Total stderr is capped to Claude Code's hook output limit, with a blocking
+    hook's reason budgeted ahead of any advisory text.
 """
 
 from __future__ import annotations
 
 import sys
 
-from _dispatch_lib import run_hook_file
+from _dispatch_lib import Deadline, compose_output, run_hook_file
 
 _HOOK_FILES = [
     "block-cd-in-bash.py",
@@ -45,28 +51,52 @@ _HOOK_FILES = [
     "warn-stray-scratch-artifact.py",
 ]
 
+# Hooks that can only ever warn, and so may be dropped when the handler budget
+# is spent. Every hook capable of returning 2 is deliberately absent from this
+# set AND ordered ahead of these three in `_HOOK_FILES`, so budget pressure
+# costs warnings before it can cost enforcement. Keep both properties together:
+# a new blocking hook appended to the end of the list would still run, but only
+# because it is not named here — the wiring test pins the invariant.
+_ADVISORY_HOOKS = frozenset({
+    "warn-branch-base.py",
+    "warn-stacked-pr-merge.py",
+    "warn-stray-scratch-artifact.py",
+})
+
 
 def main() -> int:
     stdin_text = sys.stdin.read()
+    deadline = Deadline()
     warnings: list[str] = []
+    skipped: list[str] = []
     errored = False
 
     for filename in _HOOK_FILES:
+        if filename in _ADVISORY_HOOKS and deadline.expired():
+            skipped.append(filename)
+            continue
+
         argv = [] if filename == "guard-worktree-isolation.py" else None
         result = run_hook_file(filename, stdin_text, argv=argv)
         errored = errored or result.errored
 
         if result.code == 2:
-            for w in warnings:
-                print(w, file=sys.stderr)
-            sys.stderr.write(result.stderr)
+            sys.stderr.write(compose_output(warnings, must_keep=result.stderr))
             return 2
 
         if result.stderr.strip():
             warnings.append(result.stderr.rstrip("\n"))
 
-    for w in warnings:
-        print(w, file=sys.stderr)
+    if skipped:
+        warnings.append(
+            "[dispatch] handler budget spent before these advisory hooks could "
+            f"run, so they were skipped: {', '.join(skipped)}. Every blocking "
+            "guard still ran — only warnings were lost."
+        )
+
+    out = compose_output(warnings)
+    if out:
+        print(out, file=sys.stderr)
     return 1 if errored else 0
 
 
