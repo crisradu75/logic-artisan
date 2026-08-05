@@ -261,6 +261,7 @@ _GIT_HOOK_FILES = [
     "warn-stray-scratch-artifact.py",
     "guard-worktree-isolation.py",
     "ask-destructive-git.py",
+    "ask-git-identity.py",
 ]
 
 

@@ -32,6 +32,18 @@ memory `worktree-isolation-file-paths`.)
    already inside a worktree, the tool will refuse — tell the user and stop rather
    than working around it.
 
+   **Know which base you land on, and say so in the report.** A harness-created
+   worktree branches from the *remote's default branch*, not from whatever is checked
+   out right now. That is usually what you want — a new worktree starts clean rather
+   than inheriting half of an in-progress change — but it is the opposite of what
+   someone expects when they deliberately branch off current work. A `worktree.baseRef`
+   setting (value `"head"`) flips it repo-wide where the harness supports it. Don't set
+   it unprompted: it is a repo-level default with a real trade, and the failure it
+   prevents (unexpected clean base) is far cheaper than the one it introduces
+   (unexpectedly inheriting uncommitted context into an isolated worktree). Surface the
+   base branch in step 3 so the user can catch a mismatch immediately rather than after
+   the first confusing diff.
+
 2. **Fire off two independent steps in parallel — both in the same message, as
    separate tool calls (not chained with `&&`, not sequential turns). This is the
    only other round-trip; do not precede it with a separate `git worktree list` call
@@ -57,6 +69,22 @@ memory `worktree-isolation-file-paths`.)
      fi
      ```
      If it's missing, note that in the final report — don't fail the whole flow over it.
+
+     **Worth checking once per repo: a `.worktreeinclude` may remove this step
+     entirely.** Recent Claude Code versions read a `.worktreeinclude` file at the
+     project root — `.gitignore` syntax, copying only paths that are both matched
+     *and* gitignored — into every worktree the harness itself creates. Where that is
+     supported, listing this repo's env file(s) there does declaratively what the `cp`
+     above does imperatively, and deletes a command from the hot path this skill spends
+     its whole design budget minimizing. Verify it actually populated the file before
+     dropping the `cp`, and keep the `cp` if it didn't: this skill enters via
+     `EnterWorktree`, and support is worth confirming rather than assuming.
+
+     Two limits, so nobody over-reads this. It is harness machinery, **not** git — the
+     worktrees that `/cla:multi-lite`, `/cla:multi-pr` and `/cla:spec-to-pr` create via
+     raw `git worktree add` are unaffected and still need their own handling. And it
+     copies only gitignored files, which is the point: a tracked file is already in the
+     new checkout.
 
    An offline-preferring install flag is the default here, not an opt-in: it skips a registry
    network round-trip, which is a real (if modest) saving and never a regression.

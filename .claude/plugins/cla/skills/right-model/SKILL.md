@@ -69,15 +69,40 @@ Map the answer to a tier, biased toward the cheapest that clears the bar:
   length/complexity of the piece — same downward bias as the other tiers, not
   automatically the highest effort available just because the model differs.
 
+- **Split tier (plan expensive, execute cheap)** — some environments expose a
+  composite model alias that runs the *planning* turns on the largest model and the
+  *execution* turns on a mid-size one. When the expensive part of a task is deciding
+  what to do rather than doing it — an architectural change whose edits are then
+  mechanical — that shape beats escalating the whole session, and it is the tier most
+  often missed. Check what the session actually offers rather than assuming an alias
+  exists; the mechanism is durable, the specific name is not.
+
 Use whatever models are actually available in the current session — the `Agent`
 tool's own `model` parameter schema exposes the live roster as an enum (e.g.
 `sonnet`/`opus`/`haiku`/`fable`); that's the structural source of truth for what's
 switchable, not the system prompt's environment section, which only names the one
 *currently active* model. Do not hardcode a model list in this skill itself, it will
-go stale as the lineup changes. There's no equivalent enum for effort levels: use
-whatever the session's own model/effort-switch UI currently exposes (commonly
-low/medium/high, sometimes finer-grained) and land on the lowest one the task's
-classification supports.
+go stale as the lineup changes.
+
+There's no equivalent enum for effort levels. Use whatever the session's own
+model/effort-switch UI currently exposes and land on the lowest one the task's
+classification supports. Three things about the effort scale are worth holding onto,
+because each one changes a recommendation:
+
+- **The scale runs past `high`.** Current environments commonly expose
+  `low`/`medium`/`high` plus one or more levels above `high`, and `high` is typically
+  the *default* rather than the ceiling — so "recommend high effort" is often
+  recommending no change at all. If the classification genuinely calls for more than
+  the default, say which level and why; if it calls for the default, say that
+  explicitly rather than dressing it up as an escalation.
+- **A level does not mean the same thing on two different models.** The top effort
+  level on a large model is not the top level on a mid-size one. Calibrate against the
+  model you are recommending, not against the scale in the abstract — a pairing that
+  worked on one model is not evidence for the same pairing on another.
+- **The highest levels can overthink.** The deepest setting is not strictly better; on
+  a task that didn't need it, it buys latency and tokens for a worse-shaped answer.
+  Treat the top of the scale as a tier with its own failure mode, not as a safe default
+  to reach for when unsure.
 
 ## Step 3: Present the recommendation
 
@@ -104,6 +129,23 @@ recommend the tier that meets the bar, per the quality-floor principle above.
 ## Step 3.5: Check whether the target skill already routes its own dispatched work
 
 If the task will run through a `cla` orchestrator skill, check whether dispatched sub-agent work is already pinned to a model independent of the session model before recommending a session-wide escalation. Concretely: `spec-to-pr` has its own `references/model-routing.md` and routes every dispatched agent (Implement delegates, Review/Revise agent fan-outs) per that table; `multi-spec` explicitly reuses `spec-to-pr`'s copy rather than forking one; `multi-pr` has no routing table of its own and never dispatches an `Agent` directly — it only delegates whole changes via `Skill(cla:spec-to-pr, ...)`, so its dispatched-work routing is entirely inherited from `spec-to-pr` under the hood. In all three cases the practical effect is the same — escalating the whole session only helps with the INLINE judgment moments no routing table covers (e.g. Propose authoring, a borderline Review verdict) — but don't claim a routing file exists where it doesn't; check the actual file (or confirm the skill delegates to one that has it) before citing it. State the split proactively in the recommendation ("dispatched work already runs at X regardless of session model; escalating the session itself only changes Y") rather than waiting for the user to ask whether the escalation is even necessary.
+
+## Step 3.6: If the escalation is for one turn, don't change the session
+
+Before recommending a session-wide effort change, ask how much of the task actually
+needs it. When the expensive part is a *single* turn — one architectural judgment, one
+gnarly diagnosis, with mechanical work either side — most environments accept an
+in-prompt keyword that raises reasoning for that turn alone, leaving the session
+where it is. That is strictly cheaper than switching the session up and (as reliably
+happens) forgetting to switch it back down, which silently pays the escalated rate
+for every subsequent turn.
+
+Check what the current session actually supports rather than asserting a specific
+keyword — the mechanism is durable, the spelling is not, and a keyword that isn't
+recognized is passed through as ordinary prose that quietly does nothing. Two
+consequences worth stating to the user: only a real keyword has any effect (vague
+encouragement like "think harder" is inert), and this is a per-turn lever, so it is
+the wrong tool for a long unattended run where many turns need the higher setting.
 
 ## Step 4: Offer to start the task with those settings
 

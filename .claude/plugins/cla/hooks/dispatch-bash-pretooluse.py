@@ -2,12 +2,12 @@
 """PreToolUse dispatcher for the Bash matcher.
 
 Runs block-cd-in-bash, block-direct-push-to-main, ask-destructive-git,
-block-unsafe-recursive-delete, guard-worktree-isolation, warn-branch-base,
-warn-stacked-pr-merge, and warn-stray-scratch-artifact in ONE Python process
-instead of eight, reading the tool-call JSON from stdin once and handing it to
-each in turn via `_dispatch_lib`. Cuts per-Bash-call hook overhead from 8
-interpreter spawns to 1 — commonly cited as ~100-200ms of process-start cost
-each on Windows, though not independently benchmarked for this repo.
+ask-git-identity, block-unsafe-recursive-delete, guard-worktree-isolation,
+warn-branch-base, warn-stacked-pr-merge, and warn-stray-scratch-artifact in ONE
+Python process instead of nine, reading the tool-call JSON from stdin once and
+handing it to each in turn via `_dispatch_lib`. Cuts per-Bash-call hook overhead
+from 9 interpreter spawns to 1 — commonly cited as ~100-200ms of process-start
+cost each on Windows, though not independently benchmarked for this repo.
 
 Each sibling hook file is untouched and still independently runnable/importable
 exactly as before (loaded here via the same importlib technique the test suite
@@ -51,6 +51,7 @@ _HOOK_FILES = [
     "block-cd-in-bash.py",
     "block-direct-push-to-main.py",
     "ask-destructive-git.py",
+    "ask-git-identity.py",
     "block-unsafe-recursive-delete.py",
     "guard-worktree-isolation.py",
     "warn-branch-base.py",
