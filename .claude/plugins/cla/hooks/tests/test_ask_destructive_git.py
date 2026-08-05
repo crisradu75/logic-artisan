@@ -149,6 +149,31 @@ def test_override_env_var_silences_the_prompt(monkeypatch, capsys):
     assert _run("git push --force origin feature/x", monkeypatch, capsys) is None
 
 
+def test_the_override_announces_itself_on_a_command_it_suppressed(monkeypatch, capsys):
+    # The prompt is gone — that is what the override is for. But a force-push
+    # sailing through because of a switch exported weeks ago must not be
+    # indistinguishable from one the guard deliberately allowed.
+    monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "1")
+    monkeypatch.setattr(
+        sys, "stdin",
+        io.StringIO(json.dumps({"tool_input": {"command": "git push --force origin br"}})),
+    )
+    assert hook.main() == 0
+    err = capsys.readouterr().err
+    assert "DISABLED" in err and "ALLOW_DESTRUCTIVE_GIT" in err
+
+
+def test_the_override_stays_quiet_on_an_ordinary_command(monkeypatch, capsys):
+    # Otherwise every `ls` in the session carries the notice, which is how a
+    # channel stops being read.
+    monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "1")
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO(json.dumps({"tool_input": {"command": "git status"}}))
+    )
+    assert hook.main() == 0
+    assert capsys.readouterr().err.strip() == ""
+
+
 def test_malformed_payload_fails_open(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", io.StringIO("not json at all"))
     assert hook.main() == 0

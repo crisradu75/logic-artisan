@@ -637,3 +637,66 @@ just contradicted them. Nobody checked the primary source until the last round.
 A stated contract in a comment is a claim to verify, not a premise to build on;
 when a fix and a comment disagree about the same contract, that disagreement is
 the finding.
+
+---
+
+## Section H: Chapter 16 (TDD) — the last unassessed chapter
+
+Closed. Assessed against the skills as written, not from memory.
+
+**What the chapter argues.** Write the failing test first and watch it fail;
+"a test that can fail is a test that means something." Its named failure mode is
+*implementation drift* — Claude writes test and implementation in one response,
+so the test passes whether the implementation is correct or not. It offers two
+enforcement hooks (16.3) and a refactoring discipline (16.4).
+
+### Where CLA is already ahead
+
+The chapter's remedy is **temporal**: watch it go red once. CLA's `not_vacuous`
+pattern is the **structural** form of the same guarantee — a test asserting the
+check can still fire at all (`test_the_outcome_detector_is_not_vacuous`,
+`test_the_scanner_is_not_vacuous`, `test_source_scan_of_the_real_plugin_is_non_vacuous`).
+Watching a test fail is evidence at one moment; a non-vacuity test keeps holding
+after a refactor quietly turns the check into a no-op. For a repo whose features
+are mostly guards, that is the better instrument.
+
+`lite-pr`'s symptom-fix rule also covers the chapter-33 companion rule ("never
+modify tests to make them pass") more precisely than the guide states it:
+*"Loosening an assertion, widening a type, adding a try/except around the failing
+call, or bumping a timeout all turn the suite green without touching the defect."*
+
+### Where the guide was ahead — and it stings
+
+1. **Sequence.** `lite-pr` Implement is: change the code (1), then add the tests
+   (4). Nothing said to show the test failing first. That is precisely the
+   ordering the chapter warns produces a meaningless test — and this audit
+   *shipped one*: `find_absolute_path_leaks` had a single test asserting the real
+   tree was clean, which passes identically if the function returns `[]`. Caught
+   by review, not by the suite. Fixed, and a red-before-green rule added to
+   `lite-pr`.
+
+2. **"Not all red is the right red."** An import error, a broken fixture, or an
+   unrelated failure is a failure of the test, not evidence about the code. CLA
+   had nothing on this. Now stated.
+
+3. **The part that stings.** Section 16.3, explaining its TDD hook, says:
+
+   > "A bare `echo` would not do this: on exit 0 plain stdout goes to the debug
+   > log, not to you." … "The reason goes to stderr because on exit 2 Claude
+   > ignores stdout entirely."
+
+   That is **finding G4**, stated plainly, in the one chapter this audit never
+   read. Four rounds and a merge check were spent rediscovering it from the hook
+   layer's own contradictory docstrings. The cost of declaring a chapter
+   out of scope was the most expensive defect in the branch.
+
+### Where it does not apply
+
+The 16.3 enforcement hooks are inapplicable here, and now for a measured reason
+rather than a hunch: a PostToolUse hook running the suite on every test-file
+write would fire a ~2-minute hooks scope inside a 10s handler — the exact budget
+class as finding G2. The guide flags the cost itself ("a noticeable pause on
+every edit"); at this suite's size it is not a pause, it is a guaranteed kill.
+The flag-file blocking hook is self-described as heavyweight and is not warranted.
+
+**Coverage is now complete: 34 of 34 chapters, 5 of 5 appendices.**

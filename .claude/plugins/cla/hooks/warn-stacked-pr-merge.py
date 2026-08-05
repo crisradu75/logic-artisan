@@ -44,7 +44,7 @@ _PR_NUMBER = re.compile(r"(?:^|\s)(\d+)(?:\s|$)")
 
 # This hook is the only network-bound one in the tree, and it can make TWO gh
 # calls in a single run (`pr view` then `pr list`). At the previous 8s each,
-# that was a 16s worst case inside a 10s handler shared with six other hooks —
+# that was a 16s worst case inside a 10s handler shared with eight other hooks —
 # so a slow GitHub could get the whole Bash dispatcher killed, taking the
 # BLOCKING guards down with it. Halved so both calls together stay inside the
 # budget; `_dispatch_lib.Deadline` then covers the aggregate case where earlier

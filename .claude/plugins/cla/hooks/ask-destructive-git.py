@@ -125,6 +125,24 @@ def _reasons(command: str) -> list[str]:
 
 def main() -> int:
     if os.environ.get("ALLOW_DESTRUCTIVE_GIT") == "1":
+        # Only worth saying when there was something to prompt about; otherwise
+        # every `ls` in the session would carry the notice. But when a
+        # force-push or a `reset --hard` sails through because of a switch
+        # somebody exported weeks ago, that has to be visible.
+        try:
+            payload = json.load(sys.stdin)
+        except json.JSONDecodeError:
+            return 0
+        tool_input = payload.get("tool_input", {}) if isinstance(payload, dict) else {}
+        command = tool_input.get("command") if isinstance(tool_input, dict) else None
+        if isinstance(command, str) and command and _reasons(command):
+            print(
+                "[ask-destructive-git] note: this command would normally prompt "
+                "for confirmation, but the check is DISABLED by "
+                "ALLOW_DESTRUCTIVE_GIT=1. Unset it to re-enable. "
+                "(hook: ask-destructive-git.py)",
+                file=sys.stderr,
+            )
         return 0
     try:
         payload = json.load(sys.stdin)

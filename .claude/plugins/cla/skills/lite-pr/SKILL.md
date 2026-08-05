@@ -45,6 +45,23 @@ Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (th
 3. Update the `CLAUDE.md` section(s) the plan named (most often "Allocation math" or "Conventions to preserve").
 4. Add or update the test file(s) the plan named.
 
+**Show the new test failing before you trust it.** Steps 1–4 write the fix before
+the test, which is the ordering that produces a test passing whether the code is
+right or not. For a **bug fix**, the cheap check is to stash or revert the fix and
+watch the new test go red — a test that never failed against the unfixed code is
+evidence of nothing. Read the failure before accepting it: an import error, a
+broken fixture, or an unrelated test in the same run is a failure of the *test*,
+not proof the test can catch this defect.
+
+Where reverting is impractical — a guard, a scanner, any check whose "feature" is
+detecting something — get the same guarantee structurally instead, with a test
+asserting the check can still fire at all (`test_the_outcome_detector_is_not_vacuous`,
+`test_the_scanner_is_not_vacuous`). That is the stronger form: watching a test fail
+is evidence at one moment, whereas a non-vacuity test keeps holding after a later
+refactor quietly turns the check into a no-op. Prefer it for anything guard-shaped;
+this repo has shipped a guard whose only test would have passed had the function
+returned nothing at all.
+
 **Task tracking:** use `TaskCreate` only when part of the plan is genuinely parallel or independently resumable (e.g. several unrelated files touched at once). Skip it for a straightforward linear implementation — the common case, since lite-pr targets small changes. Ignore generic harness `TaskCreate` nudges when they don't fit this rule.
 
 ### Test

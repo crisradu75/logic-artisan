@@ -497,10 +497,13 @@ def test_compose_output_with_nothing_to_say_is_empty():
 
 @pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
 def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
-    # hooks.json invokes these standalone, where the `_dispatch_lib` import
-    # resolves only because CPython sets sys.path[0] to the script's dir — a
-    # property suppressed by PYTHONSAFEPATH=1 / -I / -P. Each hook inserts its
-    # own dir explicitly so an ImportError can never silently disable a guard.
+    # These are loaded two ways — in-process by a dispatcher, and directly by
+    # pytest — and hooks.json invokes a few of them standalone. In a standalone
+    # run the `_dispatch_lib` import resolves only because CPython sets
+    # sys.path[0] to the script's dir, a property suppressed by
+    # PYTHONSAFEPATH=1 / -I / -P; in the other two neither mechanism puts the
+    # hooks dir first at all. Each hook therefore inserts its own dir explicitly,
+    # so an ImportError can never silently disable a guard.
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
     assert "sys.path.insert(0, _HOOKS_DIR)" in source, (
         f"{filename} must bootstrap its own sys.path before importing _dispatch_lib"

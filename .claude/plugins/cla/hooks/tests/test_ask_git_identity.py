@@ -144,11 +144,24 @@ def test_a_global_option_before_the_subcommand_is_not_a_bypass(repo, monkeypatch
 # --------------------------------------------------------------------------- #
 
 
-def test_override_env_var_silences_everything(repo, monkeypatch, capsys):
+def test_override_env_var_suppresses_the_prompt_but_says_it_did(repo, monkeypatch, capsys):
+    # No escalation — that is the point of the override. But not silence: a
+    # guard disabled by a variable someone exported weeks ago and forgot looks
+    # exactly like a guard that keeps passing.
     monkeypatch.setenv("CLA_EXPECTED_GIT_EMAIL", "right@example.com")
     monkeypatch.setenv("ALLOW_GIT_IDENTITY_MISMATCH", "1")
     _git(repo, "config", "user.email", "wrong@example.com")
     payload, err = _run("git commit -m x", repo, monkeypatch, capsys)
+    assert payload is None, "the override must suppress the prompt"
+    assert "DISABLED" in err
+    assert "ALLOW_GIT_IDENTITY_MISMATCH" in err
+
+
+def test_the_override_notice_does_not_fire_on_unrelated_commands(repo, monkeypatch, capsys):
+    # Attached to every Bash call it would be noise; attached to the commit it
+    # actually affects it is signal.
+    monkeypatch.setenv("ALLOW_GIT_IDENTITY_MISMATCH", "1")
+    payload, err = _run("ls -la", repo, monkeypatch, capsys)
     assert payload is None and err.strip() == ""
 
 

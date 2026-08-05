@@ -111,13 +111,17 @@ def _body_lines(text: str, strip_frontmatter: bool):
         yield idx + 1, lines[idx]
 
 
-def _violations_in(path: Path, rel: str, lowered, strip_fm: bool):
+def _violations_in(path: Path, rel: str, lowered: list[tuple[str, str]], strip_fm: bool):
     """Token hits in one file's body, as ``(rel, token, line_number, excerpt)``."""
     found: list[tuple[str, str, int, str]] = []
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         # A binary or unreadable file is not prose and not source we can check.
+        # Swallowed so one odd file cannot take the guard down — but silence
+        # here would mean the guard quietly stops covering that file, so
+        # `test_every_scanned_file_is_actually_readable` asserts separately that
+        # the set of unreadable files is empty.
         return found
     for lineno, line in _body_lines(text, strip_fm):
         haystack = line.lower()
@@ -400,6 +404,48 @@ def test_no_absolute_developer_paths_in_synced_source():
             f"path, or mark a deliberate fixture line with `{ABS_PATH_EXEMPT_MARKER}`:"
             f"\n{detail}"
         )
+
+
+def find_unreadable_files(plugin_root: Path):
+    """Every scanned file that cannot be decoded as UTF-8, as ``(rel, reason)``.
+
+    All three scanners swallow a decode/IO error per file so one odd file cannot
+    take the whole guard down. That is the right robustness choice and the wrong
+    reporting one: an unreadable file returns "no violations", which is exactly
+    what a clean file returns. The counters the scanners assert on
+    (``assert scanned``) count files ITERATED, not files READ, so every file in
+    the tree could fail to decode and every guard would still pass green.
+    """
+    bad: list[tuple[str, str]] = []
+    seen: set[Path] = set()
+    for path in list(_iter_scanned_files(plugin_root / "skills")) + list(
+        _iter_scanned_source_files(plugin_root)
+    ):
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            bad.append((path.relative_to(plugin_root).as_posix(), type(exc).__name__))
+    return bad
+
+
+def test_every_scanned_file_is_actually_readable():
+    plugin_root = _plugin_root()
+    bad = find_unreadable_files(plugin_root)
+    assert not bad, (
+        "these synced-core files cannot be read as UTF-8, so every token and "
+        "path guard silently skips them and reports clean:\n"
+        + "\n".join(f"{rel}  [{reason}]" for rel, reason in bad)
+    )
+
+
+def test_the_readability_check_can_actually_fail(tmp_path):
+    """Otherwise the guard above is a no-op that passes forever."""
+    (tmp_path / "hooks").mkdir(parents=True)
+    (tmp_path / "hooks" / "binary.py").write_bytes(b"\xff\xfe\x00\x01 not utf-8 \xff")
+    assert find_unreadable_files(tmp_path)
 
 
 # ---------- self-tests of the absolute-path scanner ----------

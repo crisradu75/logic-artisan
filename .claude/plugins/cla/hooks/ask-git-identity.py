@@ -45,12 +45,17 @@ Fires on commit AND push. Commit is where the email is actually baked in, so it
 is the preventive moment; push is the last checkpoint before it becomes someone
 else's problem.
 
-Escape hatch: `ALLOW_GIT_IDENTITY_MISMATCH=1`.
+Escape hatch: `ALLOW_GIT_IDENTITY_MISMATCH=1`. Setting it prints a one-line
+notice, because a guard disabled by an environment variable someone exported
+months ago and forgot is indistinguishable from a guard that is passing.
 
 Exit codes:
-  0 — always. A mismatch escalates via JSON on stdout; a missing identity warns
-      on stderr. Neither blocks: the hook cannot tell a deliberate identity from
-      a mistaken one, and refusing the commit outright would be wrong.
+  0 — always. A mismatch escalates via JSON on stdout; anything else it has to
+      say goes to stderr, which the DISPATCHER collects and re-emits as
+      `additionalContext` (stderr from a hook exiting 0 is otherwise dropped by
+      the hook contract — writing there and exiting 0 standalone reaches nobody).
+      Neither path blocks: the hook cannot tell a deliberate identity from a
+      mistaken one, and refusing the commit outright would be wrong.
 """
 
 from __future__ import annotations
@@ -102,8 +107,7 @@ def _git_email(cwd: str) -> str | None:
 
 
 def main() -> int:
-    if os.environ.get("ALLOW_GIT_IDENTITY_MISMATCH") == "1":
-        return 0
+    disabled = os.environ.get("ALLOW_GIT_IDENTITY_MISMATCH") == "1"
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
@@ -115,6 +119,22 @@ def main() -> int:
     if not isinstance(command, str) or not command:
         return 0
     if not _IDENTITY_BAKING.search(_strip_quoted_spans(command)):
+        return 0
+
+    if disabled:
+        # Announced HERE, after the identity-baking check, not at the top of
+        # main(). At the top it would fire on every Bash call in the session,
+        # and a notice attached to `ls` is noise that trains people to ignore
+        # the channel. Attached to the commit it actually affects, it is signal:
+        # exported once for a deliberate batch and left in a shell profile, this
+        # switch otherwise turns the guard off forever with nothing to
+        # distinguish that from a guard that keeps passing.
+        print(
+            "[ask-git-identity] note: identity checking is DISABLED for this "
+            "commit/push by ALLOW_GIT_IDENTITY_MISMATCH=1. Unset it to "
+            "re-enable. (hook: ask-git-identity.py)",
+            file=sys.stderr,
+        )
         return 0
 
     cwd = payload.get("cwd") or os.getcwd()
