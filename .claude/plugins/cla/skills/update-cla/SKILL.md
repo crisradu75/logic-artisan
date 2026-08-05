@@ -2,6 +2,12 @@
 name: update-cla
 description: "Update this repo's cla plugin (.claude/plugins/cla/) from a canonical cla source repo — pull newer core skills/agents/guard-hooks, adapting to local context and PRESERVING this repo's own project overlay (the fixed project-context.md filename plus any *.local.md files), which is never overwritten. This is the cross-repo update mechanism for the --plugin-dir-loaded harness. Triggers on /cla:update-cla or phrasings like 'update the cla plugin from <repo>', 'pull newer cla into this repo', 'sync cla from <source>'. Brief-mode design (discover → adapt → apply) where conversation Claude does the LLM reasoning between phases and the script does only deterministic file/git work. Per-asset failure isolation; never auto-merges."
 argument-hint: "<source-repo> [asset]"
+# Rewrites the plugin's own skills/agents/hooks from another repo, so it must
+# never self-trigger on a description match — only an explicit
+# `/cla:update-cla <source>` starts it. Safe to set: nothing invokes this skill
+# programmatically. Also keeps this long description out of the always-loaded
+# skill listing until the command is typed.
+disable-model-invocation: true
 ---
 
 # update-cla

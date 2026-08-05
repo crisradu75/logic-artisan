@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """PreToolUse dispatcher for the Bash matcher.
 
-Runs block-cd-in-bash, block-direct-push-to-main, block-unsafe-recursive-delete,
-guard-worktree-isolation, warn-branch-base, warn-stacked-pr-merge, and
-warn-stray-scratch-artifact in ONE Python process instead of seven, reading
-the tool-call JSON from stdin once and handing it to each in turn via
-`_dispatch_lib`. Cuts per-Bash-call hook overhead from 7 interpreter spawns
-to 1 — commonly cited as ~100-200ms of process-start cost each on Windows,
-though not independently benchmarked for this repo.
+Runs block-cd-in-bash, block-direct-push-to-main, ask-destructive-git,
+block-unsafe-recursive-delete, guard-worktree-isolation, warn-branch-base,
+warn-stacked-pr-merge, and warn-stray-scratch-artifact in ONE Python process
+instead of eight, reading the tool-call JSON from stdin once and handing it to
+each in turn via `_dispatch_lib`. Cuts per-Bash-call hook overhead from 8
+interpreter spawns to 1 — commonly cited as ~100-200ms of process-start cost
+each on Windows, though not independently benchmarked for this repo.
 
 Each sibling hook file is untouched and still independently runnable/importable
 exactly as before (loaded here via the same importlib technique the test suite
@@ -17,6 +17,11 @@ Order and semantics preserved exactly:
   - Any hook returning 2 blocks: its stderr message is shown, prefixed with any
     non-blocking warning text already produced by an earlier hook in this same
     run (not silently dropped), then this process exits 2.
+  - If none block but one requests an `ask` escalation (ask-destructive-git.py),
+    the merged decision is re-emitted as this process's own stdout JSON. Only
+    one process's stdout is read per call, so a child's decision that isn't
+    re-emitted here is silently downgraded to an allow. Precedence is
+    deny > ask > allow, matching the documented permission evaluation order.
   - If none block, any non-blocking warning stderr text is passed through —
     e.g. from warn-branch-base.py / warn-stacked-pr-merge.py /
     warn-stray-scratch-artifact.py, or guard-worktree-isolation.py's
@@ -37,6 +42,7 @@ Order and semantics preserved exactly:
 
 from __future__ import annotations
 
+import json
 import sys
 
 from _dispatch_lib import Deadline, compose_output, run_hook_file
@@ -44,6 +50,7 @@ from _dispatch_lib import Deadline, compose_output, run_hook_file
 _HOOK_FILES = [
     "block-cd-in-bash.py",
     "block-direct-push-to-main.py",
+    "ask-destructive-git.py",
     "block-unsafe-recursive-delete.py",
     "guard-worktree-isolation.py",
     "warn-branch-base.py",
@@ -52,11 +59,13 @@ _HOOK_FILES = [
 ]
 
 # Hooks that can only ever warn, and so may be dropped when the handler budget
-# is spent. Every hook capable of returning 2 is deliberately absent from this
-# set AND ordered ahead of these three in `_HOOK_FILES`, so budget pressure
-# costs warnings before it can cost enforcement. Keep both properties together:
-# a new blocking hook appended to the end of the list would still run, but only
-# because it is not named here — the wiring test pins the invariant.
+# is spent. Every hook that changes the OUTCOME of the call — one that can
+# return 2, and `ask-destructive-git.py`, which returns 0 but escalates to a
+# permission prompt — is deliberately absent from this set AND ordered ahead of
+# these three in `_HOOK_FILES`, so budget pressure costs warnings before it can
+# cost enforcement. Note the ask hook is the reason the wiring test cannot key
+# on `return 2` alone: skipping it would silently downgrade an ask to an allow,
+# which is an enforcement loss that no exit code would reveal.
 _ADVISORY_HOOKS = frozenset({
     "warn-branch-base.py",
     "warn-stacked-pr-merge.py",
@@ -64,10 +73,34 @@ _ADVISORY_HOOKS = frozenset({
 })
 
 
+def _extract_ask(stdout_text: str) -> str | None:
+    """Pull an `ask` escalation's reason out of a hook's stdout JSON.
+
+    A hook that wants the user prompted (rather than blocked outright) exits 0
+    and emits `permissionDecision: "ask"`. Only this process's stdout is read
+    per PreToolUse call, so the decision has to be re-emitted here or it is
+    silently downgraded to an allow.
+    """
+    stdout_text = stdout_text.strip()
+    if not stdout_text:
+        return None
+    try:
+        payload = json.loads(stdout_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    nested = payload.get("hookSpecificOutput")
+    if not isinstance(nested, dict) or nested.get("permissionDecision") != "ask":
+        return None
+    return str(nested.get("permissionDecisionReason") or "A guard requested confirmation.")
+
+
 def main() -> int:
     stdin_text = sys.stdin.read()
     deadline = Deadline()
     warnings: list[str] = []
+    asks: list[str] = []
     skipped: list[str] = []
     errored = False
 
@@ -80,12 +113,18 @@ def main() -> int:
         result = run_hook_file(filename, stdin_text, argv=argv)
         errored = errored or result.errored
 
+        # Precedence is deny > ask > allow, matching the documented permission
+        # evaluation order: a block short-circuits, and any pending `ask` is
+        # moot once the call is refused outright.
         if result.code == 2:
             sys.stderr.write(compose_output(warnings, must_keep=result.stderr))
             return 2
 
         if result.stderr.strip():
             warnings.append(result.stderr.rstrip("\n"))
+        ask = _extract_ask(result.stdout)
+        if ask:
+            asks.append(ask)
 
     if skipped:
         warnings.append(
@@ -97,6 +136,14 @@ def main() -> int:
     out = compose_output(warnings)
     if out:
         print(out, file=sys.stderr)
+    if asks:
+        print(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": compose_output(asks),
+            }
+        }))
     return 1 if errored else 0
 
 

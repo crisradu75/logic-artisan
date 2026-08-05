@@ -159,16 +159,31 @@ def test_hooks_json_timeouts_match_the_dispatcher_budget_constant():
     )
 
 
+def _changes_the_outcome(hook_source: str) -> bool:
+    """True iff a hook can alter whether/how the tool call proceeds.
+
+    Two shapes qualify, and the second is why an exit-code check alone is not
+    enough: a hook can return 2 (block), or exit 0 while emitting
+    `permissionDecision` (escalate to a prompt). The latter leaves no trace in
+    the exit code, so a scan for `return 2` would happily call it advisory and
+    let budget pressure silently downgrade an ask to an allow.
+    """
+    return bool(
+        re.search(r"^\s*return 2\b", hook_source, re.M)
+        or "permissionDecision" in hook_source
+    )
+
+
 @pytest.mark.parametrize("dispatcher", _DISPATCHERS)
-def test_no_blocking_hook_is_marked_advisory(dispatcher):
-    """A hook that can return 2 must never be skippable under budget pressure.
+def test_no_outcome_changing_hook_is_marked_advisory(dispatcher):
+    """A hook that can block or escalate must never be skippable.
 
     Advisory hooks get dropped when the handler budget is spent. Losing a
-    warning is acceptable; losing a BLOCK is a silent enforcement failure and
-    is the exact outcome the budget logic exists to prevent. Asserted
-    structurally (does the source contain a `return 2`?) so that adding a block
-    path to a currently-advisory hook fails here rather than quietly widening
-    what budget pressure can drop.
+    warning is acceptable; losing a BLOCK or an ASK is a silent enforcement
+    failure, and is the exact outcome the budget logic exists to prevent.
+    Asserted structurally so that adding a block or ask path to a currently
+    advisory hook fails here rather than quietly widening what budget pressure
+    can drop.
     """
     dispatcher_path = _HOOKS_DIR / dispatcher
     advisory = _named_collection(dispatcher_path, "_ADVISORY_HOOKS")
@@ -179,13 +194,24 @@ def test_no_blocking_hook_is_marked_advisory(dispatcher):
         f"{dispatcher} marks hooks advisory that it never runs: {advisory - hook_files}"
     )
 
-    blocking = {
+    enforcing = {
         name for name in advisory
-        if re.search(r"^\s*return 2\b", (_HOOKS_DIR / name).read_text(encoding="utf-8"), re.M)
+        if _changes_the_outcome((_HOOKS_DIR / name).read_text(encoding="utf-8"))
     }
-    assert not blocking, (
-        f"{dispatcher} marks blocking hook(s) as advisory, so budget pressure "
-        f"could silently drop enforcement: {sorted(blocking)}"
+    assert not enforcing, (
+        f"{dispatcher} marks outcome-changing hook(s) as advisory, so budget "
+        f"pressure could silently drop enforcement: {sorted(enforcing)}"
+    )
+
+
+def test_the_outcome_detector_is_not_vacuous():
+    # A structural guard that matches nothing passes forever. Pin that the
+    # detector actually recognizes both shapes it claims to cover, so a future
+    # refactor of the hooks cannot quietly turn the test above into a no-op.
+    assert _changes_the_outcome((_HOOKS_DIR / "block-cd-in-bash.py").read_text(encoding="utf-8"))
+    assert _changes_the_outcome((_HOOKS_DIR / "ask-destructive-git.py").read_text(encoding="utf-8"))
+    assert not _changes_the_outcome(
+        (_HOOKS_DIR / "warn-branch-base.py").read_text(encoding="utf-8")
     )
 
 

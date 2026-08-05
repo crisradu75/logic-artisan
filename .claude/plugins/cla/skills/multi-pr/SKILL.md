@@ -2,6 +2,13 @@
 name: multi-pr
 description: "Chains multiple OpenSpec changes end-to-end: determines implementation order, runs /cla:spec-to-pr on each change in sequence, enforces that every Critical/Important review finding is actually fixed (never left as a deferred TODO) before moving on, merges each PR before starting the next dependent change, and finishes with a full repo cleanup pass. Designed for long, unattended multi-change runs. Triggers on /cla:multi-pr or natural language like 'drive all my openspec changes to PRs', 'chain these changes end to end', 'work through every open change and merge as you go', 'run spec-to-pr on everything'."
 argument-hint: "[change-name-1 change-name-2 ... | (empty = auto-discover every open change)]"
+# Merges pull requests, so it must never self-trigger on a description match —
+# only an explicit `/cla:multi-pr` starts it. Safe to set: nothing invokes this
+# skill programmatically (it is a top-level entry point that CALLS
+# `Skill(cla:spec-to-pr)`, which stays model-invocable), and `/cla:multi-spec`
+# explicitly forbids invoking it. Also keeps this long description out of the
+# always-loaded skill listing until the command is actually typed.
+disable-model-invocation: true
 ---
 
 # /cla:multi-pr — chain multiple OpenSpec changes to merged PRs

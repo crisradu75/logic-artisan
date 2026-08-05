@@ -323,3 +323,49 @@ def test_edit_write_dispatch_still_blocks_after_the_budget_is_spent(monkeypatch,
     )
     assert rc == 2
     assert "block-dated-stamps-in-prose.py" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# `ask` escalation -- the middle tier between allow and block
+#
+# Only one process's stdout is read per PreToolUse call, so a child hook's
+# permissionDecision has to be re-emitted by the dispatcher or it is silently
+# downgraded to an allow. These pin that it survives, and that a real block
+# still outranks it.
+# --------------------------------------------------------------------------- #
+
+
+def test_bash_dispatch_reemits_an_ask_escalation(tmp_path):
+    r = _run(
+        _BASH_DISPATCH,
+        {"tool_input": {"command": "git push --force origin feature/x"}, "cwd": str(tmp_path)},
+    )
+    assert r.returncode == 0, "an ask must not block the call"
+    payload = json.loads(r.stdout)
+    nested = payload["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert "force-push" in nested["permissionDecisionReason"]
+
+
+def test_bash_dispatch_lets_a_block_outrank_an_ask(tmp_path):
+    # `git push --force origin main` is BOTH a force-push (ask) and a push to
+    # main (block). Deny > ask, so the call is refused outright and no
+    # permission prompt is offered as an alternative.
+    r = _run(
+        _BASH_DISPATCH,
+        {"tool_input": {"command": "git push --force origin main"}, "cwd": str(tmp_path)},
+    )
+    assert r.returncode == 2
+    assert "block-direct-push-to-main.py" in r.stderr
+    assert r.stdout.strip() == "", "a blocked call must not also emit an ask"
+
+
+def test_bash_dispatch_stays_silent_on_a_guarded_force_push(tmp_path):
+    # --force-with-lease is deliberately not escalated; see the hook's docstring.
+    r = _run(
+        _BASH_DISPATCH,
+        {"tool_input": {"command": "git push --force-with-lease origin feature/x"},
+         "cwd": str(tmp_path)},
+    )
+    assert r.returncode == 0
+    assert r.stdout.strip() == ""
