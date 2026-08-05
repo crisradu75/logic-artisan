@@ -404,3 +404,91 @@ is the counter-example already in the repo.
   Re-confirm both against current docs before implementing 03 or 15.
 - Chapter 16 (TDD) was not assessed.
 - Findings A1–A6 are recorded so that later readers do not "fix" something the guide already endorses.
+
+---
+
+## F. Resolution log
+
+Appended after working the findings. The triage above is left as originally
+filed; this section records what actually happened, **including two places where
+the audit itself was wrong**. Fixes landed on branch `fix/hook-handler-budget`.
+
+### Status
+
+| # | Finding | Outcome |
+|---|---|---|
+| 01 | Hook timeout budget | Fixed |
+| 02 | Unbounded `git rev-parse` | Fixed |
+| 03 | No output-size guard | Fixed |
+| 04 | No `disable-model-invocation` | Fixed |
+| 05 | `ask` tier unused | Fixed |
+| 06 | `multi-pr` halt-path report | Fixed |
+| 07 | `right-model` effort surface | Fixed |
+| 08 | No git identity check | Fixed (partially — see below) |
+| 09 | No hypothesis discipline | Fixed |
+| 10 | No sub-agent brief template | Fixed |
+| 11 | Worktree env carry-over | Fixed — **audit corrected** |
+| 12 | `cwd` resolution inconsistency | Fixed |
+| 13 | Sync-lock provenance | Fixed |
+| 14 | Foreign project token | Fixed |
+| 15 | Two inert allow rules | **No action** |
+| 16 | `context: fork` on the retros | **Rejected — audit error** |
+| 17 | No continuous decision log | **No action** |
+
+### Corrections to this document
+
+**Finding 11 overstated its scope.** It claimed `.worktreeinclude` would cover
+the worktrees `multi-lite` / `multi-pr` / `spec-to-pr` create. It would not:
+that file is harness machinery, and those three use raw `git worktree add`,
+which is git. The real (narrower) justification is that `new-worktree` spends
+its entire design budget minimizing round-trips, and this removes a command
+from that path.
+
+**Finding 16 was aimed at the wrong skill, and rests on a premise that does not
+hold here.** Two independent reasons it was rejected:
+
+1. Both retros state "Do NOT apply edits without explicit confirmation — retros
+   are advisory." A `context: fork` sub-agent cannot reach the user to ask, so
+   forking breaks the confirmation gate.
+2. It would save little regardless. The read-heavy aggregation in both retros is
+   already offloaded to deterministic Python, so what enters context is a compact
+   metrics summary, not raw file reads. The finding assumed model-driven reading
+   without checking.
+
+Re-aimed at `project-review` — the skill that genuinely reads broadly — and it
+came back negative too: that skill is *itself* an orchestrator that dispatches
+five agents and aggregates "only their conclusions, never their raw reads", and
+it sets per-agent `model:` routing that nesting inside a fork would disturb.
+
+**The generalization worth keeping: the guide's "read-heavy → `context: fork`"
+pattern does not apply anywhere in CLA.** This plugin already offloads heavy
+reading two other ways — deterministic scripts, and agent delegation with
+conclusions-only return. A future audit should check for those two before
+proposing `fork` again.
+
+### Deliberate non-changes
+
+**15 — two inert allow rules.** Verified inert: `ls` and `pwd` are both in the
+built-in never-prompted read-only set, so removing them changes no behavior. The
+file is also gitignored and machine-local, so the edit would be uncommittable.
+Recorded rather than done, so it is not re-raised.
+
+**17 — continuous decision log.** `spec-to-pr` forbids mid-run logging as a
+deliberate anti-bloat decision with a stated rationale, and this document already
+conceded that position was defensible. The narrower real exposure — a boundary
+stated *conversationally* being dropped by compaction under `--permission-mode
+auto` — is closed by finding 05, whose rules live in a hook and therefore never
+depended on the transcript. Adding a log would treat a symptom of a problem that
+no longer exists.
+
+### Partial
+
+**08 — git identity.** Implemented the `user.email` half only. The guide pairs it
+with an `ssh -T` key check; that is a network round-trip on a hook firing at every
+commit and push, which is precisely the per-tool-call cadence that caused finding
+01. The greeting-not-exit-code trap (`ssh -T` exits 1 on success) is recorded in
+the hook's docstring for whoever adds that check at a slower cadence.
+
+### Still open
+
+Chapter 16 (TDD) remains unassessed — the one edge this pass never reached.
