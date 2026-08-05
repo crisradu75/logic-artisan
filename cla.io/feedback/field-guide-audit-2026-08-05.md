@@ -430,7 +430,7 @@ the audit itself was wrong**. Fixes landed on branch `fix/hook-handler-budget`.
 | 11 | Worktree env carry-over | Fixed — **audit corrected** |
 | 12 | `cwd` resolution inconsistency | Fixed |
 | 13 | Sync-lock provenance | Fixed |
-| 14 | Foreign project token | Fixed |
+| 14 | Foreign project token | Fixed — **audit corrected, scope was 6x larger** |
 | 15 | Two inert allow rules | **No action** |
 | 16 | `context: fork` on the retros | **Rejected — audit error** |
 | 17 | No continuous decision log | **No action** |
@@ -465,6 +465,43 @@ pattern does not apply anywhere in CLA.** This plugin already offloads heavy
 reading two other ways — deterministic scripts, and agent delegation with
 conclusions-only return. A future audit should check for those two before
 proposing `fork` again.
+
+**Finding 14 sampled the leak rather than measuring it.** It named one file. The
+token was in **19 places across six files in three test scopes**. More useful than
+the miscount is *why* nobody caught it: the conformance guard could not have, on
+three independent counts that all applied at once.
+
+- It globs `*.md`. Every occurrence was in `.py`.
+- `tests/` and `scripts/` are in `EXCLUDED_SUBTREES` — on the reasoning that they
+  carry no portable *prose*. They carry portable *strings*, and `update-cla` syncs
+  them into every destination repo just the same.
+- `hooks/` and `agents/` are not under `skills/`, so both are outside its scan root.
+
+And it is dormant here regardless: with no curated `project-tokens.local.md` it
+`pytest.skip`s, which is the "1 skipped" the `update-cla` scope reports on every run.
+CLAUDE.md warns that `hooks/*.py` and `agents/*.md` are unscanned; it does not
+mention `skills/**/tests/`, nor that the guard does nothing without an overlay.
+
+Two guards were added so the class cannot recur — a source scanner covering the
+three blind spots, and an absolute-path check that needs no token list at all. The
+second is the durable one, and the reasoning generalizes:
+
+**A token list fits a consuming repo and not a source repo.** In a consuming repo
+the list is closed and self-known — your own project's vocabulary. In the source
+repo there are no local product tokens to protect, and what leaks in are names from
+*other* repos, arriving via pasted examples. Listing those means enumerating every
+repo the author works in: open-ended, externally determined, and stale the moment a
+new project starts. It catches the names you already know, which are the ones you
+already fixed. A closed-form pattern — no synced-core file may carry a hardcoded
+absolute developer path, whatever repo it names — catches a name nobody has seen,
+and is what would actually have caught this one.
+
+Worth recording about the tuning, because a synthetic-only rule would have shipped
+broken twice: a naive drive-letter pattern matches `https://…` (`s:` followed by
+`//` satisfies the drive shape), and after that was fixed every remaining hit was a
+legitimate path-parsing fixture. The resolution was placeholder notation
+auto-exempting and an explicit marker on real-looking fixtures — not a `tests/`
+exemption, since `tests/` is where the leak lived.
 
 ### Deliberate non-changes
 
