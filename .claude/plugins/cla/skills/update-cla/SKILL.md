@@ -26,8 +26,6 @@ These rules govern every adapted file. Read them first; they take precedence ove
 
 **4. Verify every referenced tool/skill NAME exists in the destination, not just file paths.** A source file may reference a tool (in `allowed-tools`, in prose instructions) that's real in the source environment but doesn't exist here — checking that a *path* like `.claude/plugins/cla/skills/foo/bar.py` exists is not the same check. Before writing, run `ToolSearch` on every tool name the adapted content will reference (frontmatter `allowed-tools` and inline prose alike); drop or replace anything that doesn't resolve.
 
-**6. Act on every cross-asset requirement Discover reports.** Phase 1 prints a `!! N cross-asset requirement(s)` block (also in `divergences.json` under `requirements`) for subtleties whose failure mode is **silent**, so "the sync succeeded" is not evidence they were handled. Two kinds: a **companion overlay** — a synced asset that no-ops until this repo creates a named `*.local.md` (the note carries the values to put in it); and a **partial lockstep group** — only some of a set of interdependent assets is in scope, so an importer can land against an incompatible shared module. Never proceed past a reported requirement without either satisfying it or stating why it doesn't apply here. The declaration lives in the SOURCE repo (`references/sync-requirements.json`), so a source that learns a new subtlety teaches every consumer on their next sync.
-
 **5. Never overwrite the local project overlay.** A file whose leaf name is exactly `project-context.md`, or that ends with `.local.md`, is this repo's own project-specific overlay (repo-tuned review checks, project-specific reference content). `discover.py` already excludes them from the sync candidates, so they never appear in `divergences.json` — do NOT hand-add them to `adaptations.json` either. The overlay is local truth; the source's version, if any, is irrelevant.
 
 ## Why pull, not push
@@ -130,5 +128,4 @@ Two pytest guards protect this skill's cross-repo safety: a **conformance guard*
 - `references/guards.md` — the conformance guard, the project-facts staleness guard, and this skill's known limitations.
 - `references/adaptation_prompt.md` — the Phase 2 per-file adaptation prompt.
 - `references/pr_template.md` — the PR body template rendered by `apply --mode pr`.
-- `references/sync-requirements.json` — declared companion-overlay and lockstep-group requirements Phase 1 checks (rule 6). Add an entry here when a synced asset starts depending on a per-repo overlay, or on another asset moving with it.
 - `references/project-tokens.local.md` — **OVERLAY, not a generic reference.** This repo's own curated token list for the conformance guard; never synced, never treated as portable content.
