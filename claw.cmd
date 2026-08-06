@@ -51,6 +51,21 @@ if "!FIRST:~0,1!"=="-" (
 set "NAME=%~1"
 shift
 
+REM Collect the REMAINING args by hand. `shift` renumbers %1..%9 but leaves %*
+REM holding the ORIGINAL, unshifted command line — so passing %* after a shift
+REM would hand the worktree name to `claude` as a trailing positional, which it
+REM reads as an initial prompt. Every launch would auto-submit the worktree name
+REM as a user turn. Verified: `t.cmd myfeature --resume` yields
+REM NAME=[myfeature] STAR=[myfeature --resume].
+REM `%1` unquoted (not `%~1`) so the caller's own quoting is preserved.
+set "EXTRA="
+:collect_args
+if "%~1"=="" goto :args_done
+set "EXTRA=!EXTRA! %1"
+shift
+goto :collect_args
+:args_done
+
 if not exist "%PLUGIN_DIR%\" (
   echo claw.cmd: plugin directory not found: %PLUGIN_DIR% 1>&2
   echo claw.cmd: expected .claude\plugins\cla next to this script - check it exists 1>&2
@@ -67,18 +82,24 @@ if errorlevel 1 (
   exit /b 127
 )
 
-REM Same interpreter probe the guard hooks use — `python3` is not always the
-REM name on Windows.
+REM Interpreter probe. Each candidate is RUN before being accepted: on Windows
+REM `python3` commonly resolves to the Store alias stub in WindowsApps, which
+REM prints nothing, exits non-zero, and would surface later as an unexplained
+REM "worktree creation failed". `py` is tried first here because on native
+REM Windows it is the launcher that actually exists.
 set "PYEXE="
-for %%P in (python3.exe py.exe python.exe) do (
+for %%P in (py.exe python.exe python3.exe) do (
   if not defined PYEXE (
     for /f "delims=" %%I in ('where %%P 2^>nul') do (
-      if not defined PYEXE set "PYEXE=%%I"
+      if not defined PYEXE (
+        "%%I" -c "import sys" >nul 2>nul && set "PYEXE=%%I"
+      )
     )
   )
 )
 if not defined PYEXE (
-  echo claw.cmd: no python interpreter found on PATH (tried python3, py, python). 1>&2
+  echo claw.cmd: no working python interpreter found on PATH (tried py, python, python3). 1>&2
+  echo claw.cmd: note a non-functional shim (e.g. the Windows Store python3 alias) is skipped, not used. 1>&2
   exit /b 127
 )
 
@@ -110,12 +131,38 @@ if not exist "%WORKTREE_PLUGIN_DIR%\" (
   exit /b 1
 )
 
-echo claw.cmd: worktree ready at %WORKTREE_PATH% 1>&2
+REM `cd` BEFORE announcing anything, and check it. Batch has no `set -e`: a
+REM failed `cd` prints an error and CONTINUES, so `call claude` would then run
+REM in whatever cwd the user invoked from — usually the primary clone, which
+REM writes the SessionStart heartbeat this whole script exists to avoid. The
+REM banner also has to come after, or it would name the worktree while the
+REM session is actually somewhere else.
+cd /d "%WORKTREE_PATH%"
+if errorlevel 1 (
+  echo claw.cmd: could not enter "%WORKTREE_PATH%"; not launching. 1>&2
+  exit /b 1
+)
+
+REM Assert the ONE property this launcher promises, rather than assuming the
+REM `cd` implied it: a linked worktree has git_dir != git_common_dir. If they
+REM are equal we are in the primary clone and must not launch.
+for /f "delims=" %%I in ('git rev-parse --absolute-git-dir 2^>nul') do set "GD=%%I"
+for /f "delims=" %%I in ('git rev-parse --git-common-dir 2^>nul') do set "GCD=%%I"
+if not defined GD (
+  echo claw.cmd: could not resolve the git dir after entering the worktree; not launching. 1>&2
+  exit /b 1
+)
+if /i "%GD%"=="%GCD%" (
+  echo claw.cmd: cwd resolves to the PRIMARY CLONE, not a linked worktree; not launching. 1>&2
+  echo claw.cmd: launching here would write the presence heartbeat this script exists to avoid. 1>&2
+  exit /b 1
+)
+
+echo claw.cmd: worktree ready at "%WORKTREE_PATH%" 1>&2
 echo claw.cmd: dependencies are NOT installed and env files are NOT copied. 1>&2
 echo claw.cmd: run /cla:new-worktree in the session to finish setup ^(it detects the existing worktree and runs setup only^). 1>&2
-cd /d "%WORKTREE_PATH%"
->&2 echo + claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium %*
-call claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium %*
+>&2 echo + claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium!EXTRA!
+call claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium!EXTRA!
 REM Capture ERRORLEVEL immediately -- do not insert commands between the claude
 REM call and this line, or the real exit code would be lost.
 exit /b %ERRORLEVEL%
