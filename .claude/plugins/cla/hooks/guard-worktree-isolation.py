@@ -80,6 +80,8 @@ if _HOOKS_DIR not in sys.path:
 
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
+from _dispatch_lib import run_git as _run_git  # noqa: E402
+from _dispatch_lib import clone_paths as _clone_paths  # noqa: E402
 
 # A heartbeat older than this = the session is gone. Set as a CRASH backstop, not
 # the primary liveness signal: presence is refreshed on SessionStart + every
@@ -120,34 +122,12 @@ def _warn(msg: str) -> None:
     print(f"[guard-worktree-isolation] warn: {msg}", file=sys.stderr)
 
 
-# This hook runs on EVERY Bash and Edit/Write call and makes at least two git
-# calls per invocation, so its per-call ceiling has to be a fraction of the
-# handler budget rather than equal to it: at the previous 5s, two stuck calls
-# came to exactly `_dispatch_lib.HANDLER_TIMEOUT_SECONDS` and the handler was
-# killed — losing the block this hook exists to produce. `Deadline` cannot
-# rescue this one either, since an enforcing hook is deliberately never skipped.
-#
-# 3s is still generous for what is actually being asked: these `rev-parse` calls
-# read refs and resolve paths, so they answer in milliseconds even on a large
-# repo. A call approaching this bound means git is wedged, which is precisely
-# the concurrent-session contention this hook exists to detect — and failing
-# open with a warning beats taking the whole handler down.
-#
-# The number is small because worst case is (call sites) x (this timeout), and
-# that product is charged against a 15s handler shared with every other hook on
-# the same matcher. `_dispatch_lib.HOOK_WORST_CASE_SECONDS` records it and the
-# wiring test fails if the enforcing hooks stop fitting.
-_GIT_TIMEOUT_SECONDS = 3
-
-
-def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess | None:
-    try:
-        return subprocess.run(
-            ["git", "-C", cwd, *args],
-            capture_output=True, text=True, timeout=_GIT_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
+# `_run_git`/`_clone_paths` (imported above from `_dispatch_lib`) are bounded by
+# `GIT_TIMEOUT_SECONDS` (3s) there — see that module's docstring on the shared
+# helpers for why 3s and why this matters for the handler budget. This hook
+# makes at least two such calls per invocation, and `HOOK_WORST_CASE_SECONDS`
+# charges that product against the 15s handler shared with every other hook on
+# the same matcher; the wiring test fails if the enforcing hooks stop fitting.
 
 
 def _is_checkout_switch(cwd: str, arg: str) -> bool:
@@ -213,27 +193,8 @@ def _mutates_shared_head(command: str, cwd: str) -> str | None:
 
 
 # --- primary-clone vs worktree + presence -----------------------------------
-
-
-def _clone_paths(cwd: str) -> tuple[str, str] | None:
-    """Return (git_dir, git_common_dir) as realpaths, or None on failure.
-
-    One `rev-parse` answering both questions, not two: it prints one line per
-    requested option in argument order. This runs on every Bash call and on
-    every Edit/Write via --heartbeat, so halving the process count here is the
-    single largest saving available against the shared handler budget.
-    """
-    r = _run_git(cwd, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
-    if not r or r.returncode != 0:
-        return None
-    lines = r.stdout.strip().splitlines()
-    if len(lines) < 2:
-        return None
-    git_dir = os.path.realpath(lines[0].strip())
-    common = lines[1].strip()
-    if not os.path.isabs(common):
-        common = os.path.join(cwd, common)
-    return git_dir, os.path.realpath(common)
+# `_clone_paths` is imported from `_dispatch_lib` (shared with
+# block-worktree-path-escape.py, which needs the identical answer).
 
 
 def _other_live_sessions(guard_dir: Path, my_id: str, now: float) -> int:

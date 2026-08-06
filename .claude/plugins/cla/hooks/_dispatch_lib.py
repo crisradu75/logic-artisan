@@ -8,7 +8,7 @@ importing each as a standalone module — the same technique
 .claude/plugins/cla/hooks/tests/ already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
 modified by this module; it only orchestrates them. (2) It also HOSTS
-`strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which four leaf git hooks import.
+`strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which six leaf git hooks import.
 So the relationship with those hooks is bidirectional: this module loads them,
 and they import from it. Consequence worth holding onto: keep this module
 import-cheap and side-effect-free, because a failure here takes out both roles
@@ -33,6 +33,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -108,8 +109,23 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     "warn-comment-dates.py": 0.0,
     "block-dated-stamps-in-prose.py": 0.0,
     "warn-smoke-test-drift.py": 0.0,
-    # 1 x _current_branch(3s). Memoised per cwd — without that the count scales
-    # with the number of pushes in the command and no fixed figure is honest.
+    # 1 x _current_branch(3s) for the shapes that actually occur. Memoised per
+    # cwd, which bounds the common case: several pushes sharing one directory
+    # resolve the branch once.
+    #
+    # KNOWN GAP, stated rather than implied: the cache key IS the cwd, and each
+    # push may carry its own `-C`/`--work-tree`, so distinct directories are
+    # distinct keys. `git -C /a push origin HEAD && git -C /b push origin HEAD
+    # && git -C /c push origin HEAD` really does spawn three `rev-parse` calls
+    # (verified) — 9s, not 3.0. `_branch_for` can also try two candidates for a
+    # single push (composed relative path, then session cwd), doubling again.
+    # So this entry is the realistic bound, not a proven ceiling.
+    #
+    # Left at 3.0 deliberately: raising it to a true worst case would put the
+    # enforcing sum over the budget and fail `test_hooks_wiring.py`, and the fix
+    # for that is to make the hook cheaper (resolve at most one branch per
+    # command), not to raise the handler timeout. Tracked here so the next
+    # person to touch this hook sees the constraint instead of rediscovering it.
     "block-direct-push-to-main.py": 3.0,
     # 1 x _git_email(3s).
     "ask-git-identity.py": 3.0,
@@ -260,9 +276,65 @@ def compose_output(
     return clamp_output(body, budget) + "\n" + must_keep
 
 
+# --- Bounded git subprocess helpers -----------------------------------------
+# Shared by block-worktree-path-escape.py and guard-worktree-isolation.py,
+# which both run on every Edit/Write/Bash call and both need the SAME answer —
+# "is cwd inside a linked worktree?" — resolved from its git-dir and
+# git-common-dir. (`--show-toplevel` is NOT part of this; only
+# block-worktree-path-escape.py wants the worktree root, and it keeps its own
+# `_worktree_root` for that.)
+#
+# Each previously carried its own copy: the `_clone_paths` BODIES were
+# identical, though their docstrings were not, and the two `_run_git` wrappers
+# were NOT equivalent — one ran `["git", *args], cwd=cwd` while the other ran
+# `git -C cwd`. Consolidating standardized on `-C`, so this was a behavior
+# reconciliation, not a pure de-duplication. One definition, one fix site, same
+# reasoning as `strip_quoted_spans`/`GIT_GLOBAL_OPTS` below.
+#
+# 3s: the bound exists to catch a WEDGED git (an index lock held by a
+# concurrent session), not to accommodate a slow one — `rev-parse` on a
+# healthy repo answers in milliseconds. Worst case is (call sites) x (this
+# timeout), charged against the 15s handler shared with every other hook on
+# the same matcher; `HOOK_WORST_CASE_SECONDS` records the product per caller.
+GIT_TIMEOUT_SECONDS = 3
+
+
+def run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess | None:
+    """Run `git -C cwd <args>`, bounded by `GIT_TIMEOUT_SECONDS`, fail-open."""
+    try:
+        return subprocess.run(
+            ["git", "-C", cwd, *args],
+            capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def clone_paths(cwd: str) -> tuple[str, str] | None:
+    """Return (git_dir, git_common_dir) as realpaths, or None on failure.
+
+    One `rev-parse` answering both questions, not two: it prints one line per
+    requested option in argument order. This runs on every Bash call and on
+    every Edit/Write via --heartbeat, so halving the process count here is a
+    real saving against the shared handler budget.
+    """
+    r = run_git(cwd, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
+    if not r or r.returncode != 0:
+        return None
+    lines = r.stdout.strip().splitlines()
+    if len(lines) < 2:
+        return None
+    git_dir = os.path.realpath(lines[0].strip())
+    common = lines[1].strip()
+    if not os.path.isabs(common):
+        common = os.path.join(cwd, common)
+    return git_dir, os.path.realpath(common)
+
+
 # --- Git command-line matching helpers --------------------------------------
 # Shared by block-direct-push-to-main.py, warn-branch-base.py,
-# warn-stray-scratch-artifact.py, and guard-worktree-isolation.py. Previously
+# warn-stray-scratch-artifact.py, guard-worktree-isolation.py,
+# ask-destructive-git.py, and ask-git-identity.py. Previously
 # each of those four files carried its own literal copy of this pattern (three
 # linked only by a "mirrors guard-worktree-isolation.py" comment) — a bug fixed
 # in one copy could silently persist in the other three, and did: a long

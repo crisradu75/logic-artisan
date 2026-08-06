@@ -47,10 +47,17 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (7 today) plus `hooks/` is its own isolated pytest scope, each
-with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a `pythonpath` pointing at that
-scope's importable code — `["scripts"]` for a skill, `["."]` for `hooks/`, whose modules sit at
-the scope root). Several scopes
+design. Each skill that ships tests (7 today), plus `hooks/`, plus `consistency-checks/`, is its
+own isolated pytest scope — 9 in total — each with its own `pyproject.toml` (`testpaths =
+["tests"]`, plus a `pythonpath` pointing at that scope's importable code — `["scripts"]` for a
+skill and for `consistency-checks/`, `["."]` for `hooks/`, whose modules sit at the scope root).
+
+`consistency-checks/` is the odd one out: not a skill (no `SKILL.md`) and not a guard hook, but a
+home for checks that span *several* scopes and so can live in none of them — today, a drift check
+over the sibling `log_run.py`/`aggregate.py` copies that the isolation rule below deliberately
+prevents from sharing a module. It sits outside the synced set
+(`skills`/`agents`/`hooks`/`output-styles`), so `update-cla` never propagates it to consuming
+repos; it guards this repo's own source. Several scopes
 ship same-named helper modules (e.g. `scripts/aggregate.py`, `scripts/log_run.py`), so they can't
 share one pytest process — this is why `run_tests.py` exists: it discovers every scope
 (dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once
@@ -138,8 +145,13 @@ decisions doc → `multi-lite` or `multi-pr`.
 
 Wired automatically via `.claude/plugins/cla/hooks/hooks.json` when the plugin loads (no
 `settings.json` step needed) — these apply in this repo's own sessions too, not only in repos
-that sync the plugin. **Blocks** (`block-*`) stop a tool call; **warns** (`warn-*`) surface a
-caution without blocking:
+that sync the plugin. `hooks.json` itself wires two dispatchers (`dispatch-bash-pretooluse.py` for
+the Bash/PowerShell matcher, `dispatch-edit-write-pretooluse.py` for the Edit/Write matcher), each
+of which runs several leaf hooks in one Python process — 13 distinct leaf hooks between them
+(`guard-worktree-isolation` runs on both matchers), plus `warn-lint-on-edit` wired directly on
+PostToolUse: 14 leaf hook files in all. **Blocks**
+(`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt instead of
+blocking outright; **warns** (`warn-*`) surface a caution without blocking:
 
 - **No direct push to main/master** (`block-direct-push-to-main`) — branch + PR for any change;
   a bare `Bash(cd ...)` (`block-cd-in-bash`) — the working dir is already repo root, and a `cd`
@@ -150,10 +162,16 @@ caution without blocking:
   branch-create/switch/commit in the primary clone while another session is live there too —
   git's HEAD is per-clone, not per-session, so two concurrent sessions would otherwise collide
   on one branch; also refreshes/clears this session's presence heartbeat on SessionStart/End).
+- **Asks:** `ask-destructive-git` (a destructive-but-not-outright-blocked git command, e.g. a
+  force-push or `reset --hard`) · `ask-git-identity` (no `user.email` configured, or the commit
+  author doesn't match an expected identity when one is set) — both return exit 0 and escalate via
+  `permissionDecision: "ask"` rather than blocking, since the action may be legitimate.
 - **Warns:** `warn-branch-base` (branched off the wrong base) · `warn-lint-on-edit` (lints the
-  edited file, feeds violations back non-blocking) · `warn-smoke-test-drift` · `warn-stacked-pr-merge`
-  (a merge that could auto-close an open child PR) · `warn-comment-dates` ·
-  `warn-stray-scratch-artifact` (scratch files left in the repo root).
+  edited file, feeds violations back non-blocking) · `warn-smoke-test-drift` (component/i18n edits
+  that may break a UI smoke test — config-driven via a `smoke-test-drift.local.md` overlay beside
+  the hook; a no-op with none present, which is this repo's own state, since it ships no product
+  code) · `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
+  `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root).
 
 ### Portability
 

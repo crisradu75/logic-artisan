@@ -12,7 +12,7 @@ Automates a manual precedent set in this repo's own history (see `references/pro
 
 ## Skill-level rules (hoisted — read first)
 
-- **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** Every command below that names it is a placeholder, not a literal: substitute the real name before running anything. Resolve it once, at the start of the run, with `git symbolic-ref --quiet refs/remotes/origin/HEAD` (take the segment after the last `/`); if that is unset, use whichever of `main` / `master` actually exists. The harness used to hardcode `master`, which silently broke every `main`-default repo — a `master..HEAD` range there fails outright with `unknown revision` rather than returning a wrong answer, and `git checkout master` cannot succeed at all.
+- **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** See `.claude/plugins/cla/skills/spec-to-pr/references/base-branch-resolution.md` (shared verbatim with `multi-lite`/`multi-pr`) for the resolution rule every command below that names `<base-branch>` depends on.
 
 - **Commit each change immediately after authoring and validating it — never batch commits to the end.** One `git commit` (and `git push`) per change, before starting the next. This is not a style preference; it is the actual anti-data-loss mechanism.
 - **Never run `git add -A`.** Path-scope every stage (per Phase, name the exact paths: the plan JSON, one `openspec/changes/<name>/`, or the whole `openspec/changes/` only in Phase 4's fixes commit — see `.claude/plugins/cla/skills/spec-to-pr/references/bash-discipline.md`, the same hard rules bind here).
@@ -86,5 +86,6 @@ Every phase resumes from git-tracked repo state, never from a log or the plan fi
 - `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md` — model/effort routing single source of truth (reused verbatim, not forked).
 - `.claude/plugins/cla/skills/spec-to-pr/references/bash-discipline.md` — the hard bash-shape rules binding every commit/stage call in this skill.
 - `.claude/plugins/cla/skills/spec-to-pr/references/runtime-rules.md` — the thin-orchestrator runtime disciplines this skill follows throughout.
+- `.claude/plugins/cla/skills/spec-to-pr/references/base-branch-resolution.md` — the `<base-branch>` resolution rule, shared verbatim with `multi-lite`/`multi-pr`.
 - `.claude/plugins/cla/skills/review-change/references/checklist.md` — the single-change review workflow `references/review-gate.md` adapts to batch scope.
 - `references/project-context.md` — this repo's project-context overlay: the named precedent, the loss incident, and the grouping-judgment precedent.

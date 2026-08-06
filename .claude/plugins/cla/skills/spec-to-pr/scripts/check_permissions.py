@@ -16,26 +16,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-
-def _repo_root() -> Path:
-    """Repo root via git (location-independent — works from the plugin, unlike a
-    fixed `parents[N]` depth). Falls back to cwd if git is unavailable; tests
-    monkeypatch REPO_ROOT directly."""
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            return Path(out.stdout.strip())
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return Path.cwd()
-
+from _git_common import repo_root as _repo_root
 
 REPO_ROOT = _repo_root()
 # The skill's bundled required-permissions*.json travels WITH the skill into the

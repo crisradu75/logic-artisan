@@ -51,55 +51,18 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
+# This hook runs standalone under the tests' own module loader as well as via
+# the Edit/Write dispatcher, so the sys.path setup can't be assumed done by a
+# caller — same defensive pattern as guard-worktree-isolation.py, which shares
+# `_run_git`/`_clone_paths` with this file via `_dispatch_lib`.
+_HOOKS_DIR = str(Path(__file__).resolve().parent)
+if _HOOKS_DIR not in sys.path:
+    sys.path.insert(0, _HOOKS_DIR)
 
-# Every sibling git-touching hook bounds its subprocesses; these calls were the
-# one exception, and they run on EVERY Edit/Write. An unbounded git is a hook
-# that can hang forever — and the likeliest cause is precisely the state this
-# hook family exists to detect: an index lock held by a concurrent session in
-# the same clone. Expiry is caught below as just another git failure, which this
-# hook already fails open on.
-#
-# 3s, not 5s: the bound exists to catch a WEDGED git, not to accommodate a slow
-# one — `rev-parse` on a healthy repo answers in milliseconds. The number has to
-# be small because worst case here is (call sites) x (this timeout), and that
-# product is charged against a 15s handler shared with the other Edit/Write
-# hooks. `_dispatch_lib.HOOK_WORST_CASE_SECONDS` records the product and the
-# wiring test fails if the enforcing hooks stop fitting.
-_GIT_TIMEOUT_SECONDS = 3
-
-
-def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:
-    # `subprocess.SubprocessError` is what carries TimeoutExpired; FileNotFoundError
-    # needs no separate arm, being an OSError subclass. Matches the sibling hooks.
-    try:
-        return subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True,
-            timeout=_GIT_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-
-def _clone_paths(cwd: str) -> tuple[str, str] | None:
-    """Return (git_dir, git_common_dir) as realpaths, or None on failure.
-
-    One `rev-parse` answering both questions, not two: it prints one line per
-    requested option in argument order. Halving the process count halves this
-    hook's worst-case contribution to the shared handler budget, which is what
-    lets the enforcing hooks fit inside it at all.
-    """
-    r = _run_git(cwd, ["rev-parse", "--absolute-git-dir", "--git-common-dir"])
-    if not r or r.returncode != 0:
-        return None
-    lines = r.stdout.strip().splitlines()
-    if len(lines) < 2:
-        return None
-    git_dir = os.path.realpath(lines[0].strip())
-    common = lines[1].strip()
-    if not os.path.isabs(common):
-        common = os.path.join(cwd, common)
-    return git_dir, os.path.realpath(common)
+from _dispatch_lib import run_git as _run_git  # noqa: E402
+from _dispatch_lib import clone_paths as _clone_paths  # noqa: E402
 
 
 def _worktree_root(cwd: str) -> str | None:

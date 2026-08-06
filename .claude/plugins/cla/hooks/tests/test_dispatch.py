@@ -213,6 +213,24 @@ def test_edit_write_dispatch_does_not_drop_earlier_warning_when_later_hook_block
     # stdout-JSON warning, then block-worktree-path-escape.py (position 5)
     # blocks on the same edit. The earlier warning must still reach the user
     # via stderr (the only channel fed back on a block) instead of vanishing.
+    #
+    # warn-smoke-test-drift.py is config-driven (a `smoke-test-drift.local.md`
+    # overlay beside the hook — see its own module docstring), so this uses
+    # `_hooks_copy` to drop that overlay into a SCRATCH hooks dir rather than
+    # the real one: this repo ships no product code and deliberately carries
+    # no such overlay.
+    hooks_dir = _hooks_copy(tmp_path)
+    (hooks_dir / "smoke-test-drift.local.md").write_text(
+        "---\n"
+        "component_path_substring: src/components/\n"
+        "component_ext: .tsx\n"
+        "i18n_path_substring: src/i18n/\n"
+        "i18n_ext: .json\n"
+        "smoke_test_relpath: test-app.mjs\n"
+        "---\n",
+        encoding="utf-8",
+    )
+
     primary = tmp_path / "primary"
     primary.mkdir()
     _git(primary, "init", "-b", "master")
@@ -241,7 +259,7 @@ def test_edit_write_dispatch_does_not_drop_earlier_warning_when_later_hook_block
         },
     }
     r = subprocess.run(
-        [sys.executable, str(_EDIT_WRITE_DISPATCH)],
+        [sys.executable, str(hooks_dir / "dispatch-edit-write-pretooluse.py")],
         input=json.dumps(payload),
         capture_output=True, text=True, cwd=str(wt),
         env={**os.environ, "ALLOW_WORKTREE_PATH_ESCAPE": "", "CLAUDE_PROJECT_DIR": str(primary)},
