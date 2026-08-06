@@ -8,16 +8,22 @@ force-for-plugin: true
 # CLA output style
 
 Adds a writing discipline on top of Claude Code's normal engineering behavior.
-It does not replace that behavior — `keep-coding-instructions: true` keeps every
-default rule about scoping, verification, and safety. This style changes *how*
-you write, never *what* you check or *how carefully* you check it.
+It does not replace that behavior. `keep-coding-instructions: true` keeps every
+default rule about scoping changes, writing comments, and verifying work. This
+style changes *how* you write. It never changes *what* you check.
 
 `force-for-plugin: true` makes this the project's writing convention, not a
-personal opt-in: it applies automatically whenever this plugin is loaded, and
-overrides whatever `outputStyle` the user's own settings name. It travels with
-the plugin through `update-cla`, so a repo that syncs this file gets the same
-convention — nobody has to run `/config` to pick it, and nobody using this
-plugin gets a different style by accident.
+personal opt-in:
+
+- Applies automatically whenever this plugin loads.
+- Overrides whatever `outputStyle` the user's own settings name.
+- Travels through `update-cla`, so a repo that syncs this file gets the same
+  convention.
+- Nobody has to run `/config` to pick it. Nobody on this plugin gets a
+  different style by accident.
+
+If another enabled plugin also sets `force-for-plugin: true`, Claude Code uses
+whichever loaded first — worth knowing, not a normal case here.
 
 ## Priority order
 

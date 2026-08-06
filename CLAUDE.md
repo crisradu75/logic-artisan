@@ -76,8 +76,9 @@ everywhere) from *facts* (per-repo, never synced):
   only. A pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
   developer path, leaks into synced core — one scanner covers `SKILL.md`/`references/*.md` prose
   under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`
-  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is), so the whole tree is
-  mechanically checked, not just `skills/`.
+  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Together that's every
+  `.py`/`.md` in the tree — a non-`.py`/`.md` synced-core file (`hooks/hooks.json`, a skill's own
+  `.mjs` script) is still outside both scanners; watch those by hand.
 - **Overlays** — each skill's `references/project-context.md` plus any `*.local.md` files: the
   destination repo's own facts and tuned checks. Recognized by name, excluded from sync, never
   overwritten by `update-cla`. In *this* repo they are neutral stubs (this is the source, not a

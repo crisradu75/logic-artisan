@@ -15,9 +15,17 @@ synced to every repo) + a repo-specific *fact* (the token list, never synced).
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
+
+# `discover.SCAN_DIRS` is the single source of truth for what update-cla syncs.
+# Imported (not re-typed) so this file's scan roots can never drift from it —
+# see the SOURCE_SCAN_ROOTS derivation below for why that drift is a real,
+# already-happened failure mode, not a hypothetical one.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import discover  # noqa: E402
 
 OVERLAY_FILE_NAME = "project-context.md"
 OVERLAY_LOCAL_SUFFIX = ".local.md"
@@ -169,7 +177,14 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # `SKILL.md` `description:` that legitimately names the host repo so the skill
 # triggers, which has no analogue in a `.py` file.
 
-SOURCE_SCAN_ROOTS = ("skills", "hooks", "agents", "output-styles")
+# Derived from `discover.SCAN_DIRS`, not hand-typed: this list was independently
+# maintained here (and a third time in test_sync_claude_assets.py) and BOTH
+# copies missed `output-styles` when it was added to the real `SCAN_DIRS` —
+# caught only by review, not by any test, because every test that referenced
+# the stale copy stayed green. Deriving makes that class of drift structurally
+# impossible: a future 5th category added to SCAN_DIRS alone is scanned here
+# automatically, with no second edit to remember.
+SOURCE_SCAN_ROOTS = tuple(d.rsplit("/", 1)[-1] for d in discover.SCAN_DIRS)
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 
 
@@ -523,6 +538,19 @@ def test_each_shape_on_one_line_is_reported_independently(tmp_path):
     assert kinds == ["home-directory-path"], kinds
 
 
+def test_the_scanner_reaches_output_styles_not_just_hooks(tmp_path):
+    # `_scan_one` above always writes to hooks/sample.py, so every parametrized
+    # case using it proves the PATTERNS work without proving this scanner is
+    # actually wired to output-styles/ — the exact gap that let the real
+    # SOURCE_SCAN_ROOTS addition ship untested. Seeded directly here instead.
+    (tmp_path / "output-styles").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "output-styles" / "CLA.md").write_text(
+        'See C:\\Users\\alice\\code\\thing\n', encoding="utf-8"  # path-fixture-ok
+    )
+    leaks = find_absolute_path_leaks(tmp_path)
+    assert [rel for rel, *_ in leaks] == ["output-styles/CLA.md"]
+
+
 def test_the_scanner_is_not_vacuous(tmp_path):
     """A guard that can never fire would pass every test above by accident."""
     assert _scan_one(tmp_path, r'BASE = "C:\Users\alice\x"')  # path-fixture-ok
@@ -700,6 +728,17 @@ def test_source_scan_covers_hooks_and_agents_outside_the_skills_root(tmp_path):
     assert rels == ["agents/some-agent.md", "hooks/some-hook.py"]
 
 
+def test_source_scan_covers_output_styles_outside_the_skills_root(tmp_path):
+    # The same class of gap as hooks/agents above, pinned separately: a fourth
+    # root added to SCAN_DIRS is worth nothing to this guard unless this
+    # scanner's own md_roots is widened to match, which is a second edit that
+    # nothing forces anyone to remember. This is that forcing function.
+    _seed(tmp_path, "output-styles/CLA.md", "Body naming funnel-demo directly.\n")
+    assert find_violations(tmp_path / "skills", tmp_path, ["funnel-demo"]) == []
+    rels = [h[0] for h in find_source_violations(tmp_path, ["funnel-demo"])]
+    assert rels == ["output-styles/CLA.md"]
+
+
 def test_source_scan_exempts_agent_frontmatter_but_flags_the_body(tmp_path):
     # Same reasoning as the prose guard's SKILL.md exemption: a description
     # legitimately names the host repo so the agent is selected for it.
@@ -715,6 +754,28 @@ def test_source_scan_exempts_agent_frontmatter_but_flags_the_body(tmp_path):
         "---\nname: b\n---\n\nHardcoded funnel-demo in the body.\n",
     )
     assert [h[0] for h in find_source_violations(tmp_path, ["funnel-demo"])] == ["agents/b.md"]
+
+
+def test_source_scan_exempts_output_style_frontmatter_but_flags_the_body(tmp_path):
+    # An output style's `description:` is shown in the /config picker and can
+    # legitimately name the host project, same reasoning as the agent case
+    # above — checked as its own case because md_roots exempting "any .md" by
+    # accident (rather than specifically agents/output-styles) would pass the
+    # agent-only version of this test just as easily.
+    _seed(
+        tmp_path,
+        "output-styles/a.md",
+        "---\nname: a\ndescription: Use in funnel-demo.\n---\n\nPortable prose.\n",
+    )
+    assert find_source_violations(tmp_path, ["funnel-demo"]) == []
+    _seed(
+        tmp_path,
+        "output-styles/b.md",
+        "---\nname: b\n---\n\nHardcoded funnel-demo in the body.\n",
+    )
+    assert [h[0] for h in find_source_violations(tmp_path, ["funnel-demo"])] == [
+        "output-styles/b.md"
+    ]
 
 
 def test_source_scan_ignores_bytecode_and_overlays(tmp_path):

@@ -327,6 +327,7 @@ def test_summary_counts(synthetic_repos):
     assert counts["new"] == 1
     assert counts["skills"] == 2
     assert counts["hooks"] == 0
+    assert counts["output_styles"] == 0
     assert counts["total"] == 2
     assert counts["skipped"] == 0
 
@@ -779,8 +780,14 @@ def test_malformed_ratio_never_flags_real_repo_content():
     # every file actually shipped in the synced core so a future doc written
     # in the same blank-line-heavy style can't silently regress this guard.
     apply_mod = _load("apply")
+    discover_mod = _load("discover")
     plugin_root = Path(__file__).resolve().parents[3]  # .../.claude/plugins/cla
-    scan_dirs = ["skills", "agents", "hooks", "output-styles"]
+    # Derived from discover.SCAN_DIRS rather than hand-typed — a hardcoded copy
+    # here and a second one in test_no_project_tokens.py both missed
+    # `output-styles` when it was added to the real SCAN_DIRS, with every test
+    # against the stale copies staying green. See that file's SOURCE_SCAN_ROOTS
+    # for the fuller rationale.
+    scan_dirs = [d.rsplit("/", 1)[-1] for d in discover_mod.SCAN_DIRS]
     flagged = []
     for scan_dir in scan_dirs:
         base = plugin_root / scan_dir

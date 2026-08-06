@@ -52,7 +52,7 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
 
 ## Packages, paths, and app names
 
-- Synced core (portable, no repo facts): `.claude/plugins/cla/{skills,agents,hooks}/`
+- Synced core (portable, no repo facts): `.claude/plugins/cla/{skills,agents,hooks,output-styles}/`
 - Overlays (repo-local, never synced): each skill's `references/project-context.md`, any `*.local.md`
 - Per-repo state: `cla.io/` — `decisions/`, `feedback/`, `retro/`, `lessons-learned/`
 - Worktree convention: `.claude/worktrees/<name>` in the primary clone
