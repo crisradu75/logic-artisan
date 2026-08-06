@@ -41,6 +41,62 @@ the confirmed hypothesis in the commit message, then ask what would have prevent
   is bash; CLA's own convention is stdlib-only Python for bundled scripts — needs a port or a
   documented exception if adopted.
 
+## Build `multi-lite-retro` / `multi-pr-retro` / `multi-spec-retro` / `project-review-retro`
+
+Folded in from PR #7, which was closed in favour of this entry (it created `TODO.md` as a new
+file and so conflicted once this one existed).
+
+**The gap:** all four skills already log every run to `cla.io/retro/*-runs.jsonl` with a
+documented schema, but none has an analyzer skill. Each schema doc states the same "log now,
+build the retro once the sample justifies it" threshold that `spec-to-pr-retro` and
+`codify-retro` were themselves held to before they existed.
+
+**This repo will never produce the data, and that is expected — not a blocker.** `logic-artisan`
+holds no product code, so it does not accumulate `multi-*`/`project-review` runs. `spec-to-pr-retro`
+and `codify-retro` already exist here despite this repo's own ledgers being nearly empty; both
+were authored as portable procedure and validated against a *consuming* repo's real log
+(`cla.io/` is deliberately per-repo state and is never synced).
+
+**Which means the data has to be gathered deliberately.** Check the consuming repos on the current
+`.claude/plugins/cla/` + `cla.io/` layout before concluding the threshold hasn't been crossed —
+older snapshots using the pre-extraction `.claude/skills/` + `.claude/retro/` layout predate
+`multi-lite`/`multi-pr`/`multi-spec` entirely and carry no signal for them. Deliberately no
+run-count snapshot is recorded here: PR #7 carried one and it was the first thing to go stale.
+`project-review` is the weakest case — it had never logged a run anywhere checked.
+
+**`update-cla` only flows source → consumer.** There is no reverse sync. A retro skill built while
+working in a consuming repo has to be contributed back manually (copy the skill files, open a PR
+against `logic-artisan`) before it becomes part of the canonical synced core.
+
+**Related, already established:** the same "don't build it until the ledger justifies it" call was
+re-tested for `codify-learnings` and held — the aggregator's own metrics said the current design
+was working and the window was below its stated bar. The threshold discipline in this item is the
+same one, applied earlier in the lifecycle.
+
+## Make the symlink tests run on Windows (use an NTFS junction)
+
+Three tests call `os.symlink(..., target_is_directory=True)` and `pytest.skip` when it raises —
+which on Windows it always does for an unprivileged account (`WinError 1314`,
+SeCreateSymbolicLinkPrivilege). So they skip on the platform whose path handling they exist to
+check, and the suite still reports green:
+
+- `hooks/tests/test_block_worktree_path_escape.py` — a worktree reached by an aliased spelling is
+  still recognised as inside it
+- `skills/new-worktree/tests/test_manual_worktree.py` (×2) — worktree path canonicalisation, and
+  `casing_mismatch` detecting path indirection
+
+**Solution is verified, not speculative.** An NTFS junction (`mklink /J`) needs no elevation,
+`os.path.realpath` resolves it exactly like a symlink, and all three call sites only need a
+*directory* alias. Confirmed on a real Windows box: `os.symlink` → `WinError 1314`, `mklink /J` →
+rc 0, `realpath` resolves to the target, child paths reachable. (`os.path.islink()` is False for a
+junction — irrelevant here since every caller goes through `realpath`, and it is exactly why
+`block-unsafe-recursive-delete` does its own reparse-point check instead of trusting `islink`.)
+
+**Shape:** a `make_dir_alias(target, link) -> bool` helper trying `os.symlink` then falling back to
+`mklink /J`, in a `conftest.py` per scope. The two scopes cannot share a module (see
+`run_tests.py`), so the copies would need adding to `consistency-checks`' `SIBLING_GROUPS` to stay
+in lockstep.
+
 ## Adopt the Agent Brief durability discipline for `tasks.md` authoring
 
 Postponed mid-`shape-decision` on 2026-07-26. Ported idea from the peer repo `mattpocock/skills`

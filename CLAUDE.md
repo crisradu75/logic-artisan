@@ -74,6 +74,32 @@ sibling `node --test` suite (not a pytest scope, so `run_tests.py` doesn't disco
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
 ```
 
+### CI (`.github/workflows/tests.yml`)
+
+**This repo has CI, and it is the authority — not a local run.** It fires on every pull request,
+every push to `main`, and on manual `workflow_dispatch`. Three jobs:
+
+| Job | What it runs |
+|---|---|
+| `pytest (<os>, py<ver>)` | `run_tests.py` across a 2×2 matrix: `ubuntu-latest`/`windows-latest` × py`3.11`/`3.13` |
+| `node --test` | the `mechanical-checks` suite `run_tests.py` cannot discover |
+| `no SyntaxWarnings` | compiles every `.py` under the plugin with `-W error::SyntaxWarning` |
+
+**Why the matrix, and why local green is not enough.** Every guard hook shells out to real `git`,
+and several behave differently on Windows vs POSIX (path separators, the mangled-path shapes
+`warn-stray-scratch-artifact` parses). A pass on one developer's box is evidence about that box.
+Running all four legs locally is not practical, so the matrix is the only place platform- and
+version-specific breakage surfaces — treat an unreported leg as unknown, not as fine.
+
+**Read the failure before believing it.** A red check is not automatically a code failure: a job
+that dies in `Set up job` (e.g. `Failed to resolve action download info. Error: Service
+Unavailable`) never reached the tests at all. Check whether the job produced any pytest output
+before diagnosing; `gh run rerun <run-id> --failed` re-runs only the broken legs.
+
+**Auto-merge is NOT enabled on this repo.** `gh pr merge --auto` therefore does not queue behind
+checks — it merges immediately. To wait for CI, watch the checks and merge after
+(`gh pr checks <n> --watch`), or merge through the GitHub UI.
+
 ## Architecture — the fact/procedure split
 
 CLA is portable across repos because it strictly separates *procedure* (generic, synced
