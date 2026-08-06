@@ -41,6 +41,10 @@ Detection scope
 - `git push` with a `+`-prefixed refspec (`git push origin +feat:feat`), which
   is git's other force syntax and carries no flag at all.
 - `git reset` carrying `--hard`.
+- `gh pr merge` in any form. Not destructive in the same sense, but outward-
+  facing and effectively irreversible, and the thing that fails there is
+  AUTHORIZATION — which a hook cannot read, so the prompt is unconditional.
+  See `_GH_PR_MERGE` for the incident that added it.
 
 `--force-with-lease` and `--force-if-includes` are deliberately NOT matched:
 they are the guarded forms that refuse to clobber an unseen remote update, and
@@ -102,6 +106,28 @@ _FORCE_FLAG = re.compile(
 _FORCE_REFSPEC = re.compile(r"(?:^|\s)\+\S+")
 _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 
+# `gh pr merge` — not destructive in the reset/force-push sense, but it is
+# outward-facing and effectively irreversible: it publishes to a shared branch,
+# can trigger deploys, and `--delete-branch` removes the source.
+#
+# It is here because AUTHORIZATION is the thing that fails, and a hook cannot
+# read authorization. Observed twice in one session: two PRs merged that the
+# user had asked to be *built*, not shipped — once by carrying a "merge and
+# clean" instruction forward from an earlier, unrelated task. Both had to be
+# reverted, one after review found it broken.
+#
+# So the prompt is unconditional rather than clever. When the merge IS
+# authorized it costs a keystroke; when it is not, it is the only thing between
+# an assumption and a shared branch. Unlike a rule stated in conversation, it
+# survives compaction — which is exactly when the carry-forward mistake happens.
+# Tokens between `gh` and `pr merge` are skipped so global options and their
+# values match (`gh --repo owner/name pr merge`) — a value can contain `/`, so
+# they are matched as generic tokens rather than a `[-\w]` word class, which
+# missed exactly that shape. Two guards: the tokens exclude shell separators,
+# so a match can never span `&&` into a different command, and the negative
+# lookahead stops the skip at the first `pr` rather than running past one.
+_GH_PR_MERGE = re.compile(r"\bgh\s+(?:(?!pr\b)[^\s&|;\n]+\s+)*pr\s+merge\b")
+
 
 def _reasons(command: str) -> list[str]:
     """Every destructive shape present in `command`, as human-readable causes."""
@@ -119,6 +145,12 @@ def _reasons(command: str) -> list[str]:
         found.append(
             "`git reset --hard`, which discards uncommitted working-tree "
             "changes with no reflog entry to recover them from"
+        )
+    if _GH_PR_MERGE.search(scanned):
+        found.append(
+            "a PR merge, which publishes to a shared branch and cannot be "
+            "cleanly undone — confirm the user actually asked for this MERGE, "
+            "not just for the work to be built"
         )
     return found
 

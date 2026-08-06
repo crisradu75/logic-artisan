@@ -191,3 +191,61 @@ def test_reason_names_the_override_so_the_prompt_is_actionable(monkeypatch, caps
     reason = _reason(payload)
     assert "ALLOW_DESTRUCTIVE_GIT" in reason
     assert "ask-destructive-git.py" in reason
+
+
+# --------------------------------------------------------------------------- #
+# `gh pr merge` — authorization, which a hook cannot read
+#
+# Added after two PRs in one session were merged that the user had asked to be
+# BUILT, not shipped — once by carrying a "merge and clean" instruction forward
+# from an earlier, unrelated task. The prompt is unconditional by design.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr merge 27",
+        "gh pr merge 27 --squash",
+        "gh pr merge --squash --delete-branch 27",
+        "gh pr merge 27 --repo owner/name --squash",
+        "gh --repo owner/name pr merge 27",
+        "gh pr merge",
+    ],
+)
+def test_a_pr_merge_asks(command):
+    assert any("PR merge" in r for r in hook._reasons(command)), command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr view 27",
+        "gh pr create --title x",
+        "gh pr list --state open",
+        "gh pr checks 27",
+        "gh run list",
+        "git merge main",
+        "echo 'gh pr merge 27'",
+    ],
+)
+def test_non_merge_gh_and_local_merge_do_not_ask(command):
+    """A prompt that fires on `gh pr view` would be ignored within a day. Local
+    `git merge` is deliberately out of scope — it is not outward-facing, and
+    `warn-stacked-pr-merge` already covers the case that matters there."""
+    assert not any("PR merge" in r for r in hook._reasons(command)), command
+
+
+def test_a_pr_merge_still_asks_alongside_another_destructive_shape():
+    reasons = hook._reasons("git push --force origin x && gh pr merge 27 --squash")
+    assert len(reasons) == 2
+    assert any("force-push" in r for r in reasons)
+    assert any("PR merge" in r for r in reasons)
+
+
+def test_the_merge_match_does_not_span_a_shell_separator():
+    r"""`(?!pr\b)[^\s&|;\n]+` must not let the skip run from a `gh pr view`
+    across `&&` into an unrelated `pr merge`-looking phrase."""
+    assert not any(
+        "PR merge" in r for r in hook._reasons("gh pr view 27 && echo pr merge")
+    )
