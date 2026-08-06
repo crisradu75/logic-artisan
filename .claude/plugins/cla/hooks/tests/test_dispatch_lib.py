@@ -255,44 +255,14 @@ def test_ensure_hooks_dir_importable_is_idempotent_and_adds_the_hooks_dir():
         sys.path[:] = original
 
 
-# Hooks that match git command SHAPES with the shared regex machinery, and so
-# must import it rather than carry a private copy.
-#
-# `block-direct-push-to-main.py` is deliberately NOT here. It no longer matches
-# with a regex at all: it tokenizes with `shlex` and walks the tokens against an
-# option table, so it has no `GIT_GLOBAL_OPTS`-shaped pattern to share and no
-# `_dispatch_lib` import to bootstrap `sys.path` for. Both assertions below
-# guard against a DIVERGENT COPY of the shared pattern; a hook that uses no
-# pattern cannot diverge from it. Removing it from this list narrows the
-# conformance guard to the hooks it actually describes — it does not weaken it.
 _GIT_HOOK_FILES = [
+    "block-direct-push-to-main.py",
     "warn-branch-base.py",
     "warn-stray-scratch-artifact.py",
     "guard-worktree-isolation.py",
     "ask-destructive-git.py",
     "ask-git-identity.py",
 ]
-
-
-def test_the_push_guard_stays_regex_free_rather_than_growing_a_private_pattern():
-    """The replacement for `block-direct-push-to-main.py`'s membership above.
-
-    Dropping it from `_GIT_HOOK_FILES` would otherwise leave a hole: nothing
-    would stop someone pasting a private `GIT_GLOBAL_OPTS`-style pattern back
-    into it, which is the exact divergence the shared module exists to prevent.
-    Its parsing invariant is now the stronger one — tokenize, don't pattern-match
-    — so that is what gets pinned.
-    """
-    source = (_HOOKS_DIR / "block-direct-push-to-main.py").read_text(encoding="utf-8")
-    assert "import shlex" in source, (
-        "the push guard must tokenize with shlex; a regex matcher here re-creates "
-        "the divergent-copy problem _dispatch_lib.GIT_GLOBAL_OPTS was built to end"
-    )
-    assert "GIT_GLOBAL_OPTS" not in source, (
-        "the push guard no longer matches git option shapes with a regex — if it "
-        "needs to again, add it back to _GIT_HOOK_FILES so the shared-pattern "
-        "conformance assertions cover it"
-    )
 
 
 @pytest.mark.parametrize("filename", _GIT_HOOK_FILES)

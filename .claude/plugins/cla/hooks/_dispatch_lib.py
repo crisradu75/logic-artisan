@@ -8,7 +8,7 @@ importing each as a standalone module — the same technique
 .claude/plugins/cla/hooks/tests/ already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
 modified by this module; it only orchestrates them. (2) It also HOSTS
-`strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which five leaf git hooks import.
+`strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which six leaf git hooks import.
 So the relationship with those hooks is bidirectional: this module loads them,
 and they import from it. Consequence worth holding onto: keep this module
 import-cheap and side-effect-free, because a failure here takes out both roles
@@ -311,10 +311,9 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 
 
 # --- Git command-line matching helpers --------------------------------------
-# Shared by warn-branch-base.py, warn-stray-scratch-artifact.py,
-# guard-worktree-isolation.py, ask-destructive-git.py, and ask-git-identity.py.
-# (block-direct-push-to-main.py was a consumer until it moved to shlex
-# tokenization; it now matches no option shapes by regex at all.) Previously
+# Shared by block-direct-push-to-main.py, warn-branch-base.py,
+# warn-stray-scratch-artifact.py, guard-worktree-isolation.py,
+# ask-destructive-git.py, and ask-git-identity.py. Previously
 # each of those four files carried its own literal copy of this pattern (three
 # linked only by a "mirrors guard-worktree-isolation.py" comment) — a bug fixed
 # in one copy could silently persist in the other three, and did: a long

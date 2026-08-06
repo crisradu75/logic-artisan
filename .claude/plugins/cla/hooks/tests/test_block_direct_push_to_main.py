@@ -12,7 +12,6 @@ have zero coverage of its own before this.
 
 import importlib.util
 import io
-import json
 import os
 from pathlib import Path
 
@@ -416,10 +415,9 @@ def test_an_attached_option_value_is_still_just_a_flag(monkeypatch):
 
 def test_current_branch_passes_a_timeout_and_warns_when_git_is_unusable(monkeypatch, capsys):
     # Without a timeout a hung `git rev-parse` burns the dispatcher's whole
-    # budget and takes every other guard down with it. An unresolvable branch
-    # now routes to ASK rather than a silent allow, but the degradation must
-    # still be VISIBLE on stderr — it is exactly when the hook cannot vouch
-    # for the push.
+    # budget and takes every other guard down with it. And when the branch
+    # can't be resolved the hook allows — that degradation must be visible,
+    # not silent, since it is exactly when it cannot vouch for the push.
     captured = {}
 
     def fake_run(*args, **kwargs):
@@ -479,172 +477,3 @@ def test_main_respects_allow_push_to_main_escape_hatch(monkeypatch, capsys):
     )
     monkeypatch.setattr(hook.os, "environ", {"ALLOW_PUSH_TO_MAIN": "1"})
     assert hook.main() == 0
-
-
-# --------------------------------------------------------------------------- #
-# The ASK arm -- cases that were SILENT ALLOWS before the 3-state redesign
-#
-# Each case below was previously waved through with no signal at all (or, for
-# the heredoc, hard-blocked as a false positive). A guard that cannot resolve a
-# push now escalates to the user's permission prompt instead of guessing.
-# --------------------------------------------------------------------------- #
-
-
-def _verdict(command, cwd=None):
-    return hook._push_verdict(command, cwd)[0]
-
-
-def test_a_possible_alias_near_a_protected_name_asks(monkeypatch):
-    # `git pushmain` could be a user alias expanding to a real push. Resolving
-    # it via `git config --get alias.<name>` would need a second subprocess,
-    # which does not fit the handler budget (see the module docstring), so the
-    # uncertainty is escalated instead of ignored.
-    monkeypatch.setattr(hook, "_current_branch", _never_called())
-    assert _verdict("git pushmain") == "ASK"
-
-
-def test_an_unknown_subcommand_without_a_protected_name_is_allowed(monkeypatch):
-    # The ASK arm must not fire on every unrecognized subcommand — only when a
-    # protected branch name is also present. Otherwise ordinary use of a git
-    # subcommand missing from the table becomes a prompt, and a prompt that
-    # fires routinely stops being read.
-    monkeypatch.setattr(hook, "_current_branch", _never_called())
-    assert _verdict("git whatever-custom-command --flag") == "ALLOW"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "bash <<'EOF'\ngit push origin main\nEOF",       # EXECUTES the body
-        "cat <<'EOF' > deploy.sh\ngit push origin main\nEOF",  # merely writes it
-    ],
-)
-def test_a_heredoc_body_containing_a_protected_push_asks(command, monkeypatch):
-    # Previously a hard BLOCK for both, which is a false positive for the
-    # write-to-file form. Telling the two apart means parsing what consumes the
-    # heredoc, so both escalate rather than one being wrong in each direction.
-    monkeypatch.setattr(hook, "_current_branch", _never_called())
-    assert _verdict(command) == "ASK"
-
-
-def test_an_unresolvable_branch_on_a_bare_push_asks(monkeypatch):
-    monkeypatch.setattr(hook, "_current_branch", lambda cwd=None: None)
-    assert _verdict("git push") == "ASK"
-
-
-def test_an_unresolvable_branch_on_a_head_refspec_asks(monkeypatch):
-    monkeypatch.setattr(hook, "_current_branch", lambda cwd=None: None)
-    assert _verdict("git push origin HEAD") == "ASK"
-
-
-def test_an_unlexable_command_mentioning_a_protected_push_asks(monkeypatch):
-    # An unbalanced quote defeats tokenization entirely. Absence of a parse is
-    # not evidence of absence of a push.
-    monkeypatch.setattr(hook, "_current_branch", _never_called())
-    assert _verdict("git push origin 'main") == "ASK"
-
-
-def test_an_unlexable_command_without_a_push_is_allowed(monkeypatch):
-    monkeypatch.setattr(hook, "_current_branch", _never_called())
-    assert _verdict("echo 'unterminated") == "ALLOW"
-
-
-# --------------------------------------------------------------------------- #
-# Defects found by running the redesign against the corpus -- each was a NEW
-# bypass introduced by the first draft of the shlex parser, not present in the
-# regex version it replaced. Pinned so they cannot regress.
-# --------------------------------------------------------------------------- #
-
-
-def test_a_windows_backslash_path_is_not_mangled_by_the_lexer():
-    # In POSIX mode shlex treats a backslash as an escape, so a Windows drive
-    # path tokenized with its separators stripped — the branch would then
-    # resolve in the WRONG directory, the exact bug class `_branch_for` exists
-    # to prevent. Windows is this harness's primary platform.
-    segments, ok = hook._segments(r"git -C C:\repo\sub push origin main")  # path-fixture-ok
-    assert ok
-    assert segments == [["git", "-C", r"C:\repo\sub", "push", "origin", "main"]]  # path-fixture-ok
-
-
-def test_a_windows_path_is_threaded_through_as_the_directory_override(monkeypatch):
-    seen = []
-    monkeypatch.setattr(
-        hook, "_current_branch", lambda cwd=None: seen.append(cwd) or "main"
-    )
-    assert hook._is_direct_push_to_main(r"git -C C:\repo\sub push") is True  # path-fixture-ok
-    assert seen == [r"C:\repo\sub"]  # path-fixture-ok
-
-
-def test_an_env_var_prefix_does_not_hide_the_push(monkeypatch):
-    # Requiring tokens[0] == "git" let `GIT_DIR=/x git push origin main` past
-    # entirely. The regex version matched `git ... push` anywhere, so this
-    # would have been a regression rather than a pre-existing gap.
-    monkeypatch.setattr(hook, "_current_branch", _never_called())
-    assert hook._is_direct_push_to_main("GIT_DIR=/x git push origin main") is True
-
-
-def test_a_global_option_outside_the_closed_set_no_longer_bypasses(monkeypatch):
-    # The regex version's `GIT_GLOBAL_OPTS` was a closed set; a shape outside it
-    # silently mis-parsed and allowed the push. The table-driven walk consumes
-    # the `--opt=value` form generically.
-    monkeypatch.setattr(hook, "_current_branch", _never_called())
-    assert hook._is_direct_push_to_main("git --exec-path=/x push origin main") is True
-
-
-def test_repeated_dash_c_uses_the_last_value(monkeypatch):
-    # git applies repeated `-C` cumulatively; the regex version was
-    # first-match-wins and resolved against the wrong one.
-    seen = []
-    monkeypatch.setattr(
-        hook, "_current_branch", lambda cwd=None: seen.append(cwd) or "main"
-    )
-    assert hook._is_direct_push_to_main("git -C /a -C /b push") is True
-    assert seen == ["/b"]
-
-
-def test_interpolated_refspecs_stay_allowed(monkeypatch):
-    # A DOCUMENTED limitation, pinned so a future change to it is deliberate:
-    # the value is not knowable without running the shell, and asking on every
-    # `$VAR` push would make the prompt routine.
-    monkeypatch.setattr(hook, "_current_branch", lambda cwd=None: "main")
-    assert _verdict("git push $REMOTE $BRANCH") == "ALLOW"
-
-
-# --------------------------------------------------------------------------- #
-# main() -- the ask travels as stdout JSON, per the dispatcher's contract
-# --------------------------------------------------------------------------- #
-
-
-def test_main_emits_an_ask_decision_as_stdout_json(monkeypatch, capsys):
-    # Exit 0 + stdout JSON is the only shape the dispatcher re-emits as a
-    # permission decision (`dispatch-bash-pretooluse.py::_extract_ask`). A
-    # non-zero exit would discard stdout and silently downgrade it to an allow.
-    monkeypatch.setattr(
-        "sys.stdin", io.StringIO('{"tool_input": {"command": "git pushmain"}}')
-    )
-    monkeypatch.setattr(hook.os, "environ", {})
-    assert hook.main() == 0
-    payload = json.loads(capsys.readouterr().out)
-    nested = payload["hookSpecificOutput"]
-    assert nested["permissionDecision"] == "ask"
-    assert nested["hookEventName"] == "PreToolUse"
-    assert "alias" in nested["permissionDecisionReason"].lower()
-
-
-def test_main_emits_nothing_on_stdout_when_allowing(monkeypatch, capsys):
-    monkeypatch.setattr(
-        "sys.stdin", io.StringIO('{"tool_input": {"command": "git status"}}')
-    )
-    monkeypatch.setattr(hook.os, "environ", {})
-    assert hook.main() == 0
-    assert capsys.readouterr().out.strip() == ""
-
-
-def test_the_escape_hatch_suppresses_an_ask_too(monkeypatch, capsys):
-    # Someone who set the override wants no friction — not a downgraded prompt.
-    monkeypatch.setattr(
-        "sys.stdin", io.StringIO('{"tool_input": {"command": "git pushmain"}}')
-    )
-    monkeypatch.setattr(hook.os, "environ", {"ALLOW_PUSH_TO_MAIN": "1"})
-    assert hook.main() == 0
-    assert capsys.readouterr().out.strip() == ""

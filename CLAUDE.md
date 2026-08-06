@@ -140,18 +140,15 @@ Wired automatically via `.claude/plugins/cla/hooks/hooks.json` when the plugin l
 `settings.json` step needed) — these apply in this repo's own sessions too, not only in repos
 that sync the plugin. `hooks.json` itself wires two dispatchers (`dispatch-bash-pretooluse.py` for
 the Bash/PowerShell matcher, `dispatch-edit-write-pretooluse.py` for the Edit/Write matcher), each
-of which runs several leaf hooks in one Python process — 14 leaf hooks in total. **Blocks**
+of which runs several leaf hooks in one Python process — 13 distinct leaf hooks between them
+(`guard-worktree-isolation` runs on both matchers), plus `warn-lint-on-edit` wired directly on
+PostToolUse: 14 leaf hook files in all. **Blocks**
 (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt instead of
 blocking outright; **warns** (`warn-*`) surface a caution without blocking:
 
 - **No direct push to main/master** (`block-direct-push-to-main`) — branch + PR for any change;
   a bare `Bash(cd ...)` (`block-cd-in-bash`) — the working dir is already repo root, and a `cd`
   persists and breaks later calls in the same session; use absolute paths instead.
-  `block-direct-push-to-main` is the one hook spanning two categories: it BLOCKS a push it can
-  prove targets the default branch, and ASKS when it finds a push it cannot fully resolve (a
-  possible alias, an unresolvable HEAD, a heredoc body, an unlexable command) — those were silent
-  allows before. It parses with `shlex` tokenization rather than the shared `GIT_GLOBAL_OPTS`
-  regex the other git hooks use.
 - **Blocks:** `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
   `block-worktree-path-escape` (a Write/Edit escaping a worktree boundary from inside one) ·
   `block-dated-stamps-in-prose` (hardcoded dates rot) · `guard-worktree-isolation` (a
@@ -159,10 +156,9 @@ blocking outright; **warns** (`warn-*`) surface a caution without blocking:
   git's HEAD is per-clone, not per-session, so two concurrent sessions would otherwise collide
   on one branch; also refreshes/clears this session's presence heartbeat on SessionStart/End).
 - **Asks:** `ask-destructive-git` (a destructive-but-not-outright-blocked git command, e.g. a
-  branch delete) · `ask-git-identity` (commit author doesn't match the expected identity, when
-  configured) · `block-direct-push-to-main`'s unresolved-push arm (above) — all return exit 0 and
-  escalate via `permissionDecision: "ask"` rather than blocking, since the action may be
-  legitimate.
+  force-push or `reset --hard`) · `ask-git-identity` (no `user.email` configured, or the commit
+  author doesn't match an expected identity when one is set) — both return exit 0 and escalate via
+  `permissionDecision: "ask"` rather than blocking, since the action may be legitimate.
 - **Warns:** `warn-branch-base` (branched off the wrong base) · `warn-lint-on-edit` (lints the
   edited file, feeds violations back non-blocking) · `warn-smoke-test-drift` (component/i18n edits
   that may break a UI smoke test — config-driven via a `smoke-test-drift.local.md` overlay beside
