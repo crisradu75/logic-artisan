@@ -165,7 +165,8 @@ def cmd_discover(source_arg: str, filter_pattern: Optional[str], local_arg: Opti
         f"{counts['divergent']} divergent, {counts['new']} new, "
         f"{counts['source_advanced']} source-advanced, {counts['local_advanced']} local-advanced, "
         f"{counts['both_diverged']} both-diverged "
-        f"({counts['skills']} skills, {counts['agents']} agents, {counts['hooks']} hooks)."
+        f"({counts['skills']} skills, {counts['agents']} agents, {counts['hooks']} hooks, "
+        f"{counts['output_styles']} output-styles)."
     )
     if counts["skipped"]:
         print(f"Skipped {counts['skipped']} file(s) — see stderr for reasons.")

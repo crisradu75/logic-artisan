@@ -161,15 +161,15 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 #      reasoning that they carry no portable prose. They carry portable
 #      STRINGS, and `update-cla` syncs them into every destination repo just
 #      the same.
-#   3. `hooks/` and `agents/`. Neither lives under `skills/`, so both are
-#      outside the prose scan's root entirely.
+#   3. `hooks/`, `agents/`, and `output-styles/`. None lives under `skills/`,
+#      so all three are outside the prose scan's root entirely.
 #
 # Kept as a separate scanner rather than widening the one above, because the
 # rules genuinely differ: the prose guard's frontmatter exemption exists for a
 # `SKILL.md` `description:` that legitimately names the host repo so the skill
 # triggers, which has no analogue in a `.py` file.
 
-SOURCE_SCAN_ROOTS = ("skills", "hooks", "agents")
+SOURCE_SCAN_ROOTS = ("skills", "hooks", "agents", "output-styles")
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 
 
@@ -177,11 +177,13 @@ def _iter_scanned_source_files(plugin_root: Path):
     """Yield every synced-core SOURCE file the prose scan cannot see.
 
     `.py` anywhere under the synced roots (including `tests/` and `scripts/`),
-    plus `agents/*.md` (agent definitions, which the prose scan's `skills/`
-    root never reaches). Overlays stay exempt by the same convention, and
-    bytecode/cache directories are skipped — a stale `.pyc` still holds the
-    string it was compiled from and would report a leak already fixed in source.
+    plus every `.md` under `agents/` or `output-styles/` (agent definitions and
+    output-style files, neither reachable from the prose scan's `skills/` root).
+    Overlays stay exempt by the same convention, and bytecode/cache directories
+    are skipped — a stale `.pyc` still holds the string it was compiled from and
+    would report a leak already fixed in source.
     """
+    md_roots = ("agents", "output-styles")
     for root_name in SOURCE_SCAN_ROOTS:
         root = plugin_root / root_name
         if not root.is_dir():
@@ -191,7 +193,7 @@ def _iter_scanned_source_files(plugin_root: Path):
                 continue
             if any(part in CACHE_DIRS for part in path.relative_to(root).parts):
                 continue
-            if path.suffix == ".py" or (root_name == "agents" and path.suffix == ".md"):
+            if path.suffix == ".py" or (root_name in md_roots and path.suffix == ".md"):
                 yield path
 
 
@@ -201,9 +203,10 @@ def find_source_violations(plugin_root: Path, tokens: list[str]):
     violations: list[tuple[str, str, int, str]] = []
     for path in _iter_scanned_source_files(plugin_root):
         rel = path.relative_to(plugin_root).as_posix()
-        # An `agents/*.md` frontmatter `description:` names the host repo for the
-        # same triggering reason a `SKILL.md` one does, so it gets the same
-        # exemption. A `.py` file has no frontmatter concept.
+        # An `agents/*.md` or `output-styles/*.md` frontmatter `description:` can
+        # legitimately name the host repo (an agent that triggers on it, a style
+        # description shown in the picker), the same reason a `SKILL.md` one does
+        # — so both get the same exemption. A `.py` file has no frontmatter concept.
         violations.extend(
             _violations_in(path, rel, lowered, strip_fm=path.suffix == ".md")
         )

@@ -401,6 +401,24 @@ def test_hooks_dir_scanned(synthetic_repos):
     assert counts["new"] == 1        # tests/test_guard.py
 
 
+def test_output_styles_dir_scanned(synthetic_repos):
+    """`.claude/plugins/cla/output-styles/` is in SCAN_DIRS: a plugin-shipped output
+    style syncs the same way a skill or hook does — this is how the writing
+    convention itself propagates to a repo that pulls from this one."""
+    repos = synthetic_repos({
+        "src": {".claude/plugins/cla/output-styles/CLA.md": "source style\n"},
+        "dst": {".claude/plugins/cla/output-styles/CLA.md": "local style\n"},
+    })
+    discover_mod = _load("discover")
+    result = discover_mod.discover(repos[0], repos[1])
+    assert [r.asset_path for r in result.files] == [
+        ".claude/plugins/cla/output-styles/CLA.md",
+    ]
+    counts = discover_mod.summary_counts(result)
+    assert counts["output_styles"] == 1
+    assert counts["divergent"] == 1
+
+
 # ---------- discover: 3-way classification (lockfile ancestor) ----------
 
 
@@ -762,7 +780,7 @@ def test_malformed_ratio_never_flags_real_repo_content():
     # in the same blank-line-heavy style can't silently regress this guard.
     apply_mod = _load("apply")
     plugin_root = Path(__file__).resolve().parents[3]  # .../.claude/plugins/cla
-    scan_dirs = ["skills", "agents", "hooks"]
+    scan_dirs = ["skills", "agents", "hooks", "output-styles"]
     flagged = []
     for scan_dir in scan_dirs:
         base = plugin_root / scan_dir

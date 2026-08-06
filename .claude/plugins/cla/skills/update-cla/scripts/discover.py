@@ -43,10 +43,15 @@ from typing import Iterable, Optional
 
 
 # The `cla` plugin subtree this tool keeps in sync with the canonical source.
-# Skills-only (no commands/); the plugin manifest under .claude-plugin/ is synced
+# No commands/ (out of scope); the plugin manifest under .claude-plugin/ is synced
 # manually. Repo-specific overlay files (project-context.md / *.local.md) are
 # preserved, see _is_excluded.
-SCAN_DIRS = (".claude/plugins/cla/skills", ".claude/plugins/cla/agents", ".claude/plugins/cla/hooks")
+SCAN_DIRS = (
+    ".claude/plugins/cla/skills",
+    ".claude/plugins/cla/agents",
+    ".claude/plugins/cla/hooks",
+    ".claude/plugins/cla/output-styles",
+)
 EXCLUDED_FILE_NAMES = ("settings.json", "settings.local.json")
 EXCLUDED_PART_NAMES = ("__pycache__", ".pytest_cache")
 # The repo-neutral overlay marker: a file whose leaf name is exactly
@@ -345,6 +350,9 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
     skills = sum(1 for r in result.files if r.asset_path.startswith(".claude/plugins/cla/skills"))
     agents = sum(1 for r in result.files if r.asset_path.startswith(".claude/plugins/cla/agents"))
     hooks = sum(1 for r in result.files if r.asset_path.startswith(".claude/plugins/cla/hooks"))
+    output_styles = sum(
+        1 for r in result.files if r.asset_path.startswith(".claude/plugins/cla/output-styles")
+    )
     return {
         "divergent": divergent,
         "new": new,
@@ -354,6 +362,7 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
         "skills": skills,
         "agents": agents,
         "hooks": hooks,
+        "output_styles": output_styles,
         "total": len(result.files),
         "skipped": len(result.skipped),
         "deletions": len(result.deletions),
