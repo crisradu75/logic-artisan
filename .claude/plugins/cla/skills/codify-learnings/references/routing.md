@@ -28,7 +28,7 @@ failure-modes checklist  →  memory / CLAUDE.md / SKILL.md  →  hook / setting
 - A **new** lesson enters at the lowest rung that can actually prevent it — usually memory or a doc, rarely the checklist alone.
 - A lesson that **re-offended this session** (Step 2.5) moves **up one rung**. An advisory rule that keeps being violated needs enforcement, not a louder reminder.
 - A re-offending **behavioral** rule that is hook-able — a deterministic precondition on a tool call (compound bash, branch-name length, a forbidden command shape, a path pattern) — MUST be proposed as a `PreToolUse` hook. "Prefer enforcement over reminders" is the behavioral-rule analogue of "Prefer fixes over diagnostics".
-- When a lesson graduates to a hook or script, retire the now-redundant lower-rung bullet in the same run (Step 2.6).
+- When a lesson graduates to *any* higher rung (memory / `CLAUDE.md` / `SKILL.md` / hook / script), retire the now-redundant lower-rung bullet in the same run (Step 2.6).
 
 ## Enforcement tiers (the shared vocabulary behind the ladder)
 

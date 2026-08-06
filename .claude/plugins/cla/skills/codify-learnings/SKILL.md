@@ -51,7 +51,7 @@ Skipping this decision is what makes the checklist grow monotonically while its 
 
 Then the size-triggered checks. Check sizes during Step 2; if a threshold is crossed, include maintenance edits in this run's report as numbered suggestions (accepted/rejected via Step 4 like any other):
 
-- **`failure-modes.md` over ~60 bullets** — the threshold is a bloat alarm, not a hard target to force the count under. Merge only *genuine overlap* (bullets making the same point from the same angle), and **retire** any bullet whose lesson has graduated to a hook or a load-bearing doc (it is now enforced elsewhere — see the escalation ladder). Do not delete distinct checks just to hit a number — a checklist of legitimately diverse, section-organized items is fine; an unbounded one that nobody can hold in working memory is not.
+- **`failure-modes.md` over ~60 bullets** — the threshold is a bloat alarm, not a hard target to force the count under. Merge only *genuine overlap* (bullets making the same point from the same angle), and **retire** any bullet whose lesson has graduated to *any* higher rung — memory, `CLAUDE.md`, `SKILL.md`, a hook, or a script (it now lives elsewhere — see the escalation ladder). Do not delete distinct checks just to hit a number — a checklist of legitimately diverse, section-organized items is fine; an unbounded one that nobody can hold in working memory is not.
 - **`lessons-learned.md` over ~12 entries** — move the oldest entries to `cla.io/lessons-learned/lessons-learned-archive.md` (create if absent), keeping the newest ~12 in the live log. The archive stays grep-able for deep history; the live log stays skimmable.
 
 ## Lesson routing and escalation

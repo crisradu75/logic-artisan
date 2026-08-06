@@ -2,7 +2,7 @@
 
 A non-exhaustive list of things to look for when running `/cla:codify-learnings`.
 
-This file is a **retro-time staging checklist** — it is read only by `codify-learnings`, not by normal work sessions. A lesson parked only here prevents nothing until it re-offends; route preventable lessons to a load-bearing artifact (memory / `CLAUDE.md` / `SKILL.md` / hook) instead (see SKILL.md "Lesson routing and escalation"). Keep this file under ~60 bullets (matching SKILL.md Step 2.6): when it grows past that, consolidate overlapping bullets and retire any whose lesson has graduated to a hook or load-bearing doc.
+This file is a **retro-time staging checklist** — it is read only by `codify-learnings`, not by normal work sessions. A lesson parked only here prevents nothing until it re-offends; route preventable lessons to a load-bearing artifact (memory / `CLAUDE.md` / `SKILL.md` / hook) instead (see SKILL.md "Lesson routing and escalation"). Keep this file under ~60 bullets (matching SKILL.md Step 2.6): when it grows past that, consolidate overlapping bullets and retire any whose lesson has graduated to *any* higher rung — memory, `CLAUDE.md`, `SKILL.md`, a hook, or a script.
 
 This repo's own stack shape, verification-command set, and package-layout history are in `references/project-context.md` ("Repo stack + verification path") — read it alongside this checklist for the concrete commands/paths the bullets below refer to.
 
@@ -28,6 +28,7 @@ This repo's own stack shape, verification-command set, and package-layout histor
 - [ ] Was a sentinel value (`0`, `-1`, `""`) used to mean "not found" / "excluded" in a way that collided with legitimate data? (An intentionally-excluded entry getting a real sentinel value by design — make sure a genuine zero/empty value isn't confused with an excluded one.)
 - [ ] Did a heuristic or lookup miss a real-world variant the user had to point out?
 - [ ] Was a fallback path triggered by an unexpected value range rather than by a true failure?
+- [ ] Was a tolerance / threshold too tight or too loose for the real distribution of inputs? This covers single-value tolerances too (a subprocess timeout, a retry count, a size cap), not just data thresholds.
 - [ ] Were error paths swallowed (silent `catch`, no console error, no surfaced state)?
 - [ ] Did the code or a script depend on a CLI tool, env var, or stdout-encoding default that differs between platforms — e.g. `cp1252` vs UTF-8 stdout, path-separator assumptions, a Git Bash builtin missing on some installs? Silent-on-affected-platform divergence is high-cost because it doesn't fail in dev — the bug surfaces only when someone runs on the other OS. **Cross-OS breakage is bidirectional** — audit *both* directions: when a repo was recently developed on one OS only, or when you hit one OS-specific bug, proactively check for the *other* OS's breakage classes rather than fixing only the one you tripped over. See `references/project-context.md` for whether this repo has been developed across more than one OS.
 - [ ] **POSIX env-var / path defaults in cross-platform code.** `process.env.TMPDIR || '/tmp'`, hardcoded `/`-separated paths, etc. read POSIX-only assumptions and break on Windows where the var is unset. Use platform-neutral helpers (`os.tmpdir()`, `path.join`). This is invisible in dev when the dev box happens to have the var set.

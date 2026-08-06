@@ -27,7 +27,7 @@ sibling `*.md`. On Windows that resolves to
 There is exactly one such directory for this repo; if a glob ever matches more than one,
 prefer the one whose slug matches this repo's path (`C--code-logic-artisan`).
 
-## Repo commands
+## Repo stack + verification path
 
 Verification path for this repo — a change is not "done" until the aggregated suite passes:
 
@@ -45,7 +45,8 @@ CI runs the same suite on ubuntu + windows × Python 3.11/3.13, plus the Node su
 `SyntaxWarning`-as-error compile gate (`.github/workflows/tests.yml`). "Passes locally"
 is not the bar; the matrix is, because several hooks parse Windows-specific path shapes.
 
-Scope count is currently **8** (7 skills with tests, plus `hooks/`). `run_tests.py`
+Scope count (skills with tests, plus `hooks/`) is stated in root `CLAUDE.md`, which owns
+that fact — read it there rather than duplicating the number here. `run_tests.py`
 reports per-scope skip counts — a skipped guard has not run, and several guards are
 dormant without an overlay file, so treat a skip line as a finding rather than noise.
 
@@ -82,7 +83,13 @@ process layer, consumed by other repos via `update-cla`.
 
 No servers, ports, or env files. Behaviour-affecting env vars are the hooks' own escape
 hatches: `ALLOW_PUSH_TO_MAIN`, `ALLOW_SHARED_CLONE_MUTATION`, `ALLOW_WORKTREE_PATH_ESCAPE`,
-`ALLOW_DESTRUCTIVE_GIT`, `ALLOW_GIT_IDENTITY_MISMATCH`, `CLA_EXPECTED_GIT_EMAIL`.
+`ALLOW_DESTRUCTIVE_GIT`, `ALLOW_GIT_IDENTITY_MISMATCH`, `ALLOW_DATED_PROSE`,
+`ALLOW_UNSAFE_RM`, `CLA_EXPECTED_GIT_EMAIL`. This list drifts as hooks are added — the
+authoritative enumeration is the hook sources themselves:
+
+```bash
+grep -ohE '"(ALLOW|CLA)_[A-Z_]+"' .claude/plugins/cla/hooks/*.py | sort -u
+```
 
 ## Repo file lists
 
@@ -90,4 +97,8 @@ Docs that must stay in lockstep with the code:
 - root `CLAUDE.md` — skill table, scope count, guard-hook list, commands
 - `.claude/plugins/cla/skills/*/SKILL.md` and their `references/*.md`
 - `.claude/plugins/cla/hooks/_dispatch_lib.py` — `HOOK_WORST_CASE_SECONDS` must match each
-  hook's real (call sites × timeout); the wiring test checks the sum, not the entries
+  hook's real (call sites × timeout). The wiring test
+  (`.claude/plugins/cla/hooks/tests/test_hooks_wiring.py`) asserts that every dispatched
+  hook HAS an entry, that no entry is stale, and that the enforcing hooks' sum fits the
+  handler budget — what it never verifies is that a given number matches that hook's real
+  (call sites × timeout), so a wrong-but-small value passes silently

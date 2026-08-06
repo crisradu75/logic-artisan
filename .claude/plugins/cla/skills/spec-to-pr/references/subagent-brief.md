@@ -54,18 +54,16 @@ edits" as being about file contents and will still run `git checkout`, `switch`,
 `branch`, or `worktree add` if that looks like the easiest way to see the code. Those are
 shared, process-wide state: git's HEAD is per-clone, so one agent switching branches moves
 the ground under the orchestrator and every sibling in the same fan-out — and it leaves no
-diff to notice it by. Spell out the forbidden verbs, and for a diff review name the
-read-only way to get it:
+diff to notice it by. Nor does a well-behaved agent undo it: it *restores* to the branch it
+assumes was the baseline, usually `main` rather than the branch the session was on. Spell
+out the forbidden verbs, and for a diff review name the read-only way to get it:
 
 > Read the diff with `git diff <base>...<branch>`. Do NOT run `git checkout`, `switch`,
 > `stash`, `branch`, or `worktree add`, or anything else that mutates repository state.
 
-The failure mode is worse than it sounds, because a well-behaved agent *restores* what it
-changed — to the branch it assumes was the baseline, which is usually `main` rather than
-the branch the session was actually on. The session then continues on the wrong tree with
-no error, and any command that already ran against it silently answered about the wrong
-code. Observed in this plugin's own PR review: four verification commands returned
-confident, wrong answers before the switch was noticed.
+Where the agent is read-only, prefer the mechanical form: per "What the brief cannot do"
+below, a `tools:` allowlist or `permissionMode: plan` makes these commands impossible
+rather than merely forbidden.
 
 ### 4. Report — what to write, and where
 
