@@ -72,11 +72,13 @@ node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.
 CLA is portable across repos because it strictly separates *procedure* (generic, synced
 everywhere) from *facts* (per-repo, never synced):
 
-- **Synced core** — `.claude/plugins/cla/{skills,agents,hooks}/`: portable procedure only. A
-  pytest **conformance guard** fails if a distinctive project token ever leaks into a synced-core
-  `SKILL.md` or reference file under `skills/`. It scans only that tree — `hooks/*.py` docstrings and
-  `agents/*.md` are not scanned, so a project-specific leak there (docstring prose, a worked example
-  naming a real symbol) isn't mechanically caught; watch for it by hand.
+- **Synced core** — `.claude/plugins/cla/{skills,agents,hooks,output-styles}/`: portable procedure
+  only. A pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
+  developer path, leaks into synced core — one scanner covers `SKILL.md`/`references/*.md` prose
+  under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`
+  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Together that's every
+  `.py`/`.md` in the tree — a non-`.py`/`.md` synced-core file (`hooks/hooks.json`, a skill's own
+  `.mjs` script) is still outside both scanners; watch those by hand.
 - **Overlays** — each skill's `references/project-context.md` plus any `*.local.md` files: the
   destination repo's own facts and tuned checks. Recognized by name, excluded from sync, never
   overwritten by `update-cla`. In *this* repo they are neutral stubs (this is the source, not a
@@ -96,6 +98,7 @@ everywhere) from *facts* (per-repo, never synced):
   .cla-sync-lock.json          per-repo sync provenance (auto-maintained by update-cla)
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   hooks/                       guard hooks + hooks.json wiring + tests
+  output-styles/               the project's writing convention (force-for-plugin: true)
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
     references/                supporting docs; project-context.md = per-repo overlay
@@ -156,6 +159,6 @@ caution without blocking:
 
 `update-cla` is a pull-based, stdlib-only cross-repo updater: run it *in the repo that wants
 updates*, pointing at a source repo (this one, canonically). It syncs only
-`skills`/`agents`/`hooks`, classifies each file against a per-repo `.cla-sync-lock.json`
+`skills`/`agents`/`hooks`/`output-styles`, classifies each file against a per-repo `.cla-sync-lock.json`
 (3-way reconcile), preserves local strengths, surfaces deletions without applying them, and never
 auto-merges. Onboarding a fresh consuming repo: `cla-init` → `sync-context` → `update-cla`.

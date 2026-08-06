@@ -78,8 +78,10 @@ depends on) · `warn-stacked-pr-merge` (a merge that could auto-close an open ch
 CLA is portable because it separates *procedure* (generic, synced everywhere) from *facts*
 (per-repo, never synced):
 
-- **Synced core** — `skills/`, `agents/`, `hooks/`: portable procedure only. A pytest **conformance
-  guard** fails if a distinctive project token ever leaks into a synced-core `SKILL.md`/reference.
+- **Synced core** — `skills/`, `agents/`, `hooks/`, `output-styles/`: portable procedure only. A
+  pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
+  developer path, leaks into synced core — one scanner covers `SKILL.md`/reference prose under
+  `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`.
 - **Overlays** — each skill's `references/project-context.md` plus any `*.local.md`: the repo's own
   facts and tuned checks. Recognized by name, excluded from sync, never overwritten.
 - **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, `retro/` run ledgers,
@@ -89,7 +91,7 @@ CLA is portable because it separates *procedure* (generic, synced everywhere) fr
 ## Portability & updates
 
 `update-cla` is a pull-based, stdlib-only cross-repo updater: run it *in the repo that wants
-updates*, pointing at a source repo. It syncs only `skills`/`agents`/`hooks`, classifies each file
+updates*, pointing at a source repo. It syncs only `skills`/`agents`/`hooks`/`output-styles`, classifies each file
 against a per-repo `.cla-sync-lock.json` (3-way reconcile), preserves local strengths, surfaces
 deletions without applying them, and **never auto-merges** (worktree write or PR, your call).
 
@@ -97,7 +99,7 @@ deletions without applying them, and **never auto-merges** (worktree write or PR
 
 ## Testing
 
-Each skill *that ships tests* (6 today) and the `hooks/` dir is its own isolated pytest scope (own
+Each skill *that ships tests* (7 today) and the `hooks/` dir is its own isolated pytest scope (own
 `pyproject.toml` + `tests/`); several ship same-named helper modules, so they can't share one pytest
 process. Run the whole suite at once:
 
@@ -117,6 +119,7 @@ Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`
   .cla-sync-lock.json          per-repo sync provenance (auto-maintained by update-cla)
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers)
   hooks/                       guard hooks + hooks.json wiring + tests
+  output-styles/               the project's writing convention (force-for-plugin: true)
   skills/<name>/               (references/ scripts/ tests/ present as each skill needs)
     SKILL.md                   the skill (portable procedure)
     references/                supporting refs; project-context.md = per-repo overlay

@@ -20,6 +20,7 @@ the plugin's own README:
   skills/                      the workflow skills (spec-to-pr, lite-pr, multi-*, review, retro loops, …)
   agents/                      helper agents (doc-sweeper, fact-gatherer)
   hooks/                       always-on git/worktree guard hooks
+  output-styles/               the project's writing convention (force-for-plugin: true)
 ```
 
 ## Canonical vs. per-repo

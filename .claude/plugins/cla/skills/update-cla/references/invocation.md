@@ -53,9 +53,9 @@ The skill is **structurally portable**:
 
 ## Scanned trees / manifest note
 
-The scanned trees are the plugin core — `.claude/plugins/cla/skills`, `.claude/plugins/cla/agents`, and `.claude/plugins/cla/hooks` (`SCAN_DIRS` in `scripts/discover.py`). The `.claude-plugin/` manifest is synced by hand; the per-repo project overlay (`project-context.md` / `*.local.md`) is preserved, never synced (non-negotiable rule 5).
+The scanned trees are the plugin core — `.claude/plugins/cla/skills`, `.claude/plugins/cla/agents`, `.claude/plugins/cla/hooks`, and `.claude/plugins/cla/output-styles` (`SCAN_DIRS` in `scripts/discover.py`). The `.claude-plugin/` manifest is synced by hand; the per-repo project overlay (`project-context.md` / `*.local.md`) is preserved, never synced (non-negotiable rule 5).
 
 ## When NOT to use (full detail)
 
-- *Other* installed plugins' internal assets (a third-party `{plugin}/commands/`, `{plugin}/skills/`) — those are that other plugin's published contract, not cla's; out of scope. This skill syncs only cla's own `skills`/`agents`/`hooks` tree (`SCAN_DIRS` above), never a sibling plugin's.
+- *Other* installed plugins' internal assets (a third-party `{plugin}/commands/`, `{plugin}/skills/`) — those are that other plugin's published contract, not cla's; out of scope. This skill syncs only cla's own `skills`/`agents`/`hooks`/`output-styles` tree (`SCAN_DIRS` above), never a sibling plugin's.
 - `.claude/settings.json` — project-level config, legitimately per-repo, out of scope. **Hook note:** the guard hooks live in `.claude/plugins/cla/hooks/` and are wired by the plugin's own `hooks/hooks.json` (auto-active when the plugin loads via `--plugin-dir`) — unlike the old `.claude/hooks/` model, there is NO manual `settings.json` wiring step to remember. The one exception is the project-specific operator-stack SessionStart hook, which stays wired in the destination's `.claude/settings.json` by hand.

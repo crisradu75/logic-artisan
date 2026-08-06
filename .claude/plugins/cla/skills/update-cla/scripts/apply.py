@@ -121,7 +121,7 @@ def _normalize_line_endings(content: str) -> str:
 # its ceiling — a threshold set BELOW 2.0 (as a prior draft's 1.8 was) is
 # stricter than the corruption signature itself and catches ordinary prose,
 # not just corruption. Confirmed empirically against every file in this
-# plugin's `skills/`/`agents/`/`hooks/` tree with at least
+# plugin's `skills/`/`agents/`/`hooks/`/`output-styles/` tree with at least
 # `_MALFORMED_MIN_NON_EMPTY_LINES` non-empty lines: the most blank-line-heavy
 # genuine file (one-paragraph-per-line markdown, a blank line between each)
 # sits at ratio 1.955 — see `test_malformed_ratio_never_flags_real_repo_content`,

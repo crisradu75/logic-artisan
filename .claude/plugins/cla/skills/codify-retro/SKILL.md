@@ -83,6 +83,8 @@ End with: "Want me to apply any of these? Say `apply 1,3` or list the numbers."
 
 Do NOT apply edits without explicit confirmation — retros are advisory. (`codify-learnings/SKILL.md` and `references/failure-modes.md` are the usual targets and are both editable; `openspec/**`, `**/scripts/**/*.py` outside `.claude/`, and vendored frameworks stay excluded per codify-learnings' own rules.)
 
+**If applied edits changed `references/failure-modes.md`'s bullet count** (a retire or a consolidation), state the new count in the closing summary — e.g. "failure-modes.md now at 47 bullets (was 51)". This retro writes nothing to `codify-runs.jsonl` (its sole producer is codify-learnings' Step 7), so without that line the newest ledger record keeps claiming a count the file no longer has and the trend data reads as flat. Recount with `grep -c '^- \[ \]' .claude/plugins/cla/skills/codify-learnings/references/failure-modes.md`; the next `/cla:codify-learnings` run uses it for `maintenance.failure_modes_bullets`.
+
 ## Sources of truth
 
 - **Output schema:** see `aggregate.py`'s module docstring for exact field names emitted.

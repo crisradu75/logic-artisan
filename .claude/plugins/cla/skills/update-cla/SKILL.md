@@ -1,18 +1,18 @@
 ---
 name: update-cla
-description: "Update this repo's cla plugin (.claude/plugins/cla/) from a canonical cla source repo — pull newer core skills/agents/guard-hooks, adapting to local context and PRESERVING this repo's own project overlay (the fixed project-context.md filename plus any *.local.md files), which is never overwritten. This is the cross-repo update mechanism for the --plugin-dir-loaded harness. Triggers on /cla:update-cla or phrasings like 'update the cla plugin from <repo>', 'pull newer cla into this repo', 'sync cla from <source>'. Brief-mode design (discover → adapt → apply) where conversation Claude does the LLM reasoning between phases and the script does only deterministic file/git work. Per-asset failure isolation; never auto-merges."
+description: "Update this repo's cla plugin (.claude/plugins/cla/) from a canonical cla source repo — pull newer core skills/agents/guard-hooks/output-styles, adapting to local context and PRESERVING this repo's own project overlay (the fixed project-context.md filename plus any *.local.md files), which is never overwritten. This is the cross-repo update mechanism for the --plugin-dir-loaded harness. Triggers on /cla:update-cla or phrasings like 'update the cla plugin from <repo>', 'pull newer cla into this repo', 'sync cla from <source>'. Brief-mode design (discover → adapt → apply) where conversation Claude does the LLM reasoning between phases and the script does only deterministic file/git work. Per-asset failure isolation; never auto-merges."
 argument-hint: "<source-repo> [asset]"
-# Rewrites the plugin's own skills/agents/hooks from another repo, so it must
-# never self-trigger on a description match — only an explicit
-# `/cla:update-cla <source>` starts it. Safe to set: nothing invokes this skill
-# programmatically. Also keeps this long description out of the always-loaded
-# skill listing until the command is typed.
+# Rewrites the plugin's own skills/agents/hooks/output-styles from another
+# repo, so it must never self-trigger on a description match — only an
+# explicit `/cla:update-cla <source>` starts it. Safe to set: nothing invokes
+# this skill programmatically. Also keeps this long description out of the
+# always-loaded skill listing until the command is typed.
 disable-model-invocation: true
 ---
 
 # update-cla
 
-Pull-from-destination cross-repo update of this repo's **cla plugin** (`.claude/plugins/cla/`). Run **from the local repo** that wants updates, pointing at the **source repo** to pull newer core `cla` from. The skill is self-contained and stdlib-only, and lives inside the plugin it maintains (loaded via `--plugin-dir`). It syncs the plugin's core (skills / agents / guard-hooks) and **never** touches this repo's project overlay (the fixed `project-context.md` filename plus any `*.local.md` files — see rule 5 below).
+Pull-from-destination cross-repo update of this repo's **cla plugin** (`.claude/plugins/cla/`). Run **from the local repo** that wants updates, pointing at the **source repo** to pull newer core `cla` from. The skill is self-contained and stdlib-only, and lives inside the plugin it maintains (loaded via `--plugin-dir`). It syncs the plugin's core (skills / agents / guard-hooks / output-styles) and **never** touches this repo's project overlay (the fixed `project-context.md` filename plus any `*.local.md` files — see rule 5 below).
 
 ## Non-negotiable rules
 
@@ -49,11 +49,11 @@ The skill is a **hybrid** — deterministic file/git work in the script, LLM rea
 
 **Onboarding order — `cla-init` → `/cla:sync-context` → `update-cla`.** `update-cla` syncs only the portable asset core and **never creates or populates project data** — it will not scaffold `cla.io/` or populate `cla.io/project-facts.md` for you. Full fallback detail if a step is skipped: `references/invocation.md`.
 
-Scanned trees: `.claude/plugins/cla/skills`, `agents`, `hooks` (`SCAN_DIRS`). The `.claude-plugin/` manifest is synced by hand; the project overlay is never synced (rule 5). Full detail: `references/invocation.md`.
+Scanned trees: `.claude/plugins/cla/skills`, `agents`, `hooks`, `output-styles` (`SCAN_DIRS`). The `.claude-plugin/` manifest is synced by hand; the project overlay is never synced (rule 5). Full detail: `references/invocation.md`.
 
 ## When NOT to use
 
-- *Other* installed plugins' internal assets (a third-party `{plugin}/commands/`, `{plugin}/skills/`) — out of scope; this skill syncs only cla's own `skills`/`agents`/`hooks` tree.
+- *Other* installed plugins' internal assets (a third-party `{plugin}/commands/`, `{plugin}/skills/`) — out of scope; this skill syncs only cla's own `skills`/`agents`/`hooks`/`output-styles` tree.
 - `.claude/settings.json` — project-level config, out of scope (guard hooks wire themselves via the plugin's own `hooks/hooks.json`, no manual step needed). Full detail + the one hand-wired exception: `references/invocation.md`.
 
 ## Invocation
