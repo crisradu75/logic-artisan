@@ -1,0 +1,8 @@
+# Pytest config for the cla plugin's cross-skill consistency checks — not a
+# skill itself (no SKILL.md), same shape as hooks/'s own scope: a
+# pytest-configured pyproject.toml + tests/ so run_tests.py's discovery picks
+# it up automatically, no changes to run_tests.py needed.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]

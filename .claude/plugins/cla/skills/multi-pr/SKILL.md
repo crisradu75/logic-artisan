@@ -19,7 +19,7 @@ Orchestrates `/cla:spec-to-pr` across a **sequence** of OpenSpec changes rather 
 
 ## Skill-level rules (hoisted — read first)
 
-- **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** Every command below that names it is a placeholder, not a literal: substitute the real name before running anything. Resolve it once, at the start of the run, with `git symbolic-ref --quiet refs/remotes/origin/HEAD` (take the segment after the last `/`); if that is unset, use whichever of `main` / `master` actually exists. The harness used to hardcode `master`, which silently broke every `main`-default repo — a `master..HEAD` range there fails outright with `unknown revision` rather than returning a wrong answer, and `git checkout master` cannot succeed at all.
+- **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** See `.claude/plugins/cla/skills/spec-to-pr/references/base-branch-resolution.md` (shared verbatim with `multi-lite`/`multi-spec`) for the resolution rule every command below that names `<base-branch>` depends on.
 
 - **This is a long unattended run. Get every blocking question answered BEFORE the chain starts, not mid-chain.** A clarifying question fired three changes in defeats the purpose — see Phase 1's pre-flight gate below. Once answered, run start-to-finish with no "ready to continue?" pauses between changes, mirroring `/cla:spec-to-pr`'s own autonomy-gate contract one level up.
 - **"No unresolved issues, at ANY severity" is the default policy — stricter than `/cla:spec-to-pr`'s own default** (which accepts Deferred-Known-Issue + `TODO.md` Suggestion residue as done). Neither is acceptable here unless the user's Phase 1 answer explicitly picks a looser alternative — there's no point in the run where the user comes back to triage a leftover list themselves.
@@ -100,3 +100,4 @@ Re-invoking `/cla:multi-pr` after an interruption picks up cleanly — full mech
 - `references/cleanup.md` — Phase 4's full verify/prune/confirm/log/commit sequence (mandatory-read from the Phase 4 stub)
 - `references/run-log-schema.md` — the chain-level per-run JSONL schema + per-field obligations (Phase 4 step 5; the contract a future `multi-pr-retro` would consume)
 - `references/project-context.md` — this repo's project-context overlay: repo commands, and the dated incidents/statistics that justify individual guardrails or recommended defaults (read only when revising a rule or reasoning about this repo specifically)
+- `.claude/plugins/cla/skills/spec-to-pr/references/base-branch-resolution.md` — the `<base-branch>` resolution rule, shared verbatim with `multi-lite`/`multi-spec`.

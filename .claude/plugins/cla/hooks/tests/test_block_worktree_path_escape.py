@@ -38,6 +38,7 @@ def _load_module():
 
 
 hook = _load_module()
+import _dispatch_lib  # noqa: E402 - needs _load_module()'s sys.path insert first
 
 
 def _git(cwd, *args):
@@ -208,16 +209,21 @@ def test_clone_paths_uses_one_git_call_for_both_answers(worktree_pair, monkeypat
     """Two `rev-parse` calls became one, which is what let the Edit/Write
     dispatcher's enforcing hooks fit inside the handler budget. If a future edit
     splits them again the budget test would eventually catch it, but only after
-    the table was updated to match — this pins the call count directly."""
+    the table was updated to match — this pins the call count directly.
+
+    Patches `_dispatch_lib.subprocess.run`, not `hook.subprocess.run`: `_clone_paths`
+    is imported from `_dispatch_lib` (shared with guard-worktree-isolation.py), so
+    its `subprocess` calls resolve through THAT module's globals, not this hook's.
+    """
     _primary, linked = worktree_pair
     calls = []
-    real = hook.subprocess.run
+    real = _dispatch_lib.subprocess.run
 
     def counting(argv, **kw):
         calls.append(argv)
         return real(argv, **kw)
 
-    monkeypatch.setattr(hook.subprocess, "run", counting)
+    monkeypatch.setattr(_dispatch_lib.subprocess, "run", counting)
     hook._clone_paths(str(linked))
     assert len(calls) == 1, f"expected one rev-parse, got {len(calls)}: {calls}"
 
@@ -227,13 +233,13 @@ def test_every_git_call_is_bounded_by_a_timeout(worktree_pair, monkeypatch):
     # cause is the index-lock contention this hook family exists to detect.
     _primary, linked = worktree_pair
     seen = []
-    real = hook.subprocess.run
+    real = _dispatch_lib.subprocess.run
 
     def recording(argv, **kw):
         seen.append(kw.get("timeout"))
         return real(argv, **kw)
 
-    monkeypatch.setattr(hook.subprocess, "run", recording)
+    monkeypatch.setattr(_dispatch_lib.subprocess, "run", recording)
     hook._clone_paths(str(linked))
     hook._worktree_root(str(linked))
     assert seen and all(t is not None for t in seen), seen
@@ -243,7 +249,7 @@ def test_a_timed_out_git_fails_open(monkeypatch, tmp_path):
     def boom(*_a, **_kw):
         raise subprocess.TimeoutExpired(cmd="git", timeout=1)
 
-    monkeypatch.setattr(hook.subprocess, "run", boom)
+    monkeypatch.setattr(_dispatch_lib.subprocess, "run", boom)
     assert hook._clone_paths(str(tmp_path)) is None
 
 

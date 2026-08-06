@@ -218,8 +218,6 @@ def main() -> int:
     print(fit_json_payload(_payload, context))
     return 0
 
-    return 1 if degraded else 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

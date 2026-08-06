@@ -1,6 +1,6 @@
 ---
 name: lite-pr
-description: "Lightweight end-to-end workflow for small changes you don't want to run through full OpenSpec: optional requirements exploration, a plan posted for visibility (not a blocking approval gate), direct implementation that updates code plus the relevant spec.md/CLAUDE.md/tests in place, one automated test pass, commit-push-pr, and one PR-review pass with a single fix round. No OpenSpec artifacts and no multi-round PR-review loop — runs straight through, continuous end-to-end, with the sole stop point being an unresolved Test-phase failure. No formal size rule vs /cla:spec-to-pr; which to use is your call. Triggers on /cla:lite-pr or natural language like 'quick PR for X', 'lite-pr this', 'small change, just ship it'."
+description: "Lightweight end-to-end workflow for small changes that skip full OpenSpec: optional requirements exploration, a plan posted for visibility (not a blocking gate), direct implementation updating code plus spec.md/CLAUDE.md/tests in place, one automated test pass, commit-push-pr, and one PR-review pass with a single fix round. No OpenSpec artifacts, no multi-round review loop — runs straight through; the sole stop point is an unresolved Test-phase failure. No formal size rule vs /cla:spec-to-pr; which to use is your call. Triggers on /cla:lite-pr or natural language like 'quick PR for X', 'lite-pr this', 'small change, just ship it'."
 argument-hint: "[description | (empty)]"
 ---
 
