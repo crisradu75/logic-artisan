@@ -41,9 +41,12 @@ Detection scope
 - `git push` with a `+`-prefixed refspec (`git push origin +feat:feat`), which
   is git's other force syntax and carries no flag at all.
 - `git reset` carrying `--hard`.
-- `gh pr merge` in any form. Not destructive in the same sense, but outward-
-  facing and effectively irreversible, and the thing that fails there is
-  AUTHORIZATION — which a hook cannot read, so the prompt is unconditional.
+- `gh pr merge`, including behind global options and as `gh.exe`/`gh.cmd`. Not
+  destructive in the same sense, but outward-facing and effectively
+  irreversible, and the thing that fails there is AUTHORIZATION — which a hook
+  cannot read, so the prompt is unconditional. NOT matched (regex cannot reach
+  them, and they are named rather than implied): a shell alias, a case variant
+  like `GH pr merge`, and the REST form `gh api -X PUT .../pulls/N/merge`.
   See `_GH_PR_MERGE` for the incident that added it.
 
 `--force-with-lease` and `--force-if-includes` are deliberately NOT matched:
@@ -61,6 +64,16 @@ Best-effort, not an exhaustive git parser — see `GIT_GLOBAL_OPTS`'s own
 docstring for the option shapes it does and does not consume.
 
 Escape hatch: `ALLOW_DESTRUCTIVE_GIT=1` for a deliberate unattended run.
+
+**Its scope widened when `gh pr merge` was added, and the name no longer
+describes it.** The var now also silences an AUTHORIZATION checkpoint, not just
+destructive git — so a value exported weeks ago for a force-push batch will
+also wave through every PR merge. That is deliberate: the alternative,
+exempting the merge rule from the hatch, would make genuine unattended runs
+impossible, and an authorization prompt nobody can answer is worse than none.
+Prefer setting it per-command (`ALLOW_DESTRUCTIVE_GIT=1 gh pr merge …`) over
+exporting it for a session. The stderr `DISABLED` notice fires on every
+command it suppresses, which is the compensating signal.
 
 Exit codes:
   0 — always. The decision travels as JSON on stdout, never as an exit code:
@@ -123,10 +136,31 @@ _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 # Tokens between `gh` and `pr merge` are skipped so global options and their
 # values match (`gh --repo owner/name pr merge`) — a value can contain `/`, so
 # they are matched as generic tokens rather than a `[-\w]` word class, which
-# missed exactly that shape. Two guards: the tokens exclude shell separators,
-# so a match can never span `&&` into a different command, and the negative
-# lookahead stops the skip at the first `pr` rather than running past one.
-_GH_PR_MERGE = re.compile(r"\bgh\s+(?:(?!pr\b)[^\s&|;\n]+\s+)*pr\s+merge\b")
+# missed exactly that shape.
+#
+# Every separator is `[ \t]`, never `\s`. `\s` matches a newline, so the skip
+# walked across line breaks into an unrelated command and `gh auth status` +
+# newline + `echo pr merge` fired. `_PUSH`/`_RESET` already exclude `\n` for
+# this exact reason (see their comment above); this rule now matches them.
+# Excluding `\n` from the token class alone was NOT enough — the separator
+# between tokens has to exclude it too.
+#
+# `(?!pr[ \t])` rather than `(?!pr\b)`: `\b` ends `pr` before a `-`, so the
+# lookahead rejected a value like `pr-tools/x`, which could then neither be
+# skipped nor complete the match — `gh --repo pr-tools/x pr merge` was a miss.
+#
+# The optional extension matches `gh.exe` / `gh.cmd`, ordinary spellings on
+# this repo's primary platform, which bare `\bgh\s` missed entirely.
+#
+# Known misses, stated rather than implied: a shell alias, a case variant
+# (`GH pr merge` — PowerShell resolves commands case-insensitively), and the
+# REST equivalent `gh api -X PUT repos/o/n/pulls/N/merge`. A regex cannot
+# resolve an alias, and the `gh api` surface is too broad to match without
+# false-firing on every read-only API call. Named here so the gap is a known
+# limitation rather than a surprise.
+_GH_PR_MERGE = re.compile(
+    r"\bgh(?:\.(?:exe|cmd|bat|ps1))?[ \t]+(?:(?!pr[ \t])[^\s&|;\n]+[ \t]+)*pr[ \t]+merge\b"
+)
 
 
 def _reasons(command: str) -> list[str]:
