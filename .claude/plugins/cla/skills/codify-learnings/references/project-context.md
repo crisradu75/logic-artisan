@@ -41,9 +41,8 @@ node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.
 
 Never run bare `pytest` from the repo or plugin root — collection fails by design.
 
-CI runs the same suite on ubuntu + windows × Python 3.11/3.13, plus the Node suite and a
-`SyntaxWarning`-as-error compile gate (`.github/workflows/tests.yml`). "Passes locally"
-is not the bar; the matrix is, because several hooks parse Windows-specific path shapes.
+There is no CI — the local commands above are the whole verification story. Run
+`run_tests.py` (every scope) plus the Node suite before calling a change done.
 
 Scope count (skills with tests, plus `hooks/`) is stated in root `CLAUDE.md`, which owns
 that fact — read it there rather than duplicating the number here. `run_tests.py`
