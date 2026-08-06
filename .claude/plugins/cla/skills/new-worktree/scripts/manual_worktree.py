@@ -376,6 +376,14 @@ def main(argv: list[str] | None = None) -> int:
         "--diagnose", action="store_true",
         help="only report whether this repo is exposed to the path-casing refusal",
     )
+    parser.add_argument(
+        "--print-path", action="store_true",
+        help=(
+            "print ONLY the created worktree path on stdout, errors on stderr. "
+            "For shell launchers (see the repo-root `claw`), which would "
+            "otherwise have to parse JSON in bash and batch."
+        ),
+    )
     args = parser.parse_args(argv)
 
     repo = Path(args.repo).resolve()
@@ -399,10 +407,20 @@ def main(argv: list[str] | None = None) -> int:
             worktree_dir=args.worktree_dir, branch_prefix=args.branch_prefix,
             casing=mismatch,
         )
-        print(json.dumps(result, indent=2))
+        if args.print_path:
+            # Bare path, nothing else: the caller is a shell script assigning
+            # this to a variable. Any decoration would end up in the path.
+            print(result["worktree_path"])
+        else:
+            print(json.dumps(result, indent=2))
         return 0
     except GitError as exc:
-        print(json.dumps({"error": str(exc)}, indent=2))
+        if args.print_path:
+            # stderr, so a launcher capturing stdout gets an EMPTY path rather
+            # than an error message it might then `cd` into.
+            print(f"manual_worktree: {exc}", file=sys.stderr)
+        else:
+            print(json.dumps({"error": str(exc)}, indent=2))
         return 1
 
 

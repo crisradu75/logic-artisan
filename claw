@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# claw — create a git worktree, THEN launch Claude Code already inside it.
+#
+# POSIX launcher (macOS / Linux / Git Bash). The native-Windows counterpart is
+# `claw.cmd` in this same dir — keep the two in sync.
+#
+# Usage (from anywhere):  path/to/repo/claw <name> [extra claude args...]
+#
+# Why this exists, and why it is not just `cla` plus a skill call
+# ---------------------------------------------------------------
+# `guard-worktree-isolation.py` writes a presence heartbeat at SessionStart for
+# any session whose cwd is the PRIMARY CLONE, so that a second session there
+# cannot silently mutate the shared HEAD. That write happens before you can type
+# anything — so a session that starts in the primary clone and only then runs
+# `/cla:new-worktree` has ALREADY registered as a contender. When it migrates
+# into the worktree the beat stops refreshing but is not removed, and a
+# different session working legitimately in the primary clone is blocked from
+# committing until the beat ages out (an hour).
+#
+# A session launched by this script has `git_dir != git_common_dir` from its
+# very first instant, so `_primary_guard_dir()` returns None, NO heartbeat is
+# ever written, and nobody is ever blocked by it. The problem is prevented
+# rather than cleaned up after.
+#
+# `/cla:new-worktree` remains the right tool when you are already mid-session
+# and only then realise you want isolation; this is for when you know up front.
+#
+# NOTE: like `cla`, this launches with --permission-mode auto, which bypasses
+# Claude Code's normal per-action confirmation prompts. Intentional for this
+# harness, but worth knowing.
+#
+# NOTE: dependencies are NOT installed and gitignored env files are NOT copied.
+# Those commands are per-repo facts (they live in new-worktree's
+# `references/project-context.md` overlay), so a portable launcher cannot know
+# them — `npm ci` would be wrong for a Python or Rust consumer. Ask the launched
+# session to finish the setup; running it from inside the worktree writes no
+# heartbeat, so it costs nothing.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+plugin_dir="$here/.claude/plugins/cla"
+worktree_script="$plugin_dir/skills/new-worktree/scripts/manual_worktree.py"
+
+usage() {
+  echo "usage: claw <name> [extra claude args...]" >&2
+  echo "  <name>  worktree name; becomes .claude/worktrees/<name> on branch worktree-<name>" >&2
+}
+
+# A missing name must NOT fall through to launching in the primary clone —
+# that is precisely the situation this script exists to avoid.
+if [ "$#" -eq 0 ]; then
+  echo "claw: a worktree name is required." >&2
+  usage
+  exit 1
+fi
+
+# `claw --help` names a flag where a name belongs. A worktree name can never
+# start with a dash, so treat this as a missing name rather than passing it on.
+case "$1" in
+  -*)
+    echo "claw: expected a worktree name, got the flag '$1'." >&2
+    usage
+    exit 1
+    ;;
+esac
+
+name="$1"
+shift
+
+if [ ! -d "$plugin_dir" ]; then
+  echo "claw: plugin directory not found: $plugin_dir" >&2
+  echo "claw: expected .claude/plugins/cla next to this script -- check it exists (incomplete checkout, or invoked through a symlink?)" >&2
+  exit 1
+fi
+
+if [ ! -f "$worktree_script" ]; then
+  echo "claw: worktree script not found: $worktree_script" >&2
+  exit 1
+fi
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "claw: 'claude' (the Claude Code CLI) was not found on PATH." >&2
+  echo "claw: install it, or make sure it's on PATH, then re-run this script." >&2
+  exit 127
+fi
+
+# Same interpreter probe the guard hooks use, for the same reason: `python3` is
+# not always the name on Windows.
+PYEXE="$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null)" || true
+if [ -z "${PYEXE:-}" ]; then
+  echo "claw: no python interpreter found on PATH (tried python3, py, python)." >&2
+  exit 127
+fi
+
+# Creation is delegated, never reimplemented here: manual_worktree.py already
+# resolves the base branch, validates the name, refuses a duplicate branch with
+# an actionable message, and carries the Windows path-casing fallback. Its
+# --print-path mode puts the bare path on stdout and any error on stderr, so
+# there is no JSON to parse in shell.
+worktree_path="$("$PYEXE" "$worktree_script" --repo "$here" --name "$name" --print-path)" || {
+  echo "claw: worktree creation failed; not launching." >&2
+  exit 1
+}
+
+if [ -z "$worktree_path" ] || [ ! -d "$worktree_path" ]; then
+  echo "claw: worktree script reported success but '$worktree_path' is not a directory; not launching." >&2
+  exit 1
+fi
+
+# The launched session must use the WORKTREE's own copy of the plugin, not the
+# primary clone's — loading the plugin from outside the worktree would put
+# hook-relative paths back in the clone this script is trying to stay out of.
+worktree_plugin_dir="$worktree_path/.claude/plugins/cla"
+if [ ! -d "$worktree_plugin_dir" ]; then
+  echo "claw: the new worktree has no .claude/plugins/cla ($worktree_plugin_dir)." >&2
+  echo "claw: is the plugin committed on the base branch? Not launching." >&2
+  exit 1
+fi
+
+echo "claw: worktree ready at $worktree_path" >&2
+echo "claw: dependencies are NOT installed and env files are NOT copied — ask the session to finish setup." >&2
+cd "$worktree_path"
+echo "+ claude --plugin-dir \"$worktree_plugin_dir\" --permission-mode auto --model sonnet --effort medium $*" >&2
+exec claude --plugin-dir "$worktree_plugin_dir" --permission-mode auto --model sonnet --effort medium "$@"
