@@ -286,12 +286,47 @@ def test_path_comparison_survives_a_case_only_spelling_difference(worktree_pair,
     )
 
 
-def test_is_inside_is_not_a_raw_string_comparison(worktree_pair):
-    """Directly pins the comparison helper against the mixed-case pair, so a
-    failure points at `_is_inside` rather than at the whole hook."""
+def test_is_inside_tolerates_a_differently_spelled_but_identical_path(worktree_pair):
+    """Pins `_is_inside` against a spelling divergence the CALLER did not fold.
+
+    The earlier version of this test realpathed BOTH arguments before calling,
+    so both arrived already canonical and the assertion held for any
+    string-equality implementation — it proved nothing about `_is_inside` and
+    would have passed against the raw `commonpath ==` that used to be there.
+    This passes the un-normalised spelling, which is the only version that can
+    fail.
+    """
     _primary, linked = worktree_pair
     root = os.path.realpath(str(linked))
-    target = os.path.realpath(os.path.join(str(linked).swapcase(), "seed.txt"))
-    if not os.path.exists(target):
+    odd = str(linked).swapcase()
+    if not os.path.isdir(odd) or odd == str(linked):
         pytest.skip("filesystem is case-sensitive; this divergence cannot occur here")
-    assert hook._is_inside(target, root)
+    assert hook._is_inside(os.path.join(odd, "seed.txt"), root)
+
+
+def test_is_inside_survives_a_symlinked_spelling_on_every_platform(worktree_pair, tmp_path):
+    """The case-insensitivity tests skip on Linux — where CI runs.
+
+    That left the whole invariant unexercised precisely where an agent tidying
+    up a `realpath`/`normcase` call would be working. A symlink produces the
+    same shape (two spellings, one directory) on every platform, so this runs
+    everywhere and pins the same behaviour.
+    """
+    _primary, linked = worktree_pair
+    alias = tmp_path / "alias"
+    try:
+        os.symlink(str(linked), str(alias), target_is_directory=True)
+    except (OSError, NotImplementedError, AttributeError):
+        pytest.skip("cannot create symlinks here (Windows without privilege)")
+
+    root = os.path.realpath(str(linked))
+    assert hook._is_inside(str(alias / "seed.txt"), root), (
+        "a path reaching the worktree by another spelling is still inside it"
+    )
+
+
+def test_is_inside_still_says_no_for_a_genuinely_outside_path(worktree_pair, tmp_path):
+    """Non-vacuity: a containment test that answers True for everything would
+    pass every case above while disabling the guard completely."""
+    _primary, linked = worktree_pair
+    assert not hook._is_inside(str(tmp_path / "elsewhere" / "x.txt"), os.path.realpath(str(linked)))

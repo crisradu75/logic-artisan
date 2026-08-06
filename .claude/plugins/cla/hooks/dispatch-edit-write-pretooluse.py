@@ -136,10 +136,11 @@ def main() -> int:
         errored = errored or result.errored
 
         if result.code == 2:
-            # The skip notice belongs here too. The blocking hook sits LAST in
-            # `_HOOK_FILES`, so the common shape is "advisories skipped, then a
-            # block" — reporting the skip only on the non-blocking path meant it
-            # was dropped in exactly the case where it most often applied.
+            # The skip notice DOES belong here, and only here. On exit 2 stderr is
+            # shown to Claude, and a block is the one moment where knowing some
+            # advisory checks were dropped changes how much the message is worth
+            # trusting. On the allow path it stays out of context (see below) —
+            # the asymmetry is deliberate, not an oversight.
             preamble = [n for n in (_skip_notice(skipped),) if n] + list(warnings) + [
                 f"[non-blocking warning from an earlier hook this same call]\n{c}"
                 for c in contexts

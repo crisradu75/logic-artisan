@@ -30,6 +30,18 @@ def _load_module():
 hook = _load_module()
 
 
+@pytest.fixture(autouse=True)
+def _clear_branch_cache():
+    """`_current_branch` memoises per cwd so a command carrying several pushes
+    costs one subprocess rather than one per push. The module lives for a single
+    hook process in production, so the cache never outlives its facts there — but
+    pytest keeps it across every test in this file, where one test's resolved
+    branch would otherwise answer another test's mocked failure."""
+    hook._BRANCH_CACHE.clear()
+    yield
+    hook._BRANCH_CACHE.clear()
+
+
 def _never_called():
     """A `_current_branch` stand-in that fails the test if it is reached — used
     to pin the cases that must be decided without shelling out to git."""

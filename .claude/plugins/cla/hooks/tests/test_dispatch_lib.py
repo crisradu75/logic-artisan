@@ -291,6 +291,17 @@ class _FakeCompleted:
         self.returncode = returncode
 
 
+# The exact `for-each-ref` invocation `default_base_branch` uses to probe all
+# four candidate refs in ONE spawn (it previously issued up to four `rev-parse`
+# calls; that cost landed inside an enforcing hook's handler budget). Mocks key
+# on it so a change to the call shape shows up here rather than silently sending
+# every test down the fallback arm.
+_CANDIDATE_PROBE = (
+    "for-each-ref --format=%(refname) refs/heads/main refs/remotes/origin/main "
+    "refs/heads/master refs/remotes/origin/master"
+)
+
+
 def _fake_git(responses):
     """Build a subprocess.run stand-in driven by an {args-suffix: result} map."""
     def run(cmd, **kwargs):
@@ -330,7 +341,7 @@ def test_default_base_branch_ignores_a_dangling_origin_head(monkeypatch):
         "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/master\n"),
         # No stub for `rev-parse --verify --quiet refs/remotes/origin/master` →
         # rc 1, i.e. the symref dangles. `main` is what actually exists.
-        "rev-parse --verify --quiet refs/heads/main": _FakeCompleted("abc123\n"),
+        _CANDIDATE_PROBE: _FakeCompleted("refs/heads/main\n"),
     }))
     assert lib.default_base_branch() == "main"
 
@@ -351,7 +362,7 @@ def test_default_base_branch_rejects_a_self_referential_origin_head(monkeypatch)
     # A last segment of `HEAD` is never a branch name.
     monkeypatch.setattr(lib.subprocess, "run", _fake_git({
         "symbolic-ref --quiet refs/remotes/origin/HEAD": _FakeCompleted("refs/remotes/origin/HEAD\n"),
-        "rev-parse --verify --quiet refs/heads/main": _FakeCompleted("abc123\n"),
+        _CANDIDATE_PROBE: _FakeCompleted("refs/heads/main\n"),
     }))
     assert lib.default_base_branch() == "main"
 
@@ -361,14 +372,14 @@ def test_default_base_branch_falls_back_to_an_existing_main(monkeypatch):
     # ref, so a hardcoded `master..HEAD` range fails with `unknown revision`
     # rather than merely returning a wrong answer.
     monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        "rev-parse --verify --quiet refs/heads/main": _FakeCompleted("abc123\n"),
+        _CANDIDATE_PROBE: _FakeCompleted("refs/heads/main\n"),
     }))
     assert lib.default_base_branch() == "main"
 
 
 def test_default_base_branch_still_finds_master_when_that_is_the_convention(monkeypatch):
     monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        "rev-parse --verify --quiet refs/remotes/origin/master": _FakeCompleted("abc123\n"),
+        _CANDIDATE_PROBE: _FakeCompleted("refs/remotes/origin/master\n"),
     }))
     assert lib.default_base_branch() == "master"
 
@@ -396,7 +407,7 @@ def test_a_successful_resolution_is_silent(monkeypatch, capsys):
     # The note belongs to the guess, not to every call — a warn on the happy
     # path would train people to ignore it.
     monkeypatch.setattr(lib.subprocess, "run", _fake_git({
-        "rev-parse --verify --quiet refs/heads/main": _FakeCompleted("abc123\n"),
+        _CANDIDATE_PROBE: _FakeCompleted("refs/heads/main\n"),
     }))
     assert lib.default_base_branch() == "main"
     assert capsys.readouterr().err == ""

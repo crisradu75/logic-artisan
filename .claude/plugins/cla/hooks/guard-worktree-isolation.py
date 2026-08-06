@@ -79,7 +79,6 @@ if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
-from _dispatch_lib import default_base_branch  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
 # A heartbeat older than this = the session is gone. Set as a CRASH backstop, not
@@ -128,7 +127,7 @@ def _warn(msg: str) -> None:
 # killed — losing the block this hook exists to produce. `Deadline` cannot
 # rescue this one either, since an enforcing hook is deliberately never skipped.
 #
-# 2s is still generous for what is actually being asked: these `rev-parse` calls
+# 3s is still generous for what is actually being asked: these `rev-parse` calls
 # read refs and resolve paths, so they answer in milliseconds even on a large
 # repo. A call approaching this bound means git is wedged, which is precisely
 # the concurrent-session contention this hook exists to detect — and failing
@@ -378,8 +377,12 @@ def main(argv: list[str] | None = None) -> int:
         f"Do feature work in an isolated worktree instead (own directory + own HEAD, "
         f"shared object store):\n"
         f"    git worktree add .claude/worktrees/<task> -b feature/<task>\n"
+        # Deliberately does NOT name the base branch. Resolving it costs up to
+        # three git spawns, and this is the BLOCK path of an enforcing hook —
+        # spending budget on cosmetic message detail is how a block gets lost to
+        # a killed handler. The sentence is just as useful without it.
         f"then relaunch this session in .claude/worktrees/<task>. The primary clone "
-        f"stays on {default_base_branch(cwd)}.\n"
+        f"stays on its base branch.\n"
         f"(Escape hatch for a deliberate solo action: ALLOW_SHARED_CLONE_MUTATION=1. "
         f"Hook: guard-worktree-isolation.py)",
         file=sys.stderr,

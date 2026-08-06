@@ -21,7 +21,8 @@ take out the ones after it in the list. `run_hook_file()` isolates a load
 failure to just that one hook, and callers should track `HookResult.errored`
 across a run and exit non-zero-non-2 if any hook errored, so Claude Code's
 `<hook> hook error` transcript notice fires and the full diagnostic reaches
-the debug log — exit 0 discards stderr entirely per the documented PreToolUse
+the debug log — exit 0 keeps stderr out of the transcript entirely (it reaches
+the debug log only, where Claude never sees it) per the documented PreToolUse
 hook contract, which would otherwise make a crash in a hook like
 guard-worktree-isolation.py or block-worktree-path-escape.py invisible.
 """
@@ -65,13 +66,13 @@ _HOOKS_DIR = Path(__file__).resolve().parent
 # asserts the two agree, so raising one without the other fails the suite.
 #
 # 15s, not 10s. The ceiling has to be derived from what the guards actually need,
-# not picked first and the guards starved to fit it. Squeezing every git call to
+# not picked first and the guards starved to fit it. Squeezing the rev-parse calls to
 # 2s did make the sum fit 10s — and made a BLOCKING guard fail open under load,
 # because a `rev-parse` on a busy Windows machine can genuinely exceed 2s once
 # process-spawn cost is counted. A guard that silently allows the thing it exists
 # to block is far worse than a rare slow handler: the ceiling only costs anything
-# in the pathological case (a wedged git), where the alternative is a hook that
-# hangs indefinitely.
+# in the pathological case (a wedged git), and 15s buys correctness there that
+# 10s did not.
 HANDLER_TIMEOUT_SECONDS = 15.0
 
 # Left for the dispatcher's own compose/print work after the last hook returns,
@@ -95,6 +96,10 @@ _BUDGET_RESERVE_SECONDS = 1.5
 #     them; the only fixes are fewer calls or shorter timeouts. Keeping the
 #     numbers here rather than deriving them means a hook that gains a call site
 #     must update this table, and the test fails until the sum still fits.
+# The arithmetic is stated PER ENTRY, not per group. Grouped comments ("one
+# local git call each") drifted silently as hooks gained call sites, and the
+# tests only check presence and the sum — never an individual figure — so a
+# wrong entry made the budget test look rigorous while proving nothing.
 HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # Pure text inspection — no subprocess at all.
     "block-cd-in-bash.py": 0.0,
@@ -103,19 +108,28 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     "warn-comment-dates.py": 0.0,
     "block-dated-stamps-in-prose.py": 0.0,
     "warn-smoke-test-drift.py": 0.0,
-    # One local git call each.
+    # 1 x _current_branch(3s). Memoised per cwd — without that the count scales
+    # with the number of pushes in the command and no fixed figure is honest.
     "block-direct-push-to-main.py": 3.0,
+    # 1 x _git_email(3s).
     "ask-git-identity.py": 3.0,
-    "warn-branch-base.py": 3.0,
-    # `git status --porcelain` walks the working tree, so it gets 4s where the
-    # `rev-parse` hooks get 3s.
-    "warn-stray-scratch-artifact.py": 4.0,
-    # Two local git calls: a combined `rev-parse` plus one conditional lookup.
+    # 2 x _run_git(3s): combined `rev-parse` + one conditional checkout lookup.
     "guard-worktree-isolation.py": 6.0,
+    # 2 x _run_git(3s): combined `rev-parse` + `--show-toplevel`.
     "block-worktree-path-escape.py": 6.0,
-    # One network-bound `gh` call (4s) plus one local git call (3s). The only
-    # hook here that leaves the machine, and the reason it stays advisory.
-    "warn-stacked-pr-merge.py": 7.0,
+    # 1 x `git status --porcelain`(4s) — walks the working tree, so it gets more
+    # than the `rev-parse` hooks.
+    "warn-stray-scratch-artifact.py": 4.0,
+    # 1 x `rev-parse`(3s) + default_base_branch(), which is up to 3 spawns at 2s.
+    # This hook cannot avoid resolving the base branch — comparing against it is
+    # the hook's entire job — so unlike the two hooks that only wanted the name
+    # for a MESSAGE, the cost is charged rather than removed.
+    "warn-branch-base.py": 9.0,
+    # 2 x _gh(4s): `pr view` then `pr list` on the explicit-PR-number path. The
+    # only hook that leaves the machine, and the reason it stays advisory. Its
+    # own docstring is the authority on the call count; the previous entry
+    # described a different (cheaper) branch of the same function.
+    "warn-stacked-pr-merge.py": 8.0,
 }
 
 
@@ -398,12 +412,24 @@ def default_base_branch(cwd: str | None = None) -> str:
         ):
             resolved = candidate
     if resolved is None:
+        # ONE `for-each-ref` for all four candidates, not four `rev-parse`
+        # probes. The probes were up to 4 subprocesses, which put this
+        # function's worst case at 6 spawns — and it is called while composing
+        # an ENFORCING hook's block message, so that cost lands inside the
+        # handler budget and was large enough to get the handler killed before
+        # the block was emitted. `for-each-ref` takes many patterns and prints
+        # only those that exist, answering the same question in one spawn.
+        listed = _git([
+            "for-each-ref", "--format=%(refname)",
+            "refs/heads/main", "refs/remotes/origin/main",
+            "refs/heads/master", "refs/remotes/origin/master",
+        ])
+        existing = set((listed or "").split())
+        # `main` first: a repo carrying BOTH is nearly always one that renamed
+        # to `main` and kept `master` as a stale leftover.
         for candidate in ("main", "master"):
-            for ref in (f"refs/heads/{candidate}", f"refs/remotes/origin/{candidate}"):
-                if _git(["rev-parse", "--verify", "--quiet", ref]):
-                    resolved = candidate
-                    break
-            if resolved:
+            if {f"refs/heads/{candidate}", f"refs/remotes/origin/{candidate}"} & existing:
+                resolved = candidate
                 break
 
     if resolved is None:

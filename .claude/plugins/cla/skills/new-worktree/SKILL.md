@@ -108,6 +108,11 @@ memory `worktree-isolation-file-paths`.)
 
 ## When `EnterWorktree` refuses over path casing
 
+> Applies while `EnterWorktree` compares these paths as literal strings. That is
+> a bug in an externally-owned tool, so re-check the symptom against the current
+> version before following this — if the refusal no longer reproduces, this
+> section is finished and should be deleted rather than worked around.
+
 **Symptom.** Every `EnterWorktree` call on a given machine fails with a refusal
 naming two paths that differ only in letter case — `C:\Code\<repo>\...` against
 `C:/code/<repo>/...`, or similar.
@@ -141,6 +146,13 @@ Confirm the diagnosis (no side effects) with:
 python3 .claude/plugins/cla/skills/new-worktree/scripts/manual_worktree.py --diagnose
 ```
 
+On Windows — the platform this whole section exists for — `python3` is often
+absent; use `py` or `python` instead. (`hooks.json` carries the same
+`python3 || py || python` probe chain for exactly this reason.) It reports
+`case_only` for the refusal described here, `path_indirection` when the repo
+path resolves elsewhere through a symlink or junction (a different problem that
+can look the same), and `null` when the path is clean.
+
 **Fallback: create the worktree with plain git.** One command, JSON on stdout,
 including the main-checkout path so the rest of this skill's steps need no extra
 lookup:
@@ -149,9 +161,11 @@ lookup:
 python3 .claude/plugins/cla/skills/new-worktree/scripts/manual_worktree.py --name <name>
 ```
 
-It also clears the stale entry a failed `EnterWorktree` leaves behind — the tool
-registers the worktree with git *before* its safety check refuses, so a locked
-entry accumulates at that path on every attempt and blocks the next one. A
+It also clears the stale entry a failed `EnterWorktree` leaves behind. Observed
+behaviour, not documented contract: the tool appears to register the worktree
+with git *before* its safety check refuses, so a locked entry accumulates at that
+path on every attempt and blocks the next one. The cleanup is written to be
+correct whether or not that ordering holds. A
 non-empty directory git no longer tracks is never deleted; that is somebody's
 work, and the add fails instead so a human can look.
 
@@ -165,6 +179,12 @@ of that: the session is still rooted in the primary clone, so **every** subseque
 path must target the worktree explicitly. `block-worktree-path-escape.py` is no
 backstop here either — it only fires for a session whose cwd *is* the worktree, so
 in this mode the path discipline above is the only thing protecting the boundary.
+
+**One detection limit worth knowing.** `--diagnose` compares the path as given
+against its resolved form, and `os.path.realpath` folds letter case only on
+Windows. On a case-insensitive POSIX filesystem (macOS APFS by default) the same
+refusal can occur while `--diagnose` reports clean, so treat a `null` there as
+inconclusive rather than as an all-clear.
 
 **The durable fix is upstream.** `EnterWorktree` should normalise both sides
 (`os.path.realpath` and equivalents canonicalise to the filesystem's true casing)

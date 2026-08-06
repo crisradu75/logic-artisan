@@ -122,16 +122,24 @@ def run_scope(scope: Path, pytest_args: list[str]) -> tuple[int, int]:
     was indistinguishable from one that passed.
     """
     print(f"\n{'=' * 70}\n>>> {_rel(scope)}\n{'=' * 70}", flush=True)
-    proc = subprocess.run(
+    # Streamed line-by-line rather than captured and printed at the end. The
+    # scopes that build real git worktrees run for minutes, and buffering until
+    # completion makes a slow suite indistinguishable from a hung one — which is
+    # exactly what a developer watching it needs to be able to tell.
+    proc = subprocess.Popen(
         [sys.executable, "-m", "pytest", *pytest_args],
-        cwd=scope, capture_output=True, text=True,
+        cwd=scope, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
     )
-    sys.stdout.write(proc.stdout)
-    sys.stderr.write(proc.stderr)
-    sys.stdout.flush()
-    matches = _SKIP_COUNT.findall(proc.stdout)
-    skipped = int(matches[-1]) if matches else 0
-    return proc.returncode, skipped
+    skipped = 0
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        match = _SKIP_COUNT.search(line)
+        if match:
+            skipped = int(match.group(1))
+    proc.stdout.close()
+    return proc.wait(), skipped
 
 
 def main(argv: list[str]) -> int:

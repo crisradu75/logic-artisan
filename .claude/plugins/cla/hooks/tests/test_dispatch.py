@@ -469,3 +469,29 @@ def test_advisory_warnings_travel_on_the_channel_claude_actually_reads(tmp_path)
     )
     nested = json.loads(r.stdout)["hookSpecificOutput"]
     assert nested["additionalContext"].strip()
+
+
+def test_edit_write_dispatch_also_keeps_skips_out_of_context(monkeypatch, capsys, tmp_path):
+    """The twin of the Bash case, which had no coverage.
+
+    This is the hotter of the two dispatchers, and reverting its
+    `print(notice, file=sys.stderr)` back to `warnings.append(notice)` left the
+    entire suite green — so the policy was pinned on one dispatcher only.
+    """
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    target = tmp_path / "notes.md"
+    rc = _run_in_process(
+        mod,
+        {"tool_input": {"file_path": str(target), "content": "hello\n"},
+         "cwd": str(tmp_path)},
+        monkeypatch,
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "skipped" in captured.err, "the skip must still be diagnosable"
+    for advisory in mod._ADVISORY_HOOKS:
+        assert advisory in captured.err
+    if captured.out.strip():
+        assert "skipped" not in json.loads(captured.out)["hookSpecificOutput"].get(
+            "additionalContext", ""
+        ), "a routine advisory skip must not inject context on every Edit"

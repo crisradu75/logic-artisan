@@ -47,7 +47,7 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (6 today) plus `hooks/` is its own isolated pytest scope, each
+design. Each skill that ships tests (7 today) plus `hooks/` is its own isolated pytest scope, each
 with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a `pythonpath` pointing at that
 scope's importable code — `["scripts"]` for a skill, `["."]` for `hooks/`, whose modules sit at
 the scope root). Several scopes

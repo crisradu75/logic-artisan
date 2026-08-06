@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -69,10 +70,34 @@ def test_reports_the_main_checkout_so_the_caller_needs_no_extra_lookup(repo):
 def test_the_returned_path_is_canonical_not_the_spelling_we_passed(repo):
     """Returning git's own resolution is the point: handing back a re-joined
     string would propagate whatever casing the caller happened to use, which is
-    the bug this script routes around."""
-    odd = Path(str(repo).swapcase()) if os.name == "nt" else repo
-    result = mw.create_worktree(odd if odd.exists() else repo, "gamma", "origin/main")
-    assert result["worktree_path"] == os.path.realpath(result["worktree_path"])
+    the bug this script routes around.
+
+    Asserted against the independently-computed canonical path. The earlier
+    version asserted `result == realpath(result)`, which is true of any
+    already-normalised string and so held even on POSIX where the test passed
+    the ordinary spelling — it proved idempotence of `realpath`, not anything
+    about the feature.
+    """
+    result = mw.create_worktree(repo, "gamma", "origin/main")
+    assert result["worktree_path"] == os.path.realpath(
+        str(repo / ".claude/worktrees/gamma")
+    )
+
+
+def test_a_symlinked_repo_spelling_still_yields_the_canonical_worktree_path(repo, tmp_path):
+    """Runs on every platform, unlike the case-only tests, so the canonicalisation
+    is pinned in CI rather than only on a Windows developer machine."""
+    alias = tmp_path / "alias"
+    try:
+        os.symlink(str(repo), str(alias), target_is_directory=True)
+    except (OSError, NotImplementedError, AttributeError):
+        pytest.skip("cannot create symlinks here (Windows without privilege)")
+
+    result = mw.create_worktree(alias, "delta", "origin/main")
+    assert result["worktree_path"] == os.path.realpath(
+        str(repo / ".claude/worktrees/delta")
+    )
+    assert str(alias) not in result["worktree_path"]
 
 
 def test_a_duplicate_branch_is_refused_with_an_actionable_message(repo):
@@ -115,6 +140,23 @@ def test_cleanup_is_a_noop_when_there_is_nothing_to_clean(repo):
     assert mw.clean_stale_worktree(repo, repo / ".claude/worktrees/never-made") is False
 
 
+def test_a_registration_whose_directory_vanished_is_pruned_and_reported(repo):
+    """The other half of the half-created state, and the half `remove` cannot fix.
+
+    `worktree prune` exits 0 whether or not it dropped anything, so the earlier
+    version could not tell and returned False after genuinely cleaning — a
+    result that flows to the caller as `cleaned_stale_entry` and would have said
+    "nothing was stale" about a run that removed a registration.
+    """
+    path = repo / ".claude/worktrees/vanished"
+    _git(repo, "worktree", "add", "-q", str(path), "-b", "vanished-branch", "origin/main")
+    shutil.rmtree(path)  # directory gone, registration left behind
+
+    assert os.path.realpath(str(path)) in mw._registered_worktrees(repo)
+    assert mw.clean_stale_worktree(repo, path) is True
+    assert os.path.realpath(str(path)) not in mw._registered_worktrees(repo)
+
+
 def test_a_nonempty_unregistered_directory_is_never_deleted(repo):
     """It is somebody's work. Deleting it to make room is exactly the
     'destroyed to fix a mistake' failure the skill warns about — better to fail
@@ -123,7 +165,13 @@ def test_a_nonempty_unregistered_directory_is_never_deleted(repo):
     path.mkdir(parents=True)
     (path / "someones-work.txt").write_text("do not delete\n", encoding="utf-8")
 
-    mw.clean_stale_worktree(repo, path)
+    assert mw.clean_stale_worktree(repo, path) is False
+    assert (path / "someones-work.txt").exists()
+
+    # And the user-visible consequence the SKILL.md documents: the add fails
+    # rather than proceeding over the top of it.
+    with pytest.raises(mw.GitError):
+        mw.create_worktree(repo, "occupied", "origin/main")
     assert (path / "someones-work.txt").exists()
 
 
@@ -149,12 +197,33 @@ def test_a_case_only_difference_is_reported(tmp_path):
     assert m["as_given"] != m["on_disk"]
 
 
-def test_a_genuinely_different_directory_is_not_called_a_casing_issue(tmp_path):
-    # Otherwise the diagnosis would fire on any symlinked or substituted path
-    # and send someone chasing a casing bug that isn't there.
+def test_a_plain_directory_reports_nothing(tmp_path):
     d = tmp_path / "real"
     d.mkdir()
     assert mw.casing_mismatch(d) is None
+
+
+def test_a_symlinked_path_is_reported_as_indirection_not_as_casing(tmp_path):
+    """The branch the previous version of this test never reached.
+
+    It created a plain directory, so `casing_mismatch` returned at the first
+    `as_given == resolved` check and the `.lower()` comparison was never
+    exercised — deleting that guard left the suite green. It also asserted the
+    result should be None, locking in a conflation: a path that resolves
+    somewhere else is a real finding, and answering `null` tells a user their
+    paths are clean while holding proof they are not.
+    """
+    real = tmp_path / "real"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        os.symlink(str(real), str(alias), target_is_directory=True)
+    except (OSError, NotImplementedError, AttributeError):
+        pytest.skip("cannot create symlinks here (Windows without privilege)")
+
+    m = mw.casing_mismatch(alias)
+    assert m is not None and m["kind"] == "path_indirection"
+    assert m["as_given"].lower() != m["on_disk"].lower()
 
 
 # --------------------------------------------------------------------------- #
@@ -185,7 +254,10 @@ def test_cli_reports_failure_as_json_and_exit_1(repo, capsys):
 
 
 def test_default_base_prefers_the_remote_default_branch(repo):
-    assert mw.default_base(repo).startswith("origin/")
+    # Exact, not `startswith("origin/")`: that was satisfied by either the
+    # symbolic-ref branch or the candidate-probe fallback, so it could not tell
+    # which path ran and neither was reliably covered.
+    assert mw.default_base(repo) == "origin/main"
 
 
 def test_default_base_falls_back_when_there_is_no_remote(tmp_path):
@@ -205,3 +277,91 @@ def test_git_failures_surface_as_giterror_not_a_traceback(tmp_path):
     not_a_repo.mkdir()
     with pytest.raises(mw.GitError):
         mw.create_worktree(not_a_repo, "x", "HEAD")
+
+
+# --------------------------------------------------------------------------- #
+# Refusing to destroy work
+# --------------------------------------------------------------------------- #
+
+
+def test_a_registered_worktree_with_uncommitted_work_is_never_force_removed(repo):
+    """`remove --force` deletes modified and untracked files, and the `unlock`
+    that precedes it is what lets that succeed on an entry somebody locked
+    deliberately. "It sits at the path I want" is not evidence a worktree is
+    stale — a live one from a concurrent session looks identical."""
+    path = repo / ".claude/worktrees/busy"
+    _git(repo, "worktree", "add", "-q", str(path), "-b", "busy-branch", "origin/main")
+    (path / "seed.txt").write_text("work in progress\n", encoding="utf-8")
+    (path / "untracked.txt").write_text("also mine\n", encoding="utf-8")
+
+    with pytest.raises(mw.GitError) as exc:
+        mw.clean_stale_worktree(repo, path)
+    assert "uncommitted changes" in str(exc.value)
+    assert f"git worktree remove {path}" in str(exc.value), "name the way out"
+
+    assert (path / "untracked.txt").exists()
+    assert (path / "seed.txt").read_text(encoding="utf-8") == "work in progress\n"
+
+
+def test_a_clean_registered_worktree_is_still_cleaned(repo):
+    """Non-vacuity for the guard above: if the dirty check refused everything,
+    the stale-entry cleanup this script exists for would be dead."""
+    path = repo / ".claude/worktrees/clean"
+    _git(repo, "worktree", "add", "-q", str(path), "-b", "clean-branch", "origin/main")
+    assert mw.clean_stale_worktree(repo, path) is True
+
+
+# --------------------------------------------------------------------------- #
+# Input validation and the base ref
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("bad", ["../escape", "a/b", "..", "", "sub" + chr(92) + "dir"])
+def test_a_name_that_would_escape_the_worktree_dir_is_refused(bad):
+    # Otherwise `--name ../../x` places the worktree outside .claude/worktrees
+    # and points the cleanup logic at a directory nobody meant to touch.
+    if chr(92) in bad and os.path.altsep is None and os.path.sep != chr(92):
+        pytest.skip("backslash is a legal filename character here")
+    with pytest.raises(mw.GitError):
+        mw.validate_name(bad)
+
+
+def test_an_ordinary_name_is_accepted():
+    assert mw.validate_name("my-task") == "my-task"
+
+
+def test_the_worktree_actually_lands_on_the_requested_base(repo):
+    """Nothing asserted this: dropping `base` from the `worktree add` argv left
+    the suite green, because in the fixture HEAD and origin/main are the same
+    commit. Advancing main first makes the two distinguishable."""
+    fetched = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "origin/main"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    (repo / "moved-on.txt").write_text("later\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "advance main past origin/main")
+
+    result = mw.create_worktree(repo, "based", "origin/main")
+    head = subprocess.run(
+        ["git", "-C", result["worktree_path"], "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert head == fetched, "the worktree must branch from the requested base"
+
+
+def test_diagnose_creates_nothing(repo, capsys):
+    # The test that only checked for the key would pass even if --diagnose fell
+    # through and created a worktree.
+    mw.main(["--repo", str(repo), "--diagnose"])
+    capsys.readouterr()
+    assert not (repo / ".claude" / "worktrees").exists()
+
+
+def test_a_missing_name_is_reported_as_json_not_as_an_argparse_exit(repo, capsys):
+    """`parser.error` exits 2 with plain text on stderr, which breaks the
+    documented contract of JSON on stdout and leaves the calling skill with
+    nothing parseable."""
+    rc = mw.main(["--repo", str(repo)])
+    assert rc == 1
+    assert "--name is required" in json.loads(capsys.readouterr().out)["error"]
