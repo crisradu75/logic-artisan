@@ -29,6 +29,37 @@ Without it, the skills/hooks are just inert files on disk — no `/cla:*` comman
 **Note:** `--permission-mode auto` bypasses Claude Code's normal per-action confirmation prompts —
 intentional for this harness, but worth knowing before you run it.
 
+### `claw` — start a session already inside a worktree
+
+`claw` / `claw.cmd` is the sibling launcher for when you know up front that the work wants
+isolation. It creates the worktree with plain git **before** Claude starts, then launches inside it:
+
+```bash
+./claw <name>   # .claude/worktrees/<name> on branch worktree-<name>, then claude in it
+```
+
+**Why it exists.** `guard-worktree-isolation.py` writes a presence heartbeat at SessionStart for
+any session whose cwd is the primary clone — before you can type anything. A session that starts
+there and only *then* runs `/cla:new-worktree` has already registered as a contender; when it
+migrates, the beat stops refreshing but is never removed, so another session working legitimately
+in the primary clone is blocked from committing until it ages out (an hour). A `claw`-launched
+session has `git_dir != git_common_dir` from its first instant, so no heartbeat is ever written
+and nobody is blocked.
+
+Creation is delegated to `new-worktree/scripts/manual_worktree.py --print-path`, so base-branch
+resolution, name validation, duplicate-branch refusal, and the Windows path-casing fallback are
+the same tested code the skill uses — the launchers add only argument handling and the exec.
+
+**It does not install dependencies or copy env files.** Those commands are per-repo facts living
+in `new-worktree`'s `references/project-context.md` overlay, so a portable launcher cannot know
+them — hardcoding `npm ci` would be wrong for a Python or Rust consumer. Instead, run
+`/cla:new-worktree` as the session's first action: it sees the worktree already exists and runs
+its setup half only. Doing it from inside the worktree writes no heartbeat, and Claude is open
+immediately rather than you waiting at a terminal through an install.
+
+`/cla:new-worktree` is still the right tool when you are already mid-session and only then realise
+you want isolation. `claw` covers the up-front case; it does not replace the skill.
+
 ## Commands
 
 Run the full test suite (aggregates every isolated pytest scope):

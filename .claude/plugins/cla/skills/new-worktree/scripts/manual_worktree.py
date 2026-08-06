@@ -32,7 +32,10 @@ session is still rooted in the primary clone, so every subsequent path must
 target the worktree explicitly. `block-worktree-path-escape.py` cannot help
 either: it only fires for a session whose cwd IS the worktree.
 
-Exit codes: 0 on success, 1 on failure (with a JSON `error` on stdout).
+Exit codes: 0 on success, 1 on failure. Failure output depends on the mode:
+by default a JSON `error` object on stdout; under `--print-path`, plain text on
+stderr with stdout left EMPTY, so a shell launcher capturing stdout gets an
+empty path rather than an error message it might `cd` into.
 """
 
 from __future__ import annotations
@@ -376,10 +379,24 @@ def main(argv: list[str] | None = None) -> int:
         "--diagnose", action="store_true",
         help="only report whether this repo is exposed to the path-casing refusal",
     )
+    parser.add_argument(
+        "--print-path", action="store_true",
+        help=(
+            "print ONLY the created worktree path on stdout, errors on stderr. "
+            "For a shell launcher that creates the worktree before starting "
+            "Claude, which would otherwise have to parse JSON in bash and batch."
+        ),
+    )
     args = parser.parse_args(argv)
 
     repo = Path(args.repo).resolve()
     try:
+        # `--diagnose` prints a JSON report; `--print-path` promises a bare path
+        # and nothing else. Together they contradict, and the loser is whichever
+        # caller trusted the contract — a launcher would capture `{` as a path.
+        # Refuse rather than silently letting one win.
+        if args.diagnose and args.print_path:
+            raise GitError("--diagnose and --print-path are mutually exclusive")
         # The RAW argument, deliberately — `repo` above is `.resolve()`d, which
         # canonicalises casing on Windows and would erase the very mismatch this
         # is meant to detect. Do not "tidy" this to use `repo`.
@@ -399,10 +416,20 @@ def main(argv: list[str] | None = None) -> int:
             worktree_dir=args.worktree_dir, branch_prefix=args.branch_prefix,
             casing=mismatch,
         )
-        print(json.dumps(result, indent=2))
+        if args.print_path:
+            # Bare path, nothing else: the caller is a shell script assigning
+            # this to a variable. Any decoration would end up in the path.
+            print(result["worktree_path"])
+        else:
+            print(json.dumps(result, indent=2))
         return 0
     except GitError as exc:
-        print(json.dumps({"error": str(exc)}, indent=2))
+        if args.print_path:
+            # stderr, so a launcher capturing stdout gets an EMPTY path rather
+            # than an error message it might then `cd` into.
+            print(f"manual_worktree: {exc}", file=sys.stderr)
+        else:
+            print(json.dumps({"error": str(exc)}, indent=2))
         return 1
 
 

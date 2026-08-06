@@ -1,6 +1,6 @@
 ---
 name: new-worktree
-description: "Start a new isolated git worktree for this repo, with dependencies installed and any gitignored env files carried over. Triggers on /cla:new-worktree or natural language like 'new worktree', 'start a worktree for X', 'work on this in a worktree'."
+description: "Start a new isolated git worktree for this repo, with dependencies installed and any gitignored env files carried over. Run from inside a worktree that already exists, it detects that and runs the setup half only. Triggers on /cla:new-worktree or natural language like 'new worktree', 'start a worktree for X', 'work on this in a worktree', 'finish the worktree setup'."
 ---
 
 # New worktree, fully set up
@@ -28,12 +28,29 @@ memory `worktree-isolation-file-paths`.)
 ## Steps
 
 1. **Enter the worktree.** Call `EnterWorktree`, passing `name` if the user gave one
-   (from `$ARGUMENTS` when invoked as `/cla:new-worktree <name>`). If the session is
-   already inside a worktree, the tool will refuse — tell the user and stop rather
-   than working around it.
+   (from `$ARGUMENTS` when invoked as `/cla:new-worktree <name>`).
+
+   **If it refuses because the session is ALREADY inside a worktree, that is the
+   setup-only case — skip to step 2 rather than stopping.** The worktree exists and
+   only needs its dependencies and env files. This is the normal state when a session
+   was started *inside* a pre-made worktree rather than migrating into one — some repos
+   ship a launcher that does exactly that, creating the worktree with plain git before
+   Claude starts so no `guard-worktree-isolation` heartbeat is ever written in the
+   primary clone. Do NOT try to create a second worktree, and do not treat the refusal
+   as an error to report and halt on.
+
+   Don't spend a tool call checking whether you are in a worktree first — the refusal
+   IS the signal, and a pre-check would cost a round-trip on every ordinary run for a
+   case that announces itself. Likewise don't check whether setup has already been
+   done: step 2 is idempotent (the install is offline-preferring and mostly hardlinks
+   on a rerun, the env copy is a guarded `cp`), so re-running it is cheaper than
+   detecting it, and needs no extra fact from the overlay.
+
+   In the setup-only case, say so in the step 3 report — "worktree already existed;
+   ran setup only" — so nobody reads it as a fresh worktree on a fresh base.
 
    If it refuses for a *different* reason — a "refusing to use ... as an isolation
-   worktree" message naming two paths that look identical — see
+   worktree" message naming two paths that look identical — that is NOT this case; see
    **When `EnterWorktree` refuses over path casing** below. Don't retry it; it will
    fail identically every time on that machine.
 
@@ -198,8 +215,9 @@ if not already tracked. Nothing inside a consuming repo can fix it.
   later `ExitWorktree --remove` fails with a file lock, that's normal on Windows right
   after an install — a process/AV scan may still hold a handle; leaving it "kept"
   is fine, no action needed from this skill.)
-- Doesn't handle the "already inside a worktree" case beyond reporting it — `EnterWorktree`
-  intentionally disallows nesting a new worktree creation inside an existing worktree session.
+- Doesn't create a *second* worktree from inside one — `EnterWorktree` intentionally disallows
+  nesting. That refusal is not an error here: step 1 treats it as the setup-only signal and runs
+  step 2 against the worktree you are already in.
 - Doesn't set up any heavier local backend stack this repo may have (e.g. Docker
   containers for a local database stack) — that's a heavier, explicit step the user
   can run themselves per this repo's own docs (see `references/project-context.md`)
