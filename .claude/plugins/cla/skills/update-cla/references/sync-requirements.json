@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "Declared cross-asset subtleties update-cla must surface at sync time.",
+    "Read from the SOURCE repo by discover.py, so a source that learns a new",
+    "requirement teaches every consumer on the next sync without any consumer",
+    "editing anything. Both categories below have SILENT failure modes, which",
+    "is why they are data checked by a script rather than prose in SKILL.md.",
+    "Paths are repo-relative, exactly as they appear in divergences.json."
+  ],
+
+  "companion_overlays": [
+    {
+      "asset": ".claude/plugins/cla/hooks/warn-smoke-test-drift.py",
+      "requires": ".claude/plugins/cla/hooks/smoke-test-drift.local.md",
+      "note": "This hook holds no repo facts (fact/procedure split): it reads the component/i18n path patterns and the smoke-test location from the overlay and NO-OPS SILENTLY when the overlay is absent. A repo that had the check working before this asset was parameterized loses it on sync with no warning. Create the overlay to restore it; the previous hardcoded values were component_path_substring: src/components/, component_ext: .tsx, i18n_path_substring: src/i18n/, i18n_ext: .json, smoke_test_relpath: test-app.mjs. A *.local.md leaf is never synced or overwritten."
+    }
+  ],
+
+  "lockstep_groups": [
+    {
+      "name": "hooks shared git helpers",
+      "assets": [
+        ".claude/plugins/cla/hooks/_dispatch_lib.py",
+        ".claude/plugins/cla/hooks/block-worktree-path-escape.py",
+        ".claude/plugins/cla/hooks/guard-worktree-isolation.py"
+      ],
+      "note": "block-worktree-path-escape.py and guard-worktree-isolation.py import run_git/clone_paths from _dispatch_lib.py. Applying an importer without the updated _dispatch_lib is an ImportError at hook load; the dispatcher isolates and reports it, so it is audible rather than silent, but the guard does not run for that session."
+    },
+    {
+      "name": "hooks shared git-command matchers",
+      "assets": [
+        ".claude/plugins/cla/hooks/_dispatch_lib.py",
+        ".claude/plugins/cla/hooks/block-direct-push-to-main.py",
+        ".claude/plugins/cla/hooks/warn-branch-base.py",
+        ".claude/plugins/cla/hooks/warn-stray-scratch-artifact.py",
+        ".claude/plugins/cla/hooks/ask-destructive-git.py",
+        ".claude/plugins/cla/hooks/ask-git-identity.py"
+      ],
+      "note": "These six import GIT_GLOBAL_OPTS / strip_quoted_spans (and warn-branch-base also default_base_branch) from _dispatch_lib.py. Same failure mode as above: an importer applied without a compatible _dispatch_lib fails to load."
+    }
+  ]
+}

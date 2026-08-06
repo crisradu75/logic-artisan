@@ -106,10 +106,20 @@ class DeletionRecord:
 
 
 @dataclass
+class RequirementRecord:
+    """A cross-asset subtlety the sync must surface, or it fails silently."""
+    kind: str  # "companion_overlay" | "lockstep_partial"
+    asset_path: str  # the asset that triggered it (group name for lockstep)
+    detail: str  # the missing overlay path, or the comma-joined missing assets
+    note: str
+
+
+@dataclass
 class DiscoverResult:
     files: list[FileRecord]
     skipped: list[SkippedRecord]
     deletions: list[DeletionRecord] = field(default_factory=list)
+    requirements: list[RequirementRecord] = field(default_factory=list)
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -265,6 +275,82 @@ def _detect_deletions(
     return deletions
 
 
+REQUIREMENTS_RELATIVE_PATH = (
+    ".claude/plugins/cla/skills/update-cla/references/sync-requirements.json"
+)
+
+
+def _read_requirements(source_repo: Path) -> dict:
+    """Load the SOURCE repo's declared cross-asset requirements.
+
+    Read from source, not local: a source that learns a new subtlety then
+    teaches every consumer on their next sync with no consumer-side edit.
+    Absent or malformed is not fatal — the sync still works, it just cannot
+    warn — but say so, because silence here looks identical to "nothing to
+    warn about", which is the failure mode this whole file exists to prevent.
+    """
+    path = source_repo / REQUIREMENTS_RELATIVE_PATH
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(
+            f"update-cla: warn: could not read {REQUIREMENTS_RELATIVE_PATH} "
+            f"({exc}); cross-asset requirements will NOT be checked this run.",
+            file=sys.stderr,
+        )
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _check_requirements(
+    requirements: dict, to_write: set[str], local_repo: Path
+) -> list[RequirementRecord]:
+    """Flag declared subtleties triggered by this run's asset set.
+
+    Two kinds, both silent-by-default without this check:
+      - companion_overlay: an asset being written needs a per-repo `*.local.md`
+        that does not exist locally, and no-ops without it.
+      - lockstep_partial: SOME but not all of a group are being written, so an
+        importer can land against an incompatible shared module.
+    """
+    found: list[RequirementRecord] = []
+
+    for entry in requirements.get("companion_overlays", []) or []:
+        asset = entry.get("asset")
+        needs = entry.get("requires")
+        if not asset or not needs or asset not in to_write:
+            continue
+        if (local_repo / needs).exists():
+            continue
+        found.append(RequirementRecord(
+            kind="companion_overlay",
+            asset_path=asset,
+            detail=needs,
+            note=entry.get("note", ""),
+        ))
+
+    for group in requirements.get("lockstep_groups", []) or []:
+        assets = [a for a in (group.get("assets") or []) if a]
+        if not assets:
+            continue
+        writing = [a for a in assets if a in to_write]
+        # Only a PARTIAL overlap is a problem: none means the group is untouched,
+        # all means it moves together.
+        if not writing or len(writing) == len(assets):
+            continue
+        missing = [a for a in assets if a not in to_write]
+        found.append(RequirementRecord(
+            kind="lockstep_partial",
+            asset_path=group.get("name", "unnamed group"),
+            detail=", ".join(missing),
+            note=group.get("note", ""),
+        ))
+
+    return found
+
+
 def discover(
     source_repo: Path,
     local_repo: Path,
@@ -338,7 +424,14 @@ def discover(
             ))
 
     deletions = _detect_deletions(local_repo, source_seen, lock, norm_filter)
-    return DiscoverResult(files=files, skipped=skipped, deletions=deletions)
+    requirements = _check_requirements(
+        _read_requirements(source_repo),
+        {f.asset_path for f in files},
+        local_repo,
+    )
+    return DiscoverResult(
+        files=files, skipped=skipped, deletions=deletions, requirements=requirements
+    )
 
 
 def summary_counts(result: DiscoverResult) -> dict[str, int]:
@@ -366,4 +459,5 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
         "total": len(result.files),
         "skipped": len(result.skipped),
         "deletions": len(result.deletions),
+        "requirements": len(result.requirements),
     }
