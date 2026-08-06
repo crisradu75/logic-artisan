@@ -263,6 +263,9 @@ def _positional_arguments(tokens: list[str]) -> list[str]:
     return positionals
 
 
+_BRANCH_CACHE: dict[str | None, str | None] = {}
+
+
 def _current_branch(cwd: str | None = None) -> str | None:
     """The checked-out branch in `cwd` (the session's own directory), NOT in
     whatever directory this hook process happens to be running from — those
@@ -273,18 +276,25 @@ def _current_branch(cwd: str | None = None) -> str | None:
     Callers collapse None to "not protected" (fail-open, per this hook's
     stated posture) — which is exactly why every None path here has to be
     audible on stderr rather than silent."""
+    # Memoised per cwd. A command can carry several pushes and each one resolves
+    # a branch, so without this the subprocess count is unbounded by the INPUT —
+    # `git push a && git push b && ...` multiplies it — and no fixed entry in
+    # `_dispatch_lib.HOOK_WORST_CASE_SECONDS` could be honest about the cost.
+    # HEAD cannot move mid-hook, so caching is safe as well as cheap.
+    if cwd in _BRANCH_CACHE:
+        return _BRANCH_CACHE[cwd]
     try:
         result = subprocess.run(
             ["git", *(["-C", cwd] if cwd else []), "rev-parse", "--abbrev-ref", "HEAD"],
-            # 2s bounds a WEDGED git, not a slow one; `rev-parse` is milliseconds.
+            # 3s bounds a WEDGED git, not a slow one; `rev-parse` is milliseconds.
             # Charged against the shared handler budget — see
             # `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
-            capture_output=True, text=True, timeout=2,
+            capture_output=True, text=True, timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
         # `SubprocessError` covers `TimeoutExpired`. Without the timeout a hung
         # `git rev-parse` (stale index.lock, network FS, credential prompt)
-        # would burn the dispatcher's whole 10s budget and take every other
+        # would burn the dispatcher's whole budget and take every other
         # guard down with it. Surface the degradation rather than allowing
         # silently — this is the one branch where the hook cannot tell whether
         # a bare push is safe.
@@ -293,6 +303,7 @@ def _current_branch(cwd: str | None = None) -> str | None:
             "unavailable or timed out) — bare-push detection is off for this call.",
             file=sys.stderr,
         )
+        _BRANCH_CACHE[cwd] = None
         return None
     if result.returncode != 0:
         # git EXITS 128 here (bad directory, not a repo, dubious ownership,
@@ -306,8 +317,11 @@ def _current_branch(cwd: str | None = None) -> str | None:
             "current-branch detection is off for this call.",
             file=sys.stderr,
         )
+        _BRANCH_CACHE[cwd] = None
         return None
-    return (result.stdout or "").strip() or None
+    branch = (result.stdout or "").strip() or None
+    _BRANCH_CACHE[cwd] = branch
+    return branch
 
 
 def _is_direct_push_to_main(command: str, cwd: str | None = None) -> bool:

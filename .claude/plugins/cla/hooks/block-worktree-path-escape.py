@@ -60,13 +60,13 @@ import sys
 # the same clone. Expiry is caught below as just another git failure, which this
 # hook already fails open on.
 #
-# 2s, not 5s: the bound exists to catch a WEDGED git, not to accommodate a slow
+# 3s, not 5s: the bound exists to catch a WEDGED git, not to accommodate a slow
 # one — `rev-parse` on a healthy repo answers in milliseconds. The number has to
 # be small because worst case here is (call sites) x (this timeout), and that
-# product is charged against a 10s handler shared with the other Edit/Write
+# product is charged against a 15s handler shared with the other Edit/Write
 # hooks. `_dispatch_lib.HOOK_WORST_CASE_SECONDS` records the product and the
 # wiring test fails if the enforcing hooks stop fitting.
-_GIT_TIMEOUT_SECONDS = 2
+_GIT_TIMEOUT_SECONDS = 3
 
 
 def _run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess[str] | None:
@@ -110,11 +110,54 @@ def _worktree_root(cwd: str) -> str | None:
 
 
 def _is_inside(path: str, root: str) -> bool:
+    """Containment test that does not depend on the two paths being spelled alike.
+
+    Callers realpath both sides first, which on WINDOWS also canonicalises
+    letter case — that is why this guard survives the path-casing divergence
+    that breaks `EnterWorktree`. On a case-insensitive POSIX filesystem (macOS
+    APFS by default) `realpath` resolves symlinks but leaves case alone, so a
+    plain string comparison there would answer False for a path that really is
+    inside the worktree, and this guard would fail open on exactly the platform
+    class it was assumed safe on.
+
+    So: `normcase` first (a no-op off Windows, harmless on it), then an inode
+    comparison as the fallback that is immune to spelling altogether.
+    """
     try:
-        return os.path.commonpath([path, root]) == root
+        if os.path.commonpath([os.path.normcase(path), os.path.normcase(root)]) == (
+            os.path.normcase(root)
+        ):
+            return True
     except ValueError:
         # Different drives on Windows, etc. — definitely not inside.
         return False
+    return _is_inside_by_inode(path, root)
+
+
+def _is_inside_by_inode(path: str, root: str) -> bool:
+    """Walk `path` upward looking for a directory that IS `root` by inode.
+
+    `os.stat` answers "same directory?" without caring how either was spelled,
+    which is what makes this correct on a case-insensitive filesystem whose
+    case `realpath` did not fold. The write target itself usually does not
+    exist yet (that is the point of a PreToolUse hook), so ancestors that
+    cannot be stat'ed are skipped rather than treated as a miss.
+    """
+    try:
+        root_stat = os.stat(root)
+    except OSError:
+        return False
+    current = os.path.abspath(path)
+    while True:
+        try:
+            if os.path.samestat(os.stat(current), root_stat):
+                return True
+        except OSError:
+            pass  # ancestor does not exist yet — keep climbing
+        parent = os.path.dirname(current)
+        if parent == current:  # filesystem root; nothing above it
+            return False
+        current = parent
 
 
 def main() -> int:

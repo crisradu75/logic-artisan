@@ -88,7 +88,7 @@ def main() -> int:
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             # See `_dispatch_lib.HOOK_WORST_CASE_SECONDS`: this is charged
             # against a handler budget shared with every other Bash hook.
-            capture_output=True, text=True, timeout=2,
+            capture_output=True, text=True, timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
         return 0

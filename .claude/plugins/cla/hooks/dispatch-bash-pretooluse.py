@@ -47,9 +47,12 @@ Order and semantics preserved exactly:
     (the rest still run — see `_dispatch_lib.run_hook_file`) and the failure is
     reported as additionalContext, where it arrives whole.
   - If too little handler budget remains for an ADVISORY hook's own worst case,
-    it is skipped and the skip reported the same way. Enforcing hooks are never
-    skipped: a late block still blocks, but a block dropped to a handler kill is
-    a silent failure. See `_dispatch_lib.Deadline` and `HOOK_WORST_CASE_SECONDS`.
+    it is skipped and named in the DEBUG LOG — not in context. That skip is the
+    mechanism working as designed (advisory means the loss is acceptable), and
+    routine notices on the session's hottest path train the channel to be
+    ignored. Enforcing hooks are never skipped at all: a late block still
+    blocks, but a block dropped to a handler kill is a silent failure. See
+    `_dispatch_lib.Deadline` and `HOOK_WORST_CASE_SECONDS`.
   - Both channels are capped to Claude Code's hook output limit, with a blocking
     hook's reason (or an ask's) budgeted ahead of any advisory text.
 """
@@ -149,11 +152,25 @@ def main() -> int:
         if ask:
             asks.append(ask)
 
+    # Skips go to stderr (the debug log) ONLY, deliberately, and are not added
+    # to `warnings` — which is what becomes additionalContext below.
+    #
+    # An advisory hook stepping aside under load is this mechanism working as
+    # designed: `_ADVISORY_HOOKS` membership is precisely the statement that
+    # losing this hook is acceptable. Announcing it in Claude's context on every
+    # busy call is noise on the hottest path in the session, and a channel that
+    # carries routine noise stops being read — the same reasoning that keeps the
+    # env-override notices off unrelated commands.
+    #
+    # A hook that CRASHED is the opposite: not designed degradation but a defect,
+    # and it does go to context, below. Enforcement is never skipped at all, so
+    # nothing load-bearing is being quietly dropped here.
     if skipped:
-        warnings.append(
+        print(
             "[dispatch] too little handler budget remained for these advisory "
             f"hooks, so they were skipped: {', '.join(skipped)}. Every blocking "
-            "guard still ran — only warnings were lost."
+            "guard still ran — only warnings were lost.",
+            file=sys.stderr,
         )
     if errored:
         warnings.append(

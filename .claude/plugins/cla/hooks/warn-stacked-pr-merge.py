@@ -33,7 +33,6 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
-from _dispatch_lib import default_base_branch  # noqa: E402
 
 _GH_MERGE = re.compile(r"\bgh\s+pr\s+merge\b")
 _DELETE_BRANCH = re.compile(r"(?:^|\s)(?:--delete-branch|-d)(?:\s|=|$)")
@@ -44,7 +43,7 @@ _PR_NUMBER = re.compile(r"(?:^|\s)(\d+)(?:\s|$)")
 
 # This hook is the only network-bound one in the tree, and it can make TWO gh
 # calls in a single run (`pr view` then `pr list`). At the previous 8s each,
-# that was a 16s worst case inside a 10s handler shared with eight other hooks —
+# that was a 16s worst case inside the handler shared with eight other hooks —
 # so a slow GitHub could get the whole Bash dispatcher killed, taking the
 # BLOCKING guards down with it. Halved so both calls together stay inside the
 # budget; `_dispatch_lib.Deadline` then covers the aggregate case where earlier
@@ -69,7 +68,7 @@ def _current_branch() -> str | None:
         r = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             # See `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
-            capture_output=True, text=True, timeout=2,
+            capture_output=True, text=True, timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -162,7 +161,10 @@ def main() -> int:
     print(
         f"[warn-stacked-pr-merge] '{head}' is the base of open PR(s) {listed}. "
         f"Merging with --delete-branch auto-closes them and GitHub refuses to reopen. "
-        f"Retarget first: gh pr edit <child> --base {default_base_branch()} "
+        # `<base>` rather than a resolved branch name: this is already a
+        # template the reader edits, and resolving it costs git spawns inside a
+        # handler budget this hook is the most expensive occupant of.
+        f"Retarget first: gh pr edit <child> --base <base> "
         f"(or drop --delete-branch).",
         file=sys.stderr,
     )

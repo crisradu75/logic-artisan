@@ -29,8 +29,9 @@ Order and semantics preserved exactly:
     (the rest still run — see `_dispatch_lib.run_hook_file`) and the failure is
     reported as additionalContext, where it arrives whole.
   - If too little handler budget remains for an ADVISORY hook's worst case, it
-    is skipped and the skip reported the same way. Enforcing hooks are never
-    skipped — see `_ADVISORY_HOOKS` below and `_dispatch_lib.Deadline`.
+    is skipped and named in the DEBUG LOG — not in context, since that skip is
+    designed degradation rather than a defect. Enforcing hooks are never skipped
+    — see `_ADVISORY_HOOKS` below and `_dispatch_lib.Deadline`.
   - Both output channels are capped to Claude Code's hook output limit, with a
     blocking hook's reason budgeted ahead of any advisory text.
 """
@@ -135,10 +136,11 @@ def main() -> int:
         errored = errored or result.errored
 
         if result.code == 2:
-            # The skip notice belongs here too. The blocking hook sits LAST in
-            # `_HOOK_FILES`, so the common shape is "advisories skipped, then a
-            # block" — reporting the skip only on the non-blocking path meant it
-            # was dropped in exactly the case where it most often applied.
+            # The skip notice DOES belong here, and only here. On exit 2 stderr is
+            # shown to Claude, and a block is the one moment where knowing some
+            # advisory checks were dropped changes how much the message is worth
+            # trusting. On the allow path it stays out of context (see below) —
+            # the asymmetry is deliberate, not an oversight.
             preamble = [n for n in (_skip_notice(skipped),) if n] + list(warnings) + [
                 f"[non-blocking warning from an earlier hook this same call]\n{c}"
                 for c in contexts
@@ -152,9 +154,13 @@ def main() -> int:
         if context:
             contexts.append(context)
 
+    # Debug log only, not context — see the Bash dispatcher for the reasoning:
+    # an advisory hook stepping aside under load is designed degradation, and
+    # putting it in Claude's context on every Edit is noise on the hottest path
+    # in the session. A crashed hook is a defect and does go to context, below.
     notice = _skip_notice(skipped)
     if notice:
-        warnings.append(notice)
+        print(notice, file=sys.stderr)
     if errored:
         warnings.append(
             "[dispatch] one or more hooks failed to load or crashed on this "

@@ -49,7 +49,7 @@ _MAX_DIAGS = 10
 # Must stay strictly under the `timeout` hooks.json gives this handler
 # (_dispatch_lib.HANDLER_TIMEOUT_SECONDS), with room left for interpreter
 # startup and the parent-directory walk that finds the oxlint binary. This was
-# 20s — twice the handler's own budget — so a slow lint could not report at all:
+# 20s — longer than the whole handler's budget — so a slow lint could not report at all:
 # the handler was killed first, and a killed hook produces nothing.
 #
 # Deliberately tight rather than generous. Linting ONE file is normally well

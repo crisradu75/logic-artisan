@@ -195,6 +195,38 @@ def test_enforcing_hooks_fit_inside_the_handler_budget(dispatcher):
     )
 
 
+@pytest.mark.parametrize("dispatcher", _DISPATCHERS)
+def test_every_advisory_hook_is_admissible_on_an_idle_budget(dispatcher):
+    """No advisory hook may be structurally impossible to run.
+
+    Routine skips are reported to the debug log only — deliberately, because a
+    skip is designed degradation and context noise on the hottest path in the
+    session trains the channel to be ignored. The cost of that choice is that
+    a hook which NEVER runs looks exactly like one that always does.
+
+    This is the missing counterweight: if some hook's worst case exceeds the
+    whole budget, it can never be admitted no matter how idle the handler, and
+    it has quietly stopped being a guard. That is a defect, and it fails here
+    rather than going unnoticed until someone wonders why a warning stopped
+    appearing.
+    """
+    lib = _load_dispatch_lib()
+    dispatcher_path = _HOOKS_DIR / dispatcher
+    advisory = _named_collection(dispatcher_path, "_ADVISORY_HOOKS")
+    budget = lib.HANDLER_TIMEOUT_SECONDS - lib._BUDGET_RESERVE_SECONDS
+
+    unrunnable = {
+        name: lib.HOOK_WORST_CASE_SECONDS[name]
+        for name in advisory
+        if lib.HOOK_WORST_CASE_SECONDS[name] > budget
+    }
+    assert not unrunnable, (
+        f"{dispatcher}: these advisory hooks cost more than the entire {budget}s "
+        f"budget, so they can never be admitted and have silently stopped "
+        f"guarding: {unrunnable}"
+    )
+
+
 def test_the_budget_table_covers_every_dispatched_hook():
     """A table entry silently defaulting to 0.0 would make the sum meaningless."""
     lib = _load_dispatch_lib()
