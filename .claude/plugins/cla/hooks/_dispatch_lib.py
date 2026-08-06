@@ -109,8 +109,23 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     "warn-comment-dates.py": 0.0,
     "block-dated-stamps-in-prose.py": 0.0,
     "warn-smoke-test-drift.py": 0.0,
-    # 1 x _current_branch(3s). Memoised per cwd — without that the count scales
-    # with the number of pushes in the command and no fixed figure is honest.
+    # 1 x _current_branch(3s) for the shapes that actually occur. Memoised per
+    # cwd, which bounds the common case: several pushes sharing one directory
+    # resolve the branch once.
+    #
+    # KNOWN GAP, stated rather than implied: the cache key IS the cwd, and each
+    # push may carry its own `-C`/`--work-tree`, so distinct directories are
+    # distinct keys. `git -C /a push origin HEAD && git -C /b push origin HEAD
+    # && git -C /c push origin HEAD` really does spawn three `rev-parse` calls
+    # (verified) — 9s, not 3.0. `_branch_for` can also try two candidates for a
+    # single push (composed relative path, then session cwd), doubling again.
+    # So this entry is the realistic bound, not a proven ceiling.
+    #
+    # Left at 3.0 deliberately: raising it to a true worst case would put the
+    # enforcing sum over the budget and fail `test_hooks_wiring.py`, and the fix
+    # for that is to make the hook cheaper (resolve at most one branch per
+    # command), not to raise the handler timeout. Tracked here so the next
+    # person to touch this hook sees the constraint instead of rediscovering it.
     "block-direct-push-to-main.py": 3.0,
     # 1 x _git_email(3s).
     "ask-git-identity.py": 3.0,
@@ -264,11 +279,17 @@ def compose_output(
 # --- Bounded git subprocess helpers -----------------------------------------
 # Shared by block-worktree-path-escape.py and guard-worktree-isolation.py,
 # which both run on every Edit/Write/Bash call and both need the SAME answer —
-# "is cwd inside a linked worktree, and what are its git-dir/git-common-dir/
-# toplevel paths" — so each carried a byte-for-byte identical `_clone_paths`
-# (one `rev-parse --absolute-git-dir --git-common-dir` call, not two) and its
-# own `_run_git` wrapper. One definition, one fix site, same reasoning as
-# `strip_quoted_spans`/`GIT_GLOBAL_OPTS` below.
+# "is cwd inside a linked worktree?" — resolved from its git-dir and
+# git-common-dir. (`--show-toplevel` is NOT part of this; only
+# block-worktree-path-escape.py wants the worktree root, and it keeps its own
+# `_worktree_root` for that.)
+#
+# Each previously carried its own copy: the `_clone_paths` BODIES were
+# identical, though their docstrings were not, and the two `_run_git` wrappers
+# were NOT equivalent — one ran `["git", *args], cwd=cwd` while the other ran
+# `git -C cwd`. Consolidating standardized on `-C`, so this was a behavior
+# reconciliation, not a pure de-duplication. One definition, one fix site, same
+# reasoning as `strip_quoted_spans`/`GIT_GLOBAL_OPTS` below.
 #
 # 3s: the bound exists to catch a WEDGED git (an index lock held by a
 # concurrent session), not to accommodate a slow one — `rev-parse` on a

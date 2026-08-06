@@ -30,9 +30,10 @@ followed by free-form prose (only the frontmatter is read):
 
     Free-form notes for a human reader go here; the hook ignores this part.
 
-All five keys are required; a missing key or an unparseable file is treated
-like a missing file (no-op) rather than a guess — a guard should never rely
-on partially-known facts about a repo it wasn't told about.
+All five keys are required. A missing key or an unparseable file still no-ops
+rather than guessing — a guard should never rely on partially-known facts —
+but unlike an ABSENT overlay it warns on stderr first: the repo stated intent,
+so a typo that silently disables the check forever is the worse outcome.
 
 Non-blocking: prints an `additionalContext` warning when a locator string
 looks like it's disappearing, and always exits 0.
@@ -52,18 +53,36 @@ _REQUIRED_KEYS = (
 )
 
 
+def _warn(msg: str) -> None:
+    """Surface a degraded condition. Goes to the debug log (this hook always
+    exits 0), which is where a misconfiguration is looked for — the point is
+    that it is discoverable at all, rather than the check vanishing in silence."""
+    print(f"[warn-smoke-test-drift] warn: {msg}", file=sys.stderr)
+
+
 def _load_config(hooks_dir: str) -> dict | None:
-    """Parse the flat `key: value` frontmatter of the overlay file, or None if
-    the file is absent, unreadable, malformed, or missing a required key."""
+    """Parse the flat `key: value` frontmatter of the overlay file, or None.
+
+    Silence is reserved for ONE case: the file does not exist, meaning this repo
+    never opted into the check. Every other None — unreadable, malformed, a
+    missing or blank required key — means the repo DID state intent and the
+    check still isn't running, so it warns on stderr first. Without that split,
+    a typo in the overlay was indistinguishable from not having one, and the
+    check silently never ran again.
+    """
     path = os.path.join(hooks_dir, _OVERLAY_LEAF)
+    if not os.path.isfile(path):
+        return None  # not configured; the only silent no-op
     try:
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
-    except OSError:
+    except OSError as e:
+        _warn(f"{_OVERLAY_LEAF} exists but could not be read ({e})")
         return None
 
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
+        _warn(f"{_OVERLAY_LEAF} does not start with a `---` frontmatter line")
         return None
     config: dict[str, str] = {}
     for line in lines[1:]:
@@ -74,9 +93,12 @@ def _load_config(hooks_dir: str) -> dict | None:
         key, _, value = line.partition(":")
         config[key.strip()] = value.strip()
     else:
-        return None  # no closing "---" found
+        _warn(f"{_OVERLAY_LEAF} frontmatter has no closing `---` line")
+        return None
 
-    if not all(k in config and config[k] for k in _REQUIRED_KEYS):
+    missing = [k for k in _REQUIRED_KEYS if not config.get(k)]
+    if missing:
+        _warn(f"{_OVERLAY_LEAF} is missing or has a blank value for: {', '.join(missing)}")
         return None
     return config
 

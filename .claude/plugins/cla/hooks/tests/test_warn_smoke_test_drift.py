@@ -86,6 +86,55 @@ def test_malformed_overlay_missing_a_key_is_a_noop(tmp_path, monkeypatch):
     assert out == ""
 
 
+# --------------------------------------------------------------------------- #
+# Absent vs broken: silence is reserved for "this repo never opted in"
+#
+# A present-but-broken overlay used to be indistinguishable from no overlay at
+# all, so a typo disabled the check permanently and silently. The repo stated
+# intent by creating the file; a config it cannot use must say so.
+# --------------------------------------------------------------------------- #
+
+
+def _write_overlay(tmp_path, body: str, monkeypatch):
+    fake_hook = tmp_path / "warn-smoke-test-drift.py"
+    fake_hook.write_text("", encoding="utf-8")
+    (tmp_path / "smoke-test-drift.local.md").write_text(body, encoding="utf-8")
+    monkeypatch.setattr(hook, "__file__", str(fake_hook))
+    return tmp_path
+
+
+def test_an_absent_overlay_stays_completely_silent(hooks_dir_without_overlay, monkeypatch, capsys):
+    _run(monkeypatch, {"file_path": "src/components/Foo.tsx", "content": "x"})
+    assert capsys.readouterr().err == "", "not opting in must produce no noise"
+
+
+@pytest.mark.parametrize(
+    "body, expected_fragment",
+    [
+        ("---\ncomponent_path_substring: src/components/\n---\n", "missing"),
+        ("no frontmatter at all\n", "frontmatter"),
+        ("---\ncomponent_path_substring: src/components/\n", "closing"),
+        # Present-but-EMPTY value: a distinct path from a missing key.
+        (
+            "---\ncomponent_path_substring: src/components/\ncomponent_ext:\n"
+            "i18n_path_substring: src/i18n/\ni18n_ext: .json\n"
+            "smoke_test_relpath: test-app.mjs\n---\n",
+            "component_ext",
+        ),
+    ],
+)
+def test_a_broken_overlay_warns_rather_than_vanishing(
+    body, expected_fragment, tmp_path, monkeypatch, capsys
+):
+    _write_overlay(tmp_path, body, monkeypatch)
+    rc, out = _run(monkeypatch, {"file_path": "src/components/Foo.tsx", "content": "x"})
+    assert rc == 0, "still fails open — a guard must never wedge the workflow"
+    assert out == "", "a broken config produces no finding, only a warning"
+    err = capsys.readouterr().err
+    assert "warn" in err.lower()
+    assert expected_fragment in err
+
+
 def test_overlay_present_but_path_does_not_match_is_a_noop(hooks_dir_with_overlay, monkeypatch):
     rc, out = _run(monkeypatch, {"file_path": "src/other/Foo.ts", "content": "x"})
     assert rc == 0

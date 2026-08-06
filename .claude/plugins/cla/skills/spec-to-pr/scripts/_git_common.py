@@ -11,13 +11,21 @@ isolation boundary.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 
 def repo_root() -> Path:
     """Repo root via git (location-independent — works from the plugin, unlike a
     fixed `parents[N]` depth). Falls back to cwd if git is unavailable; callers'
-    tests monkeypatch each module's own `REPO_ROOT` directly, not this function."""
+    tests monkeypatch each module's own `REPO_ROOT` directly, not this function.
+
+    The fallback WARNS rather than substituting cwd silently. Callers bind this
+    at import time (`REPO_ROOT = _repo_root()`), and several of them resolve
+    ledger and artifact paths from it — so a silent wrong root means writes land
+    somewhere unexpected while the run still reports success. Fail-open is right
+    for a helper script; fail-open-and-quiet is not.
+    """
     try:
         out = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -25,6 +33,13 @@ def repo_root() -> Path:
         )
         if out.returncode == 0 and out.stdout.strip():
             return Path(out.stdout.strip())
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return Path.cwd()
+        detail = f"`git rev-parse --show-toplevel` exited {out.returncode}"
+    except (OSError, subprocess.SubprocessError) as e:
+        detail = f"`git rev-parse --show-toplevel` could not run ({e})"
+    cwd = Path.cwd()
+    print(
+        f"_git_common: {detail}; falling back to the current directory ({cwd}). "
+        "Paths derived from the repo root may be wrong.",
+        file=sys.stderr,
+    )
+    return cwd

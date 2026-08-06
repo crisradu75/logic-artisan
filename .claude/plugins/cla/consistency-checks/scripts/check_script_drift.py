@@ -26,6 +26,7 @@ was always meant to differ.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -55,28 +56,62 @@ SIBLING_GROUPS = [
 ]
 
 
-def _blank_string_constants(node: ast.AST) -> ast.AST:
-    """Zero out every string-literal constant (docstrings, filenames, messages)
-    in place, leaving int/float/bool/None constants and all control flow
-    untouched — those must still match exactly."""
+# The per-skill ledger filename (`codify-runs.jsonl`, `spec-to-pr-runs.jsonl`,
+# …). This is the ONE string inside a guarded function that legitimately differs
+# between siblings — `_default_log_path` builds the same path the same way and
+# only names its own skill's ledger at the end. Normalizing it keeps every other
+# string compared, which is the point: those functions' docstrings say they must
+# stay byte-identical to the matching producer or "runs vanish silently", and
+# what makes that true is `cla.io`/`retro`/`rev-parse`/`--show-toplevel`, not
+# the filename.
+_LEDGER_NAME = re.compile(r"^[a-z0-9-]+-runs\.jsonl$")
+
+
+def _normalize_constants(node: ast.FunctionDef) -> ast.FunctionDef:
+    """Blank the function's docstring and its per-skill ledger filename, and
+    NOTHING else.
+
+    An earlier version blanked every string literal, which silently defeated the
+    whole check: these functions ARE mostly string literals. `_git_toplevel` is a
+    `subprocess.run(["git", "rev-parse", "--show-toplevel"], …)` call and
+    `_runs_dir` builds `<root>/cla.io/retro`, so blanking strings meant a sibling
+    drifting to `--git-dir`, or writing its ledger to a different directory,
+    compared EQUAL. Both cases are now covered by tests; both were missed before.
+    """
+    if (
+        node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    ):
+        node.body[0].value.value = ""
     for n in ast.walk(node):
-        if isinstance(n, ast.Constant) and isinstance(n.value, str):
-            n.value = ""
+        if (
+            isinstance(n, ast.Constant)
+            and isinstance(n.value, str)
+            and _LEDGER_NAME.match(n.value)
+        ):
+            n.value = "<ledger>"
     return node
 
 
-def _normalized_dump(node: ast.AST) -> str:
-    return ast.dump(_blank_string_constants(node), annotate_fields=False)
+def _normalized_dump(node: ast.FunctionDef) -> str:
+    return ast.dump(_normalize_constants(node), annotate_fields=False)
 
 
 def extract_functions(path: Path, names: set[str]) -> dict[str, str]:
-    """Return {function_name: normalized_dump} for top-level defs in `path`
+    """Return {function_name: normalized_dump} for TOP-LEVEL defs in `path`
     matching `names`. Missing file or parse failure raises — a group naming a
     file that no longer exists or no longer parses is itself a drift the
-    check must not silently swallow."""
+    check must not silently swallow.
+
+    Iterates `tree.body` rather than `ast.walk`: a nested or method def sharing
+    a guarded name would otherwise overwrite the real top-level one and the
+    comparison would silently run against the wrong function.
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     found: dict[str, str] = {}
-    for node in ast.walk(tree):
+    for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name in names:
             found[node.name] = _normalized_dump(node)
     return found
@@ -85,17 +120,22 @@ def extract_functions(path: Path, names: set[str]) -> dict[str, str]:
 def check_group(group: dict, root: Path) -> list[str]:
     names = set(group["functions"])
     per_file: dict[str, dict[str, str]] = {}
+    problems: list[str] = []
     for rel in group["files"]:
         path = root / rel
         if not path.is_file():
-            return [f"{rel}: file not found (listed in {group['name']!r})"]
+            # Collect and keep going rather than returning here: an early return
+            # reported the first missing file and hid every other problem in the
+            # group, so a run that renamed two siblings looked like one issue.
+            problems.append(f"{rel}: file not found (listed in {group['name']!r})")
+            continue
         per_file[rel] = extract_functions(path, names)
 
-    problems: list[str] = []
+    present = [rel for rel in group["files"] if rel in per_file]
     for fn in sorted(names):
         baseline_file: str | None = None
         baseline_src: str | None = None
-        for rel in group["files"]:
+        for rel in present:
             src = per_file[rel].get(fn)
             if src is None:
                 problems.append(f"{rel}: missing `{fn}` (expected in {group['name']})")
