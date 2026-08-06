@@ -73,6 +73,42 @@ re-tested for `codify-learnings` and held — the aggregator's own metrics said 
 was working and the window was below its stated bar. The threshold discipline in this item is the
 same one, applied earlier in the lifecycle.
 
+## Migration notes for consumers on the next `update-cla` sync
+
+Two things a consuming repo needs to know when it pulls the current baseline. Both were once a
+detection mechanism in `update-cla` (reverted — it warned spuriously on the commonest sync shape,
+never fired for the consumers it existed for, and crashed on a malformed declaration). Handle them
+by hand until something better is built.
+
+**1. `warn-smoke-test-drift.py` needs a per-repo overlay or it silently does nothing.** It used to
+hardcode one consumer's paths; it now reads them from `hooks/smoke-test-drift.local.md`, and an
+absent overlay is a silent no-op. A repo that had the check working loses it on sync with no
+warning. To restore the previous behaviour exactly, create that file with:
+
+```
+---
+component_path_substring: src/components/
+component_ext: .tsx
+i18n_path_substring: src/i18n/
+i18n_ext: .json
+smoke_test_relpath: test-app.mjs
+---
+```
+
+A `*.local.md` leaf is never synced or overwritten, so this survives future updates.
+
+**2. Apply `hooks/` as a set, not file-by-file.** `block-worktree-path-escape.py` and
+`guard-worktree-isolation.py` import `run_git`/`clone_paths` from `_dispatch_lib.py`; five hooks
+import `GIT_GLOBAL_OPTS`/`strip_quoted_spans` from it as well. Applying an importer without a
+compatible `_dispatch_lib.py` is an ImportError at hook load — the dispatcher reports it, so it is
+audible rather than silent, but that guard does not run.
+
+**If a detection mechanism is rebuilt**, it must: treat an asset already identical to source as
+satisfied (not as "missing from the group"); check overlay presence against local state rather
+than only when the asset is being rewritten (otherwise it never fires for already-synced repos —
+the entire affected population); and tolerate any malformed declaration shape, since the file is
+read from the source and one bad edit would break discovery for every consumer.
+
 ## Close the known gaps in `block-direct-push-to-main`
 
 Pre-existing shapes the guard does **not** catch (verified against the current hook, all resolve
