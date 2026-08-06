@@ -49,6 +49,24 @@ open, and any file a sibling agent in the same fan-out owns. Also name the *deci
 that are not the agent's to make — "do not change the public signature", "do not add a
 dependency" — since scope alone does not constrain those.
 
+**Say "no repository-state changes", not "no edits".** A read-only agent reads "make no
+edits" as being about file contents and will still run `git checkout`, `switch`, `stash`,
+`branch`, or `worktree add` if that looks like the easiest way to see the code. Those are
+shared, process-wide state: git's HEAD is per-clone, so one agent switching branches moves
+the ground under the orchestrator and every sibling in the same fan-out — and it leaves no
+diff to notice it by. Spell out the forbidden verbs, and for a diff review name the
+read-only way to get it:
+
+> Read the diff with `git diff <base>...<branch>`. Do NOT run `git checkout`, `switch`,
+> `stash`, `branch`, or `worktree add`, or anything else that mutates repository state.
+
+The failure mode is worse than it sounds, because a well-behaved agent *restores* what it
+changed — to the branch it assumes was the baseline, which is usually `main` rather than
+the branch the session was actually on. The session then continues on the wrong tree with
+no error, and any command that already ran against it silently answered about the wrong
+code. Observed in this plugin's own PR review: four verification commands returned
+confident, wrong answers before the switch was noticed.
+
 ### 4. Report — what to write, and where
 
 An agent that returns only to the conversation has produced nothing that survives its

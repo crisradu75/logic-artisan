@@ -40,9 +40,16 @@ For each `failure-modes.md` bullet and each memory-index entry, classify how it 
 
 Name every **re-offense** explicitly in the log's "Recurring patterns" section, with the artifact that failed to prevent it and the rung it is being escalated to.
 
-## Step 2.6 — Maintenance pass (size-triggered)
+## Step 2.6 — Maintenance pass (retire-on-escalation, then size-triggered)
 
-The loop's files must stay legible or they silently stop being read. Check sizes during Step 2; if a threshold is crossed, include maintenance edits in this run's report as numbered suggestions (accepted/rejected via Step 4 like any other):
+**Retire-on-escalation runs EVERY time, not only when a size threshold trips.** For each lesson this run escalates *off* the checklist (Step 2.5 produced a re-offense routed to memory / `CLAUDE.md` / `SKILL.md` / a hook / a script), name the `failure-modes.md` bullet it supersedes and decide, in one line each:
+
+- **Retire** it — the escalated artifact now covers the same ground. Fold the retirement into the same numbered suggestion as the escalation, so a graduated lesson never leaves a duplicate behind.
+- **Keep** it, with the reason — the bullet is genuinely broader than what graduated. This is common and not a failure: a bullet covering a whole class ("a platform-divergent default") outlives an escalation that fixed one instance of it, and a bullet about parallel *sessions* is not superseded by a rule about *sub-agents*.
+
+Skipping this decision is what makes the checklist grow monotonically while its lessons live elsewhere — a retro-time-only file accumulating items that no work session ever loads. If a run escalates nothing off the checklist, say so in one line and move on.
+
+Then the size-triggered checks. Check sizes during Step 2; if a threshold is crossed, include maintenance edits in this run's report as numbered suggestions (accepted/rejected via Step 4 like any other):
 
 - **`failure-modes.md` over ~60 bullets** — the threshold is a bloat alarm, not a hard target to force the count under. Merge only *genuine overlap* (bullets making the same point from the same angle), and **retire** any bullet whose lesson has graduated to a hook or a load-bearing doc (it is now enforced elsewhere — see the escalation ladder). Do not delete distinct checks just to hit a number — a checklist of legitimately diverse, section-organized items is fine; an unbounded one that nobody can hold in working memory is not.
 - **`lessons-learned.md` over ~12 entries** — move the oldest entries to `cla.io/lessons-learned/lessons-learned-archive.md` (create if absent), keeping the newest ~12 in the live log. The archive stays grep-able for deep history; the live log stays skimmable.

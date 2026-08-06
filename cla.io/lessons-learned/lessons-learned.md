@@ -2,6 +2,80 @@
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
 
+## Lessons learned — 2026-08-06 — scope: repo-wide (`.claude/plugins/cla/hooks/`, `skills/new-worktree/`, `skills/spec-to-pr/references/`, codify overlay)
+
+### Session summary
+
+Audited CLA against all 34 chapters + 5 appendices of *The Claude Code Field Guide*, then
+worked every finding (PR #18, 17 findings: 14 fixed, 3 reasoned non-changes). Two rounds of
+5-agent `pr-review-toolkit` review — one per PR — each found **critical defects in work
+already declared merge-ready**. Round one on #18: an `ask` decision discarded whenever any
+sibling hook errored, a `Deadline` that gated starting rather than fitting (enforcing hooks
+summed to 17s/21s against a 10s handler), and PowerShell — the primary shell on this machine
+— running 1 of 9 hooks. A fourth, worse defect surfaced only from the user's plain "ready to
+merge?": the entire Bash warn tier wrote to stderr at exit 0, a channel Claude never reads,
+so every warn hook had been delivering nothing. Then a peer repo's `worktree.md` led to PR
+#19 — a plain-git fallback for `EnterWorktree`'s path-casing refusal, plus the discovery
+that `_is_inside` was a raw string comparison that fails open on case-insensitive APFS.
+Round two of review found the budget table was fiction (an uncounted `default_base_branch`
+costing up to 6 spawns from an *enforcing* hook's block path) and that the new cleanup could
+`remove --force` a concurrent session's dirty worktree. Both PRs merged, CI green on
+ubuntu+windows × py3.11/3.13, branches deleted.
+
+### Suggested edits
+
+**1. Make the sub-agent brief's do-not-touch slot cover repository state, not just files** (`.claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md`) — spell out the forbidden verbs (`checkout`/`switch`/`stash`/`branch`/`worktree add`) and name the read-only way to get a diff. *Benefit: a review agent this session ran `git checkout` and left the session on `main`, silently invalidating four verification commands run against the wrong tree — in the very PR that introduced this file.* — **APPLIED**
+
+**2. Memory: read the primary source before building on any secondary description of it** (type: feedback) — an external contract described in repo comments is a claim to verify, not a premise; same rule for declaring part of an audited artifact out of scope. *Benefit: four rounds were spent reasoning from three docstrings that asserted the exit-0 stderr contract while the code contradicted them, and the one guide chapter declared out of scope stated that contract outright.* — **APPLIED**
+
+**3. Fill in the codify-learnings project-context overlay** (`.claude/plugins/cla/skills/codify-learnings/references/project-context.md`) — memory-index glob, verification path, scope count, incident history, lockstep doc list. *Benefit: the overlay was an empty stub, so five SKILL.md pointers into it dangled and this run inferred the memory location and verification commands by hand.* — **APPLIED**
+
+**4. Memory: treat "ready to merge?" as a prompt to verify, not to confirm** (type: feedback) — re-derive from evidence rather than restating a prior sign-off. *Benefit: three sign-offs this session were each immediately falsified by an adversarial pass; one plain user question was the only reason a completely dead warning tier was found.* — **APPLIED**
+
+**5. Memory: never pipe a long-running command through `tail` when you intend to watch it** (type: feedback) — `tail` buffers until EOF, so the output file stays empty for the whole run. *Benefit: "0 bytes after several minutes" was read as a hang, a healthy test run was stopped, and a turn went to investigating a non-problem.* — **APPLIED**
+
+**6. Add a failure-modes bullet on sizing a shared resource budget from its consumers** (`.claude/plugins/cla/skills/codify-learnings/references/failure-modes.md`) — derive the ceiling from measured worst cases; don't pick it first and shrink components to fit. *Benefit: git timeouts squeezed to 2s to fit a chosen 10s handler made a blocking guard fail open under load, caught only by a test that failed 1 run in 2.* — **APPLIED**
+
+### Memory candidates
+
+Suggestions #2, #4, #5 (numbered inline per payoff order) — all **APPLIED**, written to
+`feedback_read_primary_source_first.md`, `feedback_ready_to_merge_means_verify.md`,
+`feedback_no_tail_on_long_running_commands.md`, and indexed in `MEMORY.md` (now 5 entries).
+
+### Lessons (meta)
+
+- **Every critical defect this session was a wiring or budget fact, never a logic fact.** What a hook is connected to (`hooks.json` matchers), what it costs summed with its siblings, which channel its output travels on. The audit read each hook's code carefully and asked none of those three questions. A guard's correctness is not a property of its own file — and that generalises past hooks to anything registered, budgeted, or piped.
+- **Adversarial review found criticals on 2 of 2 PRs, both already self-reviewed and declared ready.** The review isn't catching sloppiness; it's catching the class of error that self-review structurally cannot, because the same model that wrote the wiring reads it as correct. Worth treating the review pass as part of "done", not as a post-hoc check.
+- **Three defects were introduced by fixes for earlier defects in the same session** — exit-1-on-skip (wrong channel), the 2s timeouts (starved guards), the dirty-worktree check (blocked the legitimate prune case). Fast iteration under an impatient clock is where this happens; each was caught by a test written in the same breath, which is the argument for writing the test with the fix rather than after the batch.
+- The `for-each-ref` collapse is a reusable shape: `git rev-parse`/`for-each-ref` accept many arguments and answer once, so a loop of probes is usually one call. Halving spawn count beat shaving timeouts as a way to fit a budget.
+
+### Recurring patterns
+
+- **re-offended (checklist bullet, retro-time only)**: "Was a change declared done without verification?" — three merge-ready declarations were each falsified immediately. Escalated **checklist → memory** (suggestion #4), since no hook can evaluate "is this actually done".
+- **re-offended (checklist bullet, retro-time only)**: "Did Claude take >2 turns to identify the root cause?" — four rounds on the exit-0 stderr contract. Escalated **checklist → memory** (suggestion #2), routed at the actual cause (reasoning from secondary sources) rather than the symptom.
+- **re-offended (checklist bullet, no artifact reached)**: "Parallel-session branch contamination (worktrees)" — existing bullet covers *sessions*, not *sub-agents*, and a dispatched agent moved the branch. Escalated **checklist → skill_md** (suggestion #1) in `subagent-brief.md`, the artifact that actually briefs agents.
+- **re-offended (checklist bullet, fixed in code)**: "code depending on a platform-divergent default" — `os.path.realpath` folds case only on Windows, so `_is_inside` failed open on case-insensitive APFS. Escalated to the **script** rung directly (the hook now uses `normcase` + an inode fallback, pinned by a symlink test that runs on Linux CI where the case-only tests skip). No new advisory artifact needed.
+- **re-offended (checklist bullet)**: "Did a step take >2 minutes with no user-visible signal?" — the user asked twice what was taking so long. Partly fixed in code (`run_tests.py` streams again instead of buffering) and partly routed to memory via suggestion #5 (the `| tail` habit that hid progress entirely).
+- **prevented**: "Verify agent 'Critical' findings against actual code before applying" — every critical claim from both review rounds was checked before fixing (the `SyntaxWarning` compile, a 15-case force-push matrix, the budget sums, a live `for-each-ref`). This is what stopped the reviews' several *wrong* claims from becoming commits.
+- **prevented**: memory `feedback-verify-heuristics-empirically` — regex changes were probed against real cases before and after, and the `crisr`/`agentic-air` leak was measured across the tree rather than sampled.
+- **prevented**: memory `feedback-no-schedulewakeup-after-background-bash` — background runs were awaited via harness notification, with no wakeup scheduled.
+- **prevented**: "Did Claude commit, push, or merge without explicit user authorization?" — both merges and the branch deletions followed explicit instructions, and branch content was verified contained in `main` before deleting.
+- **prevented (hook working)**: `block-cd-in-bash` fired twice on attempted `cd` usage and was respected both times. The hook is already at the Mechanical tier; no escalation, but worth noting the reflex persists.
+
+### Codify-process notes
+
+One real snag: this repo's `codify-learnings/references/project-context.md` was an empty
+stub while SKILL.md points into it from five places (default scope note, memory-index glob,
+verification path, incident history, repo file lists). Every pointer dangled and this run
+reconstructed those facts by hand — fixed as suggestion #3, which should make the next run
+materially cheaper. Maintenance thresholds both under limit going in (50 failure-modes
+bullets, 2 live log entries); no trim needed, and the new bullet takes the checklist to 51.
+Step 2.5 produced ten real classifications this run (5 re-offenses, 5 prevented), the
+richest ledger yet — the effectiveness check is doing real work rather than going through
+the motions.
+
+---
+
 ## Lessons learned — 2026-08-04 02:40 — scope: repo-wide (`.claude/plugins/cla/hooks/`, `skills/update-cla/`, `skills/spec-to-pr/`, `skills/multi-lite/`, `skills/multi-pr/` — cross-repo ledger port from claude-plugins)
 
 *(memory dedup skipped — index not found; this project's memory dir had no `MEMORY.md` yet)*
