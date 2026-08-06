@@ -52,7 +52,10 @@ the same tested code the skill uses — the launchers add only argument handling
 
 **It does not install dependencies or copy env files.** Those commands are per-repo facts living
 in `new-worktree`'s `references/project-context.md` overlay, so a portable launcher cannot know
-them. Ask the launched session to finish setup; from inside the worktree that writes no heartbeat.
+them — hardcoding `npm ci` would be wrong for a Python or Rust consumer. Instead, run
+`/cla:new-worktree` as the session's first action: it sees the worktree already exists and runs
+its setup half only. Doing it from inside the worktree writes no heartbeat, and Claude is open
+immediately rather than you waiting at a terminal through an install.
 
 `/cla:new-worktree` is still the right tool when you are already mid-session and only then realise
 you want isolation. `claw` covers the up-front case; it does not replace the skill.

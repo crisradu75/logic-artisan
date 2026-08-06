@@ -111,7 +111,8 @@ if not exist "%WORKTREE_PLUGIN_DIR%\" (
 )
 
 echo claw.cmd: worktree ready at %WORKTREE_PATH% 1>&2
-echo claw.cmd: dependencies are NOT installed and env files are NOT copied - ask the session to finish setup. 1>&2
+echo claw.cmd: dependencies are NOT installed and env files are NOT copied. 1>&2
+echo claw.cmd: run /cla:new-worktree in the session to finish setup ^(it detects the existing worktree and runs setup only^). 1>&2
 cd /d "%WORKTREE_PATH%"
 >&2 echo + claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium %*
 call claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium %*
