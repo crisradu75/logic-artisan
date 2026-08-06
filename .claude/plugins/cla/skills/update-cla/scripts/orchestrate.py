@@ -173,6 +173,26 @@ def cmd_discover(source_arg: str, filter_pattern: Optional[str], local_arg: Opti
     if counts["deletions"]:
         print(f"{counts['deletions']} local asset(s) appear deleted in source — see divergences.json 'deletions' (never auto-deleted).")
 
+    # Printed on stdout, above the next-step prompt, and NOT merely written to
+    # the state file: both kinds fail SILENTLY (a hook that no-ops, or an
+    # importer that never loads), so a line in a JSON file nobody opens is the
+    # same as no warning at all.
+    if result.requirements:
+        print()
+        print(f"!! {len(result.requirements)} cross-asset requirement(s) triggered by this sync:")
+        for q in result.requirements:
+            if q.kind == "companion_overlay":
+                print(f"  - {q.asset_path}")
+                print(f"      needs a local overlay that does NOT exist here: {q.detail}")
+                print(f"      without it this asset silently does nothing.")
+            else:
+                print(f"  - lockstep group '{q.asset_path}' is only PARTIALLY in scope")
+                print(f"      not being written: {q.detail}")
+                print(f"      applying part of this group can break the rest.")
+            if q.note:
+                print(f"      why: {q.note}")
+        print()
+
     if counts["total"] == 0 and counts["deletions"] == 0:
         print("Nothing to sync — local is already in sync with source for this scope.")
         return 0
@@ -218,6 +238,15 @@ def cmd_discover(source_arg: str, filter_pattern: Optional[str], local_arg: Opti
                 "source": d.source,
             }
             for d in result.deletions
+        ],
+        "requirements": [
+            {
+                "kind": q.kind,
+                "asset_path": q.asset_path,
+                "detail": q.detail,
+                "note": q.note,
+            }
+            for q in result.requirements
         ],
     }
     divergences_path = state_dir / "divergences.json"
