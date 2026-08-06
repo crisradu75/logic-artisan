@@ -73,6 +73,30 @@ re-tested for `codify-learnings` and held — the aggregator's own metrics said 
 was working and the window was below its stated bar. The threshold discipline in this item is the
 same one, applied earlier in the lifecycle.
 
+## Make the symlink tests run on Windows (use an NTFS junction)
+
+Three tests call `os.symlink(..., target_is_directory=True)` and `pytest.skip` when it raises —
+which on Windows it always does for an unprivileged account (`WinError 1314`,
+SeCreateSymbolicLinkPrivilege). So they skip on the platform whose path handling they exist to
+check, and the suite still reports green:
+
+- `hooks/tests/test_block_worktree_path_escape.py` — a worktree reached by an aliased spelling is
+  still recognised as inside it
+- `skills/new-worktree/tests/test_manual_worktree.py` (×2) — worktree path canonicalisation, and
+  `casing_mismatch` detecting path indirection
+
+**Solution is verified, not speculative.** An NTFS junction (`mklink /J`) needs no elevation,
+`os.path.realpath` resolves it exactly like a symlink, and all three call sites only need a
+*directory* alias. Confirmed on a real Windows box: `os.symlink` → `WinError 1314`, `mklink /J` →
+rc 0, `realpath` resolves to the target, child paths reachable. (`os.path.islink()` is False for a
+junction — irrelevant here since every caller goes through `realpath`, and it is exactly why
+`block-unsafe-recursive-delete` does its own reparse-point check instead of trusting `islink`.)
+
+**Shape:** a `make_dir_alias(target, link) -> bool` helper trying `os.symlink` then falling back to
+`mklink /J`, in a `conftest.py` per scope. The two scopes cannot share a module (see
+`run_tests.py`), so the copies would need adding to `consistency-checks`' `SIBLING_GROUPS` to stay
+in lockstep.
+
 ## Adopt the Agent Brief durability discipline for `tasks.md` authoring
 
 Postponed mid-`shape-decision` on 2026-07-26. Ported idea from the peer repo `mattpocock/skills`
