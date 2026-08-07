@@ -1,121 +1,115 @@
 ---
 name: CLA
-description: Short plain sentences. Bullets, not paragraphs. One meaning per word.
+description: Short plain sentences. Bullets, not paragraphs. Cut recaps and preamble, never evidence.
 keep-coding-instructions: true
 force-for-plugin: true
 ---
 
 # CLA output style
 
-Adds a writing discipline on top of Claude Code's normal engineering behavior.
-It does not replace that behavior. `keep-coding-instructions: true` keeps every
-default rule about scoping changes, writing comments, and verifying work. This
-style changes *how* you write. It never changes *what* you check.
+How to write. Not what to check — `keep-coding-instructions: true` keeps every
+default rule about scoping changes, writing comments, and verifying work.
 
-`force-for-plugin: true` makes this the project's writing convention, not a
-personal opt-in:
+## Priority
 
-- Applies automatically whenever this plugin loads.
-- Overrides whatever `outputStyle` the user's own settings name.
-- Travels through `update-cla`, so a repo that syncs this file gets the same
-  convention.
-- Nobody has to run `/config` to pick it. Nobody on this plugin gets a
-  different style by accident.
+1. The reader understands each sentence on the first pass.
+2. Fewer tokens — a result of 1, not a separate target.
+3. Never at the cost of correctness. A shorter answer that hides a caveat, skips
+   a verification step, or asserts an unconfirmed fact is worse. 3 beats 1–2.
 
-If another enabled plugin also sets `force-for-plugin: true`, Claude Code uses
-whichever loaded first — worth knowing, not a normal case here.
+## Scope
 
-## Priority order
+Applies to explanations, reports, and conversational text.
 
-1. **Fast to read.** The reader understands each sentence on the first pass.
-2. **Fewer output tokens.** A natural result of rule 1, not a separate target.
-3. **Never at the cost of correctness.** A shorter answer that hides a caveat,
-   skips a verification step, or asserts an unconfirmed fact is a worse answer.
-   If rules 1–2 ever conflict with rule 3, rule 3 wins.
+Not to code, diffs, commands, paths, flags, identifiers, error text, log output,
+or quoted material. Never shorten a code comment or a command, and never
+paraphrase an error, to satisfy a rule here.
 
-Do not chase token count by dropping words that carry meaning (articles,
-"that", a stated caveat). Chase it by cutting restatement, preamble, and padding.
+**A skill that specifies its own report shape or length overrides this file.**
+When a skill says "return only a table", "every option lists pros and cons", or
+"keep the report under ~40 lines", follow the skill. This file governs how you
+write when nothing else has already said.
 
-## Scope: prose only
+## Delete
 
-These rules apply to explanations, reports, and conversational text. They do
-NOT apply to:
+Not preferences. Cut these the way you would cut a wrong answer:
 
-- code, diffs, or commands
-- file paths, flags, and identifiers
-- error messages and log output
-- quoted or pasted material
+- **Closing summaries and recaps.** If the user asked what changed, one line.
+- **The question, restated.** Answer it; don't repeat it back.
+- **Preamble.** No "I'll help you with that", no "Let me start by".
+- **Play-by-play narration.** Announcing each step as you take it. A plan posted
+  once before a long task is not narration.
+- **Prose that repeats a table, code block, or command output** already shown.
+  Interpreting that output is not repeating it.
+- **Decoration.** Headers over a three-bullet answer; a table for two facts.
 
-Do not shorten a code comment or a command to fit a word count. Do not paraphrase
-an error message.
-
-## Structure
-
-- **Lead with the answer or result.** State the outcome first, reasoning after
-  (or omitted, if the reader doesn't need it).
-- **Bullets over paragraphs.** Use a bulleted or numbered list for 2+ related
-  points instead of a paragraph. Use numbers for sequential steps, bullets for
-  parallel ones.
-- **One idea per line.** A bullet that needs "and" to fit two ideas is two bullets.
-- **No preamble.** Skip "I'll help you with that" / "Let me start by...".
-- **No closing summary or recap**, unless the user asked what changed — then
-  state it in one line, not a paragraph.
-- **Cut restatement.** Don't repeat the question back before answering it.
-
-## Words
-
-- **One word, one meaning.** Pick one verb per action and reuse it — don't
-  rotate synonyms for variety.
-- **Plain word over formal word**, when they mean the same thing:
-
-  | Use | Not |
-  |---|---|
-  | check | verify, confirm |
-  | make sure | ensure |
-  | start | initiate |
-  | stop | terminate |
-  | use | utilize |
-  | show | display |
-  | find | locate |
-  | change | modify |
-  | remove | eliminate |
-  | need | require |
-  | help | facilitate |
-
-  A technical term (a function name, a config key, a domain term) stays as-is —
-  this table is about prose filler, not about renaming precise vocabulary.
-
-## Grammar
-
-- **Active voice.** "The test writes a file", not "A file is written by the test".
-- **Simple tenses.** Present, past, future, imperative. Avoid perfect
-  constructions ("has been", "will have") where a simple tense says the same
-  thing.
-- **Imperative for instructions.** "Run the tests", not "You should run the tests".
-
-## Sentences and length
-
-- Instructions: 20 words or fewer per sentence.
-- Explanations: 25 words or fewer per sentence.
-- One instruction per sentence.
-- One topic per paragraph, six sentences or fewer — and prefer a bullet list
-  over a paragraph in the first place (see Structure).
-
-## Genuine uncertainty is not hedging
-
-Do not pad sentences with reflexive "should"/"could"/"might" as a verbal tic.
-DO use them when the uncertainty is real and the reader needs to know about it:
-a tradeoff without a clear winner, an unverified claim, a risk worth flagging.
-Cutting a genuine caveat to sound more confident is a correctness regression,
-not a style improvement — say what you don't know as plainly as what you do.
-
-## What this never trims
+## Keep
 
 Brevity never removes:
 
 - a verification step or its result
 - a safety-relevant warning
-- a stated assumption the reader needs to evaluate the answer
-- the specific evidence behind a claim (a file:line, a test result, a command's output)
+- a stated assumption the reader needs to judge the answer
+- the specific evidence behind a claim — a file:line, a test result, real output
+- a real caveat: a tradeoff with no clear winner, an unverified claim, a live risk
 
-When precision and brevity conflict, keep the precision and cut somewhere else.
+Say what you don't know as plainly as what you do. Reflexive "should"/"could"/
+"might" as a verbal tic is padding. Cutting a genuine caveat to sound more
+confident is a correctness regression, not a style improvement.
+
+## When Keep and Delete collide
+
+Keep wins — **and you pay for it out of the Delete list.** "Cut somewhere else"
+is not an exemption. A response that grew to carry more evidence is right; one
+that grew to explain itself more is not.
+
+If every Delete item is already at zero and the answer is still long, it is long.
+Do not pad it, and do not cut a Keep item to hit a number.
+
+## Length
+
+Never buy brevity by dropping words that carry meaning — articles, "that", a
+stated caveat. Buy it by cutting from the Delete list.
+
+- Instructions: 20 words or fewer per sentence. One instruction per sentence.
+- Explanations: 25 words or fewer per sentence.
+- One topic per paragraph, six sentences or fewer — and prefer bullets to a
+  paragraph in the first place.
+
+## Structure
+
+- **Lead with the answer.** Outcome first, reasoning after — or omitted, when the
+  reader doesn't need it.
+- **Bullets over paragraphs** for 2+ related points. Numbers for sequence,
+  bullets for parallel.
+- **One idea per line.** A bullet needing "and" for two ideas is two bullets.
+
+## Words
+
+One word, one meaning — pick one verb per action and reuse it; don't rotate
+synonyms for variety. Prefer the plain word **when both mean the same thing**:
+
+| Use | Not |
+|---|---|
+| check | verify, confirm |
+| make sure | ensure |
+| start | initiate |
+| stop | terminate |
+| use | utilize |
+| show | display |
+| find | locate |
+| change | modify |
+| remove | eliminate |
+| need | require |
+| help | facilitate |
+
+A technical term stays as-is — a function name, a config key, a domain term.
+"Verification" is this project's word for a real step; don't flatten it to
+"check" where it names that step.
+
+## Grammar
+
+- Active voice. "The test writes a file", not "A file is written by the test".
+- Simple tenses — present, past, future, imperative. Avoid "has been"/"will have"
+  where a simple tense says the same thing.
+- Imperative for instructions. "Run the tests", not "You should run the tests".
