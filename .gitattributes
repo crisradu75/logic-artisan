@@ -1,0 +1,21 @@
+# Line endings for the repo-root launchers.
+#
+# Deliberately scoped to these four files rather than a repo-wide
+# `* text=auto eol=lf`: a blanket rule would renormalize every tracked file on
+# the next checkout, which is a much larger change than the problem being fixed
+# and would bury it.
+#
+# `claw` shipped with CRLF in the working tree on a Windows checkout, making its
+# first line `#!/usr/bin/env bash\r`. On macOS/Linux that fails immediately with
+# `bad interpreter: /usr/bin/env bash^M` — so the POSIX launcher was broken for
+# exactly the platforms it exists to serve, in a repo whose plugin is meant to
+# be portable. A consuming repo already carried this rule; upstream had no
+# `.gitattributes` at all.
+#
+# The `.cmd` twins get CRLF for the opposite reason: cmd.exe is tolerant of LF
+# in most places but not universally, and CRLF is what a Windows batch file is
+# expected to be.
+cla     text eol=lf
+claw    text eol=lf
+cla.cmd text eol=crlf
+claw.cmd text eol=crlf

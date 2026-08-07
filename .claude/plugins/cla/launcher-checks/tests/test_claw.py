@@ -254,3 +254,166 @@ def test_neither_launcher_passes_the_raw_arg_list_after_shifting():
         ln for ln in sh_text.splitlines() if ln.strip().startswith("exec claude")
     )
     assert '"$@"' in exec_line, "claw must forward \"$@\", not $*"
+
+
+# --------------------------------------------------------------------------- #
+# claw.cmd — EXECUTED, not just read
+#
+# Every other .cmd assertion in this file is textual (flag parity, no `%*`
+# after shift). Textual checks cannot catch a cmd.exe PARSE error, and one
+# shipped: three unescaped `(` inside echoes within `if (...)` blocks made the
+# whole script abort with `was was unexpected at this time.` on every real
+# invocation. The no-args path survived — cmd parses blocks lazily, and that
+# path exits before reaching them — so any test that only ran `claw.cmd` with
+# no arguments would have stayed green while the launcher was 100% broken.
+#
+# These therefore drive the FULL path, through to the stub `claude`.
+# --------------------------------------------------------------------------- #
+
+needs_windows = pytest.mark.skipif(
+    sys.platform != "win32", reason="claw.cmd is a Windows batch file"
+)
+
+
+@pytest.fixture
+def cmd_harness(tmp_path: Path):
+    """A synthetic repo + real linked worktree, with `claude` stubbed on PATH."""
+    primary = tmp_path / "primary"
+    primary.mkdir()
+    g = lambda *a: subprocess.run(["git", "-C", str(primary), *a], check=True,
+                                  capture_output=True, text=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(primary)], check=True,
+                   capture_output=True, text=True)
+    g("config", "user.email", "a@b.c"); g("config", "user.name", "a")
+    (primary / "seed.txt").write_text("s\n", encoding="utf-8")
+    g("add", "-A"); g("commit", "-q", "-m", "s")
+
+    # A REAL linked worktree, so the git_dir != git_common_dir assertion is
+    # exercised for real rather than mocked — that assertion was itself dead in
+    # a prior version and only a real worktree distinguishes the two states.
+    worktree = tmp_path / "wt"
+    g("worktree", "add", "-q", str(worktree), "-b", "feature/x")
+    (worktree / ".claude" / "plugins" / "cla").mkdir(parents=True)
+
+    plugin = primary / ".claude" / "plugins" / "cla"
+    scripts = plugin / "skills" / "new-worktree" / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy(_CLAW_CMD, primary / "claw.cmd")
+    (scripts / "manual_worktree.py").write_text(
+        f"import sys\nprint(r'{worktree}')\nsys.exit(0)\n", encoding="utf-8"
+    )
+
+    bin_dir = tmp_path / "bin"; bin_dir.mkdir()
+    argv_log = tmp_path / "argv.txt"
+    # A .cmd stub, because `where claude` must find it from cmd.exe.
+    (bin_dir / "claude.cmd").write_text(
+        "@echo off\r\n"
+        f'echo %*> "{argv_log}"\r\n'
+        "echo STUB-CLAUDE\r\n",
+        encoding="utf-8",
+    )
+
+    def run(*args: str):
+        env = dict(os.environ)
+        env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+        if argv_log.exists():
+            argv_log.unlink()
+        proc = subprocess.run(
+            ["cmd", "/c", str(primary / "claw.cmd"), *args],
+            capture_output=True, text=True, env=env, cwd=str(tmp_path),
+        )
+        launched = argv_log.read_text(encoding="utf-8").strip() if argv_log.exists() else None
+        return proc.returncode, proc.stdout, proc.stderr, launched
+
+    run.worktree = worktree      # type: ignore[attr-defined]
+    run.primary = primary        # type: ignore[attr-defined]
+    return run
+
+
+@needs_windows
+def test_cmd_launcher_parses_and_reaches_the_launch(cmd_harness):
+    """The regression test for the parse error. If any block in claw.cmd has an
+    unescaped paren, cmd aborts here with 'was unexpected at this time.' and
+    `launched` is None."""
+    rc, out, err, launched = cmd_harness("mytask")
+    assert "unexpected at this time" not in (out + err), (
+        f"claw.cmd failed to PARSE — an unescaped ( inside an if block?\n{out}\n{err}"
+    )
+    assert launched is not None, f"claude was never reached.\nstdout={out}\nstderr={err}"
+
+
+@needs_windows
+def test_cmd_launcher_does_not_leak_the_worktree_name_into_argv(cmd_harness):
+    """`shift` does not affect `%*`; leaking the name makes it an initial prompt."""
+    _rc, _out, _err, launched = cmd_harness("mytask")
+    assert launched is not None
+    assert "mytask" not in launched, f"worktree name leaked into argv: {launched!r}"
+
+
+@needs_windows
+def test_cmd_launcher_forwards_extra_args(cmd_harness):
+    _rc, _out, _err, launched = cmd_harness("mytask", "--resume")
+    assert launched is not None and "--resume" in launched
+
+
+@needs_windows
+def test_cmd_launcher_preserves_a_bang_in_an_argument(cmd_harness):
+    """Delayed expansion ate `!`: `-p "fix the bug!"` arrived as `fix the bug`,
+    and `"wow! amazing! done"` silently lost a word as an undefined variable."""
+    _rc, _out, _err, launched = cmd_harness("mytask", "-p", "fix the bug!")
+    assert launched is not None
+    assert "fix the bug!" in launched, f"the ! was mangled: {launched!r}"
+
+
+@needs_windows
+def test_cmd_launcher_refuses_a_name_that_resolves_to_the_primary_clone(cmd_harness):
+    """The one load-bearing invariant, and it was DEAD: `--absolute-git-dir` is
+    absolute while `--git-common-dir` is a bare relative `.git` in the primary
+    clone, so the raw strings could never be equal and the refusal never fired.
+    Asserting the refusal itself, not just that the happy path works."""
+    primary = cmd_harness.primary
+    scripts = primary / ".claude" / "plugins" / "cla" / "skills" / "new-worktree" / "scripts"
+    (scripts / "manual_worktree.py").write_text(
+        f"import sys\nprint(r'{primary}')\nsys.exit(0)\n", encoding="utf-8"
+    )
+    rc, out, err, launched = cmd_harness("mytask")
+    assert launched is None, "must never launch in the primary clone"
+    assert rc == 1
+    assert "PRIMARY CLONE" in (out + err)
+
+
+@needs_windows
+def test_cmd_launcher_refuses_without_a_name(cmd_harness):
+    rc, out, err, launched = cmd_harness()
+    assert rc == 1 and launched is None
+    assert "name is required" in (out + err)
+
+
+def test_cmd_launcher_keeps_delayed_expansion_off():
+    """Turning it back on silently reintroduces the `!`-mangling bug, which no
+    textual parity check would notice."""
+    text = _CLAW_CMD.read_text(encoding="utf-8", errors="replace")
+    assert "enabledelayedexpansion" not in text.lower().replace("disabledelayedexpansion", "")
+
+
+def test_cmd_launcher_escapes_parens_inside_if_blocks():
+    """Cheap structural backstop for the parse error, so the reason is named
+    even on a non-Windows machine where the execution tests skip."""
+    depth = 0
+    offenders = []
+    for lineno, raw in enumerate(_CLAW_CMD.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        line = raw.strip()
+        if line.lower().startswith("rem"):
+            continue
+        if depth > 0 and line.lower().startswith("echo"):
+            body = line
+            for i, ch in enumerate(body):
+                if ch in "()" and (i == 0 or body[i - 1] != "^"):
+                    offenders.append((lineno, raw.strip()))
+                    break
+        depth += raw.count("(") - raw.count(")") if line.endswith("(") or line == ")" else 0
+        depth = max(depth, 0)
+    assert not offenders, (
+        "unescaped parens in an echo inside an if block — cmd aborts the whole "
+        f"script at parse time: {offenders}"
+    )
