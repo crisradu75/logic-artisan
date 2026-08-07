@@ -2,6 +2,8 @@
 
 The step-by-step procedure, exact script invocations, and state-file JSON shapes behind `SKILL.md`'s Workflow spine (Discover → Adapt → Apply). `SKILL.md` carries the load-bearing invariants (one rewrite per file, per-status handling, never-auto-delete); this file carries the recipes.
 
+**Phase 4 (Record upstream proposals) is not covered here.** It runs after `apply`, calls no script, and has no state file — its whole procedure lives in `references/upstream-proposals.md`. Read that too, or the run ends one phase early.
+
 ## Phase 1 — Discover (script call, no reasoning)
 
 ```
@@ -125,3 +127,25 @@ Every `adapted_content` is also normalized (CRLF/CR → LF) before being written
 **Every `wrote` outcome also updates `.claude/plugins/cla/.cla-sync-lock.json`** (`cla-sync-provenance`) — see `references/lockfile.md`. This happens inside `apply.py` itself (both modes), not as a separate step: it's the only place with the exact adapted bytes just written, and (in `pr` mode) the only place that can get the lockfile staged/committed/pushed in the same PR. The lock write is best-effort — a failure prints to stderr but never fails the run, commit, or PR.
 
 **Display the apply summary verbatim.** Per-file write failures isolate — a single bad-permission or read-only path fails just that file and the rest proceed; the final summary lists per-file outcomes.
+
+## Phase 4 — Record upstream proposals (you reason; no script, no state file)
+
+Runs **after** `apply` returns, never before. Full procedure — the admission test, the item
+shape, the dedup rule, the append-only discipline: `references/upstream-proposals.md`.
+
+Two mechanics belong here rather than there, because they are about *this* flow:
+
+- **Ordering is load-bearing, not stylistic.** `apply --mode pr` opens with a whole-tree
+  `git status --porcelain` check (`apply.py`, `_is_clean_tree`) and returns
+  `dirty working tree — commit or stash before running in --mode pr` without writing a
+  single asset. An untracked `cla-upstream.md` at the repo root satisfies that check as
+  `?? cla-upstream.md`. So recording a proposal before `apply` aborts the sync on exactly
+  the runs that found something worth recording, and reports it as the user's dirty tree.
+- **Commit it separately.** `apply --mode pr` runs `git add -A`, so a proposal written
+  between the clean check and the commit would be swept into the sync PR. In `pr` mode you
+  are also left on the sync branch after apply — switch off it before writing, so the
+  ledger does not land on a branch that exists only to carry the sync.
+
+In `worktree` mode neither hazard applies once Phase 4 runs last: the tree already holds
+the synced changes, and the proposal is just one more uncommitted file for the user to
+review and commit.

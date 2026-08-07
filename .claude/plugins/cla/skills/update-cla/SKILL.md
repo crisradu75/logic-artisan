@@ -68,7 +68,7 @@ Scanned trees: `.claude/plugins/cla/skills`, `agents`, `hooks`, `output-styles` 
 
 ## Workflow — what you (conversation Claude) do
 
-The user invokes `/cla:update-cla <source> [asset]`. You drive three phases: **Discover** (script) → **Adapt** (you reason) → **Apply** (script). **Read `references/phases.md` first** — it carries the full step-by-step procedure, exact script invocations, and state-file JSON shapes for all three phases below; this section holds only the load-bearing spine.
+The user invokes `/cla:update-cla <source> [asset]`. You drive four phases: **Discover** (script) → **Adapt** (you reason) → **Apply** (script) → **Record upstream proposals** (you reason; usually writes nothing). **Read `references/phases.md` first** — it carries the full step-by-step procedure, exact script invocations, and state-file JSON shapes for the three scripted phases below; this section holds only the load-bearing spine. Phase 4 has no script; its procedure lives in `references/upstream-proposals.md`.
 
 ### Phase 1 — Discover (script call, no reasoning)
 
@@ -87,30 +87,9 @@ For each file: read the source content, the local existing version (`null` for `
 
 **One rewrite per file** — do this in a single pass per file, following `references/adaptation_prompt.md` and the non-negotiable rules above; do not iterate multiple draft rewrites of the same file inline. The most common failure is silently overwriting local content the source lacks (rule 3 especially). A `new` skill is still routed through `adaptations.json`, never `Write`n directly, so Phase 3 can perform its git-safety checks. Print a one-line `[i/N] <asset> — <summary>` per file, then write `adaptations.json` (schema: `references/phases.md`). Review any `deletions` by hand — **never auto-delete**; act outside this flow if removal is the right call.
 
-### Phase 2.5 — Record upstream proposals (you reason; usually writes nothing)
-
-A sync is the one moment when the same asset is in view in two repos at once — so it is
-the moment a local file reveals itself as not merely *adapted* but genuinely **better**:
-it fixes a defect in the portable harness, or covers a case source misses. Capture that
-before the run ends, or it is lost until someone rediscovers it in another repo.
-
-For each local divergence you kept, apply one test: **would every repo running the plugin
-be better off if source adopted this?** Yes → append a proposal to `cla-upstream.md` at
-the destination repo root. No → it is this repo's adaptation, which belongs in the
-`project-context.md` overlay, not here.
-
-**Read `references/upstream-proposals.md` first** for the admission test, the item shape,
-the dedup rule, and the append-only discipline. Three things are load-bearing:
-
-- **Not an inventory.** Most divergences are legitimate local adaptation. Recording them
-  all buries the real defects, and a file that is mostly noise stops being read.
-- **Never overwrite hand-written content.** These files are often long-form human
-  analysis. Append only — never reorder, reword, renumber, or delete an existing item.
-- **Most runs add nothing.** An empty result is the normal outcome, not a missed step.
-
-This writes prose in the *destination* repo only. It never touches the source repo, never
-edits code, and never marks an item ported — the source repo collects from these files
-when it chooses to.
+Note which divergences you kept because the LOCAL version is better in a way that is not
+repo-specific — Phase 4 records those. Do not write anything yet: a working-tree write
+here would make Phase 3's `pr` mode refuse to run (see Phase 4).
 
 Then trigger Phase 3.
 
@@ -128,6 +107,35 @@ Every `wrote` outcome also best-effort updates `.claude/plugins/cla/.cla-sync-lo
 
 **Display the apply summary verbatim.**
 
+### Phase 4 — Record upstream proposals (you reason; usually writes nothing)
+
+A sync is the one moment the same asset is in view in two repos at once — so it is when a
+local file can reveal itself as not merely *adapted* but genuinely **better**. Without
+this phase that observation dies with the run, and the same defect gets rediagnosed
+independently in every repo.
+
+For each divergence noted in Phase 2, apply one test: **would every repo running the
+plugin be better off if source adopted this?** Yes → append a proposal to
+`cla-upstream.md` at the root of the local repo (the `--local` path, else CWD). No → it is
+legitimate local adaptation; leave it exactly where it is and record nothing.
+
+**Read `references/upstream-proposals.md` first** for the admission test, item shape,
+dedup rule, and append-only discipline.
+
+**Why this runs after Phase 3, not before.** `apply --mode pr` refuses on a whole-tree
+dirty check, and an untracked `cla-upstream.md` at the root makes the tree dirty — so
+writing it earlier would abort the sync on exactly the runs that found something worth
+carrying back. Commit it **separately** from the sync; never let it ride along in the sync
+commit (`apply --mode pr` runs `git add -A`, and in `pr` mode you are left on the sync
+branch, so switch off it first).
+
+Print one line per appended item, and say so plainly when you append nothing — an empty
+result is the normal outcome, not a skipped step.
+
+This writes prose in the local repo only. It never touches the source repo, never edits
+code, and never marks an item ported — the source repo collects from these files by hand
+when it chooses to.
+
 ## Sync provenance lockfile
 
 `.claude/plugins/cla/.cla-sync-lock.json` records, per synced asset, the sha256 of the adapted content Phase 3 last wrote to local — the common ancestor Phase 1's 3-way classification needs. Auto-maintained by `apply` (never hand-edited), committed per destination repo, and excluded from the sync scan itself (it's a dotfile outside `SCAN_DIRS`). Full schema, the "written bytes not raw source" rationale, and the resulting label-noise caveat: `references/lockfile.md`.
@@ -143,7 +151,7 @@ Every `wrote` outcome also best-effort updates `.claude/plugins/cla/.cla-sync-lo
 
 ## Guards and known limitations
 
-Two pytest guards protect this skill's cross-repo safety: a **conformance guard** (`tests/test_no_project_tokens.py` — no project-specific token leaks into synced-core `SKILL.md`/`references/**/*.md`, driven by the curated overlay `references/project-tokens.local.md`) and a **project-facts staleness guard** (`tests/test_project_facts_paths.py` — no dead repo-relative paths in `cla.io/project-facts.md` or any skill's `references/project-context.md` overlay). Run both with `pytest .claude/plugins/cla/skills/update-cla/tests`. Full mechanics, the token-list curation discipline, and this skill's known limitations (3-way classification labels but never auto-merges; single source per run; no reverse propagation; deletions surfaced, never auto-applied): `references/guards.md`.
+Two pytest guards protect this skill's cross-repo safety: a **conformance guard** (`tests/test_no_project_tokens.py` — no project-specific token leaks into synced-core `SKILL.md`/`references/**/*.md`, driven by the curated overlay `references/project-tokens.local.md`) and a **project-facts staleness guard** (`tests/test_project_facts_paths.py` — no dead repo-relative paths in `cla.io/project-facts.md` or any skill's `references/project-context.md` overlay). Run both with `pytest .claude/plugins/cla/skills/update-cla/tests`. Full mechanics, the token-list curation discipline, and this skill's known limitations (3-way classification labels but never auto-merges; single source per run; no reverse propagation of *content* — Phase 4 propagates prose only; deletions surfaced, never auto-applied): `references/guards.md`.
 
 ## References
 
@@ -152,6 +160,6 @@ Two pytest guards protect this skill's cross-repo safety: a **conformance guard*
 - `references/invocation.md` — asset-path examples, required environment, the flags table, portability notes, and the onboarding-order fallback detail.
 - `references/guards.md` — the conformance guard, the project-facts staleness guard, and this skill's known limitations.
 - `references/adaptation_prompt.md` — the Phase 2 per-file adaptation prompt.
-- `references/upstream-proposals.md` — the Phase 2.5 reverse channel: the admission test for a carry-back, the `cla-upstream.md` item shape, and the append-only rule that protects hand-written entries.
+- `references/upstream-proposals.md` — the Phase 4 reverse channel: the admission test for a carry-back, the `cla-upstream.md` item shape, and the append-only rule that protects hand-written entries.
 - `references/pr_template.md` — the PR body template rendered by `apply --mode pr`.
 - `references/project-tokens.local.md` — **OVERLAY, not a generic reference.** This repo's own curated token list for the conformance guard; never synced, never treated as portable content.
