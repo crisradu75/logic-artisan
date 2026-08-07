@@ -73,6 +73,31 @@ re-tested for `codify-learnings` and held — the aggregator's own metrics said 
 was working and the window was below its stated bar. The threshold discipline in this item is the
 same one, applied earlier in the lifecycle.
 
+## Run `/cla:update-cla` inside `market-distiller-mcp` (must be run THERE, not from here)
+
+Its plugin is several generations stale and, uniquely among the consumers, carries **no local
+modifications at all** — so the sync is a pure fast-forward with nothing to reconcile. Measured
+against current `main`: **93 pending — 18 files it does not have, 75 source-advanced, 0
+local-advanced, 0 both-diverged.** That matches its own `cla-upstream.md`, which says its synced
+core is byte-clean and should stay that way.
+
+The gap that matters: it has no `skills/new-worktree/scripts/manual_worktree.py`, which `claw`
+hard-depends on (`claw` exits 1 without it). That is why it has no `claw` at all — not a choice,
+just a sync that predates the script. It is also missing `ask-destructive-git.py` and
+`ask-git-identity.py`, so it currently has no force-push, `reset --hard`, or PR-merge
+confirmation.
+
+**Why this is not done from here.** `update-cla` is deliberately pull-based, and the skill's own
+rationale says why: a prior push design "forced the source-side Claude to adapt blind, sampling
+each target through thin slices — the result was mechanical copies." Running it from
+`logic-artisan` against that repo would reproduce exactly the failure mode the design rejects,
+across 93 files. Run it from inside `market-distiller-mcp`, where the adapting session has that
+repo's own `CLAUDE.md` and conventions loaded.
+
+**One manual step after, since the launchers now sync:** that repo will receive `cla`/`claw` for
+the first time, and `apply.py` writes content but not file mode — so `git update-index --chmod=+x cla claw`
+once, or `./claw` fails on any POSIX machine.
+
 ## Migration notes for consumers on the next `update-cla` sync
 
 Two things a consuming repo needs to know when it pulls the current baseline. Both were once a
