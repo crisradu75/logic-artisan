@@ -27,10 +27,20 @@ For each candidate in the confirmed order:
 
 8. **Merge if a dependency (only when clean).** If a later candidate in the confirmed plan depends on this one, **merge now** — using the PR number captured in step 6 — so the dependent can branch off it:
    ```
-   gh pr merge <captured-pr-number> --squash --delete-branch
+   ALLOW_PR_MERGE=1 gh pr merge <captured-pr-number> --squash --delete-branch
    git checkout <base-branch>
    git pull
    ```
+   **The `ALLOW_PR_MERGE=1` prefix is required, and belongs on the merge
+   command only.** `ask-destructive-git.py` prompts on every `gh pr merge`,
+   because a hook cannot tell an authorized merge from one the agent assumed —
+   a real failure that shipped two unrequested merges. This chain is the
+   legitimate exception: the user confirmed the candidate plan, including this
+   dependency edge, in Phase 1, and the run is unattended by design, so a
+   prompt here would hang. Use the narrow variable, NOT
+   `ALLOW_DESTRUCTIVE_GIT=1` — that would also disarm the force-push and
+   `reset --hard` checks. Do not export either; prefixing this one command is
+   what keeps the exception scoped.
    (separate commands, per bash-discipline). Confirm the merge landed (`git log --oneline -1`) before moving on, and update the candidate's run-notes status to `merged`. If **nothing** depends on this candidate, leave its PR **open** — merging is the user's call for independents — and set its status to `open`. Mark the task `completed` either way.
 
 Move to the next candidate.
