@@ -49,7 +49,7 @@ The skill is a **hybrid** — deterministic file/git work in the script, LLM rea
 
 **Onboarding order — `cla-init` → `/cla:sync-context` → `update-cla`.** `update-cla` syncs only the portable asset core and **never creates or populates project data** — it will not scaffold `cla.io/` or populate `cla.io/project-facts.md` for you. Full fallback detail if a step is skipped: `references/invocation.md`.
 
-Scanned trees: `.claude/plugins/cla/skills`, `agents`, `hooks`, `output-styles` (`SCAN_DIRS`). The `.claude-plugin/` manifest is synced by hand; the project overlay is never synced (rule 5). Full detail: `references/invocation.md`.
+Scanned trees: `.claude/plugins/cla/skills`, `agents`, `hooks`, `output-styles` (`SCAN_DIRS`), **plus the four repo-root launchers `cla`/`cla.cmd`/`claw`/`claw.cmd` by name** (`SCAN_FILES`). The `.claude-plugin/` manifest is synced by hand; the project overlay is never synced (rule 5). A repo receiving a launcher for the FIRST time must run `git update-index --chmod=+x claw` (and `cla`) once — `apply.py` writes content, not file mode. Full detail: `references/invocation.md`.
 
 ## When NOT to use
 

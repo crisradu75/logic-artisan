@@ -52,6 +52,45 @@ SCAN_DIRS = (
     ".claude/plugins/cla/hooks",
     ".claude/plugins/cla/output-styles",
 )
+
+# Individual files outside SCAN_DIRS that are nonetheless portable core.
+#
+# The repo-root launchers were hand-carried for their whole life, and the cost
+# of that showed up all at once: `claw.cmd` shipped broken on Windows, three
+# consuming repos each diagnosed and fixed it independently, and none of those
+# fixes could flow anywhere. Two of the three still carry a separate bug (`!` in
+# an argument being eaten by delayed expansion) that a fourth repo had already
+# fixed.
+#
+# The objection to syncing them used to be that they encode a per-repo choice —
+# the `--model`/`--effort` the session launches with. Measured across all four
+# repos before adding this: every one is `--model sonnet --effort medium`, and
+# the POSIX `claw` is byte-identical everywhere. The customization the argument
+# was protecting does not exist, and rule 1 ("preserve local strengths") already
+# covers a repo that later wants one — a launcher whose flags were edited locally
+# classifies as `local-advanced` and is kept, exactly like any other asset.
+#
+# Two things a directory scan gives for free that this needs stated:
+#   - `_detect_deletions` reuses the same walker, so a launcher removed upstream
+#     surfaces as `deleted-in-source` rather than silently persisting.
+#   - Line endings are already handled: this repo's `.gitattributes` pins `claw`
+#     to LF (a CRLF shebang is fatal on macOS/Linux) and the `.cmd` twins to
+#     CRLF.
+#
+# The one thing it does NOT give: `apply.py` writes content, not file MODE, so a
+# repo receiving `claw` for the FIRST time gets it non-executable and needs one
+# `git update-index --chmod=+x claw`. A repo that already tracks the file keeps
+# its existing mode on a content overwrite, so this bites once per new adopter
+# and never again. Documented in `references/invocation.md` rather than solved,
+# because reading and writing a git index mode from `apply.py` would mean
+# shelling out to git in BOTH repos, and that machinery is not worth one
+# one-time step.
+SCAN_FILES = (
+    "cla",
+    "cla.cmd",
+    "claw",
+    "claw.cmd",
+)
 EXCLUDED_FILE_NAMES = ("settings.json", "settings.local.json")
 EXCLUDED_PART_NAMES = ("__pycache__", ".pytest_cache")
 # The repo-neutral overlay marker: a file whose leaf name is exactly
@@ -188,6 +227,14 @@ def _iter_source_assets(repo_root: Path) -> Iterable[tuple[str, Path]]:
         for item in root.rglob("*"):
             if not item.is_file() or _is_excluded(item):
                 continue
+            yield item.relative_to(repo_root).as_posix(), item
+
+    # Individually-named root files (see SCAN_FILES). `_is_excluded` is applied
+    # for consistency, though none of these are dotfiles or overlays today —
+    # skipping it would create a second, quieter exclusion rule.
+    for name in SCAN_FILES:
+        item = repo_root / name
+        if item.is_file() and not _is_excluded(item):
             yield item.relative_to(repo_root).as_posix(), item
 
 
@@ -376,6 +423,11 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
     output_styles = sum(
         1 for r in result.files if r.asset_path.startswith(".claude/plugins/cla/output-styles")
     )
+    # SCAN_FILES members have no directory prefix, so every category above misses
+    # them and the per-category figures silently stopped summing to `total` the
+    # moment root files joined the scan. A summary that does not add up is worse
+    # than one with a category the reader has not seen before.
+    launchers = sum(1 for r in result.files if r.asset_path in SCAN_FILES)
     return {
         "divergent": divergent,
         "new": new,
@@ -386,6 +438,7 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
         "agents": agents,
         "hooks": hooks,
         "output_styles": output_styles,
+        "launchers": launchers,
         "total": len(result.files),
         "skipped": len(result.skipped),
         "deletions": len(result.deletions),
