@@ -329,3 +329,59 @@ def test_dispatcher_caps_its_output(dispatcher):
         f"{dispatcher} must route stderr through compose_output so the block "
         "reason is budgeted ahead of advisory text"
     )
+
+
+# --------------------------------------------------------------------------- #
+# The interpreter probe in hooks.json
+#
+# The previous form was `command -v python3 || command -v py || command -v
+# python`. On Windows `python3` commonly resolves to the Store alias stub, which
+# EXISTS and is executable — so `command -v` succeeds, the fallbacks never fire,
+# and every dispatched hook is invoked through an interpreter that cannot run
+# it. The hook then exits non-zero with no output, which for a PreToolUse hook
+# is indistinguishable from "ran and allowed": the whole guard set silently does
+# nothing. Reproduced with a non-functional `python3` first on PATH.
+# --------------------------------------------------------------------------- #
+
+
+def _wiring_commands() -> list[str]:
+    import json
+    data = json.loads((_HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    return [h["command"] for ev in data["hooks"].values() for m in ev for h in m["hooks"]]
+
+
+def test_every_wiring_runs_each_interpreter_candidate_before_accepting_it():
+    """`command -v` only proves a name resolves, not that it works."""
+    for cmd in _wiring_commands():
+        assert "-c \"import sys\"" in cmd or "-c 'import sys'" in cmd, (
+            "a wiring accepts an interpreter without running it:\n" + cmd[:160]
+        )
+
+
+def test_no_wiring_uses_the_bare_command_v_chain():
+    """The exact shape that shipped broken. Pinned by text because the failure
+    is invisible at runtime on a machine where `python3` happens to work."""
+    for cmd in _wiring_commands():
+        assert "command -v python3 2>/dev/null || command -v py" not in cmd, (
+            "a wiring reverted to the trust-the-first-name probe:\n" + cmd[:160]
+        )
+
+
+def test_every_wiring_announces_when_no_interpreter_works():
+    """Fail-open is right for a guard, but fail-open-and-silent means the user
+    believes they are protected when nothing is running."""
+    for cmd in _wiring_commands():
+        assert "NOT running" in cmd, (
+            "a wiring degrades silently when no interpreter is usable:\n" + cmd[:160]
+        )
+
+
+def test_the_probe_matches_the_one_claw_uses():
+    """`claw` carried the correct probe first and named the reason; the hooks
+    were changed to match. If they drift, one of them is wrong."""
+    claw = (_HOOKS_DIR.parents[3] / "claw").read_text(encoding="utf-8", errors="replace")
+    assert "for _candidate in python3 py python" in claw, (
+        "claw's probe changed shape; hooks.json was written to match it"
+    )
+    for cmd in _wiring_commands():
+        assert "for c in python3 py python" in cmd

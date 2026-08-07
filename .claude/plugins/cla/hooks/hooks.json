@@ -1,4 +1,30 @@
 {
+  "_comment": [
+    "Every command below shares one interpreter probe, `_pyexe`. It RUNS each",
+    "candidate before accepting it, rather than trusting the first name that",
+    "resolves.",
+    "",
+    "The previous form was `command -v python3 || command -v py || command -v",
+    "python`, and on Windows that is actively wrong: `python3` commonly resolves",
+    "to the Store alias stub in WindowsApps, which exists and is executable, so",
+    "`command -v` SUCCEEDS and the `||` fallbacks never fire. Every dispatched",
+    "hook was then invoked through an interpreter that cannot run it — the hook",
+    "exited non-zero without producing output, and because a PreToolUse hook",
+    "that fails to run is indistinguishable from one that ran and allowed, the",
+    "entire guard set silently did nothing. Reproduced by putting a",
+    "non-functional `python3` first on PATH: current probe picks it and the hook",
+    "exits 9009 with no warning; this probe skips it.",
+    "",
+    "`claw` already carried this exact probe and named the reason. The hooks now",
+    "match it. Keep the two in sync.",
+    "",
+    "Failure is announced rather than silent: if NO candidate runs, the command",
+    "says so on stderr and exits 0 (fail-open — a guard must never wedge the",
+    "workflow), so a machine with no usable Python degrades loudly instead of",
+    "appearing protected."
+  ],
+  "_pyexe": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi;",
+
   "hooks": {
     "SessionStart": [
       {
@@ -6,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || exit 0; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-worktree-isolation.py\" --heartbeat",
+            "command": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-worktree-isolation.py\" --heartbeat",
             "timeout": 15
           }
         ]
@@ -18,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || exit 0; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-worktree-isolation.py\" --cleanup",
+            "command": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-worktree-isolation.py\" --cleanup",
             "timeout": 15
           }
         ]
@@ -30,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || { echo \"warn: dispatch-edit-write-pretooluse hooks skipped — no python on PATH\" >&2; exit 0; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
+            "command": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -40,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || { echo \"warn: dispatch-bash-pretooluse hooks skipped — no python on PATH\" >&2; exit 0; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "command": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -50,7 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || { echo \"warn: dispatch-bash-pretooluse hooks skipped — no python on PATH\" >&2; exit 0; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "command": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -62,7 +88,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=$(command -v python3 2>/dev/null || command -v py 2>/dev/null || command -v python 2>/dev/null) || exit 0; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-lint-on-edit.py\"",
+            "command": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-lint-on-edit.py\"",
             "timeout": 15
           }
         ]
