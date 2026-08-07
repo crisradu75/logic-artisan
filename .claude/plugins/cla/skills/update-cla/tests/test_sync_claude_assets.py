@@ -1691,3 +1691,63 @@ def test_adaptation_prompt_contains_non_negotiable_rule():
     text = prompt_path.read_text(encoding="utf-8")
     assert "Preserve local strengths" in text
     assert "additive" in text.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Line-ending-insensitive hashing
+#
+# apply.py writes every asset with newline="\n" and records the sha of those LF
+# bytes. Git then checks the same file out with CRLF on a typical Windows
+# consumer, so hashing raw bytes in discover could never agree with what was
+# recorded — and a lock entry that never matches silently reduces the 3-way
+# reconcile to a blind 2-way diff.
+#
+# Measured across four real consumer repos before the fix: 277 of 527 tracked
+# assets matched ONLY after CRLF normalization. The one repo unaffected was the
+# one with a repo-wide `.gitattributes eol=lf`, which confirms the mechanism
+# from the other direction.
+# --------------------------------------------------------------------------- #
+
+
+def test_crlf_and_lf_of_the_same_content_hash_identically():
+    discover_mod = _load("discover")
+    lf = b"line one\nline two\n"
+    crlf = b"line one\r\nline two\r\n"
+    assert discover_mod._hash_bytes(lf) == discover_mod._hash_bytes(crlf)
+
+
+def test_genuinely_different_content_still_hashes_differently():
+    """Non-vacuity: normalizing must not collapse real differences."""
+    discover_mod = _load("discover")
+    assert discover_mod._hash_bytes(b"a\n") != discover_mod._hash_bytes(b"b\n")
+    # A lone CR is not a line ending pair and must not be normalized away.
+    assert discover_mod._hash_bytes(b"a\rb") != discover_mod._hash_bytes(b"ab")
+
+
+def test_a_local_copy_differing_only_in_line_endings_is_not_divergent(synthetic_repos):
+    """The end-to-end shape: same content, CRLF locally, LF at source. Before
+    the fix this surfaced as a divergence needing adaptation on every sync."""
+    repos = synthetic_repos({
+        "src": {".claude/plugins/cla/skills/a.md": "alpha\nbeta\n"},
+        "dst": {".claude/plugins/cla/skills/a.md": "alpha\r\nbeta\r\n"},
+    })
+    result = _load("discover").discover(repos[0], repos[1])
+    assert result.files == [], (
+        "a file identical except for line endings was reported as diverging"
+    )
+
+
+def test_apply_records_a_line_ending_insensitive_hash(tmp_path):
+    """The other side of the contract: what apply writes into the lock must be
+    comparable with what discover computes, or they drift apart again."""
+    apply_mod = _load("apply")
+    discover_mod = _load("discover")
+    repo = tmp_path / "repo"
+    (repo / ".claude" / "plugins" / "cla").mkdir(parents=True)
+    apply_mod._update_lock(repo, [("x.md", b"alpha\r\nbeta\r\n")], "src")
+    lock = json.loads(
+        (repo / ".claude" / "plugins" / "cla" / ".cla-sync-lock.json").read_text(encoding="utf-8")
+    )
+    recorded = lock["x.md"]["last_synced_sha256"]
+    assert recorded == discover_mod._hash_bytes(b"alpha\nbeta\n")
+    assert recorded == discover_mod._hash_bytes(b"alpha\r\nbeta\r\n")

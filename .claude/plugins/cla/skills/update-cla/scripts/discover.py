@@ -113,11 +113,34 @@ class DiscoverResult:
 
 
 def _hash_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    """Content hash, INSENSITIVE to line endings.
+
+    `apply.py` writes every asset with `newline="\\n"` and records the sha of
+    those LF bytes in the lockfile. Git then checks the same file out with CRLF
+    on a typical Windows consumer, so hashing the raw bytes here could never
+    agree with what was recorded — and a lock entry that never matches means the
+    3-way reconcile silently degrades to a blind 2-way diff for that asset.
+
+    Measured across four consumer repos before this changed: 277 of 527 tracked
+    assets matched their lock entry ONLY after CRLF normalization. The single
+    repo that was unaffected (agentic-air, 0 of 150) is the one with a repo-wide
+    `.gitattributes` pinning `eol=lf` — which is the mechanism, confirmed from
+    the other direction.
+
+    Normalizing here rather than re-recording fixes existing lockfiles in place:
+    the recorded hashes are already LF-based, so those entries start matching
+    immediately rather than needing a re-sync to heal.
+    """
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _read_text(path: Path) -> tuple[str, str]:
-    """Read a UTF-8 text file; raises BinaryAssetError on non-decodable content."""
+    """Read a UTF-8 text file; raises BinaryAssetError on non-decodable content.
+
+    The returned sha is line-ending-insensitive (see `_hash_bytes`); the returned
+    TEXT is the file as-is, because the adaptation phase should see what is
+    really on disk.
+    """
     raw = path.read_bytes()
     sha = _hash_bytes(raw)
     try:
