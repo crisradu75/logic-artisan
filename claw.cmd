@@ -21,9 +21,34 @@ REM Claude Code's normal per-action confirmation prompts.
 REM
 REM NOTE: dependencies are NOT installed and gitignored env files are NOT copied
 REM — those commands are per-repo facts in new-worktree's project-context.md
-REM overlay, so a portable launcher cannot know them. Ask the launched session to
-REM finish setup; from inside the worktree that writes no heartbeat.
-setlocal enabledelayedexpansion
+REM overlay, so a portable launcher cannot know them. Run /cla:new-worktree in
+REM the launched session to finish setup; it detects the existing worktree and
+REM runs setup only.
+REM
+REM ---------------------------------------------------------------------------
+REM Three cmd.exe hazards this file has already been bitten by. Do not "tidy"
+REM any of them away without re-running `claw.cmd <name>` on real Windows.
+REM
+REM 1. PARENTHESES INSIDE A PARENTHESISED BLOCK MUST BE ESCAPED. cmd parses an
+REM    `if (...)` block as a unit, so an unescaped `(` in an `echo` inside one
+REM    aborts the whole script with `was was unexpected at this time.` — at
+REM    PARSE time, whether or not the branch is taken. Shipped broken exactly
+REM    this way: every real invocation died, while `claw.cmd` with no args
+REM    appeared to work because it exits before cmd reaches the block. Use
+REM    `^(` and `^)` in every echo below.
+REM
+REM 2. DELAYED EXPANSION IS DELIBERATELY OFF. With it on, an argument containing
+REM    `!` is mangled: `claw x -p "fix the bug!"` reached claude as
+REM    `fix the bug`, and `"wow! amazing! done"` silently lost ` amazing` as an
+REM    undefined variable name. `if defined` is a RUNTIME test, so the probes
+REM    below still work without it.
+REM
+REM 3. `shift` DOES NOT AFFECT `%*`. It renumbers %1..%9 and leaves %* holding
+REM    the original line, so passing %* after consuming the name handed the
+REM    worktree name to claude as a trailing positional — which it reads as an
+REM    initial prompt. The args are collected explicitly instead.
+REM ---------------------------------------------------------------------------
+setlocal disabledelayedexpansion
 
 REM %~dp0 ends with a backslash, so no separator before .claude.
 set "PLUGIN_DIR=%~dp0.claude\plugins\cla"
@@ -42,7 +67,7 @@ if "%~1"=="" (
 REM `claw --help` names a flag where a name belongs. A worktree name can never
 REM start with a dash, so treat it as a missing name rather than passing it on.
 set "FIRST=%~1"
-if "!FIRST:~0,1!"=="-" (
+if "%FIRST:~0,1%"=="-" (
   echo claw.cmd: expected a worktree name, got the flag '%~1'. 1>&2
   echo usage: claw ^<name^> [extra claude args...] 1>&2
   exit /b 1
@@ -51,17 +76,12 @@ if "!FIRST:~0,1!"=="-" (
 set "NAME=%~1"
 shift
 
-REM Collect the REMAINING args by hand. `shift` renumbers %1..%9 but leaves %*
-REM holding the ORIGINAL, unshifted command line — so passing %* after a shift
-REM would hand the worktree name to `claude` as a trailing positional, which it
-REM reads as an initial prompt. Every launch would auto-submit the worktree name
-REM as a user turn. Verified: `t.cmd myfeature --resume` yields
-REM NAME=[myfeature] STAR=[myfeature --resume].
-REM `%1` unquoted (not `%~1`) so the caller's own quoting is preserved.
+REM Collect the REMAINING args by hand — see hazard 3 above. `%1` unquoted
+REM (not `%~1`) so the caller's own quoting is preserved.
 set "EXTRA="
 :collect_args
 if "%~1"=="" goto :args_done
-set "EXTRA=!EXTRA! %1"
+set "EXTRA=%EXTRA% %1"
 shift
 goto :collect_args
 :args_done
@@ -77,7 +97,7 @@ if not exist "%WORKTREE_SCRIPT%" (
 )
 where claude >nul 2>nul
 if errorlevel 1 (
-  echo claw.cmd: 'claude' (the Claude Code CLI) was not found on PATH. 1>&2
+  echo claw.cmd: 'claude' ^(the Claude Code CLI^) was not found on PATH. 1>&2
   echo claw.cmd: install it, or make sure it's on PATH, then re-run this script. 1>&2
   exit /b 127
 )
@@ -85,8 +105,9 @@ if errorlevel 1 (
 REM Interpreter probe. Each candidate is RUN before being accepted: on Windows
 REM `python3` commonly resolves to the Store alias stub in WindowsApps, which
 REM prints nothing, exits non-zero, and would surface later as an unexplained
-REM "worktree creation failed". `py` is tried first here because on native
-REM Windows it is the launcher that actually exists.
+REM "worktree creation failed". `py` is tried first because on native Windows it
+REM is the launcher that actually exists. `if defined` is a runtime test, so
+REM this works with delayed expansion off.
 set "PYEXE="
 for %%P in (py.exe python.exe python3.exe) do (
   if not defined PYEXE (
@@ -98,8 +119,8 @@ for %%P in (py.exe python.exe python3.exe) do (
   )
 )
 if not defined PYEXE (
-  echo claw.cmd: no working python interpreter found on PATH (tried py, python, python3). 1>&2
-  echo claw.cmd: note a non-functional shim (e.g. the Windows Store python3 alias) is skipped, not used. 1>&2
+  echo claw.cmd: no working python interpreter found on PATH ^(tried py, python, python3^). 1>&2
+  echo claw.cmd: note a non-functional shim ^(e.g. the Windows Store python3 alias^) is skipped, not used. 1>&2
   exit /b 127
 )
 
@@ -108,8 +129,14 @@ REM base branch, validates the name, refuses a duplicate branch with an
 REM actionable message, and carries the Windows path-casing fallback. Its
 REM --print-path mode puts the bare path on stdout and errors on stderr, so
 REM there is no JSON to parse in batch.
+REM
+REM The whole backquoted command is wrapped in ONE extra quote pair. A backquoted
+REM command whose FIRST token is a quoted exe path otherwise makes cmd emit
+REM "The filename, directory name, or volume label syntax is incorrect.",
+REM leaving WORKTREE_PATH empty so this reports a creation failure that never
+REM happened. Only bites when the interpreter path contains a space.
 set "WORKTREE_PATH="
-for /f "usebackq delims=" %%I in (`"%PYEXE%" "%WORKTREE_SCRIPT%" --repo "%REPO_ROOT%" --name "%NAME%" --print-path`) do (
+for /f "usebackq delims=" %%I in (`""%PYEXE%" "%WORKTREE_SCRIPT%" --repo "%REPO_ROOT%" --name "%NAME%" --print-path"`) do (
   set "WORKTREE_PATH=%%I"
 )
 if not defined WORKTREE_PATH (
@@ -134,24 +161,40 @@ if not exist "%WORKTREE_PLUGIN_DIR%\" (
 REM `cd` BEFORE announcing anything, and check it. Batch has no `set -e`: a
 REM failed `cd` prints an error and CONTINUES, so `call claude` would then run
 REM in whatever cwd the user invoked from — usually the primary clone, which
-REM writes the SessionStart heartbeat this whole script exists to avoid. The
-REM banner also has to come after, or it would name the worktree while the
-REM session is actually somewhere else.
+REM writes the SessionStart heartbeat this whole script exists to avoid.
 cd /d "%WORKTREE_PATH%"
 if errorlevel 1 (
   echo claw.cmd: could not enter "%WORKTREE_PATH%"; not launching. 1>&2
   exit /b 1
 )
 
-REM Assert the ONE property this launcher promises, rather than assuming the
-REM `cd` implied it: a linked worktree has git_dir != git_common_dir. If they
-REM are equal we are in the primary clone and must not launch.
+REM Assert the ONE property this launcher promises: a linked worktree has
+REM git_dir != git_common_dir.
+REM
+REM CANONICALIZE BOTH FIRST, or this guard is dead code. `--absolute-git-dir` is
+REM always absolute and git prints forward slashes; `--git-common-dir` prints a
+REM bare RELATIVE `.git` in a primary clone. Measured: `C:/repo/.git` vs `.git`
+REM — never string-equal, so the refusal was unreachable in the one state it
+REM exists to detect, and the guard read as coverage while providing none.
+REM `%%~f` makes both absolute with backslashes, resolving the relative form
+REM against the directory just entered. The POSIX twin does the same with
+REM `cd ... && pwd`. Normalizing only GCD would leave an absolute FORWARD-slash
+REM GD compared against a backslash value, which also never matches — both, or
+REM neither.
 for /f "delims=" %%I in ('git rev-parse --absolute-git-dir 2^>nul') do set "GD=%%I"
 for /f "delims=" %%I in ('git rev-parse --git-common-dir 2^>nul') do set "GCD=%%I"
 if not defined GD (
   echo claw.cmd: could not resolve the git dir after entering the worktree; not launching. 1>&2
   exit /b 1
 )
+REM Fail closed: without a common dir the assertion cannot be made at all, and
+REM launching unverified is the exact failure this script prevents.
+if not defined GCD (
+  echo claw.cmd: could not resolve the git common dir; not launching. 1>&2
+  exit /b 1
+)
+for %%A in ("%GD%") do set "GD=%%~fA"
+for %%A in ("%GCD%") do set "GCD=%%~fA"
 if /i "%GD%"=="%GCD%" (
   echo claw.cmd: cwd resolves to the PRIMARY CLONE, not a linked worktree; not launching. 1>&2
   echo claw.cmd: launching here would write the presence heartbeat this script exists to avoid. 1>&2
@@ -161,8 +204,8 @@ if /i "%GD%"=="%GCD%" (
 echo claw.cmd: worktree ready at "%WORKTREE_PATH%" 1>&2
 echo claw.cmd: dependencies are NOT installed and env files are NOT copied. 1>&2
 echo claw.cmd: run /cla:new-worktree in the session to finish setup ^(it detects the existing worktree and runs setup only^). 1>&2
->&2 echo + claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium!EXTRA!
-call claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium!EXTRA!
+>&2 echo + claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium%EXTRA%
+call claude --plugin-dir "%WORKTREE_PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium%EXTRA%
 REM Capture ERRORLEVEL immediately -- do not insert commands between the claude
 REM call and this line, or the real exit code would be lost.
 exit /b %ERRORLEVEL%
