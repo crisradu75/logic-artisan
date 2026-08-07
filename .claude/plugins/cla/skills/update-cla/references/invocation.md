@@ -55,6 +55,20 @@ The skill is **structurally portable**:
 
 The scanned trees are the plugin core — `.claude/plugins/cla/skills`, `.claude/plugins/cla/agents`, `.claude/plugins/cla/hooks`, and `.claude/plugins/cla/output-styles` (`SCAN_DIRS` in `scripts/discover.py`). The `.claude-plugin/` manifest is synced by hand; the per-repo project overlay (`project-context.md` / `*.local.md`) is preserved, never synced (non-negotiable rule 5).
 
+**Four repo-root files are also in scope, by name** (`SCAN_FILES`): the launchers `cla`, `cla.cmd`, `claw`, `claw.cmd`. Only those four — a general root scan would drag in the consuming repo's own `README.md`, `package.json` and everything else.
+
+They were hand-carried for their whole life, and the bill arrived at once: `claw.cmd` shipped broken on Windows, three consuming repos each diagnosed and fixed it independently, and none of those fixes could flow anywhere. Two of the three still carried a separate bug that a fourth had already fixed. The objection to syncing them had been that they encode a per-repo choice (the `--model`/`--effort` a session launches with) — measured across all four repos, every one was `--model sonnet --effort medium` and the POSIX `claw` was byte-identical. The customization the argument protected did not exist, and rule 1 already covers a repo that later wants one: an edited launcher classifies `local-advanced` and is kept, like any other asset.
+
+**One manual step, once per new adopter.** `apply.py` writes file *content*, not file *mode*, so a repo receiving `claw` or `cla` for the first time gets it non-executable and `./claw` fails on macOS/Linux:
+
+```bash
+git update-index --chmod=+x claw   # and cla, if new
+```
+
+A repo that already tracks the file keeps its existing mode when the content is overwritten, so this bites once and never again. It is documented rather than solved because reading and writing a git index mode from `apply.py` would mean shelling out to git in both the source and the destination — real machinery in the highest-blast-radius part of the sync, for a one-time step.
+
+Line endings need no manual step: this repo's `.gitattributes` pins `cla`/`claw` to LF (a CRLF shebang is fatal on macOS/Linux — it fails with `bad interpreter: ^M`) and the `.cmd` twins to CRLF.
+
 ## When NOT to use (full detail)
 
 - *Other* installed plugins' internal assets (a third-party `{plugin}/commands/`, `{plugin}/skills/`) — those are that other plugin's published contract, not cla's; out of scope. This skill syncs only cla's own `skills`/`agents`/`hooks`/`output-styles` tree (`SCAN_DIRS` above), never a sibling plugin's.

@@ -1751,3 +1751,84 @@ def test_apply_records_a_line_ending_insensitive_hash(tmp_path):
     recorded = lock["x.md"]["last_synced_sha256"]
     assert recorded == discover_mod._hash_bytes(b"alpha\nbeta\n")
     assert recorded == discover_mod._hash_bytes(b"alpha\r\nbeta\r\n")
+
+
+# --------------------------------------------------------------------------- #
+# SCAN_FILES — the repo-root launchers
+#
+# They were hand-carried for their whole life, and the cost arrived at once:
+# claw.cmd shipped broken on Windows, three consuming repos each diagnosed and
+# fixed it independently, and none of those fixes could flow anywhere. Two of
+# the three still carry a bug the fourth had already fixed.
+# --------------------------------------------------------------------------- #
+
+
+def test_a_root_launcher_is_discovered(synthetic_repos):
+    repos = synthetic_repos({
+        "src": {"claw": "#!/usr/bin/env bash\nnew\n"},
+        "dst": {"claw": "#!/usr/bin/env bash\nold\n"},
+    })
+    result = _load("discover").discover(repos[0], repos[1])
+    assert [f.asset_path for f in result.files] == ["claw"]
+
+
+def test_all_four_launchers_are_in_scope(synthetic_repos):
+    discover_mod = _load("discover")
+    repos = synthetic_repos({
+        "src": {n: f"src {n}\n" for n in discover_mod.SCAN_FILES},
+        "dst": {n: f"dst {n}\n" for n in discover_mod.SCAN_FILES},
+    })
+    found = {f.asset_path for f in discover_mod.discover(repos[0], repos[1]).files}
+    assert found == set(discover_mod.SCAN_FILES)
+
+
+def test_a_launcher_absent_locally_is_new_not_ignored(synthetic_repos):
+    """market-distiller-mcp has no `claw` at all; it must arrive, not be skipped."""
+    repos = synthetic_repos({
+        "src": {"claw": "#!/usr/bin/env bash\nx\n"},
+        "dst": {".claude/plugins/cla/skills/a.md": "A\n"},
+    })
+    result = _load("discover").discover(repos[0], repos[1])
+    claw = [f for f in result.files if f.asset_path == "claw"]
+    assert len(claw) == 1 and claw[0].status == "new"
+    assert claw[0].local_content is None
+
+
+def test_an_unrelated_root_file_is_NOT_swept_in(synthetic_repos):
+    """Only the named launchers. A root scan that took everything would drag in
+    README, package.json and the consuming repo's own files."""
+    repos = synthetic_repos({
+        "src": {"claw": "x\n", "README.md": "src readme\n", "package.json": "{}\n"},
+        "dst": {"claw": "y\n", "README.md": "dst readme\n", "package.json": "{\"a\":1}\n"},
+    })
+    found = {f.asset_path for f in _load("discover").discover(repos[0], repos[1]).files}
+    assert found == {"claw"}
+
+
+def test_the_category_counts_sum_to_the_total(synthetic_repos):
+    """Root files have no directory prefix, so every existing category missed
+    them and the summary silently stopped adding up."""
+    discover_mod = _load("discover")
+    repos = synthetic_repos({
+        "src": {"claw": "a\n", ".claude/plugins/cla/skills/s.md": "s\n",
+                ".claude/plugins/cla/hooks/h.py": "h\n"},
+        "dst": {"claw": "b\n", ".claude/plugins/cla/skills/s.md": "t\n",
+                ".claude/plugins/cla/hooks/h.py": "i\n"},
+    })
+    counts = discover_mod.summary_counts(discover_mod.discover(repos[0], repos[1]))
+    per_category = (counts["skills"] + counts["agents"] + counts["hooks"]
+                    + counts["output_styles"] + counts["launchers"])
+    assert per_category == counts["total"]
+    assert counts["launchers"] == 1
+
+
+def test_a_launcher_deleted_in_source_is_surfaced(synthetic_repos):
+    """`_detect_deletions` reuses the same walker, so this comes for free — but
+    only if the root files are actually walked on the LOCAL side too."""
+    repos = synthetic_repos({
+        "src": {".claude/plugins/cla/skills/a.md": "A\n"},
+        "dst": {".claude/plugins/cla/skills/a.md": "A\n", "claw": "local\n"},
+    })
+    _seed_lock(repos[1], {"claw": {"last_synced_sha256": "deadbeef", "source": "src"}})
+    result = _load("discover").discover(repos[0], repos[1])
+    assert [d.asset_path for d in result.deletions] == ["claw"]
