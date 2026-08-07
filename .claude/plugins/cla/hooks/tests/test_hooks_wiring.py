@@ -385,3 +385,60 @@ def test_the_probe_matches_the_one_claw_uses():
     )
     for cmd in _wiring_commands():
         assert "for c in python3 py python" in cmd
+
+
+# --------------------------------------------------------------------------- #
+# No synced-core hook may prescribe a branch NAMING CONVENTION
+#
+# `guard-worktree-isolation.py` told the user to run
+# `git worktree add ... -b feature/<task>`. These hooks are synced core, so a
+# consuming repo whose convention is e.g. `claude/fix/...` had an ENFORCING hook
+# instructing it to create a branch its own rules forbid — and no way to correct
+# that downstream. It did not even match this plugin's own tooling, which uses
+# `manual_worktree.DEFAULT_BRANCH_PREFIX` (`worktree-`).
+#
+# Reported by a consumer, which also noted the existing test would not have
+# caught it: it asserted only `returncode == 2` and `"worktree" in stderr`,
+# leaving the remediation command itself unpinned.
+# --------------------------------------------------------------------------- #
+
+
+def _runtime_string_constants(path):
+    """Every string literal in the module EXCEPT docstrings.
+
+    Docstrings are prose for a maintainer and may legitimately use a concrete
+    example; a runtime string is what the user is actually told to run.
+    """
+    import ast
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            body = getattr(node, "body", None)
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                if isinstance(body[0].value.value, str):
+                    docstrings.add(id(body[0].value))
+    return [
+        n.value for n in ast.walk(tree)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docstrings
+    ]
+
+
+def test_no_hook_prescribes_a_branch_naming_convention_at_runtime():
+    import re
+    # Scoped to what follows the BRANCH flag. An earlier, broader form also
+    # flagged `.claude/worktrees/<task>` — a directory this plugin owns and is
+    # entitled to name (`manual_worktree.DEFAULT_WORKTREE_DIR`), not a
+    # convention imposed on the consuming repo. The defect is specifically
+    # telling someone what to call their BRANCH.
+    prescriptive = re.compile(r"-b\s+(?!<)[\w.-]+/?[\w.-]*")
+    offenders = []
+    for hook in sorted(_HOOKS_DIR.glob("*.py")):
+        for s in _runtime_string_constants(hook):
+            for m in prescriptive.finditer(s):
+                offenders.append(f"{hook.name}: {m.group(0)!r} in {s[:60]!r}")
+    assert not offenders, (
+        "a synced-core hook prescribes a branch naming convention the consuming "
+        "repo may forbid; say `<branch>` or point at /cla:new-worktree instead:\n"
+        + "\n".join(offenders)
+    )

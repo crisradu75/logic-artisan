@@ -335,9 +335,21 @@ def main(argv: list[str] | None = None) -> int:
         f"command would {op} on the primary clone's HEAD — which git shares across "
         f"every session in this directory, so it would drag the other session onto "
         f"your branch and mix unrelated changes.\n"
-        f"Do feature work in an isolated worktree instead (own directory + own HEAD, "
-        f"shared object store):\n"
-        f"    git worktree add .claude/worktrees/<task> -b feature/<task>\n"
+        f"Do the work in an isolated worktree instead (own directory + own HEAD, "
+        f"shared object store). Easiest is this plugin's own tooling, which knows "
+        f"this repo's conventions:\n"
+        f"    /cla:new-worktree <task>      (or the repo-root `claw <task>`, which "
+        f"creates it before Claude starts)\n"
+        f"or with plain git:\n"
+        f"    git worktree add .claude/worktrees/<task> -b <branch>\n"
+        # `<branch>`, not a hardcoded `feature/<task>`. That prefix was wrong two
+        # ways: a consuming repo whose convention is e.g. `claude/fix/...` was
+        # being told by an ENFORCING hook to create a branch its own rules
+        # forbid, with no way to fix it downstream since this file is synced
+        # core; and it did not even match this plugin's own tooling, which uses
+        # `manual_worktree.DEFAULT_BRANCH_PREFIX` (`worktree-`). Naming the skill
+        # first means the convention lives in one place that already knows it,
+        # rather than being restated — differently — in a hook message.
         # Deliberately does NOT name the base branch. Resolving it costs up to
         # three git spawns, and this is the BLOCK path of an enforcing hook —
         # spending budget on cosmetic message detail is how a block gets lost to

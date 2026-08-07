@@ -367,9 +367,13 @@ def main() -> int:
     if not _is_direct_push_to_main(command, cwd):
         return 0
     print(
+        # `<branch>`, not a hardcoded `feature/<name>`: this is synced core, and
+        # an enforcing hook telling a repo whose convention is e.g.
+        # `claude/fix/...` to create a `feature/` branch is instructing it to
+        # break its own rules, with no way to correct that downstream.
         "blocked: `git push` targets main/master directly. No direct commits to "
-        "the default branch — create a feature branch first: "
-        "`git checkout -b feature/<name>` -> commit -> push -> "
+        "the default branch — create a branch first, using this repo's own "
+        "naming convention: `git checkout -b <branch>` -> commit -> push -> "
         "open a PR via `gh pr create`. Override for a genuine emergency by "
         "setting `ALLOW_PUSH_TO_MAIN=1` in the environment. "
         "(hook: block-direct-push-to-main.py)",
