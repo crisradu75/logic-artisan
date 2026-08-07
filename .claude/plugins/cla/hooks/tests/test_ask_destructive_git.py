@@ -357,3 +357,112 @@ def test_the_merge_match_does_not_span_a_shell_separator(command, monkeypatch, c
     payload = _run(command, monkeypatch, capsys)
     reason = "" if payload is None else _reason(payload)
     assert "PR merge" not in reason, command
+
+
+# --------------------------------------------------------------------------- #
+# ALLOW_PR_MERGE — the narrow hatch for skills that merge unattended
+#
+# `multi-pr` and `multi-lite` merge as an ordinary loop step of a long
+# unattended run, so the merge prompt would simply hang. An audit of every
+# mutating command those skills emit found the merge ask was the only NEW
+# obstacle; the broad ALLOW_DESTRUCTIVE_GIT would have cleared it at the cost of
+# disarming force-push and reset --hard for the same command.
+# --------------------------------------------------------------------------- #
+
+
+def test_allow_pr_merge_silences_the_merge_prompt(monkeypatch, capsys):
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    assert _run("gh pr merge 27 --squash --delete-branch", monkeypatch, capsys) is None
+
+
+def test_allow_pr_merge_does_NOT_silence_a_force_push(monkeypatch, capsys):
+    """The whole reason for a narrow variable: an unattended run that may merge
+    must not thereby lose its force-push guard."""
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    reason = _reason(_run("git push --force origin feature/x", monkeypatch, capsys))
+    assert "force-push" in reason
+
+
+def test_allow_pr_merge_does_NOT_silence_a_reset_hard(monkeypatch, capsys):
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    reason = _reason(_run("git reset --hard HEAD~1", monkeypatch, capsys))
+    assert "reset --hard" in reason
+
+
+def test_a_command_that_merges_AND_force_pushes_still_prompts_on_the_push(
+    monkeypatch, capsys
+):
+    """The precise boundary: one reason is dropped, the other survives, so the
+    prompt still appears and names only the thing still being guarded."""
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    reason = _reason(
+        _run("git push --force origin x && gh pr merge 27", monkeypatch, capsys)
+    )
+    assert "force-push" in reason
+    assert "PR merge" not in reason
+
+
+def test_allow_pr_merge_announces_itself_on_a_merge_it_suppressed(monkeypatch, capsys):
+    """A merge sailing through because of a variable set earlier in the run must
+    not be indistinguishable from one the guard deliberately allowed."""
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    monkeypatch.setattr(
+        sys, "stdin",
+        io.StringIO(json.dumps({"tool_input": {"command": "gh pr merge 27"}})),
+    )
+    assert hook.main() == 0
+    err = capsys.readouterr().err
+    assert "DISABLED" in err and "ALLOW_PR_MERGE" in err
+
+
+def test_allow_pr_merge_stays_quiet_on_an_ordinary_command(monkeypatch, capsys):
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO(json.dumps({"tool_input": {"command": "git status"}}))
+    )
+    assert hook.main() == 0
+    assert capsys.readouterr().err.strip() == ""
+
+
+def test_without_the_variable_the_merge_still_prompts(monkeypatch, capsys):
+    """Non-vacuity: the tests above would all pass if the rule were simply gone."""
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    assert "PR merge" in _reason(_run("gh pr merge 27", monkeypatch, capsys))
+
+
+def test_the_inline_prefix_form_actually_works(monkeypatch, capsys):
+    """The form the skills document. A PreToolUse hook runs BEFORE the command,
+    so an inline assignment never reaches os.environ — reading only the
+    environment made the documented usage silently do nothing. Caught by
+    running the documented command rather than the mechanism under it."""
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    assert _run(
+        "ALLOW_PR_MERGE=1 gh pr merge 27 --squash --delete-branch", monkeypatch, capsys
+    ) is None
+
+
+def test_the_inline_prefix_does_not_silence_a_force_push(monkeypatch, capsys):
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    reason = _reason(
+        _run("ALLOW_PR_MERGE=1 git push --force origin x", monkeypatch, capsys)
+    )
+    assert "force-push" in reason
+
+
+def test_the_prefix_must_sit_where_a_shell_would_treat_it_as_an_assignment(
+    monkeypatch, capsys
+):
+    """Mid-command occurrences must NOT authorize — otherwise merely mentioning
+    the variable in an echoed string would disarm the guard."""
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    reason = _reason(
+        _run('echo "set ALLOW_PR_MERGE=1 first" && gh pr merge 27', monkeypatch, capsys)
+    )
+    assert "PR merge" in reason
+
+
+def test_the_prefix_is_honoured_after_a_shell_separator(monkeypatch, capsys):
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    assert _run(
+        "git fetch --prune && ALLOW_PR_MERGE=1 gh pr merge 27", monkeypatch, capsys
+    ) is None

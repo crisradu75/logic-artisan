@@ -63,17 +63,21 @@ only with evidence of a real incident.
 Best-effort, not an exhaustive git parser — see `GIT_GLOBAL_OPTS`'s own
 docstring for the option shapes it does and does not consume.
 
-Escape hatch: `ALLOW_DESTRUCTIVE_GIT=1` for a deliberate unattended run.
+Escape hatches:
+  - `ALLOW_PR_MERGE=1` — drops ONLY the PR-merge confirmation. This is the one
+    to use for a skill that merges as an ordinary step of a long unattended run
+    (`multi-pr`, `multi-lite`); force-push and `reset --hard` stay checked.
+    Prefer it per-command over exporting it.
+  - `ALLOW_DESTRUCTIVE_GIT=1` — drops every check below, for a deliberate
+    unattended batch.
 
-**Its scope widened when `gh pr merge` was added, and the name no longer
-describes it.** The var now also silences an AUTHORIZATION checkpoint, not just
-destructive git — so a value exported weeks ago for a force-push batch will
-also wave through every PR merge. That is deliberate: the alternative,
-exempting the merge rule from the hatch, would make genuine unattended runs
-impossible, and an authorization prompt nobody can answer is worse than none.
-Prefer setting it per-command (`ALLOW_DESTRUCTIVE_GIT=1 gh pr merge …`) over
-exporting it for a session. The stderr `DISABLED` notice fires on every
-command it suppresses, which is the compensating signal.
+`ALLOW_DESTRUCTIVE_GIT`'s scope widened when `gh pr merge` was added, and the
+name stopped describing it — it now also silences an AUTHORIZATION checkpoint,
+so a value exported weeks ago for a force-push batch would wave through every
+PR merge too. `ALLOW_PR_MERGE` exists so that trade never has to be made: an
+unattended run that merges declares exactly that, and keeps its force-push and
+reset guards. Prefer either per-command over exporting it for a session; the
+stderr `DISABLED` notice fires on every command they suppress.
 
 Exit codes:
   0 — always. The decision travels as JSON on stdout, never as an exit code:
@@ -202,6 +206,26 @@ _GH_PR_MERGE = re.compile(
 )
 
 
+# Named so `main()` can suppress THIS reason alone under `ALLOW_PR_MERGE=1`,
+# without touching the force-push and reset checks. The narrow variable exists
+# because `multi-pr` and `multi-lite` merge as an ordinary loop step of a long
+# unattended run — an audit of every mutating command those skills emit found
+# the merge prompt was the only NEW thing standing in their way. Silencing it
+# with the broad `ALLOW_DESTRUCTIVE_GIT` would have disarmed force-push and
+# `reset --hard` for the same commands, which is a strictly worse trade.
+# An inline `ALLOW_PR_MERGE=1` env-assignment prefix, at the start of the whole
+# command or of a segment after a shell separator. Anchored so it cannot be
+# satisfied by the string appearing mid-command (inside an echoed message, say)
+# — it has to sit where a shell would actually treat it as an assignment.
+_ALLOW_MERGE_PREFIX = re.compile(r"(?:^|[&|;]\s*)ALLOW_PR_MERGE=1[ \t]")
+
+MERGE_REASON = (
+    "a PR merge, which publishes to a shared branch and cannot be cleanly "
+    "undone — confirm the user actually asked for this MERGE, not just for "
+    "the work to be built"
+)
+
+
 def _reasons(command: str) -> list[str]:
     """Every destructive shape present in `command`, as human-readable causes."""
     scanned = _strip_quoted_spans(command)
@@ -220,11 +244,7 @@ def _reasons(command: str) -> list[str]:
             "changes with no reflog entry to recover them from"
         )
     if _GH_PR_MERGE.search(scanned):
-        found.append(
-            "a PR merge, which publishes to a shared branch and cannot be "
-            "cleanly undone — confirm the user actually asked for this MERGE, "
-            "not just for the work to be built"
-        )
+        found.append(MERGE_REASON)
     return found
 
 
@@ -259,6 +279,33 @@ def main() -> int:
         return 0
 
     found = _reasons(command)
+
+    # `ALLOW_PR_MERGE=1` drops ONLY the merge reason. A command that also
+    # force-pushes still prompts, on the force-push — which is the whole point
+    # of a narrow variable over the broad one. Announced on stderr for the same
+    # reason the broad hatch is: a merge sailing through because of a switch set
+    # earlier in the run must not look like one the guard deliberately allowed.
+    #
+    # Honoured from the COMMAND TEXT as well as the environment, and the command
+    # text is the form to prefer. A PreToolUse hook runs BEFORE the command is
+    # executed, so an inline `ALLOW_PR_MERGE=1 gh pr merge …` prefix never
+    # reaches this process's `os.environ` — reading only the environment would
+    # mean the per-command form silently did nothing, which is exactly how it
+    # was first written. Matching the prefix here is what makes "authorize this
+    # one command" expressible at all; the environment form remains for a
+    # caller that genuinely wants it set for a whole run.
+    if found and (
+        os.environ.get("ALLOW_PR_MERGE") == "1" or _ALLOW_MERGE_PREFIX.search(command)
+    ):
+        kept = [r for r in found if r != MERGE_REASON]
+        if len(kept) != len(found):
+            print(
+                "[ask-destructive-git] note: the PR-merge confirmation is "
+                "DISABLED by ALLOW_PR_MERGE=1 for this command. Force-push and "
+                "reset --hard are still checked. (hook: ask-destructive-git.py)",
+                file=sys.stderr,
+            )
+        found = kept
     if not found:
         return 0
 

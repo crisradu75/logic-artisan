@@ -34,8 +34,18 @@ For each change in the confirmed order:
 
 5. **Merge (only under the "merge before dependents" policy).** Once the change is genuinely done (Tier A clean, Tier B findings resolved per step 4):
    ```
-   gh pr merge <#> --squash --delete-branch
+   ALLOW_PR_MERGE=1 gh pr merge <#> --squash --delete-branch
    ```
+   **The `ALLOW_PR_MERGE=1` prefix is required, and belongs on this command
+   only.** `ask-destructive-git.py` prompts for confirmation on every
+   `gh pr merge`, because a hook cannot tell an authorized merge from one the
+   agent assumed — a real failure that shipped two unrequested merges. This
+   chain is the legitimate exception: the user confirmed the whole plan,
+   including this dependency edge, in Phase 1, and the run is unattended by
+   design, so a prompt here would simply hang. Use the narrow variable, NOT
+   `ALLOW_DESTRUCTIVE_GIT=1` — that one would also disarm the force-push and
+   `reset --hard` checks for the same command. Do not export either; prefixing
+   the single command is what keeps the exception scoped to it.
    **Verification branches on whether THIS worktree holds `<base-branch>`/`main`.** `gh pr merge --delete-branch` performs the remote merge first, then tries to switch the *local* checkout to the base branch and delete the local copy of the feature branch:
    - **If this worktree holds `<base-branch>`/`main`** (the primary clone, or a worktree that legitimately checked it out): the local-checkout switch succeeds. Sync it with two separate commands (not chained with `&&`, per the inherited bash-discipline rule):
      ```
