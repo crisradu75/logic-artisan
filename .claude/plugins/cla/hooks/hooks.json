@@ -90,6 +90,11 @@
             "type": "command",
             "command": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-lint-on-edit.py\"",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; \"$p\" -c \"import sys\" >/dev/null 2>&1 && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 0; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-wholesale-rewrite.py\"",
+            "timeout": 15
           }
         ]
       }
