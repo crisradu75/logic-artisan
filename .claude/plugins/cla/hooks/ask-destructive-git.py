@@ -41,6 +41,13 @@ Detection scope
 - `git push` with a `+`-prefixed refspec (`git push origin +feat:feat`), which
   is git's other force syntax and carries no flag at all.
 - `git reset` carrying `--hard`.
+- `gh pr merge`, including behind global options and as `gh.exe`/`gh.cmd`. Not
+  destructive in the same sense, but outward-facing and effectively
+  irreversible, and the thing that fails there is AUTHORIZATION — which a hook
+  cannot read, so the prompt is unconditional. NOT matched (regex cannot reach
+  them, and they are named rather than implied): a shell alias, a case variant
+  like `GH pr merge`, and the REST form `gh api -X PUT .../pulls/N/merge`.
+  See `_GH_PR_MERGE` for the incident that added it.
 
 `--force-with-lease` and `--force-if-includes` are deliberately NOT matched:
 they are the guarded forms that refuse to clobber an unseen remote update, and
@@ -57,6 +64,16 @@ Best-effort, not an exhaustive git parser — see `GIT_GLOBAL_OPTS`'s own
 docstring for the option shapes it does and does not consume.
 
 Escape hatch: `ALLOW_DESTRUCTIVE_GIT=1` for a deliberate unattended run.
+
+**Its scope widened when `gh pr merge` was added, and the name no longer
+describes it.** The var now also silences an AUTHORIZATION checkpoint, not just
+destructive git — so a value exported weeks ago for a force-push batch will
+also wave through every PR merge. That is deliberate: the alternative,
+exempting the merge rule from the hatch, would make genuine unattended runs
+impossible, and an authorization prompt nobody can answer is worse than none.
+Prefer setting it per-command (`ALLOW_DESTRUCTIVE_GIT=1 gh pr merge …`) over
+exporting it for a session. The stderr `DISABLED` notice fires on every
+command it suppresses, which is the compensating signal.
 
 Exit codes:
   0 — always. The decision travels as JSON on stdout, never as an exit code:
@@ -83,12 +100,26 @@ if _HOOKS_DIR not in sys.path:
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
-# The trailing `[^&|;\n]*` stops at a shell separator so the flags of a LATER
-# command are never attributed to this one. A NEWLINE is a separator too: a
-# multi-line Bash command is ordinary here, and without `\n` in this class a
-# plain `git push` on one line was flagged because of an `-f` on the next.
-_PUSH = re.compile(r"\bgit\s+" + _G + r"push\b([^&|;\n]*)")
-_RESET = re.compile(r"\bgit\s+" + _G + r"reset\b([^&|;\n]*)")
+# Horizontal whitespace, or a backslash line continuation. A continuation is a
+# JOINED line, not a new command, so it separates tokens; a bare newline ends
+# the command and must not. Both rules below and `_GH_PR_MERGE` share this —
+# four review rounds each found the same bug one construct over, every time
+# because one position used a plain `\s` or excluded the newline outright.
+_SEP = r"(?:[ \t]|\\\r?\n)+"
+
+# The trailing tail stops at a shell separator so the flags of a LATER command
+# are never attributed to this one. A NEWLINE is such a separator: a multi-line
+# Bash command is ordinary here, and without `\n` excluded, a plain `git push`
+# on one line was flagged because of an `-f` on the next.
+#
+# But a CONTINUED newline is not a command boundary, and excluding `\n` flatly
+# made `git push \`+newline+`--force origin feat` — an ordinary multi-line
+# invocation — a silent bypass of the force-push guard. The tail therefore
+# admits a continuation while still stopping at a bare newline, and the
+# `git`→subcommand gap uses `_SEP` for the same reason.
+_TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
+_PUSH = re.compile(r"\bgit" + _SEP + _G + r"push\b" + _TAIL)
+_RESET = re.compile(r"\bgit" + _SEP + _G + r"reset\b" + _TAIL)
 
 # Two shapes force a push. The long flag, where `(?:\s|=|$)` is what spares
 # `--force-with-lease` / `--force-if-includes` (both are followed by `-`, which
@@ -101,6 +132,74 @@ _FORCE_FLAG = re.compile(
 # `git push origin +feat:feat` — force expressed in the refspec, no flag at all.
 _FORCE_REFSPEC = re.compile(r"(?:^|\s)\+\S+")
 _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
+
+# `gh pr merge` — not destructive in the reset/force-push sense, but it is
+# outward-facing and effectively irreversible: it publishes to a shared branch,
+# can trigger deploys, and `--delete-branch` removes the source.
+#
+# It is here because AUTHORIZATION is the thing that fails, and a hook cannot
+# read authorization. Observed twice in one session: two PRs merged that the
+# user had asked to be *built*, not shipped — once by carrying a "merge and
+# clean" instruction forward from an earlier, unrelated task. Both had to be
+# reverted, one after review found it broken.
+#
+# So the prompt is unconditional rather than clever. When the merge IS
+# authorized it costs a keystroke; when it is not, it is the only thing between
+# an assumption and a shared branch. Unlike a rule stated in conversation, it
+# survives compaction — which is exactly when the carry-forward mistake happens.
+# Tokens between `gh` and `pr merge` are skipped so global options and their
+# values match (`gh --repo owner/name pr merge`) — a value can contain `/`, so
+# they are matched as generic tokens rather than a `[-\w]` word class, which
+# missed exactly that shape.
+#
+# Separators are `_SEP` — horizontal whitespace, or a backslash line
+# continuation — never a bare `\s`. `\s` matches a newline, so the skip walked
+# across line breaks into an unrelated command and `gh auth status` + newline +
+# `echo pr merge` fired. `_PUSH`/`_RESET` already exclude `\n` for this exact
+# reason (see their comment above).
+#
+# But excluding the newline outright was ALSO wrong, and briefly shipped that
+# way: `gh \`+newline+`pr merge` is an ordinary multi-line invocation and became
+# a silent bypass. A continuation is a joined line, not a new command, so it is
+# a separator; a bare newline is not.
+#
+# `_SEP` must be used at EVERY separator position, including between `pr` and
+# `merge`. A first pass applied it to the `gh`→token and token→token positions
+# and left the subcommand pair as `[ \t]`, which moved the identical bypass one
+# token to the right — `gh pr \`+newline+`merge` was still silent. Same bug,
+# different position, caught only by a review pass that re-probed the fix.
+#
+# The skip is LAZY with no lookahead. An earlier `(?!pr…)` guard was there to
+# stop the skip running past the first `pr`, but laziness does that for free and
+# the guard had its own bug: it could not skip a token that merely began with
+# `pr`, so `gh --repo pr-tools/x pr merge` — and, after that was narrowed,
+# `gh --repo pr pr merge` — were misses. Shortest-match-first handles both.
+#
+# The optional extension matches `gh.exe` / `gh.cmd`, ordinary spellings on
+# this repo's primary platform, which bare `\bgh\s` missed entirely.
+#
+# `merge(?![\w-])` rather than `merge\b`: `\b` ends at a hyphen, so
+# `gh pr merge-queue status` — a real, read-only subcommand — was prompting.
+#
+# Known misses, stated rather than implied: a shell alias, a case variant
+# (`GH pr merge` — PowerShell resolves commands case-insensitively), and the
+# REST equivalent `gh api -X PUT repos/o/n/pulls/N/merge`. A regex cannot
+# resolve an alias, and the `gh api` surface is too broad to match without
+# false-firing on every read-only API call. Named here so the gap is a known
+# limitation rather than a surprise.
+# `_SEP` is defined once, above, and shared with `_PUSH`/`_RESET`. The
+# extension group is case-folded: it exists because Windows is the primary
+# platform, and that shell resolves `gh.EXE` as readily as `gh.exe`, so a
+# case-sensitive group would have been the same inconsistency one more time.
+#
+# The escaped dot sits OUTSIDE the case-folding group deliberately. With it
+# inside, the source text would contain a letter-colon-backslash run, which the
+# conformance guard's Windows-drive-path scanner flags as a hardcoded developer
+# path. Same match either way; this spelling avoids the false alarm.
+_GH_PR_MERGE = re.compile(
+    r"\bgh(?:\.(?i:exe|cmd|bat|com|ps1))?" + _SEP
+    + r"(?:[^\s&|;\n]+" + _SEP + r")*?pr" + _SEP + r"merge(?![\w-])"
+)
 
 
 def _reasons(command: str) -> list[str]:
@@ -119,6 +218,12 @@ def _reasons(command: str) -> list[str]:
         found.append(
             "`git reset --hard`, which discards uncommitted working-tree "
             "changes with no reflog entry to recover them from"
+        )
+    if _GH_PR_MERGE.search(scanned):
+        found.append(
+            "a PR merge, which publishes to a shared branch and cannot be "
+            "cleanly undone — confirm the user actually asked for this MERGE, "
+            "not just for the work to be built"
         )
     return found
 

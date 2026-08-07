@@ -70,6 +70,15 @@ def _reason(payload: dict) -> str:
         # orchestrators actually produce.
         "git -C /some/worktree push --force origin feature/x",
         "git --git-dir /x/.git push -f origin feature/x",
+        # Backslash line continuation, at each separator position. These were a
+        # SILENT BYPASS of the force-push guard until `_SEP`/`_TAIL` replaced a
+        # plain `\s` and a flat `\n` exclusion — a multi-line invocation is
+        # ordinary, and a continued newline is a joined line, not a boundary.
+        "git push \\\n--force origin feature/x",
+        "git \\\npush --force origin feature/x",
+        "git push origin feature/x \\\n--force",
+        "git \\\npush origin +feat:feat",
+        "git push \\\r\n  --force origin feature/x",
     ],
 )
 def test_force_push_shapes_prompt(command, monkeypatch, capsys):
@@ -84,6 +93,8 @@ def test_force_push_shapes_prompt(command, monkeypatch, capsys):
         "git reset --hard",
         "git reset --hard HEAD~3",
         "git -C /some/path reset --hard origin/main",
+        "git reset \\\n  --hard",
+        "git \\\n reset --hard HEAD~1",
     ],
 )
 def test_reset_hard_shapes_prompt(command, monkeypatch, capsys):
@@ -191,3 +202,158 @@ def test_reason_names_the_override_so_the_prompt_is_actionable(monkeypatch, caps
     reason = _reason(payload)
     assert "ALLOW_DESTRUCTIVE_GIT" in reason
     assert "ask-destructive-git.py" in reason
+
+
+# --------------------------------------------------------------------------- #
+# `gh pr merge` — authorization, which a hook cannot read
+#
+# Added after two PRs in one session were merged that the user had asked to be
+# BUILT, not shipped — once by carrying a "merge and clean" instruction forward
+# from an earlier, unrelated task. The prompt is unconditional by design.
+#
+# These go through `_run()` -> `main()` like every other test in this file, not
+# through the private `_reasons` helper: `main()` is what the dispatcher
+# consumes, and a first draft that stopped at `_reasons` would have stayed green
+# through any change to the emit block.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr merge 27",
+        "gh pr merge 27 --squash",
+        "gh pr merge --squash --delete-branch 27",
+        "gh pr merge 27 --repo owner/name --squash",
+        "gh --repo owner/name pr merge 27",
+        # A global-option VALUE beginning with `pr`. `(?!pr\b)` rejected the
+        # token (word boundary before the `-`), so it could neither be skipped
+        # nor complete the match, and this was a silent miss.
+        "gh --repo pr-tools/x pr merge 27",
+        # Ordinary spellings on this repo's primary platform; bare `\bgh\s`
+        # missed both entirely.
+        "gh.exe pr merge 27",
+        "gh.cmd pr merge 27",
+        "gh.bat pr merge 27",
+        "gh.ps1 pr merge 27",
+        # The extension group exists because Windows is the primary platform,
+        # and that shell resolves these case-insensitively — a case-sensitive
+        # group would have been the same inconsistency one more time.
+        "gh.EXE pr merge 27",
+        "gh.Cmd pr merge 27",
+        "gh.com pr merge 27",
+        "/usr/bin/gh pr merge 27",
+        "gh pr merge",
+        # An option value that IS exactly `pr`. The first fix used a lookahead
+        # that could not skip such a token, so this stayed a miss until the
+        # skip was made lazy instead.
+        "gh --repo pr pr merge 27",
+        "gh --repo o/n --hostname pr pr merge 27",
+        # Whitespace variants.
+        "gh\tpr\tmerge 27",
+        "gh   pr   merge   27",
+        # Backslash line continuation. Excluding the newline from the
+        # separators to stop the cross-command false positive ALSO broke this,
+        # briefly, in the first fix — a continuation is a joined line, not a
+        # new command, so it is a separator while a bare newline is not.
+        "gh \\\n  pr merge 27",
+        "gh --repo o/n \\\n  pr merge 27",
+        "gh pr merge 27 \\\n  --squash",
+        # Continuation BETWEEN `pr` and `merge`. The first `_SEP` pass covered
+        # the gh->token and token->token positions but left the subcommand pair
+        # as `[ \t]`, moving the identical bypass one token right — these were
+        # silent until `_SEP` was applied at every position.
+        "gh pr \\\n  merge 27",
+        "gh pr \\\n  merge 27 --squash",
+        "gh \\\n pr \\\n merge 27",
+        "gh \\\r\n pr \\\r\n merge",
+        "git status && gh pr merge 27",
+    ],
+)
+def test_a_pr_merge_asks(command, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, command
+    assert "PR merge" in _reason(payload), command
+
+
+def test_the_merge_prompt_names_the_override_like_every_other_reason(monkeypatch, capsys):
+    """`main()` appends the escape-hatch suffix to any non-empty reason list —
+    pinned here because the merge rule is the highest-consequence thing the
+    hatch can silence, so the prompt must say how it was silenced."""
+    reason = _reason(_run("gh pr merge 27", monkeypatch, capsys))
+    assert "ALLOW_DESTRUCTIVE_GIT" in reason
+    assert "ask-destructive-git.py" in reason
+
+
+def test_the_override_silences_the_merge_prompt_too(monkeypatch, capsys):
+    """The hatch is shared, so this is expected — pinned because a stale
+    exported var silencing the authorization guard is the worst silencing this
+    hook allows, and it should be a deliberate, visible property."""
+    monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "1")
+    assert _run("gh pr merge 27", monkeypatch, capsys) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr view 27",
+        "gh pr create --title x",
+        "gh pr list --state open",
+        "gh pr checks 27",
+        "gh pr checkout 27",
+        "gh pr view 27 --json mergeable",
+        "gh pr edit 27 --add-label needs-merge",
+        # A real, read-only subcommand. `merge` ended at the hyphen and
+        # prompted on it; the rule now uses `merge(?![\w-])`.
+        "gh pr merge-queue status",
+        "gh run list",
+        "git merge main",
+        "git merge --no-ff feature/x",
+        "echo 'gh pr merge 27'",
+        'gh pr comment 27 --body "then gh pr merge it"',
+        # Names that merely start with or contain `gh` — the optional extension
+        # suffix must not turn these into matches.
+        "ghost pr merge 27",
+        "gh.exe.bak pr merge 27",
+        "mygh pr merge 27",
+        "gh-wrapper pr merge 27",
+        "gh.sh pr merge 27",
+    ],
+)
+def test_non_merge_gh_and_local_merge_do_not_ask(command, monkeypatch, capsys):
+    """A prompt that fires on `gh pr view` would be ignored within a day. Local
+    `git merge` is deliberately out of scope — not outward-facing, and
+    `warn-stacked-pr-merge` already covers the case that matters there."""
+    payload = _run(command, monkeypatch, capsys)
+    reason = "" if payload is None else _reason(payload)
+    assert "PR merge" not in reason, command
+
+
+def test_a_pr_merge_still_asks_alongside_another_destructive_shape(monkeypatch, capsys):
+    reason = _reason(
+        _run("git push --force origin x && gh pr merge 27 --squash", monkeypatch, capsys)
+    )
+    assert "force-push" in reason
+    assert "PR merge" in reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr view 27 && echo pr merge",
+        # A BARE newline ends the command. Separators are `_SEP` — horizontal
+        # whitespace or a backslash continuation — never `\s`, which matches a
+        # newline: with `\s` the skip walked across line breaks and
+        # `gh auth status` + newline + `echo pr merge` fired. Multi-line Bash is
+        # ordinary here, and `_PUSH`/`_RESET` exclude `\n` for the same reason.
+        # The continuation cases in `test_a_pr_merge_asks` are the other half:
+        # a joined line is NOT a command boundary and must still match.
+        "gh auth status\necho pr merge is guarded",
+        "gh run list\necho pr merge",
+        "gh release list\npr merge notes",
+    ],
+)
+def test_the_merge_match_does_not_span_a_shell_separator(command, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys)
+    reason = "" if payload is None else _reason(payload)
+    assert "PR merge" not in reason, command
