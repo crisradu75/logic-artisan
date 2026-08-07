@@ -147,7 +147,13 @@ _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 # But excluding the newline outright was ALSO wrong, and briefly shipped that
 # way: `gh \`+newline+`pr merge` is an ordinary multi-line invocation and became
 # a silent bypass. A continuation is a joined line, not a new command, so it is
-# a separator; a bare newline is not. That distinction is the whole rule.
+# a separator; a bare newline is not.
+#
+# `_SEP` must be used at EVERY separator position, including between `pr` and
+# `merge`. A first pass applied it to the `gh`→token and token→token positions
+# and left the subcommand pair as `[ \t]`, which moved the identical bypass one
+# token to the right — `gh pr \`+newline+`merge` was still silent. Same bug,
+# different position, caught only by a review pass that re-probed the fix.
 #
 # The skip is LAZY with no lookahead. An earlier `(?!pr…)` guard was there to
 # stop the skip running past the first `pr`, but laziness does that for free and
@@ -170,7 +176,7 @@ _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 _SEP = r"(?:[ \t]|\\\r?\n)+"
 _GH_PR_MERGE = re.compile(
     r"\bgh(?:\.(?:exe|cmd|bat|ps1))?" + _SEP
-    + r"(?:[^\s&|;\n]+" + _SEP + r")*?pr[ \t]+merge(?![\w-])"
+    + r"(?:[^\s&|;\n]+" + _SEP + r")*?pr" + _SEP + r"merge(?![\w-])"
 )
 
 

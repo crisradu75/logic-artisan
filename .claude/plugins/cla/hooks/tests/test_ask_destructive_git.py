@@ -242,6 +242,14 @@ def test_reason_names_the_override_so_the_prompt_is_actionable(monkeypatch, caps
         "gh \\\n  pr merge 27",
         "gh --repo o/n \\\n  pr merge 27",
         "gh pr merge 27 \\\n  --squash",
+        # Continuation BETWEEN `pr` and `merge`. The first `_SEP` pass covered
+        # the gh->token and token->token positions but left the subcommand pair
+        # as `[ \t]`, moving the identical bypass one token right — these were
+        # silent until `_SEP` was applied at every position.
+        "gh pr \\\n  merge 27",
+        "gh pr \\\n  merge 27 --squash",
+        "gh \\\n pr \\\n merge 27",
+        "gh \\\r\n pr \\\r\n merge",
         "git status && gh pr merge 27",
     ],
 )
@@ -316,10 +324,13 @@ def test_a_pr_merge_still_asks_alongside_another_destructive_shape(monkeypatch, 
     "command",
     [
         "gh pr view 27 && echo pr merge",
-        # A NEWLINE is a separator too. Every separator in the pattern is
-        # `[ \t]`, never `\s`: with `\s` the skip walked across line breaks and
+        # A BARE newline ends the command. Separators are `_SEP` — horizontal
+        # whitespace or a backslash continuation — never `\s`, which matches a
+        # newline: with `\s` the skip walked across line breaks and
         # `gh auth status` + newline + `echo pr merge` fired. Multi-line Bash is
         # ordinary here, and `_PUSH`/`_RESET` exclude `\n` for the same reason.
+        # The continuation cases in `test_a_pr_merge_asks` are the other half:
+        # a joined line is NOT a command boundary and must still match.
         "gh auth status\necho pr merge is guarded",
         "gh run list\necho pr merge",
         "gh release list\npr merge notes",
