@@ -87,6 +87,31 @@ For each file: read the source content, the local existing version (`null` for `
 
 **One rewrite per file** — do this in a single pass per file, following `references/adaptation_prompt.md` and the non-negotiable rules above; do not iterate multiple draft rewrites of the same file inline. The most common failure is silently overwriting local content the source lacks (rule 3 especially). A `new` skill is still routed through `adaptations.json`, never `Write`n directly, so Phase 3 can perform its git-safety checks. Print a one-line `[i/N] <asset> — <summary>` per file, then write `adaptations.json` (schema: `references/phases.md`). Review any `deletions` by hand — **never auto-delete**; act outside this flow if removal is the right call.
 
+### Phase 2.5 — Record upstream proposals (you reason; usually writes nothing)
+
+A sync is the one moment when the same asset is in view in two repos at once — so it is
+the moment a local file reveals itself as not merely *adapted* but genuinely **better**:
+it fixes a defect in the portable harness, or covers a case source misses. Capture that
+before the run ends, or it is lost until someone rediscovers it in another repo.
+
+For each local divergence you kept, apply one test: **would every repo running the plugin
+be better off if source adopted this?** Yes → append a proposal to `cla-upstream.md` at
+the destination repo root. No → it is this repo's adaptation, which belongs in the
+`project-context.md` overlay, not here.
+
+**Read `references/upstream-proposals.md` first** for the admission test, the item shape,
+the dedup rule, and the append-only discipline. Three things are load-bearing:
+
+- **Not an inventory.** Most divergences are legitimate local adaptation. Recording them
+  all buries the real defects, and a file that is mostly noise stops being read.
+- **Never overwrite hand-written content.** These files are often long-form human
+  analysis. Append only — never reorder, reword, renumber, or delete an existing item.
+- **Most runs add nothing.** An empty result is the normal outcome, not a missed step.
+
+This writes prose in the *destination* repo only. It never touches the source repo, never
+edits code, and never marks an item ported — the source repo collects from these files
+when it chooses to.
+
 Then trigger Phase 3.
 
 ### Phase 3 — Apply (script call, no reasoning)
@@ -127,5 +152,6 @@ Two pytest guards protect this skill's cross-repo safety: a **conformance guard*
 - `references/invocation.md` — asset-path examples, required environment, the flags table, portability notes, and the onboarding-order fallback detail.
 - `references/guards.md` — the conformance guard, the project-facts staleness guard, and this skill's known limitations.
 - `references/adaptation_prompt.md` — the Phase 2 per-file adaptation prompt.
+- `references/upstream-proposals.md` — the Phase 2.5 reverse channel: the admission test for a carry-back, the `cla-upstream.md` item shape, and the append-only rule that protects hand-written entries.
 - `references/pr_template.md` — the PR body template rendered by `apply --mode pr`.
 - `references/project-tokens.local.md` — **OVERLAY, not a generic reference.** This repo's own curated token list for the conformance guard; never synced, never treated as portable content.
