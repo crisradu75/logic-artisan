@@ -62,24 +62,31 @@ Check it worked: type `/cla:` and the skill list should autocomplete.
 ## 3. Your first change: `lite-pr`
 
 `lite-pr` is the lightweight end-to-end path for a small, well-understood change — the one to
-reach for first. It implements, updates docs and tests in place, runs one automated review round,
-and stops at an **opened PR**. It never merges.
+reach for first. It implements, keeps docs and tests in sync, opens a PR, then runs one automated
+PR-review pass with a single fix round. It never merges.
 
 ```
 /cla:lite-pr Rename the `retry_count` config key to `max_retries`, keeping a
 deprecation fallback for the old name
 ```
 
-What happens, in order:
+The phases, in order — Explore → Plan → Implement → Test → Ship → Review:
 
-1. Optional quick requirements check if the description is ambiguous.
-2. A short plan, posted for visibility — not a blocking gate.
-3. Implementation on a branch: code + `spec.md`/`CLAUDE.md`/tests kept in sync.
-4. One automated review round; findings fixed, not deferred.
-5. A PR opened for you to review and merge.
+1. **Explore** (optional) — only when the ask is genuinely open-ended; it hands off to
+   `shape-decision` for the same Q&A described in section 4.
+2. **Plan** — posted in the conversation for visibility, not a blocking gate.
+3. **Implement** on a branch: code + `spec.md`/`CLAUDE.md`/tests kept in sync.
+4. **Test** — the flow's only stop point: an unresolved failure halts the run.
+5. **Ship** — commit, push, PR opened.
+6. **Review** — one automated PR-review pass on the opened PR, with a single fix round.
 
-Invoked with no arguments, it asks what you want to change. If the change turns out bigger than
-lite-pr-sized mid-flight, it says so — that's your cue for the spec-scale path in section 5.
+Note the order: the PR opens *before* the review pass, and one fix round is the whole budget —
+deeper multi-round review is `spec-to-pr`'s territory.
+
+Invoked with no arguments, it infers the change from the conversation (say, a just-finished
+`shape-decision`); it asks only when there's no usable context. And there is no mid-flight
+escalation path: if the change turns out bigger than expected during Implement, stop and reassess
+manually — re-plan, split it, or switch to the spec-scale path in section 5.
 
 ## 4. Shape first, build second
 
@@ -139,8 +146,10 @@ When a change is too big to hold in one prompt, CLA drives it through OpenSpec (
    /cla:spec-to-pr add-hook-config-overlay
    ```
 
-   It also accepts a fresh description (it creates the change first) or no argument (it lists open
-   changes to pick from).
+   It also accepts a fresh description (it creates the change first). With no argument it infers
+   the change from the conversation (typically a just-finished `opsx:explore`); with no usable
+   context and exactly one open change, it resumes that change. It prompts only when zero or
+   several exist — don't run it bare and expect a pick-list.
 
 For exploration *before* any of this, `opsx:explore` is the thinking-partner mode — CLA
 orchestrates around OpenSpec rather than replacing it.
@@ -163,9 +172,10 @@ dependency-first, unattended:
 
 **The one place CLA merges.** The single-change skills stop at an opened PR, but a chainer must
 merge a dependency PR before its dependents can build on it. That merge goes through the
-`ask-destructive-git` guard: it runs `ALLOW_PR_MERGE=1 gh pr merge <#> --squash` — a prefix that
-drops *only* the PR-merge confirmation, for that one command. Force-push and `reset --hard` still
-prompt. No PR is ever merged without you having chosen to run a chainer.
+`ask-destructive-git` guard: it runs `ALLOW_PR_MERGE=1 gh pr merge <#> --squash --delete-branch` —
+the prefix drops *only* the PR-merge confirmation, for that one command, and the source branch is
+deleted on merge. Force-push and `reset --hard` still prompt. No PR is ever merged without you
+having chosen to run a chainer.
 
 ## 7. Parallel and safe: worktrees
 

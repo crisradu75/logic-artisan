@@ -78,17 +78,19 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (7 today), plus `hooks/`, plus `consistency-checks/`, is its
-own isolated pytest scope — 9 in total — each with its own `pyproject.toml` (`testpaths =
-["tests"]`, plus a `pythonpath` pointing at that scope's importable code — `["scripts"]` for a
-skill and for `consistency-checks/`, `["."]` for `hooks/`, whose modules sit at the scope root).
+design. Each skill that ships tests (7 today), plus `hooks/`, plus `consistency-checks/`, plus
+`launcher-checks/`, is its own isolated pytest scope — 10 in total — each with its own
+`pyproject.toml` (`testpaths = ["tests"]`, plus a `pythonpath` pointing at that scope's importable
+code — `["scripts"]` for a skill and for the two check scopes, `["."]` for `hooks/`, whose modules
+sit at the scope root).
 
-`consistency-checks/` is the odd one out: not a skill (no `SKILL.md`) and not a guard hook, but a
-home for checks that span *several* scopes and so can live in none of them — today, a drift check
-over the sibling `log_run.py`/`aggregate.py` copies that the isolation rule below deliberately
-prevents from sharing a module. It sits outside the synced set
-(`skills`/`agents`/`hooks`/`output-styles`), so `update-cla` never propagates it to consuming
-repos; it guards this repo's own source. Several scopes
+`consistency-checks/` and `launcher-checks/` are the odd ones out: not skills (no `SKILL.md`) and
+not guard hooks, but homes for checks that belong to no single scope — `consistency-checks/` holds
+a drift check over the sibling `log_run.py`/`aggregate.py` copies that the isolation rule below
+deliberately prevents from sharing a module; `launcher-checks/` tests the repo-root `cla`/`claw`
+launchers, which live outside the plugin tree entirely. Both sit outside the synced set
+(`skills`/`agents`/`hooks`/`output-styles`), so `update-cla` never propagates them to consuming
+repos; they guard this repo's own source. Several scopes
 ship same-named helper modules (e.g. `scripts/aggregate.py`, `scripts/log_run.py`), so they can't
 share one pytest process — this is why `run_tests.py` exists: it discovers every scope
 (dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once

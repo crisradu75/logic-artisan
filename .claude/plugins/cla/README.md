@@ -60,7 +60,9 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 
 Guard hooks wire themselves via the plugin's own `hooks/hooks.json` when the plugin loads — no
 `settings.json` step. Two dispatchers (one for Bash/PowerShell, one for Edit/Write) each run
-several leaf hooks in one Python process; 14 leaf hooks in all. They run throughout every phase.
+several leaf hooks in one Python process — 13 distinct leaf hooks between them
+(`guard-worktree-isolation` runs on both matchers) — plus `warn-lint-on-edit` wired directly on
+PostToolUse: 14 leaf hooks in all. They run throughout every phase.
 **Blocks** (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt
 instead of blocking outright; **warns** (`warn-*`) surface a caution without blocking.
 
