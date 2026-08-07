@@ -234,7 +234,17 @@ def _update_lock(
         lock = _read_lock(local_repo)
         for asset_path, data in written:
             entry = {
-                "last_synced_sha256": hashlib.sha256(data).hexdigest(),
+                # Line-ending-insensitive, matching `discover._hash_bytes`. The
+                # bytes written here are already LF (`_write_file` passes
+                # `newline="\n"`), so this normalization is a no-op today — it
+                # is here so the two sides cannot drift apart again. They did:
+                # discover hashed raw bytes, git checked the file out as CRLF on
+                # Windows, and the entry could never match, silently reducing
+                # the 3-way reconcile to a 2-way diff for 277 of 527 tracked
+                # assets across four consumer repos.
+                "last_synced_sha256": hashlib.sha256(
+                    data.replace(b"\r\n", b"\n")
+                ).hexdigest(),
                 "source": source_name,
             }
             if source_commit:
