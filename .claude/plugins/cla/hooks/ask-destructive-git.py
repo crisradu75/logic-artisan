@@ -100,12 +100,26 @@ if _HOOKS_DIR not in sys.path:
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
-# The trailing `[^&|;\n]*` stops at a shell separator so the flags of a LATER
-# command are never attributed to this one. A NEWLINE is a separator too: a
-# multi-line Bash command is ordinary here, and without `\n` in this class a
-# plain `git push` on one line was flagged because of an `-f` on the next.
-_PUSH = re.compile(r"\bgit\s+" + _G + r"push\b([^&|;\n]*)")
-_RESET = re.compile(r"\bgit\s+" + _G + r"reset\b([^&|;\n]*)")
+# Horizontal whitespace, or a backslash line continuation. A continuation is a
+# JOINED line, not a new command, so it separates tokens; a bare newline ends
+# the command and must not. Both rules below and `_GH_PR_MERGE` share this —
+# four review rounds each found the same bug one construct over, every time
+# because one position used a plain `\s` or excluded the newline outright.
+_SEP = r"(?:[ \t]|\\\r?\n)+"
+
+# The trailing tail stops at a shell separator so the flags of a LATER command
+# are never attributed to this one. A NEWLINE is such a separator: a multi-line
+# Bash command is ordinary here, and without `\n` excluded, a plain `git push`
+# on one line was flagged because of an `-f` on the next.
+#
+# But a CONTINUED newline is not a command boundary, and excluding `\n` flatly
+# made `git push \`+newline+`--force origin feat` — an ordinary multi-line
+# invocation — a silent bypass of the force-push guard. The tail therefore
+# admits a continuation while still stopping at a bare newline, and the
+# `git`→subcommand gap uses `_SEP` for the same reason.
+_TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
+_PUSH = re.compile(r"\bgit" + _SEP + _G + r"push\b" + _TAIL)
+_RESET = re.compile(r"\bgit" + _SEP + _G + r"reset\b" + _TAIL)
 
 # Two shapes force a push. The long flag, where `(?:\s|=|$)` is what spares
 # `--force-with-lease` / `--force-if-includes` (both are followed by `-`, which
@@ -173,9 +187,17 @@ _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 # resolve an alias, and the `gh api` surface is too broad to match without
 # false-firing on every read-only API call. Named here so the gap is a known
 # limitation rather than a surprise.
-_SEP = r"(?:[ \t]|\\\r?\n)+"
+# `_SEP` is defined once, above, and shared with `_PUSH`/`_RESET`. The
+# extension group is case-folded: it exists because Windows is the primary
+# platform, and that shell resolves `gh.EXE` as readily as `gh.exe`, so a
+# case-sensitive group would have been the same inconsistency one more time.
+#
+# The escaped dot sits OUTSIDE the case-folding group deliberately. With it
+# inside, the source text would contain a letter-colon-backslash run, which the
+# conformance guard's Windows-drive-path scanner flags as a hardcoded developer
+# path. Same match either way; this spelling avoids the false alarm.
 _GH_PR_MERGE = re.compile(
-    r"\bgh(?:\.(?:exe|cmd|bat|ps1))?" + _SEP
+    r"\bgh(?:\.(?i:exe|cmd|bat|com|ps1))?" + _SEP
     + r"(?:[^\s&|;\n]+" + _SEP + r")*?pr" + _SEP + r"merge(?![\w-])"
 )
 

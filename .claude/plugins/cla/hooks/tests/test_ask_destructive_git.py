@@ -70,6 +70,15 @@ def _reason(payload: dict) -> str:
         # orchestrators actually produce.
         "git -C /some/worktree push --force origin feature/x",
         "git --git-dir /x/.git push -f origin feature/x",
+        # Backslash line continuation, at each separator position. These were a
+        # SILENT BYPASS of the force-push guard until `_SEP`/`_TAIL` replaced a
+        # plain `\s` and a flat `\n` exclusion — a multi-line invocation is
+        # ordinary, and a continued newline is a joined line, not a boundary.
+        "git push \\\n--force origin feature/x",
+        "git \\\npush --force origin feature/x",
+        "git push origin feature/x \\\n--force",
+        "git \\\npush origin +feat:feat",
+        "git push \\\r\n  --force origin feature/x",
     ],
 )
 def test_force_push_shapes_prompt(command, monkeypatch, capsys):
@@ -84,6 +93,8 @@ def test_force_push_shapes_prompt(command, monkeypatch, capsys):
         "git reset --hard",
         "git reset --hard HEAD~3",
         "git -C /some/path reset --hard origin/main",
+        "git reset \\\n  --hard",
+        "git \\\n reset --hard HEAD~1",
     ],
 )
 def test_reset_hard_shapes_prompt(command, monkeypatch, capsys):
@@ -225,6 +236,12 @@ def test_reason_names_the_override_so_the_prompt_is_actionable(monkeypatch, caps
         "gh.cmd pr merge 27",
         "gh.bat pr merge 27",
         "gh.ps1 pr merge 27",
+        # The extension group exists because Windows is the primary platform,
+        # and that shell resolves these case-insensitively — a case-sensitive
+        # group would have been the same inconsistency one more time.
+        "gh.EXE pr merge 27",
+        "gh.Cmd pr merge 27",
+        "gh.com pr merge 27",
         "/usr/bin/gh pr merge 27",
         "gh pr merge",
         # An option value that IS exactly `pr`. The first fix used a lookahead
