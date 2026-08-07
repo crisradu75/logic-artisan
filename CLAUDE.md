@@ -100,6 +100,24 @@ silently skipped.
 
 All scripts are stdlib-only Python (no third-party deps beyond pytest itself).
 
+### Before shipping a change here, run three checks
+
+The plugin's behaviour lives mostly in markdown, so a prose edit ships like code but
+nothing compiles it. Every defect that reached review in this repo had one shape: the
+artifact was checked, the system it lands in was not. These three checks are cheap and
+each one comes from a real escape:
+
+1. **Inserted a step into an ordered sequence?** Read the step immediately before and
+   after **in the code**, not from memory of it. A phase added between two others
+   inherits whatever the next one asserts on entry — a clean-tree check, a state file, a
+   branch assumption.
+2. **Rewrote a file rather than edited it?** Diff old against new and state what you
+   dropped. A rewrite silently loses rules an edit would have preserved; "it reads better"
+   is not evidence that nothing went missing.
+3. **Asserting a diagnosis?** Search the same source for counterexamples before shipping
+   it, not just for supporting cases. A table of three examples proves nothing if three
+   counterexamples sit in the same file.
+
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
 sibling `node --test` suite (not a pytest scope, so `run_tests.py` doesn't discover it):
 
@@ -197,8 +215,8 @@ Wired automatically via `.claude/plugins/cla/hooks/hooks.json` when the plugin l
 that sync the plugin. `hooks.json` itself wires two dispatchers (`dispatch-bash-pretooluse.py` for
 the Bash/PowerShell matcher, `dispatch-edit-write-pretooluse.py` for the Edit/Write matcher), each
 of which runs several leaf hooks in one Python process — 13 distinct leaf hooks between them
-(`guard-worktree-isolation` runs on both matchers), plus `warn-lint-on-edit` wired directly on
-PostToolUse: 14 leaf hook files in all. **Blocks**
+(`guard-worktree-isolation` runs on both matchers), plus `warn-lint-on-edit` and
+`warn-wholesale-rewrite` wired directly on PostToolUse: 15 leaf hook files in all. **Blocks**
 (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt instead of
 blocking outright; **warns** (`warn-*`) surface a caution without blocking:
 
@@ -220,7 +238,9 @@ blocking outright; **warns** (`warn-*`) surface a caution without blocking:
   that may break a UI smoke test — config-driven via a `smoke-test-drift.local.md` overlay beside
   the hook; a no-op with none present, which is this repo's own state, since it ships no product
   code) · `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
-  `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root).
+  `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
+  `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one —
+  it asks you to name what you dropped, since a `Write` keeps only what you carried across).
 
 ### Portability
 

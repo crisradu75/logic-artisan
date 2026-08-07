@@ -2,6 +2,81 @@
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
 
+## Lessons learned — scope: repo-wide (`hooks/`, `skills/update-cla/`, `output-styles/`, `CLAUDE.md`)
+
+### Session summary
+
+Consumer-repo feedback triage → 6 PRs merged (#30–#36): the `claw.cmd` Windows outage that three
+repos each diagnosed independently, a `hooks.json` interpreter probe that had silently disabled
+every guard hook on Windows in all four repos, a CRLF-sensitive lockfile hash that stranded 277 of
+527 tracked assets, and launcher propagation via `SCAN_FILES`. Then two feature PRs, each of which
+shipped broken and was fixed only after review:
+
+- **#37** added a Phase 4 upstream-proposal channel to `update-cla`. v1 placed the write *before*
+  `apply`, which broke `--mode pr` outright — `apply_pr` opens with a whole-tree clean check and an
+  untracked `cla-upstream.md` reads as `?? cla-upstream.md`, so it aborted having written nothing,
+  on exactly the runs that found something worth recording.
+- **#38** rewrote the output style. v1's premise was wrong (see below) and it dropped four rules
+  silently, plus added an unrequested 200-word ceiling that contradicted four skills' own report
+  targets.
+
+### Recurring patterns
+
+- **RE-OFFENSE — memory `validate-the-blast-radius`** — "test what a change TOUCHES." Phase 4 was
+  inserted into an ordered pipeline without reading the neighbouring phase, in a file already read
+  that same session. **Escalated: memory → hook** (`warn-wholesale-rewrite.py`), and the memory
+  itself sharpened with the pipeline case.
+- **RE-OFFENSE — `failure-modes.md:18` "work the user didn't ask for"** — 2nd consecutive run.
+  Offered an inventory variant after *"i said only proposals"*; added an unrequested word ceiling.
+  **Escalated: checklist → memory** (`offer-exactly-what-was-asked`). Bullet 18 KEPT — it covers
+  scope creep in *work*, which is broader than the options-offered case that graduated.
+- **RE-OFFENSE — memory `read-primary-source-first`** — designed a whole feature against an assumed
+  capability until the user said *"verify that cla-update realyy generates a cla-upstream.md."* It
+  did not; zero references existed in the plugin. Covered by the new CLAUDE.md pre-ship checks.
+- **PREVENTED — `ready-to-merge-means-verify`** — every "ready to merge?" re-derived from evidence,
+  and twice surfaced an outstanding item (an un-updated PR body) instead of a sign-off.
+- **PREVENTED — `failure-modes.md:52`** — asked before all three merges; the `gh pr merge` hook
+  fired and was honoured each time.
+- **PREVENTED — `failure-modes.md:61`** — reproduced the `--mode pr` break directly before fixing,
+  and caught a reviewer's false claim that two scopes were failing (their console encoding, not the
+  tree).
+
+### Lessons (meta)
+
+- The user's own diagnosis was the accurate one: *"every little change is endless — trivial errors,
+  review & fix after review & fix."* Every defect had one shape — the artifact was checked, the
+  system it lands in was not. The `--mode pr` break needed one grep of a file already open.
+- **Reviews found real defects on both feature PRs, including a refutation of my own premise.** I
+  claimed the style's cut-rules were soft; three counterexamples sat unquoted in the same file, and
+  the corrected diagnosis was different in kind (the style was *outranked* by in-context skill
+  instructions, not read as advisory). A louder rule could never have fixed that.
+- **Proving the new tests non-vacuous found a hole the tests themselves missed.** Breaking the hook
+  two ways: the first break failed a test, the second passed all 19 — the fixture never staged a
+  change, so index and HEAD were identical. Two tests added; both breaks now caught.
+
+### Suggestions
+
+1. **APPLIED** — `CLAUDE.md`: three pre-ship checks for prose-that-is-code (read the neighbouring
+   step in code; diff a rewrite and state what you dropped; look for counterexamples). Auto-loads
+   every session, and each check comes from a real escape this run.
+2. **APPLIED** — new hook `warn-wholesale-rewrite.py` + 21 tests. PostToolUse on `Write` to a
+   tracked file that shrinks >15% against HEAD; warns, never blocks. Fires on `Write` only —
+   an `Edit` keeps what it does not name.
+3. **APPLIED** — memory `check-for-counterexamples`: search the source for what refutes a diagnosis
+   before shipping it.
+4. **APPLIED** — memory `validate-the-blast-radius` extended with the pipeline case: a sequence has
+   two neighbours, and both must be read in code.
+5. **APPLIED** — memory `offer-exactly-what-was-asked`. Escalation of the twice-re-offended
+   scope-creep lesson.
+
+### Codify-process notes
+
+No codify-process issues. One observation for `/cla:codify-retro`: Step 2.5 again did the useful
+work — it turned "I keep shipping defects" into three named re-offenses with mandatory rungs, which
+is what produced a hook and two memories rather than three more checklist bullets nobody loads.
+
+---
+
 ## Lessons learned — 2026-08-07 — scope: repo-wide (`hooks/`, `skills/new-worktree/`, `skills/update-cla/`, launchers, `CLAUDE.md`)
 
 ### Session summary
