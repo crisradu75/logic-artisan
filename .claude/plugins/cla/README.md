@@ -47,6 +47,7 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 | **5. Learn & improve** | `codify-learnings` | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
 | | `codify-retro` | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
 | | `spec-to-pr-retro` | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
+| **Any phase** (utility) | `right-model` | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 
 ### Typical flows
 
@@ -58,20 +59,30 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 ## Always-on guardrails (hooks)
 
 Guard hooks wire themselves via the plugin's own `hooks/hooks.json` when the plugin loads — no
-`settings.json` step. They run throughout every phase. **Hard blocks** (`block-*`) stop a
-tool call; **soft warns** (`warn-*`) surface a caution without blocking.
+`settings.json` step. Two dispatchers (one for Bash/PowerShell, one for Edit/Write) each run
+several leaf hooks in one Python process; 14 leaf hooks in all. They run throughout every phase.
+**Blocks** (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt
+instead of blocking outright; **warns** (`warn-*`) surface a caution without blocking.
 
 **Blocks:** `block-cd-in-bash` (working dir is already repo root; a `cd` persists and breaks later
 calls) · `block-direct-push-to-main` · `block-unsafe-recursive-delete` (`rm -rf` and PowerShell
 equivalents) · `block-worktree-path-escape` (writes escaping a worktree boundary) ·
-`block-dated-stamps-in-prose` (hardcoded dates rot).
+`block-dated-stamps-in-prose` (hardcoded dates rot) · `guard-worktree-isolation` (a
+branch-create/switch/commit in the primary clone while another session is live there too — git's
+HEAD is per-clone, not per-session; also refreshes/clears the session's presence heartbeat on
+SessionStart/End).
+
+**Asks:** `ask-destructive-git` (force-push, `reset --hard`, PR merges, and other
+destructive-but-possibly-legitimate git/gh commands; `ALLOW_PR_MERGE=1` drops only the PR-merge
+confirmation, for the `multi-*` chainers' unattended runs) · `ask-git-identity` (no `user.email`
+configured, or the commit author doesn't match an expected identity when one is set).
 
 **Warns:** `warn-branch-base` (branched off the wrong base) · `warn-lint-on-edit` (lints the edited
-file, feeds violations back non-blocking) · `warn-smoke-test-drift` (editing a literal a smoke test
-depends on) · `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
-`warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root).
-
-`guard-worktree-isolation` runs on SessionStart/End to maintain worktree isolation.
+file, feeds violations back non-blocking) · `warn-smoke-test-drift` (component/i18n edits that may
+break a UI smoke test — config-driven via a `smoke-test-drift.local.md` overlay beside the hook; a
+silent no-op with none present) · `warn-stacked-pr-merge` (a merge that could auto-close an open
+child PR) · `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo
+root).
 
 ## Architecture — the fact/procedure split
 
@@ -99,16 +110,25 @@ deletions without applying them, and **never auto-merges** (worktree write or PR
 
 ## Testing
 
-Each skill *that ships tests* (7 today) and the `hooks/` dir is its own isolated pytest scope (own
-`pyproject.toml` + `tests/`); several ship same-named helper modules, so they can't share one pytest
-process. Run the whole suite at once:
+Each skill *that ships tests* (7 today), plus `hooks/`, `consistency-checks/`, and
+`launcher-checks/`, is its own isolated pytest scope (own `pyproject.toml` + `tests/`) — 10 in
+all; several ship same-named helper modules, so they can't share one pytest process. Run the whole
+suite at once:
 
 ```bash
 python3 .claude/plugins/cla/run_tests.py        # every scope, aggregated pass/fail + exit code
 python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each pytest
 ```
 
-Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`.
+Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`. The one Node
+script (`project-review/scripts/mechanical-checks.mjs`) has its own sibling `node --test` suite,
+outside `run_tests.py`'s discovery:
+
+```bash
+node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
+```
+
+There is no CI — these local runs are the whole verification story.
 
 ## Layout
 
@@ -120,6 +140,8 @@ Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers)
   hooks/                       guard hooks + hooks.json wiring + tests
   output-styles/               the project's writing convention (force-for-plugin: true)
+  consistency-checks/          cross-scope drift checks — guards this repo's own source, never synced
+  launcher-checks/             tests for the repo-root cla/claw launchers — never synced
   skills/<name>/               (references/ scripts/ tests/ present as each skill needs)
     SKILL.md                   the skill (portable procedure)
     references/                supporting refs; project-context.md = per-repo overlay

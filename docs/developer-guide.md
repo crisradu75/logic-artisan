@@ -1,0 +1,312 @@
+# CLA developer guide
+
+A progressive introduction to **CLA — Cris Logic Artisan**, the Claude Code dev-workflow harness
+that lives in this repo. Each section builds on the one before it: start a session, ship one small
+change, then climb the ladder to shaped decisions, spec-driven changes, batches, and the loops
+that make the next run better. Skim the [cheat sheet](#cheat-sheet-i-want-to--which-skill) if you
+just need the right skill name.
+
+## 1. The mental model
+
+CLA is a *process* layer, not product code. Three kinds of pieces, one split that makes it
+portable:
+
+- **Skills** (`/cla:<name>`) — the workflows. Each one carries a change through a phase of its
+  life: capture → decide → specify → build → review → learn. You invoke them by slash command or
+  by describing what you want in natural language.
+- **Guard hooks** — always-on guardrails wired automatically when the plugin loads. They block,
+  ask, or warn on risky tool calls (a push to main, an `rm -rf`, a commit that would collide with
+  another session). You don't invoke them; they fire when a convention is about to be broken.
+- **Helper agents** (`doc-sweeper`, `fact-gatherer`) — mechanical grep/verify workers the ship and
+  review skills delegate to. You rarely call them directly.
+
+The split that everything obeys: **procedure is portable, facts are per-repo.**
+
+- Portable procedure lives in the synced core (`skills/`, `agents/`, `hooks/`, `output-styles/`)
+  and is identical in every repo that uses CLA.
+- Your repo's facts live in overlays (`references/project-context.md`, `*.local.md`) and in the
+  repo-root `cla.io/` tree (decisions, feedback, retro ledgers, `project-facts.md`). The updater
+  never touches them.
+
+Keep that split in mind and the rest of the harness follows from it.
+
+## 2. Your first session
+
+From the repo root:
+
+```bash
+./cla                      # macOS / Linux / Git Bash
+cla.cmd                    # native Windows
+```
+
+The launcher prints, then runs:
+
+```
+claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
+```
+
+Everything after `./cla` is forwarded to `claude`, so `./cla --model opus` overrides the default.
+
+Three things to know before your first prompt:
+
+- **The plugin must load live from the working tree** (`--plugin-dir`), because the skills and
+  hooks read and write repo-local state. A cached marketplace install can't do that — without the
+  flag, the skills are inert files and no guard runs.
+- **`--permission-mode auto` skips per-action confirmation prompts.** Intentional — the guard
+  hooks are the safety layer — but know it before you run it.
+- **The CLA output style applies automatically** (`force-for-plugin: true`): short sentences,
+  bullets over paragraphs, answer first. Session prose will look terser than stock Claude Code.
+
+Check it worked: type `/cla:` and the skill list should autocomplete.
+
+## 3. Your first change: `lite-pr`
+
+`lite-pr` is the lightweight end-to-end path for a small, well-understood change — the one to
+reach for first. It implements, updates docs and tests in place, runs one automated review round,
+and stops at an **opened PR**. It never merges.
+
+```
+/cla:lite-pr Rename the `retry_count` config key to `max_retries`, keeping a
+deprecation fallback for the old name
+```
+
+What happens, in order:
+
+1. Optional quick requirements check if the description is ambiguous.
+2. A short plan, posted for visibility — not a blocking gate.
+3. Implementation on a branch: code + `spec.md`/`CLAUDE.md`/tests kept in sync.
+4. One automated review round; findings fixed, not deferred.
+5. A PR opened for you to review and merge.
+
+Invoked with no arguments, it asks what you want to change. If the change turns out bigger than
+lite-pr-sized mid-flight, it says so — that's your cue for the spec-scale path in section 5.
+
+## 4. Shape first, build second
+
+Two capture-and-decide skills sit upstream of any build, for when you know something is wrong or
+wanted but not yet *what to do about it*.
+
+**`feedback` — get raw notes out of your head and grounded in the repo.**
+
+```
+/cla:feedback the retro aggregator double-counts reruns
+```
+
+It takes notes one at a time (keep typing them; say "done" to finish), does a read-only grounding
+pass per note (which file, a probable root cause — never a confirmed diagnosis), and writes a
+dated triage doc under `cla.io/feedback/`. Capture only — it deliberately refuses to debug.
+
+**`shape-decision` — walk one decision to a documented pick.**
+
+```
+/cla:shape-decision should hook config live in hooks.json or per-hook overlay files?
+```
+
+It walks the options one at a time with pros/cons, recommends a pick, and writes a decisions doc
+under `cla.io/decisions/`. That doc is a first-class input: `multi-spec`, `multi-lite`, and
+`multi-pr` all consume it directly.
+
+Typical small-change flow: `shape-decision` → `lite-pr` (or straight to `lite-pr` when the shape
+is already obvious).
+
+## 5. Spec-scale changes: `multi-spec` → `review-change` → `spec-to-pr`
+
+When a change is too big to hold in one prompt, CLA drives it through OpenSpec (the vendored
+`opsx:*` skills) instead of skipping the thinking:
+
+1. **`multi-spec`** — turn a shaped decisions doc into a batch of full OpenSpec proposals
+   (`proposal.md`/`design.md`/`tasks.md`/`specs/` each), authored and committed one change at a
+   time. It stops at proposals — nothing is implemented yet.
+
+   ```
+   /cla:multi-spec cla.io/decisions/hook-config-redesign.md
+   ```
+
+   (With no argument it picks the most recent doc under `cla.io/decisions/`.)
+
+2. **`review-change`** — pre-implementation review of one proposal: verifies its claims, checks
+   that named symbols/files/references actually exist, sizes it, and dispatches parallel review
+   agents when it's large. Cheap insurance before any code is written.
+
+   ```
+   /cla:review-change add-hook-config-overlay
+   ```
+
+3. **`spec-to-pr`** — drive one OpenSpec change end-to-end: implement, keep docs/tests in sync,
+   apply review fixes, archive the change, open the PR. Stops before merge, always.
+
+   ```
+   /cla:spec-to-pr add-hook-config-overlay
+   ```
+
+   It also accepts a fresh description (it creates the change first) or no argument (it lists open
+   changes to pick from).
+
+For exploration *before* any of this, `opsx:explore` is the thinking-partner mode — CLA
+orchestrates around OpenSpec rather than replacing it.
+
+## 6. Batches: `multi-lite` and `multi-pr`
+
+One decisions doc often yields several independent changes. The chainers run them
+dependency-first, unattended:
+
+- **`multi-lite`** — extracts every lite-pr-sized candidate from a decision-shaped doc, sequences
+  them, confirms the plan once up front, then runs `lite-pr` on each.
+- **`multi-pr`** — same idea at spec scale: runs `spec-to-pr` on each OpenSpec change in
+  dependency order, and enforces that every Critical/Important review finding is actually fixed
+  before moving on.
+
+```
+/cla:multi-lite cla.io/decisions/hook-config-redesign.md
+/cla:multi-pr change-a change-b        # or no args = auto-discover every open change
+```
+
+**The one place CLA merges.** The single-change skills stop at an opened PR, but a chainer must
+merge a dependency PR before its dependents can build on it. That merge goes through the
+`ask-destructive-git` guard: it runs `ALLOW_PR_MERGE=1 gh pr merge <#> --squash` — a prefix that
+drops *only* the PR-merge confirmation, for that one command. Force-push and `reset --hard` still
+prompt. No PR is ever merged without you having chosen to run a chainer.
+
+## 7. Parallel and safe: worktrees
+
+Git's HEAD is per-clone, not per-session — two concurrent sessions in the primary clone would
+collide on one branch. CLA's answer is worktrees, with a guard
+(`guard-worktree-isolation`) that blocks branch-create/switch/commit in the primary clone while
+another session is live there.
+
+Two ways in, by when you decide you want isolation:
+
+- **Up front — `./claw <name>`.** Creates `.claude/worktrees/<name>` on branch `worktree-<name>`
+  with plain git *before* Claude starts, then launches inside it. Because the session never
+  touches the primary clone, it registers no presence heartbeat and blocks nobody. Run
+  `/cla:new-worktree` as the session's first action: it detects the worktree exists and runs only
+  its setup half (dependency install, gitignored env files carried over — per-repo facts the
+  portable launcher can't know).
+- **Mid-session — `/cla:new-worktree`.** Already working and only now want isolation? The skill
+  creates the worktree and migrates you. Caveat: the session already registered as present in the
+  primary clone, and that heartbeat ages out rather than clearing on migration — so prefer `claw`
+  when you know up front.
+
+A related guard, `block-worktree-path-escape`, stops a Write/Edit from escaping the worktree
+boundary from inside one — a common failure mode when a stale absolute path sneaks into a prompt.
+
+## 8. The guardrails you'll meet
+
+Hooks wire themselves from `hooks/hooks.json` at plugin load. Three severities:
+
+- **Blocks** stop the tool call. You'll meet: `block-direct-push-to-main` (branch + PR, always),
+  `block-cd-in-bash` (a bare `cd` persists and breaks later calls — use absolute paths),
+  `block-unsafe-recursive-delete`, `block-worktree-path-escape`,
+  `block-dated-stamps-in-prose` (hardcoded dates rot), `guard-worktree-isolation` (section 7).
+- **Asks** escalate to a permission prompt, because the action may be legitimate:
+  `ask-destructive-git` (force-push, `reset --hard`, PR merges — see section 6 for the
+  `ALLOW_PR_MERGE` hatch), `ask-git-identity` (missing or unexpected commit identity).
+- **Warns** surface a caution and let the call through: `warn-branch-base`, `warn-lint-on-edit`,
+  `warn-comment-dates`, `warn-stacked-pr-merge`, `warn-stray-scratch-artifact`, and
+  `warn-smoke-test-drift` (config-driven via a `smoke-test-drift.local.md` overlay; a silent no-op
+  without one — which is this repo's own state, since it ships no product code).
+
+When a hook fires, read its message before working around it — each one states why and what to do
+instead. The guards encode the harness's conventions; routing around them defeats the point.
+
+## 9. The learning loops and `cla.io/`
+
+Every run leaves state behind in the repo-root `cla.io/` tree — decisions, feedback docs, retro
+ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the consolidated
+`project-facts.md`. That state feeds the `[loop]` skills:
+
+- **`codify-learnings`** — run it at the end of a session worth learning from. It reviews the
+  conversation for reusable lessons and proposes concrete edits — to docs, skills, hooks, or
+  memory — interactively, then logs the run.
+
+  ```
+  /cla:codify-learnings
+  ```
+
+- **`codify-retro`** and **`spec-to-pr-retro`** — meta-loops. Run periodically, they review recent
+  runs of `codify-learnings` / `spec-to-pr` from the ledgers and improve the loop itself.
+
+The discipline throughout: log every run now, build the analyzer only once the ledger justifies it
+(several `*-retro` skills are deliberately not built yet — see `TODO.md`).
+
+Two utilities worth knowing at any phase:
+
+- **`right-model`** — describe a task, get the cheapest model + effort combo that can plausibly do
+  it well, and optionally start it with those settings. Bias is downward; it escalates only on a
+  concrete signal.
+- **`save-permissions`** — persist tool permissions granted this session to
+  `.claude/settings.local.json`, so the next session doesn't re-prompt.
+
+## 10. Adopting CLA in another repo
+
+CLA is designed to be pulled *into* a repo, not installed globally. Three steps, in the
+destination repo:
+
+1. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
+   never-clobber: safe to re-run on a partially-scaffolded repo.
+2. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
+   members, dev/build/test commands, ports, affected-file map, test locations, env files. This is
+   the single physical copy of every fact the skills share.
+3. **`/cla:update-cla <path-to-this-repo>`** — pull the portable core. It syncs only
+   `skills`/`agents`/`hooks`/`output-styles`, classifies each file against a per-repo
+   `.cla-sync-lock.json` (3-way reconcile), preserves local overlays and local strengths, surfaces
+   deletions without applying them, and never auto-merges.
+
+Then fill in the per-skill `references/project-context.md` overlays as the skills prompt for
+facts, and add a `hooks/smoke-test-drift.local.md` if the repo has a UI smoke test to protect.
+Re-run `update-cla` any time to pull newer core; your overlays and `cla.io/` survive every sync.
+Sync is one-way (source → consumer): a skill improved while working in a consuming repo has to be
+contributed back to this repo by hand.
+
+## 11. Working on CLA itself (this repo)
+
+Contributing to the harness rather than using it? The extra rules:
+
+- **Run the whole verification story locally — there is no CI, by design:**
+
+  ```bash
+  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (10), aggregated
+  node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
+  ```
+
+  Both green is the only gate before a PR. Watch the skip count in the summary — a skipped guard
+  has not run (three symlink tests always skip on Windows).
+
+- **Never run bare `pytest` from the repo or plugin root.** Each scope (7 skills with tests, plus
+  `hooks/`, `consistency-checks/`, `launcher-checks/`) is isolated on purpose — several ship
+  same-named helper modules. Iterate on one scope with
+  `pytest .claude/plugins/cla/skills/<name>/tests`.
+
+- **Keep facts out of the synced core.** Pytest conformance guards fail the suite if a
+  project-specific token or an absolute developer path leaks into `skills/`, `agents/`, `hooks/`,
+  or `output-styles/`. Overlays in this repo stay neutral stubs — this is the source, not a
+  consumer.
+
+- **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself), with one Node
+  exception noted above. Same-named sibling scripts that must stay in lockstep are watched by
+  `consistency-checks/`.
+
+- **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
+  covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work
+  lives in `TODO.md`.
+
+## Cheat sheet: "I want to…" → which skill
+
+| I want to… | Reach for |
+|---|---|
+| Ship a small, clear change | `lite-pr` |
+| Dump rough observations somewhere useful | `feedback` |
+| Decide between approaches | `shape-decision` |
+| Turn a decision into spec proposals | `multi-spec` |
+| Sanity-check a proposal before building | `review-change` |
+| Drive one spec'd change to a PR | `spec-to-pr` |
+| Run a batch of small changes unattended | `multi-lite` |
+| Run a batch of spec'd changes unattended | `multi-pr` |
+| Work in parallel without collisions | `./claw <name>`, then `new-worktree` for setup |
+| Pick the cheapest adequate model for a task | `right-model` |
+| Stop re-approving the same permissions | `save-permissions` |
+| Get a whole-repo health review | `project-review` |
+| Capture this session's lessons | `codify-learnings` |
+| Tune the loops themselves | `codify-retro`, `spec-to-pr-retro` |
+| Set up CLA in a new repo | `cla-init` → `sync-context` → `update-cla` |
+| Pull newer CLA core into a repo | `update-cla` |
