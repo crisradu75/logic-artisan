@@ -27,7 +27,7 @@ commands, no guards.
 
 ## Documentation
 
-- **[docs/developer-guide.md](docs/developer-guide.md)** — progressive introduction: first
+- **[DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md)** — progressive introduction: first
   session, first PR, the full workflow ladder, worktrees, guardrails, the learning loops.
 - **[.claude/plugins/cla/README.md](.claude/plugins/cla/README.md)** — the harness's full scope,
   capabilities, and life-cycle map, skill by skill.
@@ -68,7 +68,7 @@ the suite if a project-specific token or a hardcoded developer path leaks into t
 2. In the destination: `/cla:cla-init` (scaffold `cla.io/` + overlay stubs) → `/cla:sync-context`
    (populate the repo's facts) → `/cla:update-cla <this-repo>` (pull/adapt the portable core).
 
-See the developer guide's [Adopting CLA in another repo](docs/developer-guide.md#10-adopting-cla-in-another-repo)
+See the developer guide's [Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo)
 section for details.
 
 ## Testing
