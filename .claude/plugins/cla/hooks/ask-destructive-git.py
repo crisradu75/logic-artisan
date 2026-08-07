@@ -138,19 +138,28 @@ _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 # they are matched as generic tokens rather than a `[-\w]` word class, which
 # missed exactly that shape.
 #
-# Every separator is `[ \t]`, never `\s`. `\s` matches a newline, so the skip
-# walked across line breaks into an unrelated command and `gh auth status` +
-# newline + `echo pr merge` fired. `_PUSH`/`_RESET` already exclude `\n` for
-# this exact reason (see their comment above); this rule now matches them.
-# Excluding `\n` from the token class alone was NOT enough — the separator
-# between tokens has to exclude it too.
+# Separators are `_SEP` — horizontal whitespace, or a backslash line
+# continuation — never a bare `\s`. `\s` matches a newline, so the skip walked
+# across line breaks into an unrelated command and `gh auth status` + newline +
+# `echo pr merge` fired. `_PUSH`/`_RESET` already exclude `\n` for this exact
+# reason (see their comment above).
 #
-# `(?!pr[ \t])` rather than `(?!pr\b)`: `\b` ends `pr` before a `-`, so the
-# lookahead rejected a value like `pr-tools/x`, which could then neither be
-# skipped nor complete the match — `gh --repo pr-tools/x pr merge` was a miss.
+# But excluding the newline outright was ALSO wrong, and briefly shipped that
+# way: `gh \`+newline+`pr merge` is an ordinary multi-line invocation and became
+# a silent bypass. A continuation is a joined line, not a new command, so it is
+# a separator; a bare newline is not. That distinction is the whole rule.
+#
+# The skip is LAZY with no lookahead. An earlier `(?!pr…)` guard was there to
+# stop the skip running past the first `pr`, but laziness does that for free and
+# the guard had its own bug: it could not skip a token that merely began with
+# `pr`, so `gh --repo pr-tools/x pr merge` — and, after that was narrowed,
+# `gh --repo pr pr merge` — were misses. Shortest-match-first handles both.
 #
 # The optional extension matches `gh.exe` / `gh.cmd`, ordinary spellings on
 # this repo's primary platform, which bare `\bgh\s` missed entirely.
+#
+# `merge(?![\w-])` rather than `merge\b`: `\b` ends at a hyphen, so
+# `gh pr merge-queue status` — a real, read-only subcommand — was prompting.
 #
 # Known misses, stated rather than implied: a shell alias, a case variant
 # (`GH pr merge` — PowerShell resolves commands case-insensitively), and the
@@ -158,8 +167,10 @@ _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 # resolve an alias, and the `gh api` surface is too broad to match without
 # false-firing on every read-only API call. Named here so the gap is a known
 # limitation rather than a surprise.
+_SEP = r"(?:[ \t]|\\\r?\n)+"
 _GH_PR_MERGE = re.compile(
-    r"\bgh(?:\.(?:exe|cmd|bat|ps1))?[ \t]+(?:(?!pr[ \t])[^\s&|;\n]+[ \t]+)*pr[ \t]+merge\b"
+    r"\bgh(?:\.(?:exe|cmd|bat|ps1))?" + _SEP
+    + r"(?:[^\s&|;\n]+" + _SEP + r")*?pr[ \t]+merge(?![\w-])"
 )
 
 

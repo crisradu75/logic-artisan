@@ -223,8 +223,26 @@ def test_reason_names_the_override_so_the_prompt_is_actionable(monkeypatch, caps
         # missed both entirely.
         "gh.exe pr merge 27",
         "gh.cmd pr merge 27",
+        "gh.bat pr merge 27",
+        "gh.ps1 pr merge 27",
         "/usr/bin/gh pr merge 27",
         "gh pr merge",
+        # An option value that IS exactly `pr`. The first fix used a lookahead
+        # that could not skip such a token, so this stayed a miss until the
+        # skip was made lazy instead.
+        "gh --repo pr pr merge 27",
+        "gh --repo o/n --hostname pr pr merge 27",
+        # Whitespace variants.
+        "gh\tpr\tmerge 27",
+        "gh   pr   merge   27",
+        # Backslash line continuation. Excluding the newline from the
+        # separators to stop the cross-command false positive ALSO broke this,
+        # briefly, in the first fix — a continuation is a joined line, not a
+        # new command, so it is a separator while a bare newline is not.
+        "gh \\\n  pr merge 27",
+        "gh --repo o/n \\\n  pr merge 27",
+        "gh pr merge 27 \\\n  --squash",
+        "git status && gh pr merge 27",
     ],
 )
 def test_a_pr_merge_asks(command, monkeypatch, capsys):
@@ -260,9 +278,21 @@ def test_the_override_silences_the_merge_prompt_too(monkeypatch, capsys):
         "gh pr checkout 27",
         "gh pr view 27 --json mergeable",
         "gh pr edit 27 --add-label needs-merge",
+        # A real, read-only subcommand. `merge` ended at the hyphen and
+        # prompted on it; the rule now uses `merge(?![\w-])`.
+        "gh pr merge-queue status",
         "gh run list",
         "git merge main",
+        "git merge --no-ff feature/x",
         "echo 'gh pr merge 27'",
+        'gh pr comment 27 --body "then gh pr merge it"',
+        # Names that merely start with or contain `gh` — the optional extension
+        # suffix must not turn these into matches.
+        "ghost pr merge 27",
+        "gh.exe.bak pr merge 27",
+        "mygh pr merge 27",
+        "gh-wrapper pr merge 27",
+        "gh.sh pr merge 27",
     ],
 )
 def test_non_merge_gh_and_local_merge_do_not_ask(command, monkeypatch, capsys):
