@@ -56,9 +56,20 @@ class PRResult:
 
 
 def _run(cmd: list[str], cwd: Path, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", timeout=timeout
-    )
+    """Run `cmd`, returning a CompletedProcess even when it could not start.
+
+    Every caller already checks `returncode`, so a synthetic failure result is
+    the shape they all handle. Letting the exception escape instead meant a
+    `TimeoutExpired` on `git push` propagated as a traceback with files already
+    written and a commit already made: rollback never ran, no structured summary
+    was printed, and the caller could not tell what state the repo was left in.
+    """
+    try:
+        return subprocess.run(
+            cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", timeout=timeout
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return subprocess.CompletedProcess(cmd, 1, "", f"{type(exc).__name__}: {exc}")
 
 
 def _is_clean_tree(repo: Path) -> tuple[bool, str]:
@@ -82,9 +93,28 @@ def _file_has_local_edits(repo: Path, asset_path: str) -> bool:
 
 
 def _write_file(local_repo: Path, asset_path: str, content: str) -> None:
+    """Write an adapted asset atomically.
+
+    `write_text` truncates and then writes, so a failure in between leaves the
+    asset TRUNCATED on disk. The run records a `failure` and keeps that file out
+    of the commit message, the PR body and the lockfile -- and then `git add -A`
+    stages the whole tree and ships the truncated file anyway, with every
+    artifact describing the PR saying it was not written.
+
+    `_write_lock` one function below already used mkstemp + os.replace; this is
+    the same pattern, so the two agree.
+    """
     dst = local_repo / asset_path
     dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(content, encoding="utf-8", newline="\n")
+    fd, tmp_name = tempfile.mkstemp(dir=str(dst.parent), prefix=f".{dst.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(content)
+        os.replace(tmp_path, dst)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 _BINARY_PLACEHOLDER_PREFIX = "<binary file,"
@@ -164,17 +194,45 @@ def _read_lock(local_repo: Path) -> dict:
     isn't itself a dict is dropped, so `_update_lock`'s read-merge-write never
     chokes on a corrupt per-asset entry."""
     lock_path = local_repo / LOCK_RELATIVE_PATH
+
+    def _discarding(why: str) -> dict:
+        """Announce, then degrade. ABSENT is the only legitimately silent case.
+
+        `_update_lock` read-merge-writes, so an empty read REPLACES the whole
+        lockfile with just this run's entries -- silently downgrading every
+        future `discover` from a real 3-way reconcile to judgment-only, for
+        every asset this run did not touch. That is a large, invisible loss of
+        provenance from a file that is present but malformed, which is a
+        different situation from one that was never written.
+        """
+        print(
+            f"apply: {lock_path} is unusable ({why}) — prior provenance will be "
+            "DISCARDED, and future syncs lose their 3-way ancestor for every "
+            "asset not written by this run",
+            file=sys.stderr,
+        )
+        return {}
+
+    if not lock_path.exists():
+        return {}  # never synced: nothing to lose, nothing to say
     try:
         raw = lock_path.read_text(encoding="utf-8")
-    except OSError:
-        return {}
+    except OSError as exc:
+        return _discarding(f"unreadable: {exc}")
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
+    except json.JSONDecodeError as exc:
+        return _discarding(f"invalid JSON: {exc}")
     if not isinstance(data, dict):
-        return {}
-    return {k: v for k, v in data.items() if isinstance(v, dict)}
+        return _discarding(f"top level is {type(data).__name__}, not an object")
+    kept = {k: v for k, v in data.items() if isinstance(v, dict)}
+    if len(kept) != len(data):
+        print(
+            f"apply: {lock_path} — dropped {len(data) - len(kept)} malformed "
+            "entr(ies); those assets lose their 3-way ancestor",
+            file=sys.stderr,
+        )
+    return kept
 
 
 def _write_lock(local_repo: Path, lock: dict) -> None:
@@ -195,7 +253,12 @@ def _write_lock(local_repo: Path, lock: dict) -> None:
     )
     tmp_path = Path(tmp_name)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        # `newline=""` so Python does not translate \n -> \r\n on Windows.
+        # `_write_file` above already pins it; without it here the committed
+        # lockfile is the one CRLF file in the plugin, differs per developer OS
+        # from the same sync, and a repo pinning `eol=lf` sees it re-dirtied on
+        # every apply.
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(payload)
         os.replace(tmp_path, lock_path)
     except OSError:
@@ -316,7 +379,13 @@ def apply_worktree(
             # and append a contradictory second "failure" outcome for a file that was
             # already successfully written.
             written.append((asset_path, adapted.encode("utf-8")))
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
+            # ValueError as well as OSError: `UnicodeEncodeError` is a
+            # `ValueError`, so a lone surrogate in `adapted_content` escaped this
+            # handler entirely and aborted the run -- skipping `_update_lock`
+            # and losing provenance for every file already written, which
+            # contradicts this module's own "a failure on one asset never halts
+            # the run" contract.
             outcomes.append(ApplyOutcome(asset_path, "failure", f"write failed: {exc}"))
     _update_lock(local_repo, written, source_name, source_commit)
     return outcomes
@@ -349,22 +418,90 @@ def _rollback_branch(repo: Path, default_branch: str) -> None:
         print(f"update-cla: rollback to {default_branch} failed: {exc}", file=sys.stderr)
 
 
+# GitHub rejects a pull-request body over 65536 characters. A 154-asset sync
+# produced one past that, and `gh pr create` then failed AFTER the branch was
+# already committed and pushed -- so the run reported "PR creation failed",
+# rolled the local checkout back to the default branch, and said nothing about
+# the surviving REMOTE branch. That reads as "nothing happened", and the obvious
+# response (re-run the sync) creates a second branch.
+_PR_BODY_LIMIT = 65536
+# Headroom for the template around the two substituted sections.
+_PR_BODY_BUDGET = 60000
+
+
 def _render_pr_body(adaptations: list[dict]) -> str:
     template = PR_TEMPLATE_PATH.read_text(encoding="utf-8")
     rows = []
     summaries = []
     for a in adaptations:
-        rows.append(f"| `{a['asset_path']}` | {a.get('change_summary', '(no summary)') or '(no summary)'} |")
+        asset_path = a.get("asset_path", "(unknown)")
+        rows.append(f"| `{asset_path}` | {a.get('change_summary', '(no summary)') or '(no summary)'} |")
         summary = a.get("change_summary")
         if summary:
-            summaries.append(f"### `{a['asset_path']}`\n\n{summary}\n")
+            summaries.append(f"### `{asset_path}`\n\n{summary}\n")
     ts = datetime.datetime.now().isoformat(timespec="seconds")
-    return (
-        template
-        .replace("{{ASSET_ROWS}}", "\n".join(rows) or "| (none) | |")
-        .replace("{{CHANGE_SUMMARIES}}", "\n".join(summaries) or "(no per-asset summaries)")
-        .replace("{{TIMESTAMP}}", ts)
+
+    def _render(row_list: list[str], summary_list: list[str], note: str = "") -> str:
+        return (
+            template
+            .replace("{{ASSET_ROWS}}", "\n".join(row_list) or "| (none) | |")
+            .replace("{{CHANGE_SUMMARIES}}", ("\n".join(summary_list) or "(no per-asset summaries)") + note)
+            .replace("{{TIMESTAMP}}", ts)
+        )
+
+    body = _render(rows, summaries)
+    if len(body) <= _PR_BODY_BUDGET:
+        return body
+
+    # Over budget: drop the long per-asset prose first, keeping the table, and
+    # SAY what was omitted. A silently truncated body is worse than a long one --
+    # the reader cannot tell the difference between "no summary was written" and
+    # "the summary did not fit".
+    dropped = len(summaries)
+    body = _render(rows, [], f"\n\n_({dropped} per-asset summar{'y' if dropped == 1 else 'ies'} "
+                             f"omitted: the full body exceeded GitHub's {_PR_BODY_LIMIT}-character "
+                             f"limit. See the commit for the complete set.)_\n")
+    if len(body) <= _PR_BODY_BUDGET:
+        return body
+
+    # Still over: the table alone is too long. Keep a prefix and name the count.
+    keep = max(1, len(rows) // 2)
+    while keep > 1 and len(_render(rows[:keep], [])) > _PR_BODY_BUDGET:
+        keep //= 2
+    hidden = len(rows) - keep
+    return _render(
+        rows[:keep] + [f"| _… {hidden} more asset(s) not listed_ | |"],
+        [],
+        f"\n\n_({dropped} per-asset summaries and {hidden} table row(s) omitted: the full "
+        f"body exceeded GitHub's {_PR_BODY_LIMIT}-character limit. See the commit for the "
+        f"complete set.)_\n",
     )
+
+
+def _cleanup_temp_dir(temp_dir: Path, *files: Path) -> None:
+    """Remove the two scratch files this run wrote, then the dir if now empty.
+
+    `temp/sync-<run-id>/` was never cleaned up, and `apply_pr` opens with a
+    whole-tree clean check -- so the SECOND `--mode pr` run in any repo refused
+    to start and blamed the user's working tree. No ignore rule covers it
+    either: the documented pattern is `temp/sync-state/`, the *discover* state
+    dir, which is a different path.
+
+    Deliberately NOT `shutil.rmtree`. `temp_dir` is caller-supplied, and the
+    first draft of this in a consuming repo did exactly that -- their test suite
+    caught it deleting an entire synthetic repo, because a caller had passed the
+    enclosing directory. `rmdir` fails harmlessly on anything it should not be
+    removing, which is the property worth having here.
+    """
+    for f in files:
+        try:
+            f.unlink(missing_ok=True)
+        except OSError:
+            pass
+    try:
+        temp_dir.rmdir()
+    except OSError:
+        pass  # not empty (someone else's files) or already gone — both fine
 
 
 def apply_pr(
@@ -392,9 +529,26 @@ def apply_pr(
         if checkout.returncode != 0:
             return outcomes, PRResult(branch, None, f"branch creation failed: {checkout.stderr.strip()}")
 
+    pushed = False
+
     def _fail(reason: str) -> tuple[list[ApplyOutcome], PRResult]:
+        # `_rollback_branch` returns the LOCAL checkout to the default branch. It
+        # cannot un-push. When the failure happened after the push -- which is
+        # exactly where the PR-body-length failure happens -- the remote branch
+        # survives, and a message that only says "PR creation failed" reads as
+        # "nothing happened". The obvious response is to re-run the sync, which
+        # produces a SECOND branch. So say what survived and what to do with it.
         _rollback_branch(local_repo, default)
-        return outcomes, PRResult(branch, None, reason)
+        detail = reason
+        if pushed:
+            detail = (
+                f"{reason}\nThe branch '{branch}' WAS pushed and still exists on the "
+                f"remote — the local checkout was rolled back, the remote was not. "
+                f"Open the PR by hand rather than re-running (a re-run creates a "
+                f"second branch):\n"
+                f"  gh pr create --base {default} --head {branch} --title <title> --body-file <file>"
+            )
+        return outcomes, PRResult(branch, None, detail)
 
     written: list[dict] = []
     written_bytes: list[tuple[str, bytes]] = []
@@ -431,7 +585,13 @@ def apply_pr(
             # than re-reading from disk, to avoid a read-back OSError producing a
             # contradictory second outcome for an already-written file.
             written_bytes.append((asset_path, adapted.encode("utf-8")))
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
+            # ValueError as well as OSError: `UnicodeEncodeError` is a
+            # `ValueError`, so a lone surrogate in `adapted_content` escaped this
+            # handler entirely and aborted the run -- skipping `_update_lock`
+            # and losing provenance for every file already written, which
+            # contradicts this module's own "a failure on one asset never halts
+            # the run" contract.
             outcomes.append(ApplyOutcome(asset_path, "failure", f"write failed: {exc}"))
 
     if not written:
@@ -462,6 +622,9 @@ def apply_pr(
     push = _run(["git", "push", "-u", "origin", branch], cwd=local_repo)
     if push.returncode != 0:
         return _fail(f"git push failed: {push.stderr.strip()}")
+    # From here on a failure leaves a branch on the remote that no rollback can
+    # remove — `_fail` must say so instead of implying nothing happened.
+    pushed = True
 
     body_file = temp_dir / "pr-body.md"
     body_file.write_text(_render_pr_body(written), encoding="utf-8")
@@ -477,6 +640,8 @@ def apply_pr(
     )
     if pr_create.returncode != 0:
         return _fail(f"gh pr create failed: {pr_create.stderr.strip()}")
+
+    _cleanup_temp_dir(temp_dir, msg_file, body_file)
 
     lines = pr_create.stdout.strip().splitlines() if pr_create.stdout else []
     pr_url = lines[-1] if lines else None
