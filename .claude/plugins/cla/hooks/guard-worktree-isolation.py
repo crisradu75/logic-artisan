@@ -78,6 +78,7 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
+from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 from _dispatch_lib import run_git as _run_git  # noqa: E402
@@ -95,7 +96,7 @@ _GUARD_DIRNAME = ".claude-worktree-guard"
 
 # --- HEAD-mutating command detection ----------------------------------------
 
-_GIT = r"\bgit\s+" + _G
+_GIT = _GIT_CMD + r"\s+" + _G
 
 # branch create-and-switch: `git checkout -b|-B|--orphan NAME`, `git switch -c|-C|--create NAME`
 _BRANCH_CREATE = re.compile(

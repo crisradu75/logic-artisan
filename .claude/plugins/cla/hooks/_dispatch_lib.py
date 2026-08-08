@@ -345,6 +345,32 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 # definition, one fix site closes both classes at once and keeps them closed.
 
 
+# The git executable token, including the Windows extension forms.
+#
+# `\bgit\s+` cannot match `git.exe` -- `\s` does not match `.` -- so every git
+# guard in this plugin silently allowed the extension spellings. Measured before
+# this constant existed: `git push origin main` blocked (exit 2) while
+# `git.exe push origin main` and `git.cmd push origin main` both exited 0. That
+# was the whole guard set at once: the push-to-main block, both `ask-*`
+# confirmations, worktree isolation, and two warns.
+#
+# Reachable by ordinary use rather than by evasion -- PowerShell is a primary
+# shell for this harness and its tab-completion emits `git.exe`.
+#
+# `ask-destructive-git._GH_PR_MERGE` already spelled the sibling tool as
+# `\bgh(?:\.(?i:exe|cmd|bat|com|ps1))?`, with a comment saying it exists
+# "because Windows is the primary platform". The identical reasoning was never
+# applied to `git`. This constant exists so the fix lands once instead of in six
+# separate regexes -- the same rationale as `GIT_GLOBAL_OPTS` above.
+#
+# The command NAME stays case-sensitive, matching the `gh` precedent (whose
+# docstring names `GH pr merge` as out of scope). `GIT push` therefore still
+# slips through. That is a KNOWN, DOCUMENTED non-coverage, pinned by a contract
+# test -- widening it is a behaviour change and belongs in its own commit, not
+# bundled into a bypass fix.
+GIT_CMD = r"\bgit(?:\.(?i:exe|cmd|bat|com|ps1))?"
+
+
 def strip_quoted_spans(cmd: str) -> str:
     """Replaces the contents of every quoted/backtick span with same-length,
     non-whitespace placeholder characters (the quote delimiters themselves are

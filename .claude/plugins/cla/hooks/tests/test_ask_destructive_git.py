@@ -453,12 +453,53 @@ def test_the_prefix_must_sit_where_a_shell_would_treat_it_as_an_assignment(
     monkeypatch, capsys
 ):
     """Mid-command occurrences must NOT authorize — otherwise merely mentioning
-    the variable in an echoed string would disarm the guard."""
+    the variable in an echoed string would disarm the guard.
+
+    The original form of this test used `echo "set ALLOW_PR_MERGE=1 first"`,
+    where the token before the variable is `set` — not a shell separator. So it
+    passed without ever exercising the `(?:^|[&|;]\\s*)` anchor it claims to
+    test, and the anchor was in fact satisfiable by a separator inside a quoted
+    span. The cases below all put a REAL separator in front of the variable,
+    inside quotes, which is what the shell never evaluates as an assignment.
+    """
     monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
     reason = _reason(
         _run('echo "set ALLOW_PR_MERGE=1 first" && gh pr merge 27', monkeypatch, capsys)
     )
     assert "PR merge" in reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # separator + variable, both inside a quoted span the shell never evaluates
+        'gh pr merge 27 && echo "; ALLOW_PR_MERGE=1 done"',
+        'echo "; ALLOW_PR_MERGE=1 " && gh pr merge 123 --squash',
+        'gh pr merge 123 --squash && echo "done ; ALLOW_PR_MERGE=1 was not used"',
+        # the shape a session working on THIS hook actually writes
+        'git commit -m "fix hook; ALLOW_PR_MERGE=1 now bypasses it" && gh pr merge 27',
+        "gh pr merge 27 && echo '| ALLOW_PR_MERGE=1 '",
+    ],
+)
+def test_a_separator_inside_quotes_does_not_authorize(command, monkeypatch, capsys):
+    """The bypass this file shipped with: the anchor accepted a `;`/`&`/`|` that
+    sits INSIDE a quoted string, which bash treats as one literal. Every command
+    here silenced the prompt entirely before the fix — including a plain commit
+    message. Authorization is the one thing a hook cannot read, so a bypass that
+    fires on unrelated prose removes exactly the protection this guard adds."""
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    assert "PR merge" in _reason(_run(command, monkeypatch, capsys)), command
+
+
+def test_the_genuine_inline_prefix_still_authorizes_after_quote_stripping(
+    monkeypatch, capsys
+):
+    """Non-vacuity partner for the test above: the fix scans quote-STRIPPED text,
+    so it must not also break the legitimate per-command form, which is unquoted
+    and therefore survives stripping intact."""
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    payload = _run("ALLOW_PR_MERGE=1 gh pr merge 123 --squash", monkeypatch, capsys)
+    assert payload is None or "PR merge" not in _reason(payload)
 
 
 def test_the_prefix_is_honoured_after_a_shell_separator(monkeypatch, capsys):

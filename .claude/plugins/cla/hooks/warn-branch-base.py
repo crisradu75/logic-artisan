@@ -41,6 +41,7 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
+from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import default_base_branch, strip_quoted_spans  # noqa: E402
 
@@ -53,7 +54,7 @@ from _dispatch_lib import default_base_branch, strip_quoted_spans  # noqa: E402
 # the new branch's base is whatever you later check out — the off-non-base-branch hazard
 # this hook guards only arises on the create-and-switch forms above).
 _BRANCH_CREATE = re.compile(
-    r"\bgit\s+" + _G + r"(?:checkout\s+(?:-b|-B|--orphan)|switch\s+(?:-c|-C|--create))\s+(\S+)"
+    _GIT_CMD + r"\s+" + _G + r"(?:checkout\s+(?:-b|-B|--orphan)|switch\s+(?:-c|-C|--create))\s+(\S+)"
 )
 
 

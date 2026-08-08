@@ -351,10 +351,41 @@ def _wiring_commands() -> list[str]:
 
 
 def test_every_wiring_runs_each_interpreter_candidate_before_accepting_it():
-    """`command -v` only proves a name resolves, not that it works."""
+    """`command -v` only proves a name resolves, not that it works.
+
+    Asserting the VERSION via stdout, not merely running `-c "import sys"`: that
+    weaker check succeeds on Python 2.7 and on any wrapper that swallows `-c`,
+    so a stub exiting 0 for everything was still accepted. A silent stub prints
+    nothing and a Python 2 prints `0`, so both now fail the comparison.
+    """
     for cmd in _wiring_commands():
-        assert "-c \"import sys\"" in cmd or "-c 'import sys'" in cmd, (
-            "a wiring accepts an interpreter without running it:\n" + cmd[:160]
+        assert "sys.version_info" in cmd, (
+            "a wiring accepts an interpreter without asserting its version:\n" + cmd[:200]
+        )
+        assert 'print(1 if sys.version_info' in cmd, (
+            "version must be asserted via STDOUT, not an exit code:\n" + cmd[:200]
+        )
+
+
+def test_every_wiring_clears_pyexe_before_probing():
+    """REGRESSION guard. The loop only assigns on success, so without an explicit
+    clear `${PYEXE:-}` reads whatever the parent exported and the probe hands
+    every hook to it. Both launchers already clear their equivalents."""
+    for cmd in _wiring_commands():
+        assert cmd.startswith("PYEXE=;"), (
+            "a wiring can inherit a stale PYEXE from the environment:\n" + cmd[:120]
+        )
+
+
+def test_every_wiring_exits_non_zero_when_no_interpreter_works():
+    """Still fail-open -- only exit 2 blocks a tool call -- but stderr from an
+    exit-0 hook reaches the debug log only. `_dispatch_lib` documents that
+    contract and both dispatchers follow it; the probe was the one place that
+    regressed to stderr + exit 0, so its own "announced rather than silent"
+    comment was false."""
+    for cmd in _wiring_commands():
+        assert "NOT running\" >&2; exit 1;" in cmd, (
+            "a wiring announces failure only to the debug log:\n" + cmd[:200]
         )
 
 
@@ -441,4 +472,84 @@ def test_no_hook_prescribes_a_branch_naming_convention_at_runtime():
         "a synced-core hook prescribes a branch naming convention the consuming "
         "repo may forbid; say `<branch>` or point at /cla:new-worktree instead:\n"
         + "\n".join(offenders)
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The interpreter probe -- EXECUTED, not substring-asserted
+#
+# Every prior test of this probe checked that hooks.json CONTAINS certain text.
+# A probe with an unbalanced quote, a `break` in the wrong scope, or a stale
+# variable passes all of those. A consuming repo measured three real defects in
+# it that substring assertions could not see.
+# --------------------------------------------------------------------------- #
+
+import shutil
+import subprocess as _sp
+
+
+def _probe_prefix() -> str:
+    """The probe half of a wiring's command, up to the interpreter invocation."""
+    cfg = json.loads((_HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    cmd = cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    return cmd.split('; "$PYEXE"')[0]
+
+
+_BASH = shutil.which("bash")
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
+    """REGRESSION. The loop only assigns on success, so without an explicit
+    clear `${PYEXE:-}` reads whatever the parent exported -- and the probe then
+    hands every hook to it. The form this replaced (`PYEXE=$(command -v ...)`)
+    always overwrote, so this was a regression, and it drifts from both
+    launchers, which do clear it."""
+    env = {"PATH": "/usr/bin", "PYEXE": "/definitely/not/a/python"}
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, env=env)
+    assert "SELECTED:/definitely/not/a/python" not in r.stdout
+    assert r.returncode == 1, "must refuse, and non-zero so the notice reaches the transcript"
+    assert "NOT running" in r.stderr
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_probe_rejects_an_interpreter_that_exits_zero_for_everything(tmp_path):
+    """A liveness check of `-c "import sys"` succeeds on Python 2.7 and on any
+    wrapper that swallows `-c`. Asserting the version VIA STDOUT rejects both:
+    a silent stub prints nothing, a Python 2 prints 0."""
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir()
+    stub = stub_dir / "python3"
+    stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+    env = {"PATH": f"{stub_dir}:/usr/bin"}
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, env=env)
+    assert "SELECTED:" not in r.stdout or "SELECTED:\n" in r.stdout
+    assert r.returncode == 1
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_probe_still_selects_a_working_interpreter():
+    """Non-vacuity partner: the two tests above pass trivially if the probe
+    rejects everything."""
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True)
+    assert r.returncode == 0
+    assert re.search(r"SELECTED:\S+", r.stdout), r.stdout
+
+
+def test_every_wiring_shares_one_probe():
+    """Seven inlined copies drifted from the `_pyexe` reference once already."""
+    cfg = json.loads((_HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    probes = {
+        h["command"].split('; "$PYEXE"')[0]
+        for arr in cfg["hooks"].values() for m in arr for h in m["hooks"]
+    }
+    assert len(probes) == 1, f"{len(probes)} distinct probes across the wirings"
+    # `_pyexe` carries the trailing `;` that joins it to the interpreter call;
+    # splitting the live command on `; "$PYEXE"` consumes that separator.
+    assert probes.pop() == cfg["_pyexe"].rstrip("; "), (
+        "_pyexe drifted from the live wirings"
     )

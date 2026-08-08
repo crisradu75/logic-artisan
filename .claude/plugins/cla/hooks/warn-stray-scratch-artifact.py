@@ -47,10 +47,11 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
+from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans  # noqa: E402
 
-_GIT_ADD_OR_COMMIT = re.compile(r"\bgit\s+" + _G + r"(?:add|commit)\b")
+_GIT_ADD_OR_COMMIT = re.compile(_GIT_CMD + r"\s+" + _G + r"(?:add|commit)\b")
 _SUSPICIOUS_NAME = re.compile(r"AppData|LocalTemp|scratchpad", re.IGNORECASE)
 
 

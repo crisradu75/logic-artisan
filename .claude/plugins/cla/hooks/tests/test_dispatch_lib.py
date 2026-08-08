@@ -519,3 +519,65 @@ def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
     assert "sys.path.insert(0, _HOOKS_DIR)" in source, (
         f"{filename} must bootstrap its own sys.path before importing _dispatch_lib"
     )
+
+
+# --------------------------------------------------------------------------- #
+# GIT_CMD -- the executable token
+#
+# Added after a consuming repo found that `\bgit\s+` cannot match `git.exe`
+# (`\s` does not match `.`), so EVERY git guard in the plugin silently allowed
+# the Windows extension spellings. Measured before the fix: `git push origin
+# main` blocked, `git.exe push origin main` allowed. Reachable by ordinary use --
+# PowerShell tab-completion emits `git.exe`.
+#
+# The whole class was invisible because no test anywhere varied the executable
+# token; every case in this file and its siblings hardcoded a bare `git`.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("exe", ["git", "git.exe", "git.cmd", "git.EXE", "git.Cmd"])
+def test_git_cmd_matches_every_executable_spelling(exe):
+    """The extension is case-folded because a shell resolves it case-insensitively."""
+    assert re.match(lib.GIT_CMD + r"\s", f"{exe} push origin main")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "gitfoo push origin main",   # \b must not let a longer name through
+        "mygit push origin main",
+        "git.py push origin main",   # not an executable extension
+        "digit push",
+    ],
+)
+def test_git_cmd_does_not_over_match(text):
+    """A guard that fires on `gitfoo` is worse than one that misses `git.exe`."""
+    assert not re.match(lib.GIT_CMD + r"\s", text)
+
+
+def test_git_cmd_command_name_case_is_a_documented_non_coverage():
+    """CONTRACT test, not an aspiration. `GIT push` is NOT matched, matching the
+    `gh` precedent (whose docstring names `GH pr merge` as out of scope).
+
+    Pinned so widening it is a deliberate commit with its own reasoning rather
+    than an accident. It was left out of the bypass fix on purpose: bundling a
+    behaviour change into a critical fix is how the surrounding regressions
+    happened."""
+    assert not re.match(lib.GIT_CMD + r"\s", "GIT push origin main")
+
+
+def test_every_git_guard_uses_the_shared_constant():
+    """The point of the constant is that the fix lands once. A hook that
+    re-anchors on a bare `\bgit` has opted out of it, which is how six copies
+    drifted apart the first time."""
+    offenders = []
+    for f in _HOOKS_DIR.glob("*.py"):
+        if f.name.startswith(("_", "dispatch-")):
+            continue
+        src = f.read_text(encoding="utf-8")
+        body = "\n".join(
+            ln for ln in src.splitlines() if not ln.lstrip().startswith("#")
+        )
+        if r'r"\bgit' in body:
+            offenders.append(f.name)
+    assert not offenders, f"re-anchor on the bare pattern instead of GIT_CMD: {offenders}"
