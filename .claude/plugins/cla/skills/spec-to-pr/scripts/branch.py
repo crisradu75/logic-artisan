@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from _git_common import repo_root as _repo_root
+from _git_common import branch_name as _branch_name_for
 
 REPO_ROOT = _repo_root()
 
@@ -23,7 +24,9 @@ def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess
 
 
 def _branch_name(change_name: str) -> str:
-    return f"feature/{change_name}"
+    # Resolved, not hardcoded — see `_git_common.branch_prefix` for why a
+    # miss here reads as a clean negative rather than a mismatch.
+    return _branch_name_for(change_name)
 
 
 def _exists_locally(branch: str) -> bool:

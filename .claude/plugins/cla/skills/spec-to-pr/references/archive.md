@@ -22,7 +22,7 @@ The archive command warns about unticked task boxes when run via `--yes`; that's
 
 **Pre-commit git-state + archive-scope checks (both required):**
 ```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch feature/<change-name>
+python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
 git add openspec/changes/<change-name>/ openspec/changes/archive/<YYYY-MM-DD>-<change-name>/ openspec/specs/<cap1>/ [openspec/specs/<cap2>/ ...]
 git diff --name-only --cached
 ```
@@ -51,9 +51,9 @@ git commit -m "chore: archive <change-name>"
 ```
 Do not retry `commit.py` with extra paths, and do not fall back to `git add -A` — the staged set the assertion validated is exactly what should land. Continue to `git push` and the post-check below as normal.
 
-**Push post-check (required):** `git push` exit 0 alone is NOT sufficient — there are real scenarios where it succeeds but the archive commit never reaches the PR (a `pre-push` hook rewrote/skipped the commit and exited 0; the orchestrator drifted onto a leaked branch and pushed *that* branch instead of `feature/<change-name>`; a detached HEAD after a Revise rebase pushed to a non-PR ref). Verify all of (each as a separate Bash call — no shell pipes or `$(...)`):
+**Push post-check (required):** `git push` exit 0 alone is NOT sufficient — there are real scenarios where it succeeds but the archive commit never reaches the PR (a `pre-push` hook rewrote/skipped the commit and exited 0; the orchestrator drifted onto a leaked branch and pushed *that* branch instead of `<branch>`; a detached HEAD after a Revise rebase pushed to a non-PR ref). Verify all of (each as a separate Bash call — no shell pipes or `$(...)`):
 ```
-git rev-parse --abbrev-ref HEAD       # must equal feature/<change-name>
+git rev-parse --abbrev-ref HEAD       # must equal <branch>
 git rev-parse HEAD                    # capture this sha
 git rev-parse @{u}                    # must equal the captured HEAD sha
 gh pr view <#> --json commits         # the captured HEAD sha must appear in the returned commits[]

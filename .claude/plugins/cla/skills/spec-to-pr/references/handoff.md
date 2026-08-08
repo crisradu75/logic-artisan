@@ -59,11 +59,11 @@ After the terminal report has been printed, serialize the in-context phase outco
 ## 6. Commit the run-log line to the feature branch (INVARIANT — so it ships with the PR, never dangles)
 
 Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty on the working tree. Commit that one-line append onto the feature branch so it merges atomically with the change instead of lingering as an uncommitted file. Committing it here on the feature branch avoids both the dangling file and a `block-direct-push-to-main.py` block on a later direct-to-main attempt.
-- **Guard — feature branch only.** Do this ONLY when Ship opened a PR (HEAD is `feature/<change-name>`). If Ship was `skip` (still on `<base-branch>`, branch collision, or the autonomy gate was declined), SKIP this commit: a direct-to-base-branch push would be blocked, so leave the append as a local uncommitted change and note it in the Handoff Issues section for the user to place.
+- **Guard — feature branch only.** Do this ONLY when Ship opened a PR (HEAD is `<branch>`). If Ship was `skip` (still on `<base-branch>`, branch collision, or the autonomy gate was declined), SKIP this commit: a direct-to-base-branch push would be blocked, so leave the append as a local uncommitted change and note it in the Handoff Issues section for the user to place.
 - **Skip when the log is out-of-repo.** If `CLAUDE_RETRO_DIR` points outside the repo, there is nothing tracked to stage — skip.
 - Verify git-state, then path-scoped stage + commit + push (never `-A`):
   ```
-  python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch feature/<change-name>
+  python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "chore: spec-to-pr run log" cla.io/retro/spec-to-pr-runs.jsonl
   git push
   ```
@@ -73,7 +73,7 @@ Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty o
 
 After the run-log line is appended (step 5) and — when Ship opened a PR — committed (step 6), run the audit so any lapse is caught and, if present, surfaced at the *next* run's Precheck (Step 0):
 ```
-# if Ship opened a PR (HEAD is feature/<change-name>):
+# if Ship opened a PR (HEAD is <branch>):
 python3 .claude/plugins/cla/skills/spec-to-pr/scripts/audit_run_complete.py --finalize --shipped --change <change-name>
 # if Ship was skip (still on <base-branch> — the run-log line is intentionally left uncommitted):
 python3 .claude/plugins/cla/skills/spec-to-pr/scripts/audit_run_complete.py --finalize --change <change-name>
