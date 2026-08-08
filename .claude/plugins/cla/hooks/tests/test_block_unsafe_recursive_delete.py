@@ -127,6 +127,14 @@ def make_dir_alias(link: Path, real: Path) -> None:
     )
     if result.returncode != 0:
         pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
+    if not link.exists():
+        # `mklink /J` reports success against a MISSING target: rc 0, "Junction
+        # created for ...", and the link resolves nowhere. Without this the
+        # helper returns normally having created nothing usable, and the caller
+        # asserts against an alias that does not resolve -- a test that passes
+        # for the wrong reason, which is the failure shape this helper was
+        # written to remove.
+        pytest.skip("directory alias created but does not resolve")
 
 
 def test_blocks_directory_containing_a_symlink(tmp_path):

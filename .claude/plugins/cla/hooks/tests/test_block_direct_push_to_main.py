@@ -125,9 +125,11 @@ def test_blocks_refspec_shapes_that_used_to_slip_past(command):
         "git push origin master-list",
         "git push origin main.old",
         "git push origin maintenance",
-        # `--all`-PREFIXED tokens: the rule matches with `.fullmatch()`, and
-        # without a case here a `.match()` mutation survives green while
-        # blocking these.
+        # `--all`-PREFIXED tokens. These are REGRESSION PINS, not mutation
+        # kills: `_ALL_BRANCHES_FLAG` carries both `$` and `.fullmatch()`, so
+        # either anchor alone rejects `--all-tags` and no single mutation of one
+        # of them is observable here. Stated plainly because an earlier version
+        # of this comment claimed a `.match()` kill that was measured to survive.
         "git push origin --all-tags",
         "git push --follow-tags origin feature/x",
         "git push -o something=--all origin feature/x",
@@ -140,11 +142,18 @@ def test_blocks_refspec_shapes_that_used_to_slip_past(command):
         "git push --force-with-lease=origin/main origin feature/x",
     ],
 )
-def test_does_not_block_branches_that_merely_start_with_main_or_master(command):
+def test_does_not_block_branches_that_merely_start_with_main_or_master(command, monkeypatch):
     # This hook BLOCKS, so a false positive wedges the workflow with a
     # misleading message. The old `(?:main|master)\b` treated `-` and `.` as
     # word boundaries, so `main-refactor` and `main.old` were both blocked.
     # Refspecs are now compared as whole normalized refs.
+    #
+    # The branch is PINNED because not every case here is decided by refspec
+    # comparison: `push origin --all-tags` has no refspec left after flag
+    # dropping, so it falls through to `_current_branch()` and its verdict
+    # depended on what the CHECKOUT RUNNING THE SUITE happened to be on. On main
+    # -- where a consuming repo sits by default -- this ALLOW corpus failed.
+    monkeypatch.setattr(hook, "_current_branch", lambda cwd=None: "feature/x")
     assert hook._is_direct_push_to_main(command) is False
 
 
@@ -547,7 +556,12 @@ def test_previously_documented_gaps_now_block(command):
         "git push origin maintenance",
     ],
 )
-def test_the_new_rules_do_not_widen_the_blast_radius(command):
+def test_the_new_rules_do_not_widen_the_blast_radius(command, monkeypatch):
+    # Pinned for the same reason as the corpus above: `push --repo origin
+    # feature/x` leaves no positional refspec (the first positional is the
+    # repository), so it resolves the real branch and this case failed whenever
+    # the suite ran from a checkout sitting on main.
+    monkeypatch.setattr(hook, "_current_branch", lambda cwd=None: "feature/x")
     assert not hook._is_direct_push_to_main(command), command
 
 

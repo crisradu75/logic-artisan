@@ -52,6 +52,18 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 _UNDECODABLE_IN_CP1252 = "ст".encode("utf-8")
 
 
+# Mirrors `run_tests.py`'s own EXCLUDE_PARTS. Scanning a vendored `.venv` or
+# `node_modules` would fail this suite on third-party code nobody here can fix.
+_EXCLUDE_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules"}
+
+# The spawners, and the module names they are reached through in this tree.
+# Checking the CALLEE is what lets the `encoding=`-alone rule below exist: an
+# unqualified "any call with encoding=" would flag every `open(p,
+# encoding="utf-8")` in the plugin, and a guard that cries wolf gets deleted.
+_SPAWNERS = {"run", "Popen", "call", "check_call", "check_output"}
+_SPAWN_MODULES = {"subprocess", "_sp", "sp"}
+
+
 def _scanned_files() -> list[Path]:
     """Every `.py` under the plugin that could spawn a subprocess.
 
@@ -63,23 +75,49 @@ def _scanned_files() -> list[Path]:
     """
     return sorted(
         p for p in _PLUGIN_ROOT.rglob("*.py")
-        if "__pycache__" not in p.parts and ".pytest_cache" not in p.parts
+        if not set(p.parts) & _EXCLUDE_PARTS
+    )
+
+
+def _is_spawn(func: ast.expr) -> bool:
+    """True for `subprocess.run(...)` and the aliased spellings used here."""
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr in _SPAWNERS
+        and isinstance(func.value, ast.Name)
+        and func.value.id in _SPAWN_MODULES
     )
 
 
 def _unpinned_calls(tree: ast.AST) -> list[tuple[int, str]]:
-    """`(lineno, reason)` for every `subprocess.run(text=True)` lacking a pin.
+    """`(lineno, reason)` for every text-mode subprocess call lacking a pin.
 
     Reads the parsed call, so it is immune to line splitting and to an
     `encoding=` appearing in a comment.
+
+    THREE ways into text mode, not one. `text=True` is the obvious spelling;
+    `universal_newlines=True` is CPython's exact alias for it; and `encoding=`
+    ALONE puts the pipes in text mode too — so `subprocess.run(cmd,
+    capture_output=True, encoding="utf-8")`, the natural shorthand and a STRICT
+    decode, raises in the reader thread just the same. Checking only `text=True`
+    left two one-token ways to silence a guard built to be unevadable.
     """
     problems: list[tuple[int, str]] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, ast.Call) or not _is_spawn(node.func):
             continue
         kwargs = {k.arg: k.value for k in node.keywords if k.arg}
-        text = kwargs.get("text")
-        if not (isinstance(text, ast.Constant) and text.value is True):
+        if any(k.arg is None for k in node.keywords):
+            # `subprocess.run(cmd, **opts)` — text mode is decided at runtime and
+            # cannot be read here. Reported rather than skipped: a silent pass on
+            # the one shape the checker cannot see is how the class comes back.
+            problems.append((node.lineno, "**kwargs splat — text mode is unreadable"))
+            continue
+        text_mode = "encoding" in kwargs or any(
+            isinstance(kwargs.get(name), ast.Constant) and kwargs[name].value is True
+            for name in ("text", "universal_newlines")
+        )
+        if not text_mode:
             continue
         if "encoding" not in kwargs:
             problems.append((node.lineno, "no encoding="))
@@ -110,7 +148,12 @@ def test_the_scan_reaches_the_places_the_first_version_missed():
     """Non-vacuity partner, naming the exact files an allow-list glob excluded.
     A guard that scans nothing passes forever, and this one already did once."""
     names = {p.relative_to(_PLUGIN_ROOT).as_posix() for p in _scanned_files()}
-    assert len(names) > 60, f"scan set collapsed to {len(names)} files"
+    # Tracks the real count (82 at the time of writing) rather than sitting 26%
+    # below it, where a collapse that halved the scan set would still pass. The
+    # named anchors below are the stronger half of this pair — they span four
+    # subtrees, so an exclusion that drops any one of them fails here even if
+    # the count survives.
+    assert len(names) >= 75, f"scan set collapsed to {len(names)} files"
     for expected in (
         "run_tests.py",                             # plugin root
         "hooks/tests/test_dispatch.py",             # a tests/ dir
@@ -137,6 +180,63 @@ def test_the_checker_flags_each_shape_it_is_meant_to_catch():
 
     strict = ast.parse("subprocess.run(cmd, text=True, encoding='utf-8')")
     assert _unpinned_calls(strict) == [(1, "encoding= without errors=")]
+
+
+@pytest.mark.parametrize("source", [
+    # CPython's exact alias for `text=True`.
+    "subprocess.run(cmd, universal_newlines=True)",
+    "subprocess.run(cmd, universal_newlines=True, encoding='utf-8')",
+    # `encoding=` ALONE enables text mode. Measured: this exact call decodes in
+    # the reader thread and comes back returncode 0 / stdout None.
+    "subprocess.run(cmd, capture_output=True, encoding='cp1252')",
+    # Runtime-decided kwargs: unreadable, so reported rather than waved through.
+    "subprocess.run(cmd, **opts)",
+    "_sp.run(cmd, text=True)",
+    "subprocess.Popen(cmd, text=True)",
+    "subprocess.check_output(cmd, text=True)",
+])
+def test_the_alternate_spellings_are_not_an_escape_hatch(source):
+    """Each of these reaches text mode without the word `text=True`, and each
+    was invisible to the first AST version — a one-token way to silence a guard
+    whose whole purpose is to be unevadable."""
+    assert _unpinned_calls(ast.parse(source)), source
+
+
+@pytest.mark.parametrize("source", [
+    # The reason the checker inspects the CALLEE. `open` is the common case; an
+    # unqualified "any call with encoding=" would flag every one in the plugin.
+    "open(path, encoding='utf-8')",
+    "path.read_text(encoding='utf-8')",
+    # A non-subprocess callee that happens to take `text=`.
+    "widget.Label(master, text=True)",
+    "parser.add_argument('--x', text=True)",
+    # Correctly pinned, in every spelling.
+    "subprocess.run(cmd, text=True, encoding='utf-8', errors='replace')",
+    "subprocess.run(cmd, universal_newlines=True, encoding='utf-8', errors='replace')",
+    # No text mode at all: bytes in, bytes out, nothing to decode.
+    "subprocess.run(cmd, capture_output=True)",
+])
+def test_the_checker_does_not_cry_wolf(source):
+    assert not _unpinned_calls(ast.parse(source)), source
+
+
+def test_no_module_reaches_a_spawner_by_a_bare_name():
+    """Pins the assumption `_is_spawn` rests on.
+
+    It matches `<module>.<spawner>`, so a `from subprocess import run` followed
+    by a bare `run(cmd, text=True)` would slip past. No file does that today;
+    this fails the moment one starts, rather than letting the checker quietly
+    stop covering it."""
+    offenders = []
+    for f in _scanned_files():
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+                names = ", ".join(a.name for a in node.names)
+                offenders.append(f"{f.relative_to(_PLUGIN_ROOT).as_posix()}:{node.lineno} ({names})")
+    assert not offenders, (
+        "`from subprocess import ...` bypasses the callee check — import the "
+        "module instead:\n  " + "\n  ".join(offenders)
+    )
 
 
 @pytest.mark.parametrize("errors", ["replace", "surrogateescape"])

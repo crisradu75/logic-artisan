@@ -12,6 +12,8 @@ import io
 import json
 from pathlib import Path
 
+import pytest
+
 _HOOK = Path(__file__).resolve().parent.parent / "warn-lint-on-edit.py"
 
 
@@ -126,12 +128,42 @@ def test_run_oxlint_returns_none_when_diagnostics_missing(monkeypatch, tmp_path)
     assert hook._run_oxlint(tmp_path / "oxlint", tmp_path, tmp_path / "a.ts") is None
 
 
-def test_run_oxlint_returns_none_on_non_object_payload(monkeypatch, tmp_path):
-    # Valid JSON that is a bare array/scalar (oxlint version/mode drift) must NOT
-    # crash `.get` — the guard turns it into a silent None, not an AttributeError.
-    for body in ("[]", "5", '"x"'):
+def test_run_oxlint_returns_none_on_an_unreadable_payload(monkeypatch, tmp_path):
+    # Valid JSON that is neither shape must NOT crash `.get` — the guard turns it
+    # into a None, not an AttributeError.
+    #
+    # `[]` used to be pinned here as "correct to discard", which locked in the
+    # bug: ruff's whole payload IS a top-level array, so the documented overlay
+    # ran the linter, got real violations, and dropped every one.
+    for body in ("5", '"x"', "null"):
         monkeypatch.setattr(hook.subprocess, "run", lambda *a, _b=body, **kw: _FakeProc(_b))
         assert hook._run_oxlint(tmp_path / "oxlint", tmp_path, tmp_path / "a.ts") is None
+
+
+def test_run_oxlint_accepts_a_bare_array_which_is_ruffs_actual_shape(monkeypatch, tmp_path):
+    """Measured against real `ruff check --output-format json`: a top-level
+    ARRAY whose items carry `location: {row, column}` and `code`, with no
+    `diagnostics` wrapper, no `labels`, and no `severity`."""
+    body = json.dumps([
+        {"code": "F401", "message": "`os` imported but unused",
+         "location": {"row": 1, "column": 8}},
+    ])
+    monkeypatch.setattr(hook.subprocess, "run", lambda *a, **kw: _FakeProc(body))
+    diags = hook._run_oxlint(tmp_path / "ruff", tmp_path, tmp_path / "a.py")
+    assert diags and diags[0]["code"] == "F401"
+    # And it renders WITH its location; reading only oxlint's `labels[].span`
+    # left every ruff finding as a bare `[error] <message>`.
+    rendered = hook._format_diagnostics(diags, "a.py", "ruff")
+    assert "[F401] L1:C8" in rendered
+    assert rendered.startswith("ruff found 1 issue(s)"), rendered
+
+
+def test_an_empty_array_is_a_clean_file_not_an_unreadable_one(monkeypatch, tmp_path):
+    """`[]` and None must stay distinguishable: one is "the linter ran and found
+    nothing", the other is "the linter ran and we could not read it". `main()`
+    announces the second and stays silent on the first."""
+    monkeypatch.setattr(hook.subprocess, "run", lambda *a, **kw: _FakeProc("[]"))
+    assert hook._run_oxlint(tmp_path / "ruff", tmp_path, tmp_path / "a.py") == []
 
 
 def test_run_oxlint_returns_none_when_diagnostics_not_a_list(monkeypatch, tmp_path):
@@ -314,8 +346,8 @@ def test_no_overlay_keeps_the_js_defaults_exactly(tmp_path):
 
 
 def test_an_overlay_switches_extensions_binary_and_args(tmp_path):
-    """`ruff check --output-format json` is a near drop-in: same
-    JSON-diagnostics shape, same one-file invocation."""
+    """The documented `ruff` overlay, exactly as the hook's own comment spells
+    it — so the example cannot drift from what the loader accepts."""
     (tmp_path / "lint-on-edit.local.md").write_text(
         "---\nextensions: .py\nbinary: ruff\nargs: check --output-format json\n---\n",
         encoding="utf-8",
@@ -328,10 +360,121 @@ def test_an_overlay_switches_extensions_binary_and_args(tmp_path):
 
 def test_an_extension_without_a_dot_is_normalized(tmp_path):
     (tmp_path / "lint-on-edit.local.md").write_text(
-        "---\nextensions: py rs\nbinary: ruff\n---\n", encoding="utf-8"
+        "---\nextensions: py rs\nbinary: ruff\nargs: check\n---\n", encoding="utf-8"
     )
     exts, _, _ = hook.lint_profile(str(tmp_path))
     assert exts == (".py", ".rs")
+
+
+@pytest.mark.parametrize("body,missing", [
+    ("binary: ruff\nargs: check", "extensions"),
+    ("extensions: .py\nargs: check", "binary"),
+    ("extensions: .py\nbinary:\nargs: check", "binary"),
+    # The one that shipped broken: a complete-LOOKING overlay with no reporter
+    # flag returned `args=()`, `main()` passed that through explicitly, and the
+    # linter emitted its human format for `json.loads` to choke on. Silently —
+    # unlike the other two, which announced.
+    ("extensions: .py\nbinary: ruff", "args"),
+])
+def test_a_half_configured_overlay_is_announced_and_falls_back_whole(
+    tmp_path, capsys, body, missing
+):
+    (tmp_path / "lint-on-edit.local.md").write_text(
+        f"---\n{body}\n---\n", encoding="utf-8"
+    )
+    profile = hook.lint_profile(str(tmp_path))
+    assert profile == (hook.LINTABLE_EXTS, "oxlint", ("-f", "json")), profile
+    err = capsys.readouterr().err
+    assert missing in err and "using defaults" in err, err
+
+
+def test_a_partial_overlay_never_yields_an_empty_extension_tuple(tmp_path):
+    """The mutation that motivates the whole-fallback shape: with `or` read as
+    `and`, `binary: ruff` alone returned `exts = ()` — and `str.endswith(())` is
+    ALWAYS False, so the hook became a permanent no-op for every file, silently.
+    Falling back whole means the tuple is never empty."""
+    (tmp_path / "lint-on-edit.local.md").write_text(
+        "---\nbinary: ruff\n---\n", encoding="utf-8"
+    )
+    exts, _, _ = hook.lint_profile(str(tmp_path))
+    assert exts, "an empty extension tuple silences the hook for every file"
+    assert "x.ts".endswith(exts)
+
+
+def test_the_path_fallback_is_gated_off_for_the_default_linter(tmp_path, monkeypatch):
+    """oxlint is a per-package devDependency by design. Resolving a GLOBAL one
+    would make this hook fire in a repo that deliberately installed no linter —
+    a new false positive where the previous behaviour was silence."""
+    monkeypatch.setattr(hook.shutil, "which", lambda stem: str(tmp_path / "fake"))
+    f = tmp_path / "a.ts"
+    f.write_text("x", encoding="utf-8")
+    assert hook._find_linter(f, tmp_path, "oxlint") is None
+    # ...and stays ON for a configured one, which is what makes a non-JS linter
+    # reachable at all: ruff is not installed under node_modules.
+    assert hook._find_linter(f, tmp_path, "ruff") == (tmp_path, Path(str(tmp_path / "fake")))
+
+
+def test_the_node_modules_walk_still_wins_for_the_default_linter(tmp_path, monkeypatch):
+    """Non-vacuity partner: the gate above must reject the PATH fallback only,
+    not short-circuit the walk that finds a real per-package oxlint."""
+    monkeypatch.setattr(hook.shutil, "which", lambda stem: None)
+    _make_bin(tmp_path)
+    f = tmp_path / "src" / "a.ts"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("x", encoding="utf-8")
+    package_dir, _ = hook._find_linter(f, tmp_path, "oxlint")
+    assert package_dir == tmp_path
+
+
+def test_a_configured_binary_that_is_not_installed_is_announced(tmp_path, monkeypatch, capsys):
+    """The asymmetry this closes: a TYPO in the overlay was loud, but a correct
+    overlay naming a binary nobody installed said nothing at all — and the
+    second is the likelier mistake (clone the repo, skip `pip install ruff`)."""
+    monkeypatch.setattr(hook.shutil, "which", lambda stem: None)
+    f = tmp_path / "a.py"
+    f.write_text("x", encoding="utf-8")
+    assert hook._find_linter(f, tmp_path, "ruff") is None
+    assert "ruff" in capsys.readouterr().err
+
+
+def test_a_configured_linter_whose_output_is_unreadable_is_announced(
+    monkeypatch, capsys, tmp_path
+):
+    """An overlay is an explicit "I want lint here". Past that point a timeout,
+    a non-JSON payload, or an unknown shape must not look like a clean file."""
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    f = tmp_path / "a.py"
+    f.write_text("x", encoding="utf-8")
+    (tmp_path / "lint-on-edit.local.md").write_text(
+        "---\nextensions: .py\nbinary: ruff\nargs: check\n---\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(hook, "lint_profile", lambda d: ((".py",), "ruff", ("check",)))
+    monkeypatch.setattr(hook, "_find_linter",
+                        lambda fp, ceiling, stem="oxlint": (tmp_path, tmp_path / "ruff"))
+    monkeypatch.setattr(hook, "_run_oxlint", lambda *a, **kw: None)
+    monkeypatch.setattr("sys.stdin", io.StringIO(
+        json.dumps({"tool_input": {"file_path": str(f)}})))
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == "", "still non-blocking and still emits no context"
+    assert "ruff" in captured.err
+
+
+def test_a_clean_file_from_a_configured_linter_stays_silent(monkeypatch, capsys, tmp_path):
+    """Non-vacuity partner for the test above: `[]` must NOT trip the
+    announcement, or every clean edit in a configured repo emits noise."""
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    f = tmp_path / "a.py"
+    f.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(hook, "lint_profile", lambda d: ((".py",), "ruff", ("check",)))
+    monkeypatch.setattr(hook, "_find_linter",
+                        lambda fp, ceiling, stem="oxlint": (tmp_path, tmp_path / "ruff"))
+    monkeypatch.setattr(hook, "_run_oxlint", lambda *a, **kw: [])
+    monkeypatch.setattr("sys.stdin", io.StringIO(
+        json.dumps({"tool_input": {"file_path": str(f)}})))
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
 
 
 def test_a_malformed_overlay_announces_and_falls_back(tmp_path, capsys):

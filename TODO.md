@@ -173,29 +173,24 @@ above is a starting point — it is deliberately half ALLOW cases, most of them 
 commands — but a retry still needs multi-line commands, shell grouping, wrapper prefixes, and
 multiple heredocs before it ships.
 
-## Make the symlink tests run on Windows (use an NTFS junction)
+## ~~Make the symlink tests run on Windows (use an NTFS junction)~~ - DONE
 
-Three tests call `os.symlink(..., target_is_directory=True)` and `pytest.skip` when it raises —
-which on Windows it always does for an unprivileged account (`WinError 1314`,
-SeCreateSymbolicLinkPrivilege). So they skip on the platform whose path handling they exist to
-check, and the suite still reports green:
+Three tests called `os.symlink(..., target_is_directory=True)` and `pytest.skip` when it raised -
+which on Windows it always does for an unprivileged account (`WinError 1314`). They skipped on the
+one platform whose path handling they exist to check, and the suite still reported green.
 
-- `hooks/tests/test_block_worktree_path_escape.py` — a worktree reached by an aliased spelling is
-  still recognised as inside it
-- `skills/new-worktree/tests/test_manual_worktree.py` (×2) — worktree path canonicalisation, and
-  `casing_mismatch` detecting path indirection
+Shipped as `make_dir_alias(link, real)`: symlink first, NTFS junction (`mklink /J`, no elevation
+needed) as the Windows fallback, `pytest.skip` when neither works or the alias does not resolve.
+It landed in each test file rather than a per-scope `conftest.py`, and the three copies are
+registered in `consistency-checks`' `SIBLING_GROUPS` so they cannot drift.
 
-**Solution is verified, not speculative.** An NTFS junction (`mklink /J`) needs no elevation,
-`os.path.realpath` resolves it exactly like a symlink, and all three call sites only need a
-*directory* alias. Confirmed on a real Windows box: `os.symlink` → `WinError 1314`, `mklink /J` →
-rc 0, `realpath` resolves to the target, child paths reachable. (`os.path.islink()` is False for a
-junction — irrelevant here since every caller goes through `realpath`, and it is exactly why
-`block-unsafe-recursive-delete` does its own reparse-point check instead of trusting `islink`.)
-
-**Shape:** a `make_dir_alias(target, link) -> bool` helper trying `os.symlink` then falling back to
-`mklink /J`, in a `conftest.py` per scope. The two scopes cannot share a module (see
-`run_tests.py`), so the copies would need adding to `consistency-checks`' `SIBLING_GROUPS` to stay
-in lockstep.
+Two residuals, both deliberate:
+- The POSIX branch of that helper is unexercised here. It is gated on `os.name != "nt"`, so on
+  this machine the gate itself is what a mutation test cannot kill - the same "only ever
+  exercised where you are" limit `CLAUDE.md` records for every platform-divergent path.
+- `os.path.islink()` is still False for a junction. Irrelevant to these callers, which all go
+  through `realpath`, and exactly why `block-unsafe-recursive-delete` does its own reparse-point
+  check instead of trusting `islink`.
 
 ## Adopt the Agent Brief durability discipline for `tasks.md` authoring
 

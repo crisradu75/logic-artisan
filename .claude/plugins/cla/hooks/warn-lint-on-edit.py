@@ -68,13 +68,20 @@ LINTABLE_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 #     ---
 #     extensions: .py
 #     binary: ruff
-#     args: check --output-format json --stdin-filename
+#     args: check --output-format json
 #     ---
 #
-# `ruff check --output-format json` is a near drop-in for oxlint: same
-# JSON-diagnostics shape, same one-file invocation. That is why this hook's
-# "Post-Tool Amnesia" rationale, which is entirely stack-neutral, applies to it
-# verbatim.
+# All three keys are REQUIRED -- see `lint_profile`. `args` in particular is not
+# optional and not guessable: without a JSON-reporter flag the linter emits its
+# human format and this hook parses nothing.
+#
+# `ruff` is NOT a drop-in for oxlint, and an earlier version of this comment
+# claimed it was. Measured against `ruff 0.x`: it emits a top-level JSON ARRAY
+# (oxlint emits `{"diagnostics": [...]}`), and each item carries
+# `location: {row, column}` + `code` rather than `labels[].span` + `severity`.
+# `_run_oxlint` and `_format_diagnostics` accept both shapes; without that the
+# documented overlay above parsed cleanly, found real violations, and discarded
+# every one of them silently.
 _OVERLAY_LEAF = "lint-on-edit.local.md"
 
 
@@ -127,18 +134,25 @@ def lint_profile(hooks_dir: str) -> tuple[tuple[str, ...], str, tuple[str, ...]]
         return LINTABLE_EXTS, "oxlint", ("-f", "json")
     raw_exts = config.get("extensions", "").split()
     binary = config.get("binary", "").strip()
-    # A HALF-configured overlay is a typo, not an intent. `binary: ruff` with no
-    # `extensions:` would otherwise lint `.ts` files with ruff and never see a
-    # `.py` one; an empty `binary:` value resolves to `shutil.which("")` -> None
-    # and goes silent. Both contradict this loader's "absent is the only silent
-    # case" contract, so they are announced and fall back whole.
-    if not raw_exts or not binary:
-        missing = ", ".join(k for k, v in (("extensions", raw_exts), ("binary", binary)) if not v)
+    # A HALF-configured overlay is a typo, not an intent, and ALL THREE keys are
+    # load-bearing. `binary: ruff` with no `extensions:` would lint `.ts` files
+    # with ruff and never see a `.py` one; an empty `binary:` resolves to
+    # `shutil.which("")` -> None and goes silent; and a missing `args:` drops the
+    # JSON-reporter flag, so the linter emits its human format, `json.loads`
+    # raises, and the hook goes silent FOREVER -- the same no-op this overlay
+    # exists to fix, one step removed. There is no safe default for an arbitrary
+    # binary's reporter flag, so it is required rather than guessed. All three
+    # contradict this loader's "absent is the only silent case" contract, so they
+    # are announced and fall back whole.
+    args = tuple(config.get("args", "").split())
+    if not raw_exts or not binary or not args:
+        missing = ", ".join(
+            k for k, v in (("extensions", raw_exts), ("binary", binary), ("args", args)) if not v
+        )
         print(f"[warn-lint-on-edit] {_OVERLAY_LEAF} is missing or blank for: {missing}; "
               "using defaults", file=sys.stderr)
         return LINTABLE_EXTS, "oxlint", ("-f", "json")
     exts = tuple(e if e.startswith(".") else "." + e for e in raw_exts)
-    args = tuple(config.get("args", "").split())
     return exts, binary, args
 
 # Cap how many diagnostics we echo back, so a file that lights up the linter
@@ -201,7 +215,16 @@ def _find_linter(file_path: Path, ceiling: Path, stem: str = "oxlint") -> tuple[
     if stem == "oxlint":
         return None
     on_path = shutil.which(stem)
-    return (ceiling, Path(on_path)) if on_path else None
+    if on_path:
+        return ceiling, Path(on_path)
+    # A non-default stem exists ONLY because an overlay set it, and an overlay is
+    # an explicit "I want lint here". Staying silent past that point is the
+    # asymmetry this hook keeps re-creating: a TYPO in the overlay is announced,
+    # while a correct overlay naming a binary nobody installed says nothing at
+    # all -- and the second is the likelier mistake.
+    print(f"[warn-lint-on-edit] `{stem}` is configured but not on PATH and not under "
+          "node_modules/.bin; no lint feedback this edit", file=sys.stderr)
+    return None
 
 
 def _run_oxlint(
@@ -216,8 +239,12 @@ def _run_oxlint(
     binary path is absolute because a relative .cmd cannot be launched on Windows.
 
     `extra_args` defaults to oxlint's JSON-reporter flags, so a JS repo with no
-    overlay behaves exactly as before. `ruff check --output-format json` is a
-    near drop-in: same JSON-diagnostics shape, same one-file invocation.
+    overlay behaves exactly as before.
+
+    TWO payload shapes are accepted: oxlint's `{"diagnostics": [...]}` and the
+    bare top-level array ruff and several other linters emit. Accepting only the
+    first made every non-oxlint linter run, succeed, and have its findings
+    dropped on the floor -- indistinguishable from a clean file.
     """
     try:
         rel = file_path.relative_to(package_dir).as_posix()
@@ -239,28 +266,48 @@ def _run_oxlint(
         payload = json.loads(result.stdout)
     except (json.JSONDecodeError, ValueError):
         return None
-    # oxlint's top-level payload should be an object; tolerate version/mode drift
-    # that hands back a bare array or scalar rather than letting `.get` raise and
-    # breach this hook's always-exit-0 contract.
+    # A bare top-level array is ruff's shape (and several other linters'); an
+    # object with `diagnostics` is oxlint's. Anything else -- a scalar, a null,
+    # an object without that key -- is drift we cannot read, and returning None
+    # rather than letting `.get` raise keeps the always-exit-0 contract.
+    if isinstance(payload, list):
+        return payload
     if not isinstance(payload, dict):
         return None
     diagnostics = payload.get("diagnostics")
     return diagnostics if isinstance(diagnostics, list) else None
 
 
-def _format_diagnostics(diagnostics: list[dict], rel: str) -> str:
+def _diag_position(diag: dict) -> tuple:
+    """`(line, column)` from either linter's diagnostic shape, `(None, None)`
+    when neither is present.
+
+    oxlint nests it as `labels[0].span.{line,column}`; ruff puts it flat in
+    `location.{row,column}`. Reading only the first rendered every ruff finding
+    location-less as a bare `[error] <message>`, which is exactly the detail an
+    edit-time warning exists to supply.
+    """
+    labels = diag.get("labels") or []
+    span = labels[0].get("span") if labels and isinstance(labels[0], dict) else None
+    if isinstance(span, dict):
+        return span.get("line"), span.get("column")
+    location = diag.get("location")
+    if isinstance(location, dict):
+        return location.get("row"), location.get("column")
+    return None, None
+
+
+def _format_diagnostics(diagnostics: list[dict], rel: str, tool: str = "oxlint") -> str:
     """Render diagnostics into a compact, model-readable warning block."""
     lines = []
     for diag in diagnostics[:_MAX_DIAGS]:
         if not isinstance(diag, dict):
             continue
-        severity = diag.get("severity", "error")
+        # ruff has no `severity`; its `code` (e.g. F401) is the closest analogue
+        # and is more useful than a hardcoded "error" on every line.
+        severity = diag.get("severity") or diag.get("code") or "error"
         message = str(diag.get("message", "")).replace("\n", " ").strip()
-        labels = diag.get("labels") or []
-        span = labels[0].get("span") if labels and isinstance(labels[0], dict) else None
-        if not isinstance(span, dict):
-            span = {}
-        line, col = span.get("line"), span.get("column")
+        line, col = _diag_position(diag)
         # Build the location from whatever oxlint supplied — never emit a literal
         # "None" (a line with no column must read as `L5`, not `L5:CNone`).
         if line is not None and col is not None:
@@ -274,7 +321,7 @@ def _format_diagnostics(diagnostics: list[dict], rel: str) -> str:
     if extra > 0:
         lines.append(f"  …and {extra} more")
     return (
-        f"oxlint found {len(diagnostics)} issue(s) in {rel} you just edited. Fix "
+        f"{tool} found {len(diagnostics)} issue(s) in {rel} you just edited. Fix "
         f"them before moving on so they don't compound (this is advisory, not a "
         f"block — the full workspace lint still runs at review):\n" + "\n".join(lines)
     )
@@ -310,6 +357,15 @@ def main() -> int:
     package_dir, linter_bin = found
 
     diagnostics = _run_oxlint(linter_bin, package_dir, file_path, extra_args)
+    if diagnostics is None:
+        # None means "ran and could not be read" (timeout, non-JSON, unknown
+        # payload shape) -- distinct from `[]`, a clean file. Announced for a
+        # CONFIGURED linter only: with no overlay this hook is opportunistic and
+        # a repo without oxlint should not hear about it on every edit.
+        if stem != "oxlint":
+            print(f"[warn-lint-on-edit] `{stem}` produced no readable output for "
+                  f"{raw_path}; no lint feedback this edit", file=sys.stderr)
+        return 0
     if not diagnostics:
         return 0
 
@@ -318,7 +374,7 @@ def main() -> int:
     except ValueError:
         rel = file_path.name
 
-    msg = _format_diagnostics(diagnostics, rel)
+    msg = _format_diagnostics(diagnostics, rel, stem)
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",

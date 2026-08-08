@@ -183,8 +183,30 @@ def discover_node_tests() -> list[Path]:
     """
     return sorted(
         p for p in PLUGIN_ROOT.rglob("*.test.mjs")
-        if "__pycache__" not in p.parts and "node_modules" not in p.parts
+        if not _excluded(p)
     )
+
+
+def node_near_misses() -> list[tuple[Path, str]]:
+    """A near-miss when `.mjs` SOURCE exists but no `*.test.mjs` does at all.
+
+    The pytest half fails the run on a half-configured scope; the node half had
+    no equivalent, so renaming the single `*.test.mjs` made the glob return
+    nothing, dropped the scope out of `results` entirely, and the run still
+    printed "All N scope(s) passed" and exited 0. With no CI anywhere in this
+    repo that local run is the only gate there is.
+
+    Deliberately narrow: it fires only when EVERY node test has disappeared, not
+    per-untested-script, so adding an `.mjs` helper does not manufacture a
+    failure.
+    """
+    scripts = [
+        p for p in PLUGIN_ROOT.rglob("*.mjs")
+        if not _excluded(p) and not p.name.endswith(".test.mjs")
+    ]
+    if scripts and not discover_node_tests():
+        return [(PLUGIN_ROOT, f"{len(scripts)} .mjs script(s) but no *.test.mjs anywhere")]
+    return []
 
 
 def run_node_tests(files: list[Path]) -> tuple[int, int]:
@@ -229,6 +251,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     scopes, near_misses = discover(PLUGIN_ROOT)
+    near_misses += node_near_misses()
 
     # A near-miss is a likely broken/half-removed scope — surface it loudly and
     # fail the run; never let a scope silently disappear into a false green.
