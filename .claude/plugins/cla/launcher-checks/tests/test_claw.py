@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import shutil
 import subprocess
 import sys
@@ -417,3 +418,70 @@ def test_cmd_launcher_escapes_parens_inside_if_blocks():
         "unescaped parens in an echo inside an if block — cmd aborts the whole "
         f"script at parse time: {offenders}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# AA-9 / AA-10 — launcher defects reported by a consuming repo
+#
+# Both sit OUTSIDE SCAN_DIRS/SCAN_FILES' reach for review purposes: `update-cla`
+# can carry the files, but nothing tested them, which is how both shipped.
+# --------------------------------------------------------------------------- #
+
+_CLA_CMD = _REPO_ROOT / "cla.cmd"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="cmd.exe parse semantics")
+def test_cla_cmd_parses_in_real_cmd(tmp_path):
+    """`cla.cmd` was UNCONDITIONALLY broken on native Windows.
+
+    cmd parses a parenthesised block as ONE unit before executing any of it, so
+    an unescaped `(` inside an echo aborts the whole script at PARSE time with
+    "was was unexpected at this time." -- whether or not the branch is taken.
+    Verified in real cmd.exe: EXIT=255 and no launch, in both states.
+
+    The plugin dir is CREATED and PATH is stripped to System32, so the script
+    gets past its first guard and into the `where claude` block that holds the
+    defect, then exits 127 without launching anything. An earlier version of
+    this test left the plugin dir missing -- the script exited at guard one, cmd
+    never parsed the later block, and the test passed against the broken file.
+    """
+    work = tmp_path / "work"
+    (work / ".claude" / "plugins" / "cla").mkdir(parents=True)
+    shutil.copy(_CLA_CMD, work / "cla.cmd")
+
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    env = {
+        "SystemRoot": system_root,
+        "PATH": os.pathsep.join([str(pathlib.Path(system_root) / "System32"), system_root]),
+        "COMSPEC": os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
+    }
+    r = subprocess.run(
+        ["cmd", "/c", str(work / "cla.cmd")],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=work, env=env,
+    )
+    combined = (r.stdout or "") + (r.stderr or "")
+    assert "unexpected at this time" not in combined, (
+        f"cla.cmd fails to PARSE (exit={r.returncode}):\n{combined[:400]}"
+    )
+    assert r.returncode == 127, (
+        f"expected the missing-claude guard (127), got {r.returncode}: {combined[:300]}"
+    )
+
+
+@pytest.mark.parametrize("var", ["GD", "GCD"])
+def test_claw_cmd_pre_clears_its_git_dir_vars(var):
+    """A `for /f` over a command that produces NO output leaves the variable at
+    whatever it already held, so an inherited value from the parent environment
+    satisfies the `if not defined` guards and feeds stale paths into the
+    primary-clone assertion -- turning a fail-closed check into a launch.
+
+    `PYEXE` and `WORKTREE_PATH` in the same file are both pre-cleared for
+    exactly this reason; these two were the pair that did not follow the rule.
+    """
+    src = _CLAW_CMD.read_text(encoding="utf-8", errors="replace")
+    clear_at = src.find(f'set "{var}="')
+    use_at = src.find(f'do set "{var}=%%I"')
+    assert clear_at != -1, f"{var} is never pre-cleared"
+    assert use_at != -1, f"{var} assignment not found"
+    assert clear_at < use_at, f"{var} must be cleared BEFORE its for /f loop"

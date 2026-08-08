@@ -57,3 +57,46 @@ def test_falls_back_to_cwd_when_git_rejects_the_directory(
     monkeypatch.setattr(_git_common.subprocess, "run", not_a_repo)
     monkeypatch.chdir(tmp_path)
     assert _git_common.repo_root() == tmp_path
+
+
+# --------------------------------------------------------------------------- #
+# MD-15 / MD-12 — the branch prefix was hardcoded in the scripts that both
+# CREATE the branch and LOOK IT UP, and a miss read as a clean negative.
+# --------------------------------------------------------------------------- #
+
+
+def test_prefix_from_text_takes_the_first_real_line():
+    """Split out from file reading so it is testable without a real file at a
+    `__file__`-relative path."""
+    assert _git_common.prefix_from_text("claude/fix/") == "claude/fix/"
+    assert _git_common.prefix_from_text("# a comment\n\nclaude/fix/\n") == "claude/fix/"
+    assert _git_common.prefix_from_text("<!-- html comment -->\nwip/\n") == "wip/"
+
+
+def test_a_missing_trailing_slash_is_added():
+    assert _git_common.prefix_from_text("claude/fix") == "claude/fix/"
+
+
+def test_an_empty_or_comment_only_overlay_yields_none():
+    """So `branch_prefix` falls through to the default rather than producing
+    `<change-name>` with no prefix at all."""
+    assert _git_common.prefix_from_text("") is None
+    assert _git_common.prefix_from_text("# only a comment\n\n") is None
+
+
+def test_the_env_var_overrides_everything(monkeypatch):
+    monkeypatch.setenv("CLA_BRANCH_PREFIX", "claude/fix/")
+    assert _git_common.branch_name("my-change") == "claude/fix/my-change"
+
+
+def test_the_env_var_gets_a_trailing_slash_too(monkeypatch):
+    monkeypatch.setenv("CLA_BRANCH_PREFIX", "wip")
+    assert _git_common.branch_name("x") == "wip/x"
+
+
+def test_the_default_is_feature_when_nothing_is_configured(monkeypatch):
+    """`feature/` stays the default — this is a generalization, not a change of
+    behaviour for repos already on that convention."""
+    monkeypatch.delenv("CLA_BRANCH_PREFIX", raising=False)
+    monkeypatch.setattr(_git_common, "branch_prefix", lambda: _git_common.DEFAULT_BRANCH_PREFIX)
+    assert _git_common.branch_name("my-change") == "feature/my-change"

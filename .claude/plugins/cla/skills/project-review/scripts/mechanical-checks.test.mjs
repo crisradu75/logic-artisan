@@ -844,3 +844,90 @@ test('CLI subprocess: --json produces valid, well-shaped JSON on stdout', () => 
     )
   );
 });
+
+// ── AA-7: vacuous PASS on empty input (reported by a consuming repo) ──────────
+//
+// `specMatches` is `forbidden.some(...)` and `[].some()` is always false, so an
+// empty or absent list reported "clean" on a source dir that DOES violate.
+// Deleting one line from a config turned a boundary invariant into a green tick.
+
+test('checkImportBoundary: an empty forbidden list ERRORs instead of passing vacuously', () => {
+  withRoot((dir) => {
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'a.ts'), "import x from 'react';\n");
+    const result = checkImportBoundary({ sourceDir: 'src', forbidden: [] });
+    assert.equal(result.status, 'ERROR');
+    assert.match(result.details, /forbidden is empty/);
+  });
+});
+
+test('checkImportBoundary: an absent forbidden key ERRORs too', () => {
+  withRoot((dir) => {
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'a.ts'), "import x from 'react';\n");
+    const result = checkImportBoundary({ sourceDir: 'src' });
+    assert.equal(result.status, 'ERROR');
+  });
+});
+
+test('checkImportBoundary: a populated forbidden list still works (non-vacuity partner)', () => {
+  withRoot((dir) => {
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'a.ts'), "import x from 'react';\n");
+    assert.equal(checkImportBoundary({ sourceDir: 'src', forbidden: ['react'] }).status, 'FAIL');
+    assert.equal(checkImportBoundary({ sourceDir: 'src', forbidden: ['vue'] }).status, 'PASS');
+  });
+});
+
+test('checkCrossImportBan: an empty forbidden is caught PER PAIR, so one good pair cannot vouch for a hollow sibling', () => {
+  withRoot((dir) => {
+    mkdirSync(join(dir, 'a'), { recursive: true });
+    mkdirSync(join(dir, 'b'), { recursive: true });
+    writeFileSync(join(dir, 'a', 'x.ts'), "import q from 'vue';\n");
+    writeFileSync(join(dir, 'b', 'y.ts'), "import q from 'react';\n");
+    const result = checkCrossImportBan({
+      pairs: [
+        { sourceDir: 'a', forbidden: ['react'] },  // well-configured
+        { sourceDir: 'b', forbidden: [] },         // hollow
+      ],
+    });
+    assert.equal(result.status, 'ERROR');
+    assert.match(result.details, /b/);
+  });
+});
+
+test('checkDerivedKeyConsistency: a zero-key union ERRORs rather than reporting PASS (0 keys)', () => {
+  withRoot((dir) => {
+    // Two sources that each legitimately extract nothing. Zero keys agree
+    // perfectly with zero keys and derive nothing, so every comparison loop is
+    // a no-op -- the shape a silently-broken extraction pattern takes.
+    writeFileSync(join(dir, 'a.json'), JSON.stringify([]));
+    writeFileSync(join(dir, 'b.json'), JSON.stringify([]));
+    writeFileSync(join(dir, 'en.json'), JSON.stringify({}));
+    const result = checkDerivedKeyConsistency({
+      sources: [
+        { kind: 'json-array-field', label: 'a', file: 'a.json', field: 'name' },
+        { kind: 'json-array-field', label: 'b', file: 'b.json', field: 'name' },
+      ],
+      deriveLocale: { template: 'x.{key}', localeFiles: ['en.json'] },
+    });
+    assert.equal(result.status, 'ERROR');
+    assert.match(result.details, /0 keys/);
+  });
+});
+
+test('checkDerivedKeyConsistency: a non-empty key union still passes (non-vacuity partner)', () => {
+  withRoot((dir) => {
+    writeFileSync(join(dir, 'a.json'), JSON.stringify([{ name: 'one' }]));
+    writeFileSync(join(dir, 'b.json'), JSON.stringify([{ name: 'one' }]));
+    writeFileSync(join(dir, 'en.json'), JSON.stringify({ 'x.one': 'One' }));
+    const result = checkDerivedKeyConsistency({
+      sources: [
+        { kind: 'json-array-field', label: 'a', file: 'a.json', field: 'name' },
+        { kind: 'json-array-field', label: 'b', file: 'b.json', field: 'name' },
+      ],
+      deriveLocale: { template: 'x.{key}', localeFiles: ['en.json'] },
+    });
+    assert.equal(result.status, 'PASS');
+  });
+});

@@ -6,30 +6,30 @@ The Ship phase's step-by-step procedure. `SKILL.md`'s Ship stub carries the load
 
 FIRST determine the current branch — `git rev-parse --abbrev-ref HEAD` — and dispatch on it:
 
-- **Already on `feature/<change-name>`** → the branch already exists and is checked out *on purpose* (typically a dedicated worktree for a concurrent run — see `SKILL.md` "Concurrent runs"). **SKIP the collision check and the checkout; proceed straight to staging.** Do NOT run `branch.py` here: its collision check (`git rev-parse --verify feature/<change-name>`) reads the *shared* local refs and would false-positive on the very branch you are on, wrongly marking Ship (and Revise + Archive) as `skip`.
+- **Already on `<branch>`** → the branch already exists and is checked out *on purpose* (typically a dedicated worktree for a concurrent run — see `SKILL.md` "Concurrent runs"). **SKIP the collision check and the checkout; proceed straight to staging.** Do NOT run `branch.py` here: its collision check (`git rev-parse --verify <branch>`) reads the *shared* local refs and would false-positive on the very branch you are on, wrongly marking Ship (and Revise + Archive) as `skip`.
 - **On `<base-branch>`** → run the collision preflight, then create the branch:
   ```
   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/branch.py <change-name> --dry-run
   ```
   Exit 3 → branch already exists locally or on origin (and you are NOT on it); record `warn` with the date-suffixed alternative from stderr. **All subsequent phases (Revise AND Archive) become `skip`** because no PR will be opened.
   Exit 5 → remote could not be reached (network/auth/missing-remote); record `warn` and skip the rest of Ship + Revise + Archive (same as exit 3).
-  Exit 0 → `git pull` (fast-forward local `<base-branch>` to `origin/<base-branch>` — cheap, and prevents branching off a `<base-branch>` that's gone stale since this session's own last fetch, e.g. because a chained run merged another change in the meantime) then `git checkout -b feature/<change-name>` before staging.
-- **On any other branch** (non-base-branch, non-`feature/<change-name>`) → fail loudly; not the orchestrator's job to disambiguate. **One exception — a fresh `/cla:new-worktree` branch with nothing on it yet.** That skill creates its own branch name, so a run started inside such a worktree lands here through no fault of its own, with zero work at risk. Rename in place rather than failing. All three checks must pass first:
+  Exit 0 → `git pull` (fast-forward local `<base-branch>` to `origin/<base-branch>` — cheap, and prevents branching off a `<base-branch>` that's gone stale since this session's own last fetch, e.g. because a chained run merged another change in the meantime) then `git checkout -b <branch>` before staging.
+- **On any other branch** (non-base-branch, non-`<branch>`) → fail loudly; not the orchestrator's job to disambiguate. **One exception — a fresh `/cla:new-worktree` branch with nothing on it yet.** That skill creates its own branch name, so a run started inside such a worktree lands here through no fault of its own, with zero work at risk. Rename in place rather than failing. All three checks must pass first:
   ```
   git fetch origin <base-branch>
   git rev-list --count origin/<base-branch>..HEAD        # must be 0 — no commits to lose
-  git rev-parse --verify --quiet refs/remotes/origin/feature/<change-name>   # must be EMPTY — no remote branch to collide with
-  git rev-parse --verify --quiet refs/heads/feature/<change-name>            # must be EMPTY — no local branch either
+  git rev-parse --verify --quiet refs/remotes/origin/<branch>   # must be EMPTY — no remote branch to collide with
+  git rev-parse --verify --quiet refs/heads/<branch>            # must be EMPTY — no local branch either
   ```
-  All three clean → `git branch -m feature/<change-name>`, then proceed exactly as the "already on `feature/<change-name>`" case above (skip `branch.py`, stage directly). Any check failing → fail loudly as normal; a non-zero commit count in particular means renaming would silently carry unrelated commits into this change's PR.
+  All three clean → `git branch -m <branch>`, then proceed exactly as the "already on `<branch>`" case above (skip `branch.py`, stage directly). Any check failing → fail loudly as normal; a non-zero commit count in particular means renaming would silently carry unrelated commits into this change's PR.
 
-**Branch name.** Use `feature/<change-name>` directly. If the change name is verbose enough that the full branch name reads awkwardly in `git log --oneline` or `git branch -v` (typical cutoff: somewhere past 50 characters; use judgment, not a hard rule), pick a shorter form that keeps a recognizable hint of the change. Don't pause for confirmation on routine branch names; the branch name is reversible and low-stakes.
+**Branch name.** Use `<branch>` directly. If the change name is verbose enough that the full branch name reads awkwardly in `git log --oneline` or `git branch -v` (typical cutoff: somewhere past 50 characters; use judgment, not a hard rule), pick a shorter form that keeps a recognizable hint of the change. Don't pause for confirmation on routine branch names; the branch name is reversible and low-stakes.
 
 ## 2. Pre-commit git-state check
 
 Before staging anything:
 ```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch feature/<change-name>
+python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
 ```
 Exit 0 → proceed. Exit 2 (in-progress git op) or 3 (wrong branch) → halt and surface to the user. Cheap (<1s), and catches the case where an external session left a cherry-pick/rebase active or where HEAD drifted between Test's checks and now.
 
@@ -43,7 +43,7 @@ Path-scoped staging — NEVER `git add -A` (see `references/bash-discipline.md` 
 ```
 git add openspec/changes/<change-name>/ apps/<app>/src/ packages/<package>/src/
 git commit -m "feat: <change-name>"
-git push -u origin feature/<change-name>
+git push -u origin <branch>
 ```
 List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change scoped to one app stages just that app's `src/`; a change touching a shared package plus its consumer stages both. If your change legitimately touches other top-level paths (e.g. a per-app stylesheet, a smoke-test script, a config file, root `TODO.md`, a sub-app's own doc file, or — for a `.claude/`-meta change — the specific `.claude/plugins/cla/skills/<name>/` files it edited — see `references/project-context.md` for this repo's worked examples), add each by name on the same `git add` line — never expand to `-A`. No commit-msg file; the change name is enough.
 

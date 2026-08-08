@@ -85,9 +85,44 @@ def _runs_dir() -> Path:
         )
     return root / "cla.io" / "retro"
 
+def _pin_streams_utf8() -> None:
+    """Force UTF-8 on stdout/stderr regardless of the ambient locale.
+
+    JSON is UTF-8 by specification (RFC 8259) and the write path below already
+    re-encodes with `.encode("utf-8")`. Reading stdin through the ambient
+    encoding -- cp1252 on a stock Windows box -- silently double-encoded every
+    non-ASCII value: a scope of "cafe-fix" with an accent was appended as
+    mojibake, exit 0, success path taken, ledger path echoed, and the retro
+    skills then aggregated the corrupted record.
+
+    Worse, a UTF-8 byte in cp1252's undefined set (0x81/0x8D/0x8F/0x90/0x9D --
+    e.g. the second byte of Cyrillic U+0441) decodes to a lone surrogate, and
+    the later `.encode("utf-8")` raises UnicodeEncodeError OUTSIDE every `try`,
+    replacing this module's documented exit-code contract with a bare traceback.
+
+    Fixing only stdin is half a contract: these scripts `print()` diagnostics
+    containing non-ASCII (the oversize message carries an em-dash), and
+    `print(..., file=sys.stderr)` encodes with the ambient locale too. Pinning
+    one and not the other just moves the failure.
+
+    `reconfigure` is guarded because a wrapped stream -- pytest capture, a pipe
+    shim -- may not expose it. `update-cla/scripts/orchestrate.py` already
+    carried this pattern for exactly this reason; it simply was not applied here.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
 
 def main() -> int:
-    raw = sys.stdin.read()
+    _pin_streams_utf8()
+    # Read BYTES and decode explicitly, rather than letting the text wrapper
+    # apply the platform locale.
+    try:
+        raw = sys.stdin.buffer.read().decode("utf-8")
+    except UnicodeDecodeError as e:
+        print(f"log_run: stdin is not valid UTF-8: {e}", file=sys.stderr)
+        return 1
     try:
         record = json.loads(raw)
     except json.JSONDecodeError as e:

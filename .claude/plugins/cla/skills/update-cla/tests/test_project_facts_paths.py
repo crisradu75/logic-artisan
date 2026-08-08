@@ -71,7 +71,22 @@ _TRAILING_LINE_COL_RE = re.compile(r":\d+(:\d+)?$")
 # bare path — "edit apps/x/y.ts: add a rule"). It comes AFTER `:line[:col]` in the
 # strip order (see `_clean_candidate`), so an `engine.test.ts:120` line-suffix is
 # removed by `_strip_line_col` first and only a genuine lone trailing `:` is wrapped.
-_WRAP_CHARS = "`'\"(),;.:"
+# `[` and `]` are here because a path inside a fenced JSON config block arrives
+# as `["…/src"` or `…/src"]` — without brackets the QUOTE never becomes an outer
+# character, so a live path reads as stale forever. Both are needed, not one: a
+# single-element array (`["apps/x/src"]`) presents both at once.
+#
+# Adding them alone breaks markdown links whose text is a path:
+# `[docs/a.md](docs/a.md)` would clean to `docs/a.md](docs/a.md`, a token that
+# can never exist on disk and so is flagged stale forever. `_MARKDOWN_LINK_SEAM`
+# below rejects those by their two-char seams instead — NOT by refusing to strip
+# the bracket, and NOT by rejecting brackets generally, which would also discard
+# a legitimate `apps/x/[id]/page.tsx` dynamic-route segment that has `]/` and
+# stays perfectly checkable.
+_WRAP_CHARS = "`'\"(),;.:[]"
+
+# A token containing either seam is the residue of a markdown link, not a path.
+_MARKDOWN_LINK_SEAMS = ("](", "][")
 
 # Balanced markdown-emphasis wrappers (`**path**`, `_path_`, `*path*`). Stripped only
 # when they wrap BOTH ends symmetrically, so a real trailing-glob `apps/*` (star at
@@ -287,6 +302,13 @@ def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
     that exact location. A bare single-segment token is never checked (see the
     bare-filename NOTE near the module constants)."""
     if not token or "/" not in token:
+        return None
+    # Residue of a markdown link whose text is itself a path: `[docs/a.md](docs/a.md)`
+    # cleans to `docs/a.md](docs/a.md`, which can never exist on disk and would
+    # be reported stale forever. Rejected by the SEAM rather than by refusing to
+    # strip brackets, so `apps/x/[id]/page.tsx` — which has `]/` and is a real,
+    # checkable dynamic-route path — still gets checked.
+    if any(seam in token for seam in _MARKDOWN_LINK_SEAMS):
         return None
     if token.startswith("~"):
         return None
@@ -737,3 +759,49 @@ def test_each_skip_reason_individually_yields_no_candidates(tmp_path):
     assert extract_path_candidates("`~/.gitconfig`", tln) == []                  # ~ home path
     assert extract_path_candidates("`references/project-context.md`", tln) == [] # unknown top-level segment
     assert extract_path_candidates("`a-single-token-no-slash`", tln) == []       # no path separator
+
+
+# --------------------------------------------------------------------------- #
+# AA-8 — paths the staleness guard could not see (reported by a consuming repo)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        # A path inside a fenced JSON config block. Without `[`/`]` in
+        # _WRAP_CHARS the quote never becomes an outer character, so a LIVE path
+        # reads as stale forever.
+        ('  "sources": ["cla.io/decisions"]', "cla.io/decisions"),
+        # A single-element array presents BOTH brackets at once — which is why
+        # one of the pair is not enough.
+        ('["cla.io/feedback"]', "cla.io/feedback"),
+        ('  ["cla.io/retro",', "cla.io/retro"),
+    ],
+)
+def test_a_path_inside_a_json_block_is_still_extracted(line, expected, tmp_path):
+    tops = {"cla.io"}
+    assert expected in extract_path_candidates(line, tops), line
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "See [cla.io/decisions](cla.io/decisions) for the rationale.",
+        "Compare [cla.io/retro][ref] against the ledger.",
+    ],
+)
+def test_a_markdown_link_whose_text_is_a_path_is_not_reported_stale(line):
+    """Adding brackets to _WRAP_CHARS alone breaks these: `[a/b](a/b)` cleans to
+    `a/b](a/b`, a token that can never exist and so is flagged stale forever.
+    Rejected by the two-char SEAM."""
+    for cand in extract_path_candidates(line, {"cla.io"}):
+        assert "](" not in cand and "][" not in cand, cand
+
+
+def test_a_dynamic_route_segment_is_still_checkable():
+    """Non-vacuity partner, and the reason the rejection is by seam rather than
+    by brackets generally: `apps/x/[id]/page.tsx` contains `]/` and is a real,
+    existence-checkable path. Rejecting brackets wholesale would discard it."""
+    got = extract_path_candidates("edit apps/web/[id]/page.tsx now", {"apps"})
+    assert any("[id]" in c for c in got), got

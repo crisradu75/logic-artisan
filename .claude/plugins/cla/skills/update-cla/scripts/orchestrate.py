@@ -275,22 +275,65 @@ def cmd_apply(run_id: str, mode: str, local_arg: Optional[str]) -> int:
         print("No adaptations to apply.")
         return 0
 
+    # An adaptations.json from a DIFFERENT run applies wholesale against this
+    # run's divergences: wrong content, wrong provenance, no signal at all.
+    # Absent is refused too, not just mismatched. A missing top-level key is
+    # the same class of Phase-2 slip as a dropped file entry, and letting it
+    # through means the run_id check silently does nothing.
+    file_run_id = adaptations_data.get("run_id")
+    if file_run_id != run_id:
+        print(
+            f"error: adaptations.json is for run {file_run_id!r}, not {run_id!r}. "
+            "Re-run Phase 2 for this run, or pass --run "
+            f"{file_run_id}.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # An asset DISCOVERED but omitted from adaptations.json is never written and
+    # could never surface: the summary's denominator is the adaptation count --
+    # self-referential -- so the run reported "wrote N of N", exited 0, and the
+    # asset silently kept its pre-sync content. A live risk precisely because
+    # Phase 2 is done by an LLM: dropping one file from a 150-entry list is the
+    # most likely mistake in the whole flow.
+    discovered = {f["asset_path"] for f in divergences_data.get("files", [])}
+    # An entry counts as ACCOUNTED FOR whether it rewrites the file or marks it
+    # `keep_local` — Phase 2 must have considered every discovered file, not
+    # necessarily changed it.
+    adapted_paths = {a.get("asset_path") for a in adaptations}
+    not_adapted = sorted(discovered - adapted_paths)
+
     if mode == "worktree":
         outcomes = apply_mod.apply_worktree(local_repo, adaptations, source_name, source_commit)
-        return _print_worktree_summary(outcomes)
+        return _print_worktree_summary(outcomes, not_adapted)
 
     if mode == "pr":
         temp_dir = (local_repo / "temp" / f"sync-{run_id}").resolve()
         outcomes, pr_result = apply_mod.apply_pr(
             local_repo, adaptations, source_name, temp_dir, source_commit
         )
-        return _print_pr_summary(outcomes, pr_result)
+        return _print_pr_summary(outcomes, pr_result, not_adapted)
 
     print(f"error: unknown mode {mode!r}", file=sys.stderr)
     return 2
 
 
-def _print_worktree_summary(outcomes: list) -> int:
+def _print_not_adapted(not_adapted: list) -> None:
+    """Report assets that were DISCOVERED but never adapted.
+
+    On stdout, not stderr: this is a run RESULT -- part of what the sync did or
+    failed to do -- not a diagnostic about the environment.
+    """
+    if not not_adapted:
+        return
+    print()
+    print(f"NOT ADAPTED ({len(not_adapted)}) — discovered but absent from adaptations.json;")
+    print("these files were NOT written and keep their pre-sync content:")
+    for path in not_adapted:
+        print(f"  - {path}")
+
+
+def _print_worktree_summary(outcomes: list, not_adapted: list | None = None) -> int:
     wrote = [o for o in outcomes if o.status == "wrote"]
     skipped_dirty = [o for o in outcomes if o.status == "skipped_dirty_worktree"]
     skipped_binary = [o for o in outcomes if o.status == "skipped_binary"]
@@ -300,11 +343,12 @@ def _print_worktree_summary(outcomes: list) -> int:
     # that is exactly the failure class `skipped_malformed` itself was almost
     # introduced as (a new ApplyOutcome status with no bucket here prints
     # nowhere and is invisible in the count).
-    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "failure"}
+    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "skipped_kept_local", "failure"}
     unrecognized = [o for o in outcomes if o.status not in known]
 
     print()
     print(f"Wrote {len(wrote)} of {len(outcomes)} file(s) to the working tree.")
+    _print_not_adapted(not_adapted or [])
     for o in wrote:
         print(f"  - wrote {o.asset_path}")
     if skipped_dirty:
@@ -332,14 +376,25 @@ def _print_worktree_summary(outcomes: list) -> int:
         print("Review with: git diff")
     if (failed or skipped_malformed or unrecognized) and not wrote:
         return 1
+    # A discovered-but-unadapted asset fails the run EVEN WHEN other files
+    # wrote. Exiting 0 here is what let the omission stay invisible: the caller
+    # saw success, the summary's denominator was the adaptation count, and the
+    # asset kept its pre-sync content with nothing anywhere to say so.
+    if not_adapted:
+        return 1
     return 0
 
 
-def _print_pr_summary(outcomes: list, pr_result) -> int:
+def _print_pr_summary(outcomes: list, pr_result, not_adapted: list | None = None) -> int:
     wrote = [o for o in outcomes if o.status == "wrote"]
     skipped_malformed = [o for o in outcomes if o.status == "skipped_malformed"]
+    # `skipped_binary` had no bucket here while `known` below DID list it, so a
+    # refused binary fell out of both and vanished from the PR report entirely.
+    # Worktree mode printed it; PR mode did not, and the header carried no
+    # denominator either, so the count could not reveal the gap.
+    skipped_binary = [o for o in outcomes if o.status == "skipped_binary"]
     failed = [o for o in outcomes if o.status == "failure"]
-    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "failure"}
+    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "skipped_kept_local", "failure"}
     unrecognized = [o for o in outcomes if o.status not in known]
 
     print()
@@ -355,7 +410,12 @@ def _print_pr_summary(outcomes: list, pr_result) -> int:
                 print(f"  - {o.asset_path}: {o.reason}")
         return 1
 
-    print(f"Wrote {len(wrote)} file(s) and opened PR.")
+    print(f"Wrote {len(wrote)} of {len(outcomes)} file(s) and opened PR.")
+    if skipped_binary:
+        print(f"Skipped {len(skipped_binary)} binary file(s):")
+        for o in skipped_binary:
+            print(f"  - {o.asset_path}: {o.reason}")
+    _print_not_adapted(not_adapted or [])
     for o in wrote:
         print(f"  - wrote {o.asset_path}")
     if failed:
@@ -374,6 +434,10 @@ def _print_pr_summary(outcomes: list, pr_result) -> int:
     print(f"Branch: {pr_result.branch}")
     if pr_result.pr_url:
         print(f"PR:     {pr_result.pr_url}")
+    if not_adapted:
+        # Same rule as worktree mode. If anything, it matters MORE here: the
+        # incomplete set has already been committed and pushed.
+        return 1
     return 0
 
 

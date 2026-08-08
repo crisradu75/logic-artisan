@@ -23,7 +23,14 @@ if not exist "%PLUGIN_DIR%\" (
 )
 where claude >nul 2>nul
 if errorlevel 1 (
-  echo cla.cmd: 'claude' (the Claude Code CLI) was not found on PATH. 1>&2
+REM The ^( ^) escapes are load-bearing, not cosmetic. cmd parses a parenthesised
+REM block as ONE unit before executing any of it, so a bare `(` inside this echo
+REM aborts the whole script at PARSE time with "was was unexpected at this
+REM time." -- whether or not the branch is ever taken. This file shipped exactly
+REM that way and never launched on native Windows; `claw.cmd` carries the same
+REM hazard note because it shipped broken the same way first. Verified in real
+REM cmd.exe: unescaped gives EXIT=255 and no launch.
+  echo cla.cmd: 'claude' ^(the Claude Code CLI^) was not found on PATH. 1>&2
   echo cla.cmd: install it, or make sure it's on PATH, then re-run this script. 1>&2
   exit /b 127
 )

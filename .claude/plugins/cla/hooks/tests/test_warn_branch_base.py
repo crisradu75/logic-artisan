@@ -13,6 +13,7 @@ scan-time placeholder).
 import importlib.util
 import io
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -222,3 +223,35 @@ def test_warns_on_every_create_and_switch_form(monkeypatch, capsys, command):
     monkeypatch.setattr(hook.subprocess, "run", _run_with_head("feature/old"))
     assert hook.main() == 0
     assert "feature/new" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# cwd resolution (MD-6, reported by a consuming repo)
+# --------------------------------------------------------------------------- #
+
+
+def test_git_state_is_resolved_in_the_sessions_cwd_not_the_hook_process(monkeypatch, capsys):
+    """`payload["cwd"]` is authoritative and was already parsed for the command.
+
+    Without `-C`, a session inside `.claude/worktrees/<task>` with the hook
+    process rooted in the primary clone on the base branch reads
+    `current == base`, so no warning fires — in exactly the
+    `/cla:new-worktree` + `claw` flow this plugin promotes. Silent and
+    one-directional, which is the worst shape for an advisory hook."""
+    seen = {}
+
+    def _fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, "feature/other\n", "")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr(hook, "default_base_branch", lambda cwd=None: "main")
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({
+            "tool_input": {"command": "git checkout -b feature/x"},
+            "cwd": "/session/worktree",
+        })),
+    )
+    assert hook.main() == 0
+    assert seen["cmd"][:3] == ["git", "-C", "/session/worktree"], seen["cmd"]

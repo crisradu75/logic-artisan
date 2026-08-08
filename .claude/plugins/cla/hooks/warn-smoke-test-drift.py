@@ -115,7 +115,13 @@ def main() -> int:
         return 0
 
     tool_input = payload.get('tool_input', {})
-    path = tool_input.get('file_path', '')
+    # Normalize separators before the substring test. Edit/Write supply an
+    # ABSOLUTE `file_path`, whose native Windows form is backslashed, so a
+    # substring test against a POSIX-authored overlay value (`src/i18n/`) never
+    # matched and no edit on that platform ever reached the locator comparison.
+    # The hook was entirely dead there, and said nothing about it. Normalizing
+    # here keeps overlays POSIX-authored and portable, which is the point.
+    path = tool_input.get('file_path', '').replace('\\', '/')
     if not (
         (config["component_path_substring"] in path and path.endswith(config["component_ext"]))
         or (config["i18n_path_substring"] in path and path.endswith(config["i18n_ext"]))
@@ -127,12 +133,31 @@ def main() -> int:
     try:
         with open(smoke_test_path, 'r', encoding='utf-8') as f:
             smoke_test = f.read()
-    except OSError:
+    except OSError as e:
+        # `smoke_test_relpath` is the one overlay key never validated for
+        # effect. The module's own docstring policy says a typo that silently
+        # disables the check forever is the worse outcome — applied to a missing
+        # frontmatter KEY but not to a missing FILE, until now.
+        _warn(f"smoke test not readable at {config['smoke_test_relpath']!r} ({e})")
         return 0
 
-    # Only plain literal `text=...` locators (not `text=/regex/`) are checkable.
+    # Plain literal locators, in both spellings a smoke test uses:
+    #   text=Some Label            -- assertions
+    #   button:has-text("Label")   -- the elements it CLICKS
+    # Harvesting only the first silently exempted the second, i.e. the strings
+    # without which the script cannot advance: the highest-consequence locators
+    # were the ignored ones.
+    #
+    # `has-text` is matched with a QUOTED BACKREFERENCE rather than a `[^"']+`
+    # class. A class cannot cross either quote character, so an apostrophe in
+    # ordinary UI copy — `has-text("What's included")` — would truncate the
+    # locator and silently re-open the same gap this closes.
     locators = re.findall(r"text=([^'\"]+)", smoke_test)
+    locators += [m.group(2) for m in re.finditer(r"has-text\(\s*([\"'])(.+?)\1\s*\)", smoke_test)]
     locators = [loc for loc in locators if not loc.startswith('/')]
+    if not locators:
+        _warn(f"no checkable locators found in {config['smoke_test_relpath']!r}")
+        return 0
 
     # Edit supplies old_string/new_string; Write supplies content (compare against
     # the file's current on-disk content, since Write overwrites the whole file).

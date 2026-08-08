@@ -229,3 +229,91 @@ def test_malformed_stdin_fails_open(hooks_dir_with_overlay, monkeypatch):
     monkeypatch.setattr("sys.stdout", buf)
     assert hook.main() == 0
     assert buf.getvalue() == ""
+
+
+# --------------------------------------------------------------------------- #
+# AA-6 -- three defects in one hook, reported by a consuming repo
+# --------------------------------------------------------------------------- #
+
+
+def test_a_windows_absolute_path_still_matches_a_posix_authored_overlay(
+    hooks_dir_with_overlay, tmp_path, monkeypatch
+):
+    """The hook was ENTIRELY dead on Windows, and said nothing about it.
+
+    Edit/Write supply an ABSOLUTE `file_path`; its native Windows form is
+    backslashed, so a substring test against a POSIX-authored overlay value
+    (`src/i18n/`) never matched and no edit on that platform ever reached the
+    locator comparison. Overlays stay POSIX-authored; the path is normalized."""
+    repo = tmp_path / "repo"
+    (repo / "src" / "i18n").mkdir(parents=True)
+    (repo / "test-app.mjs").write_text("page.locator('text=Total reach')\n", encoding="utf-8")
+    f = repo / "src" / "i18n" / "en.json"
+    f.write_text('{"a": "Total reach"}', encoding="utf-8")
+
+    windows_style = str(f).replace("/", "\\")
+    rc, out = _run(
+        monkeypatch,
+        {"file_path": windows_style, "old_string": "Total reach", "new_string": "Total audience"},
+        cwd=repo,
+    )
+    assert rc == 0
+    assert "Total reach" in out, "a backslashed absolute path must still be checked"
+
+
+def test_has_text_locators_are_harvested_including_apostrophes(
+    hooks_dir_with_overlay, tmp_path, monkeypatch
+):
+    """`has-text(...)` is the form a smoke test uses for the elements it CLICKS,
+    so harvesting only `text=` exempted the strings without which the script
+    cannot advance.
+
+    Matched with a quoted BACKREFERENCE, not a `[^"']+` class: a class cannot
+    cross either quote, so an apostrophe in ordinary UI copy truncates the
+    locator and silently re-opens the same gap. Measured: the naive class
+    harvests 1 of these 3."""
+    repo = tmp_path / "repo"
+    (repo / "src" / "components").mkdir(parents=True)
+    (repo / "test-app.mjs").write_text(
+        "page.click(`button:has-text(\"What's included\")`)\n"
+        "page.click(\"button:has-text('Next step')\")\n",
+        encoding="utf-8",
+    )
+    f = repo / "src" / "components" / "Panel.tsx"
+    f.write_text("<b>What's included</b><i>Next step</i>", encoding="utf-8")
+
+    rc, out = _run(
+        monkeypatch,
+        {
+            "file_path": str(f),
+            "old_string": "What's included",
+            "new_string": "What is included",
+        },
+        cwd=repo,
+    )
+    assert rc == 0
+    # Parse rather than substring-match: the hook emits JSON, which escapes the
+    # curly apostrophe as \u2019, so a raw-text search silently never matches.
+    ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert "What's included" in ctx, "apostrophe locator was dropped"
+
+
+def test_an_unreadable_smoke_test_is_announced(
+    hooks_dir_with_overlay, tmp_path, monkeypatch, capsys
+):
+    """`smoke_test_relpath` was the one overlay key never validated for effect.
+    The module's own policy says a typo that silently disables the check forever
+    is the worse outcome -- applied to a missing frontmatter KEY, but not to a
+    missing FILE."""
+    repo = tmp_path / "repo"
+    (repo / "src" / "i18n").mkdir(parents=True)
+    f = repo / "src" / "i18n" / "en.json"
+    f.write_text('{"a": "x"}', encoding="utf-8")  # note: no test-app.mjs
+
+    rc, _ = _run(
+        monkeypatch,
+        {"file_path": str(f), "old_string": "x", "new_string": "y"},
+        cwd=repo,
+    )
+    assert rc == 0
+    assert "not readable" in capsys.readouterr().err

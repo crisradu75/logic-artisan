@@ -8,6 +8,7 @@ monkeypatched `_porcelain_lines`.
 
 import importlib.util
 import io
+import subprocess
 from pathlib import Path
 
 _HOOK = Path(__file__).resolve().parent.parent / "warn-stray-scratch-artifact.py"
@@ -91,7 +92,7 @@ def test_main_no_op_on_unrelated_command(monkeypatch, capsys):
 
 def test_main_warns_when_a_stray_artifact_is_present(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "git add openspec/"}}'))
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ['?? "AppDataLocalTempscratchpaddiff.txt"'])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ['?? "AppDataLocalTempscratchpaddiff.txt"'])
     assert hook.main() == 0  # warn-only, never blocks
     err = capsys.readouterr().err
     assert "warn-stray-scratch-artifact" in err
@@ -100,7 +101,7 @@ def test_main_warns_when_a_stray_artifact_is_present(monkeypatch, capsys):
 
 def test_main_warns_on_chained_command(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "cd repo && git add ."}}'))
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? scratchpad_dump.txt"])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
     assert hook.main() == 0
     assert "scratchpad_dump.txt" in capsys.readouterr().err
 
@@ -112,7 +113,7 @@ def test_main_warns_on_commit_behind_a_space_separated_long_global_option(monkey
         "sys.stdin",
         io.StringIO('{"tool_input": {"command": "git --work-tree /some/other/repo commit -m x"}}'),
     )
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? scratchpad_dump.txt"])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
     assert hook.main() == 0
     assert "scratchpad_dump.txt" in capsys.readouterr().err
 
@@ -128,14 +129,14 @@ def test_main_warns_on_commit_behind_a_quoted_c_value_with_a_space(monkeypatch, 
             '{"tool_input": {"command": "git -C \\"/some/checkout path/with a space\\" commit -m x"}}'
         ),
     )
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? scratchpad_dump.txt"])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
     assert hook.main() == 0
     assert "scratchpad_dump.txt" in capsys.readouterr().err
 
 
 def test_main_silent_when_nothing_stray_is_present(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "git commit -m x"}}'))
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? README.md"])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? README.md"])
     assert hook.main() == 0
     assert capsys.readouterr().err == ""
 
@@ -179,3 +180,24 @@ def test_stray_untracked_paths_with_multiple_matches():
 def test_ignores_backslash_separated_suspicious_path():
     lines = [r"?? scratchpad\file.txt", r'?? "AppData\dump.txt"']
     assert hook._stray_untracked_paths(lines) == []
+
+
+def test_git_state_is_resolved_in_the_sessions_cwd(monkeypatch):
+    """Untested before — reverting the `-C` survived the whole scope. A session
+    inside a worktree had its scratch artifacts checked against the primary
+    clone: reporting on files it is not touching, missing the ones it is."""
+    seen = {}
+
+    def _fake(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", _fake)
+    hook._porcelain_lines("/session/worktree")
+    assert seen["cmd"][:3] == ["git", "-C", "/session/worktree"], seen["cmd"]
+
+
+def test_a_missing_cwd_degrades_without_crashing(monkeypatch):
+    """`payload["cwd"]` can be stale, absent, or not a string."""
+    for cwd in (None, "", "/definitely/not/here"):
+        assert hook._porcelain_lines(cwd) is None or isinstance(hook._porcelain_lines(cwd), list)

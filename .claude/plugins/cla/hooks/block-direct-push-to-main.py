@@ -94,13 +94,14 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
+from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
 # Group 1 captures the global-option blob between `git` and `push`, so a
 # `-C`/`--work-tree` belonging to THIS invocation can be recovered per match
 # rather than scanned for anywhere in the command line.
-_GIT_PUSH = re.compile(r"\bgit\s+(" + _G + r")push\b")
+_GIT_PUSH = re.compile(_GIT_CMD + r"\s+(" + _G + r")push\b")
 
 # Where the `git push` argument list ends: a shell separator starts a new
 # command, so tokens past it are not this push's refspecs.

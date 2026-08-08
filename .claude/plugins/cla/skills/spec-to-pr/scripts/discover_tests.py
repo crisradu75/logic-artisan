@@ -18,7 +18,7 @@ Any Playwright/e2e smoke scripts need a running dev server, so they are
 intentionally NOT emitted here — they're an optional/manual check the Test
 phase mentions but does not gate on.
 
-Output contract (default) is unchanged from the pytest-era version: a JSON list
+Output contract (default): a JSON list
 of argv-style command lists, e.g. `[["npm","run","build"],["npm","run","lint"]]`.
 
 With `--staged`, output is instead a JSON object partitioning the same commands
@@ -49,6 +49,9 @@ REPO_ROOT = _repo_root()
 _SOURCE_SUFFIXES = {
     ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
     ".json", ".css", ".scss", ".html",
+    # `.py` was absent, so in a Python repo a source change did not even register
+    # as source-affecting before the manifest check could be reached.
+    ".py",
 }
 
 # The npm scripts that gate correctness, in run order: build (typecheck,
@@ -89,12 +92,34 @@ def _available_checks() -> list[list[str]]:
     return [["npm", "run", name] for name in _CHECK_SCRIPTS if name in scripts]
 
 
-def discover(paths: list[str]) -> list[list[str]]:
+# The three distinct reasons `discover` can come back empty. They were
+# indistinguishable before, and `SKILL.md` rendered all of them as
+# "no source-affecting changed paths (docs-/openspec-only change)" -- so a repo
+# with no root `package.json` announced every source change as a DOCS-ONLY
+# change and its whole suite never ran. A skipped correctness gate reported as a
+# deliberate skip is worse than a missing one: the reason is plausible, so
+# nobody questions it.
+#
+# This repo is itself such a repo -- logic-artisan has no root `package.json`,
+# so the canonical source shipped a test-discovery script that cannot discover
+# its own tests.
+NO_MANIFEST = "no-package-json"
+NO_CHECK_SCRIPTS = "no-check-scripts"
+NO_SOURCE_PATHS = "no-source-affecting-paths"
+
+
+def discover_with_reason(paths: list[str]) -> tuple[list[list[str]], str | None]:
+    """`(checks, reason)` — `reason` is None when checks were found."""
     if not (REPO_ROOT / "package.json").is_file():
-        return []
+        return [], NO_MANIFEST
     if not any(_is_source_affecting(raw) for raw in paths):
-        return []
-    return _available_checks()
+        return [], NO_SOURCE_PATHS
+    checks = _available_checks()
+    return (checks, None) if checks else ([], NO_CHECK_SCRIPTS)
+
+
+def discover(paths: list[str]) -> list[list[str]]:
+    return discover_with_reason(paths)[0]
 
 
 def discover_staged(paths: list[str]) -> dict[str, list[list[str]]]:
@@ -117,7 +142,16 @@ def main(argv: list[str]) -> int:
     if not argv:
         print("usage: discover_tests.py [--staged] <path> [<path>...]", file=sys.stderr)
         return 2
-    result: object = discover_staged(argv) if staged else discover(argv)
+    if staged:
+        checks, reason = discover_with_reason(argv)
+        smoke = [c for c in checks if c[-1] in _SMOKE_SCRIPTS]
+        full = [c for c in checks if c[-1] not in _SMOKE_SCRIPTS]
+        # `reason` rides along ONLY on the `--staged` shape, which is what the
+        # orchestrator consumes. The bare shape keeps its list contract, so no
+        # existing caller has to change to get the fix.
+        result: object = {"smoke": smoke, "full": full, "reason": reason}
+    else:
+        result = discover(argv)
     json.dump(result, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0

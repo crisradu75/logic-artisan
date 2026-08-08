@@ -62,3 +62,18 @@ def commit_on_branch(repo: Path, branch: str, message: str, file: str = "README.
     p.write_text((p.read_text(encoding="utf-8") if p.exists() else "") + f"\n{message}\n", encoding="utf-8")
     _git("add", file, cwd=repo)
     _git("commit", "-q", "-m", message, cwd=repo)
+
+
+@pytest.fixture(autouse=True)
+def _pin_branch_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the branch prefix so tests never inherit the RUNNING repo's config.
+
+    Autouse deliberately. The dependency is invisible at the call site -- a test
+    asserting `feature/my-change` reads as self-contained -- so a test added
+    later would silently inherit whatever `CLA_BRANCH_PREFIX` or the
+    `branch-prefix.local.md` overlay happens to say on the machine running it.
+    That is the same ambient-configuration defect as the locale-dependent
+    subprocess harness fixed alongside this, where both sides agreed on the
+    wrong value and the test passed for the wrong reason.
+    """
+    monkeypatch.setenv("CLA_BRANCH_PREFIX", "feature/")

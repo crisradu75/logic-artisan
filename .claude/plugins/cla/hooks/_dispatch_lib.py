@@ -18,13 +18,23 @@ A hook that crashes (fails to load, or raises out of `main()`) is still
 treated as fail-open — a guard must never wedge the workflow — but the
 dispatcher must not go silent about it and must not let one broken sibling
 take out the ones after it in the list. `run_hook_file()` isolates a load
-failure to just that one hook, and callers should track `HookResult.errored`
-across a run and exit non-zero-non-2 if any hook errored, so Claude Code's
-`<hook> hook error` transcript notice fires and the full diagnostic reaches
-the debug log — exit 0 keeps stderr out of the transcript entirely (it reaches
-the debug log only, where Claude never sees it) per the documented PreToolUse
-hook contract, which would otherwise make a crash in a hook like
-guard-worktree-isolation.py or block-worktree-path-escape.py invisible.
+failure to just that one hook, and callers MUST track `HookResult.errored`
+across a run and surface it.
+
+This docstring used to say callers should "exit non-zero-non-2" to fire Claude
+Code's `<hook> hook error` transcript notice. Neither dispatcher does that, and
+neither should: a non-zero exit makes Claude Code discard stdout, which
+DOWNGRADES a pending `ask` to an allow and surfaces only the first line of
+merged multi-hook stderr. The contract was stated one way and implemented
+another, and the implementation was right.
+
+What they do instead, and what a caller must match: exit 0, report an errored
+ADVISORY hook as `additionalContext`, and escalate an errored ENFORCING hook to
+`permissionDecision: "ask"`. That distinction is the load-bearing part — an
+enforcing guard that failed to load did not run its check, and from the outside
+that is indistinguishable from one that ran and allowed. stderr alone cannot
+carry it, because stderr from an exit-0 hook reaches the debug log only, where
+Claude never sees it.
 """
 
 from __future__ import annotations
@@ -335,14 +345,40 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 # Shared by block-direct-push-to-main.py, warn-branch-base.py,
 # warn-stray-scratch-artifact.py, guard-worktree-isolation.py,
 # ask-destructive-git.py, and ask-git-identity.py. Previously
-# each of those four files carried its own literal copy of this pattern (three
+# each of those six files carried its own literal copy of this pattern (three
 # linked only by a "mirrors guard-worktree-isolation.py" comment) — a bug fixed
-# in one copy could silently persist in the other three, and did: a long
+# in one copy could silently persist in the other five, and did: a long
 # global option with a space-separated (non-`=`) value (`git --work-tree
 # <path> push origin main`) bypassed all of them, and a quoted `-c`/`-C` value
 # containing a space (`git -C "/path with space" checkout -b x`) bypassed the
 # two hooks that didn't call `strip_quoted_spans` before matching. One
 # definition, one fix site closes both classes at once and keeps them closed.
+
+
+# The git executable token, including the Windows extension forms.
+#
+# `\bgit\s+` cannot match `git.exe` -- `\s` does not match `.` -- so every git
+# guard in this plugin silently allowed the extension spellings. Measured before
+# this constant existed: `git push origin main` blocked (exit 2) while
+# `git.exe push origin main` and `git.cmd push origin main` both exited 0. That
+# was the whole guard set at once: the push-to-main block, both `ask-*`
+# confirmations, worktree isolation, and two warns.
+#
+# Reachable by ordinary use rather than by evasion -- PowerShell is a primary
+# shell for this harness and its tab-completion emits `git.exe`.
+#
+# `ask-destructive-git._GH_PR_MERGE` already spelled the sibling tool as
+# `\bgh(?:\.(?i:exe|cmd|bat|com|ps1))?`, with a comment saying it exists
+# "because Windows is the primary platform". The identical reasoning was never
+# applied to `git`. This constant exists so the fix lands once instead of in six
+# separate regexes -- the same rationale as `GIT_GLOBAL_OPTS` above.
+#
+# The command NAME stays case-sensitive, matching the `gh` precedent (whose
+# docstring names `GH pr merge` as out of scope). `GIT push` therefore still
+# slips through. That is a KNOWN, DOCUMENTED non-coverage, pinned by a contract
+# test -- widening it is a behaviour change and belongs in its own commit, not
+# bundled into a bypass fix.
+GIT_CMD = r"\bgit(?:\.(?i:exe|cmd|bat|com|ps1))?"
 
 
 def strip_quoted_spans(cmd: str) -> str:

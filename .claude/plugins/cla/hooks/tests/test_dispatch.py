@@ -7,6 +7,7 @@ the consolidation preserves each sibling hook's original semantics.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import io
 import json
@@ -513,3 +514,105 @@ def test_edit_write_dispatch_also_keeps_skips_out_of_context(monkeypatch, capsys
         assert "skipped" not in json.loads(captured.out)["hookSpecificOutput"].get(
             "additionalContext", ""
         ), "a routine advisory skip must not inject context on every Edit"
+
+
+# --------------------------------------------------------------------------- #
+# MD-10 — an errored ENFORCING hook read as `allow`
+#
+# `_dispatch_lib`'s docstring told callers to exit non-zero-non-2 when any hook
+# errored. Neither dispatcher did, and neither should: a non-zero exit makes
+# Claude Code discard stdout, DOWNGRADING a pending `ask` to an allow and
+# surfacing only the first line of merged stderr. The contract was stated one
+# way and implemented another, and the implementation was right.
+#
+# But the consequence it warned about was real. An enforcing guard that failed
+# to load did not run its check, and from the outside that is indistinguishable
+# from one that ran and allowed -- reported only through stderr, which for an
+# exit-0 hook reaches the debug log alone.
+# --------------------------------------------------------------------------- #
+
+
+def _dispatch_with_errored(monkeypatch, dispatcher, target, payload):
+    """Run `dispatcher.main()` with exactly one hook reporting errored=True."""
+    import _dispatch_lib as lib
+
+    def one(filename, stdin_text, argv=None):
+        return lib.HookResult(0, "", "", filename == target)
+
+    monkeypatch.setattr(dispatcher, "run_hook_file", one)
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = dispatcher.main()
+    out = buf.getvalue().strip()
+    return rc, (json.loads(out)["hookSpecificOutput"] if out else {})
+
+
+def test_an_errored_enforcing_hook_escalates_to_ask(monkeypatch):
+    """`ask` is the one channel that reaches the user and cannot be ignored,
+    and it costs nothing when the call was legitimate."""
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "block-direct-push-to-main.py",
+        {"tool_name": "Bash", "tool_input": {"command": "echo hi"}},
+    )
+    assert rc == 0, "must stay fail-open — a non-zero exit discards this payload"
+    assert nested.get("permissionDecision") == "ask"
+    assert "ENFORCING" in nested.get("permissionDecisionReason", "")
+    assert "block-direct-push-to-main.py" in nested.get("permissionDecisionReason", "")
+
+
+def test_an_errored_advisory_hook_stays_a_warning(monkeypatch):
+    """Losing a warning is the acceptable half of the trade this dispatcher
+    already makes for budget. Escalating those too would train the user to
+    dismiss the prompt, which costs the enforcing case its only channel."""
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "warn-branch-base.py",
+        {"tool_name": "Bash", "tool_input": {"command": "echo hi"}},
+    )
+    assert rc == 0
+    assert "permissionDecision" not in nested
+    assert "additionalContext" in nested
+
+
+def test_no_errored_hook_produces_no_prompt(monkeypatch):
+    """Non-vacuity partner: the escalation must not fire on a healthy run."""
+    mod = _load_dispatcher("dispatch-bash-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, None,
+        {"tool_name": "Bash", "tool_input": {"command": "echo hi"}},
+    )
+    assert rc == 0
+    assert nested.get("permissionDecision") is None
+
+
+def test_the_edit_write_dispatcher_also_escalates_without_crashing(monkeypatch):
+    """CRITICAL regression. The escalation was applied to BOTH dispatchers, but
+    the edit/write one has no `asks` variable — it died with
+    `NameError: name 'asks' is not defined` on EVERY Edit/Write whenever an
+    enforcing hook errored, discarding every other hook's output on that call.
+    Strictly worse than the silent-allow it replaced.
+
+    It also had no ask CHANNEL at all (`_context_json` emits only
+    `additionalContext`), so even a defined variable would have been dropped.
+    Both new escalation tests loaded only the Bash dispatcher, so nothing saw it."""
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "block-worktree-path-escape.py",
+        {"tool_name": "Write", "tool_input": {"file_path": "x.md", "content": "y"}},
+    )
+    assert rc == 0
+    assert nested.get("permissionDecision") == "ask"
+    assert "ENFORCING" in nested.get("permissionDecisionReason", "")
+
+
+def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch):
+    """Non-vacuity partner for the dispatcher that had no coverage at all."""
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "warn-comment-dates.py",
+        {"tool_name": "Write", "tool_input": {"file_path": "x.md", "content": "y"}},
+    )
+    assert rc == 0
+    assert "permissionDecision" not in nested

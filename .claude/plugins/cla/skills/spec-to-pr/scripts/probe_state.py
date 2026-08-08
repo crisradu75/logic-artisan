@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from _git_common import repo_root as _repo_root
+from _git_common import branch_name as _branch_name_for
 
 REPO_ROOT = _repo_root()
 
@@ -24,7 +25,7 @@ _TOOL_MISSING_RC = 127
 _ENVIRONMENT_RC = 126
 
 # Bounded so a hung child can't wedge the probe. Sized above the siblings'
-# (`_repo_root` 10s, `_dispatch_lib._git` 5s) because the `gh` calls here are
+# (`_repo_root` 10s, `_dispatch_lib.GIT_TIMEOUT_SECONDS` 3s) because the `gh` calls here are
 # network round-trips and can legitimately sit on a credential prompt — which
 # is exactly the case an unbounded `subprocess.run` never returns from.
 _TIMEOUT_SECONDS = 30
@@ -186,7 +187,7 @@ def _base_branch() -> str:
 
 
 def _branch_state(change_name: str) -> bool:
-    expected = f"feature/{change_name}"
+    expected = _branch_name_for(change_name)
     # `--quiet` matters here, not just cosmetically: without it, `rev-parse
     # --verify` prints `fatal: Needed a single revision` on the ordinary
     # "branch doesn't exist yet" path too, which would make a stderr-if-any-
@@ -216,7 +217,7 @@ def _branch_state(change_name: str) -> bool:
 
 
 def _pr_state(change_name: str) -> dict:
-    branch = f"feature/{change_name}"
+    branch = _branch_name_for(change_name)
     repo_res = _run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
     if repo_res.returncode != 0:
         # rc==127 here means gh is missing; already tracked in _missing_tools.
@@ -251,7 +252,7 @@ def _pr_state(change_name: str) -> dict:
 
 
 def _fix_rounds_applied(change_name: str) -> int:
-    branch = f"feature/{change_name}"
+    branch = _branch_name_for(change_name)
     base = _base_branch()
     res = _run(["git", "log", "--format=%s", f"{base}..{branch}"])
     if res.returncode != 0:

@@ -101,6 +101,7 @@ _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
+from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
@@ -122,8 +123,8 @@ _SEP = r"(?:[ \t]|\\\r?\n)+"
 # admits a continuation while still stopping at a bare newline, and the
 # `git`→subcommand gap uses `_SEP` for the same reason.
 _TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
-_PUSH = re.compile(r"\bgit" + _SEP + _G + r"push\b" + _TAIL)
-_RESET = re.compile(r"\bgit" + _SEP + _G + r"reset\b" + _TAIL)
+_PUSH = re.compile(_GIT_CMD + _SEP + _G + r"push\b" + _TAIL)
+_RESET = re.compile(_GIT_CMD + _SEP + _G + r"reset\b" + _TAIL)
 
 # Two shapes force a push. The long flag, where `(?:\s|=|$)` is what spares
 # `--force-with-lease` / `--force-if-includes` (both are followed by `-`, which
@@ -294,8 +295,25 @@ def main() -> int:
     # was first written. Matching the prefix here is what makes "authorize this
     # one command" expressible at all; the environment form remains for a
     # caller that genuinely wants it set for a whole run.
+    # Scanned on the QUOTE-STRIPPED text, like every other matcher in this file.
+    # Scanning the raw command made the escape hatch satisfiable by prose: the
+    # anchor `(?:^|[&|;]\s*)` accepts a separator that sits INSIDE a quoted span,
+    # which the shell treats as one literal and never evaluates as an assignment.
+    # Both of these silenced the prompt entirely:
+    #
+    #   gh pr merge 27 && echo "; ALLOW_PR_MERGE=1 done"
+    #   git commit -m "fix hook; ALLOW_PR_MERGE=1 now bypasses it" && gh pr merge 27
+    #
+    # The second is the shape a session working on THIS hook writes. The guard
+    # exists because authorization is the one thing a hook cannot read, so a
+    # bypass firing on unrelated text removes exactly the protection it adds --
+    # and the stderr note below then announced a disabling nobody requested.
+    #
+    # A genuine inline `ALLOW_PR_MERGE=1 gh pr merge …` prefix is unquoted, so it
+    # survives stripping intact and the per-command form still works.
     if found and (
-        os.environ.get("ALLOW_PR_MERGE") == "1" or _ALLOW_MERGE_PREFIX.search(command)
+        os.environ.get("ALLOW_PR_MERGE") == "1"
+        or _ALLOW_MERGE_PREFIX.search(_strip_quoted_spans(command))
     ):
         kept = [r for r in found if r != MERGE_REASON]
         if len(kept) != len(found):
