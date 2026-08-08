@@ -134,58 +134,63 @@ than only when the asset is being rewritten (otherwise it never fires for alread
 the entire affected population); and tolerate any malformed declaration shape, since the file is
 read from the source and one bad edit would break discovery for every consumer.
 
-## Close the known gaps in `block-direct-push-to-main`
+## `block-direct-push-to-main` — remaining non-coverage (was: known gaps)
 
-Pre-existing shapes the guard does **not** catch (verified against the current hook, all resolve
-to ALLOW from a feature branch):
+Five shapes were listed here. **Three are now blocked**, each with a regression test and a
+mutation check: `--all`/`--mirror`, `heads/main`, and `git.exe` (closed earlier by the
+shared `GIT_CMD` constant).
 
-| Shape | Why it matters |
+**`--repo <remote> main` was NOT a gap** — the entry was wrong. Measured against real git:
+`git push --repo origin main` fails with `'main' does not appear to be a git repository`,
+because the first positional is always the repository and `--repo` only applies when none is
+given. A rule written for it was added and reverted the same day: it blocked a shape git
+refuses, un-blocked `git push --repo origin origin` (a real push of the default branch),
+and false-positived on any repo with a remote named `main`. The lesson is the one the
+reverted redesign already taught — a rule derived from reading the code rather than
+exercising the tool it models.
+
+**Two remain open, deliberately** — both evasion-shaped rather than reachable by ordinary use,
+which is the distinction that justified fixing `git.exe` and not these:
+
+| Shape | Why it stays open |
 |---|---|
-| `git push --all origin` / `--mirror` | pushes every local branch, including the default one |
-| `git push --repo origin main` | `--repo` consumes the remote, so `main` is read as the remote and the refspec check never runs |
-| `git push origin heads/main` | git DWIMs `heads/main` to `refs/heads/main`; `_normalize_ref` only strips the fully-qualified prefix |
-| `git.exe push origin main` | the basename check is exact, on the platform this harness treats as primary |
-| `bash <<< 'git push origin main'` | herestrings are not scanned |
+| `bash <<< '<push> origin main'` | the herestring body IS quoted, so `strip_quoted_spans` blanks it before matching. Un-blanking quoted spans after `<<<` adds parsing complexity to an *enforcing* guard for a vector nobody reaches by accident |
+| `GIT push origin main` | command-name case, matching the `gh` precedent; pinned by a contract test so widening it is deliberate |
 
-Also documented in `_dispatch_lib.HOOK_WORST_CASE_SECONDS`: the hook's `3.0` budget entry is the
-realistic bound, not a proven ceiling — the branch cache is keyed on cwd, so several pushes with
-distinct `-C` values each spawn a `rev-parse` (verified: three `-C` paths → 9s). The fix is to make
-the hook resolve at most one branch per command, not to raise the handler timeout.
+Still open, and unchanged: the `3.0` budget entry in `_dispatch_lib.HOOK_WORST_CASE_SECONDS` is
+the realistic bound, not a proven ceiling — the branch cache is keyed on cwd, so several pushes
+with distinct `-C` values each spawn a `rev-parse` (verified: three `-C` paths → 9s). The fix is
+to make the hook resolve at most one branch per command, not to raise the handler timeout.
 
 **If the 3-state (BLOCK/ALLOW/ASK) redesign is retried**, it was attempted and reverted — see the
 revert commit for the full failure analysis. The short version: a `shlex`-based rewrite was
-validated against a 44-command corpus containing **only `git push` commands**, so it shipped six
+validated against a 44-command corpus containing **only push commands**, so it shipped six
 regressions (`shlex` treats a newline as whitespace, collapsing multi-line commands into one
 segment; shell grouping and wrapper prefixes like `sudo` also bypassed it) and six spurious
 permission prompts (the ASK arm was gated on a hand-maintained subcommand list, so
-`git rev-list main..HEAD` and friends began prompting). Any retry needs a corpus covering
-multi-line commands, shell grouping, wrapper prefixes, multiple heredocs, herestrings, and —
-most importantly — **non-push git commands**, to measure the ASK arm's blast radius before it
-ships.
+`git rev-list main..HEAD` and friends began prompting). The corpus added alongside the four fixes
+above is a starting point — it is deliberately half ALLOW cases, most of them non-push git
+commands — but a retry still needs multi-line commands, shell grouping, wrapper prefixes, and
+multiple heredocs before it ships.
 
-## Make the symlink tests run on Windows (use an NTFS junction)
+## ~~Make the symlink tests run on Windows (use an NTFS junction)~~ - DONE
 
-Three tests call `os.symlink(..., target_is_directory=True)` and `pytest.skip` when it raises —
-which on Windows it always does for an unprivileged account (`WinError 1314`,
-SeCreateSymbolicLinkPrivilege). So they skip on the platform whose path handling they exist to
-check, and the suite still reports green:
+Three tests called `os.symlink(..., target_is_directory=True)` and `pytest.skip` when it raised -
+which on Windows it always does for an unprivileged account (`WinError 1314`). They skipped on the
+one platform whose path handling they exist to check, and the suite still reported green.
 
-- `hooks/tests/test_block_worktree_path_escape.py` — a worktree reached by an aliased spelling is
-  still recognised as inside it
-- `skills/new-worktree/tests/test_manual_worktree.py` (×2) — worktree path canonicalisation, and
-  `casing_mismatch` detecting path indirection
+Shipped as `make_dir_alias(link, real)`: symlink first, NTFS junction (`mklink /J`, no elevation
+needed) as the Windows fallback, `pytest.skip` when neither works or the alias does not resolve.
+It landed in each test file rather than a per-scope `conftest.py`, and the three copies are
+registered in `consistency-checks`' `SIBLING_GROUPS` so they cannot drift.
 
-**Solution is verified, not speculative.** An NTFS junction (`mklink /J`) needs no elevation,
-`os.path.realpath` resolves it exactly like a symlink, and all three call sites only need a
-*directory* alias. Confirmed on a real Windows box: `os.symlink` → `WinError 1314`, `mklink /J` →
-rc 0, `realpath` resolves to the target, child paths reachable. (`os.path.islink()` is False for a
-junction — irrelevant here since every caller goes through `realpath`, and it is exactly why
-`block-unsafe-recursive-delete` does its own reparse-point check instead of trusting `islink`.)
-
-**Shape:** a `make_dir_alias(target, link) -> bool` helper trying `os.symlink` then falling back to
-`mklink /J`, in a `conftest.py` per scope. The two scopes cannot share a module (see
-`run_tests.py`), so the copies would need adding to `consistency-checks`' `SIBLING_GROUPS` to stay
-in lockstep.
+Two residuals, both deliberate:
+- The POSIX branch of that helper is unexercised here. It is gated on `os.name != "nt"`, so on
+  this machine the gate itself is what a mutation test cannot kill - the same "only ever
+  exercised where you are" limit `CLAUDE.md` records for every platform-divergent path.
+- `os.path.islink()` is still False for a junction. Irrelevant to these callers, which all go
+  through `realpath`, and exactly why `block-unsafe-recursive-delete` does its own reparse-point
+  check instead of trusting `islink`.
 
 ## Adopt the Agent Brief durability discipline for `tasks.md` authoring
 

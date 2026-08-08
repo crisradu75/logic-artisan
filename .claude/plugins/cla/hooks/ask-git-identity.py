@@ -95,7 +95,7 @@ def _git_email(cwd: str) -> str | None:
     try:
         r = subprocess.run(
             ["git", "-C", cwd, "config", "user.email"],
-            capture_output=True, text=True, timeout=_GIT_TIMEOUT_SECONDS,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_GIT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.SubprocessError):
         return None

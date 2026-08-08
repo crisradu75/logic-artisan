@@ -38,7 +38,7 @@ def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess
     # encoding="utf-8" is explicit so Windows doesn't decode commit messages
     # or git stderr as cp1252 and corrupt non-ASCII content.
     return subprocess.run(cmd, cwd=cwd if cwd is not None else REPO_ROOT,
-                          capture_output=True, text=True, encoding="utf-8")
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def main(argv: list[str]) -> int:

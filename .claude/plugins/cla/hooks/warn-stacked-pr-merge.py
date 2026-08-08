@@ -55,7 +55,7 @@ def _gh(args: list[str]) -> str | None:
     """Run a gh subcommand; return stripped stdout, or None on any failure."""
     try:
         r = subprocess.run(
-            ["gh", *args], capture_output=True, text=True,
+            ["gh", *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=_GH_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.SubprocessError):
@@ -75,7 +75,7 @@ def _current_branch(cwd: str | None = None) -> str | None:
         r = subprocess.run(
             ["git", *(["-C", cwd] if cwd else []), "rev-parse", "--abbrev-ref", "HEAD"],
             # See `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
         return None

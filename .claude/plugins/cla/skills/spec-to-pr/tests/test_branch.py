@@ -27,7 +27,7 @@ def test_creates_when_missing(tmp_repo: Path, monkeypatch):
     rc = branch.main(["new-thing"])
     assert rc == 0
     res = subprocess.run(["git", "rev-parse", "--verify", "feature/new-thing"],
-                         cwd=tmp_repo, capture_output=True, text=True)
+                         cwd=tmp_repo, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert res.returncode == 0
 
 
@@ -36,7 +36,7 @@ def test_dry_run_does_not_create(tmp_repo: Path, monkeypatch, capsys):
     rc = branch.main(["new-thing", "--dry-run"])
     assert rc == 0
     res = subprocess.run(["git", "rev-parse", "--verify", "feature/new-thing"],
-                         cwd=tmp_repo, capture_output=True, text=True)
+                         cwd=tmp_repo, capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert res.returncode != 0
     out = capsys.readouterr().out
     assert "would create" in out

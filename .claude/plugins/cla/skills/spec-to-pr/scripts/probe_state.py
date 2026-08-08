@@ -48,7 +48,7 @@ def _run(cmd: list[str], cwd: Path | None = None, check: bool = False) -> subpro
     target_cwd = cwd if cwd is not None else REPO_ROOT
     try:
         return subprocess.run(cmd, cwd=target_cwd, check=check,
-                              capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError) as exc:
         # `FileNotFoundError` alone was too narrow: `cwd=` also raises
         # `NotADirectoryError` / `PermissionError` (both `OSError`, neither

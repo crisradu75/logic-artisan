@@ -71,7 +71,7 @@ def _porcelain_lines(cwd: str | None = None) -> list[str] | None:
             # tree, so it is genuinely slower on a large repo. Still charged
             # against the shared budget — see
             # `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
-            capture_output=True, text=True, timeout=4,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=4,
         )
     except (OSError, subprocess.SubprocessError):
         return None

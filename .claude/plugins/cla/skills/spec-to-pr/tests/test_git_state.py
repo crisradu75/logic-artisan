@@ -15,7 +15,7 @@ _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "git_state.py"
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(_SCRIPT), "--repo-root", str(repo), *args],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
 
 
@@ -202,7 +202,7 @@ def test_detached_head_returns_HEAD_as_branch(tmp_repo: Path):
     subprocess.run(["git", "commit", "--allow-empty", "-q", "-m", "extra"],
                    cwd=tmp_repo, check=True)
     sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_repo,
-                         check=True, capture_output=True, text=True).stdout.strip()
+                         check=True, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
     subprocess.run(["git", "checkout", "-q", sha], cwd=tmp_repo, check=True)
 
     result = _run(tmp_repo)
@@ -219,7 +219,7 @@ def test_detached_head_with_expect_branch_exits_three(tmp_repo: Path):
     subprocess.run(["git", "commit", "--allow-empty", "-q", "-m", "extra"],
                    cwd=tmp_repo, check=True)
     sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_repo,
-                         check=True, capture_output=True, text=True).stdout.strip()
+                         check=True, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
     subprocess.run(["git", "checkout", "-q", sha], cwd=tmp_repo, check=True)
 
     result = _run(tmp_repo, "--expect-branch", "feature/anything")

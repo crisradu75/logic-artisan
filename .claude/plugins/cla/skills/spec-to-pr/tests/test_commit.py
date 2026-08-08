@@ -39,7 +39,7 @@ def test_happy_path(tmp_repo: Path):
     rc = commit.main(["--message-file", str(msg), "newfile.txt"])
     assert rc == 0
     log = subprocess.run(["git", "log", "--oneline", "-1"],
-                         cwd=tmp_repo, capture_output=True, text=True).stdout
+                         cwd=tmp_repo, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     assert "feat: a thing" in log
 
 
@@ -55,7 +55,7 @@ def test_inline_message_with_multiple_paths(tmp_repo: Path):
     rc = commit.main(["--message", "fix: review round 1", "a.txt", "b.txt"])
     assert rc == 0, "two positional paths after --message must succeed"
     log = subprocess.run(["git", "log", "--oneline", "-1"],
-                         cwd=tmp_repo, capture_output=True, text=True).stdout
+                         cwd=tmp_repo, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     assert "fix: review round 1" in log
 
 
@@ -65,7 +65,7 @@ def test_inline_message_happy_path(tmp_repo: Path):
     rc = commit.main(["--message", "fix: review round 1", "newfile.txt"])
     assert rc == 0
     log = subprocess.run(["git", "log", "--oneline", "-1"],
-                         cwd=tmp_repo, capture_output=True, text=True).stdout
+                         cwd=tmp_repo, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     assert "fix: review round 1" in log
 
 
@@ -75,7 +75,7 @@ def test_inline_message_short_flag(tmp_repo: Path):
     rc = commit.main(["-m", "chore: archive my-change", "newfile.txt"])
     assert rc == 0
     log = subprocess.run(["git", "log", "--oneline", "-1"],
-                         cwd=tmp_repo, capture_output=True, text=True).stdout
+                         cwd=tmp_repo, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     assert "chore: archive my-change" in log
 
 

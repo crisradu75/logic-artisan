@@ -86,7 +86,7 @@ def _current_branch(repo_root: Path) -> str | None:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=repo_root, capture_output=True, text=True,
+            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
     except (OSError, FileNotFoundError):
         return None

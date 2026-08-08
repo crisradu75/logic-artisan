@@ -35,7 +35,7 @@ def _run(payload: dict, cwd: Path, env_extra: dict | None = None) -> subprocess.
         env.update(env_extra)
     return subprocess.run(
         [sys.executable, str(_HOOK)],
-        input=json.dumps(payload), capture_output=True, text=True,
+        input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace",
         cwd=str(cwd), env=env,
     )
 
@@ -109,7 +109,7 @@ def test_blocks_worktree_path_delete(tmp_path):
     assert "worktrees" in r.stderr
 
 
-def _make_link(link: Path, real: Path) -> None:
+def make_dir_alias(link: Path, real: Path) -> None:
     """Create `link` -> `real` as a real symlink where permitted, falling back
     to an NTFS directory junction (`mklink /J`, no elevated privileges needed
     on Windows -- unlike a symlink) so this test gets real coverage on a
@@ -117,14 +117,24 @@ def _make_link(link: Path, real: Path) -> None:
     try:
         link.symlink_to(real, target_is_directory=True)
         return
-    except OSError:
+    except (OSError, NotImplementedError, AttributeError):
         pass
+    if os.name != "nt":
+        pytest.skip("symlink creation not permitted, and junctions are Windows-only")
     result = subprocess.run(
         ["cmd", "/c", "mklink", "/J", str(link), str(real)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if result.returncode != 0:
         pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
+    if not link.exists():
+        # `mklink /J` reports success against a MISSING target: rc 0, "Junction
+        # created for ...", and the link resolves nowhere. Without this the
+        # helper returns normally having created nothing usable, and the caller
+        # asserts against an alias that does not resolve -- a test that passes
+        # for the wrong reason, which is the failure shape this helper was
+        # written to remove.
+        pytest.skip("directory alias created but does not resolve")
 
 
 def test_blocks_directory_containing_a_symlink(tmp_path):
@@ -133,7 +143,7 @@ def test_blocks_directory_containing_a_symlink(tmp_path):
     real = tmp_path / "real-content"
     real.mkdir()
     (real / "important.txt").write_text("do not delete me", encoding="utf-8")
-    _make_link(target / "linked", real)
+    make_dir_alias(target / "linked", real)
 
     r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
     assert r.returncode == 2
@@ -210,6 +220,6 @@ def test_escape_hatch_allows_worktree_delete(tmp_path):
 def test_malformed_stdin_does_not_block(tmp_path):
     r = subprocess.run(
         [sys.executable, str(_HOOK)],
-        input="not json", capture_output=True, text=True, cwd=str(tmp_path),
+        input="not json", capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path),
     )
     assert r.returncode == 0

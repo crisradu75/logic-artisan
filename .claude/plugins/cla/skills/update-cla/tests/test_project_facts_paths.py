@@ -119,7 +119,7 @@ def _repo_root_from_here() -> Path:
         out = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             cwd=Path(__file__).resolve().parent,
             check=True,
         )
@@ -265,7 +265,7 @@ def _tracked_top_level_names(repo_root: Path) -> set[str] | None:
     try:
         result = subprocess.run(
             ["git", "-c", "core.quotePath=false", "ls-files", "-z", "--cached", "--"],
-            cwd=repo_root, capture_output=True, text=True, timeout=10,
+            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
             env=_clean_git_env(),
         )
     except (OSError, subprocess.SubprocessError):

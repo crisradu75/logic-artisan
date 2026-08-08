@@ -26,6 +26,50 @@ import pytest
 _HOOKS_DIR = Path(__file__).resolve().parent.parent
 
 
+
+def make_dir_alias(link: Path, real: Path) -> None:
+    """Create `link` -> `real` as a directory alias, or skip if neither works.
+
+    A real symlink where permitted, else an NTFS junction (`mklink /J`), which
+    needs no elevated privileges on Windows -- unlike a symlink, which raises
+    WinError 1314 for every unprivileged account. Without the fallback these
+    tests skipped on the ONE platform whose path handling they exist to check,
+    while the suite still reported green.
+
+    `os.path.realpath` resolves a junction exactly like a symlink, and every
+    caller here goes through `realpath`, so the substitution is exact.
+    (`os.path.islink()` is False for a junction -- irrelevant here, and exactly
+    why `block-unsafe-recursive-delete` does its own reparse-point check rather
+    than trusting `islink`.)
+    """
+    try:
+        link.symlink_to(real, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError, AttributeError):
+        pass
+    if os.name != "nt":
+        # The junction fallback is Windows-only. Without this gate, ANY
+        # non-privilege symlink failure on Linux/macOS -- FileExistsError, an
+        # overlayfs or SMB mount that disallows symlinks -- spawned `cmd`, which
+        # does not exist there, and `FileNotFoundError` propagated: the test
+        # ERRORED where it previously skipped. These files are synced core, so
+        # every POSIX consumer would have inherited that.
+        pytest.skip("symlink creation not permitted, and junctions are Windows-only")
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(real)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result.returncode != 0:
+        pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
+    if not link.exists():
+        # `mklink /J` reports success against a MISSING target: rc 0, "Junction
+        # created for ...", and the link resolves nowhere. Without this the
+        # helper returns normally having created nothing usable, and the caller
+        # asserts against an alias that does not resolve -- a test that passes
+        # for the wrong reason, which is the failure shape this helper was
+        # written to remove.
+        pytest.skip("directory alias created but does not resolve")
+
 def _load_module():
     if str(_HOOKS_DIR) not in sys.path:
         sys.path.insert(0, str(_HOOKS_DIR))
@@ -43,7 +87,7 @@ import _dispatch_lib  # noqa: E402 - needs _load_module()'s sys.path insert firs
 
 def _git(cwd, *args):
     subprocess.run(
-        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
 
 
@@ -320,10 +364,7 @@ def test_is_inside_survives_a_symlinked_spelling_on_every_platform(worktree_pair
     """
     _primary, linked = worktree_pair
     alias = tmp_path / "alias"
-    try:
-        os.symlink(str(linked), str(alias), target_is_directory=True)
-    except (OSError, NotImplementedError, AttributeError):
-        pytest.skip("cannot create symlinks here (Windows without privilege)")
+    make_dir_alias(alias, Path(linked))
 
     root = os.path.realpath(str(linked))
     assert hook._is_inside(str(alias / "seed.txt"), root), (

@@ -96,7 +96,7 @@ def harness(tmp_path: Path):
             argv_log.unlink()
         proc = subprocess.run(
             [_BASH, str(repo / "claw"), *args],
-            capture_output=True, text=True, env=env, cwd=str(tmp_path),
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, cwd=str(tmp_path),
         )
         launched = json.loads(argv_log.read_text(encoding="utf-8")) if argv_log.exists() else None
         return proc.returncode, proc.stdout, proc.stderr, launched
@@ -282,9 +282,9 @@ def cmd_harness(tmp_path: Path):
     primary = tmp_path / "primary"
     primary.mkdir()
     g = lambda *a: subprocess.run(["git", "-C", str(primary), *a], check=True,
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, encoding="utf-8", errors="replace")
     subprocess.run(["git", "init", "-q", "-b", "main", str(primary)], check=True,
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
     g("config", "user.email", "a@b.c"); g("config", "user.name", "a")
     (primary / "seed.txt").write_text("s\n", encoding="utf-8")
     g("add", "-A"); g("commit", "-q", "-m", "s")
@@ -321,7 +321,7 @@ def cmd_harness(tmp_path: Path):
             argv_log.unlink()
         proc = subprocess.run(
             ["cmd", "/c", str(primary / "claw.cmd"), *args],
-            capture_output=True, text=True, env=env, cwd=str(tmp_path),
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, cwd=str(tmp_path),
         )
         launched = argv_log.read_text(encoding="utf-8").strip() if argv_log.exists() else None
         return proc.returncode, proc.stdout, proc.stderr, launched

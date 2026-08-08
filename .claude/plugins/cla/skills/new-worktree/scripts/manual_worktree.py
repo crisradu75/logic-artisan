@@ -69,7 +69,7 @@ def run_git(repo: Path, args: list[str], check: bool = True) -> subprocess.Compl
     try:
         proc = subprocess.run(
             ["git", "-C", str(repo), *args],
-            capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT_SECONDS,
         )
     except OSError as exc:
         # Every OSError, not just FileNotFoundError: a PermissionError or

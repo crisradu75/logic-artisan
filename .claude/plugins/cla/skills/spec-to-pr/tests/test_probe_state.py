@@ -46,7 +46,7 @@ def _stub_run(returns: dict[tuple[str, ...], subprocess.CompletedProcess[str]]):
         if key in returns:
             return returns[key]
         # Default to subprocess.run for git commands
-        return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
+        return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True, encoding="utf-8", errors="replace")
     return fake
 
 

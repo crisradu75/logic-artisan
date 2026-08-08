@@ -18,9 +18,53 @@ import pytest
 import manual_worktree as mw
 
 
+
+def make_dir_alias(link: Path, real: Path) -> None:
+    """Create `link` -> `real` as a directory alias, or skip if neither works.
+
+    A real symlink where permitted, else an NTFS junction (`mklink /J`), which
+    needs no elevated privileges on Windows -- unlike a symlink, which raises
+    WinError 1314 for every unprivileged account. Without the fallback these
+    tests skipped on the ONE platform whose path handling they exist to check,
+    while the suite still reported green.
+
+    `os.path.realpath` resolves a junction exactly like a symlink, and every
+    caller here goes through `realpath`, so the substitution is exact.
+    (`os.path.islink()` is False for a junction -- irrelevant here, and exactly
+    why `block-unsafe-recursive-delete` does its own reparse-point check rather
+    than trusting `islink`.)
+    """
+    try:
+        link.symlink_to(real, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError, AttributeError):
+        pass
+    if os.name != "nt":
+        # The junction fallback is Windows-only. Without this gate, ANY
+        # non-privilege symlink failure on Linux/macOS -- FileExistsError, an
+        # overlayfs or SMB mount that disallows symlinks -- spawned `cmd`, which
+        # does not exist there, and `FileNotFoundError` propagated: the test
+        # ERRORED where it previously skipped. These files are synced core, so
+        # every POSIX consumer would have inherited that.
+        pytest.skip("symlink creation not permitted, and junctions are Windows-only")
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(real)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result.returncode != 0:
+        pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
+    if not link.exists():
+        # `mklink /J` reports success against a MISSING target: rc 0, "Junction
+        # created for ...", and the link resolves nowhere. Without this the
+        # helper returns normally having created nothing usable, and the caller
+        # asserts against an alias that does not resolve -- a test that passes
+        # for the wrong reason, which is the failure shape this helper was
+        # written to remove.
+        pytest.skip("directory alias created but does not resolve")
+
 def _git(cwd, *args):
     subprocess.run(
-        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
 
 
@@ -88,10 +132,7 @@ def test_a_symlinked_repo_spelling_still_yields_the_canonical_worktree_path(repo
     """Runs on every platform, unlike the case-only tests, so the canonicalisation
     is pinned in CI rather than only on a Windows developer machine."""
     alias = tmp_path / "alias"
-    try:
-        os.symlink(str(repo), str(alias), target_is_directory=True)
-    except (OSError, NotImplementedError, AttributeError):
-        pytest.skip("cannot create symlinks here (Windows without privilege)")
+    make_dir_alias(alias, Path(repo))
 
     result = mw.create_worktree(alias, "delta", "origin/main")
     assert result["worktree_path"] == os.path.realpath(
@@ -216,10 +257,7 @@ def test_a_symlinked_path_is_reported_as_indirection_not_as_casing(tmp_path):
     real = tmp_path / "real"
     real.mkdir()
     alias = tmp_path / "alias"
-    try:
-        os.symlink(str(real), str(alias), target_is_directory=True)
-    except (OSError, NotImplementedError, AttributeError):
-        pytest.skip("cannot create symlinks here (Windows without privilege)")
+    make_dir_alias(alias, Path(real))
 
     m = mw.casing_mismatch(alias)
     assert m is not None and m["kind"] == "path_indirection"
@@ -336,7 +374,7 @@ def test_the_worktree_actually_lands_on_the_requested_base(repo):
     commit. Advancing main first makes the two distinguishable."""
     fetched = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "origin/main"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
     ).stdout.strip()
     (repo / "moved-on.txt").write_text("later\n", encoding="utf-8")
     _git(repo, "add", "-A")
@@ -345,7 +383,7 @@ def test_the_worktree_actually_lands_on_the_requested_base(repo):
     result = mw.create_worktree(repo, "based", "origin/main")
     head = subprocess.run(
         ["git", "-C", result["worktree_path"], "rev-parse", "HEAD"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
     ).stdout.strip()
     assert head == fetched, "the worktree must branch from the requested base"
 

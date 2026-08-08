@@ -136,8 +136,9 @@ Do not add a workflow. If a change seems to need one, raise it rather than addin
 Two consequences worth holding, since nothing else will catch them:
 
 - **Platform-divergent code is only ever exercised on the machine you are on.** Several hooks shell
-  out to real `git` and branch on Windows vs POSIX, and three symlink tests skip on Windows
-  outright (see `TODO.md`). A green local run is evidence about that machine, not about the others.
+  out to real `git` and branch on Windows vs POSIX, and the three directory-alias tests take a
+  junction path on Windows and a symlink path everywhere else (`make_dir_alias`). A green local
+  run is evidence about that machine, not about the others.
 - **Merging is unguarded.** Nothing blocks a merge on tests, so the local run before opening a PR
   is the only gate that exists.
 
