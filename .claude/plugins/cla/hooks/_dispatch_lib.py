@@ -18,13 +18,23 @@ A hook that crashes (fails to load, or raises out of `main()`) is still
 treated as fail-open — a guard must never wedge the workflow — but the
 dispatcher must not go silent about it and must not let one broken sibling
 take out the ones after it in the list. `run_hook_file()` isolates a load
-failure to just that one hook, and callers should track `HookResult.errored`
-across a run and exit non-zero-non-2 if any hook errored, so Claude Code's
-`<hook> hook error` transcript notice fires and the full diagnostic reaches
-the debug log — exit 0 keeps stderr out of the transcript entirely (it reaches
-the debug log only, where Claude never sees it) per the documented PreToolUse
-hook contract, which would otherwise make a crash in a hook like
-guard-worktree-isolation.py or block-worktree-path-escape.py invisible.
+failure to just that one hook, and callers MUST track `HookResult.errored`
+across a run and surface it.
+
+This docstring used to say callers should "exit non-zero-non-2" to fire Claude
+Code's `<hook> hook error` transcript notice. Neither dispatcher does that, and
+neither should: a non-zero exit makes Claude Code discard stdout, which
+DOWNGRADES a pending `ask` to an allow and surfaces only the first line of
+merged multi-hook stderr. The contract was stated one way and implemented
+another, and the implementation was right.
+
+What they do instead, and what a caller must match: exit 0, report an errored
+ADVISORY hook as `additionalContext`, and escalate an errored ENFORCING hook to
+`permissionDecision: "ask"`. That distinction is the load-bearing part — an
+enforcing guard that failed to load did not run its check, and from the outside
+that is indistinguishable from one that ran and allowed. stderr alone cannot
+carry it, because stderr from an exit-0 hook reaches the debug log only, where
+Claude never sees it.
 """
 
 from __future__ import annotations

@@ -67,7 +67,18 @@ git update-index --chmod=+x claw   # and cla, if new
 
 A repo that already tracks the file keeps its existing mode when the content is overwritten, so this bites once and never again. It is documented rather than solved because reading and writing a git index mode from `apply.py` would mean shelling out to git in both the source and the destination — real machinery in the highest-blast-radius part of the sync, for a one-time step.
 
-Line endings need no manual step: this repo's `.gitattributes` pins `cla`/`claw` to LF (a CRLF shebang is fatal on macOS/Linux — it fails with `bad interpreter: ^M`) and the `.cmd` twins to CRLF.
+**Line endings need a second one-time step, in the DESTINATION.** Earlier wording here claimed they needed none, because "this repo's `.gitattributes`" pins them — true while you are reading it in the source, and false the moment it syncs, since "this repo" is then the consumer. One consuming repo had no `.gitattributes` at all: `git check-attr text eol` reported `unspecified` for all four launchers, `core.autocrlf=true` governed instead, and **both POSIX scripts were checked out CRLF-only** — exactly the CRLF-shebang shape the claim said was prevented. On macOS/Linux `#!/usr/bin/env bash\r` fails as `env: 'bash\r': No such file or directory`.
+
+A repo receiving the launchers needs:
+
+```gitattributes
+cla        text eol=lf
+claw       text eol=lf
+cla.cmd    text eol=crlf
+claw.cmd   text eol=crlf
+```
+
+`git add --renormalize` alone will not apply it: the index blobs are already LF, so it is a no-op and git's stat cache leaves the working copy untouched. Force the rewrite with `rm cla && git checkout -- cla` (and the same for `claw`).
 
 ## When NOT to use (full detail)
 

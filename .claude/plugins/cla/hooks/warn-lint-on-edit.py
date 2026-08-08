@@ -3,6 +3,24 @@
 on JUST that one file and feed any violations back to Claude as non-blocking
 context.
 
+SCOPE, stated plainly because the name overstates it: this is an OXLINT hook,
+not a lint hook. `LINTABLE_EXTS` is JS/TS-only and the binary is resolved from
+`node_modules/.bin`, so in a Python (or any non-JS) repo it returns 0 on the
+first branch — a permanent no-op that costs an interpreter probe and a process
+spawn on EVERY Edit/Write, while giving the appearance of edit-time lint
+coverage that does not exist. That gap is invisible from the hook's own output,
+which is exactly the failure shape this plugin's guards keep hitting.
+
+The "Post-Tool Amnesia" rationale below is stack-neutral and applies verbatim to
+`ruff`, whose `check --output-format json` is a near drop-in: same
+JSON-diagnostics shape, same one-file invocation. Generalizing it means making
+the (extensions, binary, argv, output-parser) tuple data-driven from a
+`*.local.md` overlay beside this file — the marker `warn-smoke-test-drift.py`
+and `discover.py` already use and never sync. Deliberately NOT done here: that
+is a feature addition with a new overlay format to design, not a correction, and
+this hook degrades cleanly rather than reporting something false. Recorded so
+the limitation is a known one rather than a surprise.
+
 Rationale ("Post-Tool Amnesia"): without an immediate lint signal at edit time,
 a syntax/lint error introduced by a Write only surfaces much later — at
 spec-to-pr's Review phase or a manual `pnpm run lint` — after slop has compounded

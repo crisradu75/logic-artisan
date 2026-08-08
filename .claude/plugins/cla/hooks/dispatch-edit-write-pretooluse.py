@@ -124,6 +124,7 @@ def main() -> int:
     contexts: list[str] = []
     skipped: list[str] = []
     errored = False
+    errored_enforcing: list[str] = []
 
     for filename in _HOOK_FILES:
         cost = HOOK_WORST_CASE_SECONDS.get(filename, 0.0)
@@ -134,6 +135,12 @@ def main() -> int:
         argv = ["--heartbeat"] if filename == "guard-worktree-isolation.py" else None
         result = run_hook_file(filename, stdin_text, argv=argv)
         errored = errored or result.errored
+        # An ENFORCING hook that failed to load did not run its check, and from
+        # the outside that is indistinguishable from one that ran and allowed.
+        # Tracked separately from `errored` so the escalation below fires only
+        # for guards whose absence actually matters.
+        if result.errored and filename not in _ADVISORY_HOOKS:
+            errored_enforcing.append(filename)
 
         if result.code == 2:
             # The skip notice DOES belong here, and only here. On exit 2 stderr is
@@ -166,6 +173,23 @@ def main() -> int:
             "[dispatch] one or more hooks failed to load or crashed on this "
             "call, so their checks did not run. Re-run with `claude --debug` "
             "for the traceback."
+        )
+    if errored_enforcing:
+        # Escalated to `ask`, not left as a warning. `_dispatch_lib`'s docstring
+        # asks callers to exit non-zero here; this dispatcher deliberately does
+        # not, because a non-zero exit makes Claude Code discard stdout — which
+        # would downgrade a pending `ask` to an allow and surface only the first
+        # line of merged stderr. `ask` is the one channel that reaches the user,
+        # cannot be ignored, and costs nothing when the call was legitimate.
+        #
+        # Advisory hooks are deliberately excluded: losing a warning is the
+        # acceptable half of the trade this dispatcher already makes for budget.
+        asks.append(
+            "an ENFORCING guard could not run on this call — "
+            + ", ".join(sorted(errored_enforcing))
+            + ". Its check did NOT happen, so this call is unguarded rather than "
+            "approved. Confirm only if you know the action is safe; re-run with "
+            "`claude --debug` for the traceback."
         )
 
     # stderr here reaches the DEBUG LOG ONLY: per the hook contract, stderr from

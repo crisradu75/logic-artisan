@@ -73,9 +73,25 @@ SCAN_DIRS = (
 # Two things a directory scan gives for free that this needs stated:
 #   - `_detect_deletions` reuses the same walker, so a launcher removed upstream
 #     surfaces as `deleted-in-source` rather than silently persisting.
-#   - Line endings are already handled: this repo's `.gitattributes` pins `claw`
-#     to LF (a CRLF shebang is fatal on macOS/Linux) and the `.cmd` twins to
-#     CRLF.
+#   - Line endings need a `.gitattributes` in the DESTINATION, and this comment
+#     used to assert one existed ("this repo's `.gitattributes` pins `claw` to
+#     LF"). That reads true in the source and becomes FALSE the moment it syncs:
+#     "this repo" is then the consumer, which may have none. One consuming repo
+#     had exactly that — `git check-attr` reported `unspecified` for all four
+#     launchers, `core.autocrlf=true` governed instead, and BOTH POSIX scripts
+#     were checked out CRLF-only. That is precisely the CRLF-shebang shape the
+#     claim said was prevented; on macOS/Linux `#!/usr/bin/env bash\r` fails as
+#     `env: 'bash\r': No such file or directory`. So this is a REQUIREMENT on the
+#     destination, not a property of the sync:
+#
+#         cla        text eol=lf
+#         claw       text eol=lf
+#         cla.cmd    text eol=crlf
+#         claw.cmd   text eol=crlf
+#
+#     `git add --renormalize` alone is not enough to apply it — the index blobs
+#     are already LF, so it is a no-op and git's stat cache leaves the working
+#     copy untouched. `rm cla && git checkout -- cla` actually rewrites it.
 #
 # The one thing it does NOT give: `apply.py` writes content, not file MODE, so a
 # repo receiving `claw` for the FIRST time gets it non-executable and needs one
