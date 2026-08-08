@@ -43,14 +43,14 @@ def _run(
     env.update(extra_env or {})
     return subprocess.run(
         [sys.executable, str(script)],
-        input=json.dumps(payload), capture_output=True, text=True,
+        input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace",
         cwd=str(cwd) if cwd else None,
         env=env,
     )
 
 
 def _git(cwd, *args):
-    subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def _hooks_copy(tmp_path: Path) -> Path:
@@ -116,7 +116,7 @@ def test_bash_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     r = subprocess.run(
         [sys.executable, str(hooks_dir / "dispatch-bash-pretooluse.py")],
         input=json.dumps({"tool_input": {"command": "git push origin main"}, "cwd": str(tmp_path)}),
-        capture_output=True, text=True, cwd=str(tmp_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path),
     )
     assert r.returncode == 2
     assert "block-direct-push-to-main.py" in r.stderr  # the later hook still fired and blocked
@@ -139,7 +139,7 @@ def test_bash_dispatch_reports_a_crashed_hook_as_context(tmp_path):
     r = subprocess.run(
         [sys.executable, str(hooks_dir / "dispatch-bash-pretooluse.py")],
         input=json.dumps({"tool_input": {"command": "ls -la"}, "cwd": str(tmp_path)}),
-        capture_output=True, text=True, cwd=str(tmp_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path),
     )
     assert r.returncode == 0
     context = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
@@ -169,7 +169,7 @@ def test_edit_write_dispatch_blocks_path_escape(tmp_path):
     r = subprocess.run(
         [sys.executable, str(_EDIT_WRITE_DISPATCH)],
         input=json.dumps({"tool_input": {"file_path": str(escape_target), "content": "x"}}),
-        capture_output=True, text=True, cwd=str(wt),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wt),
         env={**os.environ, "ALLOW_WORKTREE_PATH_ESCAPE": ""},
     )
     assert r.returncode == 2
@@ -262,7 +262,7 @@ def test_edit_write_dispatch_does_not_drop_earlier_warning_when_later_hook_block
     r = subprocess.run(
         [sys.executable, str(hooks_dir / "dispatch-edit-write-pretooluse.py")],
         input=json.dumps(payload),
-        capture_output=True, text=True, cwd=str(wt),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wt),
         env={**os.environ, "ALLOW_WORKTREE_PATH_ESCAPE": "", "CLAUDE_PROJECT_DIR": str(primary)},
     )
     assert r.returncode == 2
@@ -278,7 +278,7 @@ def test_edit_write_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     r = subprocess.run(
         [sys.executable, str(hooks_dir / "dispatch-edit-write-pretooluse.py")],
         input=json.dumps({"tool_input": {"file_path": str(target), "content": "x = 1\n"}}),
-        capture_output=True, text=True, cwd=str(tmp_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path),
     )
     # Nothing else blocks this edit, but the load failure must still be visible —
     # as additionalContext, the only non-blocking channel Claude reads.

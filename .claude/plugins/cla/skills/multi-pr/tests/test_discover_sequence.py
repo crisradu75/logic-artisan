@@ -14,7 +14,7 @@ _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "discover_sequence.p
 
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, str(_SCRIPT), *args], capture_output=True, text=True)
+    return subprocess.run([sys.executable, str(_SCRIPT), *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def test_no_changes_dir_returns_empty(tmp_path: Path):

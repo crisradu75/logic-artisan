@@ -35,7 +35,7 @@ def _run(payload: dict, cwd: Path, env_extra: dict | None = None) -> subprocess.
         env.update(env_extra)
     return subprocess.run(
         [sys.executable, str(_HOOK)],
-        input=json.dumps(payload), capture_output=True, text=True,
+        input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8", errors="replace",
         cwd=str(cwd), env=env,
     )
 
@@ -121,7 +121,7 @@ def _make_link(link: Path, real: Path) -> None:
         pass
     result = subprocess.run(
         ["cmd", "/c", "mklink", "/J", str(link), str(real)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if result.returncode != 0:
         pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
@@ -210,6 +210,6 @@ def test_escape_hatch_allows_worktree_delete(tmp_path):
 def test_malformed_stdin_does_not_block(tmp_path):
     r = subprocess.run(
         [sys.executable, str(_HOOK)],
-        input="not json", capture_output=True, text=True, cwd=str(tmp_path),
+        input="not json", capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path),
     )
     assert r.returncode == 0

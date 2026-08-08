@@ -314,7 +314,7 @@ def run_git(cwd: str, args: list[str]) -> subprocess.CompletedProcess | None:
     try:
         return subprocess.run(
             ["git", "-C", cwd, *args],
-            capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -498,7 +498,7 @@ def default_base_branch(cwd: str | None = None) -> str:
         try:
             r = subprocess.run(
                 ["git", *(["-C", cwd] if cwd else []), *args],
-                capture_output=True, text=True, timeout=2,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=2,
             )
         except (OSError, subprocess.SubprocessError):
             return None

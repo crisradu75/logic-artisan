@@ -18,7 +18,7 @@ def _write_log(path: Path, records: list[dict]) -> None:
 def _run(log: Path, limit: int = 10) -> tuple[dict, str]:
     r = subprocess.run(
         [sys.executable, str(SCRIPT), "--log", str(log), "--limit", str(limit)],
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout), r.stderr
@@ -245,7 +245,7 @@ def test_missing_ledger_warns_and_reports_zero(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setenv("CLAUDE_RETRO_DIR", str(tmp_path))
     r = subprocess.run(
         [sys.executable, str(SCRIPT)],  # no --log → default resolution
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
         env={**__import__("os").environ, "CLAUDE_RETRO_DIR": str(tmp_path)},
     )
     assert r.returncode == 0

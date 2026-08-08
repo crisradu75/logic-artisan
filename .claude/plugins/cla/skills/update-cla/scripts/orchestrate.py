@@ -71,7 +71,7 @@ def _source_commit(source_repo: Path) -> Optional[str]:
     try:
         r = subprocess.run(
             ["git", "-C", str(source_repo), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -84,7 +84,7 @@ def _source_commit(source_repo: Path) -> Optional[str]:
     try:
         status = subprocess.run(
             ["git", "-C", str(source_repo), "status", "--porcelain"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         # Cannot tell clean from dirty. Say so rather than implying clean.

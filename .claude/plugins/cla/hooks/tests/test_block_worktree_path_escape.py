@@ -43,7 +43,7 @@ import _dispatch_lib  # noqa: E402 - needs _load_module()'s sys.path insert firs
 
 def _git(cwd, *args):
     subprocess.run(
-        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
 
 

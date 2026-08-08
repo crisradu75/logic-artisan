@@ -117,7 +117,7 @@ def _run_oxlint(oxlint_bin: Path, package_dir: Path, file_path: Path) -> list[di
             [str(oxlint_bin), "-f", "json", rel],
             cwd=str(package_dir),
             capture_output=True,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             timeout=_LINT_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.SubprocessError):

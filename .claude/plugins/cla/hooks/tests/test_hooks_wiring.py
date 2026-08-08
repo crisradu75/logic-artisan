@@ -507,7 +507,7 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
     launchers, which do clear it."""
     env = {"PATH": "/usr/bin", "PYEXE": "/definitely/not/a/python"}
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
-                capture_output=True, text=True, env=env)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     assert "SELECTED:/definitely/not/a/python" not in r.stdout
     assert r.returncode == 1, "must refuse, and non-zero so the notice reaches the transcript"
     assert "NOT running" in r.stderr
@@ -525,7 +525,7 @@ def test_probe_rejects_an_interpreter_that_exits_zero_for_everything(tmp_path):
     stub.chmod(0o755)
     env = {"PATH": f"{stub_dir}:/usr/bin"}
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
-                capture_output=True, text=True, env=env)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     assert "SELECTED:" not in r.stdout or "SELECTED:\n" in r.stdout
     assert r.returncode == 1
 
@@ -535,7 +535,7 @@ def test_probe_still_selects_a_working_interpreter():
     """Non-vacuity partner: the two tests above pass trivially if the probe
     rejects everything."""
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
-                capture_output=True, text=True)
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert r.returncode == 0
     assert re.search(r"SELECTED:\S+", r.stdout), r.stdout
 

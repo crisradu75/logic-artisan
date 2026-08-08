@@ -20,7 +20,7 @@ import manual_worktree as mw
 
 def _git(cwd, *args):
     subprocess.run(
-        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
 
 
@@ -336,7 +336,7 @@ def test_the_worktree_actually_lands_on_the_requested_base(repo):
     commit. Advancing main first makes the two distinguishable."""
     fetched = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "origin/main"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
     ).stdout.strip()
     (repo / "moved-on.txt").write_text("later\n", encoding="utf-8")
     _git(repo, "add", "-A")
@@ -345,7 +345,7 @@ def test_the_worktree_actually_lands_on_the_requested_base(repo):
     result = mw.create_worktree(repo, "based", "origin/main")
     head = subprocess.run(
         ["git", "-C", result["worktree_path"], "rev-parse", "HEAD"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
     ).stdout.strip()
     assert head == fetched, "the worktree must branch from the requested base"
 

@@ -185,7 +185,7 @@ def test_other_live_sessions_counts_and_prunes(tmp_path):
 
 def _git(cwd, *args):
     subprocess.run(["git", "-C", str(cwd), *args], check=True,
-                   capture_output=True, text=True)
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 @pytest.fixture
@@ -212,14 +212,14 @@ def _invoke(cwd, command, session_id="s1", env_extra=None, args=None):
         env.update(env_extra)
     return subprocess.run(
         [sys.executable, str(_HOOK), *(args or [])],
-        input=payload, capture_output=True, text=True, env=env,
+        input=payload, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
     )
 
 
 def _guard_dir_path(repo):
     common = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--git-common-dir"],
-        capture_output=True, text=True, check=True).stdout.strip()
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     common = Path(repo) / common if not os.path.isabs(common) else Path(common)
     return common / ".claude-worktree-guard"
 
@@ -227,7 +227,7 @@ def _guard_dir_path(repo):
 def _plant_other_session(repo, name="other"):
     common = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "--git-common-dir"],
-        capture_output=True, text=True, check=True).stdout.strip()
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     common = Path(repo) / common if not os.path.isabs(common) else Path(common)
     gdir = common / ".claude-worktree-guard"
     gdir.mkdir(parents=True, exist_ok=True)
@@ -305,7 +305,7 @@ def test_contended_blocks_switch_dash(repo):
 def test_contended_blocks_checkout_sha(repo):
     # Detached-HEAD checkout of a commit-ish moves the shared working tree.
     sha = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
-                         capture_output=True, text=True, check=True).stdout.strip()
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     _plant_other_session(repo)
     r = _invoke(repo, f"git checkout {sha}")
     assert r.returncode == 2
@@ -335,7 +335,7 @@ def test_malformed_stdin_fails_open(repo):
     # The documented fail-open safety property: unparseable input never blocks.
     r = subprocess.run(
         [sys.executable, str(_HOOK)],
-        input="not json", capture_output=True, text=True,
+        input="not json", capture_output=True, text=True, encoding="utf-8", errors="replace",
         env={**os.environ, "ALLOW_SHARED_CLONE_MUTATION": ""},
     )
     assert r.returncode == 0
