@@ -277,8 +277,11 @@ def cmd_apply(run_id: str, mode: str, local_arg: Optional[str]) -> int:
 
     # An adaptations.json from a DIFFERENT run applies wholesale against this
     # run's divergences: wrong content, wrong provenance, no signal at all.
+    # Absent is refused too, not just mismatched. A missing top-level key is
+    # the same class of Phase-2 slip as a dropped file entry, and letting it
+    # through means the run_id check silently does nothing.
     file_run_id = adaptations_data.get("run_id")
-    if file_run_id and file_run_id != run_id:
+    if file_run_id != run_id:
         print(
             f"error: adaptations.json is for run {file_run_id!r}, not {run_id!r}. "
             "Re-run Phase 2 for this run, or pass --run "
@@ -294,6 +297,9 @@ def cmd_apply(run_id: str, mode: str, local_arg: Optional[str]) -> int:
     # Phase 2 is done by an LLM: dropping one file from a 150-entry list is the
     # most likely mistake in the whole flow.
     discovered = {f["asset_path"] for f in divergences_data.get("files", [])}
+    # An entry counts as ACCOUNTED FOR whether it rewrites the file or marks it
+    # `keep_local` — Phase 2 must have considered every discovered file, not
+    # necessarily changed it.
     adapted_paths = {a.get("asset_path") for a in adaptations}
     not_adapted = sorted(discovered - adapted_paths)
 
@@ -337,7 +343,7 @@ def _print_worktree_summary(outcomes: list, not_adapted: list | None = None) -> 
     # that is exactly the failure class `skipped_malformed` itself was almost
     # introduced as (a new ApplyOutcome status with no bucket here prints
     # nowhere and is invisible in the count).
-    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "failure"}
+    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "skipped_kept_local", "failure"}
     unrecognized = [o for o in outcomes if o.status not in known]
 
     print()
@@ -388,7 +394,7 @@ def _print_pr_summary(outcomes: list, pr_result, not_adapted: list | None = None
     # denominator either, so the count could not reveal the gap.
     skipped_binary = [o for o in outcomes if o.status == "skipped_binary"]
     failed = [o for o in outcomes if o.status == "failure"]
-    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "failure"}
+    known = {"wrote", "skipped_dirty_worktree", "skipped_binary", "skipped_malformed", "skipped_kept_local", "failure"}
     unrecognized = [o for o in outcomes if o.status not in known]
 
     print()
@@ -428,6 +434,10 @@ def _print_pr_summary(outcomes: list, pr_result, not_adapted: list | None = None
     print(f"Branch: {pr_result.branch}")
     if pr_result.pr_url:
         print(f"PR:     {pr_result.pr_url}")
+    if not_adapted:
+        # Same rule as worktree mode. If anything, it matters MORE here: the
+        # incomplete set has already been committed and pushed.
+        return 1
     return 0
 
 

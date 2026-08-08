@@ -88,6 +88,27 @@ def _extract_context(stdout_text: str) -> str | None:
     return None
 
 
+def _ask_json(reason: str, contexts: list[str]) -> str:
+    """Serialize an `ask` decision, carrying any advisory context alongside.
+
+    This dispatcher previously had NO ask channel — only `additionalContext` —
+    so an escalation had nowhere to go even once the variable existed. The ask
+    reason is held whole and the advisory context is what shrinks under the cap,
+    matching the Bash dispatcher.
+    """
+    return fit_json_payload(
+        lambda text: {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": reason,
+                **({"additionalContext": text} if text else {}),
+            }
+        },
+        "\n\n".join(contexts),
+    )
+
+
 def _context_json(contexts: list[str]) -> str:
     """Serialize the merged additionalContext, capped as a WHOLE.
 
@@ -174,25 +195,25 @@ def main() -> int:
             "call, so their checks did not run. Re-run with `claude --debug` "
             "for the traceback."
         )
+    ask_reason = ""
     if errored_enforcing:
         # Escalated to `ask`, not left as a warning. `_dispatch_lib`'s docstring
         # asks callers to exit non-zero here; this dispatcher deliberately does
         # not, because a non-zero exit makes Claude Code discard stdout — which
-        # would downgrade a pending `ask` to an allow and surface only the first
-        # line of merged stderr. `ask` is the one channel that reaches the user,
-        # cannot be ignored, and costs nothing when the call was legitimate.
+        # would downgrade this very ask to an allow and surface only the first
+        # line of merged stderr. `ask` is the one channel that reaches the user
+        # and cannot be ignored, and it costs nothing when the edit was fine.
         #
         # Advisory hooks are deliberately excluded: losing a warning is the
         # acceptable half of the trade this dispatcher already makes for budget.
-        asks.append(
+        ask_reason = (
             "an ENFORCING guard could not run on this call — "
             + ", ".join(sorted(errored_enforcing))
-            + ". Its check did NOT happen, so this call is unguarded rather than "
-            "approved. Confirm only if you know the action is safe; re-run with "
-            "`claude --debug` for the traceback."
+            + ". Its check did NOT happen, so this write is unguarded rather "
+            "than approved. Confirm only if you know the change is safe; re-run "
+            "with `claude --debug` for the traceback."
         )
 
-    # stderr here reaches the DEBUG LOG ONLY: per the hook contract, stderr from
     # a hook that exits 0 is never shown in the transcript and Claude never sees
     # it. This write exists for `claude --debug`; everything Claude must act on
     # goes out as stdout JSON below.
@@ -205,7 +226,9 @@ def main() -> int:
     # just the FIRST LINE of stderr, so it reports less, not more — the same
     # reasoning as the Bash dispatcher.
     merged = contexts + warnings
-    if merged:
+    if ask_reason:
+        print(_ask_json(ask_reason, merged))
+    elif merged:
         print(_context_json(merged))
     return 0
 

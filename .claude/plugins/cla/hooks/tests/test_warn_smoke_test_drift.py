@@ -275,18 +275,18 @@ def test_has_text_locators_are_harvested_including_apostrophes(
     repo = tmp_path / "repo"
     (repo / "src" / "components").mkdir(parents=True)
     (repo / "test-app.mjs").write_text(
-        "page.click('button:has-text(\"What\u2019s included\")')\n"
+        "page.click(`button:has-text(\"What's included\")`)\n"
         "page.click(\"button:has-text('Next step')\")\n",
         encoding="utf-8",
     )
     f = repo / "src" / "components" / "Panel.tsx"
-    f.write_text("<b>What\u2019s included</b><i>Next step</i>", encoding="utf-8")
+    f.write_text("<b>What's included</b><i>Next step</i>", encoding="utf-8")
 
     rc, out = _run(
         monkeypatch,
         {
             "file_path": str(f),
-            "old_string": "What\u2019s included",
+            "old_string": "What's included",
             "new_string": "What is included",
         },
         cwd=repo,
@@ -295,7 +295,7 @@ def test_has_text_locators_are_harvested_including_apostrophes(
     # Parse rather than substring-match: the hook emits JSON, which escapes the
     # curly apostrophe as \u2019, so a raw-text search silently never matches.
     ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert "What\u2019s included" in ctx, "apostrophe locator was dropped"
+    assert "What's included" in ctx, "apostrophe locator was dropped"
 
 
 def test_an_unreadable_smoke_test_is_announced(

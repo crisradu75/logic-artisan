@@ -395,3 +395,25 @@ def test_the_wiring_matcher_is_write_only():
             assert group["matcher"] == "Write"
             return
     pytest.fail("warn-wholesale-rewrite.py is not wired on PostToolUse")
+
+
+def test_the_worst_case_subprocess_budget_fits_the_handler_timeout():
+    """This hook is wired DIRECTLY on PostToolUse, so it is excluded from
+    `HOOK_WORST_CASE_SECONDS` by design (that table is asserted to hold no
+    entries for undispatched hooks). Nothing else can catch a drift here.
+
+    The outside-project path chains three subprocesses — `_repo_root_for`, the
+    `git show`, then `_head_exists` — so at 5s each the worst case was 15s
+    against a handler timeout of exactly 15, and a wedged git would kill it."""
+    config = json.loads((HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
+    timeout = next(
+        h["timeout"]
+        for group in config["hooks"]["PostToolUse"]
+        for h in group["hooks"]
+        if "warn-wholesale-rewrite.py" in h["command"]
+    )
+    worst_case = 3 * hook._GIT_TIMEOUT_SECONDS
+    assert worst_case < timeout, (
+        f"3 chained git calls at {hook._GIT_TIMEOUT_SECONDS}s = {worst_case}s, "
+        f"against a {timeout}s handler timeout"
+    )

@@ -585,3 +585,34 @@ def test_no_errored_hook_produces_no_prompt(monkeypatch):
     )
     assert rc == 0
     assert nested.get("permissionDecision") is None
+
+
+def test_the_edit_write_dispatcher_also_escalates_without_crashing(monkeypatch):
+    """CRITICAL regression. The escalation was applied to BOTH dispatchers, but
+    the edit/write one has no `asks` variable — it died with
+    `NameError: name 'asks' is not defined` on EVERY Edit/Write whenever an
+    enforcing hook errored, discarding every other hook's output on that call.
+    Strictly worse than the silent-allow it replaced.
+
+    It also had no ask CHANNEL at all (`_context_json` emits only
+    `additionalContext`), so even a defined variable would have been dropped.
+    Both new escalation tests loaded only the Bash dispatcher, so nothing saw it."""
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "block-worktree-path-escape.py",
+        {"tool_name": "Write", "tool_input": {"file_path": "x.md", "content": "y"}},
+    )
+    assert rc == 0
+    assert nested.get("permissionDecision") == "ask"
+    assert "ENFORCING" in nested.get("permissionDecisionReason", "")
+
+
+def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch):
+    """Non-vacuity partner for the dispatcher that had no coverage at all."""
+    mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
+    rc, nested = _dispatch_with_errored(
+        monkeypatch, mod, "warn-comment-dates.py",
+        {"tool_name": "Write", "tool_input": {"file_path": "x.md", "content": "y"}},
+    )
+    assert rc == 0
+    assert "permissionDecision" not in nested

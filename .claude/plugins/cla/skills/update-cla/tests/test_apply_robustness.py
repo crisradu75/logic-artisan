@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -292,3 +294,98 @@ def test_apply_pr_actually_calls_the_cleanup(monkeypatch, tmp_path):
     # on failure would delete the body file a human needs to open the PR by hand.
     after_create = src.split("gh", 1)[-1]
     assert "_cleanup_temp_dir(" in after_create
+
+
+# --------------------------------------------------------------------------- #
+# Review findings on THIS branch — every one of these was an untested fix, a
+# vacuous assertion, or a defect the fixes introduced.
+# --------------------------------------------------------------------------- #
+
+
+def test_an_atomic_write_preserves_the_destinations_mode(tmp_path):
+    """`os.replace` is rename(2): the destination inode is REPLACED by the temp
+    one, which `mkstemp` creates at 0600 — where `write_text` wrote THROUGH the
+    existing inode and kept its mode. Without preservation an atomic write
+    strips the executable bit from `cla`/`claw`, which are tracked 100755 and
+    are in SCAN_FILES: a sync touching them ships launchers that do not run.
+
+    Asserted on the raw mode rather than skipped on Windows, so the intent is
+    pinned everywhere; the meaningful comparison only happens where POSIX bits
+    exist."""
+    dst = tmp_path / "launcher"
+    dst.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    os.chmod(dst, 0o755)
+    before = stat.S_IMODE(dst.stat().st_mode)
+
+    apply_mod._write_file(tmp_path, "launcher", "#!/usr/bin/env bash\necho hi\n")
+
+    after = stat.S_IMODE(dst.stat().st_mode)
+    assert after == before, f"mode changed {before:04o} -> {after:04o}"
+
+
+def test_a_brand_new_file_still_writes_without_a_mode_to_preserve(tmp_path):
+    """Non-vacuity partner: the mode capture must not break the `new` case,
+    where there is no destination to stat."""
+    apply_mod._write_file(tmp_path, "sub/brand-new.md", "hello\n")
+    assert (tmp_path / "sub" / "brand-new.md").read_text(encoding="utf-8") == "hello\n"
+
+
+def test_a_stale_run_id_is_refused_and_a_missing_one_too(tmp_path, capsys):
+    """Untested before: the mutation `if False:` survived the whole file. A
+    missing top-level key is the same class of Phase-2 slip as a dropped entry,
+    so absent is refused too rather than falsy-gated through."""
+    for file_run_id in ("20990101-000000", None):
+        divergences = {"run_id": "R", "source": {"name": "s", "commit": None},
+                       "local": {"path": str(tmp_path)}, "files": []}
+        adaptations = {"adaptations": [{"asset_path": "a.md", "adapted_content": "x"}]}
+        if file_run_id:
+            adaptations["run_id"] = file_run_id
+        state = tmp_path / "temp" / "sync-state" / "R"
+        state.mkdir(parents=True, exist_ok=True)
+        (state / "divergences.json").write_text(json.dumps(divergences), encoding="utf-8")
+        (state / "adaptations.json").write_text(json.dumps(adaptations), encoding="utf-8")
+        rc = orch_mod.cmd_apply("R", "worktree", str(tmp_path))
+        assert rc == 2, f"run_id={file_run_id!r} must be refused with exit 2"
+
+
+def test_a_keep_local_entry_accounts_for_a_file_without_rewriting_it(tmp_path):
+    """`phases.md` tells Phase 2 to KEEP a `local-advanced` file — which an LLM
+    satisfies by omitting the entry, and the completeness check then failed the
+    run. An explicit marker accounts for the file without touching it."""
+    dst = tmp_path / "kept.md"
+    dst.write_text("local content\n", encoding="utf-8")
+    outcomes = apply_mod.apply_worktree(
+        tmp_path, [{"asset_path": "kept.md", "keep_local": True}], "src", None
+    )
+    assert [o.status for o in outcomes] == ["skipped_kept_local"]
+    assert dst.read_text(encoding="utf-8") == "local content\n", "must not be rewritten"
+
+
+def test_the_pr_summary_also_fails_on_not_adapted(capsys):
+    """It printed the block and then returned 0, while worktree mode returned 1.
+    If anything it matters MORE here: the incomplete set is already pushed."""
+    rc = orch_mod._print_pr_summary([_Outcome("a.md", "wrote")], _PR(), not_adapted=["b.md"])
+    assert "NOT ADAPTED" in capsys.readouterr().out
+    assert rc == 1
+
+
+def test_a_failed_rollback_is_announced(tmp_path, monkeypatch, capsys):
+    """Once `_run` stopped raising, the old `except` arm became unreachable and
+    this failure went completely silent — while orchestrate still printed
+    "(rolled back to default branch where possible)"."""
+    monkeypatch.setattr(apply_mod, "_run",
+                        lambda *a, **k: subprocess.CompletedProcess([], 1, "", "detached HEAD"))
+    apply_mod._rollback_branch(tmp_path, "main")
+    err = capsys.readouterr().err
+    assert "FAILED" in err and "STILL on the sync branch" in err
+
+
+def test_a_single_oversized_asset_is_still_bounded():
+    """The trimming loop never ran when `keep == 1`, and every path measured a
+    different string than it returned. Verified before the fix: one asset with an
+    oversized summary produced a 71123-char body — still past the limit, so
+    `gh pr create` still failed after the push."""
+    body = apply_mod._render_pr_body(
+        [{"asset_path": "a.md", "change_summary": "x" * 200_000}]
+    )
+    assert len(body) <= apply_mod._PR_BODY_LIMIT

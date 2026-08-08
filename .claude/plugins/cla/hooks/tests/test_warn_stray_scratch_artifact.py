@@ -8,6 +8,7 @@ monkeypatched `_porcelain_lines`.
 
 import importlib.util
 import io
+import subprocess
 from pathlib import Path
 
 _HOOK = Path(__file__).resolve().parent.parent / "warn-stray-scratch-artifact.py"
@@ -179,3 +180,24 @@ def test_stray_untracked_paths_with_multiple_matches():
 def test_ignores_backslash_separated_suspicious_path():
     lines = [r"?? scratchpad\file.txt", r'?? "AppData\dump.txt"']
     assert hook._stray_untracked_paths(lines) == []
+
+
+def test_git_state_is_resolved_in_the_sessions_cwd(monkeypatch):
+    """Untested before — reverting the `-C` survived the whole scope. A session
+    inside a worktree had its scratch artifacts checked against the primary
+    clone: reporting on files it is not touching, missing the ones it is."""
+    seen = {}
+
+    def _fake(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", _fake)
+    hook._porcelain_lines("/session/worktree")
+    assert seen["cmd"][:3] == ["git", "-C", "/session/worktree"], seen["cmd"]
+
+
+def test_a_missing_cwd_degrades_without_crashing(monkeypatch):
+    """`payload["cwd"]` can be stale, absent, or not a string."""
+    for cwd in (None, "", "/definitely/not/here"):
+        assert hook._porcelain_lines(cwd) is None or isinstance(hook._porcelain_lines(cwd), list)

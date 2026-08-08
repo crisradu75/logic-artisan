@@ -24,6 +24,7 @@ import datetime
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -44,7 +45,7 @@ class GitUnavailableError(Exception):
 @dataclass
 class ApplyOutcome:
     asset_path: str
-    status: str  # "wrote" | "skipped_dirty_worktree" | "skipped_binary" | "skipped_malformed" | "failure"
+    status: str  # "wrote" | "skipped_dirty_worktree" | "skipped_binary" | "skipped_malformed" | "skipped_kept_local" | "failure"
     reason: Optional[str]
 
 
@@ -106,11 +107,34 @@ def _write_file(local_repo: Path, asset_path: str, content: str) -> None:
     """
     dst = local_repo / asset_path
     dst.parent.mkdir(parents=True, exist_ok=True)
+
+    # Capture the destination's mode BEFORE replacing it. `os.replace` is
+    # rename(2): the destination inode is replaced by the temp one, which
+    # `tempfile.mkstemp` creates at 0600 — where the old `write_text` wrote
+    # THROUGH the existing inode and kept its mode. Without this, an atomic
+    # write silently strips the executable bit from `cla` and `claw`, which are
+    # tracked 100755 and are in `SCAN_FILES`: a sync that touched them would
+    # produce `mode change 100755 => 100644`, `git add -A` would stage it, and
+    # the PR would ship launchers that no longer execute.
+    #
+    # Invisible on Windows, which has no POSIX mode bits — `mkstemp` reports
+    # 0666 there and a test asserting preservation passes for the wrong reason.
+    # Exactly the platform-divergence CLAUDE.md warns about.
+    try:
+        existing_mode: int | None = stat.S_IMODE(dst.stat().st_mode)
+    except OSError:
+        existing_mode = None
+
     fd, tmp_name = tempfile.mkstemp(dir=str(dst.parent), prefix=f".{dst.name}.", suffix=".tmp")
     tmp_path = Path(tmp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(content)
+        if existing_mode is not None:
+            try:
+                os.chmod(tmp_path, existing_mode)
+            except OSError:
+                pass  # best-effort: a filesystem without mode support is fine
         os.replace(tmp_path, dst)
     except BaseException:
         tmp_path.unlink(missing_ok=True)
@@ -268,7 +292,7 @@ def _write_lock(local_repo: Path, lock: dict) -> None:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(payload)
         os.replace(tmp_path, lock_path)
-    except OSError:
+    except (OSError, ValueError):
         try:
             tmp_path.unlink(missing_ok=True)
         except OSError:
@@ -321,7 +345,7 @@ def _update_lock(
                 entry["source_commit"] = source_commit
             lock[asset_path] = entry
         _write_lock(local_repo, lock)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         print(f"update-cla: failed to update sync lockfile: {exc}", file=sys.stderr)
 
 
@@ -335,6 +359,15 @@ def apply_worktree(
     written: list[tuple[str, bytes]] = []
     for a in adaptations:
         asset_path = a["asset_path"]
+        # An entry may deliberately carry NO content: Phase 2 marks a
+        # `local-advanced` file `keep_local` to say "I considered this and am
+        # keeping local", which accounts for it in the completeness check
+        # without rewriting it. Skipped here, and its lock entry is left alone
+        # — local did not change, so the recorded ancestor is still correct.
+        if a.get("keep_local") is True:
+            outcomes.append(ApplyOutcome(asset_path, "skipped_kept_local",
+                                         "kept local content (local-advanced)"))
+            continue
         adapted = a.get("adapted_content")
         if adapted is None:
             outcomes.append(ApplyOutcome(asset_path, "failure", "adapted_content is null"))
@@ -418,11 +451,23 @@ def _detect_default_branch(repo: Path) -> Optional[str]:
 
 
 def _rollback_branch(repo: Path, default_branch: str) -> None:
-    """Best-effort return to the default branch after a mid-flow PR failure."""
-    try:
-        _run(["git", "checkout", default_branch], cwd=repo)
-    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        print(f"update-cla: rollback to {default_branch} failed: {exc}", file=sys.stderr)
+    """Best-effort return to the default branch after a mid-flow PR failure.
+
+    Checks `returncode` rather than catching. Once `_run` stopped raising and
+    started returning a synthetic failure result, the old `except` arm became
+    unreachable and a failed rollback went COMPLETELY silent — while
+    `orchestrate` still printed "(rolled back to default branch where
+    possible)". The user was left checked out on the sync branch, told
+    otherwise.
+    """
+    result = _run(["git", "checkout", default_branch], cwd=repo)
+    if result.returncode != 0:
+        print(
+            f"update-cla: rollback to {default_branch} FAILED "
+            f"({result.stderr.strip() or f'rc={result.returncode}'}); "
+            "you are STILL on the sync branch",
+            file=sys.stderr,
+        )
 
 
 # GitHub rejects a pull-request body over 65536 characters. A 154-asset sync
@@ -476,13 +521,23 @@ def _render_pr_body(adaptations: list[dict]) -> str:
     while keep > 1 and len(_render(rows[:keep], [])) > _PR_BODY_BUDGET:
         keep //= 2
     hidden = len(rows) - keep
-    return _render(
+    body = _render(
         rows[:keep] + [f"| _… {hidden} more asset(s) not listed_ | |"],
         [],
         f"\n\n_({dropped} per-asset summaries and {hidden} table row(s) omitted: the full "
         f"body exceeded GitHub's {_PR_BODY_LIMIT}-character limit. See the commit for the "
         f"complete set.)_\n",
     )
+    # Final hard bound. Every path above measures a DIFFERENT string than the one
+    # it returns (the loop checks `rows[:keep]` without the extra row or note),
+    # and when `keep == 1` the loop never runs at all -- verified: a single asset
+    # with an oversized summary returned a 71123-char body, still past the limit,
+    # so `gh pr create` still failed after the push. Guarantee the invariant this
+    # function is named for rather than approximating it.
+    if len(body) > _PR_BODY_LIMIT:
+        note = "\n\n_(truncated: body exceeded GitHub's character limit.)_\n"
+        body = body[: _PR_BODY_LIMIT - len(note)] + note
+    return body
 
 
 def _cleanup_temp_dir(temp_dir: Path, *files: Path) -> None:
@@ -537,6 +592,10 @@ def apply_pr(
             return outcomes, PRResult(branch, None, f"branch creation failed: {checkout.stderr.strip()}")
 
     pushed = False
+    # Bound up-front because `_fail` closes over it and can run BEFORE the file
+    # is created — an early failure (branch creation, no files written) hit an
+    # unbound free variable and turned a clean error return into a NameError.
+    msg_file: Optional[Path] = None
 
     def _fail(reason: str) -> tuple[list[ApplyOutcome], PRResult]:
         # `_rollback_branch` returns the LOCAL checkout to the default branch. It
@@ -546,6 +605,14 @@ def apply_pr(
         # "nothing happened". The obvious response is to re-run the sync, which
         # produces a SECOND branch. So say what survived and what to do with it.
         _rollback_branch(local_repo, default)
+        # Clean the commit message, but deliberately KEEP the PR body: when
+        # the failure is `gh pr create` after a successful push, the message
+        # below tells the user to open the PR by hand with --body-file, and
+        # deleting that file would make the instruction impossible to follow.
+        # Without this the next --mode pr run still refuses to start on a
+        # dirty tree, which is the symptom cleanup was added to fix -- and the
+        # failure path is the MORE likely one to leave debris.
+        _cleanup_temp_dir(temp_dir, *([msg_file] if msg_file else []))
         detail = reason
         if pushed:
             detail = (
@@ -553,7 +620,8 @@ def apply_pr(
                 f"remote — the local checkout was rolled back, the remote was not. "
                 f"Open the PR by hand rather than re-running (a re-run creates a "
                 f"second branch):\n"
-                f"  gh pr create --base {default} --head {branch} --title <title> --body-file <file>"
+                f"  gh pr create --base {default} --head {branch} --title <title> "
+                f"--body-file {temp_dir / 'pr-body.md'}"
             )
         return outcomes, PRResult(branch, None, detail)
 
@@ -561,6 +629,15 @@ def apply_pr(
     written_bytes: list[tuple[str, bytes]] = []
     for a in adaptations:
         asset_path = a["asset_path"]
+        # An entry may deliberately carry NO content: Phase 2 marks a
+        # `local-advanced` file `keep_local` to say "I considered this and am
+        # keeping local", which accounts for it in the completeness check
+        # without rewriting it. Skipped here, and its lock entry is left alone
+        # — local did not change, so the recorded ancestor is still correct.
+        if a.get("keep_local") is True:
+            outcomes.append(ApplyOutcome(asset_path, "skipped_kept_local",
+                                         "kept local content (local-advanced)"))
+            continue
         adapted = a.get("adapted_content")
         if adapted is None:
             outcomes.append(ApplyOutcome(asset_path, "failure", "adapted_content is null"))

@@ -97,7 +97,9 @@ shape arriving through the same file.
 
 ## Output
 
-Append one entry per file to `adaptations.json`:
+Append one entry per file to `adaptations.json` — **every file in `divergences.json`'s `files[]`, without exception**. A file you are deliberately NOT rewriting (a `local-advanced` you are keeping) still needs an entry: give it `"keep_local": true` and omit `adapted_content`. `apply` diffs the two lists and reports anything discovered-but-absent under `NOT ADAPTED`, then exits 1 — because a silently dropped entry is written nowhere, surfaces nowhere, and leaves the file at its pre-sync content.
+
+Entry shape:
 
 ```json
 {

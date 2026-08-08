@@ -60,7 +60,18 @@ KEEP_RATIO = 0.85
 # floor costs no real signal and removes the whole small-file noise band.
 MIN_DROPPED_WORDS = 80
 
-_GIT_TIMEOUT_SECONDS = 5
+# 3s, matching `_dispatch_lib.GIT_TIMEOUT_SECONDS`, not 5.
+#
+# The outside-project path now chains THREE subprocesses — `_repo_root_for`,
+# then the `git show`, then `_head_exists` — so at 5s each the worst case was
+# 15s against a hooks.json PostToolUse timeout of exactly 15. A wedged git would
+# kill the handler, which is the "silently stopped guarding" shape this hook
+# exists to catch. At 3s the worst case is 9s, inside the budget.
+#
+# Not covered by `HOOK_WORST_CASE_SECONDS`: that table is asserted to contain no
+# entries for undispatched hooks, and this one is wired directly on PostToolUse.
+# So the bound has to be right here rather than caught by the wiring test.
+_GIT_TIMEOUT_SECONDS = 3
 
 
 def _word_count(text: str) -> int:
