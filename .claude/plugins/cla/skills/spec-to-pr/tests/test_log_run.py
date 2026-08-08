@@ -20,7 +20,8 @@ def _run(stdin: str, retro_dir: Path) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "CLAUDE_RETRO_DIR": str(retro_dir)}
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
-        input=stdin, capture_output=True, text=True, env=env, check=False,
+        input=stdin, capture_output=True, text=True, encoding="utf-8", env=env,
+        check=False,
     )
 
 
