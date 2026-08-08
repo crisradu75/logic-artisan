@@ -1,10 +1,10 @@
 """Tests for the warn-lint-on-edit PostToolUse hook.
 
-Unit-tests the pure pieces (`_find_oxlint`, `_run_oxlint`, `_format_diagnostics`)
+Unit-tests the pure pieces (`_find_linter`, `_run_oxlint`, `_format_diagnostics`)
 and `main()`'s fail-open behavior on odd payloads and non-lintable files. The
 live oxlint subprocess is never invoked; `_run_oxlint`'s subprocess call is
 exercised via a monkeypatched `subprocess.run`, and `main()`'s happy path via
-monkeypatched `_find_oxlint`/`_run_oxlint`.
+monkeypatched `_find_linter`/`_run_oxlint`.
 """
 
 import importlib.util
@@ -26,7 +26,7 @@ hook = _load_module()
 
 
 # --------------------------------------------------------------------------- #
-# _find_oxlint -- walk up to the nearest package with an oxlint binary
+# _find_linter -- walk up to the nearest package with an oxlint binary
 # --------------------------------------------------------------------------- #
 
 def _make_bin(pkg_dir: Path) -> Path:
@@ -48,7 +48,7 @@ def test_finds_oxlint_in_the_files_own_package(tmp_path):
     f = src / "App.tsx"
     f.write_text("", encoding="utf-8")
 
-    found = hook._find_oxlint(f, tmp_path)
+    found = hook._find_linter(f, tmp_path)
     assert found is not None
     package_dir, oxlint_bin = found
     assert package_dir == pkg
@@ -67,7 +67,7 @@ def test_finds_nearest_package_when_nested(tmp_path):
     f.parent.mkdir()
     f.write_text("", encoding="utf-8")
 
-    package_dir, oxlint_bin = hook._find_oxlint(f, tmp_path)
+    package_dir, oxlint_bin = hook._find_linter(f, tmp_path)
     assert package_dir == inner
     assert oxlint_bin == inner_bin
 
@@ -75,7 +75,7 @@ def test_finds_nearest_package_when_nested(tmp_path):
 def test_returns_none_when_no_oxlint_anywhere(tmp_path):
     f = tmp_path / "loose.ts"
     f.write_text("", encoding="utf-8")
-    assert hook._find_oxlint(f, tmp_path) is None
+    assert hook._find_linter(f, tmp_path) is None
 
 
 def test_walk_stops_at_ceiling(tmp_path):
@@ -85,7 +85,7 @@ def test_walk_stops_at_ceiling(tmp_path):
     ceiling.mkdir()
     f = ceiling / "x.ts"
     f.write_text("", encoding="utf-8")
-    assert hook._find_oxlint(f, ceiling) is None
+    assert hook._find_linter(f, ceiling) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -270,10 +270,10 @@ def test_main_emits_additional_context_on_diagnostics(monkeypatch, capsys, tmp_p
     f = src / "a.ts"
     f.write_text("const y = 1;\n", encoding="utf-8")
 
-    monkeypatch.setattr(hook, "_find_oxlint", lambda fp, ceiling: (tmp_path, tmp_path / "oxlint"))
+    monkeypatch.setattr(hook, "_find_linter", lambda fp, ceiling, stem="oxlint": (tmp_path, tmp_path / "oxlint"))
     monkeypatch.setattr(
         hook, "_run_oxlint",
-        lambda b, p, fp: [{"severity": "error", "message": "boom", "labels": [{"span": {"line": 1, "column": 1}}]}],
+        lambda b, p, fp, extra=(): [{"severity": "error", "message": "boom", "labels": [{"span": {"line": 1, "column": 1}}]}],
     )
     rel = "apps/demo/src/a.ts"
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"tool_input": {"file_path": rel}})))
@@ -289,8 +289,78 @@ def test_main_silent_when_no_diagnostics(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
     f = tmp_path / "a.ts"
     f.write_text("const y = 1;\n", encoding="utf-8")
-    monkeypatch.setattr(hook, "_find_oxlint", lambda fp, ceiling: (tmp_path, tmp_path / "oxlint"))
-    monkeypatch.setattr(hook, "_run_oxlint", lambda b, p, fp: [])
+    monkeypatch.setattr(hook, "_find_linter", lambda fp, ceiling, stem="oxlint": (tmp_path, tmp_path / "oxlint"))
+    monkeypatch.setattr(hook, "_run_oxlint", lambda b, p, fp, extra=(): [])
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"tool_input": {"file_path": "a.ts"}})))
     assert hook.main() == 0
     assert capsys.readouterr().out == ""
+
+
+# --------------------------------------------------------------------------- #
+# MD-9 — the overlay that makes this a lint hook rather than an oxlint hook
+# --------------------------------------------------------------------------- #
+
+
+def test_no_overlay_keeps_the_js_defaults_exactly(tmp_path):
+    """The adoption cost has to be zero for a JS repo, or the fix is a
+    regression for every consumer already using it."""
+    exts, stem, args = hook.lint_profile(str(tmp_path))
+    assert exts == hook.LINTABLE_EXTS
+    assert stem == "oxlint"
+
+
+def test_an_overlay_switches_extensions_binary_and_args(tmp_path):
+    """`ruff check --output-format json` is a near drop-in: same
+    JSON-diagnostics shape, same one-file invocation."""
+    (tmp_path / "lint-on-edit.local.md").write_text(
+        "---\nextensions: .py\nbinary: ruff\nargs: check --output-format json\n---\n",
+        encoding="utf-8",
+    )
+    exts, stem, args = hook.lint_profile(str(tmp_path))
+    assert exts == (".py",)
+    assert stem == "ruff"
+    assert args == ("check", "--output-format", "json")
+
+
+def test_an_extension_without_a_dot_is_normalized(tmp_path):
+    (tmp_path / "lint-on-edit.local.md").write_text(
+        "---\nextensions: py rs\nbinary: ruff\n---\n", encoding="utf-8"
+    )
+    exts, _, _ = hook.lint_profile(str(tmp_path))
+    assert exts == (".py", ".rs")
+
+
+def test_a_malformed_overlay_announces_and_falls_back(tmp_path, capsys):
+    """Absent is the only silent case. A typo that silently reverts to the JS
+    defaults is indistinguishable from having no overlay — the same split
+    `warn-smoke-test-drift` makes, for the same reason."""
+    (tmp_path / "lint-on-edit.local.md").write_text(
+        "extensions: .py\nbinary: ruff\n", encoding="utf-8"  # no opening ---
+    )
+    exts, stem, _ = hook.lint_profile(str(tmp_path))
+    assert (exts, stem) == (hook.LINTABLE_EXTS, "oxlint")
+    assert "no opening" in capsys.readouterr().err
+
+
+def test_the_binary_resolves_from_path_when_node_modules_has_nothing(tmp_path, monkeypatch):
+    """The PATH fallback is what makes a non-JS linter reachable at all: `ruff`
+    is not installed under `node_modules`, so the walk alone always returned
+    None and the hook stayed the permanent no-op this change fixes."""
+    monkeypatch.setattr(hook.shutil, "which", lambda s: "/usr/bin/" + s)
+    src = tmp_path / "app"
+    src.mkdir()
+    f = src / "x.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+    found = hook._find_linter(f, tmp_path, "ruff")
+    assert found is not None
+    package_dir, binary = found
+    assert package_dir == tmp_path
+    assert binary.name == "ruff"
+
+
+def test_no_binary_anywhere_still_returns_none(tmp_path, monkeypatch):
+    """Non-vacuity partner: the PATH fallback must not make this always succeed."""
+    monkeypatch.setattr(hook.shutil, "which", lambda s: None)
+    f = tmp_path / "x.py"
+    f.write_text("x = 1\n", encoding="utf-8")
+    assert hook._find_linter(f, tmp_path, "ruff") is None

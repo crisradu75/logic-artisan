@@ -3,23 +3,21 @@
 on JUST that one file and feed any violations back to Claude as non-blocking
 context.
 
-SCOPE, stated plainly because the name overstates it: this is an OXLINT hook,
-not a lint hook. `LINTABLE_EXTS` is JS/TS-only and the binary is resolved from
-`node_modules/.bin`, so in a Python (or any non-JS) repo it returns 0 on the
-first branch — a permanent no-op that costs an interpreter probe and a process
+STACK-AGNOSTIC, via a per-repo overlay. This was an OXLINT hook rather than a
+lint hook: `LINTABLE_EXTS` was JS/TS-only and the binary came from
+`node_modules/.bin`, so in a Python (or any non-JS) repo it returned 0 on the
+first branch — a permanent no-op costing an interpreter probe and a process
 spawn on EVERY Edit/Write, while giving the appearance of edit-time lint
-coverage that does not exist. That gap is invisible from the hook's own output,
-which is exactly the failure shape this plugin's guards keep hitting.
+coverage that did not exist. That gap was invisible from the hook's own output,
+which is the failure shape this plugin's guards keep hitting.
 
-The "Post-Tool Amnesia" rationale below is stack-neutral and applies verbatim to
-`ruff`, whose `check --output-format json` is a near drop-in: same
-JSON-diagnostics shape, same one-file invocation. Generalizing it means making
-the (extensions, binary, argv, output-parser) tuple data-driven from a
-`*.local.md` overlay beside this file — the marker `warn-smoke-test-drift.py`
-and `discover.py` already use and never sync. Deliberately NOT done here: that
-is a feature addition with a new overlay format to design, not a correction, and
-this hook degrades cleanly rather than reporting something false. Recorded so
-the limitation is a known one rather than a surprise.
+The (extensions, binary, args) tuple is now data, read from a
+`lint-on-edit.local.md` overlay beside this file — the same `*.local.md` marker
+`warn-smoke-test-drift.py` uses and `discover.py` never syncs. With NO overlay
+the JS defaults apply unchanged, so a JS repo sees no behaviour change and
+adopting this costs nothing. The binary also resolves from PATH when the
+node_modules walk finds nothing, which is what makes a non-JS linter reachable
+at all — `ruff` and friends are not installed under `node_modules`.
 
 Rationale ("Post-Tool Amnesia"): without an immediate lint signal at edit time,
 a syntax/lint error introduced by a Write only surfaces much later — at
@@ -52,13 +50,81 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-# Extensions we run oxlint on; edits to .json/.md/.css/etc. are skipped so the
-# hook stays silent on non-lintable files rather than emitting empty runs.
+# Extensions we lint; edits to .json/.md/.css/etc. are skipped so the hook stays
+# silent on non-lintable files rather than emitting empty runs.
+#
+# DEFAULTS, overridable per repo. These are the JS/TS set this hook shipped with,
+# kept so a JS repo sees no behaviour change and adopting the fix costs nothing.
 LINTABLE_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+
+# Per-repo overlay, same `*.local.md` marker `warn-smoke-test-drift.py` uses and
+# `discover.py` never syncs. Absent -> the JS defaults above, unchanged.
+#
+#     ---
+#     extensions: .py
+#     binary: ruff
+#     args: check --output-format json --stdin-filename
+#     ---
+#
+# `ruff check --output-format json` is a near drop-in for oxlint: same
+# JSON-diagnostics shape, same one-file invocation. That is why this hook's
+# "Post-Tool Amnesia" rationale, which is entirely stack-neutral, applies to it
+# verbatim.
+_OVERLAY_LEAF = "lint-on-edit.local.md"
+
+
+def _load_overlay(hooks_dir: str) -> dict | None:
+    """Flat `key: value` frontmatter from the overlay, or None when absent.
+
+    Absent is the ONLY silent case: this repo simply never opted into a
+    non-default linter. Malformed is announced, because a typo that silently
+    reverts to the JS defaults is indistinguishable from having no overlay --
+    the same split `warn-smoke-test-drift` makes, and for the same reason.
+    """
+    path = os.path.join(hooks_dir, _OVERLAY_LEAF)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError as e:
+        print(f"[warn-lint-on-edit] {_OVERLAY_LEAF} unreadable ({e}); using defaults",
+              file=sys.stderr)
+        return None
+    if not lines or lines[0].strip() != "---":
+        print(f"[warn-lint-on-edit] {_OVERLAY_LEAF} has no opening `---`; using defaults",
+              file=sys.stderr)
+        return None
+    config: dict[str, str] = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if ":" in line:
+            key, _, value = line.partition(":")
+            config[key.strip()] = value.strip()
+    else:
+        print(f"[warn-lint-on-edit] {_OVERLAY_LEAF} has no closing `---`; using defaults",
+              file=sys.stderr)
+        return None
+    return config or None
+
+
+def lint_profile(hooks_dir: str) -> tuple[tuple[str, ...], str, tuple[str, ...]]:
+    """`(extensions, binary_stem, extra_args)` for this repo."""
+    config = _load_overlay(hooks_dir)
+    if not config:
+        return LINTABLE_EXTS, "oxlint", ()
+    exts = tuple(
+        e if e.startswith(".") else "." + e
+        for e in (config.get("extensions", "").split() or [])
+    ) or LINTABLE_EXTS
+    args = tuple(config.get("args", "").split()) or ("-f", "json")
+    return exts, config.get("binary", "oxlint"), args
 
 # Cap how many diagnostics we echo back, so a file that lights up the linter
 # doesn't flood the parent context with a wall of findings.
@@ -77,19 +143,31 @@ _MAX_DIAGS = 10
 _LINT_TIMEOUT_SECONDS = 6
 
 
-def _binary_candidates() -> tuple[str, ...]:
-    """node_modules/.bin shim names to try, most-specific first, per platform."""
-    if os.name == "nt":
-        return ("oxlint.cmd", "oxlint.CMD", "oxlint.exe", "oxlint")
-    return ("oxlint",)
+def _binary_candidates(stem: str = "oxlint") -> tuple[str, ...]:
+    """Shim names to try, most-specific first, per platform.
 
-
-def _find_oxlint(file_path: Path, ceiling: Path) -> tuple[Path, Path] | None:
-    """Walk up from the edited file toward `ceiling`, returning
-    (package_dir, oxlint_bin_abspath) for the NEAREST enclosing package that has
-    an oxlint binary in node_modules/.bin — or None if none is found.
+    Takes the binary STEM so a repo whose overlay names `ruff` (or any other
+    linter) resolves its own shims. Windows needs the extensions spelled out:
+    a relative `.cmd` cannot be launched, which is why they are tried by name
+    rather than left to PATHEXT.
     """
-    candidates = _binary_candidates()
+    if os.name == "nt":
+        return (f"{stem}.cmd", f"{stem}.CMD", f"{stem}.exe", stem)
+    return (stem,)
+
+
+def _find_linter(file_path: Path, ceiling: Path, stem: str = "oxlint") -> tuple[Path, Path] | None:
+    """Walk up from the edited file toward `ceiling`, returning
+    (package_dir, binary_abspath) for the NEAREST enclosing package that has the
+    linter in node_modules/.bin — else the binary on PATH, with `ceiling` as the
+    working directory. None when neither resolves.
+
+    The PATH fallback is what makes a non-JS linter reachable at all: `ruff` and
+    friends are not installed under `node_modules`, so the walk alone would
+    always return None and this hook would stay the permanent no-op in a
+    non-JS repo that the overlay exists to fix.
+    """
+    candidates = _binary_candidates(stem)
     current = file_path.parent
     while True:
         bin_dir = current / "node_modules" / ".bin"
@@ -98,15 +176,27 @@ def _find_oxlint(file_path: Path, ceiling: Path) -> tuple[Path, Path] | None:
             if candidate.is_file():
                 return current, candidate
         if current == ceiling or current == current.parent:
-            return None
+            break
         current = current.parent
 
+    on_path = shutil.which(stem)
+    return (ceiling, Path(on_path)) if on_path else None
 
-def _run_oxlint(oxlint_bin: Path, package_dir: Path, file_path: Path) -> list[dict] | None:
-    """Run oxlint (JSON reporter) on the single file, cwd=package_dir. Returns the
-    parsed `diagnostics` list, or None on any failure (fail-open). The file is
-    passed relative to package_dir so oxlint's own path display is clean; the
+
+def _run_oxlint(
+    oxlint_bin: Path,
+    package_dir: Path,
+    file_path: Path,
+    extra_args: tuple[str, ...] = ("-f", "json"),
+) -> list[dict] | None:
+    """Run the linter on the single file, cwd=package_dir. Returns the parsed
+    `diagnostics` list, or None on any failure (fail-open). The file is passed
+    relative to package_dir so the linter's own path display is clean; the
     binary path is absolute because a relative .cmd cannot be launched on Windows.
+
+    `extra_args` defaults to oxlint's JSON-reporter flags, so a JS repo with no
+    overlay behaves exactly as before. `ruff check --output-format json` is a
+    near drop-in: same JSON-diagnostics shape, same one-file invocation.
     """
     try:
         rel = file_path.relative_to(package_dir).as_posix()
@@ -114,7 +204,7 @@ def _run_oxlint(oxlint_bin: Path, package_dir: Path, file_path: Path) -> list[di
         rel = str(file_path)
     try:
         result = subprocess.run(
-            [str(oxlint_bin), "-f", "json", rel],
+            [str(oxlint_bin), *extra_args, rel],
             cwd=str(package_dir),
             capture_output=True,
             text=True, encoding="utf-8", errors="replace",
@@ -179,7 +269,8 @@ def main() -> int:
 
     tool_input = payload.get("tool_input")
     raw_path = tool_input.get("file_path", "") if isinstance(tool_input, dict) else ""
-    if not isinstance(raw_path, str) or not raw_path.endswith(LINTABLE_EXTS):
+    exts, stem, extra_args = lint_profile(str(Path(__file__).resolve().parent))
+    if not isinstance(raw_path, str) or not raw_path.endswith(exts):
         return 0
 
     project_root = Path(os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())).resolve()
@@ -192,12 +283,12 @@ def main() -> int:
     if not file_path.is_file():
         return 0
 
-    found = _find_oxlint(file_path, project_root)
+    found = _find_linter(file_path, project_root, stem)
     if found is None:
         return 0
-    package_dir, oxlint_bin = found
+    package_dir, linter_bin = found
 
-    diagnostics = _run_oxlint(oxlint_bin, package_dir, file_path)
+    diagnostics = _run_oxlint(linter_bin, package_dir, file_path, extra_args)
     if not diagnostics:
         return 0
 
