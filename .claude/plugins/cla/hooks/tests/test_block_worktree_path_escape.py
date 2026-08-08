@@ -26,6 +26,34 @@ import pytest
 _HOOKS_DIR = Path(__file__).resolve().parent.parent
 
 
+
+def make_dir_alias(link: Path, real: Path) -> None:
+    """Create `link` -> `real` as a directory alias, or skip if neither works.
+
+    A real symlink where permitted, else an NTFS junction (`mklink /J`), which
+    needs no elevated privileges on Windows -- unlike a symlink, which raises
+    WinError 1314 for every unprivileged account. Without the fallback these
+    tests skipped on the ONE platform whose path handling they exist to check,
+    while the suite still reported green.
+
+    `os.path.realpath` resolves a junction exactly like a symlink, and every
+    caller here goes through `realpath`, so the substitution is exact.
+    (`os.path.islink()` is False for a junction -- irrelevant here, and exactly
+    why `block-unsafe-recursive-delete` does its own reparse-point check rather
+    than trusting `islink`.)
+    """
+    try:
+        link.symlink_to(real, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError, AttributeError):
+        pass
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(real)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result.returncode != 0:
+        pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
+
 def _load_module():
     if str(_HOOKS_DIR) not in sys.path:
         sys.path.insert(0, str(_HOOKS_DIR))
@@ -320,10 +348,7 @@ def test_is_inside_survives_a_symlinked_spelling_on_every_platform(worktree_pair
     """
     _primary, linked = worktree_pair
     alias = tmp_path / "alias"
-    try:
-        os.symlink(str(linked), str(alias), target_is_directory=True)
-    except (OSError, NotImplementedError, AttributeError):
-        pytest.skip("cannot create symlinks here (Windows without privilege)")
+    make_dir_alias(alias, Path(linked))
 
     root = os.path.realpath(str(linked))
     assert hook._is_inside(str(alias / "seed.txt"), root), (

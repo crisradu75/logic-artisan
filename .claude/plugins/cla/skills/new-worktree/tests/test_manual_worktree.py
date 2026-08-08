@@ -18,6 +18,34 @@ import pytest
 import manual_worktree as mw
 
 
+
+def make_dir_alias(link: Path, real: Path) -> None:
+    """Create `link` -> `real` as a directory alias, or skip if neither works.
+
+    A real symlink where permitted, else an NTFS junction (`mklink /J`), which
+    needs no elevated privileges on Windows -- unlike a symlink, which raises
+    WinError 1314 for every unprivileged account. Without the fallback these
+    tests skipped on the ONE platform whose path handling they exist to check,
+    while the suite still reported green.
+
+    `os.path.realpath` resolves a junction exactly like a symlink, and every
+    caller here goes through `realpath`, so the substitution is exact.
+    (`os.path.islink()` is False for a junction -- irrelevant here, and exactly
+    why `block-unsafe-recursive-delete` does its own reparse-point check rather
+    than trusting `islink`.)
+    """
+    try:
+        link.symlink_to(real, target_is_directory=True)
+        return
+    except (OSError, NotImplementedError, AttributeError):
+        pass
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(real)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if result.returncode != 0:
+        pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
+
 def _git(cwd, *args):
     subprocess.run(
         ["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
@@ -88,10 +116,7 @@ def test_a_symlinked_repo_spelling_still_yields_the_canonical_worktree_path(repo
     """Runs on every platform, unlike the case-only tests, so the canonicalisation
     is pinned in CI rather than only on a Windows developer machine."""
     alias = tmp_path / "alias"
-    try:
-        os.symlink(str(repo), str(alias), target_is_directory=True)
-    except (OSError, NotImplementedError, AttributeError):
-        pytest.skip("cannot create symlinks here (Windows without privilege)")
+    make_dir_alias(alias, Path(repo))
 
     result = mw.create_worktree(alias, "delta", "origin/main")
     assert result["worktree_path"] == os.path.realpath(
@@ -216,10 +241,7 @@ def test_a_symlinked_path_is_reported_as_indirection_not_as_casing(tmp_path):
     real = tmp_path / "real"
     real.mkdir()
     alias = tmp_path / "alias"
-    try:
-        os.symlink(str(real), str(alias), target_is_directory=True)
-    except (OSError, NotImplementedError, AttributeError):
-        pytest.skip("cannot create symlinks here (Windows without privilege)")
+    make_dir_alias(alias, Path(real))
 
     m = mw.casing_mismatch(alias)
     assert m is not None and m["kind"] == "path_indirection"

@@ -53,6 +53,26 @@ SIBLING_GROUPS = [
             "skills/spec-to-pr-retro/scripts/aggregate.py",
         ),
     },
+    {
+        # Duplicated rather than shared for the same reason as the families
+        # above: `run_tests.py` runs each scope as its own pytest process
+        # precisely because same-named modules collide, so a shared import
+        # would break that isolation. Registered here so the copies cannot
+        # drift instead.
+        #
+        # This helper is what makes three tests actually RUN on Windows. They
+        # previously called `os.symlink(..., target_is_directory=True)` and
+        # skipped when it raised — which it always does for an unprivileged
+        # account (WinError 1314) — so they skipped on the one platform whose
+        # path handling they exist to check, while the suite reported green. A
+        # junction needs no elevation and `realpath` resolves it identically.
+        "name": "make_dir_alias test helper",
+        "functions": ("make_dir_alias",),
+        "files": (
+            "hooks/tests/test_block_worktree_path_escape.py",
+            "skills/new-worktree/tests/test_manual_worktree.py",
+        ),
+    },
 ]
 
 
