@@ -40,8 +40,24 @@ def _git(repo: Path, *args: str) -> None:
 
 
 def _words(n: int) -> str:
-    """`n` whitespace-delimited words, wrapped 8 per line."""
-    return "\n".join(" ".join(f"w{i + j}" for j in range(8)) for i in range(0, n, 8)) + "\n"
+    """EXACTLY `n` whitespace-delimited words, wrapped 8 per line.
+
+    "Exactly" is the whole point. The first version rounded up to a multiple of
+    8, so the two parametrized values naming the ratio boundary (340, 321)
+    actually wrote 344 and 328 -- the boundary was never exercised and every
+    threshold test below was a claim about a number the file never contained. A
+    fixture helper that silently rounds its own argument makes every test built
+    on it unfalsifiable.
+    """
+    words = [f"w{i}" for i in range(n)]
+    return "\n".join(" ".join(words[i:i + 8]) for i in range(0, n, 8)) + "\n"
+
+
+def test_the_fixture_helper_emits_exactly_what_it_is_asked_for():
+    """Guards the guard: every threshold assertion in this file is only
+    meaningful if this holds. Pinned at the awkward values, not the round ones."""
+    for n in (1, 7, 8, 9, 320, 321, 340, 400):
+        assert len(_words(n).split()) == n, n
 
 
 @pytest.fixture
@@ -278,16 +294,65 @@ def test_committed_word_count_is_none_on_binary(repo):
     assert hook._committed_word_count(repo, "docs/blob.bin") is None
 
 
-def test_a_git_error_that_is_not_a_missing_file_is_announced_on_stderr(monkeypatch, capsys, repo):
-    """The whole class of bug this hook shipped with was invisible because a
-    broken lookup and an untracked file returned the same thing. A guard that is
-    silently dead looks exactly like one that ran and approved."""
-    def _boom(*a, **k):
-        return subprocess.CompletedProcess(a, 128, b"", b"fatal: not a tree object")
+def test_head_exists_distinguishes_no_baseline_from_a_bad_path(repo, tmp_path_factory):
+    """The distinction the stderr filter could not make.
 
-    monkeypatch.setattr(subprocess, "run", _boom)
-    assert hook._committed_word_count(repo, REL) is None
-    assert "could not resolve" in capsys.readouterr().err
+    Phrase-matching git's prose cannot see a non-repo at all — neither
+    `fatal: not a git repository` nor `fatal: invalid object name 'HEAD'`
+    contains the phrases it tests — so the diagnostic fired on every Write in a
+    scratch directory. Asking git the question is also locale-independent, where
+    phrase matching breaks under a non-English LANG for every case."""
+    assert hook._head_exists(repo) is True
+    assert hook._head_exists(tmp_path_factory.mktemp("not-a-repo")) is False
+
+
+# --------------------------------------------------------------------------- #
+# Worktree + diagnostic regressions (reported by a consuming repo)
+# --------------------------------------------------------------------------- #
+
+
+def test_warns_for_a_file_outside_the_launch_directory(
+    monkeypatch, capsys, repo, tmp_path_factory
+):
+    """`CLAUDE_PROJECT_DIR` is the LAUNCH directory, not the repo being edited.
+
+    A session that enters a worktree after launch writes every file outside it,
+    so keying solely off that variable made the hook return 0 for the rest of
+    the session, with no output. This plugin's own tooling (`claw`,
+    `/cla:new-worktree`, worktree isolation) makes that the common path."""
+    elsewhere = tmp_path_factory.mktemp("launched-here")
+    (repo / REL).write_text(_words(200), encoding="utf-8")
+    ctx = _context(_run(monkeypatch, capsys, elsewhere, _payload(str(repo / REL))))
+    assert "replaced 400 committed words with 200" in ctx
+
+
+def test_no_diagnostic_for_a_write_in_a_non_repo_directory(monkeypatch, capsys, tmp_path):
+    """Asserts STDERR specifically. The original test asserted silence but read
+    only stdout, which is precisely why this noise survived: the diagnostic
+    printed on every Write in a scratch directory."""
+    f = tmp_path / "notes.md"
+    f.write_text(_words(400), encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(_payload("notes.md"))))
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "", f"noisy in a non-repo dir: {captured.err!r}"
+
+
+def test_an_untracked_file_in_a_real_repo_is_still_silent(monkeypatch, capsys, repo):
+    """Non-vacuity partner in the other direction. `_head_exists` alone would
+    make every untracked file noisy, since the repo HAS a HEAD — the phrase test
+    is what keeps 'not in HEAD' quiet. Dropping either half breaks this."""
+    (repo / "docs" / "brand-new.md").write_text(_words(400), encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO(json.dumps(_payload("docs/brand-new.md")))
+    )
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 @pytest.mark.parametrize("exc", [OSError("no git"), subprocess.TimeoutExpired("git", 5)])

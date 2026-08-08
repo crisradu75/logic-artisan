@@ -91,7 +91,7 @@ def test_main_no_op_on_unrelated_command(monkeypatch, capsys):
 
 def test_main_warns_when_a_stray_artifact_is_present(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "git add openspec/"}}'))
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ['?? "AppDataLocalTempscratchpaddiff.txt"'])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ['?? "AppDataLocalTempscratchpaddiff.txt"'])
     assert hook.main() == 0  # warn-only, never blocks
     err = capsys.readouterr().err
     assert "warn-stray-scratch-artifact" in err
@@ -100,7 +100,7 @@ def test_main_warns_when_a_stray_artifact_is_present(monkeypatch, capsys):
 
 def test_main_warns_on_chained_command(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "cd repo && git add ."}}'))
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? scratchpad_dump.txt"])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
     assert hook.main() == 0
     assert "scratchpad_dump.txt" in capsys.readouterr().err
 
@@ -112,7 +112,7 @@ def test_main_warns_on_commit_behind_a_space_separated_long_global_option(monkey
         "sys.stdin",
         io.StringIO('{"tool_input": {"command": "git --work-tree /some/other/repo commit -m x"}}'),
     )
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? scratchpad_dump.txt"])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
     assert hook.main() == 0
     assert "scratchpad_dump.txt" in capsys.readouterr().err
 
@@ -128,14 +128,14 @@ def test_main_warns_on_commit_behind_a_quoted_c_value_with_a_space(monkeypatch, 
             '{"tool_input": {"command": "git -C \\"/some/checkout path/with a space\\" commit -m x"}}'
         ),
     )
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? scratchpad_dump.txt"])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
     assert hook.main() == 0
     assert "scratchpad_dump.txt" in capsys.readouterr().err
 
 
 def test_main_silent_when_nothing_stray_is_present(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "git commit -m x"}}'))
-    monkeypatch.setattr(hook, "_porcelain_lines", lambda: ["?? README.md"])
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? README.md"])
     assert hook.main() == 0
     assert capsys.readouterr().err == ""
 

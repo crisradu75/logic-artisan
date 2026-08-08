@@ -68,6 +68,62 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
+def _repo_root_for(file_path: Path) -> Path | None:
+    """The git work-tree root containing `file_path`, or None if there is none.
+
+    Exists because `CLAUDE_PROJECT_DIR` is the LAUNCH directory, not "the repo
+    being edited". A session that enters a git worktree after launch writes every
+    file outside it, so keying solely off that variable made this hook return 0
+    for the rest of the session -- a guard that silently stopped guarding, in a
+    plugin whose own tooling (`claw`, `/cla:new-worktree`, worktree isolation)
+    makes that the common path rather than an edge case.
+
+    Called ONLY when the path falls outside the project dir, so the ordinary
+    same-repo write pays nothing for it.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(file_path.parent), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    root = result.stdout.decode("utf-8", "replace").strip()
+    if not root:
+        return None
+    try:
+        return Path(root).resolve()
+    except OSError:
+        return None
+
+
+def _head_exists(repo: Path) -> bool:
+    """True when `repo` is a git repo with at least one commit.
+
+    Separates "there is no baseline" (not a repo, or no commits yet -- both
+    legitimately silent) from "there IS a baseline and this hook still could not
+    find the path", which is a real defect worth announcing.
+
+    Replaces matching two English phrases out of git's stderr. Neither
+    `fatal: not a git repository` nor `fatal: invalid object name 'HEAD'`
+    contains either phrase, so the diagnostic printed on every Write in a scratch
+    directory -- and phrase-matching breaks under a non-English `LANG` for every
+    case. Asking git the question is locale-independent, and it costs one
+    subprocess only on the already-failed path.
+    """
+    try:
+        return subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", "HEAD"],
+            capture_output=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+        ).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def _committed_word_count(repo: Path, rel_path: str) -> int | None:
     """Words in `rel_path` at HEAD, or None when there is no usable baseline.
 
@@ -93,6 +149,20 @@ def _committed_word_count(repo: Path, rel_path: str) -> int | None:
         return None
 
     if result.returncode != 0:
+        # No HEAD at all -- not a repo, or no commits yet -- is an environment
+        # condition with no baseline to compare against, not a path this hook
+        # built wrong. Silent, and asked as a QUESTION rather than read out of
+        # git's prose: the phrase test below cannot see this case (neither
+        # `fatal: not a git repository` nor `fatal: invalid object name 'HEAD'`
+        # contains either phrase), which is why the diagnostic used to print on
+        # every Write in a scratch directory.
+        if not _head_exists(repo):
+            return None
+        # There IS a baseline. A path that still will not resolve against it
+        # means either the file is simply not in HEAD (untracked or new --
+        # ordinary, silent) or this hook built the path wrong, which nothing
+        # else in a session reveals and which a silently-dead guard makes
+        # indistinguishable from one that ran and approved.
         err = result.stderr.decode("utf-8", "replace")
         if "does not exist in" not in err and "exists on disk" not in err:
             print(
@@ -135,12 +205,25 @@ def main() -> int:
         # must never be the thing that raises inside someone's tool call.
         return 0
 
+    # The write is usually inside the launch directory. When it is not -- the
+    # worktree case, which this plugin's own tooling makes routine -- fall back
+    # to the work tree that actually contains the file. Returning 0 here instead,
+    # as this hook originally did, switched it off for the rest of any session
+    # that entered a worktree, with no output to say so.
+    repo_root = project_root
     try:
         rel = file_path.relative_to(project_root).as_posix()
     except ValueError:
-        return 0  # outside the project; not ours to judge
+        found = _repo_root_for(file_path)
+        if found is None:
+            return 0  # genuinely outside any repo; not ours to judge
+        try:
+            rel = file_path.relative_to(found).as_posix()
+        except ValueError:
+            return 0
+        repo_root = found
 
-    baseline = _committed_word_count(project_root, rel)
+    baseline = _committed_word_count(repo_root, rel)
     if baseline is None or baseline < MIN_BASELINE_WORDS:
         return 0
 

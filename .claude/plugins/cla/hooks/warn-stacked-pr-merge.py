@@ -63,10 +63,17 @@ def _gh(args: list[str]) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def _current_branch() -> str | None:
+def _current_branch(cwd: str | None = None) -> str | None:
+    """The SESSION's current branch, not the hook process's.
+
+    `cwd` is `payload["cwd"]`, already parsed here for the command. Without
+    `-C` a session in a worktree resolved the primary clone's HEAD, so the
+    stacked-PR check compared the wrong branch — silently, and in the worktree
+    flow this plugin promotes.
+    """
     try:
         r = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            ["git", *(["-C", cwd] if cwd else []), "rev-parse", "--abbrev-ref", "HEAD"],
             # See `_dispatch_lib.HOOK_WORST_CASE_SECONDS`.
             capture_output=True, text=True, timeout=3,
         )
@@ -134,7 +141,8 @@ def main() -> int:
     if number:
         head = _gh(["pr", "view", number, "--json", "headRefName", "-q", ".headRefName"])
     else:
-        head = _current_branch()
+        cwd = payload.get("cwd")
+        head = _current_branch(cwd if isinstance(cwd, str) and cwd else None)
     if not head or head == "HEAD":
         return 0
 

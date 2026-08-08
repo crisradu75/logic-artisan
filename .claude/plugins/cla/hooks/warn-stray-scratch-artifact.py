@@ -55,10 +55,18 @@ _GIT_ADD_OR_COMMIT = re.compile(_GIT_CMD + r"\s+" + _G + r"(?:add|commit)\b")
 _SUSPICIOUS_NAME = re.compile(r"AppData|LocalTemp|scratchpad", re.IGNORECASE)
 
 
-def _porcelain_lines() -> list[str] | None:
+def _porcelain_lines(cwd: str | None = None) -> list[str] | None:
+    """Working-tree status for the SESSION's repo.
+
+    `cwd` comes from `payload["cwd"]`, which this hook already parses for the
+    command. Running without `-C` used the hook process's own directory instead:
+    a session inside a worktree would have its scratch artifacts checked against
+    the primary clone, reporting on files it is not touching and missing the
+    ones it is. The two enforcing guards resolve cwd this way already.
+    """
     try:
         r = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", *(["-C", cwd] if cwd else []), "status", "--porcelain"],
             # 4s, not 2s like the `rev-parse` hooks: `status` walks the working
             # tree, so it is genuinely slower on a large repo. Still charged
             # against the shared budget — see
@@ -100,7 +108,8 @@ def main() -> int:
     if not _GIT_ADD_OR_COMMIT.search(strip_quoted_spans(cmd)):
         return 0
 
-    lines = _porcelain_lines()
+    cwd = payload.get("cwd")
+    lines = _porcelain_lines(cwd if isinstance(cwd, str) and cwd else None)
     if lines is None:
         return 0
 

@@ -65,6 +65,29 @@ from _dispatch_lib import run_git as _run_git  # noqa: E402
 from _dispatch_lib import clone_paths as _clone_paths  # noqa: E402
 
 
+def _warn(msg: str) -> None:
+    """Surface a guard-disabling/degraded condition (repo policy: recoverable ->
+    Warning on stderr). The hook still fails OPEN — it prints, then returns 0.
+
+    Mirrors `guard-worktree-isolation._warn`. This file had none, so every
+    degraded path returned 0 in silence — an enforcing guard that stopped
+    enforcing and looked identical to one that ran and allowed.
+    """
+    print(f"[block-worktree-path-escape] warn: {msg}", file=sys.stderr)
+
+
+def _is_work_tree(cwd: str) -> bool:
+    """True when `cwd` is inside a git work tree.
+
+    Separates "git could not answer" (degraded — worth announcing) from "there
+    is no repo here" (ordinary — silent). Without this the warning fires on
+    every write in a scratch directory, and a diagnostic that cries wolf takes
+    the real one down with it.
+    """
+    r = _run_git(cwd, ["rev-parse", "--is-inside-work-tree"])
+    return bool(r and r.returncode == 0 and r.stdout.strip() == "true")
+
+
 def _worktree_root(cwd: str) -> str | None:
     tl = _run_git(cwd, ["rev-parse", "--show-toplevel"])
     if not tl or tl.returncode != 0:
@@ -148,6 +171,19 @@ def main() -> int:
 
     clone_paths = _clone_paths(cwd)
     if clone_paths is None:
+        # This is an ENFORCING guard failing open. A wedged git or a held
+        # `index.lock` is precisely the concurrent-session scenario the hook
+        # exists for, so degrading there without a word means a write can escape
+        # the worktree in exactly the situation it was written to prevent.
+        #
+        # But `_clone_paths` also returns None for the commonest and most benign
+        # reason of all -- the directory is not a git repo. Warning on that fires
+        # on every write in a scratch directory, which is how a diagnostic gets
+        # tuned out and takes the real one with it. So ask whether this is a
+        # work tree at all, and only speak up when it is. One extra subprocess,
+        # on the already-failed path only.
+        if _is_work_tree(cwd):
+            _warn(f"could not resolve git dirs for {cwd!r}; not checking this write")
         return 0
     git_dir, git_common_dir = clone_paths
     if git_dir == git_common_dir:
@@ -156,6 +192,11 @@ def main() -> int:
 
     worktree_root = _worktree_root(cwd)
     if worktree_root is None:
+        # Same reasoning: we already know this IS a linked worktree (git_dir !=
+        # git_common_dir), so failing to resolve its root is a degraded git, not
+        # a benign shape. Silence here is the difference between "checked and
+        # allowed" and "never checked".
+        _warn(f"in a worktree but could not resolve its root from {cwd!r}; not checking")
         return 0
     primary_clone_root = os.path.dirname(git_common_dir)
 

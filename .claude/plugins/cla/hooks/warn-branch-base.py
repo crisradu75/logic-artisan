@@ -84,9 +84,21 @@ def main() -> int:
         return 0
     new_branch = cmd[m.start(1) : m.end(1)].strip("'\"")
 
+    # Resolve git state in the SESSION's directory, not this hook process's cwd.
+    # `payload["cwd"]` is the authoritative one and was already being parsed for
+    # the command; running without `-C` used whatever directory the hook happened
+    # to start in. The failure is silent and one-directional: a session inside
+    # `.claude/worktrees/<task>` with the hook process rooted in the primary
+    # clone on the base branch reads `current == base`, so no warning fires —
+    # in exactly the `/cla:new-worktree` + `claw` flow this plugin promotes.
+    # `block-direct-push-to-main` and `block-worktree-path-escape` both spend a
+    # docstring section establishing this; the advisory hooks had not followed.
+    cwd = payload.get("cwd")
+    git_dir_args = ["-C", cwd] if isinstance(cwd, str) and cwd else []
+
     try:
         head = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            ["git", *git_dir_args, "rev-parse", "--abbrev-ref", "HEAD"],
             # See `_dispatch_lib.HOOK_WORST_CASE_SECONDS`: this is charged
             # against a handler budget shared with every other Bash hook.
             capture_output=True, text=True, timeout=3,
@@ -106,7 +118,7 @@ def main() -> int:
     # `main`-default repo the old hardcoded comparison made every single branch
     # creation warn — including the correct `main` -> `feature/x` case — which
     # trains the reader to ignore the hook entirely.
-    base = default_base_branch()
+    base = default_base_branch(cwd) if isinstance(cwd, str) and cwd else default_base_branch()
     if current and current != base:
         print(
             f"[warn-branch-base] creating '{new_branch}' off '{current}', not {base}. "

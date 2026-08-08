@@ -336,3 +336,49 @@ def test_is_inside_still_says_no_for_a_genuinely_outside_path(worktree_pair, tmp
     pass every case above while disabling the guard completely."""
     _primary, linked = worktree_pair
     assert not hook._is_inside(str(tmp_path / "elsewhere" / "x.txt"), os.path.realpath(str(linked)))
+
+
+# --------------------------------------------------------------------------- #
+# Degraded-git diagnostics (MD-7, reported by a consuming repo)
+#
+# Every fail-open path returned 0 in silence, so an enforcing guard that had
+# stopped enforcing looked identical to one that ran and allowed. A wedged git
+# or a held `index.lock` is the concurrent-session scenario this hook exists for.
+# --------------------------------------------------------------------------- #
+
+
+def test_degraded_git_in_a_real_work_tree_is_announced(monkeypatch, capsys, tmp_path):
+    """`_clone_paths` returning None inside an actual repo means git could not
+    answer — the case where silence lets a write escape the worktree."""
+    monkeypatch.setattr(hook, "_clone_paths", lambda cwd: None)
+    monkeypatch.setattr(hook, "_is_work_tree", lambda cwd: True)
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(tmp_path / "x.md")},
+            "cwd": str(tmp_path),
+        })),
+    )
+    assert hook.main() == 0  # still fails OPEN
+    assert "could not resolve git dirs" in capsys.readouterr().err
+
+
+def test_a_non_repo_directory_is_not_announced(monkeypatch, capsys, tmp_path):
+    """Non-vacuity partner, and the reason the warning is conditional at all:
+    `_clone_paths` also returns None for the commonest benign case — no repo
+    here. Warning on that fires on every write in a scratch directory, and a
+    diagnostic that cries wolf takes the real one down with it."""
+    monkeypatch.setattr(hook, "_clone_paths", lambda cwd: None)
+    monkeypatch.setattr(hook, "_is_work_tree", lambda cwd: False)
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(tmp_path / "x.md")},
+            "cwd": str(tmp_path),
+        })),
+    )
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.err == "", f"noisy outside a repo: {captured.err!r}"
