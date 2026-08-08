@@ -477,3 +477,80 @@ def test_main_respects_allow_push_to_main_escape_hatch(monkeypatch, capsys):
     )
     monkeypatch.setattr(hook.os, "environ", {"ALLOW_PUSH_TO_MAIN": "1"})
     assert hook.main() == 0
+
+
+# --------------------------------------------------------------------------- #
+# Closing the documented gaps — and measuring the blast radius while doing it.
+#
+# The corpus below is deliberately half ALLOW cases, most of them NON-PUSH git
+# commands. The reverted 3-state redesign shipped six spurious permission
+# prompts precisely because its 44-command corpus contained only `git push` commands,
+# so the new arm's effect on ordinary git usage was never measured. Any change
+# to this guard has to prove BOTH directions.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # --all / --mirror push EVERY local branch, so the default one goes with
+        # them and no refspec names it — the refspec check cannot see these.
+        "git push --all origin",
+        "git push --mirror origin",
+        "git push --all",
+        # --repo supplies the remote as an OPTION VALUE, so the positional that
+        # would normally be the remote is actually the refspec. `main` was read
+        # as the remote and the refspec check never ran at all.
+        "git push --repo origin main",
+        "git push --repo=origin main",
+        # git DWIMs `heads/main` to `refs/heads/main`; only the fully-qualified
+        # prefix was being stripped.
+        "git push origin heads/main",
+    ],
+)
+def test_previously_documented_gaps_now_block(command):
+    assert hook._is_direct_push_to_main(command), command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # ordinary feature-branch work
+        "git push origin feature/x",
+        "git push -u origin feature/x",
+        "git push origin heads/feature/x",
+        "git push --repo origin feature/x",
+        "git push --force-with-lease=origin/main origin feature/x",
+        # NON-PUSH git commands — the class the reverted redesign broke. Every
+        # one names a protected branch and must still be allowed.
+        "git rev-list main..HEAD",
+        "git log main..HEAD --oneline",
+        "git diff main...HEAD",
+        "git checkout main",
+        "git merge main",
+        "git fetch origin main",
+        "git branch -f main origin/main",
+        "git rebase main",
+        # quoted, so `strip_quoted_spans` blanks it
+        "echo 'git push --all origin'",
+        # a branch merely STARTING with a protected name
+        "git push origin main-refactor",
+        "git push origin maintenance",
+    ],
+)
+def test_the_new_rules_do_not_widen_the_blast_radius(command):
+    assert not hook._is_direct_push_to_main(command), command
+
+
+def test_an_unquoted_push_after_echo_still_blocks_by_design():
+    """PRE-EXISTING and accepted, pinned here so it is not mistaken for a
+    regression introduced by the rules above.
+
+    `strip_quoted_spans` blanks QUOTED spans only, so an unquoted push after
+    `echo` is indistinguishable from a real one. The module docstring already
+    accepts the same trade for a heredoc body — and it bit while writing these
+    very tests, when the shell heredoc carrying them was itself blocked.
+    Over-blocking a printed command is far cheaper than under-blocking a real
+    push."""
+    assert hook._is_direct_push_to_main("echo git push origin main")
+    assert not hook._is_direct_push_to_main("echo 'git push origin main'")

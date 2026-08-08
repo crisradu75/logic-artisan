@@ -134,34 +134,35 @@ than only when the asset is being rewritten (otherwise it never fires for alread
 the entire affected population); and tolerate any malformed declaration shape, since the file is
 read from the source and one bad edit would break discovery for every consumer.
 
-## Close the known gaps in `block-direct-push-to-main`
+## `block-direct-push-to-main` — remaining non-coverage (was: known gaps)
 
-Pre-existing shapes the guard does **not** catch (verified against the current hook, all resolve
-to ALLOW from a feature branch):
+Five shapes were listed here. **Four are now blocked**, each with a regression test and a
+mutation check: `--all`/`--mirror`, `--repo <remote> main`, `heads/main`, and `git.exe`
+(closed earlier by the shared `GIT_CMD` constant).
 
-| Shape | Why it matters |
+**Two remain open, deliberately** — both evasion-shaped rather than reachable by ordinary use,
+which is the distinction that justified fixing `git.exe` and not these:
+
+| Shape | Why it stays open |
 |---|---|
-| `git push --all origin` / `--mirror` | pushes every local branch, including the default one |
-| `git push --repo origin main` | `--repo` consumes the remote, so `main` is read as the remote and the refspec check never runs |
-| `git push origin heads/main` | git DWIMs `heads/main` to `refs/heads/main`; `_normalize_ref` only strips the fully-qualified prefix |
-| `git.exe push origin main` | the basename check is exact, on the platform this harness treats as primary |
-| `bash <<< 'git push origin main'` | herestrings are not scanned |
+| `bash <<< '<push> origin main'` | the herestring body IS quoted, so `strip_quoted_spans` blanks it before matching. Un-blanking quoted spans after `<<<` adds parsing complexity to an *enforcing* guard for a vector nobody reaches by accident |
+| `GIT push origin main` | command-name case, matching the `gh` precedent; pinned by a contract test so widening it is deliberate |
 
-Also documented in `_dispatch_lib.HOOK_WORST_CASE_SECONDS`: the hook's `3.0` budget entry is the
-realistic bound, not a proven ceiling — the branch cache is keyed on cwd, so several pushes with
-distinct `-C` values each spawn a `rev-parse` (verified: three `-C` paths → 9s). The fix is to make
-the hook resolve at most one branch per command, not to raise the handler timeout.
+Still open, and unchanged: the `3.0` budget entry in `_dispatch_lib.HOOK_WORST_CASE_SECONDS` is
+the realistic bound, not a proven ceiling — the branch cache is keyed on cwd, so several pushes
+with distinct `-C` values each spawn a `rev-parse` (verified: three `-C` paths → 9s). The fix is
+to make the hook resolve at most one branch per command, not to raise the handler timeout.
 
 **If the 3-state (BLOCK/ALLOW/ASK) redesign is retried**, it was attempted and reverted — see the
 revert commit for the full failure analysis. The short version: a `shlex`-based rewrite was
-validated against a 44-command corpus containing **only `git push` commands**, so it shipped six
+validated against a 44-command corpus containing **only push commands**, so it shipped six
 regressions (`shlex` treats a newline as whitespace, collapsing multi-line commands into one
 segment; shell grouping and wrapper prefixes like `sudo` also bypassed it) and six spurious
 permission prompts (the ASK arm was gated on a hand-maintained subcommand list, so
-`git rev-list main..HEAD` and friends began prompting). Any retry needs a corpus covering
-multi-line commands, shell grouping, wrapper prefixes, multiple heredocs, herestrings, and —
-most importantly — **non-push git commands**, to measure the ASK arm's blast radius before it
-ships.
+`git rev-list main..HEAD` and friends began prompting). The corpus added alongside the four fixes
+above is a starting point — it is deliberately half ALLOW cases, most of them non-push git
+commands — but a retry still needs multi-line commands, shell grouping, wrapper prefixes, and
+multiple heredocs before it ships.
 
 ## Make the symlink tests run on Windows (use an NTFS junction)
 

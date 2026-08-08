@@ -35,6 +35,14 @@ compared against main/master. Blocked shapes therefore include:
   - `git push -o ci.skip <remote>` and friends from main — an option whose
     value is a separate token has that value consumed, so it cannot pose as a
     refspec and suppress the refspec-less current-branch check
+  - `git push --all` / `--mirror` (with or without a remote) — these push EVERY
+    local branch, so the default one goes with them and no refspec names it;
+    `--mirror` additionally deletes remote refs the local repo lacks
+  - `git push --repo <remote> main` — `--repo` supplies the remote as an option
+    VALUE, so the positional that would normally be the remote is actually the
+    refspec. `main` was read as the remote and the refspec check never ran
+  - `git push <remote> heads/main` — git DWIMs `heads/main` to `refs/heads/main`,
+    and only the fully-qualified prefix was being stripped
 
 Which branch counts as "current" is resolved in the command's OWN directory:
 `payload["cwd"]`, overridden by a `-C` / `--work-tree` value when the
@@ -61,8 +69,15 @@ Exit codes:
   0 — allow
   2 — block with stderr explaining the rule
 
-Best-effort, with the gaps named rather than implied: a `git push` invoked via
-an alias, or one built by string interpolation, slips past; so does a global
+Best-effort, with the gaps named rather than implied. A `git push` invoked via
+an alias, or one built by string interpolation, slips past; so does a
+HERESTRING (`bash <<< '...'`), whose body IS quoted and so is blanked by
+`strip_quoted_spans` before matching. That one is left open deliberately:
+unlike `git.exe`, which PowerShell's tab-completion emits during ordinary
+work, a herestring-wrapped push is evasion-shaped, and un-blanking quoted
+spans after `<<<` adds parsing complexity to an ENFORCING guard for a
+vector nobody reaches by accident. An uppercase `GIT` is out of scope for
+the same reason, matching the `gh` precedent. Also: so does a global
 option shape outside `GIT_GLOBAL_OPTS`'s named, closed set (see that helper's
 docstring). A `git push origin main` sitting in a HEREDOC BODY is matched and
 blocked even though it is being written to a file rather than run — accepted,
@@ -130,15 +145,29 @@ _PUSH_VALUE_OPTS = ("-o", "--push-option", "--receive-pack", "--exec", "--repo")
 
 _PROTECTED = ("main", "master")
 
+# `--all` / `--mirror` push every local branch, so the default branch goes with
+# them and NO refspec names it — the refspec check below cannot see them at all.
+# `--mirror` additionally deletes remote refs the local repo lacks.
+#
+# No short form: `git push` has no `-a`, and matching one would fire on
+# unrelated tools that do.
+_ALL_BRANCHES_FLAG = re.compile(r"--(?:all|mirror)$")
+
 # Positional refspecs that MEAN the current branch rather than naming a ref.
 _HEAD_ALIASES = ("HEAD", "@")
 
 
 def _normalize_ref(ref: str) -> str:
-    """Reduce one side of a refspec to a bare branch name for comparison."""
+    """Reduce one side of a refspec to a bare branch name for comparison.
+
+    Strips `heads/` as well as the fully-qualified `refs/heads/`: git DWIMs
+    `git push origin heads/main` to `refs/heads/main`, so the short form is a
+    real push to the default branch that the prefix-only check let through.
+    """
     ref = ref.strip("'\"").lstrip("+")
-    if ref.startswith("refs/heads/"):
-        ref = ref[len("refs/heads/") :]
+    for prefix in ("refs/heads/", "heads/"):
+        if ref.startswith(prefix):
+            return ref[len(prefix) :]
     return ref
 
 
@@ -334,8 +363,23 @@ def _is_direct_push_to_main(command: str, cwd: str | None = None) -> bool:
         # First positional is the remote; anything after it is a refspec. Flags
         # are dropped — including `--force-with-lease=origin/main`, whose value
         # is not a push destination.
+        # `--all` and `--mirror` push EVERY local branch, which necessarily
+        # includes the default one, so there is no refspec to inspect and no
+        # safe reading of them. `--mirror` additionally deletes remote refs the
+        # local repo lacks. Checked before the refspec logic because these carry
+        # no destination for it to examine.
+        if any(_ALL_BRANCHES_FLAG.fullmatch(t) for t in tokens):
+            return True
+
         positionals = _positional_arguments(tokens)
-        refspecs = positionals[1:]
+        # `--repo <remote>` supplies the remote as an OPTION VALUE, so the
+        # positional that would normally be the remote is actually the refspec.
+        # Without this, `git push --repo origin main` read `main` as the remote
+        # and the refspec check never ran at all.
+        if any(t == "--repo" for t in tokens) or any(t.startswith("--repo=") for t in tokens):
+            refspecs = positionals
+        else:
+            refspecs = positionals[1:]
 
         if refspecs:
             if any(_refspec_touches_main(r, work_tree, cwd) for r in refspecs):
