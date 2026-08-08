@@ -403,6 +403,14 @@ function checkDerivedKeyConsistency(cfg) {
       }
     }
   }
+  // A union of zero extracted keys agrees perfectly with itself and derives
+  // nothing, so every comparison loop above is a no-op and the check reports
+  // `PASS (0 keys)` -- the exact shape a silently-broken extraction pattern
+  // takes. Zero keys means the sources or the pattern are wrong, not that the
+  // repo is consistent.
+  if (all.size === 0) {
+    return { status: 'ERROR', details: 'extracted 0 keys — check sources/pattern, nothing was compared' };
+  }
   if (problems.length === 0) {
     return { status: 'PASS', details: `${named.map((n) => n.label).join(' = ')} (${all.size} keys)` };
   }
@@ -444,6 +452,14 @@ function checkImportBoundary(cfg) {
   if (walk(r(cfg.sourceDir), extensions).length === 0) {
     return { status: 'ERROR', details: `scanned 0 files in ${cfg.sourceDir} — check sourceDir/extensions` };
   }
+  // ...and against the other vacuous PASS: `specMatches` is `forbidden.some(...)`,
+  // and `[].some()` is always false, so an empty or absent list reports "clean"
+  // on a source dir that DOES violate the boundary. Deleting one line from a
+  // config turned an invariant into a green tick. Every other empty collection
+  // in this file is already guarded this way, so this was an omission.
+  if (!cfg.forbidden || cfg.forbidden.length === 0) {
+    return { status: 'ERROR', details: 'forbidden is empty — the boundary would pass vacuously' };
+  }
   const violations = [];
   for (const { file, spec } of importsOf(cfg.sourceDir, extensions)) {
     if (specMatches(spec, cfg.forbidden)) {
@@ -468,6 +484,13 @@ function checkCrossImportBan(cfg) {
     // scanned -- ERROR, a config gap.
     if (walk(r(sourceDir), exts).length === 0) {
       return { status: 'ERROR', details: `scanned 0 files in ${sourceDir} — check sourceDir/extensions` };
+    }
+    // Checked PER PAIR, not once for the whole config: one well-configured pair
+    // must not vouch for a hollow sibling. An empty `forbidden` makes
+    // `specMatches` unconditionally false, so that pair passes without testing
+    // anything while the aggregate still reads PASS.
+    if (!forbidden || forbidden.length === 0) {
+      return { status: 'ERROR', details: `forbidden is empty for ${sourceDir} — that pair would pass vacuously` };
     }
     for (const { file, spec } of importsOf(sourceDir, exts)) {
       if (specMatches(spec, forbidden)) violations.push(`cross-boundary import: ${spec} (${file})`);

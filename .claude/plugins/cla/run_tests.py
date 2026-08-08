@@ -142,6 +142,59 @@ def run_scope(scope: Path, pytest_args: list[str]) -> tuple[int, int]:
     return proc.wait(), skipped
 
 
+# Node's own skip line is `ℹ skipped N`. Do NOT anchor this with `\W`: `ℹ`
+# (U+2139) has Unicode category `Ll` — it IS a word character to `re`, so
+# `^\W*skipped` misses every real summary line while still matching the plain
+# `# skipped` form a fixture would use, i.e. it passes its own tests and fails
+# in production.
+_NODE_SKIP_COUNT = re.compile(r"^[^a-zA-Z]*skipped\s+(\d+)\s*$", re.MULTILINE)
+
+
+def discover_node_tests() -> list[Path]:
+    """Every `*.test.mjs` under the plugin.
+
+    These ran under NOTHING before this: not the pytest aggregator (it looks for
+    a dir with both a pytest-configured pyproject.toml and a tests/ subdir, so a
+    `.test.mjs` is not even a near-miss), and not a consuming repo's package
+    manager either, since the plugin is not a workspace member. CLAUDE.md told
+    the reader to run them by hand, which nobody does.
+    """
+    return sorted(
+        p for p in PLUGIN_ROOT.rglob("*.test.mjs")
+        if "__pycache__" not in p.parts and "node_modules" not in p.parts
+    )
+
+
+def run_node_tests(files: list[Path]) -> tuple[int, int]:
+    """Run every `*.test.mjs` as one `node --test` scope. Returns (exit, skips).
+
+    A MISSING `node` is a FAILURE, not a skip. Files that exist but could not run
+    must not look like files that passed — the same rule the pytest half already
+    applies to a near-miss scope.
+    """
+    print(f"\n{'=' * 70}\n>>> node --test ({len(files)} file(s))\n{'=' * 70}", flush=True)
+    try:
+        proc = subprocess.Popen(
+            ["node", "--test", *[str(f) for f in files]],
+            cwd=PLUGIN_ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1,
+        )
+    except (OSError, ValueError) as exc:
+        print(
+            f"node is not runnable ({exc}) — {len(files)} .test.mjs file(s) did NOT run",
+            file=sys.stderr,
+        )
+        return 1, 0
+    out = []
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        out.append(line)
+    proc.stdout.close()
+    match = _NODE_SKIP_COUNT.search("".join(out))
+    return proc.wait(), int(match.group(1)) if match else 0
+
+
 def main(argv: list[str]) -> int:
     pytest_args = argv[1:]
 
@@ -160,7 +213,9 @@ def main(argv: list[str]) -> int:
     for scope, reason in near_misses:
         print(f"WARNING: {_rel(scope)} looks like a test scope but won't run — {reason}", file=sys.stderr)
 
-    if not scopes:
+    node_test_files = discover_node_tests()
+
+    if not scopes and not node_test_files:
         print("No test scopes found under", PLUGIN_ROOT, file=sys.stderr)
         return 1
 
@@ -173,6 +228,25 @@ def main(argv: list[str]) -> int:
     results: list[tuple[Path, int, int]] = [
         (s, *run_scope(s, pytest_args)) for s in scopes
     ]
+
+    # Forwarded args are pytest's, not node's, so the node scope is skipped when
+    # any are present rather than passed arguments it would reject.
+    if node_test_files and not pytest_args:
+        results.append((PLUGIN_ROOT / "node --test", *run_node_tests(node_test_files)))
+    elif node_test_files:
+        print(
+            f"\nNOTE: {len(node_test_files)} .test.mjs file(s) not run — forwarded "
+            "args are pytest-only. Re-run without args to include them.",
+            file=sys.stderr,
+        )
+
+    # Relaxing the zero-scope guard above to `not scopes and not node_test_files`
+    # opens a false green: with pytest discovering nothing AND node skipped for
+    # forwarded args, the summary loop never runs, `failed` stays 0, and the run
+    # prints "All 0 scope(s) passed" and exits 0. Guard it explicitly.
+    if not results:
+        print("No scopes ran.", file=sys.stderr)
+        return 1
 
     print(f"\n{'=' * 70}\nSUMMARY ({len(results)} scopes)\n{'=' * 70}", flush=True)
     failed = 0
