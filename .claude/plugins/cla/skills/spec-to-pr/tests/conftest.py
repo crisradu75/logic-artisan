@@ -14,7 +14,7 @@ import pytest
 
 
 def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def make_change(repo: Path, name: str, *, with_proposal: bool = True,
 
 def commit_on_branch(repo: Path, branch: str, message: str, file: str = "README.md") -> None:
     """Switch to `branch` (creating it from the current branch if needed) and commit a change."""
-    res = subprocess.run(["git", "rev-parse", "--verify", branch], cwd=repo, capture_output=True, text=True)
+    res = subprocess.run(["git", "rev-parse", "--verify", branch], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if res.returncode != 0:
         _git("checkout", "-q", "-b", branch, cwd=repo)
     else:

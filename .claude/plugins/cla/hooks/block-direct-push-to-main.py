@@ -372,14 +372,28 @@ def _is_direct_push_to_main(command: str, cwd: str | None = None) -> bool:
             return True
 
         positionals = _positional_arguments(tokens)
-        # `--repo <remote>` supplies the remote as an OPTION VALUE, so the
-        # positional that would normally be the remote is actually the refspec.
-        # Without this, `git push --repo origin main` read `main` as the remote
-        # and the refspec check never ran at all.
-        if any(t == "--repo" for t in tokens) or any(t.startswith("--repo=") for t in tokens):
-            refspecs = positionals
-        else:
-            refspecs = positionals[1:]
+        # The first positional is ALWAYS the repository, including when `--repo`
+        # is present -- git's own docs: `--repo` "is equivalent to the
+        # <repository> argument. If both are specified, the command-line argument
+        # takes precedence." A rule that treated the first positional as a
+        # refspec when `--repo` appeared was added here and reverted, because
+        # measuring it against real git showed all three of its premises wrong:
+        #
+        #   `git push --repo origin main`   git REFUSES: "'main' does not appear
+        #                                    to be a git repository" -- so the
+        #                                    shape it "closed" never pushed
+        #                                    anything.
+        #   `git push --repo origin origin` a REAL push of the default branch,
+        #                                    which the rule turned from BLOCK
+        #                                    into allow.
+        #   `git push --repo origin main feature/x`
+        #                                    `main` is the REMOTE here, so the
+        #                                    rule blocked ordinary work in any
+        #                                    repo with a remote so named.
+        #
+        # `--repo` stays in `_PUSH_VALUE_OPTS` so its value is consumed and
+        # cannot pose as a refspec. That is the whole handling it needs.
+        refspecs = positionals[1:]
 
         if refspecs:
             if any(_refspec_touches_main(r, work_tree, cwd) for r in refspecs):

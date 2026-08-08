@@ -67,7 +67,7 @@ def _run(cmd: list[str], cwd: Path, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> s
     """
     try:
         return subprocess.run(
-            cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", timeout=timeout
+            cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(cmd, 1, "", f"{type(exc).__name__}: {exc}")

@@ -51,6 +51,28 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+def _pin_streams_utf8() -> None:
+    """Force UTF-8 on this process's own stdout/stderr.
+
+    Load-bearing since the child decodes were pinned. Node's reporter emits
+    `✔` and `ℹ`; with the child pinned to UTF-8 those now arrive as real
+    characters, and writing them to a cp1252 stdout raises UnicodeEncodeError
+    mid-run — killing the aggregated suite after several scopes had already
+    passed. Pinning the input and not the output is half a contract, which is
+    the same lesson the ledger scripts and `orchestrate.py` already carry.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
+
+_pin_streams_utf8()
+
+
 PLUGIN_ROOT = Path(__file__).resolve().parent
 
 # Dirs we never descend into when discovering scopes (caches, VCS, vendored deps).
@@ -129,7 +151,7 @@ def run_scope(scope: Path, pytest_args: list[str]) -> tuple[int, int]:
     proc = subprocess.Popen(
         [sys.executable, "-m", "pytest", *pytest_args],
         cwd=scope, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
+        text=True, encoding="utf-8", errors="replace", bufsize=1,
     )
     skipped = 0
     for line in proc.stdout:
@@ -177,7 +199,7 @@ def run_node_tests(files: list[Path]) -> tuple[int, int]:
         proc = subprocess.Popen(
             ["node", "--test", *[str(f) for f in files]],
             cwd=PLUGIN_ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1,
+            text=True, encoding="utf-8", errors="replace", bufsize=1,
         )
     except (OSError, ValueError) as exc:
         print(

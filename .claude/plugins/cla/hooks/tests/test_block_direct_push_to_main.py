@@ -125,6 +125,14 @@ def test_blocks_refspec_shapes_that_used_to_slip_past(command):
         "git push origin master-list",
         "git push origin main.old",
         "git push origin maintenance",
+        # `--all`-PREFIXED tokens: the rule matches with `.fullmatch()`, and
+        # without a case here a `.match()` mutation survives green while
+        # blocking these.
+        "git push origin --all-tags",
+        "git push --follow-tags origin feature/x",
+        "git push -o something=--all origin feature/x",
+        "git fetch --all",
+        "git branch --all",
         "git push origin mainline",
         "git push origin release/main-ui",
         "git push origin feature/x:main-thing",
@@ -498,11 +506,12 @@ def test_main_respects_allow_push_to_main_escape_hatch(monkeypatch, capsys):
         "git push --all origin",
         "git push --mirror origin",
         "git push --all",
-        # --repo supplies the remote as an OPTION VALUE, so the positional that
-        # would normally be the remote is actually the refspec. `main` was read
-        # as the remote and the refspec check never ran at all.
-        "git push --repo origin main",
-        "git push --repo=origin main",
+        # NOTE: `--repo <remote> main` was listed here as a gap and the entry
+        # was WRONG — real git refuses it ("'main' does not appear to be a git
+        # repository"), because the first positional is always the repository.
+        # The rule written for it regressed a real push and is reverted; the
+        # shapes that matter are covered by the on-main cases at the end of
+        # this file.
         # git DWIMs `heads/main` to `refs/heads/main`; only the fully-qualified
         # prefix was being stripped.
         "git push origin heads/main",
@@ -554,3 +563,36 @@ def test_an_unquoted_push_after_echo_still_blocks_by_design():
     push."""
     assert hook._is_direct_push_to_main("echo git push origin main")
     assert not hook._is_direct_push_to_main("echo 'git push origin main'")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # `--repo` shapes, decided WITH HEAD on a protected branch. A rule added
+        # here and reverted the same day turned the first of these from BLOCK
+        # into allow — a real push of the default branch — and the corpus could
+        # not see it, because every other case is decided by literal refspec
+        # comparison and never reaches `_current_branch` at all.
+        #
+        # Real git, measured: the first positional is ALWAYS the repository, so
+        # `--repo origin origin` pushes the current branch, while
+        # `--repo origin main` fails with "'main' does not appear to be a git
+        # repository". The guard has to agree with the tool, not with a reading
+        # of its own source.
+        "git push --repo origin origin",
+        "git push --repo=origin origin",
+        "git push --repo origin upstream",
+        "git push --repo origin upstream --force",
+    ],
+)
+def test_a_push_from_a_protected_branch_blocks_even_behind_repo(command, monkeypatch):
+    monkeypatch.setattr(hook, "_current_branch", lambda cwd=None: "main")
+    assert hook._is_direct_push_to_main(command) is True, command
+
+
+def test_a_remote_named_main_is_not_mistaken_for_a_refspec(monkeypatch):
+    """The other direction of the same reverted rule: real git reads `main` here
+    as the REMOTE and `feature/x` as the refspec, so blocking it would wedge the
+    workflow of anyone whose remote is named that."""
+    monkeypatch.setattr(hook, "_current_branch", lambda cwd=None: "feature/x")
+    assert hook._is_direct_push_to_main("git push --repo origin main feature/x") is False

@@ -136,9 +136,18 @@ read from the source and one bad edit would break discovery for every consumer.
 
 ## `block-direct-push-to-main` — remaining non-coverage (was: known gaps)
 
-Five shapes were listed here. **Four are now blocked**, each with a regression test and a
-mutation check: `--all`/`--mirror`, `--repo <remote> main`, `heads/main`, and `git.exe`
-(closed earlier by the shared `GIT_CMD` constant).
+Five shapes were listed here. **Three are now blocked**, each with a regression test and a
+mutation check: `--all`/`--mirror`, `heads/main`, and `git.exe` (closed earlier by the
+shared `GIT_CMD` constant).
+
+**`--repo <remote> main` was NOT a gap** — the entry was wrong. Measured against real git:
+`git push --repo origin main` fails with `'main' does not appear to be a git repository`,
+because the first positional is always the repository and `--repo` only applies when none is
+given. A rule written for it was added and reverted the same day: it blocked a shape git
+refuses, un-blocked `git push --repo origin origin` (a real push of the default branch),
+and false-positived on any repo with a remote named `main`. The lesson is the one the
+reverted redesign already taught — a rule derived from reading the code rather than
+exercising the tool it models.
 
 **Two remain open, deliberately** — both evasion-shaped rather than reachable by ordinary use,
 which is the distinction that justified fixing `git.exe` and not these:

@@ -70,6 +70,7 @@ SIBLING_GROUPS = [
         "functions": ("make_dir_alias",),
         "files": (
             "hooks/tests/test_block_worktree_path_escape.py",
+            "hooks/tests/test_block_unsafe_recursive_delete.py",
             "skills/new-worktree/tests/test_manual_worktree.py",
         ),
     },

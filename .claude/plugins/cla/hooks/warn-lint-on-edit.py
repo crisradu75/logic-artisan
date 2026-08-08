@@ -118,13 +118,28 @@ def lint_profile(hooks_dir: str) -> tuple[tuple[str, ...], str, tuple[str, ...]]
     """`(extensions, binary_stem, extra_args)` for this repo."""
     config = _load_overlay(hooks_dir)
     if not config:
-        return LINTABLE_EXTS, "oxlint", ()
-    exts = tuple(
-        e if e.startswith(".") else "." + e
-        for e in (config.get("extensions", "").split() or [])
-    ) or LINTABLE_EXTS
-    args = tuple(config.get("args", "").split()) or ("-f", "json")
-    return exts, config.get("binary", "oxlint"), args
+        # ("-f", "json"), NOT (): `main()` passes this through explicitly, so
+        # `_run_oxlint`'s parameter default is never reached. Returning ()
+        # dropped the JSON reporter, oxlint emitted its human format,
+        # `json.loads` raised, and the hook went silent FOREVER in every JS
+        # repo -- re-creating, one step removed, the exact no-op this change
+        # exists to fix.
+        return LINTABLE_EXTS, "oxlint", ("-f", "json")
+    raw_exts = config.get("extensions", "").split()
+    binary = config.get("binary", "").strip()
+    # A HALF-configured overlay is a typo, not an intent. `binary: ruff` with no
+    # `extensions:` would otherwise lint `.ts` files with ruff and never see a
+    # `.py` one; an empty `binary:` value resolves to `shutil.which("")` -> None
+    # and goes silent. Both contradict this loader's "absent is the only silent
+    # case" contract, so they are announced and fall back whole.
+    if not raw_exts or not binary:
+        missing = ", ".join(k for k, v in (("extensions", raw_exts), ("binary", binary)) if not v)
+        print(f"[warn-lint-on-edit] {_OVERLAY_LEAF} is missing or blank for: {missing}; "
+              "using defaults", file=sys.stderr)
+        return LINTABLE_EXTS, "oxlint", ("-f", "json")
+    exts = tuple(e if e.startswith(".") else "." + e for e in raw_exts)
+    args = tuple(config.get("args", "").split())
+    return exts, binary, args
 
 # Cap how many diagnostics we echo back, so a file that lights up the linter
 # doesn't flood the parent context with a wall of findings.
@@ -179,6 +194,12 @@ def _find_linter(file_path: Path, ceiling: Path, stem: str = "oxlint") -> tuple[
             break
         current = current.parent
 
+    # Only for a non-default linter. `oxlint` is a per-package devDependency by
+    # design, so falling back to a GLOBAL one would make this hook fire in a
+    # repo that deliberately has no linter installed -- a new false positive
+    # where the previous behaviour was silence.
+    if stem == "oxlint":
+        return None
     on_path = shutil.which(stem)
     return (ceiling, Path(on_path)) if on_path else None
 

@@ -20,7 +20,7 @@ def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess
     # encoding="utf-8" is explicit so Windows doesn't decode git output as cp1252
     # and corrupt non-ASCII branch names, commit messages, or paths.
     return subprocess.run(cmd, cwd=cwd if cwd is not None else REPO_ROOT,
-                          capture_output=True, text=True, encoding="utf-8")
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def _branch_name(change_name: str) -> str:

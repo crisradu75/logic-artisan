@@ -39,6 +39,14 @@ def make_dir_alias(link: Path, real: Path) -> None:
         return
     except (OSError, NotImplementedError, AttributeError):
         pass
+    if os.name != "nt":
+        # The junction fallback is Windows-only. Without this gate, ANY
+        # non-privilege symlink failure on Linux/macOS -- FileExistsError, an
+        # overlayfs or SMB mount that disallows symlinks -- spawned `cmd`, which
+        # does not exist there, and `FileNotFoundError` propagated: the test
+        # ERRORED where it previously skipped. These files are synced core, so
+        # every POSIX consumer would have inherited that.
+        pytest.skip("symlink creation not permitted, and junctions are Windows-only")
     result = subprocess.run(
         ["cmd", "/c", "mklink", "/J", str(link), str(real)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",

@@ -307,6 +307,10 @@ def test_no_overlay_keeps_the_js_defaults_exactly(tmp_path):
     exts, stem, args = hook.lint_profile(str(tmp_path))
     assert exts == hook.LINTABLE_EXTS
     assert stem == "oxlint"
+    # args too. `main()` passes this through EXPLICITLY, so `_run_oxlint`'s
+    # parameter default never applies -- returning () dropped the JSON reporter
+    # and the hook went silent forever in every JS repo.
+    assert args == ("-f", "json")
 
 
 def test_an_overlay_switches_extensions_binary_and_args(tmp_path):

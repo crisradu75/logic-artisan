@@ -109,7 +109,7 @@ def test_blocks_worktree_path_delete(tmp_path):
     assert "worktrees" in r.stderr
 
 
-def _make_link(link: Path, real: Path) -> None:
+def make_dir_alias(link: Path, real: Path) -> None:
     """Create `link` -> `real` as a real symlink where permitted, falling back
     to an NTFS directory junction (`mklink /J`, no elevated privileges needed
     on Windows -- unlike a symlink) so this test gets real coverage on a
@@ -117,8 +117,10 @@ def _make_link(link: Path, real: Path) -> None:
     try:
         link.symlink_to(real, target_is_directory=True)
         return
-    except OSError:
+    except (OSError, NotImplementedError, AttributeError):
         pass
+    if os.name != "nt":
+        pytest.skip("symlink creation not permitted, and junctions are Windows-only")
     result = subprocess.run(
         ["cmd", "/c", "mklink", "/J", str(link), str(real)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -133,7 +135,7 @@ def test_blocks_directory_containing_a_symlink(tmp_path):
     real = tmp_path / "real-content"
     real.mkdir()
     (real / "important.txt").write_text("do not delete me", encoding="utf-8")
-    _make_link(target / "linked", real)
+    make_dir_alias(target / "linked", real)
 
     r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
     assert r.returncode == 2
