@@ -100,11 +100,11 @@ silently skipped.
 
 All scripts are stdlib-only Python (no third-party deps beyond pytest itself).
 
-### Before shipping a change here, run three checks
+### Before shipping a change here, run four checks
 
 The plugin's behaviour lives mostly in markdown, so a prose edit ships like code but
 nothing compiles it. Every defect that reached review in this repo had one shape: the
-artifact was checked, the system it lands in was not. These three checks are cheap and
+artifact was checked, the system it lands in was not. These four checks are cheap and
 each one comes from a real escape:
 
 1. **Inserted a step into an ordered sequence?** Read the step immediately before and
@@ -117,6 +117,19 @@ each one comes from a real escape:
 3. **Asserting a diagnosis?** Search the same source for counterexamples before shipping
    it, not just for supporting cases. A table of three examples proves nothing if three
    counterexamples sit in the same file.
+4. **Fixing a defect a review found?** Break the fix and confirm a test fails —
+   `python3 .claude/plugins/cla/mutate.py` runs a batch of those and reports survivors. A
+   fix is a change like any other and earns the same evidence the original code needed;
+   "the reviewer's finding is now handled" is not that evidence. A fix also has a second
+   branch nobody looks at: correcting one return path of a function commonly breaks
+   another, which is how `lint_profile` traded a silent no-op on the default path for the
+   identical no-op on the overlay path.
+
+**Then stop.** One review pass per branch: fix what it finds, mutation-check the fix,
+ship. Re-review only when the fix touched an enforcing `block-*` hook, because a guard
+that fails open is silent and a local test failure is not. Three consecutive rounds on
+one branch each found real defects *in the previous round's fixes* — the round that
+mutation-checked its own fixes was the round that ended it.
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
 sibling `node --test` suite (not a pytest scope, so `run_tests.py` doesn't discover it):
