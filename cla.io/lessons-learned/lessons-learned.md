@@ -23,6 +23,26 @@ each round found real criticals *in the previous round's fixes*:
 Round 3 was the last round, and the reason is specific: its fixes were mutation-checked (16
 mutants, 16 killed) before shipping. Rounds 1 and 2 were not.
 
+> **CORRECTION, added the same day by the review of the PR this entry proposed.** Two claims
+> above are false, and the review refuted both against the actual commits:
+>
+> - **"each found real criticals in the previous round's fixes"** — only round 3 did. Round 1's
+>   finding (`--repo`) was a defect in feature commit `0027bc7`; round 2's (`lint_profile`
+>   returning `()`) was a defect in feature commit `1cf09da`. Rounds 1 and 2 were also
+>   *concurrent*, not consecutive — `b241a39` opens "Two independent reviews" and folds both
+>   into one fix commit.
+> - **"Rounds 1 and 2 were not [mutation-checked]"** — `1cf09da` says "Three mutations checked,
+>   all caught" and `0027bc7` says "three mutations checked and all caught". Both shipped a
+>   critical anyway, because the mutants covered the branch the author was reasoning about and
+>   not the branch they got wrong.
+>
+> So the causal story — mutation-checking is what ended the branch — does not hold. The honest
+> lesson is narrower and more useful: **a mutation run is evidence about the mutants you thought
+> of, and nothing more.** `CLAUDE.md` now states it that way, with those two commits named as the
+> counterexample. The failure that produced the wrong version is `check-for-counterexamples`
+> re-offending in the very run that logged it as *prevented* — I searched for evidence that
+> round 3 differed and never for evidence that it did not.
+
 Then: merged and cleaned #41, and answered "what to input in market-distiller to sync" - where
 three of four facts I stated about that repo turned out to be stale (see Recurring patterns).
 

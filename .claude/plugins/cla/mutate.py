@@ -1,24 +1,36 @@
 #!/usr/bin/env python3
 """Mutation-check a batch of fixes: break each one, confirm a test fails, restore.
 
-WHY THIS EXISTS. A green suite proves the tests pass, not that they would catch
-the defect coming back. The gap is invisible and this repo has hit it repeatedly:
-a helper nobody called, a parse test whose setup never reached the defective
-block, a fixture that rounded its own argument, a corpus that never exercised the
-branch its rule lived on. Each looked tested. Each survived deletion of the thing
-it was supposed to test.
+WHAT IT PROVES, AND WHAT IT DOES NOT. A green suite proves the tests pass, not
+that they would catch the defect coming back. This tool closes that gap for the
+mutants you write — and ONLY for those. Two commits on one branch in this repo
+each said "three mutations checked, all caught" and each shipped a critical the
+next review found, because the mutants covered the branch the author was thinking
+about and not the branch they got wrong. A clean run here is evidence about the
+mutants you thought of. It is not a safety certificate, and it does not replace a
+review.
 
-It also exists because the batch was hand-written three separate times in one
-session's scratchpad — the same apply/run/restore loop, retyped, with the restore
-step re-derived each time. A restore that runs only on the happy path leaves the
-tree mutated, which is a far worse outcome than not checking at all; here it is in
-a `finally`, once.
+WHY IT FAILS LOUD. An earlier version of this file read any non-zero pytest exit
+as "killed". pytest exits non-zero for a missing target, an empty target, a
+collection error, a usage error, and an absent pytest — so a batch pointing at a
+typo'd path reported every mutant killed and exited 0. A verification tool that
+resolves ambiguity into confidence is worse than no tool, so every verdict here
+is now driven by evidence of an actual test FAILURE, and anything else is
+INCONCLUSIVE and fails the run.
+
+WHY IT WRITES BYTES. The same earlier version paired `read_text` with
+`write_text`, whose newline translation rewrote every line ending in an LF file
+to CRLF on Windows. This repo pins `cla` and `claw` to `eol=lf` precisely because
+a CRLF shebang (`#!/usr/bin/env bash\\r`) breaks the POSIX launchers — and
+`git diff` shows nothing for that change, because the `eol=lf` attribute
+normalizes on read. Restores are byte-exact and asserted.
 
 USAGE. Write a batch file — a Python module defining `MUTANTS`, a list of
 `(name, path, old, new, targets)`:
 
     from pathlib import Path
-    HOOKS = Path("C:/code/logic-artisan/.claude/plugins/cla/hooks")
+    PLUGIN = Path(__file__).resolve().parents[1]     # adjust to where you put it
+    HOOKS = PLUGIN / "hooks"
     MUTANTS = [
         ("the args fallback comes back",
          HOOKS / "warn-lint-on-edit.py",
@@ -29,20 +41,21 @@ USAGE. Write a batch file — a Python module defining `MUTANTS`, a list of
 
 then run it:
 
-    python3 .claude/plugins/cla/mutate.py batch.py
+    python3 .claude/plugins/cla/mutate.py <batch.py>
 
-`old` must appear in the file (a missing anchor is reported as a failure, never
-skipped silently — a batch whose anchors have drifted is a batch that checks
-nothing). Only the FIRST occurrence is replaced, so anchor on something unique.
+`old` must appear EXACTLY ONCE in the file. A missing anchor means that mutant
+silently stopped checking anything; an ambiguous one silently mutates a site you
+did not mean, and a kill on the wrong site reads exactly like a kill on the right
+one. Both are refused before any file is touched.
 
-EXIT CODE. 0 when every mutant was killed; 1 when any survived or any anchor was
-missing. A survivor names a fix that no test would catch the regression of.
+VERDICTS. `killed` (pytest exit 1 — a test actually failed), `SURVIVED` (exit 0 —
+no test noticed), `INCONCLUSIVE` (any other exit — the run proves nothing, and
+the captured pytest output is printed). Exit 0 only when every mutant was killed.
 
-TARGETS. Each entry's `targets` is a list of paths passed straight to pytest, so
-a scope dir, a single test file, or a `::`-qualified node all work. Prefer the
-narrowest target that could plausibly catch the mutation — the batch runs one
-pytest per mutant, so a whole-repo target multiplies wall-clock by the batch size
-for no extra signal.
+TARGETS. Passed straight to pytest, so a scope dir, a test file, or a
+`::`-qualified node all work; pytest finds the scope's `pyproject.toml` by
+walking up from the argument. Prefer the narrowest target that could plausibly
+catch the mutation — one pytest runs per mutant.
 """
 
 from __future__ import annotations
@@ -52,8 +65,23 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Pin this process's own streams: a mutated test's output can carry anything, and
-# a run that dies writing a traceback to a cp1252 console reports nothing at all.
+# pytest's exit codes. Only ONE of them is evidence that a test caught the
+# mutant; conflating the rest with it is what made the first version of this file
+# report success for batches that never ran a test.
+EXIT_OK = 0
+EXIT_TESTS_FAILED = 1
+_PYTEST_EXIT_MEANING = {
+    2: "interrupted (often a collection or syntax error — the mutant may have "
+       "broken the parse rather than the behaviour)",
+    3: "internal error",
+    4: "usage error (commonly a target path that does not exist)",
+    5: "no tests were collected",
+}
+
+_BACKUP_SUFFIX = ".mutate-backup"
+
+# Pin this process's own streams: a batch name or a traceback can carry anything,
+# and a run that dies writing its own output to a cp1252 console reports nothing.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         try:
@@ -63,70 +91,204 @@ for _stream in (sys.stdout, sys.stderr):
 
 
 def load_batch(path: Path) -> list[tuple]:
-    """Import `path` as a module and return its `MUTANTS` list."""
+    """Import `path` as a module and return its validated `MUTANTS` list.
+
+    Validation happens HERE, before any file is touched. Unpacking inside the run
+    loop meant a malformed entry at position N crashed only after entries 1..N-1
+    had already mutated and restored, with no summary and a traceback for output.
+    """
     spec = importlib.util.spec_from_file_location("mutation_batch", path)
     if spec is None or spec.loader is None:
         raise SystemExit(f"error: cannot import a batch from {path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except OSError as exc:
+        raise SystemExit(f"error: cannot read the batch {path}: {exc}") from exc
+    except Exception as exc:  # a syntax error, a bad import, anything the batch does
+        raise SystemExit(f"error: the batch {path} failed to load: {exc!r}") from exc
+
     mutants = getattr(module, "MUTANTS", None)
     if not isinstance(mutants, list) or not mutants:
         raise SystemExit(f"error: {path} defines no non-empty MUTANTS list")
+
+    problems: list[str] = []
+    for i, entry in enumerate(mutants):
+        if not isinstance(entry, (tuple, list)) or len(entry) != 5:
+            problems.append(f"MUTANTS[{i}]: expected a 5-tuple "
+                            f"(name, path, old, new, targets), got {entry!r:.80}")
+            continue
+        name, target_path, old, new, targets = entry
+        if not isinstance(old, str) or not isinstance(new, str):
+            problems.append(f"MUTANTS[{i}] ({name}): `old` and `new` must be strings")
+        elif old == new:
+            problems.append(f"MUTANTS[{i}] ({name}): `old` == `new` — this mutant "
+                            "changes nothing and would report SURVIVED forever")
+        if isinstance(targets, (str, Path)):
+            # `[Path(t) for t in targets]` iterates a string CHARACTER by
+            # character, producing garbage paths and a pytest usage error, which
+            # the old exit-code mapping then reported as a kill.
+            problems.append(f"MUTANTS[{i}] ({name}): `targets` must be a LIST of "
+                            "paths, not a single path")
+        elif not targets:
+            problems.append(f"MUTANTS[{i}] ({name}): `targets` is empty")
+    if problems:
+        raise SystemExit("error: malformed batch:\n  " + "\n  ".join(problems))
     return mutants
 
 
-def run_pytest(targets: list[Path]) -> int:
-    """Run pytest over `targets`, quiet and fail-fast.
+def preflight(mutants: list[tuple]) -> None:
+    """Refuse to start unless every mutant could actually prove something.
+
+    Every check here exists because its absence produced a FALSE KILL: no pytest
+    at all, a target that does not exist, an anchor that no longer matches, an
+    anchor that matches twice. Each of those makes pytest exit non-zero for a
+    reason unrelated to the mutation.
+    """
+    problems: list[str] = []
+
+    if importlib.util.find_spec("pytest") is None:
+        problems.append(f"pytest is not available under {sys.executable} — every "
+                        "run would exit non-zero for that reason alone")
+
+    stale = sorted({
+        str(Path(str(p)) .with_name(Path(str(p)).name + _BACKUP_SUFFIX))
+        for _, p, _, _, _ in mutants
+        if Path(str(p)).with_name(Path(str(p)).name + _BACKUP_SUFFIX).exists()
+    })
+    if stale:
+        problems.append(
+            "a previous run did not finish — these backups still exist, and the "
+            "source beside them may still be mutated. Restore each by hand "
+            "(`mv <f>" + _BACKUP_SUFFIX + " <f>`) before re-running:\n    "
+            + "\n    ".join(stale))
+
+    for name, path, old, _new, targets in mutants:
+        path = Path(str(path))
+        if not path.is_file():
+            problems.append(f"{name}: no such file: {path}")
+            continue
+        try:
+            text = path.read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            problems.append(f"{name}: cannot read {path} as UTF-8: {exc}")
+            continue
+        hits = text.count(old)
+        if hits == 0:
+            problems.append(f"{name}: anchor not found in {path.name} — this "
+                            "mutant checks nothing")
+        elif hits > 1:
+            problems.append(f"{name}: anchor appears {hits}x in {path.name} — only "
+                            "the first would be mutated, so a kill might belong to "
+                            "a site you did not mean. Anchor on something unique.")
+        for target in targets:
+            # A `::`-qualified node id is not a path; check the file part only.
+            probe = Path(str(target).split("::")[0])
+            if not probe.exists():
+                problems.append(f"{name}: target does not exist: {target}")
+
+    if problems:
+        raise SystemExit("error: preflight failed, nothing was mutated:\n  "
+                         + "\n  ".join(problems))
+
+
+def uncommitted(paths: list[Path]) -> list[str]:
+    """Which of `paths` git reports as dirty. Empty list when git is unusable.
+
+    A crash or a hard kill mid-run leaves the mutant on disk (the `finally` below
+    cannot run for a SIGKILL). If the file also held uncommitted work, that work
+    is unrecoverable — `git checkout` restores the committed version, not yours.
+    Advisory rather than blocking: a dirty tree is the normal state mid-change,
+    and this tool's whole purpose is checking a fix you have not committed yet.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "--", *[str(p) for p in paths]],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if proc.returncode != 0:
+        return []
+    return [line[3:] for line in proc.stdout.splitlines() if line.strip()]
+
+
+def run_pytest(targets: list[Path]) -> tuple[int, str]:
+    """Run pytest over `targets`. Returns `(exit code, combined output)`.
 
     `-x` because the batch only needs to know WHETHER the mutant was caught; the
     first failure answers that, and a mutant that breaks fifty tests should not
     cost fifty tests' worth of runtime.
 
-    cwd is the scope root (the target's own dir, or its parent for a file) so the
-    scope's `pyproject.toml` — its `pythonpath`, its `testpaths` — actually
-    applies. Running from elsewhere silently collects nothing in a repo whose
-    scopes are deliberately isolated.
+    The output is returned rather than discarded: it is the only thing that can
+    explain an INCONCLUSIVE verdict, and throwing it away is what made the first
+    version's false kills invisible.
+
+    No `cwd=` is set. pytest resolves rootdir and the ini-file by walking UP from
+    its arguments, not from the working directory, so a scope's `pyproject.toml`
+    applies either way — an earlier version set a derived cwd and justified it
+    with a mechanism that measurement did not support, while breaking relative
+    targets.
     """
-    first = targets[0]
-    cwd = first.parent.parent if first.is_file() else first.parent
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-x", *[str(t) for t in targets]],
-        cwd=str(cwd), capture_output=True,
-        text=True, encoding="utf-8", errors="replace",
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
-    return proc.returncode
+    return proc.returncode, proc.stdout + proc.stderr
 
 
 def check(mutants: list[tuple]) -> int:
-    survivors: list[str] = []
-    for name, path, old, new, targets in mutants:
-        path = Path(path)
-        original = path.read_text(encoding="utf-8")
-        if old not in original:
-            # NOT a skip. An anchor that no longer matches means this mutant
-            # silently stopped checking anything, which is the exact failure
-            # shape the tool exists to surface.
-            print(f"  ANCHOR MISSING  {name}", flush=True)
-            survivors.append(f"{name} (anchor missing in {path.name})")
-            continue
-        path.write_text(original.replace(old, new, 1), encoding="utf-8")
+    dirty = uncommitted([Path(str(p)) for _, p, _, _, _ in mutants])
+    if dirty:
+        print("note: these target files have uncommitted changes. An interrupted "
+              "run cannot restore them:", flush=True)
+        for d in dirty:
+            print(f"  {d}", flush=True)
+
+    failures: list[str] = []
+    for i, (name, path, old, new, targets) in enumerate(mutants, 1):
+        path = Path(str(path))
+        print(f"[{i}/{len(mutants)}] {name}", flush=True)
+        original = path.read_bytes()
+        backup = path.with_name(path.name + _BACKUP_SUFFIX)
+        # On disk, not just in memory: if this process is hard-killed, the
+        # original still exists and preflight will refuse to run again until it
+        # has been put back.
+        backup.write_bytes(original)
         try:
-            code = run_pytest([Path(t) for t in targets])
+            mutated = original.decode("utf-8").replace(old, new, 1)
+            path.write_bytes(mutated.encode("utf-8"))
+            code, output = run_pytest([Path(str(t)) for t in targets])
         finally:
-            # Unconditional. A batch that leaves the tree mutated after a crash
-            # or a Ctrl-C is worse than one that never ran.
-            path.write_text(original, encoding="utf-8")
-        if code == 0:
-            print(f"  SURVIVED        {name}", flush=True)
-            survivors.append(name)
+            path.write_bytes(original)
+
+        if path.read_bytes() != original:
+            # Never observed, but a restore that cannot prove it restored is the
+            # same defect class as a check that cannot prove it checked.
+            print(f"  RESTORE FAILED — {path} does NOT match its original. "
+                  f"Recover from {backup}", flush=True)
+            return 1
+        backup.unlink()
+
+        if code == EXIT_TESTS_FAILED:
+            print("  killed", flush=True)
+        elif code == EXIT_OK:
+            print("  SURVIVED — no test noticed this change", flush=True)
+            failures.append(f"SURVIVED: {name}")
         else:
-            print(f"  killed          {name}", flush=True)
+            why = _PYTEST_EXIT_MEANING.get(code, "unrecognized pytest exit")
+            print(f"  INCONCLUSIVE — pytest exited {code}: {why}", flush=True)
+            for line in output.strip().splitlines()[-12:]:
+                print(f"      {line}", flush=True)
+            failures.append(f"INCONCLUSIVE (pytest exit {code}): {name}")
 
     print()
-    if survivors:
-        print(f"{len(survivors)} of {len(mutants)} mutant(s) SURVIVED — no test catches:")
-        for s in survivors:
-            print(f"  - {s}")
+    if failures:
+        print(f"{len(failures)} of {len(mutants)} mutant(s) did not produce a test "
+              f"failure:")
+        for f in failures:
+            print(f"  - {f}")
         return 1
     print(f"All {len(mutants)} mutant(s) killed.")
     return 0
@@ -135,9 +297,13 @@ def check(mutants: list[tuple]) -> int:
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(f"usage: {Path(argv[0]).name} <batch.py>", file=sys.stderr)
-        print(__doc__.split("USAGE.")[1].split("EXIT CODE.")[0].strip(), file=sys.stderr)
+        print("  A batch is a Python module defining MUTANTS, a list of\n"
+              "  (name, path, old, new, targets). See this file's docstring.",
+              file=sys.stderr)
         return 2
-    return check(load_batch(Path(argv[1]).resolve()))
+    mutants = load_batch(Path(argv[1]).resolve())
+    preflight(mutants)
+    return check(mutants)
 
 
 if __name__ == "__main__":

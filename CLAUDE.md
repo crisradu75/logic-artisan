@@ -118,21 +118,25 @@ each one comes from a real escape:
    it, not just for supporting cases. A table of three examples proves nothing if three
    counterexamples sit in the same file.
 4. **Fixing a defect a review found?** Break the fix and confirm a test fails —
-   `python3 .claude/plugins/cla/mutate.py` runs a batch of those and reports survivors. A
+   `python3 .claude/plugins/cla/mutate.py <batch.py>` runs a batch of those (a batch is a
+   Python module defining `MUTANTS`; see the tool's docstring) and reports survivors. A
    fix is a change like any other and earns the same evidence the original code needed;
    "the reviewer's finding is now handled" is not that evidence. A fix also has a second
    branch nobody looks at: correcting one return path of a function commonly breaks
    another, which is how `lint_profile` traded a silent no-op on the default path for the
    identical no-op on the overlay path.
 
-**Then stop.** One review pass per branch: fix what it finds, mutation-check the fix,
-ship. Re-review only when the fix touched an enforcing `block-*` hook, because a guard
-that fails open is silent and a local test failure is not. Three consecutive rounds on
-one branch each found real defects *in the previous round's fixes* — the round that
-mutation-checked its own fixes was the round that ended it.
+**A clean mutation run is not a licence to stop.** It is evidence about the mutants you
+thought of, and nothing else. Measured on this repo: commits `1cf09da` and `0027bc7` each
+recorded "three mutations checked, all caught" and each shipped a critical that a later
+review found — the mutants covered the branch the author was reasoning about, not the
+branch they got wrong. So mutate what the fix *touches*, not what it targets, and treat a
+green run as one input to the ship decision rather than the decision itself.
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
-sibling `node --test` suite (not a pytest scope, so `run_tests.py` doesn't discover it):
+sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as an
+11th entry alongside the 10 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
+while iterating on that one script:
 
 ```bash
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
@@ -140,9 +144,9 @@ node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.
 
 ### No CI — verification is local, by design
 
-This repo runs **no GitHub Actions and no CI of any kind**, deliberately. The commands above are
-the whole verification story: `run_tests.py` for every pytest scope, plus the Node suite. Run both
-before calling a change done.
+This repo runs **no GitHub Actions and no CI of any kind**, deliberately. `run_tests.py` is the
+whole verification story — every pytest scope plus the Node suite, in one command. Run it before
+calling a change done.
 
 Do not add a workflow. If a change seems to need one, raise it rather than adding it.
 
@@ -182,7 +186,8 @@ everywhere) from *facts* (per-repo, never synced):
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
-  run_tests.py                 aggregating test runner (all scopes)
+  run_tests.py                 aggregating test runner (all scopes + the Node suite)
+  mutate.py                    mutation checker: break a fix, confirm a test fails, restore
   .cla-sync-lock.json          per-repo sync provenance (auto-maintained by update-cla)
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   hooks/                       guard hooks + hooks.json wiring + tests
