@@ -1,6 +1,127 @@
 # Lessons learned
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
+## Lessons learned - scope: repo-wide (`hooks/`, `consistency-checks/`, `run_tests.py`, `CLAUDE.md`, `TODO.md`)
+
+### Session summary
+
+Consumer-repo feedback triage -> 29 verified findings -> PR #40, then "fix everything in this
+repo" -> PR #41 (50 files, +1302/-207, squash-merged). PR #41 took **three review rounds**, and
+each round found real criticals *in the previous round's fixes*:
+
+- **Round 1** - a `--repo` rule in the push guard was a net negative: it blocked a shape real git
+  refuses, un-blocked `git push --repo origin origin` (a real push of the default branch), and
+  false-positived on any repo with a remote named `main`. Reverted.
+- **Round 2** - `lint_profile` returned `()` for args on the no-overlay path and `main()` passes
+  that through explicitly, so the hook was a silent no-op in every JS repo. Fixed.
+- **Round 3** - the round-2 fix moved the same no-op to the *overlay* path; the docstring's claim
+  that `ruff` is "a near drop-in: same JSON-diagnostics shape" was false (measured: top-level
+  array, `location`/`code`, no `labels`/`severity`), so the documented overlay ran ruff and
+  discarded every finding; and two ALLOW-corpus push-guard cases resolved the REAL branch, so the
+  hooks scope failed for any checkout sitting on `main` - which is where every consuming repo sits.
+
+Round 3 was the last round, and the reason is specific: its fixes were mutation-checked (16
+mutants, 16 killed) before shipping. Rounds 1 and 2 were not.
+
+> **CORRECTION, added the same day by the review of the PR this entry proposed.** Two claims
+> above are false, and the review refuted both against the actual commits:
+>
+> - **"each found real criticals in the previous round's fixes"** — only round 3 did. Round 1's
+>   finding (`--repo`) was a defect in feature commit `0027bc7`; round 2's (`lint_profile`
+>   returning `()`) was a defect in feature commit `1cf09da`. Rounds 1 and 2 were also
+>   *concurrent*, not consecutive — `b241a39` opens "Two independent reviews" and folds both
+>   into one fix commit.
+> - **"Rounds 1 and 2 were not [mutation-checked]"** — `1cf09da` says "Three mutations checked,
+>   all caught" and `0027bc7` says "three mutations checked and all caught". Both shipped a
+>   critical anyway, because the mutants covered the branch the author was reasoning about and
+>   not the branch they got wrong.
+>
+> So the causal story — mutation-checking is what ended the branch — does not hold. The honest
+> lesson is narrower and more useful: **a mutation run is evidence about the mutants you thought
+> of, and nothing more.** `CLAUDE.md` now states it that way, with those two commits named as the
+> counterexample. The failure that produced the wrong version is `check-for-counterexamples`
+> re-offending in the very run that logged it as *prevented* — I searched for evidence that
+> round 3 differed and never for evidence that it did not.
+
+Then: merged and cleaned #41, and answered "what to input in market-distiller to sync" - where
+three of four facts I stated about that repo turned out to be stale (see Recurring patterns).
+
+### Recurring patterns
+
+- **RE-OFFENSE - memory `validate-the-blast-radius`.** The round-3 `args` regression is that
+  memory's exact shape: I fixed one return path of `lint_profile` and never checked the other,
+  in a function whose own comment states the fact that made the second path break (`main()`
+  passes args through explicitly). **Escalated: memory -> CLAUDE.md** as a fourth pre-ship check,
+  paired with a new tool (`mutate.py`) so the check is one command rather than a discipline.
+- **NEW - a measurement has an expiry.** Told the user a consuming repo was "93 assets behind,
+  no `output-styles/CLA.md`, no `manual_worktree.py`", and needed a `discover.py` bootstrap.
+  All from a triage taken earlier in the same session, before six PRs merged. Re-measured on the
+  follow-up: both files present, `discover.py` already fixed, real gap 70 differing / 1 missing.
+  Three of four claims false. **Entered at memory.** Notably the corrective instinct DID fire -
+  one turn late, on the follow-up rather than on the close-out.
+- **PREVENTED - memory `check-for-counterexamples`.** Twice, decisively. A corpus comment claimed
+  an `--all-tags` case kills a `.match()` mutation; measured, the mutation survives (the rule
+  carries both `$` and `.fullmatch()`, so either anchor alone rejects it) - comment corrected
+  rather than defended. And the ruff claim was refuted by running real ruff.
+- **PREVENTED - memory `read-primary-source-first`.** The ruff payload shape was settled by
+  running `ruff check --output-format json` and reading the bytes, not by trusting three
+  docstrings that all asserted the wrong thing.
+- **PREVENTED - `failure-modes.md:52` (merge without authorization).** #41 sat open until "merge
+  and clean". The `ALLOW_PR_MERGE=1` escape hatch was used on that explicit instruction and
+  disclosed; the hook logged the bypass itself.
+- **PREVENTED - `failure-modes.md:41` (shared resource ceiling).** `warn-wholesale-rewrite`'s git
+  timeout was cut 5s -> 3s on the arithmetic that three chained calls at 5s hit the 15s handler
+  budget exactly.
+
+### Lessons (meta)
+
+- **The user's question was the finding.** "how much time can you spend in reviews? it's never
+  ending..." is not impatience with reviews - each round found real defects. It is the correct
+  read of a fix pipeline with no evidence gate: review finds a defect, I fix it, the fix ships
+  unverified, the next review finds the fix. The loop terminates when the fix carries evidence,
+  not when the reviews get gentler.
+- **Mutation-checking found nothing that plain testing had found.** All 16 round-3 mutants were
+  killed, which sounds like the check was redundant - but two of the tests that killed them were
+  written *because* planning the mutation exposed that no test covered the branch. The value was
+  in the planning, not the run.
+- **A guard the tool itself refutes.** The push-guard `--repo` rule was derived by reading git's
+  own argument parser and reasoning about it. Every one of its three premises was wrong, and one
+  command against real git would have shown that. This is the second reverted push-guard redesign
+  from the same root cause, now recorded in `TODO.md` in those terms.
+
+### Suggestions
+
+1. **APPLIED** - `CLAUDE.md`: fourth pre-ship check ("fixing a defect a review found? break the
+   fix and confirm a test fails"), plus the explicit stopping rule - one review pass per branch,
+   re-review only when the fix touched an enforcing `block-*` hook. Escalation of
+   `validate-the-blast-radius` from memory to a doc that auto-loads every session.
+2. **APPLIED** - new tool `.claude/plugins/cla/mutate.py`: apply/run/restore over a batch of
+   mutants, reporting survivors, with the restore in a `finally` and a missing anchor reported as
+   a failure rather than a skip. Hand-written three times in this session's scratchpad. Sits at
+   the plugin root, so it is outside the synced set and stays this repo's own tool. Self-tested
+   against all three verdicts (killed / survived / anchor missing); exit 1 and tree restored.
+3. **APPLIED** - `CLAUDE.md`: the review stopping rule (folded into suggestion 1's section, since
+   the check and the rule are one thought: the check is what makes stopping safe).
+4. **APPLIED** - memory `a-measurement-has-an-expiry`.
+5. **APPLIED** - memory `sync-config-repos-is-a-list` (type: reference). `~/.claude/sync-config.json`
+   stores `repos` as a list of absolute paths; `update-cla`'s docs describe a name->path map, so
+   short-name source resolution does not work. Pass the absolute path.
+
+### Codify-process notes
+
+No codify-process issues. Two observations for `/cla:codify-retro`:
+
+- **Step 2.6 retire-on-escalation was a genuine no-op this run** and saying so took one line, as
+  the SKILL.md now allows. Nothing escalated *off* the checklist - the escalations were memory ->
+  `CLAUDE.md` and new -> memory - so no bullet was superseded. Both size thresholds are clear (51
+  bullets of ~60; 5 live entries of ~12).
+- **The prefer-fixes rule earned its place.** The natural instinct for lesson 1 was a doc line
+  saying "mutation-check your fixes". The rule forced the question "could a tool have prevented
+  the detour", and the honest answer was yes - I had already built that tool three times and
+  thrown it away each time. The doc line alone would have been the weaker half of the suggestion.
+
+---
+
 
 ## Lessons learned — scope: repo-wide (`hooks/`, `skills/update-cla/`, `output-styles/`, `CLAUDE.md`)
 
