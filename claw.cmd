@@ -181,6 +181,14 @@ REM against the directory just entered. The POSIX twin does the same with
 REM `cd ... && pwd`. Normalizing only GCD would leave an absolute FORWARD-slash
 REM GD compared against a backslash value, which also never matches — both, or
 REM neither.
+REM Pre-cleared, like PYEXE and WORKTREE_PATH above. A `for /f` over a command
+REM that produces NO output leaves the variable at whatever it already held, so
+REM an inherited value from the parent environment satisfies the `if not defined`
+REM guards below and feeds stale paths into the primary-clone assertion --
+REM turning a fail-closed check into a launch. These were the one variable pair
+REM in this file not following the rule the file already applies twice.
+set "GD="
+set "GCD="
 for /f "delims=" %%I in ('git rev-parse --absolute-git-dir 2^>nul') do set "GD=%%I"
 for /f "delims=" %%I in ('git rev-parse --git-common-dir 2^>nul') do set "GCD=%%I"
 if not defined GD (

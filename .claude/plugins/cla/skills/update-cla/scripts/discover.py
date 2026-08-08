@@ -162,7 +162,7 @@ def _hash_bytes(data: bytes) -> str:
 
     Measured across four consumer repos before this changed: 277 of 527 tracked
     assets matched their lock entry ONLY after CRLF normalization. The single
-    repo that was unaffected (agentic-air, 0 of 150) is the one with a repo-wide
+    repo that was unaffected (0 of 150) is the one with a repo-wide
     `.gitattributes` pinning `eol=lf` — which is the mechanism, confirmed from
     the other direction.
 

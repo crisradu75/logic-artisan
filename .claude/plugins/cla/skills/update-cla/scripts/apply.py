@@ -153,10 +153,17 @@ def _normalize_line_endings(content: str) -> str:
 # not just corruption. Confirmed empirically against every file in this
 # plugin's `skills/`/`agents/`/`hooks/`/`output-styles/` tree with at least
 # `_MALFORMED_MIN_NON_EMPTY_LINES` non-empty lines: the most blank-line-heavy
-# genuine file (one-paragraph-per-line markdown, a blank line between each)
-# sits at ratio 1.955 — see `test_malformed_ratio_never_flags_real_repo_content`,
-# which pins the whole synced-core tree at once so a future doc in this same
-# style can't silently regress this guard.
+# genuine file sits at ratio **1.6098** (`multi-spec/references/review-gate.md`,
+# recomputed over the synced-core tree) — see
+# `test_malformed_ratio_never_flags_real_repo_content`, which pins the whole tree
+# at once so a future doc in this style can't silently regress this guard.
+#
+# This comment previously stated 1.955 for this population, and 1.667 a few lines
+# below — two different maxima for the same set, both wrong. Worse, 1.955 is ABOVE
+# the 1.85 threshold, so a real file sitting there would have been REJECTED,
+# contradicting the very test named here. The 1.955 figure is real but belongs to
+# `design-tradeoffs.md`, which has 22 non-empty lines and is EXCLUDED by the
+# 30-line minimum; that test's own comment states this correctly.
 #
 # One shape genuinely can't be perfectly separated from corruption by ratio
 # alone at ANY length: prose written as one paragraph per line with a blank
@@ -169,7 +176,7 @@ def _normalize_line_endings(content: str) -> str:
 # `test_malformed_ratio_never_flags_real_repo_content`, which scans every
 # real file rather than relying on a hand-built approximation. Empirically,
 # every real file with `_MALFORMED_MIN_NON_EMPTY_LINES`-or-more non-empty
-# lines in this repo tops out at ratio 1.667 (the extreme "blank between
+# lines in this repo tops out at ratio 1.6098 (the extreme "blank between
 # every line" style only appears in a handful of SHORT reference docs,
 # already excluded by the minimum). A corrupted file's worst realistic case
 # — no pre-existing blank lines AND no trailing newline on its last line —

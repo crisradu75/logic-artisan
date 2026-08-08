@@ -24,7 +24,7 @@ _TOOL_MISSING_RC = 127
 _ENVIRONMENT_RC = 126
 
 # Bounded so a hung child can't wedge the probe. Sized above the siblings'
-# (`_repo_root` 10s, `_dispatch_lib._git` 5s) because the `gh` calls here are
+# (`_repo_root` 10s, `_dispatch_lib.GIT_TIMEOUT_SECONDS` 3s) because the `gh` calls here are
 # network round-trips and can legitimately sit on a credential prompt — which
 # is exactly the case an unbounded `subprocess.run` never returns from.
 _TIMEOUT_SECONDS = 30

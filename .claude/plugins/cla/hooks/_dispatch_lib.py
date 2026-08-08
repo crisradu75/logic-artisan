@@ -335,9 +335,9 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 # Shared by block-direct-push-to-main.py, warn-branch-base.py,
 # warn-stray-scratch-artifact.py, guard-worktree-isolation.py,
 # ask-destructive-git.py, and ask-git-identity.py. Previously
-# each of those four files carried its own literal copy of this pattern (three
+# each of those six files carried its own literal copy of this pattern (three
 # linked only by a "mirrors guard-worktree-isolation.py" comment) — a bug fixed
-# in one copy could silently persist in the other three, and did: a long
+# in one copy could silently persist in the other five, and did: a long
 # global option with a space-separated (non-`=`) value (`git --work-tree
 # <path> push origin main`) bypassed all of them, and a quoted `-c`/`-C` value
 # containing a space (`git -C "/path with space" checkout -b x`) bypassed the

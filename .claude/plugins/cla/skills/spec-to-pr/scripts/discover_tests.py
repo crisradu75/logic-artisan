@@ -18,7 +18,7 @@ Any Playwright/e2e smoke scripts need a running dev server, so they are
 intentionally NOT emitted here — they're an optional/manual check the Test
 phase mentions but does not gate on.
 
-Output contract (default) is unchanged from the pytest-era version: a JSON list
+Output contract (default): a JSON list
 of argv-style command lists, e.g. `[["npm","run","build"],["npm","run","lint"]]`.
 
 With `--staged`, output is instead a JSON object partitioning the same commands
