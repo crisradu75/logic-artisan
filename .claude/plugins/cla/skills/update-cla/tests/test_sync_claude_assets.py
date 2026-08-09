@@ -1783,7 +1783,7 @@ def test_all_four_launchers_are_in_scope(synthetic_repos):
 
 
 def test_a_launcher_absent_locally_is_new_not_ignored(synthetic_repos):
-    """market-distiller-mcp has no `claw` at all; it must arrive, not be skipped."""
+    """A consuming repo with no `claw` at all: it must arrive, not be skipped."""
     repos = synthetic_repos({
         "src": {"claw": "#!/usr/bin/env bash\nx\n"},
         "dst": {".claude/plugins/cla/skills/a.md": "A\n"},

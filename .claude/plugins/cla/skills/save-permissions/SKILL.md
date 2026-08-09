@@ -28,7 +28,7 @@ Collect every tool permission the user granted during this conversation session 
 
    The merge is a JSON-list set-union + sort + write. Doing it via the `Write` tool means re-emitting every existing entry token-by-token, which costs latency on a large allowlist when only a handful of lines actually change. Instead, run ONE call.
 
-   This repo is on Windows with both the Bash (Git Bash) and PowerShell tools available. Use whichever is handy; both produce the identical result.
+   Both forms below produce the identical result — use whichever matches the shells this session actually has. On Windows with Git Bash available, either works.
 
    Bash + Python one-liner:
 

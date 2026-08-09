@@ -218,8 +218,9 @@ def test_edit_write_dispatch_does_not_drop_earlier_warning_when_later_hook_block
     # warn-smoke-test-drift.py is config-driven (a `smoke-test-drift.local.md`
     # overlay beside the hook — see its own module docstring), so this uses
     # `_hooks_copy` to drop that overlay into a SCRATCH hooks dir rather than
-    # the real one: this repo ships no product code and deliberately carries
-    # no such overlay.
+    # the real one. Writing into the live hooks dir would make this test read —
+    # and change — whatever overlay the surrounding repo has configured, which
+    # is the ambient-configuration dependency these suites keep getting bitten by.
     hooks_dir = _hooks_copy(tmp_path)
     (hooks_dir / "smoke-test-drift.local.md").write_text(
         "---\n"
