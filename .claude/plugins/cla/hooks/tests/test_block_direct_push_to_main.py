@@ -70,6 +70,15 @@ def _never_called():
         "git -C /some/path push origin main",
         "git --work-tree /some/path push origin main",  # regression: space-separated long opt
         "git --git-dir /some/path push origin main",  # regression: space-separated long opt
+        # Executable spellings, at the ENFORCING layer. `test_dispatch_lib.py`
+        # proves the REGEX; only this proves the GUARD, and the guard is what
+        # exits 2. Before these existed, every case in this file and its four
+        # sibling guard suites hardcoded a bare lowercase `git`, so the whole
+        # class was invisible below the constant.
+        "git.exe push origin main",
+        "GIT push origin main",
+        "GIT.EXE push origin main",
+        "git.exe -C /some/path push origin main",  # composition: GIT_CMD + GIT_GLOBAL_OPTS
     ],
 )
 def test_blocks_every_documented_direct_push_shape(command):
@@ -91,6 +100,12 @@ def test_blocks_a_quoted_c_value_with_a_space(monkeypatch):
         "git push origin feature/x",
         "git push -u origin feature/x",
         "git status",
+        # The allow half of the executable-spelling widening: a broader command
+        # token must not turn every push into a block.
+        "git.exe push origin feature/x",
+        "GIT push origin feature/x",
+        # `\b` still has to hold with the name case-folded.
+        "digit push origin main",
     ],
 )
 def test_allows_non_main_pushes_and_unrelated_commands(command):

@@ -535,10 +535,19 @@ def test_git_hooks_bootstrap_their_own_sys_path_for_standalone_runs(filename):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("exe", ["git", "git.exe", "git.cmd", "git.EXE", "git.Cmd"])
-def test_git_cmd_matches_every_executable_spelling(exe):
-    """The extension is case-folded because a shell resolves it case-insensitively."""
-    assert re.match(lib.GIT_CMD + r"\s", f"{exe} push origin main")
+@pytest.mark.parametrize(
+    "exe",
+    [
+        "git", "git.exe", "git.cmd", "git.EXE", "git.Cmd",
+        # The command NAME, not just the extension. These RUN on a
+        # case-insensitive filesystem, so a guard that misses them is bypassed
+        # by typing, not by evasion.
+        "GIT", "GIT.EXE", "Git", "Git.Exe", "gIt.cMd",
+    ],
+)
+def test_git_cmd_matches_every_runnable_spelling(exe):
+    """Every spelling a case-insensitive shell will actually execute."""
+    assert re.search(lib.GIT_CMD + r"\s", f"{exe} push origin main")
 
 
 @pytest.mark.parametrize(
@@ -548,36 +557,121 @@ def test_git_cmd_matches_every_executable_spelling(exe):
         "mygit push origin main",
         "git.py push origin main",   # not an executable extension
         "digit push",
+        "DIGIT push",                # the case-folded name must not relax \b
     ],
 )
 def test_git_cmd_does_not_over_match(text):
-    """A guard that fires on `gitfoo` is worse than one that misses `git.exe`."""
-    assert not re.match(lib.GIT_CMD + r"\s", text)
+    """A guard that fires on `gitfoo` is worse than one that misses `git.exe`.
+
+    `re.search`, NOT `re.match`, because every consumer of this constant uses
+    `.search` — the guards scan a whole command line, not a string anchored at
+    position 0. Under `re.match` the two cases that exist to prove the leading
+    `\\b` (`mygit`, `digit`) passed VACUOUSLY: they are rejected by the anchor
+    before `\\b` is ever consulted, so deleting `\\b` from GIT_CMD left this
+    test green. Measured on a `\\b`-stripped pattern: `re.match` rejected all
+    four, `re.search` matched `mygit push origin main` and `digit push`.
+    """
+    assert not re.search(lib.GIT_CMD + r"\s", text)
 
 
-def test_git_cmd_command_name_case_is_a_documented_non_coverage():
-    """CONTRACT test, not an aspiration. `GIT push` is NOT matched, matching the
-    `gh` precedent (whose docstring names `GH pr merge` as out of scope).
+def test_git_cmd_over_blocks_only_where_the_subcommand_is_an_english_word():
+    """The measured COST of case-folding the command name, pinned as a trade.
 
-    Pinned so widening it is a deliberate commit with its own reasoning rather
-    than an accident. It was left out of the bypass fix on purpose: bundling a
-    behaviour change into a critical fix is how the surrounding regressions
-    happened."""
-    assert not re.match(lib.GIT_CMD + r"\s", "GIT push origin main")
+    A terminal uppercase `GIT` path segment followed by the matched subcommand
+    now matches. That is only reachable where the subcommand is also an
+    ordinary word, so it lands on `commit`, not on `push`. Pinned in both
+    directions so a future reader sees the real shape of the trade rather than
+    a claim that widening was free.
+    """
+    assert re.search(lib.GIT_CMD + r"\s+commit\b", "cd /srv/GIT commit")
+    # `push` does not follow a directory name in ordinary usage, so the
+    # push guard gains no comparable exposure.
+    assert not re.search(lib.GIT_CMD + r"\s+push\b", "cd /srv/GIT && ls")
 
 
 def test_every_git_guard_uses_the_shared_constant():
     """The point of the constant is that the fix lands once. A hook that
     re-anchors on a bare `\bgit` has opted out of it, which is how six copies
-    drifted apart the first time."""
-    offenders = []
+    drifted apart the first time.
+
+    This is a LINT, and its limits are worth stating plainly rather than
+    overselling it as a guarantee. It previously matched only the
+    DOUBLE-QUOTED literal `r"\\bgit`, so re-introducing the identical bypassed
+    regex with single quotes evaded it entirely and the whole suite stayed
+    green with the bug live. Both quote styles are matched now, and the
+    positive half — that the hook actually imports `GIT_CMD` — is asserted
+    too, since a hook can equally opt out by spelling `re.compile("git...",
+    re.I)` and never mentioning the literal at all.
+
+    What it still cannot see: a hook that imports the constant and then
+    composes it wrongly. Behavioural coverage for that lives in each hook's
+    own test file, and `test_every_git_global_opts_consumer_strips_quoted_spans`
+    below closes the one composition mistake that actually occurred.
+    """
+    reanchored, unimported = [], []
     for f in _HOOKS_DIR.glob("*.py"):
+        # NOTE: this skip means the two dispatchers are never scanned. That is
+        # deliberate (they route, they do not match git commands) but it is a
+        # hole if one ever grows a matcher.
         if f.name.startswith(("_", "dispatch-")):
             continue
         src = f.read_text(encoding="utf-8")
         body = "\n".join(
             ln for ln in src.splitlines() if not ln.lstrip().startswith("#")
         )
-        if r'r"\bgit' in body:
-            offenders.append(f.name)
-    assert not offenders, f"re-anchor on the bare pattern instead of GIT_CMD: {offenders}"
+        if re.search(r"""r['"]\\bgit""", body):
+            reanchored.append(f.name)
+        elif f.name in _GIT_HOOK_FILES and "GIT_CMD" not in body:
+            unimported.append(f.name)
+    assert not reanchored, (
+        f"re-anchor on the bare pattern instead of GIT_CMD: {reanchored}"
+    )
+    assert not unimported, (
+        f"a git guard that never references GIT_CMD has opted out silently: {unimported}"
+    )
+
+
+@pytest.mark.parametrize("filename", _GIT_HOOK_FILES)
+def test_every_git_global_opts_consumer_strips_quoted_spans(filename):
+    """`GIT_GLOBAL_OPTS`' precondition, which lived in prose only.
+
+    Its value-consuming alternatives use `\\S+`, which cannot span an
+    un-stripped internal space, so a command MUST pass through
+    `strip_quoted_spans` before matching. The docstring says so and all six
+    consumers honour it; nothing checked that they do.
+
+    Not hypothetical: a consuming repo added a seventh consumer that imported
+    both `GIT_CMD` and `GIT_GLOBAL_OPTS` and skipped the pre-pass, in an
+    ENFORCING hook. `git -C "/path with space" commit` then simply did not
+    match — a guard that matches nothing allows everything — and it survived a
+    full green suite, because the import test above sees exactly the right
+    imports. Measured there: `old=False, new=False, new+strip=True`.
+
+    Textual, and deliberately so: importing the helper is not proof of calling
+    it before the match. A stricter AST version could assert the call wraps the
+    match argument. This closes the failure that actually occurred — adopting
+    the constant and never reaching for the helper at all — and puts the
+    precondition in front of whoever adds the next consumer.
+
+    Asserting the IMPORT of the genuine symbol rather than a bare substring,
+    which a mutation caught: aliasing a different function to the same local
+    name (`import fit_json_payload as _strip_quoted_spans`) leaves the string
+    `strip_quoted_spans` in the file at the call site, so a substring check
+    stayed green while the pre-pass was gone. All six consumers import it from
+    `_dispatch_lib` by its real name, two of them unaliased, so the import form
+    is the stable thing to pin.
+    """
+    source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
+    if "GIT_GLOBAL_OPTS" not in source:
+        pytest.skip(f"{filename} does not consume GIT_GLOBAL_OPTS")
+    assert re.search(
+        r"^from _dispatch_lib import [^\n]*\bstrip_quoted_spans\b", source, re.MULTILINE
+    ), (
+        f"{filename} consumes GIT_GLOBAL_OPTS but does not import "
+        "strip_quoted_spans from _dispatch_lib; its `\\S+` alternatives cannot "
+        "match a quoted global-option value, so every "
+        "`git -C \"/path with space\" ...` silently bypasses this guard"
+    )
+    assert "strip_quoted_spans(" in source, (
+        f"{filename} imports strip_quoted_spans but never calls it"
+    )

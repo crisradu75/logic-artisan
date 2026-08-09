@@ -373,12 +373,39 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 # applied to `git`. This constant exists so the fix lands once instead of in six
 # separate regexes -- the same rationale as `GIT_GLOBAL_OPTS` above.
 #
-# The command NAME stays case-sensitive, matching the `gh` precedent (whose
-# docstring names `GH pr merge` as out of scope). `GIT push` therefore still
-# slips through. That is a KNOWN, DOCUMENTED non-coverage, pinned by a contract
-# test -- widening it is a behaviour change and belongs in its own commit, not
-# bundled into a bypass fix.
-GIT_CMD = r"\bgit(?:\.(?i:exe|cmd|bat|com|ps1))?"
+# The command NAME is case-folded too. It was not, on the reasoning that this
+# "matches the `gh` precedent" -- but that precedent is a gap, not a design, and
+# citing it turned one oversight into two. Windows filesystems and shells are
+# case-insensitive, so `GIT push origin main` and `GIT.EXE push origin main`
+# both RUN, and both walked past every guard below while the lowercase
+# `git.exe` was blocked. Closing the common spelling and leaving the trivially
+# adjacent one open is not a defensible stopping point.
+#
+# This is a TRADE, not a free win, and the cost was measured rather than
+# assumed. An earlier draft of this comment claimed an unrelated uppercase path
+# segment could not match "because what follows it is a separator" -- true only
+# while `GIT` is a NON-TERMINAL segment. Measured against the real composed
+# pattern, against `guard-worktree-isolation._COMMIT` (measured, not reasoned):
+#
+#     cd /srv/GIT commit      old: no match   new: MATCHES
+#     ls /d/GIT commit        old: no match   new: MATCHES
+#
+# Note WHICH guard: a terminal uppercase `GIT` path segment followed by a word
+# is only reachable where that word is the subcommand being matched, so the
+# exposure is `_COMMIT`'s (`commit` is an ordinary English word), not
+# `block-direct-push-to-main`'s -- `push` does not appear after a directory
+# name in normal usage. Both cases above return no push-args at all.
+#
+# Sharper still: `strip_quoted_spans` deliberately does not blank HEREDOC bodies
+# (its own docstring says so), so an uppercase `GIT` in ordinary prose inside a
+# heredoc reaches `_COMMIT` too -- confirmed by running it, not inferred.
+#
+# Taken deliberately: an enforcing guard that over-blocks announces itself and
+# is trivially worked around, whereas the `GIT push` bypass it closes is silent
+# and defeats the guard entirely. Both directions are pinned by tests -- see
+# `test_git_cmd_matches_every_runnable_spelling` and
+# `test_git_cmd_does_not_over_match`.
+GIT_CMD = r"\b(?i:git)(?:\.(?i:exe|cmd|bat|com|ps1))?"
 
 
 def strip_quoted_spans(cmd: str) -> str:

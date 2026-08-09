@@ -49,6 +49,24 @@ def test_wants_check_requires_gh_pr_merge():
     assert not hook._wants_stacked_check("echo gh pr merge is a string")  # not the command
 
 
+@pytest.mark.parametrize("exe", ["gh", "gh.exe", "gh.cmd", "GH", "GH.EXE", "Gh.Cmd"])
+def test_wants_check_covers_every_runnable_gh_spelling(exe):
+    """`_GH_MERGE` was the last bare command-token regex in the tree.
+
+    `ask-destructive-git._GH_PR_MERGE` already carried the extension forms for
+    the Windows reason `GIT_CMD` was introduced, so `gh.exe pr merge
+    --delete-branch` prompted there and was invisible here — in the tool this
+    plugin uses for every PR operation.
+    """
+    assert hook._wants_stacked_check(f"{exe} pr merge 305 --squash --delete-branch")
+
+
+def test_wants_check_gh_spelling_does_not_over_match():
+    """The allow half: a longer name must not satisfy the widened token."""
+    assert not hook._wants_stacked_check("mygh pr merge 305 --delete-branch")
+    assert not hook._wants_stacked_check("gh.py pr merge 305 --delete-branch")
+
+
 def test_wants_check_delete_branch_false_is_not_a_hazard():
     assert not hook._wants_stacked_check("gh pr merge 305 --delete-branch=false")
     assert not hook._wants_stacked_check("gh pr merge 305 --delete-branch=0")
