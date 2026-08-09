@@ -15,7 +15,7 @@ reads back its own effectiveness. The two highest-value signals:
   - a lesson in `rejected_lessons` rejected ≥2 times → stop proposing it; retire
     it from failure-modes.md.
 
-Input record schema (counts-only; see codify-learnings/scripts/log_run.py):
+Input record schema (counts-only; see lib/log_run.py):
 
     {
       "ts": str,                      # date string, e.g. "2026-06-24"
@@ -109,7 +109,7 @@ def _git_toplevel() -> Path | None:
 def _default_log_path() -> Path:
     """The in-repo, git-synced ledger: <repo-root>/cla.io/retro/codify-runs.jsonl.
 
-    Mirrors `codify-learnings/scripts/log_run.py`'s resolver EXACTLY (must stay
+    Mirrors `lib/log_run.py`'s resolver EXACTLY (must stay
     byte-identical or the producer and this consumer disagree on the path and
     runs vanish silently): repo root via `git rev-parse`, then `cla.io/retro`;
     CLAUDE_RETRO_DIR (absolute path) overrides the dir; raise rather than guess

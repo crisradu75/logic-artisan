@@ -1,47 +1,64 @@
-"""Append one JSON line per /codify-learnings run to the project's runs log.
+#!/usr/bin/env python3
+"""Append one JSON line to a project run-ledger under `cla.io/retro/`.
 
-Called by /codify-learnings's final step AFTER the rolling-log write, so the
-loop can be reviewed in aggregate by /codify-retro. Reads a JSON object from
-stdin (the run record assembled by conversation Claude from this run's
-outcomes) and appends it as a single line to:
+ONE writer, shared by every skill that keeps a ledger, invoked with the ledger
+filename as an argument:
 
-    <repo-root>/cla.io/retro/codify-runs.jsonl
+    python .claude/plugins/cla/lib/log_run.py spec-to-pr-runs.jsonl < record.json
 
-The ledger lives INSIDE the repo (repo root resolved via `git rev-parse`, then
-`<root>/cla.io/retro`) so it is version-controlled and syncs across machines
-via git — not a machine-local `~/.claude/projects/<hash>/` that splits per
-working-directory path. Override the directory with the CLAUDE_RETRO_DIR env
-var (absolute path); used by tests and non-standard layouts. The companion
+There used to be five near-identical copies of this file (one per skill), kept
+in step by a dedicated drift check in `consistency-checks/`. The copies existed
+because `run_tests.py` runs each scope as its own pytest process — same-named
+modules in one interpreter collide — so a skill could not import a sibling's
+helper. Living at the plugin root instead of under `skills/<name>/scripts/`
+sidesteps that entirely: nothing imports it, the skills invoke it as a program.
+
+Three of those five ledgers had no reader at all (`multi-pr`, `multi-spec`,
+`multi-lite`) and were deleted rather than migrated. Only `spec-to-pr-runs`
+(132 records) and `codify-runs` (43) are consumed, by their respective retro
+skills.
+
+Reads a JSON object from stdin (the run record the caller assembled from its
+own outcomes) and appends it as a single line to:
+
+    <repo-root>/cla.io/retro/<ledger>
+
+The repo root comes from `git rev-parse --show-toplevel`, so the ledger sits
+alongside the skills and syncs across machines via git rather than living in a
+machine-local `~/.claude/projects/<hash>/`. CLAUDE_RETRO_DIR overrides it
+(absolute path); used by tests and non-standard layouts. The companion
 `.gitattributes` sets `merge=union` on `cla.io/retro/*.jsonl` so concurrent
 appends from two machines auto-resolve by keeping both lines.
 
-Append is direct via `open("ab")`: POSIX guarantees writes smaller than
+Appends are a single `write()` of one line in "ab" mode. POSIX writes below
 PIPE_BUF (typically 4 KiB, comfortably above a counts-only run record) are
 atomic, so concurrent runs from parallel sessions cannot interleave bytes
 within a line. Windows offers the same effective guarantee for small writes to
 local files. This avoids the read-modify-rewrite pattern, which is both O(N)
-per append and silently race-unsafe.
+per append and silently race-unsafe (two readers see the same N, both rewrite,
+one append is lost).
 
-The record is COUNTS-ONLY (no prose) — prose lives in lessons-learned.md and
-transcripts. A record over 4 KiB means the producer is logging prose; that is
-rejected so the atomic-append guarantee holds.
+The record is COUNTS-ONLY (no prose) — prose lives in the skill's own report.
+The 4 KiB ceiling below is what enforces that in practice.
 
-Exit codes:
-  0 = appended successfully
-  1 = JSON parse failure, prose-overflow, or write failure (stderr names which)
-
-The orchestrator MUST not halt if this script fails — a missing log line is
-infinitely preferable to a halted workflow at the very end of a successful
-run. The /codify-learnings final step ignores non-zero exits and continues.
+A caller MUST NOT halt if this script fails — a missing log line is infinitely
+preferable to a halted workflow at the end of a successful run. Callers ignore
+a non-zero exit and continue.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+# A ledger name is a bare filename, never a path. Without this an argument like
+# `../../etc/thing.jsonl` would write outside the ledger dir — the caller is a
+# model assembling a command line, so the check is not hypothetical.
+_LEDGER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$")
 
 
 def _git_toplevel() -> Path | None:
@@ -62,16 +79,10 @@ def _git_toplevel() -> Path | None:
 def _runs_dir() -> Path:
     """The in-repo, git-synced ledger dir: <repo-root>/cla.io/retro/.
 
-    Resolved from the `git rev-parse --show-toplevel` repo root, so the ledger
-    sits alongside the skills and syncs across machines via git instead of a
-    machine-local `~/.claude/projects/<hash>/`. CLAUDE_RETRO_DIR (absolute
-    path) overrides it — used by tests and non-standard layouts.
-
-    Raises on a non-absolute override or an unresolvable repo root rather
-    than guessing a path: the consumer (`codify-retro/scripts/aggregate.py`)
-    resolves independently with identical logic, so a silently-wrong path here
-    would make logged runs vanish from the retro with no error. Keep the two
-    resolvers byte-identical.
+    Raises on a non-absolute override or an unresolvable repo root rather than
+    guessing a path: the consumers (the retro skills' `aggregate.py`) resolve
+    independently with identical logic, so a silently-wrong path here would make
+    logged runs vanish from the retro with no error.
     """
     override = os.environ.get("CLAUDE_RETRO_DIR")
     if override and override.strip():  # set-but-blank/whitespace → treat as unset
@@ -87,37 +98,29 @@ def _runs_dir() -> Path:
         )
     return root / "cla.io" / "retro"
 
+
 def _pin_streams_utf8() -> None:
-    """Force UTF-8 on stdout/stderr regardless of the ambient locale.
-
-    JSON is UTF-8 by specification (RFC 8259) and the write path below already
-    re-encodes with `.encode("utf-8")`. Reading stdin through the ambient
-    encoding -- cp1252 on a stock Windows box -- silently double-encoded every
-    non-ASCII value: a scope of "cafe-fix" with an accent was appended as
-    mojibake, exit 0, success path taken, ledger path echoed, and the retro
-    skills then aggregated the corrupted record.
-
-    Worse, a UTF-8 byte in cp1252's undefined set (0x81/0x8D/0x8F/0x90/0x9D --
-    e.g. the second byte of Cyrillic U+0441) decodes to a lone surrogate, and
-    the later `.encode("utf-8")` raises UnicodeEncodeError OUTSIDE every `try`,
-    replacing this module's documented exit-code contract with a bare traceback.
-
-    Fixing only stdin is half a contract: these scripts `print()` diagnostics
-    containing non-ASCII (the oversize message carries an em-dash), and
-    `print(..., file=sys.stderr)` encodes with the ambient locale too. Pinning
-    one and not the other just moves the failure.
-
-    `reconfigure` is guarded because a wrapped stream -- pytest capture, a pipe
-    shim -- may not expose it. `update-cla/scripts/orchestrate.py` already
-    carried this pattern for exactly this reason; it simply was not applied here.
-    """
+    """Force UTF-8 on stdout/stderr regardless of the ambient locale."""
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     _pin_streams_utf8()
+    args = sys.argv[1:] if argv is None else argv
+    if len(args) != 1:
+        print("log_run: usage: log_run.py <ledger-name>.jsonl < record.json", file=sys.stderr)
+        return 1
+    ledger = args[0]
+    if not _LEDGER_RE.match(ledger):
+        print(
+            f"log_run: {ledger!r} is not a bare `<name>.jsonl` filename; a ledger "
+            "argument must not contain a path separator",
+            file=sys.stderr,
+        )
+        return 1
+
     # Read BYTES and decode explicitly, rather than letting the text wrapper
     # apply the platform locale.
     try:
@@ -135,7 +138,7 @@ def main() -> int:
         return 1
 
     try:
-        log_path = _runs_dir() / "codify-runs.jsonl"
+        log_path = _runs_dir() / ledger
     except (ValueError, RuntimeError) as e:
         print(f"log_run: {e}", file=sys.stderr)
         return 1
@@ -148,6 +151,9 @@ def main() -> int:
     line = json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n"
     encoded = line.encode("utf-8")
     if len(encoded) >= 4096:
+        # Above PIPE_BUF; concurrent appends could interleave. A counts-only
+        # record is well under this threshold — if it isn't, the producer is
+        # logging prose (forbidden).
         print(
             f"log_run: record is {len(encoded)} bytes — exceeds 4 KiB atomic-write "
             f"ceiling. Producer is logging prose; trim to counts only.",

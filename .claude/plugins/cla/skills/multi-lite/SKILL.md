@@ -60,7 +60,7 @@ Parse `$ARGUMENTS`:
 
 ## Phase 4 — Final report
 
-**Read `references/phase4-and-log.md` first** for the exact report section shape (shipped-and-merged / shipped-and-left-open / failed / blocked-by-upstream / review-fix-rounds-run / out-of-scope / next-steps) and the "Log the run" recipe. Emit the report after every candidate has been run, merged-if-a-dependency, quarantined, or skipped; log-and-commit is best-effort and non-fatal — a missing log line never blocks the run.
+**Read `references/phase4-and-log.md` first** for the exact report section shape (shipped-and-merged / shipped-and-left-open / failed / blocked-by-upstream / review-fix-rounds-run / out-of-scope / next-steps) and the run-notes commit. Emit the report after every candidate has been run, merged-if-a-dependency, quarantined, or skipped; the commit is best-effort and non-fatal — it never blocks the run.
 
 ## Resume behavior
 
@@ -83,9 +83,7 @@ Re-invoking `/cla:multi-lite` on the same doc after an interruption picks up cle
 - `references/bootstrap-and-tracking.md` — Phase 0's bootstrap/precheck recipe and Phase 2's `TaskCreate`/run-notes-ledger setup recipe (mandatory-read from both stubs).
 - `references/candidate-extraction.md` — Phase 1's extraction filter, sequencing rule, and confirmation-gate question shape (mandatory-read from the Phase 1 stub).
 - `references/candidate-loop.md` — Phase 3's 8-step per-candidate procedure and the resume mechanics it enables (mandatory-read from the Phase 3 stub and the Resume-behavior section).
-- `references/phase4-and-log.md` — the Phase 4 final-report shape and the "Log the run" recipe (mandatory-read from the Phase 4 stub).
-- `references/run-log-schema.md` — the counts-only JSONL schema + field intent for the "Log the run" step; the contract a future `multi-lite-retro` would consume.
-- `scripts/log_run.py` — the validating ledger-append helper (sibling of `/cla:multi-pr`'s `log_chain_run.py`): `json.loads`-validates, size-checks, appends UTF-8 bytes.
+- `references/phase4-and-log.md` — the Phase 4 final-report shape and the run-notes commit (mandatory-read from the Phase 4 stub).
 - `.claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py`, `check_permissions.py` — reused directly for the Phase 0 precheck (these are `spec-to-pr`/`multi-pr` bootstrap scripts, not `lite-pr`'s).
 - `.claude/plugins/cla/skills/spec-to-pr/references/bash-discipline.md` — the hard bash-shape rules binding every git command this skill runs.
 - `.claude/plugins/cla/skills/spec-to-pr/references/runtime-rules.md` — the thin-orchestrator runtime disciplines this skill follows as an orchestrator (pointed at from the hoisted rules).

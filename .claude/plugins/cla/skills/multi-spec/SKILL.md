@@ -57,9 +57,6 @@ Opening a PR is not a deployment action (same boundary `/cla:spec-to-pr`'s Ship 
 
 Emit a terminal report: batch slug, decisions file, PR URL, the change list (name + one-line scope + dependency order), the review verdict per change, and — the load-bearing next step — **point explicitly at `/cla:multi-pr` for the produced change list** (or `/cla:spec-to-pr <name>` / `/cla:lite-pr <name>` per-change) as the follow-on that actually implements them. `multi-spec` stopping here is deliberate, not a truncated run.
 
-## Log the run
-
-After the terminal report, append one counts-only JSON line to this repo's run ledger via `scripts/log_run.py` (schema + field intent, plus the commit recipe that ships the line with the PR: `references/run-log-schema.md`). **Best-effort, non-fatal** — a `log_run.py` failure is noted and never blocks a successful run. **No analyzer skill yet, by design** — same "wait for enough runs" posture `multi-pr` took before proposing its own analyzer (revisit once runs accumulate into the ~5–10 band this repo's siblings settled on).
 
 ## Resume behavior
 
@@ -82,7 +79,6 @@ Every phase resumes from git-tracked repo state, never from a log or the plan fi
 - `references/plan-schema.md` — the change-plan JSON shape, where it lives, and exactly what resume reads from it vs. re-derives from git.
 - `references/authoring-brief.md` — Phase 3's full mechanics: the resume check, the per-change Opus dispatch prompt template, the post-check, and the commit/push recipe.
 - `references/review-gate.md` — Phase 4's full mechanics: the batch adaptation of `review-change`'s checklist (agent prompts, model routing, verdict rubric) plus the fix-application/commit recipe.
-- `references/run-log-schema.md` — the per-run JSONL schema (Log the run, above), field intent, and the commit recipe that ships the log line with the PR.
 - `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md` — model/effort routing single source of truth (reused verbatim, not forked).
 - `.claude/plugins/cla/skills/spec-to-pr/references/bash-discipline.md` — the hard bash-shape rules binding every commit/stage call in this skill.
 - `.claude/plugins/cla/skills/spec-to-pr/references/runtime-rules.md` — the thin-orchestrator runtime disciplines this skill follows throughout.

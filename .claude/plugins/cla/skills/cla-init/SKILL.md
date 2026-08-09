@@ -74,12 +74,14 @@ shaped-decision `.md` files created by `shape-decision`/`multi-spec`).
 ### 2. Retro ledgers (0-byte — an empty file is a valid empty JSONL ledger; NO `[]` or placeholder line)
 
 ```bash
-# one ledger per retro-logging loop (each loop appends its own per-run record here —
-# via scripts/log_run.py for codify-learnings/multi-lite/multi-spec/spec-to-pr,
-# scripts/log_chain_run.py for multi-pr, or a documented manual-append recipe for
-# project-review, which has no dedicated logging script).
-# If a new logging loop is added to the plugin, add its ledger to this list.
-for f in spec-to-pr-runs multi-pr-runs multi-spec-runs multi-lite-runs project-review-runs codify-runs; do
+# One ledger per loop that has a READER. Both are appended via the shared
+# lib/log_run.py, which takes the ledger filename as its argument.
+#
+# There were four more (multi-pr, multi-spec, multi-lite, project-review). None
+# had an analyzer skill, and between them they accumulated 19 records across
+# five repos, so they were deleted. If you add a ledger here, add the skill that
+# reads it in the same change — an unread ledger is exhaust, not data.
+for f in spec-to-pr-runs codify-runs; do
   [ -e "$ROOT/cla.io/retro/$f.jsonl" ] || : > "$ROOT/cla.io/retro/$f.jsonl"
 done
 ```

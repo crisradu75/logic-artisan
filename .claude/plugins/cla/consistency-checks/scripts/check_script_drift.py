@@ -34,17 +34,13 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 # Each group: a set of function names expected to be logic-identical across a
 # set of sibling files (paths relative to PLUGIN_ROOT).
 SIBLING_GROUPS = [
-    {
-        "name": "log_run.py family",
-        "functions": ("_git_toplevel", "_runs_dir"),
-        "files": (
-            "skills/codify-learnings/scripts/log_run.py",
-            "skills/multi-lite/scripts/log_run.py",
-            "skills/multi-spec/scripts/log_run.py",
-            "skills/spec-to-pr/scripts/log_run.py",
-            "skills/multi-pr/scripts/log_chain_run.py",
-        ),
-    },
+    # The `log_run.py family` group used to sit here, covering five copies of
+    # one writer. It is gone because the duplication is: three of those ledgers
+    # had no reader and were deleted, and the surviving two now share a single
+    # `lib/log_run.py` invoked with the ledger name as an argument. A shared
+    # module was always the better answer than a drift check over copies — the
+    # copies existed only because same-named modules collide inside one pytest
+    # process, which living at the plugin root avoids.
     {
         "name": "retro aggregate.py family",
         "functions": ("_git_toplevel", "_default_log_path", "_load_records", "_coerce_int"),

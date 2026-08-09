@@ -148,16 +148,16 @@ def test_the_scan_reaches_the_places_the_first_version_missed():
     """Non-vacuity partner, naming the exact files an allow-list glob excluded.
     A guard that scans nothing passes forever, and this one already did once."""
     names = {p.relative_to(_PLUGIN_ROOT).as_posix() for p in _scanned_files()}
-    # Tracks the real count (73, down from 82 when the guard-hook layer was
-    # trimmed) rather than sitting well below it, where a collapse that halved
-    # the scan set would still pass. The named anchors below are the stronger
-    # half of this pair — they span four subtrees, so an exclusion that drops
-    # any one of them fails here even if the count survives.
+    # Tracks the real count (68, down from 82 across the guard-hook trim and the
+    # ledger consolidation) rather than sitting well below it, where a collapse
+    # that halved the scan set would still pass. The named anchors below are the
+    # stronger half of this pair — they span four subtrees, so an exclusion that
+    # drops any one of them fails here even if the count survives.
     #
     # A DELIBERATE deletion is expected to trip this and get the floor lowered
     # with it; that is the check working. Lower it to the new real count, never
     # to a number chosen to be safe from future deletions.
-    assert len(names) >= 70, f"scan set collapsed to {len(names)} files"
+    assert len(names) >= 65, f"scan set collapsed to {len(names)} files"
     for expected in (
         "run_tests.py",                             # plugin root
         "hooks/tests/test_dispatch.py",             # a tests/ dir

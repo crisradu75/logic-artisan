@@ -129,7 +129,7 @@ One paragraph:
 This step is always done. After the rolling-log write, append one counts-only JSON record of this run so the loop can be reviewed in aggregate by `/cla:codify-retro`. **Read `references/steps.md`** ("Step 7 ledger schema") for the exact fields. Assemble the record from this run's outcomes and pipe it to `log_run.py`:
 
 ```bash
-echo '<record-json>' | python3 .claude/plugins/cla/skills/codify-learnings/scripts/log_run.py
+echo '<record-json>' | python3 .claude/plugins/cla/lib/log_run.py codify-runs.jsonl
 ```
 
 The record lands in the repo's `cla.io/retro/codify-runs.jsonl` (a tracked repo file — include it when you next commit, so it syncs across machines via git; override the dir with `CLAUDE_RETRO_DIR`). Best-effort: if `log_run.py` exits non-zero, note it and continue — a missing ledger line never blocks the run.

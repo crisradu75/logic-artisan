@@ -88,7 +88,7 @@ Do NOT apply edits without explicit confirmation — retros are advisory. (`codi
 ## Sources of truth
 
 - **Output schema:** see `aggregate.py`'s module docstring for exact field names emitted.
-- **Log format:** see `codify-learnings/scripts/log_run.py` for what gets written per run.
+- **Log format:** see `lib/log_run.py` for what gets written per run.
 - **What to log:** see `codify-learnings/SKILL.md` "Step 7 — Log the run" for the record schema.
 
 ## When NOT to use
