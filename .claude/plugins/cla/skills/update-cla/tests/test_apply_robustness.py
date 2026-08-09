@@ -311,7 +311,8 @@ def test_an_atomic_write_preserves_the_destinations_mode(tmp_path):
 
     Asserted on the raw mode rather than skipped on Windows, so the intent is
     pinned everywhere; the meaningful comparison only happens where POSIX bits
-    exist."""
+    exist. Its platform-neutral partner below is what actually holds the
+    mutation on this repo's own dev machine."""
     dst = tmp_path / "launcher"
     dst.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     os.chmod(dst, 0o755)
@@ -321,6 +322,40 @@ def test_an_atomic_write_preserves_the_destinations_mode(tmp_path):
 
     after = stat.S_IMODE(dst.stat().st_mode)
     assert after == before, f"mode changed {before:04o} -> {after:04o}"
+
+
+def test_the_atomic_write_chmods_the_temp_file_to_the_destinations_mode(tmp_path, monkeypatch):
+    """The same guarantee, asserted where POSIX bits do not exist.
+
+    Measured on Windows: `chmod 0o755` -> reads back 0o666, `mkstemp` default ->
+    0o666, after `os.replace` -> 0o666. So `before == after` holds regardless of
+    whether the preservation code exists at all, and the test above passes for
+    the wrong reason — deleting the capture-and-chmod leaves it green. That is
+    the whole mode-preservation guard for `cla`/`claw`'s executable bit running
+    with zero regression coverage on the platform this repo is developed on.
+
+    Recording the `os.chmod` call instead needs no POSIX bits, so it kills the
+    mutation on every platform.
+    """
+    dst = tmp_path / "launcher"
+    dst.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    os.chmod(dst, 0o755)
+    expected = stat.S_IMODE(dst.stat().st_mode)
+
+    calls: list[int] = []
+    real_chmod = apply_mod.os.chmod
+
+    def _recording_chmod(path, mode, *a, **kw):
+        calls.append(mode)
+        return real_chmod(path, mode, *a, **kw)
+
+    monkeypatch.setattr(apply_mod.os, "chmod", _recording_chmod)
+    apply_mod._write_file(tmp_path, "launcher", "#!/usr/bin/env bash\necho hi\n")
+
+    assert expected in calls, (
+        f"_write_file must chmod the temp file to the destination's mode "
+        f"({expected:04o}); recorded chmod calls: {[f'{m:04o}' for m in calls]}"
+    )
 
 
 def test_a_brand_new_file_still_writes_without_a_mode_to_preserve(tmp_path):
@@ -359,6 +394,99 @@ def test_a_keep_local_entry_accounts_for_a_file_without_rewriting_it(tmp_path):
     )
     assert [o.status for o in outcomes] == ["skipped_kept_local"]
     assert dst.read_text(encoding="utf-8") == "local content\n", "must not be rewritten"
+
+
+def _lock_of(repo):
+    return json.loads(
+        (repo / ".claude" / "plugins" / "cla" / ".cla-sync-lock.json").read_text(encoding="utf-8")
+    )
+
+
+def test_keep_local_persists_the_decision_and_the_source_it_was_made_against(tmp_path):
+    """A keep-local decision used to be recorded NOWHERE.
+
+    `apply` skipped the file and left its lock entry alone, reasoning that local
+    had not changed so the ancestor was still right. True of the ancestor, false
+    of everything else: with no `keep_local` marker and no advance of
+    `source_sha256`, the next run re-labels the file and asks again — and the
+    reasoning that produced the decision died with the session.
+    """
+    dst = tmp_path / "kept.md"
+    dst.write_text("local content\n", encoding="utf-8")
+    outcomes = apply_mod.apply_worktree(
+        tmp_path, [{"asset_path": "kept.md", "keep_local": True}], "src", None,
+        source_shas={"kept.md": "rawsha"},
+    )
+    assert [o.status for o in outcomes] == ["skipped_kept_local"]
+
+    entry = _lock_of(tmp_path)["kept.md"]
+    assert entry["keep_local"] is True
+    assert entry["source_sha256"] == "rawsha", "the source it was decided against must advance"
+    assert entry["last_synced_sha256"] == apply_mod._hash_bytes(b"local content\n")
+
+
+def test_keep_local_alone_still_writes_the_lockfile(tmp_path):
+    """`_update_lock`'s early-out was `if not written: return`.
+
+    A run whose entries are ALL keep-local writes no files, so it returned
+    before recording anything — the same silent loss this change exists to stop,
+    reintroduced one level up. Easy to reintroduce, so pinned separately.
+    """
+    (tmp_path / "kept.md").write_text("local\n", encoding="utf-8")
+    apply_mod.apply_worktree(
+        tmp_path, [{"asset_path": "kept.md", "keep_local": True}], "src", None
+    )
+    assert "kept.md" in _lock_of(tmp_path)
+
+
+def test_a_later_write_clears_the_keep_local_flag(tmp_path):
+    """Otherwise a file kept once is marked kept forever, and a future refactor
+    that merges into the existing entry rather than replacing it would strand
+    the flag with nothing to signal it had gone stale.
+
+    Driven through `_update_lock` rather than two `apply_worktree` calls: the
+    write path runs a clean-tree check that needs a real git repo, and a first
+    draft using a bare tmp_path had its second call fail with "not a git
+    repository" — so the entry was never rewritten and the test passed its
+    setup while proving nothing about clearing. The unit under test here is the
+    lock write, so that is what to call.
+    """
+    (tmp_path / "f.md").write_text("local\n", encoding="utf-8")
+    apply_mod._update_lock(tmp_path, [], "src", None, kept_local=[("f.md", "sha-local")])
+    assert _lock_of(tmp_path)["f.md"]["keep_local"] is True
+
+    apply_mod._update_lock(tmp_path, [("f.md", b"adopted\n")], "src", None)
+    entry = _lock_of(tmp_path)["f.md"]
+    assert "keep_local" not in entry
+    assert entry["last_synced_sha256"] == apply_mod._hash_bytes(b"adopted\n")
+
+
+@pytest.mark.parametrize("printer", ["worktree", "pr"])
+def test_a_kept_local_file_appears_in_the_summary(capsys, printer):
+    """`skipped_kept_local` was listed in `known` — so never flagged as an
+    unrecognized status — but had no print bucket, so it appeared NOWHERE in
+    either summary. That is the third instance of this exact gap in this file
+    (the comments beside `known` already record two), and it matters most here:
+    a keep-local decision the operator never sees is one nobody can challenge.
+    """
+    outcomes = [_Outcome("a.md", "wrote"), _Outcome("kept.md", "skipped_kept_local")]
+    if printer == "worktree":
+        orch_mod._print_worktree_summary(outcomes, not_adapted=[])
+    else:
+        orch_mod._print_pr_summary(outcomes, _PR(), not_adapted=[])
+    out = capsys.readouterr().out
+    assert "kept.md" in out, f"a kept-local file must be visible in the {printer} summary"
+    assert "Kept local" in out
+
+
+def test_keep_local_seeds_a_complete_entry_when_none_existed(tmp_path):
+    """`_detect_deletions` reads `last_synced_sha256` off EVERY entry, so a
+    partial entry written here would surface as a malformed deletion record
+    later. The ancestor is re-hashed from disk rather than left absent."""
+    (tmp_path / "f.md").write_text("local\n", encoding="utf-8")
+    apply_mod.apply_worktree(tmp_path, [{"asset_path": "f.md", "keep_local": True}], "src", None)
+    entry = _lock_of(tmp_path)["f.md"]
+    assert entry["last_synced_sha256"] and entry["source"] == "src"
 
 
 def test_the_pr_summary_also_fails_on_not_adapted(capsys):

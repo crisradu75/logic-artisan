@@ -423,12 +423,52 @@ def test_output_styles_dir_scanned(synthetic_repos):
 # ---------- discover: 3-way classification (lockfile ancestor) ----------
 
 
-def test_discover_source_advanced_freshly_synced_untouched(synthetic_repos, fake_gh):
-    """Right after an `apply` that writes ADAPTED content differing from the raw
-    source, a subsequent `discover()` with source unchanged classifies the untouched
-    local file `source-advanced` (local == ancestor == what was written; the raw
-    source content still differs from that ancestor) — NEVER `local-advanced`, the
-    buggy mislabel a raw-source ancestor would have produced."""
+def test_an_adapted_file_with_neither_side_moved_is_labelled_adapted(synthetic_repos, fake_gh):
+    """The headline round-trip, and the reason `source_sha256` exists.
+
+    Right after an `apply` that wrote ADAPTED content differing from raw source,
+    with source unchanged since, NOTHING has actually moved — the only reason
+    local and source differ is the adaptation itself. That must read `adapted`.
+
+    It used to read `source-advanced`, which `references/phases.md` defines as
+    "local is untouched since the last sync; adopt source freely" — so the next
+    Phase 2 was told to overwrite a deliberate divergence, and did.
+    """
+    repos = synthetic_repos({
+        "src": {".claude/plugins/cla/skills/foo.md": "SOURCE raw content\n"},
+        "dst": {},
+    })
+    apply_mod = _load("apply")
+    discover_mod = _load("discover")
+    asset = ".claude/plugins/cla/skills/foo.md"
+    raw_sha = discover_mod._hash_bytes(b"SOURCE raw content\n")
+    adaptations = [{
+        "asset_path": asset,
+        "adapted_content": "LOCAL adapted content\n",
+        "change_summary": "adapted",
+    }]
+    outcomes = apply_mod.apply_worktree(
+        repos[1], adaptations, "src", source_shas={asset: raw_sha}
+    )
+    assert outcomes[0].status == "wrote"
+
+    result = discover_mod.discover(repos[0], repos[1])
+    assert len(result.files) == 1
+    assert result.files[0].status == "adapted"
+
+
+def test_a_freshly_synced_file_without_a_source_sha_keeps_the_legacy_label(
+    synthetic_repos, fake_gh
+):
+    """The same scenario through a lockfile written BEFORE `source_sha256`.
+
+    Kept as its own case rather than folded into the test above, because it is
+    the one that must NOT change: an existing consuming repo's lockfile has no
+    `source_sha256`, and it has to keep reading exactly as it did. Note this
+    test would have passed unchanged against the old code — which is precisely
+    why the `adapted` assertion above had to be written separately instead of
+    edited into it.
+    """
     repos = synthetic_repos({
         "src": {".claude/plugins/cla/skills/foo.md": "SOURCE raw content\n"},
         "dst": {},
@@ -439,6 +479,7 @@ def test_discover_source_advanced_freshly_synced_untouched(synthetic_repos, fake
         "adapted_content": "LOCAL adapted content\n",
         "change_summary": "adapted",
     }]
+    # No `source_shas` — the pre-change call shape.
     outcomes = apply_mod.apply_worktree(repos[1], adaptations, "src")
     assert outcomes[0].status == "wrote"
 
@@ -446,6 +487,98 @@ def test_discover_source_advanced_freshly_synced_untouched(synthetic_repos, fake
     result = discover_mod.discover(repos[0], repos[1])
     assert len(result.files) == 1
     assert result.files[0].status == "source-advanced"
+
+
+def test_local_advanced_is_reachable_for_an_adapted_file(synthetic_repos):
+    """The reported bug, stated directly.
+
+    An adapted file that local then edited FURTHER, with source unmoved, is
+    `local-advanced`. Before `source_sha256` this was unreachable: the label
+    required `source_sha == ancestor`, and the ancestor was the adapted bytes,
+    so only a verbatim adoption could ever satisfy it.
+    """
+    discover_mod = _load("discover")
+    raw_source = "SOURCE raw\n"
+    adapted = "ADAPTED at sync time\n"
+    repos = synthetic_repos({
+        "src": {".claude/plugins/cla/skills/foo.md": raw_source},
+        "dst": {".claude/plugins/cla/skills/foo.md": "ADAPTED then edited again\n"},
+    })
+    _seed_lock(repos[1], {
+        ".claude/plugins/cla/skills/foo.md": {
+            "last_synced_sha256": discover_mod._hash_bytes(adapted.encode()),
+            "source_sha256": discover_mod._hash_bytes(raw_source.encode()),
+            "source": "src",
+        },
+    })
+    result = discover_mod.discover(repos[0], repos[1])
+    assert result.files[0].status == "local-advanced"
+
+
+def test_source_advanced_requires_the_source_to_have_actually_moved(synthetic_repos):
+    """The complement: with `source_sha256` recorded, `source-advanced` now means
+    what it says — source really did move since the sync — rather than "the
+    adaptation changed something", which was true of every adapted file."""
+    discover_mod = _load("discover")
+    adapted = "ADAPTED at sync time\n"
+    repos = synthetic_repos({
+        "src": {".claude/plugins/cla/skills/foo.md": "SOURCE moved on\n"},
+        "dst": {".claude/plugins/cla/skills/foo.md": adapted},
+    })
+    _seed_lock(repos[1], {
+        ".claude/plugins/cla/skills/foo.md": {
+            "last_synced_sha256": discover_mod._hash_bytes(adapted.encode()),
+            "source_sha256": discover_mod._hash_bytes(b"SOURCE raw at sync\n"),
+            "source": "src",
+        },
+    })
+    result = discover_mod.discover(repos[0], repos[1])
+    assert result.files[0].status == "source-advanced"
+
+
+@pytest.mark.parametrize("bad", [None, "", 42, [], {}])
+def test_a_missing_or_non_string_source_sha_degrades_to_the_legacy_path(synthetic_repos, bad):
+    """Backward compatibility is by DEFAULTING (S0 := ancestor), not branching.
+
+    Mapping a missing field to `both-diverged` instead would mislabel every
+    legacy entry in every consuming repo at once, on the first run after upgrade.
+    A junk value must degrade the same way a missing one does.
+    """
+    discover_mod = _load("discover")
+    ancestor = "shared content\n"
+    entry = {
+        "last_synced_sha256": discover_mod._hash_bytes(ancestor.encode()),
+        "source": "src",
+    }
+    if bad is not None:
+        entry["source_sha256"] = bad
+    repos = synthetic_repos({
+        "src": {".claude/plugins/cla/skills/foo.md": ancestor},
+        "dst": {".claude/plugins/cla/skills/foo.md": "LOCAL edited\n"},
+    })
+    _seed_lock(repos[1], {".claude/plugins/cla/skills/foo.md": entry})
+    result = discover_mod.discover(repos[0], repos[1])
+    # Legacy semantics: source == ancestor, local moved -> local-advanced.
+    assert result.files[0].status == "local-advanced"
+
+
+def test_a_legacy_lock_entry_can_never_produce_the_adapted_label(synthetic_repos):
+    """Non-vacuity partner for the degradation rule.
+
+    With S0 := ancestor, `adapted` requires local == ancestor AND source ==
+    ancestor, hence local == source — which is dropped as identical before
+    classification is ever consulted. So the new label is structurally
+    impossible for an old lockfile, rather than merely unlikely.
+    """
+    discover_mod = _load("discover")
+    ancestor_sha = discover_mod._hash_bytes(b"shared\n")
+    for local, source in [("shared\n", "moved\n"), ("moved\n", "shared\n"), ("a\n", "b\n")]:
+        entry = {"last_synced_sha256": ancestor_sha, "source": "src"}
+        assert discover_mod._classify_status(
+            discover_mod._hash_bytes(local.encode()),
+            discover_mod._hash_bytes(source.encode()),
+            entry,
+        ) != "adapted"
 
 
 def test_discover_source_advanced_when_local_matches_ancestor(synthetic_repos):
@@ -1381,9 +1514,13 @@ def test_lockfile_written_before_git_add_in_pr_mode(synthetic_repos, fake_gh, tm
     apply_mod = _load("apply")
     real_update_lock = apply_mod._update_lock
 
-    def _recording_update_lock(local_repo, written, source_name, source_commit=None):
+    # `**kwargs` deliberately: this wrapper only cares WHEN the lock is written,
+    # not with what. Enumerating the parameters made it a second, silent copy of
+    # `_update_lock`'s signature that broke the moment the real one grew a
+    # keyword — and a TypeError here reads as a bug in apply.py, not in a stub.
+    def _recording_update_lock(local_repo, written, source_name, source_commit=None, **kwargs):
         fake_gh["calls"].append(["LOCK_WRITE_MARKER"])
-        return real_update_lock(local_repo, written, source_name)
+        return real_update_lock(local_repo, written, source_name, **kwargs)
 
     monkeypatch.setattr(apply_mod, "_update_lock", _recording_update_lock)
 

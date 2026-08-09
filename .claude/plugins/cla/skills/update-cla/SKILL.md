@@ -77,13 +77,13 @@ python3 .claude/plugins/cla/skills/update-cla/scripts/orchestrate.py discover \
     <source-repo> [<asset-path>] [--local <path>]
 ```
 
-Compares source vs. local content hash per file; identical files skip silently, new files have no local counterpart. Diverging files classify against `.claude/plugins/cla/.cla-sync-lock.json`'s recorded ancestor into `divergent` / `source-advanced` / `local-advanced` / `both-diverged` (full decision table: `references/phases.md`). Binary and read-error files go to `skipped`, never round-tripped through the LLM. A lock-tracked local asset absent from source surfaces as `deleted-in-source` in a separate `deletions` array — **never auto-applied**. Writes `temp/sync-state/<RUN-ID>/divergences.json`.
+Compares source vs. local content hash per file; identical files skip silently, new files have no local counterpart. Diverging files classify against `.claude/plugins/cla/.cla-sync-lock.json`'s recorded ancestor into `divergent` / `adapted` / `source-advanced` / `local-advanced` / `both-diverged` (full decision table: `references/phases.md`). Binary and read-error files go to `skipped`, never round-tripped through the LLM. A lock-tracked local asset absent from source surfaces as `deleted-in-source` in a separate `deletions` array — **never auto-applied**. Writes `temp/sync-state/<RUN-ID>/divergences.json`.
 
 **Display the discovery summary verbatim.** If `total = 0` and there are no deletions, report and exit.
 
 ### Phase 2 — Adapt (you reason; one rewrite per file)
 
-For each file: read the source content, the local existing version (`null` for `new` files), and local repo context (`CLAUDE.md`, file listing, `plugin.json`), then act on the file's status per the table in `references/phases.md` (`source-advanced` → adopt freely; `local-advanced` → keep local, source would regress it; `both-diverged` → careful manual reconcile per rule 1; `divergent` → judgment alone, no ancestor available).
+For each file: read the source content, the local existing version (`null` for `new` files), and local repo context (`CLAUDE.md`, file listing, `plugin.json`), then act on the file's status per the table in `references/phases.md` (`adapted` → neither side moved, the delta IS the adaptation, keep local; `source-advanced` → adopt, re-applying the local adaptation; `local-advanced` → keep local, source would regress it; `both-diverged` → careful manual reconcile per rule 1; `divergent` → judgment alone, no ancestor available).
 
 **One rewrite per file** — do this in a single pass per file, following `references/adaptation_prompt.md` and the non-negotiable rules above; do not iterate multiple draft rewrites of the same file inline. The most common failure is silently overwriting local content the source lacks (rule 3 especially). A `new` skill is still routed through `adaptations.json`, never `Write`n directly, so Phase 3 can perform its git-safety checks. Print a one-line `[i/N] <asset> — <summary>` per file, then write `adaptations.json` (schema: `references/phases.md`). Review any `deletions` by hand — **never auto-delete**; act outside this flow if removal is the right call.
 

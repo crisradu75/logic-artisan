@@ -134,7 +134,8 @@ class BinaryAssetError(Exception):
 @dataclass
 class FileRecord:
     asset_path: str
-    # "divergent" | "new" | "source-advanced" | "local-advanced" | "both-diverged"
+    # "divergent" | "new" | "adapted" | "source-advanced" | "local-advanced"
+    # | "both-diverged"
     status: str
     source_path: Path
     source_content: str
@@ -142,6 +143,12 @@ class FileRecord:
     local_path: Path
     local_content: Optional[str]
     local_sha256: Optional[str]
+    # Whether a PRIOR sync recorded `keep_local: true` for this asset — i.e.
+    # someone already decided, on the record, to keep local content here.
+    # Surfaced so Phase 2 sees that intent instead of re-litigating it from
+    # scratch every run; without it the reasoning lived only in the reviewer's
+    # head and was lost the moment the session ended.
+    kept_local_previously: bool = False
 
 
 @dataclass
@@ -278,18 +285,58 @@ def _read_lock(local_repo: Path) -> dict:
 
 
 def _classify_status(local_sha: str, source_sha: str, lock_entry: Optional[dict]) -> str:
-    """3-way classification (Decision C) for a file whose local/source shas differ
-    (identical shas never reach this — they're dropped as "identical" before
+    """4-way classification for a file whose local/source shas differ (identical
+    shas never reach this — they're dropped as "identical" before
     classification). `lock_entry` is this asset's `.cla-sync-lock.json` entry, or
-    None if the asset has never been synced/recorded."""
+    None if the asset has never been synced/recorded.
+
+    THE BUG THIS FIXES, reported independently by two consuming repos. The lock
+    recorded ONE hash: `last_synced_sha256`, the ADAPTED bytes written to local.
+    `local-advanced` requires `source_sha == ancestor`, which can only hold when
+    the adoption was verbatim — so for any file the adaptation changed, that
+    label was UNREACHABLE. Worse, a fix a consuming repo introduces DURING the
+    adapt phase lands inside those ancestor bytes, so the next sync sees
+    `local == ancestor, source != ancestor` and labels it `source-advanced` —
+    which `references/phases.md` tells Phase 2 means "adopt source freely". The
+    deliberate divergence was then silently reverted, and `keep_local` (the
+    documented escape hatch) hung off a label the file could never receive.
+
+    The fix records a SECOND hash — `source_sha256`, the raw source the
+    adaptation was derived from — so the two sides are compared against their
+    own baselines instead of sharing one:
+
+        local_moved  = local_sha  != last_synced_sha256   (adapted local bytes)
+        source_moved = source_sha != source_sha256        (raw source bytes)
+
+        local_moved  source_moved  label
+        no           no            adapted          the delta IS the adaptation
+        no           yes           source-advanced  adopt, re-applying the adaptation
+        yes          no            local-advanced   now reachable for adapted files
+        yes          yes           both-diverged    real conflict
+
+    `adapted` cannot be produced for a verbatim adoption: there `A == S0`, so
+    "neither moved" implies `local == source`, which is dropped before
+    classification.
+
+    BACKWARD COMPATIBILITY is by DEFAULTING, not branching: a lock entry written
+    before `source_sha256` existed defaults `S0 := ancestor`, which collapses the
+    table to exactly today's three labels — row 2 becomes `L==A and S!=A`, row 3
+    `S==A and L!=A`, row 4 both-differ, and row 1 requires `L==A and S==A` hence
+    `L==S`, unreachable. So an old lockfile keeps its old semantics precisely
+    rather than approximately, and self-heals on the first apply that rewrites or
+    keeps the file. Mapping a missing field to `both-diverged` instead would
+    mislabel every legacy entry at once.
+    """
     if lock_entry is None:
         return "divergent"
     ancestor = lock_entry.get("last_synced_sha256")
-    if local_sha == ancestor and source_sha != ancestor:
-        return "source-advanced"
-    if source_sha == ancestor and local_sha != ancestor:
-        return "local-advanced"
-    return "both-diverged"
+    raw_source = lock_entry.get("source_sha256")
+    source_at_sync = raw_source if isinstance(raw_source, str) and raw_source else ancestor
+    local_moved = local_sha != ancestor
+    source_moved = source_sha != source_at_sync
+    if not local_moved:
+        return "source-advanced" if source_moved else "adapted"
+    return "both-diverged" if source_moved else "local-advanced"
 
 
 def _normalize_filter(pattern: Optional[str]) -> Optional[str]:
@@ -400,7 +447,8 @@ def discover(
                 continue
             if local_sha == source_sha:
                 continue
-            status = _classify_status(local_sha, source_sha, lock.get(rel_path))
+            lock_entry = lock.get(rel_path)
+            status = _classify_status(local_sha, source_sha, lock_entry)
             files.append(FileRecord(
                 asset_path=rel_path,
                 status=status,
@@ -410,6 +458,9 @@ def discover(
                 local_path=local_abs,
                 local_content=local_text,
                 local_sha256=local_sha,
+                kept_local_previously=bool(
+                    lock_entry is not None and lock_entry.get("keep_local") is True
+                ),
             ))
         else:
             files.append(FileRecord(
@@ -430,6 +481,7 @@ def discover(
 def summary_counts(result: DiscoverResult) -> dict[str, int]:
     divergent = sum(1 for r in result.files if r.status == "divergent")
     new = sum(1 for r in result.files if r.status == "new")
+    adapted = sum(1 for r in result.files if r.status == "adapted")
     source_advanced = sum(1 for r in result.files if r.status == "source-advanced")
     local_advanced = sum(1 for r in result.files if r.status == "local-advanced")
     both_diverged = sum(1 for r in result.files if r.status == "both-diverged")
@@ -447,6 +499,7 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
     return {
         "divergent": divergent,
         "new": new,
+        "adapted": adapted,
         "source_advanced": source_advanced,
         "local_advanced": local_advanced,
         "both_diverged": both_diverged,

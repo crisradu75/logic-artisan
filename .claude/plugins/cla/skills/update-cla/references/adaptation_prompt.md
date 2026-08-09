@@ -10,7 +10,7 @@ conventions are natively available; read whatever you need.
 From `divergences.json`:
 - `source_content` — the canonical version from the source repo.
 - `local_content` — the existing local version (or `null` for new files).
-- `status` — the file's provenance classification: `divergent` (local exists, differs, no lockfile ancestor), `source-advanced` (local untouched since last sync → adopt source freely), `local-advanced` (source unmoved since last sync but local advanced → keep local; source would regress), `both-diverged` (both changed → careful manual reconcile), or `new` (local missing). Handle each per the Phase-2 classification guidance in `references/phases.md`.
+- `status` — the file's provenance classification: `divergent` (local exists, differs, no lockfile ancestor), `adapted` (neither side moved since the last sync — they differ only because the adoption was adapted → keep local, nothing upstream to pull), `source-advanced` (local untouched AND source genuinely moved → adopt, re-applying the local adaptation rather than taking raw source verbatim), `local-advanced` (source unmoved since last sync but local advanced → keep local; source would regress), `both-diverged` (both changed → careful manual reconcile), or `new` (local missing). Handle each per the Phase-2 classification guidance in `references/phases.md`.
 
 From the local repo (read directly):
 - Top-level `CLAUDE.md` and any plugin/skill-local `CLAUDE.md` along the asset's path.
@@ -97,7 +97,7 @@ shape arriving through the same file.
 
 ## Output
 
-Append one entry per file to `adaptations.json` — **every file in `divergences.json`'s `files[]`, without exception**. A file you are deliberately NOT rewriting (a `local-advanced` you are keeping) still needs an entry: give it `"keep_local": true` and omit `adapted_content`. `apply` diffs the two lists and reports anything discovered-but-absent under `NOT ADAPTED`, then exits 1 — because a silently dropped entry is written nowhere, surfaces nowhere, and leaves the file at its pre-sync content.
+Append one entry per file to `adaptations.json` — **every file in `divergences.json`'s `files[]`, without exception**. A file you are deliberately NOT rewriting (a `local-advanced` or `adapted` you are keeping) still needs an entry: give it `"keep_local": true` and omit `adapted_content`. `apply` diffs the two lists and reports anything discovered-but-absent under `NOT ADAPTED`, then exits 1 — because a silently dropped entry is written nowhere, surfaces nowhere, and leaves the file at its pre-sync content.
 
 Entry shape:
 

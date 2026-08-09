@@ -163,6 +163,7 @@ def cmd_discover(source_arg: str, filter_pattern: Optional[str], local_arg: Opti
     print(
         f"Discovered {counts['total']} file(s): "
         f"{counts['divergent']} divergent, {counts['new']} new, "
+        f"{counts['adapted']} adapted, "
         f"{counts['source_advanced']} source-advanced, {counts['local_advanced']} local-advanced, "
         f"{counts['both_diverged']} both-diverged "
         f"({counts['skills']} skills, {counts['agents']} agents, {counts['hooks']} hooks, "
@@ -202,6 +203,11 @@ def cmd_discover(source_arg: str, filter_pattern: Optional[str], local_arg: Opti
                 "source_sha256": r.source_sha256,
                 "local_content": r.local_content,
                 "local_sha256": r.local_sha256,
+                # Prior recorded intent: a previous sync marked this asset
+                # `keep_local`. Surfaced so Phase 2 reads the decision instead
+                # of re-deriving it — the reasoning used to live only in the
+                # reviewer's head and died with the session.
+                "kept_local_previously": r.kept_local_previously,
             }
             for r in result.files
         ],
@@ -303,14 +309,30 @@ def cmd_apply(run_id: str, mode: str, local_arg: Optional[str]) -> int:
     adapted_paths = {a.get("asset_path") for a in adaptations}
     not_adapted = sorted(discovered - adapted_paths)
 
+    # Raw source hashes, taken from the file DISCOVER wrote rather than from the
+    # LLM-authored adaptations: `discover` computed them with `_hash_bytes`, so
+    # they are already LF-normalized on the same terms the lock uses. An
+    # LLM-supplied hash would be unverifiable and is exactly the class of input
+    # the `NOT ADAPTED` completeness check exists to distrust. `.get` throughout,
+    # so a divergences file from an older run degrades to no hashes rather than
+    # raising — the same tolerance `source_commit` already gets above.
+    source_shas = {
+        f["asset_path"]: f["source_sha256"]
+        for f in divergences_data.get("files", [])
+        if f.get("asset_path") and f.get("source_sha256")
+    }
+
     if mode == "worktree":
-        outcomes = apply_mod.apply_worktree(local_repo, adaptations, source_name, source_commit)
+        outcomes = apply_mod.apply_worktree(
+            local_repo, adaptations, source_name, source_commit, source_shas=source_shas
+        )
         return _print_worktree_summary(outcomes, not_adapted)
 
     if mode == "pr":
         temp_dir = (local_repo / "temp" / f"sync-{run_id}").resolve()
         outcomes, pr_result = apply_mod.apply_pr(
-            local_repo, adaptations, source_name, temp_dir, source_commit
+            local_repo, adaptations, source_name, temp_dir, source_commit,
+            source_shas=source_shas,
         )
         return _print_pr_summary(outcomes, pr_result, not_adapted)
 
@@ -338,6 +360,7 @@ def _print_worktree_summary(outcomes: list, not_adapted: list | None = None) -> 
     skipped_dirty = [o for o in outcomes if o.status == "skipped_dirty_worktree"]
     skipped_binary = [o for o in outcomes if o.status == "skipped_binary"]
     skipped_malformed = [o for o in outcomes if o.status == "skipped_malformed"]
+    kept_local = [o for o in outcomes if o.status == "skipped_kept_local"]
     failed = [o for o in outcomes if o.status == "failure"]
     # A status this printer doesn't recognize must never disappear silently —
     # that is exactly the failure class `skipped_malformed` itself was almost
@@ -363,6 +386,15 @@ def _print_worktree_summary(outcomes: list, not_adapted: list | None = None) -> 
         print("Skipped (doubled-newline corruption fingerprint — NOT written):")
         for o in skipped_malformed:
             print(f"  - {o.asset_path}: {o.reason}")
+    if kept_local:
+        # `skipped_kept_local` was listed in `known` (so never flagged
+        # unrecognized) but had no bucket, so it printed NOWHERE — the same
+        # silent-status gap the comments here already record for two other
+        # statuses. A kept file is a DECISION, and one nobody sees is one
+        # nobody can challenge.
+        print("Kept local (deliberate divergence, now recorded in the lockfile):")
+        for o in kept_local:
+            print(f"  - {o.asset_path}")
     if failed:
         print("Failed:")
         for o in failed:
@@ -388,6 +420,7 @@ def _print_worktree_summary(outcomes: list, not_adapted: list | None = None) -> 
 def _print_pr_summary(outcomes: list, pr_result, not_adapted: list | None = None) -> int:
     wrote = [o for o in outcomes if o.status == "wrote"]
     skipped_malformed = [o for o in outcomes if o.status == "skipped_malformed"]
+    kept_local = [o for o in outcomes if o.status == "skipped_kept_local"]
     # `skipped_binary` had no bucket here while `known` below DID list it, so a
     # refused binary fell out of both and vanished from the PR report entirely.
     # Worktree mode printed it; PR mode did not, and the header carried no
@@ -415,6 +448,15 @@ def _print_pr_summary(outcomes: list, pr_result, not_adapted: list | None = None
         print(f"Skipped {len(skipped_binary)} binary file(s):")
         for o in skipped_binary:
             print(f"  - {o.asset_path}: {o.reason}")
+    if kept_local:
+        # `skipped_kept_local` was listed in `known` (so never flagged
+        # unrecognized) but had no bucket, so it printed NOWHERE — the same
+        # silent-status gap the comments here already record for two other
+        # statuses. A kept file is a DECISION, and one nobody sees is one
+        # nobody can challenge.
+        print("Kept local (deliberate divergence, now recorded in the lockfile):")
+        for o in kept_local:
+            print(f"  - {o.asset_path}")
     _print_not_adapted(not_adapted or [])
     for o in wrote:
         print(f"  - wrote {o.asset_path}")

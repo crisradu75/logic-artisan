@@ -128,7 +128,7 @@ The generic git/worktree guard hooks SHALL be provided by the plugin via `.claud
 
 ### Requirement: Sync provenance lockfile
 
-`update-cla` SHALL maintain a per-repo sync provenance lockfile at `.claude/plugins/cla/.cla-sync-lock.json` in each destination repo. The lockfile SHALL be a JSON object keyed by the relative asset path (the same posix `asset_path` string `discover.py`/`apply.py` use), each value an object carrying `last_synced_sha256` (the sha256 of the adapted content actually WRITTEN to the local file at apply time — the exact bytes now on disk, which is the ancestor the next reconcile's local-side comparison returns to, NOT the raw source content's hash) and `source` (the source repo's short name). The lockfile SHALL be written/updated inside `apply.py`'s write path (both `apply_worktree` and `apply_pr`), at the point the adapted content is written, with exactly one entry written or updated per file whose apply outcome is `wrote`; a file with any other outcome (`skipped_dirty_worktree`, `skipped_binary`, `skipped_malformed`, `failure`) SHALL leave its prior lock entry unchanged. In `pr` mode the lockfile SHALL be written before the sync commit (`git add -A`) so it is committed in the same PR as the applied files; in `worktree` mode it is written into the working tree alongside them. Provenance SHALL live only in the lockfile — asset frontmatter SHALL NOT be polluted and stays `name`/`description`/`allowed-tools`/`argument-hint`. A failure to write the lockfile SHALL be reported to stderr but SHALL NOT fail an apply run whose files already landed. The lockfile itself SHALL be excluded from the sync scan (it is per-repo provenance, never a synced asset) — it is a dotfile and lives outside `SCAN_DIRS`, so it never appears in `divergences.json`.
+`update-cla` SHALL maintain a per-repo sync provenance lockfile at `.claude/plugins/cla/.cla-sync-lock.json` in each destination repo. The lockfile SHALL be a JSON object keyed by the relative asset path (the same posix `asset_path` string `discover.py`/`apply.py` use), each value an object carrying `last_synced_sha256` (the sha256 of the adapted content actually WRITTEN to the local file at apply time — the exact bytes now on disk, which is the ancestor the next reconcile's local-side comparison returns to, NOT the raw source content's hash), `source_sha256` (the sha256 of the RAW SOURCE content those bytes were adapted from — the baseline the source-side comparison returns to), and `source` (the source repo's short name). Both hashes SHALL be recorded: either alone collapses the two comparisons onto one baseline and makes one of the four classification labels unreachable. The lockfile SHALL be written/updated inside `apply.py`'s write path (both `apply_worktree` and `apply_pr`), at the point the adapted content is written, with exactly one entry written or updated per file whose apply outcome is `wrote`; a file with any other outcome (`skipped_dirty_worktree`, `skipped_binary`, `skipped_malformed`, `failure`) SHALL leave its prior lock entry unchanged. A file whose outcome is `skipped_kept_local` SHALL update its entry: `keep_local` set to `true`, `last_synced_sha256` re-hashed from the local file on disk, and `source_sha256` advanced to the raw source the decision was made against — so the decision, and the source it was made against, survive the session. A subsequent `wrote` outcome for the same asset SHALL clear `keep_local`. `discover.py` SHALL surface a recorded `keep_local` as `kept_local_previously` on that asset's file record. In `pr` mode the lockfile SHALL be written before the sync commit (`git add -A`) so it is committed in the same PR as the applied files; in `worktree` mode it is written into the working tree alongside them. Provenance SHALL live only in the lockfile — asset frontmatter SHALL NOT be polluted and stays `name`/`description`/`allowed-tools`/`argument-hint`. A failure to write the lockfile SHALL be reported to stderr but SHALL NOT fail an apply run whose files already landed. The lockfile itself SHALL be excluded from the sync scan (it is per-repo provenance, never a synced asset) — it is a dotfile and lives outside `SCAN_DIRS`, so it never appears in `divergences.json`.
 
 #### Scenario: Apply records provenance for each written file
 
@@ -161,17 +161,29 @@ The generic git/worktree guard hooks SHALL be provided by the plugin via `.claud
 
 ### Requirement: Three-way reconcile classification
 
-`discover.py` SHALL use the lockfile's `last_synced_sha256` for an asset as the common ancestor to classify a divergence three ways instead of the single `divergent` label. The ancestor is the content last WRITTEN to local (the adapted bytes), so it equals a freshly-synced file's on-disk content exactly. When there is no lock entry for an asset, the classification SHALL fall back to today's 2-way `divergent`. When `local_sha256 == ancestor` and `source_sha256 != ancestor`, the status SHALL be `source-advanced`. When `source_sha256 == ancestor` and `local_sha256 != ancestor`, the status SHALL be `local-advanced`. When `source_sha256 != ancestor` AND `local_sha256 != ancestor` AND `source_sha256 != local_sha256`, the status SHALL be `both-diverged`. An identical file (`source_sha256 == local_sha256`) SHALL be dropped silently as today and never reach classification. Because the ancestor is the content last written locally, an asset that was cleanly synced and not edited locally since has `local_sha256 == ancestor` and SHALL therefore classify as `source-advanced` (local carries no post-sync edits, so source is re-adopted freely — idempotent, a no-op in effect, when source is itself unchanged), and SHALL NEVER be mislabeled `local-advanced` in that case. The classification SHALL be a label that guides Phase-2 adaptation; it SHALL NOT auto-merge content — `apply.py` treats every to-write file identically regardless of label.
+`discover.py` SHALL classify a divergence against TWO recorded ancestors rather than one: `last_synced_sha256` (the adapted bytes last written to local) and `source_sha256` (the raw source those bytes were adapted from). Each side SHALL be compared against its own baseline: `local_moved` is `local_sha256 != last_synced_sha256`, and `source_moved` is `source_sha256(current) != source_sha256(recorded)`. When there is no lock entry for an asset, the classification SHALL fall back to today's 2-way `divergent`. When neither side moved, the status SHALL be `adapted` — local and source differ only because the adoption was adapted, and there is nothing upstream to pull. When only source moved, the status SHALL be `source-advanced`. When only local moved, the status SHALL be `local-advanced`. When both moved, the status SHALL be `both-diverged`. An identical file (`source_sha256 == local_sha256`) SHALL be dropped silently as today and never reach classification.
+
+`local-advanced` SHALL be reachable for an adapted file. Recording only the adapted ancestor made that label require a verbatim adoption, so a deliberate divergence could never receive it, while a fix introduced during the adapt phase landed inside the ancestor bytes and reported `source-advanced` — the label whose Phase-2 guidance is to adopt source. Two consuming repos reported the resulting silent revert independently.
+
+A lock entry lacking `source_sha256` (or carrying a non-string value) SHALL default it to `last_synced_sha256`, which collapses the four-way table to exactly the three labels the single-ancestor rules produced, and SHALL make `adapted` unreachable for such an entry. A missing `source_sha256` SHALL NOT be treated as a conflict.
+
+The classification SHALL be a label that guides Phase-2 adaptation; it SHALL NOT auto-merge content — `apply.py` treats every to-write file identically regardless of label.
+
+#### Scenario: Neither side moved since the sync
+
+- **WHEN** an asset's local sha equals `last_synced_sha256` and its source sha equals the recorded `source_sha256`
+- **THEN** `discover.py` classifies it `adapted` (the two differ only because the adoption was adapted; nothing upstream to pull)
 
 #### Scenario: Source advanced, local untouched
 
-- **WHEN** an asset's local sha equals its lock ancestor and its source sha differs from the ancestor
+- **WHEN** an asset's local sha equals `last_synced_sha256` and its source sha differs from the recorded `source_sha256`
 - **THEN** `discover.py` classifies it `source-advanced`
 
 #### Scenario: Local advanced, source untouched
 
-- **WHEN** an asset's source sha equals its lock ancestor and its local sha differs from the ancestor
+- **WHEN** an asset's source sha equals the recorded `source_sha256` and its local sha differs from `last_synced_sha256`
 - **THEN** `discover.py` classifies it `local-advanced`
+- **AND** this holds whether the asset was adopted verbatim or adapted
 
 #### Scenario: Both sides diverged
 
@@ -183,10 +195,11 @@ The generic git/worktree guard hooks SHALL be provided by the plugin via `.claud
 - **WHEN** an asset differs between source and local but has no lockfile entry
 - **THEN** `discover.py` classifies it `divergent` (today's 2-way behavior), consulting no ancestor
 
-#### Scenario: A freshly-synced, untouched file is not mislabeled local-advanced
+#### Scenario: A legacy lock entry without source_sha256 keeps the previous labels
 
-- **WHEN** an asset was cleanly synced and not edited locally since — so its local sha equals its lock ancestor (the content last written) — while source still differs from that ancestor
-- **THEN** `discover.py` classifies it `source-advanced` (safe to re-adopt source, a no-op in effect when source is unchanged), never `local-advanced`
+- **WHEN** an asset's lock entry was written before `source_sha256` existed, or carries a non-string value for it
+- **THEN** `discover.py` defaults that baseline to `last_synced_sha256`
+- **AND** produces exactly the label the single-ancestor rules produced, never `adapted`
 
 ### Requirement: Source-side deletion detection
 
