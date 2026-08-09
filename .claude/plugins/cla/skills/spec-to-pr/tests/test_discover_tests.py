@@ -151,7 +151,7 @@ def test_staged_full_empty_when_only_lint(tmp_path: Path):
 # deliberate skip, which is worse than a missing one, because the reason is
 # plausible enough that nobody questions it.
 #
-# logic-artisan is itself such a repo: the canonical source shipped a
+# The canonical source repo is itself one of those repos: it shipped a
 # test-discovery script that cannot discover its own tests.
 # --------------------------------------------------------------------------- #
 

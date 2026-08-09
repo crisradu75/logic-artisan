@@ -4,8 +4,8 @@ This hook holds no repo-specific facts itself (per CLAUDE.md's fact/procedure
 split) — it reads them from an overlay file, `smoke-test-drift.local.md`, a
 `*.local.md` leaf name (the repo-neutral overlay marker `update-cla` already
 recognizes and never syncs). No overlay file means the repo hasn't configured
-the check, so the hook no-ops — that is what keeps this repo (which ships no
-product code) seeing no behavior change from before the parameterization.
+the check, so the hook no-ops — that is what lets a repo with no UI to smoke-test
+(or none configured yet) see no behavior change from before the parameterization.
 """
 
 import importlib.util

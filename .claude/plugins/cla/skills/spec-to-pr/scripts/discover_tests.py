@@ -100,9 +100,11 @@ def _available_checks() -> list[list[str]]:
 # deliberate skip is worse than a missing one: the reason is plausible, so
 # nobody questions it.
 #
-# This repo is itself such a repo -- logic-artisan has no root `package.json`,
-# so the canonical source shipped a test-discovery script that cannot discover
-# its own tests.
+# The canonical source repo is itself one of those repos, which is how a
+# test-discovery script that cannot discover its own tests shipped at all. Do
+# not restate that as a fact about the repo reading this comment: whether a root
+# `package.json` exists is a property of the DESTINATION, and the reason codes
+# below exist precisely so the answer is measured per repo rather than assumed.
 NO_MANIFEST = "no-package-json"
 NO_CHECK_SCRIPTS = "no-check-scripts"
 NO_SOURCE_PATHS = "no-source-affecting-paths"

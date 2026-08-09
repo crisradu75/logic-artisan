@@ -313,13 +313,40 @@ def test_no_project_tokens_in_synced_source():
 # ---------- absolute-path guard: the list-free half ----------
 #
 # Both guards above need a curated `project-tokens.local.md` to do anything, and
-# that model only fits a CONSUMING repo, where the list is closed and
-# self-known: you know your own project's vocabulary. In the SOURCE repo it
-# inverts — there are no local product tokens to protect, and what leaks in are
-# names from OTHER repos, arriving via pasted examples and fixtures. Listing
-# those means enumerating every repo the author works in: open-ended,
-# externally determined, and stale the moment a new project starts. It catches
-# the names you already know, which are the ones you already fixed.
+# that model fits a CONSUMING repo most obviously, where the list is closed and
+# self-known: you know your own project's vocabulary.
+#
+# This comment used to continue "In the SOURCE repo it inverts — there are no
+# local product tokens to protect", and on that reasoning the source repo
+# curated no list at all. The reasoning conflated two lists, and the half it got
+# wrong shipped six leaks: the source repo's own name and one of its internal
+# systems, both named inside portable core, plus a consuming repo's name in a
+# docstring that then failed THAT repo's guard on arrival. (Naming any of them
+# here would itself trip the guard — which is the shortest possible proof that
+# the second list below is real.)
+#
+#   - Names of OTHER repos, arriving via pasted examples and fixtures. Listing
+#     those does mean enumerating every repo the author works in: open-ended,
+#     externally determined, stale the moment a new project starts, and it
+#     catches only the names you already know — which are the ones you already
+#     fixed. That objection stands, and the list-free path guard below is the
+#     answer to it.
+#   - The source repo's OWN name and systems. Closed, finite, self-known —
+#     exactly like a consuming repo's vocabulary. A source repo does know what
+#     it is called, and a source-side token is the more damaging of the two,
+#     because once synced it reads as a fact about the DESTINATION.
+#
+# So the guards above are armed in both directions; only the list's contents
+# differ per repo, which is what makes it an overlay.
+#
+# What still has no mechanical guard, stated so nobody assumes otherwise: prose
+# that names no token but asserts a source-repo FACT — "this repo ships no
+# product code", "this repo is on Windows". Measured before ruling it out: the
+# synced tree has 113 occurrences of "this repo", and the overwhelming majority
+# are legitimate deictics that re-bind per repo (`ask-git-identity`'s "this repo
+# has no `user.email` configured" is about whatever repo is running it). No
+# pattern separates those from a leak, so this class is watched by review, not
+# by a test.
 #
 # This check needs no list. A synced-core file has no business carrying a
 # hardcoded absolute DEVELOPER path — whatever repo or user it names — because
@@ -346,7 +373,20 @@ PLACEHOLDER_USERS = frozenset({
 MANGLED_WIN_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:Users([A-Za-z0-9]+)")
 # Single drive letter, NOT preceded by another alnum (or a URL scheme matches).
 # Consumes the whole path-ish run, so the placeholder test below can inspect it.
-WIN_ABS_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{1,2}[A-Za-z0-9._<>\\/-]*")
+#
+# TWO separators are required, not one, and that is the fix for a real false
+# positive rather than a tightening for its own sake. With one separator the
+# pattern matched the tail of any Python source line ending a clause with a
+# name: `except OSError as e:` followed by an escaped newline reads as drive
+# `E:` + path `\n`, and `print("a:\tb")` reads as drive `A:` + path `\tb`. Both
+# lines contain no path at all. A hardcoded developer path — the only thing this
+# guard exists to catch — always has a second segment (`C:\Users\alice\...`),
+# while an escape sequence never does, so the separator count separates them
+# cleanly where a character-class tweak could not: `\t` is equally the start of
+# `C:\temp` and of a tab.
+WIN_ABS_PATH = re.compile(
+    r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{1,2}[A-Za-z0-9._<>-]+[\\/]{1,2}[A-Za-z0-9._<>\\/-]*"
+)
 HOME_ABS_PATH = re.compile(r"(?:^|[\s\"'`(])/(?:Users|home)/([A-Za-z0-9._-]+)/")
 # `C:\Code\<repo>\...` and `C:\Users\...\AppData\...` are illustrative prose, not
 # paths anyone could run. Exempt automatically — reserving the explicit marker for
@@ -513,6 +553,12 @@ def test_absolute_developer_paths_are_flagged(tmp_path, line, expected_kind):
         # Illustrative prose, not a runnable path.
         r'# e.g. C:\Code\<repo>\file.py',
         r"# e.g. C:\Users\...\AppData",
+        # A Python escape sequence is not a path. Reported from a real tree, not
+        # invented: `... as e:` + `\n` reads as drive `E:` + path `\n`, and the
+        # line it fired on contained no path at all. Deleting either separator
+        # requirement in WIN_ABS_PATH must fail these two.
+        r'msg = f"failed as e:\n{detail}"',
+        r'print("a:\tb")',
         # Relative paths are the whole point of the rule.
         'BASE = "hooks/tests/fixtures"',
     ],

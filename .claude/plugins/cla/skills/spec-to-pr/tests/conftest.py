@@ -21,7 +21,11 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 def tmp_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Initialize a tmp git repo with a basic openspec/ skeleton and a master branch
     pointed at one initial commit. Sets identity locally so commits work.
-    (some-repo's default branch is `master`.)"""
+
+    `-b master` is pinned deliberately rather than inherited: without it the
+    fixture takes whatever `init.defaultBranch` the developer's global git config
+    happens to set, so the same test measures a different branch name on two
+    machines. The name itself carries no meaning here — it just has to be fixed."""
     monkeypatch.chdir(tmp_path)
     _git("init", "-q", "-b", "master", cwd=tmp_path)
     _git("config", "user.email", "test@example.com", cwd=tmp_path)

@@ -11,7 +11,7 @@ Two discipline invariants are checked against the repo's retro log:
       actually ran (the log exists and its last line parses as a JSON object); and
   (2) that line is committed, not left dangling — Handoff step 6 ran (the log
       file is clean in `git status --porcelain`). A written-but-uncommitted line
-      is exactly the "metadata uncommitted" gap the vv-harness audit catches.
+      is exactly the "metadata uncommitted" gap a deferred-audit check catches.
       Only checked when the run actually opened a PR (`--shipped`): when Ship was
       skipped the line is *intentionally* left uncommitted (SKILL.md Handoff
       step 6's feature-branch-only guard), so checking it there would false-flag.
