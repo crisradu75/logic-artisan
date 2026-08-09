@@ -111,11 +111,24 @@ NO_SOURCE_PATHS = "no-source-affecting-paths"
 
 
 def discover_with_reason(paths: list[str]) -> tuple[list[list[str]], str | None]:
-    """`(checks, reason)` — `reason` is None when checks were found."""
-    if not (REPO_ROOT / "package.json").is_file():
-        return [], NO_MANIFEST
+    """`(checks, reason)` — `reason` is None when checks were found.
+
+    ORDER MATTERS, and it used to be the other way round. The manifest check is
+    repo-GLOBAL while the source-paths check is per-change, so testing the
+    manifest first made `NO_SOURCE_PATHS` unreachable in any repo without a root
+    `package.json` — including a genuinely docs-only change, which is a real
+    skip and was reported as `no-package-json`. `SKILL.md` maps that to `warn`,
+    so every single run in such a repo carried a Test-phase warning, docs-only
+    ones included, and a warning that fires on every run is one nobody reads.
+
+    Asking the per-change question first lets a docs-only change report a true
+    `skip` even where no manifest exists, and leaves `no-package-json` for the
+    case that actually needs a gate and cannot get one.
+    """
     if not any(_is_source_affecting(raw) for raw in paths):
         return [], NO_SOURCE_PATHS
+    if not (REPO_ROOT / "package.json").is_file():
+        return [], NO_MANIFEST
     checks = _available_checks()
     return (checks, None) if checks else ([], NO_CHECK_SCRIPTS)
 
