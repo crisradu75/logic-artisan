@@ -29,36 +29,15 @@ Without it, the skills/hooks are just inert files on disk — no `/cla:*` comman
 **Note:** `--permission-mode auto` bypasses Claude Code's normal per-action confirmation prompts —
 intentional for this harness, but worth knowing before you run it.
 
-### `claw` — start a session already inside a worktree
+**Starting work in a worktree.** Use `/cla:new-worktree` at any point in a session — before
+starting, or once you realise mid-flight that the work wants isolation. There is no longer a
+penalty for deciding late.
 
-`claw` / `claw.cmd` is the sibling launcher for when you know up front that the work wants
-isolation. It creates the worktree with plain git **before** Claude starts, then launches inside it:
-
-```bash
-./claw <name>   # .claude/worktrees/<name> on branch worktree-<name>, then claude in it
-```
-
-**Why it exists.** `guard-worktree-isolation.py` writes a presence heartbeat at SessionStart for
-any session whose cwd is the primary clone — before you can type anything. A session that starts
-there and only *then* runs `/cla:new-worktree` has already registered as a contender; when it
-migrates, the beat stops refreshing but is never removed, so another session working legitimately
-in the primary clone is blocked from committing until it ages out (an hour). A `claw`-launched
-session has `git_dir != git_common_dir` from its first instant, so no heartbeat is ever written
-and nobody is blocked.
-
-Creation is delegated to `new-worktree/scripts/manual_worktree.py --print-path`, so base-branch
-resolution, name validation, duplicate-branch refusal, and the Windows path-casing fallback are
-the same tested code the skill uses — the launchers add only argument handling and the exec.
-
-**It does not install dependencies or copy env files.** Those commands are per-repo facts living
-in `new-worktree`'s `references/project-context.md` overlay, so a portable launcher cannot know
-them — hardcoding `npm ci` would be wrong for a Python or Rust consumer. Instead, run
-`/cla:new-worktree` as the session's first action: it sees the worktree already exists and runs
-its setup half only. Doing it from inside the worktree writes no heartbeat, and Claude is open
-immediately rather than you waiting at a terminal through an install.
-
-`/cla:new-worktree` is still the right tool when you are already mid-session and only then realise
-you want isolation. `claw` covers the up-front case; it does not replace the skill.
+There used to be a second launcher, `claw`, whose only job was to create the worktree *before*
+Claude started. It existed to dodge `guard-worktree-isolation.py`, which wrote a presence
+heartbeat at SessionStart for any session in the primary clone and could block a second session
+from committing for an hour. That hook was deleted (0 recorded blocks across 127 session
+transcripts), so the workaround went with it.
 
 ## Commands
 
@@ -87,8 +66,9 @@ sit at the scope root).
 `consistency-checks/` and `launcher-checks/` are the odd ones out: not skills (no `SKILL.md`) and
 not guard hooks, but homes for checks that belong to no single scope — `consistency-checks/` holds
 a drift check over the sibling `log_run.py`/`aggregate.py` copies that the isolation rule below
-deliberately prevents from sharing a module; `launcher-checks/` tests the repo-root `cla`/`claw`
-launchers, which live outside the plugin tree entirely. Both sit outside the synced set
+deliberately prevents from sharing a module; `launcher-checks/` tests the repo-root `cla`/`cla.cmd`
+launchers, which live outside the plugin tree entirely (`claw`/`claw.cmd` were deleted with
+`guard-worktree-isolation`, the hook they existed to dodge). Both sit outside the synced set
 (`skills`/`agents`/`hooks`/`output-styles`), so `update-cla` never propagates them to consuming
 repos; they guard this repo's own source. Several scopes
 ship same-named helper modules (e.g. `scripts/aggregate.py`, `scripts/log_run.py`), so they can't
@@ -233,33 +213,34 @@ Wired automatically via `.claude/plugins/cla/hooks/hooks.json` when the plugin l
 `settings.json` step needed) — these apply in this repo's own sessions too, not only in repos
 that sync the plugin. `hooks.json` itself wires two dispatchers (`dispatch-bash-pretooluse.py` for
 the Bash/PowerShell matcher, `dispatch-edit-write-pretooluse.py` for the Edit/Write matcher), each
-of which runs several leaf hooks in one Python process — 13 distinct leaf hooks between them
-(`guard-worktree-isolation` runs on both matchers), plus `warn-lint-on-edit` and
-`warn-wholesale-rewrite` wired directly on PostToolUse: 15 leaf hook files in all. **Blocks**
+of which runs several leaf hooks in one Python process — 6 distinct leaf hooks between them, plus
+`warn-wholesale-rewrite` wired directly on PostToolUse: 7 leaf hook files in all. **Blocks**
 (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt instead of
 blocking outright; **warns** (`warn-*`) surface a caution without blocking:
 
-- **No direct push to main/master** (`block-direct-push-to-main`) — branch + PR for any change;
-  a bare `Bash(cd ...)` (`block-cd-in-bash`) — the working dir is already repo root, and a `cd`
-  persists and breaks later calls in the same session; use absolute paths instead.
-- **Blocks:** `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
-  `block-worktree-path-escape` (a Write/Edit escaping a worktree boundary from inside one) ·
-  `block-dated-stamps-in-prose` (hardcoded dates rot) · `guard-worktree-isolation` (a
-  branch-create/switch/commit in the primary clone while another session is live there too —
-  git's HEAD is per-clone, not per-session, so two concurrent sessions would otherwise collide
-  on one branch; also refreshes/clears this session's presence heartbeat on SessionStart/End).
+- **Blocks:** `block-cd-in-bash` (the working dir is already repo root, and a `cd` persists and
+  breaks later calls in the same session; use absolute paths instead) ·
+  `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
+  `block-worktree-path-escape` (a Write/Edit escaping a worktree boundary from inside one).
 - **Asks:** `ask-destructive-git` (a destructive-but-not-outright-blocked git command, e.g. a
-  force-push or `reset --hard`) · `ask-git-identity` (no `user.email` configured, or the commit
-  author doesn't match an expected identity when one is set) — both return exit 0 and escalate via
-  `permissionDecision: "ask"` rather than blocking, since the action may be legitimate.
-- **Warns:** `warn-branch-base` (branched off the wrong base) · `warn-lint-on-edit` (lints the
-  edited file, feeds violations back non-blocking) · `warn-smoke-test-drift` (component/i18n edits
-  that may break a UI smoke test — config-driven via a `smoke-test-drift.local.md` overlay beside
-  the hook; a no-op with none present, which is this repo's own state, since it ships no product
-  code) · `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
+  force-push or `reset --hard`) — returns exit 0 and escalates via `permissionDecision: "ask"`
+  rather than blocking, since the action may be legitimate. Note this matters more than it looks:
+  the harness runs `--permission-mode auto`, which suppresses the usual confirmations, so this
+  hook is what restores one.
+- **Warns:** `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
   `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
   `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one —
   it asks you to name what you dropped, since a `Write` keeps only what you carried across).
+
+**No direct push to main/master** is enforced by `hooks/git/pre-push`, NOT by a PreToolUse hook.
+Git hands a `pre-push` hook the refspec it already resolved, so there is no command string to
+parse and no `git.exe` / `-C` / quoting spelling that can evade it — and it covers pushes from a
+terminal or IDE, which no PreToolUse hook ever saw. It is **not** installed automatically; a
+plugin cannot write to `.git/hooks`. Per clone:
+
+```bash
+cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+```
 
 ### Portability
 

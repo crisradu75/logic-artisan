@@ -407,13 +407,19 @@ def test_every_wiring_announces_when_no_interpreter_works():
         )
 
 
-def test_the_probe_matches_the_one_claw_uses():
-    """`claw` carried the correct probe first and named the reason; the hooks
-    were changed to match. If they drift, one of them is wrong."""
-    claw = (_HOOKS_DIR.parents[3] / "claw").read_text(encoding="utf-8", errors="replace")
-    assert "for _candidate in python3 py python" in claw, (
-        "claw's probe changed shape; hooks.json was written to match it"
-    )
+def test_every_wiring_probes_the_same_candidates_in_the_same_order():
+    """The candidate ORDER is the load-bearing part of the probe.
+
+    `python3` first matters on Windows, where it commonly resolves to the Store
+    alias stub: the probe RUNS each candidate rather than trusting the first
+    name that resolves, so a stub that cannot execute is skipped instead of
+    silently disabling every dispatched hook.
+
+    This used to be a parity check against `claw`, which carried the probe
+    first. `claw` is gone (its reason to exist went with
+    `guard-worktree-isolation.py`) and `cla` never had a probe at all, so
+    hooks.json is now the sole holder and this pins it directly.
+    """
     for cmd in _wiring_commands():
         assert "for c in python3 py python" in cmd
 

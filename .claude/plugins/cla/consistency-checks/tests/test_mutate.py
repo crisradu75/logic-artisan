@@ -164,7 +164,7 @@ def test_it_refuses_to_run_at_all_without_pytest(tmp_path):
 def test_the_restore_is_byte_exact_for_both_line_endings(tmp_path, ending):
     """`read_text`/`write_text` translate newlines, so restoring an LF file on
     Windows rewrote every line to CRLF — silently, and invisibly to `git diff`
-    for a path pinned `eol=lf`. This repo pins `cla` and `claw` that way because
+    for a path pinned `eol=lf`. This repo pins `cla` that way because
     a CRLF shebang breaks the POSIX launchers."""
     source, tests = _make_scope(tmp_path)
     raw = ending.join([b"def verdict():", b"    return 'ON'", b""])

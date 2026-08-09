@@ -16,6 +16,4 @@
 # in most places but not universally, and CRLF is what a Windows batch file is
 # expected to be.
 cla     text eol=lf
-claw    text eol=lf
 cla.cmd text eol=crlf
-claw.cmd text eol=crlf

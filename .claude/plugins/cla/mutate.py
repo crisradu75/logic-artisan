@@ -20,7 +20,7 @@ INCONCLUSIVE and fails the run.
 
 WHY IT WRITES BYTES. The same earlier version paired `read_text` with
 `write_text`, whose newline translation rewrote every line ending in an LF file
-to CRLF on Windows. This repo pins `cla` and `claw` to `eol=lf` precisely because
+to CRLF on Windows. This repo pins `cla` to `eol=lf` precisely because
 a CRLF shebang (`#!/usr/bin/env bash\\r`) breaks the POSIX launchers — and
 `git diff` shows nothing for that change, because the `eol=lf` attribute
 normalizes on read. Restores are byte-exact and asserted.
