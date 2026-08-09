@@ -300,16 +300,70 @@ def _write_lock(local_repo: Path, lock: dict) -> None:
         raise
 
 
+def _hash_bytes(data: bytes) -> str:
+    """Line-ending-insensitive content hash, matching `discover._hash_bytes`.
+
+    Extracted from `_update_lock`'s inline expression so the kept-local path
+    below cannot hash on different terms from the written path — the two sides
+    drifting apart is precisely the bug the normalization was added for.
+    """
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def _hash_local_file(local_repo: Path, asset_path: str) -> str | None:
+    """Hash of the local file as it sits on disk, or None if unreadable.
+
+    Read fresh rather than reused from `divergences.json`: discover ran earlier,
+    and a file edited between the two phases would otherwise be recorded under a
+    hash it no longer has — an ancestor that matches nothing, which degrades the
+    next reconcile to a permanent `both-diverged`.
+    """
+    try:
+        return _hash_bytes((local_repo / asset_path).read_bytes())
+    except OSError:
+        return None
+
+
 def _update_lock(
     local_repo: Path,
     written: list[tuple[str, bytes]],
     source_name: str,
     source_commit: str | None = None,
+    *,
+    source_shas: dict[str, str] | None = None,
+    kept_local: list[tuple[str, str]] | None = None,
 ) -> None:
     """Read-merge-write the lockfile for every `wrote` outcome (Decision B): each
-    entry records the sha256 of the exact bytes just written to that local file (NOT
-    the raw source hash) plus the run's source name. Only entries for files actually
-    written this run are touched — every other prior entry survives untouched. This
+    entry records the sha256 of the exact bytes just written to that local file
+    (`last_synced_sha256`) AND the sha256 of the raw source those bytes were
+    adapted FROM (`source_sha256`), plus the run's source name.
+
+    Recording BOTH is what makes `discover._classify_status` able to tell "we
+    adopted this verbatim" from "we rewrote it". With only the adapted hash, the
+    two sides were compared against one shared baseline, `local-advanced` was
+    unreachable for every adapted file, and a deliberate divergence silently
+    reverted on the next sync. See that function's docstring for the table.
+
+    `source_shas` maps asset_path -> raw source sha256. It comes from
+    `divergences.json`, which `discover` already computed with `_hash_bytes` (so
+    it is LF-normalized on the same terms) — NOT from the LLM-authored
+    adaptations file, where an invented value would reintroduce exactly the
+    unreliability the `NOT ADAPTED` completeness check exists to catch. Omitted
+    per-asset when unknown, the same way `source_commit` degrades.
+
+    `kept_local` carries `(asset_path, local_sha256)` for assets Phase 2 marked
+    `keep_local: true`. Those files are NOT written, but they must still update
+    their entry: recording the decision plus the source it was made against is
+    what stops the next run from re-labelling them `source-advanced` and asking
+    again. `last_synced_sha256` is re-hashed from the local file on disk rather
+    than carried over, because a partial entry would break `_detect_deletions`,
+    which reads that field off every entry.
+
+    Keyword-only for the two new parameters so existing positional call sites —
+    including several in the test suite — keep working unchanged.
+
+    Only entries for files actually written or kept this run are touched — every
+    other prior entry survives untouched. This
     is deliberately best-effort: a write failure is reported to stderr but must never
     fail the apply run (nor, in `pr` mode, the commit/push) whose files already
     landed — the lock is provenance, not a correctness gate.
@@ -322,8 +376,13 @@ def _update_lock(
     revision it came from rather than against whatever that repo's HEAD happens to be
     now. Optional on purpose — a source that isn't a git repo, or a git that won't
     run, degrades to the previous behavior rather than failing the sync."""
-    if not written:
+    # `not written` alone was the early-out. With kept-local entries now carrying
+    # a decision worth persisting, a run that ONLY kept files would have returned
+    # here and recorded nothing — which is the exact silent-revert this change
+    # exists to stop, reintroduced one level up.
+    if not written and not kept_local:
         return
+    source_shas = source_shas or {}
     try:
         lock = _read_lock(local_repo)
         for asset_path, data in written:
@@ -336,13 +395,25 @@ def _update_lock(
                 # Windows, and the entry could never match, silently reducing
                 # the 3-way reconcile to a 2-way diff for 277 of 527 tracked
                 # assets across four consumer repos.
-                "last_synced_sha256": hashlib.sha256(
-                    data.replace(b"\r\n", b"\n")
-                ).hexdigest(),
+                "last_synced_sha256": _hash_bytes(data),
                 "source": source_name,
             }
+            raw = source_shas.get(asset_path)
+            if raw:
+                entry["source_sha256"] = raw
             if source_commit:
                 entry["source_commit"] = source_commit
+            lock[asset_path] = entry
+        for asset_path, local_sha in kept_local or []:
+            # A fresh dict, not a merge into the prior entry: a later real write
+            # must clear `keep_local` rather than strand it forever.
+            entry = {"last_synced_sha256": local_sha, "source": source_name}
+            raw = source_shas.get(asset_path)
+            if raw:
+                entry["source_sha256"] = raw
+            if source_commit:
+                entry["source_commit"] = source_commit
+            entry["keep_local"] = True
             lock[asset_path] = entry
         _write_lock(local_repo, lock)
     except (OSError, ValueError) as exc:
@@ -354,19 +425,31 @@ def apply_worktree(
     adaptations: list[dict],
     source_name: str,
     source_commit: str | None = None,
+    source_shas: dict[str, str] | None = None,
 ) -> list[ApplyOutcome]:
     outcomes: list[ApplyOutcome] = []
     written: list[tuple[str, bytes]] = []
+    kept_local: list[tuple[str, str]] = []
     for a in adaptations:
         asset_path = a["asset_path"]
-        # An entry may deliberately carry NO content: Phase 2 marks a
-        # `local-advanced` file `keep_local` to say "I considered this and am
-        # keeping local", which accounts for it in the completeness check
-        # without rewriting it. Skipped here, and its lock entry is left alone
-        # — local did not change, so the recorded ancestor is still correct.
+        # An entry may deliberately carry NO content: Phase 2 marks a file
+        # `keep_local` to say "I considered this and am keeping local", which
+        # accounts for it in the completeness check without rewriting it.
+        #
+        # Its lock entry used to be left alone, on the reasoning that local did
+        # not change so the recorded ancestor was still correct. That is true of
+        # the ancestor and false of everything else: with no record that the
+        # decision was made, and no advance of `source_sha256`, the next run
+        # re-labels the file and asks again — and if nobody notices, adopts
+        # source over the divergence the decision existed to protect. So the
+        # entry IS updated now: same ancestor (re-read from disk), advanced
+        # source, and `keep_local: true` so the intent survives the session.
         if a.get("keep_local") is True:
+            local_sha = _hash_local_file(local_repo, asset_path)
+            if local_sha is not None:
+                kept_local.append((asset_path, local_sha))
             outcomes.append(ApplyOutcome(asset_path, "skipped_kept_local",
-                                         "kept local content (local-advanced)"))
+                                         "kept local content"))
             continue
         adapted = a.get("adapted_content")
         if adapted is None:
@@ -427,7 +510,8 @@ def apply_worktree(
             # contradicts this module's own "a failure on one asset never halts
             # the run" contract.
             outcomes.append(ApplyOutcome(asset_path, "failure", f"write failed: {exc}"))
-    _update_lock(local_repo, written, source_name, source_commit)
+    _update_lock(local_repo, written, source_name, source_commit,
+                 source_shas=source_shas, kept_local=kept_local)
     return outcomes
 
 
@@ -572,6 +656,7 @@ def apply_pr(
     source_name: str,
     temp_dir: Path,
     source_commit: str | None = None,
+    source_shas: dict[str, str] | None = None,
 ) -> tuple[list[ApplyOutcome], PRResult]:
     """Requires clean working tree; otherwise refuses."""
     outcomes: list[ApplyOutcome] = []
@@ -627,16 +712,27 @@ def apply_pr(
 
     written: list[dict] = []
     written_bytes: list[tuple[str, bytes]] = []
+    kept_local: list[tuple[str, str]] = []
     for a in adaptations:
         asset_path = a["asset_path"]
-        # An entry may deliberately carry NO content: Phase 2 marks a
-        # `local-advanced` file `keep_local` to say "I considered this and am
-        # keeping local", which accounts for it in the completeness check
-        # without rewriting it. Skipped here, and its lock entry is left alone
-        # — local did not change, so the recorded ancestor is still correct.
+        # An entry may deliberately carry NO content: Phase 2 marks a file
+        # `keep_local` to say "I considered this and am keeping local", which
+        # accounts for it in the completeness check without rewriting it.
+        #
+        # Its lock entry used to be left alone, on the reasoning that local did
+        # not change so the recorded ancestor was still correct. That is true of
+        # the ancestor and false of everything else: with no record that the
+        # decision was made, and no advance of `source_sha256`, the next run
+        # re-labels the file and asks again — and if nobody notices, adopts
+        # source over the divergence the decision existed to protect. So the
+        # entry IS updated now: same ancestor (re-read from disk), advanced
+        # source, and `keep_local: true` so the intent survives the session.
         if a.get("keep_local") is True:
+            local_sha = _hash_local_file(local_repo, asset_path)
+            if local_sha is not None:
+                kept_local.append((asset_path, local_sha))
             outcomes.append(ApplyOutcome(asset_path, "skipped_kept_local",
-                                         "kept local content (local-advanced)"))
+                                         "kept local content"))
             continue
         adapted = a.get("adapted_content")
         if adapted is None:
@@ -679,13 +775,23 @@ def apply_pr(
             outcomes.append(ApplyOutcome(asset_path, "failure", f"write failed: {exc}"))
 
     if not written:
-        return _fail("no files written; aborting PR")
+        # Deliberately kept, even though `kept_local` may hold real decisions:
+        # a provenance-only PR is a new PR shape nobody asked for. But say so —
+        # a silent loss of those decisions is what this whole change is about.
+        detail = "no files written; aborting PR"
+        if kept_local:
+            detail += (
+                f" ({len(kept_local)} keep-local decision(s) were NOT persisted, "
+                "because no commit was made — re-run in worktree mode to record them)"
+            )
+        return _fail(detail)
 
     # Write/update the sync lockfile BEFORE `git add -A` so it is staged, committed,
     # and pushed in the same PR (Decision B) — a write here after `git add -A` (or
     # after this function returns, in cmd_apply) would land the provenance update
     # uncommitted on an already-pushed branch and lose it for pr-mode syncs.
-    _update_lock(local_repo, written_bytes, source_name, source_commit)
+    _update_lock(local_repo, written_bytes, source_name, source_commit,
+                 source_shas=source_shas, kept_local=kept_local)
 
     add = _run(["git", "add", "-A"], cwd=local_repo)
     if add.returncode != 0:

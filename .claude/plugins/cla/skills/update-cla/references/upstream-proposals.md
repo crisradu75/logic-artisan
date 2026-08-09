@@ -26,7 +26,7 @@ ordering is load-bearing and how to commit the file without it riding along in t
   relocate it into a `project-context.md` overlay to "tidy" it: overlays are excluded from
   the sync scan, so content moved there drops out of every future 3-way reconcile.
 
-Consider divergences with status `local-advanced`, `both-diverged`, or `divergent`.
+Consider divergences with status `local-advanced`, `adapted`, `both-diverged`, or `divergent`. (`adapted` is where a portable local fix most often hides: a file carrying a deliberate divergence that neither side has moved since.)
 (`divergent` is the no-ancestor fallback — it covers every asset in a repo that has never
 synced or lost its lockfile, which is exactly where an unshared local fix is most likely.)
 `source-advanced` has nothing to propose: local matches the ancestor, so local added
