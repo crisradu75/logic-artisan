@@ -65,23 +65,77 @@ def test_falls_back_to_cwd_when_git_rejects_the_directory(
 # --------------------------------------------------------------------------- #
 
 
-def test_prefix_from_text_takes_the_first_real_line():
-    """Split out from file reading so it is testable without a real file at a
-    `__file__`-relative path."""
-    assert _git_common.prefix_from_text("claude/fix/") == "claude/fix/"
-    assert _git_common.prefix_from_text("# a comment\n\nclaude/fix/\n") == "claude/fix/"
-    assert _git_common.prefix_from_text("<!-- html comment -->\nwip/\n") == "wip/"
+def test_prefix_from_text_reads_the_flat_frontmatter_key():
+    """Flat `key: value` between `---` fences — the format every other overlay
+    in the plugin uses (`warn-smoke-test-drift`, `warn-lint-on-edit`). This one
+    originally read "the first non-comment line", a third syntax for the third
+    overlay, which gave the value no name at the point of use."""
+    assert _git_common.prefix_from_text("---\nbranch_prefix: claude/fix/\n---\n") == "claude/fix/"
+    assert _git_common.prefix_from_text(
+        "---\nother_key: x\nbranch_prefix: wip/\n---\nbody text\n"
+    ) == "wip/"
 
 
-def test_a_missing_trailing_slash_is_added():
-    assert _git_common.prefix_from_text("claude/fix") == "claude/fix/"
+def test_the_prefix_is_used_verbatim_with_no_trailing_slash_forced(capsys):
+    """Forcing a trailing `/` ruled out a flat prefix like `wip-`, which a repo
+    may legitimately want. The default carries its own slash, so nothing is lost
+    by leaving the choice to whoever writes the overlay."""
+    assert _git_common.prefix_from_text("---\nbranch_prefix: wip-\n---\n") == "wip-"
+    assert capsys.readouterr().err == ""
 
 
-def test_an_empty_or_comment_only_overlay_yields_none():
-    """So `branch_prefix` falls through to the default rather than producing
-    `<change-name>` with no prefix at all."""
-    assert _git_common.prefix_from_text("") is None
-    assert _git_common.prefix_from_text("# only a comment\n\n") is None
+# --- the diagnostics, and the split that makes them meaningful --------------- #
+#
+# These four are the entire argument for this implementation over the silent
+# one, and they are the part a suite most easily fails to hold: measured before
+# they existed, neutering every `_warn` call left the whole scope green. A
+# diagnostic nobody asserts on can be deleted by a refactor, a mutation, or a
+# sync — which returns you to the silent fallback, with the code still looking
+# correct.
+
+
+def test_an_unusable_key_warns_and_falls_back(capsys):
+    assert _git_common.prefix_from_text("---\nbranch_prefix:\n---\n") is None
+    assert "no usable" in capsys.readouterr().err
+
+
+def test_a_missing_frontmatter_fence_warns(capsys):
+    assert _git_common.prefix_from_text("claude/fix/\n") is None
+    err = capsys.readouterr().err
+    # "does not start with", not merely "---": a mutation disabling this check
+    # falls through to the UNCLOSED-fence branch, whose message also contains
+    # `---` and the overlay name, so the looser assertion passed on the wrong
+    # branch. The two degradations have different causes and must stay
+    # distinguishable to whoever has to fix the overlay.
+    assert "does not start with" in err
+    assert _git_common._BRANCH_PREFIX_OVERLAY in err
+
+
+def test_an_unclosed_frontmatter_fence_warns(capsys):
+    assert _git_common.prefix_from_text("---\nbranch_prefix: wip/\n") is None
+    assert "closing" in capsys.readouterr().err
+
+
+def test_an_absent_overlay_is_silent(monkeypatch, capsys, tmp_path):
+    """The non-vacuity partner, and the one case that must stay quiet: not
+    configured is the ORDINARY state, so a warning here would fire in every repo
+    carrying no overlay — which is most of them, including this one.
+
+    The overlay path is `__file__`-relative, so `is_file` is intercepted for
+    that one leaf name and delegated for everything else, rather than writing
+    into the live `scripts/` directory.
+    """
+    real_is_file = _git_common.Path.is_file
+
+    def _fake_is_file(self):
+        if self.name == _git_common._BRANCH_PREFIX_OVERLAY:
+            return False
+        return real_is_file(self)
+
+    monkeypatch.delenv("CLA_BRANCH_PREFIX", raising=False)
+    monkeypatch.setattr(_git_common.Path, "is_file", _fake_is_file)
+    assert _git_common.branch_prefix() == _git_common.DEFAULT_BRANCH_PREFIX
+    assert capsys.readouterr().err == "", "an un-configured repo must not be warned at"
 
 
 def test_the_env_var_overrides_everything(monkeypatch):
@@ -89,9 +143,12 @@ def test_the_env_var_overrides_everything(monkeypatch):
     assert _git_common.branch_name("my-change") == "claude/fix/my-change"
 
 
-def test_the_env_var_gets_a_trailing_slash_too(monkeypatch):
-    monkeypatch.setenv("CLA_BRANCH_PREFIX", "wip")
-    assert _git_common.branch_name("x") == "wip/x"
+def test_the_env_var_is_also_used_verbatim(monkeypatch):
+    """Was `test_the_env_var_gets_a_trailing_slash_too`. The env var and the
+    overlay must agree about this, or the same string means two branches
+    depending on where it was configured."""
+    monkeypatch.setenv("CLA_BRANCH_PREFIX", "wip-")
+    assert _git_common.branch_name("x") == "wip-x"
 
 
 def test_the_default_is_feature_when_nothing_is_configured(monkeypatch):

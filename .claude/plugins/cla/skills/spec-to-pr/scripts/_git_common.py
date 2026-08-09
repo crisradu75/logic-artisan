@@ -72,20 +72,56 @@ def repo_root() -> Path:
 # --------------------------------------------------------------------------- #
 
 _BRANCH_PREFIX_OVERLAY = "branch-prefix.local.md"
+_BRANCH_PREFIX_KEY = "branch_prefix"
 DEFAULT_BRANCH_PREFIX = "feature/"
 
 
+def _warn(message: str) -> None:
+    print(f"[_git_common] {message}", file=sys.stderr)
+
+
 def prefix_from_text(text: str) -> str | None:
-    """First non-comment, non-blank line of an overlay, normalized to end in `/`.
+    """Parse the overlay's flat `key: value` frontmatter, or None if unusable.
+
+    FORMAT. Flat `key: value` between `---` fences, matching
+    `hooks/warn-smoke-test-drift.py` and `hooks/warn-lint-on-edit.py` — every
+    other overlay in the plugin. This one originally read "the first non-comment
+    line", a third syntax for the third overlay, which is a needless thing to
+    learn and gave the value no name at the point of use.
+
+    DIAGNOSTICS. Every degraded case says so. The split that matters is
+    absent-vs-broken: a missing overlay is the ordinary un-configured state and
+    is silent (handled by the caller), while an overlay that EXISTS and cannot
+    be used is a typo someone needs to hear about. Falling back silently there
+    made a misconfiguration indistinguishable from never having opted in — the
+    exact distinction the two hook overlays already draw correctly.
 
     Split out from file reading so it is testable without a real file at a
     `__file__`-relative path.
     """
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("<!--"):
-            continue
-        return line if line.endswith("/") else line + "/"
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        _warn(f"{_BRANCH_PREFIX_OVERLAY} does not start with a `---` frontmatter "
+              "line; ignoring it and using the default branch prefix")
+        return None
+    body: list[str] | None = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            body = lines[1:i]
+            break
+    if body is None:
+        _warn(f"{_BRANCH_PREFIX_OVERLAY} frontmatter has no closing `---` line; "
+              "ignoring it and using the default branch prefix")
+        return None
+    for line in body:
+        key, sep, value = line.partition(":")
+        if sep and key.strip() == _BRANCH_PREFIX_KEY:
+            value = value.strip()
+            if value:
+                return value
+            break
+    _warn(f"{_BRANCH_PREFIX_OVERLAY} has no usable `{_BRANCH_PREFIX_KEY}:` value; "
+          "using the default branch prefix")
     return None
 
 
@@ -94,16 +130,27 @@ def branch_prefix() -> str:
 
     The overlay is a `*.local.md`, so `discover.py` never syncs it and it never
     shows up as a divergence in a consuming repo.
+
+    The value is used VERBATIM — no trailing `/` is appended. Forcing one ruled
+    out a flat prefix like `wip-`, which a repo may legitimately want, and the
+    default (`feature/`) carries its own slash, so nothing is lost by leaving
+    the choice to whoever writes the overlay.
     """
     env = os.environ.get("CLA_BRANCH_PREFIX")
     if env:
-        return env if env.endswith("/") else env + "/"
+        return env
     overlay = Path(__file__).resolve().parent.parent / "references" / _BRANCH_PREFIX_OVERLAY
-    try:
-        found = prefix_from_text(overlay.read_text(encoding="utf-8"))
-    except OSError:
+    if not overlay.is_file():
+        # The ONLY legitimately silent case: no overlay means not configured,
+        # which is the ordinary state of every repo on the default convention.
         return DEFAULT_BRANCH_PREFIX
-    return found or DEFAULT_BRANCH_PREFIX
+    try:
+        text = overlay.read_text(encoding="utf-8")
+    except OSError as exc:
+        _warn(f"{_BRANCH_PREFIX_OVERLAY} exists but could not be read ({exc}); "
+              "using the default branch prefix")
+        return DEFAULT_BRANCH_PREFIX
+    return prefix_from_text(text) or DEFAULT_BRANCH_PREFIX
 
 
 def branch_name(change_name: str) -> str:

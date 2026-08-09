@@ -10,6 +10,7 @@ monkeypatched `_find_linter`/`_run_oxlint`.
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,43 @@ def _load_module():
 
 
 hook = _load_module()
+
+
+@pytest.fixture(autouse=True)
+def _pin_the_overlay_absent(monkeypatch):
+    """Hide the LIVE `lint-on-edit.local.md` from every test in this file.
+
+    `main()` resolves the overlay from the hook's OWN directory, so the moment a
+    consuming repo writes the documented overlay (`extensions: .py`,
+    `binary: ruff`), every `main()` test here using an `a.ts` fixture stops
+    matching `extensions`. `main()` then returns 0 having emitted nothing, and
+    `test_main_emits_additional_context_on_diagnostics` dies parsing an empty
+    string as JSON. Measured in a consuming repo: adding the overlay took the
+    `hooks` scope from green to `1 failed, 522 passed`.
+
+    The failure only appears in repos that DO adopt the feature — the source
+    repo, carrying no overlay, stays green forever — which makes it the worst
+    kind: shipped by the author, paid by the adopter. It is also the third
+    ambient-configuration bite in this plugin's history (the `log_run` locale
+    tests and the branch-prefix tests were the first two), so the rule earned
+    from those applies here verbatim: the test suite for a hook whose whole
+    purpose is per-repo configuration must not read the running repo's
+    configuration.
+
+    Scoped to the ONE live path and delegating for everything else, so the
+    `tmp_path`-based `lint_profile`/`_load_overlay` tests still exercise real
+    files. Matching on the leaf name alone would have hidden those too, which
+    would swap a false green for a vacuous one.
+    """
+    live_overlay = str(_HOOK.parent / hook._OVERLAY_LEAF)
+    real_isfile = hook.os.path.isfile
+
+    def _fake_isfile(path):
+        if os.path.normcase(str(path)) == os.path.normcase(live_overlay):
+            return False
+        return real_isfile(path)
+
+    monkeypatch.setattr(hook.os.path, "isfile", _fake_isfile)
 
 
 # --------------------------------------------------------------------------- #
