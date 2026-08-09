@@ -8,13 +8,17 @@ harness's primary shell on Windows, and it previously ran exactly one of these
 hooks, so a force-push, a push straight to main, or a wrong-identity commit
 issued through it bypassed every git guard in the tree.
 
-Runs block-cd-in-bash, block-direct-push-to-main, ask-destructive-git,
-ask-git-identity, block-unsafe-recursive-delete, guard-worktree-isolation,
-warn-branch-base, warn-stacked-pr-merge, and warn-stray-scratch-artifact in ONE
-Python process instead of nine, reading the tool-call JSON from stdin once and
-handing it to each in turn via `_dispatch_lib`. Cuts per-Bash-call hook overhead
-from 9 interpreter spawns to 1 — commonly cited as ~100-200ms of process-start
-cost each on Windows, though not independently benchmarked for this repo.
+Runs block-cd-in-bash, ask-destructive-git, block-unsafe-recursive-delete,
+warn-stacked-pr-merge, and warn-stray-scratch-artifact in ONE Python process
+instead of five, reading the tool-call JSON from stdin once and handing it to
+each in turn via `_dispatch_lib`. Cuts per-Bash-call hook overhead from 5
+interpreter spawns to 1 — commonly cited as ~100-200ms of process-start cost
+each on Windows, though not independently benchmarked for this repo.
+
+Pushes to main/master are NOT guarded here. That check moved to `git/pre-push`,
+which git hands the resolved refspec — no command string to parse, so none of
+the `git.exe` / `-C` / quoting spellings that defeated the old hook can reach
+it differently. See that file's header.
 
 Each sibling hook file is untouched and still independently runnable/importable
 exactly as before (loaded here via the same importlib technique the test suite
@@ -25,17 +29,14 @@ Order and semantics preserved exactly:
     non-blocking warning text already produced by an earlier hook in this same
     run (not silently dropped), then this process exits 2.
   - If none block but one requests an `ask` escalation (ask-destructive-git.py
-    or ask-git-identity.py — both return 0 and escalate via stdout), the merged
-    decision is re-emitted as this process's own stdout JSON. Only one process's
-    stdout is read per call, so a child's decision that isn't re-emitted here is
-    silently downgraded to an allow. Precedence is deny > ask > allow, matching
-    the documented permission evaluation order.
+    returns 0 and escalates via stdout), the merged decision is re-emitted as
+    this process's own stdout JSON. Only one process's stdout is read per call,
+    so a child's decision that isn't re-emitted here is silently downgraded to
+    an allow. Precedence is deny > ask > allow, matching the documented
+    permission evaluation order.
   - If none block, EVERYTHING non-blocking leaves as one stdout JSON object at
     exit 0: `permissionDecision` for an ask, `additionalContext` for advisory
-    text — e.g. from warn-branch-base.py / warn-stacked-pr-merge.py /
-    warn-stray-scratch-artifact.py, or guard-worktree-isolation.py's
-    degraded-mode warnings (it fails open with a warning rather than blocking
-    when it can't resolve a checkout target or its heartbeat dir).
+    text — e.g. from warn-stacked-pr-merge.py / warn-stray-scratch-artifact.py.
 
     This is the only channel that works. Per the documented contract, stderr
     from a hook exiting 0 goes to the debug log and Claude never sees it, so
@@ -72,27 +73,21 @@ from _dispatch_lib import (
 
 _HOOK_FILES = [
     "block-cd-in-bash.py",
-    "block-direct-push-to-main.py",
     "ask-destructive-git.py",
-    "ask-git-identity.py",
     "block-unsafe-recursive-delete.py",
-    "guard-worktree-isolation.py",
-    "warn-branch-base.py",
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
 ]
 
 # Hooks that can only ever warn, and so may be dropped when too little handler
 # budget remains for them. Every hook that changes the OUTCOME of the call — one
-# that can return 2, plus `ask-destructive-git.py` and `ask-git-identity.py`,
-# which return 0 but escalate to a permission prompt via stdout — is
-# deliberately absent from this set AND ordered ahead of these three in
-# `_HOOK_FILES`, so budget pressure costs warnings before it can cost
-# enforcement. Note the two ask hooks are why the wiring test cannot key on
-# `return 2` alone: skipping either would silently downgrade an ask to an allow,
-# an enforcement loss no exit code would reveal.
+# that can return 2, plus `ask-destructive-git.py`, which returns 0 but escalates
+# to a permission prompt via stdout — is deliberately absent from this set AND
+# ordered ahead of these two in `_HOOK_FILES`, so budget pressure costs warnings
+# before it can cost enforcement. Note the ask hook is why the wiring test cannot
+# key on `return 2` alone: skipping it would silently downgrade an ask to an
+# allow, an enforcement loss no exit code would reveal.
 _ADVISORY_HOOKS = frozenset({
-    "warn-branch-base.py",
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
 })
@@ -136,8 +131,7 @@ def main() -> int:
             skipped.append(filename)
             continue
 
-        argv = [] if filename == "guard-worktree-isolation.py" else None
-        result = run_hook_file(filename, stdin_text, argv=argv)
+        result = run_hook_file(filename, stdin_text)
         errored = errored or result.errored
         # An ENFORCING hook that failed to load did not run its check, and from
         # the outside that is indistinguishable from one that ran and allowed.

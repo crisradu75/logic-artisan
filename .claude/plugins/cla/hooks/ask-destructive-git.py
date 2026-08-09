@@ -9,8 +9,8 @@ operations run unattended: a force-push (rewrites a remote branch other people
 and other worktrees may have based work on) and `reset --hard` (discards
 uncommitted work with no reflog entry for what was in the working tree).
 
-`block-direct-push-to-main.py` covers pushes that TARGET main/master. It does
-not cover a force-push to a feature branch, which is the common shape here —
+The `git/pre-push` hook covers pushes that TARGET main/master. It does not
+cover a force-push to a feature branch, which is the common shape here —
 `/cla:spec-to-pr` and `/cla:multi-lite` both work on feature branches and both
 run unattended.
 
@@ -93,7 +93,7 @@ import re
 import sys
 from pathlib import Path
 
-# See block-direct-push-to-main.py for why this bootstrap is needed: neither the
+# Why this bootstrap is needed: neither the
 # dispatcher's in-process load nor pytest puts the hooks dir at sys.path[0] for
 # this file, so the `_dispatch_lib` import below is made explicit rather than
 # left to depend on how the process happened to start.

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """PreToolUse dispatcher for the Edit|Write matcher.
 
-Runs warn-comment-dates, block-dated-stamps-in-prose, guard-worktree-isolation
-(--heartbeat mode), warn-smoke-test-drift, and block-worktree-path-escape in
-ONE Python process instead of five. See dispatch-bash-pretooluse.py (the
-sibling on the Bash matcher) and the shared `_dispatch_lib` both use.
+Runs warn-comment-dates and block-worktree-path-escape in ONE Python process
+instead of two. See dispatch-bash-pretooluse.py (the sibling on the Bash
+matcher) and the shared `_dispatch_lib` both use.
 
-Two of these hooks (warn-comment-dates, warn-smoke-test-drift) emit a
-non-blocking JSON warning on stdout. Only one process's stdout is read per
-PreToolUse call, so this dispatcher merges both into the canonical
+One of these hooks (warn-comment-dates) emits a non-blocking JSON warning on
+stdout. Only one process's stdout is read per PreToolUse call, so this
+dispatcher normalizes it into the canonical
 `hookSpecificOutput.additionalContext` shape (the documented PreToolUse hook
-JSON output field) rather than picking one hook's shape over the other.
+JSON output field) — the merge still matters because a future second advisory
+hook must not have its shape picked over this one's.
 
 Order and semantics preserved exactly:
   - Any hook returning 2 blocks: its stderr message is shown, prefixed with any
@@ -51,23 +51,15 @@ from _dispatch_lib import (
 
 _HOOK_FILES = [
     "warn-comment-dates.py",
-    "block-dated-stamps-in-prose.py",
-    "guard-worktree-isolation.py",
-    "warn-smoke-test-drift.py",
     "block-worktree-path-escape.py",
 ]
 
 # Skippable when the handler budget is spent. Note what is NOT here:
-# `block-dated-stamps-in-prose.py` and `block-worktree-path-escape.py` can
-# return 2, and `guard-worktree-isolation.py` runs in --heartbeat mode, where
-# its whole job is the side effect of refreshing this session's presence file —
-# skipping it would silently degrade the contention detection every other
-# worktree guard depends on. Unlike the Bash dispatcher, a blocking hook sits
-# LAST in `_HOOK_FILES` here, so membership of this set is the only thing
-# protecting it; order is not a backstop.
+# `block-worktree-path-escape.py` can return 2. Unlike the Bash dispatcher, the
+# blocking hook sits LAST in `_HOOK_FILES` here, so membership of this set is the
+# only thing protecting it; order is not a backstop.
 _ADVISORY_HOOKS = frozenset({
     "warn-comment-dates.py",
-    "warn-smoke-test-drift.py",
 })
 
 
@@ -153,8 +145,7 @@ def main() -> int:
             skipped.append(filename)
             continue
 
-        argv = ["--heartbeat"] if filename == "guard-worktree-isolation.py" else None
-        result = run_hook_file(filename, stdin_text, argv=argv)
+        result = run_hook_file(filename, stdin_text)
         errored = errored or result.errored
         # An ENFORCING hook that failed to load did not run its check, and from
         # the outside that is indistinguishable from one that ran and allowed.

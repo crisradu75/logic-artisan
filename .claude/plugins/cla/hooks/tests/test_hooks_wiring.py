@@ -314,7 +314,7 @@ def test_the_outcome_detector_is_not_vacuous():
     assert _changes_the_outcome((_HOOKS_DIR / "block-cd-in-bash.py").read_text(encoding="utf-8"))
     assert _changes_the_outcome((_HOOKS_DIR / "ask-destructive-git.py").read_text(encoding="utf-8"))
     assert not _changes_the_outcome(
-        (_HOOKS_DIR / "warn-branch-base.py").read_text(encoding="utf-8")
+        (_HOOKS_DIR / "warn-stacked-pr-merge.py").read_text(encoding="utf-8")
     )
 
 

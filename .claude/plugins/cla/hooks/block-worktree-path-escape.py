@@ -7,7 +7,7 @@ Problem this solves
 but nothing stops a subsequent `Write`/`Edit` call from targeting an absolute
 path back in the primary clone (or another linked worktree) instead of the
 current one. That silently defeats isolation: the file lands in a directory
-another concurrent session may be using, and `guard-worktree-isolation.py`
+another concurrent session may be using, and the worktree layout
 does NOT catch it — that hook only intercepts `git checkout`/`switch`/
 `commit`, never plain file writes.
 
@@ -22,9 +22,8 @@ by the other session mid-flight.
 Detection
 ---------
 - Only acts when cwd is inside a LINKED worktree (`git rev-parse
-  --absolute-git-dir` != `git rev-parse --git-common-dir` — the same test
-  `guard-worktree-isolation.py` uses). A solo/primary-clone session is
-  unaffected.
+  --absolute-git-dir` != `git rev-parse --git-common-dir`). A solo/primary-clone
+  session is unaffected.
 - Resolves the target `file_path` to a realpath and blocks only when it
   falls inside the PRIMARY CLONE's root (parent of `--git-common-dir`) but
   OUTSIDE the current worktree's own root (`--show-toplevel`). This also
@@ -55,7 +54,7 @@ from pathlib import Path
 
 # This hook runs standalone under the tests' own module loader as well as via
 # the Edit/Write dispatcher, so the sys.path setup can't be assumed done by a
-# caller — same defensive pattern as guard-worktree-isolation.py, which shares
+# caller — the same defensive pattern used by
 # `_run_git`/`_clone_paths` with this file via `_dispatch_lib`.
 _HOOKS_DIR = str(Path(__file__).resolve().parent)
 if _HOOKS_DIR not in sys.path:
@@ -69,7 +68,7 @@ def _warn(msg: str) -> None:
     """Surface a guard-disabling/degraded condition (repo policy: recoverable ->
     Warning on stderr). The hook still fails OPEN — it prints, then returns 0.
 
-    Mirrors `guard-worktree-isolation._warn`. This file had none, so every
+    This file had no warn channel at all, so every
     degraded path returned 0 in silence — an enforcing guard that stopped
     enforcing and looked identical to one that ran and allowed.
     """
