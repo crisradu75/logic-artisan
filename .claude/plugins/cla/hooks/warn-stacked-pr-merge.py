@@ -34,7 +34,18 @@ if _HOOKS_DIR not in sys.path:
     sys.path.insert(0, _HOOKS_DIR)
 
 
-_GH_MERGE = re.compile(r"\bgh\s+pr\s+merge\b")
+# Spelled the same way as `ask-destructive-git._GH_PR_MERGE`, which had the
+# extension and case forms while this one -- the last bare command-token regex
+# in the tree -- did not. `gh.exe pr merge` therefore prompted under
+# ask-destructive-git and was invisible here, in the tool this plugin uses for
+# every PR operation. Advisory hook, so the blast radius was low; the
+# inconsistency was not.
+#
+# The escaped dot sits OUTSIDE the case-folding group for the reason
+# `_GH_PR_MERGE` documents: with it inside, the source text would contain a
+# letter-colon-backslash run that the conformance guard reads as a hardcoded
+# Windows path. Same match either way.
+_GH_MERGE = re.compile(r"\b(?i:gh)(?:\.(?i:exe|cmd|bat|com|ps1))?\s+pr\s+merge\b")
 _DELETE_BRANCH = re.compile(r"(?:^|\s)(?:--delete-branch|-d)(?:\s|=|$)")
 # A standalone PR-number token after `gh pr merge` (whitespace-bounded so a branch
 # name like `feature/foo-2` is not misread as PR "2"). Absent → current-branch PR.

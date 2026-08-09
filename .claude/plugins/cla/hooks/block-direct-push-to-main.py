@@ -76,8 +76,10 @@ HERESTRING (`bash <<< '...'`), whose body IS quoted and so is blanked by
 unlike `git.exe`, which PowerShell's tab-completion emits during ordinary
 work, a herestring-wrapped push is evasion-shaped, and un-blanking quoted
 spans after `<<<` adds parsing complexity to an ENFORCING guard for a
-vector nobody reaches by accident. An uppercase `GIT` is out of scope for
-the same reason, matching the `gh` precedent. Also: so does a global
+vector nobody reaches by accident. An uppercase `GIT` used to be out of
+scope on that same reasoning; it no longer is, because unlike a herestring
+it is reached by ordinary use on a case-insensitive filesystem — see
+`GIT_CMD`'s comment for the measured trade. Also: so does a global
 option shape outside `GIT_GLOBAL_OPTS`'s named, closed set (see that helper's
 docstring). A `git push origin main` sitting in a HEREDOC BODY is matched and
 blocked even though it is being written to a file rather than run — accepted,

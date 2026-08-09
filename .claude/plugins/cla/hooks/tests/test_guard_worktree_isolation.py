@@ -47,6 +47,13 @@ guard = _load_module()
     "git --work-tree /some/path commit -m y",   # regression: space-separated long opt
     "git --git-dir /some/path/.git commit -m y",   # regression: space-separated long opt
     'git -C "/some/checkout path/with a space" commit -m y',  # regression: quoted value with a space
+    # Executable spellings at the ENFORCING layer. The constant test proves the
+    # regex; this proves the guard. `GIT commit` runs on a case-insensitive
+    # filesystem and used to move HEAD with the isolation guard blind to it.
+    "git.exe commit -m y",
+    "GIT commit -m y",
+    "GIT.EXE checkout -b feature/x",
+    "Git.Cmd switch -c feature/x",
 ])
 def test_mutating_commands_detected(cmd):
     # cwd is irrelevant for these shapes (no ref resolution needed).
@@ -64,6 +71,9 @@ def test_mutating_commands_detected(cmd):
     "git switch --help",             # help form, not a switch
     "git push -u origin feature/x",
     "ls -la",
+    # `\b` must still hold once the command name is case-folded.
+    "digit commit -m y",
+    "DIGIT commit -m y",
 ])
 def test_nonmutating_commands_ignored(cmd):
     assert guard._mutates_shared_head(cmd, os.getcwd()) is None
