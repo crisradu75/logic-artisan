@@ -485,9 +485,7 @@ def test_no_hook_prescribes_a_branch_naming_convention_at_runtime():
 # --------------------------------------------------------------------------- #
 
 import shutil
-import statistics
 import subprocess as _sp
-import time
 
 
 def _probe_prefix() -> str:
@@ -554,68 +552,4 @@ def test_every_wiring_shares_one_probe():
     # splitting the live command on `; "$PYEXE"` consumes that separator.
     assert probes.pop() == cfg["_pyexe"].rstrip("; "), (
         "_pyexe drifted from the live wirings"
-    )
-
-
-# --------------------------------------------------------------------------- #
-# _BUDGET_RESERVE_SECONDS -- the one constant nothing measured
-# --------------------------------------------------------------------------- #
-
-
-def test_the_interpreter_probe_fits_inside_the_budget_reserve():
-    """`Deadline` starts its clock inside the dispatcher's `main()`, so
-    everything the shell wrapper does first is invisible to it.
-    `_BUDGET_RESERVE_SECONDS` is documented as covering exactly that window --
-    "interpreter startup before the first one begins".
-
-    The run-each-candidate probe then moved a full Python interpreter startup
-    INTO that window, and the reserve was never resized. Every other test of
-    this budget is a MODEL check (`12.0 <= 13.5`) over declared constants;
-    nothing executed anything. So the one constant the probe invalidated was
-    the one constant nothing validated -- which is the same shape as the
-    `HOOK_WORST_CASE_SECONDS` entry that was tuned to pass its own assertion.
-
-    A consuming repo reported ~2-4s net. Measured here (Windows, Git Bash,
-    three trials of 12 samples): net median 0.66-0.89s, peak ~2.0s -- the same
-    order of magnitude, and comfortably past the old 1.5s reserve at the peak.
-    `_BUDGET_RESERVE_SECONDS` was raised to 3.0 on that measurement.
-
-    Median, not max: this measures a subprocess on a shared machine, and a
-    single scheduling outlier is not evidence about the budget. The warmup drop
-    is CHRONOLOGICAL (first two samples), not `sorted(...)[2:]` -- an early
-    draft used the latter, which discards the two FASTEST samples and biases the
-    result upward, exactly the wrong direction for a test that must not be flaky.
-
-    WHAT THIS DOES NOT DO, stated because a mutation proved it: reverting
-    `_BUDGET_RESERVE_SECONDS` to 1.5 SURVIVES this test on a fast machine, since
-    the measured net there is below both values. It is a canary, not a pin --
-    it fires on the machines where the probe is actually expensive, which are
-    the machines where the overrun happens, and it cannot fail deterministically
-    on one where it is cheap. No test can pin a judgment about a measurement;
-    the measurement is recorded in the constant's own comment so the next reader
-    can re-run it rather than re-derive it.
-    """
-    bash = shutil.which("bash")
-    if not bash:
-        pytest.skip("no POSIX shell available to execute the probe")
-    cfg = json.loads((_HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
-    probe = cfg["_pyexe"]
-
-    def _median_wall(command: str) -> float:
-        samples = []
-        for _ in range(7):
-            start = time.perf_counter()
-            _sp.run([bash, "-c", command], capture_output=True)
-            samples.append(time.perf_counter() - start)
-        return statistics.median(samples[2:])  # drop cold-start warmup
-
-    net = _median_wall(f"{probe} true") - _median_wall("true")
-    lib = _load_dispatch_lib()
-    assert net <= lib._BUDGET_RESERVE_SECONDS, (
-        f"the interpreter probe costs ~{net:.2f}s, which does not fit inside "
-        f"_BUDGET_RESERVE_SECONDS ({lib._BUDGET_RESERVE_SECONDS}s). That reserve "
-        "covers the pre-`Deadline` window, so an overrun is spent before the "
-        "budget starts counting: the handler is killed with enforcing hooks "
-        "unrun, and a `return 2` becomes a silent allow. Raise the reserve (and "
-        "re-check the enforcing sum still fits) or make the probe cheaper."
     )

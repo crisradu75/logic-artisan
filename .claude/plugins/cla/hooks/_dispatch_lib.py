@@ -93,15 +93,29 @@ HANDLER_TIMEOUT_SECONDS = 15.0
 #
 # Raised from 1.5 after measuring, because the run-each-candidate interpreter
 # probe in `hooks.json` moved a full Python startup INTO that unobservable
-# window and the reserve was never resized with it. Measured here (Windows, Git
-# Bash, three trials of 12 samples each, against a `bash -c true` baseline):
-# net median 0.66-0.89s, peak ~2.0s. A consuming repo reported the same order of
-# magnitude independently.
+# window and the reserve was never resized with it.
 #
-# Every other test of this budget is a MODEL check over declared constants
-# (`12.0 <= 12.0`); until `test_the_interpreter_probe_fits_inside_the_budget_reserve`
-# nothing executed anything, so the one constant the probe invalidated was the
-# one constant nothing validated.
+# MEASURED, and the spread is the point (Windows, Git Bash, `bash -c "<probe>
+# true"` minus `bash -c true`):
+#
+#     quiet machine     net median 0.66-0.89s
+#     loaded machine    net 5.5-7.1s, single samples to 10.8s
+#
+# So the honest position is that NO fixed constant covers this: the probe's cost
+# swings ~70x with machine load, and 3.0 is a better guess than 1.5 rather than
+# a proven ceiling. It comfortably covers the quiet case, which 1.5 did not.
+#
+# A threshold TEST on this number was written and then removed: it measured
+# 4.01s under full-suite load while passing standalone, so it failed on exactly
+# the machines that are busy. In a repo whose only gate is the local run, a
+# flaky assertion is worse than none — it trains people to ignore the suite.
+#
+# THE DURABLE FIX, not done here: stop guessing. Stamp a start time in the shell
+# (`CLA_HOOK_T0=$(date +%s%3N)` at the head of `_pyexe`) and have `Deadline`
+# subtract the REAL elapsed pre-`main()` cost, falling back to this constant when
+# the variable is absent or unparseable (BSD `date` has no `%N`, so the fallback
+# is load-bearing, not decorative). That makes the window observable instead of
+# estimated, which is the only thing that can actually close this.
 #
 # NOTE the resulting tightness, which is deliberate: usable budget is now
 # exactly the enforcing sum both dispatchers carry (12.0). Those sums are
