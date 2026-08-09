@@ -297,6 +297,38 @@ def _positional_arguments(tokens: list[str]) -> list[str]:
 
 _BRANCH_CACHE: dict[str | None, str | None] = {}
 
+# How many git-spawning branch resolutions this hook may perform per Bash call.
+#
+# The cache below bounds REPEATS of one directory, not distinct ones, so
+# `git -C /a push && git -C /b push && git -C /c push` really did spawn three
+# `rev-parse` calls (verified: 9s), and `_branch_for` can try two candidates for
+# a single push, doubling again to ~18s. `HOOK_WORST_CASE_SECONDS` nonetheless
+# charged this hook 3.0, with a comment admitting the entry was "left at 3.0
+# deliberately: raising it to a true worst case would put the enforcing sum over
+# the budget and fail `test_hooks_wiring.py`."
+#
+# That is an input chosen to satisfy its own assertion, which is the same
+# failure class the budget table exists to prevent. The measured headroom leaves
+# no room to simply declare the truth either: the Bash dispatcher's enforcing
+# sum is 12.0 against a 13.5 usable budget, so an honest 9.0 or 18.0 would not
+# fit. The hook has to become cheaper, which is what that comment itself said
+# the fix was.
+#
+# So: one spawn per call, and the declared 3.0 becomes TRUE rather than
+# aspirational. Beyond it, resolution degrades to None — announced on stderr,
+# never silently — which costs bare-push detection for the SECOND and later
+# distinct directories in one command. That is a real loss, and it is the
+# smaller one: today's alternative is exceeding the handler budget, which gets
+# the handler killed and silently skips every hook that had not run yet,
+# `guard-worktree-isolation` included. A bounded, audible degradation of one
+# check beats an unbounded, silent loss of all of them.
+#
+# Note the common offense is unaffected: a literal `git push origin main` is
+# decided with NO subprocess at all (there is a test pinning that), so this
+# budget is only ever consumed by a bare push or a `HEAD`/`@` refspec.
+_RESOLUTION_BUDGET = 1
+_resolutions_spent = 0
+
 
 def _current_branch(cwd: str | None = None) -> str | None:
     """The checked-out branch in `cwd` (the session's own directory), NOT in
@@ -315,6 +347,18 @@ def _current_branch(cwd: str | None = None) -> str | None:
     # HEAD cannot move mid-hook, so caching is safe as well as cheap.
     if cwd in _BRANCH_CACHE:
         return _BRANCH_CACHE[cwd]
+    global _resolutions_spent
+    if _resolutions_spent >= _RESOLUTION_BUDGET:
+        print(
+            "[block-direct-push-to-main] warn: this command resolves more than "
+            f"{_RESOLUTION_BUDGET} distinct git directory(ies); bare-push "
+            f"detection is off for {cwd or 'the hook process cwd'}. Split the "
+            "command, or push the protected branch's repo on its own line.",
+            file=sys.stderr,
+        )
+        _BRANCH_CACHE[cwd] = None
+        return None
+    _resolutions_spent += 1
     try:
         result = subprocess.run(
             ["git", *(["-C", cwd] if cwd else []), "rev-parse", "--abbrev-ref", "HEAD"],

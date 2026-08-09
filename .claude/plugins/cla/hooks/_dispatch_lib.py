@@ -88,8 +88,44 @@ HANDLER_TIMEOUT_SECONDS = 15.0
 
 # Left for the dispatcher's own compose/print work after the last hook returns,
 # plus interpreter startup before the first one begins. Both fall outside the
-# window `Deadline` can observe.
-_BUDGET_RESERVE_SECONDS = 1.5
+# window `Deadline` can observe -- `Deadline` is constructed inside `main()`, so
+# its clock starts after the shell wrapper has already run.
+#
+# Raised from 1.5 after measuring, because the run-each-candidate interpreter
+# probe in `hooks.json` moved a full Python startup INTO that unobservable
+# window and the reserve was never resized with it.
+#
+# MEASURED, and the spread is the point (Windows, Git Bash, `bash -c "<probe>
+# true"` minus `bash -c true`):
+#
+#     quiet machine     net median 0.66-0.89s
+#     loaded machine    net 5.5-7.1s, single samples to 10.8s
+#
+# So the honest position is that NO fixed constant covers this: the probe's cost
+# swings ~70x with machine load, and 3.0 is a better guess than 1.5 rather than
+# a proven ceiling. It comfortably covers the quiet case, which 1.5 did not.
+#
+# A threshold TEST on this number was written and then removed: it measured
+# 4.01s under full-suite load while passing standalone, so it failed on exactly
+# the machines that are busy. In a repo whose only gate is the local run, a
+# flaky assertion is worse than none — it trains people to ignore the suite.
+#
+# THE DURABLE FIX, not done here: stop guessing. Stamp a start time in the shell
+# (`CLA_HOOK_T0=$(date +%s%3N)` at the head of `_pyexe`) and have `Deadline`
+# subtract the REAL elapsed pre-`main()` cost, falling back to this constant when
+# the variable is absent or unparseable (BSD `date` has no `%N`, so the fallback
+# is load-bearing, not decorative). That makes the window observable instead of
+# estimated, which is the only thing that can actually close this.
+#
+# NOTE the resulting tightness, which is deliberate: usable budget is now
+# exactly the enforcing sum both dispatchers carry (12.0). Those sums are
+# worst-case bounds assuming every hook's git call times out, so real runs sit
+# far below them -- but the next hook added, or the next timeout raised, will
+# fail `test_enforcing_hooks_fit_inside_the_handler_budget` immediately rather
+# than silently overrunning. That is the intended failure mode: the alternative
+# is a killed handler, which turns an enforcing hook's `return 2` into a silent
+# allow.
+_BUDGET_RESERVE_SECONDS = 3.0
 
 # Worst-case wall time each dispatched hook can spend in subprocesses, as
 # (call sites on the hot path) x (that hook's own timeout constant). A hook that
@@ -119,23 +155,26 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     "warn-comment-dates.py": 0.0,
     "block-dated-stamps-in-prose.py": 0.0,
     "warn-smoke-test-drift.py": 0.0,
-    # 1 x _current_branch(3s) for the shapes that actually occur. Memoised per
-    # cwd, which bounds the common case: several pushes sharing one directory
-    # resolve the branch once.
+    # 1 x _current_branch(3s), and now a PROVEN ceiling rather than a realistic
+    # bound: the hook enforces `_RESOLUTION_BUDGET = 1` git-spawning resolution
+    # per Bash call, degrading (audibly, on stderr) beyond it.
     #
-    # KNOWN GAP, stated rather than implied: the cache key IS the cwd, and each
-    # push may carry its own `-C`/`--work-tree`, so distinct directories are
-    # distinct keys. `git -C /a push origin HEAD && git -C /b push origin HEAD
-    # && git -C /c push origin HEAD` really does spawn three `rev-parse` calls
-    # (verified) — 9s, not 3.0. `_branch_for` can also try two candidates for a
-    # single push (composed relative path, then session cwd), doubling again.
-    # So this entry is the realistic bound, not a proven ceiling.
+    # This was the table's one knowingly dishonest entry. The cache key is the
+    # cwd, so distinct `-C` directories were distinct keys, and `git -C /a push
+    # origin HEAD && git -C /b push origin HEAD && git -C /c push origin HEAD`
+    # really did spawn three `rev-parse` calls (verified) — 9s, not 3.0 — with
+    # `_branch_for` able to try two candidates per push, doubling again to ~18s.
+    # The comment here admitted all of that and then said the entry was "left at
+    # 3.0 deliberately: raising it to a true worst case would put the enforcing
+    # sum over the budget and fail `test_hooks_wiring.py`".
     #
-    # Left at 3.0 deliberately: raising it to a true worst case would put the
-    # enforcing sum over the budget and fail `test_hooks_wiring.py`, and the fix
-    # for that is to make the hook cheaper (resolve at most one branch per
-    # command), not to raise the handler timeout. Tracked here so the next
-    # person to touch this hook sees the constraint instead of rediscovering it.
+    # An input chosen to satisfy its own assertion is precisely what this table
+    # exists to prevent, and the stakes are the ones the table is about: spend
+    # the true cost and the handler is killed, so every later hook —
+    # `guard-worktree-isolation` among them — never runs, silently. Declaring
+    # the honest number was not available either (measured: the Bash enforcing
+    # sum is 12.0 against 13.5 usable, so 9.0 would not fit), so the hook was
+    # made cheaper instead — which is what that same comment said the fix was.
     "block-direct-push-to-main.py": 3.0,
     # 1 x _git_email(3s).
     "ask-git-identity.py": 3.0,

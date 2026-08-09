@@ -84,15 +84,24 @@ if ! command -v claude >/dev/null 2>&1; then
   exit 127
 fi
 
-# Interpreter probe. Unlike the guard hooks' version, each candidate is RUN
-# before being accepted: on Windows, `python3` commonly resolves to the Store
-# alias stub in WindowsApps, which prints nothing, exits non-zero, and would
-# surface here as an unexplained "worktree creation failed". A hook can afford
-# to degrade; a launcher that never starts cannot explain itself afterwards.
+# Interpreter probe: each candidate is RUN before being accepted, because on
+# Windows `python3` commonly resolves to the Store alias stub in WindowsApps,
+# which prints nothing, exits non-zero, and would surface here as an
+# unexplained "worktree creation failed".
+#
+# This comment used to say "Unlike the guard hooks' version" — the hooks have
+# run their candidates for some time now, and in fact went FURTHER than this
+# did: they assert the interpreter's VERSION via stdout, where this settled for
+# `-c "import sys"`, a bare liveness check that passes on Python 2.7 and on any
+# wrapper that swallows `-c` and exits 0. The hooks' own
+# `test_probe_rejects_an_interpreter_that_exits_zero_for_everything` exists to
+# reject exactly that weaker form, so the launcher was left holding the hole the
+# hooks had closed. Matched to the stronger form here; the candidate ORDER is
+# what both sides pin, and `hooks.json`'s `_comment` says so.
 PYEXE=""
 for _candidate in python3 py python; do
   _path="$(command -v "$_candidate" 2>/dev/null)" || continue
-  if "$_path" -c "import sys" >/dev/null 2>&1; then
+  if [ "$("$_path" -c "import sys; print(1 if sys.version_info >= (3,8) else 0)" 2>/dev/null)" = 1 ]; then
     PYEXE="$_path"
     break
   fi
