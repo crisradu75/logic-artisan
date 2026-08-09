@@ -113,7 +113,18 @@ for %%P in (py.exe python.exe python3.exe) do (
   if not defined PYEXE (
     for /f "delims=" %%I in ('where %%P 2^>nul') do (
       if not defined PYEXE (
-        "%%I" -c "import sys" >nul 2>nul && set "PYEXE=%%I"
+        REM `assert`, not `sys.exit(...)`: this line sits inside a parenthesised
+        REM `if` block, where cmd parses an unescaped `(` as the block's end and
+        REM aborts the WHOLE script at parse time. `assert` needs no parentheses,
+        REM so the version check carries no escaping to get wrong. `>=` is safe
+        REM unquoted-looking because it is inside the double-quoted -c argument.
+        REM
+        REM Residual gap, stated rather than implied: this rejects Python 2.x and
+        REM pre-3.8, but NOT a wrapper that swallows `-c` and exits 0. Only the
+        REM stdout-comparing form the hooks use rejects that, and reaching it here
+        REM needs a third nested `for /f` whose command contains `print(...)` —
+        REM parentheses again, inside the same block.
+        "%%I" -c "import sys; assert sys.version_info[0]*100+sys.version_info[1] >= 308" >nul 2>nul && set "PYEXE=%%I"
       )
     )
   )

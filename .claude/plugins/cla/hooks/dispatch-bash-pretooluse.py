@@ -187,8 +187,11 @@ def main() -> int:
         )
     if errored_enforcing:
         # Escalated to `ask`, not left as a warning. `_dispatch_lib`'s docstring
-        # asks callers to exit non-zero here; this dispatcher deliberately does
-        # not, because a non-zero exit makes Claude Code discard stdout — which
+        # records why exiting non-zero here would be wrong — it USED to ask for
+        # it, and was corrected to match what both dispatchers actually do, so
+        # this comment cited a requirement the same release had deleted and
+        # pointed at a contract whose text now says the reverse. The reasoning
+        # is unchanged: a non-zero exit makes Claude Code discard stdout — which
         # would downgrade a pending `ask` to an allow and surface only the first
         # line of merged stderr. `ask` is the one channel that reaches the user,
         # cannot be ignored, and costs nothing when the call was legitimate.

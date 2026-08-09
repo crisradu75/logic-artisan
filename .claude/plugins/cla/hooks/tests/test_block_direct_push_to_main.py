@@ -36,10 +36,19 @@ def _clear_branch_cache():
     costs one subprocess rather than one per push. The module lives for a single
     hook process in production, so the cache never outlives its facts there — but
     pytest keeps it across every test in this file, where one test's resolved
-    branch would otherwise answer another test's mocked failure."""
+    branch would otherwise answer another test's mocked failure.
+
+    `_resolutions_spent` is reset for the same reason and in the same place: it
+    is the per-call budget that makes the hook's 3.0 entry in
+    `HOOK_WORST_CASE_SECONDS` honest, and a counter that survives between tests
+    exhausts itself partway through the file. Adding the counter without this
+    line failed two unrelated tests immediately — which is the fixture's own
+    docstring being right about a second piece of module state."""
     hook._BRANCH_CACHE.clear()
+    hook._resolutions_spent = 0
     yield
     hook._BRANCH_CACHE.clear()
+    hook._resolutions_spent = 0
 
 
 def _never_called():
@@ -445,6 +454,50 @@ def test_current_branch_passes_a_timeout_and_warns_when_git_is_unusable(monkeypa
     assert hook._current_branch() is None
     assert captured.get("timeout"), "_current_branch must pass a subprocess timeout"
     assert "warn" in capsys.readouterr().err.lower()
+
+
+def test_the_resolution_budget_bounds_the_subprocess_count_per_call(monkeypatch, capsys):
+    """The hook's `HOOK_WORST_CASE_SECONDS` entry (3.0) means ONE `rev-parse`.
+
+    It did not. The cache keys on cwd, so distinct `-C` directories were
+    distinct keys: `git -C /a push origin HEAD && git -C /b push ... && git -C
+    /c push ...` spawned three calls (9s), and `_branch_for` could try two
+    candidates per push, reaching ~18s against a 3.0 declaration. The comment
+    beside that entry admitted it and kept the number anyway, because raising it
+    would have failed the wiring test — an input tuned to satisfy its own
+    assertion, in an ENFORCING hook whose overrun silently skips every later
+    guard.
+
+    Bounding the spawns is what makes the declared number true, so this asserts
+    the bound directly rather than trusting the comment.
+    """
+    calls: list = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(args[0])
+        raise OSError("git not found")
+
+    monkeypatch.setattr(hook.subprocess, "run", fake_run)
+    for cwd in ("/a", "/b", "/c"):
+        hook._current_branch(cwd)
+
+    assert len(calls) == hook._RESOLUTION_BUDGET, (
+        f"expected at most {hook._RESOLUTION_BUDGET} git spawn(s) per call, got "
+        f"{len(calls)} — HOOK_WORST_CASE_SECONDS' 3.0 entry is only honest while "
+        "this holds"
+    )
+    err = capsys.readouterr().err
+    assert "detection is off" in err, "the degradation must be audible, never silent"
+
+
+def test_the_first_resolution_is_not_refused(monkeypatch):
+    """Non-vacuity partner: a budget of 0 would pass the test above trivially
+    while disabling bare-push detection for every command."""
+    monkeypatch.setattr(
+        hook.subprocess, "run",
+        lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "main\n"})(),
+    )
+    assert hook._current_branch("/only") == "main"
 
 
 def test_bare_push_checks_current_branch(monkeypatch):

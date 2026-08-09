@@ -485,3 +485,37 @@ def test_claw_cmd_pre_clears_its_git_dir_vars(var):
     assert clear_at != -1, f"{var} is never pre-cleared"
     assert use_at != -1, f"{var} assignment not found"
     assert clear_at < use_at, f"{var} must be cleared BEFORE its for /f loop"
+
+
+def test_both_launcher_probes_assert_the_interpreter_version():
+    """The launchers must not settle for a bare liveness check.
+
+    `hooks.json`'s probe runs each candidate AND asserts its version, because
+    `-c "import sys"` alone passes on Python 2.7 and on any wrapper that
+    swallows `-c` and exits 0 — the hooks' own
+    `test_probe_rejects_an_interpreter_that_exits_zero_for_everything` exists to
+    reject exactly that. The launchers kept the weak form long after the hooks
+    closed it, while `hooks.json`'s comment claimed the reverse ("`claw` already
+    carried this exact probe ... the hooks now match it").
+
+    Structural, and deliberately so: a behavioural version test would need a
+    stub interpreter reporting a fake `sys.version_info`, which the `.cmd` side
+    cannot express without the nested `for /f` its parenthesised `if` block
+    cannot parse. This is the same "cheap structural backstop" the paren check
+    above is, and it exists because a mutation reverting the probe to
+    `-c "import sys"` otherwise survives the whole suite.
+    """
+    posix = _CLAW.read_text(encoding="utf-8", errors="replace")
+    assert "sys.version_info" in posix, (
+        "claw's interpreter probe must assert the version, not just liveness"
+    )
+    cmd = _CLAW_CMD.read_text(encoding="utf-8", errors="replace")
+    probe_lines = [
+        ln for ln in cmd.splitlines()
+        if "-c " in ln and not ln.strip().lower().startswith("rem")
+    ]
+    assert probe_lines, "claw.cmd has no interpreter probe line at all"
+    assert all("sys.version_info" in ln for ln in probe_lines), (
+        "claw.cmd's interpreter probe must assert the version, not just "
+        f"liveness; found: {probe_lines}"
+    )
