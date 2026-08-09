@@ -186,8 +186,74 @@ def _base_branch() -> str:
     return _base_branch_cache
 
 
+_resolved_branch_cache: dict[str, str] = {}
+
+
+def _resolve_branch(change_name: str) -> str:
+    """The branch this change actually lives on, not merely the one the
+    configured prefix predicts.
+
+    WHY THIS EXISTS. All three probes below looked the branch up as
+    `<prefix><change-name>` and used `rev-parse --verify --quiet`, which on a
+    miss exits 1 with EMPTY stderr — and the `--quiet` is deliberate (see
+    `_branch_state`), so the "any output means anomaly" gate never fires. A repo
+    whose branch does not match therefore got `branch: false, pr: {open: false},
+    fix_rounds_applied: 0`: indistinguishable from *nothing has been done yet*.
+    The orchestrator acts on that by redoing finished work, and can open a
+    duplicate branch and PR.
+
+    Two live triggers, both created by this skill's own docs rather than
+    hypothetical: `references/ship.md` explicitly permits shortening a verbose
+    change name, and a convention that varies its MIDDLE segment
+    (`claude/fix/x` vs `claude/feature/x`) cannot be expressed by any single
+    prefix. Resolving one configured prefix covers a repo with a fixed
+    convention and misses both of these.
+
+    So: try the configured name, then fall back to a suffix match across local
+    branches, accepting ONLY an unambiguous single hit and announcing which
+    branch was adopted. Ambiguity falls back to the configured name rather than
+    guessing — picking one of several same-named branches is how a run commits
+    onto the wrong one.
+
+    `_base_branch` above already established this shape (several candidates,
+    then a stderr note); this is the same pattern for the feature side.
+    """
+    if change_name in _resolved_branch_cache:
+        return _resolved_branch_cache[change_name]
+    configured = _branch_name_for(change_name)
+    if _run(["git", "rev-parse", "--verify", "--quiet", configured]).returncode == 0:
+        _resolved_branch_cache[change_name] = configured
+        return configured
+
+    listed = _run(["git", "for-each-ref", "--format=%(refname:short)", "refs/heads"])
+    resolved = configured
+    if listed.returncode == 0:
+        # Match on the final path SEGMENT, not a bare `endswith`: the latter
+        # would let `feature/hotfix-add-auth` answer for change `add-auth`.
+        matches = [
+            b for b in (ln.strip() for ln in listed.stdout.splitlines())
+            if b and b.rsplit("/", 1)[-1] == change_name
+        ]
+        if len(matches) == 1:
+            resolved = matches[0]
+            print(
+                f"branch '{configured}' not found; using '{resolved}', the only "
+                f"local branch whose final segment is '{change_name}'",
+                file=sys.stderr,
+            )
+        elif len(matches) > 1:
+            print(
+                f"branch '{configured}' not found and {len(matches)} local "
+                f"branches end in '{change_name}' ({', '.join(matches)}); "
+                "refusing to guess — reporting against the configured name",
+                file=sys.stderr,
+            )
+    _resolved_branch_cache[change_name] = resolved
+    return resolved
+
+
 def _branch_state(change_name: str) -> bool:
-    expected = _branch_name_for(change_name)
+    expected = _resolve_branch(change_name)
     # `--quiet` matters here, not just cosmetically: without it, `rev-parse
     # --verify` prints `fatal: Needed a single revision` on the ordinary
     # "branch doesn't exist yet" path too, which would make a stderr-if-any-
@@ -217,7 +283,7 @@ def _branch_state(change_name: str) -> bool:
 
 
 def _pr_state(change_name: str) -> dict:
-    branch = _branch_name_for(change_name)
+    branch = _resolve_branch(change_name)
     repo_res = _run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
     if repo_res.returncode != 0:
         # rc==127 here means gh is missing; already tracked in _missing_tools.
@@ -252,7 +318,7 @@ def _pr_state(change_name: str) -> dict:
 
 
 def _fix_rounds_applied(change_name: str) -> int:
-    branch = _branch_name_for(change_name)
+    branch = _resolve_branch(change_name)
     base = _base_branch()
     res = _run(["git", "log", "--format=%s", f"{base}..{branch}"])
     if res.returncode != 0:

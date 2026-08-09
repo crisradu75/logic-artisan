@@ -30,12 +30,18 @@ def _repo_root(tmp_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def _reset_module_state() -> None:
     """`_base_branch_cache` and the two degradation lists are module globals, so
     one test's resolution would otherwise decide the next one's — and now that
-    `probe()` reports the base branch, every test resolves it."""
+    `probe()` reports the base branch, every test resolves it.
+
+    `_resolved_branch_cache` joins them for the same reason: all three probes
+    key off one resolution per change name, so without this a test that resolves
+    a fallback branch answers for the next test's fresh repo."""
     probe_state._base_branch_cache = None
+    probe_state._resolved_branch_cache.clear()
     probe_state._missing_tools.clear()
     probe_state._environment_errors.clear()
     yield
     probe_state._base_branch_cache = None
+    probe_state._resolved_branch_cache.clear()
     probe_state._missing_tools.clear()
     probe_state._environment_errors.clear()
 
@@ -579,4 +585,58 @@ def test_fix_rounds_suppresses_the_diagnostic_when_the_tool_is_already_reported_
 
     monkeypatch.setattr(probe_state, "_run", fake_run)
     assert probe_state._fix_rounds_applied("demo") == 0
+    assert capsys.readouterr().err == ""
+
+
+# --------------------------------------------------------------------------- #
+# _resolve_branch -- the clean false negative that made the orchestrator
+# redo finished work
+# --------------------------------------------------------------------------- #
+
+
+def test_the_configured_branch_is_used_when_it_exists(tmp_repo: Path):
+    """Non-vacuity partner, and it must come first: if the fallback ran even
+    when the configured name resolves, every repo would pay a `for-each-ref`
+    and the suffix search could adopt a DIFFERENT branch than the one the run
+    actually created."""
+    commit_on_branch(tmp_repo, "feature/add-auth", "work")
+    assert probe_state._resolve_branch("add-auth") == "feature/add-auth"
+
+
+def test_a_branch_on_another_convention_is_found_and_announced(tmp_repo, capsys):
+    """The reported bug. `references/ship.md` permits shortening a change name,
+    and a convention varying its MIDDLE segment (`claude/fix/x`) cannot be
+    expressed by any single prefix — so all three probes missed, `rev-parse
+    --verify --quiet` exited 1 with empty stderr, and the orchestrator read
+    `branch: false, pr: {open: false}, fix_rounds_applied: 0` as "nothing done
+    yet". It then redoes finished work and can open a duplicate branch and PR.
+    """
+    commit_on_branch(tmp_repo, "claude/fix/add-auth", "work")
+    assert probe_state._resolve_branch("add-auth") == "claude/fix/add-auth"
+    err = capsys.readouterr().err
+    assert "claude/fix/add-auth" in err, "adopting a different branch must be announced"
+
+
+def test_an_ambiguous_match_refuses_to_guess(tmp_repo, capsys):
+    """Committing onto the wrong one of several same-named branches is worse
+    than reporting nothing, so ambiguity falls back to the configured name."""
+    commit_on_branch(tmp_repo, "claude/fix/add-auth", "a")
+    commit_on_branch(tmp_repo, "claude/feature/add-auth", "b")
+    assert probe_state._resolve_branch("add-auth") == "feature/add-auth"
+    err = capsys.readouterr().err
+    assert "refusing to guess" in err
+
+
+def test_a_partial_name_match_is_not_accepted(tmp_repo):
+    """Matching the final path SEGMENT, not a bare `endswith`: otherwise
+    `feature/hotfix-add-auth` answers for change `add-auth` and the probe
+    reports against a branch belonging to different work."""
+    commit_on_branch(tmp_repo, "feature/hotfix-add-auth", "unrelated")
+    assert probe_state._resolve_branch("add-auth") == "feature/add-auth"
+
+
+def test_no_match_at_all_is_silent_and_keeps_the_configured_name(tmp_repo, capsys):
+    """The ordinary "not started yet" case must stay quiet — a note here would
+    fire on every first run of every change."""
+    assert probe_state._resolve_branch("add-auth") == "feature/add-auth"
     assert capsys.readouterr().err == ""

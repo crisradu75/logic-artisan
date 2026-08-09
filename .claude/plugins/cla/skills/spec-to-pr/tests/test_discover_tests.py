@@ -200,3 +200,30 @@ def test_the_staged_shape_carries_the_reason_to_the_orchestrator(tmp_path, capsy
     payload = json.loads(capsys.readouterr().out)
     assert payload["smoke"] == [] and payload["full"] == []
     assert payload["reason"] == discover_tests.NO_MANIFEST
+
+
+def test_a_docs_only_change_reports_a_true_skip_even_with_no_manifest(tmp_path: Path):
+    """The reason the two checks were reordered.
+
+    The manifest check is repo-GLOBAL and the source-paths check is per-change,
+    so testing the manifest first made `NO_SOURCE_PATHS` unreachable in any repo
+    without a root `package.json`. A genuinely docs-only change — a real skip —
+    was reported as `no-package-json`, which `SKILL.md` maps to `warn`. Every
+    run in such a repo therefore carried a Test-phase warning, and a warning
+    that fires on every run is one nobody reads.
+    """
+    # No package.json written: this is the non-npm repo case.
+    checks, reason = discover_tests.discover_with_reason(
+        ["openspec/changes/x/proposal.md", "README.md"]
+    )
+    assert checks == []
+    assert reason == discover_tests.NO_SOURCE_PATHS
+
+
+def test_a_source_change_with_no_manifest_still_warns(tmp_path: Path):
+    """Non-vacuity partner: the reorder must not turn the case that genuinely
+    needs a gate into a silent skip. `no-package-json` is the one outcome that
+    means "a source change ran no correctness gate at all"."""
+    checks, reason = discover_tests.discover_with_reason(["app/service.py"])
+    assert checks == []
+    assert reason == discover_tests.NO_MANIFEST
