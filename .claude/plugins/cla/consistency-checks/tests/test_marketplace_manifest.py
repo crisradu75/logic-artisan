@@ -98,15 +98,20 @@ def test_the_published_ref_matches_the_plugin_version():
     """The manifest pins an exact release tag rather than a moving major tag, so
     publishing a release means editing the `ref` here. That is the whole point —
     an explicit edit per release — but it also means this file and `plugin.json`
-    can disagree, and a consumer installing `v0.9.0` while the manifest says the
-    plugin is `1.0.0` has no way to tell which is true.
+    can disagree, and a consumer installing 0.9.0 while the manifest says the
+    plugin is 1.0.0 has no way to tell which is true.
+
+    Tag shape is `{name}--v{version}`, which is what `claude plugin tag` creates
+    and validates. It is not a bare `v{version}`: this repo could host a second
+    plugin, and then a bare version tag names neither of them.
     """
     version = json.loads(_PLUGIN_JSON.read_text(encoding="utf-8"))["version"]
     for entry in _manifest()["plugins"]:
         ref = entry["source"]["ref"]
-        assert ref.lstrip("v") == version, (
-            f"{entry['name']} publishes ref {ref!r} but plugin.json says version "
-            f"{version!r}; bump both together or the release is mislabelled"
+        assert ref == f"{entry['name']}--v{version}", (
+            f"{entry['name']} publishes ref {ref!r}, but the release tag for "
+            f"version {version!r} is {entry['name']}--v{version!r}. Use "
+            "`claude plugin tag` so both files are checked for you."
         )
 
 
