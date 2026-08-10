@@ -13,10 +13,17 @@ this plugin in via `update-cla` and adapt it to their own context.
 Everything lives under `.claude/plugins/cla/`, nested at that path specifically so `update-cla` can
 consume this repo directly as a sync source.
 
-**Launching a session with the plugin active:** `claude --plugin-dir` loads the plugin live, in
-place, from this working tree — required because the skills/hooks read and write repo-local state
-(`cla.io/`, the sync lockfile), which a cached marketplace install (`enabledPlugins` + a registered
-marketplace, itself a real settings-file mechanism, just the wrong one for this) can't do. Use the
+**Distribution is moving to a marketplace.** `.claude-plugin/marketplace.json` at the repo root
+publishes two channels off this one subdirectory (`git-subdir` source, `url` + `path`, schema
+verified against the live docs): **`cla`** tracks the `v1` tag — the stable channel, and the one
+to install — and **`cla-edge`** tracks `main`. **The `v1` tag does not exist yet**, so the stable
+channel cannot resolve until the first release is cut; `cla-edge` works today. `update-cla`'s
+file-sync remains the live mechanism until consuming repos migrate.
+
+**Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
+place, from this working tree — required here because the skills/hooks read and write repo-local
+state (`cla.io/`, the sync lockfile) and, while developing the harness, you want the working tree
+rather than a cached copy of a release. Use the
 `cla` (POSIX) / `cla.cmd` (Windows) launcher at the repo root instead of typing `claude` directly —
 it resolves its own absolute path, so the flag it prints/runs is `--plugin-dir <repo>/.claude/plugins/cla`
 regardless of your cwd:
@@ -218,7 +225,8 @@ retro over prior runs of another skill.
 | 0. Bootstrap (once per repo) | `cla-init` | Scaffold the `cla.io/` tree + empty overlay stubs |
 | | `sync-context` | Populate/reconcile `cla.io/project-facts.md` |
 | | `save-permissions` | Persist session tool permissions to `.claude/settings.local.json` |
-| | `update-cla` | Pull newer CLA core from another repo, adapting to local context |
+| | `update-cla` | Pull newer CLA core from another repo, adapting to local context (**being retired** — superseded by the marketplace install) |
+| | `report-upstream` | File a defect in the plugin's own portable core as an issue against the canonical source |
 | 1. Discover & shape | `feedback` | Capture rough notes → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
 | 2. Specify & plan | `multi-spec` | Turn a shaped decisions doc into a batch of OpenSpec proposals |

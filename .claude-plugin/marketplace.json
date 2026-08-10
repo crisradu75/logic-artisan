@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "cris-logic-artisan",
+  "description": "Cris Logic Artisan (CLA) — a Claude Code dev-workflow harness: spec-to-pr, the multi-* chains, lite-pr, the retro/codify self-improvement loops, review skills, and the generic git/worktree guard hooks.",
+  "owner": {
+    "name": "Cris Radu",
+    "url": "https://github.com/crisradu75"
+  },
+  "plugins": [
+    {
+      "name": "cla",
+      "description": "The stable channel. Tracks the `v1` tag, which moves only on a deliberate release. Install this one unless you are working on the harness itself.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/crisradu75/logic-artisan",
+        "path": ".claude/plugins/cla",
+        "ref": "v1"
+      }
+    },
+    {
+      "name": "cla-edge",
+      "description": "The moving channel. Tracks `main`, so it carries whatever landed most recently — including changes that have not been exercised in a consuming repo yet. Use it to test a fix before it is released, not to get work done.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/crisradu75/logic-artisan",
+        "path": ".claude/plugins/cla",
+        "ref": "main"
+      }
+    }
+  ]
+}
