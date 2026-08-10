@@ -13,18 +13,20 @@ The per-scope invocations below (`pytest .claude/plugins/cla/skills/<name>/tests
 
 ## Conformance guard — no project tokens in synced core
 
-A pytest guard (`tests/test_no_project_tokens.py`) mechanically enforces the fact/procedure split that makes this skill's sync safe: a project-specific token must live behind an overlay (`project-context.md` / `*.local.md`), never baked into a synced-core `SKILL.md` or `references/**/*.md`, or the sync would carry it verbatim into every destination repo. The guard obeys the same split it enforces — a **generic checker** (portable procedure, synced to every repo) driven by a **per-repo token list** (a fact, never synced).
+**This guard no longer lives here.** It moved to `.claude/plugins/cla/conformance-checks/tests/test_no_project_tokens.py`, its own scope, because it enforces a rule about the WHOLE plugin and must outlive the sync tool. What follows describes it because this skill's sync is what makes the rule load-bearing; the guard's own docstring is the authority.
 
-- **Token list overlay:** `references/project-tokens.local.md`. Its `.local.md` leaf makes it a recognized overlay, so `discover.py` never syncs it (each destination curates its own) and the guard exempts it from its own scan. It's a plain markdown bullet list; the checker reads each `- `/`* ` bullet as one token (trailing ` # comment` and surrounding backticks stripped). **Curate it with distinctive compound repo tokens only** (package/app paths, product/tool names, fixed ports) — never generic words that legitimately appear in portable prose. Verify a candidate with a grep of the current synced core before adding it; the overlay's own comment block documents the deliberately-excluded candidates (e.g. `apps/`, `pnpm`) so an omission reads as intentional.
+A pytest guard mechanically enforces the fact/procedure split that makes this skill's sync safe: a project-specific token must live behind an overlay (`project-context.md` / `*.local.md`), never baked into a synced-core `SKILL.md` or `references/**/*.md`, or the sync would carry it verbatim into every destination repo. The guard obeys the same split it enforces — a **generic checker** (portable procedure, synced to every repo) driven by a **per-repo token list** (a fact, never synced).
+
+- **Token list overlay:** `cla.io/project-tokens.local.md` — per-repo data, kept with the rest of it and outside the synced core entirely, so `discover.py` never syncs it (each destination curates its own) and neither of the guard's scans can reach it. It's a plain markdown bullet list; the checker reads each `- `/`* ` bullet as one token (trailing ` # comment` and surrounding backticks stripped). **Curate it with distinctive compound repo tokens only** (package/app paths, product/tool names, fixed ports) — never generic words that legitimately appear in portable prose. Verify a candidate with a grep of the current synced core before adding it; the overlay's own comment block documents the deliberately-excluded candidates (e.g. `apps/`, `pnpm`) so an omission reads as intentional.
 - **Scan scope:** every `SKILL.md` + `references/**/*.md` under `skills/**`, EXCLUDING overlay files (leaf `project-context.md` or `*.local.md`), non-markdown assets, the `tests/`/`scripts/` subtrees, and **each file's leading YAML frontmatter** (a skill's `description:` legitimately names the host repo so it triggers — metadata, not portable prose).
 - **Failure output:** every violation on its own line — repo-relative path, matched token, 1-based line number, trimmed excerpt — surfaced all at once, not first-hit-only.
 - **Absent token list = trivial pass** (a `pytest.skip`): a fresh destination that synced the guard but hasn't curated a list yet must not get a red CI. But a token file that is **present yet yields no tokens** (a list broken by a reformat) **fails** — silently skipping it would disable the safety check with no signal; to intentionally disable the guard, delete the file.
 
-Run it with the rest of the suite: `pytest .claude/plugins/cla/skills/update-cla/tests`.
+Run it with the rest of the suite: `pytest .claude/plugins/cla/conformance-checks/tests`.
 
 ## Project-facts staleness guard — no dead paths in the consolidated fact file or overlays
 
-A sibling pytest guard (`tests/test_project_facts_paths.py`, `cla-context-refresh`) mechanically checks
+A sibling pytest guard (`conformance-checks/tests/test_project_facts_paths.py`, `cla-context-refresh`) mechanically checks
 the OTHER half of the fact/procedure split's freshness problem: not "is a fact behind an overlay"
 (the conformance guard above), but "does a path a fact NAMES still exist." It reads the repo-level
 consolidated `cla.io/project-facts.md` (populated by `/cla:sync-context`) plus every per-skill
@@ -37,7 +39,7 @@ an absent `cla.io/project-facts.md` is a trivial pass (a fresh repo that hasn't 
 yet). It is a **path-existence backstop only** — it does not validate the non-path mechanical facts
 (commands, ports, member counts) `/cla:sync-context` produces, nor does it detect a fact duplicated
 between the consolidated file and an overlay; both stay the refresh skill's job. Run it with the rest of
-the suite: `pytest .claude/plugins/cla/skills/update-cla/tests`.
+the suite: `pytest .claude/plugins/cla/conformance-checks/tests`.
 
 ## Known limitations
 

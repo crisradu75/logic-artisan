@@ -129,8 +129,8 @@ def _repo_root_from_here() -> Path:
     except Exception:
         pass
     # Last-resort fallback for an unexpected layout:
-    # tests/ -> update-cla/ -> skills/ -> cla/ -> plugins/ -> .claude/ -> root
-    return Path(__file__).resolve().parents[6]
+    # tests/ -> conformance-checks/ -> cla/ -> plugins/ -> .claude/ -> root
+    return Path(__file__).resolve().parents[5]
 
 
 _BACKTICK_SPAN_RE = re.compile(r"`([^`]+)`")

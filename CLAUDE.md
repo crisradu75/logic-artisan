@@ -58,20 +58,27 @@ pytest .claude/plugins/cla/hooks/tests
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
 design. Each skill that ships tests (5 today), plus `lib/`, plus `hooks/`, plus
-`consistency-checks/`, plus `launcher-checks/`, is its own isolated pytest scope — 9 in total —
-each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a `pythonpath` pointing at that
-scope's importable code — `["scripts"]` for a skill and for the two check scopes, `["."]` for
-`hooks/` and `lib/`, whose modules sit at the scope root).
+`conformance-checks/`, plus `consistency-checks/`, plus `launcher-checks/`, is its own isolated
+pytest scope — 10 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
+`pythonpath` pointing at that scope's importable code — `["scripts"]` for a skill and for
+`consistency-checks`/`launcher-checks`, `["."]` for `hooks/` and `lib/`, whose modules sit at the
+scope root, and none at all for `conformance-checks`, whose tests import nothing).
 
-`lib/`, `consistency-checks/` and `launcher-checks/` are the odd ones out: not skills (no
-`SKILL.md`) and not guard hooks. `lib/` holds `log_run.py`, the one ledger writer every retro-
-logging skill invokes as a program. `consistency-checks/` holds a drift check over the sibling
-`aggregate.py` copies that the isolation rule below deliberately prevents from sharing a module;
+`lib/` and the three `*-checks/` scopes are the odd ones out: not skills (no `SKILL.md`) and not
+guard hooks. `lib/` holds `log_run.py`, the one ledger writer every retro-logging skill invokes as
+a program. `conformance-checks/` holds the two guards that police the fact/procedure split for the
+whole plugin — no project token in synced core, no dead path in `cla.io/project-facts.md` or an
+overlay. `consistency-checks/` holds a drift check over the ledger-dir resolver that the isolation
+rule below deliberately prevents from sharing a module, plus checks on this repo's own source;
 `launcher-checks/` tests the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin
 tree entirely (`claw`/`claw.cmd` were deleted with `guard-worktree-isolation`, the hook they
-existed to dodge). The latter two sit outside the synced set
-(`skills`/`agents`/`hooks`/`output-styles`), so `update-cla` never propagates them to consuming
-repos; they guard this repo's own source. Several scopes
+existed to dodge).
+
+All four sit outside the synced set (`skills`/`agents`/`hooks`/`output-styles`), but they do not
+all mean the same thing by it. `consistency-checks` and `launcher-checks` guard this repo's own
+source and are meant to stay here. `conformance-checks` is portable core that happens to live
+outside `SCAN_DIRS`, so its files are named individually in `discover.SCAN_FILES` to keep reaching
+consuming repos — where both guards have caught real leaks. Several scopes
 ship same-named helper modules (e.g. `scripts/aggregate.py`), so they can't
 share one pytest process — this is why `run_tests.py` exists: it discovers every scope
 (dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once
@@ -116,7 +123,7 @@ green run as one input to the ship decision rather than the decision itself.
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
 sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as a
-10th entry alongside the 9 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
+11th entry alongside the 10 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
 while iterating on that one script:
 
 ```bash
@@ -157,10 +164,10 @@ everywhere) from *facts* (per-repo, never synced):
   overwritten by `update-cla`. In *this* repo they are neutral stubs (this is the source, not a
   consumer).
 - **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, `retro/` run ledgers,
-  `lessons-learned/`, and (in a consuming repo) a consolidated `project-facts.md` and `terminology.md`
-  (internal naming disambiguation, format owned by `sync-context`, written inline by other skills as
-  terms resolve). Never part of the synced core; a staleness guard fails when a path named there no
-  longer exists.
+  `lessons-learned/`, `project-tokens.local.md` (the conformance guard's curated token list), and
+  (in a consuming repo) a consolidated `project-facts.md` and `terminology.md` (internal naming
+  disambiguation, format owned by `sync-context`, written inline by other skills as terms resolve).
+  Never part of the synced core; a staleness guard fails when a path named there no longer exists.
 
 ### Skill layout
 

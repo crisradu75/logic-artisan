@@ -15,24 +15,18 @@ synced to every repo) + a repo-specific *fact* (the token list, never synced).
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
 
 import pytest
 
-# `discover.SCAN_DIRS` is the single source of truth for what update-cla syncs.
-# Imported (not re-typed) so this file's scan roots can never drift from it —
-# see the SOURCE_SCAN_ROOTS derivation below for why that drift is a real,
-# already-happened failure mode, not a hypothetical one.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-import discover  # noqa: E402
-
 OVERLAY_FILE_NAME = "project-context.md"
 OVERLAY_LOCAL_SUFFIX = ".local.md"
 EXCLUDED_SUBTREES = frozenset({"tests", "scripts"})
-# Token-list overlay, relative to the skills/ root. Its ``.local.md`` leaf also
-# makes it a recognized overlay, so the scan below never flags its own contents.
-TOKEN_LIST_RELPATH = Path("update-cla") / "references" / "project-tokens.local.md"
+# Token-list overlay, relative to the REPO root — it is per-repo data, so it
+# lives in `cla.io/` with the rest of it rather than inside a skill that is
+# scheduled for deletion. Being outside the synced core also means neither scan
+# below can reach it, so it cannot flag its own contents.
+TOKEN_LIST_RELPATH = Path("cla.io") / "project-tokens.local.md"
 MAX_EXCERPT = 120
 
 
@@ -43,8 +37,19 @@ def _plugin_root() -> Path:
     for parent in Path(__file__).resolve().parents:
         if parent.name == "cla" and parent.parent.name == "plugins":
             return parent
-    # Fallback for an unexpected layout: tests/ -> update-cla/ -> skills/ -> cla/
-    return Path(__file__).resolve().parents[3]
+    # Fallback for an unexpected layout: tests/ -> conformance-checks/ -> cla/
+    return Path(__file__).resolve().parents[2]
+
+
+def _repo_root() -> Path:
+    """The repo root — parent of ``.claude/``. The token list is per-repo data
+    living in ``cla.io/``, outside the plugin tree, so ``_plugin_root()`` is the
+    wrong anchor for it."""
+    for parent in Path(__file__).resolve().parents:
+        if parent.name == ".claude":
+            return parent.parent
+    # tests/ -> conformance-checks/ -> cla/ -> plugins/ -> .claude/ -> repo root
+    return Path(__file__).resolve().parents[4]
 
 
 def load_tokens(path: Path) -> list[str]:
@@ -177,14 +182,20 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # `SKILL.md` `description:` that legitimately names the host repo so the skill
 # triggers, which has no analogue in a `.py` file.
 
-# Derived from `discover.SCAN_DIRS`, not hand-typed: this list was independently
-# maintained here (and a third time in test_sync_claude_assets.py) and BOTH
-# copies missed `output-styles` when it was added to the real `SCAN_DIRS` —
-# caught only by review, not by any test, because every test that referenced
-# the stale copy stayed green. Deriving makes that class of drift structurally
-# impossible: a future 5th category added to SCAN_DIRS alone is scanned here
-# automatically, with no second edit to remember.
-SOURCE_SCAN_ROOTS = tuple(d.rsplit("/", 1)[-1] for d in discover.SCAN_DIRS)
+# The synced-core categories: every top-level dir `update-cla` carries into a
+# consuming repo, and therefore everything this guard has to keep clean.
+#
+# This used to be DERIVED from `discover.SCAN_DIRS`, because a hand-typed copy
+# here and a second one in `test_sync_claude_assets.py` BOTH missed
+# `output-styles` when it was added to the real list — caught by review, not by
+# any test, since every test against the stale copies stayed green.
+#
+# It is hand-typed again on purpose: `discover.py` is deleted when distribution
+# moves to a marketplace plugin, and a guard for the WHOLE plugin must not die
+# with the sync tool. The drift that made deriving necessary is covered instead
+# by `test_the_scan_roots_match_what_the_sync_tool_actually_syncs` below, which
+# fails while `discover.py` still exists and skips cleanly once it does not.
+SOURCE_SCAN_ROOTS = ("skills", "agents", "hooks", "output-styles")
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 
 
@@ -235,7 +246,7 @@ def test_no_project_tokens_in_synced_core():
     """Fail if any non-overlay synced-core file leaks a listed project token."""
     plugin_root = _plugin_root()
     skills_root = plugin_root / "skills"
-    token_path = skills_root / TOKEN_LIST_RELPATH
+    token_path = _repo_root() / TOKEN_LIST_RELPATH
     if not token_path.is_file():
         # A fresh destination repo has synced the guard but not curated a token list
         # yet (the overlay is never seeded by sync) — trivial pass, not a red CI.
@@ -279,7 +290,7 @@ def test_no_project_tokens_in_synced_source():
     a fixture string that should just be neutral).
     """
     plugin_root = _plugin_root()
-    token_path = plugin_root / "skills" / TOKEN_LIST_RELPATH
+    token_path = _repo_root() / TOKEN_LIST_RELPATH
     if not token_path.is_file():
         pytest.skip(
             "no project-tokens.local.md overlay present — trivial pass; each "
@@ -308,6 +319,40 @@ def test_no_project_tokens_in_synced_source():
             f"{len(violations)} project-token leak(s) in synced source files "
             f"(rename the fixture value, or curate the token out):\n{detail}"
         )
+
+
+def test_the_scan_roots_match_what_the_sync_tool_actually_syncs():
+    """`SOURCE_SCAN_ROOTS` is hand-typed; while `discover.py` still exists, it is
+    the authority on what ships to a consuming repo, so compare them.
+
+    This replaces importing `discover.SCAN_DIRS` directly. The import made the
+    two lists structurally identical but chained a whole-plugin guard to one
+    skill's internals — and that skill is being deleted. Comparing instead keeps
+    the drift caught for as long as there is something to compare against, and
+    the guard keeps working afterwards with no edit.
+
+    A category in `SCAN_DIRS` but not here is the failure that already happened
+    once: `output-styles` was added to the sync and scanned by nothing.
+    """
+    discover_py = _plugin_root() / "skills" / "update-cla" / "scripts" / "discover.py"
+    if not discover_py.is_file():
+        pytest.skip("update-cla is gone; SOURCE_SCAN_ROOTS is now the only list")
+    # Parsed, not imported: importing drags in the module's own dependencies and
+    # puts a deleted-in-future skill back on sys.path for the whole session.
+    import ast
+
+    tree = ast.parse(discover_py.read_text(encoding="utf-8"), filename=str(discover_py))
+    synced = None
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "SCAN_DIRS" for t in node.targets
+        ):
+            synced = tuple(ast.literal_eval(node.value))
+    assert synced is not None, f"SCAN_DIRS not found in {discover_py}"
+    assert set(SOURCE_SCAN_ROOTS) == {d.rsplit("/", 1)[-1] for d in synced}, (
+        f"scan roots drifted from what update-cla syncs: guard has "
+        f"{sorted(SOURCE_SCAN_ROOTS)}, sync carries {sorted(synced)}"
+    )
 
 
 # ---------- absolute-path guard: the list-free half ----------

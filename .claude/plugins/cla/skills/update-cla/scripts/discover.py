@@ -101,12 +101,35 @@ SCAN_DIRS = (
 # because reading and writing a git index mode from `apply.py` would mean
 # shelling out to git in BOTH repos, and that machinery is not worth one
 # one-time step.
+#
+# `claw`/`claw.cmd` NO LONGER EXIST IN SOURCE and must stay listed anyway. This
+# tuple is not only "what to send"; `_detect_deletions` walks the LOCAL tree
+# through the same `_iter_source_assets`, so a consuming repo's leftover `claw`
+# is only visible — and only reported as `deleted-in-source` — while the name is
+# here. Removing the dead entries would look like tidying and would silently
+# strand a deleted launcher in every repo that still has one. Drop them once no
+# consumer tracks them.
+#
+# The `conformance-checks/` entries are the reverse case: files that live
+# OUTSIDE `SCAN_DIRS` but must still reach every repo. Both guards enforce rules
+# about the whole plugin (no project token in synced core; no dead path in the
+# fact file), and both ran in consuming repos and caught real leaks there. They
+# moved out of `skills/update-cla/tests/` so they would outlive this tool, and
+# naming them here is what keeps them flowing until distribution moves to the
+# marketplace plugin.
 SCAN_FILES = (
     "cla",
     "cla.cmd",
     "claw",
     "claw.cmd",
+    ".claude/plugins/cla/conformance-checks/pyproject.toml",
+    ".claude/plugins/cla/conformance-checks/tests/test_no_project_tokens.py",
+    ".claude/plugins/cla/conformance-checks/tests/test_project_facts_paths.py",
 )
+# The subset of SCAN_FILES that are repo-root launchers, for the run summary's
+# per-category counts. Kept separate from SCAN_FILES itself so adding a non-
+# launcher entry above cannot silently inflate a category called "launchers".
+LAUNCHER_FILES = ("cla", "cla.cmd", "claw", "claw.cmd")
 EXCLUDED_FILE_NAMES = ("settings.json", "settings.local.json")
 EXCLUDED_PART_NAMES = ("__pycache__", ".pytest_cache")
 # The repo-neutral overlay marker: a file whose leaf name is exactly
@@ -491,11 +514,17 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
     output_styles = sum(
         1 for r in result.files if r.asset_path.startswith(".claude/plugins/cla/output-styles")
     )
-    # SCAN_FILES members have no directory prefix, so every category above misses
-    # them and the per-category figures silently stopped summing to `total` the
-    # moment root files joined the scan. A summary that does not add up is worse
-    # than one with a category the reader has not seen before.
-    launchers = sum(1 for r in result.files if r.asset_path in SCAN_FILES)
+    # The repo-root launchers have no directory prefix, so every category above
+    # misses them and the per-category figures silently stopped summing to
+    # `total` the moment root files joined the scan. A summary that does not add
+    # up is worse than one with a category the reader has not seen before.
+    launchers = sum(1 for r in result.files if r.asset_path in LAUNCHER_FILES)
+    # The other individually-named files: outside SCAN_DIRS, not launchers. Same
+    # reasoning — an uncounted category breaks the sum.
+    conformance = sum(
+        1 for r in result.files
+        if r.asset_path.startswith(".claude/plugins/cla/conformance-checks/")
+    )
     return {
         "divergent": divergent,
         "new": new,
@@ -508,6 +537,7 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
         "hooks": hooks,
         "output_styles": output_styles,
         "launchers": launchers,
+        "conformance_checks": conformance,
         "total": len(result.files),
         "skipped": len(result.skipped),
         "deletions": len(result.deletions),

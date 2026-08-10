@@ -135,7 +135,7 @@ hardcoded parser — that's what makes this skill portable across differing tech
 - Every `references/project-context.md` under `.claude/plugins/cla/skills/*/` (glob generically — don't
   hardcode a skill list) — note which facts each one currently restates that match the tie-break rule
   above, and whether it already carries the pointer sentence.
-- `.claude/plugins/cla/skills/update-cla/references/project-tokens.local.md`, if present, for the
+- `cla.io/project-tokens.local.md`, if present, for the
   conformance guard's current curated token list.
 - `cla.io/terminology.md`, if present — read only for the optional reconciliation pass in Step 5; this
   skill does not author its content from scratch (see "The domain-terminology file" above).
@@ -145,7 +145,7 @@ hardcoded parser — that's what makes this skill portable across differing tech
 Produce the full proposed file content, organized under headed sections per the categories above. Open
 with a heading and a one-line note that this is the repo's consolidated, never-synced project-facts
 file (lives in `cla.io/`, outside `update-cla`'s `SCAN_DIRS`), maintained by this skill and linted by
-the staleness guard (`.claude/plugins/cla/skills/update-cla/tests/test_project_facts_paths.py`).
+the staleness guard (`.claude/plugins/cla/conformance-checks/tests/test_project_facts_paths.py`).
 
 While drafting, also look for a fact **restated verbatim (or near-verbatim) across two or more**
 overlays that isn't in one of the categories above — that's a genuine tie-break hit found empirically
@@ -176,7 +176,7 @@ issues; this is light maintenance, not a required pass.
 ### Step 6 — Propose new `project-tokens.local.md` entries (never silent)
 
 If Step 1 surfaced a new, distinctive app/package/service name (or other compound repo-specific token)
-that isn't yet in `.claude/plugins/cla/skills/update-cla/references/project-tokens.local.md`, draft the
+that isn't yet in `cla.io/project-tokens.local.md`, draft the
 candidate addition(s) — same curation discipline the conformance guard's token list requires (distinctive
 compound tokens only, never generic words that legitimately appear in portable prose; verify each
 candidate with a grep of the current synced core before proposing it).

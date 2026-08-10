@@ -151,7 +151,7 @@ when it chooses to.
 
 ## Guards and known limitations
 
-Two pytest guards protect this skill's cross-repo safety: a **conformance guard** (`tests/test_no_project_tokens.py` — no project-specific token leaks into synced-core `SKILL.md`/`references/**/*.md`, driven by the curated overlay `references/project-tokens.local.md`) and a **project-facts staleness guard** (`tests/test_project_facts_paths.py` — no dead repo-relative paths in `cla.io/project-facts.md` or any skill's `references/project-context.md` overlay). Run both with `pytest .claude/plugins/cla/skills/update-cla/tests`. Full mechanics, the token-list curation discipline, and this skill's known limitations (3-way classification labels but never auto-merges; single source per run; no reverse propagation of *content* — Phase 4 propagates prose only; deletions surfaced, never auto-applied): `references/guards.md`.
+Two pytest guards protect this skill's cross-repo safety, and they live in their own scope (`.claude/plugins/cla/conformance-checks/`) rather than here, because both enforce rules about the whole plugin: a **conformance guard** (`tests/test_no_project_tokens.py` — no project-specific token leaks into synced-core `SKILL.md`/`references/**/*.md`, driven by the curated overlay `cla.io/project-tokens.local.md`) and a **project-facts staleness guard** (`tests/test_project_facts_paths.py` — no dead repo-relative paths in `cla.io/project-facts.md` or any skill's `references/project-context.md` overlay). Run both with `pytest .claude/plugins/cla/conformance-checks/tests`. Full mechanics, the token-list curation discipline, and this skill's known limitations (3-way classification labels but never auto-merges; single source per run; no reverse propagation of *content* — Phase 4 propagates prose only; deletions surfaced, never auto-applied): `references/guards.md`.
 
 ## References
 
@@ -162,4 +162,4 @@ Two pytest guards protect this skill's cross-repo safety: a **conformance guard*
 - `references/adaptation_prompt.md` — the Phase 2 per-file adaptation prompt.
 - `references/upstream-proposals.md` — the Phase 4 reverse channel: the admission test for a carry-back, the `cla-upstream.md` item shape, and the append-only rule that protects hand-written entries.
 - `references/pr_template.md` — the PR body template rendered by `apply --mode pr`.
-- `references/project-tokens.local.md` — **OVERLAY, not a generic reference.** This repo's own curated token list for the conformance guard; never synced, never treated as portable content.
+- `cla.io/project-tokens.local.md` — **OVERLAY, not a generic reference.** This repo's own curated token list for the conformance guard. It sits in `cla.io/` with the rest of the per-repo data, outside the synced core entirely, so it is never synced and never treated as portable content.
