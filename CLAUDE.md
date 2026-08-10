@@ -20,9 +20,16 @@ publishing a release is a deliberate two-part edit: bump `version` in the plugin
 `plugin.json` AND the `ref` here, in the same commit. A test fails when they disagree. Consumers
 pick the new release up on `/plugin marketplace update`.
 
-Current release: **`v0.9.0`** — the validation candidate. It becomes `1.0.0` once it has been
-exercised in a peer repo. `update-cla`'s file-sync remains the live mechanism until consuming
-repos migrate.
+Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
+unless `plugin.json` and the marketplace entry already agree.
+
+**Nothing is released yet.** The manifest declares `cla--v0.9.0`, but that tag is deliberately
+uncut: a release tag should point at reviewed code, and this work is still on an unmerged branch.
+A tag cut early cannot be corrected — moving a published tag is worse than never having cut it,
+because a consumer may already have fetched it. Cut it once the branch is reviewed; `0.9.0` is the
+validation candidate and becomes `1.0.0` after it has been exercised in a peer repo.
+
+`update-cla`'s file-sync remains the live mechanism until consuming repos migrate.
 
 **Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
 place, from this working tree — required here because the skills/hooks read and write repo-local
