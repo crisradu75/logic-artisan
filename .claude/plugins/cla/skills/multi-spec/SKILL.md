@@ -8,6 +8,14 @@ argument-hint: "[decisions-file-path | (empty = most recent under cla.io/decisio
 
 Automates a manual precedent set in this repo's own history (see `cla.io/overlays/multi-spec.md` for the named commit/PR): one shape-decision output authored out into N full OpenSpec change proposals, reviewed once as a batch, opened as one PR. **Proposals only** — implementation is `/cla:spec-to-pr` (per-change) or `/cla:multi-pr` (the whole produced sequence), invoked separately afterward.
 
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
+files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
+plugin's install directory, and Claude Code substitutes it into skill content --
+but it is **not** an environment variable in the Bash tool. If you ever see the
+literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
+it yourself first; never pass it through to a shell, where an unset variable
+expands to nothing and the command silently runs against `/skills/...`.
+
 **The durability requirement is the reason this skill exists as more than a loop over `openspec-propose`.** A batch of N proposal directories sitting uncommitted for the whole run is a real, already-realized loss mode in this repo's own history (see `cla.io/overlays/multi-spec.md`) while sitting untracked. Every phase below is ordered to keep the loss window to at most one change.
 
 ## Skill-level rules (hoisted — read first)

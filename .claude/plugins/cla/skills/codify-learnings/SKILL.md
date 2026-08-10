@@ -8,6 +8,14 @@ argument-hint: "[scope-note]"
 
 Review the current conversation. Identify lessons that would make a future, similar session go better. Propose concrete improvements to `.claude/`-scoped artifacts. Walk each suggestion interactively. Append the full report (applied + rejected) to the rolling log at `cla.io/lessons-learned/lessons-learned.md`.
 
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
+files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
+plugin's install directory, and Claude Code substitutes it into skill content --
+but it is **not** an environment variable in the Bash tool. If you ever see the
+literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
+it yourself first; never pass it through to a shell, where an unset variable
+expands to nothing and the command silently runs against `/skills/...`.
+
 ## Inputs
 
 - `$ARGUMENTS` — optional free-form scope note (e.g. a subsystem or an app/package) to focus the review. See `cla.io/project-facts.md` ("Workspace shape") for this repo's own monorepo shape (its app/package list; run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/codify-learnings.md` if absent); scope is the whole repo unless you narrow it.

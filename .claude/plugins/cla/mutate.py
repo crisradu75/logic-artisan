@@ -68,6 +68,7 @@ catch the mutation — one pytest runs per mutant.
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -221,6 +222,26 @@ def uncommitted(paths: list[Path]) -> list[str]:
     return [line[3:] for line in proc.stdout.splitlines() if line.strip()]
 
 
+# Only `passed`/`failed` prove a test EXECUTED. `error` must not count: pytest
+# summarises a collection failure as `1 error in 0.46s`, which is the exact
+# output this predicate exists to reject — an earlier version of it accepted
+# that line and answered True.
+_RAN_RE = re.compile(r"^\s*\d+\s+(?:passed|failed)\b", re.MULTILINE)
+
+
+def _a_test_actually_ran(output: str) -> bool:
+    """True only when pytest's summary shows at least one test executed.
+
+    `killed` must mean "a test failed", not "pytest exited 1". With `-x`, a
+    collection error exits 1 having run nothing — pytest's own exit-2 meaning is
+    lost — so the exit code alone cannot tell a real kill from a broken target
+    list. Measured: pointing a batch at two scopes that ship same-named modules
+    (`skills/codify-retro/tests` + `skills/spec-to-pr-retro/tests`, both with a
+    top-level `aggregate.py`) collects nothing and reports `1 error`.
+    """
+    return bool(_RAN_RE.search(output))
+
+
 def run_pytest(targets: list[Path]) -> tuple[int, str]:
     """Run pytest over `targets`. Returns `(exit code, combined output)`.
 
@@ -278,8 +299,20 @@ def check(mutants: list[tuple]) -> int:
             return 1
         backup.unlink()
 
-        if code == EXIT_TESTS_FAILED:
+        if code == EXIT_TESTS_FAILED and _a_test_actually_ran(output):
             print("  killed", flush=True)
+        elif code == EXIT_TESTS_FAILED:
+            # Exit 1 with nothing collected. `-x` turns a collection ERROR into a
+            # "failure", so a target list that cannot even be imported — two
+            # scopes with same-named modules, which is the whole reason
+            # `run_tests.py` exists — reads as exit 1 and would otherwise be
+            # reported `killed`. That is this tool manufacturing the confidence
+            # it exists to supply.
+            print("  INCONCLUSIVE — pytest exited 1 but no test ran "
+                  "(collection error, or every test deselected)", flush=True)
+            for line in output.strip().splitlines()[-12:]:
+                print(f"      {line}", flush=True)
+            failures.append(f"INCONCLUSIVE (nothing collected): {name}")
         elif code == EXIT_OK:
             print("  SURVIVED — no test noticed this change", flush=True)
             failures.append(f"SURVIVED: {name}")

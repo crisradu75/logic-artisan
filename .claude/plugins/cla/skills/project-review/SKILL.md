@@ -8,6 +8,14 @@ allowed-tools: Read, Bash, Grep, Glob, Agent
 
 Run a comprehensive CTO-level review of this repo (see the project overlay for what it is). Spine: **Step 0 mechanical checks (run FIRST) → Step 1 snapshot → Step 2 five parallel review agents → Step 3 aggregate, report, log.**
 
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
+files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
+plugin's install directory, and Claude Code substitutes it into skill content --
+but it is **not** an environment variable in the Bash tool. If you ever see the
+literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
+it yourself first; never pass it through to a shell, where an unset variable
+expands to nothing and the command silently runs against `/skills/...`.
+
 **When to run:** After several incremental changes, before a pitch/demo, or when you want a fresh first-principles assessment.
 
 **Run thin (standing discipline — hoisted).** This skill IS an orchestrator: Step 2 dispatches five parallel review agents and Step 3 aggregates only their conclusions, never their raw reads. Follow `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/runtime-rules.md`'s standing disciplines throughout — delegate raw-material handling so only conclusions return, read file slices not whole files, batch independent tool calls into one message, and prefer terse schema'd agent output over prose.

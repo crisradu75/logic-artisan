@@ -8,6 +8,14 @@ argument-hint: "[change-name | description | (empty)]"
 
 Drives one OpenSpec change from `/opsx:propose`-input to an opened PR with PR-review fixes applied. Composes existing skills only where they add real value. **Review reads `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` directly and executes it inline** — the checklist is the single source of truth for review behavior, shared with the standalone `/cla:review-change` slash-command path, so verdicts stay consistent across entry points without a skill-load round trip. Phases that previously delegated to skills which then bounced their workflow back to Claude (pr-review, commit-push-pr) now invoke `Agent`, run inline directly, or (Revise round 1 only) run a `Workflow` fan-out. See `references/workflow-diagram.md` for the phase order at a glance. The generic enforcement-tier vocabulary behind the guardrails throughout this skill lives in `references/past-offenses.md`; the dated, repo-specific incidents that justify individual rules live in `cla.io/overlays/spec-to-pr.md` — read either only when revising a rule; a normal run never needs them.
 
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
+files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
+plugin's install directory, and Claude Code substitutes it into skill content --
+but it is **not** an environment variable in the Bash tool. If you ever see the
+literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
+it yourself first; never pass it through to a shell, where an unset variable
+expands to nothing and the command silently runs against `/skills/...`.
+
 ## Skill-level rules (hoisted — read first)
 
 - **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** Every command below that names it is a placeholder, not a literal: substitute the real name before running anything. Resolve it once, at the start of the run, with `git symbolic-ref --quiet refs/remotes/origin/HEAD` (take the segment after the last `/`); if that is unset, use whichever of `main` / `master` actually exists. The harness used to hardcode `master`, which silently broke every `main`-default repo — a `master..HEAD` range there fails outright with `unknown revision` rather than returning a wrong answer, and `git checkout master` cannot succeed at all.
@@ -150,7 +158,7 @@ Use `Skill()` only when the sub-skill genuinely encapsulates capability the orch
 
 ## Concurrent runs (worktree-per-session)
 
-A single `/cla:spec-to-pr` run needs no special setup — it creates `<branch>` in place and the `guard-worktree-isolation.py` hook is a no-op for a solo session.
+A single `/cla:spec-to-pr` run needs no special setup — it creates `<branch>` in place and nothing arbitrates two sessions in one clone — the hook that used to is gone, so the discipline below is the whole protection.
 
 To run **two or more `/cla:spec-to-pr` flows at once** in the same repo, give each session its own `git worktree` (own directory + own HEAD; the primary clone stays on `<base-branch>`). This is required because a run's file edits (Review/Implement/Revise) go to the *session's* working directory via Edit/Write — you cannot edit in one clone and commit from another, so the session itself must live in the worktree (`git -C <worktree>` does NOT solve this). See `cla.io/project-facts.md` ("Worktree convention") for this repo's worktree-directory convention (run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/spec-to-pr.md` if absent). Per-session setup, from the primary clone:
 

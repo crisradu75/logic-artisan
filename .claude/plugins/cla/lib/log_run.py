@@ -26,9 +26,11 @@ own outcomes) and appends it as a single line to:
 The repo root comes from `git rev-parse --show-toplevel`, so the ledger sits
 alongside the skills and syncs across machines via git rather than living in a
 machine-local `~/.claude/projects/<hash>/`. CLAUDE_RETRO_DIR overrides it
-(absolute path); used by tests and non-standard layouts. The companion
-`.gitattributes` sets `merge=union` on `cla.io/retro/*.jsonl` so concurrent
-appends from two machines auto-resolve by keeping both lines.
+(absolute path); used by tests and non-standard layouts. A repo that expects
+concurrent appends from two machines should set `merge=union` on
+`cla.io/retro/*.jsonl` in its own `.gitattributes`; without it the two appends
+conflict on merge. This repo does NOT set it — the claim that it did was carried
+in this docstring for some time and was simply false.
 
 Appends are a single `write()` of one line in "ab" mode. POSIX writes below
 PIPE_BUF (typically 4 KiB, comfortably above a counts-only run record) are

@@ -46,7 +46,7 @@ git add openspec/changes/<change-name>/ apps/<app>/src/ packages/<package>/src/
 git commit -m "feat: <change-name>"
 git push -u origin <branch>
 ```
-List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change scoped to one app stages just that app's `src/`; a change touching a shared package plus its consumer stages both. If your change legitimately touches other top-level paths (e.g. a per-app stylesheet, a smoke-test script, a config file, root `TODO.md`, a sub-app's own doc file, or — for a `.claude/`-meta change — the specific `${CLAUDE_PLUGIN_ROOT}/skills/<name>/` files it edited — see `cla.io/overlays/spec-to-pr.md` for this repo's worked examples), add each by name on the same `git add` line — never expand to `-A`. No commit-msg file; the change name is enough.
+List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change scoped to one app stages just that app's `src/`; a change touching a shared package plus its consumer stages both. If your change legitimately touches other top-level paths (e.g. a per-app stylesheet, a smoke-test script, a config file, root `TODO.md`, a sub-app's own doc file, or — for a `.claude/`-meta change — the specific harness files it edited **inside this repo** (never a path in the installed plugin tree, which is outside the repo and not stageable at all) — see `cla.io/overlays/spec-to-pr.md` for this repo's worked examples), add each by name on the same `git add` line — never expand to `-A`. No commit-msg file; the change name is enough.
 
 ## 4. Open the PR
 

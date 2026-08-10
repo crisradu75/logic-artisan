@@ -40,22 +40,29 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
-// Repo root, resolved location-independently (via git) so this keeps working
-// regardless of how deep the plugin nests -- it lives at
-// .claude/plugins/cla/skills/project-review/scripts/ today, but the checks only
-// ever want the repo root, never a path relative to this file. fileURLToPath (not
-// raw .pathname) so a repo path containing spaces works.
-const HERE = fileURLToPath(new URL('.', import.meta.url));
-
 function resolveRoot() {
+  // Resolved from the PROCESS's working directory -- the repo being reviewed --
+  // never from this script's own location.
+  //
+  // This used to pass `cwd: HERE`, which was correct only while the plugin was
+  // vendored inside the repo it reviews. Installed from a marketplace the script
+  // lives in a version-keyed cache outside every repo, so asking git about
+  // `HERE` answers about the wrong tree or (as measured: the cache is a plain
+  // directory, not a clone) fails outright and falls through to a path six
+  // levels above the script. Either way the checks then resolve `check.files`
+  // against somewhere that is not the user's repo, `walk()` finds nothing, and
+  // the run reports "scanned 0 files" about a repo it never looked at.
   try {
-    return execSync('git rev-parse --show-toplevel', { cwd: HERE, encoding: 'utf8' }).trim();
+    return execSync('git rev-parse --show-toplevel', { encoding: 'utf8' }).trim();
   } catch (err) {
-    const fallback = fileURLToPath(new URL('../../../../../../', import.meta.url));
-    console.error(
-      `warning: git rev-parse --show-toplevel failed (${err.message}); falling back to ${fallback}`
+    // No fallback to a `../..` walk: that only ever pointed at the repo back
+    // when the plugin was inside it, and a confidently-wrong root is worse than
+    // stopping. `MECHANICAL_CHECKS_ROOT` is the documented override.
+    throw new Error(
+      `could not resolve the repo root: \`git rev-parse --show-toplevel\` failed in ` +
+      `${process.cwd()} (${err.message}). Run this from inside the repo you are ` +
+      `reviewing, or set MECHANICAL_CHECKS_ROOT.`
     );
-    return fallback;
   }
 }
 

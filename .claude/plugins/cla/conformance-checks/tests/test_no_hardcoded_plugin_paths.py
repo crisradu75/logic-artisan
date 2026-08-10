@@ -29,7 +29,14 @@ from pathlib import Path
 import pytest
 
 BAD = ".claude/plugins/cla"
-SCANNED_ROOTS = ("skills", "agents", "output-styles")
+# `hooks/` is scanned too, and so are `.py`/`.mjs`/`.json`. The first version
+# covered only `*.md` under three roots, which left the guard blind to exactly
+# the surfaces that still held the literal path: a usage comment in
+# `mechanical-checks.mjs`, one in `_dispatch_lib.py`, and anything in
+# `hooks/hooks.json`. A guard that cannot see where the defect actually lives is
+# a guard that reports clean.
+SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")
+SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
 
 # `update-cla` is the one legitimate user of the literal path: it SYNCS files
 # into `<destination>/.claude/plugins/cla/`, so those strings name a real
@@ -46,8 +53,12 @@ def _scanned_files():
         root = _PLUGIN_ROOT / root_name
         if not root.is_dir():
             continue
-        for path in sorted(root.rglob("*.md")):
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix not in SCANNED_SUFFIXES:
+                continue
             parts = path.relative_to(_PLUGIN_ROOT).parts
+            if "__pycache__" in parts or ".pytest_cache" in parts:
+                continue
             if len(parts) > 1 and parts[1] in EXEMPT_SKILLS:
                 continue
             yield path
@@ -81,7 +92,11 @@ def test_the_scan_is_not_vacuous():
     """A guard that scans nothing passes forever, and two guards in this repo
     already did once."""
     files = list(_scanned_files())
-    assert len(files) >= 40, f"scan set collapsed to {len(files)} files"
+    # The real count is 97. Pinned near it, not comfortably below it, matching
+    # the rule `test_subprocess_encoding.py` states for its own floor: lower it
+    # to the new real count when something is deliberately deleted, never to a
+    # number chosen to be safe from future deletions.
+    assert len(files) >= 95, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
@@ -95,7 +110,7 @@ def test_the_replacement_is_actually_in_use():
         for p in _scanned_files()
         if "${CLAUDE_PLUGIN_ROOT}" in p.read_text(encoding="utf-8", errors="replace")
     )
-    assert used >= 20, (
+    assert used >= 34, (  # real count 36
         f"only {used} synced-core files reference ${{CLAUDE_PLUGIN_ROOT}}; the "
         "cross-references skills need to invoke their own scripts appear to have "
         "gone missing rather than been converted"

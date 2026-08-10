@@ -83,11 +83,12 @@ def _warn(message: str) -> None:
 def prefix_from_text(text: str) -> str | None:
     """Parse the overlay's flat `key: value` frontmatter, or None if unusable.
 
-    FORMAT. Flat `key: value` between `---` fences, matching
-    `hooks/warn-smoke-test-drift.py` and `hooks/warn-lint-on-edit.py` — every
-    other overlay in the plugin. This one originally read "the first non-comment
-    line", a third syntax for the third overlay, which is a needless thing to
-    learn and gave the value no name at the point of use.
+    FORMAT. Flat `key: value` between `---` fences. This one originally read
+    "the first non-comment line", a second syntax for no reason, which gave the
+    value no name at the point of use. The two hook overlays that set the
+    precedent were deleted with their hooks, so this is now the only overlay of
+    this shape — keep the format anyway; a lone exception is worse than a
+    convention with one member.
 
     DIAGNOSTICS. Every degraded case says so. The split that matters is
     absent-vs-broken: a missing overlay is the ordinary un-configured state and

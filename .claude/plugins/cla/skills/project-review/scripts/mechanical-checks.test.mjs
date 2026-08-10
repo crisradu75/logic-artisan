@@ -1,6 +1,6 @@
 // Tests for mechanical-checks.mjs's generic check engine.
 //
-// Run: node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
+// Run: node --test ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.test.mjs
 //
 // Not wired into run_tests.py: that runner discovers Python pytest scopes only
 // (a dir with a pytest-configured pyproject.toml + a tests/ dir) -- this is a
@@ -13,7 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -291,6 +291,32 @@ test('getOverlayPath: an empty-string override is treated as unset, not as an em
   } finally {
     if (prev === undefined) delete process.env.MECHANICAL_CHECKS_OVERLAY;
     else process.env.MECHANICAL_CHECKS_OVERLAY = prev;
+  }
+});
+
+// The assertion above is `x === x` when the override is unset -- both sides call
+// the same function -- so on its own it would hold for ANY value of
+// OVERLAY_RELPATH, including a typo or the pre-migration `references/` path. A
+// wrong value here is silent by construction: `loadConfig` finds no file and the
+// script legitimately reports "no checks configured", so every review reads as
+// clean having run nothing. Pin the value, and pin that it resolves.
+test('OVERLAY_RELPATH names the repo-level overlay, and it resolves in this repo', () => {
+  assert.equal(OVERLAY_RELPATH, 'cla.io/overlays/project-review.md');
+  const prevRoot = process.env.MECHANICAL_CHECKS_ROOT;
+  const prevOverlay = process.env.MECHANICAL_CHECKS_OVERLAY;
+  delete process.env.MECHANICAL_CHECKS_ROOT;
+  delete process.env.MECHANICAL_CHECKS_OVERLAY;
+  try {
+    const resolved = defaultOverlayPath();
+    assert.ok(
+      existsSync(resolved),
+      `the overlay reader resolves ${resolved}, which does not exist — every ` +
+      `mechanical-checks run would report "no checks configured" regardless of ` +
+      `what the repo actually configured`
+    );
+  } finally {
+    if (prevRoot !== undefined) process.env.MECHANICAL_CHECKS_ROOT = prevRoot;
+    if (prevOverlay !== undefined) process.env.MECHANICAL_CHECKS_OVERLAY = prevOverlay;
   }
 });
 

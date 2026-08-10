@@ -1,4 +1,4 @@
-# Line endings for the repo-root launchers.
+# Line endings for the POSIX shell scripts this repo ships.
 #
 # Deliberately scoped to these four files rather than a repo-wide
 # `* text=auto eol=lf`: a blanket rule would renormalize every tracked file on
@@ -17,3 +17,10 @@
 # expected to be.
 cla     text eol=lf
 cla.cmd text eol=crlf
+
+# Same reasoning, same failure, different file: `hooks/git/pre-push` is a
+# `#!/bin/sh` script that every clone copies into `.git/hooks/`. Checked out
+# CRLF it becomes `#!/bin/sh\r`, which fails to execute — and a pre-push hook
+# that cannot run is a push guard that silently is not there. It is the one
+# guard with no wiring test to catch its absence, so pin the endings.
+.claude/plugins/cla/hooks/git/pre-push text eol=lf

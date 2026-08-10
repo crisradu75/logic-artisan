@@ -13,10 +13,11 @@ See `cla.io/overlays/new-worktree.md` for this repo's own workspace shape, its g
 
 Once `EnterWorktree` has run, every subsequent `Write`/`Edit`/`Read`/file-writing
 `Bash` call for the rest of the task must use a path relative to the worktree cwd (or
-its returned absolute path) — never a hardcoded primary-clone path. Two guard hooks
-back this up — `guard-worktree-isolation.py` catches `git checkout`/`switch`/`commit`, and
-`block-worktree-path-escape.py` blocks any `Write`/`Edit` whose target escapes the worktree
-into the primary clone (escape hatch: `ALLOW_WORKTREE_PATH_ESCAPE=1`) — but treat them as a
+its returned absolute path) — never a hardcoded primary-clone path. One guard hook
+backs this up — `block-worktree-path-escape.py` blocks any `Write`/`Edit` whose target
+escapes the worktree into the primary clone (escape hatch:
+`ALLOW_WORKTREE_PATH_ESCAPE=1`). It covers writes only; nothing intercepts a stray
+`git checkout`/`switch`/`commit` any more, so treat it as a
 backstop, not a licence to skip relative paths. If work still ends up in the wrong (shared) location, don't delete it to
 fix the mistake until a verified copy exists elsewhere — copy first, confirm, then
 clean up. If a commit ever goes missing after a shared branch gets switched/deleted
@@ -33,11 +34,9 @@ memory `worktree-isolation-file-paths`.)
    **If it refuses because the session is ALREADY inside a worktree, that is the
    setup-only case — skip to step 2 rather than stopping.** The worktree exists and
    only needs its dependencies and env files. This is the normal state when a session
-   was started *inside* a pre-made worktree rather than migrating into one — some repos
-   ship a launcher that does exactly that, creating the worktree with plain git before
-   Claude starts so no `guard-worktree-isolation` heartbeat is ever written in the
-   primary clone. Do NOT try to create a second worktree, and do not treat the refusal
-   as an error to report and halt on.
+   was started *inside* a pre-made worktree rather than migrating into one — a repo may
+   create the worktree with plain git before Claude starts. Do NOT try to create a second
+   worktree, and do not treat the refusal as an error to report and halt on.
 
    Don't spend a tool call checking whether you are in a worktree first — the refusal
    IS the signal, and a pre-check would cost a round-trip on every ordinary run for a

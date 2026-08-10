@@ -4,6 +4,14 @@ description: "Pre-implementation review of an OpenSpec change in this repo. Veri
 argument-hint: "[change-name]"
 ---
 
+
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
+files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
+plugin's install directory, and Claude Code substitutes it into skill content --
+but it is **not** an environment variable in the Bash tool. If you ever see the
+literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
+it yourself first; never pass it through to a shell, where an unset variable
+expands to nothing and the command silently runs against `/skills/...`.
 The full review workflow lives in `references/checklist.md` (single source of truth, also read directly by `/cla:spec-to-pr`'s Review phase).
 
 **Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 10 high-yield verification checks, the context-brief table format, the size gate (small vs large), the 3-agent dispatch (with full agent prompts), the parallelism analysis, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).

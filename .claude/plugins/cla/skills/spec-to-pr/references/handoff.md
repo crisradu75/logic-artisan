@@ -58,7 +58,7 @@ After the terminal report has been printed, serialize the in-context phase outco
 
 ## 6. Commit the run-log line to the feature branch (INVARIANT — so it ships with the PR, never dangles)
 
-Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty on the working tree. Commit that one-line append onto the feature branch so it merges atomically with the change instead of lingering as an uncommitted file. Committing it here on the feature branch avoids both the dangling file and a `block-direct-push-to-main.py` block on a later direct-to-main attempt.
+Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty on the working tree. Commit that one-line append onto the feature branch so it merges atomically with the change instead of lingering as an uncommitted file. Committing it here on the feature branch avoids both the dangling file and a later direct-to-main push, which the repo's `pre-push` hook refuses (when installed — it is a manual per-clone step).
 - **Guard — feature branch only.** Do this ONLY when Ship opened a PR (HEAD is `<branch>`). If Ship was `skip` (still on `<base-branch>`, branch collision, or the autonomy gate was declined), SKIP this commit: a direct-to-base-branch push would be blocked, so leave the append as a local uncommitted change and note it in the Handoff Issues section for the user to place.
 - **Skip when the log is out-of-repo.** If `CLAUDE_RETRO_DIR` points outside the repo, there is nothing tracked to stage — skip.
 - Verify git-state, then path-scoped stage + commit + push (never `-A`):

@@ -51,4 +51,4 @@ On re-invocation with the same (or the same auto-resolved-latest) decisions file
 2. If it exists, parse it and skip Phase 1's grouping entirely — the plan is already decided. Use its `batch_slug`/`branch` values directly in Phase 2 rather than re-deriving them.
 3. If it does not exist, this is a fresh run (or the very first attempt crashed before Phase 2 finished writing it) — run Phase 1's grouping in full, then Phase 2 writes the plan.
 
-A plan file that exists but is **untracked** (a crash landed between Phase 2's Write and its commit) is still safe to read and trust — re-deriving the grouping is wasted work the file already did; just commit + push it (via `commit.py`, per Phase 2's "Persist the plan now") before proceeding to Phase 3.
+A plan file that exists but is **untracked** (a crash landed between Phase 2's Write and its commit) is still safe to read and trust — re-deriving the grouping is wasted work the file already did; just commit + push it (`git add -- <the plan file>` then `git commit`, as Phase 2 does) before proceeding to Phase 3.

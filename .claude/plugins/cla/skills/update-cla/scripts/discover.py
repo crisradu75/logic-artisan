@@ -125,6 +125,13 @@ SCAN_FILES = (
     ".claude/plugins/cla/conformance-checks/pyproject.toml",
     ".claude/plugins/cla/conformance-checks/tests/test_no_project_tokens.py",
     ".claude/plugins/cla/conformance-checks/tests/test_project_facts_paths.py",
+    ".claude/plugins/cla/conformance-checks/tests/test_no_hardcoded_plugin_paths.py",
+    # The one ledger WRITER. Every retro-logging skill invokes it by path, so a
+    # consumer that never receives it runs skills that pipe to a file which is
+    # not there — and the callers all treat that failure as non-fatal, so it is
+    # silent, and the retro then reports a cold start.
+    ".claude/plugins/cla/lib/log_run.py",
+    ".claude/plugins/cla/lib/pyproject.toml",
 )
 # The subset of SCAN_FILES that are repo-root launchers, for the run summary's
 # per-category counts. Kept separate from SCAN_FILES itself so adding a non-
@@ -525,6 +532,9 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
         1 for r in result.files
         if r.asset_path.startswith(".claude/plugins/cla/conformance-checks/")
     )
+    shared_lib = sum(
+        1 for r in result.files if r.asset_path.startswith(".claude/plugins/cla/lib/")
+    )
     return {
         "divergent": divergent,
         "new": new,
@@ -538,6 +548,7 @@ def summary_counts(result: DiscoverResult) -> dict[str, int]:
         "output_styles": output_styles,
         "launchers": launchers,
         "conformance_checks": conformance,
+        "lib": shared_lib,
         "total": len(result.files),
         "skipped": len(result.skipped),
         "deletions": len(result.deletions),

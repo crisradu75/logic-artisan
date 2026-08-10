@@ -58,6 +58,16 @@ def test_the_staleness_guard_scans_this_repos_overlays():
         f"other than {_OVERLAYS}, so those overlays are unchecked and the guard "
         "still reports success"
     )
+    # Opening the files is not the same as extracting anything from them. The
+    # guard's own `checked > 0` assert is gated on `cla.io/project-facts.md`
+    # existing, and this repo has none — so a regression in candidate extraction
+    # would leave `checked == 0`, `stale == []`, and a green guard. Pin the floor
+    # here, where the overlays are known to exist.
+    checked, _stale = guard.scan(_REPO_ROOT)
+    assert checked > 0, (
+        "the staleness guard extracted zero path candidates from this repo's "
+        "overlays — it scanned files but checked nothing, which passes green"
+    )
 
 
 def test_the_branch_prefix_reader_resolves_this_repos_overlay():

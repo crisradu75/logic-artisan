@@ -4,8 +4,8 @@ shared git-command-matching library.
 
 TWO responsibilities, deliberately in one file. (1) It runs several sibling hook
 scripts' `main()` in-process (one Python interpreter instead of one per hook) by
-importing each as a standalone module — the same technique
-.claude/plugins/cla/hooks/tests/ already uses — and temporarily redirecting
+importing each as a standalone module — the same technique this package's own
+`hooks/tests/` already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
 modified by this module; it only orchestrates them. (2) It also HOSTS
 `strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which six leaf git hooks import.
