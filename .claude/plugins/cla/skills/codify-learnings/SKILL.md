@@ -71,7 +71,7 @@ A **new** lesson enters at the lowest rung that can prevent it. A lesson that **
 - **Writable (the harness's own source repo — the plugin loads from the working tree via `--plugin-dir`)** → the ladder applies as written.
 - **Read-only (any repo that installed the plugin)** → only repo-local targets are editable: memory, this repo's `CLAUDE.md`, `.claude/settings.json`, and `cla.io/` (including `cla.io/overlays/<skill>.md`, which is the right home for a lesson that is genuinely about *this* repo). A lesson that belongs in **portable core** is not dropped and is not written locally — route it to **`/cla:report-upstream`**, which files it as an issue against the canonical source. Say so in the suggestion's routing line, so the user can see it is going upstream rather than being applied here.
 
-The distinction is not cosmetic: a lesson about portable core, written into a local overlay to "make it stick", is invisible to every other repo and is erased from this one at the next update.
+The distinction is not cosmetic, but be precise about the cost. `cla.io/overlays/` is repo content — it survives plugin updates and is exactly where a repo-specific lesson belongs. What a local overlay *cannot* do is fix portable core: a lesson written there reaches no other repo, and it does not change the `SKILL.md` prose that produced the miss, so the same lesson is re-learned here on the next run and independently in every other repo.
 
 ## Step 3 — Build the report
 
