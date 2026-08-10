@@ -106,28 +106,39 @@ def _git_toplevel() -> Path | None:
     return None
 
 
-def _default_log_path() -> Path:
-    """The in-repo, git-synced ledger: <repo-root>/cla.io/retro/codify-runs.jsonl.
+def _runs_dir() -> Path:
+    """The in-repo, git-synced ledger dir: <repo-root>/cla.io/retro/.
 
-    Mirrors `lib/log_run.py`'s resolver EXACTLY (must stay
-    byte-identical or the producer and this consumer disagree on the path and
-    runs vanish silently): repo root via `git rev-parse`, then `cla.io/retro`;
-    CLAUDE_RETRO_DIR (absolute path) overrides the dir; raise rather than guess
-    on a bad override or an unresolvable repo root.
+    Raises on a non-absolute override or an unresolvable repo root rather than
+    guessing a path: the consumers (the retro skills' `aggregate.py`) resolve
+    independently with identical logic, so a silently-wrong path here would make
+    logged runs vanish from the retro with no error.
     """
     override = os.environ.get("CLAUDE_RETRO_DIR")
     if override and override.strip():  # set-but-blank/whitespace → treat as unset
         path = Path(override)
         if not path.is_absolute():
             raise ValueError(f"CLAUDE_RETRO_DIR must be an absolute path, got {override!r}")
-        return path / "codify-runs.jsonl"
+        return path
     root = _git_toplevel()
     if root is None:
         raise RuntimeError(
             "could not resolve the repo root via `git rev-parse --show-toplevel`; "
             "set CLAUDE_RETRO_DIR to an absolute path"
         )
-    return root / "cla.io" / "retro" / "codify-runs.jsonl"
+    return root / "cla.io" / "retro"
+
+
+def _default_log_path() -> Path:
+    """This loop's ledger inside the dir the writer resolves.
+
+    `_runs_dir` above is byte-identical to `lib/log_run.py`'s — the producer of
+    the very file this reads — and `consistency-checks` compares the two so they
+    cannot drift apart. If they ever did, this reader would look somewhere the
+    writer never writes and report zero runs, which is indistinguishable from a
+    cold start.
+    """
+    return _runs_dir() / "codify-runs.jsonl"
 
 
 def _load_records(log_path: Path, limit: int) -> tuple[list[dict], int]:

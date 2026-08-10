@@ -48,6 +48,13 @@ silently stopped checking anything; an ambiguous one silently mutates a site you
 did not mean, and a kill on the wrong site reads exactly like a kill on the right
 one. Both are refused before any file is touched.
 
+KEEP `\\n` OUT OF AN ANCHOR. Anchors are matched against the file's raw bytes
+(see WHY IT WRITES BYTES above), so on a CRLF checkout — every file in this repo
+except the `eol=lf` launchers — a `\\n` in `old` matches nothing and the mutant is
+refused as "anchor not found" even though the line is plainly there. Anchor
+within a single line, or spell the separator `\\r\\n` and accept that the batch
+then only runs on one platform.
+
 VERDICTS. `killed` (pytest exit 1 — a test actually failed), `SURVIVED` (exit 0 —
 no test noticed), `INCONCLUSIVE` (any other exit — the run proves nothing, and
 the captured pytest output is printed). Exit 0 only when every mutant was killed.

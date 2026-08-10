@@ -180,6 +180,27 @@ everywhere) from *facts* (per-repo, never synced):
     tests/                     that skill's isolated pytest scope
 ```
 
+### Every script, and why it exists
+
+A script earns its place only by doing something a direct command plus a sentence of prose
+cannot do reliably. Seven that failed that bar were deleted; these are the survivors, and the
+rule going in is the rule going out — **if a script here can't be justified in one line, it
+isn't a survivor.** (Guard hooks are listed separately below.)
+
+| Script | Why prose can't do it |
+|---|---|
+| `run_tests.py` | Runs each isolated scope as its own process and aggregates; there is no CI, so this is the only gate. |
+| `mutate.py` | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
+| `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses a path-shaped ledger argument. |
+| `consistency-checks/scripts/check_script_drift.py` | Compares the ledger-dir resolver across the writer and both readers. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
+| `codify-retro`, `spec-to-pr-retro` `scripts/aggregate.py` | Deterministic counting over 40–130 JSONL records, including malformed-shape and producer-drift buckets a reader would gloss. |
+| `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
+| `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos today. |
+| `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
+| `spec-to-pr/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across four skills. |
+| `spec-to-pr/scripts/_git_common.py` | Repo root plus the `branch-prefix.local.md` overlay contract, for `probe_state.py`. |
+| `update-cla/scripts/*.py` | The 3-way sync engine. Deleted wholesale when distribution moves to a marketplace plugin. |
+
 ### Skills by life-cycle phase
 
 Each skill is invocable as `/cla:<name>` or by natural language; `[loop]` marks a self-improvement

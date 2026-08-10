@@ -18,6 +18,31 @@ def test_no_drift_in_the_real_repo_today():
     assert problems == [], problems
 
 
+def test_the_ledger_resolver_group_still_covers_the_writer_and_both_readers():
+    """Non-vacuity for the group that matters most.
+
+    `test_no_drift_in_the_real_repo_today` passes just as happily over a group
+    that has been quietly narrowed — measured: dropping `lib/log_run.py` from
+    the file list killed no test. But the WRITER is the whole reason this group
+    exists. Two readers agreeing with each other and disagreeing with the writer
+    is the silent failure (the retro reports zero runs, which reads as a cold
+    start), so pin all three by name.
+    """
+    groups = {g["name"]: g for g in csd.SIBLING_GROUPS}
+    resolver = next((g for name, g in groups.items() if "resolver" in name), None)
+    assert resolver is not None, (
+        f"no ledger-dir resolver group left in SIBLING_GROUPS: {sorted(groups)}"
+    )
+    assert set(resolver["files"]) == {
+        "lib/log_run.py",
+        "skills/codify-retro/scripts/aggregate.py",
+        "skills/spec-to-pr-retro/scripts/aggregate.py",
+    }, f"the writer/reader trio changed: {resolver['files']}"
+    assert "_runs_dir" in resolver["functions"], (
+        "the dir resolver itself must be compared, not only `_git_toplevel`"
+    )
+
+
 def _write(path: Path, source: str) -> None:
     path.write_text(textwrap.dedent(source), encoding="utf-8")
 
@@ -165,40 +190,21 @@ def test_ledger_directory_drift_is_caught(tmp_path: Path):
     assert len(csd.check_group(group, tmp_path)) == 1
 
 
-def test_the_per_skill_ledger_filename_is_allowed_to_differ(tmp_path: Path):
-    """The one deliberate exemption: `_default_log_path` builds the same path
-    the same way and names its own skill's ledger at the end. Without this the
-    real repo reports false drift between the two retro aggregators."""
+def test_a_filename_difference_is_drift_now_that_the_exemption_is_gone(tmp_path: Path):
+    """No string inside a guarded function is exempt any more. The exemption that
+    normalized `<name>-runs.jsonl` existed for `_default_log_path`, which is no
+    longer compared; keeping it could only have hidden a real difference."""
     _write(tmp_path / "a.py", '''
-        def _default_log_path():
+        def _runs_dir():
             return root / "cla.io" / "retro" / "codify-runs.jsonl"
     ''')
     _write(tmp_path / "b.py", '''
-        def _default_log_path():
+        def _runs_dir():
             return root / "cla.io" / "retro" / "spec-to-pr-runs.jsonl"
     ''')
     group = {
         "name": "synthetic",
-        "functions": ("_default_log_path",),
-        "files": ("a.py", "b.py"),
-    }
-    assert csd.check_group(group, tmp_path) == []
-
-
-def test_the_ledger_exemption_does_not_swallow_a_different_extension(tmp_path: Path):
-    """The exemption is scoped to `<name>-runs.jsonl`; a sibling writing a
-    different KIND of file is still drift."""
-    _write(tmp_path / "a.py", '''
-        def _default_log_path():
-            return root / "codify-runs.jsonl"
-    ''')
-    _write(tmp_path / "b.py", '''
-        def _default_log_path():
-            return root / "codify-runs.txt"
-    ''')
-    group = {
-        "name": "synthetic",
-        "functions": ("_default_log_path",),
+        "functions": ("_runs_dir",),
         "files": ("a.py", "b.py"),
     }
     assert len(csd.check_group(group, tmp_path)) == 1
