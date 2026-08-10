@@ -204,7 +204,7 @@ boundary from inside one — a common failure mode when a stale absolute path sn
 
 Hooks wire themselves from `hooks/hooks.json` at plugin load. Three severities:
 
-- **Blocks** stop the tool call. You'll meet: `block-direct-push-to-main` (branch + PR, always),
+- **Blocks** stop the tool call. You'll meet:
   `block-cd-in-bash` (a bare `cd` persists and breaks later calls — use absolute paths),
   `block-unsafe-recursive-delete`, `block-worktree-path-escape`,
   `block-dated-stamps-in-prose` (hardcoded dates rot), `guard-worktree-isolation` (section 7).
@@ -312,7 +312,7 @@ Contributing to the harness rather than using it? The extra rules:
 | Drive one spec'd change to a PR | `spec-to-pr` |
 | Run a batch of small changes unattended | `multi-lite` |
 | Run a batch of spec'd changes unattended | `multi-pr` |
-| Work in parallel without collisions | `./claw <name>`, then `new-worktree` for setup |
+| Work in parallel without collisions | `/cla:new-worktree`, at any point in a session |
 | Pick the cheapest adequate model for a task | `right-model` |
 | Stop re-approving the same permissions | `save-permissions` |
 | Get a whole-repo health review | `project-review` |

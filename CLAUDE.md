@@ -261,8 +261,9 @@ Wired automatically via `.claude/plugins/cla/hooks/hooks.json` when the plugin l
 `settings.json` step needed) — these apply in this repo's own sessions too, not only in repos
 that sync the plugin. `hooks.json` itself wires two dispatchers (`dispatch-bash-pretooluse.py` for
 the Bash/PowerShell matcher, `dispatch-edit-write-pretooluse.py` for the Edit/Write matcher), each
-of which runs several leaf hooks in one Python process — 6 distinct leaf hooks between them, plus
-`warn-wholesale-rewrite` wired directly on PostToolUse: 7 leaf hook files in all. **Blocks**
+of which runs several leaf hooks in one Python process — 7 distinct leaf hooks between them (5 on
+the Bash matcher, 2 on Edit/Write), plus `warn-wholesale-rewrite` wired directly on PostToolUse:
+8 leaf hook files in all, which is what the bullets below enumerate. **Blocks**
 (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt instead of
 blocking outright; **warns** (`warn-*`) surface a caution without blocking:
 
