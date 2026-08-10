@@ -31,7 +31,7 @@ to `<base-branch>` first, unconditionally, whatever branch HEAD is on**:
 ```
 git checkout <base-branch>
 git pull
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <base-branch>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch <base-branch>
 git add cla.io/retro/multi-lite-run-notes-<date>.md
 git commit -m "chore: multi-lite run notes"
 git push

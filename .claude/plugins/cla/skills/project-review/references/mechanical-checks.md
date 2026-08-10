@@ -26,8 +26,8 @@ Run this repo's own test command (per `cla.io/project-facts.md`, falling back to
 ## Part B — the static-analysis script
 
 ```bash
-node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs        # human table
-node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs --json  # machine-readable
+node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs        # human table
+node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs --json  # machine-readable
 ```
 
 Fast (<1s), exit code 0 for a normal run (`FAIL`/`ERROR` rows are data, not a gate; only a malformed config block exits non-zero). The script itself is a **generic, repo-agnostic engine** — it hardcodes no paths, packages, or app names. It performs the deterministic cross-file checks **not** covered by build/lint/test, driven entirely by this repo's own check list, which lives in `cla.io/overlays/project-review.md` ("Mechanical checks — repo specifics") as a fenced ```json``` block (an untagged ``` fence also works, but a ```json-tagged one is preferred when more than one fence sits under the heading):

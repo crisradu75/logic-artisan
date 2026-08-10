@@ -22,7 +22,7 @@ This repo is a monorepo, so scope is normally repo-wide. State it in one line as
 ## Step 2 — Read context (parallel)
 
 In a single message, issue parallel Read calls for:
-- `.claude/plugins/cla/skills/codify-learnings/references/failure-modes.md` — checklist of things to look for (non-exhaustive; surface lessons not on the list too).
+- `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` — checklist of things to look for (non-exhaustive; surface lessons not on the list too).
 - `cla.io/lessons-learned/lessons-learned.md` — prior log; note any lesson proposed in multiple prior runs. (Older entries live in `cla.io/lessons-learned/lessons-learned-archive.md` once the live log is trimmed — Step 2.6; not read by default.)
 - The user memory index — see `cla.io/overlays/codify-learnings.md` for this repo's memory-index glob. Try that glob via Bash; if none found, skip dedup and note "memory dedup skipped (index not found)" in the report. If the glob matches multiple dirs, resolve to the canonical one per the overlay's guidance before writing new memory files + index lines there.
 
@@ -65,6 +65,13 @@ failure-modes checklist  →  memory / CLAUDE.md / SKILL.md  →  hook / setting
 ```
 
 A **new** lesson enters at the lowest rung that can prevent it. A lesson that **re-offended this session** (Step 2.5) moves **up one rung** — never just re-stated; a re-offending behavioral rule that's hook-able MUST be proposed as a `PreToolUse` hook. Retire the now-redundant lower-rung bullet in the same run when a lesson graduates (Step 2.6).
+
+**First, establish whether the plugin is writable here — the ladder's middle rungs assume it is.** `SKILL.md`, a hook, and `references/failure-modes.md` all live inside the plugin. When the plugin is installed from a marketplace that tree is a **read-only, version-keyed cache**: an edit either fails outright or lands in a directory the next plugin update discards, which is worse, because the suggestion reports as applied. Check once, before routing anything:
+
+- **Writable (the harness's own source repo — the plugin loads from the working tree via `--plugin-dir`)** → the ladder applies as written.
+- **Read-only (any repo that installed the plugin)** → only repo-local targets are editable: memory, this repo's `CLAUDE.md`, `.claude/settings.json`, and `cla.io/` (including `cla.io/overlays/<skill>.md`, which is the right home for a lesson that is genuinely about *this* repo). A lesson that belongs in **portable core** is not dropped and is not written locally — route it to **`/cla:report-upstream`**, which files it as an issue against the canonical source. Say so in the suggestion's routing line, so the user can see it is going upstream rather than being applied here.
+
+The distinction is not cosmetic: a lesson about portable core, written into a local overlay to "make it stick", is invisible to every other repo and is erased from this one at the next update.
 
 ## Step 3 — Build the report
 
@@ -129,7 +136,7 @@ One paragraph:
 This step is always done. After the rolling-log write, append one counts-only JSON record of this run so the loop can be reviewed in aggregate by `/cla:codify-retro`. **Read `references/steps.md`** ("Step 7 ledger schema") for the exact fields. Assemble the record from this run's outcomes and pipe it to `log_run.py`:
 
 ```bash
-echo '<record-json>' | python3 .claude/plugins/cla/lib/log_run.py codify-runs.jsonl
+echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py codify-runs.jsonl
 ```
 
 The record lands in the repo's `cla.io/retro/codify-runs.jsonl` (a tracked repo file — include it when you next commit, so it syncs across machines via git; override the dir with `CLAUDE_RETRO_DIR`). Best-effort: if `log_run.py` exits non-zero, note it and continue — a missing ledger line never blocks the run.

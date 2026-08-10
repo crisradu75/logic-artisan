@@ -21,7 +21,7 @@ This closes the loop's outer loop: `codify-learnings` learns from sessions; `cod
 ### 1. Read the aggregated metrics
 
 ```bash
-python3 .claude/plugins/cla/skills/codify-retro/scripts/aggregate.py --limit <N>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/aggregate.py --limit <N>
 ```
 
 Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrapper), or `10` if `$ARGUMENTS` is empty. Substitute the literal number before invoking — the script does not expand shell variables.
@@ -79,11 +79,13 @@ Keep the whole report under ~40 lines. Long retros don't get acted on.
 
 ### 5. Optional: invite the user to apply edits
 
+**Check first whether the plugin is writable here.** Every target this retro proposes — `codify-learnings/SKILL.md`, `references/failure-modes.md` — lives inside the plugin. When the plugin is installed from a marketplace that tree is a read-only, version-keyed cache: an edit either fails or lands somewhere the next update discards, while reporting as applied. If it is read-only, do not offer to apply; present the findings and route them to **`/cla:report-upstream`**, which files them against the canonical source where they can actually change the loop for every repo.
+
 End with: "Want me to apply any of these? Say `apply 1,3` or list the numbers."
 
 Do NOT apply edits without explicit confirmation — retros are advisory. (`codify-learnings/SKILL.md` and `references/failure-modes.md` are the usual targets and are both editable; `openspec/**`, `**/scripts/**/*.py` outside `.claude/`, and vendored frameworks stay excluded per codify-learnings' own rules.)
 
-**If applied edits changed `references/failure-modes.md`'s bullet count** (a retire or a consolidation), state the new count in the closing summary — e.g. "failure-modes.md now at 47 bullets (was 51)". This retro writes nothing to `codify-runs.jsonl` (its sole producer is codify-learnings' Step 7), so without that line the newest ledger record keeps claiming a count the file no longer has and the trend data reads as flat. Recount with `grep -c '^- \[ \]' .claude/plugins/cla/skills/codify-learnings/references/failure-modes.md`; the next `/cla:codify-learnings` run uses it for `maintenance.failure_modes_bullets`.
+**If applied edits changed `references/failure-modes.md`'s bullet count** (a retire or a consolidation), state the new count in the closing summary — e.g. "failure-modes.md now at 47 bullets (was 51)". This retro writes nothing to `codify-runs.jsonl` (its sole producer is codify-learnings' Step 7), so without that line the newest ledger record keeps claiming a count the file no longer has and the trend data reads as flat. Recount with `grep -c '^- \[ \]' ${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md`; the next `/cla:codify-learnings` run uses it for `maintenance.failure_modes_bullets`.
 
 ## Sources of truth
 

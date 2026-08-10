@@ -160,7 +160,7 @@ session pinned to the current name, and leaves the bug in place for the next rep
 Confirm the diagnosis (no side effects) with:
 
 ```bash
-python3 .claude/plugins/cla/skills/new-worktree/scripts/manual_worktree.py --diagnose
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/new-worktree/scripts/manual_worktree.py --diagnose
 ```
 
 On Windows — the platform this whole section exists for — `python3` is often
@@ -175,7 +175,7 @@ including the main-checkout path so the rest of this skill's steps need no extra
 lookup:
 
 ```bash
-python3 .claude/plugins/cla/skills/new-worktree/scripts/manual_worktree.py --name <name>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/new-worktree/scripts/manual_worktree.py --name <name>
 ```
 
 It also clears the stale entry a failed `EnterWorktree` leaves behind. Observed

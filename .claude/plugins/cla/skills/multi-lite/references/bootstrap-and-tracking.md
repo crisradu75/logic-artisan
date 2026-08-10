@@ -8,7 +8,7 @@ Run the shared bootstrap once before the chain starts — the same `/cla:multi-p
 
 1. The permissions check from `/cla:spec-to-pr`'s own "Bootstrap permissions" section (compare `spec-to-pr/references/required-permissions.json` against `.claude/settings.local.json`). Missing patterns → surface them and apply on approval; that's the one bootstrap ask, the same carve-out the siblings make.
 2. ```
-   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py
    ```
    Non-zero → resolve before continuing (in-progress rebase/cherry-pick, or a dirty tree with out-of-scope paths). A dirty tree at chain start poisons every subsequent candidate.
 

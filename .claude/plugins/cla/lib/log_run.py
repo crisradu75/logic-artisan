@@ -4,7 +4,7 @@
 ONE writer, shared by every skill that keeps a ledger, invoked with the ledger
 filename as an argument:
 
-    python .claude/plugins/cla/lib/log_run.py spec-to-pr-runs.jsonl < record.json
+    python ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl < record.json
 
 There used to be five near-identical copies of this file (one per skill), kept
 in step by a dedicated drift check in `consistency-checks/`. The copies existed

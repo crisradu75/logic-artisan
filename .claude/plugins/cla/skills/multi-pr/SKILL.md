@@ -19,16 +19,16 @@ Orchestrates `/cla:spec-to-pr` across a **sequence** of OpenSpec changes rather 
 
 ## Skill-level rules (hoisted — read first)
 
-- **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** See `.claude/plugins/cla/skills/spec-to-pr/references/base-branch-resolution.md` (shared verbatim with `multi-lite`/`multi-spec`) for the resolution rule every command below that names `<base-branch>` depends on.
+- **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** See `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/base-branch-resolution.md` (shared verbatim with `multi-lite`/`multi-spec`) for the resolution rule every command below that names `<base-branch>` depends on.
 
 - **This is a long unattended run. Get every blocking question answered BEFORE the chain starts, not mid-chain.** A clarifying question fired three changes in defeats the purpose — see Phase 1's pre-flight gate below. Once answered, run start-to-finish with no "ready to continue?" pauses between changes, mirroring `/cla:spec-to-pr`'s own autonomy-gate contract one level up.
 - **"No unresolved issues, at ANY severity" is the default policy — stricter than `/cla:spec-to-pr`'s own default** (which accepts Deferred-Known-Issue + `TODO.md` Suggestion residue as done). Neither is acceptable here unless the user's Phase 1 answer explicitly picks a looser alternative — there's no point in the run where the user comes back to triage a leftover list themselves.
 - **Never run `git add -A`.** Same rule as `/cla:spec-to-pr`, inherited transitively through every `Skill(cla:spec-to-pr, ...)` call this skill makes, and equally binding on any direct git command `multi-pr` itself runs (merges, branch cleanup, prunes).
-- **Verify `git_state` before every commit `multi-pr` itself makes.** Run `python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py [--expect-branch <name>]` before the Phase 4 chain-log commit and any direct follow-up commit (a non-zero exit halts and surfaces — never special-case it). The per-change `/cla:spec-to-pr` runs already do their own git_state checks internally; this covers the commits `multi-pr` makes directly.
+- **Verify `git_state` before every commit `multi-pr` itself makes.** Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py [--expect-branch <name>]` before the Phase 4 chain-log commit and any direct follow-up commit (a non-zero exit halts and surfaces — never special-case it). The per-change `/cla:spec-to-pr` runs already do their own git_state checks internally; this covers the commits `multi-pr` makes directly.
 - **A structural failure in one change's run halts the chain; a content finding never does.** Ship never opening a PR, Archive not reaching the PR, or an unresolved `git_state` fault stop the run and leave every later change untouched (its prerequisite isn't confirmed shipped) — don't conflate that with "the Revise agents found bugs," which is normal, fix-and-continue operation. Full split: Phase 3 step 3.
 - **Merging is a real, hard-to-reverse action against shared state, and `/cla:spec-to-pr` itself refuses to do it at all.** `multi-pr` is the one layer explicitly authorized to merge — and only for a change confirmed done, only under the user's Phase 1 merge-policy answer, and (under the recommended "merge before dependents" default) only when a later change actually depends on it — independents stay open.
 - **On a `guard-worktree-isolation.py` block mid-chain, pivot to a dedicated worktree — never the hook's `ALLOW_SHARED_CLONE_MUTATION=1` escape hatch.** Follow `/cla:spec-to-pr`'s own "Concurrent runs" pattern (`git fetch origin <base-branch>`, then `git worktree add .claude/worktrees/<change> -b feature/<change> origin/<base-branch>`, as two separate commands) and continue the chain from inside that worktree — the hatch doesn't reliably carry across a chained run's separate Bash calls and overriding doesn't make the primary clone any less genuinely contended. See `cla.io/overlays/multi-pr.md` for a real precedent where the pivot worked and the override attempt didn't.
-- **Run thin (thin-orchestrator standing discipline).** Delegate bulk raw-material handling so only conclusions return; read slices/`tail`/`head`, not whole files/full output; batch independent tool calls into one message; prefer terse structured agent output over prose. Full rules: `.claude/plugins/cla/skills/spec-to-pr/references/runtime-rules.md` (this skill is itself an orchestrator, so the same discipline applies).
+- **Run thin (thin-orchestrator standing discipline).** Delegate bulk raw-material handling so only conclusions return; read slices/`tail`/`head`, not whole files/full output; batch independent tool calls into one message; prefer terse structured agent output over prose. Full rules: `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/runtime-rules.md` (this skill is itself an orchestrator, so the same discipline applies).
 
 ## Mode / argument parsing
 
@@ -46,7 +46,7 @@ All present → proceed silently. Any missing → surface them exactly as `/cla:
 Then run the working-tree precheck once, the same way `/cla:spec-to-pr` does at its own startup:
 
 ```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py
 ```
 
 Non-zero exit → resolve exactly per `/cla:spec-to-pr`'s "Working-tree precheck" section (in-progress op, wrong branch, or dirty tree with out-of-scope paths) before continuing. A dirty tree at chain-start poisons every subsequent phase, so this is worth getting right before Phase 1 rather than after.
@@ -95,4 +95,4 @@ Re-invoking `/cla:multi-pr` after an interruption picks up cleanly — full mech
 - `references/change-loop.md` — Phase 3's full per-change procedure (resume check, timestamps, invoking `/cla:spec-to-pr`, the deferred-finding fix recipe, the merge commands, the actual-vs-predicted timing report) and the Resume-behavior mechanics (mandatory-read from the Phase 3 stub and the Resume-behavior stub)
 - `references/cleanup.md` — Phase 4's full verify/prune/confirm/log/commit sequence (mandatory-read from the Phase 4 stub)
 - `cla.io/overlays/multi-pr.md` — this repo's project-context overlay: repo commands, and the dated incidents/statistics that justify individual guardrails or recommended defaults (read only when revising a rule or reasoning about this repo specifically)
-- `.claude/plugins/cla/skills/spec-to-pr/references/base-branch-resolution.md` — the `<base-branch>` resolution rule, shared verbatim with `multi-lite`/`multi-spec`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/base-branch-resolution.md` — the `<base-branch>` resolution rule, shared verbatim with `multi-lite`/`multi-spec`.

@@ -19,8 +19,8 @@
 // import/dependency boundaries.
 //
 // Usage:
-//   node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs          # human table
-//   node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs --json   # machine-readable
+//   node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs          # human table
+//   node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs --json   # machine-readable
 //
 // Exit code is 0 for a normal run (FAIL/ERROR rows are data for the review, not a
 // CI gate) and non-zero only if the overlay's config block itself is malformed --

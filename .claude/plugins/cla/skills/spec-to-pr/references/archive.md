@@ -22,7 +22,7 @@ The archive command warns about unticked task boxes when run via `--yes`; that's
 
 **Pre-commit git-state + archive-scope checks (both required):**
 ```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
 git add openspec/changes/<change-name>/ openspec/changes/archive/<YYYY-MM-DD>-<change-name>/ openspec/specs/<cap1>/ [openspec/specs/<cap2>/ ...]
 git diff --name-only --cached
 ```

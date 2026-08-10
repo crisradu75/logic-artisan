@@ -63,7 +63,7 @@ Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty o
 - **Skip when the log is out-of-repo.** If `CLAUDE_RETRO_DIR` points outside the repo, there is nothing tracked to stage — skip.
 - Verify git-state, then path-scoped stage + commit + push (never `-A`):
   ```
-  python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
+  python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
   git add -- cla.io/retro/spec-to-pr-runs.jsonl
   git commit -m "chore: spec-to-pr run log"
   git push

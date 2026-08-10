@@ -135,7 +135,7 @@ hardcoded parser — that's what makes this skill portable across differing tech
 - Every `cla.io/overlays/*.md` (glob generically — don't hardcode a skill list) — note which facts
   each one currently restates that match the tie-break rule above, and whether it already carries the
   pointer sentence. In a repo that has not migrated yet, the overlays may still sit at
-  `.claude/plugins/cla/skills/*/references/project-context.md`; glob both and say which you found.
+  `${CLAUDE_PLUGIN_ROOT}/skills/*/references/project-context.md`; glob both and say which you found.
 - `cla.io/project-tokens.local.md`, if present, for the
   conformance guard's current curated token list.
 - `cla.io/terminology.md`, if present — read only for the optional reconciliation pass in Step 5; this
@@ -146,7 +146,7 @@ hardcoded parser — that's what makes this skill portable across differing tech
 Produce the full proposed file content, organized under headed sections per the categories above. Open
 with a heading and a one-line note that this is the repo's consolidated, never-synced project-facts
 file (lives in `cla.io/`, outside `update-cla`'s `SCAN_DIRS`), maintained by this skill and linted by
-the staleness guard (`.claude/plugins/cla/conformance-checks/tests/test_project_facts_paths.py`).
+the staleness guard (`${CLAUDE_PLUGIN_ROOT}/conformance-checks/tests/test_project_facts_paths.py`).
 
 While drafting, also look for a fact **restated verbatim (or near-verbatim) across two or more**
 overlays that isn't in one of the categories above — that's a genuine tie-break hit found empirically

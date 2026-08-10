@@ -48,7 +48,7 @@ Confirm `openspec/changes/<name>/proposal.md`, `design.md`, `tasks.md`, and at l
 ## Commit + push (immediately, before starting the next change)
 
 ```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
 git add -- openspec/changes/<name>/
 git commit -m "docs(openspec): propose <name>"
 git push

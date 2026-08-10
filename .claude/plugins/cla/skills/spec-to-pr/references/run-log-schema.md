@@ -14,7 +14,7 @@ field is a silent loss of retro signal, not an error.
 ## Invocation
 
 ```bash
-python3 .claude/plugins/cla/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
 {
   "ts": "<ISO-8601 UTC, e.g. 2026-05-28T14:32:11Z>",
   "change": "<change-name>",

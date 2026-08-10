@@ -1,6 +1,6 @@
 # multi-spec — batch review gate (Phase 4)
 
-Adapts `.claude/plugins/cla/skills/review-change/references/checklist.md` — this repo's single source of truth for change review — from its single-change shape to a whole-batch dispatch. Reuse its verification checks, agent prompts, model routing, and verdict rubric **verbatim**; only the scope (one change → N changes in one dispatch) and the report grouping (by change name) differ. Do not fork a second review methodology — if the checklist changes, this adaptation should be re-read, not independently maintained.
+Adapts `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` — this repo's single source of truth for change review — from its single-change shape to a whole-batch dispatch. Reuse its verification checks, agent prompts, model routing, and verdict rubric **verbatim**; only the scope (one change → N changes in one dispatch) and the report grouping (by change name) differ. Do not fork a second review methodology — if the checklist changes, this adaptation should be re-read, not independently maintained.
 
 ## Why one dispatch for the whole batch, not N single-change reviews
 
@@ -29,7 +29,7 @@ A batch that reached this gate already has ≥2 changes each with their own full
 
 ## Step 4 — Dispatch three agents, once, over the whole batch
 
-Same model routing as `review-change/references/checklist.md` Step 4, per `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md`'s "Review-agent dispatch" table:
+Same model routing as `review-change/references/checklist.md` Step 4, per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/model-routing.md`'s "Review-agent dispatch" table:
 
 - **Agent 1 (Design Reviewer) → `opus`**
 - **Agents 2 & 3 (Task Reviewer, Spec & Codebase Reviewer) → `sonnet`**
@@ -56,7 +56,7 @@ The checklist's "no capitulation, no sycophancy" (INT-CAP / INT-SYC) rules apply
 2. Re-validate each touched change: `openspec validate <name> --strict`.
 3. Commit all fixes as **one** follow-up commit (mirrors the real precedent's two-commit-class shape):
    ```
-   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
    git add -- openspec/changes/
    git commit -m "docs(openspec): apply review fixes to <batch-slug> proposals"
    git push
