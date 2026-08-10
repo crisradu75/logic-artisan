@@ -44,7 +44,7 @@ Parse `$ARGUMENTS`:
 
 ## Phase 0 — Bootstrap + working-tree precheck
 
-**Read `references/bootstrap-and-tracking.md` first** for the full precheck recipe. Run before Phase 1: `check_permissions.py --check` (apply on approval) and `git_state.py` from `spec-to-pr/scripts/` — resolve any non-zero exit before continuing; a dirty/mid-op tree poisons every subsequent candidate. Then confirm HEAD is on a clean, up-to-date `<base-branch>` (per the hoisted base-management rule) so the first candidate branches off a current base.
+**Read `references/bootstrap-and-tracking.md` first** for the full precheck recipe. Run before Phase 1: the permissions check (apply on approval) and `git_state.py` from `spec-to-pr/scripts/` — resolve any non-zero exit before continuing; a dirty/mid-op tree poisons every subsequent candidate. Then confirm HEAD is on a clean, up-to-date `<base-branch>` (per the hoisted base-management rule) so the first candidate branches off a current base.
 
 ## Phase 1 — Extract candidates, sequence, and confirm (the one gate)
 
@@ -72,7 +72,7 @@ Re-invoking `/cla:multi-lite` on the same doc after an interruption picks up cle
 - Does not merge an **independent** candidate's PR — only a candidate a later one genuinely depends on, and only under the confirmed Phase 1 plan. Independents are always left open for the user.
 - Does not group multiple candidates into one PR (that's `/cla:multi-spec`'s grouping model for OpenSpec changes) — one candidate, one `/cla:lite-pr`, one PR.
 - Does not force a non-lite item through `lite-pr` — it flags it out of scope and points at `/cla:spec-to-pr`/`/cla:multi-spec` instead.
-- Does not build a bespoke sequencing script (like `/cla:multi-pr`'s `discover_sequence.py`) — candidate extraction and ordering are open-ended reasoning over prose, done inline (same choice `/cla:multi-spec`'s Phase 1 makes for its grouping).
+- Does not build a bespoke sequencing script — candidate extraction and ordering are open-ended reasoning over prose, done inline (the same choice `/cla:multi-pr` and `/cla:multi-spec` make in their own Phase 1).
 - Does not build a `multi-lite-retro` analyzer yet — log-only until enough runs accumulate.
 
 ## References
@@ -84,7 +84,8 @@ Re-invoking `/cla:multi-lite` on the same doc after an interruption picks up cle
 - `references/candidate-extraction.md` — Phase 1's extraction filter, sequencing rule, and confirmation-gate question shape (mandatory-read from the Phase 1 stub).
 - `references/candidate-loop.md` — Phase 3's 8-step per-candidate procedure and the resume mechanics it enables (mandatory-read from the Phase 3 stub and the Resume-behavior section).
 - `references/phase4-and-log.md` — the Phase 4 final-report shape and the run-notes commit (mandatory-read from the Phase 4 stub).
-- `.claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py`, `check_permissions.py` — reused directly for the Phase 0 precheck (these are `spec-to-pr`/`multi-pr` bootstrap scripts, not `lite-pr`'s).
+- `.claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py` — reused directly for the Phase 0 precheck (a `spec-to-pr`/`multi-pr` bootstrap script, not `lite-pr`'s).
+- `.claude/plugins/cla/skills/spec-to-pr/references/required-permissions.json` — the pattern set the Phase 0 permissions check compares against.
 - `.claude/plugins/cla/skills/spec-to-pr/references/bash-discipline.md` — the hard bash-shape rules binding every git command this skill runs.
 - `.claude/plugins/cla/skills/spec-to-pr/references/runtime-rules.md` — the thin-orchestrator runtime disciplines this skill follows as an orchestrator (pointed at from the hoisted rules).
 - `.claude/plugins/cla/skills/spec-to-pr/references/base-branch-resolution.md` — the `<base-branch>` resolution rule, shared verbatim with `multi-pr`/`multi-spec`.

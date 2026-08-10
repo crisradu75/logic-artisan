@@ -5,14 +5,14 @@ These shapes defeat the project's Bash permission allowlist matching. The skill 
 ## Forbidden shapes
 
 - ❌ **Compound bash:** `cd <path> && <cmd>`. Use absolute paths and call the command directly. The Bash tool's working directory does NOT reliably persist between calls; default to absolute paths or `git -C <abs-path>`.
-- ❌ **Heredoc subshell:** `git commit -m "$(cat <<'EOF' ... EOF)"` for commit messages or PR bodies. Write the message/body to a file and use `commit.py` (or `git commit -F <file>`).
+- ❌ **Heredoc subshell:** `git commit -m "$(cat <<'EOF' ... EOF)"` for commit messages or PR bodies. Write the message/body to a file and use `git commit -F <file>`.
 - ❌ **Multi-line `--body` argument:** `gh pr create --body "...\n## ..."`. Use `--body-file <path>` (via `gh pr edit --body-file <path>`) — never `Skill(commit-commands:commit-push-pr)`, which this skill deliberately doesn't use (see "When NOT to use `Skill()`" and `design-tradeoffs.md`).
 - ❌ **Long `git add` file lists:** `git add file1 file2 ... file39`. Use a glob or directory: `git add openspec/changes/<name>/`.
 - ❌ **`git add -A` (or `git add .`).** Always path-scope every staging call. Failure mode: an Archive-phase `git add -A` can sweep untracked files left by a parallel Claude session's in-progress cherry-pick into the archive commit, shipping unrelated content. Even when `git status --porcelain` shows nothing unrelated at the START of the run, an external session can mutate the working tree mid-flow; path-scoped staging makes this impossible.
 
 ## Mandated alternatives
 
-- ✅ Single-line `-m "<message>"` for trivial commits, or `-F <message-file>` via `commit.py`.
+- ✅ Single-line `git commit -m "<message>"` for trivial commits, or `git commit -F <message-file>` for a multi-paragraph one.
 - ✅ `--body-file <path>` for every PR body and PR edit.
 - ✅ Absolute paths everywhere — never rely on a prior `cd`.
 - ✅ Path-scoped staging: `git add openspec/changes/<name>/ apps/<app>/src/ packages/<package>/src/` (Ship — name the specific `apps/*/src/`/`packages/*/src/` paths the change touched; there is no repo-root `src/`), `git add openspec/changes/<name>/ openspec/changes/archive/<YYYY-MM-DD>-<name>/ openspec/specs/<cap1>/ [openspec/specs/<cap2>/ ...]` (Archive — one specific path group per thing the archive actually produced; see `references/archive.md` for the full recipe). **NEVER a broad `git add openspec/` for Archive** — it stages *untracked* files too, so in a `multi-pr` chain, where every other not-yet-shipped change still sits as an untracked `openspec/changes/<sibling>/` directory in the same worktree, the broad form sweeps those siblings into this change's archive commit. Never `git add -A`. If you legitimately need to stage multiple top-level paths, enumerate them on the same `git add` line — never expand to `-A` or a bare `openspec/`.

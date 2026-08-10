@@ -54,7 +54,7 @@ Wait for all five agents, then deduplicate/merge/extract-recommendations and pri
 | **SOLID** | Majority B/C, no more than one D |
 | **NEEDS WORK** | Two or more D grades, or majority C/D |
 
-After printing the report, append exactly one JSON line to `cla.io/retro/project-review-runs.jsonl` (recipe + schema in the reference) — the only state this skill persists across runs.
+The report is the whole output — this skill persists no state across runs.
 
 ## References
 

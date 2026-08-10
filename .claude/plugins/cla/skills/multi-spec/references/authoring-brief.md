@@ -49,7 +49,8 @@ Confirm `openspec/changes/<name>/proposal.md`, `design.md`, `tasks.md`, and at l
 
 ```
 python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "docs(openspec): propose <name>" openspec/changes/<name>/
+git add -- openspec/changes/<name>/
+git commit -m "docs(openspec): propose <name>"
 git push
 ```
 `git push` (not just commit) is deliberate — a local-only commit still doesn't survive a dead disk; pushing after every change is what actually protects against a local-machine incident. **Then run the push post-check** (`references/phases.md`) before moving to the next change — an unverified push here is the exact silent-loss scenario this skill exists to prevent.

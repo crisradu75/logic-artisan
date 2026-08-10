@@ -6,7 +6,7 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 **Primary source: the file's own sequencing/grouping.** Look for a "Sequencing" section (or an equivalently-named ordering decision — `shape-decision` output typically numbers it as the last decision). When present, derive the change list, each change's covered decision numbers, and the dependency order directly from it — **do not** default to one change per numbered decision; the file's own grouping is authoritative (see `references/project-context.md` for a real precedent where amendments folded into existing changes rather than becoming new ones).
 
-**Fallback: derive grouping by judgment.** When no such section exists, read every numbered decision and the Decision Summary table, and group them into coherent, dependency-ordered changes yourself — decisions that share a data model, a component, or an explicit "depends on" relationship belong in one change or in dependency order across changes. This is the same kind of reasoning `multi-pr`'s `discover_sequence.py` automates for already-authored changes via textual heuristics, done here by reading the decisions' content directly since no such script exists for raw decisions text.
+**Fallback: derive grouping by judgment.** When no such section exists, read every numbered decision and the Decision Summary table, and group them into coherent, dependency-ordered changes yourself — decisions that share a data model, a component, or an explicit "depends on" relationship belong in one change or in dependency order across changes. This is the same kind of reasoning `multi-pr`'s Phase 1 does over already-authored changes, applied here to raw decisions text.
 
 **Escalate-up on a sub-Opus session.** This grouping judgment sets every change's scope — on a session below Opus, dispatch it to an `opus` `Agent` (same escalate-up rule `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md` documents for Propose authoring) rather than deriving it at a lower tier. No-op on an Opus session.
 
@@ -16,7 +16,7 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 **Branch-slug derivation.** Strip a trailing `-YYYY-MM-DD` from the decisions filename stem (e.g. `payments-provider-migration-2026-08-01.md` → `payments-provider-migration`); if the stem is ambiguous, derive a short kebab-slug from the file's own `# Title` heading instead. Branch name: `docs/propose-<batch-slug>`.
 
-**Preflight (`branch.py` is not reusable here — it hardcodes a `feature/` prefix; use plain git calls):**
+**Preflight (plain git calls — this branch is `docs/propose-…`, not a `feature/` branch):**
 1. `git rev-parse --abbrev-ref HEAD` — already on `docs/propose-<batch-slug>` → this is a resume with the upstream already set; skip straight to the persist step below.
 2. On `<base-branch>`: `git rev-parse --verify docs/propose-<batch-slug>` (local) and `git ls-remote --exit-code --heads origin docs/propose-<batch-slug>` (remote). Either existing → resume, `git checkout docs/propose-<batch-slug>`. Neither → `git checkout -b docs/propose-<batch-slug>`.
 3. `git_state.py --expect-branch docs/propose-<batch-slug>` before the first commit (branch-name-agnostic, fully reusable).
@@ -24,7 +24,8 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 **Persist the plan, on the branch.** Assemble the plan JSON (Phase 1's grouping plus `batch_slug`/`branch`) per `references/plan-schema.md`, write to `cla.io/decisions/<stem>.multi-spec-plan.json`, then commit and push:
 ```
 python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "docs(openspec): multi-spec plan for <batch-slug>" cla.io/decisions/<stem>.multi-spec-plan.json
+git add -- cla.io/decisions/<stem>.multi-spec-plan.json
+git commit -m "docs(openspec): multi-spec plan for <batch-slug>"
 git push -u origin docs/propose-<batch-slug>
 ```
 **This is the first push to the new branch, so it MUST set the upstream (`-u`)** — `push.autoSetupRemote` is not assumed set, so a bare `git push` here would fail with "no upstream branch." Every push after this one is bare. On a resume where the branch already existed (steps 1–2 took the checkout path), only write+commit+push the plan here if it's missing — it's normally already committed from the original run.

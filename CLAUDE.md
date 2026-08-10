@@ -57,21 +57,22 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (7 today), plus `hooks/`, plus `consistency-checks/`, plus
-`launcher-checks/`, is its own isolated pytest scope — 10 in total — each with its own
-`pyproject.toml` (`testpaths = ["tests"]`, plus a `pythonpath` pointing at that scope's importable
-code — `["scripts"]` for a skill and for the two check scopes, `["."]` for `hooks/`, whose modules
-sit at the scope root).
+design. Each skill that ships tests (5 today), plus `lib/`, plus `hooks/`, plus
+`consistency-checks/`, plus `launcher-checks/`, is its own isolated pytest scope — 9 in total —
+each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a `pythonpath` pointing at that
+scope's importable code — `["scripts"]` for a skill and for the two check scopes, `["."]` for
+`hooks/` and `lib/`, whose modules sit at the scope root).
 
-`consistency-checks/` and `launcher-checks/` are the odd ones out: not skills (no `SKILL.md`) and
-not guard hooks, but homes for checks that belong to no single scope — `consistency-checks/` holds
-a drift check over the sibling `log_run.py`/`aggregate.py` copies that the isolation rule below
-deliberately prevents from sharing a module; `launcher-checks/` tests the repo-root `cla`/`cla.cmd`
-launchers, which live outside the plugin tree entirely (`claw`/`claw.cmd` were deleted with
-`guard-worktree-isolation`, the hook they existed to dodge). Both sit outside the synced set
+`lib/`, `consistency-checks/` and `launcher-checks/` are the odd ones out: not skills (no
+`SKILL.md`) and not guard hooks. `lib/` holds `log_run.py`, the one ledger writer every retro-
+logging skill invokes as a program. `consistency-checks/` holds a drift check over the sibling
+`aggregate.py` copies that the isolation rule below deliberately prevents from sharing a module;
+`launcher-checks/` tests the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin
+tree entirely (`claw`/`claw.cmd` were deleted with `guard-worktree-isolation`, the hook they
+existed to dodge). The latter two sit outside the synced set
 (`skills`/`agents`/`hooks`/`output-styles`), so `update-cla` never propagates them to consuming
 repos; they guard this repo's own source. Several scopes
-ship same-named helper modules (e.g. `scripts/aggregate.py`, `scripts/log_run.py`), so they can't
+ship same-named helper modules (e.g. `scripts/aggregate.py`), so they can't
 share one pytest process — this is why `run_tests.py` exists: it discovers every scope
 (dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once
 per scope as a subprocess, then aggregates results. A dir with only one of those two signals is
@@ -114,8 +115,8 @@ branch they got wrong. So mutate what the fix *touches*, not what it targets, an
 green run as one input to the ship decision rather than the decision itself.
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
-sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as an
-11th entry alongside the 10 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
+sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as a
+10th entry alongside the 9 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
 while iterating on that one script:
 
 ```bash

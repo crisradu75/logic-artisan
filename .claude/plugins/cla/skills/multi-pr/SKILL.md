@@ -39,13 +39,9 @@ Announce the mode and the resolved change list as the first line of output, e.g.
 
 ## Phase 0: Bootstrap + working-tree precheck
 
-Run `/cla:spec-to-pr`'s own bootstrap exactly once before the chain starts (not once per change — it's idempotent and cheap to re-check, but there's no reason to ask the permission question more than once even implicitly):
+Run `/cla:spec-to-pr`'s own permissions bootstrap exactly once before the chain starts (not once per change — there's no reason to ask the permission question more than once even implicitly): compare `spec-to-pr/references/required-permissions.json` against `.claude/settings.local.json`.
 
-```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/check_permissions.py --check
-```
-
-Exit 0 → proceed silently. Exit non-zero → surface the missing patterns exactly as `/cla:spec-to-pr`'s own "Bootstrap permissions" section describes and apply on approval. This is the *only* halt-and-ask that happens outside Phase 1 — same exception carve-out `/cla:spec-to-pr` itself makes for its own bootstrap gate.
+All present → proceed silently. Any missing → surface them exactly as `/cla:spec-to-pr`'s own "Bootstrap permissions" section describes and apply on approval. This is the *only* halt-and-ask that happens outside Phase 1 — same exception carve-out `/cla:spec-to-pr` itself makes for its own bootstrap gate.
 
 Then run the working-tree precheck once, the same way `/cla:spec-to-pr` does at its own startup:
 
@@ -59,9 +55,9 @@ Non-zero exit → resolve exactly per `/cla:spec-to-pr`'s "Working-tree precheck
 
 ## Phase 1: Discover + sequence + pre-flight gate
 
-**Read `references/discover-and-gate.md` first** — the `discover_sequence.py` mechanics + trust-but-verify caveats, the full pre-flight-gate question wording, and the chain-time-estimate recipe. Load-bearing invariants (hold these even if the reference isn't reloaded):
+**Read `references/discover-and-gate.md` first** — how to discover and order the changes, the full pre-flight-gate question wording, and the chain-time-estimate recipe. Load-bearing invariants (hold these even if the reference isn't reloaded):
 
-- **A dependency cycle (`cycle_members`/`blocked_by_cycle` non-empty) is never guessed past** — it's always its own explicit question, before Phase 2 starts, regardless of autonomy mode.
+- **A dependency cycle is never guessed past** — it's always its own explicit question, before Phase 2 starts, regardless of autonomy mode.
 - **Ask everything upfront, in ONE `AskUserQuestion` call (max 4 questions), then run continuous.** This is the **only** point in the whole run where a multi-question stop happens; every phase after it runs autonomously with no "ready to continue?" pauses.
 - **Recommended defaults** (applied verbatim under the explicit-autonomy override, and offered as the default choice otherwise): merge each PR before the next change that depends on it, independents left open; full-severity no-unresolved-issues (Critical/Important/Suggestion — nothing deferred to `TODO.md`); `/cla:spec-to-pr` caps at its own defaults `1/2/3`; an unavailable local-infra hard gate hard-blocks the chain (after a self-remediation attempt to bring the stack up).
 - **Explicit-autonomy override** (an invocation stating "operate autonomously" / "don't ask, just run") and **bounded-window autonomy** (interactive at the start, autonomous once the user signals departure) both apply the recommended defaults above without calling `AskUserQuestion` — except the cycle question, which is never skipped.
@@ -90,12 +86,12 @@ Re-invoking `/cla:multi-pr` after an interruption picks up cleanly — full mech
 
 - Does not reimplement Review/Implement/Test/Ship/Revise/Archive — that's `/cla:spec-to-pr`'s job, invoked as a sub-skill.
 - Does not merge without the Phase 1 policy explicitly authorizing it for this run — merging is a hard-to-reverse action against shared state, and that authorization is scoped to this one run, not a standing permission.
-- Does not build a `multi-pr-retro` analyzer skill. It keeps a **log-only** chain-level ledger (`cla.io/retro/multi-pr-runs.jsonl`, one line per run, Phase 4 step 5) for facts `/cla:spec-to-pr`'s per-change ledger structurally can't see (sequencing quality, gate/escalation outcomes, inter-change breakage, per-change timing-by-complexity) — but deliberately ships NO aggregator over it yet: at a handful of chains, cross-chain pattern-mining would over-fit anecdote, and the qualitative chain-level learnings are already handled well by `/cla:codify-learnings` + the per-run running-notes file. Revisit building a `multi-pr-retro` once ~8–10 chains have accumulated in the ledger — by then the "log now" data exists and the sample justifies an analyzer. (Per-CHANGE retrospective analysis stays `/cla:spec-to-pr-retro`'s job, over the per-change `spec-to-pr-runs.jsonl` each `/cla:spec-to-pr` invocation already appends to.)
+- Does not keep a chain-level ledger, and does not build a `multi-pr-retro` analyzer over one. It kept a log-only ledger until that ledger reached 4 records across five repos with no skill reading it, and was deleted along with the other two unread chain ledgers. Chain-level learnings are carried by `/cla:codify-learnings` plus the per-run running-notes file; per-CHANGE retrospective analysis stays `/cla:spec-to-pr-retro`'s job, over the `spec-to-pr-runs.jsonl` each `/cla:spec-to-pr` invocation appends to.
 - Does not guess past a dependency cycle or an ambiguous merge decision — those are genuinely the user's calls, surfaced once, up front.
 
 ## References
 
-- `references/discover-and-gate.md` — Phase 1's full mechanics: `discover_sequence.py` usage + trust-but-verify caveats, the pre-flight-gate question wording (merge/no-unresolved-issues/caps/infra policies), the explicit-autonomy and bounded-window-autonomy modes, infra self-remediation, and the chain-time-estimate recipe (mandatory-read from the Phase 1 stub)
+- `references/discover-and-gate.md` — Phase 1's full mechanics: discovering and ordering the changes, the pre-flight-gate question wording (merge/no-unresolved-issues/caps/infra policies), the explicit-autonomy and bounded-window-autonomy modes, infra self-remediation, and the chain-time-estimate recipe (mandatory-read from the Phase 1 stub)
 - `references/change-loop.md` — Phase 3's full per-change procedure (resume check, timestamps, invoking `/cla:spec-to-pr`, the deferred-finding fix recipe, the merge commands, the actual-vs-predicted timing report) and the Resume-behavior mechanics (mandatory-read from the Phase 3 stub and the Resume-behavior stub)
 - `references/cleanup.md` — Phase 4's full verify/prune/confirm/log/commit sequence (mandatory-read from the Phase 4 stub)
 - `references/project-context.md` — this repo's project-context overlay: repo commands, and the dated incidents/statistics that justify individual guardrails or recommended defaults (read only when revising a rule or reasoning about this repo specifically)

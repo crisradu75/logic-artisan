@@ -1,11 +1,10 @@
 """_git_common.py tests.
 
-Every consumer (branch.py, commit.py, check_permissions.py, discover_tests.py,
-probe_state.py) monkeypatches its own module-level `REPO_ROOT` directly in
-tests, so `repo_root()`'s actual git-invocation and fallback logic was never
-exercised by any of those five test files, before or after the extraction
-that consolidated five identical copies into this one function. These tests
-close that gap.
+`probe_state.py`, the one surviving consumer, monkeypatches its own
+module-level `REPO_ROOT` directly in tests, so `repo_root()`'s actual
+git-invocation and fallback logic is never exercised there. These tests close
+that gap. (The function was extracted when five scripts each carried a
+byte-identical copy; four of those five were deleted in the script audit.)
 """
 
 from __future__ import annotations

@@ -70,7 +70,7 @@ Every phase resumes from git-tracked repo state, never from a log or the plan fi
 
 - Does not implement anything — no `Skill(cla:spec-to-pr)`, `Skill(cla:lite-pr)`, or `Skill(cla:multi-pr)` call. Proposing and implementing are different unattended-run shapes with different risk profiles; bundling them here would blur that boundary for no benefit.
 - Does not merge the PR it opens, or push to `<base-branch>` directly.
-- Does not build a bespoke resumable-state script the way `multi-pr` has `discover_sequence.py` for ordering — Phase 1's fallback grouping is genuinely open-ended reasoning over prose, so it stays inline/dispatched reasoning rather than a script. This is separate from run logging, which this skill DOES do (see "Log the run" above).
+- Does not build a bespoke resumable-state script — Phase 1's fallback grouping is genuinely open-ended reasoning over prose, so it stays inline/dispatched reasoning rather than a script. Nor does it keep a run ledger: its own was deleted unread, and resume re-derives state from `openspec/changes/` itself (see "Resume read path" in `references/plan-schema.md`).
 - Does not build a `multi-spec-retro` analyzer skill yet — same "wait for enough runs" posture noted above.
 
 ## References

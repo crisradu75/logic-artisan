@@ -1,11 +1,11 @@
-"""Shared repo-root resolution for spec-to-pr's scripts.
+"""Shared repo-root and branch-name resolution for spec-to-pr's scripts.
 
-Extracted from five call sites (branch.py, commit.py, check_permissions.py,
-discover_tests.py, probe_state.py) that each carried a byte-identical copy.
-Safe to share here (unlike a cross-skill helper) because all five live in
-this one skill's pytest scope (`pythonpath = ["scripts"]` in this skill's own
-`pyproject.toml`) — importing a sibling module within that scope crosses no
-isolation boundary.
+Extracted when five call sites each carried a byte-identical copy of the
+repo-root resolver; the script audit deleted four of them, so `probe_state.py`
+is the sole remaining consumer. Safe to share here (unlike a cross-skill
+helper) because both live in this one skill's pytest scope (`pythonpath =
+["scripts"]` in this skill's own `pyproject.toml`) — importing a sibling
+module within that scope crosses no isolation boundary.
 """
 
 from __future__ import annotations
@@ -49,9 +49,9 @@ def repo_root() -> Path:
 # --------------------------------------------------------------------------- #
 # Branch naming
 #
-# `feature/<change-name>` was hardcoded in `branch.py` (which CREATES the
-# branch) and three times in `probe_state.py` (which LOOKS IT UP). `feature/` is
-# a default, not a universal.
+# `feature/<change-name>` was hardcoded in the script that CREATED the branch
+# (since deleted — Ship now runs plain git) and three times in `probe_state.py`
+# (which LOOKS IT UP). `feature/` is a default, not a universal.
 #
 # What makes that worse than a naming mismatch is HOW it fails. All three probes
 # use `git rev-parse --verify --quiet`, which on a miss exits 1 with EMPTY

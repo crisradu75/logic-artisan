@@ -3,7 +3,9 @@
 Ported from the two per-skill copies this replaced (spec-to-pr's and
 codify-learnings's `tests/test_log_run.py`, which were themselves near-identical),
 plus the cases the new `<ledger>` argument introduces. The ledger dir is
-redirected to a tmp dir via CLAUDE_RETRO_DIR so no test touches a real ledger.
+redirected to a tmp dir via CLAUDE_RETRO_DIR; the tests that must exercise the
+NO-override path instead run inside a throwaway git repo (`scratch_repo`), so
+no test touches a real ledger.
 """
 
 from __future__ import annotations
@@ -22,18 +24,47 @@ LEDGER = "spec-to-pr-runs.jsonl"
 
 
 def _run(stdin: str, retro_dir: Path | None, ledger: str | None = LEDGER,
-         args: list[str] | None = None) -> subprocess.CompletedProcess[str]:
+         args: list[str] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     env = {**os.environ}
     if retro_dir is None:
         env.pop("CLAUDE_RETRO_DIR", None)
     else:
         env["CLAUDE_RETRO_DIR"] = str(retro_dir)
+    # Refuse the one combination that writes into a REAL ledger: no usable
+    # override AND no cwd, which sends `git rev-parse --show-toplevel` at
+    # whatever repo the suite happens to run in — this one. Enforced here rather
+    # than asserted per-test, because the per-test assertion is exactly what a
+    # future edit drops without any test noticing (measured: that mutant
+    # survived).
+    if not (retro_dir is not None and str(retro_dir).strip()) and cwd is None:
+        raise AssertionError(
+            "_run without a usable CLAUDE_RETRO_DIR must pass cwd=<scratch repo>; "
+            "otherwise the append lands in this repo's own cla.io/retro/"
+        )
     argv = args if args is not None else ([ledger] if ledger is not None else [])
     return subprocess.run(
         [sys.executable, str(SCRIPT), *argv],
         input=stdin, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
-        check=False,
+        cwd=None if cwd is None else str(cwd), check=False,
     )
+
+
+@pytest.fixture
+def scratch_repo(tmp_path: Path) -> Path:
+    """A throwaway git repo to run the script INSIDE.
+
+    Required by every test that exercises the no-override path: with
+    CLAUDE_RETRO_DIR unset the script resolves its ledger dir from `git
+    rev-parse --show-toplevel`, which inherits the child's cwd. Run from the
+    default cwd, that is THIS repo — and two such tests duly appended a junk
+    record to `cla.io/retro/spec-to-pr-runs.jsonl` on every suite run, six of
+    which reached a commit before anyone noticed. The docstring above claimed
+    no test touches a real ledger; it does now.
+    """
+    repo = tmp_path / "scratch-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
+    return repo
 
 
 # --------------------------------------------------------------------------- #
@@ -154,17 +185,22 @@ def test_runs_dir_env_override(tmp_path: Path) -> None:
     assert Path(r.stdout.strip()).parent == retro
 
 
-def test_runs_dir_default_is_cla_io_retro(tmp_path: Path) -> None:
-    # With no override, the dir comes from `git rev-parse --show-toplevel`.
-    r = _run('{"a":1}', None)
+def test_runs_dir_default_is_cla_io_retro(scratch_repo: Path) -> None:
+    # With no override, the dir comes from `git rev-parse --show-toplevel` —
+    # hence `cwd`, so the write lands in the scratch repo, not this one.
+    r = _run('{"a":1}', None, cwd=scratch_repo)
     assert r.returncode == 0, r.stderr
-    assert Path(r.stdout.strip()).parent.as_posix().endswith("cla.io/retro")
+    written = Path(r.stdout.strip())
+    assert written.parent.as_posix().endswith("cla.io/retro")
+    assert written.is_relative_to(scratch_repo), f"escaped the scratch repo: {written}"
 
 
-def test_blank_override_is_treated_as_unset(tmp_path: Path) -> None:
-    r = _run('{"a":1}', Path("   "))
+def test_blank_override_is_treated_as_unset(scratch_repo: Path) -> None:
+    r = _run('{"a":1}', Path("   "), cwd=scratch_repo)
     assert r.returncode == 0, r.stderr
-    assert Path(r.stdout.strip()).parent.as_posix().endswith("cla.io/retro")
+    written = Path(r.stdout.strip())
+    assert written.parent.as_posix().endswith("cla.io/retro")
+    assert written.is_relative_to(scratch_repo), f"escaped the scratch repo: {written}"
 
 
 def test_relative_override_is_rejected_loudly(tmp_path: Path) -> None:

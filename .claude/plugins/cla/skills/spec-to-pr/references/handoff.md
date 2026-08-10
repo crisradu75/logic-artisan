@@ -64,18 +64,10 @@ Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty o
 - Verify git-state, then path-scoped stage + commit + push (never `-A`):
   ```
   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
-  python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "chore: spec-to-pr run log" cla.io/retro/spec-to-pr-runs.jsonl
+  git add -- cla.io/retro/spec-to-pr-runs.jsonl
+  git commit -m "chore: spec-to-pr run log"
   git push
   ```
 - This commit lands AFTER the archive and optional `docs: TODO.md` commits and is NOT re-reviewed by the pr-review agents (mechanical, like the archive commit). It is the LAST commit of the run.
 
-## 7. Finalize the discipline audit (last action of the run)
-
-After the run-log line is appended (step 5) and — when Ship opened a PR — committed (step 6), run the audit so any lapse is caught and, if present, surfaced at the *next* run's Precheck (Step 0):
-```
-# if Ship opened a PR (HEAD is <branch>):
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/audit_run_complete.py --finalize --shipped --change <change-name>
-# if Ship was skip (still on <base-branch> — the run-log line is intentionally left uncommitted):
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/audit_run_complete.py --finalize --change <change-name>
-```
-It checks two invariants for THIS run — the run-log line was appended, and (with `--shipped`) that it's committed rather than dangling — and writes a local marker when either fails, or clears any stale marker on a clean run. Pass `--shipped` ONLY when a PR was opened; without it, the committed-check is skipped so a legitimately-skipped Ship doesn't false-flag. **Advisory and non-fatal:** it always exits 0; if it prints `audit: DISCIPLINE GAP`, note that one line in the terminal report but do NOT mark the run `warn` over it — the gap is already recorded for next time. The marker is local-only (never staged/committed).
+Steps 5 and 6 are the run's last two actions. If either was skipped, say so in the terminal report — a missing run-log line, or one left uncommitted, is a loose end the user should see now rather than a gap discovered later by `/cla:spec-to-pr-retro` finding a run absent from the ledger.

@@ -72,13 +72,9 @@ Nothing is committed at this phase (Ship, which runs `commit-push-pr`, comes lat
 git status --porcelain
 ```
 
-Take the path from each line (strip the two-char status prefix; untracked files show as `??`). Then discover the correctness gates (staged):
+Take the path from each line (strip the two-char status prefix; untracked files show as `??`). If no changed path is source-affecting (no `src` component, no source- or config-suffixed file), there is nothing to gate — skip to Ship.
 
-```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/discover_tests.py --staged <changed-paths>
-```
-
-`discover_tests.py --staged` reads the root `package.json`'s `scripts` map and, when at least one changed path is source-affecting, partitions whichever of `build`, `lint`, `test` exist into `{"smoke": [...], "full": [...]}` — `smoke` is the cheap `npm run lint` fast-fail, `full` is `npm run build` (primary gate) then `npm run test`. Run smoke first; only run full once smoke is clean (smoke is a pre-filter, not a correctness proof, so full still runs in full). In a workspace/monorepo, the root `build`/`lint`/`test` scripts are typically themselves a fan-out across every app/package — see `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape") for this repo's own exact fan-out mechanism and app/package list (run `/cla:sync-context` to populate it; falls back to `references/project-context.md` if absent). So the root-only discovery already covers the whole workspace in one shot; there is no separate per-app/package suite to union in. Any standalone smoke/e2e scripts and any hard gate needing external local infra (a live database stack, etc.) are intentionally excluded from this gate — they need external state a plain `npm run` can't provide, and are manual/optional checks, not part of Test. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's own concrete examples (falls back to `references/project-context.md` if absent).
+Otherwise read the correctness gates out of `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape") — this repo's own record of them, whatever its stack (run `/cla:sync-context` to populate it; falls back to `references/project-context.md` if absent). Split them into two tiers: `smoke` is the cheap lint fast-fail, `full` is the build/typecheck command (primary gate) then the test command. Run smoke first; only run full once smoke is clean (smoke is a pre-filter, not a correctness proof, so full still runs in full). In a workspace/monorepo, the root `build`/`lint`/`test` commands are typically themselves a fan-out across every app/package, so running them at root covers the whole workspace in one shot; there is no separate per-app/package suite to union in. If the file names no commands and the change touches source, say so and treat it as a warning rather than a clean skip. Any standalone smoke/e2e scripts and any hard gate needing external local infra (a live database stack, etc.) are intentionally excluded from this gate — they need external state a plain `npm run` can't provide, and are manual/optional checks, not part of Test. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's own concrete examples (falls back to `references/project-context.md` if absent).
 
 Then, smoke tier first, then full:
 
@@ -153,5 +149,4 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 ## References
 
 - `.claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py` — reused directly for the pre-commit safety check.
-- `.claude/plugins/cla/skills/spec-to-pr/scripts/discover_tests.py` — reused directly for root-package test discovery.
 - `.claude/plugins/cla/skills/spec-to-pr/SKILL.md` — the full-weight sibling workflow; see its "Workflow phases" for what a graduated change looks like.

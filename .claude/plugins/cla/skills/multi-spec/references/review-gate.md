@@ -57,7 +57,8 @@ The checklist's "no capitulation, no sycophancy" (INT-CAP / INT-SYC) rules apply
 3. Commit all fixes as **one** follow-up commit (mirrors the real precedent's two-commit-class shape):
    ```
    python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
-   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "docs(openspec): apply review fixes to <batch-slug> proposals" openspec/changes/
+   git add -- openspec/changes/
+   git commit -m "docs(openspec): apply review fixes to <batch-slug> proposals"
    git push
    ```
    `openspec/changes/` is safe to path-scope broadly here specifically because this is the ONE point in the run where every change in the batch — and nothing else — is expected to be dirty; if `git status --porcelain` outside `openspec/changes/` is non-empty, name those paths explicitly instead of widening the add.

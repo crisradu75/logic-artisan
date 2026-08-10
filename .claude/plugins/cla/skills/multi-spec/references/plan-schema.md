@@ -41,7 +41,7 @@ Colocated with the source decisions file (`cla.io/decisions/<stem>.md`) — same
 
 **Not a live status ledger.** It does not track which changes are authored/committed/reviewed — that would create a second source of truth that could drift from the actual git-tracked state of `openspec/changes/<name>/`. Resume always re-derives "is this change done" from the repository itself (Phase 3 step 1's tracked-file check), never from a status field in this plan. This mirrors `/cla:spec-to-pr`'s own resume philosophy: `probe_state.py` reads repo state, not a log file, specifically because a log can go stale or get lost in exactly the kind of local-machine incident this skill exists to survive — a plan file that also tried to be a status ledger would be exactly as fragile as the problem it's meant to solve.
 
-**Not append-only / not a ledger of runs.** Unlike `multi-pr`'s `cla.io/retro/multi-pr-runs.jsonl` (one line appended per completed chain, for future retro analysis), this file is written once per batch and never appended to again. There is no retro tooling over it and none is planned — see `multi-spec`'s own "What this skill deliberately does not do."
+**Not append-only / not a ledger of runs.** Unlike `spec-to-pr`'s `cla.io/retro/spec-to-pr-runs.jsonl` (one line appended per completed run, consumed by `/cla:spec-to-pr-retro`), this file is written once per batch and never appended to again. There is no retro tooling over it and none is planned — see `multi-spec`'s own "What this skill deliberately does not do."
 
 ## Resume read path
 

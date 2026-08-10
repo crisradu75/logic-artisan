@@ -94,9 +94,10 @@ Pass the captured diff to each Agent prompt. If `PREV_FIX_SHA` is empty or the d
    ```
    python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
    ```
-   Exit 0 → proceed; exit 2/3 → halt and surface. Then commit (subject is one line, pass it inline via `commit.py --message` with the explicit changed-paths list — `commit.py` already path-scopes, so this avoids `-A`):
+   Exit 0 → proceed; exit 2/3 → halt and surface. Then stage the explicit changed-paths list (never `-A`) and commit — the subject is one line, passed inline:
    ```
-   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "fix: review round <N>" <changed-paths>
+   git add -- <changed-paths>
+   git commit -m "fix: review round <N>"
    git push
    ```
    Inspect the `git push` exit code in the orchestrator's own context (do NOT chain `|| { ... }` — that compound shell form breaks the permission-allowlist matching per root `CLAUDE.md`). On non-zero exit, mark Revise `warn`, capture the failure for the Handoff Issues section, and emit a prominent warning that round-N fixes are local-only. On success, capture `git rev-parse HEAD` for use as `PREV_FIX_SHA` in the next round's diff scoping.

@@ -48,7 +48,7 @@ The `cla` plugin SHALL be activated in place via `claude --plugin-dir ./.claude/
 
 ### Requirement: Repo-state resolution seam
 
-Plugin scripts SHALL resolve repo locations independently of their own position in the tree, because the plugin's nested position under `.claude/plugins/cla/…` breaks any position-dependent resolver. Specifically: (a) scripts that read/write the retro/state dir (the retro `log_run.py`/`aggregate.py` pair for each loop and `audit_run_complete.py`) SHALL resolve it as `CLAUDE_RETRO_DIR` when set, otherwise `<git rev-parse --show-toplevel>/cla.io/retro`; (b) scripts that resolve a repo root for other repo files (`commit.py`, `branch.py`, `probe_state.py`, `discover_tests.py`, `check_permissions.py`) SHALL resolve it via `git rev-parse --show-toplevel`, NOT a fixed `Path(__file__).resolve().parents[N]` depth. Scripts MUST NOT rely on walking to a `.claude` ancestor of the script nor on `${CLAUDE_PROJECT_DIR}` (empty in the script environment). Skill-bundled files (e.g. `required-permissions*.json`) SHALL be resolved skill-relative to the script, while a project-level target (e.g. `check_permissions.py`'s `.claude/settings.local.json`) SHALL be resolved from the repo root.
+Plugin scripts SHALL resolve repo locations independently of their own position in the tree, because the plugin's nested position under `.claude/plugins/cla/…` breaks any position-dependent resolver. Specifically: (a) scripts that read/write the retro dir (the shared writer `lib/log_run.py` and each retro loop's `aggregate.py`) SHALL resolve it as `CLAUDE_RETRO_DIR` when set, otherwise `<git rev-parse --show-toplevel>/cla.io/retro`; (b) scripts that resolve a repo root for other repo files (`probe_state.py` via `_git_common.py`) SHALL resolve it via `git rev-parse --show-toplevel`, NOT a fixed `Path(__file__).resolve().parents[N]` depth. Scripts MUST NOT rely on walking to a `.claude` ancestor of the script nor on `${CLAUDE_PROJECT_DIR}` (empty in the script environment). A skill-bundled file (e.g. `references/branch-prefix.local.md`) SHALL be resolved skill-relative to the script, while a project-level target SHALL be resolved from the repo root.
 
 #### Scenario: A plugin script writes to the repo's retro dir
 
@@ -62,9 +62,9 @@ Plugin scripts SHALL resolve repo locations independently of their own position 
 
 #### Scenario: A repo-root script resolves independently of depth
 
-- **WHEN** a repo-root-consuming script (e.g. `check_permissions.py`) runs from `.claude/plugins/cla/skills/spec-to-pr/scripts/`
+- **WHEN** a repo-root-consuming script (e.g. `probe_state.py`) runs from `.claude/plugins/cla/skills/spec-to-pr/scripts/`
 - **THEN** it finds the repo root via `git rev-parse --show-toplevel` (not `parents[N]`)
-- **AND** it reads its skill-bundled `required-permissions*.json` skill-relative while still reading/writing the project-level `.claude/settings.local.json` at the repo root
+- **AND** it reads its skill-bundled `references/branch-prefix.local.md` skill-relative while still resolving repo files at the repo root
 
 ### Requirement: Project-specific overlay convention
 
@@ -335,7 +335,7 @@ The `cla` plugin SHALL provide a `cla-init` skill at `.claude/plugins/cla/skills
 
 `cla-init` SHALL create, when absent, the following `cla.io/` tree under the repo root:
 - the directories `cla.io/decisions/`, `cla.io/feedback/`, `cla.io/retro/`, and `cla.io/lessons-learned/`;
-- one empty (0-byte) retro ledger per retro-logging loop — each loop appends its own per-run record (via `scripts/log_run.py` for `spec-to-pr`/`multi-spec`/`multi-lite`/`codify-learnings`, `scripts/log_chain_run.py` for `multi-pr`, or a documented manual-append recipe for `project-review`, which has no dedicated logging script): `cla.io/retro/spec-to-pr-runs.jsonl`, `cla.io/retro/multi-pr-runs.jsonl`, `cla.io/retro/multi-spec-runs.jsonl`, `cla.io/retro/multi-lite-runs.jsonl`, `cla.io/retro/project-review-runs.jsonl`, and `cla.io/retro/codify-runs.jsonl` (an empty file is a valid empty JSONL ledger — no placeholder line);
+- one empty (0-byte) retro ledger per retro-logging loop that has a reader — `cla.io/retro/spec-to-pr-runs.jsonl` and `cla.io/retro/codify-runs.jsonl`, both appended via the shared `lib/log_run.py` (which takes the ledger filename as its argument). An empty file is a valid empty JSONL ledger — no placeholder line. A loop with no analyzer skill SHALL NOT be given a ledger: the four that had none accumulated 19 records across five repos before being deleted;
 - the feedback inbox `cla.io/feedback/notes.md` seeded with a minimal header;
 - the rolling lessons-learned log `cla.io/lessons-learned/lessons-learned.md` seeded with a minimal header.
 

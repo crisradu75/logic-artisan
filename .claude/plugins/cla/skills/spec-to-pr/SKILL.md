@@ -49,23 +49,17 @@ Do NOT free-text the question — the three-paths shape forces a clear choice an
 
 ## Bootstrap permissions
 
-Before any workflow step, run:
+Before any workflow step, read `references/required-permissions.json` (`permissions.allow`) and the repo's `.claude/settings.local.json`, and compare the two lists.
 
-```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/check_permissions.py --check
-```
-
-- Exit 0 → all required patterns present; proceed silently.
-- Exit non-zero → patterns missing; print the diff. Ask the user **once**:
+- Every required pattern already present → proceed silently.
+- Any missing → print them. Ask the user **once**:
   > "Add these N pattern(s) to `.claude/settings.local.json`? [Y/n]"
-- On approval, run `check_permissions.py --apply` (additive-only; preserves all other top-level keys).
+- On approval, `Edit` the missing patterns into `permissions.allow`. **Additive only** — add entries, never remove or rewrite any other key, and create the file with just `{"permissions": {"allow": [...]}}` if it is absent.
 - On decline, **halt immediately** and print the missing patterns as a copy-paste block.
 
-The flag `/cla:spec-to-pr --check-permissions` short-circuits to `check_permissions.py --check` and exits without doing any other work.
+The flag `/cla:spec-to-pr --check-permissions` short-circuits to that comparison and exits without doing any other work.
 
-**Narrow mode** (`--narrow`): use the per-subcommand pattern set from `references/required-permissions-narrow.json` instead of the wildcard default — useful when the user prefers stricter allowlisting. Both `--check` and `--apply` accept `--narrow`. Important semantics:
-- `--apply --narrow` is **additive only**: when the wildcard default patterns are NOT already present in `settings.local.json`, it just adds the narrow set. The wildcard set is unchanged.
-- If wildcard-default patterns ARE already present, `--apply --narrow` **refuses with exit 2** rather than silently adding both sets (which would leave the broader patterns in place and make tightening a no-op). To actually tighten, pass `--apply --narrow --replace` — that does set-difference removal of the wildcard patterns then unions the narrow set in one transaction.
+**Narrow mode** (`--narrow`): compare against `references/required-permissions-narrow.json` — the per-subcommand pattern set — instead of the wildcard default. Useful when the user prefers stricter allowlisting. One trap: adding the narrow set while the wildcard patterns are still present leaves the broader patterns in force, so the apparent tightening does nothing. When switching to narrow, remove the wildcard-default entries in the same edit, and say which ones you removed.
 
 The bootstrap halt is the **only** halt the orchestrator performs other than user-decline at the optional confirmation gate (see "Autonomy modes" below).
 
@@ -74,12 +68,6 @@ The bootstrap halt is the **only** halt the orchestrator performs other than use
 `/cla:spec-to-pr` should NOT pick up uncommitted changes that belong to a different scope and sweep them into the feature branch's first commit. **The precheck must also detect in-progress git ops on other branches** — an in-progress cherry-pick/rebase/merge on another branch's HEAD is invisible to `git status --porcelain` on the current branch, so relying on `git status` alone lets it sweep unrelated untracked files into a later commit. See step 1 below. (Dated incident: `references/project-context.md`.)
 
 Run after the permissions check, before announcing the mode:
-
-**Step 0 — Surface any prior-run discipline gap:**
-```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/audit_run_complete.py --check-prior
-```
-If the previous `/cla:spec-to-pr` run in this repo ended with a discipline gap (its run-log line never got appended, or got left uncommitted so it wouldn't ship with the PR), the prior run's Handoff wrote a local marker and this prints a one-line `PRIOR-RUN DISCIPLINE GAP (...)` describing it. **Surface that line to the user as a non-halting note** (it's advisory — a past run's loose end, not a blocker for this one) and continue; the command clears the marker so it's surfaced exactly once. No output → nothing to surface, proceed silently. (This is the deferred-audit shape: a discipline lapse in one run is flagged at the start of the next, deterministically, without relying on a hook firing.)
 
 **Step 1 — Check for in-progress git operations and verify branch state:**
 ```
@@ -122,7 +110,7 @@ This is a single-developer project. Commit subjects and PR bodies are read once 
 | PR body (Ship) | one line — `Closes openspec/changes/<name>/. Checks: build + lint passed.` |
 | PR body update (Handoff, only when issues exist) | one line if issues fit on one line; otherwise a single short Markdown file |
 
-Because every default-path message is a single line, **no scratch files are needed in the happy path.** Use `git commit -m "<subject>"` (or `commit.py --message "<subject>" <paths>`) and `gh pr create --body "<one-line body>"`. The `gh pr create --body "..."` parser bug is triggered by *newline-followed-by-`#`*, not by long single lines without `#`, so a one-liner is safe.
+Because every default-path message is a single line, **no scratch files are needed in the happy path.** Use `git add -- <paths>` then `git commit -m "<subject>"`, and `gh pr create --body "<one-line body>"`. The `gh pr create --body "..."` parser bug is triggered by *newline-followed-by-`#`*, not by long single lines without `#`, so a one-liner is safe.
 
 ## Per-run scratch directory (created on demand)
 
@@ -264,9 +252,9 @@ Cap: `--test-rounds N` (default `3`).
 
 The correctness gates are the root package's `build`/`lint`/`test` scripts. In a workspace/monorepo, these are typically themselves a fan-out (e.g. `pnpm -r --if-present run <script>`) across every app/package: `build` (the typecheck + bundle primary gate; fails on any type error anywhere in the workspace), `lint` (workspace-wide), and `test` (every app/package's own test suite, when a `test` script is present). So running these three at root already covers the whole workspace in one shot — there is no separate per-app/package suite to union in. Test runs whichever of these exist, in that order. See `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape") for this repo's exact command set and app/package list (falls back to `references/project-context.md` if that file is absent).
 
-Discovery (staged): `python3 .claude/plugins/cla/skills/spec-to-pr/scripts/discover_tests.py --staged <changed-paths>` where `<changed-paths>` is the output of `git diff --name-only <base-branch>...HEAD`. The script reads the root `package.json`'s `scripts` and partitions whichever of `build`, `lint`, `test` it defines into two tiers — `{"smoke": [...], "full": [...]}` — when at least one changed path is source-affecting (any path with a `src` component, or a source/config-suffixed file). **`smoke`** is the cheap fast-fail tier (the lint script, milliseconds); **`full`** is the slow correctness tier (the build script — the typecheck+bundle primary gate — then the test script). (It discovers scripts dynamically, so it stays correct as the repo gains or loses a suite.)
+**Which gates to run.** Take the changed paths from `git diff --name-only <base-branch>...HEAD`, then read the command set out of `cla.io/project-facts.md` ("Dev / build / test commands") — that file is this repo's own record of them, whatever its stack, and `/cla:sync-context` keeps it current. Split into two tiers: **`smoke`** is the cheap fast-fail one (the lint command, typically milliseconds); **`full`** is the slow correctness tier (the build/typecheck command — the primary gate — then the test command). Whichever the repo doesn't have, it doesn't run.
 
-**Both tiers empty means one of three different things, and they are NOT interchangeable.** `--staged` reports which: `no-source-affecting-paths` → status `skip`, a genuine docs-/openspec-only change with nothing to gate. `no-check-scripts` → `skip`; the manifest defines none. **`no-package-json` → NOT a skip.** The repo has no root `package.json`, so manifest-driven discovery can find nothing in it at all — treat it as **`warn`**, and run the gates named in `cla.io/project-facts.md` ("Dev / build / test commands") or pass `--test-cmd "<cmd>"`. Reporting that case as a skip announces a source change as docs-only and silently runs no correctness gate at all; the reason is plausible enough that nobody questions it, which is what makes it worse than a missing gate.
+**No gates to run means one of two different things, and they are NOT interchangeable.** No changed path is source-affecting (no path with a `src` component, no source- or config-suffixed file — a docs-/openspec-only change) → status `skip`; there is genuinely nothing to gate. **The repo has source changes but names no commands → NOT a skip.** Treat it as **`warn`**, and say so plainly: either `project-facts.md` is stale (run `/cla:sync-context`) or the repo has no correctness gate at all. Reporting that case as a skip announces a source change as docs-only and silently runs no gate; the reason is plausible enough that nobody questions it, which is what makes it worse than a missing gate.
 
 For each round — **smoke tier first, then full** (fail cheap before paying for the slow gate):
 1. Run every `smoke` invocation. Any failure → diagnose (a lint violation, in whichever app/package it surfaced) via Edit and decrement budget; do NOT run the `full` tier this round — re-run from smoke next round. `smoke` is a pre-filter, not a correctness proof, so a smoke pass does NOT let you skip `full`.
@@ -317,7 +305,7 @@ User-driven mid-run interrupts (Ctrl-C, an explicit "stop" / "halt" / "wait" mes
 
 **Read `references/ship.md` first** — the full staging/commit/push/PR recipe, branch-name heuristic, and scratch-artifact-hygiene detail. Run inline (no `commit-push-pr` skill hop). Load-bearing invariants (hold these even if the reference isn't reloaded):
 
-- **Branch preflight dispatches on the current branch** (`git rev-parse --abbrev-ref HEAD`): already on `<branch>` → SKIP collision-check + checkout, stage directly (do NOT run `branch.py` — it false-positives on the branch you're on); on `<base-branch>` → `branch.py <change-name> --dry-run` (exit 3 = collision / exit 5 = remote unreachable → both `warn` and **Ship + Revise + Archive all become `skip`**; exit 0 → `git pull` then `git checkout -b <branch>`); any other branch → fail loudly, **except** a `/cla:new-worktree`-created branch with zero commits ahead of `origin/<base-branch>` (post-fetch) AND no pre-existing remote `<branch>` — rename it in place (`git branch -m`) and proceed as if already on the feature branch (full check commands: `references/ship.md` §1).
+- **Branch preflight dispatches on the current branch** (`git rev-parse --abbrev-ref HEAD`): already on `<branch>` → SKIP collision-check + checkout, stage directly (the collision check false-positives on the branch you're on); on `<base-branch>` → check `git rev-parse --verify --quiet refs/heads/<branch>` and `git ls-remote --exit-code --heads origin <branch>` (branch exists either side, or `ls-remote` fails for any reason other than a clean "absent" → `warn` and **Ship + Revise + Archive all become `skip`**; both clean → `git pull` then `git checkout -b <branch>`); any other branch → fail loudly, **except** a `/cla:new-worktree`-created branch with zero commits ahead of `origin/<base-branch>` (post-fetch) AND no pre-existing remote `<branch>` — rename it in place (`git branch -m`) and proceed as if already on the feature branch (full check commands: `references/ship.md` §1).
 - **Verify `git_state.py --expect-branch <branch>` before staging** (hoisted rule); exit 2/3 → halt and surface.
 - **Scratch-artifact hygiene:** before staging, scan `git status --porcelain` untracked entries for a stray repo-root scratch artifact and delete it — never fold it into the commit (signature in `references/project-context.md`).
 - **Path-scoped `git add`, NEVER `-A`** (hoisted rule): enumerate the specific `apps/*/src/`/`packages/*/src/` (or, for a `.claude/`-meta change, the specific skill files) + the change dir; add any other legitimately-touched top-level file by name.
@@ -344,23 +332,23 @@ User-driven mid-run interrupts (Ctrl-C, an explicit "stop" / "halt" / "wait" mes
 **Read `references/archive.md` first** — the full archive-and-commit recipe, the capability-enumeration step, the scope-assertion and push-post-check commands. Archive materializes the active `openspec/specs/<capability>/` and moves the change dir to `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/`, committed to the same PR so it merges atomically. Load-bearing invariants (hold these even if the reference isn't reloaded):
 
 - **Run `openspec archive <change-name> --yes` directly** (no `Skill(openspec-archive-change)` hop). Post-check: the dated archive dir's `proposal.md` exists AND the change dir's no longer does. First run the pre-archive main-spec heading-sanity checks + retired-path cleanup per **`references/archive-preflight.md`**, remediating in the same commit.
-- **Known `commit.py` failure on this commit shape:** it can fail to re-add a rename-source path (or any path already staged-then-removed from disk, e.g. by `openspec archive`) with `did not match any files`. Not a scope failure — confirm the two-sided scope assertion already passed, then commit directly (`git commit -m "chore: archive <change-name>"`) against the already-staged set instead of retrying `commit.py` (full detail: `references/archive.md`).
+- **Commit the already-staged set; do NOT re-stage here.** `openspec archive` has moved the change dir off disk, so a `git add` naming a rename-source path fails with `did not match any files` and takes the commit with it. Once the two-sided scope assertion has passed, `git commit -m "chore: archive <change-name>"` (full detail: `references/archive.md`).
 - **Enumerate EVERY capability the change modifies** (`ls openspec/changes/<change-name>/specs/`) — a change can materialize MORE THAN ONE; stage one `openspec/specs/<cap>/` group per capability.
-- **Path-scoped staging, NEVER a broad `git add openspec/`** (it sweeps sibling untracked change dirs in a chain). Stage only the change dir (deletions) + the dated archive dir (additions) + each capability's `openspec/specs/<cap>/`. Pass `commit.py` those same specific paths, never bare `openspec/` (it re-stages internally).
+- **Path-scoped staging, NEVER a broad `git add openspec/`** (it sweeps sibling untracked change dirs in a chain). Stage only the change dir (deletions) + the dated archive dir (additions) + each capability's `openspec/specs/<cap>/`.
 - **Two-sided scope assertion on `git diff --name-only --cached`:** reject any staged path outside {change dir / dated archive dir / `openspec/specs/<cap>/spec.md` per capability} (over-staging → halt via `AskUserQuestion`), AND confirm every capability under `.../specs/` has its `openspec/specs/<cap>/spec.md` staged (under-staging → silent active-spec drift; stage it and re-diff).
 - **Push post-check (required):** a 0-exit `git push` is NOT sufficient — verify HEAD branch = `<branch>`, `@{u}` == HEAD sha, and that sha appears in `gh pr view <#> --json commits` (each a separate Bash call, compared in-context). Any failure → Archive `⚠` + prominent Handoff warning "archive commit DID NOT REACH the PR". The archive commit is NOT re-reviewed. Rationale (archive-while-OPEN): `references/design-tradeoffs.md`.
 
 ### Handoff
 
-**Read `references/handoff.md` first** — the exact terminal-report shape, the PR-body mirror, the TODO.md persistence format, the run-log append, and the discipline-audit finalize. Load-bearing invariants (hold these even if the reference isn't reloaded):
+**Read `references/handoff.md` first** — the exact terminal-report shape, the PR-body mirror, the TODO.md persistence format, and the run-log append. Load-bearing invariants (hold these even if the reference isn't reloaded):
 
 - **Emit the terminal report inline** (rendered Markdown, not a file): header, PR/branch/mode/caps, per-phase glyph table, counts, Issues encountered, Deferred-Known-Issues (each with rationale), Deferred-to-TODO.md, and Next steps — sections in that order, "(none)" for empty ones.
 - **Next-steps gating** (the load-bearing rule): **all ✓** → print `gh pr merge <#> --squash --delete-branch`; **any ⚠** → print "**Review warnings before merging.**" FIRST + the warned summaries, THEN name `gh pr merge`; **any ✗** → print "**This PR is NOT ready to merge.**" and do NOT name `gh pr merge`. Never name `openspec archive` (Archive did it). The skill is development-only — no merge/deploy.
 - **Persist Deferred-Known-Issues + Suggestions to `TODO.md`** (`docs: TODO.md`, feature branch) when either list is non-empty; mirror the Issues list into the PR body.
-- **Append the per-run JSONL line** via `scripts/log_run.py` per `references/run-log-schema.md`, INCLUDING the `routing` object (per-agent `revise_findings_by_tier`, `implement_delegated`, `escalate_up_fired`). Failure is non-fatal (capture stderr, do not `warn` the run).
+- **Append the per-run JSONL line** via `lib/log_run.py` per `references/run-log-schema.md`, INCLUDING the `routing` object (per-agent `revise_findings_by_tier`, `implement_delegated`, `escalate_up_fired`). Failure is non-fatal (capture stderr, do not `warn` the run).
   **The Review record's `agents` field MUST agree with its `size_gate`, every time — this is the one field this checklist has been observed to drop in practice** (a downstream repo's `/cla:spec-to-pr-retro` run flagged multiple logged runs with `size_gate: "large"` and `agents: []`, caught by `aggregate.py`'s `review_gate_pair_mismatches` metric). Large mode: `agents` MUST be `["design", "task", "spec"]` (or whichever subset actually ran). Small mode: `agents` MUST be omitted or `[]`. Set this field from what Review actually dispatched, not from memory of "what large mode usually does" — assemble it at the same point you record `size_gate`, not as an afterthought when building the JSON object for `log_run.py`.
 - **Commit the run-log line to the feature branch** (`chore: spec-to-pr run log`) so it ships with the PR and never dangles — **feature-branch-only guard:** SKIP this commit when Ship was `skip` (still on `<base-branch>`); skip when `CLAUDE_RETRO_DIR` is out-of-repo. It is the LAST commit of the run, not re-reviewed.
-- **Finalize the discipline audit last** (`audit_run_complete.py --finalize [--shipped] --change <name>`) — advisory, always exits 0; note any `DISCIPLINE GAP` line without `warn`ing the run.
+- **Say so in the report if the run-log line was not appended or not committed** — a loose end the user should see now, not one `/cla:spec-to-pr-retro` discovers later as a missing run. It does not `warn` the run.
 
 ## Per-loop caps and fix loops
 
@@ -413,5 +401,5 @@ The terminal report's "Next steps for you" section names `gh pr merge --squash -
 - `references/run-log-schema.md` — per-run JSONL schema + field obligations (Handoff step 5; the contract `/cla:spec-to-pr-retro` consumes)
 - `references/archive-preflight.md` — main-spec heading-sanity checks + retired-path cleanup (Archive step 1)
 - `references/design-tradeoffs.md` — design rationale for inline Ship, the Revise dispatch mechanisms (Workflow fan-out round 1 / direct-Agent round ≥2), Archive archive-while-OPEN, continue-on-everything, wildcard permissions, inline Handoff report (read once when revising the design; not per run). Review does NOT invoke `Skill(cla:review-change)` — it reads `.claude/plugins/cla/skills/review-change/references/checklist.md` directly and executes it inline (see the Review section); the checklist file is the single source of truth shared with the standalone `/cla:review-change` path.
-- `references/required-permissions.json` — bootstrap pattern set (wildcard, default; consumed by `check_permissions.py`)
-- `references/required-permissions-narrow.json` — per-subcommand pattern set; opt in via `check_permissions.py --narrow`. Useful when the user prefers stricter allowlisting; same `--apply` workflow.
+- `references/required-permissions.json` — bootstrap pattern set (wildcard, default; read by the permissions check above)
+- `references/required-permissions-narrow.json` — per-subcommand pattern set; opt in with `--narrow`. Useful when the user prefers stricter allowlisting.

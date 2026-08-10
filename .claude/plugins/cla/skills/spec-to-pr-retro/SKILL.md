@@ -101,7 +101,7 @@ Do NOT apply edits without explicit confirmation — retros are advisory.
 ## Sources of truth
 
 - **Schema reference:** see `aggregate.py`'s module docstring for exact field names emitted.
-- **Log format:** see `spec-to-pr/scripts/log_run.py` for what gets written per run.
+- **Log format:** see `lib/log_run.py` for what gets written per run.
 - **What to log:** see `spec-to-pr/references/run-log-schema.md` (schema + per-field obligations).
 
 ## When NOT to use

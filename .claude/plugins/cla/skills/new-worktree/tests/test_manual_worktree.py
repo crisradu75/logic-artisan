@@ -405,58 +405,14 @@ def test_a_missing_name_is_reported_as_json_not_as_an_argparse_exit(repo, capsys
     assert "--name is required" in json.loads(capsys.readouterr().out)["error"]
 
 
-# --------------------------------------------------------------------------- #
-# --print-path: the contract the repo-root `claw` launcher depends on
-#
-# claw assigns this script's stdout to a shell variable and then `cd`s into it,
-# so the shape matters more than usual: a bare path on success, NOTHING on
-# stdout on failure (an error message there would be `cd`-ed into), and a
-# non-zero exit so the launcher can bail before starting Claude.
-# --------------------------------------------------------------------------- #
-
-
-def test_print_path_emits_a_bare_usable_path_and_nothing_else(repo, capsys):
-    rc = mw.main(["--repo", str(repo), "--name", "alpha", "--print-path"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert out.endswith("\n"), "shell $(...) strips the trailing newline; keep it"
-    path = out.strip()
-    assert "\n" not in path, "exactly one line, or the shell variable holds garbage"
-    assert not path.startswith("{"), "must not be JSON in this mode"
-    assert Path(path).is_dir(), "the launcher cd's into this; it must exist"
-    assert Path(path).name == "alpha"
-
-
-def test_print_path_writes_errors_to_stderr_not_stdout(repo, capsys):
-    """A launcher captures stdout. An error message there would be treated as a
-    path — so on failure stdout must be EMPTY, not helpful."""
-    mw.main(["--repo", str(repo), "--name", "dup", "--print-path"])
-    capsys.readouterr()
-    rc = mw.main(["--repo", str(repo), "--name", "dup", "--print-path"])
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert captured.out.strip() == "", "stdout must be empty on failure"
-    assert "manual_worktree" in captured.err
-
-
-def test_print_path_rejects_a_traversal_name_without_printing_a_path(repo, capsys):
-    rc = mw.main(["--repo", str(repo), "--name", "../escape", "--print-path"])
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert captured.out.strip() == ""
-    assert "single path segment" in captured.err
-
-
-def test_without_print_path_the_json_contract_is_unchanged(repo, capsys):
-    """The new flag must not alter the existing default output shape, which the
-    new-worktree skill parses."""
+def test_success_emits_the_json_contract_the_skill_parses(repo, capsys):
     rc = mw.main(["--repo", str(repo), "--name", "beta"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["worktree_path"].endswith("beta")
 
 
-def test_without_print_path_errors_stay_json_on_stdout(repo, capsys):
+def test_errors_stay_json_on_stdout(repo, capsys):
     mw.main(["--repo", str(repo), "--name", "gamma2"])
     capsys.readouterr()
     rc = mw.main(["--repo", str(repo), "--name", "gamma2"])
