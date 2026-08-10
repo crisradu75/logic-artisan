@@ -48,7 +48,7 @@ The `cla` plugin SHALL be activated in place via `claude --plugin-dir ./.claude/
 
 ### Requirement: Repo-state resolution seam
 
-Plugin scripts SHALL resolve repo locations independently of their own position in the tree, because the plugin's nested position under `.claude/plugins/cla/…` breaks any position-dependent resolver. Specifically: (a) scripts that read/write the retro dir (the shared writer `lib/log_run.py` and each retro loop's `aggregate.py`) SHALL resolve it as `CLAUDE_RETRO_DIR` when set, otherwise `<git rev-parse --show-toplevel>/cla.io/retro`; (b) scripts that resolve a repo root for other repo files (`probe_state.py` via `_git_common.py`) SHALL resolve it via `git rev-parse --show-toplevel`, NOT a fixed `Path(__file__).resolve().parents[N]` depth. Scripts MUST NOT rely on walking to a `.claude` ancestor of the script nor on `${CLAUDE_PROJECT_DIR}` (empty in the script environment). A skill-bundled file (e.g. `references/branch-prefix.local.md`) SHALL be resolved skill-relative to the script, while a project-level target SHALL be resolved from the repo root.
+Plugin scripts SHALL resolve repo locations independently of their own position in the tree, because the plugin's nested position under `.claude/plugins/cla/…` breaks any position-dependent resolver. Specifically: (a) scripts that read/write the retro dir (the shared writer `lib/log_run.py` and each retro loop's `aggregate.py`) SHALL resolve it as `CLAUDE_RETRO_DIR` when set, otherwise `<git rev-parse --show-toplevel>/cla.io/retro`; (b) scripts that resolve a repo root for other repo files (`probe_state.py` via `_git_common.py`) SHALL resolve it via `git rev-parse --show-toplevel`, NOT a fixed `Path(__file__).resolve().parents[N]` depth. Scripts MUST NOT rely on walking to a `.claude` ancestor of the script nor on `${CLAUDE_PROJECT_DIR}` (empty in the script environment). A skill-bundled file (one that ships WITH the plugin, e.g. `references/required-permissions.json`) SHALL be resolved skill-relative to the script, while a project-level target — including every overlay under `cla.io/overlays/` — SHALL be resolved from the repo root.
 
 #### Scenario: A plugin script writes to the repo's retro dir
 
@@ -64,23 +64,25 @@ Plugin scripts SHALL resolve repo locations independently of their own position 
 
 - **WHEN** a repo-root-consuming script (e.g. `probe_state.py`) runs from `.claude/plugins/cla/skills/spec-to-pr/scripts/`
 - **THEN** it finds the repo root via `git rev-parse --show-toplevel` (not `parents[N]`)
-- **AND** it reads its skill-bundled `references/branch-prefix.local.md` skill-relative while still resolving repo files at the repo root
+- **AND** it resolves the repo's `cla.io/overlays/branch-prefix.local.md` from that repo root, never from its own position in the plugin tree
 
 ### Requirement: Project-specific overlay convention
 
-Project-specific content (repo-tuned review checks, monorepo-shaped agent prompts, repo paths) SHALL be contained in **repo-neutral overlay files** whose leaf filename is either exactly `project-context.md` (the canonical single per-skill overlay) or matches the glob `*.local.md` (additional per-skill local overlay files), co-located in the consuming skill's `references/` directory (e.g. `.claude/plugins/cla/skills/review-change/references/project-context.md`). The overlay marker SHALL NOT embed the name of any repository; a generic skill body SHALL remain repo-agnostic and reference its overlay by the fixed repo-neutral path `references/project-context.md`. Each destination repo fills in its own overlay content behind that fixed filename. The overlay marker SHALL be recognized by convention on the **leaf filename** (not on intermediate path components), so a directory that merely contains an overlay stays syncable.
+Project-specific content (repo-tuned review checks, monorepo-shaped agent prompts, repo paths) SHALL be contained in **repo-neutral overlay files** under `cla.io/overlays/`: one `<skill>.md` per consuming skill, plus any `*.local.md` siblings for a narrower per-repo setting. They live in the repo, NOT inside the plugin, for two reasons: a marketplace-installed plugin tree is a read-only cache a destination repo cannot write to, and every reader treats a missing overlay as the ordinary un-configured state, so an overlay the reader cannot reach degrades silently to a default rather than erroring. A generic skill body SHALL remain repo-agnostic and reference its overlay by the fixed repo-neutral path `cla.io/overlays/<skill>.md`. Each destination repo fills in its own overlay content behind that fixed path.
+
+**Legacy location.** Overlays previously sat beside the skill at `references/project-context.md`, and that leaf name remains a recognized overlay marker so a repo mid-migration is neither re-synced over nor dropped from the staleness guard's scan. New overlays SHALL NOT be created there.
 
 **Exception for repo-wide shared facts.** A fact that is *shared across multiple skills* (a repo-wide command, port, member list, path map, or doc list) MAY instead live once in the repo-level consolidated project-facts file `cla.io/project-facts.md` (per the **Consolidated project-facts file** requirement), rather than being co-located and restated in each consuming skill's `references/`. This is the sole exception to co-location, and it applies ONLY to that single repo-level shared file — per-skill overlays themselves remain co-located under the skill's `references/`. A per-skill overlay references such a shared fact by a pointer to `cla.io/project-facts.md`.
 
 #### Scenario: Repo checks live in a repo-neutral overlay
 
 - **WHEN** `review-change` or `project-review` runs
-- **THEN** its generic body reads its repo-specific checks from a co-located `references/project-context.md` overlay file
+- **THEN** its generic body reads its repo-specific checks from `cla.io/overlays/<skill>.md` in the repo it is running in
 
 #### Scenario: A generic skill references its overlay without naming the repo
 
 - **WHEN** a generic `SKILL.md` (or a reference it reads, e.g. `checklist.md`) points at its project overlay
-- **THEN** the reference is the fixed repo-neutral path `references/project-context.md`
+- **THEN** the reference is the fixed repo-neutral path `cla.io/overlays/<skill>.md`
 - **AND** no hardcoded repository-name prefix appears in that reference
 
 #### Scenario: A skill carries multiple local overlay files
@@ -305,7 +307,7 @@ The **shared/skill-specific tie-break** SHALL be: a fact goes to `cla.io/project
 
 ### Requirement: Per-skill project-context overlay
 
-Each `cla` skill that carries project specifics SHALL route them through that skill's single per-skill overlay file — the `references/project-context.md` marker defined by the **Project-specific overlay convention**, which already governs the overlay's fixed repo-neutral path, its repo-name-free referencing, and the `*.local.md` leaf-suffix form for additional local files. This requirement does not restate those mechanics; it builds on them by fixing the overlay's **role and shape** so the file can be **stubbed by a scaffolding step and linted by a conformance guard**.
+Each `cla` skill that carries project specifics SHALL route them through that skill's single per-skill overlay file at `cla.io/overlays/<skill>.md` — living in the repo, not the plugin, because a marketplace-installed plugin tree is a read-only cache that a destination repo cannot write to, and because every reader treats a missing overlay as the ordinary un-configured state, so an unreachable overlay fails silently. Recognized by the **Project-specific overlay convention**, which already governs the overlay's fixed repo-neutral path, its repo-name-free referencing, and the `*.local.md` leaf-suffix form for additional local files. This requirement does not restate those mechanics; it builds on them by fixing the overlay's **role and shape** so the file can be **stubbed by a scaffolding step and linted by a conformance guard**.
 
 An overlay file SHALL be self-describing enough to be regenerated as an empty stub and filled in per destination repo. It SHALL open with a heading naming the owning skill and its role as a project overlay, and SHALL organize its content under headed sections that map to the fact categories the owning skill needs (for example: repo commands, package/path names, permission sets, incident/offense history, product/domain prose, infrastructure values, and repo file lists — only those the skill actually uses). A destination repo with an empty or absent overlay SHALL still run the skill's generic procedure; the overlay supplies the repo-specific detail, it does not gate the procedure.
 

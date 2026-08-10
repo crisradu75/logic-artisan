@@ -30,7 +30,7 @@ A sibling pytest guard (`conformance-checks/tests/test_project_facts_paths.py`, 
 the OTHER half of the fact/procedure split's freshness problem: not "is a fact behind an overlay"
 (the conformance guard above), but "does a path a fact NAMES still exist." It reads the repo-level
 consolidated `cla.io/project-facts.md` (populated by `/cla:sync-context`) plus every per-skill
-`references/project-context.md` overlay, extracts every token that looks like a repo-relative path
+`cla.io/overlays/<skill>.md` overlay, extracts every token that looks like a repo-relative path
 (conservatively — see its own docstring for the extraction rule), and fails when any such path no
 longer resolves on disk (as a file or a directory). It resolves the **repo root** (not the plugin root
 the conformance guard above walks to), since the paths it checks are repo-relative and

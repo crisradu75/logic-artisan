@@ -57,7 +57,7 @@ openspec/                      OpenSpec config + specs for this repo's own chang
 ## Canonical vs. per-repo
 
 This repo carries **portable procedure only**. Every project-specific overlay
-(`references/project-context.md`, `*.local.md`) here is a **neutral stub** — a destination repo
+(`cla.io/overlays/<skill>.md`, `*.local.md`) here is a **neutral stub** — a destination repo
 fills in its own facts, and `update-cla` never overwrites them. Per-repo state (`cla.io/`
 decisions, feedback, retro logs) is never part of the synced core. Pytest conformance guards fail
 the suite if a project-specific token or a hardcoded developer path leaks into the synced core.

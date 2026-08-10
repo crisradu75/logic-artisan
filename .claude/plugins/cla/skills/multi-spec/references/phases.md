@@ -4,7 +4,7 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 ## Phase 1 — deriving the change plan
 
-**Primary source: the file's own sequencing/grouping.** Look for a "Sequencing" section (or an equivalently-named ordering decision — `shape-decision` output typically numbers it as the last decision). When present, derive the change list, each change's covered decision numbers, and the dependency order directly from it — **do not** default to one change per numbered decision; the file's own grouping is authoritative (see `references/project-context.md` for a real precedent where amendments folded into existing changes rather than becoming new ones).
+**Primary source: the file's own sequencing/grouping.** Look for a "Sequencing" section (or an equivalently-named ordering decision — `shape-decision` output typically numbers it as the last decision). When present, derive the change list, each change's covered decision numbers, and the dependency order directly from it — **do not** default to one change per numbered decision; the file's own grouping is authoritative (see `cla.io/overlays/multi-spec.md` for a real precedent where amendments folded into existing changes rather than becoming new ones).
 
 **Fallback: derive grouping by judgment.** When no such section exists, read every numbered decision and the Decision Summary table, and group them into coherent, dependency-ordered changes yourself — decisions that share a data model, a component, or an explicit "depends on" relationship belong in one change or in dependency order across changes. This is the same kind of reasoning `multi-pr`'s Phase 1 does over already-authored changes, applied here to raw decisions text.
 

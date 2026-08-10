@@ -18,7 +18,7 @@ and never populates facts; `update-cla` syncs the portable asset core and never 
 **Onboarding order: `cla-init` (structure) → `/cla:sync-context` (content) → `update-cla` (portable core).**
 
 - **`cla-init`** scaffolds the `cla.io/` tree (retro ledgers, feedback inbox, lessons-learned log,
-  decisions dir) and empty `references/project-context.md` overlay stubs for skills that consume one.
+  decisions dir) and empty `cla.io/overlays/<skill>.md` stubs for skills that consume one.
   It never writes real facts into any of them.
 - **`/cla:sync-context` (this skill)** owns **fact content**: it populates/reconciles
   `cla.io/project-facts.md` (the shared repo-wide facts) and, where a per-skill overlay is missing its
@@ -53,7 +53,7 @@ If this errors (not inside a git working tree), stop and tell the user to run fr
 
 A fact goes into `cla.io/project-facts.md` when it **serves two or more `cla` skills, OR names a
 repo-global command, port, workspace member, or path map**. A fact **stays** in a skill's own
-`references/project-context.md` overlay when it is an example chosen to illustrate that skill's own
+`cla.io/overlays/<skill>.md` overlay when it is an example chosen to illustrate that skill's own
 prose, or is that skill's own incident history, bespoke checks, or permission-set intent. When
 reconciling, prefer leaving a borderline fact in its overlay over aggressively centralizing it — losing
 skill-specific content is worse than a small amount of residual per-skill detail.
@@ -132,9 +132,10 @@ hardcoded parser — that's what makes this skill portable across differing tech
 ### Step 2 — Read the existing state
 
 - `cla.io/project-facts.md`, if present (this is a **reconcile**, not a from-scratch write).
-- Every `references/project-context.md` under `.claude/plugins/cla/skills/*/` (glob generically — don't
-  hardcode a skill list) — note which facts each one currently restates that match the tie-break rule
-  above, and whether it already carries the pointer sentence.
+- Every `cla.io/overlays/*.md` (glob generically — don't hardcode a skill list) — note which facts
+  each one currently restates that match the tie-break rule above, and whether it already carries the
+  pointer sentence. In a repo that has not migrated yet, the overlays may still sit at
+  `.claude/plugins/cla/skills/*/references/project-context.md`; glob both and say which you found.
 - `cla.io/project-tokens.local.md`, if present, for the
   conformance guard's current curated token list.
 - `cla.io/terminology.md`, if present — read only for the optional reconciliation pass in Step 5; this

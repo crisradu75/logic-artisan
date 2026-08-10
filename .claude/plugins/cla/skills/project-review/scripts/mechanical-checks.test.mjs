@@ -23,7 +23,8 @@ const SCRIPT_PATH = fileURLToPath(new URL('./mechanical-checks.mjs', import.meta
 
 import {
   getOverlayPath,
-  DEFAULT_OVERLAY_PATH,
+  defaultOverlayPath,
+  OVERLAY_RELPATH,
   extractFencedBlockUnderHeading,
   loadConfig,
   checkJsonKeyParity,
@@ -286,7 +287,7 @@ test('getOverlayPath: an empty-string override is treated as unset, not as an em
   const prev = process.env.MECHANICAL_CHECKS_OVERLAY;
   process.env.MECHANICAL_CHECKS_OVERLAY = '';
   try {
-    assert.equal(getOverlayPath(), DEFAULT_OVERLAY_PATH);
+    assert.equal(getOverlayPath(), defaultOverlayPath());
   } finally {
     if (prev === undefined) delete process.env.MECHANICAL_CHECKS_OVERLAY;
     else process.env.MECHANICAL_CHECKS_OVERLAY = prev;

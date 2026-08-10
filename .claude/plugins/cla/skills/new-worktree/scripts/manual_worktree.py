@@ -23,7 +23,7 @@ What it does NOT do
 -------------------
 Dependency installs, env-file copying, and any other per-repo setup are
 deliberately absent. Those differ per repo and belong in the calling skill plus
-its `references/project-context.md` overlay, not in portable core.
+its `cla.io/overlays/new-worktree.md` overlay, not in portable core.
 
 The isolation guarantee is different too, and the caller must know it: a session
 that entered via `EnterWorktree` has its file operations redirected into the

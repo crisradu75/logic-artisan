@@ -1,6 +1,6 @@
 ---
 name: cla-init
-description: "Idempotent, never-clobber project-data scaffolder for the cla plugin: creates a fresh (or partially-scaffolded) repo's cla.io/ tree — decisions/, feedback/, retro/, lessons-learned/ dirs, the empty .jsonl retro ledgers, the feedback/notes.md inbox, the lessons-learned log — and seeds skeleton references/project-context.md overlay stubs for skills that consume one. Creates only what's missing; never overwrites or re-seeds what already exists, so it's safe to re-run anytime. Does NOT wire the plugin manifest or settings (stays manual). Triggers on /cla:cla-init or natural language like 'scaffold cla.io', 'initialize the cla plugin data', 'onboard this repo to cla', 'set up the cla project data'."
+description: "Idempotent, never-clobber project-data scaffolder for the cla plugin: creates a fresh (or partially-scaffolded) repo's cla.io/ tree — decisions/, feedback/, retro/, lessons-learned/ dirs, the empty .jsonl retro ledgers, the feedback/notes.md inbox, the lessons-learned log — and seeds skeleton cla.io/overlays/<skill>.md stubs for skills that consume one. Creates only what's missing; never overwrites or re-seeds what already exists, so it's safe to re-run anytime. Does NOT wire the plugin manifest or settings (stays manual). Triggers on /cla:cla-init or natural language like 'scaffold cla.io', 'initialize the cla plugin data', 'onboard this repo to cla', 'set up the cla project data'."
 argument-hint: "(no args — scaffolds the current repo)"
 allowed-tools: Bash, Read, Grep, Glob
 ---
@@ -9,7 +9,7 @@ allowed-tools: Bash, Read, Grep, Glob
 
 Bring a fresh or partially-scaffolded repo up to the project-data baseline the other `cla` skills
 expect: the `cla.io/` tree (retro ledgers, feedback inbox, lessons-learned log, decisions dir) and
-skeleton `references/project-context.md` overlay stubs for each skill that reads its own overlay.
+skeleton `cla.io/overlays/<skill>.md` overlay stubs for each skill that reads its own overlay.
 
 This skill is **project-data only**. It does NOT sync, adapt, or touch any *asset-core* file
 (`SKILL.md` bodies, agents, hooks) — that is `update-cla`'s job.
@@ -54,7 +54,7 @@ the plugin's standard repo-state resolution seam is git-based.
   - seed/stub file with content → `[ -e "$f" ] || cat > "$f" <<'EOF'` … `EOF`
 - **Create only what is missing.** A partially-scaffolded repo ends fully scaffolded with every
   pre-existing piece byte-for-byte unchanged. A `.jsonl` with history, a filled `notes.md`, or a
-  populated `project-context.md` is ALWAYS skipped, even though the seed content differs.
+  populated `cla.io/overlays/<skill>.md` is ALWAYS skipped, even though the seed content differs.
 - **Report `created` vs `exists (skipped)` per target**, so a re-run is transparently a no-op on
   already-present pieces.
 
@@ -108,37 +108,43 @@ EOF
 
 ### 5. Per-skill overlay stubs
 
-Seed a skeleton `references/project-context.md` for each skill that **consumes its own overlay** as a
+Seed a skeleton `cla.io/overlays/<skill>.md` for each skill that **consumes its own overlay** as a
 source of this repo's facts and does not yet have the file.
 
-**Discovery predicate (a mere marker mention is NOT a consumer).** "Reads its own overlay" ≠ "the
-string `references/project-context.md` appears in the skill dir." Determine the consumer set as:
+**Overlays live in the repo, not the plugin.** Under a marketplace install the plugin tree is a
+read-only cache, so a per-repo fact stored beside the skill would be unwritable — and silently so,
+since every consumer treats a missing overlay as the ordinary un-configured state.
 
-- **(a) Scan scope** — only each skill's `SKILL.md` and its non-overlay `references/*.md` files. Do NOT
+**Discovery predicate (a mere marker mention is NOT a consumer).** "Reads its own overlay" ≠ "the
+string `cla.io/overlays/` appears in the skill dir." Determine the consumer set as:
+
+- **(a) Scan scope** — only each skill's `SKILL.md` and its `references/*.md` files. Do NOT
   scan `scripts/` or `tests/` (they name the marker as the sync-exclusion mechanism, not to consume it).
-  Seed the *candidate* set with `grep -rl 'references/project-context.md' "$ROOT"/.claude/plugins/cla/skills/*/SKILL.md "$ROOT"/.claude/plugins/cla/skills/*/references/*.md` (ignore no-match errors for skills without a `references/` dir), then apply the consumer test (b) and exclusions (c) to that candidate list — the grep only narrows *where to look*, it does not by itself decide consumer status.
+  Seed the *candidate* set with `grep -rl 'cla.io/overlays/' "$ROOT"/.claude/plugins/cla/skills/*/SKILL.md "$ROOT"/.claude/plugins/cla/skills/*/references/*.md` (ignore no-match errors for skills without a `references/` dir), then apply the consumer test (b) and exclusions (c) to that candidate list — the grep only narrows *where to look*, it does not by itself decide consumer status.
 - **(b) Consumer test** — count a skill as a consumer only when that text *directs reading the overlay
-  for this repo's facts*: a "see/read `references/project-context.md` for this repo's …" or "inject the
-  repo facts from `references/project-context.md`" instruction. A file that merely *names* the marker
-  to document the preservation/exclusion convention is NOT a consumer.
+  for this repo's facts*: a "see/read `cla.io/overlays/<skill>.md` for this repo's …" or "inject the
+  repo facts from `cla.io/overlays/<skill>.md`" instruction. A file that merely *names* the marker
+  to document the preservation/exclusion convention is NOT a consumer. **A skill citing a SIBLING's
+  overlay does not make itself a consumer** — match on the skill's own name in the path.
 - **(c) Explicit exclusions** — `update-cla` and `cla-init` are never seeded. `update-cla` names the
   marker only to document rule 5 (sync-preservation); `cla-init` (this skill) names it structurally in
   its own scaffold manifest + stub template. Both saturate a naive substring match yet neither consumes
   an overlay of its own.
 
-For each consumer skill lacking the file, create the `references/` dir if absent, then write the stub:
+For each consumer skill lacking the file, write the stub:
 
 ```bash
-mkdir -p "$ROOT/.claude/plugins/cla/skills/<skill>/references"
-STUB="$ROOT/.claude/plugins/cla/skills/<skill>/references/project-context.md"
+mkdir -p "$ROOT/cla.io/overlays"
+STUB="$ROOT/cla.io/overlays/<skill>.md"
 [ -e "$STUB" ] || cat > "$STUB" <<'EOF'
 # <skill> — project context overlay
 
 <!--
 Project-specific overlay for the `<skill>` cla skill. This file is repo-local
-(never synced by update-cla). The generic SKILL.md supplies the procedure; this
-file supplies the repo's facts. A skill runs fine against an empty stub — fill in
-only the sections its SKILL.md references, delete the rest.
+(it lives in cla.io/, outside the plugin, and is never synced). The generic
+SKILL.md supplies the procedure; this file supplies the repo's facts. A skill
+runs fine against an empty stub — fill in only the sections its SKILL.md
+references, delete the rest.
 -->
 
 ## Repo commands

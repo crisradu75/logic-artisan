@@ -159,7 +159,7 @@ everywhere) from *facts* (per-repo, never synced):
   (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Together that's every
   `.py`/`.md` in the tree — a non-`.py`/`.md` synced-core file (`hooks/hooks.json`, a skill's own
   `.mjs` script) is still outside both scanners; watch those by hand.
-- **Overlays** — each skill's `references/project-context.md` plus any `*.local.md` files: the
+- **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. Recognized by name, excluded from sync, never
   overwritten by `update-cla`. In *this* repo they are neutral stubs (this is the source, not a
   consumer).
@@ -182,7 +182,7 @@ everywhere) from *facts* (per-repo, never synced):
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
-    references/                supporting docs; project-context.md = per-repo overlay
+    references/                supporting docs (portable; overlays live in cla.io/overlays/)
     scripts/                   deterministic helpers (stdlib Python)
     tests/                     that skill's isolated pytest scope
 ```

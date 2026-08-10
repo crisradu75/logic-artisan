@@ -344,7 +344,7 @@ def test_overlay_marker_preserved(synthetic_repos):
     skip), and the positive assertions prove non-overlay files are NOT dropped."""
     repos = synthetic_repos({
         "src": {
-            ".claude/plugins/cla/skills/review-change/references/project-context.md": "SOURCE overlay\n",
+            "cla.io/overlays/review-change.md": "SOURCE overlay\n",
             ".claude/plugins/cla/skills/review-change/references/notes.local.md": "SOURCE local overlay\n",
             # non-overlay sibling in the SAME references/ dir — must still sync
             # (guards against a regression to directory-level exclusion).
@@ -356,7 +356,7 @@ def test_overlay_marker_preserved(synthetic_repos):
             ".claude/plugins/cla/skills/spec-to-pr/SKILL.md": "SOURCE core\n",
         },
         "dst": {
-            ".claude/plugins/cla/skills/review-change/references/project-context.md": "LOCAL overlay\n",
+            "cla.io/overlays/review-change.md": "LOCAL overlay\n",
             ".claude/plugins/cla/skills/review-change/references/notes.local.md": "LOCAL local overlay\n",
             ".claude/plugins/cla/skills/review-change/references/checklist.md": "LOCAL sibling\n",
             ".claude/plugins/cla/skills/review-change/references/project-context-notes.md": "LOCAL near-miss\n",

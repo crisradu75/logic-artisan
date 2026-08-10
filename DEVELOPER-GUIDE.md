@@ -24,7 +24,7 @@ The split that everything obeys: **procedure is portable, facts are per-repo.**
 
 - Portable procedure lives in the synced core (`skills/`, `agents/`, `hooks/`, `output-styles/`)
   and is identical in every repo that uses CLA.
-- Your repo's facts live in overlays (`references/project-context.md`, `*.local.md`) and in the
+- Your repo's facts live in overlays (`cla.io/overlays/<skill>.md`, `*.local.md`) and in the
   repo-root `cla.io/` tree (decisions, feedback, retro ledgers, `project-facts.md`). The updater
   never touches them.
 
@@ -262,7 +262,7 @@ destination repo:
    `.cla-sync-lock.json` (3-way reconcile), preserves local overlays and local strengths, surfaces
    deletions without applying them, and never auto-merges.
 
-Then fill in the per-skill `references/project-context.md` overlays as the skills prompt for
+Then fill in the per-skill `cla.io/overlays/<skill>.md` overlays as the skills prompt for
 facts, and add a `hooks/smoke-test-drift.local.md` if the repo has a UI smoke test to protect.
 Re-run `update-cla` any time to pull newer core; your overlays and `cla.io/` survive every sync.
 Sync is one-way (source → consumer): a skill improved while working in a consuming repo has to be

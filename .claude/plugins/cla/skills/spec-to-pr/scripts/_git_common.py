@@ -125,11 +125,26 @@ def prefix_from_text(text: str) -> str | None:
     return None
 
 
+def overlay_path() -> Path:
+    """Where `branch_prefix()` looks for the overlay.
+
+    Split out so the path is testable on its own. It has to be: an overlay this
+    function cannot find is not an error, it is the ordinary un-configured state,
+    so a wrong path here returns `feature/` for every repo and says nothing.
+    Mutation confirmed no test noticed the path being broken until a check
+    asserted on this function directly.
+    """
+    return repo_root() / "cla.io" / "overlays" / _BRANCH_PREFIX_OVERLAY
+
+
 def branch_prefix() -> str:
     """This repo's branch prefix: env override, else overlay, else the default.
 
-    The overlay is a `*.local.md`, so `discover.py` never syncs it and it never
-    shows up as a divergence in a consuming repo.
+    The overlay lives in the REPO (`cla.io/overlays/`), not in the plugin. Under
+    a marketplace install the plugin tree is a read-only cache that no repo can
+    write to, so a per-repo fact stored beside the code that reads it would be
+    unreachable — and, worse, silently unreachable: a missing overlay is the
+    ordinary un-configured state, so the repo would just get `feature/` back.
 
     The value is used VERBATIM — no trailing `/` is appended. Forcing one ruled
     out a flat prefix like `wip-`, which a repo may legitimately want, and the
@@ -139,7 +154,7 @@ def branch_prefix() -> str:
     env = os.environ.get("CLA_BRANCH_PREFIX")
     if env:
         return env
-    overlay = Path(__file__).resolve().parent.parent / "references" / _BRANCH_PREFIX_OVERLAY
+    overlay = overlay_path()
     if not overlay.is_file():
         # The ONLY legitimately silent case: no overlay means not configured,
         # which is the ordinary state of every repo on the default convention.

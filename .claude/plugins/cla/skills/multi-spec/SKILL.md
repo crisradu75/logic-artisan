@@ -6,9 +6,9 @@ argument-hint: "[decisions-file-path | (empty = most recent under cla.io/decisio
 
 # /cla:multi-spec — decisions file → batch of committed OpenSpec proposals
 
-Automates a manual precedent set in this repo's own history (see `references/project-context.md` for the named commit/PR): one shape-decision output authored out into N full OpenSpec change proposals, reviewed once as a batch, opened as one PR. **Proposals only** — implementation is `/cla:spec-to-pr` (per-change) or `/cla:multi-pr` (the whole produced sequence), invoked separately afterward.
+Automates a manual precedent set in this repo's own history (see `cla.io/overlays/multi-spec.md` for the named commit/PR): one shape-decision output authored out into N full OpenSpec change proposals, reviewed once as a batch, opened as one PR. **Proposals only** — implementation is `/cla:spec-to-pr` (per-change) or `/cla:multi-pr` (the whole produced sequence), invoked separately afterward.
 
-**The durability requirement is the reason this skill exists as more than a loop over `openspec-propose`.** A batch of N proposal directories sitting uncommitted for the whole run is a real, already-realized loss mode in this repo's own history (see `references/project-context.md`) while sitting untracked. Every phase below is ordered to keep the loss window to at most one change.
+**The durability requirement is the reason this skill exists as more than a loop over `openspec-propose`.** A batch of N proposal directories sitting uncommitted for the whole run is a real, already-realized loss mode in this repo's own history (see `cla.io/overlays/multi-spec.md`) while sitting untracked. Every phase below is ordered to keep the loss window to at most one change.
 
 ## Skill-level rules (hoisted — read first)
 
@@ -84,4 +84,4 @@ Every phase resumes from git-tracked repo state, never from a log or the plan fi
 - `.claude/plugins/cla/skills/spec-to-pr/references/runtime-rules.md` — the thin-orchestrator runtime disciplines this skill follows throughout.
 - `.claude/plugins/cla/skills/spec-to-pr/references/base-branch-resolution.md` — the `<base-branch>` resolution rule, shared verbatim with `multi-lite`/`multi-pr`.
 - `.claude/plugins/cla/skills/review-change/references/checklist.md` — the single-change review workflow `references/review-gate.md` adapts to batch scope.
-- `references/project-context.md` — this repo's project-context overlay: the named precedent, the loss incident, and the grouping-judgment precedent.
+- `cla.io/overlays/multi-spec.md` — this repo's project-context overlay: the named precedent, the loss incident, and the grouping-judgment precedent.

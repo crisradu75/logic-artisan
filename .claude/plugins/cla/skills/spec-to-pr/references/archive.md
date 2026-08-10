@@ -18,7 +18,7 @@ Post-check: `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/proposal.md` ex
 
 The archive command warns about unticked task boxes when run via `--yes`; that's expected and not blocking.
 
-**First, enumerate the capabilities this change modifies** — a change can materialize MORE THAN ONE (see `references/project-context.md` for a real named precedent in this repo). List the change's own spec deltas: `ls openspec/changes/<change-name>/specs/` — each subdirectory there is one capability whose active `openspec/specs/<cap>/` the archive materializes. Stage **one `openspec/specs/<cap>/` path group per capability in that list**, not a single hardcoded one.
+**First, enumerate the capabilities this change modifies** — a change can materialize MORE THAN ONE (see `cla.io/overlays/spec-to-pr.md` for a real named precedent in this repo). List the change's own spec deltas: `ls openspec/changes/<change-name>/specs/` — each subdirectory there is one capability whose active `openspec/specs/<cap>/` the archive materializes. Stage **one `openspec/specs/<cap>/` path group per capability in that list**, not a single hardcoded one.
 
 **Pre-commit git-state + archive-scope checks (both required):**
 ```

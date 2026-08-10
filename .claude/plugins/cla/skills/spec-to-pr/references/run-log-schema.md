@@ -68,7 +68,7 @@ this; oversize records exit 1).
 - On Ship: `version_bumped` reflects whether this repo has a version-bump preflight (e.g. a
   `plugin.json`/version-manifest artifact bumped in-PR) as part of Ship. When the repo has no such
   artifact, Ship has no version-bump preflight and the field is retained at a constant value only so
-  `aggregate.py`'s `version_bump_misses` metric stays schema-compatible. See `references/project-context.md`
+  `aggregate.py`'s `version_bump_misses` metric stays schema-compatible. See `cla.io/overlays/spec-to-pr.md`
   for this repo's concrete answer.
 - On Review: `size_gate` (`"small"` or `"large"`) and `verdict` (`"READY"` / `"FIX FIRST"` /
   `"RETHINK"`) are ALWAYS required, in both small and large mode. Unknown strings get bucketed into

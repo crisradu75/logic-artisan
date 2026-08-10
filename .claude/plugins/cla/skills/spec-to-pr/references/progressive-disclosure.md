@@ -7,7 +7,7 @@ A plugin-wide authoring recipe (it lives here because `spec-to-pr` is the refere
 1. **Baseline.** `wc -w -c <skill>/SKILL.md` — record before.
 2. **Classify every section** as INLINE-invariant (stays) or MECHANICS (moves) — see the boundary below.
 3. **Move mechanics** into on-demand `references/*.md` (per-phase or per-topic; reuse existing reference files, don't duplicate). Each moved section leaves a **short inline stub** = the load-bearing one-liner(s) + a mandatory **"read `references/<name>.md` first"** pointer.
-4. **Route repo-specific worked examples** (real symbol/file names, dated incidents) that you move OUT to the skill's `references/project-context.md` overlay, leaving a generic pointer in the synced-core reference — per the **Skill fact/procedure separation** requirement. Never let a repo token land in a generic synced-core `references/*.md`.
+4. **Route repo-specific worked examples** (real symbol/file names, dated incidents) that you move OUT to the skill's `cla.io/overlays/spec-to-pr.md` overlay, leaving a generic pointer in the synced-core reference — per the **Skill fact/procedure separation** requirement. Never let a repo token land in a generic synced-core `references/*.md`.
 5. **Update the `## References` list** for any new file.
 6. **Post-size + validate** (see "Validation" below).
 
@@ -27,7 +27,7 @@ A plugin-wide authoring recipe (it lives here because `spec-to-pr` is the refere
 
 These invariants commonly live in *phase-step prose* rather than the hoisted block, so the restructure silently drops them from the inline stub. **Verify each is still inline after the move:**
 
-- **`git_state`-before-every-commit** — the #1 repeat offender: it commonly lives in phase-step prose rather than the hoisted block, so the restructure silently drops it from the inline stub (caught only by review when that happens — see `references/project-context.md` "Incident history" for concrete precedents). If the skill runs its own commits, this MUST be a hoisted one-liner, not left only in the moved recipe.
+- **`git_state`-before-every-commit** — the #1 repeat offender: it commonly lives in phase-step prose rather than the hoisted block, so the restructure silently drops it from the inline stub (caught only by review when that happens — see `cla.io/overlays/spec-to-pr.md` "Incident history" for concrete precedents). If the skill runs its own commits, this MUST be a hoisted one-liner, not left only in the moved recipe.
 - **never `git add -A` / path-scoped staging.**
 - The skill's **merge / quarantine / halt authorization** (e.g. multi-pr's whole-chain-halt vs multi-lite's downstream-only quarantine — these differ per skill; preserve the SKILL's own semantics verbatim, never swap in a sibling's).
 - Any **safety-confirmation gate** (e.g. codify-learnings' interactive-apply confirmation; update-cla's overlay-preservation + never-auto-merge).

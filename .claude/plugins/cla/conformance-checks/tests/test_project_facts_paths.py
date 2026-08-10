@@ -52,7 +52,10 @@ from pathlib import Path
 import pytest
 
 PROJECT_FACTS_RELPATH = Path("cla.io") / "project-facts.md"
-OVERLAY_GLOB = "*/references/project-context.md"
+OVERLAY_GLOB = "*.md"  # under cla.io/overlays/
+# Where overlays lived before they moved into the repo. Still scanned so a
+# consuming repo that has not migrated keeps its guard.
+LEGACY_OVERLAY_GLOB = "*/references/project-context.md"
 
 # Decision E's placeholder/glob character set, PLUS brace-expansion (`{a,b}`) —
 # an obvious shorthand/placeholder notation (several overlays legitimately write
@@ -356,15 +359,26 @@ def extract_path_candidates(line: str, top_level_names: set[str]) -> list[str]:
 
 
 def _iter_scanned_files(repo_root: Path):
-    """Yield ``cla.io/project-facts.md`` (if present) and every per-skill
-    ``references/project-context.md`` overlay (globbed generically under
-    ``skills/*/references/``, not a hardcoded skill list)."""
+    """Yield ``cla.io/project-facts.md`` (if present) and every per-skill overlay
+    under ``cla.io/overlays/`` (globbed generically, not a hardcoded skill list).
+
+    Both live in the repo, not the plugin: under a marketplace install the plugin
+    tree is a read-only cache, so per-repo facts cannot live there. A consuming
+    repo mid-migration may still hold overlays at the old
+    ``skills/*/references/project-context.md`` path, so those are scanned too —
+    dropping them would silently stop checking a repo that has not moved yet.
+    """
     facts_file = repo_root / PROJECT_FACTS_RELPATH
     if facts_file.is_file():
         yield facts_file
-    skills_root = repo_root / ".claude" / "plugins" / "cla" / "skills"
-    if skills_root.is_dir():
-        for path in sorted(skills_root.glob(OVERLAY_GLOB)):
+    overlays_root = repo_root / "cla.io" / "overlays"
+    if overlays_root.is_dir():
+        for path in sorted(overlays_root.glob("*.md")):
+            if path.is_file():
+                yield path
+    legacy_root = repo_root / ".claude" / "plugins" / "cla" / "skills"
+    if legacy_root.is_dir():
+        for path in sorted(legacy_root.glob(LEGACY_OVERLAY_GLOB)):
             if path.is_file():
                 yield path
 

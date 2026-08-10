@@ -9,7 +9,7 @@ Proposal/design/tasks/specs authoring is the premise-setting step for a change �
 ## Prompt template
 
 ```
-You are authoring one OpenSpec change proposal in this repo (see `references/project-context.md` for its monorepo shape, or `cla.io/project-facts.md`'s "Workspace shape" if populated). Do NOT assume a fixed package list — read the "Repo layout" section of the root `CLAUDE.md` for the authoritative current set of packages before referencing one in the proposal (the workspace gains packages over time; a hardcoded list drifts, and referencing a package that does not yet exist on the current tree seeds a false claim into the proposal).
+You are authoring one OpenSpec change proposal in this repo (see `cla.io/overlays/multi-spec.md` for its monorepo shape, or `cla.io/project-facts.md`'s "Workspace shape" if populated). Do NOT assume a fixed package list — read the "Repo layout" section of the root `CLAUDE.md` for the authoritative current set of packages before referencing one in the proposal (the workspace gains packages over time; a hardcoded list drifts, and referencing a package that does not yet exist on the current tree seeds a false claim into the proposal).
 
 **Change name:** <name>
 **One-line scope:** <one_line_scope from the plan>
@@ -26,7 +26,7 @@ Follow these steps, mirroring `.claude/skills/openspec-propose`'s own artifact-c
 3. For each artifact in dependency order, run `openspec instructions <artifact-id> --change "<name>" --json`, read its `template`/`instruction`/`context`/`rules`, read any completed dependency artifacts for context, and write the artifact to its `resolvedOutputPath`. Do NOT copy `context`/`rules` blocks into the output file — they constrain what you write, they are not content for the file.
 4. Apply these proposal-quality pre-checks as you write (from this repo's own `openspec-propose` skill — they are the three defect classes that most often drove FIX-FIRST review verdicts here):
    - **Pin load-bearing numbers in design.md.** Any threshold, band, cap, weight, tolerance, or split that changes scoring/behavior gets a concrete recommended default in a "Pinned implementation parameters" block — never "set during implementation."
-   - **Add a doc-sync task to tasks.md** for any change touching this repo's application source: update every doc this repo's own docs-sweep list names as needing to stay in sync (see `cla.io/project-facts.md` ("Doc-sweep paths (five-path list)") for the exact path list; run `/cla:sync-context` to populate it; falls back to `references/project-context.md` if absent), with a grep-verify for retired symbols/keys/flags.
+   - **Add a doc-sync task to tasks.md** for any change touching this repo's application source: update every doc this repo's own docs-sweep list names as needing to stay in sync (see `cla.io/project-facts.md` ("Doc-sweep paths (five-path list)") for the exact path list; run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/multi-spec.md` if absent), with a grep-verify for retired symbols/keys/flags.
    - **On a MODIFIED requirement, carry the FULL final requirement text + ALL its existing scenarios forward** — read the active spec, copy every scenario, then add/adjust. Never write a diff-only MODIFIED block; `openspec` archive-sync REPLACES the whole requirement, so an omitted scenario is silently deleted.
 5. Once every artifact required by `applyRequires` is `done` (re-check via `openspec status --change "<name>" --json`), run `openspec validate <name> --strict`.
 

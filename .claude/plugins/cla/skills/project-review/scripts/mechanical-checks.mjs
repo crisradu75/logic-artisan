@@ -3,7 +3,7 @@
 //
 // Generic engine: the actual checks (which files, which dirs, which imports are
 // forbidden, ...) are repo-specific DATA, never hardcoded here. They are read from
-// this skill's own overlay, `references/project-context.md`, under a
+// this skill's own overlay, `cla.io/overlays/project-review.md`, under a
 // "Mechanical checks — repo specifics" heading containing a fenced ```json``` block
 // (see references/mechanical-checks.md for the schema). That overlay is excluded
 // from update-cla's sync by name, so every destination repo authors its own check
@@ -73,8 +73,12 @@ function getRoot() {
 }
 const r = (...p) => join(getRoot(), ...p);
 
-const DEFAULT_OVERLAY_PATH = join(HERE, '..', 'references', 'project-context.md');
-const OVERLAY_RELPATH = 'references/project-context.md';
+// Resolved against the REPO, not this script's own directory. Under a
+// marketplace install the plugin tree is a read-only cache, so a per-repo check
+// list stored next to the script would be unwritable — and a missing overlay is
+// a legitimate "no checks configured" PASS, so the failure would be silent.
+const OVERLAY_RELPATH = 'cla.io/overlays/project-review.md';
+const defaultOverlayPath = () => r(OVERLAY_RELPATH);
 // Overridable for the same reason as MECHANICAL_CHECKS_ROOT: lets a test point
 // loadConfig() at a fixture file instead of this skill's own real overlay.
 // Truthy check (matching getRoot()'s `if (process.env...)` above, not `??`) is
@@ -82,7 +86,7 @@ const OVERLAY_RELPATH = 'references/project-context.md';
 // the same as "unset" avoids a silent-override edge case where the env-var-set
 // warning below and the actual override would otherwise disagree on whether
 // anything is overridden at all.
-const getOverlayPath = () => process.env.MECHANICAL_CHECKS_OVERLAY || DEFAULT_OVERLAY_PATH;
+const getOverlayPath = () => process.env.MECHANICAL_CHECKS_OVERLAY || defaultOverlayPath();
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -586,7 +590,8 @@ if (isMainModule) {
 export {
   getRoot,
   getOverlayPath,
-  DEFAULT_OVERLAY_PATH,
+  defaultOverlayPath,
+  OVERLAY_RELPATH,
   walk,
   findFenceSpans,
   extractFencedBlockUnderHeading,

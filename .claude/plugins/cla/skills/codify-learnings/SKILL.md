@@ -10,21 +10,21 @@ Review the current conversation. Identify lessons that would make a future, simi
 
 ## Inputs
 
-- `$ARGUMENTS` — optional free-form scope note (e.g. a subsystem or an app/package) to focus the review. See `cla.io/project-facts.md` ("Workspace shape") for this repo's own monorepo shape (its app/package list; run `/cla:sync-context` to populate it; falls back to `references/project-context.md` if absent); scope is the whole repo unless you narrow it.
+- `$ARGUMENTS` — optional free-form scope note (e.g. a subsystem or an app/package) to focus the review. See `cla.io/project-facts.md` ("Workspace shape") for this repo's own monorepo shape (its app/package list; run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/codify-learnings.md` if absent); scope is the whole repo unless you narrow it.
 - Always-in-scope: root `CLAUDE.md`, the relevant per-app guidance doc (e.g. a sub-app's own `CLAUDE.md`, if the session touched it), `.claude/commands/`, `.claude/settings.json` / `settings.local.json`, the touched app/package source under `apps/*/src/` or `packages/*/src/`, user memory dir.
 
 ## Step 1 — Determine scope and reconstruct the session arc
 
 Review the **entire session**, not just its tail. Do NOT sample only the last N tool calls — a root-cause lesson is often set up early and only paid for late, so a tail sample misses exactly the multi-phase sessions most worth codifying. Reconstruct the arc: the intended plan, every user correction or pushback, every reverted edit / abandoned approach, the design changes made mid-flight, and the final outcome.
 
-This repo is a monorepo, so scope is normally repo-wide. State it in one line as a `Scope:` note — see `references/project-context.md` for this repo's default scope note and its worked narrowing examples. If the session was dominated by one subsystem or app, you may narrow. If `$ARGUMENTS` is set, use it as the scope note.
+This repo is a monorepo, so scope is normally repo-wide. State it in one line as a `Scope:` note — see `cla.io/overlays/codify-learnings.md` for this repo's default scope note and its worked narrowing examples. If the session was dominated by one subsystem or app, you may narrow. If `$ARGUMENTS` is set, use it as the scope note.
 
 ## Step 2 — Read context (parallel)
 
 In a single message, issue parallel Read calls for:
 - `.claude/plugins/cla/skills/codify-learnings/references/failure-modes.md` — checklist of things to look for (non-exhaustive; surface lessons not on the list too).
 - `cla.io/lessons-learned/lessons-learned.md` — prior log; note any lesson proposed in multiple prior runs. (Older entries live in `cla.io/lessons-learned/lessons-learned-archive.md` once the live log is trimmed — Step 2.6; not read by default.)
-- The user memory index — see `references/project-context.md` for this repo's memory-index glob. Try that glob via Bash; if none found, skip dedup and note "memory dedup skipped (index not found)" in the report. If the glob matches multiple dirs, resolve to the canonical one per the overlay's guidance before writing new memory files + index lines there.
+- The user memory index — see `cla.io/overlays/codify-learnings.md` for this repo's memory-index glob. Try that glob via Bash; if none found, skip dedup and note "memory dedup skipped (index not found)" in the report. If the glob matches multiple dirs, resolve to the canonical one per the overlay's guidance before writing new memory files + index lines there.
 
 Reading the memory **index** (one file) is enough for dedup — do not grep every memory file per candidate.
 
@@ -94,7 +94,7 @@ Apply? (Y = apply all [default] / n = reject all / s = step through individually
 - `n` (or `none`/`reject`) → mark every suggestion **REJECTED**, write nothing.
 - `s` (or `step`/`one`) → fall back to one-at-a-time:
   ```
-  [3/12] {this repo's own load-bearing-convention example — see references/project-context.md} (CLAUDE.md)
+  [3/12] {this repo's own load-bearing-convention example — see cla.io/overlays/codify-learnings.md} (CLAUDE.md)
     Benefit: today's session needed this and didn't have it.
   Apply? (y/n/edit)
   ```
@@ -155,4 +155,4 @@ Hard exclusions still apply (`**/scripts/**/*.py` — the skills' own bundled to
 - `references/routing.md` — full artifact-reach table, routing rule, and enforcement-tier vocabulary behind the escalation ladder (mandatory-read from "Lesson routing and escalation")
 - `references/step3-template.md` — the exact Step-3 suggestion-list shape, numbering, and hard-exclusion detail (mandatory-read from Step 3)
 - `references/steps.md` — Step 3.5 trigger list, the Step 7 ledger JSON schema, and the Prefer-fixes trigger examples (mandatory-read from each of those stubs)
-- `references/project-context.md` — this repo's project-context overlay: default scope note, memory-index glob, worked examples, and dated incidents (read alongside the stubs that point here; a repo adopting `cla` replaces this file with its own)
+- `cla.io/overlays/codify-learnings.md` — this repo's project-context overlay: default scope note, memory-index glob, worked examples, and dated incidents (read alongside the stubs that point here; a repo adopting `cla` replaces this file with its own)
