@@ -79,7 +79,7 @@ def test_every_entry_points_at_this_plugin_subdirectory():
         )
 
 
-def test_the_channels_are_distinct_and_named():
+def test_entries_are_distinctly_named_and_described():
     """Two entries sharing a name would collide: each user registers one
     marketplace per name, and within it a plugin name is the install handle."""
     entries = _manifest()["plugins"]
@@ -87,11 +87,27 @@ def test_the_channels_are_distinct_and_named():
     assert len(names) == len(set(names)), f"duplicate plugin names: {names}"
     refs = [e["source"]["ref"] for e in entries]
     assert len(refs) == len(set(refs)), (
-        f"two channels track the same ref ({refs}) — they are the same channel "
-        "under two names"
+        f"two entries track the same ref ({refs}) — they are the same thing "
+        "published twice"
     )
     for e in entries:
-        assert e.get("description"), f"{e['name']}: a channel needs to say what it is"
+        assert e.get("description"), f"{e['name']}: an entry needs to say what it is"
+
+
+def test_the_published_ref_matches_the_plugin_version():
+    """The manifest pins an exact release tag rather than a moving major tag, so
+    publishing a release means editing the `ref` here. That is the whole point —
+    an explicit edit per release — but it also means this file and `plugin.json`
+    can disagree, and a consumer installing `v0.9.0` while the manifest says the
+    plugin is `1.0.0` has no way to tell which is true.
+    """
+    version = json.loads(_PLUGIN_JSON.read_text(encoding="utf-8"))["version"]
+    for entry in _manifest()["plugins"]:
+        ref = entry["source"]["ref"]
+        assert ref.lstrip("v") == version, (
+            f"{entry['name']} publishes ref {ref!r} but plugin.json says version "
+            f"{version!r}; bump both together or the release is mislabelled"
+        )
 
 
 def test_the_plugin_manifest_is_loadable_and_versioned():

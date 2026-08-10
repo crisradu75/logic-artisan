@@ -14,11 +14,15 @@ Everything lives under `.claude/plugins/cla/`, nested at that path specifically 
 consume this repo directly as a sync source.
 
 **Distribution is moving to a marketplace.** `.claude-plugin/marketplace.json` at the repo root
-publishes two channels off this one subdirectory (`git-subdir` source, `url` + `path`, schema
-verified against the live docs): **`cla`** tracks the `v1` tag — the stable channel, and the one
-to install — and **`cla-edge`** tracks `main`. **The `v1` tag does not exist yet**, so the stable
-channel cannot resolve until the first release is cut; `cla-edge` works today. `update-cla`'s
-file-sync remains the live mechanism until consuming repos migrate.
+publishes one plugin, `cla`, from this subdirectory (`git-subdir` source, `url` + `path`, schema
+verified against the live docs). It pins an **exact release tag**, not a moving major tag, so
+publishing a release is a deliberate two-part edit: bump `version` in the plugin's own
+`plugin.json` AND the `ref` here, in the same commit. A test fails when they disagree. Consumers
+pick the new release up on `/plugin marketplace update`.
+
+Current release: **`v0.9.0`** — the validation candidate. It becomes `1.0.0` once it has been
+exercised in a peer repo. `update-cla`'s file-sync remains the live mechanism until consuming
+repos migrate.
 
 **Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
 place, from this working tree — required here because the skills/hooks read and write repo-local
