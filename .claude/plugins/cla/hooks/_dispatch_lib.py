@@ -8,7 +8,12 @@ importing each as a standalone module — the same technique this package's own
 `hooks/tests/` already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
 modified by this module; it only orchestrates them. (2) It also HOSTS
-`strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which six leaf git hooks import.
+`strip_quoted_spans` / `GIT_GLOBAL_OPTS` / `GIT_CMD`, which every leaf hook
+that matches a git command line imports — `ask-destructive-git.py` and
+`warn-stray-scratch-artifact.py`. (Named, not counted: a count restated away
+from its source is what went stale here before, and a date-stamp turns a wrong
+number into a wrong number that reads as verified. `hooks/tests/`'s
+`_GIT_HOOK_FILES` is where the list is maintained.)
 So the relationship with those hooks is bidirectional: this module loads them,
 and they import from it. Consequence worth holding onto: keep this module
 import-cheap and side-effect-free, because a failure here takes out both roles
@@ -190,8 +195,17 @@ class Deadline:
     def has_room(self, cost_seconds: float) -> bool:
         """True when a hook whose worst case is `cost_seconds` can still finish.
 
-        A zero-cost hook always has room: it spawns nothing, so it cannot
-        overrun the handler however little budget is left.
+        A zero-cost hook is admitted while any budget remains, down to and
+        including `remaining() == 0.0` (where `expired()` is already True). Once
+        the budget is OVERSPENT — `remaining()` negative — even a zero-cost hook
+        is refused: the callers default an UNCOSTED hook to 0.0, which records
+        absence of data rather than proof that it is free, and the handler is
+        already late by then.
+
+        The overspent case is the only one this wording changed. An earlier
+        version promised admission "however little budget is left", which reads
+        as covering negative remaining too; `>=` has never done that, and the
+        body has not changed since it was introduced.
         """
         return self.remaining() >= cost_seconds
 
@@ -243,17 +257,55 @@ def fit_json_payload(build, text: str, limit: int = HOOK_OUTPUT_CHAR_LIMIT) -> s
     `permissionDecisionReason`, and clamping only the inner string left the
     printed total over the cap in both cases.
 
-    Converges in one or two passes. The loop is bounded so it always returns; if
-    it somehow has not converged by then, the last attempt is returned rather
-    than looping — an oversized payload is a degraded outcome, a hung hook is a
-    dead one.
+    THE SHRINK IS PROPORTIONAL, NOT SUBTRACTIVE. `overflow` counts SERIALIZED
+    characters and `len(text)` counts unescaped ones, so the previous
+    `clamp_output(text, len(text) - overflow)` over-corrected by the whole
+    expansion factor. `json.dumps` defaults to `ensure_ascii=True`, so every
+    non-ASCII character serializes as `\\uXXXX` at 6:1 — measured, a 20,000-char
+    message that is 10% em-dashes clamped to the EMPTY string, and
+    `clamp_output`'s `keep == 0` branch drops its own truncation notice, so the
+    hook fired, produced output, and delivered nothing. Scaling by the measured
+    ratio converges on the real budget instead:
+
+        ascii  kept 9968 | 1% em-dash 8975 | 10% em-dash 0 -> now non-empty
+
+    WHAT THIS FUNCTION CANNOT DO. It only shrinks `text`. When `build` closes
+    over a fixed component — both dispatchers close over `reason` — and that
+    component alone approaches `limit`, no choice of `text` fits and the loop
+    returns something oversized. That is announced on stderr rather than
+    returned quietly, because the caller's own budget is the only place it can
+    be fixed: `reason` is `compose_output(asks)`, itself capped at exactly
+    `limit`, so the envelope always pushes it over. Measured: a 9,990-char
+    reason printed 10,077 characters.
     """
+    out = json.dumps(build(text))
     for _ in range(4):
-        out = json.dumps(build(text))
-        overflow = len(out) - limit
-        if overflow <= 0:
+        if len(out) <= limit:
             return out
-        text = clamp_output(text, len(text) - overflow)
+        if not text:
+            break
+        # `text`'s OWN serialized cost, which is the only part this function can
+        # shrink. Everything else in `out` is the fixed component, so the room
+        # left for text is `limit - fixed` in ESCAPED characters, converted back
+        # to unescaped ones by text's own per-character expansion. Dividing the
+        # whole payload by the text it contains would cancel to a tautology and
+        # measure nothing.
+        escaped = len(json.dumps(text))
+        fixed = len(out) - escaped
+        per_char = max(1.0, escaped / len(text))
+        room = int((limit - fixed) / per_char)
+        if room >= len(text):
+            break
+        text = clamp_output(text, max(0, room))
+        out = json.dumps(build(text))
+    if len(out) > limit:
+        print(
+            f"[dispatch] payload is {len(out)} characters against a {limit} cap "
+            "and cannot be shrunk further — the part that overflows is not the "
+            "hook text. Claude Code will write this to a file and show a "
+            "preview instead of the whole message.",
+            file=sys.stderr,
+        )
     return out
 
 

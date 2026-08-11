@@ -222,6 +222,46 @@ def test_silent_for_a_short_baseline(monkeypatch, capsys, repo):
     assert _run(monkeypatch, capsys, repo, _payload("docs/stub.md")) == ""
 
 
+def test_min_baseline_words_is_pinned_at_its_exact_edge(monkeypatch, capsys, repo):
+    """The ratio (0.85) and the absolute floor (80) are both tested at their
+    edges; this threshold was tested only at 40 and 160 — far enough either side
+    that moving it survives.
+
+    Raise it 150 -> 350 and the suite stays green while the guard goes silent
+    for every 150-350-word file, which in a plugin whose behaviour lives in
+    markdown is a large and central band. Both halves are needed: one file just
+    under the floor and one just over, each losing the same large fraction.
+
+    The bounds are LITERAL, not derived from the constant. Mutation-checked: an
+    earlier version of this test read `hook.MIN_BASELINE_WORDS` to build its
+    fixtures, so raising the constant moved the test's own goalposts with it and
+    the mutant survived. A test that pins a threshold cannot take that threshold
+    as input.
+    """
+    assert hook.MIN_BASELINE_WORDS == 150, (
+        "the literals below encode this value; move them together or not at all"
+    )
+    under, over = 149, 150
+
+    (repo / "docs" / "under.md").write_text(_words(under), encoding="utf-8")
+    (repo / "docs" / "over.md").write_text(_words(over), encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "edges")
+
+    # A drop large enough to clear KEEP_RATIO and MIN_DROPPED_WORDS both, so the
+    # baseline floor is the ONLY thing separating these two outcomes.
+    (repo / "docs" / "under.md").write_text(_words(under // 5), encoding="utf-8")
+    (repo / "docs" / "over.md").write_text(_words(over // 5), encoding="utf-8")
+
+    assert _run(monkeypatch, capsys, repo, _payload("docs/under.md")) == "", (
+        f"a {under}-word baseline is below MIN_BASELINE_WORDS and must stay silent"
+    )
+    assert _run(monkeypatch, capsys, repo, _payload("docs/over.md")) != "", (
+        f"a {over}-word baseline is AT MIN_BASELINE_WORDS and must warn; "
+        "raising the constant silently retires this whole band"
+    )
+
+
 def test_silent_for_an_untracked_file(monkeypatch, capsys, repo):
     """Nothing was replaced, so nothing can have been lost — and this must not
     emit the git-could-not-resolve diagnostic either."""

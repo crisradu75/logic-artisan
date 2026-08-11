@@ -10,6 +10,7 @@ whole dispatcher, taking out every hook positioned after it in the list.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 from pathlib import Path
 from types import ModuleType
@@ -487,6 +488,262 @@ def test_compose_output_drops_advisory_text_when_the_reason_fills_the_budget():
     assert len(out) <= 400
 
 
+def test_fit_json_payload_measures_the_serialized_envelope_not_the_inner_text():
+    """The whole reason this exists instead of a bare `clamp_output` call.
+
+    Both dispatchers print JSON, so the cap applies to the SERIALIZED payload —
+    envelope keys plus escaping — and clamping only the inner string left the
+    printed total over the cap in both of them. The function ran on every
+    non-trivial dispatcher call, and `test_dispatch.py` asserts on the JSON they
+    print — but nothing measured the SERIALIZED size, so a rewrite that
+    pre-clamped `text` and skipped the re-measure loop passed the suite while
+    re-opening that.
+
+    Quote characters are the honest expansion to test with: each escapes to two
+    chars, so `clamp_output(text, limit)` alone leaves `text` comfortably under
+    the limit while the JSON around it is over — the exact shape of the bug.
+    """
+    limit = 2000
+    text = '"' * 1200
+
+    naive = lib.clamp_output(text, limit)
+    assert len(naive) <= limit, "the pre-clamp does bound the STRING..."
+    assert len(json.dumps({"additionalContext": naive})) > limit, (
+        "...and the payload around it is still over the cap, which is why "
+        "clamping the inner string is not enough"
+    )
+
+    out = lib.fit_json_payload(lambda t: {"additionalContext": t}, text, limit=limit)
+    assert len(out) <= limit, (
+        "the size is measured on the JSON, not on the string that goes into it"
+    )
+    assert json.loads(out)["additionalContext"], (
+        "and it must still carry text — emptying the payload is not a fit"
+    )
+
+
+@pytest.mark.parametrize(
+    "char,name",
+    [
+        ("a", "ascii (1:1)"),
+        ('"', "quote (2:1)"),
+        ("—", "em dash (6:1)"),
+        ("日", "CJK (6:1)"),
+        ("\U0001F600", "emoji (12:1, surrogate pair)"),
+    ],
+)
+def test_fit_json_payload_keeps_text_at_every_expansion_factor(char, name):
+    """The size guarantee held at one sampled ratio; the CONTENT guarantee did
+    not, and the previous test's `'"' * 1200` fixture sat at the one ratio where
+    it happened to survive.
+
+    `json.dumps` defaults to `ensure_ascii=True`, so a non-ASCII character costs
+    six serialized chars and an astral one costs twelve. The old subtractive
+    re-clamp took `len(text) - overflow` with the two operands in DIFFERENT
+    UNITS, over-correcting by the whole expansion factor. Measured before the
+    fix, at limit=10,000 over a 20,000-char message:
+
+        ascii 9968 | 1% em-dash 8975 | 10% em-dash 0 | CJK 0 | quotes 0
+
+    A zero there is a hook that ran, produced output, and delivered an empty
+    string — and `clamp_output`'s `keep == 0` branch drops its own truncation
+    notice, so nothing said so. This repo's house style alone (em dashes, `…`,
+    `→`) reaches that regime.
+    """
+    limit = 10_000
+    text = char * 20_000
+    out = lib.fit_json_payload(lambda t: {"additionalContext": t}, text, limit=limit)
+
+    assert len(out) <= limit, f"{name}: the size guarantee is absolute"
+    kept = json.loads(out)["additionalContext"]
+    assert kept, f"{name}: silently delivering nothing is the failure being fixed"
+
+    # The floor is on the SERIALIZED payload, not on the character count. A
+    # 12:1 astral character legitimately yields ~830 characters of text in a
+    # 10,000-char budget, so a flat character floor would demand the impossible
+    # at high ratios and prove nothing at low ones. What must hold at EVERY
+    # ratio is that the budget is actually spent — an over-correcting re-clamp
+    # shows up here as a payload far below the cap it was allowed to fill.
+    assert len(out) >= limit * 0.5, (
+        f"{name}: used only {len(out)} of a {limit}-char budget; the re-clamp "
+        "is over-correcting again, which is how this reached zero before"
+    )
+
+
+@pytest.mark.parametrize("char,name", [("a", "ascii"), ("—", "em dash")])
+def test_fit_json_payload_budgets_around_a_fixed_component(char, name):
+    """The real dispatcher shape: `build` closes over a `reason` that does NOT
+    shrink, so the room left for `text` is `limit` minus that fixed part.
+
+    This is the case that separates a correct expansion ratio from a
+    tautological one. Dividing the whole payload by the text it contains cancels
+    to `len(out)/len(text)`, which makes `fixed` zero — the arithmetic then
+    hands `text` the entire budget and the fixed part pushes the total over.
+    Measured with a 5,000-char reason: 10,266 characters against a 10,000 cap
+    for ascii, 10,190 for em dashes, versus exactly 10,000 and 9,183 when the
+    fixed part is subtracted.
+
+    A test with no fixed component cannot see this — both forms agree there,
+    which is why the first version of these tests missed it.
+    """
+    limit = 10_000
+    reason = "R" * 5_000
+
+    def build(t):
+        nested = {"hookEventName": "PreToolUse", "permissionDecisionReason": reason}
+        if t:
+            nested["additionalContext"] = t
+        return {"hookSpecificOutput": nested}
+
+    out = lib.fit_json_payload(build, char * 20_000, limit=limit)
+
+    assert len(out) <= limit, (
+        f"{name}: {len(out)} chars against a {limit} cap — the fixed component "
+        "is not being subtracted before the text is sized"
+    )
+    kept = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert kept, f"{name}: room remained for text and none was delivered"
+    assert json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"] == reason, (
+        "the fixed component must survive intact — it is the part that cannot "
+        "be shrunk, not the part to sacrifice"
+    )
+
+
+def test_fit_json_payload_says_so_when_the_overflow_is_not_the_hook_text(capsys):
+    """It can only shrink `text`. Both dispatchers close over `reason`, which
+    `compose_output` caps at exactly `limit` — so the envelope always pushes the
+    payload over and no choice of `text` fits.
+
+    Measured: a 9,990-char reason prints 10,077 characters. Claude Code then
+    writes the payload to a file and shows a preview, downgrading an `ask` on
+    the one channel that cannot be ignored. This cannot be fixed here (the
+    caller owns the fixed part), so the requirement is that it is ANNOUNCED
+    rather than returned quietly.
+    """
+    reason = "R" * 9_990
+
+    def build(t):
+        nested = {"hookEventName": "PreToolUse", "permissionDecisionReason": reason}
+        if t:
+            nested["additionalContext"] = t
+        return {"hookSpecificOutput": nested}
+
+    capsys.readouterr()
+    out = lib.fit_json_payload(build, "advisory text " * 20, limit=10_000)
+
+    assert len(out) > 10_000, "this fixture exists to reach the unfittable case"
+    err = capsys.readouterr().err
+    assert str(len(out)) in err, "the diagnostic should name the actual size"
+    assert "cannot be shrunk further" in err
+
+
+def test_fit_json_payload_stays_silent_when_it_does_fit(capsys):
+    """Non-vacuity partner: a diagnostic on every ordinary payload is noise that
+    trains the reader to ignore the one that matters."""
+    capsys.readouterr()
+    lib.fit_json_payload(lambda t: {"additionalContext": t}, "short", limit=10_000)
+    assert capsys.readouterr().err == ""
+
+
+def test_fit_json_payload_leaves_a_payload_that_already_fits_alone():
+    """Non-vacuity partner: a function that clamped unconditionally would pass
+    the test above and silently truncate every ordinary hook message."""
+    out = lib.fit_json_payload(lambda t: {"additionalContext": t}, "short", limit=500)
+    assert json.loads(out) == {"additionalContext": "short"}
+
+
+def test_every_environment_escape_hatch_is_neutralised_by_conftest():
+    """`conftest.py` clears the guard-disabling env vars for the whole scope, so
+    a "must stay silent" assertion cannot pass vacuously. That list is written
+    by hand, and nothing about a clean local environment reveals it is wrong —
+    mutating an entry to a bogus name left the whole scope green, because the
+    variable is unset on this machine anyway. The list only matters on a machine
+    where a hatch IS exported.
+
+    So pin the list against its source instead: every `os.environ.get("ALLOW_…")`
+    in `hooks/*.py` must be neutralised. That kills the rename AND catches the
+    real future failure — a new guard shipping a new hatch nobody adds here.
+    Measured with `ALLOW_DESTRUCTIVE_GIT=1` exported before the fixture existed:
+    64 tests failed and the one non-vacuity guarantee passed vacuously.
+    """
+    import conftest
+
+    hatches = set()
+    for path in _HOOKS_DIR.glob("*.py"):
+        src = path.read_text(encoding="utf-8")
+        hatches |= set(re.findall(r'os\.environ\.get\(\s*"(ALLOW_[A-Z_]+)"', src))
+
+    assert hatches, "found no escape hatches at all — the pattern has drifted"
+    missing = hatches - set(conftest._ESCAPE_HATCHES)
+    assert not missing, (
+        f"these guard-disabling env vars are read in hooks/ but not cleared by "
+        f"conftest.py, so every 'must stay silent' test in this scope passes "
+        f"vacuously when one is exported: {sorted(missing)}"
+    )
+    stale = set(conftest._ESCAPE_HATCHES) - hatches
+    assert not stale, (
+        f"conftest.py clears env vars no hook reads any more: {sorted(stale)}"
+    )
+
+
+def test_hook_output_char_limit_is_the_documented_cap():
+    """The constant is the one number the whole clamp layer is calibrated to,
+    and every production caller takes it as a DEFAULT argument — so a change
+    here re-tunes `clamp_output`, `compose_output` and `fit_json_payload`
+    together.
+
+    Not a change-detector: measured, `10_000 -> 300` breaks eight other tests,
+    but `10_000 -> 12_000` is invisible to every one of them. A RAISED cap is
+    precisely the silent downgrade the comment at the constant describes — the
+    payload starts going to a file Claude may never open — so the only guard
+    against a modest re-tune is naming the value here.
+
+    10,000 is Claude Code's cap, not this plugin's choice; it is an external
+    fact with no local source of truth, so re-derive it from current Claude Code
+    docs before changing this line rather than treating the number as ours.
+    """
+    assert lib.HOOK_OUTPUT_CHAR_LIMIT == 10_000
+
+
+def test_deadline_has_room_weighs_the_cost_rather_than_just_asking_if_time_is_up():
+    """The REAL `Deadline.has_room`, which no test ever ASSERTED anything about.
+
+    It did run — `test_dispatch.py` drives both dispatchers through `main()` as
+    subprocesses, and each builds a real `Deadline` and calls `has_room` for
+    every advisory hook. But the only `has_room` a reader could find in
+    `hooks/tests/` was `_ExpiredDeadline`'s hardcoded `False`, and nothing
+    anywhere pinned what the real one returns.
+
+    Revert the body to `return not self.expired()` — the exact pre-fix bug it
+    was written to replace — and the whole suite passes. This is the case that
+    separates them: budget left, but less than the hook's worst case. The
+    reverted version starts a hook it cannot finish and lets the handler
+    timeout cut it off, taking every later hook with it.
+    """
+    fresh = lib.Deadline(budget_seconds=5.0)
+    assert not fresh.expired(), "the discriminating case has budget remaining"
+    assert not fresh.has_room(60.0), (
+        "a hook whose worst case exceeds the remaining budget must be skipped, "
+        "not started and cut off by the handler timeout"
+    )
+    assert fresh.has_room(1.0), "non-vacuity: a hook that does fit is admitted"
+
+
+def test_deadline_has_room_refuses_even_a_zero_cost_hook_once_overspent():
+    """Pins what the `>=` actually does, against a docstring that used to
+    promise otherwise.
+
+    Both dispatchers do `HOOK_WORST_CASE_SECONDS.get(filename, 0.0)`, so an
+    UNCOSTED hook arrives here as zero-cost — absence of data, not proof it is
+    free. Once `remaining()` is negative the handler is already late and the
+    refusal is right; recorded so a reader trusting the old wording does not
+    "restore" admission and re-open an overrun.
+    """
+    spent = lib.Deadline(budget_seconds=-1.0)
+    assert spent.expired()
+    assert not spent.has_room(0.0)
+
+
 def test_compose_output_without_a_block_reason_still_caps():
     out = lib.compose_output(["w" * 9000], limit=800)
     assert len(out) <= 800
@@ -580,8 +837,14 @@ def test_git_cmd_over_blocks_only_where_the_subcommand_is_an_english_word():
     a claim that widening was free.
     """
     assert re.search(lib.GIT_CMD + r"\s+commit\b", "cd /srv/GIT commit")
-    # `push` does not follow a directory name in ordinary usage, so the
-    # push guard gains no comparable exposure.
+    # `push` gains the SAME exposure — the earlier comment here claimed it did
+    # not, and the assertion below could not have caught the error because its
+    # subject contained no `push` at all: it passed for every possible value of
+    # GIT_CMD, including `.*`. Measured against the real guard,
+    # `ls /d/GIT push --force origin main` does fire. The trade is that an
+    # over-blocking enforcing guard announces itself and is trivially worked
+    # around, while the `GIT push` bypass it closes is silent and total.
+    assert re.search(lib.GIT_CMD + r"\s+push\b", "ls /d/GIT push --force origin main")
     assert not re.search(lib.GIT_CMD + r"\s+push\b", "cd /srv/GIT && ls")
 
 
@@ -633,10 +896,10 @@ def test_every_git_global_opts_consumer_strips_quoted_spans(filename):
 
     Its value-consuming alternatives use `\\S+`, which cannot span an
     un-stripped internal space, so a command MUST pass through
-    `strip_quoted_spans` before matching. The docstring says so and all six
-    consumers honour it; nothing checked that they do.
+    `strip_quoted_spans` before matching. The docstring says so and every
+    consumer in `_GIT_HOOK_FILES` honours it; nothing checked that they do.
 
-    Not hypothetical: a consuming repo added a seventh consumer that imported
+    Not hypothetical: a consuming repo added a further consumer that imported
     both `GIT_CMD` and `GIT_GLOBAL_OPTS` and skipped the pre-pass, in an
     ENFORCING hook. `git -C "/path with space" commit` then simply did not
     match — a guard that matches nothing allows everything — and it survived a
@@ -653,9 +916,11 @@ def test_every_git_global_opts_consumer_strips_quoted_spans(filename):
     which a mutation caught: aliasing a different function to the same local
     name (`import fit_json_payload as _strip_quoted_spans`) leaves the string
     `strip_quoted_spans` in the file at the call site, so a substring check
-    stayed green while the pre-pass was gone. All six consumers import it from
-    `_dispatch_lib` by its real name, two of them unaliased, so the import form
-    is the stable thing to pin.
+    stayed green while the pre-pass was gone. Every consumer imports it from
+    `_dispatch_lib` by its real name, so the import form is the stable thing to
+    pin. (`_GIT_HOOK_FILES` is the single place that list is maintained — by
+    hand, so it is not self-updating either. Name the files there rather than
+    restating a count in prose; a count was already wrong once.)
     """
     source = (_HOOKS_DIR / filename).read_text(encoding="utf-8")
     if "GIT_GLOBAL_OPTS" not in source:

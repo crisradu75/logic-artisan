@@ -275,9 +275,14 @@ class _ExpiredDeadline:
         return True
 
     def has_room(self, cost_seconds: float) -> bool:
-        # Nothing fits in a spent budget — not even a zero-cost hook, which the
-        # real Deadline would admit. Overstating the pressure is right for a
-        # stand-in whose job is to prove enforcement survives the worst case.
+        # Nothing fits in a spent budget, which is what the real Deadline also
+        # answers here: `remaining() >= cost_seconds` is False for every cost
+        # once `remaining()` is negative, zero-cost included. An earlier version
+        # of this comment claimed the real Deadline would ADMIT a zero-cost hook
+        # — the misreading that `_dispatch_lib.Deadline.has_room`'s docstring
+        # and `test_dispatch_lib.test_deadline_has_room_refuses_even_a_zero_cost_hook_once_overspent`
+        # both exist to settle. The stub is a faithful stand-in, not an
+        # exaggerated one.
         return False
 
 

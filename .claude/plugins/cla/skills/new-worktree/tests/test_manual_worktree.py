@@ -8,7 +8,9 @@ behaviour a mock would paper over.
 from __future__ import annotations
 
 import json
+import ntpath
 import os
+import posixpath
 import shutil
 import subprocess
 from pathlib import Path
@@ -366,6 +368,139 @@ def test_a_name_that_would_escape_the_worktree_dir_is_refused(bad):
 
 def test_an_ordinary_name_is_accepted():
     assert mw.validate_name("my-task") == "my-task"
+
+
+@pytest.mark.parametrize("bad", ["", "../outside", "a/../../b", "/rooted/path"])
+def test_a_worktree_dir_that_would_escape_the_repo_is_refused(bad):
+    """`--name` was hardened against traversal and the argument beside it was
+    not, so the same escape simply moved one flag over.
+
+    `create_worktree` builds `repo / worktree_dir / name`, and `Path` join
+    discards everything left of an absolute component, so the repo prefix is
+    gone. These four shapes are refused on BOTH platforms, so they need no
+    injected path module; the drive shapes below do.
+    """
+    with pytest.raises(mw.GitError):
+        mw.validate_worktree_dir(bad)
+
+
+# Both platforms' rules, pinned from either machine. `pathmod` is injected
+# rather than skipped-around because there is no CI here: a `skipif` on
+# `os.name` means the other platform's branch has never run anywhere, which is
+# how the previous version of this test shipped asserting that
+# `posixpath.splitdrive` carries a drive (it is `return p[:0], p` — it never
+# reports one) and would have failed on every consuming repo on macOS or Linux.
+@pytest.mark.parametrize(
+    "value,refused_on_nt,refused_on_posix",
+    [
+        # isabs True, drive 'D:'  ->  the join lands on the drive root.
+        ("D:/elsewhere/tmp", True, False),  # path-fixture-ok
+        # isabs FALSE, drive 'D:'  ->  ONLY splitdrive catches this one, and the
+        # join is still drive-relative, so the repo is discarded either way.
+        # This is the shape the first version of these tests missed entirely.
+        ("D:elsewhere/tmp", True, False),  # path-fixture-ok
+        # A UNC root. Refused on BOTH — not by the drive rules but by the
+        # leading-separator check, which is platform-independent by design.
+        # Listed here so the table is not read as "only Windows refuses roots".
+        ("//server/share", True, True),
+    ],
+)
+def test_the_drive_rules_are_pinned_for_both_platforms(
+    value, refused_on_nt, refused_on_posix
+):
+    """On POSIX a drive-prefixed value is NOT an escape — it is a directory
+    whose first segment happens to end in a colon — so accepting it there is
+    correct, not a hole. What must not happen is a rule that silently stops
+    firing on Windows, where the same value discards the repo at the `Path`
+    join.
+    """
+    for pathmod, expected in ((ntpath, refused_on_nt), (posixpath, refused_on_posix)):
+        if expected:
+            with pytest.raises(mw.GitError):
+                mw.validate_worktree_dir(value, pathmod=pathmod)
+        else:
+            assert mw.validate_worktree_dir(value, pathmod=pathmod) == value
+
+
+@pytest.mark.parametrize("value", [".", ".git", "   ", "a//b"])
+def test_the_validator_is_lexical_and_accepts_these_by_design(value):
+    """Pins the documented LIMIT of this check, so a reader does not mistake a
+    pass for a containment guarantee.
+
+    None of these leave the repo, which is why they are allowed — but `.` puts
+    the worktree at `<repo>/<name>` rather than under `.claude/worktrees`, and
+    `.git` puts it inside the git directory. If any of these is ever tightened,
+    this test should fail and be updated deliberately rather than the behaviour
+    changing unnoticed in either direction.
+
+    What this check genuinely cannot see is a directory-alias segment:
+    `clean_stale_worktree` calls `os.path.realpath`, so a junction or symlink
+    relocates the cleanup target after every rule here has passed.
+    """
+    assert mw.validate_worktree_dir(value) == value
+
+
+def test_a_backslash_rooted_value_is_refused_on_posix_too():
+    r"""The documented cost of the platform-independent separator check:
+    `\weird` is a legal POSIX filename and is refused anyway, because the same
+    string is an escape on the platform this harness primarily runs on."""
+    with pytest.raises(mw.GitError):
+        mw.validate_worktree_dir("\\weird", pathmod=posixpath)
+
+
+def test_the_platform_neutral_rules_hold_under_both_path_modules():
+    """Non-vacuity partner for the table above: if the injected module were
+    ignored and everything ran under the host's rules, the table would still
+    pass on Windows. These must be refused whichever module is in play."""
+    for pathmod in (ntpath, posixpath):
+        for bad in ("", "/rooted/path", "../outside"):
+            with pytest.raises(mw.GitError):
+                mw.validate_worktree_dir(bad, pathmod=pathmod)
+        assert mw.validate_worktree_dir("a/b", pathmod=pathmod) == "a/b"
+
+
+def test_the_default_worktree_dir_is_accepted():
+    """Non-vacuity: the default is two segments, so a validator copied from
+    `validate_name` (single segment only) would reject every ordinary run."""
+    assert mw.validate_worktree_dir(mw.DEFAULT_WORKTREE_DIR) == mw.DEFAULT_WORKTREE_DIR
+    assert mw.validate_worktree_dir("wt") == "wt"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"name": "../escape", "worktree_dir": mw.DEFAULT_WORKTREE_DIR},
+        {"name": "ok", "worktree_dir": "../outside"},
+    ],
+)
+def test_create_worktree_validates_its_own_arguments(repo, kwargs):
+    """`create_worktree` owns the invariant — it builds the join and hands the
+    result to `clean_stale_worktree` — and it is public.
+
+    Guarding only `main` left an importing caller (this skill's own tests among
+    them) reaching the join with neither validator run. Mutation-checked: the
+    CLI test alone did not notice the validators being removed from here.
+    """
+    with pytest.raises(mw.GitError):
+        mw.create_worktree(repo, base="origin/main", **kwargs)
+    assert not (repo.parent / "outside").exists()
+    assert not (repo.parent / "escape").exists()
+
+
+def test_the_cli_actually_calls_the_worktree_dir_validator(repo, capsys):
+    """The validator existing is not the same as `main` reaching it.
+
+    Mutation-checked: deleting the `validate_worktree_dir(args.worktree_dir)`
+    line from `main` left every direct-call test above green, because they call
+    the function rather than the CLI. `--name` has the same shape and the same
+    exposure, so the wiring is what needs pinning, not just the rule.
+    """
+    rc = mw.main(["--repo", str(repo), "--name", "ok", "--worktree-dir", "../outside"])
+    assert rc == 1
+    assert "worktree-dir" in json.loads(capsys.readouterr().out)["error"]
+    assert not (repo.parent / "outside").exists(), (
+        "a rejected --worktree-dir must not have created anything on the way out"
+    )
 
 
 def test_the_worktree_actually_lands_on_the_requested_base(repo):
