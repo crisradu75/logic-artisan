@@ -58,6 +58,44 @@ def test_falls_back_to_cwd_when_git_rejects_the_directory(
     assert _git_common.repo_root() == tmp_path
 
 
+def test_the_fallback_says_on_stderr_that_it_fell_back(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    """The three tests above assert only the RETURN VALUE, so deleting the
+    `print` leaves them green — and the docstring's whole claim is that this
+    fallback is loud.
+
+    Its one caller binds it at import time (`probe_state.py:21`, via the
+    `_repo_root` alias) and resolves OpenSpec artifact paths from it, so a
+    silent wrong root makes every probe answer about the wrong tree while the
+    run still reports success. Fail-open is right here; fail-open-and-quiet is
+    the thing being ruled out.
+    """
+    def boom(*_a, **_kw):
+        raise FileNotFoundError("git not on PATH")
+
+    monkeypatch.setattr(_git_common.subprocess, "run", boom)
+    monkeypatch.chdir(tmp_path)
+    capsys.readouterr()
+
+    assert _git_common.repo_root() == tmp_path
+    captured = capsys.readouterr()
+    assert captured.out == "", "a diagnostic on stdout would corrupt a JSON contract"
+    assert "_git_common" in captured.err, "the warning should name its source"
+    assert str(tmp_path) in captured.err, "and the root it substituted"
+
+
+def test_the_success_path_stays_silent(monkeypatch, capsys, tmp_path: Path) -> None:
+    """Non-vacuity partner: a warning on every ordinary resolution is noise
+    that trains the reader to skip the one that matters."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+    capsys.readouterr()
+
+    _git_common.repo_root()
+    assert capsys.readouterr().err == ""
+
+
 # --------------------------------------------------------------------------- #
 # MD-15 / MD-12 — the branch prefix was hardcoded in the scripts that both
 # CREATE the branch and LOOK IT UP, and a miss read as a clean negative.

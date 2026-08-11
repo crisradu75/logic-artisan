@@ -156,6 +156,68 @@ def validate_name(name: str) -> str:
     return name
 
 
+def validate_worktree_dir(worktree_dir: str, pathmod=os.path) -> str:
+    """The same containment rule as `validate_name`, for the sibling argument.
+
+    `create_worktree` builds `repo / worktree_dir / name`, and `Path` join
+    discards everything to the left of an absolute component, so the repo prefix
+    is gone. `--name` was hardened against exactly this and the argument beside
+    it was not, so a traversing value simply moved one flag over.
+
+    Three checks, because on Windows each catches a shape the others miss —
+    measured on CPython 3.13.12, with the resulting join shown:
+
+        '/rooted/path'      isabs False  drive ''    joined -> \\rooted\\path
+        'D:/elsewhere/tmp'  isabs True   drive 'D:'  joined -> the drive root   # path-fixture-ok
+        'D:elsewhere/tmp'   isabs False  drive 'D:'  joined -> drive-relative   # path-fixture-ok
+
+    So `isabs` alone misses both the slash-rooted and the drive-RELATIVE forms
+    (3.13 stopped calling a bare leading slash absolute), and `splitdrive` alone
+    misses the slash-rooted one. `D:elsewhere/tmp` is the shape only
+    `splitdrive` catches, and it still discards the repo at the join.
+
+    `pathmod` EXISTS FOR THE TESTS, and is not decoration. These rules are
+    genuinely platform-divergent — `posixpath.splitdrive` is `return p[:0], p`,
+    so it reports no drive for anything, and a drive-prefixed value is an
+    ordinary relative directory name on POSIX rather than an escape. No CI here,
+    so whichever platform the author is not on never runs. Injecting the path
+    module lets both platforms' behaviour be pinned from either machine.
+
+    Unlike `--name` this one may contain separators — `.claude/worktrees` is the
+    default and is two segments — so only the escaping shapes are rejected.
+
+    THIS CHECK IS LEXICAL, AND CANNOT SEE A FILESYSTEM-LEVEL ESCAPE. Do not read
+    a pass here as "the worktree is contained". Accepted today, verified by
+    running it: `'.'` (the worktree lands at `<repo>/<name>`, not under
+    `.claude/worktrees`), `'.git'` (inside the git directory), `'   '` (Windows
+    strips the component, so it resolves to `<repo>/<name>`), and `'a//b'`.
+    None of those leave the repo, which is why they are allowed — but a
+    directory-alias segment DOES: `clean_stale_worktree` calls
+    `os.path.realpath`, so cleanup operates on the resolved target, which a
+    junction or symlink can place anywhere. Containing that needs a post-resolve
+    check against the repo root, which this function deliberately does not do.
+
+    The backslash in the leading-separator check also refuses a backslash-rooted
+    name, legal on POSIX. Deliberate: such a value is an escape on the
+    platform this harness primarily runs on, and a leading backslash in a
+    worktree directory name is not worth the ambiguity anywhere else.
+    """
+    if not worktree_dir:
+        raise GitError("--worktree-dir must be a non-empty relative path")
+    rooted = worktree_dir.startswith(("/", "\\"))
+    if rooted or pathmod.isabs(worktree_dir) or pathmod.splitdrive(worktree_dir)[0]:
+        raise GitError(f"--worktree-dir must be relative, not {worktree_dir!r}")
+    seps = [pathmod.sep] + ([pathmod.altsep] if pathmod.altsep else [])
+    segments = [worktree_dir]
+    for sep in seps:
+        segments = [part for seg in segments for part in seg.split(sep)]
+    if ".." in segments:
+        raise GitError(
+            f"--worktree-dir must stay inside the repo; {worktree_dir!r} traverses out"
+        )
+    return worktree_dir
+
+
 def _registered_worktrees(repo: Path) -> set[str]:
     """Absolute paths git currently has registered, realpath-normalised.
 
@@ -283,7 +345,15 @@ def create_worktree(
     `casing` is the `casing_mismatch()` verdict for the path as the USER spelled
     it, passed in because `repo` has already been resolved by the time it gets
     here and the mismatch is only visible before that.
+
+    Validates its own arguments rather than trusting `main` to have done it.
+    This is the function that owns the invariant — it builds the join and hands
+    the result to `clean_stale_worktree` — and it is public, so an importing
+    caller (this skill's own tests among them) reached the join with neither
+    validator run. The `main` calls are kept as earlier, cheaper rejection.
     """
+    validate_name(name)
+    validate_worktree_dir(worktree_dir)
     rel = f"{worktree_dir}/{name}"
     path = repo / worktree_dir / name
     branch = f"{branch_prefix}{name}"
@@ -394,6 +464,7 @@ def main(argv: list[str] | None = None) -> int:
             # A caller parsing stdout would get nothing to read.
             raise GitError("--name is required unless --diagnose is given")
         validate_name(args.name)
+        validate_worktree_dir(args.worktree_dir)
 
         result = create_worktree(
             repo, args.name, args.base or default_base(repo),

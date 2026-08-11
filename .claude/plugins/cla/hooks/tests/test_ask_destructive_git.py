@@ -109,6 +109,61 @@ def test_both_shapes_in_one_line_are_reported_together(monkeypatch, capsys):
     assert "force-push" in reason and "reset --hard" in reason
 
 
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ("git.exe push --force origin feature/x", "force-push"),
+        ("git.cmd push --force origin feature/x", "force-push"),
+        ("GIT.EXE push --force origin feature/x", "force-push"),
+        ("GIT push --force origin feature/x", "force-push"),
+        ("Git.Exe reset --hard HEAD~1", "reset --hard"),
+        ("git.exe -C /some/worktree push --force origin feature/x", "force-push"),
+    ],
+)
+def test_the_guard_itself_fires_on_every_executable_spelling(
+    command, expected, monkeypatch, capsys
+):
+    """`GIT_CMD` is pinned in `test_dispatch_lib.py`, but only as a REGEX.
+
+    Every case in THIS file hardcoded a bare lowercase `git` before these were
+    added (`git grep -c` over `main`'s copy: zero non-lowercase spellings). The
+    spellings do appear elsewhere in the tree — `_dispatch_lib.py`, the
+    `pre-push` hook and its test — but not in any guard's own test, so the
+    constant proved the pattern and nothing proved the GUARD, which is the thing
+    that emits the prompt. What is untested is the
+    COMPOSITION: `GIT_CMD` + `GIT_GLOBAL_OPTS` + the subcommand, which the
+    constant test never reaches. Reachable by ordinary use, not evasion —
+    PowerShell is a primary shell here and its tab-completion emits `git.exe`.
+    """
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, (
+        f"an alternative executable spelling must not walk past the guard: {command!r}"
+    )
+    # Asserting WHICH rule fired, not merely that something did: a bare
+    # `is not None` would stay green if the force-push rule misfired on the
+    # `reset --hard` case, which is the kind of mis-attribution a widened
+    # command-name pattern is most likely to cause.
+    assert expected in _reason(payload), (
+        f"{command!r} should be reported as {expected!r}, not as something else"
+    )
+
+
+def test_an_alternative_spelling_of_a_safe_command_still_stays_silent(monkeypatch, capsys):
+    """Non-vacuity: the case-folded command name must not turn the guard into
+    one that prompts on any line containing `git`.
+
+    `conftest.py` clears `ALLOW_DESTRUCTIVE_GIT` for every test in this scope.
+    Without that, this whole assertion is unfalsifiable — the hatch makes the
+    hook exit 0 having printed to stderr only, `_run` reads stdout and returns
+    `None`, and both lines below pass for any input at all.
+    """
+    assert _run("git.exe push origin feature/x", monkeypatch, capsys) is None
+    assert _run("GIT status", monkeypatch, capsys) is None
+    # The guarded form, in an alternative spelling — the widened pattern must
+    # not cost the safer habit its exemption.
+    assert _run("git.exe push --force-with-lease origin x", monkeypatch, capsys) is None
+
+
 # --------------------------------------------------------------------------- #
 # Shapes that must stay silent -- a prompt people learn to click through is
 # worth less than no prompt at all

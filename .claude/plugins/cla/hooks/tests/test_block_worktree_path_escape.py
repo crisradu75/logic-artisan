@@ -379,6 +379,30 @@ def test_is_inside_still_says_no_for_a_genuinely_outside_path(worktree_pair, tmp
     assert not hook._is_inside(str(tmp_path / "elsewhere" / "x.txt"), os.path.realpath(str(linked)))
 
 
+def test_is_inside_rejects_a_sibling_whose_name_starts_with_the_root(tmp_path):
+    """The case that separates `commonpath` from the obvious `startswith`.
+
+    `_is_inside` is component-aware today, so a sibling directory whose name
+    merely BEGINS with the root's name is outside. Rewrite the body as
+    `normcase(path).startswith(normcase(root))` — which looks equivalent and
+    reads simpler — and every other test in this file stays green while a live
+    bypass opens: a session in `.claude/worktrees/foo` could write into
+    `.claude/worktrees/foo-backup/`. Those are ordinary sibling names under this
+    plugin's own `DEFAULT_WORKTREE_DIR`, not contrived ones.
+    """
+    root = tmp_path / "worktrees" / "foo"
+    sibling = tmp_path / "worktrees" / "foo-backup"
+    sibling.mkdir(parents=True)
+    root.mkdir(parents=True)
+
+    assert not hook._is_inside(
+        str(sibling / "escaped.txt"), os.path.realpath(str(root))
+    ), "a sibling sharing the root's name as a prefix is NOT inside the root"
+    assert hook._is_inside(str(root / "ok.txt"), os.path.realpath(str(root))), (
+        "non-vacuity: the same-shaped path that really is inside must still pass"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Degraded-git diagnostics (MD-7, reported by a consuming repo)
 #

@@ -8,8 +8,11 @@ monkeypatched `_porcelain_lines`.
 
 import importlib.util
 import io
+import json
 import subprocess
 from pathlib import Path
+
+import pytest
 
 _HOOK = Path(__file__).resolve().parent.parent / "warn-stray-scratch-artifact.py"
 
@@ -132,6 +135,50 @@ def test_main_warns_on_commit_behind_a_quoted_c_value_with_a_space(monkeypatch, 
     monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
     assert hook.main() == 0
     assert "scratchpad_dump.txt" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git.exe add openspec/",
+        "git.cmd commit -m x",
+        "GIT.EXE add .",
+        "GIT commit -m x",
+        "Git.Exe -C /some/worktree add .",
+    ],
+)
+def test_main_fires_on_every_executable_spelling(command, monkeypatch, capsys):
+    """The second `GIT_CMD` consumer, which the first pass at this left behind.
+
+    `test_ask_destructive_git.py` closed the composition gap for one of the two
+    hooks that build a matcher from `GIT_CMD` + `GIT_GLOBAL_OPTS` + a
+    subcommand, and its docstring says "nothing proved the GUARD" as though the
+    class were closed. It was closed for one guard. Every case in THIS file was
+    a bare lowercase `git`, so the constant test was again the only thing
+    standing behind the composition here.
+
+    Reachable by ordinary use rather than evasion: PowerShell is a primary shell
+    for this harness and its tab-completion emits `git.exe`.
+    """
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO(json.dumps({"tool_input": {"command": command}}))
+    )
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
+    assert hook.main() == 0  # warn-only, never blocks
+    assert "scratchpad_dump.txt" in capsys.readouterr().err, (
+        f"an alternative executable spelling must not walk past the guard: {command!r}"
+    )
+
+
+def test_an_alternative_spelling_of_an_unrelated_command_stays_silent(monkeypatch, capsys):
+    """Non-vacuity: the case-folded command name must not turn this into a hook
+    that warns on any line containing `git`. `status` is not `add`/`commit`."""
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO('{"tool_input": {"command": "GIT.EXE status"}}')
+    )
+    monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"])
+    assert hook.main() == 0
+    assert capsys.readouterr().err == ""
 
 
 def test_main_silent_when_nothing_stray_is_present(monkeypatch, capsys):

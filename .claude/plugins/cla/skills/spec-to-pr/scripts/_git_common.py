@@ -21,11 +21,16 @@ def repo_root() -> Path:
     fixed `parents[N]` depth). Falls back to cwd if git is unavailable; callers'
     tests monkeypatch each module's own `REPO_ROOT` directly, not this function.
 
-    The fallback WARNS rather than substituting cwd silently. Callers bind this
-    at import time (`REPO_ROOT = _repo_root()`), and several of them resolve
-    ledger and artifact paths from it — so a silent wrong root means writes land
-    somewhere unexpected while the run still reports success. Fail-open is right
-    for a helper script; fail-open-and-quiet is not.
+    The fallback WARNS rather than substituting cwd silently. Its one surviving
+    caller binds it at import time (`probe_state.py`, `REPO_ROOT = _repo_root()`)
+    and resolves OpenSpec artifact paths from it — so a silent wrong root makes
+    every probe answer about the wrong tree while the run still reports success.
+    Fail-open is right for a helper script; fail-open-and-quiet is not.
+
+    ("several of them resolve ledger and artifact paths" was true of the five
+    scripts that shared a copy of this function; four were deleted in the script
+    audit, and no ledger path was ever derived from here — that is
+    `lib/log_run.py`'s job.)
     """
     try:
         out = subprocess.run(
