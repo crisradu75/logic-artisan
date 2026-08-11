@@ -160,6 +160,13 @@ def test_a_target_that_collects_no_tests_is_inconclusive_not_a_kill(tmp_path):
          "a per-TEST error: the test was selected and its setup ran"),
         ("ERROR tests/test_x.py\n!! Interrupted: 1 error during collection !!\n1 error in 0.46s",
          False, "a COLLECTION error: no `::nodeid`, nothing ran"),
+        # The same collection failure WITHOUT the Interrupted banner. Whether
+        # pytest prints that banner varies with how the target is spelled, so
+        # the banner check cannot be the discriminator — the missing `::nodeid`
+        # is. Measured: with both cases present, mutating either guard alone
+        # used to survive, because each masked the other on the old corpus.
+        ("ERROR tests/test_x.py\n!! stopping after 1 failures !!\n1 error in 0.41s",
+         False, "a COLLECTION error with no banner: still no `::nodeid`"),
         ("no tests ran in 0.01s", False, "nothing to run"),
     ],
 )

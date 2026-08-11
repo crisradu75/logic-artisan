@@ -154,14 +154,15 @@ rather than by category; fold it in under a sensibly-named new section.
 
 ### Step 4 — Draft the overlay pointer additions (content only, never the skill-specific body)
 
-**Overlays found at the LEGACY location are read-only — never edit one in place.** Step 2 deliberately
+**Only overlays under `cla.io/overlays/` get pointer edits. An overlay found at the LEGACY location
+is never edited in place — not even where the plugin happens to be writable.** Step 2 deliberately
 globs `${CLAUDE_PLUGIN_ROOT}/skills/*/references/project-context.md` so a repo mid-migration is still
 inspected, but that path is inside the plugin, and in every repo that installed the plugin the tree is
 a read-only cache: the edit fails, or lands somewhere the next update discards while reporting as
-applied. Run the check in `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`
-before drafting anything for such a file. Where it answers read-only, do not draft a pointer addition —
-instead recommend, in the Step 6 report, that the overlay be **moved** to `cla.io/overlays/<skill>.md`,
-which is repo content and writable. Only overlays already under `cla.io/overlays/` get pointer edits.
+applied. Editing it in the one repo where it *would* stick is no better — it entrenches the location
+this migration exists to leave. For each legacy-location overlay, draft no pointer addition; instead
+record a one-line **migration recommendation** ("move `<skill>`'s overlay to `cla.io/overlays/<skill>.md`")
+and carry it into the Step 8 report.
 
 For each per-skill overlay that restates a fact you're centralizing and does NOT yet carry a pointer to
 `cla.io/project-facts.md`, draft a **minimal, one-line pointer addition** using the graceful-degradation
@@ -200,6 +201,7 @@ Show the user, in order:
    reconciling and the diff is small enough to read at a glance — use judgment; a from-scratch or
    heavily-changed file is clearer shown in full).
 3. Each drafted overlay pointer addition, file by file.
+4. Any migration recommendations for overlays still at the legacy location (Step 4).
 4. Any proposed `project-tokens.local.md` additions, each with its one-line justification.
 5. Any drafted `cla.io/terminology.md` reconciliation fixes from Step 5, if any were found.
 
@@ -217,6 +219,11 @@ Summarize what changed: `cla.io/project-facts.md` created vs updated (and which 
 which overlays gained a pointer line, which `project-tokens.local.md` entries were added (or note none
 were needed), and any `cla.io/terminology.md` reconciliation applied (or note none was needed/found).
 If any candidate proposal was declined, say so and leave that file untouched.
+
+**List every migration recommendation from Step 4** — each overlay still sitting at the legacy
+`skills/*/references/project-context.md` path, and where it should move to. These are the only
+findings this skill produces that it deliberately does not act on, so a report that omits them
+loses them entirely.
 
 ## Non-goals (pinned — never do these)
 

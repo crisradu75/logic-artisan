@@ -114,8 +114,26 @@ def assert_target_is_a_repo_not_an_installed_plugin(local_repo: Path) -> None:
     Raises `SystemExit` with the remedy rather than returning a status: there is
     no partial-success reading of "the destination must not be written".
     """
-    for name in ("settings.json", "settings.local.json"):
-        path = local_repo / ".claude" / name
+    # A target that VENDORS the plugin is always syncable, whatever any settings
+    # file says. Checked first because the two facts are independent: a developer
+    # can have `cla` installed at user scope for their other repos AND vendor it
+    # in the repo that develops it, and refusing there would block the source
+    # repo's own workflow on the strength of an unrelated install.
+    if (local_repo / ".claude" / "plugins" / "cla").is_dir():
+        return
+
+    # USER scope is checked too, and it is the one that matters most: `claude
+    # plugin install` defaults to `--scope user`, so the ordinary install lands
+    # in ~/.claude/settings.json and never touches the repo. Measured on the
+    # machine this was written on: 14 enabledPlugins in user scope, 0 in the
+    # repo's — a repo-only check would have been blind to every default install,
+    # which is precisely the case this guard exists to catch.
+    candidates = [
+        (local_repo / ".claude" / "settings.json", "the repo's .claude/settings.json"),
+        (local_repo / ".claude" / "settings.local.json", "the repo's .claude/settings.local.json"),
+        (Path.home() / ".claude" / "settings.json", "your user-level ~/.claude/settings.json"),
+    ]
+    for path, where in candidates:
         try:
             settings = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -123,11 +141,13 @@ def assert_target_is_a_repo_not_an_installed_plugin(local_repo: Path) -> None:
         enabled = settings.get("enabledPlugins")
         if not isinstance(enabled, dict):
             continue
+        # Match on the name only; the value may be False (installed but
+        # disabled), which is still an installed read-only tree.
         installed = [k for k in enabled if k.split("@")[0] == "cla"]
         if installed:
             raise SystemExit(
-                f"error: {local_repo} installs this plugin from a marketplace "
-                f"({', '.join(installed)}, per .claude/{name}).\n"
+                f"error: this plugin is installed from a marketplace "
+                f"({', '.join(installed)}, per {where}).\n"
                 "Its plugin tree is a read-only, version-keyed cache, so syncing "
                 "into it would either fail or be discarded by the next update.\n"
                 "update-cla is the pre-marketplace distribution path. Take a new "

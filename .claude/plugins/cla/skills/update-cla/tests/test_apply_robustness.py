@@ -567,3 +567,37 @@ def test_unreadable_settings_do_not_block_the_sync(tmp_path):
     (repo / ".claude").mkdir(parents=True)
     (repo / ".claude" / "settings.json").write_text("{not json", encoding="utf-8")
     apply_mod.assert_target_is_a_repo_not_an_installed_plugin(repo)
+
+def test_a_repo_that_vendors_the_plugin_is_syncable_despite_a_user_scope_install(tmp_path, monkeypatch):
+    """The source repo's own case. A developer can have `cla` installed at user
+    scope for their other repos while the repo they are DEVELOPING vendors it —
+    two independent facts. Refusing there would block the harness's own workflow
+    on the strength of an unrelated install."""
+    repo = tmp_path / "vendoring"
+    (repo / ".claude" / "plugins" / "cla").mkdir(parents=True)
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude").mkdir(parents=True)
+    (fake_home / ".claude" / "settings.json").write_text(
+        json.dumps({"enabledPlugins": {"cla@some-marketplace": True}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(apply_mod.Path, "home", classmethod(lambda cls: fake_home))
+    apply_mod.assert_target_is_a_repo_not_an_installed_plugin(repo)
+
+
+def test_a_user_scope_install_blocks_a_repo_that_does_not_vendor(tmp_path, monkeypatch):
+    """`claude plugin install` defaults to --scope user, so the ordinary install
+    never touches the repo. Measured while writing this: 14 enabledPlugins in
+    user scope, 0 in the repo's — a repo-only check was blind to every default
+    install, i.e. to the entire case this guard exists for."""
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude").mkdir(parents=True)
+    (fake_home / ".claude" / "settings.json").write_text(
+        json.dumps({"enabledPlugins": {"cla@some-marketplace": True}}), encoding="utf-8"
+    )
+    monkeypatch.setattr(apply_mod.Path, "home", classmethod(lambda cls: fake_home))
+    with pytest.raises(SystemExit) as excinfo:
+        apply_mod.assert_target_is_a_repo_not_an_installed_plugin(repo)
+    assert "user-level" in str(excinfo.value)
+

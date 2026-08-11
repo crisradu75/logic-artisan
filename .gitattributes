@@ -21,6 +21,8 @@ cla.cmd text eol=crlf
 # Same reasoning, same failure, different file: `hooks/git/pre-push` is a
 # `#!/bin/sh` script that every clone copies into `.git/hooks/`. Checked out
 # CRLF it becomes `#!/bin/sh\r`, which fails to execute — and a pre-push hook
-# that cannot run is a push guard that silently is not there. It is the one
-# guard with no wiring test to catch its absence, so pin the endings.
+# that cannot run is a push guard that silently is not there.
+# `consistency-checks/tests/test_pre_push_is_installed.py` catches an absent or
+# drifted copy, but a CRLF one is present and byte-identical and still refused
+# by git, so pin the endings here as well.
 .claude/plugins/cla/hooks/git/pre-push text eol=lf

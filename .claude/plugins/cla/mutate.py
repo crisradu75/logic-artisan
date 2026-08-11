@@ -227,7 +227,6 @@ _RAN_RE = re.compile(r"^\s*\d+\s+(?:passed|failed)\b", re.MULTILINE)
 # its setup ran. A COLLECTION error names only the file. That suffix is the whole
 # discriminator; the word "error" alone is not.
 _TEST_LEVEL_ERROR_RE = re.compile(r"^ERROR\s+.*::", re.MULTILINE)
-_COLLECTION_ABORT_RE = re.compile(r"Interrupted:.*during collection", re.IGNORECASE)
 
 
 def _a_test_actually_ran(output: str) -> bool:
@@ -246,17 +245,20 @@ def _a_test_actually_ran(output: str) -> bool:
     correcting the false-`killed` path had opened a false-`INCONCLUSIVE` one, the
     second branch of exactly the shape CLAUDE.md warns a fix always has.
 
-    So discriminate on WHERE the error is attributed, not on the word.
+    So discriminate on WHERE the error is attributed, not on the word: a
+    per-test error carries a `::<nodeid>` suffix, a collection error names only
+    the file. That single check is the whole discriminator.
 
-    One dependency worth naming: this assumes pytest aborts on a collection error
-    rather than continuing past it. `--continue-on-collection-errors` in any
-    scope's `addopts` would break that assumption and reopen the false kill. No
-    scope sets `addopts` today.
+    An earlier version also looked for pytest's `Interrupted: N error(s) during
+    collection` banner. That is gone: whether the banner is printed varies with
+    how the target is spelled, so it could never be relied on — and mutation
+    showed it was doing nothing, surviving as dead weight while the `::` check
+    handled every case. A redundant guard whose docstring calls itself
+    load-bearing is worse than no guard, because it draws attention away from
+    the one that is.
     """
     if _RAN_RE.search(output):
         return True
-    if _COLLECTION_ABORT_RE.search(output):
-        return False
     return bool(_TEST_LEVEL_ERROR_RE.search(output))
 
 
