@@ -16,6 +16,11 @@ literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
 it yourself first; never pass it through to a shell, where an unset variable
 expands to nothing and the command silently runs against `/skills/...`.
 
+To resolve it: take the absolute path of any file you have already read from
+this plugin (this `SKILL.md`, or a `references/` file) and cut it at the
+`.../plugins/cla` segment. That directory is the plugin root. If you cannot
+establish it, say so and stop rather than guessing a path.
+
 ## Skill-level rules (hoisted — read first)
 
 - **`<base-branch>` means THIS repo's default branch, resolved — never assumed.** Every command below that names it is a placeholder, not a literal: substitute the real name before running anything. Resolve it once, at the start of the run, with `git symbolic-ref --quiet refs/remotes/origin/HEAD` (take the segment after the last `/`); if that is unset, use whichever of `main` / `master` actually exists. The harness used to hardcode `master`, which silently broke every `main`-default repo — a `master..HEAD` range there fails outright with `unknown revision` rather than returning a wrong answer, and `git checkout master` cannot succeed at all.
@@ -262,7 +267,7 @@ The correctness gates are the root package's `build`/`lint`/`test` scripts. In a
 
 **Which gates to run.** Take the changed paths from `git diff --name-only <base-branch>...HEAD`, then read the command set out of `cla.io/project-facts.md` ("Dev / build / test commands") — that file is this repo's own record of them, whatever its stack, and `/cla:sync-context` keeps it current. Split into two tiers: **`smoke`** is the cheap fast-fail one (the lint command, typically milliseconds); **`full`** is the slow correctness tier (the build/typecheck command — the primary gate — then the test command). Whichever the repo doesn't have, it doesn't run.
 
-**No gates to run means one of two different things, and they are NOT interchangeable.** No changed path is source-affecting (no path with a `src` component, no source- or config-suffixed file — a docs-/openspec-only change) → status `skip`; there is genuinely nothing to gate. **The repo has source changes but names no commands → NOT a skip.** Treat it as **`warn`**, and say so plainly: either `project-facts.md` is stale (run `/cla:sync-context`) or the repo has no correctness gate at all. Reporting that case as a skip announces a source change as docs-only and silently runs no gate; the reason is plausible enough that nobody questions it, which is what makes it worse than a missing gate.
+**No gates to run means one of two different things, and they are NOT interchangeable.** No changed path is source-affecting → status `skip`. Source-affecting means any path with a `src` component, or any file whose suffix is one of `.ts .tsx .js .jsx .mjs .cjs .py .json .css .scss .html`. **`.py` is in that list deliberately** — it was once missing, so in a Python repo a real source change did not register as source-affecting at all and the run reported a clean docs-only skip having gated nothing; there is genuinely nothing to gate. **The repo has source changes but names no commands → NOT a skip.** Treat it as **`warn`**, and say so plainly: either `project-facts.md` is stale (run `/cla:sync-context`) or the repo has no correctness gate at all. Reporting that case as a skip announces a source change as docs-only and silently runs no gate; the reason is plausible enough that nobody questions it, which is what makes it worse than a missing gate.
 
 For each round — **smoke tier first, then full** (fail cheap before paying for the slow gate):
 1. Run every `smoke` invocation. Any failure → diagnose (a lint violation, in whichever app/package it surfaced) via Edit and decrement budget; do NOT run the `full` tier this round — re-run from smoke next round. `smoke` is a pre-filter, not a correctness proof, so a smoke pass does NOT let you skip `full`.

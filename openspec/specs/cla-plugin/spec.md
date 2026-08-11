@@ -87,7 +87,7 @@ Project-specific content (repo-tuned review checks, monorepo-shaped agent prompt
 
 #### Scenario: A skill carries multiple local overlay files
 
-- **WHEN** a skill needs more than one project-local overlay file alongside `project-context.md`
+- **WHEN** a skill needs more than one project-local overlay file alongside its `cla.io/overlays/<skill>.md`
 - **THEN** each additional file is named with a `*.local.md` leaf suffix
 - **AND** every such file is recognized as project-local overlay by the same convention
 
@@ -341,7 +341,7 @@ The `cla` plugin SHALL provide a `cla-init` skill at `.claude/plugins/cla/skills
 - the feedback inbox `cla.io/feedback/notes.md` seeded with a minimal header;
 - the rolling lessons-learned log `cla.io/lessons-learned/lessons-learned.md` seeded with a minimal header.
 
-`cla-init` SHALL additionally seed, when absent, a skeleton overlay stub at `cla.io/overlays/<skill>.md` for each skill that **reads its own `cla.io/overlays/<skill>.md` overlay as a source of repo facts** (per the Per-skill project-context overlay requirement) but does not yet have the file. A skill that merely *names* the overlay marker to document another mechanism — for example `update-cla`, which references the filename only to describe the sync-preservation convention — is NOT a consumer and SHALL NOT be seeded a stub. The stub SHALL open with a heading naming the owning skill and its role as a repo-local project overlay, and SHALL contain headed sections covering the fact categories the Per-skill project-context overlay requirement enumerates, so the stub is self-describing and can be filled in (or pruned) per destination repo. `cla-init` SHALL NOT populate the stub with real repo facts and SHALL NOT read, copy, or modify any asset-core file (a skill body, an agent, or a hook) — it only creates a stub file alongside a skill. `cla-init` SHALL NOT create, read, or modify the plugin manifest (`.claude-plugin/plugin.json`) or `.claude/settings.json`/`.claude/settings.local.json`; those remain per-repo manual onboarding steps.
+`cla-init` SHALL additionally seed, when absent, a skeleton overlay stub at `cla.io/overlays/<skill>.md` for each skill that **reads its own `cla.io/overlays/<skill>.md` overlay as a source of repo facts** (per the Per-skill project-context overlay requirement) but does not yet have the file. A skill that merely *names* the overlay marker to document another mechanism — for example `update-cla`, which references the filename only to describe the sync-preservation convention — is NOT a consumer and SHALL NOT be seeded a stub. The stub SHALL open with a heading naming the owning skill and its role as a repo-local project overlay, and SHALL contain headed sections covering the fact categories the Per-skill project-context overlay requirement enumerates, so the stub is self-describing and can be filled in (or pruned) per destination repo. `cla-init` SHALL NOT populate the stub with real repo facts and SHALL NOT read, copy, or modify any asset-core file (a skill body, an agent, or a hook) — it only creates a stub file under `cla.io/overlays/`. `cla-init` SHALL NOT create, read, or modify the plugin manifest (`.claude-plugin/plugin.json`) or `.claude/settings.json`/`.claude/settings.local.json`; those remain per-repo manual onboarding steps.
 
 The recommended onboarding order SHALL be `cla-init` (scaffold project data) then `update-cla` (sync/adapt the asset core), and this order SHALL be documented in both `cla-init`'s own SKILL.md and `update-cla`'s SKILL.md, noting that `update-cla` never creates project data so skipping `cla-init` leaves the `cla.io/` tree and overlay stubs missing.
 
@@ -355,7 +355,7 @@ The recommended onboarding order SHALL be `cla-init` (scaffold project data) the
 
 #### Scenario: Re-run is idempotent and never clobbers existing project data
 
-- **WHEN** `cla-init` runs in a repo where some or all of the scaffold already exists (e.g. a `.jsonl` ledger with history, a filled-in `notes.md`, or a populated `project-context.md`)
+- **WHEN** `cla-init` runs in a repo where some or all of the scaffold already exists (e.g. a `.jsonl` ledger with history, a filled-in `notes.md`, or a populated `cla.io/overlays/<skill>.md`)
 - **THEN** every already-present directory and file is skipped untouched — not truncated, overwritten, re-seeded, or merged — even when the seed content differs from what exists
 - **AND** only the genuinely missing pieces are created
 - **AND** a run against a fully-scaffolded repo is a no-op that writes nothing

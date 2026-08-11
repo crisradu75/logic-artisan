@@ -18,6 +18,9 @@ own check would be its own business.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -27,28 +30,29 @@ _REPO_ROOT = _PLUGIN_ROOT.parents[2]
 _SOURCE = _PLUGIN_ROOT / "hooks" / "git" / "pre-push"
 
 
-def _git_dir() -> Path | None:
-    """`.git` as a directory, resolving the worktree pointer file.
+def _hooks_dir() -> Path | None:
+    """Where git will ACTUALLY look for hooks, asked of git itself.
 
-    In a linked worktree `.git` is a FILE containing `gitdir: <path>`, and hooks
-    live in the shared common dir — so a worktree must resolve through to the
-    same `hooks/` the primary clone uses, not report a missing guard.
+    `git rev-parse --git-path hooks` is authoritative: it resolves the worktree
+    `gitdir:` pointer AND honours `core.hooksPath`. Hardcoding `<gitdir>/hooks`
+    gets both wrong — and `core.hooksPath` is not exotic, since Husky,
+    pre-commit and lefthook all set it, often `--global`. With it set, git
+    ignores `.git/hooks` entirely, so a check that looks there passes on a file
+    git will never execute.
+
+    Returns None only when git cannot answer at all.
     """
-    dot_git = _REPO_ROOT / ".git"
-    if dot_git.is_dir():
-        return dot_git
-    if dot_git.is_file():
-        line = dot_git.read_text(encoding="utf-8").strip()
-        if not line.startswith("gitdir: "):
-            return None
-        target = Path(line[len("gitdir: "):])
-        if not target.is_absolute():
-            target = (_REPO_ROOT / target).resolve()
-        # A worktree's gitdir is <common>/worktrees/<name>; hooks are two up.
-        if target.parent.name == "worktrees":
-            target = target.parent.parent
-        return target if target.is_dir() else None
-    return None
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(_REPO_ROOT), "rev-parse", "--git-path", "hooks"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    path = Path(out.stdout.strip())
+    return path if path.is_absolute() else (_REPO_ROOT / path)
 
 
 def test_the_source_hook_still_exists():
@@ -58,11 +62,21 @@ def test_the_source_hook_still_exists():
     assert _SOURCE.read_bytes().strip(), "the source hook is empty"
 
 
+def test_the_repo_root_resolved_correctly():
+    """The other non-vacuity partner. `_REPO_ROOT` is a fixed `parents[N]` hop;
+    if the plugin's depth ever changes it silently points somewhere else, git
+    answers about the wrong tree or not at all, and every test here skips green."""
+    assert (_REPO_ROOT / ".claude").is_dir(), (
+        f"_REPO_ROOT resolved to {_REPO_ROOT}, which has no .claude/ — the "
+        "parents[] hop is wrong and these guards are inspecting nothing"
+    )
+
+
 def test_the_pre_push_guard_is_installed_in_this_clone():
-    git_dir = _git_dir()
-    if git_dir is None:
-        pytest.skip("not a git working tree (a tarball or export) — nothing to install into")
-    installed = git_dir / "hooks" / "pre-push"
+    hooks = _hooks_dir()
+    if hooks is None:
+        pytest.skip("git could not answer where hooks live (not a working tree)")
+    installed = hooks / "pre-push"
     assert installed.is_file(), (
         f"{installed} is missing, so NOTHING stops a direct push to main in this "
         f"clone — the Python hook that used to was deleted, and a plugin cannot "
@@ -71,13 +85,31 @@ def test_the_pre_push_guard_is_installed_in_this_clone():
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits only")
+def test_the_installed_guard_is_executable():
+    """git's `find_hook()` tests `access(path, X_OK)` and treats a
+    non-executable hook as ABSENT — with no message. Somebody who runs the `cp`
+    from the failure message above but drops the `&& chmod +x` gets a green
+    install and zero protection."""
+    hooks = _hooks_dir()
+    if hooks is None:
+        pytest.skip("git could not answer where hooks live")
+    installed = hooks / "pre-push"
+    if not installed.is_file():
+        pytest.skip("covered by the installation test above")
+    assert os.access(installed, os.X_OK), (
+        f"{installed} is not executable, so git skips it silently. "
+        f"Run: chmod +x '{installed}'"
+    )
+
+
 def test_the_installed_guard_matches_the_source():
     """A stale copy is the quieter failure: it exists, so the check above passes,
     while missing whatever the source learned since it was copied."""
-    git_dir = _git_dir()
-    if git_dir is None:
-        pytest.skip("not a git working tree")
-    installed = git_dir / "hooks" / "pre-push"
+    hooks = _hooks_dir()
+    if hooks is None:
+        pytest.skip("git could not answer where hooks live")
+    installed = hooks / "pre-push"
     if not installed.is_file():
         pytest.skip("covered by the installation test above")
     assert installed.read_bytes() == _SOURCE.read_bytes(), (

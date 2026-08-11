@@ -16,6 +16,11 @@ literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
 it yourself first; never pass it through to a shell, where an unset variable
 expands to nothing and the command silently runs against `/skills/...`.
 
+To resolve it: take the absolute path of any file you have already read from
+this plugin (this `SKILL.md`, or a `references/` file) and cut it at the
+`.../plugins/cla` segment. That directory is the plugin root. If you cannot
+establish it, say so and stop rather than guessing a path.
+
 ## Inputs
 
 - `$ARGUMENTS` — optional free-form scope note (e.g. a subsystem or an app/package) to focus the review. See `cla.io/project-facts.md` ("Workspace shape") for this repo's own monorepo shape (its app/package list; run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/codify-learnings.md` if absent); scope is the whole repo unless you narrow it.

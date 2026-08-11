@@ -1,6 +1,6 @@
 # Line endings for the POSIX shell scripts this repo ships.
 #
-# Deliberately scoped to these four files rather than a repo-wide
+# Deliberately scoped to these few files rather than a repo-wide
 # `* text=auto eol=lf`: a blanket rule would renormalize every tracked file on
 # the next checkout, which is a much larger change than the problem being fixed
 # and would bury it.

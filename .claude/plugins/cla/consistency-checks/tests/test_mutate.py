@@ -151,8 +151,15 @@ def test_a_target_that_collects_no_tests_is_inconclusive_not_a_kill(tmp_path):
         ("1 failed, 3 passed in 0.4s", True, "a test genuinely failed"),
         ("3 passed in 0.2s", True, "tests ran and passed"),
         ("1 failed, 1 error in 2.0s", True, "a test failed alongside an error"),
-        ("!! Interrupted: 1 error during collection !!\n1 error in 0.46s", False,
-         "collection failed; pytest's `1 error` summary is NOT a test result"),
+        # The pair that matters. Both exit 1 and both summarise as `1 error`;
+        # only the attribution differs. A mutation that breaks module
+        # construction blows up in fixture setup constantly, so calling that
+        # INCONCLUSIVE would report real kills as broken batches — which a
+        # first version of this predicate did, by keying on the count line.
+        ("ERROR tests/test_x.py::test_a\n1 error in 0.41s", True,
+         "a per-TEST error: the test was selected and its setup ran"),
+        ("ERROR tests/test_x.py\n!! Interrupted: 1 error during collection !!\n1 error in 0.46s",
+         False, "a COLLECTION error: no `::nodeid`, nothing ran"),
         ("no tests ran in 0.01s", False, "nothing to run"),
     ],
 )

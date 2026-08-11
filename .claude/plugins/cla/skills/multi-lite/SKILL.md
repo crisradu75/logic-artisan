@@ -22,6 +22,11 @@ literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
 it yourself first; never pass it through to a shell, where an unset variable
 expands to nothing and the command silently runs against `/skills/...`.
 
+To resolve it: take the absolute path of any file you have already read from
+this plugin (this `SKILL.md`, or a `references/` file) and cut it at the
+`.../plugins/cla` segment. That directory is the plugin root. If you cannot
+establish it, say so and stop rather than guessing a path.
+
 This is the `lite-pr` analogue of `/cla:multi-pr` (which chains `/cla:spec-to-pr` over OpenSpec changes). Use `multi-lite` when the work is a batch of **small** changes that don't need OpenSpec artifacts — the same "which workflow" judgment call `lite-pr` vs `spec-to-pr` already asks, applied to a batch.
 
 **This skill does not reimplement `/cla:lite-pr`.** Every actual Explore/Plan/Implement/Test/Ship/Review step for a single candidate is `/cla:lite-pr`'s job — invoke it via `Skill(cla:lite-pr, args="<one-line description>")`. `multi-lite` owns exactly four things `/cla:lite-pr` doesn't: **candidate extraction**, **sequencing + the upfront confirmation gate**, **dependency-aware merge-before-dependents**, and **failure quarantine + the final report**.

@@ -32,10 +32,10 @@ USAGE. Write a batch file — a Python module defining `MUTANTS`, a list of
     PLUGIN = Path(__file__).resolve().parents[1]     # adjust to where you put it
     HOOKS = PLUGIN / "hooks"
     MUTANTS = [
-        ("the args fallback comes back",
-         HOOKS / "warn-lint-on-edit.py",
-         "if not raw_exts or not binary or not args:",
-         "if not raw_exts or not binary:",
+        ("the git matcher stops case-folding the command name",
+         HOOKS / "_dispatch_lib.py",
+         r'GIT_CMD = r"\\b(?i:git)(?:\\.(?i:exe|cmd|bat|com|ps1))?"',
+         r'GIT_CMD = r"\\bgit(?:\\.(?i:exe|cmd|bat|com|ps1))?"',
          [HOOKS / "tests"]),
     ]
 
@@ -222,24 +222,42 @@ def uncommitted(paths: list[Path]) -> list[str]:
     return [line[3:] for line in proc.stdout.splitlines() if line.strip()]
 
 
-# Only `passed`/`failed` prove a test EXECUTED. `error` must not count: pytest
-# summarises a collection failure as `1 error in 0.46s`, which is the exact
-# output this predicate exists to reject — an earlier version of it accepted
-# that line and answered True.
 _RAN_RE = re.compile(r"^\s*\d+\s+(?:passed|failed)\b", re.MULTILINE)
+# A per-TEST error line carries a `::<nodeid>` suffix — the test was selected and
+# its setup ran. A COLLECTION error names only the file. That suffix is the whole
+# discriminator; the word "error" alone is not.
+_TEST_LEVEL_ERROR_RE = re.compile(r"^ERROR\s+.*::", re.MULTILINE)
+_COLLECTION_ABORT_RE = re.compile(r"Interrupted:.*during collection", re.IGNORECASE)
 
 
 def _a_test_actually_ran(output: str) -> bool:
-    """True only when pytest's summary shows at least one test executed.
+    """True when at least one test was selected and executed.
 
     `killed` must mean "a test failed", not "pytest exited 1". With `-x`, a
     collection error exits 1 having run nothing — pytest's own exit-2 meaning is
     lost — so the exit code alone cannot tell a real kill from a broken target
-    list. Measured: pointing a batch at two scopes that ship same-named modules
-    (`skills/codify-retro/tests` + `skills/spec-to-pr-retro/tests`, both with a
-    top-level `aggregate.py`) collects nothing and reports `1 error`.
+    list. Measured: two scopes shipping same-named modules collect nothing and
+    summarise as `1 error`.
+
+    But `1 error` is ALSO what a fixture blowing up during setup prints, at exit
+    1, having genuinely run a test — and a mutation that breaks module
+    construction lands there constantly. A first version of this predicate keyed
+    on the count line alone and so reported those real kills as INCONCLUSIVE:
+    correcting the false-`killed` path had opened a false-`INCONCLUSIVE` one, the
+    second branch of exactly the shape CLAUDE.md warns a fix always has.
+
+    So discriminate on WHERE the error is attributed, not on the word.
+
+    One dependency worth naming: this assumes pytest aborts on a collection error
+    rather than continuing past it. `--continue-on-collection-errors` in any
+    scope's `addopts` would break that assumption and reopen the false kill. No
+    scope sets `addopts` today.
     """
-    return bool(_RAN_RE.search(output))
+    if _RAN_RE.search(output):
+        return True
+    if _COLLECTION_ABORT_RE.search(output):
+        return False
+    return bool(_TEST_LEVEL_ERROR_RE.search(output))
 
 
 def run_pytest(targets: list[Path]) -> tuple[int, str]:

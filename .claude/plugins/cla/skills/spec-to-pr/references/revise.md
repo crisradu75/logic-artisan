@@ -97,11 +97,15 @@ Pass the captured diff to each Agent prompt. If `PREV_FIX_SHA` is empty or the d
    Exit 0 → proceed; exit 2/3 → halt and surface. Then stage the explicit changed-paths list (never `-A`), **confirm something was actually staged**, and commit — the subject is one line, passed inline:
    ```
    git add -- <changed-paths>
-   git diff --cached --quiet
+   git diff --cached --name-only
    git commit -m "fix: review round <N>"
    git push
    ```
-   **`git diff --cached --quiet` exiting 0 means NOTHING was staged — stop there.** Do not commit, do not push. Name which of `<changed-paths>` matched nothing and mark Revise `warn`. This check is not decoration: `git add` on a path that a delegated fix renamed, or never touched, exits non-zero and leaves the index empty; `git commit` then fails with "nothing to commit"; and **`git push` prints "Everything up-to-date" and exits 0**. Inspecting only the push — the one exit code that cannot fail here — reports a clean Revise, opens the PR without the round-N fixes in it, and captures the PREVIOUS commit as `PREV_FIX_SHA`, so the next round scopes its diff against the wrong base. The deleted `commit.py` refused this case explicitly; nothing replaced the refusal until now.
+   **`git diff --cached --name-only` must list at least one path. Empty output means NOTHING was staged — stop there.** Do not commit, do not push. Name which of `<changed-paths>` produced nothing and mark Revise `warn`.
+
+   (`--name-only`, not `--quiet`, deliberately: `--quiet` signals through its exit code, and the *healthy* case — differences present — is exit **1**, which this skill's own hoisted rule would read as a failure and halt on. Inverting a check into halting every successful round is no better than not having it.)
+
+   This check is not decoration. `git add -- <path>` on a path that exists but was never modified exits **0** and stages nothing — the quiet case, and the likely one when a delegated fix-applier reports success without touching the file it named. `git commit` then fails with "nothing to commit", and **`git push` prints "Everything up-to-date" and exits 0**. Inspecting only the push — the one exit code that cannot fail here — reports a clean Revise, opens the PR without the round-N fixes in it, and captures the PREVIOUS commit as `PREV_FIX_SHA`, so the next round scopes its diff against the wrong base. The deleted `commit.py` refused this case explicitly; nothing replaced the refusal until now.
 
    Inspect the `git push` exit code in the orchestrator's own context (do NOT chain `|| { ... }` — that compound shell form breaks the permission-allowlist matching per root `CLAUDE.md`). On non-zero exit, mark Revise `warn`, capture the failure for the Handoff Issues section, and emit a prominent warning that round-N fixes are local-only. On success, capture `git rev-parse HEAD` for use as `PREV_FIX_SHA` in the next round's diff scoping.
 4. **Exit gate.** Count *un-triaged* Critical and Important findings (Applied and Deferred-Known-Issue both count as triaged). If 0 untriaged → status `ok`, exit loop. Suggestions still recorded for the optional `docs:` commit.

@@ -186,6 +186,6 @@ At the end, print a per-target summary — each directory, ledger, seed, and stu
 - Does **NOT** create, read, or modify `.claude/settings.json` or `.claude/settings.local.json` — also
   manual, per-repo.
 - Does **NOT** read, copy, or modify any asset-core file (a `SKILL.md` body, an agent, a hook). It only
-  *creates a stub file alongside* a skill; it never edits the skill. Asset-core sync is `update-cla`'s job.
+  *creates a stub file under `cla.io/overlays/`*; it never touches the skill itself, and it could not — the plugin tree is read-only. Asset-core sync is `update-cla`'s job.
 - Does **NOT** fill overlay stubs with real repo facts — stubs stay content-free skeletons; a human (or
   the extraction pass) fills them.

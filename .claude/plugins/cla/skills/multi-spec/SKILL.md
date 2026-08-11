@@ -16,6 +16,11 @@ literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
 it yourself first; never pass it through to a shell, where an unset variable
 expands to nothing and the command silently runs against `/skills/...`.
 
+To resolve it: take the absolute path of any file you have already read from
+this plugin (this `SKILL.md`, or a `references/` file) and cut it at the
+`.../plugins/cla` segment. That directory is the plugin root. If you cannot
+establish it, say so and stop rather than guessing a path.
+
 **The durability requirement is the reason this skill exists as more than a loop over `openspec-propose`.** A batch of N proposal directories sitting uncommitted for the whole run is a real, already-realized loss mode in this repo's own history (see `cla.io/overlays/multi-spec.md`) while sitting untracked. Every phase below is ordered to keep the loss window to at most one change.
 
 ## Skill-level rules (hoisted — read first)

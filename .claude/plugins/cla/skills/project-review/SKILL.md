@@ -16,6 +16,11 @@ literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
 it yourself first; never pass it through to a shell, where an unset variable
 expands to nothing and the command silently runs against `/skills/...`.
 
+To resolve it: take the absolute path of any file you have already read from
+this plugin (this `SKILL.md`, or a `references/` file) and cut it at the
+`.../plugins/cla` segment. That directory is the plugin root. If you cannot
+establish it, say so and stop rather than guessing a path.
+
 **When to run:** After several incremental changes, before a pitch/demo, or when you want a fresh first-principles assessment.
 
 **Run thin (standing discipline — hoisted).** This skill IS an orchestrator: Step 2 dispatches five parallel review agents and Step 3 aggregates only their conclusions, never their raw reads. Follow `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/runtime-rules.md`'s standing disciplines throughout — delegate raw-material handling so only conclusions return, read file slices not whole files, batch independent tool calls into one message, and prefer terse schema'd agent output over prose.

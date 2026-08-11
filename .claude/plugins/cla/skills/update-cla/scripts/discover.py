@@ -131,7 +131,13 @@ SCAN_FILES = (
     # not there — and the callers all treat that failure as non-fatal, so it is
     # silent, and the retro then reports a cold start.
     ".claude/plugins/cla/lib/log_run.py",
+    # Both halves of the scope, deliberately. `run_tests.py` treats a dir with a
+    # pytest-configured pyproject.toml and NO tests/ as a near-miss and FAILS the
+    # run — so shipping the config without the tests hands every consumer a hard
+    # failure it did not cause. `conformance-checks` above ships both for the
+    # same reason.
     ".claude/plugins/cla/lib/pyproject.toml",
+    ".claude/plugins/cla/lib/tests/test_log_run.py",
 )
 # The subset of SCAN_FILES that are repo-root launchers, for the run summary's
 # per-category counts. Kept separate from SCAN_FILES itself so adding a non-
