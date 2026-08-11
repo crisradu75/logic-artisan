@@ -23,11 +23,13 @@ pick the new release up on `/plugin marketplace update`.
 Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
 unless `plugin.json` and the marketplace entry already agree.
 
-**Nothing is released yet.** The manifest declares `cla--v0.9.0`, but that tag is deliberately
-uncut: a release tag should point at reviewed code, and this work is still on an unmerged branch.
-A tag cut early cannot be corrected — moving a published tag is worse than never having cut it,
-because a consumer may already have fetched it. Cut it once the branch is reviewed; `0.9.0` is the
-validation candidate and becomes `1.0.0` after it has been exercised in a peer repo.
+**Current release: `cla--v0.9.1`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
+task has been run end-to-end through the plugin in a consuming repo (the propagation decision's own
+Q7 gate — installing and resolving paths is verified, running a task through it is not).
+
+**A published tag is never moved.** `0.9.0` was cut, a consumer installed it, and the very next fix
+therefore became `0.9.1` rather than a re-tag — moving it would have changed what that consumer had
+already fetched. Cut the tag only from `main`, and only after the work is reviewed.
 
 `update-cla`'s file-sync remains the live mechanism until consuming repos migrate.
 
