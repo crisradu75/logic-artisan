@@ -42,14 +42,31 @@ def _plugin_root() -> Path:
 
 
 def _repo_root() -> Path:
-    """The repo root — parent of ``.claude/``. The token list is per-repo data
-    living in ``cla.io/``, outside the plugin tree, so ``_plugin_root()`` is the
-    wrong anchor for it."""
+    """The repo being checked — asked of git, from the PROCESS's cwd.
+
+    The token list is per-repo data in `cla.io/`, so the anchor must be the
+    consuming repo. This used to walk to the first `.claude` ancestor of
+    `__file__`, which under a marketplace install is the user's GLOBAL
+    `~/.claude` — so it returned the home directory, found no token list, and
+    the guard skipped green in every consuming repo (upstream issue #52).
+    """
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return Path(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    home_claude = (Path.home() / ".claude").resolve()
     for parent in Path(__file__).resolve().parents:
-        if parent.name == ".claude":
+        if parent.name == ".claude" and parent.resolve() != home_claude:
             return parent.parent
-    # tests/ -> conformance-checks/ -> cla/ -> plugins/ -> .claude/ -> repo root
-    return Path(__file__).resolve().parents[4]
+    return Path.cwd()
 
 
 def load_tokens(path: Path) -> list[str]:
