@@ -106,34 +106,47 @@ _EMPHASIS_MARKERS = ("**", "__", "*", "_")
 
 
 def _repo_root_from_here() -> Path:
-    """Resolve the repo root as the parent of ``.claude/`` walked up from this
-    file's own location — NOT the plugin root the conformance guard resolves to
-    (``parent named "cla"``). The paths this guard checks are repo-relative and
-    ``cla.io/project-facts.md`` sits at the repo root, outside the plugin tree, so
-    the conformance guard's plugin-root resolution would be wrong here. Falls back
-    to ``git rev-parse --show-toplevel`` if the ``.claude`` parent isn't found
-    (e.g. an unusual layout), and finally to a fixed parents-index walk."""
-    for parent in Path(__file__).resolve().parents:
-        if parent.name == ".claude":
-            return parent.parent
-    try:
-        import subprocess
+    """The repo being checked — asked of git, from the PROCESS's cwd.
 
+    This guard's subject is the consuming repo's `cla.io/` files, so the root
+    must be that repo. It used to walk up from `__file__` to the first `.claude`
+    ancestor, which was right only while the plugin was vendored at
+    `<repo>/.claude/plugins/cla/`. Installed from a marketplace the plugin lives
+    at `~/.claude/plugins/cache/<marketplace>/cla/<version>/`, so the first
+    `.claude` ancestor is the user's GLOBAL one and the function returned the
+    user's HOME DIRECTORY. Both guards in this scope then looked for
+    `cla.io/…` under `~`, found nothing, and skipped — green while checking
+    nothing, in every marketplace install simultaneously (upstream issue #52).
+
+    Two things made that unrecoverable rather than merely wrong: the `.claude`
+    walk SUCCEEDED, so the git fallback below was never reached; and the
+    fallback passed `cwd=__file__`'s parent, which is inside the read-only
+    plugin cache and not a git repo, so it would have failed anyway. The
+    consuming repo is the PROCESS cwd, never a path relative to this file.
+    """
+    import subprocess
+
+    try:
         out = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-            cwd=Path(__file__).resolve().parent,
-            check=True,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10,
         )
-        top = out.stdout.strip()
-        if top:
-            return Path(top)
-    except Exception:
+        if out.returncode == 0 and out.stdout.strip():
+            return Path(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
         pass
-    # Last-resort fallback for an unexpected layout:
-    # tests/ -> conformance-checks/ -> cla/ -> plugins/ -> .claude/ -> root
-    return Path(__file__).resolve().parents[5]
+    # Fallback for a non-git checkout: the `.claude` walk, but never accepting
+    # the user's global `~/.claude` — that match is the defect above, not a
+    # repo, and returning home silently disables the guard.
+    home_claude = (Path.home() / ".claude").resolve()
+    for parent in Path(__file__).resolve().parents:
+        if parent.name == ".claude" and parent.resolve() != home_claude:
+            return parent.parent
+    # Nothing resolved. Return the cwd rather than a parents[N] guess: the
+    # caller treats a missing facts file as a trivial pass, so a wrong root here
+    # is silent, and cwd is at least the directory the user ran from.
+    return Path.cwd()
 
 
 _BACKTICK_SPAN_RE = re.compile(r"`([^`]+)`")
@@ -152,7 +165,15 @@ def _strip_wrapping(token: str) -> str:
     prev = None
     while prev != token:
         prev = token
-        if token and token[0] in _WRAP_CHARS:
+        # A LEADING dot is never decoration — it is the path. `.claude/…`,
+        # `.github/…`, `.gitattributes` are exactly the paths a harness-facing
+        # facts file names most often, and stripping the dot left
+        # `claude/hooks/…`, whose first segment matches no tracked top-level
+        # entry, so `_keep_if_path` dropped it and the guard never checked it.
+        # Measured: 183 candidates checked, 0 stale, while four genuinely dead
+        # `.claude/`-rooted paths sat in the scanned files (upstream issue #53).
+        # A TRAILING dot is still decoration (a sentence-ending period).
+        if token and token[0] in _WRAP_CHARS and token[0] != ".":
             token = token[1:]
         if token and token[-1] in _WRAP_CHARS:
             token = token[:-1]
@@ -819,3 +840,58 @@ def test_a_dynamic_route_segment_is_still_checkable():
     existence-checkable path. Rejecting brackets wholesale would discard it."""
     got = extract_path_candidates("edit apps/web/[id]/page.tsx now", {"apps"})
     assert any("[id]" in c for c in got), got
+
+# --------------------------------------------------------------------------- #
+# Upstream #52 / #53 — the two ways this guard was silently inert downstream
+# --------------------------------------------------------------------------- #
+
+
+def test_a_leading_dot_survives_cleaning(tmp_path):
+    """#53. `_WRAP_CHARS` contains `.`, and it was stripped from BOTH ends, so
+    `.claude/x` became `claude/x` — whose first segment matches no tracked
+    top-level entry, so `_keep_if_path` dropped it and the path was never
+    checked. Every dotfile-rooted path was invisible: `.claude/**`, `.github/**`
+    — exactly what a harness-facing facts file names most.
+
+    Measured on the repo where it was found: 183 candidates checked, 0 stale,
+    with four genuinely dead `.claude/`-rooted paths sitting in the scanned
+    files. A trailing dot is still decoration and must still go.
+    """
+    assert _clean_candidate(".claude/hooks/x.py") == ".claude/hooks/x.py"
+    assert _clean_candidate(".github/workflows/ci.yml") == ".github/workflows/ci.yml"
+    assert _clean_candidate("`.claude/settings.json`.") == ".claude/settings.json"
+    assert _clean_candidate("(src/app.ts:12),") == "src/app.ts"
+
+
+def test_a_dead_dotfile_path_is_actually_reported(tmp_path):
+    """The end-to-end partner: cleaning is only half of it — the candidate must
+    reach the existence check and be reported."""
+    _init_git_repo(tmp_path, [".claude", "src"])
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Hooks live in `.claude/hooks/gone.py`.\n", encoding="utf-8"
+    )
+    _checked, stale = scan(tmp_path)
+    assert [s[2] for s in stale] == [".claude/hooks/gone.py"], (
+        f"a dead .claude/-rooted path was not reported: {stale}"
+    )
+
+
+def test_the_repo_root_is_the_process_repo_not_the_users_home(monkeypatch, tmp_path):
+    """#52. The old resolver walked to the first `.claude` ancestor of
+    `__file__`. Under a marketplace install the plugin sits at
+    `~/.claude/plugins/cache/...`, so that ancestor is the user's GLOBAL
+    `.claude` and the function returned the HOME DIRECTORY — both guards in this
+    scope then found no `cla.io/` there and skipped, green, in every consuming
+    repo at once.
+
+    Reproduced before the fix: resolved `C:\\Users\\<user>` for a repo at
+    `C:\\code\\<repo>`.
+    """
+    _init_git_repo(tmp_path, ["src"])
+    monkeypatch.chdir(tmp_path)
+    resolved = _repo_root_from_here().resolve()
+    assert resolved == tmp_path.resolve(), (
+        f"resolved {resolved}, expected the process's repo {tmp_path}"
+    )
+    assert resolved != Path.home().resolve(), "resolved the user's home directory"
