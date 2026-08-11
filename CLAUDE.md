@@ -13,12 +13,29 @@ this plugin in via `update-cla` and adapt it to their own context.
 Everything lives under `.claude/plugins/cla/`, nested at that path specifically so `update-cla` can
 consume this repo directly as a sync source.
 
-**Distribution is moving to a marketplace.** `.claude-plugin/marketplace.json` at the repo root
+**Distribution is GitHub, and only GitHub.** `.claude-plugin/marketplace.json` at the repo root
 publishes one plugin, `cla`, from this subdirectory (`git-subdir` source, `url` + `path`, schema
 verified against the live docs). It pins an **exact release tag**, not a moving major tag, so
 publishing a release is a deliberate two-part edit: bump `version` in the plugin's own
 `plugin.json` AND the `ref` here, in the same commit. A test fails when they disagree. Consumers
 pick the new release up on `/plugin marketplace update`.
+
+Consumers add the marketplace from the repo, never from a path:
+
+```bash
+claude plugin marketplace add crisradu75/logic-artisan
+claude plugin install cla@cris-logic-artisan --scope project
+```
+
+**A local-directory marketplace is a development convenience, never a distribution route.** It was
+used once, to exercise the install before the catalog change was pushed, and it carries a trap worth
+naming: the catalog is then read from a working tree, so a locally-bumped `ref` advertises a tag that
+may never have been pushed — the install fails with nothing visibly wrong in the manifest. Sourcing
+the catalog from GitHub keeps catalog and tag moving together through one push.
+
+For developing the harness itself, use `--plugin-dir` (below) rather than any marketplace: it is the
+only mode that reads this working tree live. Every source type — including a local path — is copied
+into the versioned cache at `~/.claude/plugins/cache`, so an install is a snapshot, not a link.
 
 Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
 unless `plugin.json` and the marketplace entry already agree.
