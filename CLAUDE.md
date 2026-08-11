@@ -40,7 +40,7 @@ into the versioned cache at `~/.claude/plugins/cache`, so an install is a snapsh
 Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
 unless `plugin.json` and the marketplace entry already agree.
 
-**Current release: `cla--v0.9.1`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
+**Current release: `cla--v0.9.2`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
 task has been run end-to-end through the plugin in a consuming repo (the propagation decision's own
 Q7 gate — installing and resolving paths is verified, running a task through it is not).
 
