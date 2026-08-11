@@ -1,5 +1,10 @@
 # upstream-proposals — recording fixes that belong in the canonical source
 
+**Superseded by `/cla:report-upstream`**, which files a GitHub issue against the canonical
+source instead of appending to a local file nobody upstream can see. Prefer it. This phase
+remains only for as long as file-sync distribution does: it is the version that works
+without a network or a `gh` login, and a repo mid-migration may still be using it.
+
 Phase 4 of a sync. A sync is the one moment the same asset is in view in two repos at
 once, so it is when a local file can reveal itself as not merely *adapted* but genuinely
 **better**. Without this phase that observation dies with the run, and the same defect

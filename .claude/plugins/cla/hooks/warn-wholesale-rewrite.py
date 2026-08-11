@@ -86,7 +86,7 @@ def _repo_root_for(file_path: Path) -> Path | None:
     being edited". A session that enters a git worktree after launch writes every
     file outside it, so keying solely off that variable made this hook return 0
     for the rest of the session -- a guard that silently stopped guarding, in a
-    plugin whose own tooling (`claw`, `/cla:new-worktree`, worktree isolation)
+    plugin whose own tooling (`/cla:new-worktree`, worktree helpers)
     makes that the common path rather than an edge case.
 
     Called ONLY when the path falls outside the project dir, so the ordinary

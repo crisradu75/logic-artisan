@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "cris-logic-artisan",
+  "description": "Cris Logic Artisan (CLA) — a Claude Code dev-workflow harness: spec-to-pr, the multi-* chains, lite-pr, the retro/codify self-improvement loops, review skills, and the generic git/worktree guard hooks.",
+  "owner": {
+    "name": "Cris Radu",
+    "url": "https://github.com/crisradu75"
+  },
+  "plugins": [
+    {
+      "name": "cla",
+      "description": "Cris Logic Artisan — dev-workflow harness for Claude Code. Pinned to an exact release tag; bump the ref here to publish a new one.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/crisradu75/logic-artisan",
+        "path": ".claude/plugins/cla",
+        "ref": "cla--v0.9.0"
+      }
+    }
+  ]
+}

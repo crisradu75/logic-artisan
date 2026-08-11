@@ -1,6 +1,6 @@
 # multi-spec — batch review gate (Phase 4)
 
-Adapts `.claude/plugins/cla/skills/review-change/references/checklist.md` — this repo's single source of truth for change review — from its single-change shape to a whole-batch dispatch. Reuse its verification checks, agent prompts, model routing, and verdict rubric **verbatim**; only the scope (one change → N changes in one dispatch) and the report grouping (by change name) differ. Do not fork a second review methodology — if the checklist changes, this adaptation should be re-read, not independently maintained.
+Adapts `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` — this repo's single source of truth for change review — from its single-change shape to a whole-batch dispatch. Reuse its verification checks, agent prompts, model routing, and verdict rubric **verbatim**; only the scope (one change → N changes in one dispatch) and the report grouping (by change name) differ. Do not fork a second review methodology — if the checklist changes, this adaptation should be re-read, not independently maintained.
 
 ## Why one dispatch for the whole batch, not N single-change reviews
 
@@ -17,7 +17,7 @@ If the plan (`references/plan-schema.md`) has only one change, there is no cross
 
 Read every change's `openspec/changes/<name>/{.openspec.yaml,proposal.md,design.md,tasks.md,specs/*/spec.md}` — batch the reads into as few messages as possible (all N changes' artifacts in one parallel batch, same "maximize parallelism in pre-gathering" rule the checklist itself states).
 
-Run the same high-yield checks **per change** — note that only 0a–0e live in `checklist.md` itself; the domain-specific checks (0f–0i) and the allocation-math/i18n/mock-data checks (1–9) live in the project overlay `.claude/plugins/cla/skills/review-change/references/project-context.md`, which the checklist reads alongside itself. Read that overlay here too, or the batch gate silently skips exactly the repo-specific checks (the overlay's domain-specific 0f–0i and 1–9 checks) that catch the most repo-specific defects. Then add one check this adaptation introduces:
+Run the same high-yield checks **per change** — note that only 0a–0e live in `checklist.md` itself; the domain-specific checks (0f–0i) and the allocation-math/i18n/mock-data checks (1–9) live in the project overlay `cla.io/overlays/review-change.md`, which the checklist reads alongside itself. Read that overlay here too, or the batch gate silently skips exactly the repo-specific checks (the overlay's domain-specific 0f–0i and 1–9 checks) that catch the most repo-specific defects. Then add one check this adaptation introduces:
 
 **0j — Cross-change cross-reference check (the reason this gate is batched at all).** For every claim in one change's artifacts that references another change in this same batch (by name, by a shared data model, by "depends on X" prose), verify it against that OTHER change's actual authored artifacts, not just against the referencing change's own assumptions. This is the direct analogue of checks 0a-0b but pointed across change boundaries instead of at source code — a claim like "change B's new nullable columns are read by this change" must be checked against change B's actual `design.md`/`specs/`, not assumed correct because change B "should have" done that.
 
@@ -29,7 +29,7 @@ A batch that reached this gate already has ≥2 changes each with their own full
 
 ## Step 4 — Dispatch three agents, once, over the whole batch
 
-Same model routing as `review-change/references/checklist.md` Step 4, per `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md`'s "Review-agent dispatch" table:
+Same model routing as `review-change/references/checklist.md` Step 4, per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/model-routing.md`'s "Review-agent dispatch" table:
 
 - **Agent 1 (Design Reviewer) → `opus`**
 - **Agents 2 & 3 (Task Reviewer, Spec & Codebase Reviewer) → `sonnet`**
@@ -56,8 +56,9 @@ The checklist's "no capitulation, no sycophancy" (INT-CAP / INT-SYC) rules apply
 2. Re-validate each touched change: `openspec validate <name> --strict`.
 3. Commit all fixes as **one** follow-up commit (mirrors the real precedent's two-commit-class shape):
    ```
-   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
-   python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "docs(openspec): apply review fixes to <batch-slug> proposals" openspec/changes/
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
+   git add -- openspec/changes/
+   git commit -m "docs(openspec): apply review fixes to <batch-slug> proposals"
    git push
    ```
    `openspec/changes/` is safe to path-scope broadly here specifically because this is the ONE point in the run where every change in the batch — and nothing else — is expected to be dirty; if `git status --porcelain` outside `openspec/changes/` is non-empty, name those paths explicitly instead of widening the add.

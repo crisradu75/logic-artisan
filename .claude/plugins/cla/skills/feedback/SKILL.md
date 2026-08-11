@@ -65,5 +65,5 @@ Rewrite the deliverable **in place** — the "Raw captured notes" section is con
 ## References
 
 - `cla.io/feedback/notes.md` — the freeform scratch inbox this skill reads from (with permission) but never owns; also the model for the enriched-entry shape (file + stack trace + labeled probable cause).
-- `.claude/plugins/cla/skills/shape-decision/SKILL.md` — the intended downstream bridge that turns a consolidated feedback doc into fix-approach decisions.
-- `.claude/plugins/cla/skills/multi-lite/SKILL.md` / `.claude/plugins/cla/skills/multi-spec/SKILL.md` — the implement-side chains a shaped decisions doc feeds into after `/cla:shape-decision`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/shape-decision/SKILL.md` — the intended downstream bridge that turns a consolidated feedback doc into fix-approach decisions.
+- `${CLAUDE_PLUGIN_ROOT}/skills/multi-lite/SKILL.md` / `${CLAUDE_PLUGIN_ROOT}/skills/multi-spec/SKILL.md` — the implement-side chains a shaped decisions doc feeds into after `/cla:shape-decision`.

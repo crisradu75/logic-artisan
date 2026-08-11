@@ -51,8 +51,8 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
                        ▼      ─── HALT here in --gate-on-push or --interactive ───
                        │
             ┌──────────┴──────────┐
-            │  SHIP               │   collision preflight (exit 3 → skip phase)
-            │  branch.py --dry-run│
+            │  SHIP               │   collision preflight (collision → skip phase)
+            │  rev-parse+ls-remote│
             │       ↓             │
             │  inline git +       │   subject-only commit, single-line PR body
             │  gh pr create       │   post-check: gh pr view --json url state
@@ -66,7 +66,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             │  R2+ Agent direct   │   round 2+: previous-fix diff, one tier down
             │     ↓               │            (bug-hunters exempt from demotion)
             │  APPLY PR FIXES     │   commit as `fix: review round N`
-            │     ↓               │   (via commit.py --message)
+            │     ↓               │   (via git add + git commit)
             │  (push, re-review)  │   ✓ 0 Critical+Important after cap
             └──────────┬──────────┘   ⚠ residue after cap
                        │
@@ -75,7 +75,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             │  ARCHIVE            │   openspec archive <name> --yes
             │     ↓               │   moves change → archive/, syncs spec
             │  inline commit +    │   commit as `chore: archive <name>`
-            │  push + 3-check     │   (via commit.py --message)
+            │  push + 3-check     │   (commits the already-staged set)
             │  push post-check    │   ✓ archive on PR / ⚠ failure
             └──────────┬──────────┘   (NB: runs while PR still OPEN)
                        │

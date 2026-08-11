@@ -2,7 +2,7 @@
 
 This file carries the durable, generic vocabulary for reasoning about how a spec-to-pr guardrail
 graduates when it keeps failing. The dated, repo-specific incident writeups that used to sit below it
-have been folded into `references/project-context.md` (Decision B, `cla-skill-context-extraction`) — read
+have been folded into `cla.io/overlays/spec-to-pr.md` (Decision B, `cla-skill-context-extraction`) — read
 that file for the concrete "why" behind any given rule; this file stays generic.
 
 **Enforcement tiers.** spec-to-pr's guardrails sit at four enforcement tiers (this vocabulary is shared
@@ -18,5 +18,5 @@ Prompted → Mechanical**. Knowing a guardrail's tier tells you how it graduates
 
 When a spec-to-pr guardrail keeps being violated, the fix is to move it *up* a tier (prose → structural
 check → prompted hook → mechanical block) — the same ascent `codify-learnings` applies to session
-lessons — not to restate the same prose louder. See `references/project-context.md` for this repo's own
+lessons — not to restate the same prose louder. See `cla.io/overlays/spec-to-pr.md` for this repo's own
 worked examples of each tier.

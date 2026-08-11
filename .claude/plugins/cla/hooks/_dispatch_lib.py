@@ -4,8 +4,8 @@ shared git-command-matching library.
 
 TWO responsibilities, deliberately in one file. (1) It runs several sibling hook
 scripts' `main()` in-process (one Python interpreter instead of one per hook) by
-importing each as a standalone module — the same technique
-.claude/plugins/cla/hooks/tests/ already uses — and temporarily redirecting
+importing each as a standalone module — the same technique this package's own
+`hooks/tests/` already uses — and temporarily redirecting
 stdin/stdout/stderr around each call. The sibling hook files are never
 modified by this module; it only orchestrates them. (2) It also HOSTS
 `strip_quoted_spans` / `GIT_GLOBAL_OPTS`, which six leaf git hooks import.
@@ -153,43 +153,11 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     "ask-destructive-git.py": 0.0,
     "block-unsafe-recursive-delete.py": 0.0,
     "warn-comment-dates.py": 0.0,
-    "block-dated-stamps-in-prose.py": 0.0,
-    "warn-smoke-test-drift.py": 0.0,
-    # 1 x _current_branch(3s), and now a PROVEN ceiling rather than a realistic
-    # bound: the hook enforces `_RESOLUTION_BUDGET = 1` git-spawning resolution
-    # per Bash call, degrading (audibly, on stderr) beyond it.
-    #
-    # This was the table's one knowingly dishonest entry. The cache key is the
-    # cwd, so distinct `-C` directories were distinct keys, and `git -C /a push
-    # origin HEAD && git -C /b push origin HEAD && git -C /c push origin HEAD`
-    # really did spawn three `rev-parse` calls (verified) — 9s, not 3.0 — with
-    # `_branch_for` able to try two candidates per push, doubling again to ~18s.
-    # The comment here admitted all of that and then said the entry was "left at
-    # 3.0 deliberately: raising it to a true worst case would put the enforcing
-    # sum over the budget and fail `test_hooks_wiring.py`".
-    #
-    # An input chosen to satisfy its own assertion is precisely what this table
-    # exists to prevent, and the stakes are the ones the table is about: spend
-    # the true cost and the handler is killed, so every later hook —
-    # `guard-worktree-isolation` among them — never runs, silently. Declaring
-    # the honest number was not available either (measured: the Bash enforcing
-    # sum is 12.0 against 13.5 usable, so 9.0 would not fit), so the hook was
-    # made cheaper instead — which is what that same comment said the fix was.
-    "block-direct-push-to-main.py": 3.0,
-    # 1 x _git_email(3s).
-    "ask-git-identity.py": 3.0,
-    # 2 x _run_git(3s): combined `rev-parse` + one conditional checkout lookup.
-    "guard-worktree-isolation.py": 6.0,
     # 2 x _run_git(3s): combined `rev-parse` + `--show-toplevel`.
     "block-worktree-path-escape.py": 6.0,
     # 1 x `git status --porcelain`(4s) — walks the working tree, so it gets more
     # than the `rev-parse` hooks.
     "warn-stray-scratch-artifact.py": 4.0,
-    # 1 x `rev-parse`(3s) + default_base_branch(), which is up to 3 spawns at 2s.
-    # This hook cannot avoid resolving the base branch — comparing against it is
-    # the hook's entire job — so unlike the two hooks that only wanted the name
-    # for a MESSAGE, the cost is charged rather than removed.
-    "warn-branch-base.py": 9.0,
     # 2 x _gh(4s): `pr view` then `pr list` on the explicit-PR-number path. The
     # only hook that leaves the machine, and the reason it stays advisory. Its
     # own docstring is the authority on the call count; the previous entry
@@ -233,7 +201,7 @@ class Deadline:
 # the payload to a file and hands Claude a path plus a preview. For a warn hook
 # that is a silent downgrade — the feedback these hooks exist to deliver stops
 # being in front of Claude and becomes a file it may never open. Several leaf
-# hooks truncate by ITEM count (`hits[:5]` in block-dated-stamps-in-prose.py)
+# hooks truncate by ITEM count (`hits[:3]` in warn-comment-dates.py)
 # but no item is bounded in LENGTH, and the dispatchers then concatenate every
 # hook's output, so the only place the total can be enforced is here at the join.
 
@@ -326,10 +294,12 @@ def compose_output(
 
 
 # --- Bounded git subprocess helpers -----------------------------------------
-# Shared by block-worktree-path-escape.py and guard-worktree-isolation.py,
-# which both run on every Edit/Write/Bash call and both need the SAME answer —
-# "is cwd inside a linked worktree?" — resolved from its git-dir and
-# git-common-dir. (`--show-toplevel` is NOT part of this; only
+# Used by block-worktree-path-escape.py, which runs on every Edit/Write call
+# and needs to answer "is cwd inside a linked worktree?" — resolved from its
+# git-dir and git-common-dir. (These were shared with a second worktree hook
+# until that hook was retired; the helpers stay here rather than being inlined,
+# since a future worktree guard needs the same answer.)
+# (`--show-toplevel` is NOT part of this; only
 # block-worktree-path-escape.py wants the worktree root, and it keeps its own
 # `_worktree_root` for that.)
 #
@@ -381,12 +351,11 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 
 
 # --- Git command-line matching helpers --------------------------------------
-# Shared by block-direct-push-to-main.py, warn-branch-base.py,
-# warn-stray-scratch-artifact.py, guard-worktree-isolation.py,
-# ask-destructive-git.py, and ask-git-identity.py. Previously
-# each of those six files carried its own literal copy of this pattern (three
-# linked only by a "mirrors guard-worktree-isolation.py" comment) — a bug fixed
-# in one copy could silently persist in the other five, and did: a long
+# Shared by warn-stray-scratch-artifact.py and ask-destructive-git.py (and, at
+# the time this was consolidated, four further git-matching hooks since
+# retired). Previously each of those files carried its own literal copy of this
+# pattern — a bug fixed in one copy could silently persist in the others, and
+# did: a long
 # global option with a space-separated (non-`=`) value (`git --work-tree
 # <path> push origin main`) bypassed all of them, and a quoted `-c`/`-C` value
 # containing a space (`git -C "/path with space" checkout -b x`) bypassed the
@@ -424,16 +393,16 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 # assumed. An earlier draft of this comment claimed an unrelated uppercase path
 # segment could not match "because what follows it is a separator" -- true only
 # while `GIT` is a NON-TERMINAL segment. Measured against the real composed
-# pattern, against `guard-worktree-isolation._COMMIT` (measured, not reasoned):
+# pattern, against a `commit`-matching guard (measured, not reasoned):
 #
 #     cd /srv/GIT commit      old: no match   new: MATCHES
 #     ls /d/GIT commit        old: no match   new: MATCHES
 #
 # Note WHICH guard: a terminal uppercase `GIT` path segment followed by a word
 # is only reachable where that word is the subcommand being matched, so the
-# exposure is `_COMMIT`'s (`commit` is an ordinary English word), not
-# `block-direct-push-to-main`'s -- `push` does not appear after a directory
-# name in normal usage. Both cases above return no push-args at all.
+# exposure is a `commit` matcher's (`commit` is an ordinary English word),
+# not a `push` matcher's -- `push` does not appear after a directory name in
+# normal usage. Both cases above return no args at all.
 #
 # Sharper still: `strip_quoted_spans` deliberately does not blank HEREDOC bodies
 # (its own docstring says so), so an uppercase `GIT` in ordinary prose inside a

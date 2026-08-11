@@ -8,23 +8,43 @@ argument-hint: "[scope-note]"
 
 Review the current conversation. Identify lessons that would make a future, similar session go better. Propose concrete improvements to `.claude/`-scoped artifacts. Walk each suggestion interactively. Append the full report (applied + rejected) to the rolling log at `cla.io/lessons-learned/lessons-learned.md`.
 
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
+files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
+plugin's install directory, and Claude Code substitutes it into skill content --
+but it is **not** an environment variable in the Bash tool. If you ever see the
+literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
+it yourself first; never pass it through to a shell, where an unset variable
+expands to nothing and the command silently runs against `/skills/...`.
+
+To resolve it: the harness prepends a `Base directory for this skill: <absolute
+path>` line when it loads a skill. The plugin root is that path with the trailing
+`/skills/<skill-name>` removed. Failing that, take the absolute path of any file
+you have already read from this plugin and cut it at the `.../plugins/cla`
+segment. If you cannot establish it either way, say so and stop rather than
+guessing a path.
+
+Measured, so you know which half is load-bearing: a `SKILL.md` body arrives with
+the placeholder ALREADY substituted, so commands written here are safe. A
+`references/` file is opened with `Read`, which returns the raw bytes — the
+placeholder arrives literal there, and that is the case this rule exists for.
+
 ## Inputs
 
-- `$ARGUMENTS` — optional free-form scope note (e.g. a subsystem or an app/package) to focus the review. See `cla.io/project-facts.md` ("Workspace shape") for this repo's own monorepo shape (its app/package list; run `/cla:sync-context` to populate it; falls back to `references/project-context.md` if absent); scope is the whole repo unless you narrow it.
+- `$ARGUMENTS` — optional free-form scope note (e.g. a subsystem or an app/package) to focus the review. See `cla.io/project-facts.md` ("Workspace shape") for this repo's own monorepo shape (its app/package list; run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/codify-learnings.md` if absent); scope is the whole repo unless you narrow it.
 - Always-in-scope: root `CLAUDE.md`, the relevant per-app guidance doc (e.g. a sub-app's own `CLAUDE.md`, if the session touched it), `.claude/commands/`, `.claude/settings.json` / `settings.local.json`, the touched app/package source under `apps/*/src/` or `packages/*/src/`, user memory dir.
 
 ## Step 1 — Determine scope and reconstruct the session arc
 
 Review the **entire session**, not just its tail. Do NOT sample only the last N tool calls — a root-cause lesson is often set up early and only paid for late, so a tail sample misses exactly the multi-phase sessions most worth codifying. Reconstruct the arc: the intended plan, every user correction or pushback, every reverted edit / abandoned approach, the design changes made mid-flight, and the final outcome.
 
-This repo is a monorepo, so scope is normally repo-wide. State it in one line as a `Scope:` note — see `references/project-context.md` for this repo's default scope note and its worked narrowing examples. If the session was dominated by one subsystem or app, you may narrow. If `$ARGUMENTS` is set, use it as the scope note.
+This repo is a monorepo, so scope is normally repo-wide. State it in one line as a `Scope:` note — see `cla.io/overlays/codify-learnings.md` for this repo's default scope note and its worked narrowing examples. If the session was dominated by one subsystem or app, you may narrow. If `$ARGUMENTS` is set, use it as the scope note.
 
 ## Step 2 — Read context (parallel)
 
 In a single message, issue parallel Read calls for:
-- `.claude/plugins/cla/skills/codify-learnings/references/failure-modes.md` — checklist of things to look for (non-exhaustive; surface lessons not on the list too).
+- `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` — checklist of things to look for (non-exhaustive; surface lessons not on the list too).
 - `cla.io/lessons-learned/lessons-learned.md` — prior log; note any lesson proposed in multiple prior runs. (Older entries live in `cla.io/lessons-learned/lessons-learned-archive.md` once the live log is trimmed — Step 2.6; not read by default.)
-- The user memory index — see `references/project-context.md` for this repo's memory-index glob. Try that glob via Bash; if none found, skip dedup and note "memory dedup skipped (index not found)" in the report. If the glob matches multiple dirs, resolve to the canonical one per the overlay's guidance before writing new memory files + index lines there.
+- The user memory index — see `cla.io/overlays/codify-learnings.md` for this repo's memory-index glob. Try that glob via Bash; if none found, skip dedup and note "memory dedup skipped (index not found)" in the report. If the glob matches multiple dirs, resolve to the canonical one per the overlay's guidance before writing new memory files + index lines there.
 
 Reading the memory **index** (one file) is enough for dedup — do not grep every memory file per candidate.
 
@@ -66,6 +86,13 @@ failure-modes checklist  →  memory / CLAUDE.md / SKILL.md  →  hook / setting
 
 A **new** lesson enters at the lowest rung that can prevent it. A lesson that **re-offended this session** (Step 2.5) moves **up one rung** — never just re-stated; a re-offending behavioral rule that's hook-able MUST be proposed as a `PreToolUse` hook. Retire the now-redundant lower-rung bullet in the same run when a lesson graduates (Step 2.6).
 
+**First, establish whether the plugin is writable here — the ladder's middle rungs assume it is. The check is in `references/plugin-writability.md`; run it, do not guess.** `SKILL.md`, a hook, and `references/failure-modes.md` all live inside the plugin. When the plugin is installed from a marketplace that tree is a **read-only, version-keyed cache**: an edit either fails outright or lands in a directory the next plugin update discards, which is worse, because the suggestion reports as applied. Check once, before routing anything:
+
+- **Writable (the harness's own source repo — the plugin loads from the working tree via `--plugin-dir`)** → the ladder applies as written.
+- **Read-only (any repo that installed the plugin)** → only repo-local targets are editable: memory, this repo's `CLAUDE.md`, `.claude/settings.json`, and `cla.io/` (including `cla.io/overlays/<skill>.md`, which is the right home for a lesson that is genuinely about *this* repo). A lesson that belongs in **portable core** is not dropped and is not written locally — route it to **`/cla:report-upstream`**, which files it as an issue against the canonical source. Say so in the suggestion's routing line, so the user can see it is going upstream rather than being applied here.
+
+The distinction is not cosmetic, but be precise about the cost. `cla.io/overlays/` is repo content — it survives plugin updates and is exactly where a repo-specific lesson belongs. What a local overlay *cannot* do is fix portable core: a lesson written there reaches no other repo, and it does not change the `SKILL.md` prose that produced the miss, so the same lesson is re-learned here on the next run and independently in every other repo.
+
 ## Step 3 — Build the report
 
 **Read `references/step3-template.md` first** — the exact markdown shape to reproduce. Correctness-gating rules (hold these even if the reference isn't reloaded):
@@ -94,7 +121,7 @@ Apply? (Y = apply all [default] / n = reject all / s = step through individually
 - `n` (or `none`/`reject`) → mark every suggestion **REJECTED**, write nothing.
 - `s` (or `step`/`one`) → fall back to one-at-a-time:
   ```
-  [3/12] {this repo's own load-bearing-convention example — see references/project-context.md} (CLAUDE.md)
+  [3/12] {this repo's own load-bearing-convention example — see cla.io/overlays/codify-learnings.md} (CLAUDE.md)
     Benefit: today's session needed this and didn't have it.
   Apply? (y/n/edit)
   ```
@@ -129,7 +156,7 @@ One paragraph:
 This step is always done. After the rolling-log write, append one counts-only JSON record of this run so the loop can be reviewed in aggregate by `/cla:codify-retro`. **Read `references/steps.md`** ("Step 7 ledger schema") for the exact fields. Assemble the record from this run's outcomes and pipe it to `log_run.py`:
 
 ```bash
-echo '<record-json>' | python3 .claude/plugins/cla/skills/codify-learnings/scripts/log_run.py
+echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py codify-runs.jsonl
 ```
 
 The record lands in the repo's `cla.io/retro/codify-runs.jsonl` (a tracked repo file — include it when you next commit, so it syncs across machines via git; override the dir with `CLAUDE_RETRO_DIR`). Best-effort: if `log_run.py` exits non-zero, note it and continue — a missing ledger line never blocks the run.
@@ -155,4 +182,4 @@ Hard exclusions still apply (`**/scripts/**/*.py` — the skills' own bundled to
 - `references/routing.md` — full artifact-reach table, routing rule, and enforcement-tier vocabulary behind the escalation ladder (mandatory-read from "Lesson routing and escalation")
 - `references/step3-template.md` — the exact Step-3 suggestion-list shape, numbering, and hard-exclusion detail (mandatory-read from Step 3)
 - `references/steps.md` — Step 3.5 trigger list, the Step 7 ledger JSON schema, and the Prefer-fixes trigger examples (mandatory-read from each of those stubs)
-- `references/project-context.md` — this repo's project-context overlay: default scope note, memory-index glob, worked examples, and dated incidents (read alongside the stubs that point here; a repo adopting `cla` replaces this file with its own)
+- `cla.io/overlays/codify-learnings.md` — this repo's project-context overlay: default scope note, memory-index glob, worked examples, and dated incidents (read alongside the stubs that point here; a repo adopting `cla` replaces this file with its own)

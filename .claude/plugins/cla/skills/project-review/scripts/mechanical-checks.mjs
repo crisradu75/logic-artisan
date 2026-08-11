@@ -3,7 +3,7 @@
 //
 // Generic engine: the actual checks (which files, which dirs, which imports are
 // forbidden, ...) are repo-specific DATA, never hardcoded here. They are read from
-// this skill's own overlay, `references/project-context.md`, under a
+// this skill's own overlay, `cla.io/overlays/project-review.md`, under a
 // "Mechanical checks — repo specifics" heading containing a fenced ```json``` block
 // (see references/mechanical-checks.md for the schema). That overlay is excluded
 // from update-cla's sync by name, so every destination repo authors its own check
@@ -19,8 +19,8 @@
 // import/dependency boundaries.
 //
 // Usage:
-//   node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs          # human table
-//   node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs --json   # machine-readable
+//   node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs          # human table
+//   node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs --json   # machine-readable
 //
 // Exit code is 0 for a normal run (FAIL/ERROR rows are data for the review, not a
 // CI gate) and non-zero only if the overlay's config block itself is malformed --
@@ -40,22 +40,29 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
-// Repo root, resolved location-independently (via git) so this keeps working
-// regardless of how deep the plugin nests -- it lives at
-// .claude/plugins/cla/skills/project-review/scripts/ today, but the checks only
-// ever want the repo root, never a path relative to this file. fileURLToPath (not
-// raw .pathname) so a repo path containing spaces works.
-const HERE = fileURLToPath(new URL('.', import.meta.url));
-
 function resolveRoot() {
+  // Resolved from the PROCESS's working directory -- the repo being reviewed --
+  // never from this script's own location.
+  //
+  // This used to pass `cwd: HERE`, which was correct only while the plugin was
+  // vendored inside the repo it reviews. Installed from a marketplace the script
+  // lives in a version-keyed cache outside every repo, so asking git about
+  // `HERE` answers about the wrong tree or (as measured: the cache is a plain
+  // directory, not a clone) fails outright and falls through to a path six
+  // levels above the script. Either way the checks then resolve `check.files`
+  // against somewhere that is not the user's repo, `walk()` finds nothing, and
+  // the run reports "scanned 0 files" about a repo it never looked at.
   try {
-    return execSync('git rev-parse --show-toplevel', { cwd: HERE, encoding: 'utf8' }).trim();
+    return execSync('git rev-parse --show-toplevel', { encoding: 'utf8' }).trim();
   } catch (err) {
-    const fallback = fileURLToPath(new URL('../../../../../../', import.meta.url));
-    console.error(
-      `warning: git rev-parse --show-toplevel failed (${err.message}); falling back to ${fallback}`
+    // No fallback to a `../..` walk: that only ever pointed at the repo back
+    // when the plugin was inside it, and a confidently-wrong root is worse than
+    // stopping. `MECHANICAL_CHECKS_ROOT` is the documented override.
+    throw new Error(
+      `could not resolve the repo root: \`git rev-parse --show-toplevel\` failed in ` +
+      `${process.cwd()} (${err.message}). Run this from inside the repo you are ` +
+      `reviewing, or set MECHANICAL_CHECKS_ROOT.`
     );
-    return fallback;
   }
 }
 
@@ -73,8 +80,12 @@ function getRoot() {
 }
 const r = (...p) => join(getRoot(), ...p);
 
-const DEFAULT_OVERLAY_PATH = join(HERE, '..', 'references', 'project-context.md');
-const OVERLAY_RELPATH = 'references/project-context.md';
+// Resolved against the REPO, not this script's own directory. Under a
+// marketplace install the plugin tree is a read-only cache, so a per-repo check
+// list stored next to the script would be unwritable — and a missing overlay is
+// a legitimate "no checks configured" PASS, so the failure would be silent.
+const OVERLAY_RELPATH = 'cla.io/overlays/project-review.md';
+const defaultOverlayPath = () => r(OVERLAY_RELPATH);
 // Overridable for the same reason as MECHANICAL_CHECKS_ROOT: lets a test point
 // loadConfig() at a fixture file instead of this skill's own real overlay.
 // Truthy check (matching getRoot()'s `if (process.env...)` above, not `??`) is
@@ -82,7 +93,7 @@ const OVERLAY_RELPATH = 'references/project-context.md';
 // the same as "unset" avoids a silent-override edge case where the env-var-set
 // warning below and the actual override would otherwise disagree on whether
 // anything is overridden at all.
-const getOverlayPath = () => process.env.MECHANICAL_CHECKS_OVERLAY || DEFAULT_OVERLAY_PATH;
+const getOverlayPath = () => process.env.MECHANICAL_CHECKS_OVERLAY || defaultOverlayPath();
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -586,7 +597,8 @@ if (isMainModule) {
 export {
   getRoot,
   getOverlayPath,
-  DEFAULT_OVERLAY_PATH,
+  defaultOverlayPath,
+  OVERLAY_RELPATH,
   walk,
   findFenceSpans,
   extractFencedBlockUnderHeading,

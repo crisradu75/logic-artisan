@@ -30,7 +30,7 @@ The orchestrator never halts on a sub-step failure. Every failure becomes a `war
 
 ## Revise fix-round commits stay manual
 
-Revise (PR-review fix rounds) commits as `fix: review round N` via `commit.py` rather than delegating to `commit-commands:commit-push-pr`.
+Revise (PR-review fix rounds) commits as `fix: review round N` via a direct `git commit` rather than delegating to `commit-commands:commit-push-pr`.
 
 **Trade-off accepted:** the round-N subject is structurally meaningful — it drives `probe_state.py`'s round counter and the round-N-on-fix-diff scoping. The plugin would auto-generate a different subject and break that contract.
 

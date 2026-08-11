@@ -1,11 +1,15 @@
 """Detect logic drift between sibling scripts that live in different skills'
 isolated pytest scopes and so can't share a single importable module.
 
-Several skills each carry their own copy of a small git/ledger-resolution
-helper (`_git_toplevel`, `_runs_dir`, `_default_log_path`, `_load_records`,
-`_coerce_int`) — see each file's own docstring, which says to "keep the
-resolvers byte-identical" to its siblings. That convention was never
-enforced: nothing failed if a fix landed in one copy and not the others.
+The ledger writer (`lib/log_run.py`) and both readers of what it writes (the
+retro skills' `aggregate.py`) each carry their own copy of the resolver that
+decides WHERE the ledger lives (`_git_toplevel`, `_runs_dir`), and the two
+readers additionally share their record-loading helpers (`_load_records`,
+`_coerce_int`). Each file's own docstring says to keep these byte-identical to
+its siblings. That convention was never enforced: nothing failed if a fix
+landed in one copy and not the others — and a writer/reader disagreement in
+particular is silent, since the reader then finds no records and reports a
+cold start.
 
 This can't be fixed by extracting a shared module the way
 `hooks/_dispatch_lib.py` or `spec-to-pr/scripts/_git_common.py` do — those
@@ -26,7 +30,6 @@ was always meant to differ.
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -34,20 +37,25 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 # Each group: a set of function names expected to be logic-identical across a
 # set of sibling files (paths relative to PLUGIN_ROOT).
 SIBLING_GROUPS = [
+    # The pair that can actually fail silently: the ledger WRITER and the two
+    # READERS of what it writes. An earlier version of this group compared the
+    # two readers to each other and left the writer out — so both readers could
+    # be identically wrong about where the ledger lives, the retro would report
+    # zero runs, and that is indistinguishable from a cold start. The readers
+    # each end `_default_log_path` by appending their own ledger filename to
+    # `_runs_dir()`, which is why only the dir resolver is compared here.
     {
-        "name": "log_run.py family",
+        "name": "retro ledger dir resolver (writer + both readers)",
         "functions": ("_git_toplevel", "_runs_dir"),
         "files": (
-            "skills/codify-learnings/scripts/log_run.py",
-            "skills/multi-lite/scripts/log_run.py",
-            "skills/multi-spec/scripts/log_run.py",
-            "skills/spec-to-pr/scripts/log_run.py",
-            "skills/multi-pr/scripts/log_chain_run.py",
+            "lib/log_run.py",
+            "skills/codify-retro/scripts/aggregate.py",
+            "skills/spec-to-pr-retro/scripts/aggregate.py",
         ),
     },
     {
-        "name": "retro aggregate.py family",
-        "functions": ("_git_toplevel", "_default_log_path", "_load_records", "_coerce_int"),
+        "name": "retro aggregate.py record loading",
+        "functions": ("_load_records", "_coerce_int"),
         "files": (
             "skills/codify-retro/scripts/aggregate.py",
             "skills/spec-to-pr-retro/scripts/aggregate.py",
@@ -77,20 +85,8 @@ SIBLING_GROUPS = [
 ]
 
 
-# The per-skill ledger filename (`codify-runs.jsonl`, `spec-to-pr-runs.jsonl`,
-# …). This is the ONE string inside a guarded function that legitimately differs
-# between siblings — `_default_log_path` builds the same path the same way and
-# only names its own skill's ledger at the end. Normalizing it keeps every other
-# string compared, which is the point: those functions' docstrings say they must
-# stay byte-identical to the matching producer or "runs vanish silently", and
-# what makes that true is `cla.io`/`retro`/`rev-parse`/`--show-toplevel`, not
-# the filename.
-_LEDGER_NAME = re.compile(r"^[a-z0-9-]+-runs\.jsonl$")
-
-
 def _normalize_constants(node: ast.FunctionDef) -> ast.FunctionDef:
-    """Blank the function's docstring and its per-skill ledger filename, and
-    NOTHING else.
+    """Blank the function's docstring, and NOTHING else.
 
     An earlier version blanked every string literal, which silently defeated the
     whole check: these functions ARE mostly string literals. `_git_toplevel` is a
@@ -98,6 +94,12 @@ def _normalize_constants(node: ast.FunctionDef) -> ast.FunctionDef:
     `_runs_dir` builds `<root>/cla.io/retro`, so blanking strings meant a sibling
     drifting to `--git-dir`, or writing its ledger to a different directory,
     compared EQUAL. Both cases are now covered by tests; both were missed before.
+
+    A second exemption used to normalize the per-skill ledger filename, back when
+    `_default_log_path` (which ends by appending it) was itself compared. That
+    function now just returns `_runs_dir() / "<its ledger>.jsonl"` and is no
+    longer in any group, so the exemption could only ever have hidden a real
+    difference. Do not reintroduce one without a guarded function that needs it.
     """
     if (
         node.body
@@ -106,13 +108,6 @@ def _normalize_constants(node: ast.FunctionDef) -> ast.FunctionDef:
         and isinstance(node.body[0].value.value, str)
     ):
         node.body[0].value.value = ""
-    for n in ast.walk(node):
-        if (
-            isinstance(n, ast.Constant)
-            and isinstance(n.value, str)
-            and _LEDGER_NAME.match(n.value)
-        ):
-            n.value = "<ledger>"
     return node
 
 

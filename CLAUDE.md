@@ -13,10 +13,28 @@ this plugin in via `update-cla` and adapt it to their own context.
 Everything lives under `.claude/plugins/cla/`, nested at that path specifically so `update-cla` can
 consume this repo directly as a sync source.
 
-**Launching a session with the plugin active:** `claude --plugin-dir` loads the plugin live, in
-place, from this working tree — required because the skills/hooks read and write repo-local state
-(`cla.io/`, the sync lockfile), which a cached marketplace install (`enabledPlugins` + a registered
-marketplace, itself a real settings-file mechanism, just the wrong one for this) can't do. Use the
+**Distribution is moving to a marketplace.** `.claude-plugin/marketplace.json` at the repo root
+publishes one plugin, `cla`, from this subdirectory (`git-subdir` source, `url` + `path`, schema
+verified against the live docs). It pins an **exact release tag**, not a moving major tag, so
+publishing a release is a deliberate two-part edit: bump `version` in the plugin's own
+`plugin.json` AND the `ref` here, in the same commit. A test fails when they disagree. Consumers
+pick the new release up on `/plugin marketplace update`.
+
+Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
+unless `plugin.json` and the marketplace entry already agree.
+
+**Nothing is released yet.** The manifest declares `cla--v0.9.0`, but that tag is deliberately
+uncut: a release tag should point at reviewed code, and this work is still on an unmerged branch.
+A tag cut early cannot be corrected — moving a published tag is worse than never having cut it,
+because a consumer may already have fetched it. Cut it once the branch is reviewed; `0.9.0` is the
+validation candidate and becomes `1.0.0` after it has been exercised in a peer repo.
+
+`update-cla`'s file-sync remains the live mechanism until consuming repos migrate.
+
+**Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
+place, from this working tree — required here because the skills/hooks read and write repo-local
+state (`cla.io/`, the sync lockfile) and, while developing the harness, you want the working tree
+rather than a cached copy of a release. Use the
 `cla` (POSIX) / `cla.cmd` (Windows) launcher at the repo root instead of typing `claude` directly —
 it resolves its own absolute path, so the flag it prints/runs is `--plugin-dir <repo>/.claude/plugins/cla`
 regardless of your cwd:
@@ -29,36 +47,15 @@ Without it, the skills/hooks are just inert files on disk — no `/cla:*` comman
 **Note:** `--permission-mode auto` bypasses Claude Code's normal per-action confirmation prompts —
 intentional for this harness, but worth knowing before you run it.
 
-### `claw` — start a session already inside a worktree
+**Starting work in a worktree.** Use `/cla:new-worktree` at any point in a session — before
+starting, or once you realise mid-flight that the work wants isolation. There is no longer a
+penalty for deciding late.
 
-`claw` / `claw.cmd` is the sibling launcher for when you know up front that the work wants
-isolation. It creates the worktree with plain git **before** Claude starts, then launches inside it:
-
-```bash
-./claw <name>   # .claude/worktrees/<name> on branch worktree-<name>, then claude in it
-```
-
-**Why it exists.** `guard-worktree-isolation.py` writes a presence heartbeat at SessionStart for
-any session whose cwd is the primary clone — before you can type anything. A session that starts
-there and only *then* runs `/cla:new-worktree` has already registered as a contender; when it
-migrates, the beat stops refreshing but is never removed, so another session working legitimately
-in the primary clone is blocked from committing until it ages out (an hour). A `claw`-launched
-session has `git_dir != git_common_dir` from its first instant, so no heartbeat is ever written
-and nobody is blocked.
-
-Creation is delegated to `new-worktree/scripts/manual_worktree.py --print-path`, so base-branch
-resolution, name validation, duplicate-branch refusal, and the Windows path-casing fallback are
-the same tested code the skill uses — the launchers add only argument handling and the exec.
-
-**It does not install dependencies or copy env files.** Those commands are per-repo facts living
-in `new-worktree`'s `references/project-context.md` overlay, so a portable launcher cannot know
-them — hardcoding `npm ci` would be wrong for a Python or Rust consumer. Instead, run
-`/cla:new-worktree` as the session's first action: it sees the worktree already exists and runs
-its setup half only. Doing it from inside the worktree writes no heartbeat, and Claude is open
-immediately rather than you waiting at a terminal through an install.
-
-`/cla:new-worktree` is still the right tool when you are already mid-session and only then realise
-you want isolation. `claw` covers the up-front case; it does not replace the skill.
+There used to be a second launcher, `claw`, whose only job was to create the worktree *before*
+Claude started. It existed to dodge `guard-worktree-isolation.py`, which wrote a presence
+heartbeat at SessionStart for any session in the primary clone and could block a second session
+from committing for an hour. That hook was deleted (0 recorded blocks across 127 session
+transcripts), so the workaround went with it.
 
 ## Commands
 
@@ -78,20 +75,29 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (7 today), plus `hooks/`, plus `consistency-checks/`, plus
-`launcher-checks/`, is its own isolated pytest scope — 10 in total — each with its own
-`pyproject.toml` (`testpaths = ["tests"]`, plus a `pythonpath` pointing at that scope's importable
-code — `["scripts"]` for a skill and for the two check scopes, `["."]` for `hooks/`, whose modules
-sit at the scope root).
+design. Each skill that ships tests (5 today), plus `lib/`, plus `hooks/`, plus
+`conformance-checks/`, plus `consistency-checks/`, plus `launcher-checks/`, is its own isolated
+pytest scope — 10 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
+`pythonpath` pointing at that scope's importable code — `["scripts"]` for a skill and for
+`consistency-checks`/`launcher-checks`, `["."]` for `hooks/` and `lib/`, whose modules sit at the
+scope root, and none at all for `conformance-checks`, whose tests import nothing).
 
-`consistency-checks/` and `launcher-checks/` are the odd ones out: not skills (no `SKILL.md`) and
-not guard hooks, but homes for checks that belong to no single scope — `consistency-checks/` holds
-a drift check over the sibling `log_run.py`/`aggregate.py` copies that the isolation rule below
-deliberately prevents from sharing a module; `launcher-checks/` tests the repo-root `cla`/`claw`
-launchers, which live outside the plugin tree entirely. Both sit outside the synced set
-(`skills`/`agents`/`hooks`/`output-styles`), so `update-cla` never propagates them to consuming
-repos; they guard this repo's own source. Several scopes
-ship same-named helper modules (e.g. `scripts/aggregate.py`, `scripts/log_run.py`), so they can't
+`lib/` and the three `*-checks/` scopes are the odd ones out: not skills (no `SKILL.md`) and not
+guard hooks. `lib/` holds `log_run.py`, the one ledger writer every retro-logging skill invokes as
+a program. `conformance-checks/` holds the two guards that police the fact/procedure split for the
+whole plugin — no project token in synced core, no dead path in `cla.io/project-facts.md` or an
+overlay. `consistency-checks/` holds a drift check over the ledger-dir resolver that the isolation
+rule below deliberately prevents from sharing a module, plus checks on this repo's own source;
+`launcher-checks/` tests the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin
+tree entirely (`claw`/`claw.cmd` were deleted with `guard-worktree-isolation`, the hook they
+existed to dodge).
+
+All four sit outside the synced set (`skills`/`agents`/`hooks`/`output-styles`), but they do not
+all mean the same thing by it. `consistency-checks` and `launcher-checks` guard this repo's own
+source and are meant to stay here. `conformance-checks` is portable core that happens to live
+outside `SCAN_DIRS`, so its files are named individually in `discover.SCAN_FILES` to keep reaching
+consuming repos — where both guards have caught real leaks. Several scopes
+ship same-named helper modules (e.g. `scripts/aggregate.py`), so they can't
 share one pytest process — this is why `run_tests.py` exists: it discovers every scope
 (dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once
 per scope as a subprocess, then aggregates results. A dir with only one of those two signals is
@@ -134,7 +140,7 @@ branch they got wrong. So mutate what the fix *touches*, not what it targets, an
 green run as one input to the ship decision rather than the decision itself.
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
-sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as an
+sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as a
 11th entry alongside the 10 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
 while iterating on that one script:
 
@@ -171,15 +177,15 @@ everywhere) from *facts* (per-repo, never synced):
   (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Together that's every
   `.py`/`.md` in the tree — a non-`.py`/`.md` synced-core file (`hooks/hooks.json`, a skill's own
   `.mjs` script) is still outside both scanners; watch those by hand.
-- **Overlays** — each skill's `references/project-context.md` plus any `*.local.md` files: the
+- **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. Recognized by name, excluded from sync, never
   overwritten by `update-cla`. In *this* repo they are neutral stubs (this is the source, not a
   consumer).
 - **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, `retro/` run ledgers,
-  `lessons-learned/`, and (in a consuming repo) a consolidated `project-facts.md` and `terminology.md`
-  (internal naming disambiguation, format owned by `sync-context`, written inline by other skills as
-  terms resolve). Never part of the synced core; a staleness guard fails when a path named there no
-  longer exists.
+  `lessons-learned/`, `project-tokens.local.md` (the conformance guard's curated token list), and
+  (in a consuming repo) a consolidated `project-facts.md` and `terminology.md` (internal naming
+  disambiguation, format owned by `sync-context`, written inline by other skills as terms resolve).
+  Never part of the synced core; a staleness guard fails when a path named there no longer exists.
 
 ### Skill layout
 
@@ -194,10 +200,31 @@ everywhere) from *facts* (per-repo, never synced):
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
-    references/                supporting docs; project-context.md = per-repo overlay
+    references/                supporting docs (portable; overlays live in cla.io/overlays/)
     scripts/                   deterministic helpers (stdlib Python)
     tests/                     that skill's isolated pytest scope
 ```
+
+### Every script, and why it exists
+
+A script earns its place only by doing something a direct command plus a sentence of prose
+cannot do reliably. Seven that failed that bar were deleted; these are the survivors, and the
+rule going in is the rule going out — **if a script here can't be justified in one line, it
+isn't a survivor.** (Guard hooks are listed separately below.)
+
+| Script | Why prose can't do it |
+|---|---|
+| `run_tests.py` | Runs each isolated scope as its own process and aggregates; there is no CI, so this is the only gate. |
+| `mutate.py` | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
+| `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses a path-shaped ledger argument. |
+| `consistency-checks/scripts/check_script_drift.py` | Compares the ledger-dir resolver across the writer and both readers. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
+| `codify-retro`, `spec-to-pr-retro` `scripts/aggregate.py` | Deterministic counting over 40–130 JSONL records, including malformed-shape and producer-drift buckets a reader would gloss. |
+| `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
+| `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos today. |
+| `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
+| `spec-to-pr/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across four skills. |
+| `spec-to-pr/scripts/_git_common.py` | Repo root plus the `branch-prefix.local.md` overlay contract, for `probe_state.py`. |
+| `update-cla/scripts/*.py` | The 3-way sync engine. Deleted wholesale when distribution moves to a marketplace plugin. |
 
 ### Skills by life-cycle phase
 
@@ -209,7 +236,8 @@ retro over prior runs of another skill.
 | 0. Bootstrap (once per repo) | `cla-init` | Scaffold the `cla.io/` tree + empty overlay stubs |
 | | `sync-context` | Populate/reconcile `cla.io/project-facts.md` |
 | | `save-permissions` | Persist session tool permissions to `.claude/settings.local.json` |
-| | `update-cla` | Pull newer CLA core from another repo, adapting to local context |
+| | `update-cla` | Pull newer CLA core from another repo, adapting to local context (**being retired** — superseded by the marketplace install) |
+| | `report-upstream` | File a defect in the plugin's own portable core as an issue against the canonical source |
 | 1. Discover & shape | `feedback` | Capture rough notes → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
 | 2. Specify & plan | `multi-spec` | Turn a shaped decisions doc into a batch of OpenSpec proposals |
@@ -233,33 +261,35 @@ Wired automatically via `.claude/plugins/cla/hooks/hooks.json` when the plugin l
 `settings.json` step needed) — these apply in this repo's own sessions too, not only in repos
 that sync the plugin. `hooks.json` itself wires two dispatchers (`dispatch-bash-pretooluse.py` for
 the Bash/PowerShell matcher, `dispatch-edit-write-pretooluse.py` for the Edit/Write matcher), each
-of which runs several leaf hooks in one Python process — 13 distinct leaf hooks between them
-(`guard-worktree-isolation` runs on both matchers), plus `warn-lint-on-edit` and
-`warn-wholesale-rewrite` wired directly on PostToolUse: 15 leaf hook files in all. **Blocks**
+of which runs several leaf hooks in one Python process — 7 distinct leaf hooks between them (5 on
+the Bash matcher, 2 on Edit/Write), plus `warn-wholesale-rewrite` wired directly on PostToolUse:
+8 leaf hook files in all, which is what the bullets below enumerate. **Blocks**
 (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt instead of
 blocking outright; **warns** (`warn-*`) surface a caution without blocking:
 
-- **No direct push to main/master** (`block-direct-push-to-main`) — branch + PR for any change;
-  a bare `Bash(cd ...)` (`block-cd-in-bash`) — the working dir is already repo root, and a `cd`
-  persists and breaks later calls in the same session; use absolute paths instead.
-- **Blocks:** `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
-  `block-worktree-path-escape` (a Write/Edit escaping a worktree boundary from inside one) ·
-  `block-dated-stamps-in-prose` (hardcoded dates rot) · `guard-worktree-isolation` (a
-  branch-create/switch/commit in the primary clone while another session is live there too —
-  git's HEAD is per-clone, not per-session, so two concurrent sessions would otherwise collide
-  on one branch; also refreshes/clears this session's presence heartbeat on SessionStart/End).
+- **Blocks:** `block-cd-in-bash` (the working dir is already repo root, and a `cd` persists and
+  breaks later calls in the same session; use absolute paths instead) ·
+  `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
+  `block-worktree-path-escape` (a Write/Edit escaping a worktree boundary from inside one).
 - **Asks:** `ask-destructive-git` (a destructive-but-not-outright-blocked git command, e.g. a
-  force-push or `reset --hard`) · `ask-git-identity` (no `user.email` configured, or the commit
-  author doesn't match an expected identity when one is set) — both return exit 0 and escalate via
-  `permissionDecision: "ask"` rather than blocking, since the action may be legitimate.
-- **Warns:** `warn-branch-base` (branched off the wrong base) · `warn-lint-on-edit` (lints the
-  edited file, feeds violations back non-blocking) · `warn-smoke-test-drift` (component/i18n edits
-  that may break a UI smoke test — config-driven via a `smoke-test-drift.local.md` overlay beside
-  the hook; a no-op with none present, which is this repo's own state, since it ships no product
-  code) · `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
+  force-push or `reset --hard`) — returns exit 0 and escalates via `permissionDecision: "ask"`
+  rather than blocking, since the action may be legitimate. Note this matters more than it looks:
+  the harness runs `--permission-mode auto`, which suppresses the usual confirmations, so this
+  hook is what restores one.
+- **Warns:** `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
   `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
   `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one —
   it asks you to name what you dropped, since a `Write` keeps only what you carried across).
+
+**No direct push to main/master** is enforced by `hooks/git/pre-push`, NOT by a PreToolUse hook.
+Git hands a `pre-push` hook the refspec it already resolved, so there is no command string to
+parse and no `git.exe` / `-C` / quoting spelling that can evade it — and it covers pushes from a
+terminal or IDE, which no PreToolUse hook ever saw. It is **not** installed automatically; a
+plugin cannot write to `.git/hooks`. Per clone:
+
+```bash
+cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+```
 
 ### Portability
 

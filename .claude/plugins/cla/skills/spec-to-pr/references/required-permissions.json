@@ -1,5 +1,5 @@
 {
-  "_comment": "Bootstrap-required permission patterns for the /spec-to-pr workflow in this repo. SPACE-FORM syntax (e.g. `Bash(git *)`, NOT `Bash(git:*)`) — must be deduplication-compatible with the existing .claude/settings.local.json. The bootstrap step (check_permissions.py) reads this file and adds any missing patterns to settings.local.json. This is the WILDCARD default set (see design-tradeoffs.md 'Layer-1 wildcard permissions'); required-permissions-narrow.json holds the stricter per-subcommand set.",
+  "_comment": "Bootstrap-required permission patterns for the /spec-to-pr workflow in this repo. SPACE-FORM syntax (e.g. `Bash(git *)`, NOT `Bash(git:*)`) — must be deduplication-compatible with the existing .claude/settings.local.json. The bootstrap step (SKILL.md 'Bootstrap permissions') reads this file and adds any missing patterns to settings.local.json. This is the WILDCARD default set (see design-tradeoffs.md 'Layer-1 wildcard permissions'); required-permissions-narrow.json holds the stricter per-subcommand set.",
   "permissions": {
     "allow": [
       "Bash(git *)",

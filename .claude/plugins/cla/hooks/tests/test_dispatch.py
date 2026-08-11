@@ -82,24 +82,6 @@ def test_bash_dispatch_blocks_unsafe_worktree_delete(tmp_path):
     assert "block-unsafe-recursive-delete.py" in r.stderr
 
 
-def test_bash_dispatch_warns_branch_base_off_non_master(tmp_path):
-    _git(tmp_path, "init", "-b", "feature/base")
-    _git(tmp_path, "config", "user.email", "t@t.t")
-    _git(tmp_path, "config", "user.name", "t")
-    (tmp_path / "f.txt").write_text("x", encoding="utf-8")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-m", "init")
-
-    r = _run(
-        _BASH_DISPATCH,
-        {"tool_input": {"command": "git checkout -b feature/new-thing"}, "cwd": str(tmp_path)},
-        cwd=tmp_path,
-    )
-    assert r.returncode == 0
-    assert "warn-branch-base" in r.stderr
-    assert "feature/base" in r.stderr
-
-
 def test_bash_dispatch_allows_clean_command(tmp_path):
     r = _run(_BASH_DISPATCH, {"tool_input": {"command": "git status"}, "cwd": str(tmp_path)}, cwd=tmp_path)
     assert r.returncode == 0
@@ -113,14 +95,16 @@ def test_bash_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     hooks_dir = _hooks_copy(tmp_path)
     (hooks_dir / "block-cd-in-bash.py").write_text("this is ) not ( valid python !!!", encoding="utf-8")
 
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
     r = subprocess.run(
         [sys.executable, str(hooks_dir / "dispatch-bash-pretooluse.py")],
-        input=json.dumps({"tool_input": {"command": "git push origin main"}, "cwd": str(tmp_path)}),
+        input=json.dumps({"tool_input": {"command": f"rm -rf {target}"}, "cwd": str(tmp_path)}),
         capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path),
     )
     assert r.returncode == 2
-    assert "block-direct-push-to-main.py" in r.stderr  # the later hook still fired and blocked
-    assert "block-cd-in-bash.py" in r.stderr           # the load failure is surfaced, not silent
+    assert "block-unsafe-recursive-delete.py" in r.stderr  # the later hook still fired and blocked
+    assert "block-cd-in-bash.py" in r.stderr               # the load failure is surfaced, not silent
     assert "failed to load" in r.stderr
 
 
@@ -132,7 +116,7 @@ def test_bash_dispatch_reports_a_crashed_hook_as_context(tmp_path):
     therefore travels as context at exit 0, whole.
     """
     hooks_dir = _hooks_copy(tmp_path)
-    (hooks_dir / "warn-branch-base.py").write_text(
+    (hooks_dir / "warn-stacked-pr-merge.py").write_text(
         "def main():\n    raise RuntimeError('boom')\n", encoding="utf-8"
     )
 
@@ -143,7 +127,7 @@ def test_bash_dispatch_reports_a_crashed_hook_as_context(tmp_path):
     )
     assert r.returncode == 0
     context = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
-    assert "warn-branch-base" in context
+    assert "warn-stacked-pr-merge" in context
     assert "boom" in context
     # Still written to stderr as well, for `claude --debug`.
     assert "boom" in r.stderr
@@ -209,66 +193,48 @@ def test_edit_write_dispatch_allows_clean_edit(tmp_path):
     assert r.stderr.strip() == ""
 
 
-def test_edit_write_dispatch_does_not_drop_earlier_warning_when_later_hook_blocks(tmp_path):
-    # Regression: warn-smoke-test-drift.py (position 4) fires a non-blocking
-    # stdout-JSON warning, then block-worktree-path-escape.py (position 5)
-    # blocks on the same edit. The earlier warning must still reach the user
-    # via stderr (the only channel fed back on a block) instead of vanishing.
-    #
-    # warn-smoke-test-drift.py is config-driven (a `smoke-test-drift.local.md`
-    # overlay beside the hook — see its own module docstring), so this uses
-    # `_hooks_copy` to drop that overlay into a SCRATCH hooks dir rather than
-    # the real one. Writing into the live hooks dir would make this test read —
-    # and change — whatever overlay the surrounding repo has configured, which
-    # is the ambient-configuration dependency these suites keep getting bitten by.
-    hooks_dir = _hooks_copy(tmp_path)
-    (hooks_dir / "smoke-test-drift.local.md").write_text(
-        "---\n"
-        "component_path_substring: src/components/\n"
-        "component_ext: .tsx\n"
-        "i18n_path_substring: src/i18n/\n"
-        "i18n_ext: .json\n"
-        "smoke_test_relpath: test-app.mjs\n"
-        "---\n",
-        encoding="utf-8",
-    )
-
+def _primary_and_worktree(tmp_path):
+    """A committed primary clone plus a linked worktree, for the escape guard."""
     primary = tmp_path / "primary"
     primary.mkdir()
     _git(primary, "init", "-b", "master")
     _git(primary, "config", "user.email", "t@t.t")
     _git(primary, "config", "user.name", "t")
-    (primary / "test-app.mjs").write_text(
-        "page.waitForSelector('text=Total Media Budget (EUR)')\n", encoding="utf-8"
-    )
     (primary / "f.txt").write_text("x", encoding="utf-8")
     _git(primary, "add", "-A")
     _git(primary, "commit", "-m", "init")
     wt = tmp_path / "wt"
     _git(primary, "worktree", "add", str(wt), "-b", "feature/x")
+    return primary, wt
 
-    # Escapes the worktree (blocks) AND removes a locator warn-smoke-test-drift.py
-    # cares about (would otherwise only warn). Built with forward slashes
-    # explicitly: warn-smoke-test-drift.py's scope check hardcodes
-    # 'src/components/' (forward slashes), so a Windows-native backslash path
-    # from Path/str() would never match its scope regardless of this fix.
-    escape_target = (primary / "src" / "components" / "Thing.tsx").as_posix()
+
+def test_edit_write_dispatch_does_not_drop_earlier_warning_when_later_hook_blocks(tmp_path):
+    # Regression: warn-comment-dates.py (position 1) fires a non-blocking
+    # stdout-JSON warning, then block-worktree-path-escape.py (position 2)
+    # blocks on the same edit. The earlier warning must still reach the user
+    # via stderr (the only channel fed back on a block) instead of vanishing.
+    primary, wt = _primary_and_worktree(tmp_path)
+
+    # Escapes the worktree (blocks) AND adds a dated code comment (would
+    # otherwise only warn), so both hooks have something to say on one call.
+    # `.py` with a `#` comment: warn-comment-dates is deliberately scoped to
+    # .py/.sh so Markdown headings never trigger it.
     payload = {
         "tool_input": {
-            "file_path": escape_target,
-            "old_string": "Total Media Budget (EUR)",
-            "new_string": "Budget",
+            "file_path": (primary / "src" / "thing.py").as_posix(),
+            "old_string": "x = 1",
+            "new_string": "# fixed on 2026-01-01\nx = 2",
         },
     }
     r = subprocess.run(
-        [sys.executable, str(hooks_dir / "dispatch-edit-write-pretooluse.py")],
+        [sys.executable, str(_EDIT_WRITE_DISPATCH)],
         input=json.dumps(payload),
         capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wt),
         env={**os.environ, "ALLOW_WORKTREE_PATH_ESCAPE": "", "CLAUDE_PROJECT_DIR": str(primary)},
     )
     assert r.returncode == 2
     assert "block-worktree-path-escape.py" in r.stderr
-    assert "Total Media Budget (EUR)" in r.stderr  # the earlier warning survived
+    assert "2026-01-01" in r.stderr  # the earlier warning survived
 
 
 def test_edit_write_dispatch_isolates_a_broken_sibling_hook(tmp_path):
@@ -365,20 +331,22 @@ def test_bash_dispatch_still_blocks_after_the_budget_is_spent(monkeypatch, capsy
 
 
 def test_edit_write_dispatch_still_blocks_after_the_budget_is_spent(monkeypatch, capsys, tmp_path):
-    # Worth its own case: in this dispatcher a BLOCKING hook sits last in
+    # Worth its own case: in this dispatcher the BLOCKING hook sits last in
     # _HOOK_FILES, so list order gives it none of the protection the Bash
     # dispatcher happens to get. Only its absence from _ADVISORY_HOOKS saves it.
     mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
-    target = tmp_path / ".claude" / "notes.md"
-    target.parent.mkdir(parents=True)
+    primary, wt = _primary_and_worktree(tmp_path)
+    monkeypatch.chdir(wt)
+    monkeypatch.setenv("ALLOW_WORKTREE_PATH_ESCAPE", "")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(primary))
     rc = _run_in_process(
         mod,
-        {"tool_input": {"file_path": str(target), "content": "(added 2026-01-01)"},
-         "cwd": str(tmp_path)},
+        {"tool_input": {"file_path": (primary / "src" / "thing.ts").as_posix(),
+                        "content": "export const x = 1;\n"}},
         monkeypatch,
     )
     assert rc == 2
-    assert "block-dated-stamps-in-prose.py" in capsys.readouterr().err
+    assert "block-worktree-path-escape.py" in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #
@@ -404,15 +372,20 @@ def test_bash_dispatch_reemits_an_ask_escalation(tmp_path):
 
 
 def test_bash_dispatch_lets_a_block_outrank_an_ask(tmp_path):
-    # `git push --force origin main` is BOTH a force-push (ask) and a push to
-    # main (block). Deny > ask, so the call is refused outright and no
-    # permission prompt is offered as an alternative.
+    # A force-push (ask, position 2) chained with an unsafe worktree delete
+    # (block, position 3): the ask is raised FIRST and must still lose. Deny >
+    # ask, so the call is refused outright and no permission prompt is offered
+    # as an alternative. Ordering matters here — a block that merely
+    # short-circuits before the ask would pass this vacuously.
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
     r = _run(
         _BASH_DISPATCH,
-        {"tool_input": {"command": "git push --force origin main"}, "cwd": str(tmp_path)},
+        {"tool_input": {"command": f"git push --force origin main && rm -rf {target}"},
+         "cwd": str(tmp_path)},
     )
     assert r.returncode == 2
-    assert "block-direct-push-to-main.py" in r.stderr
+    assert "block-unsafe-recursive-delete.py" in r.stderr
     assert r.stdout.strip() == "", "a blocked call must not also emit an ask"
 
 
@@ -481,6 +454,9 @@ def test_advisory_warnings_travel_on_the_channel_claude_actually_reads(tmp_path)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
+    # An untracked, separator-free, scratch-named file at the repo root is what
+    # warn-stray-scratch-artifact fires on before a `git commit`.
+    (repo / "scratchpad-dump.txt").write_text("x", encoding="utf-8")
     r = _run(_BASH_DISPATCH, {"tool_input": {"command": "git commit -m x"}, "cwd": str(repo)}, cwd=repo)
 
     assert r.returncode == 0
@@ -554,13 +530,13 @@ def test_an_errored_enforcing_hook_escalates_to_ask(monkeypatch):
     and it costs nothing when the call was legitimate."""
     mod = _load_dispatcher("dispatch-bash-pretooluse.py")
     rc, nested = _dispatch_with_errored(
-        monkeypatch, mod, "block-direct-push-to-main.py",
+        monkeypatch, mod, "block-unsafe-recursive-delete.py",
         {"tool_name": "Bash", "tool_input": {"command": "echo hi"}},
     )
     assert rc == 0, "must stay fail-open — a non-zero exit discards this payload"
     assert nested.get("permissionDecision") == "ask"
     assert "ENFORCING" in nested.get("permissionDecisionReason", "")
-    assert "block-direct-push-to-main.py" in nested.get("permissionDecisionReason", "")
+    assert "block-unsafe-recursive-delete.py" in nested.get("permissionDecisionReason", "")
 
 
 def test_an_errored_advisory_hook_stays_a_warning(monkeypatch):
@@ -569,7 +545,7 @@ def test_an_errored_advisory_hook_stays_a_warning(monkeypatch):
     dismiss the prompt, which costs the enforcing case its only channel."""
     mod = _load_dispatcher("dispatch-bash-pretooluse.py")
     rc, nested = _dispatch_with_errored(
-        monkeypatch, mod, "warn-branch-base.py",
+        monkeypatch, mod, "warn-stacked-pr-merge.py",
         {"tool_name": "Bash", "tool_input": {"command": "echo hi"}},
     )
     assert rc == 0

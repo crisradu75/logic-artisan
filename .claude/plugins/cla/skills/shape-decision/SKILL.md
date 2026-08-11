@@ -33,7 +33,7 @@ Follow this protocol strictly:
 ## Getting started
 
 1. Analyze the topic provided in the arguments (or inferred from context).
-2. **Ground the questions in this repo.** If the topic concerns product/engine behavior, do a quick read/grep before formulating questions so the options and pros/cons reflect real constraints instead of generic possibilities — state briefly what you checked. See `references/project-context.md` for this repo's own useful starting points (capability specs, architecture/convention docs, deliberately-deferred/postponed-item trackers — a topic may already have a parked decision worth surfacing as context rather than re-litigating from scratch). Skip the repo-grounding read for topics that are purely abstract or preference-based (personal tradeoffs, etc.) — **except** when the topic concerns naming: also read `cla.io/terminology.md` if present in that case (see "Domain-terminology capture" below for how it's used during the session), since a naming-shaped decision is exactly what that file exists to inform.
+2. **Ground the questions in this repo.** If the topic concerns product/engine behavior, do a quick read/grep before formulating questions so the options and pros/cons reflect real constraints instead of generic possibilities — state briefly what you checked. See `cla.io/overlays/shape-decision.md` for this repo's own useful starting points (capability specs, architecture/convention docs, deliberately-deferred/postponed-item trackers — a topic may already have a parked decision worth surfacing as context rather than re-litigating from scratch). Skip the repo-grounding read for topics that are purely abstract or preference-based (personal tradeoffs, etc.) — **except** when the topic concerns naming: also read `cla.io/terminology.md` if present in that case (see "Domain-terminology capture" below for how it's used during the session), since a naming-shaped decision is exactly what that file exists to inform.
 3. Formulate the question set per the "Right-size the question count" rule above.
 4. State the topic, the progress estimate, and the one-time revision-support note, then ask the first question.
 
@@ -75,4 +75,4 @@ Keep the file lean enough to resume cold in a future session — do NOT include 
 - The topic (and what was inferred, if it was inferred rather than given)
 - Each question asked, the chosen option, and its one-line rationale
 - The final Decision Summary table
-- A short closing note on why the decision matters and what the natural next step is (e.g. "feeds into `/cla:spec-to-pr` or `/cla:lite-pr` for change X", or resolves a postponed item in this repo's own deferred-items tracker — see `references/project-context.md`)
+- A short closing note on why the decision matters and what the natural next step is (e.g. "feeds into `/cla:spec-to-pr` or `/cla:lite-pr` for change X", or resolves a postponed item in this repo's own deferred-items tracker — see `cla.io/overlays/shape-decision.md`)

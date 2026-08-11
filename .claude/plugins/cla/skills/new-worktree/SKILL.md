@@ -5,18 +5,19 @@ description: "Start a new isolated git worktree for this repo, with dependencies
 
 # New worktree, fully set up
 
-See `references/project-context.md` for this repo's own workspace shape, its gitignored env file(s), and why a bare `EnterWorktree` alone leaves the new worktree without a working dev setup (no installed dependencies, no env-derived secrets, so a dependent process silently degrades). This skill does the full setup in two tool round-trips total.
+See `cla.io/overlays/new-worktree.md` for this repo's own workspace shape, its gitignored env file(s), and why a bare `EnterWorktree` alone leaves the new worktree without a working dev setup (no installed dependencies, no env-derived secrets, so a dependent process silently degrades). This skill does the full setup in two tool round-trips total.
 
-**The dominant cost here is round-trips, not the install's own execution time.** See `references/project-context.md` for this repo's own measured install timing. What actually makes a rerun feel slower is extra tool calls layered on top (a separate `git worktree list` lookup, ad hoc verification checks, status checks) — each one is a full model round-trip regardless of how fast the command inside it runs. So: keep this to the fewest possible tool calls, and don't add "just to be sure" verification steps — trust each command's own output/exit code.
+**The dominant cost here is round-trips, not the install's own execution time.** See `cla.io/overlays/new-worktree.md` for this repo's own measured install timing. What actually makes a rerun feel slower is extra tool calls layered on top (a separate `git worktree list` lookup, ad hoc verification checks, status checks) — each one is a full model round-trip regardless of how fast the command inside it runs. So: keep this to the fewest possible tool calls, and don't add "just to be sure" verification steps — trust each command's own output/exit code.
 
 ## Path discipline once inside a worktree
 
 Once `EnterWorktree` has run, every subsequent `Write`/`Edit`/`Read`/file-writing
 `Bash` call for the rest of the task must use a path relative to the worktree cwd (or
-its returned absolute path) — never a hardcoded primary-clone path. Two guard hooks
-back this up — `guard-worktree-isolation.py` catches `git checkout`/`switch`/`commit`, and
-`block-worktree-path-escape.py` blocks any `Write`/`Edit` whose target escapes the worktree
-into the primary clone (escape hatch: `ALLOW_WORKTREE_PATH_ESCAPE=1`) — but treat them as a
+its returned absolute path) — never a hardcoded primary-clone path. One guard hook
+backs this up — `block-worktree-path-escape.py` blocks any `Write`/`Edit` whose target
+escapes the worktree into the primary clone (escape hatch:
+`ALLOW_WORKTREE_PATH_ESCAPE=1`). It covers writes only; nothing intercepts a stray
+`git checkout`/`switch`/`commit` any more, so treat it as a
 backstop, not a licence to skip relative paths. If work still ends up in the wrong (shared) location, don't delete it to
 fix the mistake until a verified copy exists elsewhere — copy first, confirm, then
 clean up. If a commit ever goes missing after a shared branch gets switched/deleted
@@ -33,11 +34,9 @@ memory `worktree-isolation-file-paths`.)
    **If it refuses because the session is ALREADY inside a worktree, that is the
    setup-only case — skip to step 2 rather than stopping.** The worktree exists and
    only needs its dependencies and env files. This is the normal state when a session
-   was started *inside* a pre-made worktree rather than migrating into one — some repos
-   ship a launcher that does exactly that, creating the worktree with plain git before
-   Claude starts so no `guard-worktree-isolation` heartbeat is ever written in the
-   primary clone. Do NOT try to create a second worktree, and do not treat the refusal
-   as an error to report and halt on.
+   was started *inside* a pre-made worktree rather than migrating into one — a repo may
+   create the worktree with plain git before Claude starts. Do NOT try to create a second
+   worktree, and do not treat the refusal as an error to report and halt on.
 
    Don't spend a tool call checking whether you are in a worktree first — the refusal
    IS the signal, and a pre-check would cost a round-trip on every ordinary run for a
@@ -70,8 +69,8 @@ memory `worktree-isolation-file-paths`.)
    separate tool calls (not chained with `&&`, not sequential turns). This is the
    only other round-trip; do not precede it with a separate `git worktree list` call
    to locate the main checkout — resolve it inline, in the copy command itself:**
-   - This repo's own dependency-install command (offline-preferring where the package manager supports it) at the new worktree's root — see `references/project-context.md` for the exact command and why it's the **only** install needed (don't also run a separate install inside a sub-app whose own lockfile/install has been consolidated away); see `cla.io/project-facts.md` ("Workspace shape") for this repo's current workspace-member list (run `/cla:sync-context` to populate it; falls back to the overlay if absent).
-   - Copy this repo's own gitignored env file(s) (see `cla.io/project-facts.md` ("Env files") for the exact path(s); falls back to `references/project-context.md` if absent) from the main checkout into the new worktree, resolving the main checkout path inline (don't spend a tool
+   - This repo's own dependency-install command (offline-preferring where the package manager supports it) at the new worktree's root — see `cla.io/overlays/new-worktree.md` for the exact command and why it's the **only** install needed (don't also run a separate install inside a sub-app whose own lockfile/install has been consolidated away); see `cla.io/project-facts.md` ("Workspace shape") for this repo's current workspace-member list (run `/cla:sync-context` to populate it; falls back to the overlay if absent).
+   - Copy this repo's own gitignored env file(s) (see `cla.io/project-facts.md` ("Env files") for the exact path(s); falls back to `cla.io/overlays/new-worktree.md` if absent) from the main checkout into the new worktree, resolving the main checkout path inline (don't spend a tool
      call discovering it first — but don't use `git rev-parse --show-toplevel` or
      `$CLAUDE_PROJECT_DIR` for this either: verified live, `CLAUDE_PROJECT_DIR` is
      unset in the Bash tool's shell, and `--show-toplevel` run from inside the new
@@ -113,7 +112,7 @@ memory `worktree-isolation-file-paths`.)
    Don't oversell it as a big win — it isn't one once the store is warm, disk I/O
    dominates at that point (a content-addressable package store also means a warm
    rerun mostly hardlinks rather than re-downloads). If installs are still slow on
-   Windows, see `references/project-context.md` for a machine-level mitigation worth
+   Windows, see `cla.io/overlays/new-worktree.md` for a machine-level mitigation worth
    mentioning — but don't change that setting without asking; it's machine-level, not
    project-level.
 
@@ -160,7 +159,7 @@ session pinned to the current name, and leaves the bug in place for the next rep
 Confirm the diagnosis (no side effects) with:
 
 ```bash
-python3 .claude/plugins/cla/skills/new-worktree/scripts/manual_worktree.py --diagnose
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/new-worktree/scripts/manual_worktree.py --diagnose
 ```
 
 On Windows — the platform this whole section exists for — `python3` is often
@@ -175,7 +174,7 @@ including the main-checkout path so the rest of this skill's steps need no extra
 lookup:
 
 ```bash
-python3 .claude/plugins/cla/skills/new-worktree/scripts/manual_worktree.py --name <name>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/new-worktree/scripts/manual_worktree.py --name <name>
 ```
 
 It also clears the stale entry a failed `EnterWorktree` leaves behind. Observed
@@ -220,6 +219,6 @@ if not already tracked. Nothing inside a consuming repo can fix it.
   step 2 against the worktree you are already in.
 - Doesn't set up any heavier local backend stack this repo may have (e.g. Docker
   containers for a local database stack) — that's a heavier, explicit step the user
-  can run themselves per this repo's own docs (see `references/project-context.md`)
+  can run themselves per this repo's own docs (see `cla.io/overlays/new-worktree.md`)
   if they need that part of the workspace functional in this worktree, not something
   to do unprompted on every worktree creation.

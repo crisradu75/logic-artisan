@@ -48,7 +48,7 @@ The `cla` plugin SHALL be activated in place via `claude --plugin-dir ./.claude/
 
 ### Requirement: Repo-state resolution seam
 
-Plugin scripts SHALL resolve repo locations independently of their own position in the tree, because the plugin's nested position under `.claude/plugins/cla/…` breaks any position-dependent resolver. Specifically: (a) scripts that read/write the retro/state dir (the retro `log_run.py`/`aggregate.py` pair for each loop and `audit_run_complete.py`) SHALL resolve it as `CLAUDE_RETRO_DIR` when set, otherwise `<git rev-parse --show-toplevel>/cla.io/retro`; (b) scripts that resolve a repo root for other repo files (`commit.py`, `branch.py`, `probe_state.py`, `discover_tests.py`, `check_permissions.py`) SHALL resolve it via `git rev-parse --show-toplevel`, NOT a fixed `Path(__file__).resolve().parents[N]` depth. Scripts MUST NOT rely on walking to a `.claude` ancestor of the script nor on `${CLAUDE_PROJECT_DIR}` (empty in the script environment). Skill-bundled files (e.g. `required-permissions*.json`) SHALL be resolved skill-relative to the script, while a project-level target (e.g. `check_permissions.py`'s `.claude/settings.local.json`) SHALL be resolved from the repo root.
+Plugin scripts SHALL resolve repo locations independently of their own position in the tree, because the plugin's nested position under `.claude/plugins/cla/…` breaks any position-dependent resolver. Specifically: (a) scripts that read/write the retro dir (the shared writer `lib/log_run.py` and each retro loop's `aggregate.py`) SHALL resolve it as `CLAUDE_RETRO_DIR` when set, otherwise `<git rev-parse --show-toplevel>/cla.io/retro`; (b) scripts that resolve a repo root for other repo files (`probe_state.py` via `_git_common.py`) SHALL resolve it via `git rev-parse --show-toplevel`, NOT a fixed `Path(__file__).resolve().parents[N]` depth. Scripts MUST NOT rely on walking to a `.claude` ancestor of the script nor on `${CLAUDE_PROJECT_DIR}` (empty in the script environment). A skill-bundled file (one that ships WITH the plugin, e.g. `references/required-permissions.json`) SHALL be resolved skill-relative to the script, while a project-level target — including every overlay under `cla.io/overlays/` — SHALL be resolved from the repo root.
 
 #### Scenario: A plugin script writes to the repo's retro dir
 
@@ -62,30 +62,32 @@ Plugin scripts SHALL resolve repo locations independently of their own position 
 
 #### Scenario: A repo-root script resolves independently of depth
 
-- **WHEN** a repo-root-consuming script (e.g. `check_permissions.py`) runs from `.claude/plugins/cla/skills/spec-to-pr/scripts/`
+- **WHEN** a repo-root-consuming script (e.g. `probe_state.py`) runs from `.claude/plugins/cla/skills/spec-to-pr/scripts/`
 - **THEN** it finds the repo root via `git rev-parse --show-toplevel` (not `parents[N]`)
-- **AND** it reads its skill-bundled `required-permissions*.json` skill-relative while still reading/writing the project-level `.claude/settings.local.json` at the repo root
+- **AND** it resolves the repo's `cla.io/overlays/branch-prefix.local.md` from that repo root, never from its own position in the plugin tree
 
 ### Requirement: Project-specific overlay convention
 
-Project-specific content (repo-tuned review checks, monorepo-shaped agent prompts, repo paths) SHALL be contained in **repo-neutral overlay files** whose leaf filename is either exactly `project-context.md` (the canonical single per-skill overlay) or matches the glob `*.local.md` (additional per-skill local overlay files), co-located in the consuming skill's `references/` directory (e.g. `.claude/plugins/cla/skills/review-change/references/project-context.md`). The overlay marker SHALL NOT embed the name of any repository; a generic skill body SHALL remain repo-agnostic and reference its overlay by the fixed repo-neutral path `references/project-context.md`. Each destination repo fills in its own overlay content behind that fixed filename. The overlay marker SHALL be recognized by convention on the **leaf filename** (not on intermediate path components), so a directory that merely contains an overlay stays syncable.
+Project-specific content (repo-tuned review checks, monorepo-shaped agent prompts, repo paths) SHALL be contained in **repo-neutral overlay files** under `cla.io/overlays/`: one `<skill>.md` per consuming skill, plus any `*.local.md` siblings for a narrower per-repo setting. They live in the repo, NOT inside the plugin, for two reasons: a marketplace-installed plugin tree is a read-only cache a destination repo cannot write to, and every reader treats a missing overlay as the ordinary un-configured state, so an overlay the reader cannot reach degrades silently to a default rather than erroring. A generic skill body SHALL remain repo-agnostic and reference its overlay by the fixed repo-neutral path `cla.io/overlays/<skill>.md`. Each destination repo fills in its own overlay content behind that fixed path.
+
+**Legacy location.** Overlays previously sat beside the skill at `references/project-context.md`, and that leaf name remains a recognized overlay marker so a repo mid-migration is neither re-synced over nor dropped from the staleness guard's scan. New overlays SHALL NOT be created there.
 
 **Exception for repo-wide shared facts.** A fact that is *shared across multiple skills* (a repo-wide command, port, member list, path map, or doc list) MAY instead live once in the repo-level consolidated project-facts file `cla.io/project-facts.md` (per the **Consolidated project-facts file** requirement), rather than being co-located and restated in each consuming skill's `references/`. This is the sole exception to co-location, and it applies ONLY to that single repo-level shared file — per-skill overlays themselves remain co-located under the skill's `references/`. A per-skill overlay references such a shared fact by a pointer to `cla.io/project-facts.md`.
 
 #### Scenario: Repo checks live in a repo-neutral overlay
 
 - **WHEN** `review-change` or `project-review` runs
-- **THEN** its generic body reads its repo-specific checks from a co-located `references/project-context.md` overlay file
+- **THEN** its generic body reads its repo-specific checks from `cla.io/overlays/<skill>.md` in the repo it is running in
 
 #### Scenario: A generic skill references its overlay without naming the repo
 
 - **WHEN** a generic `SKILL.md` (or a reference it reads, e.g. `checklist.md`) points at its project overlay
-- **THEN** the reference is the fixed repo-neutral path `references/project-context.md`
+- **THEN** the reference is the fixed repo-neutral path `cla.io/overlays/<skill>.md`
 - **AND** no hardcoded repository-name prefix appears in that reference
 
 #### Scenario: A skill carries multiple local overlay files
 
-- **WHEN** a skill needs more than one project-local overlay file alongside `project-context.md`
+- **WHEN** a skill needs more than one project-local overlay file alongside its `cla.io/overlays/<skill>.md`
 - **THEN** each additional file is named with a `*.local.md` leaf suffix
 - **AND** every such file is recognized as project-local overlay by the same convention
 
@@ -248,7 +250,7 @@ The sync mechanism SHALL be source-agnostic: the lockfile records the `source` p
 
 ### Requirement: Skill fact/procedure separation
 
-Every `cla` plugin skill SHALL separate **project-specific facts** from **generic procedure**, keeping only procedure in its synced core (`SKILL.md` and non-overlay `references/`) and placing every project-specific fact behind that skill's repo-neutral project-context overlay (`references/project-context.md`, per the Project-specific overlay convention) — OR, for a **repo-wide fact shared across multiple skills**, in the repo-level consolidated project-facts file `cla.io/project-facts.md` (per the **Consolidated project-facts file** requirement), referenced from the overlay by a pointer. The governing rule of thumb SHALL be **"extract a fact, keep a procedure."**
+Every `cla` plugin skill SHALL separate **project-specific facts** from **generic procedure**, keeping only procedure in its synced core (`SKILL.md` and non-overlay `references/`) and placing every project-specific fact behind that skill's repo-neutral project-context overlay (`cla.io/overlays/<skill>.md`, per the Project-specific overlay convention) — OR, for a **repo-wide fact shared across multiple skills**, in the repo-level consolidated project-facts file `cla.io/project-facts.md` (per the **Consolidated project-facts file** requirement), referenced from the overlay by a pointer. The governing rule of thumb SHALL be **"extract a fact, keep a procedure."**
 
 A **fact** (which MUST be extracted to the overlay or, when shared across skills, to `cla.io/project-facts.md`, never left in a synced core file) is any content whose value is specific to *this* repository, including but not limited to:
 - concrete shell commands with repo-specific tokens (e.g. package-manager invocations, filtered workspace/test commands, app/server start commands, specific script paths);
@@ -261,7 +263,7 @@ A **fact** (which MUST be extracted to the overlay or, when shared across skills
 
 A **procedure** (which SHALL remain generic in `SKILL.md` / non-overlay references) is content whose value is independent of any particular repo, including: workflow phases and their ordering; discipline, escalation, and stop/continue rules; verdict/size-gate logic; JSON/log schemas and their field contracts; the shape and structure of a review, plan, or report; and generic tool-usage patterns.
 
-**Blended content** — a generic rule justified by a specific past incident, or a generic phase that names a repo command as its example — SHALL be split: the generic rule/phase stays in `SKILL.md` (reworded to be repo-agnostic, with a "see `references/project-context.md`" pointer where the concrete detail aids the reader), and the incident detail or concrete command moves to the overlay. Extraction SHALL preserve behavior — a skill run against a repo whose overlay is filled in MUST retain the same effective guidance it had before extraction (relocation of specifics, not loss of capability).
+**Blended content** — a generic rule justified by a specific past incident, or a generic phase that names a repo command as its example — SHALL be split: the generic rule/phase stays in `SKILL.md` (reworded to be repo-agnostic, with a "see `cla.io/overlays/<skill>.md`" pointer where the concrete detail aids the reader), and the incident detail or concrete command moves to the overlay. Extraction SHALL preserve behavior — a skill run against a repo whose overlay is filled in MUST retain the same effective guidance it had before extraction (relocation of specifics, not loss of capability).
 
 The **shared/skill-specific tie-break** SHALL be: a fact goes to `cla.io/project-facts.md` when it serves two or more skills OR names a repo-global command, port, workspace member, or path map; a fact stays in a skill's own overlay when it is an example chosen to illustrate *that* skill's prose, or is that skill's own incident history / bespoke checks / permission-set intent. This requirement applies to every skill that carries project specifics; skills that are already fully generic (no facts to extract) satisfy it trivially and need no overlay.
 
@@ -269,7 +271,7 @@ The **shared/skill-specific tie-break** SHALL be: a fact goes to `cla.io/project
 
 - **WHEN** any `cla` skill's `SKILL.md` or a non-overlay `references/` file is inspected after extraction
 - **THEN** it contains no project-specific fact (no repo-specific command, package/path name, permission set, incident history, product prose, port, or repo file list)
-- **AND** every such fact it previously carried is present in that skill's `references/project-context.md` overlay, or in `cla.io/project-facts.md` when the fact is shared across skills
+- **AND** every such fact it previously carried is present in that skill's `cla.io/overlays/<skill>.md` overlay, or in `cla.io/project-facts.md` when the fact is shared across skills
 
 #### Scenario: Procedure is preserved generically
 
@@ -281,8 +283,8 @@ The **shared/skill-specific tie-break** SHALL be: a fact goes to `cla.io/project
 
 - **WHEN** a discipline rule in a skill is justified by a specific past incident in this repo
 - **THEN** the generic rule stays in `SKILL.md`, reworded to be repo-agnostic
-- **AND** the incident detail moves to that skill's `references/project-context.md` overlay
-- **AND** the generic rule points at `references/project-context.md` where the concrete detail aids the reader
+- **AND** the incident detail moves to that skill's `cla.io/overlays/<skill>.md` overlay
+- **AND** the generic rule points at `cla.io/overlays/<skill>.md` where the concrete detail aids the reader
 
 #### Scenario: A pure-fact reference file is folded into the overlay
 
@@ -305,7 +307,7 @@ The **shared/skill-specific tie-break** SHALL be: a fact goes to `cla.io/project
 
 ### Requirement: Per-skill project-context overlay
 
-Each `cla` skill that carries project specifics SHALL route them through that skill's single per-skill overlay file — the `references/project-context.md` marker defined by the **Project-specific overlay convention**, which already governs the overlay's fixed repo-neutral path, its repo-name-free referencing, and the `*.local.md` leaf-suffix form for additional local files. This requirement does not restate those mechanics; it builds on them by fixing the overlay's **role and shape** so the file can be **stubbed by a scaffolding step and linted by a conformance guard**.
+Each `cla` skill that carries project specifics SHALL route them through that skill's single per-skill overlay file at `cla.io/overlays/<skill>.md` — living in the repo, not the plugin, because a marketplace-installed plugin tree is a read-only cache that a destination repo cannot write to, and because every reader treats a missing overlay as the ordinary un-configured state, so an unreachable overlay fails silently. Recognized by the **Project-specific overlay convention**, which already governs the overlay's fixed repo-neutral path, its repo-name-free referencing, and the `*.local.md` leaf-suffix form for additional local files. This requirement does not restate those mechanics; it builds on them by fixing the overlay's **role and shape** so the file can be **stubbed by a scaffolding step and linted by a conformance guard**.
 
 An overlay file SHALL be self-describing enough to be regenerated as an empty stub and filled in per destination repo. It SHALL open with a heading naming the owning skill and its role as a project overlay, and SHALL organize its content under headed sections that map to the fact categories the owning skill needs (for example: repo commands, package/path names, permission sets, incident/offense history, product/domain prose, infrastructure values, and repo file lists — only those the skill actually uses). A destination repo with an empty or absent overlay SHALL still run the skill's generic procedure; the overlay supplies the repo-specific detail, it does not gate the procedure.
 
@@ -319,13 +321,13 @@ A per-skill overlay SHALL contain only the facts **specific to that skill** (for
 
 #### Scenario: An empty or absent overlay does not gate the procedure
 
-- **WHEN** a skill runs in a destination repo whose `references/project-context.md` is an empty stub or absent
+- **WHEN** a skill runs in a destination repo whose `cla.io/overlays/<skill>.md` is an empty stub or absent
 - **THEN** the skill's generic procedure still runs to completion
 - **AND** only the repo-specific detail the overlay would otherwise supply is missing (the overlay supplies detail, it does not gate the procedure)
 
 #### Scenario: A per-skill overlay holds only skill-specific facts
 
-- **WHEN** a per-skill `references/project-context.md` is authored or trimmed
+- **WHEN** a per-skill `cla.io/overlays/<skill>.md` is authored or trimmed
 - **THEN** it contains only facts specific to that skill plus, where it needs a repo-wide fact, a pointer to `cla.io/project-facts.md`
 - **AND** it does not restate a shared repo-wide fact that lives in `cla.io/project-facts.md`
 
@@ -335,11 +337,11 @@ The `cla` plugin SHALL provide a `cla-init` skill at `.claude/plugins/cla/skills
 
 `cla-init` SHALL create, when absent, the following `cla.io/` tree under the repo root:
 - the directories `cla.io/decisions/`, `cla.io/feedback/`, `cla.io/retro/`, and `cla.io/lessons-learned/`;
-- one empty (0-byte) retro ledger per retro-logging loop — each loop appends its own per-run record (via `scripts/log_run.py` for `spec-to-pr`/`multi-spec`/`multi-lite`/`codify-learnings`, `scripts/log_chain_run.py` for `multi-pr`, or a documented manual-append recipe for `project-review`, which has no dedicated logging script): `cla.io/retro/spec-to-pr-runs.jsonl`, `cla.io/retro/multi-pr-runs.jsonl`, `cla.io/retro/multi-spec-runs.jsonl`, `cla.io/retro/multi-lite-runs.jsonl`, `cla.io/retro/project-review-runs.jsonl`, and `cla.io/retro/codify-runs.jsonl` (an empty file is a valid empty JSONL ledger — no placeholder line);
+- one empty (0-byte) retro ledger per retro-logging loop that has a reader — `cla.io/retro/spec-to-pr-runs.jsonl` and `cla.io/retro/codify-runs.jsonl`, both appended via the shared `lib/log_run.py` (which takes the ledger filename as its argument). An empty file is a valid empty JSONL ledger — no placeholder line. A loop with no analyzer skill SHALL NOT be given a ledger: the four that had none accumulated 19 records across five repos before being deleted;
 - the feedback inbox `cla.io/feedback/notes.md` seeded with a minimal header;
 - the rolling lessons-learned log `cla.io/lessons-learned/lessons-learned.md` seeded with a minimal header.
 
-`cla-init` SHALL additionally seed, when absent, a skeleton project-context overlay stub at `references/project-context.md` for each skill that **reads its own `references/project-context.md` overlay as a source of repo facts** (per the Per-skill project-context overlay requirement) but does not yet have the file. A skill that merely *names* the overlay marker to document another mechanism — for example `update-cla`, which references the filename only to describe the sync-preservation convention — is NOT a consumer and SHALL NOT be seeded a stub. The stub SHALL open with a heading naming the owning skill and its role as a repo-local project overlay, and SHALL contain headed sections covering the fact categories the Per-skill project-context overlay requirement enumerates, so the stub is self-describing and can be filled in (or pruned) per destination repo. `cla-init` SHALL NOT populate the stub with real repo facts and SHALL NOT read, copy, or modify any asset-core file (a skill body, an agent, or a hook) — it only creates a stub file alongside a skill. `cla-init` SHALL NOT create, read, or modify the plugin manifest (`.claude-plugin/plugin.json`) or `.claude/settings.json`/`.claude/settings.local.json`; those remain per-repo manual onboarding steps.
+`cla-init` SHALL additionally seed, when absent, a skeleton overlay stub at `cla.io/overlays/<skill>.md` for each skill that **reads its own `cla.io/overlays/<skill>.md` overlay as a source of repo facts** (per the Per-skill project-context overlay requirement) but does not yet have the file. A skill that merely *names* the overlay marker to document another mechanism — for example `update-cla`, which references the filename only to describe the sync-preservation convention — is NOT a consumer and SHALL NOT be seeded a stub. The stub SHALL open with a heading naming the owning skill and its role as a repo-local project overlay, and SHALL contain headed sections covering the fact categories the Per-skill project-context overlay requirement enumerates, so the stub is self-describing and can be filled in (or pruned) per destination repo. `cla-init` SHALL NOT populate the stub with real repo facts and SHALL NOT read, copy, or modify any asset-core file (a skill body, an agent, or a hook) — it only creates a stub file under `cla.io/overlays/`. `cla-init` SHALL NOT create, read, or modify the plugin manifest (`.claude-plugin/plugin.json`) or `.claude/settings.json`/`.claude/settings.local.json`; those remain per-repo manual onboarding steps.
 
 The recommended onboarding order SHALL be `cla-init` (scaffold project data) then `update-cla` (sync/adapt the asset core), and this order SHALL be documented in both `cla-init`'s own SKILL.md and `update-cla`'s SKILL.md, noting that `update-cla` never creates project data so skipping `cla-init` leaves the `cla.io/` tree and overlay stubs missing.
 
@@ -348,12 +350,12 @@ The recommended onboarding order SHALL be `cla-init` (scaffold project data) the
 - **WHEN** `cla-init` runs in a repo that has no `cla.io/` tree and no overlay stubs
 - **THEN** it creates `cla.io/decisions/`, `cla.io/feedback/`, `cla.io/retro/`, and `cla.io/lessons-learned/`
 - **AND** it creates the empty (0-byte) retro ledgers (one per retro-logging loop), the seeded `cla.io/feedback/notes.md`, and the seeded `cla.io/lessons-learned/lessons-learned.md`
-- **AND** it creates a `references/project-context.md` skeleton stub for every skill that references the overlay marker but lacks the file
+- **AND** it creates a `cla.io/overlays/<skill>.md` skeleton stub for every skill that references the overlay marker but lacks the file
 - **AND** it writes `cla.io/` under the repo root resolved via `git rev-parse --show-toplevel`, regardless of the working directory it was invoked from
 
 #### Scenario: Re-run is idempotent and never clobbers existing project data
 
-- **WHEN** `cla-init` runs in a repo where some or all of the scaffold already exists (e.g. a `.jsonl` ledger with history, a filled-in `notes.md`, or a populated `project-context.md`)
+- **WHEN** `cla-init` runs in a repo where some or all of the scaffold already exists (e.g. a `.jsonl` ledger with history, a filled-in `notes.md`, or a populated `cla.io/overlays/<skill>.md`)
 - **THEN** every already-present directory and file is skipped untouched — not truncated, overwritten, re-seeded, or merged — even when the seed content differs from what exists
 - **AND** only the genuinely missing pieces are created
 - **AND** a run against a fully-scaffolded repo is a no-op that writes nothing
@@ -361,7 +363,7 @@ The recommended onboarding order SHALL be `cla-init` (scaffold project data) the
 #### Scenario: Overlay stubs match the skills that consume an overlay
 
 - **WHEN** `cla-init` seeds overlay stubs
-- **THEN** it seeds a `references/project-context.md` stub for exactly those skills that read their own overlay as a repo-fact source and do not already have one
+- **THEN** it seeds a `cla.io/overlays/<skill>.md` stub for exactly those skills that read their own overlay as a repo-fact source and do not already have one
 - **AND** a skill that only names the overlay marker to document another mechanism (e.g. `update-cla`'s sync-preservation convention) is NOT seeded a stub
 - **AND** each stub is a skeleton (heading naming the skill plus headed fact-category sections), never populated with real repo facts
 - **AND** no asset-core file (a skill body, an agent, or a hook) is read, copied, or modified in the process
@@ -383,11 +385,11 @@ The recommended onboarding order SHALL be `cla-init` (scaffold project data) the
 
 The `cla` plugin SHALL include a pytest conformance guard that mechanically enforces the fact/procedure separation (the Skill fact/procedure separation and Project-specific overlay convention requirements). The guard SHALL be a generic, repo-agnostic checker that fails when any **non-overlay synced core file** contains a project-specific token, where the token list is itself a per-repo project overlay. The guard SHALL obey the same fact/procedure split it enforces: the checker is generic *procedure*; the token list is a repo-specific *fact* held in an overlay.
 
-**Home and portability.** The guard SHALL live in the plugin's existing test suite under `.claude/plugins/cla/skills/**` (so `update-cla`'s sync — `SCAN_DIRS` includes `skills/` — carries it to destination repos as portable core). It SHALL NOT be implemented as a Claude Code hook and SHALL NOT block or interrupt authoring; it runs only in the test gate. The checker SHALL resolve the plugin tree relative to its own file location (a fixed internal layout identical in every repo), not via any repo-specific absolute path or repository name.
+**Home and portability.** The guard SHALL live in its own scope at `.claude/plugins/cla/conformance-checks/`, not inside any one skill: it enforces a rule about the whole plugin and MUST outlive the sync tool. Because that path is outside `SCAN_DIRS`, the guard's files SHALL be named individually in `discover.SCAN_FILES` so `update-cla` still carries them to destination repos as portable core for as long as file-sync distribution exists. It SHALL NOT be implemented as a Claude Code hook and SHALL NOT block or interrupt authoring; it runs only in the test gate. The checker SHALL resolve the plugin tree relative to its own file location (a fixed internal layout identical in every repo), not via any repo-specific absolute path or repository name.
 
 **Scan scope.** The guard SHALL scan every `SKILL.md` and every `references/**/*.md` file under `.claude/plugins/cla/skills/**`. It SHALL exclude from the scan: (a) overlay files — any file whose leaf name is exactly `project-context.md` or ends with `.local.md` (this covers every extracted fact overlay and the guard's own token-list file); (b) non-markdown / asset files; and (c) each scanned file's leading YAML frontmatter block (the content between the opening `---` on line 1 and its closing `---`). Because the exclusion is by leaf name, the token-list overlay is never flagged by the guard reading it. Frontmatter is excluded because a skill's `description:` / `argument-hint:` is trigger metadata that legitimately names the host repo and its apps so the skill fires — it is not portable procedure prose. The checker SHALL still report accurate 1-based line numbers for body violations (it skips frontmatter for matching, not for line counting).
 
-**Token list as a per-repo overlay.** The token list SHALL be a project overlay file recognized by the repo-neutral overlay convention (a `*.local.md` leaf name), so `discover.py` never syncs it and each destination repo supplies its own. The checker SHALL read the list as data — it MUST NOT hard-code any token in the checker source. The list SHALL be curated to distinctive, repo-specific compound tokens (e.g. package/app paths and product/tool names) and MUST NOT include generic words that legitimately appear in portable procedure prose, so false positives are controlled by curation rather than by the matcher. Matching SHALL be case-insensitive.
+**Token list as a per-repo overlay.** The token list SHALL live at `cla.io/project-tokens.local.md` — per-repo data, held with the rest of it and outside the synced core entirely, so `discover.py` never syncs it, each destination repo supplies its own, and neither of the guard's scans can reach it. Its `*.local.md` leaf name keeps it recognizable under the repo-neutral overlay convention. The checker SHALL read the list as data — it MUST NOT hard-code any token in the checker source. The list SHALL be curated to distinctive, repo-specific compound tokens (e.g. package/app paths and product/tool names) and MUST NOT include generic words that legitimately appear in portable procedure prose, so false positives are controlled by curation rather than by the matcher. Matching SHALL be case-insensitive.
 
 **Failure output.** When a scanned core file contains a listed token, the guard SHALL fail and report each violation with the offending file's repo-relative path, the matched token, and the line number (with a line excerpt), one violation per line, surfacing all violations in a single run rather than stopping at the first.
 
@@ -453,7 +455,7 @@ Because the consolidated file is per-repo and may be absent (a fresh repo that h
 
 - **WHEN** a repo-wide fact (e.g. the workspace member list, a dev command, a port, the affected-file map, or the doc-sweep path list) is recorded
 - **THEN** it is written once in `cla.io/project-facts.md`
-- **AND** it is not duplicated into any per-skill `references/project-context.md`
+- **AND** it is not duplicated into any per-skill `cla.io/overlays/<skill>.md`
 
 #### Scenario: The consolidated file is per-repo and never synced
 
@@ -560,7 +562,7 @@ The refresh skill SHALL additionally **document, in its own SKILL.md, the entry 
 
 ### Requirement: Project-facts staleness guard
 
-The `cla` plugin SHALL include a **portable staleness guard** — a pytest test alongside the conformance guard under `.claude/plugins/cla/skills/update-cla/tests/` — that fails when any **repo-relative path** named in `cla.io/project-facts.md` or in a per-skill `references/project-context.md` no longer resolves on disk (as either a file or a directory). The guard SHALL resolve the **repo root** (e.g. via the parent of `.claude/` or `git rev-parse --show-toplevel`), since the paths it checks are repo-relative and `cla.io/project-facts.md` lives at the repo root, outside the plugin tree — it SHALL NOT assume the plugin-root resolution the conformance guard uses. It SHALL report every stale path (file, line, and the path) one per line in a single run rather than stopping at the first.
+The `cla` plugin SHALL include a **portable staleness guard** — a pytest test alongside the conformance guard under `.claude/plugins/cla/conformance-checks/tests/` — that fails when any **repo-relative path** named in `cla.io/project-facts.md` or in a per-skill `cla.io/overlays/<skill>.md` no longer resolves on disk (as either a file or a directory). The guard SHALL resolve the **repo root** (e.g. via the parent of `.claude/` or `git rev-parse --show-toplevel`), since the paths it checks are repo-relative and `cla.io/project-facts.md` lives at the repo root, outside the plugin tree — it SHALL NOT assume the plugin-root resolution the conformance guard uses. It SHALL report every stale path (file, line, and the path) one per line in a single run rather than stopping at the first.
 
 The guard SHALL be stack-agnostic: it checks path existence only and SHALL NOT parse any stack-specific config (`pnpm-workspace.yaml`, `Cargo.toml`, etc.), and the set of recognized top-level path prefixes SHALL be **derived from the repo's own top-level entries** (not a hardcoded list), so the guard ports to a repo of any layout. If `cla.io/project-facts.md` is absent, the guard SHALL pass trivially (a fresh repo that has not yet run `/cla:sync-context` MUST NOT get a failing result).
 
@@ -590,7 +592,7 @@ The guard checks **path existence only**; it does NOT validate the non-path mech
 
 cla-plugin skills SHALL be authored to minimize the static token cost of the skill definition, and orchestrator/multi-phase skills SHALL additionally be executed to minimize the runtime context they accumulate — both without weakening correctness-gating behavior. Two disciplines are load-bearing:
 
-1. **Progressive disclosure of skill definitions** (applies to every skill large enough to have movable content). A skill's `SKILL.md` SHALL keep inline ONLY the content that must be in context for every run: correctness-gating invariants, hoisted skill-level rules, phase order, caps, and the autonomy/halt contract — each stated as a one-liner where possible. Mechanics (step-by-step procedures), rationale, templates, and examples SHALL live in on-demand `references/*.md` files (per-phase or per-topic; the requirement is a mandatory reference-read step, NOT a specific `references/<phase>.md` filename pattern). A multi-phase skill SHALL give each phase a mandatory "read its reference file first" step so the executing agent loads that phase's mechanics on demand rather than carrying every phase's mechanics inline for the whole run. Correctness-gating invariants MUST NOT be relocated out of the inline `SKILL.md` context — each phase's inline stub SHALL remain self-sufficient for its own invariant even if the phase's reference file is not read. Any repo-specific content moved out of `SKILL.md` (worked examples naming real symbols/files, dated incidents) SHALL be routed to a project overlay (`references/project-context.md` / `*.local.md` / `cla.io/project-facts.md`), NOT into a generic synced-core reference file, per the existing **Skill fact/procedure separation** and **Project-specific overlay convention** requirements. The authoring recipe for this transformation — the keep-inline/move boundary, the checklist of correctness-gating invariants that commonly get dropped during a restructure, and the validation steps — is `.claude/plugins/cla/skills/spec-to-pr/references/progressive-disclosure.md`.
+1. **Progressive disclosure of skill definitions** (applies to every skill large enough to have movable content). A skill's `SKILL.md` SHALL keep inline ONLY the content that must be in context for every run: correctness-gating invariants, hoisted skill-level rules, phase order, caps, and the autonomy/halt contract — each stated as a one-liner where possible. Mechanics (step-by-step procedures), rationale, templates, and examples SHALL live in on-demand `references/*.md` files (per-phase or per-topic; the requirement is a mandatory reference-read step, NOT a specific `references/<phase>.md` filename pattern). A multi-phase skill SHALL give each phase a mandatory "read its reference file first" step so the executing agent loads that phase's mechanics on demand rather than carrying every phase's mechanics inline for the whole run. Correctness-gating invariants MUST NOT be relocated out of the inline `SKILL.md` context — each phase's inline stub SHALL remain self-sufficient for its own invariant even if the phase's reference file is not read. Any repo-specific content moved out of `SKILL.md` (worked examples naming real symbols/files, dated incidents) SHALL be routed to a project overlay (`cla.io/overlays/<skill>.md` / `*.local.md` / `cla.io/project-facts.md`), NOT into a generic synced-core reference file, per the existing **Skill fact/procedure separation** and **Project-specific overlay convention** requirements. The authoring recipe for this transformation — the keep-inline/move boundary, the checklist of correctness-gating invariants that commonly get dropped during a restructure, and the validation steps — is `.claude/plugins/cla/skills/spec-to-pr/references/progressive-disclosure.md`.
 
 2. **Thin-orchestrator runtime execution** (applies to orchestrator-shaped skills — those that drive sub-skills/agents across phases; a small non-orchestrating skill has no raw-material handling to delegate and is out of this discipline's scope). An orchestrator skill SHALL delegate raw-material handling to sub-agents so that only conclusions — not the raw files, diffs, grep output, or intermediate material — return to the parent context. As standing I/O hygiene it SHALL read slices rather than whole files, pipe large command output through `tail`/`head`, and route large intermediate material through a scratch file handed to a delegate rather than inlining it. It SHALL batch independent tool calls into a single message, and SHALL prefer terse, schema'd (structured) agent output over prose essays. Delegating fix *application* to a sub-agent SHALL NOT relocate the orchestrator's own post-fix re-verification discipline (proving a discharged finding's defect is actually gone) — the delegate applies edits; the orchestrator still verifies.
 

@@ -93,6 +93,69 @@ def _file_has_local_edits(repo: Path, asset_path: str) -> bool:
     return bool(result.stdout.strip())
 
 
+def assert_target_is_a_repo_not_an_installed_plugin(local_repo: Path) -> None:
+    """Refuse to sync into a read-only marketplace install.
+
+    This tool writes the plugin tree — assets, and the lockfile at
+    `LOCK_RELATIVE_PATH`. That is correct for a repo that VENDORS the plugin,
+    which is the only arrangement that existed when it was written. It is wrong
+    for a repo that INSTALLED the plugin from a marketplace: the tree is then a
+    read-only, version-keyed cache, and a write either fails or lands somewhere
+    the next `/plugin update` discards.
+
+    The test is a property of the TARGET, not of this script: does the repo
+    declare a marketplace install of `cla` in its settings? "Is the plugin
+    directory inside the repo?" is the wrong question and was tried first — it
+    conflates where *this script* happens to live with what the destination
+    wants, so it refused every synthetic test fixture and, worse, refused to
+    onboard a fresh repo that has no plugin tree yet, which is precisely a case
+    update-cla exists to serve.
+
+    Raises `SystemExit` with the remedy rather than returning a status: there is
+    no partial-success reading of "the destination must not be written".
+    """
+    # A target that VENDORS the plugin is always syncable, whatever any settings
+    # file says. Checked first because the two facts are independent: a developer
+    # can have `cla` installed at user scope for their other repos AND vendor it
+    # in the repo that develops it, and refusing there would block the source
+    # repo's own workflow on the strength of an unrelated install.
+    if (local_repo / ".claude" / "plugins" / "cla").is_dir():
+        return
+
+    # USER scope is checked too, and it is the one that matters most: `claude
+    # plugin install` defaults to `--scope user`, so the ordinary install lands
+    # in ~/.claude/settings.json and never touches the repo. Measured on the
+    # machine this was written on: 14 enabledPlugins in user scope, 0 in the
+    # repo's — a repo-only check would have been blind to every default install,
+    # which is precisely the case this guard exists to catch.
+    candidates = [
+        (local_repo / ".claude" / "settings.json", "the repo's .claude/settings.json"),
+        (local_repo / ".claude" / "settings.local.json", "the repo's .claude/settings.local.json"),
+        (Path.home() / ".claude" / "settings.json", "your user-level ~/.claude/settings.json"),
+    ]
+    for path, where in candidates:
+        try:
+            settings = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue  # absent or unreadable: not evidence of an install
+        enabled = settings.get("enabledPlugins")
+        if not isinstance(enabled, dict):
+            continue
+        # Match on the name only; the value may be False (installed but
+        # disabled), which is still an installed read-only tree.
+        installed = [k for k in enabled if k.split("@")[0] == "cla"]
+        if installed:
+            raise SystemExit(
+                f"error: this plugin is installed from a marketplace "
+                f"({', '.join(installed)}, per {where}).\n"
+                "Its plugin tree is a read-only, version-keyed cache, so syncing "
+                "into it would either fail or be discarded by the next update.\n"
+                "update-cla is the pre-marketplace distribution path. Take a new "
+                "release with `claude plugin update`, and send fixes back "
+                "upstream with /cla:report-upstream."
+            )
+
+
 def _write_file(local_repo: Path, asset_path: str, content: str) -> None:
     """Write an adapted asset atomically.
 
@@ -427,6 +490,7 @@ def apply_worktree(
     source_commit: str | None = None,
     source_shas: dict[str, str] | None = None,
 ) -> list[ApplyOutcome]:
+    assert_target_is_a_repo_not_an_installed_plugin(local_repo)
     outcomes: list[ApplyOutcome] = []
     written: list[tuple[str, bytes]] = []
     kept_local: list[tuple[str, str]] = []
@@ -659,6 +723,7 @@ def apply_pr(
     source_shas: dict[str, str] | None = None,
 ) -> tuple[list[ApplyOutcome], PRResult]:
     """Requires clean working tree; otherwise refuses."""
+    assert_target_is_a_repo_not_an_installed_plugin(local_repo)
     outcomes: list[ApplyOutcome] = []
 
     clean, _ = _is_clean_tree(local_repo)

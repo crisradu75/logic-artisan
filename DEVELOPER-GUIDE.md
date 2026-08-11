@@ -24,7 +24,7 @@ The split that everything obeys: **procedure is portable, facts are per-repo.**
 
 - Portable procedure lives in the synced core (`skills/`, `agents/`, `hooks/`, `output-styles/`)
   and is identical in every repo that uses CLA.
-- Your repo's facts live in overlays (`references/project-context.md`, `*.local.md`) and in the
+- Your repo's facts live in overlays (`cla.io/overlays/<skill>.md`, `*.local.md`) and in the
   repo-root `cla.io/` tree (decisions, feedback, retro ledgers, `project-facts.md`). The updater
   never touches them.
 
@@ -204,7 +204,7 @@ boundary from inside one — a common failure mode when a stale absolute path sn
 
 Hooks wire themselves from `hooks/hooks.json` at plugin load. Three severities:
 
-- **Blocks** stop the tool call. You'll meet: `block-direct-push-to-main` (branch + PR, always),
+- **Blocks** stop the tool call. You'll meet:
   `block-cd-in-bash` (a bare `cd` persists and breaks later calls — use absolute paths),
   `block-unsafe-recursive-delete`, `block-worktree-path-escape`,
   `block-dated-stamps-in-prose` (hardcoded dates rot), `guard-worktree-isolation` (section 7).
@@ -262,7 +262,7 @@ destination repo:
    `.cla-sync-lock.json` (3-way reconcile), preserves local overlays and local strengths, surfaces
    deletions without applying them, and never auto-merges.
 
-Then fill in the per-skill `references/project-context.md` overlays as the skills prompt for
+Then fill in the per-skill `cla.io/overlays/<skill>.md` overlays as the skills prompt for
 facts, and add a `hooks/smoke-test-drift.local.md` if the repo has a UI smoke test to protect.
 Re-run `update-cla` any time to pull newer core; your overlays and `cla.io/` survive every sync.
 Sync is one-way (source → consumer): a skill improved while working in a consuming repo has to be
@@ -312,7 +312,7 @@ Contributing to the harness rather than using it? The extra rules:
 | Drive one spec'd change to a PR | `spec-to-pr` |
 | Run a batch of small changes unattended | `multi-lite` |
 | Run a batch of spec'd changes unattended | `multi-pr` |
-| Work in parallel without collisions | `./claw <name>`, then `new-worktree` for setup |
+| Work in parallel without collisions | `/cla:new-worktree`, at any point in a session |
 | Pick the cheapest adequate model for a task | `right-model` |
 | Stop re-approving the same permissions | `save-permissions` |
 | Get a whole-repo health review | `project-review` |

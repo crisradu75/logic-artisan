@@ -52,30 +52,22 @@ Do NOT name `openspec archive` in any case (Archive already did it).
 
 ## 5. Append the per-run record to the JSONL log
 
-After the terminal report has been printed, serialize the in-context phase outcomes as a single JSON object and pipe it to `scripts/log_run.py`. **The exact JSON schema (every field `aggregate.py` reads, counts-only, under 4 KiB) and the per-field obligations live in `references/run-log-schema.md`** — follow that shape exactly; it is the contract `/cla:spec-to-pr-retro` consumes. **Include the `routing` object** (the per-dispatch model tally, `implement_delegated`, `escalate_up_fired`, and `revise_findings_by_tier` — keyed **per agent**, `found`/`phantom` counting Critical+Important only, Suggestions excluded) — it is the telemetry that lets the retro validate the routing table AND drives its per-agent yield heuristic; assemble it from the models you dispatched, whether Implement delegated, whether escalate-up fired, and the Revise triage outcome per agent.
+After the terminal report has been printed, serialize the in-context phase outcomes as a single JSON object and pipe it to `lib/log_run.py` (with `spec-to-pr-runs.jsonl` as its argument). **The exact JSON schema (every field `aggregate.py` reads, counts-only, under 4 KiB) and the per-field obligations live in `references/run-log-schema.md`** — follow that shape exactly; it is the contract `/cla:spec-to-pr-retro` consumes. **Include the `routing` object** (the per-dispatch model tally, `implement_delegated`, `escalate_up_fired`, and `revise_findings_by_tier` — keyed **per agent**, `found`/`phantom` counting Critical+Important only, Suggestions excluded) — it is the telemetry that lets the retro validate the routing table AND drives its per-agent yield heuristic; assemble it from the models you dispatched, whether Implement delegated, whether escalate-up fired, and the Revise triage outcome per agent.
 
 **Failure is non-fatal.** If `log_run.py` exits non-zero (disk full, perms, oversize record), capture the stderr in the Handoff Issues section but do NOT mark the overall run as warn — a missing log line is a small loss; halting at the very end of a successful workflow is a large one.
 
 ## 6. Commit the run-log line to the feature branch (INVARIANT — so it ships with the PR, never dangles)
 
-Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty on the working tree. Commit that one-line append onto the feature branch so it merges atomically with the change instead of lingering as an uncommitted file. Committing it here on the feature branch avoids both the dangling file and a `block-direct-push-to-main.py` block on a later direct-to-main attempt.
+Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty on the working tree. Commit that one-line append onto the feature branch so it merges atomically with the change instead of lingering as an uncommitted file. Committing it here on the feature branch avoids both the dangling file and a later direct-to-main push, which the repo's `pre-push` hook refuses (when installed — it is a manual per-clone step).
 - **Guard — feature branch only.** Do this ONLY when Ship opened a PR (HEAD is `<branch>`). If Ship was `skip` (still on `<base-branch>`, branch collision, or the autonomy gate was declined), SKIP this commit: a direct-to-base-branch push would be blocked, so leave the append as a local uncommitted change and note it in the Handoff Issues section for the user to place.
 - **Skip when the log is out-of-repo.** If `CLAUDE_RETRO_DIR` points outside the repo, there is nothing tracked to stage — skip.
 - Verify git-state, then path-scoped stage + commit + push (never `-A`):
   ```
-  python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
-  python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "chore: spec-to-pr run log" cla.io/retro/spec-to-pr-runs.jsonl
+  python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
+  git add -- cla.io/retro/spec-to-pr-runs.jsonl
+  git commit -m "chore: spec-to-pr run log"
   git push
   ```
 - This commit lands AFTER the archive and optional `docs: TODO.md` commits and is NOT re-reviewed by the pr-review agents (mechanical, like the archive commit). It is the LAST commit of the run.
 
-## 7. Finalize the discipline audit (last action of the run)
-
-After the run-log line is appended (step 5) and — when Ship opened a PR — committed (step 6), run the audit so any lapse is caught and, if present, surfaced at the *next* run's Precheck (Step 0):
-```
-# if Ship opened a PR (HEAD is <branch>):
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/audit_run_complete.py --finalize --shipped --change <change-name>
-# if Ship was skip (still on <base-branch> — the run-log line is intentionally left uncommitted):
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/audit_run_complete.py --finalize --change <change-name>
-```
-It checks two invariants for THIS run — the run-log line was appended, and (with `--shipped`) that it's committed rather than dangling — and writes a local marker when either fails, or clears any stale marker on a clean run. Pass `--shipped` ONLY when a PR was opened; without it, the committed-check is skipped so a legitimately-skipped Ship doesn't false-flag. **Advisory and non-fatal:** it always exits 0; if it prints `audit: DISCIPLINE GAP`, note that one line in the terminal report but do NOT mark the run `warn` over it — the gap is already recorded for next time. The marker is local-only (never staged/committed).
+Steps 5 and 6 are the run's last two actions. If either was skipped, say so in the terminal report — a missing run-log line, or one left uncommitted, is a loose end the user should see now rather than a gap discovered later by `/cla:spec-to-pr-retro` finding a run absent from the ledger.

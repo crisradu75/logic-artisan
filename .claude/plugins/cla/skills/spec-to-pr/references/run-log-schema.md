@@ -1,7 +1,7 @@
 # spec-to-pr — per-run JSONL log schema
 
 Handoff step 5 serializes the in-context phase outcomes as a single JSON object and pipes it to
-`scripts/log_run.py`, which appends it to `cla.io/retro/spec-to-pr-runs.jsonl`. This file is the
+`lib/log_run.py`, which appends it to `cla.io/retro/spec-to-pr-runs.jsonl`. This file is the
 data source for `/cla:spec-to-pr-retro`.
 
 `aggregate.py` is the consumer. **The schema below lists every field it actually reads** — adding
@@ -14,7 +14,7 @@ field is a silent loss of retro signal, not an error.
 ## Invocation
 
 ```bash
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/log_run.py <<'JSON'
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
 {
   "ts": "<ISO-8601 UTC, e.g. 2026-05-28T14:32:11Z>",
   "change": "<change-name>",
@@ -68,7 +68,7 @@ this; oversize records exit 1).
 - On Ship: `version_bumped` reflects whether this repo has a version-bump preflight (e.g. a
   `plugin.json`/version-manifest artifact bumped in-PR) as part of Ship. When the repo has no such
   artifact, Ship has no version-bump preflight and the field is retained at a constant value only so
-  `aggregate.py`'s `version_bump_misses` metric stays schema-compatible. See `references/project-context.md`
+  `aggregate.py`'s `version_bump_misses` metric stays schema-compatible. See `cla.io/overlays/spec-to-pr.md`
   for this repo's concrete answer.
 - On Review: `size_gate` (`"small"` or `"large"`) and `verdict` (`"READY"` / `"FIX FIRST"` /
   `"RETHINK"`) are ALWAYS required, in both small and large mode. Unknown strings get bucketed into

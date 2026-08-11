@@ -1,11 +1,10 @@
 """_git_common.py tests.
 
-Every consumer (branch.py, commit.py, check_permissions.py, discover_tests.py,
-probe_state.py) monkeypatches its own module-level `REPO_ROOT` directly in
-tests, so `repo_root()`'s actual git-invocation and fallback logic was never
-exercised by any of those five test files, before or after the extraction
-that consolidated five identical copies into this one function. These tests
-close that gap.
+`probe_state.py`, the one surviving consumer, monkeypatches its own
+module-level `REPO_ROOT` directly in tests, so `repo_root()`'s actual
+git-invocation and fallback logic is never exercised there. These tests close
+that gap. (The function was extracted when five scripts each carried a
+byte-identical copy; four of those five were deleted in the script audit.)
 """
 
 from __future__ import annotations
@@ -67,7 +66,7 @@ def test_falls_back_to_cwd_when_git_rejects_the_directory(
 
 def test_prefix_from_text_reads_the_flat_frontmatter_key():
     """Flat `key: value` between `---` fences — the format every other overlay
-    in the plugin uses (`warn-smoke-test-drift`, `warn-lint-on-edit`). This one
+    in the plugin used, back when there were others. This one
     originally read "the first non-comment line", a third syntax for the third
     overlay, which gave the value no name at the point of use."""
     assert _git_common.prefix_from_text("---\nbranch_prefix: claude/fix/\n---\n") == "claude/fix/"
@@ -121,9 +120,9 @@ def test_an_absent_overlay_is_silent(monkeypatch, capsys, tmp_path):
     configured is the ORDINARY state, so a warning here would fire in every repo
     carrying no overlay — which is most of them, including this one.
 
-    The overlay path is `__file__`-relative, so `is_file` is intercepted for
+    The overlay path is repo-root-relative, so `is_file` is intercepted for
     that one leaf name and delegated for everything else, rather than writing
-    into the live `scripts/` directory.
+    into the live `cla.io/overlays/` directory.
     """
     real_is_file = _git_common.Path.is_file
 
@@ -136,6 +135,33 @@ def test_an_absent_overlay_is_silent(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(_git_common.Path, "is_file", _fake_is_file)
     assert _git_common.branch_prefix() == _git_common.DEFAULT_BRANCH_PREFIX
     assert capsys.readouterr().err == "", "an un-configured repo must not be warned at"
+
+
+def test_a_present_overlay_is_actually_read_end_to_end(monkeypatch, tmp_path, capsys):
+    """The join between `overlay_path()` and `prefix_from_text()` — the ONE path
+    that matters in a configured repo, and the one nothing covered.
+
+    Measured: mutating `branch_prefix`'s final line to `return
+    DEFAULT_BRANCH_PREFIX` survived both this scope and `consistency-checks`.
+    Every other test here either exercises `prefix_from_text` as a pure function,
+    forces the overlay absent, or sets `CLA_BRANCH_PREFIX` — which short-circuits
+    before the file is ever opened. The scope's own `conftest` pins that env var
+    for every test, so it must be deleted here.
+
+    What the gap costs, in this module's own words: a configured repo silently
+    gets `feature/`, and `probe_state` then reports finished work as not started
+    — which the orchestrator answers by redoing it and opening a duplicate PR.
+    """
+    monkeypatch.delenv("CLA_BRANCH_PREFIX", raising=False)
+    overlay = tmp_path / "cla.io" / "overlays" / _git_common._BRANCH_PREFIX_OVERLAY
+    overlay.parent.mkdir(parents=True)
+    overlay.write_text("---\nbranch_prefix: claude/feature/\n---\n", encoding="utf-8")
+    monkeypatch.setattr(_git_common, "repo_root", lambda: tmp_path)
+
+    assert _git_common.overlay_path() == overlay, "the reader is looking elsewhere"
+    assert _git_common.branch_prefix() == "claude/feature/"
+    assert _git_common.branch_name("add-thing") == "claude/feature/add-thing"
+    assert capsys.readouterr().err == "", "a valid overlay must not warn"
 
 
 def test_the_env_var_overrides_everything(monkeypatch):

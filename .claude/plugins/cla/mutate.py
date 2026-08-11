@@ -20,7 +20,7 @@ INCONCLUSIVE and fails the run.
 
 WHY IT WRITES BYTES. The same earlier version paired `read_text` with
 `write_text`, whose newline translation rewrote every line ending in an LF file
-to CRLF on Windows. This repo pins `cla` and `claw` to `eol=lf` precisely because
+to CRLF on Windows. This repo pins `cla` to `eol=lf` precisely because
 a CRLF shebang (`#!/usr/bin/env bash\\r`) breaks the POSIX launchers — and
 `git diff` shows nothing for that change, because the `eol=lf` attribute
 normalizes on read. Restores are byte-exact and asserted.
@@ -32,10 +32,10 @@ USAGE. Write a batch file — a Python module defining `MUTANTS`, a list of
     PLUGIN = Path(__file__).resolve().parents[1]     # adjust to where you put it
     HOOKS = PLUGIN / "hooks"
     MUTANTS = [
-        ("the args fallback comes back",
-         HOOKS / "warn-lint-on-edit.py",
-         "if not raw_exts or not binary or not args:",
-         "if not raw_exts or not binary:",
+        ("the git matcher stops case-folding the command name",
+         HOOKS / "_dispatch_lib.py",
+         r'GIT_CMD = r"\\b(?i:git)(?:\\.(?i:exe|cmd|bat|com|ps1))?"',
+         r'GIT_CMD = r"\\bgit(?:\\.(?i:exe|cmd|bat|com|ps1))?"',
          [HOOKS / "tests"]),
     ]
 
@@ -47,6 +47,13 @@ then run it:
 silently stopped checking anything; an ambiguous one silently mutates a site you
 did not mean, and a kill on the wrong site reads exactly like a kill on the right
 one. Both are refused before any file is touched.
+
+KEEP `\\n` OUT OF AN ANCHOR. Anchors are matched against the file's raw bytes
+(see WHY IT WRITES BYTES above), so on a CRLF checkout — every file in this repo
+except the `eol=lf` launchers — a `\\n` in `old` matches nothing and the mutant is
+refused as "anchor not found" even though the line is plainly there. Anchor
+within a single line, or spell the separator `\\r\\n` and accept that the batch
+then only runs on one platform.
 
 VERDICTS. `killed` (pytest exit 1 — a test actually failed), `SURVIVED` (exit 0 —
 no test noticed), `INCONCLUSIVE` (any other exit — the run proves nothing, and
@@ -61,6 +68,7 @@ catch the mutation — one pytest runs per mutant.
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -214,6 +222,46 @@ def uncommitted(paths: list[Path]) -> list[str]:
     return [line[3:] for line in proc.stdout.splitlines() if line.strip()]
 
 
+_RAN_RE = re.compile(r"^\s*\d+\s+(?:passed|failed)\b", re.MULTILINE)
+# A per-TEST error line carries a `::<nodeid>` suffix — the test was selected and
+# its setup ran. A COLLECTION error names only the file. That suffix is the whole
+# discriminator; the word "error" alone is not.
+_TEST_LEVEL_ERROR_RE = re.compile(r"^ERROR\s+.*::", re.MULTILINE)
+
+
+def _a_test_actually_ran(output: str) -> bool:
+    """True when at least one test was selected and executed.
+
+    `killed` must mean "a test failed", not "pytest exited 1". With `-x`, a
+    collection error exits 1 having run nothing — pytest's own exit-2 meaning is
+    lost — so the exit code alone cannot tell a real kill from a broken target
+    list. Measured: two scopes shipping same-named modules collect nothing and
+    summarise as `1 error`.
+
+    But `1 error` is ALSO what a fixture blowing up during setup prints, at exit
+    1, having genuinely run a test — and a mutation that breaks module
+    construction lands there constantly. A first version of this predicate keyed
+    on the count line alone and so reported those real kills as INCONCLUSIVE:
+    correcting the false-`killed` path had opened a false-`INCONCLUSIVE` one, the
+    second branch of exactly the shape CLAUDE.md warns a fix always has.
+
+    So discriminate on WHERE the error is attributed, not on the word: a
+    per-test error carries a `::<nodeid>` suffix, a collection error names only
+    the file. That single check is the whole discriminator.
+
+    An earlier version also looked for pytest's `Interrupted: N error(s) during
+    collection` banner. That is gone: whether the banner is printed varies with
+    how the target is spelled, so it could never be relied on — and mutation
+    showed it was doing nothing, surviving as dead weight while the `::` check
+    handled every case. A redundant guard whose docstring calls itself
+    load-bearing is worse than no guard, because it draws attention away from
+    the one that is.
+    """
+    if _RAN_RE.search(output):
+        return True
+    return bool(_TEST_LEVEL_ERROR_RE.search(output))
+
+
 def run_pytest(targets: list[Path]) -> tuple[int, str]:
     """Run pytest over `targets`. Returns `(exit code, combined output)`.
 
@@ -271,8 +319,20 @@ def check(mutants: list[tuple]) -> int:
             return 1
         backup.unlink()
 
-        if code == EXIT_TESTS_FAILED:
+        if code == EXIT_TESTS_FAILED and _a_test_actually_ran(output):
             print("  killed", flush=True)
+        elif code == EXIT_TESTS_FAILED:
+            # Exit 1 with nothing collected. `-x` turns a collection ERROR into a
+            # "failure", so a target list that cannot even be imported — two
+            # scopes with same-named modules, which is the whole reason
+            # `run_tests.py` exists — reads as exit 1 and would otherwise be
+            # reported `killed`. That is this tool manufacturing the confidence
+            # it exists to supply.
+            print("  INCONCLUSIVE — pytest exited 1 but no test ran "
+                  "(collection error, or every test deselected)", flush=True)
+            for line in output.strip().splitlines()[-12:]:
+                print(f"      {line}", flush=True)
+            failures.append(f"INCONCLUSIVE (nothing collected): {name}")
         elif code == EXIT_OK:
             print("  SURVIVED — no test noticed this change", flush=True)
             failures.append(f"SURVIVED: {name}")

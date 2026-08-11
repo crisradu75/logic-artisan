@@ -15,15 +15,16 @@
     "non-functional `python3` first on PATH: current probe picks it and the hook",
     "exits 9009 with no warning; this probe skips it.",
     "",
-    "These wirings go FURTHER than the launchers did: they assert the",
-    "interpreter's VERSION via stdout, where `claw` settled for a bare",
-    "`-c \"import sys\"` liveness check that passes on Python 2.7 and on any",
-    "wrapper that swallows `-c`. This block used to claim `claw` 'already",
-    "carried this exact probe' and that 'the hooks now match it' — inverted on",
-    "both counts. `claw` has since been raised to the stdout form; `claw.cmd`",
-    "reaches a paren-free `assert` instead, because the stdout form needs a",
-    "`print(...)` inside a parenthesised `if` block that cmd cannot parse. What",
-    "IS pinned across all of them is the candidate ORDER.",
+    "These wirings assert the interpreter's VERSION via stdout, not merely its",
+    "liveness: a bare `-c \"import sys\"` passes on Python 2.7 and on any wrapper",
+    "that swallows `-c` and exits 0. The candidate ORDER is the other",
+    "load-bearing half, and `python3` must stay first.",
+    "",
+    "This block used to describe the probe by comparing it with the `claw`",
+    "launcher's. `claw` has been deleted — it existed only to dodge",
+    "`guard-worktree-isolation.py`'s SessionStart heartbeat, and that hook is",
+    "gone too — so hooks.json is now the sole holder of this probe, and",
+    "`test_every_wiring_probes_the_same_candidates_in_the_same_order` pins it.",
     "",
     "Note also that JSON has no substitution: `_pyexe` is a reference copy, and",
     "`test_every_wiring_shares_one_probe` is what holds the inlined copies equal",
@@ -42,30 +43,6 @@
   ],
   "_pyexe": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi;",
   "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-worktree-isolation.py\" --heartbeat",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard-worktree-isolation.py\" --cleanup",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write",
@@ -99,16 +76,6 @@
       }
     ],
     "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-lint-on-edit.py\"",
-            "timeout": 15
-          }
-        ]
-      },
       {
         "matcher": "Write",
         "hooks": [

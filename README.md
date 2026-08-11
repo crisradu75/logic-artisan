@@ -16,11 +16,12 @@ plugin must load live from the working tree):
 
 ```bash
 ./cla           # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
-./claw <name>   # same, but creates .claude/worktrees/<name> (branch worktree-<name>) first and starts inside it
 ```
 
-Use `cla.cmd` / `claw.cmd` on native Windows. Both resolve their own absolute path, so they work
-from any cwd. **Note:** `--permission-mode auto` bypasses Claude Code's per-action confirmation
+Use `cla.cmd` on native Windows. It resolves its own absolute path, so it works
+from any cwd. For isolated work, start a session and run `/cla:new-worktree` — there is no
+penalty for deciding mid-session, so the old `claw` launcher that created the worktree first is
+gone. **Note:** `--permission-mode auto` bypasses Claude Code's per-action confirmation
 prompts — intentional for this harness, but worth knowing before you run it. Without a launcher
 (or a manual `claude --plugin-dir`), the skills and hooks are inert files on disk — no `/cla:*`
 commands, no guards.
@@ -39,7 +40,8 @@ The plugin lives at **`.claude/plugins/cla/`** (nested at that path so `update-c
 this repo directly as a sync source):
 
 ```
-cla, claw (+ .cmd twins)       session launchers (plain-git worktree creation, then exec claude)
+cla (+ .cmd twin)              session launcher for THIS repo (loads the plugin from the tree)
+.claude-plugin/                marketplace.json — how every other repo installs CLA
 cla.io/                        this repo's own per-repo state (decisions, feedback, retro ledgers)
 openspec/                      OpenSpec config + specs for this repo's own changes
 .claude/plugins/cla/
@@ -57,7 +59,7 @@ openspec/                      OpenSpec config + specs for this repo's own chang
 ## Canonical vs. per-repo
 
 This repo carries **portable procedure only**. Every project-specific overlay
-(`references/project-context.md`, `*.local.md`) here is a **neutral stub** — a destination repo
+(`cla.io/overlays/<skill>.md`, `*.local.md`) here is a **neutral stub** — a destination repo
 fills in its own facts, and `update-cla` never overwrites them. Per-repo state (`cla.io/`
 decisions, feedback, retro logs) is never part of the synced core. Pytest conformance guards fail
 the suite if a project-specific token or a hardcoded developer path leaks into the synced core.

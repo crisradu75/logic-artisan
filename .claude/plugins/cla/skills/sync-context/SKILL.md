@@ -18,7 +18,7 @@ and never populates facts; `update-cla` syncs the portable asset core and never 
 **Onboarding order: `cla-init` (structure) → `/cla:sync-context` (content) → `update-cla` (portable core).**
 
 - **`cla-init`** scaffolds the `cla.io/` tree (retro ledgers, feedback inbox, lessons-learned log,
-  decisions dir) and empty `references/project-context.md` overlay stubs for skills that consume one.
+  decisions dir) and empty `cla.io/overlays/<skill>.md` stubs for skills that consume one.
   It never writes real facts into any of them.
 - **`/cla:sync-context` (this skill)** owns **fact content**: it populates/reconciles
   `cla.io/project-facts.md` (the shared repo-wide facts) and, where a per-skill overlay is missing its
@@ -53,7 +53,7 @@ If this errors (not inside a git working tree), stop and tell the user to run fr
 
 A fact goes into `cla.io/project-facts.md` when it **serves two or more `cla` skills, OR names a
 repo-global command, port, workspace member, or path map**. A fact **stays** in a skill's own
-`references/project-context.md` overlay when it is an example chosen to illustrate that skill's own
+`cla.io/overlays/<skill>.md` overlay when it is an example chosen to illustrate that skill's own
 prose, or is that skill's own incident history, bespoke checks, or permission-set intent. When
 reconciling, prefer leaving a borderline fact in its overlay over aggressively centralizing it — losing
 skill-specific content is worse than a small amount of residual per-skill detail.
@@ -132,10 +132,11 @@ hardcoded parser — that's what makes this skill portable across differing tech
 ### Step 2 — Read the existing state
 
 - `cla.io/project-facts.md`, if present (this is a **reconcile**, not a from-scratch write).
-- Every `references/project-context.md` under `.claude/plugins/cla/skills/*/` (glob generically — don't
-  hardcode a skill list) — note which facts each one currently restates that match the tie-break rule
-  above, and whether it already carries the pointer sentence.
-- `.claude/plugins/cla/skills/update-cla/references/project-tokens.local.md`, if present, for the
+- Every `cla.io/overlays/*.md` (glob generically — don't hardcode a skill list) — note which facts
+  each one currently restates that match the tie-break rule above, and whether it already carries the
+  pointer sentence. In a repo that has not migrated yet, the overlays may still sit at
+  `${CLAUDE_PLUGIN_ROOT}/skills/*/references/project-context.md`; glob both and say which you found.
+- `cla.io/project-tokens.local.md`, if present, for the
   conformance guard's current curated token list.
 - `cla.io/terminology.md`, if present — read only for the optional reconciliation pass in Step 5; this
   skill does not author its content from scratch (see "The domain-terminology file" above).
@@ -145,13 +146,23 @@ hardcoded parser — that's what makes this skill portable across differing tech
 Produce the full proposed file content, organized under headed sections per the categories above. Open
 with a heading and a one-line note that this is the repo's consolidated, never-synced project-facts
 file (lives in `cla.io/`, outside `update-cla`'s `SCAN_DIRS`), maintained by this skill and linted by
-the staleness guard (`.claude/plugins/cla/skills/update-cla/tests/test_project_facts_paths.py`).
+the staleness guard (`${CLAUDE_PLUGIN_ROOT}/conformance-checks/tests/test_project_facts_paths.py`).
 
 While drafting, also look for a fact **restated verbatim (or near-verbatim) across two or more**
 overlays that isn't in one of the categories above — that's a genuine tie-break hit found empirically
 rather than by category; fold it in under a sensibly-named new section.
 
 ### Step 4 — Draft the overlay pointer additions (content only, never the skill-specific body)
+
+**Only overlays under `cla.io/overlays/` get pointer edits. An overlay found at the LEGACY location
+is never edited in place — not even where the plugin happens to be writable.** Step 2 deliberately
+globs `${CLAUDE_PLUGIN_ROOT}/skills/*/references/project-context.md` so a repo mid-migration is still
+inspected, but that path is inside the plugin, and in every repo that installed the plugin the tree is
+a read-only cache: the edit fails, or lands somewhere the next update discards while reporting as
+applied. Editing it in the one repo where it *would* stick is no better — it entrenches the location
+this migration exists to leave. For each legacy-location overlay, draft no pointer addition; instead
+record a one-line **migration recommendation** ("move `<skill>`'s overlay to `cla.io/overlays/<skill>.md`")
+and carry it into the Step 8 report.
 
 For each per-skill overlay that restates a fact you're centralizing and does NOT yet carry a pointer to
 `cla.io/project-facts.md`, draft a **minimal, one-line pointer addition** using the graceful-degradation
@@ -176,7 +187,7 @@ issues; this is light maintenance, not a required pass.
 ### Step 6 — Propose new `project-tokens.local.md` entries (never silent)
 
 If Step 1 surfaced a new, distinctive app/package/service name (or other compound repo-specific token)
-that isn't yet in `.claude/plugins/cla/skills/update-cla/references/project-tokens.local.md`, draft the
+that isn't yet in `cla.io/project-tokens.local.md`, draft the
 candidate addition(s) — same curation discipline the conformance guard's token list requires (distinctive
 compound tokens only, never generic words that legitimately appear in portable prose; verify each
 candidate with a grep of the current synced core before proposing it).
@@ -190,6 +201,7 @@ Show the user, in order:
    reconciling and the diff is small enough to read at a glance — use judgment; a from-scratch or
    heavily-changed file is clearer shown in full).
 3. Each drafted overlay pointer addition, file by file.
+4. Any migration recommendations for overlays still at the legacy location (Step 4).
 4. Any proposed `project-tokens.local.md` additions, each with its one-line justification.
 5. Any drafted `cla.io/terminology.md` reconciliation fixes from Step 5, if any were found.
 
@@ -197,7 +209,9 @@ Ask the user to confirm before writing anything (`AskUserQuestion` or a plain ye
 This skill never silently applies its draft — the same "propose, don't silently apply" discipline
 `update-cla`'s adapt phase uses. On confirmation, write via `mkdir -p "$ROOT/cla.io"` (if needed) then
 `Write`/`Edit` each confirmed file. If the user wants changes, revise the draft and re-confirm rather
-than partially applying.
+than partially applying. **Every target must be repo content** — `cla.io/**` or a repo-level file.
+If a confirmed target resolves inside the plugin tree, stop and report it as a migration
+recommendation instead of writing it (Step 4).
 
 ### Step 8 — Report
 
@@ -205,6 +219,11 @@ Summarize what changed: `cla.io/project-facts.md` created vs updated (and which 
 which overlays gained a pointer line, which `project-tokens.local.md` entries were added (or note none
 were needed), and any `cla.io/terminology.md` reconciliation applied (or note none was needed/found).
 If any candidate proposal was declined, say so and leave that file untouched.
+
+**List every migration recommendation from Step 4** — each overlay still sitting at the legacy
+`skills/*/references/project-context.md` path, and where it should move to. These are the only
+findings this skill produces that it deliberately does not act on, so a report that omits them
+loses them entirely.
 
 ## Non-goals (pinned — never do these)
 

@@ -157,7 +157,7 @@ How "starting the task" actually works depends on where the work should happen:
   the ongoing back-and-forth of this conversation): launch it with the `Agent` tool,
   passing `model` set to the recommended model. `Agent` sets model only — effort
   always inherits the session (see
-  `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md` for the live
+  `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/model-routing.md` for the live
   capability table this skill treats as authoritative). Don't reach for `Workflow`'s
   `agent()` helper as a workaround to dial effort for an arbitrary one-off task: this
   plugin's own convention reserves `Workflow` for its own internal fan-out (see

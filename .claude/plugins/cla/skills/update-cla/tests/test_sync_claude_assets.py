@@ -344,7 +344,7 @@ def test_overlay_marker_preserved(synthetic_repos):
     skip), and the positive assertions prove non-overlay files are NOT dropped."""
     repos = synthetic_repos({
         "src": {
-            ".claude/plugins/cla/skills/review-change/references/project-context.md": "SOURCE overlay\n",
+            "cla.io/overlays/review-change.md": "SOURCE overlay\n",
             ".claude/plugins/cla/skills/review-change/references/notes.local.md": "SOURCE local overlay\n",
             # non-overlay sibling in the SAME references/ dir — must still sync
             # (guards against a regression to directory-level exclusion).
@@ -356,7 +356,7 @@ def test_overlay_marker_preserved(synthetic_repos):
             ".claude/plugins/cla/skills/spec-to-pr/SKILL.md": "SOURCE core\n",
         },
         "dst": {
-            ".claude/plugins/cla/skills/review-change/references/project-context.md": "LOCAL overlay\n",
+            "cla.io/overlays/review-change.md": "LOCAL overlay\n",
             ".claude/plugins/cla/skills/review-change/references/notes.local.md": "LOCAL local overlay\n",
             ".claude/plugins/cla/skills/review-change/references/checklist.md": "LOCAL sibling\n",
             ".claude/plugins/cla/skills/review-change/references/project-context-notes.md": "LOCAL near-miss\n",
@@ -1944,19 +1944,30 @@ def test_an_unrelated_root_file_is_NOT_swept_in(synthetic_repos):
 
 def test_the_category_counts_sum_to_the_total(synthetic_repos):
     """Root files have no directory prefix, so every existing category missed
-    them and the summary silently stopped adding up."""
+    them and the summary silently stopped adding up.
+
+    The fixture must seed EVERY category the summary counts, or the sum holds
+    vacuously for whichever one it omits. Measured: while the fixture seeded no
+    `conformance-checks/` file, typo'ing that prefix in `summary_counts` survived
+    this whole scope.
+    """
     discover_mod = _load("discover")
+    conf = ".claude/plugins/cla/conformance-checks/tests/test_no_project_tokens.py"
+    lib = ".claude/plugins/cla/lib/log_run.py"
     repos = synthetic_repos({
         "src": {"claw": "a\n", ".claude/plugins/cla/skills/s.md": "s\n",
-                ".claude/plugins/cla/hooks/h.py": "h\n"},
+                ".claude/plugins/cla/hooks/h.py": "h\n", conf: "c\n", lib: "l\n"},
         "dst": {"claw": "b\n", ".claude/plugins/cla/skills/s.md": "t\n",
-                ".claude/plugins/cla/hooks/h.py": "i\n"},
+                ".claude/plugins/cla/hooks/h.py": "i\n", conf: "d\n", lib: "m\n"},
     })
     counts = discover_mod.summary_counts(discover_mod.discover(repos[0], repos[1]))
     per_category = (counts["skills"] + counts["agents"] + counts["hooks"]
-                    + counts["output_styles"] + counts["launchers"])
-    assert per_category == counts["total"]
+                    + counts["output_styles"] + counts["launchers"]
+                    + counts["conformance_checks"] + counts["lib"])
+    assert per_category == counts["total"], f"categories do not sum to total: {counts}"
     assert counts["launchers"] == 1
+    assert counts["conformance_checks"] == 1, "the conformance category is not counted"
+    assert counts["lib"] == 1, "the shared-lib category is not counted"
 
 
 def test_a_launcher_deleted_in_source_is_surfaced(synthetic_repos):

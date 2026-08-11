@@ -33,6 +33,9 @@ Each item is self-contained: title, target path inline (not as a section header)
 
 ## Hard exclusions — never propose edits to
 
+- **Anything inside the plugin, when `references/plugin-writability.md` answers
+  read-only.** That is every repo except the harness's own source repo. Route
+  those to `/cla:report-upstream`; see that reference for the target table.
 - `**/scripts/**/*.py` — the skills' own bundled Python tooling.
 - `openspec/**` — OpenSpec is an external framework with its own upgrade cycle; never propose changes to its commands, skills, AGENTS.md, config, specs, or any other openspec/ file. This includes both the global OpenSpec and the experimental `opsx:*` variant.
 - Any vendored framework directory (anything pulled from an external source with its own release cadence).

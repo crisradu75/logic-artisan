@@ -28,9 +28,9 @@ Skip when the description is already concrete and unambiguous (a clear single ch
 
 Produce a plan directly in the conversation as plain text — do NOT call `EnterPlanMode`/`ExitPlanMode`. `ExitPlanMode` is itself a user-approval gate, and lite-pr is continuous by design (see Autonomy below): post the plan for visibility, then proceed — don't hold it open for approval. The plan MUST explicitly list, alongside the code files to change:
 
-- which `openspec/specs/<capability>/spec.md` file(s) need updating (or note "new capability — no existing spec" / "behavior-invisible change — no spec update needed"). See `references/project-context.md` for this repo's own architecture-as-a-capability spec path — a structural change (new data-flow layer, new module boundary) belongs there, not in a separate architecture doc.
-- if the change touches this repo's own core calculation-engine formulas, whether every doc/spec this repo names as needing to stay in lockstep with those formulas needs updating too — see `cla.io/project-facts.md` ("Allocation-formula lockstep doc set") for the exact file set (run `/cla:sync-context` to populate it; falls back to `references/project-context.md` if absent); a formula/knob change shipped without all of them is a silent spec violation, not just stale docs.
-- which test file(s) need adding/updating, and under which workspace package/app they live — see `references/project-context.md` for this repo's own worked examples.
+- which `openspec/specs/<capability>/spec.md` file(s) need updating (or note "new capability — no existing spec" / "behavior-invisible change — no spec update needed"). See `cla.io/overlays/lite-pr.md` for this repo's own architecture-as-a-capability spec path — a structural change (new data-flow layer, new module boundary) belongs there, not in a separate architecture doc.
+- if the change touches this repo's own core calculation-engine formulas, whether every doc/spec this repo names as needing to stay in lockstep with those formulas needs updating too — see `cla.io/project-facts.md` ("Allocation-formula lockstep doc set") for the exact file set (run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/lite-pr.md` if absent); a formula/knob change shipped without all of them is a silent spec violation, not just stale docs.
+- which test file(s) need adding/updating, and under which workspace package/app they live — see `cla.io/overlays/lite-pr.md` for this repo's own worked examples.
 
 No plan is written to disk. The plan lives in the conversation; its durable record is the doc updates it produces during Implement. Unlike `/cla:spec-to-pr`, nothing is created here that later needs archiving or deleting.
 
@@ -72,13 +72,9 @@ Nothing is committed at this phase (Ship, which runs `commit-push-pr`, comes lat
 git status --porcelain
 ```
 
-Take the path from each line (strip the two-char status prefix; untracked files show as `??`). Then discover the correctness gates (staged):
+Take the path from each line (strip the two-char status prefix; untracked files show as `??`). If no changed path is source-affecting, there is nothing to gate — skip to Ship. Source-affecting means any path with a `src` component, or any file whose suffix belongs to the repo's own source or config — `.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .rb .php .sh .sql .vue .svelte .json .yaml .yml .toml .css .scss .html` and anything else this repo actually builds from. **The list is illustrative, not exhaustive: when a suffix is not on it, treat the path as source-affecting.** `.py` is called out because it was once missing, and in a Python repo a real source change then did not register as source-affecting at all — the run reported a clean docs-only skip having gated nothing. A closed list reproduces that defect for every language it omits.
 
-```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/discover_tests.py --staged <changed-paths>
-```
-
-`discover_tests.py --staged` reads the root `package.json`'s `scripts` map and, when at least one changed path is source-affecting, partitions whichever of `build`, `lint`, `test` exist into `{"smoke": [...], "full": [...]}` — `smoke` is the cheap `npm run lint` fast-fail, `full` is `npm run build` (primary gate) then `npm run test`. Run smoke first; only run full once smoke is clean (smoke is a pre-filter, not a correctness proof, so full still runs in full). In a workspace/monorepo, the root `build`/`lint`/`test` scripts are typically themselves a fan-out across every app/package — see `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape") for this repo's own exact fan-out mechanism and app/package list (run `/cla:sync-context` to populate it; falls back to `references/project-context.md` if absent). So the root-only discovery already covers the whole workspace in one shot; there is no separate per-app/package suite to union in. Any standalone smoke/e2e scripts and any hard gate needing external local infra (a live database stack, etc.) are intentionally excluded from this gate — they need external state a plain `npm run` can't provide, and are manual/optional checks, not part of Test. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's own concrete examples (falls back to `references/project-context.md` if absent).
+Otherwise read the correctness gates out of `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape") — this repo's own record of them, whatever its stack (run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/lite-pr.md` if absent). Split them into two tiers: `smoke` is the cheap lint fast-fail, `full` is the build/typecheck command (primary gate) then the test command. Run smoke first; only run full once smoke is clean (smoke is a pre-filter, not a correctness proof, so full still runs in full). In a workspace/monorepo, the root `build`/`lint`/`test` commands are typically themselves a fan-out across every app/package, so running them at root covers the whole workspace in one shot; there is no separate per-app/package suite to union in. If the file names no commands and the change touches source, say so and treat it as a warning rather than a clean skip. Any standalone smoke/e2e scripts and any hard gate needing external local infra (a live database stack, etc.) are intentionally excluded from this gate — they need external state a plain `npm run` can't provide, and are manual/optional checks, not part of Test. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's own concrete examples (falls back to `cla.io/overlays/lite-pr.md` if absent).
 
 Then, smoke tier first, then full:
 
@@ -103,10 +99,10 @@ This is the one deliberate stop point in the workflow. It deviates from `/cla:sp
 Pre-commit safety check:
 
 ```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py
 ```
 
-Exit 0 → proceed. Any non-zero exit → halt and surface via `AskUserQuestion` — same contract as `/cla:spec-to-pr`: never infer "probably fine" on a non-zero exit. This bare invocation passes no `--expect-branch` (lite-pr's feature branch doesn't exist until `commit-push-pr` runs), so a non-zero exit means an in-progress rebase/cherry-pick from another session (exit 2) or an unresolvable/corrupt git state (exit 1) — not a branch mismatch. If another session is active in this same clone, prefer running lite-pr from an isolated worktree (`/cla:new-worktree`) in the first place — a shared-clone `git commit` mid-flow is a real collision risk here, not a hypothetical one (see `references/project-context.md` for a recorded incident in this repo).
+Exit 0 → proceed. Any non-zero exit → halt and surface via `AskUserQuestion` — same contract as `/cla:spec-to-pr`: never infer "probably fine" on a non-zero exit. This bare invocation passes no `--expect-branch` (lite-pr's feature branch doesn't exist until `commit-push-pr` runs), so a non-zero exit means an in-progress rebase/cherry-pick from another session (exit 2) or an unresolvable/corrupt git state (exit 1) — not a branch mismatch. If another session is active in this same clone, prefer running lite-pr from an isolated worktree (`/cla:new-worktree`) in the first place — a shared-clone `git commit` mid-flow is a real collision risk here, not a hypothetical one (see `cla.io/overlays/lite-pr.md` for a recorded incident in this repo).
 
 Then hand off entirely:
 
@@ -118,9 +114,9 @@ No pause before this runs — continuous by design (see Autonomy below). Use `co
 
 ### Review
 
-**Dispatch the review agents directly — do NOT chain `Skill(pr-review-toolkit:review-pr)`.** That skill is itself a thin dispatcher that calls the same `pr-review-toolkit:*` agents; the hop adds a 1–2 turn skill-load round trip with no extra capability (same economy `/cla:spec-to-pr`'s "When NOT to use `Skill()`" section applies). Pick the agents by diff content — `code-reviewer` + `silent-failure-hunter` for any logic/behavior code; add `pr-test-analyzer` when tests change, `type-design-analyzer` on a new invariant-bearing type, `comment-analyzer` on a substantial prose/doc block, `plugin-dev:skill-reviewer` on a SKILL.md frontmatter/new-skill change — and route each per `.claude/plugins/cla/skills/spec-to-pr/references/model-routing.md`. Launch them in parallel in one message; pass each the diff described by file+symbol (let it read the hunks itself), not the raw diff pasted inline.
+**Dispatch the review agents directly — do NOT chain `Skill(pr-review-toolkit:review-pr)`.** That skill is itself a thin dispatcher that calls the same `pr-review-toolkit:*` agents; the hop adds a 1–2 turn skill-load round trip with no extra capability (same economy `/cla:spec-to-pr`'s "When NOT to use `Skill()`" section applies). Pick the agents by diff content — `code-reviewer` + `silent-failure-hunter` for any logic/behavior code; add `pr-test-analyzer` when tests change, `type-design-analyzer` on a new invariant-bearing type, `comment-analyzer` on a substantial prose/doc block, `plugin-dev:skill-reviewer` on a SKILL.md frontmatter/new-skill change — and route each per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/model-routing.md`. Launch them in parallel in one message; pass each the diff described by file+symbol (let it read the hunks itself), not the raw diff pasted inline.
 
-**Brief each one per `.claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md`** (scope / task / do-not-touch / report / done-when). These run in parallel over one working tree, which makes the do-not-touch slot load-bearing rather than ceremonial: two agents editing the same file overwrite each other with no merge and no warning. These are review agents, so the brief's own instruction is that they report findings and edit nothing — and where an agent type exists in `.claude/agents/`, prefer a `tools:` allowlist that makes that mechanically true instead of relying on the prose holding.
+**Brief each one per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md`** (scope / task / do-not-touch / report / done-when). These run in parallel over one working tree, which makes the do-not-touch slot load-bearing rather than ceremonial: two agents editing the same file overwrite each other with no merge and no warning. These are review agents, so the brief's own instruction is that they report findings and edit nothing — and where an agent type exists in `.claude/agents/`, prefer a `tools:` allowlist that makes that mechanically true instead of relying on the prose holding.
 
 One pass. Then:
 
@@ -152,6 +148,5 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 
 ## References
 
-- `.claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py` — reused directly for the pre-commit safety check.
-- `.claude/plugins/cla/skills/spec-to-pr/scripts/discover_tests.py` — reused directly for root-package test discovery.
-- `.claude/plugins/cla/skills/spec-to-pr/SKILL.md` — the full-weight sibling workflow; see its "Workflow phases" for what a graduated change looks like.
+- `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py` — reused directly for the pre-commit safety check.
+- `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/SKILL.md` — the full-weight sibling workflow; see its "Workflow phases" for what a graduated change looks like.

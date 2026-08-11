@@ -19,7 +19,7 @@ Reviews the repo's `cla.io/retro/spec-to-pr-runs.jsonl` log and proposes targete
 ### 1. Read the aggregated metrics
 
 ```bash
-python3 .claude/plugins/cla/skills/spec-to-pr-retro/scripts/aggregate.py --limit <N>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/aggregate.py --limit <N>
 ```
 
 Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrapper), or `10` if `$ARGUMENTS` is empty. Substitute the literal number before invoking — the script does not expand shell variables.
@@ -94,6 +94,8 @@ Keep the whole report under ~40 lines. Long retros don't get acted on.
 
 ### 5. Optional: invite the user to apply edits
 
+**Check first whether the plugin is writable here** — the procedure is in `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`. Every target this retro proposes — `spec-to-pr/SKILL.md`, its references, the hooks — lives inside the plugin. When the plugin is installed from a marketplace that tree is a read-only, version-keyed cache: an edit either fails or lands somewhere the next update discards, while reporting as applied. If it is read-only, do not offer to apply; present the findings and route them to **`/cla:report-upstream`**, which files them against the canonical source where they can actually change the orchestrator for every repo.
+
 End with: "Want me to apply any of these? Say `apply 1,3` or list the numbers."
 
 Do NOT apply edits without explicit confirmation — retros are advisory.
@@ -101,7 +103,7 @@ Do NOT apply edits without explicit confirmation — retros are advisory.
 ## Sources of truth
 
 - **Schema reference:** see `aggregate.py`'s module docstring for exact field names emitted.
-- **Log format:** see `spec-to-pr/scripts/log_run.py` for what gets written per run.
+- **Log format:** see `lib/log_run.py` for what gets written per run.
 - **What to log:** see `spec-to-pr/references/run-log-schema.md` (schema + per-field obligations).
 
 ## When NOT to use

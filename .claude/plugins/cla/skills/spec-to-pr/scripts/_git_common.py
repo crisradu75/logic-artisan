@@ -1,11 +1,11 @@
-"""Shared repo-root resolution for spec-to-pr's scripts.
+"""Shared repo-root and branch-name resolution for spec-to-pr's scripts.
 
-Extracted from five call sites (branch.py, commit.py, check_permissions.py,
-discover_tests.py, probe_state.py) that each carried a byte-identical copy.
-Safe to share here (unlike a cross-skill helper) because all five live in
-this one skill's pytest scope (`pythonpath = ["scripts"]` in this skill's own
-`pyproject.toml`) — importing a sibling module within that scope crosses no
-isolation boundary.
+Extracted when five call sites each carried a byte-identical copy of the
+repo-root resolver; the script audit deleted four of them, so `probe_state.py`
+is the sole remaining consumer. Safe to share here (unlike a cross-skill
+helper) because both live in this one skill's pytest scope (`pythonpath =
+["scripts"]` in this skill's own `pyproject.toml`) — importing a sibling
+module within that scope crosses no isolation boundary.
 """
 
 from __future__ import annotations
@@ -49,9 +49,9 @@ def repo_root() -> Path:
 # --------------------------------------------------------------------------- #
 # Branch naming
 #
-# `feature/<change-name>` was hardcoded in `branch.py` (which CREATES the
-# branch) and three times in `probe_state.py` (which LOOKS IT UP). `feature/` is
-# a default, not a universal.
+# `feature/<change-name>` was hardcoded in the script that CREATED the branch
+# (since deleted — Ship now runs plain git) and three times in `probe_state.py`
+# (which LOOKS IT UP). `feature/` is a default, not a universal.
 #
 # What makes that worse than a naming mismatch is HOW it fails. All three probes
 # use `git rev-parse --verify --quiet`, which on a miss exits 1 with EMPTY
@@ -83,11 +83,12 @@ def _warn(message: str) -> None:
 def prefix_from_text(text: str) -> str | None:
     """Parse the overlay's flat `key: value` frontmatter, or None if unusable.
 
-    FORMAT. Flat `key: value` between `---` fences, matching
-    `hooks/warn-smoke-test-drift.py` and `hooks/warn-lint-on-edit.py` — every
-    other overlay in the plugin. This one originally read "the first non-comment
-    line", a third syntax for the third overlay, which is a needless thing to
-    learn and gave the value no name at the point of use.
+    FORMAT. Flat `key: value` between `---` fences. This one originally read
+    "the first non-comment line", a second syntax for no reason, which gave the
+    value no name at the point of use. The two hook overlays that set the
+    precedent were deleted with their hooks, so this is now the only overlay of
+    this shape — keep the format anyway; a lone exception is worse than a
+    convention with one member.
 
     DIAGNOSTICS. Every degraded case says so. The split that matters is
     absent-vs-broken: a missing overlay is the ordinary un-configured state and
@@ -125,11 +126,26 @@ def prefix_from_text(text: str) -> str | None:
     return None
 
 
+def overlay_path() -> Path:
+    """Where `branch_prefix()` looks for the overlay.
+
+    Split out so the path is testable on its own. It has to be: an overlay this
+    function cannot find is not an error, it is the ordinary un-configured state,
+    so a wrong path here returns `feature/` for every repo and says nothing.
+    Mutation confirmed no test noticed the path being broken until a check
+    asserted on this function directly.
+    """
+    return repo_root() / "cla.io" / "overlays" / _BRANCH_PREFIX_OVERLAY
+
+
 def branch_prefix() -> str:
     """This repo's branch prefix: env override, else overlay, else the default.
 
-    The overlay is a `*.local.md`, so `discover.py` never syncs it and it never
-    shows up as a divergence in a consuming repo.
+    The overlay lives in the REPO (`cla.io/overlays/`), not in the plugin. Under
+    a marketplace install the plugin tree is a read-only cache that no repo can
+    write to, so a per-repo fact stored beside the code that reads it would be
+    unreachable — and, worse, silently unreachable: a missing overlay is the
+    ordinary un-configured state, so the repo would just get `feature/` back.
 
     The value is used VERBATIM — no trailing `/` is appended. Forcing one ruled
     out a flat prefix like `wip-`, which a repo may legitimately want, and the
@@ -139,7 +155,7 @@ def branch_prefix() -> str:
     env = os.environ.get("CLA_BRANCH_PREFIX")
     if env:
         return env
-    overlay = Path(__file__).resolve().parent.parent / "references" / _BRANCH_PREFIX_OVERLAY
+    overlay = overlay_path()
     if not overlay.is_file():
         # The ONLY legitimately silent case: no overlay means not configured,
         # which is the ordinary state of every repo on the default convention.

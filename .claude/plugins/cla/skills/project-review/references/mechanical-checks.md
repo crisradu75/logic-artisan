@@ -2,7 +2,7 @@
 
 Deterministic checks the orchestrator runs **before** launching review agents. They produce a **Mechanical Facts** table every agent receives as pre-verified input — agents should NOT re-check these; they focus on qualitative judgment instead.
 
-This repo's monorepo shape and the exact commands/checks below are repo-specific — see `cla.io/project-facts.md` ("Dev / build / test commands") for the concrete build/lint/test invocations and any repo-specific exclusion (e.g. a suite needing live local infra), run `/cla:sync-context` to populate it, falling back to `references/project-context.md` ("Mechanical checks — repo specifics") if absent; that same overlay also carries the static-analysis script's exact check list (skill-specific, not moved). This file holds the portable *shape*: what the workspace tooling already verifies (run directly) and what a small script verifies (the fast static analysis the model would otherwise hand-grep inconsistently).
+This repo's monorepo shape and the exact commands/checks below are repo-specific — see `cla.io/project-facts.md` ("Dev / build / test commands") for the concrete build/lint/test invocations and any repo-specific exclusion (e.g. a suite needing live local infra), run `/cla:sync-context` to populate it, falling back to `cla.io/overlays/project-review.md` ("Mechanical checks — repo specifics") if absent; that same overlay also carries the static-analysis script's exact check list (skill-specific, not moved). This file holds the portable *shape*: what the workspace tooling already verifies (run directly) and what a small script verifies (the fast static analysis the model would otherwise hand-grep inconsistently).
 
 ---
 
@@ -11,26 +11,26 @@ This repo's monorepo shape and the exact commands/checks below are repo-specific
 These are already deterministic exit-code checks. **Run them directly; do not re-implement them.** Running the workspace test suite is what makes per-package/per-app invariants pre-verified, so the review needn't hand-check them.
 
 ### 1. Build health
-Run this repo's own build command (per `cla.io/project-facts.md`, falling back to `references/project-context.md`).
+Run this repo's own build command (per `cla.io/project-facts.md`, falling back to `cla.io/overlays/project-review.md`).
 - **PASS:** exits 0. **FAIL:** capture the first errors (file:line + message) and which project.
 
 ### 2. Lint
-Run this repo's own lint command (per `cla.io/project-facts.md`, falling back to `references/project-context.md`).
+Run this repo's own lint command (per `cla.io/project-facts.md`, falling back to `cla.io/overlays/project-review.md`).
 - **PASS:** no errors. **FAIL:** count + first offenders + which project.
 
 ### 3. Unit tests
-Run this repo's own test command (per `cla.io/project-facts.md`, falling back to `references/project-context.md`).
+Run this repo's own test command (per `cla.io/project-facts.md`, falling back to `cla.io/overlays/project-review.md`).
 - **PASS:** all pass. **FAIL:** failing test name(s) + assertion + which project.
-- **Any suite this repo deliberately excludes from the aggregate** (typically one needing live local infra, e.g. a database stack) is recorded as **SKIP** unless that infra is already up and you deliberately run it — see `cla.io/project-facts.md` (falling back to `references/project-context.md`) for whether this repo has one and what it is. If you do run it, a FAIL here is high-severity per that same reference.
+- **Any suite this repo deliberately excludes from the aggregate** (typically one needing live local infra, e.g. a database stack) is recorded as **SKIP** unless that infra is already up and you deliberately run it — see `cla.io/project-facts.md` (falling back to `cla.io/overlays/project-review.md`) for whether this repo has one and what it is. If you do run it, a FAIL here is high-severity per that same reference.
 
 ## Part B — the static-analysis script
 
 ```bash
-node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs        # human table
-node .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs --json  # machine-readable
+node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs        # human table
+node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs --json  # machine-readable
 ```
 
-Fast (<1s), exit code 0 for a normal run (`FAIL`/`ERROR` rows are data, not a gate; only a malformed config block exits non-zero). The script itself is a **generic, repo-agnostic engine** — it hardcodes no paths, packages, or app names. It performs the deterministic cross-file checks **not** covered by build/lint/test, driven entirely by this repo's own check list, which lives in `references/project-context.md` ("Mechanical checks — repo specifics") as a fenced ```json``` block (an untagged ``` fence also works, but a ```json-tagged one is preferred when more than one fence sits under the heading):
+Fast (<1s), exit code 0 for a normal run (`FAIL`/`ERROR` rows are data, not a gate; only a malformed config block exits non-zero). The script itself is a **generic, repo-agnostic engine** — it hardcodes no paths, packages, or app names. It performs the deterministic cross-file checks **not** covered by build/lint/test, driven entirely by this repo's own check list, which lives in `cla.io/overlays/project-review.md` ("Mechanical checks — repo specifics") as a fenced ```json``` block (an untagged ``` fence also works, but a ```json-tagged one is preferred when more than one fence sits under the heading):
 
 ```json
 {
@@ -61,7 +61,7 @@ A `regex-array` source's optional `flags` (e.g. `"s"` to let `.` match newlines)
 Each check's result is `PASS`, `FAIL` (the check ran and found a real problem — e.g. a key mismatch or a forbidden import), or `ERROR` (the check itself couldn't run meaningfully — an unrecognized `type`, a thrown exception from a bad path/malformed source file/misconfigured field, or a config gap it can't verify anything against: an empty required list — `localeFiles`/`sources`/`pairs` — a `sourceDir`/`sourceDirs` scanning 0 files, a `keyPattern` matching 0 usages, or `json-key-parity`'s `files` pointing both entries at the same path). Treat `ERROR` as "fix the check's config," not as a review finding about the repo.
 
 ### Not checked here — smoke-test string drift
-Whether an edit-time hook already guards smoke/e2e-script string drift (and what it does vs. doesn't cover) is repo-specific — see `references/project-context.md`. Whether the whole smoke/e2e flow is still *current end-to-end* stays a qualitative call for the Validation dimension regardless.
+Whether an edit-time hook already guards smoke/e2e-script string drift (and what it does vs. doesn't cover) is repo-specific — see `cla.io/overlays/project-review.md`. Whether the whole smoke/e2e flow is still *current end-to-end* stays a qualitative call for the Validation dimension regardless.
 
 ---
 

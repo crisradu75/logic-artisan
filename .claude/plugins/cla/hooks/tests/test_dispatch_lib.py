@@ -94,7 +94,7 @@ def test_run_hook_file_isolates_load_failure():
 
 def test_run_hook_file_loads_and_runs_a_real_sibling():
     # Sanity check the happy path still works end-to-end through run_hook_file.
-    result = lib.run_hook_file("warn-branch-base.py", '{"tool_input": {"command": "ls"}}')
+    result = lib.run_hook_file("warn-stray-scratch-artifact.py", '{"tool_input": {"command": "ls"}}')
     assert result.errored is False
     assert result.code == 0
 
@@ -256,12 +256,8 @@ def test_ensure_hooks_dir_importable_is_idempotent_and_adds_the_hooks_dir():
 
 
 _GIT_HOOK_FILES = [
-    "block-direct-push-to-main.py",
-    "warn-branch-base.py",
     "warn-stray-scratch-artifact.py",
-    "guard-worktree-isolation.py",
     "ask-destructive-git.py",
-    "ask-git-identity.py",
 ]
 
 

@@ -31,6 +31,24 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 _MUTATE = _PLUGIN_ROOT / "mutate.py"
 
 
+def _load_mutate():
+    """Import `mutate.py` for the few pure predicates worth unit-testing.
+
+    Every other test here drives it as a subprocess, which is right for
+    end-to-end behaviour but cannot reach a helper directly. `mutate.py` belongs
+    to no pytest scope, so it is loaded by path rather than imported by name.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_mutate_under_test", _MUTATE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+mutate = _load_mutate()
+
+
 def _make_scope(root: Path, *, with_tests: bool = True) -> tuple[Path, Path]:
     """A miniature pytest scope shaped like this repo's real ones.
 
@@ -127,6 +145,48 @@ def test_a_target_that_collects_no_tests_is_inconclusive_not_a_kill(tmp_path):
     assert "no tests were collected" in result.stdout
 
 
+@pytest.mark.parametrize(
+    "summary, ran, why",
+    [
+        ("1 failed, 3 passed in 0.4s", True, "a test genuinely failed"),
+        ("3 passed in 0.2s", True, "tests ran and passed"),
+        ("1 failed, 1 error in 2.0s", True, "a test failed alongside an error"),
+        # The pair that matters. Both exit 1 and both summarise as `1 error`;
+        # only the attribution differs. A mutation that breaks module
+        # construction blows up in fixture setup constantly, so calling that
+        # INCONCLUSIVE would report real kills as broken batches — which a
+        # first version of this predicate did, by keying on the count line.
+        ("ERROR tests/test_x.py::test_a\n1 error in 0.41s", True,
+         "a per-TEST error: the test was selected and its setup ran"),
+        ("ERROR tests/test_x.py\n!! Interrupted: 1 error during collection !!\n1 error in 0.46s",
+         False, "a COLLECTION error: no `::nodeid`, nothing ran"),
+        # The same collection failure WITHOUT the Interrupted banner. Whether
+        # pytest prints that banner varies with how the target is spelled, so
+        # the banner check cannot be the discriminator — the missing `::nodeid`
+        # is. Measured: with both cases present, mutating either guard alone
+        # used to survive, because each masked the other on the old corpus.
+        ("ERROR tests/test_x.py\n!! stopping after 1 failures !!\n1 error in 0.41s",
+         False, "a COLLECTION error with no banner: still no `::nodeid`"),
+        ("no tests ran in 0.01s", False, "nothing to run"),
+    ],
+)
+def test_killed_requires_evidence_that_a_test_actually_ran(summary, ran, why):
+    """`killed` must mean "a test failed", never merely "pytest exited 1".
+
+    Belt-and-braces, stated honestly: every collection failure I could construct
+    exits 2, which the exit-code mapping already routes to INCONCLUSIVE. I could
+    NOT reproduce an exit-1-with-zero-tests run, so this predicate guards a path
+    that may currently be unreachable. It is cheap, and the cost of being wrong
+    is the one failure this tool must never produce — manufacturing the
+    confidence it exists to supply.
+
+    The `1 error` case is not hypothetical in the other direction: a first draft
+    of this predicate accepted pytest's `1 error in 0.46s` collection summary as
+    proof a test had run.
+    """
+    assert mutate._a_test_actually_ran(summary) is ran, why
+
+
 def test_a_mutation_that_only_breaks_the_parse_is_inconclusive_not_a_kill(tmp_path):
     """The common failure of naive string mutation: the module stops importing,
     pytest exits 2, and no test asserted anything about the behaviour."""
@@ -164,7 +224,7 @@ def test_it_refuses_to_run_at_all_without_pytest(tmp_path):
 def test_the_restore_is_byte_exact_for_both_line_endings(tmp_path, ending):
     """`read_text`/`write_text` translate newlines, so restoring an LF file on
     Windows rewrote every line to CRLF — silently, and invisibly to `git diff`
-    for a path pinned `eol=lf`. This repo pins `cla` and `claw` that way because
+    for a path pinned `eol=lf`. This repo pins `cla` that way because
     a CRLF shebang breaks the POSIX launchers."""
     source, tests = _make_scope(tmp_path)
     raw = ending.join([b"def verdict():", b"    return 'ON'", b""])

@@ -318,7 +318,7 @@ def test_warns_for_a_file_outside_the_launch_directory(
 
     A session that enters a worktree after launch writes every file outside it,
     so keying solely off that variable made the hook return 0 for the rest of
-    the session, with no output. This plugin's own tooling (`claw`,
+    the session, with no output. This plugin's own tooling (
     `/cla:new-worktree`, worktree isolation) makes that the common path."""
     elsewhere = tmp_path_factory.mktemp("launched-here")
     (repo / REL).write_text(_words(200), encoding="utf-8")

@@ -18,11 +18,11 @@ Post-check: `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/proposal.md` ex
 
 The archive command warns about unticked task boxes when run via `--yes`; that's expected and not blocking.
 
-**First, enumerate the capabilities this change modifies** — a change can materialize MORE THAN ONE (see `references/project-context.md` for a real named precedent in this repo). List the change's own spec deltas: `ls openspec/changes/<change-name>/specs/` — each subdirectory there is one capability whose active `openspec/specs/<cap>/` the archive materializes. Stage **one `openspec/specs/<cap>/` path group per capability in that list**, not a single hardcoded one.
+**First, enumerate the capabilities this change modifies** — a change can materialize MORE THAN ONE (see `cla.io/overlays/spec-to-pr.md` for a real named precedent in this repo). List the change's own spec deltas: `ls openspec/changes/<change-name>/specs/` — each subdirectory there is one capability whose active `openspec/specs/<cap>/` the archive materializes. Stage **one `openspec/specs/<cap>/` path group per capability in that list**, not a single hardcoded one.
 
 **Pre-commit git-state + archive-scope checks (both required):**
 ```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
 git add openspec/changes/<change-name>/ openspec/changes/archive/<YYYY-MM-DD>-<change-name>/ openspec/specs/<cap1>/ [openspec/specs/<cap2>/ ...]
 git diff --name-only --cached
 ```
@@ -38,18 +38,14 @@ Inspect the `git diff --name-only --cached` output in Claude's context. Every st
 - **Over-staged** — if any staged path falls outside the set above (e.g. `openspec/changes/<some-other-change>/...`, or anything outside `openspec/`) → halt and surface to the user via `AskUserQuestion`.
 - **Under-staged** — confirm that for **every** capability directory listed under `openspec/changes/<change-name>/specs/`, a matching `openspec/specs/<cap>/spec.md` appears in the staged output. A capability the change modified whose active spec is NOT staged means the delta gets archived out of active changes but its active spec is never materialized → **silent active-spec drift** (the exact failure the archive step exists to prevent). The over-staging check alone cannot catch this — a missing path is invisible to a "reject outside paths" scan. If any capability's `spec.md` is missing from the staged set, stage it and re-run the diff before committing.
 
-Then commit (subject is one line, pass it inline). Pass `commit.py` the SAME specific archive-move path groups (one `openspec/specs/<cap>/` per capability), NOT `openspec/` — `commit.py` runs `git add -- <paths>` internally (it re-stages its path args), so a bare `openspec/` here would re-sweep the sibling untracked change dirs *after* the scope assertion above already passed, silently reintroducing the very cross-change contamination the assertion exists to catch. Never use `-A`:
+The staged set the assertion just validated is exactly what should land, so **commit it as it stands** — do not re-stage anything here. `openspec archive` has already moved the change directory off disk, so a `git add` naming a rename-source path fails with `did not match any files` and takes the whole commit with it. Subject is one line, passed inline:
 
 ```
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/commit.py --message "chore: archive <change-name>" openspec/changes/<change-name>/ openspec/changes/archive/<YYYY-MM-DD>-<change-name>/ openspec/specs/<cap1>/ [openspec/specs/<cap2>/ ...]
+git commit -m "chore: archive <change-name>"
 git push
 ```
 
-**Known `commit.py` failure on this commit shape — `did not match any files`.** `commit.py` re-stages its path arguments with `git add -- <paths>`, and `openspec archive` has already moved the change directory off disk. A path that was staged as a rename/delete source therefore no longer exists to re-add, and `git add` fails the whole call. **This is not a scope failure and not a reason to re-stage more broadly.** Confirm the two-sided scope assertion above already passed, then commit the ALREADY-STAGED set directly, bypassing `commit.py`:
-```
-git commit -m "chore: archive <change-name>"
-```
-Do not retry `commit.py` with extra paths, and do not fall back to `git add -A` — the staged set the assertion validated is exactly what should land. Continue to `git push` and the post-check below as normal.
+If you do find yourself needing to add a path you missed, add that one path (never `openspec/`, never `-A`) and re-run the two-sided scope assertion before committing — a bare `openspec/` re-sweeps the sibling untracked change dirs *after* the assertion passed, silently reintroducing the cross-change contamination the assertion exists to catch.
 
 **Push post-check (required):** `git push` exit 0 alone is NOT sufficient — there are real scenarios where it succeeds but the archive commit never reaches the PR (a `pre-push` hook rewrote/skipped the commit and exited 0; the orchestrator drifted onto a leaked branch and pushed *that* branch instead of `<branch>`; a detached HEAD after a Revise rebase pushed to a non-PR ref). Verify all of (each as a separate Bash call — no shell pipes or `$(...)`):
 ```

@@ -41,7 +41,7 @@ Colocated with the source decisions file (`cla.io/decisions/<stem>.md`) — same
 
 **Not a live status ledger.** It does not track which changes are authored/committed/reviewed — that would create a second source of truth that could drift from the actual git-tracked state of `openspec/changes/<name>/`. Resume always re-derives "is this change done" from the repository itself (Phase 3 step 1's tracked-file check), never from a status field in this plan. This mirrors `/cla:spec-to-pr`'s own resume philosophy: `probe_state.py` reads repo state, not a log file, specifically because a log can go stale or get lost in exactly the kind of local-machine incident this skill exists to survive — a plan file that also tried to be a status ledger would be exactly as fragile as the problem it's meant to solve.
 
-**Not append-only / not a ledger of runs.** Unlike `multi-pr`'s `cla.io/retro/multi-pr-runs.jsonl` (one line appended per completed chain, for future retro analysis), this file is written once per batch and never appended to again. There is no retro tooling over it and none is planned — see `multi-spec`'s own "What this skill deliberately does not do."
+**Not append-only / not a ledger of runs.** Unlike `spec-to-pr`'s `cla.io/retro/spec-to-pr-runs.jsonl` (one line appended per completed run, consumed by `/cla:spec-to-pr-retro`), this file is written once per batch and never appended to again. There is no retro tooling over it and none is planned — see `multi-spec`'s own "What this skill deliberately does not do."
 
 ## Resume read path
 
@@ -51,4 +51,4 @@ On re-invocation with the same (or the same auto-resolved-latest) decisions file
 2. If it exists, parse it and skip Phase 1's grouping entirely — the plan is already decided. Use its `batch_slug`/`branch` values directly in Phase 2 rather than re-deriving them.
 3. If it does not exist, this is a fresh run (or the very first attempt crashed before Phase 2 finished writing it) — run Phase 1's grouping in full, then Phase 2 writes the plan.
 
-A plan file that exists but is **untracked** (a crash landed between Phase 2's Write and its commit) is still safe to read and trust — re-deriving the grouping is wasted work the file already did; just commit + push it (via `commit.py`, per Phase 2's "Persist the plan now") before proceeding to Phase 3.
+A plan file that exists but is **untracked** (a crash landed between Phase 2's Write and its commit) is still safe to read and trust — re-deriving the grouping is wasted work the file already did; just commit + push it (`git add -- <the plan file>` then `git commit`, as Phase 2 does) before proceeding to Phase 3.

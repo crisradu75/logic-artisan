@@ -24,7 +24,7 @@ creative-writing-shaped work, so there's no fit for it here.)
 |---|---|---|---|
 | `Agent(subagent_type, model:)` | yes (per call) | **no** (inherits session) | Implement delegate, Revise round ≥2, escalate-up dispatches, `fact-gatherer`/`doc-sweeper` dispatches |
 | `Workflow` `agent(prompt, {model, effort, agentType, schema})` | yes | **yes** (per call) | Revise round 1 fan-out ONLY |
-| `.claude/plugins/cla/agents/*.md` frontmatter | yes (`model:`) | **no** (no effort key exists) | our own `fact-gatherer` / `doc-sweeper` |
+| `${CLAUDE_PLUGIN_ROOT}/agents/*.md` frontmatter | yes (`model:`) | **no** (no effort key exists) | our own `fact-gatherer` / `doc-sweeper` |
 
 The two haiku agents we own (`fact-gatherer`, `doc-sweeper`) get model-only pinning via frontmatter
 plus a terse-output instruction in their body — they're read-only (`Read`/`Grep`/`Glob` only) and
@@ -36,8 +36,8 @@ always supplies the exact list).
 | Dispatch | Model | Effort | Mechanism |
 |---|---|---|---|
 | Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding ONLY; triage never escalated) when session < Opus |
-| Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `.claude/plugins/cla/agents/fact-gatherer.md` |
-| Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `.claude/plugins/cla/agents/doc-sweeper.md` |
+| Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
+| Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
 | Revise R1 — `code-reviewer`, `silent-failure-hunter` | opus | medium | `Workflow` `agent()` — **never demoted** |
 | Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet | medium | `Workflow` `agent()` |
 | Revise R1 — `comment-analyzer` | haiku | low | `Workflow` `agent()` |
@@ -88,7 +88,7 @@ protected by dispatching *up*:
   Propose would otherwise pass to `Skill(openspec-propose)` and instructing it to run that same skill
   (or produce equivalent artifacts) itself, then report back. Continue inline once it returns.
 - **RETHINK-borderline Review verdict**: when the inline review (executed via
-  `.claude/plugins/cla/skills/review-change/references/checklist.md`) lands on a verdict at the FIX-FIRST/RETHINK
+  `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md`) lands on a verdict at the FIX-FIRST/RETHINK
   boundary, second it with an `opus` `Agent` fed the context brief before committing to the verdict.
 
 On an **Opus session this rule is a no-op** — the inline model already is Opus. There is no flag;

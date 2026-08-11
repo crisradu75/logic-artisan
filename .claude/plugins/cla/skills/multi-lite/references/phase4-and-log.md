@@ -1,6 +1,12 @@
-# phase4-and-log — Phase 4 final summary + the run-log recipe (full mechanics)
+# phase4 — Phase 4 final summary (full mechanics)
 
-The Phase 4 summary shape and the "Log the run" recipe. `SKILL.md`'s stubs for these carry the load-bearing invariant (log-only, best-effort, never blocks the run); this file carries the exact summary sections and the log/commit commands.
+The Phase 4 summary shape. `SKILL.md`'s stub carries the load-bearing invariant; this file carries the exact summary sections.
+
+This file used to also hold a "Log the run" recipe appending to
+`cla.io/retro/multi-lite-runs.jsonl`. That ledger held 4 records across five
+repos and no skill ever read it, so it was deleted along with the two other
+unread chain ledgers. Only `spec-to-pr-runs` and `codify-runs` remain, because
+only those two have a retro skill that consumes them.
 
 ## Phase 4 — Final summary
 
@@ -14,27 +20,23 @@ After every candidate has been run, merged-if-a-dependency, quarantined, or skip
 - **Out of scope**: the non-lite items skipped in Phase 1a, with their suggested route (`/cla:spec-to-pr` / `/cla:multi-spec`).
 - **Next steps**: point at merging the open PRs, and at re-running `/cla:multi-lite` after fixing a failed candidate to pick up its blocked-downstream subtree.
 
-## Log the run (best-effort, log-only)
+## Commit the run-notes file (best-effort)
 
-After the summary, assemble one counts-only JSON record per `references/run-log-schema.md` and pipe it to the validating helper (the sibling of `/cla:multi-pr`'s `log_chain_run.py` — `json.loads`-validates, size-checks the 4-KiB atomic-append ceiling, and appends UTF-8 bytes directly, so a malformed line can't silently poison the ledger the way a raw `printf >>` would):
-
-```
-python3 .claude/plugins/cla/skills/multi-lite/scripts/log_run.py <<'JSON'
-{"ts":"...", ...}
-JSON
-```
-
-It appends to `cla.io/retro/multi-lite-runs.jsonl`. Then commit **both** the ledger line and the run-notes file. Because `multi-lite` leaves independents' PRs open, Phase 3 normally ends with the primary clone's HEAD on some candidate's feature branch (the dependency-ordered last candidate is typically independent, so it's left open rather than merged) — so **return to `<base-branch>` first, unconditionally, whatever branch HEAD is on** (this is why the run-log lands cleanly, unlike a naive `--expect-branch <base-branch>` check that would fail from a feature branch):
+The per-run notes file (`cla.io/retro/multi-lite-run-notes-<date>.md`, created in
+Phase 1) is the resume artifact — commit it so a later session and another
+machine can read it back. Because `multi-lite` leaves independents' PRs open,
+Phase 3 normally ends with HEAD on some candidate's feature branch, so **return
+to `<base-branch>` first, unconditionally, whatever branch HEAD is on**:
 
 ```
 git checkout <base-branch>
 git pull
-python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py --expect-branch <base-branch>
-git add cla.io/retro/multi-lite-runs.jsonl cla.io/retro/multi-lite-run-notes-<date>.md
-git commit -m "chore: multi-lite run log"
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch <base-branch>
+git add cla.io/retro/multi-lite-run-notes-<date>.md
+git commit -m "chore: multi-lite run notes"
 git push
 ```
 
-**Verify the push landed** — `git rev-parse HEAD` vs `git ls-remote origin <base-branch>`, compared in-context — since this is a direct push, not one delegated to `commit-push-pr`. Best-effort and non-fatal — a missing log line never blocks the run; skip entirely if `CLAUDE_RETRO_DIR` points the ledger outside the repo, or if the run finished in a reactive-worktree pivot (it may not be able to reach `<base-branch>`; note it and move on). **No analyzer skill yet, by design** — same "wait until ~8–10 runs accumulate" posture the sibling chain skills take before proposing a retro analyzer.
+**Verify the push landed** — `git rev-parse HEAD` vs `git ls-remote origin <base-branch>`, compared in-context — since this is a direct push, not one delegated to `commit-push-pr`. Best-effort and non-fatal: skip it entirely if the run finished in a reactive-worktree pivot (it may not be able to reach `<base-branch>`; note it and move on).
 
-**If the push is blocked** (a repo's own `block-direct-push-to-main.py` or equivalent — the whole point of this step is a direct commit to `<base-branch>`, so a repo whose guard has no metadata-only exception will legitimately refuse it): don't reach for `ALLOW_PUSH_TO_MAIN=1` as a routine workaround — that escape hatch is for a genuine emergency, not a scheduled housekeeping step. Instead, fall back to a small branch + PR for just the ledger line and run-notes file: `git checkout -b chore/multi-lite-run-log`, commit the same two files there, push, `gh pr create`, then report the PR URL in the final summary as a "log PR — merge whenever" item alongside the candidates' own PRs. Note in the summary that this run took the fallback path, so a future run knows to check for it.
+**If the push is blocked** by the repo's `pre-push` guard — the whole point of this step is a direct commit to `<base-branch>` — don't reach for `ALLOW_PUSH_TO_MAIN=1` as a routine workaround; that escape hatch is for a genuine emergency, not scheduled housekeeping. Fall back to a small branch + PR for just the notes file: `git checkout -b chore/multi-lite-run-notes`, commit there, push, `gh pr create`, then report the PR URL in the final summary as a "log PR — merge whenever" item. Note in the summary that this run took the fallback path.
