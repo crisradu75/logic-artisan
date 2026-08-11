@@ -154,6 +154,15 @@ rather than by category; fold it in under a sensibly-named new section.
 
 ### Step 4 — Draft the overlay pointer additions (content only, never the skill-specific body)
 
+**Overlays found at the LEGACY location are read-only — never edit one in place.** Step 2 deliberately
+globs `${CLAUDE_PLUGIN_ROOT}/skills/*/references/project-context.md` so a repo mid-migration is still
+inspected, but that path is inside the plugin, and in every repo that installed the plugin the tree is
+a read-only cache: the edit fails, or lands somewhere the next update discards while reporting as
+applied. Run the check in `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`
+before drafting anything for such a file. Where it answers read-only, do not draft a pointer addition —
+instead recommend, in the Step 6 report, that the overlay be **moved** to `cla.io/overlays/<skill>.md`,
+which is repo content and writable. Only overlays already under `cla.io/overlays/` get pointer edits.
+
 For each per-skill overlay that restates a fact you're centralizing and does NOT yet carry a pointer to
 `cla.io/project-facts.md`, draft a **minimal, one-line pointer addition** using the graceful-degradation
 wording: "For repo-wide facts (members, commands, ports, affected-file map, doc-sweep paths), see
@@ -198,7 +207,9 @@ Ask the user to confirm before writing anything (`AskUserQuestion` or a plain ye
 This skill never silently applies its draft — the same "propose, don't silently apply" discipline
 `update-cla`'s adapt phase uses. On confirmation, write via `mkdir -p "$ROOT/cla.io"` (if needed) then
 `Write`/`Edit` each confirmed file. If the user wants changes, revise the draft and re-confirm rather
-than partially applying.
+than partially applying. **Every target must be repo content** — `cla.io/**` or a repo-level file.
+If a confirmed target resolves inside the plugin tree, stop and report it as a migration
+recommendation instead of writing it (Step 4).
 
 ### Step 8 — Report
 

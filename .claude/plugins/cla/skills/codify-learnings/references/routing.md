@@ -18,6 +18,15 @@ Read this before assigning a suggestion's target artifact or rung. `SKILL.md`'s 
 
 ## The escalation ladder
 
+**Three of these four rungs live inside the plugin, and the plugin is read-only
+in every repo that installed it.** Before routing anything, run the check in
+`references/plugin-writability.md`. Where it answers read-only, the `SKILL.md`,
+hook and script rungs are not available: the lesson goes to
+`/cla:report-upstream` instead, and a lesson that is genuinely about this repo
+goes to `cla.io/overlays/<skill>.md`, which is writable either way. Do not
+silently downgrade a core lesson to a local file — that reaches no other repo and
+does not change the prose that produced the miss.
+
 Rungs from weakest to strongest:
 
 ```

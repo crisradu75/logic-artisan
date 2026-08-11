@@ -94,7 +94,7 @@ Keep the whole report under ~40 lines. Long retros don't get acted on.
 
 ### 5. Optional: invite the user to apply edits
 
-**Check first whether the plugin is writable here.** Every target this retro proposes — `spec-to-pr/SKILL.md`, its references, the hooks — lives inside the plugin. When the plugin is installed from a marketplace that tree is a read-only, version-keyed cache: an edit either fails or lands somewhere the next update discards, while reporting as applied. If it is read-only, do not offer to apply; present the findings and route them to **`/cla:report-upstream`**, which files them against the canonical source where they can actually change the orchestrator for every repo.
+**Check first whether the plugin is writable here** — the procedure is in `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`. Every target this retro proposes — `spec-to-pr/SKILL.md`, its references, the hooks — lives inside the plugin. When the plugin is installed from a marketplace that tree is a read-only, version-keyed cache: an edit either fails or lands somewhere the next update discards, while reporting as applied. If it is read-only, do not offer to apply; present the findings and route them to **`/cla:report-upstream`**, which files them against the canonical source where they can actually change the orchestrator for every repo.
 
 End with: "Want me to apply any of these? Say `apply 1,3` or list the numbers."
 

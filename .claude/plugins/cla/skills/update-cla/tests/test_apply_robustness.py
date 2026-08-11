@@ -517,3 +517,53 @@ def test_a_single_oversized_asset_is_still_bounded():
         [{"asset_path": "a.md", "change_summary": "x" * 200_000}]
     )
     assert len(body) <= apply_mod._PR_BODY_LIMIT
+
+# --------------------------------------------------------------------------- #
+# Refusing to sync into a marketplace install
+# --------------------------------------------------------------------------- #
+
+
+def _settings(repo: Path, name: str, payload: dict) -> None:
+    (repo / ".claude").mkdir(parents=True, exist_ok=True)
+    (repo / ".claude" / name).write_text(json.dumps(payload), encoding="utf-8")
+
+
+@pytest.mark.parametrize("name", ["settings.json", "settings.local.json"])
+def test_refuses_to_sync_into_a_repo_that_installed_the_plugin(tmp_path, name):
+    """The tree is a read-only cache there: the write either fails or is thrown
+    away by the next plugin update, and this tool would report success."""
+    repo = tmp_path / "consumer"
+    _settings(repo, name, {"enabledPlugins": {"cla@some-marketplace": True}})
+    with pytest.raises(SystemExit) as excinfo:
+        apply_mod.assert_target_is_a_repo_not_an_installed_plugin(repo)
+    message = str(excinfo.value)
+    assert "read-only" in message
+    assert "report-upstream" in message
+
+
+def test_a_fresh_repo_with_no_settings_is_allowed(tmp_path):
+    """Onboarding is exactly what this tool is for. An earlier version of this
+    check asked whether the plugin directory sat inside the repo, which refused
+    every fresh repo — the case update-cla exists to serve — and every test
+    fixture besides."""
+    repo = tmp_path / "fresh"
+    repo.mkdir()
+    apply_mod.assert_target_is_a_repo_not_an_installed_plugin(repo)
+
+
+def test_an_unrelated_plugin_install_does_not_block_the_sync(tmp_path):
+    """Match on the plugin NAME, not on the presence of `enabledPlugins`. A repo
+    using other plugins is an ordinary repo."""
+    repo = tmp_path / "other"
+    _settings(repo, "settings.json", {"enabledPlugins": {"claude-md-management@x": True}})
+    apply_mod.assert_target_is_a_repo_not_an_installed_plugin(repo)
+
+
+def test_unreadable_settings_do_not_block_the_sync(tmp_path):
+    """Absent or corrupt settings are not evidence of an install; refusing on
+    them would make a malformed JSON file undeployable rather than merely
+    broken."""
+    repo = tmp_path / "corrupt"
+    (repo / ".claude").mkdir(parents=True)
+    (repo / ".claude" / "settings.json").write_text("{not json", encoding="utf-8")
+    apply_mod.assert_target_is_a_repo_not_an_installed_plugin(repo)
