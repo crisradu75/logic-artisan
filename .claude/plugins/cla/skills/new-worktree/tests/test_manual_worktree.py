@@ -227,24 +227,28 @@ def test_matching_paths_report_no_mismatch(repo):
     assert mw.casing_mismatch(repo) is None
 
 
-def test_a_case_only_difference_is_reported(tmp_path):
-    """Needs BOTH a case-insensitive filesystem and a `realpath` that
-    canonicalises case — which is Windows only.
+def test_a_case_only_difference_is_reported_end_to_end(tmp_path):
+    """`case_only` against a REAL filesystem, which needs both a case-insensitive
+    mount and a `realpath` that canonicalises case -- i.e. Windows.
 
-    The earlier guard skipped only on a case-SENSITIVE filesystem, leaving macOS
-    (APFS, case-insensitive by default) to take the assert path and fail against
-    a limit `casing_mismatch` documents in its own docstring: `os.path.realpath`
+    `casing_mismatch` states the limit in its own docstring: `os.path.realpath`
     canonicalises letter case only on Windows, so on a case-insensitive POSIX
-    filesystem the proxy this function uses cannot see `case_only` at all. That
-    is a platform limit of the detection, not a defect, so the test is
-    unreachable there — but it was failing rather than skipping, which made the
-    suite permanently red on the maintainer's own machine.
+    filesystem the abspath-vs-realpath proxy cannot observe `case_only` at all.
+    That is a platform limit of the detection, not a defect, so the condition
+    under test cannot arise here and this skips.
+
+    Skipping is only defensible because the sibling test below pins the same
+    branch everywhere by faking that one platform-specific behaviour. Do not
+    delete it and leave this one: `case_only` would then be executed by nothing
+    on any machine this suite actually runs on.
     """
     real = tmp_path / "Code"
     real.mkdir()
     probe = tmp_path / "code"
     if not probe.exists():
-        pytest.skip("filesystem is case-sensitive; this refusal cannot occur here")
+        pytest.skip(
+            "filesystem is case-sensitive; a case-only path difference cannot exist here"
+        )
     if os.name != "nt":
         pytest.skip(
             "os.path.realpath canonicalises letter case only on Windows, so the "
@@ -254,6 +258,39 @@ def test_a_case_only_difference_is_reported(tmp_path):
 
     m = mw.casing_mismatch(probe)
     assert m is not None
+    assert m["kind"] == "case_only"
+    assert m["as_given"].lower() == m["on_disk"].lower()
+    assert m["as_given"] != m["on_disk"]
+
+
+def test_a_case_only_difference_is_classified_on_any_platform(tmp_path, monkeypatch):
+    """The `case_only` branch on every platform, including this one.
+
+    The end-to-end test above can only run on Windows, and this repo has no CI --
+    so without this test that branch is executed by nothing, anywhere, and could
+    be deleted or reclassified with the suite still green.
+
+    What is platform-specific is `realpath` canonicalising case; the branching
+    logic under test is not. So fake exactly that one behaviour and leave
+    `casing_mismatch` real: it classifies purely on `abspath` vs `realpath`
+    (two strings), and the filesystem only ever served to make those differ.
+
+    `kind` is asserted, not just non-None: `path_indirection` also satisfies the
+    two comparisons below, so without it a misclassification passes.
+    """
+    real = tmp_path / "Code"
+    real.mkdir()
+    as_given = str(tmp_path / "code")
+    true_realpath = os.path.realpath
+    monkeypatch.setattr(
+        mw.os.path,
+        "realpath",
+        lambda p, *a, **kw: str(real) if str(p) == as_given else true_realpath(p),
+    )
+
+    m = mw.casing_mismatch(Path(as_given))
+    assert m is not None
+    assert m["kind"] == "case_only"
     assert m["as_given"].lower() == m["on_disk"].lower()
     assert m["as_given"] != m["on_disk"]
 

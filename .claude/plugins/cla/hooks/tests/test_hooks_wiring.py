@@ -512,12 +512,19 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
     always overwrote, so this was a regression, and it drifts from both
     launchers, which do clear it.
 
-    PATH is an EMPTY dir, not `/usr/bin`. The refusal branch is only reachable
-    when the probe finds no interpreter at all, and `/usr/bin/python3` exists on
-    macOS (Xcode CLT) — so the earlier form asserted the refusal on a box that
-    had a working python and failed there for a reason unrelated to the bug.
-    The probe needs no external binary (`command -v`, `[`, `echo` are builtins),
-    so an empty PATH is a faithful "no interpreter anywhere" on every platform."""
+    PATH must therefore contain no USABLE interpreter, which is why it points at
+    an empty directory. Not `PATH=""` -- some shells read an empty PATH as the
+    cwd, which is not the state this needs. And not a real system directory: the
+    refusal fires whenever the loop ends with `PYEXE` unset, which includes an
+    interpreter that was found but failed the >=3.8 check (the case the next test
+    covers), but a directory holding a WORKING python defeats this test
+    specifically, because the loop's `PYEXE=$p` then overwrites the stale value
+    and the missing-clear regression becomes invisible. `/usr/bin` is exactly
+    such a directory on macOS, where `/usr/bin/python3` is a working interpreter.
+
+    An empty directory needs nothing on PATH to work: on the refusal path the
+    probe runs only `command -v`, `[` and `echo`, all builtins in bash and in
+    every POSIX sh, and never reaches the `"$p" -c ...` liveness call."""
     empty = tmp_path / "empty-path"
     empty.mkdir()
     env = {"PATH": str(empty), "PYEXE": "/definitely/not/a/python"}
@@ -532,13 +539,21 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
 def test_probe_rejects_an_interpreter_that_exits_zero_for_everything(tmp_path):
     """A liveness check of `-c "import sys"` succeeds on Python 2.7 and on any
     wrapper that swallows `-c`. Asserting the version VIA STDOUT rejects both:
-    a silent stub prints nothing, a Python 2 prints 0."""
+    a silent stub prints nothing, a Python 2 prints 0.
+
+    PATH is the stub dir ALONE. It previously also held `/usr/bin`, which the
+    probe reaches: the loop falls through the rejected `python3` stub to `py`,
+    then to `python`, and `/usr/bin/python` is a working 3.8+ interpreter on any
+    distro with `python-is-python3` -- the probe then exits 0 and both asserts
+    below fail. That never fired on macOS only because `/usr/bin/python` was
+    removed in 12.3. Nothing here needs `/usr/bin`: the stub carries its own
+    `#!/bin/sh`, which the kernel resolves absolutely."""
     stub_dir = tmp_path / "stub"
     stub_dir.mkdir()
     stub = stub_dir / "python3"
     stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     stub.chmod(0o755)
-    env = {"PATH": f"{stub_dir}:/usr/bin"}
+    env = {"PATH": str(stub_dir)}
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     assert "SELECTED:" not in r.stdout or "SELECTED:\n" in r.stdout
