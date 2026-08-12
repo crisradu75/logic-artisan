@@ -510,8 +510,17 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
     clear `${PYEXE:-}` reads whatever the parent exported -- and the probe then
     hands every hook to it. The form this replaced (`PYEXE=$(command -v ...)`)
     always overwrote, so this was a regression, and it drifts from both
-    launchers, which do clear it."""
-    env = {"PATH": "/usr/bin", "PYEXE": "/definitely/not/a/python"}
+    launchers, which do clear it.
+
+    PATH is an EMPTY dir, not `/usr/bin`. The refusal branch is only reachable
+    when the probe finds no interpreter at all, and `/usr/bin/python3` exists on
+    macOS (Xcode CLT) — so the earlier form asserted the refusal on a box that
+    had a working python and failed there for a reason unrelated to the bug.
+    The probe needs no external binary (`command -v`, `[`, `echo` are builtins),
+    so an empty PATH is a faithful "no interpreter anywhere" on every platform."""
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    env = {"PATH": str(empty), "PYEXE": "/definitely/not/a/python"}
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     assert "SELECTED:/definitely/not/a/python" not in r.stdout

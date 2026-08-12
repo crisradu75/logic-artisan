@@ -228,11 +228,29 @@ def test_matching_paths_report_no_mismatch(repo):
 
 
 def test_a_case_only_difference_is_reported(tmp_path):
+    """Needs BOTH a case-insensitive filesystem and a `realpath` that
+    canonicalises case — which is Windows only.
+
+    The earlier guard skipped only on a case-SENSITIVE filesystem, leaving macOS
+    (APFS, case-insensitive by default) to take the assert path and fail against
+    a limit `casing_mismatch` documents in its own docstring: `os.path.realpath`
+    canonicalises letter case only on Windows, so on a case-insensitive POSIX
+    filesystem the proxy this function uses cannot see `case_only` at all. That
+    is a platform limit of the detection, not a defect, so the test is
+    unreachable there — but it was failing rather than skipping, which made the
+    suite permanently red on the maintainer's own machine.
+    """
     real = tmp_path / "Code"
     real.mkdir()
     probe = tmp_path / "code"
     if not probe.exists():
         pytest.skip("filesystem is case-sensitive; this refusal cannot occur here")
+    if os.name != "nt":
+        pytest.skip(
+            "os.path.realpath canonicalises letter case only on Windows, so the "
+            "abspath-vs-realpath proxy cannot detect case_only here (documented "
+            "limit in casing_mismatch)"
+        )
 
     m = mw.casing_mismatch(probe)
     assert m is not None
