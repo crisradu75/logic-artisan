@@ -30,7 +30,7 @@ Detection
   covers accidentally targeting a *different* linked worktree.
 - Deliberately does NOT block paths outside the whole repo family entirely
   (e.g. a memory directory under the user's home, or a different repo like an
-  update-cla source) — those are a different, legitimate pattern,
+  a sibling clone) — those are a different, legitimate pattern,
   not this bug.
 
 Escape hatch: set `ALLOW_WORKTREE_PATH_ESCAPE=1` for a deliberate exception.

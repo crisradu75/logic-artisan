@@ -2,7 +2,7 @@
 
 <!--
 Project-specific overlay for the `shape-decision` cla skill. This file is repo-local
-(never synced by update-cla). The generic SKILL.md supplies the procedure; this
+(never distributed with the plugin). The generic SKILL.md supplies the procedure; this
 file supplies the repo's facts. A skill runs fine against an empty stub — fill in
 only the sections its SKILL.md references, delete the rest.
 -->

@@ -64,75 +64,50 @@ older snapshots using the pre-extraction `.claude/skills/` + `.claude/retro/` la
 run-count snapshot is recorded here: PR #7 carried one and it was the first thing to go stale.
 `project-review` is the weakest case — it had never logged a run anywhere checked.
 
-**`update-cla` only flows source → consumer.** There is no reverse sync. A retro skill built while
-working in a consuming repo has to be contributed back manually (copy the skill files, open a PR
-against `logic-artisan`) before it becomes part of the canonical synced core.
+**Improvement flows one way: consumer → issue → release.** A retro skill built while working in a
+consuming repo has to be contributed back deliberately (`/cla:report-upstream`, or copy the skill
+files and open a PR against `logic-artisan`) before it becomes part of the canonical core.
 
 **Related, already established:** the same "don't build it until the ledger justifies it" call was
 re-tested for `codify-learnings` and held — the aggregator's own metrics said the current design
 was working and the window was below its stated bar. The threshold discipline in this item is the
 same one, applied earlier in the lifecycle.
 
-## Run `/cla:update-cla` inside `market-distiller-mcp` (must be run THERE, not from here)
+## Consumer migration off the deleted `update-cla` file-sync
 
-Its plugin is several generations stale and, uniquely among the consumers, carries **no local
-modifications at all** — so the sync is a pure fast-forward with nothing to reconcile. Measured
-against current `main`: **93 pending — 18 files it does not have, 75 source-advanced, 0
-local-advanced, 0 both-diverged.** That matches its own `cla-upstream.md`, which says its synced
-core is byte-clean and should stay that way.
+The `update-cla` engine and its `.cla-sync-lock.json` were deleted; the GitHub marketplace is the
+only distribution route. A consuming repo still on file-sync migrates once:
 
-The gap that matters: it has no `skills/new-worktree/scripts/manual_worktree.py`, which `claw`
-hard-depends on (`claw` exits 1 without it). That is why it has no `claw` at all — not a choice,
-just a sync that predates the script. It is also missing `ask-destructive-git.py` and
-`ask-git-identity.py`, so it currently has no force-push, `reset --hard`, or PR-merge
-confirmation.
-
-**Why this is not done from here.** `update-cla` is deliberately pull-based, and the skill's own
-rationale says why: a prior push design "forced the source-side Claude to adapt blind, sampling
-each target through thin slices — the result was mechanical copies." Running it from
-`logic-artisan` against that repo would reproduce exactly the failure mode the design rejects,
-across 93 files. Run it from inside `market-distiller-mcp`, where the adapting session has that
-repo's own `CLAUDE.md` and conventions loaded.
-
-**One manual step after, since the launchers now sync:** that repo will receive `cla`/`claw` for
-the first time, and `apply.py` writes content but not file mode — so `git update-index --chmod=+x cla claw`
-once, or `./claw` fails on any POSIX machine.
-
-## Migration notes for consumers on the next `update-cla` sync
-
-Two things a consuming repo needs to know when it pulls the current baseline. Both were once a
-detection mechanism in `update-cla` (reverted — it warned spuriously on the commonest sync shape,
-never fired for the consumers it existed for, and crashed on a malformed declaration). Handle them
-by hand until something better is built.
-
-**1. `warn-smoke-test-drift.py` needs a per-repo overlay or it silently does nothing.** It used to
-hardcode one consumer's paths; it now reads them from `hooks/smoke-test-drift.local.md`, and an
-absent overlay is a silent no-op. A repo that had the check working loses it on sync with no
-warning. To restore the previous behaviour exactly, create that file with:
-
-```
----
-component_path_substring: src/components/
-component_ext: .tsx
-i18n_path_substring: src/i18n/
-i18n_ext: .json
-smoke_test_relpath: test-app.mjs
----
+```bash
+claude plugin marketplace add crisradu75/logic-artisan
+claude plugin install cla@cris-logic-artisan --scope project
 ```
 
-A `*.local.md` leaf is never synced or overwritten, so this survives future updates.
+Then delete its now-inert `.claude/plugins/cla/.cla-sync-lock.json`, and delete the in-repo
+`.claude/plugins/cla/` copy if it kept one — running both an in-repo copy and a marketplace install
+registers every `/cla:*` skill twice, and nothing detects that.
 
-**2. Apply `hooks/` as a set, not file-by-file.** `block-worktree-path-escape.py` and
-`guard-worktree-isolation.py` import `run_git`/`clone_paths` from `_dispatch_lib.py`; five hooks
-import `GIT_GLOBAL_OPTS`/`strip_quoted_spans` from it as well. Applying an importer without a
-compatible `_dispatch_lib.py` is an ImportError at hook load — the dispatcher reports it, so it is
-audible rather than silent, but that guard does not run.
+Two things that used to be handled by the sync, now handled once at migration time:
 
-**If a detection mechanism is rebuilt**, it must: treat an asset already identical to source as
-satisfied (not as "missing from the group"); check overlay presence against local state rather
-than only when the asset is being rewritten (otherwise it never fires for already-synced repos —
-the entire affected population); and tolerate any malformed declaration shape, since the file is
-read from the source and one bad edit would break discovery for every consumer.
+**1. A per-repo overlay is required or a repo-tuned check silently does nothing.** Any hook or
+skill reading a `*.local.md` overlay treats an absent overlay as a no-op. A repo that had such a
+check working must author its overlay after installing; nothing warns.
+
+**2. Improvements now flow one way, through releases.** A skill improved while working in a
+consuming repo is reported with `/cla:report-upstream` (files an issue against this repo) and
+returns in the next release. There is no reverse sync and no per-asset multi-sourcing.
+
+## Widen the token guard's scan roots to match what the marketplace actually ships
+
+`conformance-checks`' `SOURCE_SCAN_ROOTS` covers `skills`/`agents`/`hooks`/`output-styles`, but the
+marketplace publishes `path: .claude/plugins/cla` — the whole directory. So `lib/`, the three
+`*-checks/` scopes, `run_tests.py`, and `mutate.py` reach every consuming repo unscanned for
+project tokens. The gap predates the `update-cla` removal and was widened, not created, by it.
+
+Not a one-line fix: the `*-checks/` scopes carry project tokens as deliberate test fixtures (see
+`test_token_list_is_curated_here.py`), so a fixture-aware exemption has to be designed first or the
+guard fails instantly on its own tests. Note the sibling path guard's `SCANNED_ROOTS` already
+includes `lib`, so the two lists are intentionally not identical today.
 
 ## `block-direct-push-to-main` — remaining non-coverage (was: known gaps)
 

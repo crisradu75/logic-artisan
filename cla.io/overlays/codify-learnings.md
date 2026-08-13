@@ -2,7 +2,7 @@
 
 <!--
 Project-specific overlay for the `codify-learnings` cla skill. This file is repo-local
-(never synced by update-cla). The generic SKILL.md supplies the procedure; this
+(never distributed with the plugin). The generic SKILL.md supplies the procedure; this
 file supplies the repo's facts. A skill runs fine against an empty stub — fill in
 only the sections its SKILL.md references, delete the rest.
 -->
@@ -15,7 +15,6 @@ repo-wide is the honest default.
 
 Narrow only when a session was genuinely dominated by one area, e.g.:
 - `scope: repo-wide (.claude/plugins/cla/hooks/)` — a session spent entirely in the guard layer
-- `scope: skills/update-cla` — a cross-repo sync/port session
 - `scope: repo-wide (cross-repo port from <peer-repo>)` — porting skills in from a peer
 
 ## Memory index glob
@@ -76,7 +75,7 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
 
 `logic-artisan` is the canonical home of CLA (Cris Logic Artisan), a Claude Code
 dev-workflow harness packaged as a plugin. No application code — the deliverable is the
-process layer, consumed by other repos via `update-cla`.
+process layer, installed by other repos from the GitHub marketplace.
 
 ## Infrastructure values
 

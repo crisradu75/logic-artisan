@@ -1,8 +1,8 @@
 # Pytest config for the repo-root launcher scripts (`cla`, `claw`, and their
 # .cmd twins). Not a skill and not a guard hook — like `consistency-checks/`,
 # it is a home for checks that belong to no single scope. The launchers live at
-# the repo root and are NOT in SCAN_DIRS, so `update-cla` never syncs them or
-# this scope; both guard this repo's own source.
+# the repo root, outside the directory the marketplace publishes, so neither they
+# nor this scope reach a consuming repo; both guard this repo's own source.
 #
 # These scripts were previously the only executable surface with no test at all,
 # and that gap shipped a real bug: `claw.cmd` passed the worktree name through

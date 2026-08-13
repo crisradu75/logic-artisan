@@ -31,7 +31,6 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 | **0. Bootstrap** (per repo, once) | `cla-init` | Scaffold the `cla.io/` tree + empty overlay stubs (structure only, never facts) |
 | | `sync-context` | Populate/reconcile `cla.io/project-facts.md` — the repo's shared facts (members, commands, ports, file maps) |
 | | `save-permissions` | Persist tool permissions granted this session to `.claude/settings.local.json` |
-| | `update-cla` | The retired file-sync updater. Superseded by the marketplace install; kept only while repos migrate |
 | **1. Discover & shape** | `feedback` | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
 | | (`opsx:explore`) | OpenSpec's thinking-partner mode for investigating a problem before committing to a change |
@@ -124,15 +123,15 @@ belongs to your repo goes in `cla.io/`.
 **Onboarding a fresh repo:** install (above) → `cla-init` (scaffold `cla.io/`) → `sync-context`
 (populate the facts) → install the `pre-push` hook (see *Guardrails*).
 
-`update-cla`, the old pull-based file-sync updater, is retired and exists only while the remaining
-repos migrate off it.
+The marketplace install is the only route in. `update-cla`, the old pull-based file-sync updater,
+has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can delete that too.
 
 ## Testing
 
 CLA's own suite runs in the repo that develops it, not in a repo that consumes it — the installed
-tree is read-only. Each skill *that ships tests* (5 today), plus `hooks/`, `lib/`,
+tree is read-only. Each skill *that ships tests* (4 today), plus `hooks/`, `lib/`,
 `conformance-checks/`, `consistency-checks/`, and `launcher-checks/`, is its own isolated pytest
-scope (own `pyproject.toml` + `tests/`) — 10 in all; several ship same-named helper modules, so
+scope (own `pyproject.toml` + `tests/`) — 9 in all; several ship same-named helper modules, so
 they can't share one pytest process. Run the whole suite at once:
 
 ```bash

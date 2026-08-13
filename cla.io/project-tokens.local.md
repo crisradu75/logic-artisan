@@ -1,8 +1,8 @@
 # project tokens — this repo's own vocabulary, never to appear in synced core
 
 Read as data by `tests/test_no_project_tokens.py`. One token per `- ` bullet; an inline
-`# comment` and surrounding backticks are stripped. This file is a `*.local.md` overlay, so
-`update-cla` never syncs it — each repo curates its own.
+`# comment` and surrounding backticks are stripped. This file is a `*.local.md` overlay living in
+the repo's own `cla.io/` tree, outside the distributed plugin directory — each repo curates its own.
 
 ## Why the source repo needs one at all
 

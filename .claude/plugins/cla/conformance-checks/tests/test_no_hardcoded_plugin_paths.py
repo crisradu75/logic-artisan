@@ -38,13 +38,6 @@ BAD = ".claude/plugins/cla"
 SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")
 SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
 
-# `update-cla` is the one legitimate user of the literal path: it SYNCS files
-# into `<destination>/.claude/plugins/cla/`, so those strings name a real
-# repo-relative target in another repo, not this plugin's own location. The
-# whole skill is deleted when file-sync distribution ends; this exemption goes
-# with it.
-EXEMPT_SKILLS = frozenset({"update-cla"})
-
 _PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -58,8 +51,6 @@ def _scanned_files():
                 continue
             parts = path.relative_to(_PLUGIN_ROOT).parts
             if "__pycache__" in parts or ".pytest_cache" in parts:
-                continue
-            if len(parts) > 1 and parts[1] in EXEMPT_SKILLS:
                 continue
             yield path
 
@@ -92,7 +83,7 @@ def test_the_scan_is_not_vacuous():
     """A guard that scans nothing passes forever, and two guards in this repo
     already did once."""
     files = list(_scanned_files())
-    # The real count is 97. Pinned near it, not comfortably below it, matching
+    # The real count is 99. Pinned near it, not comfortably below it, matching
     # the rule `test_subprocess_encoding.py` states for its own floor: lower it
     # to the new real count when something is deliberately deleted, never to a
     # number chosen to be safe from future deletions.
