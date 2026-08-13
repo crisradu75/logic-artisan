@@ -179,3 +179,37 @@ How "starting the task" actually works depends on where the work should happen:
   make them ask twice.
 
 If the user declines to start now, stop after the recommendation — don't push.
+
+## Log the run (last step, always)
+
+Append one counts-only line so the next `/cla:project-review` can decide whether this
+skill earns its place on evidence rather than assertion:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py right-model-runs.jsonl <<'JSON'
+{"ts": "<ISO-8601 UTC>", "task_class": "<one-or-two-word shape, e.g. refactor|review|research|prose>",
+ "recommended": {"model": "<opus|sonnet|haiku>", "effort": "<low|medium|high>"},
+ "session_model": "<the model this session was running>",
+ "started_here": true|false, "user_overrode": true|false}
+JSON
+```
+
+Counts only, no prose. A failure to write is non-fatal — never halt a run over a
+missing log line.
+
+### This ledger has a stated expiry — it is not permanent
+
+This repo deleted four ledgers that accumulated 19 records across five repos with no
+reader, and the rule that came out of it is: **an unread ledger is exhaust, not data.**
+This one is written with its reader and its end already named, so it cannot quietly
+become a fifth.
+
+- **Reader:** the next `/cla:project-review`. Its skill-portfolio dimension counts the
+  records and answers one question — does `right-model`'s recommendation differ from
+  what the user would have picked anyway, often enough to be worth a skill?
+- **Decision:** enough records and a real signal → keep the skill and **delete the
+  ledger**, the question being answered. Enough records and no signal → remove the
+  skill, and the ledger with it. Too few records to tell → that is itself the answer
+  about how much the skill gets used.
+- **Either way the ledger goes.** Nobody needs a permanent history of model
+  recommendations; what was needed was one measurement, once.

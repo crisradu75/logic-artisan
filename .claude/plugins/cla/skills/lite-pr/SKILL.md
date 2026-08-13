@@ -150,3 +150,15 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py` — reused directly for the pre-commit safety check.
 - `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/SKILL.md` — the full-weight sibling workflow; see its "Workflow phases" for what a graduated change looks like.
+
+**Mutation gate on a review-found fix (required).** A fix for a Critical/Important finding is a
+change like any other and earns the same evidence the original code needed — "the reviewer's
+finding is now handled" is not that evidence. Before the fix commit, run
+`python3 ${CLAUDE_PLUGIN_ROOT}/mutate.py <batch.py>` with a batch that breaks **what the fix
+touches**, not only what it targets: correcting one return path routinely breaks another, which is
+how a real fix here once traded a silent no-op on the default path for the identical no-op on the
+overlay path. A surviving mutant is either fixed or named in the Handoff report with a reason.
+
+A clean run is evidence about the mutants you thought of and nothing else — two commits in this
+repo each recorded "three mutations checked, all caught" and each shipped a critical a later
+review found. Treat it as one input to the ship decision, not the decision.
