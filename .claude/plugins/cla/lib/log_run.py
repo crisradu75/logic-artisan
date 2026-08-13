@@ -14,9 +14,10 @@ helper. Living at the plugin root instead of under `skills/<name>/scripts/`
 sidesteps that entirely: nothing imports it, the skills invoke it as a program.
 
 Three of those five ledgers had no reader at all (`multi-pr`, `multi-spec`,
-`multi-lite`) and were deleted rather than migrated. Only `spec-to-pr-runs`
-(132 records) and `codify-runs` (43) are consumed, by their respective retro
-skills.
+`multi-lite`) and were deleted rather than migrated. Only `spec-to-pr-runs` and
+`codify-runs` are consumed, by their respective retro skills. No record count is
+quoted here on purpose: it goes stale on the next append, and a stale number in a
+docstring reads as fact.
 
 Reads a JSON object from stdin (the run record the caller assembled from its
 own outcomes) and appends it as a single line to:

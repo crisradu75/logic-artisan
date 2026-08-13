@@ -27,56 +27,30 @@ claude plugin marketplace add crisradu75/logic-artisan
 claude plugin install cla@cris-logic-artisan --scope project
 ```
 
-**A local-directory marketplace is a development convenience, never a distribution route.** It was
-used once, to exercise the install before the catalog change was pushed, and it carries a trap worth
-naming: the catalog is then read from a working tree, so a locally-bumped `ref` advertises a tag that
-may never have been pushed — the install fails with nothing visibly wrong in the manifest. Sourcing
-the catalog from GitHub keeps catalog and tag moving together through one push.
+Cut the tag with **`claude plugin tag`** (shape `<name>--v<version>`); it refuses unless
+`plugin.json` and the marketplace entry already agree. **Current release: `cla--v0.9.3`.** `0.9.x`
+is the validation line; it becomes `1.0.0` once a real task has been run end-to-end through the
+plugin in a consuming repo.
 
-For developing the harness itself, use `--plugin-dir` (below) rather than any marketplace: it is the
-only mode that reads this working tree live. Every source type — including a local path — is copied
-into the versioned cache at `~/.claude/plugins/cache`, so an install is a snapshot, not a link.
+**A published tag is never moved** — cut it only from `main`, only after review. **Never publish
+from a local-directory marketplace.** Background for both rules, and the deleted `claw` launcher:
+DEVELOPER-GUIDE.md "Release and distribution history".
 
-Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
-unless `plugin.json` and the marketplace entry already agree.
-
-**Current release: `cla--v0.9.3`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
-task has been run end-to-end through the plugin in a consuming repo (the propagation decision's own
-Q7 gate — installing and resolving paths is verified, running a task through it is not).
-
-**A published tag is never moved.** `0.9.0` was cut, a consumer installed it, and the very next fix
-therefore became `0.9.1` rather than a re-tag — moving it would have changed what that consumer had
-already fetched. Cut the tag only from `main`, and only after the work is reviewed.
-
-The marketplace install is the only distribution mechanism. The legacy `update-cla` file-sync
-engine was deleted once it was superseded; a consuming repo still carrying a `.cla-sync-lock.json`
-can delete it, as nothing reads it any more.
-
-**Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
-place, from this working tree — required here because the skills/hooks read and write repo-local
-state under `cla.io/` and, while developing the harness, you want the working tree
-rather than a cached copy of a release. Use the
-`cla` (POSIX) / `cla.cmd` (Windows) launcher at the repo root instead of typing `claude` directly —
-it resolves its own absolute path, so the flag it prints/runs is `--plugin-dir <repo>/.claude/plugins/cla`
-regardless of your cwd:
+**Launching a session in THIS repo:** use the `cla` (POSIX) / `cla.cmd` (Windows) launcher at the
+repo root rather than typing `claude` directly. It resolves its own absolute path, so it always
+passes `--plugin-dir <repo>/.claude/plugins/cla` regardless of your cwd:
 
 ```bash
 ./cla   # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
 ```
 
-Without it, the skills/hooks are just inert files on disk — no `/cla:*` commands, no guard hooks.
-**Note:** `--permission-mode auto` bypasses Claude Code's normal per-action confirmation prompts —
-intentional for this harness, but worth knowing before you run it.
+`--plugin-dir` loads the plugin live from this working tree, so you run the harness you are
+editing. Without it the skills/hooks are inert files — no `/cla:*` commands, no guard hooks.
+**Note:** `--permission-mode auto` bypasses per-action confirmation prompts; the guard hooks are
+the safety layer.
 
-**Starting work in a worktree.** Use `/cla:new-worktree` at any point in a session — before
-starting, or once you realise mid-flight that the work wants isolation. There is no longer a
-penalty for deciding late.
-
-There used to be a second launcher, `claw`, whose only job was to create the worktree *before*
-Claude started. It existed to dodge `guard-worktree-isolation.py`, which wrote a presence
-heartbeat at SessionStart for any session in the primary clone and could block a second session
-from committing for an hour. That hook was deleted (0 recorded blocks across 127 session
-transcripts), so the workaround went with it.
+**Starting work in a worktree.** Use `/cla:new-worktree` at any point — before starting, or once
+you realise mid-flight that the work wants isolation. No penalty for deciding late.
 
 ## Commands
 

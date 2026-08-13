@@ -181,41 +181,53 @@ having chosen to run a chainer.
 ## 7. Parallel and safe: worktrees
 
 Git's HEAD is per-clone, not per-session — two concurrent sessions in the primary clone would
-collide on one branch. CLA's answer is worktrees, with a guard
-(`guard-worktree-isolation`) that blocks branch-create/switch/commit in the primary clone while
-another session is live there.
+collide on one branch. CLA's answer is worktrees.
 
-Two ways in, by when you decide you want isolation:
+One way in, at any point: **`/cla:new-worktree`**. Run it before you start, or the moment you
+realise mid-flight that the work wants isolation — the skill creates the worktree, migrates you,
+installs dependencies, and carries over gitignored env files (per-repo facts a plain `git worktree
+add` cannot know). Run inside a worktree that already exists, it detects that and runs the setup
+half only.
 
-- **Up front — `./claw <name>`.** Creates `.claude/worktrees/<name>` on branch `worktree-<name>`
-  with plain git *before* Claude starts, then launches inside it. Because the session never
-  touches the primary clone, it registers no presence heartbeat and blocks nobody. Run
-  `/cla:new-worktree` as the session's first action: it detects the worktree exists and runs only
-  its setup half (dependency install, gitignored env files carried over — per-repo facts the
-  portable launcher can't know).
-- **Mid-session — `/cla:new-worktree`.** Already working and only now want isolation? The skill
-  creates the worktree and migrates you. Caveat: the session already registered as present in the
-  primary clone, and that heartbeat ages out rather than clearing on migration — so prefer `claw`
-  when you know up front.
+There is no penalty for deciding late, which is why there is only one path. There used to be a
+second launcher, `claw`, whose only job was to create the worktree *before* Claude started — it
+existed to dodge a presence-heartbeat guard that could block a second session from committing for
+an hour. That guard was deleted (0 recorded blocks across 127 session transcripts), and the
+launcher went with it.
 
-A related guard, `block-worktree-path-escape`, stops a Write/Edit from escaping the worktree
-boundary from inside one — a common failure mode when a stale absolute path sneaks into a prompt.
+`block-worktree-path-escape` stops a Write/Edit from escaping the worktree boundary from inside
+one — a common failure mode when a stale absolute path sneaks into a prompt.
 
 ## 8. The guardrails you'll meet
 
-Hooks wire themselves from `hooks/hooks.json` at plugin load. Three severities:
+Hooks wire themselves from `hooks/hooks.json` at plugin load — no `settings.json` step. Two
+dispatchers each run several leaf hooks in one Python process (5 on the Bash/PowerShell matcher, 2
+on Edit/Write), plus `warn-wholesale-rewrite` wired directly on PostToolUse: **8 leaf hooks**, in
+three severities.
 
-- **Blocks** stop the tool call. You'll meet:
-  `block-cd-in-bash` (a bare `cd` persists and breaks later calls — use absolute paths),
-  `block-unsafe-recursive-delete`, `block-worktree-path-escape`,
-  `block-dated-stamps-in-prose` (hardcoded dates rot), `guard-worktree-isolation` (section 7).
+- **Blocks** stop the tool call:
+  `block-cd-in-bash` (the working dir is already repo root, and a `cd` persists across calls — use
+  absolute paths), `block-unsafe-recursive-delete` (`rm -rf` and its PowerShell equivalents),
+  `block-worktree-path-escape` (section 7).
 - **Asks** escalate to a permission prompt, because the action may be legitimate:
   `ask-destructive-git` (force-push, `reset --hard`, PR merges — see section 6 for the
-  `ALLOW_PR_MERGE` hatch), `ask-git-identity` (missing or unexpected commit identity).
-- **Warns** surface a caution and let the call through: `warn-branch-base`, `warn-lint-on-edit`,
-  `warn-comment-dates`, `warn-stacked-pr-merge`, `warn-stray-scratch-artifact`, and
-  `warn-smoke-test-drift` (config-driven via a `smoke-test-drift.local.md` overlay; a silent no-op
-  without one — which is this repo's own state, since it ships no product code).
+  `ALLOW_PR_MERGE` hatch). This matters more than it looks: the launcher runs
+  `--permission-mode auto`, which suppresses the usual confirmations, so this hook is what
+  restores one.
+- **Warns** surface a caution and let the call through: `warn-comment-dates`,
+  `warn-stacked-pr-merge` (a merge that could auto-close an open child PR),
+  `warn-stray-scratch-artifact` (scratch files left in the repo root), and
+  `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one — it
+  asks you to name what you dropped, since a `Write` keeps only what you carried across).
+
+**Direct pushes to `main` are not guarded by any of these.** That protection is a git `pre-push`
+hook at `hooks/git/pre-push`, which git hands the already-resolved refspec, so no command spelling
+can evade it and it covers pushes from a terminal or IDE too. A plugin cannot write to
+`.git/hooks`, so every clone installs it once:
+
+```bash
+cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+```
 
 When a hook fires, read its message before working around it — each one states why and what to do
 instead. The guards encode the harness's conventions; routing around them defeats the point.
@@ -308,6 +320,61 @@ Contributing to the harness rather than using it? The extra rules:
 - **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
   covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work
   lives in `TODO.md`.
+
+## Release and distribution history
+
+Background a working session rarely needs, kept out of `CLAUDE.md` so that file stays operative.
+
+**A local-directory marketplace is a development convenience, never a distribution route.** It was
+used once, to exercise the install before the catalog change was pushed, and it carries a trap worth
+naming: the catalog is then read from a working tree, so a locally-bumped `ref` advertises a tag that
+may never have been pushed — the install fails with nothing visibly wrong in the manifest. Sourcing
+the catalog from GitHub keeps catalog and tag moving together through one push.
+
+For developing the harness itself, use `--plugin-dir` (below) rather than any marketplace: it is the
+only mode that reads this working tree live. Every source type — including a local path — is copied
+into the versioned cache at `~/.claude/plugins/cache`, so an install is a snapshot, not a link.
+
+Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
+unless `plugin.json` and the marketplace entry already agree.
+
+**Current release: `cla--v0.9.3`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
+task has been run end-to-end through the plugin in a consuming repo (the propagation decision's own
+Q7 gate — installing and resolving paths is verified, running a task through it is not).
+
+**A published tag is never moved.** `0.9.0` was cut, a consumer installed it, and the very next fix
+therefore became `0.9.1` rather than a re-tag — moving it would have changed what that consumer had
+already fetched. Cut the tag only from `main`, and only after the work is reviewed.
+
+The marketplace install is the only distribution mechanism. The legacy `update-cla` file-sync
+engine was deleted once it was superseded; a consuming repo still carrying a `.cla-sync-lock.json`
+can delete it, as nothing reads it any more.
+
+**Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
+place, from this working tree — required here because the skills/hooks read and write repo-local
+state under `cla.io/` and, while developing the harness, you want the working tree
+rather than a cached copy of a release. Use the
+`cla` (POSIX) / `cla.cmd` (Windows) launcher at the repo root instead of typing `claude` directly —
+it resolves its own absolute path, so the flag it prints/runs is `--plugin-dir <repo>/.claude/plugins/cla`
+regardless of your cwd:
+
+```bash
+./cla   # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
+```
+
+Without it, the skills/hooks are just inert files on disk — no `/cla:*` commands, no guard hooks.
+**Note:** `--permission-mode auto` bypasses Claude Code's normal per-action confirmation prompts —
+intentional for this harness, but worth knowing before you run it.
+
+**Starting work in a worktree.** Use `/cla:new-worktree` at any point in a session — before
+starting, or once you realise mid-flight that the work wants isolation. There is no longer a
+penalty for deciding late.
+
+There used to be a second launcher, `claw`, whose only job was to create the worktree *before*
+Claude started. It existed to dodge `guard-worktree-isolation.py`, which wrote a presence
+heartbeat at SessionStart for any session in the primary clone and could block a second session
+from committing for an hour. That hook was deleted (0 recorded blocks across 127 session
+transcripts), so the workaround went with it.
 
 ## Cheat sheet: "I want to…" → which skill
 
