@@ -47,6 +47,7 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 | | `codify-retro` | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
 | | `spec-to-pr-retro` | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
 | | `report-upstream` | File a defect in CLA's own portable core as an issue against the canonical source |
+| | `release` | Cut a new plugin release: verify preconditions, bump manifest + catalog together, tag it |
 | **Any phase** (utility) | `right-model` | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 
 ### Typical flows

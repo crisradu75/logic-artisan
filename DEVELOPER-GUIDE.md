@@ -397,3 +397,4 @@ transcripts), so the workaround went with it.
 | Set up CLA in a new repo | marketplace install → `cla-init` → `sync-context` |
 | Pull newer CLA core into a repo | `/plugin marketplace update` |
 | Report a defect in the portable core | `report-upstream` |
+| Publish a new version of the plugin | `release` |

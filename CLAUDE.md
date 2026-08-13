@@ -232,6 +232,7 @@ retro over prior runs of another skill.
 | | `sync-context` | Populate/reconcile `cla.io/project-facts.md` |
 | | `save-permissions` | Persist session tool permissions to `.claude/settings.local.json` |
 | | `report-upstream` | File a defect in the plugin's own portable core as an issue against the canonical source |
+| | `release` | Cut a new plugin release: preconditions, the two-file version bump, `claude plugin tag` |
 | 1. Discover & shape | `feedback` | Capture rough notes → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
 | 2. Specify & plan | `multi-spec` | Turn a shaped decisions doc into a batch of OpenSpec proposals |
