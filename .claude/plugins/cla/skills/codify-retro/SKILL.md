@@ -36,7 +36,7 @@ Don't list every metric. Pick the 2-4 patterns that would actually change the lo
 
 **Effectiveness heuristics (the whole point):**
 - A lesson in `re_offenses` with `count ≥ 2` → the artifact it was escalated to is **too weak**; the escalation isn't working. Bump it UP the ladder (memory → hook/script). This is the single most important signal — a re-offense means the prior fix failed.
-- A lesson in `rejected_lessons` with `count ≥ 2` → stop proposing it; **retire** it from `references/failure-modes.md` (the SKILL.md's Step 6 already says to flag these — verify it's actually happening).
+- A lesson in `rejected_lessons` with `count ≥ 2` → stop proposing it; **retire** it from `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` (the SKILL.md's Step 6 already says to flag these — verify it's actually happening).
 - `suggestions.apply_rate < 0.5` over the window → the proposal bar is too low (too much rejected noise); tighten what qualifies as a suggestion (SKILL.md "Style": every suggestion tied to a concrete this-session event).
 
 **Routing heuristics:**
@@ -63,7 +63,7 @@ For each pattern, name the artifact and the edit, not a vague direction. Example
 - ✅ "A recurring rule re-offended 3× (re_offenses count: 3) while only ever escalated to `memory` — promote it to a `PreToolUse` hook, per the routing rule's 'hook-able re-offender' clause."
 
 - ❌ "failure-modes is too long."
-- ✅ "`references/failure-modes.md` at 64 bullets (trend 58→61→64); run a Step 2.6 consolidation — merge the 3 cross-platform stdout bullets, retire line 35 (now enforced by the skill-consumed-script honesty memory)."
+- ✅ "`${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` at 64 bullets (trend 58→61→64); run a Step 2.6 consolidation — merge the 3 cross-platform stdout bullets, retire line 35 (now enforced by the skill-consumed-script honesty memory)."
 
 Cite the metric in parentheses so the user can sanity-check the recommendation.
 
@@ -79,13 +79,13 @@ Keep the whole report under ~40 lines. Long retros don't get acted on.
 
 ### 5. Optional: invite the user to apply edits
 
-**Check first whether the plugin is writable here** — the procedure is in `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`. Every target this retro proposes — `codify-learnings/SKILL.md`, `references/failure-modes.md` — lives inside the plugin. When the plugin is installed from a marketplace that tree is a read-only, version-keyed cache: an edit either fails or lands somewhere the next update discards, while reporting as applied. If it is read-only, do not offer to apply; present the findings and route them to **`/cla:report-upstream`**, which files them against the canonical source where they can actually change the loop for every repo.
+**Check first whether the plugin is writable here** — the procedure is in `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`. Every target this retro proposes — `codify-learnings/SKILL.md`, `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` — lives inside the plugin. When the plugin is installed from a marketplace that tree is a read-only, version-keyed cache: an edit either fails or lands somewhere the next update discards, while reporting as applied. If it is read-only, do not offer to apply; present the findings and route them to **`/cla:report-upstream`**, which files them against the canonical source where they can actually change the loop for every repo.
 
 End with: "Want me to apply any of these? Say `apply 1,3` or list the numbers."
 
-Do NOT apply edits without explicit confirmation — retros are advisory. `codify-learnings/SKILL.md` and `references/failure-modes.md` are the usual targets, and both are editable **only where the writability check above says so**; in a repo that installed the plugin they are read-only and the findings go upstream instead. `openspec/**`, `**/scripts/**/*.py`, and vendored frameworks stay excluded per codify-learnings' own rules.
+Do NOT apply edits without explicit confirmation — retros are advisory. `codify-learnings/SKILL.md` and `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` are the usual targets, and both are editable **only where the writability check above says so**; in a repo that installed the plugin they are read-only and the findings go upstream instead. `openspec/**`, `**/scripts/**/*.py`, and vendored frameworks stay excluded per codify-learnings' own rules.
 
-**If applied edits changed `references/failure-modes.md`'s bullet count** (a retire or a consolidation), state the new count in the closing summary — e.g. "failure-modes.md now at 47 bullets (was 51)". This retro writes nothing to `codify-runs.jsonl` (its sole producer is codify-learnings' Step 7), so without that line the newest ledger record keeps claiming a count the file no longer has and the trend data reads as flat. Recount with `grep -c '^- \[ \]' ${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md`; the next `/cla:codify-learnings` run uses it for `maintenance.failure_modes_bullets`.
+**If applied edits changed `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md`'s bullet count** (a retire or a consolidation), state the new count in the closing summary — e.g. "failure-modes.md now at 47 bullets (was 51)". This retro writes nothing to `codify-runs.jsonl` (its sole producer is codify-learnings' Step 7), so without that line the newest ledger record keeps claiming a count the file no longer has and the trend data reads as flat. Recount with `grep -c '^- \[ \]' ${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md`; the next `/cla:codify-learnings` run uses it for `maintenance.failure_modes_bullets`.
 
 ## Sources of truth
 
