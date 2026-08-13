@@ -101,7 +101,7 @@ this; oversize records exit 1).
 
 ### `routing` object (model-routing telemetry)
 
-Added by `references/model-routing.md`'s routing rules. **Entirely optional and additive** — records
+Added by `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s routing rules. **Entirely optional and additive** — records
 predating it omit it and `aggregate.py` absorbs their absence silently (each rate's denominator counts
 only records that carried the relevant field, NOT `runs_analyzed`, so legacy runs never dilute the
 ratios). Emit it whenever any routed dispatch happened in the run.

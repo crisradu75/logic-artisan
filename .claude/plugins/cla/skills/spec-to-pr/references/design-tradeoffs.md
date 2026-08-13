@@ -36,7 +36,7 @@ Revise (PR-review fix rounds) commits as `fix: review round N` via a direct `git
 
 ## Revise round 1 — Workflow fan-out (round ≥2 stays direct-Agent)
 
-Round 1 dispatches the review agents via one `Workflow` script instead of parallel `Agent` calls (see SKILL.md Revise + `references/model-routing.md`). Chosen because `Workflow`'s `agent()` exposes the two knobs `Agent` lacks — per-call **effort** (opus bug-hunters at `medium` instead of inherited session effort) and **schema-forced findings** (no prose re-parsing) — and the merge/dedup runs in code at zero token cost.
+Round 1 dispatches the review agents via one `Workflow` script instead of parallel `Agent` calls (see SKILL.md Revise + `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`). Chosen because `Workflow`'s `agent()` exposes the two knobs `Agent` lacks — per-call **effort** (opus bug-hunters at `medium` instead of inherited session effort) and **schema-forced findings** (no prose re-parsing) — and the merge/dedup runs in code at zero token cost.
 
 **Trade-off accepted:** a second orchestration mechanism inside one phase, with quieter failure semantics (a crashed reviewer becomes a `null` in the results array rather than an inline error). Mitigated by two mandatory rules in SKILL.md: the completeness check (`reported < launched` → Revise `warn`) and the whole-Workflow-failure fallback to direct `Agent` dispatches. Round ≥2 stays on plain `Agent` calls — 1-2 small scoped dispatches don't repay the script overhead.
 

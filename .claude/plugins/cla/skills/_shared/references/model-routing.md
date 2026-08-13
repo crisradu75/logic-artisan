@@ -49,7 +49,7 @@ All six Revise agents are dispatched by their full registered `subagent_type` (`
 `pr-review-toolkit:silent-failure-hunter`, `pr-review-toolkit:pr-test-analyzer`,
 `pr-review-toolkit:type-design-analyzer`, `pr-review-toolkit:comment-analyzer`,
 `plugin-dev:skill-reviewer`); the run-log ledger key stays the **bare** name for the first five (see
-`references/run-log-schema.md`) since `plugin-dev:skill-reviewer` has no bare form.
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`) since `plugin-dev:skill-reviewer` has no bare form.
 
 ## Review-agent dispatch (shared: spec-to-pr Review + review-change + project-review)
 
@@ -95,7 +95,7 @@ On an **Opus session this rule is a no-op** — the inline model already is Opus
 detection is from the session-model line in the environment context. Revise triage itself is NOT
 escalated (it is adjudication over already-structured findings — Sonnet handles it).
 
-Record whether it fired in the run log (`routing.escalate_up_fired`, see `references/run-log-schema.md`).
+Record whether it fired in the run log (`routing.escalate_up_fired`, see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`).
 
 ## Why the bug-hunters are never demoted (phantom-finding economics)
 
@@ -106,7 +106,7 @@ plus, if it slips triage, a misleading "fix" commit and a follow-up revert. The 
 a bug-hunter get eaten by the triage overhead it generates. So demote only where a miss is cheap —
 comment nits (`comment-analyzer` → haiku), rubric checks (`pr-test-analyzer`, `type-design-analyzer`,
 `plugin-dev:skill-reviewer` → sonnet) — never the two whose job is to find the bug that ships. The
-`routing.revise_findings_by_tier` telemetry (found vs phantom **per agent**, see `references/run-log-schema.md`)
+`routing.revise_findings_by_tier` telemetry (found vs phantom **per agent**, see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`)
 is the standing check on this bet; `/cla:spec-to-pr-retro` flags a phantom rate concentrated on any one
 agent — including the sonnet/haiku-routed ones (`comment-analyzer`, `pr-test-analyzer`,
 `type-design-analyzer`, `plugin-dev:skill-reviewer`) relative to the opus bug-hunters. (The field is

@@ -219,6 +219,7 @@ everywhere) from *facts* (per-repo, never synced):
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   hooks/                       guard hooks + hooks.json wiring + tests
   output-styles/               the project's writing convention (force-for-plugin: true)
+  skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill)
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
     references/                supporting docs (portable; overlays live in cla.io/overlays/)

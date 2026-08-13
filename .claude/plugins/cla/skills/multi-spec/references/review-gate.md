@@ -29,7 +29,7 @@ A batch that reached this gate already has ≥2 changes each with their own full
 
 ## Step 4 — Dispatch three agents, once, over the whole batch
 
-Same model routing as `review-change/references/checklist.md` Step 4, per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/model-routing.md`'s "Review-agent dispatch" table:
+Same model routing as `review-change/references/checklist.md` Step 4, per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s "Review-agent dispatch" table:
 
 - **Agent 1 (Design Reviewer) → `opus`**
 - **Agents 2 & 3 (Task Reviewer, Spec & Codebase Reviewer) → `sonnet`**
