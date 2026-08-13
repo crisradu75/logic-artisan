@@ -3,10 +3,10 @@
 ## Purpose
 
 Specifies the architecture of the `cla` Claude Code plugin — the portable dev-workflow harness this
-repo canonically hosts and distributes to other repos via `update-cla`. Covers: the core/state
-boundary and in-place activation; the repo-state resolution seam every plugin script must use;
-the repo-neutral project-context overlay convention; the cross-repo sync mechanism (discover →
-3-way reconcile → apply, with a provenance lockfile and source-side deletion detection); the
+repo canonically hosts and distributes to other repos through its GitHub marketplace. Covers: the
+core/state boundary and the two activation modes (in-place for this repo, marketplace snapshot for a
+consumer); the repo-state resolution seam every plugin script must use;
+the repo-neutral project-context overlay convention; the
 fact/procedure separation every skill must observe and the mechanical guards that enforce it
 (conformance guard, project-facts staleness guard); the project-data scaffolding (`cla-init`) and
 context-refresh (`sync-context`) skills that populate a destination repo's `cla.io/` tree; and the
@@ -14,9 +14,7 @@ skill-authoring disciplines (progressive disclosure, thin-orchestrator execution
 synced core lean. This is the spec for the harness's own architecture, not for any downstream
 consumer's project — a consuming repo's own facts live behind the overlays this spec defines, never
 in this file.
-
 ## Requirements
-
 ### Requirement: Core/state boundary
 
 The reusable dev-workflow harness core SHALL live in an in-repo plugin at `.claude/plugins/cla/` (manifest `.claude/plugins/cla/.claude-plugin/plugin.json` with name `cla`), containing only stateless, portable assets: `skills/`, `agents/`, and `hooks/`. Repo-local, machine-local, or external assets MUST NOT be moved into the plugin and SHALL remain project-level in one of two homes:
@@ -33,13 +31,18 @@ The reusable dev-workflow harness core SHALL live in an in-repo plugin at `.clau
 
 ### Requirement: In-place activation and namespacing
 
-The `cla` plugin SHALL be activated in place via `claude --plugin-dir ./.claude/plugins/cla` (not a cached marketplace install), so its scripts run from the repo and can read/write repo-local state. Each workflow SHALL be a skill (no thin command wrappers) and SHALL be invoked under the plugin namespace as `/cla:<skill>`.
+The `cla` plugin SHALL be activated in place via `claude --plugin-dir ./.claude/plugins/cla` **in the canonical repo (development mode)**, so its scripts and skills run from the live working tree while the harness itself is being developed. A **consuming repo** SHALL activate the plugin via the marketplace install (`claude plugin marketplace add crisradu75/logic-artisan` then `claude plugin install cla@cris-logic-artisan --scope project`), which runs from a read-only versioned snapshot in the plugin cache — workable because all repo-local workflow state lives under the repo's own `cla.io/` tree, outside the plugin directory, so a read-only install reads and writes it unchanged. Each workflow SHALL be a skill (no thin command wrappers) and SHALL be invoked under the plugin namespace as `/cla:<skill>`.
 
 #### Scenario: Skills resolve under the cla namespace
 
-- **WHEN** a session is launched with `--plugin-dir ./.claude/plugins/cla`
+- **WHEN** a session is launched with `--plugin-dir ./.claude/plugins/cla` (canonical repo) or with the marketplace-installed plugin active (consuming repo)
 - **THEN** each harness workflow is invocable as `/cla:<skill>` (e.g. `/cla:spec-to-pr`, `/cla:project-review`, `/cla:shape-decision`)
 - **AND** no bare `.claude/commands/*.md` wrapper exists for any cla skill
+
+#### Scenario: A marketplace install needs no write access to the plugin tree
+
+- **WHEN** a consuming repo runs any cla skill from the cached marketplace install
+- **THEN** every repo-local read/write the skill performs targets `cla.io/` (or other repo paths), never the plugin cache directory
 
 #### Scenario: Internal composition uses the namespace
 
@@ -97,22 +100,6 @@ Project-specific content (repo-tuned review checks, monorepo-shaped agent prompt
 - **THEN** it lives once in `cla.io/project-facts.md` rather than co-located and restated in each skill's `references/`
 - **AND** a per-skill overlay that needs it carries a pointer to `cla.io/project-facts.md`, while per-skill overlays otherwise remain co-located under `references/`
 
-### Requirement: Cross-repo update preserves the overlay
-
-The `update-cla` skill SHALL update a repo's `.claude/plugins/cla/` from a canonical `cla` source repo while preserving every project-local overlay file — any file under `.claude/plugins/cla/` whose leaf filename is exactly `project-context.md` or matches the glob `*.local.md`. This preserve rule SHALL be enforced by `discover.py`'s `_is_excluded` (matching on the leaf filename, so overlay files never appear in `divergences.json` and are never overwritten) and documented in `update-cla`'s SKILL.md. The rule SHALL be defined by convention, not by any repo name.
-
-#### Scenario: Overlay survives an update
-
-- **WHEN** `update-cla` syncs newer core into `.claude/plugins/cla/`
-- **THEN** every `project-context.md` overlay file and every `*.local.md` overlay file is left unmodified
-- **AND** only non-overlay core assets are updated
-
-#### Scenario: discover.py excludes overlays by the neutral convention
-
-- **WHEN** `discover.py` walks the source tree and evaluates a file
-- **THEN** a file whose leaf name is `project-context.md` or ends with `.local.md` is excluded from the sync candidates (never surfaced as `divergent` or `new`)
-- **AND** the exclusion decision does not depend on any repository-name prefix
-
 ### Requirement: Guard hooks provided by the plugin
 
 The generic git/worktree guard hooks SHALL be provided by the plugin via `.claude/plugins/cla/hooks/hooks.json`, which MUST use the top-level `{"hooks": {…}}` wrapper (a bare `{"<Event>": …}` shape loads without error but never fires). Hook commands SHALL locate their script via `${CLAUDE_PLUGIN_ROOT}` and the repo via `${CLAUDE_PROJECT_DIR}`. Any project-level hooks specific to the host repo (outside the plugin's generic guard set) SHALL remain wired in that repo's own `.claude/settings.json`, out of the plugin.
@@ -127,126 +114,6 @@ The generic git/worktree guard hooks SHALL be provided by the plugin via `.claud
 
 - **WHEN** `.claude/plugins/cla/hooks/hooks.json` is authored
 - **THEN** its top level is a `"hooks"` object keyed by event name, not a bare event map
-
-### Requirement: Sync provenance lockfile
-
-`update-cla` SHALL maintain a per-repo sync provenance lockfile at `.claude/plugins/cla/.cla-sync-lock.json` in each destination repo. The lockfile SHALL be a JSON object keyed by the relative asset path (the same posix `asset_path` string `discover.py`/`apply.py` use), each value an object carrying `last_synced_sha256` (the sha256 of the adapted content actually WRITTEN to the local file at apply time — the exact bytes now on disk, which is the ancestor the next reconcile's local-side comparison returns to, NOT the raw source content's hash), `source_sha256` (the sha256 of the RAW SOURCE content those bytes were adapted from — the baseline the source-side comparison returns to), and `source` (the source repo's short name). Both hashes SHALL be recorded: either alone collapses the two comparisons onto one baseline and makes one of the four classification labels unreachable. The lockfile SHALL be written/updated inside `apply.py`'s write path (both `apply_worktree` and `apply_pr`), at the point the adapted content is written, with exactly one entry written or updated per file whose apply outcome is `wrote`; a file with any other outcome (`skipped_dirty_worktree`, `skipped_binary`, `skipped_malformed`, `failure`) SHALL leave its prior lock entry unchanged. A file whose outcome is `skipped_kept_local` SHALL update its entry: `keep_local` set to `true`, `last_synced_sha256` re-hashed from the local file on disk, and `source_sha256` advanced to the raw source the decision was made against — so the decision, and the source it was made against, survive the session. A subsequent `wrote` outcome for the same asset SHALL clear `keep_local`. `discover.py` SHALL surface a recorded `keep_local` as `kept_local_previously` on that asset's file record. In `pr` mode the lockfile SHALL be written before the sync commit (`git add -A`) so it is committed in the same PR as the applied files; in `worktree` mode it is written into the working tree alongside them. Provenance SHALL live only in the lockfile — asset frontmatter SHALL NOT be polluted and stays `name`/`description`/`allowed-tools`/`argument-hint`. A failure to write the lockfile SHALL be reported to stderr but SHALL NOT fail an apply run whose files already landed. The lockfile itself SHALL be excluded from the sync scan (it is per-repo provenance, never a synced asset) — it is a dotfile and lives outside `SCAN_DIRS`, so it never appears in `divergences.json`.
-
-#### Scenario: Apply records provenance for each written file
-
-- **WHEN** `apply` writes a file with outcome `wrote`
-- **THEN** `.claude/plugins/cla/.cla-sync-lock.json` gains or updates that asset's entry with `last_synced_sha256` set to the sha256 of the adapted content written to that file (the exact bytes on disk) and `source` set to the source repo's short name
-- **AND** a file whose outcome was `skipped_dirty_worktree`, `skipped_binary`, `skipped_malformed`, or `failure` keeps its prior lock entry unchanged
-
-#### Scenario: Apply refuses content bearing the doubled-newline corruption fingerprint
-
-- **WHEN** `apply` is about to write a file whose `adapted_content` (after CRLF/CR-to-LF normalization) has a newline count roughly 2x its non-empty line count
-- **THEN** the file is NOT written, its outcome is `skipped_malformed`, and its prior lock entry (if any) is left unchanged
-- **AND** `adapted_content` is otherwise normalized to LF line endings before being written, regardless of whether it also triggers this refusal
-
-#### Scenario: In pr mode the lockfile is committed in the same PR
-
-- **WHEN** `apply` runs in `pr` mode and writes at least one file with outcome `wrote`
-- **THEN** `.claude/plugins/cla/.cla-sync-lock.json` is written before the sync commit and is included in the same commit/PR as the applied files (not left uncommitted on the pushed branch)
-
-#### Scenario: The lockfile is never a sync candidate
-
-- **WHEN** `discover.py` walks the tree
-- **THEN** `.claude/plugins/cla/.cla-sync-lock.json` never appears in `divergences.json` as `divergent`, `new`, or any 3-way status
-- **AND** it is excluded both as a dotfile and by living outside `SCAN_DIRS`
-
-#### Scenario: Provenance does not touch frontmatter
-
-- **WHEN** an asset with YAML frontmatter is synced
-- **THEN** its frontmatter fields remain `name`/`description`/`allowed-tools`/`argument-hint` with no version/provenance key added
-- **AND** the provenance for that asset lives only in `.cla-sync-lock.json`
-
-### Requirement: Three-way reconcile classification
-
-`discover.py` SHALL classify a divergence against TWO recorded ancestors rather than one: `last_synced_sha256` (the adapted bytes last written to local) and `source_sha256` (the raw source those bytes were adapted from). Each side SHALL be compared against its own baseline: `local_moved` is `local_sha256 != last_synced_sha256`, and `source_moved` is `source_sha256(current) != source_sha256(recorded)`. When there is no lock entry for an asset, the classification SHALL fall back to today's 2-way `divergent`. When neither side moved, the status SHALL be `adapted` — local and source differ only because the adoption was adapted, and there is nothing upstream to pull. When only source moved, the status SHALL be `source-advanced`. When only local moved, the status SHALL be `local-advanced`. When both moved, the status SHALL be `both-diverged`. An identical file (`source_sha256 == local_sha256`) SHALL be dropped silently as today and never reach classification.
-
-`local-advanced` SHALL be reachable for an adapted file. Recording only the adapted ancestor made that label require a verbatim adoption, so a deliberate divergence could never receive it, while a fix introduced during the adapt phase landed inside the ancestor bytes and reported `source-advanced` — the label whose Phase-2 guidance is to adopt source. Two consuming repos reported the resulting silent revert independently.
-
-A lock entry lacking `source_sha256` (or carrying a non-string value) SHALL default it to `last_synced_sha256`, which collapses the four-way table to exactly the three labels the single-ancestor rules produced, and SHALL make `adapted` unreachable for such an entry. A missing `source_sha256` SHALL NOT be treated as a conflict.
-
-The classification SHALL be a label that guides Phase-2 adaptation; it SHALL NOT auto-merge content — `apply.py` treats every to-write file identically regardless of label.
-
-#### Scenario: Neither side moved since the sync
-
-- **WHEN** an asset's local sha equals `last_synced_sha256` and its source sha equals the recorded `source_sha256`
-- **THEN** `discover.py` classifies it `adapted` (the two differ only because the adoption was adapted; nothing upstream to pull)
-
-#### Scenario: Source advanced, local untouched
-
-- **WHEN** an asset's local sha equals `last_synced_sha256` and its source sha differs from the recorded `source_sha256`
-- **THEN** `discover.py` classifies it `source-advanced`
-
-#### Scenario: Local advanced, source untouched
-
-- **WHEN** an asset's source sha equals the recorded `source_sha256` and its local sha differs from `last_synced_sha256`
-- **THEN** `discover.py` classifies it `local-advanced`
-- **AND** this holds whether the asset was adopted verbatim or adapted
-
-#### Scenario: Both sides diverged
-
-- **WHEN** an asset's source and local shas both differ from the lock ancestor and from each other
-- **THEN** `discover.py` classifies it `both-diverged`
-
-#### Scenario: No lock entry falls back to 2-way
-
-- **WHEN** an asset differs between source and local but has no lockfile entry
-- **THEN** `discover.py` classifies it `divergent` (today's 2-way behavior), consulting no ancestor
-
-#### Scenario: A legacy lock entry without source_sha256 keeps the previous labels
-
-- **WHEN** an asset's lock entry was written before `source_sha256` existed, or carries a non-string value for it
-- **THEN** `discover.py` defaults that baseline to `last_synced_sha256`
-- **AND** produces exactly the label the single-ancestor rules produced, never `adapted`
-
-### Requirement: Source-side deletion detection
-
-`discover.py` SHALL walk the local `SCAN_DIRS` tree (applying BOTH the same `_is_excluded` overlay filter AND the same `_matches_filter` asset-path filter as the source walk) and detect source-side deletions, disambiguated by the lockfile. Because the local deletion walk applies the run's `filter_pattern` exactly as the source walk does, a scoped run (e.g. `discover <source> skills/foo/`) SHALL consider only lock-tracked assets within that scope, and SHALL NEVER surface an out-of-scope lock-tracked asset as a false `deleted-in-source`. A local asset (in scope) that is present in the lockfile (previously synced) but absent from the current source SHALL be surfaced as a deletion record with status `deleted-in-source`, carrying `asset_path`, `local_sha256`, and the lock's `last_synced_sha256` and `source`. A local asset with no lockfile entry SHALL be left alone (it is overlay or genuinely local content the source never had). A never-synced overlay file (leaf filename exactly `project-context.md` or ending `.local.md`, per the overlay-convention exclusion rule) SHALL NEVER be flagged as a deletion — it is `_is_excluded`, so it never enters the lockfile nor the local-tree walk. `update-cla` SHALL NEVER auto-delete a file: deletions SHALL be recorded in `divergences.json` (in a dedicated `deletions` array, distinct from `files`) and surfaced in the discover summary for manual review only. A rename SHALL surface as a `deleted-in-source` record for the old path plus a `new` record for the new path, which the Phase-2 LLM recognizes as a pair.
-
-#### Scenario: A previously synced asset removed from source is surfaced
-
-- **WHEN** a local asset is present in the lockfile but absent from the current source tree
-- **THEN** `discover.py` records it in the `deletions` array with status `deleted-in-source` and its lock provenance (`last_synced_sha256`, `source`)
-- **AND** no file is auto-deleted — the record is surfaced for manual review
-
-#### Scenario: A local-only asset with no lock entry is left alone
-
-- **WHEN** a local asset has no lockfile entry and is absent from source
-- **THEN** `discover.py` does not flag it as a deletion (it is overlay or genuinely local)
-
-#### Scenario: A never-synced overlay is never flagged as a deletion
-
-- **WHEN** a local file whose leaf name is `project-context.md` or ends with `.local.md` is absent from source
-- **THEN** it is excluded by `_is_excluded`, never enters the lockfile, and is never recorded as a deletion
-
-#### Scenario: A rename surfaces as delete plus new
-
-- **WHEN** a previously synced asset is renamed in source
-- **THEN** `discover.py` surfaces a `deleted-in-source` record for the old path and a `new` record for the new path
-
-#### Scenario: A scoped run does not surface out-of-scope deletions
-
-- **WHEN** `discover.py` runs with an asset-path filter and a lock-tracked asset outside that filter is absent from the current source
-- **THEN** it is NOT surfaced as `deleted-in-source` — the local deletion walk applies the same `_matches_filter` scope as the source walk, so only in-scope assets are considered
-
-### Requirement: Source-agnostic provenance with a soft hub convention
-
-The sync mechanism SHALL be source-agnostic: the lockfile records the `source` per asset, so asset X MAY canonically come from repo A and asset Y from repo B, and an improvement made in any repo SHALL be pullable everywhere by running `update-cla` against that repo for that asset. No single canonical hub SHALL be hard-coded in the scripts. `update-cla`'s SKILL.md SHALL document a soft, non-enforced "prefer the hub for generic core" default as guidance for newcomers only — not a constraint the tooling checks or enforces.
-
-#### Scenario: Different assets carry different canonical sources
-
-- **WHEN** two assets are synced from two different source repos over time
-- **THEN** each asset's lockfile entry records its own `source`, and neither pull assumes a single canonical hub
-
-#### Scenario: The hub preference is documentation, not enforcement
-
-- **WHEN** a user reads `update-cla`'s SKILL.md
-- **THEN** it describes a soft "prefer the hub for generic core" default
-- **AND** no script rejects or warns on a sync from a non-hub source
 
 ### Requirement: Skill fact/procedure separation
 
@@ -341,9 +208,9 @@ The `cla` plugin SHALL provide a `cla-init` skill at `.claude/plugins/cla/skills
 - the feedback inbox `cla.io/feedback/notes.md` seeded with a minimal header;
 - the rolling lessons-learned log `cla.io/lessons-learned/lessons-learned.md` seeded with a minimal header.
 
-`cla-init` SHALL additionally seed, when absent, a skeleton overlay stub at `cla.io/overlays/<skill>.md` for each skill that **reads its own `cla.io/overlays/<skill>.md` overlay as a source of repo facts** (per the Per-skill project-context overlay requirement) but does not yet have the file. A skill that merely *names* the overlay marker to document another mechanism — for example `update-cla`, which references the filename only to describe the sync-preservation convention — is NOT a consumer and SHALL NOT be seeded a stub. The stub SHALL open with a heading naming the owning skill and its role as a repo-local project overlay, and SHALL contain headed sections covering the fact categories the Per-skill project-context overlay requirement enumerates, so the stub is self-describing and can be filled in (or pruned) per destination repo. `cla-init` SHALL NOT populate the stub with real repo facts and SHALL NOT read, copy, or modify any asset-core file (a skill body, an agent, or a hook) — it only creates a stub file under `cla.io/overlays/`. `cla-init` SHALL NOT create, read, or modify the plugin manifest (`.claude-plugin/plugin.json`) or `.claude/settings.json`/`.claude/settings.local.json`; those remain per-repo manual onboarding steps.
+`cla-init` SHALL additionally seed, when absent, a skeleton overlay stub at `cla.io/overlays/<skill>.md` for each skill that **reads its own `cla.io/overlays/<skill>.md` overlay as a source of repo facts** (per the Per-skill project-context overlay requirement) but does not yet have the file. A skill that merely *names* the overlay marker to document another mechanism is NOT a consumer and SHALL NOT be seeded a stub. The stub SHALL open with a heading naming the owning skill and its role as a repo-local project overlay, and SHALL contain headed sections covering the fact categories the Per-skill project-context overlay requirement enumerates, so the stub is self-describing and can be filled in (or pruned) per destination repo. `cla-init` SHALL NOT populate the stub with real repo facts and SHALL NOT read, copy, or modify any asset-core file (a skill body, an agent, or a hook) — it only creates a stub file under `cla.io/overlays/`. `cla-init` SHALL NOT create, read, or modify the plugin manifest (`.claude-plugin/plugin.json`) or `.claude/settings.json`/`.claude/settings.local.json`; those remain per-repo manual onboarding steps.
 
-The recommended onboarding order SHALL be `cla-init` (scaffold project data) then `update-cla` (sync/adapt the asset core), and this order SHALL be documented in both `cla-init`'s own SKILL.md and `update-cla`'s SKILL.md, noting that `update-cla` never creates project data so skipping `cla-init` leaves the `cla.io/` tree and overlay stubs missing.
+The recommended onboarding order SHALL be: the marketplace install (`claude plugin marketplace add crisradu75/logic-artisan`, `claude plugin install cla@cris-logic-artisan --scope project`) to obtain the skills, then `cla-init` (scaffold project data), then `sync-context` (populate `cla.io/project-facts.md`). This order SHALL be documented in `cla-init`'s own SKILL.md, noting that the install provides the skills but never creates project data, so a repo that skips `cla-init` is left without the `cla.io/` tree and overlay stubs.
 
 #### Scenario: A fresh repo is scaffolded
 
@@ -364,7 +231,7 @@ The recommended onboarding order SHALL be `cla-init` (scaffold project data) the
 
 - **WHEN** `cla-init` seeds overlay stubs
 - **THEN** it seeds a `cla.io/overlays/<skill>.md` stub for exactly those skills that read their own overlay as a repo-fact source and do not already have one
-- **AND** a skill that only names the overlay marker to document another mechanism (e.g. `update-cla`'s sync-preservation convention) is NOT seeded a stub
+- **AND** a skill that only names the overlay marker to document another mechanism is NOT seeded a stub
 - **AND** each stub is a skeleton (heading naming the skill plus headed fact-category sections), never populated with real repo facts
 - **AND** no asset-core file (a skill body, an agent, or a hook) is read, copied, or modified in the process
 
@@ -378,22 +245,22 @@ The recommended onboarding order SHALL be `cla-init` (scaffold project data) the
 #### Scenario: Onboarding order is documented
 
 - **WHEN** the plugin's onboarding is documented
-- **THEN** both `cla-init`'s SKILL.md and `update-cla`'s SKILL.md state the order `cla-init` → `update-cla`
-- **AND** they note that `update-cla` never creates project data, so a repo that skips `cla-init` is left without the `cla.io/` tree and overlay stubs
+- **THEN** `cla-init`'s SKILL.md states the order: marketplace install → `cla-init` → `sync-context`
+- **AND** it notes that the install provides the skills but never creates project data, so a repo that skips `cla-init` is left without the `cla.io/` tree and overlay stubs
 
 ### Requirement: Conformance guard for the overlay separation
 
 The `cla` plugin SHALL include a pytest conformance guard that mechanically enforces the fact/procedure separation (the Skill fact/procedure separation and Project-specific overlay convention requirements). The guard SHALL be a generic, repo-agnostic checker that fails when any **non-overlay synced core file** contains a project-specific token, where the token list is itself a per-repo project overlay. The guard SHALL obey the same fact/procedure split it enforces: the checker is generic *procedure*; the token list is a repo-specific *fact* held in an overlay.
 
-**Home and portability.** The guard SHALL live in its own scope at `.claude/plugins/cla/conformance-checks/`, not inside any one skill: it enforces a rule about the whole plugin and MUST outlive the sync tool. Because that path is outside `SCAN_DIRS`, the guard's files SHALL be named individually in `discover.SCAN_FILES` so `update-cla` still carries them to destination repos as portable core for as long as file-sync distribution exists. It SHALL NOT be implemented as a Claude Code hook and SHALL NOT block or interrupt authoring; it runs only in the test gate. The checker SHALL resolve the plugin tree relative to its own file location (a fixed internal layout identical in every repo), not via any repo-specific absolute path or repository name.
+**Home and portability.** The guard SHALL live in its own scope at `.claude/plugins/cla/conformance-checks/`, not inside any one skill: it enforces a rule about the whole plugin. Because the marketplace install distributes the entire `.claude/plugins/cla/` directory as one versioned snapshot, the guard reaches every destination repo by construction, with no per-file enumeration required. **Known coverage gap:** that same whole-directory distribution means files outside the guard's scan roots — `lib/`, the `*-checks/` scopes, `run_tests.py`, `mutate.py` — now ship to consumers unscanned; widening the scan roots is deliberately NOT attempted here, because those scopes legitimately contain project tokens as test fixtures and would need a fixture-aware exemption first. The gap SHALL be recorded as a tracked follow-up rather than silently carried. The guard SHALL NOT be implemented as a Claude Code hook and SHALL NOT block or interrupt authoring; it runs only in the test gate. The checker SHALL resolve the plugin tree relative to its own file location (a fixed internal layout identical in every repo), not via any repo-specific absolute path or repository name.
 
 **Scan scope.** The guard SHALL scan every `SKILL.md` and every `references/**/*.md` file under `.claude/plugins/cla/skills/**`. It SHALL exclude from the scan: (a) overlay files — any file whose leaf name is exactly `project-context.md` or ends with `.local.md` (this covers every extracted fact overlay and the guard's own token-list file); (b) non-markdown / asset files; and (c) each scanned file's leading YAML frontmatter block (the content between the opening `---` on line 1 and its closing `---`). Because the exclusion is by leaf name, the token-list overlay is never flagged by the guard reading it. Frontmatter is excluded because a skill's `description:` / `argument-hint:` is trigger metadata that legitimately names the host repo and its apps so the skill fires — it is not portable procedure prose. The checker SHALL still report accurate 1-based line numbers for body violations (it skips frontmatter for matching, not for line counting).
 
-**Token list as a per-repo overlay.** The token list SHALL live at `cla.io/project-tokens.local.md` — per-repo data, held with the rest of it and outside the synced core entirely, so `discover.py` never syncs it, each destination repo supplies its own, and neither of the guard's scans can reach it. Its `*.local.md` leaf name keeps it recognizable under the repo-neutral overlay convention. The checker SHALL read the list as data — it MUST NOT hard-code any token in the checker source. The list SHALL be curated to distinctive, repo-specific compound tokens (e.g. package/app paths and product/tool names) and MUST NOT include generic words that legitimately appear in portable procedure prose, so false positives are controlled by curation rather than by the matcher. Matching SHALL be case-insensitive.
+**Token list as a per-repo overlay.** The token list SHALL live at `cla.io/project-tokens.local.md` — per-repo data, held with the rest of it and outside the plugin directory entirely, so a marketplace install never carries one repo's tokens to another, each destination repo supplies its own, and neither of the guard's scans can reach it. Its `*.local.md` leaf name keeps it recognizable under the repo-neutral overlay convention. The checker SHALL read the list as data — it MUST NOT hard-code any token in the checker source. The list SHALL be curated to distinctive, repo-specific compound tokens (e.g. package/app paths and product/tool names) and MUST NOT include generic words that legitimately appear in portable procedure prose, so false positives are controlled by curation rather than by the matcher. Matching SHALL be case-insensitive.
 
 **Failure output.** When a scanned core file contains a listed token, the guard SHALL fail and report each violation with the offending file's repo-relative path, the matched token, and the line number (with a line excerpt), one violation per line, surfacing all violations in a single run rather than stopping at the first.
 
-**Absent vs. empty token list.** If no token-list overlay is present, the guard SHALL pass trivially with a clear reason — a destination repo that has synced the guard but not yet curated a token list (the overlay is never seeded by sync) MUST NOT get a failing result. If the overlay file IS present but yields no tokens, the guard SHALL FAIL with a clear message: a populated list broken by a later formatting change is a defect, not a fresh repo, and silently skipping it would disable the safety check with no signal. The failure message SHALL note that deleting the file is the way to intentionally disable the guard. The overlay supplies data to the guard; a missing overlay does not gate whether the guard runs, but a present-yet-empty one is treated as a broken list, not a trivial pass.
+**Absent vs. empty token list.** If no token-list overlay is present, the guard SHALL pass trivially with a clear reason — a destination repo that has installed the plugin but not yet curated a token list MUST NOT get a failing result. If the overlay file IS present but yields no tokens, the guard SHALL FAIL with a clear message: a populated list broken by a later formatting change is a defect, not a fresh repo, and silently skipping it would disable the safety check with no signal. The failure message SHALL note that deleting the file is the way to intentionally disable the guard. The overlay supplies data to the guard; a missing overlay does not gate whether the guard runs, but a present-yet-empty one is treated as a broken list, not a trivial pass.
 
 #### Scenario: A project token in a synced core file fails the guard
 
@@ -417,7 +284,7 @@ The `cla` plugin SHALL include a pytest conformance guard that mechanically enfo
 
 - **WHEN** the checker runs
 - **THEN** it reads its tokens from the `*.local.md` token-list overlay rather than from any list embedded in the checker source
-- **AND** that overlay is excluded from `update-cla` sync (each destination repo supplies its own token list)
+- **AND** that overlay lives in the repo's own `cla.io/` tree, outside the distributed plugin directory, so each destination repo supplies its own token list
 
 #### Scenario: An absent token list is a trivial pass
 
@@ -445,7 +312,7 @@ The `cla` plugin SHALL include a pytest conformance guard that mechanically enfo
 
 ### Requirement: Consolidated project-facts file
 
-The `cla` plugin SHALL support a single, repo-level **consolidated project-facts file** at `cla.io/project-facts.md` that holds the repo-wide facts shared across multiple skills — at minimum the workspace member list, the dev/build/test commands, the infrastructure ports, the affected-file map, the doc-sweep path list, and package/path names. It SHALL live in the `cla.io/` per-repo data tree, which is outside `update-cla`'s sync scan roots (`SCAN_DIRS`), so the file is never synced across repos and needs no additional sync-exclusion. Each destination repo owns its own `cla.io/project-facts.md`.
+The `cla` plugin SHALL support a single, repo-level **consolidated project-facts file** at `cla.io/project-facts.md` that holds the repo-wide facts shared across multiple skills — at minimum the workspace member list, the dev/build/test commands, the infrastructure ports, the affected-file map, the doc-sweep path list, and package/path names. It SHALL live in the `cla.io/` per-repo data tree, which is outside the distributed plugin directory, so the file is never carried between repos by an install and needs no additional exclusion. Each destination repo owns its own `cla.io/project-facts.md`.
 
 A shared repo-wide fact SHALL exist in exactly one physical place — the consolidated file — and SHALL NOT be restated across per-skill overlays; a per-skill overlay or workflow that needs a shared fact SHALL reference it via a pointer to `cla.io/project-facts.md` rather than a copy. This one-physical-place rule is the canonical statement referenced by the **Per-skill project-context overlay**, **Project-specific overlay convention**, and **Skill fact/procedure separation** requirements.
 
@@ -457,10 +324,10 @@ Because the consolidated file is per-repo and may be absent (a fresh repo that h
 - **THEN** it is written once in `cla.io/project-facts.md`
 - **AND** it is not duplicated into any per-skill `cla.io/overlays/<skill>.md`
 
-#### Scenario: The consolidated file is per-repo and never synced
+#### Scenario: The consolidated file is per-repo and never distributed
 
-- **WHEN** `update-cla` syncs the plugin's portable core
-- **THEN** `cla.io/project-facts.md` is not a sync candidate (it lives outside `SCAN_DIRS`)
+- **WHEN** the plugin is installed or updated in a destination repo
+- **THEN** `cla.io/project-facts.md` is untouched by the install (it lives outside the distributed plugin directory)
 - **AND** each destination repo supplies its own `cla.io/project-facts.md`
 
 #### Scenario: A pointer degrades gracefully when the file is absent
@@ -471,7 +338,7 @@ Because the consolidated file is per-repo and may be absent (a fresh repo that h
 
 ### Requirement: Consolidated domain-terminology file
 
-The `cla` plugin SHALL support a single, repo-level **consolidated domain-terminology file** at `cla.io/terminology.md`, distinct in kind from `cla.io/project-facts.md`. Where the project-facts file holds mechanical, build-level facts, the terminology file holds **canonical internal-naming disambiguation**: one-sentence definitions for concepts specific to this repo's own codebase or product, each naming any rejected alias terms to avoid, in the entry format `**Term**: one-sentence definition — what it IS, not what it does. _Avoid_: rejected-alias-1, rejected-alias-2`. The terminology file is narrow by design — it SHALL NOT hold external, regulatory, or business-reference knowledge; a repo's own hand-authored glossary of that kind, if one exists, is untouched by this requirement and is never read, restructured, or superseded by it. It SHALL live in the `cla.io/` per-repo data tree, outside `update-cla`'s sync scan roots (`SCAN_DIRS`), so it is never synced across repos and needs no additional sync-exclusion. Each destination repo owns its own `cla.io/terminology.md`, created **lazily** — only once the first term resolves, not pre-scaffolded empty by `cla-init`.
+The `cla` plugin SHALL support a single, repo-level **consolidated domain-terminology file** at `cla.io/terminology.md`, distinct in kind from `cla.io/project-facts.md`. Where the project-facts file holds mechanical, build-level facts, the terminology file holds **canonical internal-naming disambiguation**: one-sentence definitions for concepts specific to this repo's own codebase or product, each naming any rejected alias terms to avoid, in the entry format `**Term**: one-sentence definition — what it IS, not what it does. _Avoid_: rejected-alias-1, rejected-alias-2`. The terminology file is narrow by design — it SHALL NOT hold external, regulatory, or business-reference knowledge; a repo's own hand-authored glossary of that kind, if one exists, is untouched by this requirement and is never read, restructured, or superseded by it. It SHALL live in the `cla.io/` per-repo data tree, outside the distributed plugin directory, so it is never carried between repos by an install and needs no additional exclusion. Each destination repo owns its own `cla.io/terminology.md`, created **lazily** — only once the first term resolves, not pre-scaffolded empty by `cla-init`.
 
 Unlike `cla.io/project-facts.md`, whose content is populated exclusively by the context-refresh skill in a batch reconcile pass, `cla.io/terminology.md` SHALL be **written inline** by any consuming skill, in-session, the moment a term resolves — never batched to a later pass — because the value of a disambiguation is tied to the conversational moment it was resolved in. The **context-refresh skill** (`sync-context`, per the **Context-refresh skill** requirement) SHALL own the terminology file's entry format and the reconciliation logic for existing entries (de-duplication and conflict-flagging) — as well as documenting that creation is lazy and performed by whichever consuming skill needs the file first, NOT by `sync-context` itself — documented in its own SKILL.md. `sync-context` SHALL NOT be the exclusive writer of the file's content and SHALL NOT itself create the file — any consuming skill applies the documented format directly via its own `Edit`/`Write` calls, without invoking `/cla:sync-context` as a sub-step.
 
@@ -507,10 +374,10 @@ A pointer to `cla.io/terminology.md` SHALL be a **soft, degrade-gracefully refer
 - **THEN** it follows the entry format and de-duplication/conflict-flagging rules documented in `sync-context`'s SKILL.md
 - **AND** the write itself is performed by the consuming skill directly, not by invoking `/cla:sync-context` as a sub-step
 
-#### Scenario: The terminology file is never synced across repos
+#### Scenario: The terminology file is never distributed across repos
 
-- **WHEN** `update-cla` syncs the plugin's portable core
-- **THEN** `cla.io/terminology.md` is not a sync candidate (it lives outside `SCAN_DIRS`)
+- **WHEN** the plugin is installed or updated in a destination repo
+- **THEN** `cla.io/terminology.md` is untouched by the install (it lives outside the distributed plugin directory)
 - **AND** each destination repo supplies its own `cla.io/terminology.md`
 
 ### Requirement: Context-refresh skill
@@ -519,7 +386,7 @@ The `cla` plugin SHALL provide a **context-refresh skill** at `.claude/plugins/c
 
 The refresh skill SHALL be **self-sufficient**: when `cla.io/project-facts.md` is absent it SHALL create it, so running the skill alone on a fresh repo populates the facts (acting as fact-initialization) rather than requiring pre-existing content. It SHALL **propose** (for user confirmation, not silently apply) new `project-tokens.local.md` entries when it detects a new distinctive app/package token, following the same curation discipline the conformance guard's token list requires.
 
-The refresh skill SHALL own fact **content** only: it populates `cla.io/project-facts.md` (the shared repo-wide facts) and the pointer lines in per-skill overlays. It SHALL NOT take over the structure-scaffolding role of `cla-init`, and the **skill-specific authored body** of a per-skill overlay (a skill's own incident history, bespoke checks, permission-set intent) remains human/LLM authored — `cla-init` scaffolds it as an empty stub, and it is filled independently of the refresh skill. `cla-init` remains unchanged — it scaffolds the `cla.io/` tree and empty per-skill overlay stubs and SHALL NOT populate facts. The documented onboarding order SHALL be `cla-init` (structure) then `/cla:sync-context` (content) then `update-cla` (portable core), stated in the refresh skill's SKILL.md, `update-cla`'s SKILL.md, and `cla-init`'s SKILL.md.
+The refresh skill SHALL own fact **content** only: it populates `cla.io/project-facts.md` (the shared repo-wide facts) and the pointer lines in per-skill overlays. It SHALL NOT take over the structure-scaffolding role of `cla-init`, and the **skill-specific authored body** of a per-skill overlay (a skill's own incident history, bespoke checks, permission-set intent) remains human/LLM authored — `cla-init` scaffolds it as an empty stub, and it is filled independently of the refresh skill. `cla-init` remains unchanged — it scaffolds the `cla.io/` tree and empty per-skill overlay stubs and SHALL NOT populate facts. The documented onboarding order SHALL be the marketplace install (obtain the skills) then `cla-init` (structure) then `/cla:sync-context` (content), stated in the refresh skill's SKILL.md and `cla-init`'s SKILL.md.
 
 The refresh skill SHALL additionally **document, in its own SKILL.md, the entry format and reconciliation logic for `cla.io/terminology.md`** (per the **Consolidated domain-terminology file** requirement), without being that file's exclusive writer — content is written inline by whichever consuming skill resolves a term. The refresh skill MAY perform a light, optional reconciliation pass over an existing `cla.io/terminology.md` (catching near-duplicate or conflicting entries), but SHALL NOT author its content from scratch.
 
@@ -557,8 +424,8 @@ The refresh skill SHALL additionally **document, in its own SKILL.md, the entry 
 #### Scenario: Onboarding order is documented
 
 - **WHEN** the plugin's onboarding is documented
-- **THEN** the refresh skill's SKILL.md, `update-cla`'s SKILL.md, and `cla-init`'s SKILL.md state the order `cla-init` → `/cla:sync-context` → `update-cla`
-- **AND** they note that `cla-init` scaffolds structure, `/cla:sync-context` fills fact content, and `update-cla` syncs the portable core
+- **THEN** the refresh skill's SKILL.md and `cla-init`'s SKILL.md state the order: marketplace install → `cla-init` → `/cla:sync-context`
+- **AND** they note that the install provides the skills, `cla-init` scaffolds structure, and `/cla:sync-context` fills fact content
 
 ### Requirement: Project-facts staleness guard
 
@@ -625,3 +492,4 @@ Adherence SHALL be measured by a static `wc` proxy on `SKILL.md` size (before/af
 - **WHEN** an edit claims a `SKILL.md` size reduction
 - **THEN** the reduction is validated with a `wc` before/after comparison
 - **AND** the durable guard against re-inflation is the skill's existing retro loop, NOT a mechanical size-guard or size-lint
+
