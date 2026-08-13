@@ -84,8 +84,9 @@ claude plugin install cla@cris-logic-artisan --scope project
 ```
 
 Then delete its now-inert `.claude/plugins/cla/.cla-sync-lock.json`, and delete the in-repo
-`.claude/plugins/cla/` copy if it kept one — running both an in-repo copy and a marketplace install
-registers every `/cla:*` skill twice, and nothing detects that.
+`.claude/plugins/cla/` copy if it kept one — an unreferenced copy is merely dead weight, but a repo
+that also launches with `--plugin-dir` pointed at it ends up running two registrations of the same
+skills, and nothing detects that.
 
 Two things that used to be handled by the sync, now handled once at migration time:
 
@@ -97,6 +98,30 @@ check working must author its overlay after installing; nothing warns.
 consuming repo is reported with `/cla:report-upstream` (files an issue against this repo) and
 returns in the next release. There is no reverse sync and no per-asset multi-sourcing.
 
+**Known consumer still to migrate: `market-distiller-mcp`.** Last measured against `main` it was
+93 files behind with zero local modifications, and it is missing `ask-destructive-git.py`, so it
+currently has no force-push / `reset --hard` / PR-merge confirmation. Naming it here on purpose —
+a migration nobody is named for is a migration that does not happen.
+
+**If a drift-detection mechanism is ever rebuilt**, these three constraints killed the last
+attempt and are worth keeping: treat an asset already identical to source as satisfied (not as
+"missing from the group"); check overlay presence against local state rather than only when the
+asset is being rewritten (otherwise it never fires for already-synced repos — the entire affected
+population); and tolerate any malformed declaration shape, since one bad edit would otherwise
+break discovery for every consumer.
+
+## Shipped-but-source-only check scopes fail in a consuming repo
+
+`consistency-checks/` and `launcher-checks/` sit inside `.claude/plugins/cla/`, so the marketplace
+ships them, but their assertions are about THIS repo's own source: repo-root `cla`/`cla.cmd`
+launchers, `>= 8` overlays, a curated token list, an installed `pre-push` hook. A consuming repo
+that runs the shipped `run_tests.py` gets failures it cannot fix and did not cause.
+
+Options, none chosen yet: move both scopes outside the published directory (they would stop being
+distributed at all, which is the intent); make each assertion skip when it detects it is not the
+source repo; or have `run_tests.py` discover a scope's "source-repo-only" marker and skip it. The
+first is cleanest but conflicts with `conformance-checks/` deliberately shipping.
+
 ## Widen the token guard's scan roots to match what the marketplace actually ships
 
 `conformance-checks`' `SOURCE_SCAN_ROOTS` covers `skills`/`agents`/`hooks`/`output-styles`, but the
@@ -104,10 +129,17 @@ marketplace publishes `path: .claude/plugins/cla` — the whole directory. So `l
 `*-checks/` scopes, `run_tests.py`, and `mutate.py` reach every consuming repo unscanned for
 project tokens. The gap predates the `update-cla` removal and was widened, not created, by it.
 
-Not a one-line fix: the `*-checks/` scopes carry project tokens as deliberate test fixtures (see
-`test_token_list_is_curated_here.py`), so a fixture-aware exemption has to be designed first or the
-guard fails instantly on its own tests. Note the sibling path guard's `SCANNED_ROOTS` already
-includes `lib`, so the two lists are intentionally not identical today.
+Measured, not assumed: adding each of `lib`, `conformance-checks`, `consistency-checks`, and
+`launcher-checks` to `SOURCE_SCAN_ROOTS` yields **zero** violations today — the `*-checks/`
+fixtures use synthetic names like `funnel-demo`, not curated tokens. So this is a small change. It
+is separated out only because it should land with a non-vacuity test proving the new roots are
+actually scanned; adding coverage without proving coverage is the failure mode the guard exists to
+prevent.
+
+One file cannot be covered by widening: the plugin's own `README.md` at the tree root legitimately
+contains `logic-artisan` in its install commands, so the roots stay a list of subdirectories rather
+than "the whole plugin tree". The sibling path guard's `SCANNED_ROOTS` already includes `lib`, so
+the two lists are intentionally not identical today.
 
 ## `block-direct-push-to-main` — remaining non-coverage (was: known gaps)
 

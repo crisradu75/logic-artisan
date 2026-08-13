@@ -120,7 +120,7 @@ since every consumer treats a missing overlay as the ordinary un-configured stat
 string `cla.io/overlays/` appears in the skill dir." Determine the consumer set as:
 
 - **(a) Scan scope** — only each skill's `SKILL.md` and its `references/*.md` files. Do NOT
-  scan `scripts/` or `tests/` (they name the marker as the sync-exclusion mechanism, not to consume it).
+  scan `scripts/` or `tests/` (they name the marker mechanically, not to consume an overlay).
   Seed the *candidate* set with `grep -rl 'cla.io/overlays/' "${CLAUDE_PLUGIN_ROOT}"/skills/*/SKILL.md "${CLAUDE_PLUGIN_ROOT}"/skills/*/references/*.md` (ignore no-match errors for skills without a `references/` dir), then apply the consumer test (b) and exclusions (c) to that candidate list — the grep only narrows *where to look*, it does not by itself decide consumer status.
 - **(b) Consumer test** — count a skill as a consumer only when that text *directs reading the overlay
   for this repo's facts*: a "see/read `cla.io/overlays/<skill>.md` for this repo's …" or "inject the

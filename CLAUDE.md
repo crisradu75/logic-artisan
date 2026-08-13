@@ -40,7 +40,7 @@ into the versioned cache at `~/.claude/plugins/cache`, so an install is a snapsh
 Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
 unless `plugin.json` and the marketplace entry already agree.
 
-**Current release: `cla--v0.9.2`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
+**Current release: `cla--v0.9.3`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
 task has been run end-to-end through the plugin in a consuming repo (the propagation decision's own
 Q7 gate — installing and resolving paths is verified, running a task through it is not).
 
@@ -54,7 +54,7 @@ can delete it, as nothing reads it any more.
 
 **Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
 place, from this working tree — required here because the skills/hooks read and write repo-local
-state (`cla.io/`, the sync lockfile) and, while developing the harness, you want the working tree
+state under `cla.io/` and, while developing the harness, you want the working tree
 rather than a cached copy of a release. Use the
 `cla` (POSIX) / `cla.cmd` (Windows) launcher at the repo root instead of typing `claude` directly —
 it resolves its own absolute path, so the flag it prints/runs is `--plugin-dir <repo>/.claude/plugins/cla`
@@ -115,9 +115,9 @@ existed to dodge).
 
 All four sit outside the synced set (`skills`/`agents`/`hooks`/`output-styles`), but they do not
 all mean the same thing by it. `consistency-checks` and `launcher-checks` guard this repo's own
-source and are meant to stay here. `conformance-checks` is portable core that happens to live
-outside `SCAN_DIRS`, so its files are named individually in `discover.SCAN_FILES` to keep reaching
-consuming repos — where both guards have caught real leaks. Several scopes
+source and are meant to stay here. `conformance-checks` is portable core that reaches
+consuming repos because the marketplace publishes the whole plugin directory — where both guards
+have caught real leaks. Several scopes
 ship same-named helper modules (e.g. `scripts/aggregate.py`), so they can't
 share one pytest process — this is why `run_tests.py` exists: it discovers every scope
 (dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once
@@ -195,9 +195,10 @@ everywhere) from *facts* (per-repo, never synced):
   only. A pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
   developer path, leaks into synced core — one scanner covers `SKILL.md`/`references/*.md` prose
   under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`
-  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Together that's every
-  `.py`/`.md` in the tree — a non-`.py`/`.md` synced-core file (`hooks/hooks.json`, a skill's own
-  `.mjs` script) is still outside both scanners; watch those by hand.
+  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Both scan only those four
+  roots, so three classes ship unscanned and need watching by hand: non-`.py`/`.md` files
+  (`hooks/hooks.json`, a skill's own `.mjs`), and — since the marketplace publishes the whole
+  directory — `lib/`, the `*-checks/` scopes, `run_tests.py`, and `mutate.py`. Tracked in TODO.md.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not

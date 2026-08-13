@@ -216,12 +216,22 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # reaches a consuming repo now also includes `lib/`, the three `*-checks/`
 # scopes, `run_tests.py`, and `mutate.py`, none of which these four roots cover.
 # Distribution is wider than this guard, and deleting the old comparison test
-# did not create that gap, only stopped hinting at it. Widening the roots is not
-# a one-line change: the `*-checks/` scopes carry project tokens as deliberate
-# test fixtures (see `test_token_list_is_curated_here.py`), so a fixture-aware
-# exemption has to exist first or this guard fails instantly on its own tests.
-# Tracked in TODO.md; the sibling path guard's `SCANNED_ROOTS` already includes
-# `lib`, so the two lists are intentionally NOT identical today.
+# did not create that gap, only stopped hinting at it.
+#
+# Measured, not assumed: adding each of `lib`, `conformance-checks`,
+# `consistency-checks`, and `launcher-checks` to this tuple yields ZERO
+# violations today — the `*-checks/` fixtures use synthetic names like
+# `funnel-demo`, not curated tokens. So widening is a small change, deferred to
+# its own PR only because it should land with a non-vacuity test proving the new
+# roots are actually scanned; adding coverage with no proof of coverage is the
+# failure mode this guard exists to prevent. Tracked in TODO.md.
+#
+# One file genuinely cannot be scanned by widening: the plugin's own
+# `README.md` at the tree root legitimately contains `logic-artisan` in its
+# install commands. That is why the roots stay a list of subdirectories rather
+# than becoming "the whole plugin tree". The sibling path guard's
+# `SCANNED_ROOTS` already includes `lib`, so the two lists are intentionally NOT
+# identical today.
 SOURCE_SCAN_ROOTS = ("skills", "agents", "hooks", "output-styles")
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 

@@ -25,8 +25,8 @@ The split that everything obeys: **procedure is portable, facts are per-repo.**
 - Portable procedure lives in the synced core (`skills/`, `agents/`, `hooks/`, `output-styles/`)
   and is identical in every repo that uses CLA.
 - Your repo's facts live in overlays (`cla.io/overlays/<skill>.md`, `*.local.md`) and in the
-  repo-root `cla.io/` tree (decisions, feedback, retro ledgers, `project-facts.md`). The updater
-  never touches them.
+  repo-root `cla.io/` tree (decisions, feedback, retro ledgers, `project-facts.md`). They sit in
+  the repo, not the plugin directory, so installing or updating the plugin never touches them.
 
 Keep that split in mind and the rest of the harness follows from it.
 
@@ -49,9 +49,10 @@ Everything after `./cla` is forwarded to `claude`, so `./cla --model opus` overr
 
 Three things to know before your first prompt:
 
-- **The plugin must load live from the working tree** (`--plugin-dir`), because the skills and
-  hooks read and write repo-local state. A cached marketplace install can't do that — without the
-  flag, the skills are inert files and no guard runs.
+- **In THIS repo, load the plugin live from the working tree** (`--plugin-dir`), so you are running
+  the harness you are editing rather than a cached snapshot of a release. A consuming repo does the
+  opposite and runs the marketplace install; that works because repo-local state lives in `cla.io/`,
+  outside the plugin directory. Without either, the skills are inert files and no guard runs.
 - **`--permission-mode auto` skips per-action confirmation prompts.** Intentional — the guard
   hooks are the safety layer — but know it before you run it.
 - **The CLA output style applies automatically** (`force-for-plugin: true`): short sentences,
@@ -287,7 +288,7 @@ Contributing to the harness rather than using it? The extra rules:
   ```
 
   Both green is the only gate before a PR. Watch the skip count in the summary — a skipped guard
-  has not run (three symlink tests always skip on Windows).
+  has not run (one pre-push permission-bit test always skips on Windows).
 
 - **Never run bare `pytest` from the repo or plugin root.** Each scope (4 skills with tests, plus
   `lib/`, `hooks/`, `conformance-checks/`, `consistency-checks/`, `launcher-checks/`) is isolated

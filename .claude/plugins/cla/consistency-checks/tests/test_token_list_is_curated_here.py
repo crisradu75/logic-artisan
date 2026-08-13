@@ -11,8 +11,9 @@ cannot find the list — so a path typo, a rename, or a move (the list travelled
 from the old sync skill's `references/` to `cla.io/` when the guards were rescued
 into their own scope) turns the guard off with a green suite and no signal.
 
-This check lives in `consistency-checks/`, which is NOT synced, precisely so the
-portable guard keeps its portable behaviour while this repo gets the strict one.
+This check lives in `consistency-checks/`, which holds this repo's own
+source-repo assertions, precisely so the portable guard keeps its portable
+behaviour while this repo gets the strict one.
 """
 
 from __future__ import annotations

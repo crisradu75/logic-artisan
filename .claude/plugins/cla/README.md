@@ -18,8 +18,8 @@ lessons-learned) in the repo's own `cla.io/` tree.
   (`lite-pr`, `spec-to-pr`) stop at an **opened PR**; the `multi-*` chainers may merge a dependency
   PR to unblock its dependents during an unattended run — but nothing here deploys, and no PR is
   merged without you having chosen to run a chainer.
-- **Isn't:** a store of project facts. Those live in `cla.io/` and per-skill overlays, which the
-  cross-repo updater never touches.
+- **Isn't:** a store of project facts. Those live in `cla.io/` and per-skill overlays, which sit in
+  the repo rather than the plugin, so no install touches them.
 
 ## The software life cycle, phase by phase
 
@@ -141,7 +141,7 @@ python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each p
 
 Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`. The one Node
 script (`project-review/scripts/mechanical-checks.mjs`) has its own sibling `node --test` suite,
-which `run_tests.py` **does** run as an 11th entry — invoke it alone only while iterating on it:
+which `run_tests.py` **does** run as a 10th entry — invoke it alone only while iterating on it:
 
 ```bash
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs

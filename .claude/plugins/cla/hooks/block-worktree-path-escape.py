@@ -29,8 +29,8 @@ Detection
   OUTSIDE the current worktree's own root (`--show-toplevel`). This also
   covers accidentally targeting a *different* linked worktree.
 - Deliberately does NOT block paths outside the whole repo family entirely
-  (e.g. a memory directory under the user's home, or a different repo like an
-  a sibling clone) — those are a different, legitimate pattern,
+  (e.g. a memory directory under the user's home, or a different repo such
+  as a sibling clone) — those are a different, legitimate pattern,
   not this bug.
 
 Escape hatch: set `ALLOW_WORKTREE_PATH_ESCAPE=1` for a deliberate exception.

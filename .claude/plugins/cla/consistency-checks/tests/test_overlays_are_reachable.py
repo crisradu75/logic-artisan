@@ -12,8 +12,9 @@ Measured, not assumed: when the overlays moved from `skills/*/references/` into
 overlay dir, and the branch-prefix reader pointed at a non-existent path — both
 SURVIVED the whole suite.
 
-These checks live in `consistency-checks/`, which is not synced, so the portable
-readers keep their lenient behaviour while this repo gets the strict one. Each
+These checks live in `consistency-checks/`, which holds this repo's own
+source-repo assertions, so the portable readers keep their lenient behaviour
+while this repo gets the strict one. Each
 asks the READER where it looks rather than recomputing the path here — the same
 lesson as `test_token_list_is_curated_here.py`, where a check that computed its
 own path passed while the guard it was vouching for was looking elsewhere.
