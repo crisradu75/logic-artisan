@@ -16,6 +16,11 @@ Reviews the repo's `cla.io/retro/spec-to-pr-runs.jsonl` log and proposes targete
 
 ## Workflow
 
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/retro-skeleton.md` first** — it carries the
+five workflow steps, the report shape, the apply-gate, and the sources-of-truth list that every
+retro shares. This body supplies only what is specific to the orchestrator loop: the aggregate
+command and the interpretation heuristics.
+
 ### 1. Read the aggregated metrics
 
 ```bash
@@ -70,44 +75,16 @@ If schema-integrity rows are non-zero, fix the producer (`spec-to-pr/references/
 
 Single-digit run counts in a category mean "interesting anecdote, not a pattern" — call them out as such, don't propose changes.
 
-### 3. Propose specific edits
+### 3-5. Propose, report, and optionally apply
 
-For each pattern, name the artifact and the edit, not a vague direction. Examples:
+Per the shared skeleton. Worked examples in this loop's own vocabulary:
 
-- ❌ "Improve the test phase."
-- ✅ "`spec-to-pr/SKILL.md` Test section: bump `--test-rounds` default from 3 → 5 (Test hit cap on 4/10 runs; mean rounds_used 2.8 suggests one more round would clear most)."
+- ❌ "Review is too slow."
+- ✅ "In `spec-to-pr/SKILL.md`'s Review size gate, lower the large-change threshold to `a > 4` — 7 of 12 runs gated Small and then surfaced Important findings in Revise (`review_gate: small` with `revise_findings >= 3`)."
 
-- ❌ "The skill-reviewer agent is too noisy."
-- ✅ "`spec-to-pr/SKILL.md` Revise agent-selection table: narrow the `plugin-dev:skill-reviewer` trigger from 'any SKILL.md touched' to 'SKILL.md frontmatter changed OR new skill created' — current trigger fires on 9/10 runs (dispatches: 9, total runs: 10), but most of those edits don't change skill triggering behavior."
-
-Cite the metric in parentheses so the user can sanity-check the recommendation against the data.
-
-### 4. Output shape
-
-Render a Markdown report with three sections, in this order:
-
-1. **Window** — runs analyzed, date range.
-2. **Patterns** — the 2-4 load-bearing patterns, one paragraph each, with the metric in parens.
-3. **Proposed edits** — numbered list. Each entry: target file + section, the specific change, the metric that justifies it.
-
-Keep the whole report under ~40 lines. Long retros don't get acted on.
-
-### 5. Optional: invite the user to apply edits
-
-**Check first whether the plugin is writable here** — the procedure is in `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`. Every target this retro proposes — `spec-to-pr/SKILL.md`, its references, the hooks — lives inside the plugin. When the plugin is installed from a marketplace that tree is a read-only, version-keyed cache: an edit either fails or lands somewhere the next update discards, while reporting as applied. If it is read-only, do not offer to apply; present the findings and route them to **`/cla:report-upstream`**, which files them against the canonical source where they can actually change the orchestrator for every repo.
-
-End with: "Want me to apply any of these? Say `apply 1,3` or list the numbers."
-
-Do NOT apply edits without explicit confirmation — retros are advisory.
-
-## Sources of truth
-
-- **Schema reference:** see `aggregate.py`'s module docstring for exact field names emitted.
-- **Log format:** see `lib/log_run.py` for what gets written per run.
-- **What to log:** see `spec-to-pr/references/run-log-schema.md` (schema + per-field obligations).
+The usual apply targets are `spec-to-pr/SKILL.md`, its `references/*.md`, and the shared
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`.
 
 ## When NOT to use
 
-- For a one-off /cla:spec-to-pr issue ("this run warned, why?") — read the PR + transcript, don't aggregate.
-- Before ~5 runs accumulate — noise > signal.
-- To debug a specific bug in `spec-to-pr` itself — that's a code-reading task, not a metrics task.
+Per the shared skeleton's "When NOT to use a retro". This loop's threshold is ~5 `/cla:spec-to-pr` runs.
