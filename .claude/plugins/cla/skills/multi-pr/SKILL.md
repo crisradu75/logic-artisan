@@ -39,7 +39,7 @@ Announce the mode and the resolved change list as the first line of output, e.g.
 
 ## Phase 0: Bootstrap + working-tree precheck
 
-Run `/cla:spec-to-pr`'s own permissions bootstrap exactly once before the chain starts (not once per change — there's no reason to ask the permission question more than once even implicitly): compare `spec-to-pr/references/required-permissions.json` against `.claude/settings.local.json`.
+Run `/cla:spec-to-pr`'s own permissions bootstrap exactly once before the chain starts (not once per change — there's no reason to ask the permission question more than once even implicitly): compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/required-permissions.json` against `.claude/settings.local.json`.
 
 All present → proceed silently. Any missing → surface them exactly as `/cla:spec-to-pr`'s own "Bootstrap permissions" section describes and apply on approval. This is the *only* halt-and-ask that happens outside Phase 1 — same exception carve-out `/cla:spec-to-pr` itself makes for its own bootstrap gate.
 

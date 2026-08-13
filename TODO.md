@@ -122,63 +122,27 @@ distributed at all, which is the intent); make each assertion skip when it detec
 source repo; or have `run_tests.py` discover a scope's "source-repo-only" marker and skip it. The
 first is cleanest but conflicts with `conformance-checks/` deliberately shipping.
 
-## Widen the token guard's scan roots to match what the marketplace actually ships
+## Remaining unscanned surface after the scan-root widening (small, known)
 
-`conformance-checks`' `SOURCE_SCAN_ROOTS` covers `skills`/`agents`/`hooks`/`output-styles`, but the
-marketplace publishes `path: .claude/plugins/cla` — the whole directory. So `lib/`, the three
-`*-checks/` scopes, `run_tests.py`, and `mutate.py` reach every consuming repo unscanned for
-project tokens. The gap predates the `update-cla` removal and was widened, not created, by it.
+`SOURCE_SCAN_ROOTS` now covers `skills`, `agents`, `hooks`, `output-styles`, `lib`, and the three
+`*-checks/` scopes — everything the marketplace publishes except two deliberate omissions:
 
-Measured, not assumed: adding each of `lib`, `conformance-checks`, `consistency-checks`, and
-`launcher-checks` to `SOURCE_SCAN_ROOTS` yields **zero** violations today — the `*-checks/`
-fixtures use synthetic names like `funnel-demo`, not curated tokens. So this is a small change. It
-is separated out only because it should land with a non-vacuity test proving the new roots are
-actually scanned; adding coverage without proving coverage is the failure mode the guard exists to
-prevent.
+- The plugin's own root `README.md`, whose install commands legitimately name this repository.
+  Scanning it would flag the one file whose job is to identify the source.
+- `run_tests.py` and `mutate.py` at the tree root, which sit outside every scanned root. Adding a
+  bare-file traversal for two files was judged not worth a second scan rule.
 
-One file cannot be covered by widening: the plugin's own `README.md` at the tree root legitimately
-contains `logic-artisan` in its install commands, so the roots stay a list of subdirectories rather
-than "the whole plugin tree". The sibling path guard's `SCANNED_ROOTS` already includes `lib`, so
-the two lists are intentionally not identical today.
+Neither is a leak today. Revisit only if a third root-level file appears.
 
-## `block-direct-push-to-main` — remaining non-coverage (was: known gaps)
+## Why the push-to-main guard is a git hook, not a PreToolUse hook
 
-Five shapes were listed here. **Three are now blocked**, each with a regression test and a
-mutation check: `--all`/`--mirror`, `heads/main`, and `git.exe` (closed earlier by the
-shared `GIT_CMD` constant).
-
-**`--repo <remote> main` was NOT a gap** — the entry was wrong. Measured against real git:
-`git push --repo origin main` fails with `'main' does not appear to be a git repository`,
-because the first positional is always the repository and `--repo` only applies when none is
-given. A rule written for it was added and reverted the same day: it blocked a shape git
-refuses, un-blocked `git push --repo origin origin` (a real push of the default branch),
-and false-positived on any repo with a remote named `main`. The lesson is the one the
-reverted redesign already taught — a rule derived from reading the code rather than
-exercising the tool it models.
-
-**Two remain open, deliberately** — both evasion-shaped rather than reachable by ordinary use,
-which is the distinction that justified fixing `git.exe` and not these:
-
-| Shape | Why it stays open |
-|---|---|
-| `bash <<< '<push> origin main'` | the herestring body IS quoted, so `strip_quoted_spans` blanks it before matching. Un-blanking quoted spans after `<<<` adds parsing complexity to an *enforcing* guard for a vector nobody reaches by accident |
-| `GIT push origin main` | command-name case, matching the `gh` precedent; pinned by a contract test so widening it is deliberate |
-
-Still open, and unchanged: the `3.0` budget entry in `_dispatch_lib.HOOK_WORST_CASE_SECONDS` is
-the realistic bound, not a proven ceiling — the branch cache is keyed on cwd, so several pushes
-with distinct `-C` values each spawn a `rev-parse` (verified: three `-C` paths → 9s). The fix is
-to make the hook resolve at most one branch per command, not to raise the handler timeout.
-
-**If the 3-state (BLOCK/ALLOW/ASK) redesign is retried**, it was attempted and reverted — see the
-revert commit for the full failure analysis. The short version: a `shlex`-based rewrite was
-validated against a 44-command corpus containing **only push commands**, so it shipped six
-regressions (`shlex` treats a newline as whitespace, collapsing multi-line commands into one
-segment; shell grouping and wrapper prefixes like `sudo` also bypassed it) and six spurious
-permission prompts (the ASK arm was gated on a hand-maintained subcommand list, so
-`git rev-list main..HEAD` and friends began prompting). The corpus added alongside the four fixes
-above is a starting point — it is deliberately half ALLOW cases, most of them non-push git
-commands — but a retry still needs multi-line commands, shell grouping, wrapper prefixes, and
-multiple heredocs before it ships.
+Kept as a one-paragraph note because the question recurs. A PreToolUse hook has to parse a command
+string, and every spelling it does not anticipate is a hole: `--all`, `--mirror`, `heads/main`,
+`git.exe`, a here-string, a quoted remote. Several were closed one at a time and the list never
+felt finished. `hooks/git/pre-push` sees the refspec git has already resolved, so there is no
+string left to evade — and it also covers pushes from a terminal or an IDE, which no PreToolUse
+hook ever saw. The cost is that git hooks cannot be installed by a plugin, so every clone runs the
+`cp` line once (see the plugin README's guardrails section).
 
 ## ~~Make the symlink tests run on Windows (use an NTFS junction)~~ - DONE
 

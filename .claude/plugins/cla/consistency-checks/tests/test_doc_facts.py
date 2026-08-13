@@ -206,3 +206,57 @@ def test_every_stated_skills_with_tests_count_is_the_real_one(name, phrase):
         f"{name} states {claimed} near {phrase!r}; the real count is "
         f"{real_skills_with_tests()}"
     )
+
+
+def real_leaf_hook_count() -> int:
+    """Leaf guard hooks: every `hooks/*.py` that is neither a dispatcher nor a
+    shared library. The dispatchers run the leaves; they are not guards."""
+    hooks = _PLUGIN_ROOT / "hooks"
+    return len(
+        [
+            p
+            for p in hooks.glob("*.py")
+            if not p.name.startswith("dispatch-") and not p.name.startswith("_")
+        ]
+    )
+
+
+@pytest.mark.parametrize("name", ["CLAUDE.md", "DEVELOPER-GUIDE.md", "plugin README.md"])
+def test_every_stated_leaf_hook_count_is_the_real_one(name):
+    """The motivating drift for this whole file was a guide naming six hooks that
+    did not exist. Counting them is the cheap half of catching that."""
+    flat = " ".join(_DOCS[name].read_text(encoding="utf-8").split())
+    if "leaf hook" not in flat:
+        pytest.fail(
+            f"{name} no longer states a leaf-hook count (phrase 'leaf hook'); "
+            "reword the doc or update this anchor deliberately"
+        )
+    # These docs legitimately state TWO numbers around this phrase — the 7 leaves
+    # the dispatchers run, and the 8 leaf hook FILES once the directly-wired
+    # PostToolUse hook is counted. Requiring the real total to appear in ANY such
+    # window keeps the assertion true without forcing one phrasing on the prose.
+    claimed = set()
+    for m in re.finditer("leaf hook", flat):
+        window = flat[max(0, m.start() - 80) : m.start() + 80]
+        claimed.update(int(n) for n in re.findall(r"\b(\d{1,3})\b", window))
+    assert real_leaf_hook_count() in claimed, (
+        f"{name} states {sorted(claimed)} near 'leaf hook'; the tree has "
+        f"{real_leaf_hook_count()} leaf hooks"
+    )
+
+
+def test_every_named_leaf_hook_exists():
+    """The other half, and the one that actually shipped: six invented hook names
+    in a single guide section. A backticked `block-`/`ask-`/`warn-`/`guard-` name
+    is read as a live hook; mention a deleted one without backticks if the
+    reference is historical."""
+    missing = []
+    for name, path in _DOCS.items():
+        text = path.read_text(encoding="utf-8")
+        for hook in re.findall(r"`((?:block|ask|warn|guard)-[a-z0-9-]+)`", text):
+            stem = hook[:-3] if hook.endswith(".py") else hook
+            if not (_PLUGIN_ROOT / "hooks" / f"{stem}.py").is_file():
+                missing.append(f"  {name}: `{hook}` has no hooks/{stem}.py")
+    assert not missing, (
+        "doc names a guard hook that does not exist on disk:\n" + "\n".join(missing)
+    )

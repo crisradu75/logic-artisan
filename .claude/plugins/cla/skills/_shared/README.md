@@ -27,6 +27,16 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `required-permissions.json` | the bootstrap permission set the ship skills check |
 | `run-log-schema.md` | the per-run JSONL contract the retro skills consume |
 | `past-offenses.md` | the generic enforcement-tier vocabulary behind the guardrails |
+| `retro-skeleton.md` | the workflow every `*-retro` skill follows, minus its own heuristics |
+
+## `scripts/`
+
+One script lives here on the same rule: `git_state.py` returns a single deterministic exit code for
+"an in-progress rebase / cherry-pick / merge exists", and four skills check it at every commit
+boundary. It is stdlib-only and imports nothing local. Its test and this scope's `pyproject.toml`
+sit beside it — `run_tests.py` fails the whole run as a "near-miss" if a directory has a
+pytest-configured `pyproject.toml` without a `tests/`, or the reverse, so the three move together
+or not at all.
 
 ## How to reference one
 

@@ -211,28 +211,34 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # sync tool deleted there is nothing left to compare against, so the list stands
 # on its own and any new synced root must be added here by hand.
 #
-# KNOWN GAP, recorded deliberately rather than left implicit. The marketplace
-# install ships `path: .claude/plugins/cla` — the WHOLE directory — so what
-# reaches a consuming repo now also includes `lib/`, the three `*-checks/`
-# scopes, `run_tests.py`, and `mutate.py`, none of which these four roots cover.
-# Distribution is wider than this guard, and deleting the old comparison test
-# did not create that gap, only stopped hinting at it.
+# These roots cover everything the marketplace publishes that this guard can
+# meaningfully scan. The install ships `path: .claude/plugins/cla` — the WHOLE
+# directory — so the four "portable procedure" roots are not the whole shipped
+# surface: `lib/`, the three `*-checks/` scopes, `run_tests.py`, and `mutate.py`
+# reach a consuming repo too. The first four of those are scanned here.
 #
-# Measured, not assumed: adding each of `lib`, `conformance-checks`,
-# `consistency-checks`, and `launcher-checks` to this tuple yields ZERO
-# violations today — the `*-checks/` fixtures use synthetic names like
-# `funnel-demo`, not curated tokens. So widening is a small change, deferred to
-# its own PR only because it should land with a non-vacuity test proving the new
-# roots are actually scanned; adding coverage with no proof of coverage is the
-# failure mode this guard exists to prevent. Tracked in TODO.md.
+# Two things are deliberately NOT scanned, and both are load-bearing omissions
+# rather than oversights:
 #
-# One file genuinely cannot be scanned by widening: the plugin's own
-# `README.md` at the tree root legitimately contains `logic-artisan` in its
-# install commands. That is why the roots stay a list of subdirectories rather
-# than becoming "the whole plugin tree". The sibling path guard's
-# `SCANNED_ROOTS` already includes `lib`, so the two lists are intentionally NOT
-# identical today.
-SOURCE_SCAN_ROOTS = ("skills", "agents", "hooks", "output-styles")
+#   - The plugin's own root `README.md`. Its install commands legitimately name
+#     this repository, which is what makes them copy-pasteable. Scanning it would
+#     flag the one file whose whole job is to identify the source.
+#   - `run_tests.py` and `mutate.py` at the tree root. They sit outside every
+#     root below; adding a bare-file scan for two files is not worth a second
+#     traversal rule, and both are checked by eye at review time.
+#
+# A deliberate path-parsing fixture stays scannable by carrying the
+# `path-fixture-ok` marker on its line, rather than by exempting a whole file.
+SOURCE_SCAN_ROOTS = (
+    "skills",
+    "agents",
+    "hooks",
+    "output-styles",
+    "lib",
+    "conformance-checks",
+    "consistency-checks",
+    "launcher-checks",
+)
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 
 

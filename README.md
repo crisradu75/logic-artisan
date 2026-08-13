@@ -89,7 +89,7 @@ There is **no CI, by design** — the local run below is the whole verification 
 gate before a merge:
 
 ```bash
-python3 .claude/plugins/cla/run_tests.py     # every pytest scope (10 today), aggregated pass/fail + exit code
+python3 .claude/plugins/cla/run_tests.py     # every pytest scope (11 today), aggregated pass/fail + exit code
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs   # the one Node suite
 ```
 

@@ -295,14 +295,14 @@ Contributing to the harness rather than using it? The extra rules:
 - **Run the whole verification story locally — there is no CI, by design:**
 
   ```bash
-  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (10), aggregated
+  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (11), aggregated
   node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
   ```
 
   Both green is the only gate before a PR. Watch the skip count in the summary — a skipped guard
   has not run (one pre-push permission-bit test always skips on Windows).
 
-- **Never run bare `pytest` from the repo or plugin root.** Each scope (4 skills with tests, plus
+- **Never run bare `pytest` from the repo or plugin root.** Each scope (5 skills with tests, plus
   `skills/_shared/`, `lib/`, `hooks/`, `conformance-checks/`, `consistency-checks/`,
   `launcher-checks/`) is isolated on purpose — several ship
   same-named helper modules. Iterate on one scope with
@@ -321,60 +321,61 @@ Contributing to the harness rather than using it? The extra rules:
   covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work
   lives in `TODO.md`.
 
+### Adding a skill
+
+Five contracts, each enforced by a test rather than by convention — so a miss fails the suite
+rather than shipping:
+
+1. **`skills/<name>/SKILL.md` is the entrypoint, and the directory name is the command.** Its
+   frontmatter needs a non-empty `name` and `description`, and `name` must equal the directory —
+   otherwise `/cla:<dir>` resolves to nothing. Pinned by
+   `conformance-checks/tests/test_skill_lint.py`.
+2. **The `description` is trigger metadata, not documentation.** It is what natural-language
+   invocation matches against; keep it under the style ceiling the same test enforces. Write it in
+   the third person and name concrete trigger phrases.
+3. **Every reference the body names must exist.** A bare `references/<file>` means *this skill's
+   own* file; to cite another skill's, write the explicit
+   `${CLAUDE_PLUGIN_ROOT}/skills/<owner>/references/<file>`. Both mistakes fail the same test.
+4. **A test scope needs `pyproject.toml` AND `tests/` together.** `run_tests.py` treats a directory
+   with only one of the two as a "near-miss" and fails the entire run — so add both in one commit,
+   or neither.
+5. **Project-specific facts go in an overlay, never in the body.** If the skill reads
+   `cla.io/overlays/<name>.md`, add it to `cla-init`'s seeding list so a fresh repo gets a stub.
+   The token guard fails the suite if a repo name leaks into the body.
+
+Then update the counts: the skill tables in `CLAUDE.md` and the plugin README, and the cheat sheet
+below. `consistency-checks/tests/test_doc_facts.py` fails if you forget.
+
 ## Release and distribution history
 
-Background a working session rarely needs, kept out of `CLAUDE.md` so that file stays operative.
-
-**A local-directory marketplace is a development convenience, never a distribution route.** It was
-used once, to exercise the install before the catalog change was pushed, and it carries a trap worth
-naming: the catalog is then read from a working tree, so a locally-bumped `ref` advertises a tag that
-may never have been pushed — the install fails with nothing visibly wrong in the manifest. Sourcing
-the catalog from GitHub keeps catalog and tag moving together through one push.
-
-For developing the harness itself, use `--plugin-dir` (below) rather than any marketplace: it is the
-only mode that reads this working tree live. Every source type — including a local path — is copied
-into the versioned cache at `~/.claude/plugins/cache`, so an install is a snapshot, not a link.
-
-Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
-unless `plugin.json` and the marketplace entry already agree.
-
-**Current release: `cla--v0.9.3`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
-task has been run end-to-end through the plugin in a consuming repo (the propagation decision's own
-Q7 gate — installing and resolving paths is verified, running a task through it is not).
+Background a working session rarely needs, which is why it lives here rather than in `CLAUDE.md`.
+The operative rules — the two-file bump, the preconditions, the never-move invariant — are in
+`/cla:release`'s own SKILL.md; this section is only the *why* behind them.
 
 **A published tag is never moved.** `0.9.0` was cut, a consumer installed it, and the very next fix
 therefore became `0.9.1` rather than a re-tag — moving it would have changed what that consumer had
-already fetched. Cut the tag only from `main`, and only after the work is reviewed.
+already fetched. That single episode is the origin of the rule.
 
-The marketplace install is the only distribution mechanism. The legacy `update-cla` file-sync
-engine was deleted once it was superseded; a consuming repo still carrying a `.cla-sync-lock.json`
-can delete it, as nothing reads it any more.
+**A local-directory marketplace is a development convenience, never a distribution route.** It was
+used once, to exercise an install before the catalog change was pushed, and it carries a trap worth
+naming: the catalog is then read from a working tree, so a locally-bumped `ref` advertises a tag
+that may never have been pushed — the install fails with nothing visibly wrong in the manifest.
+Sourcing the catalog from GitHub keeps catalog and tag moving together through one push.
 
-**Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
-place, from this working tree — required here because the skills/hooks read and write repo-local
-state under `cla.io/` and, while developing the harness, you want the working tree
-rather than a cached copy of a release. Use the
-`cla` (POSIX) / `cla.cmd` (Windows) launcher at the repo root instead of typing `claude` directly —
-it resolves its own absolute path, so the flag it prints/runs is `--plugin-dir <repo>/.claude/plugins/cla`
-regardless of your cwd:
+**An install is a snapshot, not a link.** Every source type — including a local path — is copied
+into the versioned cache at `~/.claude/plugins/cache`. That is why developing the harness itself
+uses `--plugin-dir` (section 2) instead: it is the only mode that reads the working tree live.
 
-```bash
-./cla   # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
-```
+**The `claw` launcher and the isolation guard, both deleted.** `claw` existed only to create a
+worktree *before* Claude started, so a session would never register a presence heartbeat in the
+primary clone — a heartbeat written by `guard-worktree-isolation.py`, which could block a second
+session from committing for an hour. That hook recorded 0 blocks across 127 session transcripts and
+was deleted; the launcher went with it, leaving `/cla:new-worktree` (section 7) as the single path.
 
-Without it, the skills/hooks are just inert files on disk — no `/cla:*` commands, no guard hooks.
-**Note:** `--permission-mode auto` bypasses Claude Code's normal per-action confirmation prompts —
-intentional for this harness, but worth knowing before you run it.
-
-**Starting work in a worktree.** Use `/cla:new-worktree` at any point in a session — before
-starting, or once you realise mid-flight that the work wants isolation. There is no longer a
-penalty for deciding late.
-
-There used to be a second launcher, `claw`, whose only job was to create the worktree *before*
-Claude started. It existed to dodge `guard-worktree-isolation.py`, which wrote a presence
-heartbeat at SessionStart for any session in the primary clone and could block a second session
-from committing for an hour. That hook was deleted (0 recorded blocks across 127 session
-transcripts), so the workaround went with it.
+**The `update-cla` file-sync engine, deleted.** It predated the marketplace and duplicated it
+badly: a per-file 3-way reconcile with a provenance lockfile, solving a problem a whole-directory
+versioned snapshot does not have. Worse, it synced the launchers that kept consumers on it. A repo
+still carrying a `.cla-sync-lock.json` can delete that file; nothing reads it.
 
 ## Cheat sheet: "I want to…" → which skill
 

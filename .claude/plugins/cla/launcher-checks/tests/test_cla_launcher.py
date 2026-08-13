@@ -61,7 +61,7 @@ def test_cla_cmd_parses_in_real_cmd(tmp_path):
     env = {
         "SystemRoot": system_root,
         "PATH": os.pathsep.join([str(pathlib.Path(system_root) / "System32"), system_root]),
-        "COMSPEC": os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),
+        "COMSPEC": os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe"),  # path-fixture-ok
     }
     r = subprocess.run(
         ["cmd", "/c", str(work / "cla.cmd")],
