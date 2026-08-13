@@ -23,7 +23,7 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 **Persist the plan, on the branch.** Assemble the plan JSON (Phase 1's grouping plus `batch_slug`/`branch`) per `references/plan-schema.md`, write to `cla.io/decisions/<stem>.multi-spec-plan.json`, then commit and push:
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
 git add -- cla.io/decisions/<stem>.multi-spec-plan.json
 git commit -m "docs(openspec): multi-spec plan for <batch-slug>"
 git push -u origin docs/propose-<batch-slug>

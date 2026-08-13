@@ -283,7 +283,7 @@ Contributing to the harness rather than using it? The extra rules:
 - **Run the whole verification story locally — there is no CI, by design:**
 
   ```bash
-  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (9), aggregated
+  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (10), aggregated
   node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
   ```
 
@@ -291,8 +291,8 @@ Contributing to the harness rather than using it? The extra rules:
   has not run (one pre-push permission-bit test always skips on Windows).
 
 - **Never run bare `pytest` from the repo or plugin root.** Each scope (4 skills with tests, plus
-  `lib/`, `hooks/`, `conformance-checks/`, `consistency-checks/`, `launcher-checks/`) is isolated
-  on purpose — several ship
+  `skills/_shared/`, `lib/`, `hooks/`, `conformance-checks/`, `consistency-checks/`,
+  `launcher-checks/`) is isolated on purpose — several ship
   same-named helper modules. Iterate on one scope with
   `pytest .claude/plugins/cla/skills/<name>/tests`.
 

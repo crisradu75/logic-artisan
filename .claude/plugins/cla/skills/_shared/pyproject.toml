@@ -1,0 +1,11 @@
+# Pytest config for the shared-reference scope.
+#
+# `_shared/` is NOT a skill (no SKILL.md, so the loader ignores it). It holds the
+# references and the one script that more than one skill treats as authority.
+#
+# This file and `tests/` must exist TOGETHER: `run_tests.py` treats a directory
+# with a pytest-configured pyproject.toml and no `tests/` (or the reverse) as a
+# near-miss and FAILS the whole run rather than silently skipping it.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]

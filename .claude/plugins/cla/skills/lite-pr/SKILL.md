@@ -99,7 +99,7 @@ This is the one deliberate stop point in the workflow. It deviates from `/cla:sp
 Pre-commit safety check:
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
 ```
 
 Exit 0 → proceed. Any non-zero exit → halt and surface via `AskUserQuestion` — same contract as `/cla:spec-to-pr`: never infer "probably fine" on a non-zero exit. This bare invocation passes no `--expect-branch` (lite-pr's feature branch doesn't exist until `commit-push-pr` runs), so a non-zero exit means an in-progress rebase/cherry-pick from another session (exit 2) or an unresolvable/corrupt git state (exit 1) — not a branch mismatch. If another session is active in this same clone, prefer running lite-pr from an isolated worktree (`/cla:new-worktree`) in the first place — a shared-clone `git commit` mid-flow is a real collision risk here, not a hypothetical one (see `cla.io/overlays/lite-pr.md` for a recorded incident in this repo).
@@ -148,5 +148,5 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 
 ## References
 
-- `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py` — reused directly for the pre-commit safety check.
+- `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py` — reused directly for the pre-commit safety check.
 - `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/SKILL.md` — the full-weight sibling workflow; see its "Workflow phases" for what a graduated change looks like.

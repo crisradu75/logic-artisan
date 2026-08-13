@@ -96,9 +96,9 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (4 today), plus `lib/`, plus `hooks/`, plus
-`conformance-checks/`, plus `consistency-checks/`, plus `launcher-checks/`, is its own isolated
-pytest scope — 9 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
+design. Each skill that ships tests (4 today), plus `skills/_shared/`, plus `lib/`, plus `hooks/`,
+plus `conformance-checks/`, plus `consistency-checks/`, plus `launcher-checks/`, is its own isolated
+pytest scope — 10 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
 `pythonpath` pointing at that scope's importable code — `["scripts"]` for a skill and for
 `consistency-checks`/`launcher-checks`, `["."]` for `hooks/` and `lib/`, whose modules sit at the
 scope root, and none at all for `conformance-checks`, whose tests import nothing).
@@ -162,7 +162,7 @@ green run as one input to the ship decision rather than the decision itself.
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
 sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as a
-10th entry alongside the 9 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
+11th entry alongside the 10 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
 while iterating on that one script:
 
 ```bash

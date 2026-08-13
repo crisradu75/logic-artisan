@@ -56,7 +56,7 @@ The checklist's "no capitulation, no sycophancy" (INT-CAP / INT-SYC) rules apply
 2. Re-validate each touched change: `openspec validate <name> --strict`.
 3. Commit all fixes as **one** follow-up commit (mirrors the real precedent's two-commit-class shape):
    ```
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
+   python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
    git add -- openspec/changes/
    git commit -m "docs(openspec): apply review fixes to <batch-slug> proposals"
    git push
