@@ -25,8 +25,8 @@ The split that everything obeys: **procedure is portable, facts are per-repo.**
 - Portable procedure lives in the synced core (`skills/`, `agents/`, `hooks/`, `output-styles/`)
   and is identical in every repo that uses CLA.
 - Your repo's facts live in overlays (`cla.io/overlays/<skill>.md`, `*.local.md`) and in the
-  repo-root `cla.io/` tree (decisions, feedback, retro ledgers, `project-facts.md`). The updater
-  never touches them.
+  repo-root `cla.io/` tree (decisions, feedback, retro ledgers, `project-facts.md`). They sit in
+  the repo, not the plugin directory, so installing or updating the plugin never touches them.
 
 Keep that split in mind and the rest of the harness follows from it.
 
@@ -49,9 +49,10 @@ Everything after `./cla` is forwarded to `claude`, so `./cla --model opus` overr
 
 Three things to know before your first prompt:
 
-- **The plugin must load live from the working tree** (`--plugin-dir`), because the skills and
-  hooks read and write repo-local state. A cached marketplace install can't do that — without the
-  flag, the skills are inert files and no guard runs.
+- **In THIS repo, load the plugin live from the working tree** (`--plugin-dir`), so you are running
+  the harness you are editing rather than a cached snapshot of a release. A consuming repo does the
+  opposite and runs the marketplace install; that works because repo-local state lives in `cla.io/`,
+  outside the plugin directory. Without either, the skills are inert files and no guard runs.
 - **`--permission-mode auto` skips per-action confirmation prompts.** Intentional — the guard
   hooks are the safety layer — but know it before you run it.
 - **The CLA output style applies automatically** (`force-for-plugin: true`): short sentences,
@@ -249,24 +250,31 @@ Two utilities worth knowing at any phase:
 
 ## 10. Adopting CLA in another repo
 
-CLA is designed to be pulled *into* a repo, not installed globally. Three steps, in the
+CLA is installed *into* a repo, scoped to that project, not installed globally. Three steps, in the
 destination repo:
 
-1. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
+1. **Install from the marketplace** — the plugin arrives as a versioned snapshot pinned to an exact
+   release tag:
+
+   ```bash
+   claude plugin marketplace add crisradu75/logic-artisan
+   claude plugin install cla@cris-logic-artisan --scope project
+   ```
+
+2. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
    never-clobber: safe to re-run on a partially-scaffolded repo.
-2. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
+3. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
    members, dev/build/test commands, ports, affected-file map, test locations, env files. This is
    the single physical copy of every fact the skills share.
-3. **`/cla:update-cla <path-to-this-repo>`** — pull the portable core. It syncs only
-   `skills`/`agents`/`hooks`/`output-styles`, classifies each file against a per-repo
-   `.cla-sync-lock.json` (3-way reconcile), preserves local overlays and local strengths, surfaces
-   deletions without applying them, and never auto-merges.
 
 Then fill in the per-skill `cla.io/overlays/<skill>.md` overlays as the skills prompt for
-facts, and add a `hooks/smoke-test-drift.local.md` if the repo has a UI smoke test to protect.
-Re-run `update-cla` any time to pull newer core; your overlays and `cla.io/` survive every sync.
-Sync is one-way (source → consumer): a skill improved while working in a consuming repo has to be
-contributed back to this repo by hand.
+facts. Pick up newer releases with `/plugin marketplace update`; your overlays and `cla.io/` are
+untouched by an install, because they live in the repo rather than the plugin directory.
+
+Improvement flows one way, and deliberately so: a skill improved while working in a consuming repo
+is reported back with `/cla:report-upstream` (which files an issue against this repo) and returns
+in the next release. There is no per-asset sync — the legacy `update-cla` engine that provided one
+was deleted when the marketplace became the sole distribution route.
 
 ## 11. Working on CLA itself (this repo)
 
@@ -275,15 +283,16 @@ Contributing to the harness rather than using it? The extra rules:
 - **Run the whole verification story locally — there is no CI, by design:**
 
   ```bash
-  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (10), aggregated
+  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (9), aggregated
   node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
   ```
 
   Both green is the only gate before a PR. Watch the skip count in the summary — a skipped guard
-  has not run (three symlink tests always skip on Windows).
+  has not run (one pre-push permission-bit test always skips on Windows).
 
-- **Never run bare `pytest` from the repo or plugin root.** Each scope (7 skills with tests, plus
-  `hooks/`, `consistency-checks/`, `launcher-checks/`) is isolated on purpose — several ship
+- **Never run bare `pytest` from the repo or plugin root.** Each scope (4 skills with tests, plus
+  `lib/`, `hooks/`, `conformance-checks/`, `consistency-checks/`, `launcher-checks/`) is isolated
+  on purpose — several ship
   same-named helper modules. Iterate on one scope with
   `pytest .claude/plugins/cla/skills/<name>/tests`.
 
@@ -318,5 +327,6 @@ Contributing to the harness rather than using it? The extra rules:
 | Get a whole-repo health review | `project-review` |
 | Capture this session's lessons | `codify-learnings` |
 | Tune the loops themselves | `codify-retro`, `spec-to-pr-retro` |
-| Set up CLA in a new repo | `cla-init` → `sync-context` → `update-cla` |
-| Pull newer CLA core into a repo | `update-cla` |
+| Set up CLA in a new repo | marketplace install → `cla-init` → `sync-context` |
+| Pull newer CLA core into a repo | `/plugin marketplace update` |
+| Report a defect in the portable core | `report-upstream` |

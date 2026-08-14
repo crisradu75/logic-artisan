@@ -18,8 +18,8 @@ lessons-learned) in the repo's own `cla.io/` tree.
   (`lite-pr`, `spec-to-pr`) stop at an **opened PR**; the `multi-*` chainers may merge a dependency
   PR to unblock its dependents during an unattended run — but nothing here deploys, and no PR is
   merged without you having chosen to run a chainer.
-- **Isn't:** a store of project facts. Those live in `cla.io/` and per-skill overlays, which the
-  cross-repo updater never touches.
+- **Isn't:** a store of project facts. Those live in `cla.io/` and per-skill overlays, which sit in
+  the repo rather than the plugin, so no install touches them.
 
 ## The software life cycle, phase by phase
 
@@ -31,7 +31,6 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 | **0. Bootstrap** (per repo, once) | `cla-init` | Scaffold the `cla.io/` tree + empty overlay stubs (structure only, never facts) |
 | | `sync-context` | Populate/reconcile `cla.io/project-facts.md` — the repo's shared facts (members, commands, ports, file maps) |
 | | `save-permissions` | Persist tool permissions granted this session to `.claude/settings.local.json` |
-| | `update-cla` | The retired file-sync updater. Superseded by the marketplace install; kept only while repos migrate |
 | **1. Discover & shape** | `feedback` | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
 | | (`opsx:explore`) | OpenSpec's thinking-partner mode for investigating a problem before committing to a change |
@@ -124,15 +123,15 @@ belongs to your repo goes in `cla.io/`.
 **Onboarding a fresh repo:** install (above) → `cla-init` (scaffold `cla.io/`) → `sync-context`
 (populate the facts) → install the `pre-push` hook (see *Guardrails*).
 
-`update-cla`, the old pull-based file-sync updater, is retired and exists only while the remaining
-repos migrate off it.
+The marketplace install is the only route in. `update-cla`, the old pull-based file-sync updater,
+has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can delete that too.
 
 ## Testing
 
 CLA's own suite runs in the repo that develops it, not in a repo that consumes it — the installed
-tree is read-only. Each skill *that ships tests* (5 today), plus `hooks/`, `lib/`,
+tree is read-only. Each skill *that ships tests* (4 today), plus `hooks/`, `lib/`,
 `conformance-checks/`, `consistency-checks/`, and `launcher-checks/`, is its own isolated pytest
-scope (own `pyproject.toml` + `tests/`) — 10 in all; several ship same-named helper modules, so
+scope (own `pyproject.toml` + `tests/`) — 9 in all; several ship same-named helper modules, so
 they can't share one pytest process. Run the whole suite at once:
 
 ```bash
@@ -142,7 +141,7 @@ python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each p
 
 Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`. The one Node
 script (`project-review/scripts/mechanical-checks.mjs`) has its own sibling `node --test` suite,
-which `run_tests.py` **does** run as an 11th entry — invoke it alone only while iterating on it:
+which `run_tests.py` **does** run as a 10th entry — invoke it alone only while iterating on it:
 
 ```bash
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs

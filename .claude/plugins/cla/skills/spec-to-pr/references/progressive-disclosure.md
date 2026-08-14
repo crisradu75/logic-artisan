@@ -30,7 +30,7 @@ These invariants commonly live in *phase-step prose* rather than the hoisted blo
 - **`git_state`-before-every-commit** — the #1 repeat offender: it commonly lives in phase-step prose rather than the hoisted block, so the restructure silently drops it from the inline stub (caught only by review when that happens — see `cla.io/overlays/spec-to-pr.md` "Incident history" for concrete precedents). If the skill runs its own commits, this MUST be a hoisted one-liner, not left only in the moved recipe.
 - **never `git add -A` / path-scoped staging.**
 - The skill's **merge / quarantine / halt authorization** (e.g. multi-pr's whole-chain-halt vs multi-lite's downstream-only quarantine — these differ per skill; preserve the SKILL's own semantics verbatim, never swap in a sibling's).
-- Any **safety-confirmation gate** (e.g. codify-learnings' interactive-apply confirmation; update-cla's overlay-preservation + never-auto-merge).
+- Any **safety-confirmation gate** (e.g. codify-learnings' interactive-apply confirmation; spec-to-pr's destructive-git ask).
 - Push-verification, exit-gate, and no-unresolved-finding rules.
 
 ## Validation (before shipping)

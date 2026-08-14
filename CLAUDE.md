@@ -7,11 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `logic-artisan` is the canonical home of **CLA — Cris Logic Artisan**, a Claude Code dev-workflow
 harness packaged as a plugin. It holds no product/application code — it's the *process* layer
 (skills, guard hooks, helper agents) that carries a change from idea → spec → isolated
-implementation → review → opened PR, and feeds learnings back into the next run. Other repos pull
-this plugin in via `update-cla` and adapt it to their own context.
+implementation → review → opened PR, and feeds learnings back into the next run. Other repos install
+this plugin from the GitHub marketplace and adapt it to their own context via overlays.
 
-Everything lives under `.claude/plugins/cla/`, nested at that path specifically so `update-cla` can
-consume this repo directly as a sync source.
+Everything lives under `.claude/plugins/cla/`, which is exactly the directory the marketplace
+catalog publishes as the plugin's source path.
 
 **Distribution is GitHub, and only GitHub.** `.claude-plugin/marketplace.json` at the repo root
 publishes one plugin, `cla`, from this subdirectory (`git-subdir` source, `url` + `path`, schema
@@ -40,7 +40,7 @@ into the versioned cache at `~/.claude/plugins/cache`, so an install is a snapsh
 Cut the tag with **`claude plugin tag`**, which uses the shape `<name>--v<version>` and refuses
 unless `plugin.json` and the marketplace entry already agree.
 
-**Current release: `cla--v0.9.2`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
+**Current release: `cla--v0.9.3`.** `0.9.x` is the validation line; it becomes `1.0.0` once a real
 task has been run end-to-end through the plugin in a consuming repo (the propagation decision's own
 Q7 gate — installing and resolving paths is verified, running a task through it is not).
 
@@ -48,11 +48,13 @@ Q7 gate — installing and resolving paths is verified, running a task through i
 therefore became `0.9.1` rather than a re-tag — moving it would have changed what that consumer had
 already fetched. Cut the tag only from `main`, and only after the work is reviewed.
 
-`update-cla`'s file-sync remains the live mechanism until consuming repos migrate.
+The marketplace install is the only distribution mechanism. The legacy `update-cla` file-sync
+engine was deleted once it was superseded; a consuming repo still carrying a `.cla-sync-lock.json`
+can delete it, as nothing reads it any more.
 
 **Launching a session in THIS repo:** `claude --plugin-dir` loads the plugin live, in
 place, from this working tree — required here because the skills/hooks read and write repo-local
-state (`cla.io/`, the sync lockfile) and, while developing the harness, you want the working tree
+state under `cla.io/` and, while developing the harness, you want the working tree
 rather than a cached copy of a release. Use the
 `cla` (POSIX) / `cla.cmd` (Windows) launcher at the repo root instead of typing `claude` directly —
 it resolves its own absolute path, so the flag it prints/runs is `--plugin-dir <repo>/.claude/plugins/cla`
@@ -94,9 +96,9 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (5 today), plus `lib/`, plus `hooks/`, plus
+design. Each skill that ships tests (4 today), plus `lib/`, plus `hooks/`, plus
 `conformance-checks/`, plus `consistency-checks/`, plus `launcher-checks/`, is its own isolated
-pytest scope — 10 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
+pytest scope — 9 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
 `pythonpath` pointing at that scope's importable code — `["scripts"]` for a skill and for
 `consistency-checks`/`launcher-checks`, `["."]` for `hooks/` and `lib/`, whose modules sit at the
 scope root, and none at all for `conformance-checks`, whose tests import nothing).
@@ -113,9 +115,9 @@ existed to dodge).
 
 All four sit outside the synced set (`skills`/`agents`/`hooks`/`output-styles`), but they do not
 all mean the same thing by it. `consistency-checks` and `launcher-checks` guard this repo's own
-source and are meant to stay here. `conformance-checks` is portable core that happens to live
-outside `SCAN_DIRS`, so its files are named individually in `discover.SCAN_FILES` to keep reaching
-consuming repos — where both guards have caught real leaks. Several scopes
+source and are meant to stay here. `conformance-checks` is portable core that reaches
+consuming repos because the marketplace publishes the whole plugin directory — where both guards
+have caught real leaks. Several scopes
 ship same-named helper modules (e.g. `scripts/aggregate.py`), so they can't
 share one pytest process — this is why `run_tests.py` exists: it discovers every scope
 (dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once
@@ -160,7 +162,7 @@ green run as one input to the ship decision rather than the decision itself.
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
 sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as a
-11th entry alongside the 10 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
+10th entry alongside the 9 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
 while iterating on that one script:
 
 ```bash
@@ -193,13 +195,14 @@ everywhere) from *facts* (per-repo, never synced):
   only. A pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
   developer path, leaks into synced core — one scanner covers `SKILL.md`/`references/*.md` prose
   under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`
-  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Together that's every
-  `.py`/`.md` in the tree — a non-`.py`/`.md` synced-core file (`hooks/hooks.json`, a skill's own
-  `.mjs` script) is still outside both scanners; watch those by hand.
+  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Both scan only those four
+  roots, so three classes ship unscanned and need watching by hand: non-`.py`/`.md` files
+  (`hooks/hooks.json`, a skill's own `.mjs`), and — since the marketplace publishes the whole
+  directory — `lib/`, the `*-checks/` scopes, `run_tests.py`, and `mutate.py`. Tracked in TODO.md.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
-  destination repo's own facts and tuned checks. Recognized by name, excluded from sync, never
-  overwritten by `update-cla`. In *this* repo they are neutral stubs (this is the source, not a
-  consumer).
+  destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
+  so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not
+  a consumer).
 - **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, `retro/` run ledgers,
   `lessons-learned/`, `project-tokens.local.md` (the conformance guard's curated token list), and
   (in a consuming repo) a consolidated `project-facts.md` and `terminology.md` (internal naming
@@ -213,7 +216,6 @@ everywhere) from *facts* (per-repo, never synced):
   .claude-plugin/plugin.json   manifest
   run_tests.py                 aggregating test runner (all scopes + the Node suite)
   mutate.py                    mutation checker: break a fix, confirm a test fails, restore
-  .cla-sync-lock.json          per-repo sync provenance (auto-maintained by update-cla)
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   hooks/                       guard hooks + hooks.json wiring + tests
   output-styles/               the project's writing convention (force-for-plugin: true)
@@ -243,7 +245,6 @@ isn't a survivor.** (Guard hooks are listed separately below.)
 | `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
 | `spec-to-pr/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across four skills. |
 | `spec-to-pr/scripts/_git_common.py` | Repo root plus the `branch-prefix.local.md` overlay contract, for `probe_state.py`. |
-| `update-cla/scripts/*.py` | The 3-way sync engine. Deleted wholesale when distribution moves to a marketplace plugin. |
 
 ### Skills by life-cycle phase
 
@@ -255,7 +256,6 @@ retro over prior runs of another skill.
 | 0. Bootstrap (once per repo) | `cla-init` | Scaffold the `cla.io/` tree + empty overlay stubs |
 | | `sync-context` | Populate/reconcile `cla.io/project-facts.md` |
 | | `save-permissions` | Persist session tool permissions to `.claude/settings.local.json` |
-| | `update-cla` | Pull newer CLA core from another repo, adapting to local context (**being retired** — superseded by the marketplace install) |
 | | `report-upstream` | File a defect in the plugin's own portable core as an issue against the canonical source |
 | 1. Discover & shape | `feedback` | Capture rough notes → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
@@ -312,8 +312,17 @@ cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/h
 
 ### Portability
 
-`update-cla` is a pull-based, stdlib-only cross-repo updater: run it *in the repo that wants
-updates*, pointing at a source repo (this one, canonically). It syncs only
-`skills`/`agents`/`hooks`/`output-styles`, classifies each file against a per-repo `.cla-sync-lock.json`
-(3-way reconcile), preserves local strengths, surfaces deletions without applying them, and never
-auto-merges. Onboarding a fresh consuming repo: `cla-init` → `sync-context` → `update-cla`.
+Distribution is the GitHub marketplace and nothing else. A consuming repo installs the plugin as a
+versioned snapshot pinned to an exact release tag, and picks up newer releases with
+`/plugin marketplace update` — there is no per-file reconcile, and the install never writes
+anywhere in the consuming repo outside the plugin cache.
+
+Portability is therefore carried entirely by the fact/procedure split rather than by a merge
+algorithm: the whole plugin directory ships verbatim, and everything repo-specific lives in the
+consuming repo's own `cla.io/` tree (overlays, `project-facts.md`, `project-tokens.local.md`,
+ledgers), which no install touches. Onboarding a fresh consuming repo: install from the
+marketplace → `cla-init` (scaffold `cla.io/`) → `sync-context` (populate the facts).
+
+A local improvement worth having everywhere goes upstream as an issue via `/cla:report-upstream`
+and comes back in the next release — the deleted `update-cla` engine's per-asset multi-sourcing has
+no replacement, by design.

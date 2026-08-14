@@ -149,7 +149,8 @@ def test_the_scan_reaches_the_places_the_first_version_missed():
     A guard that scans nothing passes forever, and this one already did once."""
     names = {p.relative_to(_PLUGIN_ROOT).as_posix() for p in _scanned_files()}
     # Tracks the real count (55, down from 82 across the guard-hook trim, the
-    # ledger consolidation and the script audit) rather than sitting well below
+    # ledger consolidation, the script audit, and the update-cla removal, which
+    # took 9 of its own .py files with it) rather than sitting well below
     # it, where a collapse that halved the scan set would still pass. The named
     # anchors below are the stronger half of this pair — they span four subtrees,
     # so an exclusion that drops any one of them fails here even if the count

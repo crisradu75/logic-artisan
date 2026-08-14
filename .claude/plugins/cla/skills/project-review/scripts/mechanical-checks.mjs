@@ -5,8 +5,8 @@
 // forbidden, ...) are repo-specific DATA, never hardcoded here. They are read from
 // this skill's own overlay, `cla.io/overlays/project-review.md`, under a
 // "Mechanical checks — repo specifics" heading containing a fenced ```json``` block
-// (see references/mechanical-checks.md for the schema). That overlay is excluded
-// from update-cla's sync by name, so every destination repo authors its own check
+// (see references/mechanical-checks.md for the schema). That overlay lives in the
+// repo rather than the plugin, so every destination repo authors its own check
 // list instead of inheriting whatever repo this script was first written against.
 // A repo with no such block configured gets a trivial "no checks configured" PASS,
 // not a crash on paths that only ever existed in one specific workspace.

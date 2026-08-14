@@ -11,15 +11,16 @@ Bring a fresh or partially-scaffolded repo up to the project-data baseline the o
 expect: the `cla.io/` tree (retro ledgers, feedback inbox, lessons-learned log, decisions dir) and
 skeleton `cla.io/overlays/<skill>.md` overlay stubs for each skill that reads its own overlay.
 
-This skill is **project-data only**. It does NOT sync, adapt, or touch any *asset-core* file
-(`SKILL.md` bodies, agents, hooks) — that is `update-cla`'s job.
+This skill is **project-data only**. It does NOT touch any *asset-core* file (`SKILL.md` bodies,
+agents, hooks) — those arrive with the plugin install.
 
 ## When to use
 
-Onboarding a repo to the `cla` plugin. The recommended order is **`cla-init` first** (scaffold this
-repo's project data + overlay stubs), **then `/cla:sync-context`** (populate `cla.io/project-facts.md`
-and the overlay pointers with this repo's actual facts — content, not structure), **then `update-cla`**
-(sync/adapt the portable asset core from a source repo). `update-cla` never creates project data, so a
+Onboarding a repo to the `cla` plugin. The recommended order is **the marketplace install first**
+(`claude plugin marketplace add …` then `claude plugin install … --scope project`, which delivers the
+portable asset core), **then `cla-init`** (scaffold this repo's project data + overlay stubs), **then
+`/cla:sync-context`** (populate `cla.io/project-facts.md` and the overlay pointers with this repo's
+actual facts — content, not structure). The install never creates project data, so a
 repo that skips `cla-init` is left without the `cla.io/` tree and the overlay stubs, and the
 retro/feedback/learnings skills degrade or fail on first use; skipping `/cla:sync-context` leaves
 `cla.io/project-facts.md` absent, so every skill that reads it gracefully falls back to its own
@@ -119,17 +120,16 @@ since every consumer treats a missing overlay as the ordinary un-configured stat
 string `cla.io/overlays/` appears in the skill dir." Determine the consumer set as:
 
 - **(a) Scan scope** — only each skill's `SKILL.md` and its `references/*.md` files. Do NOT
-  scan `scripts/` or `tests/` (they name the marker as the sync-exclusion mechanism, not to consume it).
+  scan `scripts/` or `tests/` (they name the marker mechanically, not to consume an overlay).
   Seed the *candidate* set with `grep -rl 'cla.io/overlays/' "${CLAUDE_PLUGIN_ROOT}"/skills/*/SKILL.md "${CLAUDE_PLUGIN_ROOT}"/skills/*/references/*.md` (ignore no-match errors for skills without a `references/` dir), then apply the consumer test (b) and exclusions (c) to that candidate list — the grep only narrows *where to look*, it does not by itself decide consumer status.
 - **(b) Consumer test** — count a skill as a consumer only when that text *directs reading the overlay
   for this repo's facts*: a "see/read `cla.io/overlays/<skill>.md` for this repo's …" or "inject the
   repo facts from `cla.io/overlays/<skill>.md`" instruction. A file that merely *names* the marker
   to document the preservation/exclusion convention is NOT a consumer. **A skill citing a SIBLING's
   overlay does not make itself a consumer** — match on the skill's own name in the path.
-- **(c) Explicit exclusions** — `update-cla` and `cla-init` are never seeded. `update-cla` names the
-  marker only to document rule 5 (sync-preservation); `cla-init` (this skill) names it structurally in
-  its own scaffold manifest + stub template. Both saturate a naive substring match yet neither consumes
-  an overlay of its own.
+- **(c) Explicit exclusion** — `cla-init` is never seeded. This skill names the marker structurally,
+  in its own scaffold manifest + stub template, so it saturates a naive substring match without
+  consuming an overlay of its own.
 
 For each consumer skill lacking the file, write the stub:
 
@@ -186,6 +186,6 @@ At the end, print a per-target summary — each directory, ledger, seed, and stu
 - Does **NOT** create, read, or modify `.claude/settings.json` or `.claude/settings.local.json` — also
   manual, per-repo.
 - Does **NOT** read, copy, or modify any asset-core file (a `SKILL.md` body, an agent, a hook). It only
-  *creates a stub file under `cla.io/overlays/`*; it never touches the skill itself, and it could not — the plugin tree is read-only. Asset-core sync is `update-cla`'s job.
+  *creates a stub file under `cla.io/overlays/`*; it never touches the skill itself, and it could not — the plugin tree is read-only. The asset core arrives with the plugin install.
 - Does **NOT** fill overlay stubs with real repo facts — stubs stay content-free skeletons; a human (or
   the extraction pass) fills them.

@@ -11,11 +11,12 @@ Read this repo's own manifests/config and populate or reconcile `cla.io/project-
 repo-level file holding every fact **shared across two or more `cla` skills** (per the plugin's
 fact/procedure split and its shared-fact tie-break rule, below). This is the **content** half of
 onboarding; `cla-init` supplies the **structure** (the `cla.io/` tree + empty per-skill overlay stubs)
-and never populates facts; `update-cla` syncs the portable asset core and never touches project data.
+and never populates facts; the marketplace install supplies the portable asset core and never touches
+project data.
 
 ## Composition boundary (read first)
 
-**Onboarding order: `cla-init` (structure) → `/cla:sync-context` (content) → `update-cla` (portable core).**
+**Onboarding order: marketplace install (portable core) → `cla-init` (structure) → `/cla:sync-context` (content).**
 
 - **`cla-init`** scaffolds the `cla.io/` tree (retro ledgers, feedback inbox, lessons-learned log,
   decisions dir) and empty `cla.io/overlays/<skill>.md` stubs for skills that consume one.
@@ -27,8 +28,9 @@ and never populates facts; `update-cla` syncs the portable asset core and never 
   write a skill's **skill-specific authored body** (that skill's own incident history, bespoke checks,
   permission-set intent) — that content stays human/LLM-authored independently of this skill (by hand,
   or via `/cla:codify-learnings`).
-- **`update-cla`** syncs the plugin's portable asset core (`SKILL.md` bodies, agents, hooks) from a
-  source repo and never creates or touches project data (`cla.io/`, any overlay).
+- **The marketplace install** delivers the plugin's portable asset core (`SKILL.md` bodies, agents,
+  hooks) as a versioned snapshot and never creates or touches project data (`cla.io/`, any overlay) —
+  it cannot, since that tree lives in the repo rather than the plugin directory.
 
 This skill is **self-sufficient**: if `cla.io/` or `cla.io/project-facts.md` is absent, it creates them
 — so running `/cla:sync-context` alone on a fresh repo (even one that skipped `cla-init`) acts as
@@ -144,8 +146,8 @@ hardcoded parser — that's what makes this skill portable across differing tech
 ### Step 3 — Draft the reconciled `cla.io/project-facts.md`
 
 Produce the full proposed file content, organized under headed sections per the categories above. Open
-with a heading and a one-line note that this is the repo's consolidated, never-synced project-facts
-file (lives in `cla.io/`, outside `update-cla`'s `SCAN_DIRS`), maintained by this skill and linted by
+with a heading and a one-line note that this is the repo's consolidated, never-distributed
+project-facts file (lives in `cla.io/`, outside the plugin directory), maintained by this skill and linted by
 the staleness guard (`${CLAUDE_PLUGIN_ROOT}/conformance-checks/tests/test_project_facts_paths.py`).
 
 While drafting, also look for a fact **restated verbatim (or near-verbatim) across two or more**
@@ -206,8 +208,7 @@ Show the user, in order:
 5. Any drafted `cla.io/terminology.md` reconciliation fixes from Step 5, if any were found.
 
 Ask the user to confirm before writing anything (`AskUserQuestion` or a plain yes/no in conversation).
-This skill never silently applies its draft — the same "propose, don't silently apply" discipline
-`update-cla`'s adapt phase uses. On confirmation, write via `mkdir -p "$ROOT/cla.io"` (if needed) then
+This skill never silently applies its draft. On confirmation, write via `mkdir -p "$ROOT/cla.io"` (if needed) then
 `Write`/`Edit` each confirmed file. If the user wants changes, revise the draft and re-confirm rather
 than partially applying. **Every target must be repo content** — `cla.io/**` or a repo-level file.
 If a confirmed target resolves inside the plugin tree, stop and report it as a migration
@@ -232,8 +233,8 @@ loses them entirely.
 - Does **NOT** write or edit a skill's **skill-specific authored body** (incident history, bespoke
   checks, permission-set intent, illustrative examples) — only the shared-fact content of
   `cla.io/project-facts.md` and the one-line pointer additions in overlays.
-- Does **NOT** sync, adapt, or touch any asset-core file (`SKILL.md` bodies, agents, hooks) — that is
-  `update-cla`'s job.
+- Does **NOT** modify any asset-core file (`SKILL.md` bodies, agents, hooks) — those arrive from the
+  marketplace install and, in a consuming repo, sit in a read-only plugin cache.
 - Does **NOT** silently write anything — every change is proposed and confirmed first (Step 7).
 - Does **NOT** parse any stack-specific config format with a hardcoded parser — it reads and reasons
   about whatever manifests/config this repo actually has (portability mechanism).

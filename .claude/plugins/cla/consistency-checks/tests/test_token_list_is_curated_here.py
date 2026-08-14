@@ -8,11 +8,12 @@ list, and a red suite there would teach people to ignore it.
 In the SOURCE repo that leniency is a hole. The guard's whole job is to stop a
 project token reaching every destination, and it does nothing at all when it
 cannot find the list — so a path typo, a rename, or a move (the list travelled
-from `skills/update-cla/references/` to `cla.io/` when the guards were rescued
+from the old sync skill's `references/` to `cla.io/` when the guards were rescued
 into their own scope) turns the guard off with a green suite and no signal.
 
-This check lives in `consistency-checks/`, which is NOT synced, precisely so the
-portable guard keeps its portable behaviour while this repo gets the strict one.
+This check lives in `consistency-checks/`, which holds this repo's own
+source-repo assertions, precisely so the portable guard keeps its portable
+behaviour while this repo gets the strict one.
 """
 
 from __future__ import annotations

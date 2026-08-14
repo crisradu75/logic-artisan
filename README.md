@@ -1,8 +1,9 @@
 # logic-artisan
 
 Canonical home of **CLA — Cris Logic Artisan**, a Claude Code dev-workflow harness packaged as a
-plugin. This repo is the portable source of truth for the harness; individual projects pull it in
-via `update-cla` and adapt it to their own context, keeping their project-specific facts local.
+plugin. This repo is the portable source of truth for the harness; individual projects install it
+from the GitHub marketplace and adapt it to their own context, keeping their project-specific facts
+local.
 
 CLA holds no product/application code — it is the *process* layer: skills, guard hooks, and helper
 agents that carry a change from idea → spec → isolated implementation → review → opened PR, and
@@ -36,8 +37,8 @@ commands, no guards.
 
 ## What's here
 
-The plugin lives at **`.claude/plugins/cla/`** (nested at that path so `update-cla` can consume
-this repo directly as a sync source):
+The plugin lives at **`.claude/plugins/cla/`** — exactly the directory the marketplace catalog
+publishes as the plugin's source path:
 
 ```
 cla (+ .cmd twin)              session launcher for THIS repo (loads the plugin from the tree)
@@ -60,15 +61,22 @@ openspec/                      OpenSpec config + specs for this repo's own chang
 
 This repo carries **portable procedure only**. Every project-specific overlay
 (`cla.io/overlays/<skill>.md`, `*.local.md`) here is a **neutral stub** — a destination repo
-fills in its own facts, and `update-cla` never overwrites them. Per-repo state (`cla.io/`
-decisions, feedback, retro logs) is never part of the synced core. Pytest conformance guards fail
+fills in its own facts, and no install ever overwrites them — they live in the repo, outside the
+plugin directory. Per-repo state (`cla.io/` decisions, feedback, retro logs) is never part of the
+distributed core. Pytest conformance guards fail
 the suite if a project-specific token or a hardcoded developer path leaks into the synced core.
 
 ## Using it in another repo
 
-1. Copy or clone this repo somewhere reachable, or point `update-cla` at an existing checkout.
+1. Add the marketplace and install the plugin (scoped to that project):
+
+   ```bash
+   claude plugin marketplace add crisradu75/logic-artisan
+   claude plugin install cla@cris-logic-artisan --scope project
+   ```
+
 2. In the destination: `/cla:cla-init` (scaffold `cla.io/` + overlay stubs) → `/cla:sync-context`
-   (populate the repo's facts) → `/cla:update-cla <this-repo>` (pull/adapt the portable core).
+   (populate the repo's facts). Pick up later releases with `/plugin marketplace update`.
 
 See the developer guide's [Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo)
 section for details.
@@ -79,7 +87,7 @@ There is **no CI, by design** — the local run below is the whole verification 
 gate before a merge:
 
 ```bash
-python3 .claude/plugins/cla/run_tests.py     # every pytest scope (10 today), aggregated pass/fail + exit code
+python3 .claude/plugins/cla/run_tests.py     # every pytest scope (9 today), aggregated pass/fail + exit code
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs   # the one Node suite
 ```
 
