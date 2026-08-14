@@ -82,6 +82,31 @@ EXCLUDE_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules"
 # (e.g. a lint/format-only config that happens to sit in some dir).
 PYTEST_CONFIG_MARKER = "[tool.pytest.ini_options]"
 
+# A scope containing this file asserts facts about the CANONICAL repo's own
+# source (repo-root launchers, the curated token list, an installed pre-push
+# hook). The marketplace ships the whole plugin dir, so a consuming repo gets
+# these scopes too — and running them there produces failures the consumer
+# cannot fix and did not cause. In the source repo they run normally; anywhere
+# else they are skipped, each with a visible SKIP row, never silently.
+SOURCE_ONLY_MARKER = "SOURCE-REPO-ONLY.md"
+
+
+def _is_source_repo() -> bool:
+    """True only in the canonical repo: the plugin sits at
+    <root>/.claude/plugins/cla AND <root>/.claude-plugin/marketplace.json
+    publishes that exact path. A cache install matches neither."""
+    try:
+        if PLUGIN_ROOT.name != "cla" or PLUGIN_ROOT.parent.name != "plugins":
+            return False
+        if PLUGIN_ROOT.parents[1].name != ".claude":
+            return False
+        catalog = PLUGIN_ROOT.parents[2] / ".claude-plugin" / "marketplace.json"
+        return catalog.is_file() and '".claude/plugins/cla"' in catalog.read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        return False
+
 # pytest exit codes we treat specially; everything else is a failure.
 EXIT_OK = 0
 EXIT_NO_TESTS = 5
@@ -269,6 +294,17 @@ def main(argv: list[str]) -> int:
     # then means tests were renamed/misnamed out of collection: fail. When args
     # are forwarded (e.g. `-k foo`), exit 5 is expected filtering and stays benign.
     strict_no_tests = not pytest_args
+
+    # Source-repo-only scopes: run here, skip (visibly) in a consuming repo.
+    if not _is_source_repo():
+        source_only = [s for s in scopes if (s / SOURCE_ONLY_MARKER).is_file()]
+        for s in source_only:
+            print(
+                f"SKIP: {_rel(s)} is source-repo-only (asserts the canonical "
+                f"repo's own source — see its {SOURCE_ONLY_MARKER})",
+                file=sys.stderr,
+            )
+        scopes = [s for s in scopes if s not in source_only]
 
     results: list[tuple[Path, int, int]] = [
         (s, *run_scope(s, pytest_args)) for s in scopes
