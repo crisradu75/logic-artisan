@@ -224,7 +224,7 @@ three severities.
   `--permission-mode auto`, which suppresses the usual confirmations, so this hook is what
   restores one.
 - **Warns** surface a caution and let the call through: `warn-comment-dates`,
-  `warn-stacked-pr-merge` (a merge that could auto-close an open child PR),
+  `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard),
   `warn-stray-scratch-artifact` (scratch files left in the repo root), and
   `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one — it
   asks you to name what you dropped, since a `Write` keeps only what you carried across).

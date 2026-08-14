@@ -57,7 +57,7 @@ Single-line body, no Markdown headers and no `\n#` sequence (avoids the `gh pr c
 gh pr create --title "feat: <change-name>" --body "Closes openspec/changes/<change-name>/. Checks: build + lint passed."
 ```
 
-**Stacked chains only** (`--pr-base` passed) — an explicit base is REQUIRED: without it GitHub defaults the PR to the repo default branch and its diff silently includes the whole parent chain. Resolve the parent's PR number first, then open (two separate calls, one base command each):
+**Stacked chains only** (`--pr-base` passed) — this REPLACES the command above; run it instead, never both. An explicit base is REQUIRED: without it GitHub defaults the PR to the repo default branch and its diff silently includes the whole parent chain. Resolve the parent's PR number first, then open (two separate calls, one base command each):
 
 ```
 gh pr list --head <pr-base> --state open --json number --jq ".[0].number"

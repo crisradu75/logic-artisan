@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: WARN (never block) when `gh pr merge --delete-branch` would
-auto-close an open stacked child PR.
+"""PreToolUse hook: WARN (never block) when `gh pr merge --delete-branch` hits
+a branch that open stacked child PRs are based on.
 
-Deleting a base PR's branch on merge auto-closes any PR whose *base* is that
-branch, and GitHub refuses to reopen a PR whose base branch is gone ("Cannot
+Two different outcomes, and the difference is the merge (GitHub retargeting,
+2020-05-19 changelog). Head branch merged THEN deleted: open PRs based on it
+are retargeted to the merged PR's own base — safe, and the expected shape when
+landing a stack parents-first. Deleted WITHOUT its PR merging: the children are
+closed, and GitHub refuses to reopen a PR whose base branch is gone ("Cannot
 change the base branch of a closed pull request").
+
+The modern hazard is the merge STRATEGY, not the deletion: a SQUASH merge
+rewrites the parent's commits, so the retargeted children re-show the parent's
+whole diff and their own merges conflict. A stack lands with `--merge`.
 
 Detection: the Bash command runs `gh pr merge ... --delete-branch` (or `-d`).
 Resolve the merged PR's head branch, then query `gh pr list --base <head>
@@ -179,12 +186,11 @@ def main() -> int:
         return 0
     print(
         f"[warn-stacked-pr-merge] '{head}' is the base of open PR(s) {listed}. "
-        f"Merging with --delete-branch auto-closes them and GitHub refuses to reopen. "
-        # `<base>` rather than a resolved branch name: this is already a
-        # template the reader edits, and resolving it costs git spawns inside a
-        # handler budget this hook is the most expensive occupant of.
-        f"Retarget first: gh pr edit <child> --base <base> "
-        f"(or drop --delete-branch).",
+        f"Merged-then-deleted, GitHub RETARGETS them to this PR's base — expected "
+        f"when landing a stack parents-first. But use a MERGE COMMIT (--merge): "
+        f"a squash rewrites this branch's commits, so the retargeted children "
+        f"re-show its whole diff and conflict. And never delete this branch "
+        f"WITHOUT merging its PR — that closes the children for good.",
         file=sys.stderr,
     )
     return 0

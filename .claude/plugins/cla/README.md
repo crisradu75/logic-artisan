@@ -76,7 +76,7 @@ calls) · `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) 
 destructive-but-possibly-legitimate git/gh commands; `ALLOW_PR_MERGE=1` drops only the PR-merge
 confirmation, for the `multi-*` chainers' unattended runs).
 
-**Warns:** `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
+**Warns:** `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard) ·
 `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
 `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one).
 
