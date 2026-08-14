@@ -92,6 +92,9 @@ Count four things from the artifacts:
 - **b** = subtasks in tasks.md (count `- [ ]` lines)
 - **c** = capabilities touched (delta spec directories under `specs/`)
 - **d** = design decisions in design.md (count `### D`-heading blocks, or the equivalent enumerated decisions)
+- **e** = verifiable CLAIMS the artifacts make about existing code — every "X already works", "no
+  changes needed to Y", "Z has signature W", every named symbol/file/line. Count them from the
+  context brief you just built; each row is one claim.
 
 **Rule:**
 - **Small change** — `a ≤ 5` AND `b ≤ 20` AND `c = 1` **AND NOT the complexity-concentration override below**:
@@ -99,6 +102,13 @@ Count four things from the artifacts:
   - Announce: "Small change (a=.., b=.., c=.., d=..) — analyzing directly without agent dispatch."
 - **Large change** — any of the `a`/`b`/`c` thresholds exceeded, OR the complexity-concentration override fires:
   - Proceed to Step 4 to dispatch the 3 agents in parallel.
+
+**Claim-density override (a change can be small in code and large in assertions).** File count
+and subtask count both under-weight a docs- or design-heavy change whose risk lives in what it
+CLAIMS rather than what it touches: 3 files and 40 claims about existing behaviour grades "small"
+and skips the dispatch, yet every one of those claims is a place the artifact can be wrong about
+the codebase. Treat as **Large** when `e >= 25`, regardless of `a`/`b`/`c`. Announce it the same
+way: "Large change (a=.., b=.., c=.., d=.., e=..) — claim-density override — dispatching 3 agents."
 
 **Complexity-concentration override (a change can be conceptually large while geographically narrow).** File count under-weights a change whose whole weight lands in one already-large file — `a` reads "small" while the change is anything but. Treat as **Large** (dispatch the 3 agents) even when `a ≤ 5`, when the change is concentrated in one or two files AND carries substantial internal complexity: `d ≥ 4` design decisions, OR `b ≥ 15` subtasks. Evidence this is real, not hypothetical: a `seed.ts`-concentrated change gated Small on `a=4`, got the in-context review, and its post-implementation Revise round then surfaced **more** real Important findings (8, zero phantoms) than either genuinely-Large change in the same chain (4 each) — the in-context pass under-covered exactly because the file-count gate said "small." When the override fires, announce it: "Large change (a=.., b=.., c=.., d=..) — complexity-concentration override: {d≥4 decisions | b≥15 subtasks} in {N} file(s) — dispatching 3 agents."
 
