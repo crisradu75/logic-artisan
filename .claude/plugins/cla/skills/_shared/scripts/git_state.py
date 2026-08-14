@@ -6,6 +6,14 @@ preflight, Revise push-prep, Archive commit) to catch:
     left running on the repo.
   - The working directory drifting onto a non-feature branch between phases.
 
+This script does NOT inspect the working tree for uncommitted files. The
+`no_in_progress_op` field means exactly what it says — no cherry-pick / merge /
+rebase / revert / bisect is mid-flight — and is true with any number of modified
+files present. It was called `clean` until a run read `{"clean": true}` with 47
+files staged and concluded the tree was clean. For dirty-tree state, call
+`git status --porcelain` separately; the two checks answer different questions
+and both are load-bearing at a commit boundary.
+
 Failure mode: a parallel Claude session has an in-progress `git cherry-pick`
 on another branch. Mid-run, the working tree switches to that branch
 externally; an Archive-phase `git add -A` then sweeps untracked files from that
@@ -112,7 +120,7 @@ def main() -> int:
     git_dir = _git_dir(repo_root)
     if git_dir is None:
         print(json.dumps({
-            "clean": False,
+            "no_in_progress_op": False,
             "error": (
                 f"could not resolve a valid .git directory at {repo_root} "
                 f"(not a git repo, missing .git pointer, malformed worktree marker, "
@@ -125,7 +133,7 @@ def main() -> int:
     branch = _current_branch(repo_root)
     if branch is None:
         print(json.dumps({
-            "clean": False,
+            "no_in_progress_op": False,
             "error": "git rev-parse --abbrev-ref HEAD failed",
             "current_branch": None,
             "expected_branch": args.expect_branch,
@@ -136,7 +144,7 @@ def main() -> int:
     in_progress = _detect_in_progress(git_dir)
 
     out: dict[str, object] = {
-        "clean": in_progress is None,
+        "no_in_progress_op": in_progress is None,
         "in_progress_op": in_progress,
         "current_branch": branch,
         "expected_branch": args.expect_branch,
@@ -151,7 +159,7 @@ def main() -> int:
         return 2
 
     if args.expect_branch is not None and branch != args.expect_branch:
-        out["clean"] = False
+        out["no_in_progress_op"] = False
         print(json.dumps(out))
         print(
             f"git-state: on branch {branch!r}, expected {args.expect_branch!r}",

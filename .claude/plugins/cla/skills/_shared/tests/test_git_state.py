@@ -23,7 +23,7 @@ def test_clean_tree_no_in_progress_op_exits_zero(tmp_repo: Path):
     result = _run(tmp_repo)
     assert result.returncode == 0
     payload = json.loads(result.stdout)
-    assert payload["clean"] is True
+    assert payload["no_in_progress_op"] is True
     assert payload["in_progress_op"] is None
     assert payload["current_branch"] == "master"
 
@@ -33,7 +33,7 @@ def test_cherry_pick_in_progress_exits_two(tmp_repo: Path):
     result = _run(tmp_repo)
     assert result.returncode == 2
     payload = json.loads(result.stdout)
-    assert payload["clean"] is False
+    assert payload["no_in_progress_op"] is False
     assert payload["in_progress_op"] == "cherry-pick"
     assert "cherry-pick" in result.stderr
 
@@ -82,7 +82,7 @@ def test_expect_branch_mismatch_exits_three(tmp_repo: Path):
     result = _run(tmp_repo, "--expect-branch", "feature/nope")
     assert result.returncode == 3
     payload = json.loads(result.stdout)
-    assert payload["clean"] is False
+    assert payload["no_in_progress_op"] is False
     assert payload["current_branch"] == "master"
     assert payload["expected_branch"] == "feature/nope"
     assert "expected" in result.stderr
@@ -155,7 +155,7 @@ def test_no_git_directory_exits_one(tmp_path: Path):
     result = _run(tmp_path)  # tmp_path has no .git
     assert result.returncode == 1
     payload = json.loads(result.stdout)
-    assert payload["clean"] is False
+    assert payload["no_in_progress_op"] is False
     assert "error" in payload
     assert "git-state" in result.stderr
 
@@ -178,7 +178,7 @@ def test_malformed_worktree_gitdir_pointer_exits_one(tmp_path: Path):
     result = _run(fake)
     assert result.returncode == 1
     payload = json.loads(result.stdout)
-    assert payload["clean"] is False
+    assert payload["no_in_progress_op"] is False
 
 
 def test_worktree_gitdir_pointer_to_nonexistent_dir_exits_one(tmp_path: Path):
@@ -191,7 +191,7 @@ def test_worktree_gitdir_pointer_to_nonexistent_dir_exits_one(tmp_path: Path):
     result = _run(fake)
     assert result.returncode == 1
     payload = json.loads(result.stdout)
-    assert payload["clean"] is False
+    assert payload["no_in_progress_op"] is False
 
 
 def test_detached_head_returns_HEAD_as_branch(tmp_repo: Path):
@@ -208,7 +208,7 @@ def test_detached_head_returns_HEAD_as_branch(tmp_repo: Path):
     result = _run(tmp_repo)
     assert result.returncode == 0
     payload = json.loads(result.stdout)
-    assert payload["clean"] is True
+    assert payload["no_in_progress_op"] is True
     assert payload["current_branch"] == "HEAD"
 
 
