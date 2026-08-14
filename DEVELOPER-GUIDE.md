@@ -32,7 +32,14 @@ Keep that split in mind and the rest of the harness follows from it.
 
 ## 2. Your first session
 
-From the repo root:
+Two audiences, two starts — pick yours:
+
+**In a repo that installed CLA from the marketplace** (section 10): start `claude` normally.
+The installed plugin is already active — there is no launcher to run, and none is shipped.
+Check it worked: type `/cla:` and the skill list should autocomplete.
+
+**In THIS repo (developing the harness):** use the launcher at the repo root, which loads the
+plugin live from the working tree so you run the harness you are editing:
 
 ```bash
 ./cla                      # macOS / Linux / Git Bash
@@ -47,12 +54,8 @@ claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model so
 
 Everything after `./cla` is forwarded to `claude`, so `./cla --model opus` overrides the default.
 
-Three things to know before your first prompt:
+Two things to know before your first prompt:
 
-- **In THIS repo, load the plugin live from the working tree** (`--plugin-dir`), so you are running
-  the harness you are editing rather than a cached snapshot of a release. A consuming repo does the
-  opposite and runs the marketplace install; that works because repo-local state lives in `cla.io/`,
-  outside the plugin directory. Without either, the skills are inert files and no guard runs.
 - **`--permission-mode auto` skips per-action confirmation prompts.** Intentional — the guard
   hooks are the safety layer — but know it before you run it.
 - **The CLA output style applies automatically** (`force-for-plugin: true`): short sentences,
