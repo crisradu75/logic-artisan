@@ -38,7 +38,7 @@ _LEDGER_CONTRACTS = [
     ),
     (
         "spec-to-pr",
-        _PLUGIN_ROOT / "skills" / "spec-to-pr" / "references" / "run-log-schema.md",
+        _PLUGIN_ROOT / "skills" / "_shared" / "references" / "run-log-schema.md",
         _PLUGIN_ROOT / "skills" / "spec-to-pr-retro" / "scripts" / "aggregate.py",
     ),
 ]

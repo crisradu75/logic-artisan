@@ -30,7 +30,7 @@ FIRST determine the current branch — `git rev-parse --abbrev-ref HEAD` — and
 
 Before staging anything:
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <branch>
 ```
 Exit 0 → proceed. Exit 2 (in-progress git op) or 3 (wrong branch) → halt and surface to the user. Cheap (<1s), and catches the case where an external session left a cherry-pick/rebase active or where HEAD drifted between Test's checks and now.
 
@@ -40,7 +40,7 @@ Run `git status --porcelain` and scan the untracked (`??`) entries for a stray s
 
 ## 3. Stage, commit, push
 
-Path-scoped staging — NEVER `git add -A` (see `references/bash-discipline.md` for why). There is no repo-root `src/` — the monorepo split moved it under each app/package, so name the specific `apps/<app>/src/` and/or `packages/<package>/src/` directories the change actually touched (determine which from `git status --porcelain` or the tasks.md file list), alongside the change directory:
+Path-scoped staging — NEVER `git add -A` (see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/bash-discipline.md` for why). There is no repo-root `src/` — the monorepo split moved it under each app/package, so name the specific `apps/<app>/src/` and/or `packages/<package>/src/` directories the change actually touched (determine which from `git status --porcelain` or the tasks.md file list), alongside the change directory:
 ```
 git add openspec/changes/<change-name>/ apps/<app>/src/ packages/<package>/src/
 git commit -m "feat: <change-name>"

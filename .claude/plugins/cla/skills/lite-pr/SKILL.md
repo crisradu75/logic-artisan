@@ -99,7 +99,7 @@ This is the one deliberate stop point in the workflow. It deviates from `/cla:sp
 Pre-commit safety check:
 
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
 ```
 
 Exit 0 → proceed. Any non-zero exit → halt and surface via `AskUserQuestion` — same contract as `/cla:spec-to-pr`: never infer "probably fine" on a non-zero exit. This bare invocation passes no `--expect-branch` (lite-pr's feature branch doesn't exist until `commit-push-pr` runs), so a non-zero exit means an in-progress rebase/cherry-pick from another session (exit 2) or an unresolvable/corrupt git state (exit 1) — not a branch mismatch. If another session is active in this same clone, prefer running lite-pr from an isolated worktree (`/cla:new-worktree`) in the first place — a shared-clone `git commit` mid-flow is a real collision risk here, not a hypothetical one (see `cla.io/overlays/lite-pr.md` for a recorded incident in this repo).
@@ -114,7 +114,7 @@ No pause before this runs — continuous by design (see Autonomy below). Use `co
 
 ### Review
 
-**Dispatch the review agents directly — do NOT chain `Skill(pr-review-toolkit:review-pr)`.** That skill is itself a thin dispatcher that calls the same `pr-review-toolkit:*` agents; the hop adds a 1–2 turn skill-load round trip with no extra capability (same economy `/cla:spec-to-pr`'s "When NOT to use `Skill()`" section applies). Pick the agents by diff content — `code-reviewer` + `silent-failure-hunter` for any logic/behavior code; add `pr-test-analyzer` when tests change, `type-design-analyzer` on a new invariant-bearing type, `comment-analyzer` on a substantial prose/doc block, `plugin-dev:skill-reviewer` on a SKILL.md frontmatter/new-skill change — and route each per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/model-routing.md`. Launch them in parallel in one message; pass each the diff described by file+symbol (let it read the hunks itself), not the raw diff pasted inline.
+**Dispatch the review agents directly — do NOT chain `Skill(pr-review-toolkit:review-pr)`.** That skill is itself a thin dispatcher that calls the same `pr-review-toolkit:*` agents; the hop adds a 1–2 turn skill-load round trip with no extra capability (same economy `/cla:spec-to-pr`'s "When NOT to use `Skill()`" section applies). Pick the agents by diff content — `code-reviewer` + `silent-failure-hunter` for any logic/behavior code; add `pr-test-analyzer` when tests change, `type-design-analyzer` on a new invariant-bearing type, `comment-analyzer` on a substantial prose/doc block, `plugin-dev:skill-reviewer` on a SKILL.md frontmatter/new-skill change — and route each per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`. Launch them in parallel in one message; pass each the diff described by file+symbol (let it read the hunks itself), not the raw diff pasted inline.
 
 **Brief each one per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md`** (scope / task / do-not-touch / report / done-when). These run in parallel over one working tree, which makes the do-not-touch slot load-bearing rather than ceremonial: two agents editing the same file overwrite each other with no merge and no warning. These are review agents, so the brief's own instruction is that they report findings and edit nothing — and where an agent type exists in `.claude/agents/`, prefer a `tools:` allowlist that makes that mechanically true instead of relying on the prose holding.
 
@@ -148,5 +148,5 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 
 ## References
 
-- `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py` — reused directly for the pre-commit safety check.
+- `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py` — reused directly for the pre-commit safety check.
 - `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/SKILL.md` — the full-weight sibling workflow; see its "Workflow phases" for what a graduated change looks like.

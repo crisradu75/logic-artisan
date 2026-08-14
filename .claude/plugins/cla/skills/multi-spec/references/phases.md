@@ -8,7 +8,7 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 **Fallback: derive grouping by judgment.** When no such section exists, read every numbered decision and the Decision Summary table, and group them into coherent, dependency-ordered changes yourself — decisions that share a data model, a component, or an explicit "depends on" relationship belong in one change or in dependency order across changes. This is the same kind of reasoning `multi-pr`'s Phase 1 does over already-authored changes, applied here to raw decisions text.
 
-**Escalate-up on a sub-Opus session.** This grouping judgment sets every change's scope — on a session below Opus, dispatch it to an `opus` `Agent` (same escalate-up rule `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/model-routing.md` documents for Propose authoring) rather than deriving it at a lower tier. No-op on an Opus session.
+**Escalate-up on a sub-Opus session.** This grouping judgment sets every change's scope — on a session below Opus, dispatch it to an `opus` `Agent` (same escalate-up rule `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` documents for Propose authoring) rather than deriving it at a lower tier. No-op on an Opus session.
 
 **Output** a change plan — one row per change: kebab-case `name`, the decision numbers it covers, a one-line scope, and `depends_on` (other change names in this batch, if any) — per `references/plan-schema.md`. Print it before authoring starts. Hold it in working context only — do not write/commit it here. Phase 2 persists it once the branch exists, because two of the plan's required fields (`batch_slug`, `branch`) only exist after Phase 2's branch derivation, and a Phase-1 commit would land on `<base-branch>` (which this skill never pushes), so it wouldn't survive a dead disk anyway.
 
@@ -23,7 +23,7 @@ Full step-by-step procedures for the phases without their own dedicated referenc
 
 **Persist the plan, on the branch.** Assemble the plan JSON (Phase 1's grouping plus `batch_slug`/`branch`) per `references/plan-schema.md`, write to `cla.io/decisions/<stem>.multi-spec-plan.json`, then commit and push:
 ```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
 git add -- cla.io/decisions/<stem>.multi-spec-plan.json
 git commit -m "docs(openspec): multi-spec plan for <batch-slug>"
 git push -u origin docs/propose-<batch-slug>

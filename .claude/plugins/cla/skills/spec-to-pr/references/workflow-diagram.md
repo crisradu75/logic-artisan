@@ -1,6 +1,6 @@
 # /cla:spec-to-pr workflow diagram
 
-Phase order (Precheck → Propose → Review → Implement → Test → Ship → Revise → Archive → Handoff), post-checks, status glyphs, cap points. The conductor's mental model. Model/effort annotations inline below are a quick-reference only — `references/model-routing.md` is the single source of truth for routing; if the two ever disagree, that file wins.
+Phase order (Precheck → Propose → Review → Implement → Test → Ship → Revise → Archive → Handoff), post-checks, status glyphs, cap points. The conductor's mental model. Model/effort annotations inline below are a quick-reference only — `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` is the single source of truth for routing; if the two ever disagree, that file wins.
 
 ```
                     $ARGUMENTS

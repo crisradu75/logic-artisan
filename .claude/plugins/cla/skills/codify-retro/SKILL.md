@@ -18,17 +18,22 @@ This closes the loop's outer loop: `codify-learnings` learns from sessions; `cod
 
 ## Workflow
 
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/retro-skeleton.md` first** — it carries the
+five workflow steps, the report shape, the apply-gate, and the sources-of-truth list that every
+retro shares. This body supplies only what is specific to the codify loop: the aggregate command
+and the interpretation heuristics.
+
 ### 1. Read the aggregated metrics
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/aggregate.py --limit <N>
 ```
 
-Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrapper), or `10` if `$ARGUMENTS` is empty. Substitute the literal number before invoking — the script does not expand shell variables.
+Where `<N>` is the value from `$ARGUMENTS`, or `10` if empty. Substitute the literal number before
+invoking — the script does not expand shell variables.
 
-Output is a single JSON object on stdout — suggestion apply-rate, re-offending lessons, escalation-rung distribution, repeatedly-rejected lessons, failure-modes bullet trend, codify-process-issue rate.
-
-If `runs_analyzed: 0`, the log doesn't exist yet — say so, stop. The user needs to run `/cla:codify-learnings` a few times first (the log starts accruing only once `log_run.py` is wired, so early windows may be short).
+Output is a single JSON object on stdout — suggestion apply-rate, re-offending lessons, escalation-rung
+distribution, repeatedly-rejected lessons, failure-modes bullet trend, codify-process-issue rate.
 
 ### 2. Identify the load-bearing patterns
 
@@ -36,7 +41,7 @@ Don't list every metric. Pick the 2-4 patterns that would actually change the lo
 
 **Effectiveness heuristics (the whole point):**
 - A lesson in `re_offenses` with `count ≥ 2` → the artifact it was escalated to is **too weak**; the escalation isn't working. Bump it UP the ladder (memory → hook/script). This is the single most important signal — a re-offense means the prior fix failed.
-- A lesson in `rejected_lessons` with `count ≥ 2` → stop proposing it; **retire** it from `references/failure-modes.md` (the SKILL.md's Step 6 already says to flag these — verify it's actually happening).
+- A lesson in `rejected_lessons` with `count ≥ 2` → stop proposing it; **retire** it from `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` (the SKILL.md's Step 6 already says to flag these — verify it's actually happening).
 - `suggestions.apply_rate < 0.5` over the window → the proposal bar is too low (too much rejected noise); tighten what qualifies as a suggestion (SKILL.md "Style": every suggestion tied to a concrete this-session event).
 
 **Routing heuristics:**
@@ -55,46 +60,19 @@ Don't list every metric. Pick the 2-4 patterns that would actually change the lo
 
 Single-digit counts in a category mean "interesting anecdote, not a pattern" — call them out as such, don't propose changes.
 
-### 3. Propose specific edits
+### 3-5. Propose, report, and optionally apply
 
-For each pattern, name the artifact and the edit, not a vague direction. Examples:
+Per the shared skeleton. Worked examples in this loop's own vocabulary:
 
 - ❌ "The cross-platform lessons keep failing."
-- ✅ "A recurring rule re-offended 3× (re_offenses count: 3) while only ever escalated to `memory` — promote it to a `PreToolUse` hook, per the routing rule's 'hook-able re-offender' clause."
+- ✅ "A recurring rule re-offended 3x (re_offenses count: 3) while only ever escalated to `memory` — promote it to a `PreToolUse` hook, per the routing rule's 'hook-able re-offender' clause."
+- ✅ "`${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` at 64 bullets (trend 58->61->64); run a Step 2.6 consolidation."
 
-- ❌ "failure-modes is too long."
-- ✅ "`references/failure-modes.md` at 64 bullets (trend 58→61→64); run a Step 2.6 consolidation — merge the 3 cross-platform stdout bullets, retire line 35 (now enforced by the skill-consumed-script honesty memory)."
+The usual apply targets are `codify-learnings/SKILL.md` and
+`${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md`.
 
-Cite the metric in parentheses so the user can sanity-check the recommendation.
-
-### 4. Output shape
-
-Render a Markdown report with three sections, in this order:
-
-1. **Window** — runs analyzed, date range.
-2. **Patterns** — the 2-4 load-bearing patterns, one paragraph each, with the metric in parens.
-3. **Proposed edits** — numbered list. Each entry: target file + section, the specific change, the metric that justifies it.
-
-Keep the whole report under ~40 lines. Long retros don't get acted on.
-
-### 5. Optional: invite the user to apply edits
-
-**Check first whether the plugin is writable here** — the procedure is in `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`. Every target this retro proposes — `codify-learnings/SKILL.md`, `references/failure-modes.md` — lives inside the plugin. When the plugin is installed from a marketplace that tree is a read-only, version-keyed cache: an edit either fails or lands somewhere the next update discards, while reporting as applied. If it is read-only, do not offer to apply; present the findings and route them to **`/cla:report-upstream`**, which files them against the canonical source where they can actually change the loop for every repo.
-
-End with: "Want me to apply any of these? Say `apply 1,3` or list the numbers."
-
-Do NOT apply edits without explicit confirmation — retros are advisory. `codify-learnings/SKILL.md` and `references/failure-modes.md` are the usual targets, and both are editable **only where the writability check above says so**; in a repo that installed the plugin they are read-only and the findings go upstream instead. `openspec/**`, `**/scripts/**/*.py`, and vendored frameworks stay excluded per codify-learnings' own rules.
-
-**If applied edits changed `references/failure-modes.md`'s bullet count** (a retire or a consolidation), state the new count in the closing summary — e.g. "failure-modes.md now at 47 bullets (was 51)". This retro writes nothing to `codify-runs.jsonl` (its sole producer is codify-learnings' Step 7), so without that line the newest ledger record keeps claiming a count the file no longer has and the trend data reads as flat. Recount with `grep -c '^- \[ \]' ${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md`; the next `/cla:codify-learnings` run uses it for `maintenance.failure_modes_bullets`.
-
-## Sources of truth
-
-- **Output schema:** see `aggregate.py`'s module docstring for exact field names emitted.
-- **Log format:** see `lib/log_run.py` for what gets written per run.
-- **What to log:** see `codify-learnings/SKILL.md` "Step 7 — Log the run" for the record schema.
+**If applied edits changed that file's bullet count** (a retire or a consolidation), state the new count in the closing summary — e.g. "failure-modes.md now at 47 bullets (was 51)". This retro writes nothing to `codify-runs.jsonl` (its sole producer is codify-learnings' Step 7), so without that line the newest ledger record keeps claiming a count the file no longer has and the trend reads as flat. Recount with `grep -c '^- \[ \]' ${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md`.
 
 ## When NOT to use
 
-- For a one-off codify issue ("why did this run propose that?") — read the `lessons-learned.md` entry + transcript, don't aggregate.
-- Before ~5 runs accumulate — noise > signal.
-- To debug a specific bug in `aggregate.py`/`log_run.py` — that's a code-reading task, not a metrics task.
+Per the shared skeleton's "When NOT to use a retro". This loop's threshold is ~5 `/cla:codify-learnings` runs.

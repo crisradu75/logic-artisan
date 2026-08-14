@@ -52,7 +52,7 @@ Do NOT name `openspec archive` in any case (Archive already did it).
 
 ## 5. Append the per-run record to the JSONL log
 
-After the terminal report has been printed, serialize the in-context phase outcomes as a single JSON object and pipe it to `lib/log_run.py` (with `spec-to-pr-runs.jsonl` as its argument). **The exact JSON schema (every field `aggregate.py` reads, counts-only, under 4 KiB) and the per-field obligations live in `references/run-log-schema.md`** — follow that shape exactly; it is the contract `/cla:spec-to-pr-retro` consumes. **Include the `routing` object** (the per-dispatch model tally, `implement_delegated`, `escalate_up_fired`, and `revise_findings_by_tier` — keyed **per agent**, `found`/`phantom` counting Critical+Important only, Suggestions excluded) — it is the telemetry that lets the retro validate the routing table AND drives its per-agent yield heuristic; assemble it from the models you dispatched, whether Implement delegated, whether escalate-up fired, and the Revise triage outcome per agent.
+After the terminal report has been printed, serialize the in-context phase outcomes as a single JSON object and pipe it to `lib/log_run.py` (with `spec-to-pr-runs.jsonl` as its argument). **The exact JSON schema (every field `aggregate.py` reads, counts-only, under 4 KiB) and the per-field obligations live in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`** — follow that shape exactly; it is the contract `/cla:spec-to-pr-retro` consumes. **Include the `routing` object** (the per-dispatch model tally, `implement_delegated`, `escalate_up_fired`, and `revise_findings_by_tier` — keyed **per agent**, `found`/`phantom` counting Critical+Important only, Suggestions excluded) — it is the telemetry that lets the retro validate the routing table AND drives its per-agent yield heuristic; assemble it from the models you dispatched, whether Implement delegated, whether escalate-up fired, and the Revise triage outcome per agent.
 
 **Failure is non-fatal.** If `log_run.py` exits non-zero (disk full, perms, oversize record), capture the stderr in the Handoff Issues section but do NOT mark the overall run as warn — a missing log line is a small loss; halting at the very end of a successful workflow is a large one.
 
@@ -63,7 +63,7 @@ Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty o
 - **Skip when the log is out-of-repo.** If `CLAUDE_RETRO_DIR` points outside the repo, there is nothing tracked to stage — skip.
 - Verify git-state, then path-scoped stage + commit + push (never `-A`):
   ```
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/scripts/git_state.py --expect-branch <branch>
+  python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <branch>
   git add -- cla.io/retro/spec-to-pr-runs.jsonl
   git commit -m "chore: spec-to-pr run log"
   git push

@@ -11,9 +11,9 @@ feed learnings back into the next run.
 
 ## Quick start
 
-Launch a session with the harness active using the launchers at the repo root (a cached
-marketplace install can't do this — the skills/hooks read and write repo-local state, so the
-plugin must load live from the working tree):
+Launch a session with the harness active using the launchers at the repo root. In THIS repo the
+plugin loads live from the working tree, so you run the harness you are editing rather than a
+cached snapshot of a release (a consuming repo does the opposite and runs the marketplace install):
 
 ```bash
 ./cla           # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
@@ -48,13 +48,15 @@ openspec/                      OpenSpec config + specs for this repo's own chang
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
   README.md                    the harness's scope + capabilities, by life-cycle phase
-  run_tests.py                 aggregating test runner (all pytest scopes)
+  run_tests.py                 aggregating test runner (all pytest scopes + the Node suite)
   skills/                      18 workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
+  skills/_shared/              references + one script that several skills share (not a skill)
   agents/                      helper agents (doc-sweeper, fact-gatherer)
   hooks/                       always-on guard hooks (blocks, asks, warns) + dispatchers + tests
   output-styles/               the project's writing convention (force-for-plugin: true)
-  consistency-checks/          cross-scope drift checks (this repo only — never synced)
-  launcher-checks/             tests for the repo-root launchers (this repo only — never synced)
+  conformance-checks/          portable guards for the fact/procedure split
+  consistency-checks/          cross-scope drift checks (assert this repo's own source)
+  launcher-checks/             tests for the repo-root launchers (assert this repo's own source)
 ```
 
 ## Canonical vs. per-repo
@@ -87,7 +89,7 @@ There is **no CI, by design** — the local run below is the whole verification 
 gate before a merge:
 
 ```bash
-python3 .claude/plugins/cla/run_tests.py     # every pytest scope (9 today), aggregated pass/fail + exit code
+python3 .claude/plugins/cla/run_tests.py     # every pytest scope (10 today), aggregated pass/fail + exit code
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs   # the one Node suite
 ```
 
