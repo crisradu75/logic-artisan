@@ -236,6 +236,7 @@ retro over prior runs of another skill.
 | | `save-permissions` | Persist session tool permissions to `.claude/settings.local.json` |
 | | `report-upstream` | File a defect in the plugin's own portable core as an issue against the canonical source |
 | | `release` | Cut a new plugin release: preconditions, the three-file version bump, `claude plugin tag` |
+| | `checkpoint` | Compact a session into a briefing the next one can resume from |
 | 1. Discover & shape | `feedback` | Capture rough notes → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
 | 2. Specify & plan | `multi-spec` | Turn a shaped decisions doc into a batch of OpenSpec proposals |
@@ -260,8 +261,8 @@ Wired automatically via `.claude/plugins/cla/hooks/hooks.json` when the plugin l
 that sync the plugin. `hooks.json` itself wires two dispatchers (`dispatch-bash-pretooluse.py` for
 the Bash/PowerShell matcher, `dispatch-edit-write-pretooluse.py` for the Edit/Write matcher), each
 of which runs several leaf hooks in one Python process — 7 distinct leaf hooks between them (5 on
-the Bash matcher, 2 on Edit/Write), plus `warn-wholesale-rewrite` wired directly on PostToolUse:
-8 leaf hook files in all, which is what the bullets below enumerate. **Blocks**
+the Bash matcher, 2 on Edit/Write), plus `warn-wholesale-rewrite` and `log-commit-provenance` wired directly on PostToolUse:
+9 leaf hook files in all, which is what the bullets below enumerate. **Blocks**
 (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt instead of
 blocking outright; **warns** (`warn-*`) surface a caution without blocking:
 

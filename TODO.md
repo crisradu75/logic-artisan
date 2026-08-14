@@ -202,3 +202,16 @@ lifecycle table plus descriptions already route); the avoid-negation authoring r
 first contact, unchanged); research-as-procedure (user memory already carries it); and the interview
 primitive extraction — measured overlap between `shape-decision` and `feedback` is two sentences of
 principle, below the shared-reference bar.
+
+## Write mutant batches for the 12 grandfathered guards
+
+`consistency-checks/tests/test_guards_have_mutant_batches.py` requires every guard in a checks
+scope to ship a same-named batch under `mutants/`, so a new guard cannot land unproven. Twelve
+predate the convention and are listed individually in that file's `_EXEMPT` map — countable
+debt, not a softened rule. Three batches exist and kill everything they fire at
+(`test_skill_lint`, `test_source_only_markers`, `test_doc_facts`).
+
+Delete an `_EXEMPT` line the moment its batch lands. A companion test caps the list at its
+current size, so it can only shrink. Highest value first: `test_no_project_tokens` and
+`test_check_script_drift` — CLAUDE.md names the latter as guarding a *silent* failure, which is
+exactly the class where an unproven guard is worth least.
