@@ -4,9 +4,12 @@ A Claude Code **dev-workflow harness**, distributed as a marketplace plugin. CLA
 application code and holds no product logic — it is the *process*
 layer: a set of skills, guard hooks, and helper agents that carry a change from a raw idea through
 specification, isolated implementation, review, and a PR, then feed what was learned back into the
-next run. It orchestrates on top of OpenSpec (the `opsx:*` skills) for the
-spec artifacts themselves, and keeps all per-repo state (decisions, feedback, retro logs,
-lessons-learned) in the repo's own `cla.io/` tree.
+next run. It builds on existing skills rather than replacing them: OpenSpec
+(the `opsx:*` skills) authors and archives the spec artifacts, Anthropic's `commit-commands`
+plugin handles commit/push/PR in the lightweight path, and Anthropic's `pr-review-toolkit`
+agents (code review, silent-failure hunting, test analysis) run every PR-review pass. CLA adds
+the orchestration, the guard rails, and the learning loops on top, and keeps all per-repo state
+(decisions, feedback, retro logs, lessons-learned) in the repo's own `cla.io/` tree.
 
 ## Scope — what CLA is and isn't
 
