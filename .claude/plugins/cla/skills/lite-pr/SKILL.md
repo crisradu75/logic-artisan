@@ -38,6 +38,8 @@ Go straight to Implement once the plan is posted — no pause, no "shall I proce
 
 ### Implement
 
+Tests written in this phase follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md` — the two rules that decide whether a test can fail at all.
+
 Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (there's no `tasks.md` to walk; the plan's bullet list from above is the task list). For each item in the plan:
 
 1. Make the code change.
@@ -81,15 +83,7 @@ Then, smoke tier first, then full:
 1. Run every `smoke` command. All pass (or smoke empty) → run every `full` command in order (`build`, then `test`).
 2. All pass across both tiers → proceed to Ship.
 3. Any failure (in either tier) → **state the cause in one sentence before editing** (a restatement of the symptom is not a cause; read the actual failure output, since a typecheck error or assertion diff *is* the diagnosis), apply one fix via `Edit`, re-run from the failing tier once. **Two rounds on the SAME stated cause with the gate still red → stop editing and hand the failure back to the user** (once `/cla:diagnose` exists — it is shaped in `cla.io/decisions/`, not built — offer it here instead) — that repetition is the signal the hypothesis is wrong, and it fires while budget remains rather than after a warn ships.
-**Two test-quality rules, whichever tier the fix lands in.** A green gate proves the
-assertion passed, not that the assertion was worth making:
-
-- **No tautological assertion.** An assertion that recomputes its expected value the
-  way the code does passes for any implementation, including a wrong one. Pin the
-  literal expected value, or derive it by a genuinely different route.
-- **No implementation-detail testing.** Assert observable behaviour at a real seam —
-  a return value, a written file, an exit code — not a private helper's internals.
-  A test coupled to structure fails on every refactor and catches no defect.
+**Test quality is an Implement-phase concern** — see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`. If a red gate here forces a test edit, the same two rules apply to the edit.
 
 4. Still failing after that one retry → **HALT.** Report the failing check(s) and stop — do not proceed to Ship.
 

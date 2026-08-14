@@ -226,65 +226,27 @@ isn't a survivor.** (Guard hooks are listed separately below.)
 
 ### Skills by life-cycle phase
 
-Each skill is invocable as `/cla:<name>` or by natural language; `[loop]` marks a self-improvement
-retro over prior runs of another skill.
+Every skill is invocable as `/cla:<name>` or by natural language, and Claude Code already surfaces
+each one's name and description — so the full phase table lives in `.claude/plugins/cla/README.md`
+rather than being restated here. The arc it maps: bootstrap → discover & shape → specify & plan →
+build & ship → review & assure → learn & improve, plus phase-agnostic utilities.
 
-| Phase | Skill | What it does |
-|---|---|---|
-| 0. Bootstrap (once per repo) | `cla-init` | Scaffold the `cla.io/` tree + empty overlay stubs |
-| | `sync-context` | Populate/reconcile `cla.io/project-facts.md` |
-| | `save-permissions` | Persist session tool permissions to `.claude/settings.local.json` |
-| | `report-upstream` | File a defect in the plugin's own portable core as an issue against the canonical source |
-| | `release` | Cut a new plugin release: preconditions, the three-file version bump, `claude plugin tag` |
-| | `checkpoint` | Compact a session into a briefing the next one can resume from |
-| 1. Discover & shape | `feedback` | Capture rough notes → a dated, grounded triage doc under `cla.io/feedback/` |
-| | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
-| 2. Specify & plan | `multi-spec` | Turn a shaped decisions doc into a batch of OpenSpec proposals |
-| | `review-change` | Pre-implementation review of an OpenSpec change |
-| 3. Build & ship | `new-worktree` | Start an isolated git worktree for parallel/safe work |
-| | `lite-pr` | Lightweight end-to-end path for a small change: implement + docs + tests + PR |
-| | `spec-to-pr` | Drive one OpenSpec change end-to-end to an opened, archived PR |
-| | `multi-lite` / `multi-pr` | Chain several `lite-pr` / OpenSpec changes → PRs, dependency-first (multi-pr: merge each before its dependents, or stack PRs when merging is unavailable) |
-| 4. Review & assure | `project-review` | CTO-level review of the whole repo |
-| 5. Learn & improve | `codify-learnings` | Review a session for reusable lessons; propose doc/skill/hook/memory edits `[loop]` |
-| | `codify-retro`, `spec-to-pr-retro` | Meta-review recent runs of a loop and improve the loop itself `[loop]` |
-| Any phase (utility) | `right-model` | Recommend the cheapest model + effort combo for a described task, then optionally start it |
-
-Typical flows: small change → `shape-decision` → `lite-pr` (or straight to `lite-pr`); larger
-change → `shape-decision` → `multi-spec` → `review-change` → `spec-to-pr`; a batch off one
-decisions doc → `multi-lite` or `multi-pr`.
+Typical flows: small change → `shape-decision` → `lite-pr`; larger → `shape-decision` →
+`multi-spec` → `review-change` → `spec-to-pr`; a batch off one decisions doc → `multi-lite` or
+`multi-pr`.
 
 ### Guard hooks (conventions enforced, not just advised)
 
-Wired automatically via `.claude/plugins/cla/hooks/hooks.json` when the plugin loads (no
-`settings.json` step needed) — these apply in this repo's own sessions too, not only in repos
-that sync the plugin. `hooks.json` itself wires two dispatchers (`dispatch-bash-pretooluse.py` for
-the Bash/PowerShell matcher, `dispatch-edit-write-pretooluse.py` for the Edit/Write matcher), each
-of which runs several leaf hooks in one Python process — 7 distinct leaf hooks between them (5 on
-the Bash matcher, 2 on Edit/Write), plus `warn-wholesale-rewrite` and `log-commit-provenance` wired directly on PostToolUse:
-9 leaf hook files in all, which is what the bullets below enumerate. **Blocks**
-(`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt instead of
-blocking outright; **warns** (`warn-*`) surface a caution without blocking:
+Wired automatically by `hooks/hooks.json` when the plugin loads — these apply in this repo's own
+sessions too. Two dispatchers run 7 leaf hooks between them; `warn-wholesale-rewrite` and
+`log-commit-provenance` are wired directly on PostToolUse, making 9 leaf hook files in all. Three
+severities: **blocks** stop the call, **asks** escalate to a permission prompt, **warns** let it
+through with a caution. Full enumeration and the rationale per hook:
+`.claude/plugins/cla/README.md` and DEVELOPER-GUIDE §8.
 
-- **Blocks:** `block-cd-in-bash` (the working dir is already repo root, and a `cd` persists and
-  breaks later calls in the same session; use absolute paths instead) ·
-  `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
-  `block-worktree-path-escape` (a Write/Edit escaping a worktree boundary from inside one).
-- **Asks:** `ask-destructive-git` (a destructive-but-not-outright-blocked git command, e.g. a
-  force-push or `reset --hard`) — returns exit 0 and escalates via `permissionDecision: "ask"`
-  rather than blocking, since the action may be legitimate. Note this matters more than it looks:
-  the harness runs `--permission-mode auto`, which suppresses the usual confirmations, so this
-  hook is what restores one.
-- **Warns:** `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard) ·
-  `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
-  `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one —
-  it asks you to name what you dropped, since a `Write` keeps only what you carried across).
-
-**No direct push to main/master** is enforced by `hooks/git/pre-push`, NOT by a PreToolUse hook.
-Git hands a `pre-push` hook the refspec it already resolved, so there is no command string to
-parse and no `git.exe` / `-C` / quoting spelling that can evade it — and it covers pushes from a
-terminal or IDE, which no PreToolUse hook ever saw. It is **not** installed automatically; a
-plugin cannot write to `.git/hooks`. Per clone:
+**No direct push to main/master** is enforced by `hooks/git/pre-push`, NOT a PreToolUse hook — git
+hands it the already-resolved refspec, so no command spelling evades it and terminal/IDE pushes are
+covered too. A plugin cannot write to `.git/hooks`, so **install it once per clone**:
 
 ```bash
 cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push

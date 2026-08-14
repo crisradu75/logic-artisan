@@ -24,10 +24,25 @@ git status
 git log --oneline -3
 ```
 
-An operation this run did not start belongs to a parallel session. Do not
-resolve it — surface it to the user with the branch name and the operation, and
-stop. Concurrent runs are supposed to be worktree-isolated; an in-progress op
-from elsewhere means that isolation broke, and continuing compounds it.
+Now decide whether it is **yours**, because that is what selects the path — and
+"a parallel session started it" is the rarer case, not the default. Judge by the
+branch, not by whether you remember starting it: a resumed run, a fresh session
+on the same change, and a rebase you kicked off ten minutes ago all look
+identical to memory.
+
+**Yours — continue to step 2 and resolve it.** The in-progress op is on
+`<branch>` (this run's own feature branch, or `<pr-base>` in a stacked chain),
+and no other session holds this worktree. This is the ordinary case: a rebase or
+cherry-pick this workflow started and a conflict stopped.
+
+**Not yours — surface and stop.** The op is on a branch outside this run's scope,
+or this is the primary clone and another session is live in it. Report the branch
+and the operation and stop; concurrent runs are supposed to be worktree-isolated,
+so an op from elsewhere means that isolation broke and resolving it would
+compound the damage.
+
+**Cannot tell — surface and stop.** Same as not-yours. An unresolvable ownership
+question is exactly the case where a wrong guess destroys someone else's work.
 
 ## 2. Recover each side's intent before touching a hunk
 
