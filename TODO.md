@@ -2,44 +2,21 @@
 
 Deferred items — things intentionally not done now, kept here so they aren't lost.
 
-## Add a `/diagnose` skill to CLA
+## Build the `/cla:diagnose` skill (shaped, ready to implement)
 
-Postponed mid-`shape-decision` on 2026-07-26. Ported idea from the peer repo `mattpocock/skills`
-(idea #3 in the original comparison) — see
-`cla.io/decisions/domain-terminology-glossary-2026-07-26.md` for the full comparison and for
-sibling ideas #1 (adopted) and #2 (skipped, ADRs) from the same review.
+**Shaped 2026-08-14** — all four open questions resolved. The design constraints live in
+`cla.io/decisions/diagnose-skill-2026-08-14.md`; read that, not this entry, before building.
 
-**Confirmed gap, not yet shaped:** CLA has no disciplined bug-diagnosis loop today. `diagnose`
-appears in `lite-pr`/`spec-to-pr` only as a bare, undefined verb ("any failure → diagnose ... via
-Edit"), and `feedback`'s SKILL.md explicitly refuses the job ("never a confirmed diagnosis... it's
-a capture skill, not a debugging one") with nothing downstream to hand off to.
+In one line each: a standalone skill PLUS a thin escalation hook in both Test phases; the trigger
+is two rounds on the same stated cause with the gate still red; it sits in the "Any phase
+(utility)" row; the hypothesis gate is interactive standalone and autonomous-but-logged when
+escalated; no bundled HITL script (the strategy list is prose); "no correct seam" findings go to
+`cla.io/feedback/` pointing at `/cla:shape-decision`; `[DEBUG-xxxx]` cleanup is a zero-hit grep
+plus a line in Ship's pre-staging hygiene scan.
 
-**What the peer repo's version does** (would need shaping, not just porting, before landing in
-CLA): a 6-phase discipline — (1) build a fast, deterministic, agent-runnable pass/fail feedback
-loop first, trying strategies in priority order (failing test, curl/HTTP script, CLI diff,
-headless-browser script, captured-trace replay, throwaway harness, fuzz loop, bisection harness,
-differential loop, last-resort human-in-the-loop script) — stop and say so explicitly if no loop
-can be built; (2) reproduce and confirm it's the actual reported bug; (3) generate 3–5 ranked,
-*falsifiable* hypotheses before touching anything, shown to the user first; (4) instrument one
-variable at a time, tagged debug logs (`[DEBUG-xxxx]`) for guaranteed cleanup, a separate
-baseline-then-bisect branch for perf regressions; (5) write the regression test *before* the fix,
-only at a genuinely correct seam — "no correct seam exists" is itself a finding, not a reason to
-skip; (6) cleanup + post-mortem — confirm the original repro is gone, remove all debug tags, state
-the confirmed hypothesis in the commit message, then ask what would have prevented this bug
-(architectural answers hand off to `project-review`).
-
-**Open questions when this gets picked back up** (was mid-Q1 of shaping when postponed):
-
-- Standalone skill (peer repo's own positioning) vs. an escalation wired into `lite-pr`/
-  `spec-to-pr`'s existing Test-phase failure handling vs. both (leading candidate — covers a
-  bug reported with no PR in flight *and* a stubborn failure mid-build).
-- Which lifecycle phase it belongs to in CLA's skill table (doesn't cleanly fit any of the
-  existing five phases — possibly phase-agnostic like `right-model`).
-- Whether/how a "no correct test seam" or "this needs an architectural fix" finding hands off to
-  `project-review`, mirroring the peer repo's own end-of-loop hand-off.
-- The bundled `scripts/hitl-loop.template.sh` (peer repo's last-resort human-in-the-loop driver)
-  is bash; CLA's own convention is stdlib-only Python for bundled scripts — needs a port or a
-  documented exception if adopted.
+`lite-pr`'s half of the escalation already landed (its Test step now states a cause and offers
+`/cla:diagnose` on same-cause repetition). What remains: the skill itself, the `spec-to-pr` Test
+hook, and the Ship hygiene line. Natural next step: `/cla:spec-to-pr`.
 
 ## Build `multi-lite-retro` / `multi-pr-retro` / `multi-spec-retro` / `project-review-retro`
 
@@ -152,25 +129,6 @@ string left to evade — and it also covers pushes from a terminal or an IDE, wh
 hook ever saw. The cost is that git hooks cannot be installed by a plugin, so every clone runs the
 `cp` line once (see the plugin README's guardrails section).
 
-## ~~Make the symlink tests run on Windows (use an NTFS junction)~~ - DONE
-
-Three tests called `os.symlink(..., target_is_directory=True)` and `pytest.skip` when it raised -
-which on Windows it always does for an unprivileged account (`WinError 1314`). They skipped on the
-one platform whose path handling they exist to check, and the suite still reported green.
-
-Shipped as `make_dir_alias(link, real)`: symlink first, NTFS junction (`mklink /J`, no elevation
-needed) as the Windows fallback, `pytest.skip` when neither works or the alias does not resolve.
-It landed in each test file rather than a per-scope `conftest.py`, and the three copies are
-registered in `consistency-checks`' `SIBLING_GROUPS` so they cannot drift.
-
-Two residuals, both deliberate:
-- The POSIX branch of that helper is unexercised here. It is gated on `os.name != "nt"`, so on
-  this machine the gate itself is what a mutation test cannot kill - the same "only ever
-  exercised where you are" limit `CLAUDE.md` records for every platform-divergent path.
-- `os.path.islink()` is still False for a junction. Irrelevant to these callers, which all go
-  through `realpath`, and exactly why `block-unsafe-recursive-delete` does its own reparse-point
-  check instead of trusting `islink`.
-
 ## Adopt the Agent Brief durability discipline for `tasks.md` authoring
 
 Postponed mid-`shape-decision` on 2026-07-26. Ported idea from the peer repo `mattpocock/skills`
@@ -210,3 +168,37 @@ verifying file/line claims against source — so flagging file-path/line-number 
   (`multi-spec`/`multi-pr` batch chains)?
 - Which of the three sub-rules to adopt: just the anti-file-path/line-number rule, or the full
   three-part discipline (also testable acceptance criteria and explicit out-of-scope per subtask)?
+
+## Split `consistency-checks` so consumers keep its portable half
+
+Follow-up to the source-repo-only marker (above). The skip is directory-granular, so a consuming
+repo loses ~78 of 103 genuinely portable assertions along with the ~25 source-only ones — including
+`check_script_drift`'s ledger-resolver check, which CLAUDE.md names as guarding a *silent* failure.
+Move the portable assertions into their own unmarked scope and leave only the canonical-repo ones
+behind the marker. A scope reorganisation, not a one-line fix, which is why it was deferred.
+
+## Report the stale `TodoWrite` reference upstream to OpenSpec
+
+`openspec-propose`'s SKILL.md instructs the model to use the `TodoWrite` tool, which does not exist
+in this harness (it is `TaskCreate`/`TaskUpdate`). It is a vendored skill, so CLA must not edit it —
+file it against OpenSpec instead. Observed 2026-08-14 during a real `spec-to-pr` run.
+
+## Deferred candidates from the mattpocock/skills comparison (2026-08-14)
+
+Third contact with that repo. Adopted this round: the skill-authoring doctrine move + completion
+criteria, the conflict-resolution procedure, the two test-quality rules, the deletion test and
+earned-seam rule. Still open, in rough priority:
+
+- **Session-handoff compaction** — a way to compact a session into a briefing for the next one.
+  Real but narrow gap; CLA's own `handoff.md` is spec-to-pr's terminal report, a different artifact.
+  Revisit after `/diagnose`.
+- **Invocation-model labels** (user-invoked vs model-invoked) in the skills table — adopt the
+  label as documentation; reject the accompanying "user-invoked skills never call each other" rule,
+  which CLA's orchestrators deliberately violate.
+
+Deliberately rejected, recorded so they do not resurface: a router skill over 19 skills (CLAUDE.md's
+lifecycle table plus descriptions already route); the avoid-negation authoring rule (it contradicts
+~470 load-bearing "do NOT" constructions — CLA's guardrail idiom IS prohibition); ADRs (rejected at
+first contact, unchanged); research-as-procedure (user memory already carries it); and the interview
+primitive extraction — measured overlap between `shape-decision` and `feedback` is two sentences of
+principle, below the shared-reference bar.
