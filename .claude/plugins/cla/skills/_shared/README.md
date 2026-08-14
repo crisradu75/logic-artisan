@@ -53,9 +53,11 @@ actually means someone else's file.
 
 ## Scanning
 
-Everything under `references/` is scanned by the fact/procedure token guard with
+Every `.md` under `references/` is scanned by the fact/procedure token guard with
 no configuration, because the guard yields any `.md` beneath a `references/`
-ancestor inside `skills/`. `scripts/git_state.py` is covered too, by the source
+ancestor inside `skills/`. `required-permissions.json` is the exception — it is
+not markdown, so no scanner reads it; it holds tool-permission patterns rather
+than prose, but keep repo names out of it by hand. `scripts/git_state.py` is covered too, by the source
 scanner's `.py` rule.
 
 **This file is not scanned by either.** It is a `.md` directly under a skills

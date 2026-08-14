@@ -1,11 +1,11 @@
 """Drift guard: the counts and paths this repo's own docs assert must be true.
 
 The plugin's behaviour lives mostly in markdown, and so does its documentation —
-a prose edit ships like code but nothing compiles it. Four numbers in particular
+a prose edit ships like code but nothing compiles it. Five numbers in particular
 are restated across four files (`CLAUDE.md`, `README.md`, `DEVELOPER-GUIDE.md`,
 the plugin's own `README.md`) and every one of them has been wrong at least once:
-the skill count, the pytest-scope count, the count of skills shipping tests, and
-the release version.
+the skill count, the pytest-scope count, the count of skills shipping tests, the
+leaf-hook count, and the release version.
 
 They go wrong the same way every time. Someone deletes a skill or adds a scope,
 fixes the number in the file they happened to be editing, and misses the other

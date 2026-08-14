@@ -82,7 +82,7 @@ def test_the_skill_names_every_file_its_own_procedure_bumps():
     body = _SKILL_MD.read_text(encoding="utf-8")
     for required in ("plugin.json", "marketplace.json", "CLAUDE.md"):
         assert required in body, (
-            f"release/SKILL.md no longer names {required} — the two-part bump has "
+            f"release/SKILL.md no longer names {required} — the three-file bump has "
             "silently become a one-part bump"
         )
 

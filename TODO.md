@@ -125,14 +125,17 @@ first is cleanest but conflicts with `conformance-checks/` deliberately shipping
 ## Remaining unscanned surface after the scan-root widening (small, known)
 
 `SOURCE_SCAN_ROOTS` now covers `skills`, `agents`, `hooks`, `output-styles`, `lib`, and the three
-`*-checks/` scopes — everything the marketplace publishes except two deliberate omissions:
+`*-checks/` scopes. Counted against the shipped tree: 120 `.md`/`.py` files ship, 116 are scanned,
+and these four are not:
 
 - The plugin's own root `README.md`, whose install commands legitimately name this repository.
   Scanning it would flag the one file whose job is to identify the source.
+- `skills/_shared/README.md`, which sits directly under a skills subdirectory rather than beneath a
+  `references/` ancestor, so neither scanner's rule reaches it.
 - `run_tests.py` and `mutate.py` at the tree root, which sit outside every scanned root. Adding a
   bare-file traversal for two files was judged not worth a second scan rule.
 
-Neither is a leak today. Revisit only if a third root-level file appears.
+None is a leak today. Revisit if a fifth appears, or if one of these grows repo-specific prose.
 
 ## Why the push-to-main guard is a git hook, not a PreToolUse hook
 

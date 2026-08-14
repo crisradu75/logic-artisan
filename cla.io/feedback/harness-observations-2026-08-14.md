@@ -31,7 +31,7 @@ skill body.
 
 ## Frictions
 
-**`spec-to-pr` interpolates the full `$ARGUMENTS` string four times** into its
+**`spec-to-pr` interpolates the full `$ARGUMENTS` string five times** into its
 mode-detection section. With a long invocation that is roughly 1,500 wasted tokens per
 load, every run. The detection prose should reference the argument once.
 

@@ -349,7 +349,7 @@ below. `consistency-checks/tests/test_doc_facts.py` fails if you forget.
 ## Release and distribution history
 
 Background a working session rarely needs, which is why it lives here rather than in `CLAUDE.md`.
-The operative rules — the two-file bump, the preconditions, the never-move invariant — are in
+The operative rules — the three-file bump, the preconditions, the never-move invariant — are in
 `/cla:release`'s own SKILL.md; this section is only the *why* behind them.
 
 **A published tag is never moved.** `0.9.0` was cut, a consumer installed it, and the very next fix

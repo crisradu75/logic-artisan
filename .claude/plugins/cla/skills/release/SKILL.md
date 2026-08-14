@@ -72,7 +72,7 @@ and resolving paths is verified; running a task through it is the remaining gate
 
 ## Step 3 — The three-file edit, in one commit
 
-Both files must move together. A test fails when they disagree
+All three files must move together. A test fails when they disagree
 (`consistency-checks/tests/test_marketplace_manifest.py`), and a third copy of the
 version lives in `CLAUDE.md`'s "Current release" line, pinned by
 `consistency-checks/tests/test_doc_facts.py`.
