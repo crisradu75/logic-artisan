@@ -9,23 +9,33 @@ CLA holds no product/application code — it is the *process* layer: skills, gua
 agents that carry a change from idea → spec → isolated implementation → review → opened PR, and
 feed learnings back into the next run.
 
-## Quick start
+## Install (any repo)
 
-Launch a session with the harness active using the launchers at the repo root. In THIS repo the
-plugin loads live from the working tree, so you run the harness you are editing rather than a
-cached snapshot of a release (a consuming repo does the opposite and runs the marketplace install):
+Two commands, scoped to the project:
+
+```bash
+claude plugin marketplace add crisradu75/logic-artisan
+claude plugin install cla@cris-logic-artisan --scope project
+```
+
+Then, inside the repo: `/cla:cla-init` (scaffold `cla.io/` + overlay stubs) and `/cla:sync-context`
+(populate the repo's facts). Pick up later releases with `/plugin marketplace update`. Details:
+[Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo).
+
+## Developing the harness (this repo only)
+
+Do NOT use the marketplace install here. The launchers at the repo root load the plugin live from
+the working tree, so you run the harness you are editing rather than a cached snapshot:
 
 ```bash
 ./cla           # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
 ```
 
-Use `cla.cmd` on native Windows. It resolves its own absolute path, so it works
-from any cwd. For isolated work, start a session and run `/cla:new-worktree` — there is no
-penalty for deciding mid-session, so the old `claw` launcher that created the worktree first is
-gone. **Note:** `--permission-mode auto` bypasses Claude Code's per-action confirmation
-prompts — intentional for this harness, but worth knowing before you run it. Without a launcher
-(or a manual `claude --plugin-dir`), the skills and hooks are inert files on disk — no `/cla:*`
-commands, no guards.
+Use `cla.cmd` on native Windows; both resolve their own path, so any cwd works. For isolated work,
+run `/cla:new-worktree` at any point — no penalty for deciding mid-session. **Note:**
+`--permission-mode auto` bypasses per-action confirmation prompts; the guard hooks are the safety
+layer. Without a launcher (or a manual `claude --plugin-dir`), the skills and hooks are inert files
+on disk — no `/cla:*` commands, no guards.
 
 ## Documentation
 
@@ -67,21 +77,6 @@ fills in its own facts, and no install ever overwrites them — they live in the
 plugin directory. Per-repo state (`cla.io/` decisions, feedback, retro logs) is never part of the
 distributed core. Pytest conformance guards fail
 the suite if a project-specific token or a hardcoded developer path leaks into the synced core.
-
-## Using it in another repo
-
-1. Add the marketplace and install the plugin (scoped to that project):
-
-   ```bash
-   claude plugin marketplace add crisradu75/logic-artisan
-   claude plugin install cla@cris-logic-artisan --scope project
-   ```
-
-2. In the destination: `/cla:cla-init` (scaffold `cla.io/` + overlay stubs) → `/cla:sync-context`
-   (populate the repo's facts). Pick up later releases with `/plugin marketplace update`.
-
-See the developer guide's [Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo)
-section for details.
 
 ## Testing
 
