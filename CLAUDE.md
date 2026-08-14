@@ -28,7 +28,7 @@ claude plugin install cla@cris-logic-artisan --scope project
 ```
 
 Cut the tag with **`claude plugin tag`** (shape `<name>--v<version>`); it refuses unless
-`plugin.json` and the marketplace entry already agree. **Current release: `cla--v0.9.3`.** `0.9.x`
+`plugin.json` and the marketplace entry already agree. **Current release: `cla--v0.10.0`.** `0.9.x`
 is the validation line; it becomes `1.0.0` once a real task has been run end-to-end through the
 plugin in a consuming repo.
 
