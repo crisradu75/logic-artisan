@@ -1,0 +1,49 @@
+"""Mutation batch for test_doc_facts.py — break each doc claim it pins and
+confirm a test fails.
+
+Run: python3 <plugin>/mutate.py <plugin>/consistency-checks/mutants/test_doc_facts.py
+"""
+
+from pathlib import Path
+
+PLUGIN = Path(__file__).resolve().parents[2]
+REPO = PLUGIN.parents[2]
+TARGETS = [PLUGIN / "consistency-checks" / "tests"]
+
+MUTANTS = [
+    (
+        "README understates the skill count",
+        REPO / "README.md",
+        "19 workflow skills",
+        "18 workflow skills",
+        TARGETS,
+    ),
+    (
+        "README's pytest-scope count goes stale",
+        REPO / "README.md",
+        "# every pytest scope (11 today), aggregated",
+        "# every pytest scope (8 today), aggregated",
+        TARGETS,
+    ),
+    (
+        "CLAUDE.md's release line drifts from plugin.json",
+        REPO / "CLAUDE.md",
+        "**Current release: `cla--v0.10.0`.**",
+        "**Current release: `cla--v0.9.9`.**",
+        TARGETS,
+    ),
+    (
+        "CLAUDE.md's skills-with-tests count goes stale",
+        REPO / "CLAUDE.md",
+        "Each skill that ships tests (5 today)",
+        "Each skill that ships tests (9 today)",
+        TARGETS,
+    ),
+    (
+        "a doc names a plugin path that no longer exists",
+        REPO / "DEVELOPER-GUIDE.md",
+        "python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (11), aggregated",
+        "python3 .claude/plugins/cla/run_tests_gone.py    # all pytest scopes (11), aggregated",
+        TARGETS,
+    ),
+]

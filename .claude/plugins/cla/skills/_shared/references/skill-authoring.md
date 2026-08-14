@@ -63,3 +63,36 @@ This pairs with the plugin's grounding contract — a claim resolves to verbatim
 evidence or an explicit NOT-FOUND. Completion criteria are the same discipline
 applied to *work* rather than to *claims*: both replace "it seemed fine" with
 something falsifiable.
+
+## Prove it adjacent — a claim about the repo carries the command that settles it
+
+Completion criteria make *work* checkable. This makes *claims* checkable, and it
+exists because the failure is common, cheap to prevent, and expensive to catch.
+
+When prose in this plugin asserts a fact about the repo's own state — a count, a
+"measured", a "zero", an "always"/"never", a "nothing else does X" — put the
+command that proves it on the next line:
+
+```
+# 99 files scanned, 36 using the placeholder (python -c "…_scanned_files()…")
+```
+
+Three reasons this is a rule and not a preference:
+
+1. **The claims that are wrong are the ones nobody could re-run.** Every false
+   assertion caught in this repo's reviews was falsifiable by a single command
+   the author never ran — "widening the roots fails on the fixtures" (it yields
+   zero violations), "deleting the skill changes the floors" (it changes them by
+   zero). Writing the command is what turns an intuition into a measurement.
+2. **A number without its command rots silently.** `lib/log_run.py` carried
+   "132 records" against an actual 0 for months; a docstring stating a count is
+   a fact with no guard. Either quote the command, or do not quote the number.
+3. **One comment can falsify itself.** A note claiming "no repo token appears
+   in these files" that itself contains the token is not a hypothetical — it
+   shipped here. Re-running the adjacent command after the edit catches it; the
+   claim alone never will.
+
+The counter-rule, so this does not become decoration: **if the claim needs no
+command, it needs no comment.** "This list is hand-typed on purpose" is a design
+statement, not a measurement, and adding a fake command to it is worse than
+nothing.

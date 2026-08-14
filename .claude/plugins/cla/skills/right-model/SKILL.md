@@ -207,6 +207,10 @@ become a fifth.
 - **Reader:** the next `/cla:project-review`. Its skill-portfolio dimension counts the
   records and answers one question — does `right-model`'s recommendation differ from
   what the user would have picked anyway, often enough to be worth a skill?
+- **Corroborate against real cost.** `spec-to-pr-runs.jsonl` now carries a `cost` object
+  per run (wall-clock, model, agents dispatched, escalations). A recommendation that
+  consistently picked a tier below what the runs actually needed — or above — shows up
+  there and nowhere else. Read both ledgers together or the expiry decision is opinion.
 - **Decision:** enough records and a real signal → keep the skill and **delete the
   ledger**, the question being answered. Enough records and no signal → remove the
   skill, and the ledger with it. Too few records to tell → that is itself the answer

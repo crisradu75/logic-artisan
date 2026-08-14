@@ -41,6 +41,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
   ],
   "asks": [{"header": "<header>", "choice": "<chosen-option-label>"}],
   "deferred_to_todo": N,
+  "cost": {"wall_clock_minutes": N, "model": "<the session model>",
+           "agents_dispatched": N, "escalations": N},
   "routing": {
     "models": {"opus": N, "sonnet": N, "haiku": N},
     "implement_delegated": true|false,
@@ -56,6 +58,32 @@ python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
 }
 JSON
 ```
+
+### The `cost` object — why a run's price is recorded at all
+
+`right-model` recommends a tier and never learns whether the recommendation was
+right, because nothing anywhere records what a run actually cost. For a single
+developer paying per token that is the one number that decides whether a workflow
+is worth invoking, and its absence is why every routing rule in this plugin rests
+on argument rather than measurement.
+
+Four fields, all cheap and all honest about what they are:
+
+- `wall_clock_minutes` — end minus start, measured, not estimated. The only field
+  that needs no interpretation.
+- `model` — the session model the run executed at, so a cost is comparable only
+  against runs of the same tier.
+- `agents_dispatched` — the count of sub-agent dispatches. This is the real cost
+  driver in this plugin: each Review or Revise agent is its own context window,
+  and a large-change run dispatching eight of them costs several times a small
+  one, regardless of wall-clock.
+- `escalations` — how many of those were escalate-up dispatches to a higher tier.
+
+**Token counts are deliberately NOT recorded.** The orchestrator cannot observe
+its own token usage, so any number it wrote would be a guess wearing a
+measurement, and `agents_dispatched` is the honest proxy that correlates with it.
+Recording a fabricated total would poison the very comparison this object exists
+to enable — see `skill-authoring.md`'s prove-it-adjacent rule.
 
 Counts only, no prose — prose lives in the transcript and the PR body. The record must stay under
 4 KiB so the direct `open("ab")` append remains atomic against concurrent runs (the script enforces

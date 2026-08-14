@@ -214,7 +214,7 @@ one — a common failure mode when a stale absolute path sneaks into a prompt.
 
 Hooks wire themselves from `hooks/hooks.json` at plugin load — no `settings.json` step. Two
 dispatchers each run several leaf hooks in one Python process (5 on the Bash/PowerShell matcher, 2
-on Edit/Write), plus `warn-wholesale-rewrite` wired directly on PostToolUse: **8 leaf hooks**, in
+on Edit/Write), plus `warn-wholesale-rewrite` and `log-commit-provenance` wired directly on PostToolUse: **9 leaf hooks**, in
 three severities.
 
 - **Blocks** stop the tool call:
@@ -416,3 +416,4 @@ still carrying a `.cla-sync-lock.json` can delete that file; nothing reads it.
 | Pull newer CLA core into a repo | `/plugin marketplace update` |
 | Report a defect in the portable core | `report-upstream` |
 | Publish a new version of the plugin | `release` |
+| Hand off a long session | `checkpoint` |
