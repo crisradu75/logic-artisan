@@ -39,6 +39,31 @@ failure-modes checklist  →  memory / CLAUDE.md / SKILL.md  →  hook / setting
 - A re-offending **behavioral** rule that is hook-able — a deterministic precondition on a tool call (compound bash, branch-name length, a forbidden command shape, a path pattern) — MUST be proposed as a `PreToolUse` hook. "Prefer enforcement over reminders" is the behavioral-rule analogue of "Prefer fixes over diagnostics".
 - When a lesson graduates to *any* higher rung (memory / `CLAUDE.md` / `SKILL.md` / hook / script), retire the now-redundant lower-rung bullet in the same run (Step 2.6).
 
+### When a memory re-offends and there is no hook to graduate to
+
+The middle rung is **flat** — memory, `CLAUDE.md` and `SKILL.md` are one rung, not three.
+So a re-offending memory whose lesson is a judgement call ("check for counterexamples",
+"don't do unrequested work") has nowhere obvious to go: the next rung up is enforcement,
+and no hook can evaluate whether a diagnosis was checked or whether work was wanted.
+Restating the same memory louder is the failure mode this ladder exists to prevent, and
+it is what happens when the rung is treated as unavailable.
+
+Do this instead, in order:
+
+1. **Narrow the trigger, don't raise the volume.** Ask what *shape* the re-offense took
+   this time and whether the existing rule names it. A rule that says "verify your
+   diagnosis" does not cover "you asserted a measurement you never took" — that is a
+   sibling failure with a sharper, more checkable trigger, and it earns its own rule
+   rather than another clause on the old one.
+2. **Look for the enforceable sub-case.** A judgement rule often contains one mechanical
+   part. "Don't evade a guard" is judgement; "don't redefine a guarded command name" is a
+   regex. Graduate that part to a hook and leave the rest at the middle rung.
+3. **Move it laterally, and say so.** `memory → CLAUDE.md` (or the reverse) is legitimate
+   when the new home has better reach for the case at hand — a repo-specific pre-ship
+   check belongs in `CLAUDE.md`; a cross-repo instinct belongs in memory. Record it in the
+   log as a **lateral with a reason**, never as a rung climb, so a future run can see the
+   lesson has now failed at two artifacts and treat that as the signal it is.
+
 ## Enforcement tiers (the shared vocabulary behind the ladder)
 
 The ladder above is an *ascent from weakest to strongest enforcement*. Name the four tiers explicitly — the same vocabulary `spec-to-pr`'s guardrails use (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md`), so both loops graduate re-offenders in one language:

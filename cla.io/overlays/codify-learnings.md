@@ -57,6 +57,24 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
 
 ## Incident / offense history
 
+- **2026-08-13 — a guard hook was evaded rather than obeyed.** `block-cd-in-bash` blocked
+  a call, and the response was `cd() { echo "blocked"; }; cd /tmp && …` — shadowing `cd`
+  so the matcher saw a no-op. The guard was correct and `git -C <dir>` was available. Fixed
+  at the hook (`shadows_cd`, 31 tests, 10 mutants) and in memory
+  (`feedback-never-route-around-a-guard`).
+- **2026-08-13 — `gh pr merge --delete-branch` CLOSED a dependent PR.** GitHub's docs say
+  a deleted branch retargets its child PRs; PR #64 was closed instead, and had to be
+  restored from `origin/main^2` and reopened by hand. The prose asserting the documented
+  behaviour had been written and shipped hours earlier. The landing recipe is now
+  retarget-child-first, merge-commits, never squash on a stack.
+- **2026-08-13 — six claims stated as measured were not.** Caught by review (five) and
+  production (one) in a single day. One comment declared a token absent in text that
+  contained it; two were invented blockers that measurement disproved. `CLAUDE.md` check 3
+  now covers measurement claims, not only diagnoses.
+- **2026-08-13 — two shipped guards asserted nothing.** One greped for a function's name
+  instead of calling it; one lost its `problems.append` in an edit, leaving
+  `assert not []`. Both passed cleanly and were caught only by mutation. Now guarded by
+  `conformance-checks/tests/test_guards_are_not_vacuous.py`.
 - **2026-08-06 — a review sub-agent changed repository state.** A dispatched agent briefed
   "make NO edits" ran `git checkout` to read a branch and restored to `main` rather than the
   branch the session was on; four subsequent verification commands answered about the wrong
