@@ -87,7 +87,7 @@ If a row ends with ✗ and isn't just "to-be-created by this change," it is a ca
 
 ## Step 3: Size gate — decide review mode
 
-Count four things from the artifacts:
+Count five things from the artifacts:
 - **a** = files listed in the proposal Impact section (Modified + New)
 - **b** = subtasks in tasks.md (count `- [ ]` lines)
 - **c** = capabilities touched (delta spec directories under `specs/`)
@@ -97,10 +97,10 @@ Count four things from the artifacts:
   context brief you just built; each row is one claim.
 
 **Rule:**
-- **Small change** — `a ≤ 5` AND `b ≤ 20` AND `c = 1` **AND NOT the complexity-concentration override below**:
+- **Small change** — `a ≤ 5` AND `b ≤ 20` AND `c = 1` AND `e < 25` **AND NOT the complexity-concentration override below**:
   - Skip the 3-agent dispatch. The orchestrator IS the reviewer — verification checks in Step 2 already produced the findings. Go straight to Step 5.
   - Announce: "Small change (a=.., b=.., c=.., d=..) — analyzing directly without agent dispatch."
-- **Large change** — any of the `a`/`b`/`c` thresholds exceeded, OR the complexity-concentration override fires:
+- **Large change** — any of the `a`/`b`/`c`/`e` thresholds exceeded, OR the complexity-concentration override fires:
   - Proceed to Step 4 to dispatch the 3 agents in parallel.
 
 **Claim-density override (a change can be small in code and large in assertions).** File count

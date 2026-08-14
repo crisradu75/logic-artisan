@@ -1,6 +1,6 @@
 # Skill-authoring doctrine (plugin-wide)
 
-A plugin-wide authoring recipe (it lives here because `spec-to-pr` is the reference implementation — its `references/{ship,revise,archive,handoff,runtime-rules}.md` + inline stubs are the worked example — but it applies to ANY cla skill). It is the "how" for the `cla-plugin` **Skill token-efficiency disciplines** spec requirement (`openspec/specs/cla-plugin/spec.md`, discipline 1). Read it before progressive-disclosing a skill so the keep-inline/move boundary isn't re-derived from scratch each time.
+This is plugin-wide doctrine: it lives in `_shared/` because every skill is held to it, not because any one skill owns it. `spec-to-pr` is the largest worked example — its `references/{ship,revise,archive,handoff}.md` show the split in practice.
 
 ## The transformation, in order
 
