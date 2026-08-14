@@ -378,3 +378,43 @@ def test_the_arg_placeholder_pattern_keeps_its_binding():
                 "placeholder instead of re-embedding a long invocation"
             )
     assert not problems, "argument-binding problems:\n" + "\n".join(problems)
+
+def _known_skill_names():
+    return {p.parent.name for p in _skill_files()}
+
+
+def test_every_slash_command_named_in_prose_resolves_to_a_real_skill():
+    """A `/cla:<name>` reference is an instruction to invoke something.
+
+    The path-based checks above cannot see it — it names a skill, not a file — so
+    a reference to a skill that does not exist was invisible to every guard in
+    the repo. That is not hypothetical: an escalation pointing at `/cla:diagnose`
+    shipped while the skill was still only a shaped decision.
+
+    A reference to a not-yet-built skill is allowed, but it must SAY so on the
+    same line (an "exists"/"built"/"shaped"/"once" hedge) so a run does not try
+    to invoke it. Everything else must resolve."""
+    import re
+
+    HEDGE = r"\b(exists?|built|shaped|planned|future)\b"
+    known = _known_skill_names()
+    problems = []
+    for path in _referencing_files():
+        rel = path.relative_to(_PLUGIN_ROOT).as_posix()
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for m in re.finditer(r"/cla:([a-z][a-z0-9-]*)", line):
+                name = m.group(1)
+                if name in known:
+                    continue
+                # The hedge must sit NEAR the reference, not anywhere on the
+                # line: these are long markdown lines, and a stray word 200
+                # chars away would excuse an unhedged live invocation.
+                window = line[max(0, m.start() - 90) : m.end() + 90]
+                if re.search(HEDGE, window, re.I):
+                    continue  # explicitly hedged as not-yet-built
+                problems.append(
+                    f"  {rel}:{lineno} -> /cla:{name} (no such skill, unhedged)"
+                )
+    assert not problems, (
+        "prose names a /cla: skill that does not exist:\n" + "\n".join(problems)
+    )

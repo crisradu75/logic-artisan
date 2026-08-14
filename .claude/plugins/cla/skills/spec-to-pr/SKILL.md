@@ -47,7 +47,7 @@ These rules apply across every phase. Hoisted to the top because they're easy to
 
 ## Mode detection
 
-Bind the invocation argument once: **`<arg>` = `$ARGUMENTS`**. Every rule below refers to `<arg>`, never re-embeds the raw token — a long invocation would otherwise be interpolated into this body once per mention. Announce the mode in the **first line** of output before any other action. (The argument is interpolated into this body verbatim; naming it once keeps a long invocation from being re-embedded per rule.)
+Bind the invocation argument once: **`<arg>` = `$ARGUMENTS`**. Every rule below refers to `<arg>`, never re-embeds the raw token — a long invocation would otherwise be interpolated into this body once per mention. Announce the mode in the **first line** of output before any other action.
 
 - **explore-result mode** — `<arg>` is empty. Infer the change description from the current Claude Code conversation context (typically a just-finished `/opsx:explore`). Announce: `Mode: explore-result`.
 - **existing-change mode** — `<arg>` matches a directory `openspec/changes/{name}/` containing a `proposal.md`. Skip the propose phase; resume from the next not-done phase. Announce: `Mode: existing-change ({name})`.
