@@ -95,7 +95,7 @@ Run after the permissions check, before announcing the mode:
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
 ```
-Exit 0 → proceed. Exit 2 → in-progress cherry-pick / merge / rebase / revert / bisect detected (the stderr names which one). Surface to the user via `AskUserQuestion` with three explicit paths: (a) abort the in-progress op (`git cherry-pick --abort` / `git rebase --abort` / etc.) and proceed, (b) halt /cla:spec-to-pr and let the user finish the op manually, (c) inspect first (read `.git/CHERRY_PICK_HEAD` etc.) before deciding. Do NOT proceed until resolved — a stale in-progress op poisons every subsequent `git add` and commit.
+Exit 0 → proceed. Exit 2 → in-progress cherry-pick / merge / rebase / revert / bisect detected (the stderr names which one). Resolving it: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`. Surface to the user via `AskUserQuestion` with three explicit paths: (a) abort the in-progress op (`git cherry-pick --abort` / `git rebase --abort` / etc.) and proceed, (b) halt /cla:spec-to-pr and let the user finish the op manually, (c) inspect first (read `.git/CHERRY_PICK_HEAD` etc.) before deciding. Do NOT proceed until resolved — a stale in-progress op poisons every subsequent `git add` and commit.
 
 **Step 2 — Inspect the working-tree dirty paths:**
 ```
@@ -412,7 +412,7 @@ The terminal report's "Next steps for you" section names `gh pr merge --squash -
 - `references/workflow-diagram.md` — visual phase flow + glyphs + caps
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` — per-dispatch model + effort routing table (single source of truth), the escalate-up rule, and the phantom-finding rationale; pointed at from the hoisted rules, Implement, Revise, and Handoff
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md` — the thin-orchestrator runtime disciplines (delegation, I/O hygiene, batching, structured output); pointed at from the hoisted rules and each phase that handles bulk raw material
-- `references/progressive-disclosure.md` — the plugin-wide recipe for conforming a SKILL.md to the `cla-plugin` token-efficiency requirement (keep-inline/move boundary, the repeat-offender checklist, validation); read before progressive-disclosing any skill
+- `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/skill-authoring.md` — the plugin-wide recipe for conforming a SKILL.md to the `cla-plugin` token-efficiency requirement (keep-inline/move boundary, the repeat-offender checklist, validation); read before progressive-disclosing any skill
 - `references/ship.md` — the Ship phase's full staging/commit/push/PR recipe + branch preflight (mandatory-read from the Ship stub)
 - `references/revise.md` — the Revise phase's agent-selection table, Workflow fan-out snippet, round-≥2 mechanics, and the full prose behind each triage invariant (mandatory-read from the Revise stub)
 - `references/archive.md` — the Archive phase's archive-and-commit recipe, capability enumeration, scope assertion, and push post-check (mandatory-read from the Archive stub; distinct from `archive-preflight.md`)

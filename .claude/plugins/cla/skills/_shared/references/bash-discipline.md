@@ -19,6 +19,8 @@ These shapes defeat the project's Bash permission allowlist matching. The skill 
 
 ## Conflict resolution discipline (rebase + merge)
 
+**Full procedure: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`.** The rules below are the bash-shape half; that file carries side-identification, intent recovery, validation, and when aborting is right.
+
 Failure mode: running `git checkout --theirs <file>` during a rebase expecting it to take the base branch's version. In a rebase, `--theirs` means the commits BEING REBASED (the branch's side, opposite of merge context), so it silently commits the wrong content and requires a `git reset --hard HEAD~1` and redo.
 
 When resolving a conflict from `git rebase`, `git merge`, or `git cherry-pick`:
