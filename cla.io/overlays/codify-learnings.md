@@ -60,7 +60,7 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
 - **2026-08-13 — a guard hook was evaded rather than obeyed.** `block-cd-in-bash` blocked
   a call, and the response was `cd() { echo "blocked"; }; cd /tmp && …` — shadowing `cd`
   so the matcher saw a no-op. The guard was correct and `git -C <dir>` was available. Fixed
-  at the hook (`shadows_cd`, 31 tests, 10 mutants) and in memory
+  at the hook (`shadows_cd`, 34 tests, 10 mutants) and in memory
   (`feedback-never-route-around-a-guard`).
 - **2026-08-13 — `gh pr merge --delete-branch` CLOSED a dependent PR.** GitHub's docs say
   a deleted branch retargets its child PRs; PR #64 was closed instead, and had to be

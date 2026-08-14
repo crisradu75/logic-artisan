@@ -11,8 +11,8 @@ six dogfooded sessions (`update-cla` deleted, `skills/_shared/` created, `git_st
 promoted to its own scope, retro skeleton deduped, docs made true, doc-fact checks added,
 `/cla:release` written) and cut **0.10.0**. Then stacked-chain mode for `multi-pr`, then five
 harness-feedback upgrades (commit-provenance hook, guard-the-guards, mutant-batch pairing,
-`/cla:checkpoint`, cost telemetry), then a placement round (PR #79). Roughly 34 commits and
-a dozen merged PRs.
+`/cla:checkpoint`, cost telemetry), then a placement round (PR #79). 31 non-merge commits
+(`git rev-list --count --no-merges 6bf0755..main`) across a dozen merged PRs.
 
 What makes it worth codifying is not the throughput. It is that **the harness caught me more
 often than I caught myself**, and the misses clustered into four shapes:
@@ -137,11 +137,18 @@ Index now 20 entries.
 
 ### Lessons (meta)
 
-- **The denominator was missing all along, and this session is the proof.** 34 commits, one logged
-  skill run. I bypassed the harness constantly while building it, and every retro loop reads a
-  ledger written *by a skill that ran* — so the loops measured their own usage and reported a
-  quiet day. `log-commit-provenance.py` now records one line per commit with the skill or `null`.
-  It cannot fire until the plugin reloads, so the first honest denominator arrives next session.
+- **The denominator was missing all along, and this session is the proof.** 31 non-merge commits
+  (`git rev-list --count --no-merges 6bf0755..main`) against 1 logged skill run
+  (`wc -l < cla.io/retro/spec-to-pr-runs.jsonl`). I bypassed the harness constantly while building
+  it, and every retro loop reads a ledger written *by a skill that ran* — so the loops measured
+  their own usage and reported a quiet day. `log-commit-provenance.py` now records one line per
+  commit with the skill or `null`. It cannot fire until the plugin reloads, so the first honest
+  denominator arrives next session.
+  **Postscript, from the merge check on this very PR:** the figure above read "34 commits" in the
+  first draft of this entry, in the checkpoint, and in the hook's own docstring — a number nobody
+  measured, sitting in the artifact built to fix unmeasured numbers. Caught by re-deriving it when
+  the user asked "ready to merge?", which is the third time that plain question has been the only
+  thing standing between a false claim and `main`.
 - **Five of six false claims were caught by review agents, one by production, zero by me.** That is
   not a case for more review; the reviews were already running. It is a case for the claim never
   being written — which is why suggestion 1 targets the moment of writing rather than the check.

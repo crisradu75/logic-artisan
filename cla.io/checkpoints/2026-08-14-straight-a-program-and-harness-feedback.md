@@ -67,8 +67,10 @@ Also merged earlier in the program: the stacked-chain mode branch (#68) and the
 - **What is the real skill-adoption rate?** `log-commit-provenance.py` is merged
   and wired but has never fired — hooks are read at plugin load, so it could not
   observe the session that created it. Settled by the first `cla.io/retro/commit-provenance.jsonl`
-  lines appearing next session. The measured baseline it exists to replace: 34
-  commits, 1 logged skill run.
+  lines appearing next session. The baseline it exists to replace, with the
+  commands, measured at the end of this session:
+  `git rev-list --count --no-merges 6bf0755..main` → 31, and
+  `wc -l < cla.io/retro/spec-to-pr-runs.jsonl` → 1.
 - **Is `/cla:checkpoint` any good?** This file is its first output, and it was
   produced by following the procedure by hand rather than by invoking the skill
   (see Traps). Settled by a real invocation next session.
