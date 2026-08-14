@@ -1,11 +1,11 @@
 """Drift guard: the counts and paths this repo's own docs assert must be true.
 
 The plugin's behaviour lives mostly in markdown, and so does its documentation —
-a prose edit ships like code but nothing compiles it. Four numbers in particular
-are restated across five files (`CLAUDE.md`, `README.md`, `DEVELOPER-GUIDE.md`,
+a prose edit ships like code but nothing compiles it. Five numbers in particular
+are restated across four files (`CLAUDE.md`, `README.md`, `DEVELOPER-GUIDE.md`,
 the plugin's own `README.md`) and every one of them has been wrong at least once:
-the skill count, the pytest-scope count, the count of skills shipping tests, and
-the release version.
+the skill count, the pytest-scope count, the count of skills shipping tests, the
+leaf-hook count, and the release version.
 
 They go wrong the same way every time. Someone deletes a skill or adds a scope,
 fixes the number in the file they happened to be editing, and misses the other
@@ -205,4 +205,63 @@ def test_every_stated_skills_with_tests_count_is_the_real_one(name, phrase):
     assert real_skills_with_tests() in claimed, (
         f"{name} states {claimed} near {phrase!r}; the real count is "
         f"{real_skills_with_tests()}"
+    )
+
+
+def real_leaf_hook_count() -> int:
+    """Leaf guard hooks: every `hooks/*.py` that is neither a dispatcher nor a
+    shared library. The dispatchers run the leaves; they are not guards."""
+    hooks = _PLUGIN_ROOT / "hooks"
+    return len(
+        [
+            p
+            for p in hooks.glob("*.py")
+            if not p.name.startswith("dispatch-") and not p.name.startswith("_")
+        ]
+    )
+
+
+@pytest.mark.parametrize("name", ["CLAUDE.md", "DEVELOPER-GUIDE.md", "plugin README.md"])
+def test_every_stated_leaf_hook_count_is_the_real_one(name):
+    """The motivating drift for this whole file was a guide naming six hooks that
+    did not exist. Counting them is the cheap half of catching that."""
+    flat = " ".join(_DOCS[name].read_text(encoding="utf-8").split())
+    if "leaf hook" not in flat:
+        pytest.fail(
+            f"{name} no longer states a leaf-hook count (phrase 'leaf hook'); "
+            "reword the doc or update this anchor deliberately"
+        )
+    # These docs legitimately state TWO numbers around this phrase — the 7 leaves
+    # the dispatchers run, and the 8 leaf hook FILES once the directly-wired
+    # PostToolUse hook is counted. Requiring the real total to appear in ANY such
+    # window keeps the assertion true without forcing one phrasing on the prose.
+    claimed = set()
+    for m in re.finditer("leaf hook", flat):
+        window = flat[max(0, m.start() - 80) : m.start() + 80]
+        claimed.update(int(n) for n in re.findall(r"\b(\d{1,3})\b", window))
+    assert real_leaf_hook_count() in claimed, (
+        f"{name} states {sorted(claimed)} near 'leaf hook'; the tree has "
+        f"{real_leaf_hook_count()} leaf hooks"
+    )
+
+
+def test_every_named_leaf_hook_exists():
+    """The other half, and the one that actually shipped: six invented hook names
+    in a single guide section. A backticked `block-`/`ask-`/`warn-`/`guard-` name
+    is read as a live hook; mention a deleted one WITHOUT backticks if the
+    reference is historical.
+
+    The `(?:\\.py)?` is load-bearing, not decoration: without it a backticked
+    `` `guard-x.py` `` matched nothing at all — the character class cannot match a
+    dot — so the one spelling most likely to name a real hook file was the one
+    spelling this guard could not see."""
+    missing = []
+    for name, path in _DOCS.items():
+        text = path.read_text(encoding="utf-8")
+        for hook in re.findall(r"`((?:block|ask|warn|guard)-[a-z0-9-]+(?:\.py)?)`", text):
+            stem = hook[:-3] if hook.endswith(".py") else hook
+            if not (_PLUGIN_ROOT / "hooks" / f"{stem}.py").is_file():
+                missing.append(f"  {name}: `{hook}` has no hooks/{stem}.py")
+    assert not missing, (
+        "doc names a guard hook that does not exist on disk:\n" + "\n".join(missing)
     )

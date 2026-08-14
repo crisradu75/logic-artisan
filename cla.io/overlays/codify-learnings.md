@@ -68,7 +68,7 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
 - **2026-08-06 — a resource ceiling picked before its consumers.** Git timeouts were
   squeezed to fit a chosen 10s handler budget, which made a *blocking* guard fail open under
   load; the handler was later sized from the guards instead.
-- **2026-07-25 — `block-direct-push-to-main.py` did not fire** on `git -C <dir> push origin main`;
+- **2026-07-25 — the push-to-main guard (now `hooks/git/pre-push`) did not fire** on `git -C <dir> push origin main`;
   the sibling hooks had the same global-flag gap.
 
 ## Product / domain context

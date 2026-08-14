@@ -6,7 +6,7 @@ The Phase 0 and Phase 2 step-by-step procedures. `SKILL.md`'s stubs for these ph
 
 Run the shared bootstrap once before the chain starts — the same `/cla:multi-pr` bootstrap gate, not something `/cla:lite-pr` itself runs:
 
-1. The permissions check from `/cla:spec-to-pr`'s own "Bootstrap permissions" section (compare `spec-to-pr/references/required-permissions.json` against `.claude/settings.local.json`). Missing patterns → surface them and apply on approval; that's the one bootstrap ask, the same carve-out the siblings make.
+1. The permissions check from `/cla:spec-to-pr`'s own "Bootstrap permissions" section (compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/required-permissions.json` against `.claude/settings.local.json`). Missing patterns → surface them and apply on approval; that's the one bootstrap ask, the same carve-out the siblings make.
 2. ```
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
    ```

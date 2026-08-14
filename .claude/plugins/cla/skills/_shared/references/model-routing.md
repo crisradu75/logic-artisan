@@ -48,26 +48,25 @@ always supplies the exact list).
 
 ### Artifact-class override — a prose-dominant diff promotes the prose reviewer
 
-The table above tiers by **reviewer archetype**: bug-hunters get opus because a
-missed bug ships, rubric-appliers get sonnet because the rubric carries the
-judgment. That split silently assumes the artifact under review is *code*.
+The table above tiers by **reviewer archetype**: bug-hunters get opus because a missed bug ships,
+rubric-appliers get sonnet because the rubric carries the judgment. That split silently assumes the
+artifact under review is *code*.
 
-In a repo whose behaviour lives in markdown, it isn't. A `SKILL.md` edit ships
-like code and nothing compiles it: there is no typechecker, no test that executes
-the prose, and a wrong instruction reaches every consuming repo on the next
-release. For that diff, `plugin-dev:skill-reviewer` **is** the premise-level
-reviewer — it occupies the position `code-reviewer` holds for a Python diff — and
-it inherits the never-demote argument along with it.
+In a repo whose behaviour lives in markdown, it isn't. A `SKILL.md` edit ships like code and
+nothing compiles it: no typechecker, no test that executes the prose, and a wrong instruction
+reaches every consuming repo on the next release. For that diff `plugin-dev:skill-reviewer`
+occupies the position `code-reviewer` holds for a Python diff, and inherits the never-demote
+argument with it.
 
-**Rule.** When the diff under review is predominantly `SKILL.md` /
-`references/*.md` (more changed lines in those than in executable files), promote
-`plugin-dev:skill-reviewer` from sonnet to **opus** for that round, and exempt it
-from the round-≥2 tier-down exactly as the two bug-hunters are exempt. Everything
-else in the table is unchanged.
+**The rule lives where dispatch is decided**, not here — see the *prose-dominant diff* row in
+`${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/revise.md`, which carries the trigger, the
+`git diff --numstat` recipe that makes it mechanically decidable, the opus tier, and the
+never-demote flag. This section is the rationale only; the numbers are in that one table, per this
+file's own no-forking rule.
 
-This is a promotion rule only. It never demotes `code-reviewer` or
-`silent-failure-hunter`, even on a pure-prose diff: a markdown change can still
-break a script path or a hook wiring, and those two are what notice.
+It is a promotion rule only. It never demotes `code-reviewer` or `silent-failure-hunter`, even on a
+pure-prose diff: a markdown change can still break a script path or a hook wiring, and those two
+are what notice.
 
 All six Revise agents are dispatched by their full registered `subagent_type` (`pr-review-toolkit:code-reviewer`,
 `pr-review-toolkit:silent-failure-hunter`, `pr-review-toolkit:pr-test-analyzer`,

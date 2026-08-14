@@ -41,7 +41,7 @@ failure-modes checklist  →  memory / CLAUDE.md / SKILL.md  →  hook / setting
 
 ## Enforcement tiers (the shared vocabulary behind the ladder)
 
-The ladder above is an *ascent from weakest to strongest enforcement*. Name the four tiers explicitly — the same vocabulary `spec-to-pr`'s guardrails use (`spec-to-pr/references/past-offenses.md`), so both loops graduate re-offenders in one language:
+The ladder above is an *ascent from weakest to strongest enforcement*. Name the four tiers explicitly — the same vocabulary `spec-to-pr`'s guardrails use (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md`), so both loops graduate re-offenders in one language:
 
 | Tier | What it means | Ladder rung(s) it maps to |
 |---|---|---|

@@ -52,6 +52,27 @@ def _skill_files():
     return sorted(p for p in root.glob("*/SKILL.md") if p.is_file())
 
 
+def _referencing_files():
+    """Every markdown file that can cite another file: each `SKILL.md` PLUS every
+    `references/*.md` body.
+
+    Scanning only `SKILL.md` was a real hole, not a theoretical one: a reference
+    doc citing a moved file is just as dead as a SKILL.md citing one, and the
+    bodies are where most cross-skill citations actually live. `_shared/` is
+    included — it has no SKILL.md, but its references cite other files too."""
+    root = _PLUGIN_ROOT / "skills"
+    return sorted(
+        set(_skill_files())
+        | {p for p in root.glob("*/references/*.md") if p.is_file()}
+    )
+
+
+def _owning_skill_dir(path: Path) -> Path:
+    """The skill directory a scanned file belongs to — its parent for a SKILL.md,
+    its grandparent for a `references/*.md`."""
+    return path.parent if path.name == "SKILL.md" else path.parent.parent
+
+
 def parse_frontmatter(text: str):
     """Return (mapping, error). `error` is None on success.
 
@@ -130,6 +151,22 @@ def extract_reference_paths(text: str, skill_dir: Path):
     for raw in re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/[A-Za-z0-9._/-]+", text):
         rel = raw.split("}/", 1)[1]
         out.append((raw, _PLUGIN_ROOT / rel))
+    # A skill-qualified relative path: `<skill>/references/<file>` or
+    # `<skill>/scripts/<file>`, written without the `${CLAUDE_PLUGIN_ROOT}` prefix.
+    # This shape is what a cross-skill citation degrades into, and it is exactly
+    # what a file move strands: the earlier `spec-to-pr/references/...` -> `_shared/`
+    # migration left six of them behind, invisible to the first two patterns.
+    # The lookbehind must exclude `-` as well as word chars and `/`: without it
+    # `codify-learnings/references/x.md` matches starting at `learnings/`, and
+    # `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/x.md` matches at `to-pr/`
+    # — both nonexistent owners, both reported as dangling. The owner must also be
+    # a real skill directory, so an ordinary hyphenated prose word cannot qualify.
+    for raw in re.findall(
+        r"(?<![\w/${\-])([a-z_][a-z0-9_-]*/(?:references|scripts)/[A-Za-z0-9._-]+)", text
+    ):
+        owner, _, rest = raw.partition("/")
+        if (_PLUGIN_ROOT / "skills" / owner).is_dir():
+            out.append((raw, _PLUGIN_ROOT / "skills" / owner / rest))
 
     keep = []
     for raw, resolved in out:
@@ -199,10 +236,10 @@ def test_every_reference_a_skill_names_actually_exists():
     """A path that resolves NOWHERE in the plugin. This is the hard failure: the
     model is sent to a Read that cannot succeed."""
     problems = []
-    for path in _skill_files():
+    for path in _referencing_files():
         text = path.read_text(encoding="utf-8")
         rel = path.relative_to(_PLUGIN_ROOT).as_posix()
-        for raw, resolved in extract_reference_paths(text, path.parent):
+        for raw, resolved in extract_reference_paths(text, _owning_skill_dir(path)):
             if resolved.exists():
                 continue
             if raw.startswith("references/") and _resolves_under_some_other_skill(raw):
@@ -223,10 +260,10 @@ def test_a_bare_reference_path_belongs_to_the_skill_that_writes_it():
     The fix is always the same and always cheap: write the explicit
     `${CLAUDE_PLUGIN_ROOT}/skills/<owner>/references/<file>` path instead."""
     problems = []
-    for path in _skill_files():
+    for path in _referencing_files():
         text = path.read_text(encoding="utf-8")
         rel = path.relative_to(_PLUGIN_ROOT).as_posix()
-        for raw, resolved in extract_reference_paths(text, path.parent):
+        for raw, resolved in extract_reference_paths(text, _owning_skill_dir(path)):
             if resolved.exists() or not raw.startswith("references/"):
                 continue
             if _resolves_under_some_other_skill(raw):
@@ -241,7 +278,7 @@ def test_a_bare_reference_path_belongs_to_the_skill_that_writes_it():
 
 def test_the_scan_is_not_vacuous():
     """A guard that scans nothing passes forever, and two guards in this repo
-    already did once. Pinned near the real count (18 skills today), per the rule
+    already did once. Pinned near the real count (19 skills today), per the rule
     the sibling guards state: lower it to the new real count when something is
     deliberately deleted, never to a number chosen to be safe from deletions."""
     files = _skill_files()

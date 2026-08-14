@@ -16,8 +16,8 @@ catalog publishes as the plugin's source path.
 **Distribution is GitHub, and only GitHub.** `.claude-plugin/marketplace.json` at the repo root
 publishes one plugin, `cla`, from this subdirectory (`git-subdir` source, `url` + `path`, schema
 verified against the live docs). It pins an **exact release tag**, not a moving major tag, so
-publishing a release is a deliberate two-part edit: bump `version` in the plugin's own
-`plugin.json` AND the `ref` here, in the same commit. A test fails when they disagree. Consumers
+publishing a release is a deliberate three-file edit: bump `version` in the plugin's own
+`plugin.json`, the `ref` here, and the release line below — all in one commit. A test fails when they disagree. Consumers
 pick the new release up on `/plugin marketplace update`.
 
 Consumers add the marketplace from the repo, never from a path:
@@ -70,21 +70,22 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (4 today), plus `skills/_shared/`, plus `lib/`, plus `hooks/`,
+design. Each skill that ships tests (5 today), plus `skills/_shared/`, plus `lib/`, plus `hooks/`,
 plus `conformance-checks/`, plus `consistency-checks/`, plus `launcher-checks/`, is its own isolated
-pytest scope — 10 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
+pytest scope — 11 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
 `pythonpath` pointing at that scope's importable code — `["scripts"]` for a skill and for
 `consistency-checks`/`launcher-checks`, `["."]` for `hooks/` and `lib/`, whose modules sit at the
 scope root, and none at all for `conformance-checks`, whose tests import nothing).
 
 `lib/` and the three `*-checks/` scopes are the odd ones out: not skills (no `SKILL.md`) and not
 guard hooks. `lib/` holds `log_run.py`, the one ledger writer every retro-logging skill invokes as
-a program. `conformance-checks/` holds the two guards that police the fact/procedure split for the
-whole plugin — no project token in synced core, no dead path in `cla.io/project-facts.md` or an
-overlay. `consistency-checks/` holds a drift check over the ledger-dir resolver that the isolation
+a program. `conformance-checks/` holds the four portable guards that police the fact/procedure split for the
+whole plugin: no project token in synced core, no hardcoded plugin path, no dead path in
+`cla.io/project-facts.md` or an overlay, and no SKILL.md with broken frontmatter or a reference
+that resolves nowhere. `consistency-checks/` holds a drift check over the ledger-dir resolver that the isolation
 rule below deliberately prevents from sharing a module, plus checks on this repo's own source;
 `launcher-checks/` tests the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin
-tree entirely (`claw`/`claw.cmd` were deleted with `guard-worktree-isolation`, the hook they
+tree entirely (`claw`/`claw.cmd` were deleted alongside the worktree-isolation guard, the hook they
 existed to dodge).
 
 All four sit outside the synced set (`skills`/`agents`/`hooks`/`output-styles`), but they do not
@@ -136,7 +137,7 @@ green run as one input to the ship decision rather than the decision itself.
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
 sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as a
-11th entry alongside the 10 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
+12th entry alongside the 11 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
 while iterating on that one script:
 
 ```bash
@@ -169,10 +170,12 @@ everywhere) from *facts* (per-repo, never synced):
   only. A pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
   developer path, leaks into synced core — one scanner covers `SKILL.md`/`references/*.md` prose
   under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`
-  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Both scan only those four
-  roots, so three classes ship unscanned and need watching by hand: non-`.py`/`.md` files
-  (`hooks/hooks.json`, a skill's own `.mjs`), and — since the marketplace publishes the whole
-  directory — `lib/`, the `*-checks/` scopes, `run_tests.py`, and `mutate.py`. Tracked in TODO.md.
+  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). The source scanner covers
+  eight roots — the four synced dirs plus `lib/` and the three `*-checks/` scopes — because the
+  marketplace ships the whole directory. Four files still fall outside both scanners and are watched
+  by hand: the plugin's own `README.md` (its install commands legitimately name this repo),
+  `skills/_shared/README.md`, `run_tests.py`, and `mutate.py`. Non-`.py`/`.md` files
+  (`hooks/hooks.json`, a skill's own `.mjs`) are outside both too. Listed in TODO.md.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not
@@ -218,7 +221,7 @@ isn't a survivor.** (Guard hooks are listed separately below.)
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos today. |
 | `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
-| `spec-to-pr/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across four skills. |
+| `_shared/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across four skills. |
 | `spec-to-pr/scripts/_git_common.py` | Repo root plus the `branch-prefix.local.md` overlay contract, for `probe_state.py`. |
 
 ### Skills by life-cycle phase
@@ -232,6 +235,7 @@ retro over prior runs of another skill.
 | | `sync-context` | Populate/reconcile `cla.io/project-facts.md` |
 | | `save-permissions` | Persist session tool permissions to `.claude/settings.local.json` |
 | | `report-upstream` | File a defect in the plugin's own portable core as an issue against the canonical source |
+| | `release` | Cut a new plugin release: preconditions, the three-file version bump, `claude plugin tag` |
 | 1. Discover & shape | `feedback` | Capture rough notes → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
 | 2. Specify & plan | `multi-spec` | Turn a shaped decisions doc into a batch of OpenSpec proposals |

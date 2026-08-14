@@ -122,6 +122,15 @@ One pass. Then:
 
 1. Triage every Critical/Important finding: apply a fix via `Edit`/`Write`, or record a one-line deferred rationale if it's genuinely out of scope.
 2. Before staging, re-read the diff for each applied fix, and grep the SAME FILE for other call sites that consume the same untrusted/unguarded input the fix just guarded (e.g. a fix added an `isinstance` check before one `.get()` on parsed JSON — grep that file for every other `.get()`/attribute access on data from the same untrusted source). A vaguer "check sibling instances aren't affected" self-prompt is easy to satisfy without actually grepping; naming the concrete technique isn't. This is a quick self-read, NOT a re-dispatch of the review agents — one `Read`/`Grep` call, not another agent round.
+2b. **Mutation gate (required before the commit in step 3).** A fix for a Critical/Important
+   finding is a change like any other and earns the same evidence the original code needed —
+   "the reviewer's finding is now handled" is not that evidence. Run
+   `python3 ${CLAUDE_PLUGIN_ROOT}/mutate.py <batch.py>` with a batch that breaks **what the fix
+   touches**, not only what it targets: correcting one return path routinely breaks another, which
+   is how a real fix here once traded a silent no-op on the default path for the identical no-op on
+   the overlay path. Fix a surviving mutant, or name it in the final report with a reason. A clean
+   run is evidence about the mutants you thought of and nothing else — two commits in this repo each
+   recorded "three mutations checked, all caught" and each shipped a critical a later review found.
 3. Stage the fixed files, commit (`fix: address review findings`), push.
 4. Do NOT re-dispatch the review agents afterward — no re-verification loop (step 2's self-read is deliberately lighter than that).
 
@@ -150,15 +159,3 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py` — reused directly for the pre-commit safety check.
 - `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/SKILL.md` — the full-weight sibling workflow; see its "Workflow phases" for what a graduated change looks like.
-
-**Mutation gate on a review-found fix (required).** A fix for a Critical/Important finding is a
-change like any other and earns the same evidence the original code needed — "the reviewer's
-finding is now handled" is not that evidence. Before the fix commit, run
-`python3 ${CLAUDE_PLUGIN_ROOT}/mutate.py <batch.py>` with a batch that breaks **what the fix
-touches**, not only what it targets: correcting one return path routinely breaks another, which is
-how a real fix here once traded a silent no-op on the default path for the identical no-op on the
-overlay path. A surviving mutant is either fixed or named in the Handoff report with a reason.
-
-A clean run is evidence about the mutants you thought of and nothing else — two commits in this
-repo each recorded "three mutations checked, all caught" and each shipped a critical a later
-review found. Treat it as one input to the ship decision, not the decision.

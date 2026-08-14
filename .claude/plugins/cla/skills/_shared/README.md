@@ -27,6 +27,16 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `required-permissions.json` | the bootstrap permission set the ship skills check |
 | `run-log-schema.md` | the per-run JSONL contract the retro skills consume |
 | `past-offenses.md` | the generic enforcement-tier vocabulary behind the guardrails |
+| `retro-skeleton.md` | the workflow every `*-retro` skill follows, minus its own heuristics |
+
+## `scripts/`
+
+One script lives here on the same rule: `git_state.py` returns a single deterministic exit code for
+"an in-progress rebase / cherry-pick / merge exists", and four skills check it at every commit
+boundary. It is stdlib-only and imports nothing local. Its test and this scope's `pyproject.toml`
+sit beside it — `run_tests.py` fails the whole run as a "near-miss" if a directory has a
+pytest-configured `pyproject.toml` without a `tests/`, or the reverse, so the three move together
+or not at all.
 
 ## How to reference one
 
@@ -43,6 +53,14 @@ actually means someone else's file.
 
 ## Scanning
 
-Everything here is under a `references/` ancestor inside `skills/`, so the
-fact/procedure token guard picks it up with no configuration. Keep it portable:
-no repo names, no absolute developer paths.
+Every `.md` under `references/` is scanned by the fact/procedure token guard with
+no configuration, because the guard yields any `.md` beneath a `references/`
+ancestor inside `skills/`. `required-permissions.json` is the exception — it is
+not markdown, so no scanner reads it; it holds tool-permission patterns rather
+than prose, but keep repo names out of it by hand. `scripts/git_state.py` is covered too, by the source
+scanner's `.py` rule.
+
+**This file is not scanned by either.** It is a `.md` directly under a skills
+subdirectory, which matches neither rule — so the portability discipline below is
+on you rather than on a guard. Keep everything here portable regardless: no repo
+names, no absolute developer paths.

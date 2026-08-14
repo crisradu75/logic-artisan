@@ -37,5 +37,5 @@ These invariants commonly live in *phase-step prose* rather than the hoisted blo
 
 - **`wc -w -c` after** — note before/after. The ~size target is **aspirational, not a gate**: correctness prose staying inline WINS over hitting a number. Never relocate an invariant to shrink the file (the `wc` proxy is gameable exactly this way — the "invariants stay inline" spec scenario is the guard).
 - **Conformance guard** — `python3 -m pytest ${CLAUDE_PLUGIN_ROOT}/conformance-checks/tests/test_no_project_tokens.py -q` MUST pass (no repo token leaked into a new synced-core reference).
-- **Pointer resolution** — every mandatory-read pointer resolves to a real file; a cross-skill pointer (e.g. `spec-to-pr/references/runtime-rules.md`) uses the full path.
+- **Pointer resolution** — every mandatory-read pointer resolves to a real file; a cross-skill pointer (e.g. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`) uses the full path.
 - **A behavior-preservation read** — diff removed-vs-retained lines and confirm no correctness-gating invariant left inline context and each stub is self-sufficient.

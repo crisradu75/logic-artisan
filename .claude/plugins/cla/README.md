@@ -47,6 +47,7 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 | | `codify-retro` | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
 | | `spec-to-pr-retro` | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
 | | `report-upstream` | File a defect in CLA's own portable core as an issue against the canonical source |
+| | `release` | Cut a new plugin release: verify preconditions, bump manifest + catalog together, tag it |
 | **Any phase** (utility) | `right-model` | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 
 ### Typical flows
@@ -129,9 +130,9 @@ has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can dele
 ## Testing
 
 CLA's own suite runs in the repo that develops it, not in a repo that consumes it — the installed
-tree is read-only. Each skill *that ships tests* (4 today), plus `skills/_shared/`, `hooks/`,
+tree is read-only. Each skill *that ships tests* (5 today), plus `skills/_shared/`, `hooks/`,
 `lib/`, `conformance-checks/`, `consistency-checks/`, and `launcher-checks/`, is its own isolated
-pytest scope (own `pyproject.toml` + `tests/`) — 10 in all; several ship same-named helper modules, so
+pytest scope (own `pyproject.toml` + `tests/`) — 11 in all; several ship same-named helper modules, so
 they can't share one pytest process. Run the whole suite at once:
 
 ```bash
@@ -141,7 +142,7 @@ python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each p
 
 Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`. The one Node
 script (`project-review/scripts/mechanical-checks.mjs`) has its own sibling `node --test` suite,
-which `run_tests.py` **does** run as an 11th entry — invoke it alone only while iterating on it:
+which `run_tests.py` **does** run as a 12th entry — invoke it alone only while iterating on it:
 
 ```bash
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
