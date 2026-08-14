@@ -44,7 +44,7 @@ Durable record beyond PR-body staleness. The PR body goes stale once the PR merg
 ## 4. Next-steps gating (INVARIANT — also stubbed inline in SKILL.md)
 
 The terminal report's "Next steps for you" section is gated on the overall phase tally:
-- **All ✓:** print `gh pr merge <#> --squash --delete-branch` as the next step. Single line, no preamble.
+- **All ✓:** print `gh pr merge <#> --squash --delete-branch` as the next step. Single line, no preamble. **Stacked-child exception (`--pr-base` passed):** never print a bare merge command — squash-merging a stacked parent breaks every child PR. Print "lands with its chain — see the multi-pr report" instead; the chain report carries the parents-first, merge-commit landing checklist.
 - **Any ⚠ (warn):** print a "**Review warnings before merging.**" line FIRST, then list each ⚠ phase's one-line summary indented. Only after that — and on a new line — name `gh pr merge` as the eventual command. The intent: the user should not type `gh pr merge` without first reading what warned.
 - **Any ✗ (fail):** print "**This PR is NOT ready to merge.**" and DO NOT name `gh pr merge` at all. List the failing phases. The user can override by typing merge themselves, but the report does not endorse it.
 

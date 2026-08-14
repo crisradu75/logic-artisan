@@ -4,6 +4,8 @@ The Ship phase's step-by-step procedure. `SKILL.md`'s Ship stub carries the load
 
 ## 1. Branch preflight
 
+**With `--pr-base <branch>` passed** (a stacked chain — see `SKILL.md`'s `<pr-base>` rule), every mention of `<base-branch>` in this preflight reads as `<pr-base>`. The parent branch MUST exist on the remote — by construction it carries an open PR; `git rev-parse --abbrev-ref <pr-base>@{u}` succeeding is the cheap confirmation. If it has no upstream, STOP and surface it rather than proceeding: a child branched off an unpushed parent produces a PR whose base does not resolve on the remote. The PR-open step below then passes `--base <pr-base>` explicitly.
+
 FIRST determine the current branch — `git rev-parse --abbrev-ref HEAD` — and dispatch on it:
 
 - **Already on `<branch>`** → the branch already exists and is checked out *on purpose* (typically a dedicated worktree for a concurrent run — see `SKILL.md` "Concurrent runs"). **SKIP the collision check and the checkout; proceed straight to staging.** Running the collision check here would read the *shared* local refs and false-positive on the very branch you are on, wrongly marking Ship (and Revise + Archive) as `skip`.
@@ -53,6 +55,16 @@ List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change 
 Single-line body, no Markdown headers and no `\n#` sequence (avoids the `gh pr create --body` parser bug; mid-line `#1234` issue references are fine):
 ```
 gh pr create --title "feat: <change-name>" --body "Closes openspec/changes/<change-name>/. Checks: build + lint passed."
+```
+
+**Stacked chains only** (`--pr-base` passed) — this REPLACES the command above; run it instead, never both. An explicit base is REQUIRED: without it GitHub defaults the PR to the repo default branch and its diff silently includes the whole parent chain. Resolve the parent's PR number first, then open (two separate calls, one base command each):
+
+```
+gh pr list --head <pr-base> --state open --json number --jq ".[0].number"
+```
+
+```
+gh pr create --base <pr-base> --title "feat: <change-name>" --body "Stacked on #<parent-PR-number>. Closes openspec/changes/<change-name>/. Checks: build + lint passed."
 ```
 The body summarizes the Test outcome, listing the checks that ran (e.g. `Checks: build + lint + test passed.`, or `Checks: build + lint passed.` when no test suite is defined, or `Checks: skipped (docs-only).`). No Summary section, no Test-plan checklist.
 

@@ -1,7 +1,7 @@
 # Harness observations — 2026-08-14
 
 Captured while running the straight-A remediation program end-to-end through the harness
-itself (5 stacked PRs, #63–#67). These are defects and frictions observed *in the skills*,
+itself (5 stacked PRs, #63–#67, at the time of writing; #68 joined the stack later the same day). These are defects and frictions observed *in the skills*,
 not in the work they produced. Triage only — no fixes applied here.
 
 ## Defects with evidence

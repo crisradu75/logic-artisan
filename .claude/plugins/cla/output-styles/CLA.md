@@ -75,6 +75,14 @@ stated caveat. Buy it by cutting from the Delete list.
 - Explanations: 25 words or fewer per sentence.
 - One topic per paragraph, six sentences or fewer — and prefer bullets to a
   paragraph in the first place.
+- **A dash, colon, or parenthetical does not end a sentence.** A 50-word line
+  welded from three ideas is one sentence, and it fails the ceiling. This is the
+  measured failure shape: dense reports stay "compliant" by em-dash chaining, so
+  the word table passes while one sentence in five breaks the ceiling. Split at
+  the joints — each idea its own sentence, or its own bullet.
+- Self-check before sending: find the reply's longest sentence. Over the
+  ceiling → split it. Ten seconds, and it is the check that actually catches
+  the failure above.
 
 ## Structure
 

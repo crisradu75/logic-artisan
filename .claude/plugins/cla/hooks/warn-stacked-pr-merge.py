@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: WARN (never block) when `gh pr merge --delete-branch` would
-auto-close an open stacked child PR.
+"""PreToolUse hook: WARN (never block) when `gh pr merge --delete-branch` hits
+a branch that open stacked child PRs are based on.
 
-Deleting a base PR's branch on merge auto-closes any PR whose *base* is that
-branch, and GitHub refuses to reopen a PR whose base branch is gone ("Cannot
-change the base branch of a closed pull request").
+GitHub documents retargeting (2020-05-19 changelog): a head branch merged then
+deleted should retarget open PRs based on it. MEASURED otherwise on gh's own
+deletion path: `gh pr merge --delete-branch` CLOSED the dependent PR (#64 in
+the canonical repo, 2026-08-14) — the API deletion lands before any retarget,
+and GitHub refuses to reopen a PR whose base branch is gone ("Cannot change
+the base branch of a closed pull request"). Recovery exists (restore the base
+branch from the merge commit's second parent, reopen, retarget) but is manual.
+
+So the safe order is retarget-first: `gh pr edit <child> --base <base>` BEFORE
+merging the parent with `--delete-branch` (or drop the flag and delete later).
+Second hazard, independent of the first: a SQUASH merge rewrites the parent's
+commits, so a surviving child re-shows the parent's whole diff and its own
+merge conflicts. A stack lands with `--merge`.
 
 Detection: the Bash command runs `gh pr merge ... --delete-branch` (or `-d`).
 Resolve the merged PR's head branch, then query `gh pr list --base <head>
@@ -179,12 +189,10 @@ def main() -> int:
         return 0
     print(
         f"[warn-stacked-pr-merge] '{head}' is the base of open PR(s) {listed}. "
-        f"Merging with --delete-branch auto-closes them and GitHub refuses to reopen. "
-        # `<base>` rather than a resolved branch name: this is already a
-        # template the reader edits, and resolving it costs git spawns inside a
-        # handler budget this hook is the most expensive occupant of.
-        f"Retarget first: gh pr edit <child> --base <base> "
-        f"(or drop --delete-branch).",
+        f"gh's --delete-branch CLOSES them before any retarget (measured; GitHub "
+        f"refuses to reopen). Retarget FIRST: gh pr edit <child> --base <base>, "
+        f"then merge — and use --merge, not squash: a squash makes a surviving "
+        f"child re-show this branch's whole diff and conflict.",
         file=sys.stderr,
     )
     return 0

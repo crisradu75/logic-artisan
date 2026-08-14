@@ -243,7 +243,7 @@ retro over prior runs of another skill.
 | 3. Build & ship | `new-worktree` | Start an isolated git worktree for parallel/safe work |
 | | `lite-pr` | Lightweight end-to-end path for a small change: implement + docs + tests + PR |
 | | `spec-to-pr` | Drive one OpenSpec change end-to-end to an opened, archived PR |
-| | `multi-lite` / `multi-pr` | Chain several `lite-pr` / OpenSpec changes → PRs, dependency-first |
+| | `multi-lite` / `multi-pr` | Chain several `lite-pr` / OpenSpec changes → PRs, dependency-first (multi-pr: merge each before its dependents, or stack PRs when merging is unavailable) |
 | 4. Review & assure | `project-review` | CTO-level review of the whole repo |
 | 5. Learn & improve | `codify-learnings` | Review a session for reusable lessons; propose doc/skill/hook/memory edits `[loop]` |
 | | `codify-retro`, `spec-to-pr-retro` | Meta-review recent runs of a loop and improve the loop itself `[loop]` |
@@ -274,7 +274,7 @@ blocking outright; **warns** (`warn-*`) surface a caution without blocking:
   rather than blocking, since the action may be legitimate. Note this matters more than it looks:
   the harness runs `--permission-mode auto`, which suppresses the usual confirmations, so this
   hook is what restores one.
-- **Warns:** `warn-stacked-pr-merge` (a merge that could auto-close an open child PR) ·
+- **Warns:** `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard) ·
   `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
   `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one —
   it asks you to name what you dropped, since a `Write` keeps only what you carried across).
