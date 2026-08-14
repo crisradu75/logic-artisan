@@ -4,9 +4,18 @@
 WHY THIS EXISTS. Every retro loop in this plugin reads a ledger written *by a
 skill that ran*. Nothing anywhere records the work that should have gone through
 a skill and did not. So the loops measure their own usage and cannot see their
-own adoption: a day with 34 commits and one logged `spec-to-pr` run reports one
-run and reads as quiet. That exact ratio was measured in this repo, which is why
-this hook exists.
+own adoption: a day of many commits and one logged `spec-to-pr` run reports one
+run and reads as quiet.
+
+The ratio that motivated this hook, with the commands that produce it, measured
+on the session that wrote it (`6bf0755` is that session's first parent):
+
+    git rev-list --count --no-merges 6bf0755..main   # -> 31
+    wc -l < cla.io/retro/spec-to-pr-runs.jsonl       # -> 1
+
+31 to 1. An earlier draft of this docstring said "34" and called it measured; it
+was not, and re-deriving it for the PR that shipped this hook is what caught it.
+Hence the commands above rather than the number alone.
 
 `codify-retro`'s premise is "is the loop working?", and that question has no
 answer while the denominator is missing. This supplies the denominator: one line

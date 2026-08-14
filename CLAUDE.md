@@ -116,9 +116,21 @@ each one comes from a real escape:
 2. **Rewrote a file rather than edited it?** Diff old against new and state what you
    dropped. A rewrite silently loses rules an edit would have preserved; "it reads better"
    is not evidence that nothing went missing.
-3. **Asserting a diagnosis?** Search the same source for counterexamples before shipping
-   it, not just for supporting cases. A table of three examples proves nothing if three
-   counterexamples sit in the same file.
+3. **Asserting a diagnosis, a measurement, or a count?** Two halves, and the second is
+   the one that keeps escaping. For a **diagnosis**, search the same source for
+   counterexamples before shipping it, not just for supporting cases — a table of three
+   examples proves nothing if three counterexamples sit in the same file. For a
+   **measurement** — "measured", "verified", "zero violations", any number — name the
+   command that produced it, in the same commit. If you cannot name one, you did not
+   measure it: delete the claim or go run it. Reasoning that feels like measurement is the
+   most expensive thing in this repo, because it ships with a measurement's authority.
+   Recorded in `cla.io/lessons-learned/lessons-learned.md` (2026-08-14): review caught six
+   such claims in one session, and in one of them the comment's own text contained the
+   token it declared absent. Two more were invented blockers — "widening the scan roots
+   fails on the test fixtures" survived until someone widened the scan roots and got zero
+   violations. A seventh was caught by the merge check on the PR that added this very
+   rule: a commit count nobody had run, in three files including the hook written to
+   measure it.
 4. **Fixing a defect a review found?** Break the fix and confirm a test fails —
    `python3 .claude/plugins/cla/mutate.py <batch.py>` runs a batch of those (a batch is a
    Python module defining `MUTANTS`; see the tool's docstring) and reports survivors. A

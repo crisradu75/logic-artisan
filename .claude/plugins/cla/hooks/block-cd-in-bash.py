@@ -15,6 +15,20 @@ shell directive. Specifically block:
 Allow `cd` when it appears inside quoted strings (commit messages, docstrings,
 echoed prose). The matcher walks the command token-by-token outside quotes.
 
+SHADOWING IS ALSO BLOCKED, and for a different reason than the rest of this
+hook. `cd() { :; }` and `alias cd=true` do not change any working directory —
+they change what the WORD `cd` means, so a later `cd foo && cmd` in the same
+command is a no-op and sails past the matcher above. That is not a mistake a
+user makes by accident; it is the shape of deliberately routing around this
+guard, which happened once in this repo's own development. A guard that can be
+switched off by the thing it guards is not a guard, so the redefinition itself
+is the offense — blocked whether or not a `cd` follows it.
+
+Scope note: `git`, `rm` and `gh` are policed by sibling hooks and are shadowable
+the same way. That is deliberately NOT covered here — this hook owns `cd`, and a
+general "no shadowing any guarded command" check belongs in the dispatcher if the
+evasion ever recurs against another guard. One real offense, one narrow fix.
+
 Exit codes:
   0 — allow (no cd detected, or cd only inside quoted text)
   2 — block with stderr explaining the rule
@@ -30,15 +44,38 @@ import json
 import re
 import sys
 
+# `cd() {`, `cd ()  {`, `function cd {`, `function cd() {`, `alias cd=...`.
+# Anchored the same way as the directive matcher — start of string or after a
+# shell separator — so `echo foo | grep cd()` in prose does not trip it.
+_SHADOW = re.compile(
+    r"(?:^|[;&|\n])\s*(?:"
+    r"function\s+cd\b(?:\s*\(\s*\))?\s*\{"   # function cd {   /  function cd() {
+    r"|cd\s*\(\s*\)\s*\{"                    # cd() {          /  cd ()  {
+    r"|alias\s+cd="                          # alias cd=...
+    r")",
+    re.MULTILINE,
+)
+
+
+def _strip_quoted(cmd: str) -> str:
+    """Blank out single-, double-, and backtick-quoted spans.
+
+    Doesn't handle nested or escaped quotes perfectly, but covers the 99% case
+    where prose / commit messages are the only `cd` sources.
+    """
+    stripped = re.sub(r"'[^']*'", "''", cmd)
+    stripped = re.sub(r'"[^"]*"', '""', stripped)
+    return re.sub(r"`[^`]*`", "``", stripped)
+
+
+def shadows_cd(cmd: str) -> bool:
+    """Return True iff `cmd` redefines `cd` as a function or alias."""
+    return bool(_SHADOW.search(_strip_quoted(cmd)))
+
 
 def cd_outside_quotes(cmd: str) -> bool:
     """Return True iff `cd ` appears outside quoted text in `cmd`."""
-    # Strip single-quoted, double-quoted, and backtick-quoted spans.
-    # Doesn't handle nested or escaped quotes perfectly, but covers the
-    # 99% case where prose / commit messages are the only `cd` sources.
-    stripped = re.sub(r"'[^']*'", "''", cmd)
-    stripped = re.sub(r'"[^"]*"', '""', stripped)
-    stripped = re.sub(r"`[^`]*`", "``", stripped)
+    stripped = _strip_quoted(cmd)
     # Match `cd` as a directive: start of string / after `;` / `&` / `|` /
     # newline, followed by whitespace and at least one more char.
     pattern = re.compile(r"(?:^|[;&|\n])\s*cd\s+\S", re.MULTILINE)
@@ -54,6 +91,17 @@ def main() -> int:
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
     if not isinstance(command, str):
         return 0
+    if shadows_cd(command):
+        print(
+            "blocked: this command redefines `cd` as a shell function or alias. "
+            "Redefining a command that a guard hook polices disables the guard for "
+            "the rest of the call — if `cd` is in your way, use absolute paths or "
+            "pass the working dir to the inner tool. If the guard is genuinely wrong "
+            "here, say so and let the user decide; do not route around it. "
+            "(hook: block-cd-in-bash.py)",
+            file=sys.stderr,
+        )
+        return 2
     if not cd_outside_quotes(command):
         return 0
     print(
