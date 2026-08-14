@@ -28,6 +28,8 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `run-log-schema.md` | the per-run JSONL contract the retro skills consume |
 | `past-offenses.md` | the generic enforcement-tier vocabulary behind the guardrails |
 | `retro-skeleton.md` | the workflow every `*-retro` skill follows, minus its own heuristics |
+| `conflict-resolution.md` | procedure for a mid-flight rebase/cherry-pick/merge — what `git_state.py` exit 2 hands you |
+| `skill-authoring.md` | plugin-wide doctrine for writing a skill: progressive disclosure + completion criteria |
 
 ## `scripts/`
 

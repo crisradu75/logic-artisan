@@ -144,7 +144,7 @@ python3 .claude/plugins/cla/run_tests.py        # every scope, aggregated pass/f
 python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each pytest
 ```
 
-Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`. The one Node
+Three scopes carry a `SOURCE-REPO-ONLY.md` and are skipped outside the canonical repo (they assert its own launchers, catalog, and token list) — you will see a SKIP row for each in the summary rather than a failure. Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`. The one Node
 script (`project-review/scripts/mechanical-checks.mjs`) has its own sibling `node --test` suite,
 which `run_tests.py` **does** run as a 12th entry — invoke it alone only while iterating on it:
 
