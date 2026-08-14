@@ -87,36 +87,18 @@ The bootstrap halt is the **only** halt the orchestrator performs other than use
 
 ## Working-tree precheck (run after permissions, before Propose)
 
-`/cla:spec-to-pr` should NOT pick up uncommitted changes that belong to a different scope and sweep them into the feature branch's first commit. **The precheck must also detect in-progress git ops on other branches** — an in-progress cherry-pick/rebase/merge on another branch's HEAD is invisible to `git status --porcelain` on the current branch, so relying on `git status` alone lets it sweep unrelated untracked files into a later commit. See step 1 below. (Dated incident: `cla.io/overlays/spec-to-pr.md`.)
+**Read `references/precheck.md` first** — the full recipe: the `git_state.py` in-progress-op check
+and its three resolution paths, how to classify each dirty path as in- or out-of-scope, and the
+three explicit options an out-of-scope path is surfaced with. Load-bearing invariants:
 
-Run after the permissions check, before announcing the mode:
-
-**Step 1 — Check for in-progress git operations and verify branch state:**
-```
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
-```
-Exit 0 → proceed. Exit 2 → in-progress cherry-pick / merge / rebase / revert / bisect detected (the stderr names which one). Resolving it: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`. Surface to the user via `AskUserQuestion` with three explicit paths: (a) abort the in-progress op (`git cherry-pick --abort` / `git rebase --abort` / etc.) and proceed, (b) halt /cla:spec-to-pr and let the user finish the op manually, (c) inspect first (read `.git/CHERRY_PICK_HEAD` etc.) before deciding. Do NOT proceed until resolved — a stale in-progress op poisons every subsequent `git add` and commit.
-
-**Step 2 — Inspect the working-tree dirty paths:**
-```
-git status --porcelain
-```
-
-Classify every output line by path:
-- **In-scope:** anything under `openspec/changes/<change-name>/`, the affected app/package's source under `apps/*/src/` or `packages/*/src/`, or a directly-related repo file the change legitimately touches (e.g. a per-app stylesheet, a smoke-test script, a config file, `docs/` for the change, or a sub-app's own doc file for a sub-app-scoped change — see `cla.io/overlays/spec-to-pr.md` for this repo's worked examples).
-- **Out-of-scope:** everything else — typically `.claude/`, root `CLAUDE.md`, root `TODO.md`, files belonging to an unrelated change, etc.
-
-**If every dirty path is in-scope OR the working tree is clean:** proceed silently. (In existing-change mode, the change-directory edits are obviously in-scope; in description / explore-result mode, only a clean tree is expected — non-in-scope dirty paths still trigger the prompt.)
-
-**If any path is out-of-scope:** surface to the user via `AskUserQuestion` with **three explicit paths** (the same shape used by the investigation-first detector):
-
-- **(a) Commit out-of-scope changes to <base-branch> first.** Stage and commit ONLY the out-of-scope paths to <base-branch> with a one-line subject (e.g. `docs: lessons-learned log entries from prior session`), push, then return to clean working tree and proceed with Propose.
-- **(b) Include out-of-scope changes in this PR.** Stage them along with the feature work in Ship by adding each out-of-scope path to the `git add` call alongside the in-scope `apps/*/src/`/`packages/*/src/` paths. The orchestrator never runs `git add -A`; out-of-scope paths must be enumerated explicitly. Use when the changes are intentionally part of the same logical unit and the user is consciously overriding the commit-to-base-branch convention.
-- **(c) Stash and proceed.** `git stash push --include-untracked -m "spec-to-pr precheck stash for <change-name>"` before Propose; the stash is the user's responsibility to pop later. Use when uncertain — keeps the tree clean for this PR without losing work.
-
-Print the list of out-of-scope paths in the question's `description` field so the user sees exactly what's at stake. Default to (a) when the paths are all under `.claude/` (per the memory rule); default to (a) is also presented as a recommendation in the option label when applicable. Do NOT proceed until the user picks.
-
-This precheck is the only check between Bootstrap permissions and Propose. Skip entirely with `--no-tree-check` (escape hatch — useful when re-running mid-flow after a known intentional dirty state).
+- **Run it after the permissions check, before announcing the mode.** It exists so a run does not
+  sweep another scope's uncommitted work into this change's first commit.
+- **`git status --porcelain` alone is NOT sufficient** — an in-progress cherry-pick/rebase on
+  another branch is invisible to it. `git_state.py` exit 2 is the check that sees it; resolving one
+  is `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`.
+- **An out-of-scope dirty path is an `AskUserQuestion` with three paths, never a silent decision** —
+  commit to base first / include deliberately in this PR / stash. Do not proceed until answered.
+- Skip the whole phase only with `--no-tree-check`.
 
 ## Commit + PR message style — minimal
 
@@ -172,22 +154,12 @@ Use `Skill()` only when the sub-skill genuinely encapsulates capability the orch
 
 ## Concurrent runs (worktree-per-session)
 
-A single `/cla:spec-to-pr` run needs no special setup — it creates `<branch>` in place and nothing arbitrates two sessions in one clone — the hook that used to is gone, so the discipline below is the whole protection.
-
-To run **two or more `/cla:spec-to-pr` flows at once** in the same repo, give each session its own `git worktree` (own directory + own HEAD; the primary clone stays on `<base-branch>`). This is required because a run's file edits (Review/Implement/Revise) go to the *session's* working directory via Edit/Write — you cannot edit in one clone and commit from another, so the session itself must live in the worktree (`git -C <worktree>` does NOT solve this). See `cla.io/project-facts.md` ("Worktree convention") for this repo's worktree-directory convention (run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/spec-to-pr.md` if absent). Per-session setup, from the primary clone:
-
-```
-git fetch origin <base-branch>
-git worktree add <worktrees-dir>/<change> -b <branch> origin/<base-branch>
-# then launch Claude in <worktrees-dir>/<change> and run: /cla:spec-to-pr <change>
-```
-
-**Branch off `origin/<base-branch>` explicitly, never bare `git worktree add ... -b <branch>`.** Omitting the base branches off whatever the primary clone's *local* `<base-branch>` ref happens to point to, which drifts stale the moment any other change in a chain squash-merges (squash rewrites history, so a local `<base-branch>` that hasn't been fetched/pulled since diverges from `origin/<base-branch>` even with zero local commits of its own). A branch cut from that stale base produces a PR `gh` reports as not-cleanly-mergeable — recoverable (a cherry-pick-onto-a-fresh-branch-plus-force-push repair; see `cla.io/overlays/spec-to-pr.md` for a real recovery precedent), but avoidable for a one-line fix. `git fetch origin <base-branch>` first makes `origin/<base-branch>` current without touching the primary clone's checked-out branch, so this is safe even while another session holds the primary clone.
-
-- The worktree is created **on `<branch>`**, so Ship's branch preflight takes the "already on `<branch>`" path (skips collision-check + checkout) — see the Ship stub's branch-preflight invariant (full recipe in `references/ship.md`).
-- **existing-change mode:** the change dir must already be committed (so `git worktree add` from `<base-branch>` includes it). **description / explore-result mode:** the artifacts are created inside the worktree during Propose — fine.
-- The two runs are fully isolated: different worktrees, different HEADs, different change dirs. Shared-file merge conflicts are limited to append-only `cla.io/retro/spec-to-pr-runs.jsonl` and `TODO.md` (trivial "keep both lines" resolutions if both PRs touch them).
-- **Cleanup:** the worktree persists after the run (the session lives in it). After the PR merges, remove it from the primary clone: `git worktree remove <worktrees-dir>/<change>` (the branch is already deleted by `gh pr merge --delete-branch`).
+A single run needs no setup — it creates `<branch>` in place. To run two or more flows at once in
+the same repo, each session needs its own `git worktree`: **read `references/concurrent-runs.md`**
+for the setup commands, the base-branch trap, and cleanup. The one rule worth holding without
+reloading it: branch off `origin/<base-branch>` explicitly (or `origin/<pr-base>` for a stacked
+child) — a bare `git worktree add -b <branch>` takes whatever the primary clone's local ref happens
+to be, which goes stale the moment any sibling change merges.
 
 ## Session-model routing & escalate-up
 
@@ -247,7 +219,7 @@ For each round:
 
 2. **Trust-but-verify the probe.** `probe_state.py`'s `implement` field reads `openspec status --json isComplete`, which only checks artifact-file presence (proposal.md, design.md, tasks.md, specs/) — NOT task-box state. A change with all four artifacts present but every `- [ ]` unticked still reports `implement: true`. Before skipping Implement on a resume, count unticked tasks: `grep -c '^- \[ \]' openspec/changes/<name>/tasks.md`. If > 0, treat `implement` as `false` and proceed with Implement regardless of the probe.
 
-3. **Implement.** Default: invoke `Skill(openspec-apply-change, args="<change-name>")` (also surfaced as the `/opsx:apply` slash command — same skill, different entry point). The skill walks `tasks.md` subtask-by-subtask, edits the implementing modules and tests, and ticks each checkbox.
+3. **Implement.** Tests written in this phase follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md` — the two rules that decide whether a test can fail at all. Default: invoke `Skill(openspec-apply-change, args="<change-name>")` (also surfaced as the `/opsx:apply` slash command — same skill, different entry point). The skill walks `tasks.md` subtask-by-subtask, edits the implementing modules and tests, and ticks each checkbox.
 
    **Inline-implementation escape hatch.** Use direct `Edit`/`Write` calls instead of the skill when you already hold the artifacts + source in context (skill hop would be pure indirection) or when the work needs repo-specific side knowledge the skill doesn't carry. See "When NOT to use `Skill()`" above.
 
@@ -290,15 +262,7 @@ User can override via `--test-cmd "<cmd>"` to run a literal command instead of d
 
 The failure mode this closes is the symptom fix: loosening an assertion, widening a type, or wrapping the failing call turns the gate green without touching the defect, and the gate cannot tell the difference. Unlike `/cla:lite-pr` — which HALTS on an unresolved failure — this phase is deliberately warn-and-continue, so a suppression here doesn't stop the run; it ships, and Revise never sees it because the gate reported clean. If the only account you can give for a fix is that it makes the check pass, record the round as `warn` with the real failure rather than banking the green.
 
-**Two test-quality rules, whichever tier the fix lands in.** A green gate proves the
-assertion passed, not that the assertion was worth making:
-
-- **No tautological assertion.** An assertion that recomputes its expected value the
-  way the code does passes for any implementation, including a wrong one. Pin the
-  literal expected value, or derive it by a genuinely different route.
-- **No implementation-detail testing.** Assert observable behaviour at a real seam —
-  a return value, a written file, an exit code — not a private helper's internals.
-  A test coupled to structure fails on every refactor and catches no defect.
+**Test quality is an Implement-phase concern** — see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`. If a red gate here forces a test edit, the same two rules apply to the edit.
 
 
 **A repo-specific hard gate's own infra flakiness is transient, not a real failure — auto-retry before believing it.** When this repo has an extra hard-gate test suite that depends on locally-running infra (e.g. a database stack), a specific, recurring failure mode in that infra's own CLI can surface as a DIFFERENT test file failing on each run rather than a real assertion error — that's the signature of a startup/parallelism race in the infra tooling itself, not a code regression. Recognize it by: the failing FILE changes between otherwise-identical runs, and/or the stderr names the infra tool's own internal error, not an assertion. Remediation, in order, before ever recording a Test `warn` for this gate: (1) retry the gate once — a bare retry often clears it; (2) if it recurs, restart the local infra stack, then re-run; (3) confirm it's the race, not a real break, by running the specific failing file(s) in isolation — they pass standalone iff it was the parallelism race. Only after (1)-(3) still fail on the SAME file with a REAL assertion error is it a genuine regression worth a `warn`. Do NOT "fix" a known, pre-existing, deferred instance of this race inside an unrelated change's PR. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's exact gate command, and `cla.io/overlays/spec-to-pr.md` for the specific CLI/error signature and its remediation commands.
@@ -420,6 +384,8 @@ The terminal report's "Next steps for you" section names `gh pr merge --squash -
 
 ## References
 
+- `references/precheck.md` — the Precheck phase's full recipe (mandatory-read from its stub)
+- `references/concurrent-runs.md` — worktree-per-session setup for parallel runs
 - `references/workflow-diagram.md` — visual phase flow + glyphs + caps
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` — per-dispatch model + effort routing table (single source of truth), the escalate-up rule, and the phantom-finding rationale; pointed at from the hoisted rules, Implement, Revise, and Handoff
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md` — the thin-orchestrator runtime disciplines (delegation, I/O hygiene, batching, structured output); pointed at from the hoisted rules and each phase that handles bulk raw material

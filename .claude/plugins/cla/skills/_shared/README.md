@@ -29,6 +29,7 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `past-offenses.md` | the generic enforcement-tier vocabulary behind the guardrails |
 | `retro-skeleton.md` | the workflow every `*-retro` skill follows, minus its own heuristics |
 | `conflict-resolution.md` | procedure for a mid-flight rebase/cherry-pick/merge — what `git_state.py` exit 2 hands you |
+| `test-quality.md` | the two rules deciding whether a test can fail at all — read at authoring time |
 | `skill-authoring.md` | plugin-wide doctrine for writing a skill: progressive disclosure + completion criteria |
 
 ## `scripts/`
