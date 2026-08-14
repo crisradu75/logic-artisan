@@ -93,7 +93,9 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
 DEVELOPMENT-ONLY BOUNDARY — orchestrator stops here.
 The user separately runs:
   gh pr merge <#> --squash --delete-branch
-(archive is NO LONGER a user step — it ran in Archive)
+(a stacked child lands with its chain instead — merge
+commits, parents first; archive is NO LONGER a user
+step — it ran in Archive)
 ```
 
 ## Status glyph quick reference

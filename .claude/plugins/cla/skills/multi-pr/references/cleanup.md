@@ -2,12 +2,12 @@
 
 Phase 4's step-by-step procedure, run once after every change in the sequence is done. `SKILL.md`'s Phase 4 stub carries the load-bearing invariant (re-running the chain-level green gate, path-scoped staging); this file carries the recipe.
 
-0. **Under the stacked policy, this phase runs on the TIP of the stack, not `<base-branch>`.**
-   Nothing has merged, so `<base-branch>` is exactly as green as it was before the run and
-   re-verifying it proves nothing about the chain. Check out the LAST change's feature branch —
-   it contains every change in order — and run the chain-level gate there. Skip step 2's prune
-   (no branches were deleted). The report's landing checklist is the ordered
-   `gh pr merge <#> --squash --delete-branch` commands, parents first.
+0. **Under the stacked policy — including a mixed run that fell back to it mid-chain — steps 1-3 change as follows.**
+   - **Step 1's gate target.** Run the chain-level gate on each stack's LEAF branch (the deepest child of each lineage — a leaf contains its whole ancestry in order). A chain can be a forest — several stacks plus independents — so one leaf does not cover everything: gate every leaf, and each independent's branch. In a MIXED run, ALSO run step 1 on `<base-branch>` as written: merges landed there before the fallback, so it is not in its pre-run state.
+   - **Step 2's prune.** Skip in a pure stacked run (no branch was deleted); keep in a mixed run.
+   - **Step 3 does NOT apply to stack branches.** Every branch an open PR is based on MUST survive until the user lands the stack — deleting one orphans its child PRs. Remove only the branches/worktrees of changes that actually merged before the fallback.
+   - **Step 4's archive confirmation runs per gated branch.** No single checkout shows every archive in a stacked forest — each leaf holds only its own lineage's. Run `ls openspec/changes/` on each gated branch; the UNION across leaves and independents must show the full sequence archived.
+   - **The report's landing checklist** (step 5) is the ordered, parents-first landing commands per change-loop step 5-alt: `gh pr merge <#> --merge --delete-branch` — merge commits, never squash on a stack; the squash-required alternative (rebase each child first) lives in step 5-alt.
 
 1. **Verify <base-branch> is green (merge policies only).** This repo's own workspace-wide build/lint/test commands (see `cla.io/project-facts.md`, falling back to `cla.io/overlays/multi-pr.md` if absent), plus its local-infra-dependent hard gate if any shipped change touched the tables/surfaces it covers. This is the one gate that's worth re-running at the CHAIN level even though every individual change already passed it standalone — a later change's merge can occasionally interact with an earlier one in ways neither change's own Test phase would catch alone.
 2. **Prune stale remote-tracking branches:** `git fetch --prune`. `gh pr merge --delete-branch` deletes the branch on GitHub; the local `remotes/origin/feature/...` ref doesn't disappear on its own.

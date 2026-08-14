@@ -16,8 +16,9 @@ lessons-learned) in the repo's own `cla.io/` tree.
   never baked into the synced core (see *Architecture*).
 - **Isn't:** product/app code, a CI system, or a deploy tool. The single-change ship skills
   (`lite-pr`, `spec-to-pr`) stop at an **opened PR**; the `multi-*` chainers may merge a dependency
-  PR to unblock its dependents during an unattended run — but nothing here deploys, and no PR is
-  merged without you having chosen to run a chainer.
+  PR to unblock its dependents during an unattended run (or, under `multi-pr`'s stacked policy,
+  merge nothing and stack the PRs instead) — but nothing here deploys, and no PR is merged without
+  you having chosen to run a chainer.
 - **Isn't:** a store of project facts. Those live in `cla.io/` and per-skill overlays, which sit in
   the repo rather than the plugin, so no install touches them.
 
@@ -40,7 +41,7 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 | | `lite-pr` | Lightweight end-to-end path for a small change: implement + docs + tests + PR + one review round |
 | | `spec-to-pr` | Drive one OpenSpec change end-to-end to an opened, archived PR with review fixes applied |
 | | `multi-lite` | Chain several `lite-pr` runs extracted from one decisions doc, dependency-first |
-| | `multi-pr` | Chain several OpenSpec changes → PRs, merging each before its dependents |
+| | `multi-pr` | Chain several OpenSpec changes → PRs, merging each before its dependents (or stacking PRs on their parents when merging is unavailable) |
 | **4. Review & assure** | `project-review` | CTO-level review of the whole repo: vision, structure, requirements, architecture, validation |
 | | (agents) | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to |
 | **5. Learn & improve** | `codify-learnings` | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
