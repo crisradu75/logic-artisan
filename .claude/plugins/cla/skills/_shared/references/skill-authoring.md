@@ -1,4 +1,4 @@
-# progressive-disclosure — the recipe for conforming a SKILL.md
+# Skill-authoring doctrine (plugin-wide)
 
 A plugin-wide authoring recipe (it lives here because `spec-to-pr` is the reference implementation — its `references/{ship,revise,archive,handoff,runtime-rules}.md` + inline stubs are the worked example — but it applies to ANY cla skill). It is the "how" for the `cla-plugin` **Skill token-efficiency disciplines** spec requirement (`openspec/specs/cla-plugin/spec.md`, discipline 1). Read it before progressive-disclosing a skill so the keep-inline/move boundary isn't re-derived from scratch each time.
 
@@ -39,3 +39,27 @@ These invariants commonly live in *phase-step prose* rather than the hoisted blo
 - **Conformance guard** — `python3 -m pytest ${CLAUDE_PLUGIN_ROOT}/conformance-checks/tests/test_no_project_tokens.py -q` MUST pass (no repo token leaked into a new synced-core reference).
 - **Pointer resolution** — every mandatory-read pointer resolves to a real file; a cross-skill pointer (e.g. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`) uses the full path.
 - **A behavior-preservation read** — diff removed-vs-retained lines and confirm no correctness-gating invariant left inline context and each stub is self-sufficient.
+
+## Completion criteria — every step says how the agent knows it is done
+
+A step an agent cannot self-check is a step it will report complete while
+half-done. Progressive disclosure decides *where* an instruction lives; this
+decides whether the instruction is finishable.
+
+For each numbered step or phase you write, the reader must be able to answer
+"am I done?" from the step itself — with a check, not a feeling:
+
+- ❌ "Review the affected files." → done is unobservable; any amount qualifies.
+- ✅ "Review every file the Impact section names; each one gets a verdict line
+  in the report." → done is countable against a list.
+- ❌ "Make sure the tests still pass." → which tests, and what proves it?
+- ✅ "`run_tests.py` exits 0 with no near-miss warning." → one command, one bit.
+
+Two shapes that satisfy this cheaply: name the artifact the step must produce
+(a row, a commit, a file), or name the command whose exit code settles it. A
+step with neither is prose, and prose does not finish.
+
+This pairs with the plugin's grounding contract — a claim resolves to verbatim
+evidence or an explicit NOT-FOUND. Completion criteria are the same discipline
+applied to *work* rather than to *claims*: both replace "it seemed fine" with
+something falsifiable.

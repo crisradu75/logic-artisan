@@ -34,7 +34,7 @@ Before staging anything:
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <branch>
 ```
-Exit 0 → proceed. Exit 2 (in-progress git op) or 3 (wrong branch) → halt and surface to the user. Cheap (<1s), and catches the case where an external session left a cherry-pick/rebase active or where HEAD drifted between Test's checks and now.
+Exit 0 → proceed. Exit 2 (in-progress git op) or 3 (wrong branch) → halt and surface to the user. Resolving it: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`. Cheap (<1s), and catches the case where an external session left a cherry-pick/rebase active or where HEAD drifted between Test's checks and now.
 
 ## 2a. Scratch-artifact hygiene check
 
