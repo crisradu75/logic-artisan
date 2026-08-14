@@ -84,7 +84,7 @@ whole plugin: no project token in synced core, no hardcoded plugin path, no dead
 `cla.io/project-facts.md` or an overlay, and no SKILL.md with broken frontmatter or a reference
 that resolves nowhere. `consistency-checks/` holds a drift check over the ledger-dir resolver that the isolation
 rule below deliberately prevents from sharing a module, plus checks on this repo's own source;
-`launcher-checks/` tests the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin
+**Three scopes are source-repo-only** — `consistency-checks/`, `launcher-checks/`, and `skills/release/tests/` assert facts about THIS repo's own source, so each carries a `SOURCE-REPO-ONLY.md` and `run_tests.py` skips it (with a summary SKIP row) in any repo that is not the canonical source; a consumer would otherwise get failures it cannot fix. `launcher-checks/` tests the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin
 tree entirely (`claw`/`claw.cmd` were deleted alongside the worktree-isolation guard, the hook they
 existed to dodge).
 

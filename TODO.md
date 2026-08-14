@@ -110,17 +110,22 @@ asset is being rewritten (otherwise it never fires for already-synced repos — 
 population); and tolerate any malformed declaration shape, since one bad edit would otherwise
 break discovery for every consumer.
 
-## Shipped-but-source-only check scopes fail in a consuming repo
+## Source-repo-only scopes — chosen: a per-scope marker file
 
-`consistency-checks/` and `launcher-checks/` sit inside `.claude/plugins/cla/`, so the marketplace
-ships them, but their assertions are about THIS repo's own source: repo-root `cla`/`cla.cmd`
-launchers, `>= 8` overlays, a curated token list, an installed `pre-push` hook. A consuming repo
-that runs the shipped `run_tests.py` gets failures it cannot fix and did not cause.
+**Resolved.** `consistency-checks/`, `launcher-checks/`, and `skills/release/` assert facts about
+the canonical repo's own source (repo-root launchers, the marketplace catalog, a curated token
+list, CLAUDE.md's release line). Each now carries a `SOURCE-REPO-ONLY.md`, and `run_tests.py`
+skips a marked scope — with a SKIP row in the summary — wherever `_is_source_repo()` is false.
+`consistency-checks/tests/test_source_only_markers.py` pins both ends, including the detection
+branches this repo cannot exercise on itself.
 
-Options, none chosen yet: move both scopes outside the published directory (they would stop being
-distributed at all, which is the intent); make each assertion skip when it detects it is not the
-source repo; or have `run_tests.py` discover a scope's "source-repo-only" marker and skip it. The
-first is cleanest but conflicts with `conformance-checks/` deliberately shipping.
+Option 3 (a scope-level marker) was taken over option 2 (per-assertion skips) for being one
+mechanism instead of dozens. **The cost, recorded rather than hidden:** the skip is
+directory-granular, so a consuming repo loses `consistency-checks`' genuinely portable coverage
+too — measured at 78 of 103 tests, including the ledger-resolver drift check that CLAUDE.md names
+as guarding a *silent* failure. Splitting the portable assertions into their own unmarked scope
+is the natural follow-up; it was not done here because it is a scope reorganisation, not a
+one-line fix.
 
 ## Remaining unscanned surface after the scan-root widening (small, known)
 

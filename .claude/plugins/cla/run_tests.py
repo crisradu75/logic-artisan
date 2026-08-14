@@ -100,11 +100,20 @@ def _is_source_repo() -> bool:
             return False
         if PLUGIN_ROOT.parents[1].name != ".claude":
             return False
-        catalog = PLUGIN_ROOT.parents[2] / ".claude-plugin" / "marketplace.json"
-        return catalog.is_file() and '".claude/plugins/cla"' in catalog.read_text(
-            encoding="utf-8"
-        )
-    except OSError:
+        repo_root = PLUGIN_ROOT.parents[2]
+        catalog = repo_root / ".claude-plugin" / "marketplace.json"
+        if not catalog.is_file():
+            return False
+        # Derive the published path rather than hardcoding the literal: a catalog
+        # spelling it `./.claude/plugins/cla` is the same tree, and a substring
+        # match on one spelling would silently flip this repo to non-source.
+        published = PLUGIN_ROOT.relative_to(repo_root).as_posix()
+        text = catalog.read_text(encoding="utf-8")
+        return published in text or f"./{published}" in text
+    # UnicodeDecodeError is a ValueError, not an OSError: a non-UTF-8 catalog
+    # raised here and took the whole runner down at startup. Fail closed on any
+    # unreadable/undecodable catalog — "not the source repo" is the safe answer.
+    except (OSError, ValueError):
         return False
 
 # pytest exit codes we treat specially; everything else is a failure.
@@ -296,15 +305,10 @@ def main(argv: list[str]) -> int:
     strict_no_tests = not pytest_args
 
     # Source-repo-only scopes: run here, skip (visibly) in a consuming repo.
+    source_only_skipped: list[Path] = []
     if not _is_source_repo():
-        source_only = [s for s in scopes if (s / SOURCE_ONLY_MARKER).is_file()]
-        for s in source_only:
-            print(
-                f"SKIP: {_rel(s)} is source-repo-only (asserts the canonical "
-                f"repo's own source — see its {SOURCE_ONLY_MARKER})",
-                file=sys.stderr,
-            )
-        scopes = [s for s in scopes if s not in source_only]
+        source_only_skipped = [s for s in scopes if (s / SOURCE_ONLY_MARKER).is_file()]
+        scopes = [s for s in scopes if s not in source_only_skipped]
 
     results: list[tuple[Path, int, int]] = [
         (s, *run_scope(s, pytest_args)) for s in scopes
@@ -330,6 +334,11 @@ def main(argv: list[str]) -> int:
         return 1
 
     print(f"\n{'=' * 70}\nSUMMARY ({len(results)} scopes)\n{'=' * 70}", flush=True)
+    # Source-only skips belong IN the summary, not only on stderr minutes
+    # earlier: a reader scanning for PASS must not be able to miss that a
+    # scope opted out of running entirely.
+    for _s in source_only_skipped:
+        print(f"  {'SKIP (source-only)':20} {_rel(_s)}", flush=True)
     failed = 0
     total_skipped = 0
     for scope, code, skipped in results:

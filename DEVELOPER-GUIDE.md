@@ -314,6 +314,11 @@ Contributing to the harness rather than using it? The extra rules:
   Both green is the only gate before a PR. Watch the skip count in the summary — a skipped guard
   has not run (one pre-push permission-bit test always skips on Windows).
 
+- **Three scopes are source-repo-only.** `consistency-checks/`, `launcher-checks/`, and
+  `skills/release/tests/` assert facts about this repo's own source. Each carries a
+  `SOURCE-REPO-ONLY.md`; `run_tests.py` runs them here and skips them anywhere else. Adding
+  a scope that asserts a canonical-repo fact means adding that marker AND its name to
+  `test_source_only_markers.py`'s expected set — the guard fails both ways.
 - **Never run bare `pytest` from the repo or plugin root.** Each scope (5 skills with tests, plus
   `skills/_shared/`, `lib/`, `hooks/`, `conformance-checks/`, `consistency-checks/`,
   `launcher-checks/`) is isolated on purpose — several ship
