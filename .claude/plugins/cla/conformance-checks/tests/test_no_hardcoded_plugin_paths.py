@@ -4,7 +4,7 @@ A plugin installed from a marketplace does NOT live at
 `<repo>/.claude/plugins/cla/`. It lives in a version-keyed cache directory that
 changes on every update. So every skill instruction that says
 
-    python3 .claude/plugins/cla/skills/spec-to-pr/scripts/git_state.py
+    python3 .claude/plugins/cla/skills/_shared/scripts/git_state.py
 
 is a command that works only in the one repo that develops the plugin with
 `--plugin-dir`, and fails with "No such file or directory" in every repo that

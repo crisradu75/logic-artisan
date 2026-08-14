@@ -53,6 +53,12 @@ actually means someone else's file.
 
 ## Scanning
 
-Everything here is under a `references/` ancestor inside `skills/`, so the
-fact/procedure token guard picks it up with no configuration. Keep it portable:
-no repo names, no absolute developer paths.
+Everything under `references/` is scanned by the fact/procedure token guard with
+no configuration, because the guard yields any `.md` beneath a `references/`
+ancestor inside `skills/`. `scripts/git_state.py` is covered too, by the source
+scanner's `.py` rule.
+
+**This file is not scanned by either.** It is a `.md` directly under a skills
+subdirectory, which matches neither rule — so the portability discipline below is
+on you rather than on a guard. Keep everything here portable regardless: no repo
+names, no absolute developer paths.

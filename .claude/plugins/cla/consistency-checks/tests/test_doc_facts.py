@@ -2,7 +2,7 @@
 
 The plugin's behaviour lives mostly in markdown, and so does its documentation —
 a prose edit ships like code but nothing compiles it. Four numbers in particular
-are restated across five files (`CLAUDE.md`, `README.md`, `DEVELOPER-GUIDE.md`,
+are restated across four files (`CLAUDE.md`, `README.md`, `DEVELOPER-GUIDE.md`,
 the plugin's own `README.md`) and every one of them has been wrong at least once:
 the skill count, the pytest-scope count, the count of skills shipping tests, and
 the release version.
@@ -248,12 +248,17 @@ def test_every_stated_leaf_hook_count_is_the_real_one(name):
 def test_every_named_leaf_hook_exists():
     """The other half, and the one that actually shipped: six invented hook names
     in a single guide section. A backticked `block-`/`ask-`/`warn-`/`guard-` name
-    is read as a live hook; mention a deleted one without backticks if the
-    reference is historical."""
+    is read as a live hook; mention a deleted one WITHOUT backticks if the
+    reference is historical.
+
+    The `(?:\\.py)?` is load-bearing, not decoration: without it a backticked
+    `` `guard-x.py` `` matched nothing at all — the character class cannot match a
+    dot — so the one spelling most likely to name a real hook file was the one
+    spelling this guard could not see."""
     missing = []
     for name, path in _DOCS.items():
         text = path.read_text(encoding="utf-8")
-        for hook in re.findall(r"`((?:block|ask|warn|guard)-[a-z0-9-]+)`", text):
+        for hook in re.findall(r"`((?:block|ask|warn|guard)-[a-z0-9-]+(?:\.py)?)`", text):
             stem = hook[:-3] if hook.endswith(".py") else hook
             if not (_PLUGIN_ROOT / "hooks" / f"{stem}.py").is_file():
                 missing.append(f"  {name}: `{hook}` has no hooks/{stem}.py")

@@ -1,13 +1,13 @@
 ---
 name: release
-description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the plugin manifest AND the marketplace catalog ref in the same commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /cla:release or natural language like 'cut a release', 'publish a new version', 'tag 0.10.0', 'ship the plugin', 'bump the plugin version'."
+description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the plugin manifest, the marketplace catalog ref, and the CLAUDE.md release line in one commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /cla:release or natural language like 'cut a release', 'publish a new version', 'tag 0.10.0', 'ship the plugin', 'bump the plugin version'."
 argument-hint: "[major|minor|patch|<explicit version>] (default: ask)"
 allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 ---
 
 # /cla:release — publish a new version of the plugin
 
-Cutting a release is a **two-file edit plus a tag**, and getting either half wrong is
+Cutting a release is a **three-file edit plus a tag**, and getting either half wrong is
 expensive in a way ordinary mistakes are not: a published tag is what consumers have
 already fetched, so it can never be corrected in place. This skill exists because that
 procedure has been performed by hand on every release so far, and a hand-run procedure
@@ -70,7 +70,7 @@ While the line is `0.9.x`, it is the pre-1.0 validation line. It becomes `1.0.0`
 real task has been run end-to-end through the plugin in a consuming repo — installing
 and resolving paths is verified; running a task through it is the remaining gate.
 
-## Step 3 — The two-part edit, in one commit
+## Step 3 — The three-file edit, in one commit
 
 Both files must move together. A test fails when they disagree
 (`consistency-checks/tests/test_marketplace_manifest.py`), and a third copy of the
@@ -123,6 +123,6 @@ precondition was waived — it should not have been — say so prominently.
 
 - To fix a release that is already published. Cut the next version instead.
 - To tag work sitting on a feature branch or an open PR.
-- To bump a version without releasing it: the two-file edit exists to be atomic with
+- To bump a version without releasing it: the three-file edit exists to be atomic with
   the tag, and splitting them is what leaves the catalog advertising a tag that does
   not exist.

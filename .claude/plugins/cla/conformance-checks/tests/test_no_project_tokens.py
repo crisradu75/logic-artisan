@@ -217,15 +217,19 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # surface: `lib/`, the three `*-checks/` scopes, `run_tests.py`, and `mutate.py`
 # reach a consuming repo too. The first four of those are scanned here.
 #
-# Two things are deliberately NOT scanned, and both are load-bearing omissions
-# rather than oversights:
+# FOUR files are not scanned. Counted, not estimated — every other `.md`/`.py`
+# the marketplace ships falls inside a root below:
 #
 #   - The plugin's own root `README.md`. Its install commands legitimately name
 #     this repository, which is what makes them copy-pasteable. Scanning it would
 #     flag the one file whose whole job is to identify the source.
+#   - `skills/_shared/README.md`. It sits directly under a skills subdirectory
+#     rather than under a `references/` ancestor, so the prose scanner's rule
+#     misses it and the source scanner only takes `.md` under `agents`/
+#     `output-styles`.
 #   - `run_tests.py` and `mutate.py` at the tree root. They sit outside every
-#     root below; adding a bare-file scan for two files is not worth a second
-#     traversal rule, and both are checked by eye at review time.
+#     root below; adding a bare-file traversal for two files is not worth a
+#     second rule, and both are read at review time.
 #
 # A deliberate path-parsing fixture stays scannable by carrying the
 # `path-fixture-ok` marker on its line, rather than by exempting a whole file.

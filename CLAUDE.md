@@ -16,8 +16,8 @@ catalog publishes as the plugin's source path.
 **Distribution is GitHub, and only GitHub.** `.claude-plugin/marketplace.json` at the repo root
 publishes one plugin, `cla`, from this subdirectory (`git-subdir` source, `url` + `path`, schema
 verified against the live docs). It pins an **exact release tag**, not a moving major tag, so
-publishing a release is a deliberate two-part edit: bump `version` in the plugin's own
-`plugin.json` AND the `ref` here, in the same commit. A test fails when they disagree. Consumers
+publishing a release is a deliberate three-file edit: bump `version` in the plugin's own
+`plugin.json`, the `ref` here, and the release line below — all in one commit. A test fails when they disagree. Consumers
 pick the new release up on `/plugin marketplace update`.
 
 Consumers add the marketplace from the repo, never from a path:
@@ -170,10 +170,12 @@ everywhere) from *facts* (per-repo, never synced):
   only. A pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
   developer path, leaks into synced core — one scanner covers `SKILL.md`/`references/*.md` prose
   under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`
-  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). Both scan only those four
-  roots, so three classes ship unscanned and need watching by hand: non-`.py`/`.md` files
-  (`hooks/hooks.json`, a skill's own `.mjs`), and — since the marketplace publishes the whole
-  directory — `lib/`, the `*-checks/` scopes, `run_tests.py`, and `mutate.py`. Tracked in TODO.md.
+  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). The source scanner covers
+  eight roots — the four synced dirs plus `lib/` and the three `*-checks/` scopes — because the
+  marketplace ships the whole directory. Four files still fall outside both scanners and are watched
+  by hand: the plugin's own `README.md` (its install commands legitimately name this repo),
+  `skills/_shared/README.md`, `run_tests.py`, and `mutate.py`. Non-`.py`/`.md` files
+  (`hooks/hooks.json`, a skill's own `.mjs`) are outside both too. Listed in TODO.md.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not

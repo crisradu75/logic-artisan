@@ -162,7 +162,7 @@ def extract_reference_paths(text: str, skill_dir: Path):
     # — both nonexistent owners, both reported as dangling. The owner must also be
     # a real skill directory, so an ordinary hyphenated prose word cannot qualify.
     for raw in re.findall(
-        r"(?<![\w/${\-])([a-z][a-z0-9-]*/(?:references|scripts)/[A-Za-z0-9._-]+)", text
+        r"(?<![\w/${\-])([a-z_][a-z0-9_-]*/(?:references|scripts)/[A-Za-z0-9._-]+)", text
     ):
         owner, _, rest = raw.partition("/")
         if (_PLUGIN_ROOT / "skills" / owner).is_dir():
@@ -278,7 +278,7 @@ def test_a_bare_reference_path_belongs_to_the_skill_that_writes_it():
 
 def test_the_scan_is_not_vacuous():
     """A guard that scans nothing passes forever, and two guards in this repo
-    already did once. Pinned near the real count (18 skills today), per the rule
+    already did once. Pinned near the real count (19 skills today), per the rule
     the sibling guards state: lower it to the new real count when something is
     deliberately deleted, never to a number chosen to be safe from deletions."""
     files = _skill_files()

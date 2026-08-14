@@ -368,7 +368,7 @@ uses `--plugin-dir` (section 2) instead: it is the only mode that reads the work
 
 **The `claw` launcher and the isolation guard, both deleted.** `claw` existed only to create a
 worktree *before* Claude started, so a session would never register a presence heartbeat in the
-primary clone — a heartbeat written by `guard-worktree-isolation.py`, which could block a second
+primary clone — a heartbeat written by the worktree-isolation guard, which could block a second
 session from committing for an hour. That hook recorded 0 blocks across 127 session transcripts and
 was deleted; the launcher went with it, leaving `/cla:new-worktree` (section 7) as the single path.
 
