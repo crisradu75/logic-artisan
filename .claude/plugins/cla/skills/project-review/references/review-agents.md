@@ -32,6 +32,27 @@ criteria from `references/review-criteria.md`, (4) the standard instructions bel
 > - {component}: {finding} — {suggested improvement}
 > ```
 
+## Fallback: reviewing a PLUGIN/HARNESS repo (no application code)
+
+The five dimension prompts below assume an application repo — apps, packages, an engine,
+i18n layers, a datastore. In a repo whose deliverable is the harness itself, every
+`<inject:>` placeholder resolves to an empty overlay and the orchestrator would otherwise
+improvise all five briefs from scratch. Use these substitutions instead; everything else
+about the dispatch (five agents, one message, the model routing, the caps) is unchanged.
+
+| Dimension | Reads instead of app source |
+|---|---|
+| 1 — Vision & Clarity | Root `README.md`, the plugin's own `README.md`, `CLAUDE.md`, the developer guide. Ask: can a new engineer tell what the harness is, who it is for, and how to install it, in minutes? Do the counts and version claims match the tree? |
+| 2 — Structure | The skill tree: one dir per skill, `SKILL.md`/`references/`/`scripts/`/`tests/` consistency, what lives in the shared references layer vs one skill's own, whether any skill's directory has become a de-facto common library. |
+| 3 — Requirements & Specs → **skill portfolio** | Every `SKILL.md` frontmatter (does the description state WHEN to trigger?), the body (actionable procedure vs vague prose), overlay stubs matching actual consumers, and the portfolio question: is each skill justified, is any redundant, is anything missing from the life cycle? |
+| 4 — Architecture | The fact/procedure split and the guards enforcing it; model routing for dispatched agents; hook wiring and the block/ask/warn taxonomy; the distribution mechanism; how per-repo state is kept out of portable core. |
+| 5 — Validation | The aggregating test runner and its scopes; what the conformance/consistency guards actually cover; the markdown gap (prose ships like code with nothing compiling it) and the compensating checks; mutation-testing practice; platform-divergence risk with no CI. |
+
+Two rules that survive the substitution: **grade the repo in front of you, not the
+application it is missing** — "no product code" is this repo's design, never a Vision gap;
+and a dimension whose subject genuinely does not exist here (a datastore, an i18n layer)
+is reported as **N/A with one line of why**, never graded D for absence.
+
 ### Agent 1: Vision & Clarity
 
 > **Review criteria:** {Dimension 1 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}

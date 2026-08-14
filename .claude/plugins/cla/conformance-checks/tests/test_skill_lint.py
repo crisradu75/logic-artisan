@@ -343,3 +343,38 @@ def test_extract_reference_paths_trims_trailing_prose_punctuation(tmp_path):
     skill_dir.mkdir(parents=True)
     got = [raw for raw, _ in extract_reference_paths("see references/a.md.\n", skill_dir)]
     assert got == ["references/a.md"]
+
+def test_the_arg_placeholder_pattern_keeps_its_binding():
+    """`$ARGUMENTS` is the harness's substitution token: a skill body sees its
+    invocation argument only where that literal appears.
+
+    A skill that adopts the bind-once pattern (`<arg>` = `$ARGUMENTS`, then every
+    later rule says `<arg>`) must keep exactly one binding site. Dropping to zero
+    while the prose still reasons about `<arg>` means the argument never arrives
+    and the skill runs argument-blind — a silent failure with no other symptom.
+    This is not hypothetical: the edit that introduced the pattern removed every
+    occurrence, and this test is what caught it.
+
+    The upper bound is the token-waste half: re-embedding the raw token per rule
+    interpolates a long invocation once per mention.
+
+    Deliberately NOT asserted: that every skill with an `argument-hint` names
+    `$ARGUMENTS`. Several hints read "(no args)", and whether the remainder read
+    their argument from the token or from conversation context is unverified —
+    asserting it here would be a guess wearing a test."""
+    problems = []
+    for path in _skill_files():
+        text = path.read_text(encoding="utf-8")
+        rel = path.relative_to(_PLUGIN_ROOT).as_posix()
+        n = text.count("$ARGUMENTS")
+        if "`<arg>`" in text and n != 1:
+            problems.append(
+                f"  {rel}: uses the `<arg>` placeholder but has {n} `$ARGUMENTS` "
+                "binding site(s); it needs exactly 1"
+            )
+        elif n > 3:
+            problems.append(
+                f"  {rel}: $ARGUMENTS appears {n} times; bind it once to a "
+                "placeholder instead of re-embedding a long invocation"
+            )
+    assert not problems, "argument-binding problems:\n" + "\n".join(problems)

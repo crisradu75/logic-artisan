@@ -47,15 +47,15 @@ These rules apply across every phase. Hoisted to the top because they're easy to
 
 ## Mode detection
 
-Parse `$ARGUMENTS` and announce the mode in the **first line** of output before any other action.
+Bind the invocation argument once: **`<arg>` = `$ARGUMENTS`**. Every rule below refers to `<arg>`, never re-embeds the raw token — a long invocation would otherwise be interpolated into this body once per mention. Announce the mode in the **first line** of output before any other action. (The argument is interpolated into this body verbatim; naming it once keeps a long invocation from being re-embedded per rule.)
 
-- **explore-result mode** — `$ARGUMENTS` is empty. Infer the change description from the current Claude Code conversation context (typically a just-finished `/opsx:explore`). Announce: `Mode: explore-result`.
-- **existing-change mode** — `$ARGUMENTS` matches a directory `openspec/changes/{name}/` containing a `proposal.md`. Skip the propose phase; resume from the next not-done phase. Announce: `Mode: existing-change ({name})`.
+- **explore-result mode** — `<arg>` is empty. Infer the change description from the current Claude Code conversation context (typically a just-finished `/opsx:explore`). Announce: `Mode: explore-result`.
+- **existing-change mode** — `<arg>` matches a directory `openspec/changes/{name}/` containing a `proposal.md`. Skip the propose phase; resume from the next not-done phase. Announce: `Mode: existing-change ({name})`.
 - **description mode** — any other non-empty value. Treat as a free-form description for `openspec-propose`. Announce: `Mode: description`.
 
 Tie-break: directory existence wins. If both interpretations apply, use existing-change.
 
-**Empty `$ARGUMENTS` with no conversation context.** If `$ARGUMENTS` is empty and there is no usable conversation context to infer a description from (e.g. a fresh session), but exactly one complete change directory exists under `openspec/changes/` (a `proposal.md` present — tracked or still untracked), resolve to **existing-change mode** for that change. Only fall back to prompting the user if zero or multiple such directories exist.
+**Empty `<arg>` with no conversation context.** If `<arg>` is empty and there is no usable conversation context to infer a description from (e.g. a fresh session), but exactly one complete change directory exists under `openspec/changes/` (a `proposal.md` present — tracked or still untracked), resolve to **existing-change mode** for that change. Only fall back to prompting the user if zero or multiple such directories exist.
 
 ### Investigation-first changes are a poor fit for autonomous /cla:spec-to-pr
 
@@ -289,6 +289,17 @@ User can override via `--test-cmd "<cmd>"` to run a literal command instead of d
 **"Diagnose" in steps 1 and 4 means state a cause before editing.** The round budget bounds how many attempts you get, not how well-reasoned each one is — and an edit made without a stated cause spends a round either way. Per failing round: name the cause in one sentence specific enough that the fix follows from it (a restatement of the symptom is not a cause); read the actual failure output rather than inferring from the check's name, since a typecheck error or assertion diff *is* the diagnosis; and say what the re-run should do before running it, so a wrong hypothesis is eliminated rather than merely retried.
 
 The failure mode this closes is the symptom fix: loosening an assertion, widening a type, or wrapping the failing call turns the gate green without touching the defect, and the gate cannot tell the difference. Unlike `/cla:lite-pr` — which HALTS on an unresolved failure — this phase is deliberately warn-and-continue, so a suppression here doesn't stop the run; it ships, and Revise never sees it because the gate reported clean. If the only account you can give for a fix is that it makes the check pass, record the round as `warn` with the real failure rather than banking the green.
+
+**Two test-quality rules, whichever tier the fix lands in.** A green gate proves the
+assertion passed, not that the assertion was worth making:
+
+- **No tautological assertion.** An assertion that recomputes its expected value the
+  way the code does passes for any implementation, including a wrong one. Pin the
+  literal expected value, or derive it by a genuinely different route.
+- **No implementation-detail testing.** Assert observable behaviour at a real seam —
+  a return value, a written file, an exit code — not a private helper's internals.
+  A test coupled to structure fails on every refactor and catches no defect.
+
 
 **A repo-specific hard gate's own infra flakiness is transient, not a real failure — auto-retry before believing it.** When this repo has an extra hard-gate test suite that depends on locally-running infra (e.g. a database stack), a specific, recurring failure mode in that infra's own CLI can surface as a DIFFERENT test file failing on each run rather than a real assertion error — that's the signature of a startup/parallelism race in the infra tooling itself, not a code regression. Recognize it by: the failing FILE changes between otherwise-identical runs, and/or the stderr names the infra tool's own internal error, not an assertion. Remediation, in order, before ever recording a Test `warn` for this gate: (1) retry the gate once — a bare retry often clears it; (2) if it recurs, restart the local infra stack, then re-run; (3) confirm it's the race, not a real break, by running the specific failing file(s) in isolation — they pass standalone iff it was the parallelism race. Only after (1)-(3) still fail on the SAME file with a REAL assertion error is it a genuine regression worth a `warn`. Do NOT "fix" a known, pre-existing, deferred instance of this race inside an unrelated change's PR. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's exact gate command, and `cla.io/overlays/spec-to-pr.md` for the specific CLI/error signature and its remediation commands.
 

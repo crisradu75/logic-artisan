@@ -38,6 +38,14 @@ See `cla.io/overlays/project-review.md` for this repo's own calibration examples
 - **Per-app internal structure**: Is each app's own source tree cleanly bucketed by concern?
 - **File naming**: Consistent conventions across components/functions/keys/package names?
 - **Depth / sizing**: Are the largest/most-central components or screens reasonably scoped, or do they need decomposition?
+- **The deletion test**: for each module that exists to be an abstraction, ask what deleting it
+  would do. If its callers would each absorb a little of its logic, it concentrates complexity and
+  earns its place. If the logic would simply move sideways unchanged, the module is a pass-through
+  and the indirection costs more than it saves.
+- **Earned vs hypothetical seams**: an interface with ONE implementation is a hypothetical seam —
+  it names a flexibility nobody has needed yet. Two independent implementations make it real. Flag
+  a single-implementation abstraction introduced "for when we need to swap it"; that is speculative
+  generality, and the swap usually reshapes the interface anyway.
 - **Gitignore hygiene**: Build output, secrets, and local dev artifacts excluded?
 
 See `cla.io/overlays/project-review.md` for this repo's own concrete signal list, grep hints, and calibration examples.
