@@ -2,16 +2,19 @@
 """PreToolUse hook: WARN (never block) when `gh pr merge --delete-branch` hits
 a branch that open stacked child PRs are based on.
 
-Two different outcomes, and the difference is the merge (GitHub retargeting,
-2020-05-19 changelog). Head branch merged THEN deleted: open PRs based on it
-are retargeted to the merged PR's own base — safe, and the expected shape when
-landing a stack parents-first. Deleted WITHOUT its PR merging: the children are
-closed, and GitHub refuses to reopen a PR whose base branch is gone ("Cannot
-change the base branch of a closed pull request").
+GitHub documents retargeting (2020-05-19 changelog): a head branch merged then
+deleted should retarget open PRs based on it. MEASURED otherwise on gh's own
+deletion path: `gh pr merge --delete-branch` CLOSED the dependent PR (#64 in
+the canonical repo, 2026-08-14) — the API deletion lands before any retarget,
+and GitHub refuses to reopen a PR whose base branch is gone ("Cannot change
+the base branch of a closed pull request"). Recovery exists (restore the base
+branch from the merge commit's second parent, reopen, retarget) but is manual.
 
-The modern hazard is the merge STRATEGY, not the deletion: a SQUASH merge
-rewrites the parent's commits, so the retargeted children re-show the parent's
-whole diff and their own merges conflict. A stack lands with `--merge`.
+So the safe order is retarget-first: `gh pr edit <child> --base <base>` BEFORE
+merging the parent with `--delete-branch` (or drop the flag and delete later).
+Second hazard, independent of the first: a SQUASH merge rewrites the parent's
+commits, so a surviving child re-shows the parent's whole diff and its own
+merge conflicts. A stack lands with `--merge`.
 
 Detection: the Bash command runs `gh pr merge ... --delete-branch` (or `-d`).
 Resolve the merged PR's head branch, then query `gh pr list --base <head>
@@ -186,11 +189,10 @@ def main() -> int:
         return 0
     print(
         f"[warn-stacked-pr-merge] '{head}' is the base of open PR(s) {listed}. "
-        f"Merged-then-deleted, GitHub RETARGETS them to this PR's base — expected "
-        f"when landing a stack parents-first. But use a MERGE COMMIT (--merge): "
-        f"a squash rewrites this branch's commits, so the retargeted children "
-        f"re-show its whole diff and conflict. And never delete this branch "
-        f"WITHOUT merging its PR — that closes the children for good.",
+        f"gh's --delete-branch CLOSES them before any retarget (measured; GitHub "
+        f"refuses to reopen). Retarget FIRST: gh pr edit <child> --base <base>, "
+        f"then merge — and use --merge, not squash: a squash makes a surviving "
+        f"child re-show this branch's whole diff and conflict.",
         file=sys.stderr,
     )
     return 0
