@@ -110,3 +110,15 @@ Pass the captured diff to each Agent prompt. If `PREV_FIX_SHA` is empty or the d
    Inspect the `git push` exit code in the orchestrator's own context (do NOT chain `|| { ... }` — that compound shell form breaks the permission-allowlist matching per root `CLAUDE.md`). On non-zero exit, mark Revise `warn`, capture the failure for the Handoff Issues section, and emit a prominent warning that round-N fixes are local-only. On success, capture `git rev-parse HEAD` for use as `PREV_FIX_SHA` in the next round's diff scoping.
 4. **Exit gate.** Count *un-triaged* Critical and Important findings (Applied and Deferred-Known-Issue both count as triaged). If 0 untriaged → status `ok`, exit loop. Suggestions still recorded for the optional `docs:` commit.
 5. Otherwise decrement budget. **If the cap is exhausted before all findings are triaged** (the only scenario where untriaged residue exists — step 2's rule otherwise prevents it), status `warn`, exit loop with the untriaged residue captured for the Handoff "Deferred to TODO.md" section.
+
+**Mutation gate on a review-found fix (required).** A fix for a Critical/Important finding is a
+change like any other and earns the same evidence the original code needed — "the reviewer's
+finding is now handled" is not that evidence. Before the fix commit, run
+`python3 ${CLAUDE_PLUGIN_ROOT}/mutate.py <batch.py>` with a batch that breaks **what the fix
+touches**, not only what it targets: correcting one return path routinely breaks another, which is
+how a real fix here once traded a silent no-op on the default path for the identical no-op on the
+overlay path. A surviving mutant is either fixed or named in the Handoff report with a reason.
+
+A clean run is evidence about the mutants you thought of and nothing else — two commits in this
+repo each recorded "three mutations checked, all caught" and each shipped a critical a later
+review found. Treat it as one input to the ship decision, not the decision.

@@ -5,8 +5,9 @@ effort level) chosen to keep quality at the judgment-critical points while spend
 mechanical bulk. This file is the ONE place the routing table lives — SKILL.md and the workflow
 diagram point here; change routing HERE and reflect it in those pointers, never fork the table.
 
-**Shared beyond spec-to-pr.** Despite living under `spec-to-pr/`, this is the repo's single routing
-source for *all* dispatched review work, not a spec-to-pr-private table:
+**Shared, and now filed as such.** This is the repo's single routing source for *all* dispatched
+review work. It lived under `spec-to-pr/references/` until the skills that depend on it outnumbered
+its nominal owner; it now sits in `skills/_shared/references/`, which is what it always was:
 `review-change/references/checklist.md` (Step 4 3-agent dispatch) and `project-review/SKILL.md`
 (Step 2 5-agent dispatch) both route by the "Review-agent dispatch" section below. Keeping one table
 means the "reviewer runs at the top tier, structured-rubric work runs a tier down" posture is
@@ -45,6 +46,29 @@ always supplies the exact list).
 | Revise round ≥2 (scoped fix-diff) | one tier down (opus→sonnet, sonnet→haiku, haiku stays haiku) — **bug-hunters exempt: `code-reviewer` + `silent-failure-hunter` stay opus in every round** | inherited | `Agent(model:)` |
 | Ship / Archive / Handoff / prechecks / Test runs | inline, unchanged | — | no dispatch |
 
+### Artifact-class override — a prose-dominant diff promotes the prose reviewer
+
+The table above tiers by **reviewer archetype**: bug-hunters get opus because a
+missed bug ships, rubric-appliers get sonnet because the rubric carries the
+judgment. That split silently assumes the artifact under review is *code*.
+
+In a repo whose behaviour lives in markdown, it isn't. A `SKILL.md` edit ships
+like code and nothing compiles it: there is no typechecker, no test that executes
+the prose, and a wrong instruction reaches every consuming repo on the next
+release. For that diff, `plugin-dev:skill-reviewer` **is** the premise-level
+reviewer — it occupies the position `code-reviewer` holds for a Python diff — and
+it inherits the never-demote argument along with it.
+
+**Rule.** When the diff under review is predominantly `SKILL.md` /
+`references/*.md` (more changed lines in those than in executable files), promote
+`plugin-dev:skill-reviewer` from sonnet to **opus** for that round, and exempt it
+from the round-≥2 tier-down exactly as the two bug-hunters are exempt. Everything
+else in the table is unchanged.
+
+This is a promotion rule only. It never demotes `code-reviewer` or
+`silent-failure-hunter`, even on a pure-prose diff: a markdown change can still
+break a script path or a hook wiring, and those two are what notice.
+
 All six Revise agents are dispatched by their full registered `subagent_type` (`pr-review-toolkit:code-reviewer`,
 `pr-review-toolkit:silent-failure-hunter`, `pr-review-toolkit:pr-test-analyzer`,
 `pr-review-toolkit:type-design-analyzer`, `pr-review-toolkit:comment-analyzer`,
@@ -70,6 +94,15 @@ catch the expensive "the premise itself is wrong" class, where a cheaper model's
 design; the task/spec/structure/validation reviewers apply a well-specified rubric where sonnet is
 sufficient. **These dispatches are `Agent`-based, so effort is not dialable** (inherits the session —
 see the mechanism table above); only the Revise round-1 `Workflow` fan-out can set effort per call.
+
+**Escalate-up is the normal path, not the exception — price it accordingly.** The repo-root `cla`
+launcher hardcodes `--model sonnet --effort medium`, so a session started the documented way is
+below Opus. Every rule below phrased as "when the session is sub-Opus" therefore describes the
+DEFAULT run, and the "no-op on an Opus session" branch only applies to a session someone started
+by hand with `./cla --model opus`. Budget for it: a normal `spec-to-pr` run pays an extra opus
+`Agent` dispatch for Propose authoring and for each Agent-1-class review dispatch, on top of a
+sonnet session. That is the intended trade — the alternative is a sonnet-quality design review —
+but it is a cost that shows up on every run, not an occasional one.
 
 **When the session is already Opus**, routing Agent-1-class dispatches to `opus` is a no-op and the
 real economy is routing the rubric-application agents *down* to `sonnet`. When the session is at or
