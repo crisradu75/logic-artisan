@@ -1,6 +1,6 @@
 ---
 name: multi-pr
-description: "Chains multiple OpenSpec changes end-to-end: determines implementation order, runs /cla:spec-to-pr on each change in sequence, enforces that every Critical/Important review finding is actually fixed (never left as a deferred TODO) before moving on, merges each PR before starting the next dependent change, and finishes with a full repo cleanup pass. Designed for long, unattended multi-change runs. Triggers on /cla:multi-pr or natural language like 'drive all my openspec changes to PRs', 'chain these changes end to end', 'work through every open change and merge as you go', 'run spec-to-pr on everything'."
+description: "Chains multiple OpenSpec changes end-to-end: determines implementation order, runs /cla:spec-to-pr on each change in sequence, enforces that every Critical/Important review finding is actually fixed (never left as a deferred TODO) before moving on, lands the chain per the confirmed merge policy (merge each PR before its dependents, or stack each dependent PR on its parent when merging is unavailable), and finishes with a full repo cleanup pass. Designed for long, unattended multi-change runs. Triggers on /cla:multi-pr or natural language like 'drive all my openspec changes to PRs', 'chain these changes end to end', 'work through every open change and merge as you go', 'run spec-to-pr on everything'."
 argument-hint: "[change-name-1 change-name-2 ... | (empty = auto-discover every open change)]"
 # Merges pull requests, so it must never self-trigger on a description match —
 # only an explicit `/cla:multi-pr` starts it. Safe to set: nothing invokes this
@@ -13,9 +13,9 @@ disable-model-invocation: true
 
 # /cla:multi-pr — chain multiple OpenSpec changes to merged PRs
 
-Orchestrates `/cla:spec-to-pr` across a **sequence** of OpenSpec changes rather than one. Where `/cla:spec-to-pr` drives a single change from idea to an opened, archived PR and then stops, `multi-pr` adds the layer on top: figure out which order the open changes must ship in, run the full `/cla:spec-to-pr` workflow on each one, make sure nothing gets left half-resolved, merge before moving on to whatever depends on it, and end with a clean repo. This is the skill for "I'm about to be away for a few hours — take every open change to done."
+Orchestrates `/cla:spec-to-pr` across a **sequence** of OpenSpec changes rather than one. Where `/cla:spec-to-pr` drives a single change from idea to an opened, archived PR and then stops, `multi-pr` adds the layer on top: figure out which order the open changes must ship in, run the full `/cla:spec-to-pr` workflow on each one, make sure nothing gets left half-resolved, give every dependent its parent's code before starting it (a merge under the default policy; a stacked branch under the stacked one), and end with a clean repo. This is the skill for "I'm about to be away for a few hours — take every open change to done."
 
-**This skill does not reimplement `/cla:spec-to-pr`.** Every actual propose/review/implement/test/ship/revise/archive step for a single change is `/cla:spec-to-pr`'s job — invoke it via `Skill(cla:spec-to-pr, args="<change-name> ...")`. `multi-pr` owns exactly four things `/cla:spec-to-pr` doesn't: **sequencing**, **the upfront confirmation gate**, **the no-unresolved-issues escalation**, and **inter-change merge + final cleanup**.
+**This skill does not reimplement `/cla:spec-to-pr`.** Every actual propose/review/implement/test/ship/revise/archive step for a single change is `/cla:spec-to-pr`'s job — invoke it via `Skill(cla:spec-to-pr, args="<change-name> ...")`. `multi-pr` owns exactly four things `/cla:spec-to-pr` doesn't: **sequencing**, **the upfront confirmation gate**, **the no-unresolved-issues escalation**, and **inter-change landing (merge or stack) + final cleanup**.
 
 ## Skill-level rules (hoisted — read first)
 
@@ -64,7 +64,7 @@ Non-zero exit → resolve exactly per `/cla:spec-to-pr`'s "Working-tree precheck
 
 ## Phase 2: Task tracking
 
-Use `TaskCreate` once at the start to lay down the chain itself — one task per change (`"<name>: spec-to-pr + merge"`) plus a final `"Final cleanup pass"` task. This is the one place in the `/cla:spec-to-pr` family where task tracking is genuinely the right tool (per spec-to-pr's own "Task tracking" section: *"gated by external state, or recoverable across sessions"* — a multi-hour, multi-change chain is exactly that shape), unlike inside a single `/cla:spec-to-pr` run where it's noise. Use `TaskUpdate` to transition each change's task to `in_progress` when its `/cla:spec-to-pr` invocation starts and to `completed` only after that change is merged (or, under the "open all, merge nothing" policy, after it's archived).
+Use `TaskCreate` once at the start to lay down the chain itself — one task per change (`"<name>: spec-to-pr + merge"`) plus a final `"Final cleanup pass"` task. This is the one place in the `/cla:spec-to-pr` family where task tracking is genuinely the right tool (per spec-to-pr's own "Task tracking" section: *"gated by external state, or recoverable across sessions"* — a multi-hour, multi-change chain is exactly that shape), unlike inside a single `/cla:spec-to-pr` run where it's noise. Use `TaskUpdate` to transition each change's task to `in_progress` when its `/cla:spec-to-pr` invocation starts and to `completed` only after that change is merged (or, under the stacked and "open all" policies, after it's archived with its PR open against the right base).
 
 ## Phase 3: Per-change loop
 
@@ -72,7 +72,7 @@ Use `TaskCreate` once at the start to lay down the chain itself — one task per
 
 - **Tier A (structural failure) halts the chain here; Tier B (content findings) never does.** Ship never opening a PR, Archive not reaching the PR, or an unresolved `git_state` fault → stop, surface, and do not touch any later change in the sequence (its prerequisite isn't confirmed shipped). A Revise/Test finding of any severity, however many rounds it takes, is normal operation — proceed to enforcement below.
 - **No-unresolved-issues enforcement (per the confirmed Phase 1 policy).** A change never counts done while a Deferred-Known-Issue or (under the default full-severity policy) `TODO.md` Suggestion residue remains for it — fix it, re-verify narrowly, and land it on the same branch (or, if already merged, a small follow-up PR) before moving on.
-- **Merge only under the confirmed "merge before dependents" policy, and only a change a later change genuinely depends on** — independents stay open regardless of policy.
+- **Merge only under the confirmed "merge before dependents" policy, and only a change a later change genuinely depends on** — independents stay open regardless of policy. **Under the stacked policy there is NO merge anywhere in the run**: a dependent starts by invoking `/cla:spec-to-pr` with `--pr-base <the parent's feature branch>` (see spec-to-pr's `<pr-base>` rule), and the chain ends with the ordered merge commands handed to the user.
 
 ## Phase 4: Final cleanup pass
 

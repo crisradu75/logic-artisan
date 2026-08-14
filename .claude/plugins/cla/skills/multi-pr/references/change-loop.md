@@ -32,6 +32,20 @@ For each change in the confirmed order:
    - **If the change has ALREADY MERGED** by the time a deferred finding needs fixing (e.g. the policy was clarified or tightened mid-chain, after an earlier change's PR was merged under the looser default), do NOT push directly to `<base-branch>` — check for a push-to-main guard first (`.git/hooks/pre-push`, or an equivalent the repo ships), and if the repo has one (or on general principle), open a small follow-up branch + PR + merge instead (`fix/<original-change-name>-review-followups` or similar), going through the same full gate (build/lint/test + any local-infra hard gate) before merging it. This is a real, encountered scenario, not a hypothetical.
    - If a deferred finding turns out to be genuinely out of scope for this change (would require a design change, or belongs to a different change entirely), that's a legitimate exception — but it needs the same "surface to the user, don't silently accept" treatment as a Tier A failure, since the strict policy was explicitly requested. Don't unilaterally downgrade back to "deferred is fine."
 
+5-alt. **Stack (only under the "stacked" policy — replaces step 5 entirely).** No merge happens
+   anywhere in the run. Once the change is genuinely done (same bar as step 5):
+   - Record this change's feature branch name and PR number — they are the NEXT dependent's inputs.
+   - Start the next dependent by passing the parent branch through:
+     `Skill(cla:spec-to-pr, args="<child-change> --pr-base <this-branch> ...")`. spec-to-pr's
+     `<pr-base>` rule makes the child branch off the parent and open its PR against it, so the
+     child's diff shows only its own work.
+   - Do NOT delete or rebase any branch in the stack mid-run — every later PR's base points at it.
+   - The chain's final report (Phase 4) hands the user the ordered landing commands, parents first:
+     `gh pr merge <#> --squash --delete-branch` per PR, noting GitHub retargets each remaining
+     PR's base to `<base-branch>` as its parent merges.
+   - An independent change (no dependents) still branches off `<base-branch>` normally — stacking
+     is for dependency edges, not a house style.
+
 5. **Merge (only under the "merge before dependents" policy).** Once the change is genuinely done (Tier A clean, Tier B findings resolved per step 4):
    ```
    ALLOW_PR_MERGE=1 gh pr merge <#> --squash --delete-branch

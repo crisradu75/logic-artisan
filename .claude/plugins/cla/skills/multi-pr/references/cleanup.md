@@ -2,7 +2,14 @@
 
 Phase 4's step-by-step procedure, run once after every change in the sequence is done. `SKILL.md`'s Phase 4 stub carries the load-bearing invariant (re-running the chain-level green gate, path-scoped staging); this file carries the recipe.
 
-1. **Verify <base-branch> is green.** This repo's own workspace-wide build/lint/test commands (see `cla.io/project-facts.md`, falling back to `cla.io/overlays/multi-pr.md` if absent), plus its local-infra-dependent hard gate if any shipped change touched the tables/surfaces it covers. This is the one gate that's worth re-running at the CHAIN level even though every individual change already passed it standalone — a later change's merge can occasionally interact with an earlier one in ways neither change's own Test phase would catch alone.
+0. **Under the stacked policy, this phase runs on the TIP of the stack, not `<base-branch>`.**
+   Nothing has merged, so `<base-branch>` is exactly as green as it was before the run and
+   re-verifying it proves nothing about the chain. Check out the LAST change's feature branch —
+   it contains every change in order — and run the chain-level gate there. Skip step 2's prune
+   (no branches were deleted). The report's landing checklist is the ordered
+   `gh pr merge <#> --squash --delete-branch` commands, parents first.
+
+1. **Verify <base-branch> is green (merge policies only).** This repo's own workspace-wide build/lint/test commands (see `cla.io/project-facts.md`, falling back to `cla.io/overlays/multi-pr.md` if absent), plus its local-infra-dependent hard gate if any shipped change touched the tables/surfaces it covers. This is the one gate that's worth re-running at the CHAIN level even though every individual change already passed it standalone — a later change's merge can occasionally interact with an earlier one in ways neither change's own Test phase would catch alone.
 2. **Prune stale remote-tracking branches:** `git fetch --prune`. `gh pr merge --delete-branch` deletes the branch on GitHub; the local `remotes/origin/feature/...` ref doesn't disappear on its own.
 3. **Remove leftover local branches/worktrees.** `git branch -a` and `git worktree list` should show nothing but `<base-branch>` (and any worktree the user set up for reasons outside this chain — don't touch those). If `/cla:spec-to-pr`'s own "Concurrent runs" worktree pattern was used for any change in this chain, remove that worktree now (`git worktree remove .claude/worktrees/<change>`) — the branch is already gone via `--delete-branch`.
 4. **Confirm every change in the original sequence is archived.** `ls openspec/changes/` should show only `archive/` (or only the changes that were deliberately left out of scope, if the run was explicit-mode over a subset).
