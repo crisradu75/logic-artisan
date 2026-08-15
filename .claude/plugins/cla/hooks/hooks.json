@@ -15,6 +15,36 @@
     "non-functional `python3` first on PATH: current probe picks it and the hook",
     "exits 9009 with no warning; this probe skips it.",
     "",
+    "THE THREE NAMES ARE NOT ENOUGH ON THIS MACHINE, and the candidate list now",
+    "ends with two Windows install globs. Measured, not assumed: the hook's PATH",
+    "and the PATH a Bash tool call sees are DIFFERENT, and the real interpreter",
+    "is on the second but not the first. Under a captured hook PATH, `python3`",
+    "resolves to ~/.local/bin/python3 -- a wrapper delegating to `python`, which",
+    "there is the Store alias stub -- `py` is absent, and `python` is the same",
+    "stub. All three fail the version assertion, so the probe correctly reported",
+    "that nothing was usable and every dispatched hook stopped running.",
+    "",
+    "This is why `test_probe_selects_something` can pass while the hooks are",
+    "dead: it runs the probe under the TEST process's PATH, which has the real",
+    "python on it. A probe that selects an interpreter in pytest proves nothing",
+    "about the interpreter a hook gets. The only evidence that counts is a",
+    "harmless command sent through the tool that MUST be denied, watched being",
+    "denied, in a live session.",
+    "",
+    "An unmatched glob stays literal, `command -v` then fails, and the loop",
+    "continues -- so the two Windows paths are inert on macOS, where `python3`",
+    "resolves on the first candidate anyway. `$c` is quoted in `command -v`",
+    "because the expanded paths are no longer bare names.",
+    "",
+    "`CLA_PY_SEARCH` exists so the REFUSAL PATH stays testable. The two probe",
+    "tests poison PATH and assert the probe finds nothing; a fallback rooted at",
+    "$HOME defeats that, and clearing the env does not help because bash supplies",
+    "HOME from the passwd entry when it is absent. The braces use `-` and not",
+    "`:-` deliberately, so setting it EMPTY suppresses the fallback while leaving",
+    "it unset keeps the default. It is not a security boundary: the version",
+    "assertion still applies to whatever it names, and anyone who can set the",
+    "environment can already do worse.",
+    "",
     "These wirings assert the interpreter's VERSION via stdout, not merely its",
     "liveness: a bare `-c \"import sys\"` passes on Python 2.7 and on any wrapper",
     "that swallows `-c` and exits 0. The candidate ORDER is the other",
@@ -41,7 +71,7 @@
     "which matters because it is the sentence a future editor consults before",
     "changing that exit code."
   ],
-  "_pyexe": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi;",
+  "_pyexe": "PYEXE=; for c in python3 py python ${CLA_PY_SEARCH-$HOME/AppData/Local/Programs/Python/Python3*/python.exe /c/Python3*/python.exe}; do p=$(command -v \"$c\" 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi;",
   "hooks": {
     "PreToolUse": [
       {
@@ -49,7 +79,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
+            "command": "PYEXE=; for c in python3 py python ${CLA_PY_SEARCH-$HOME/AppData/Local/Programs/Python/Python3*/python.exe /c/Python3*/python.exe}; do p=$(command -v \"$c\" 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -59,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "command": "PYEXE=; for c in python3 py python ${CLA_PY_SEARCH-$HOME/AppData/Local/Programs/Python/Python3*/python.exe /c/Python3*/python.exe}; do p=$(command -v \"$c\" 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -69,7 +99,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "command": "PYEXE=; for c in python3 py python ${CLA_PY_SEARCH-$HOME/AppData/Local/Programs/Python/Python3*/python.exe /c/Python3*/python.exe}; do p=$(command -v \"$c\" 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -81,7 +111,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-wholesale-rewrite.py\"",
+            "command": "PYEXE=; for c in python3 py python ${CLA_PY_SEARCH-$HOME/AppData/Local/Programs/Python/Python3*/python.exe /c/Python3*/python.exe}; do p=$(command -v \"$c\" 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-wholesale-rewrite.py\"",
             "timeout": 15
           }
         ]
@@ -91,7 +121,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/log-commit-provenance.py\"",
+            "command": "PYEXE=; for c in python3 py python ${CLA_PY_SEARCH-$HOME/AppData/Local/Programs/Python/Python3*/python.exe /c/Python3*/python.exe}; do p=$(command -v \"$c\" 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/log-commit-provenance.py\"",
             "timeout": 15
           }
         ]

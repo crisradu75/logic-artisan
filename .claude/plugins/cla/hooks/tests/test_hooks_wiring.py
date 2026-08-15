@@ -424,6 +424,29 @@ def test_every_wiring_probes_the_same_candidates_in_the_same_order():
         assert "for c in python3 py python" in cmd
 
 
+def test_every_wiring_falls_back_to_the_windows_install_paths():
+    """The three NAMES are not enough, and the failure is invisible from pytest.
+
+    Measured on one Windows machine: the hook's PATH and the PATH a tool call
+    sees are different, and the real interpreter is on the second but not the
+    first. Under the hook's PATH `python3` is a wrapper delegating to `python`,
+    which there is the Store alias stub; `py` is absent; `python` is the same
+    stub. All three fail the version assertion, the probe reports that nothing
+    is usable, and every dispatched hook stops running.
+
+    `test_probe_selects_something` cannot catch this -- it runs the probe under
+    the TEST process's PATH, which has the real python on it.
+
+    An unmatched glob stays literal and `command -v` then fails, so these are
+    inert on macOS, where `python3` resolves on the first candidate anyway.
+    """
+    for cmd in _wiring_commands():
+        assert "Python3*/python.exe" in cmd, (
+            "a wiring offers no fallback when the three names all reach a stub:\n"
+            + cmd[:200]
+        )
+
+
 # --------------------------------------------------------------------------- #
 # No synced-core hook may prescribe a branch NAMING CONVENTION
 #
@@ -527,7 +550,11 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
     every POSIX sh, and never reaches the `"$p" -c ...` liveness call."""
     empty = tmp_path / "empty-path"
     empty.mkdir()
-    env = {"PATH": str(empty), "PYEXE": "/definitely/not/a/python"}
+    # CLA_PY_SEARCH empty suppresses the Windows install fallback. Without it the
+    # probe finds the real interpreter off PATH entirely and the refusal path --
+    # the only path this test examines -- is never reached. Clearing the env does
+    # not do it: bash supplies HOME from the passwd entry when it is absent.
+    env = {"PATH": str(empty), "PYEXE": "/definitely/not/a/python", "CLA_PY_SEARCH": ""}
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     assert "SELECTED:/definitely/not/a/python" not in r.stdout
@@ -553,7 +580,10 @@ def test_probe_rejects_an_interpreter_that_exits_zero_for_everything(tmp_path):
     stub = stub_dir / "python3"
     stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     stub.chmod(0o755)
-    env = {"PATH": str(stub_dir)}
+    # See the note in the previous test: empty CLA_PY_SEARCH suppresses the
+    # Windows install fallback, which would otherwise satisfy the probe off PATH
+    # and hide the stub rejection this test exists to prove.
+    env = {"PATH": str(stub_dir), "CLA_PY_SEARCH": ""}
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     assert "SELECTED:" not in r.stdout or "SELECTED:\n" in r.stdout
