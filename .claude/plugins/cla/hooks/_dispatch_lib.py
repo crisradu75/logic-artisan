@@ -116,7 +116,9 @@ HANDLER_TIMEOUT_SECONDS = 15.0
 # flaky assertion is worse than none — it trains people to ignore the suite.
 #
 # THE DURABLE FIX, not done here: stop guessing. Stamp a start time in the shell
-# (`CLA_HOOK_T0=$(date +%s%3N)` at the head of `_pyexe`) and have `Deadline`
+# (`CLA_HOOK_T0=$(date +%s%3N)` at the head of `hooks/probe-python.sh`, which is
+# where the probe now lives -- it was the `_pyexe` JSON string when this was
+# written, and one edit there now reaches all five wirings) and have `Deadline`
 # subtract the REAL elapsed pre-`main()` cost, falling back to this constant when
 # the variable is absent or unparseable (BSD `date` has no `%N`, so the fallback
 # is load-bearing, not decorative). That makes the window observable instead of

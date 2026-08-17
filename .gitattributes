@@ -26,3 +26,27 @@ cla.cmd text eol=crlf
 # drifted copy, but a CRLF one is present and byte-identical and still refused
 # by git, so pin the endings here as well.
 .claude/plugins/cla/hooks/git/pre-push text eol=lf
+
+# Third instance, and the one with the widest blast radius: every hook wiring in
+# `hooks.json` SOURCES `hooks/probe-python.sh`.
+#
+# The symptom varies by shell rather than being one predictable break, so this is
+# pinned rather than characterised. Measured on this machine: Cygwin/Git Bash and
+# its POSIX mode both STRIP the CR and source a CRLF probe successfully, while
+# `dash` syntax-errors on it. An earlier version of this comment asserted a
+# specific failure (`$'\r': command not found`, `$PYEXE` left unset) that does
+# not occur on the platform it named — and got the mechanism backwards besides,
+# since the probe's first statement is the assignment `PYEXE=`, which on a strict
+# shell would parse as `PYEXE=$'\r'` and leave it set and non-empty. The probe's
+# refusal now tests `-x` as well as `-n` for exactly that shape.
+#
+# `core.autocrlf=true` comes from Git for Windows' own system config, not from
+# anything this repo sets — so a fresh Windows clone gets it wrong by default and
+# there is no repo setting to go looking for.
+#
+# TWO BELTS to this braces, because this file governs only THIS repo's checkout:
+#   - `.claude/plugins/cla/.gitattributes` carries the same pin inside the
+#     published tree, where a `git-subdir` install can see it.
+#   - `hooks/tests/test_hooks_wiring.py::test_the_probe_has_no_carriage_returns`
+#     ships with the plugin, so it also fires in a consuming repo.
+.claude/plugins/cla/hooks/*.sh text eol=lf

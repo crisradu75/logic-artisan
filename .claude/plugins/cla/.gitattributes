@@ -1,0 +1,20 @@
+# Line endings for the shell files this plugin ships.
+#
+# THIS FILE EXISTS BECAUSE THE REPO-ROOT ONE DOES NOT TRAVEL. The marketplace
+# publishes this directory as a `git-subdir` source, and a consuming repo's
+# checkout is governed by ITS OWN attributes, not by the source repo's root
+# `.gitattributes`. A defect that only manifests downstream is invisible to every
+# check run here, so the pin has to live inside the published tree.
+#
+# What it prevents: `hooks/hooks.json` sources `hooks/probe-python.sh` in every
+# wiring. Git for Windows ships `core.autocrlf=true` in its system config, so a
+# Windows clone gets CRLF by default unless told otherwise. Shells disagree about
+# CR — measured here, Cygwin/Git Bash and its POSIX mode both strip it and the
+# probe works, while dash syntax-errors on it — so the failure is a portability
+# hazard whose symptom varies by shell rather than one predictable break. Pinned
+# rather than characterised.
+#
+# `hooks/git/pre-push` is the same story for a different reason: every clone
+# copies it into `.git/hooks/`, and git refuses to execute a `#!/bin/sh\r`.
+hooks/*.sh      text eol=lf
+hooks/git/pre-push text eol=lf

@@ -119,6 +119,22 @@ and these four are not:
 
 None is a leak today. Revisit if a fifth appears, or if one of these grows repo-specific prose.
 
+Separately, `.claude/plugins/cla/hooks/probe-python.sh` is outside **both** scanners, and it is the
+only shipped file that is. The two rules do not have the same reach, and an earlier version of this
+paragraph got that wrong in a way worth recording, because the counterexample was a comment in the
+scanner itself:
+
+- `test_no_hardcoded_plugin_paths.py:39` scans `.md`/`.py`/`.mjs`/`.json` under five roots including
+  `hooks/`. So `hooks.json` and a skill's `.mjs` **are** covered — the paragraph previously claimed
+  they were not.
+- `test_no_project_tokens.py:269` really is `.py`/`.md` only.
+
+Neither reaches `.sh`. Adding it would be the scanner's **fifth** suffix, not its third. Nor would
+either rule flag what is actually in the file: the hardcoded-path rule looks for the literal
+`.claude/plugins/cla`, and the developer-path rule looks for `C:\Users\<name>`-shaped paths. The
+absolute install paths in `probe-python.sh` (`$HOME/AppData/...`, `/usr/local/bin/...`) are generic
+and match neither pattern, so there is nothing to flag today.
+
 ## Why the push-to-main guard is a git hook, not a PreToolUse hook
 
 Kept as a one-paragraph note because the question recurs. A PreToolUse hook has to parse a command

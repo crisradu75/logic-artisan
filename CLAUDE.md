@@ -186,8 +186,10 @@ everywhere) from *facts* (per-repo, never synced):
   eight roots — the four synced dirs plus `lib/` and the three `*-checks/` scopes — because the
   marketplace ships the whole directory. Four files still fall outside both scanners and are watched
   by hand: the plugin's own `README.md` (its install commands legitimately name this repo),
-  `skills/_shared/README.md`, `run_tests.py`, and `mutate.py`. Non-`.py`/`.md` files
-  (`hooks/hooks.json`, a skill's own `.mjs`) are outside both too. Listed in TODO.md.
+  `skills/_shared/README.md`, `run_tests.py`, and `mutate.py`. The two scanners do not have the same reach:
+  the hardcoded-path one covers `.md`/`.py`/`.mjs`/`.json`, so `hooks/hooks.json` and a skill's
+  `.mjs` are in scope; the project-token one is `.py`/`.md` only. `hooks/probe-python.sh` is the one
+  shipped file outside **both**, because neither scans `.sh`. Listed in TODO.md.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not

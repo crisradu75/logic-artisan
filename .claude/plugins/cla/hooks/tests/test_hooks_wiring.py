@@ -3,9 +3,12 @@
 The whole point of the extract-cla-plugin move was relocating the hook scripts,
 so the failure mode most worth guarding is a *dangling wire*: a `hooks.json`
 command (or a dispatcher's `_HOOK_FILES` entry) that names a script which no
-longer exists at that path. At runtime such a break is near-silent -- the
-`PYEXE ... || exit 0` guards swallow a missing interpreter, and a missing script
-just errors into stderr -- so nothing else in the suite would catch it. These
+longer exists at that path. At runtime such a break is near-silent -- a hook that
+fails to run is indistinguishable from one that ran and allowed, and a missing
+script just errors into stderr -- so nothing else in the suite would catch it.
+(This paragraph used to describe `PYEXE ... || exit 0` guards that "swallow a
+missing interpreter". They exited 0 once; they exit 1 now, and the probe's own
+comment records why that wording was itself the defect.) These
 tests assert every referenced hook script resolves to a real file, and are
 deliberately non-vacuous (they fail if the extraction found *no* references,
 which would mean the regex/parse silently matched nothing).
@@ -332,7 +335,7 @@ def test_dispatcher_caps_its_output(dispatcher):
 
 
 # --------------------------------------------------------------------------- #
-# The interpreter probe in hooks.json
+# The interpreter probe -- hooks/probe-python.sh
 #
 # The previous form was `command -v python3 || command -v py || command -v
 # python`. On Windows `python3` commonly resolves to the Store alias stub, which
@@ -341,7 +344,14 @@ def test_dispatcher_caps_its_output(dispatcher):
 # it. The hook then exits non-zero with no output, which for a PreToolUse hook
 # is indistinguishable from "ran and allowed": the whole guard set silently does
 # nothing. Reproduced with a non-functional `python3` first on PATH.
+#
+# The probe was inlined into all five commands (plus a `_pyexe` reference copy)
+# until it moved into its own file. These tests therefore split in two: the
+# WIRINGS are checked for reaching the script, and the SCRIPT is checked for the
+# properties that used to be substring-asserted five times over.
 # --------------------------------------------------------------------------- #
+
+_PROBE_SH = _HOOKS_DIR / "probe-python.sh"
 
 
 def _wiring_commands() -> list[str]:
@@ -350,7 +360,103 @@ def _wiring_commands() -> list[str]:
     return [h["command"] for ev in data["hooks"].values() for m in ev for h in m["hooks"]]
 
 
-def test_every_wiring_runs_each_interpreter_candidate_before_accepting_it():
+def _probe_source() -> str:
+    return _PROBE_SH.read_text(encoding="utf-8")
+
+
+def _probe_code() -> str:
+    """The probe with comment lines stripped.
+
+    Substring assertions against the whole file are a trap this repo has already
+    paid for: half of `probe-python.sh` is rationale prose that QUOTES the code
+    it explains, so `"exit 1" in src` matches the header comment even after the
+    real `exit 1` becomes `exit 0`. Assert against code, not against prose.
+    """
+    return "\n".join(
+        line for line in _probe_source().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+
+
+def test_every_wiring_sources_the_shared_probe():
+    """Replaces `test_every_wiring_shares_one_probe`, which held five inlined
+    copies equal to a sixth reference copy -- they had drifted from it once
+    already. One file cannot drift from itself; what can still break is a wiring
+    that stops reaching it, or reaches a different path."""
+    for cmd in _wiring_commands():
+        assert cmd.startswith("PYEXE=;"), (
+            "a wiring can inherit a stale PYEXE when the probe does not run:\n" + cmd[:120]
+        )
+        assert '. "$_cla_probe"' in cmd and "/hooks/probe-python.sh" in cmd, (
+            "a wiring does not source the shared probe:\n" + cmd[:200]
+        )
+        assert '"$PYEXE" "${CLAUDE_PLUGIN_ROOT}/hooks/' in cmd, (
+            "a wiring does not run its hook through the probed interpreter:\n" + cmd[:200]
+        )
+
+
+def test_every_wiring_is_byte_identical_up_to_its_hook():
+    """Restores the job the deleted `test_every_wiring_shares_one_probe` did.
+
+    Extracting the probe deduplicated the probe BODY but left a ~200-char
+    prologue -- the clear, the source, the postcondition clause -- copied into all
+    five commands. A mutation run deleting `exit 1` from ONE wiring's clause left
+    the whole suite green, because the only executed test reads
+    `hooks.PreToolUse[0]` and the only text test asserted a substring that
+    survived the deletion. One set-equality assertion closes all five at once.
+    """
+    prologues = {c.split('; "$PYEXE"')[0] for c in _wiring_commands()}
+    assert len(prologues) == 1, (
+        f"{len(prologues)} distinct probe prologues across the wirings; they must "
+        "be identical or a fix reaches only some of them:\n"
+        + "\n---\n".join(sorted(prologues))
+    )
+
+
+def test_every_wiring_checks_the_postcondition_not_the_source_status():
+    """`. probe || { ... }` misses the case extraction created: a probe file that
+    is PRESENT but empty. `.` returns 0 on a zero-byte file, so the clause never
+    fires and the wiring runs `"" some-hook.py` -- measured rc=127 on bash, sh and
+    dash, with the tool call proceeding. Guarding the source with `[ -r ... ]`
+    additionally stops `.` from failing at all, which matters because sh and dash
+    abort on a failed `.` and never reach a trailing clause.
+    """
+    for cmd in _wiring_commands():
+        assert '[ -r "$_cla_probe" ] && . "$_cla_probe"' in cmd, (
+            "a wiring lets a failed `.` abort sh/dash before its message:\n" + cmd[:200]
+        )
+        assert '[ -x "$PYEXE" ] ||' in cmd, (
+            "a wiring trusts the source's exit status instead of the postcondition, "
+            "so an empty probe file runs the hook with no interpreter. `-x` and not "
+            "`-n`: a CRLF probe under dash sets PYEXE to a bare carriage return, "
+            "which is non-empty and useless, and `-x \"\"` is false anyway so `-x` "
+            "subsumes the emptiness check:\n" + cmd[:200]
+        )
+        assert "NOT running" in cmd and "exit 1;" in cmd, (
+            "a wiring proceeds silently when $PYEXE is unset:\n" + cmd[:200]
+        )
+
+
+def test_the_probe_has_no_carriage_returns():
+    """A CRLF checkout disables every guard hook in the plugin.
+
+    A shell reads `\\r` as content, not as a line ending, so a CRLF probe fails on
+    its first statement with `$'\\r': command not found`, leaves $PYEXE unset, and
+    every wiring stops working -- the silent degradation the probe exists to
+    prevent, reintroduced by a checkout setting. This repo has
+    `core.autocrlf=true`; `.gitattributes` pins `hooks/*.sh` to LF because of it.
+
+    This test is the half that ships: `.gitattributes` lives at the SOURCE repo
+    root and does not govern a consuming repo's checkout, but the plugin's own
+    test scope travels with the plugin.
+    """
+    assert b"\r" not in _PROBE_SH.read_bytes(), (
+        f"{_PROBE_SH.name} has CRLF line endings; no shell can source it, so "
+        "every guard hook is silently disabled. Check .gitattributes and re-checkout."
+    )
+
+
+def test_probe_runs_each_interpreter_candidate_before_accepting_it():
     """`command -v` only proves a name resolves, not that it works.
 
     Asserting the VERSION via stdout, not merely running `-c "import sys"`: that
@@ -358,70 +464,131 @@ def test_every_wiring_runs_each_interpreter_candidate_before_accepting_it():
     so a stub exiting 0 for everything was still accepted. A silent stub prints
     nothing and a Python 2 prints `0`, so both now fail the comparison.
     """
-    for cmd in _wiring_commands():
-        assert "sys.version_info" in cmd, (
-            "a wiring accepts an interpreter without asserting its version:\n" + cmd[:200]
-        )
-        assert 'print(1 if sys.version_info' in cmd, (
-            "version must be asserted via STDOUT, not an exit code:\n" + cmd[:200]
-        )
+    code = _probe_code()
+    assert "sys.version_info" in code, "the probe accepts an interpreter unversioned"
+    assert "sys.stdout.buffer.write" in code, (
+        "version must be asserted via STDOUT, and as BYTES: `print` emits `1\\r\\n` "
+        "on Windows and dash does not strip the CR from a command substitution, so "
+        "the print form rejected a working Python 3.13 under dash"
+    )
+    assert '") = 1 ]' in code or '" = 1 ]' in code, (
+        "the version result must be compared against exactly 1"
+    )
 
 
-def test_every_wiring_clears_pyexe_before_probing():
+def test_probe_clears_pyexe_before_probing():
     """REGRESSION guard. The loop only assigns on success, so without an explicit
-    clear `${PYEXE:-}` reads whatever the parent exported and the probe hands
-    every hook to it. Both launchers already clear their equivalents."""
-    for cmd in _wiring_commands():
-        assert cmd.startswith("PYEXE=;"), (
-            "a wiring can inherit a stale PYEXE from the environment:\n" + cmd[:120]
-        )
+    clear `$PYEXE` reads whatever the parent exported and the probe hands every
+    hook to it. Executed counterpart: `test_probe_rejects_a_stale_exported_pyexe`."""
+    body = [
+        line for line in _probe_source().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert body and body[0] == "PYEXE=", (
+        "the probe can inherit a stale PYEXE from the environment; first "
+        f"non-comment line is {body[0] if body else '<empty>'!r}"
+    )
 
 
-def test_every_wiring_exits_non_zero_when_no_interpreter_works():
+def test_probe_announces_failure_and_exits_non_zero():
     """Still fail-open -- only exit 2 blocks a tool call -- but stderr from an
     exit-0 hook reaches the debug log only. `_dispatch_lib` documents that
     contract and both dispatchers follow it; the probe was the one place that
     regressed to stderr + exit 0, so its own "announced rather than silent"
-    comment was false."""
-    for cmd in _wiring_commands():
-        assert "NOT running\" >&2; exit 1;" in cmd, (
-            "a wiring announces failure only to the debug log:\n" + cmd[:200]
-        )
+    comment was false.
+
+    Asserted against `_probe_code()`, not the raw source. A mutation run changed
+    the real `exit 1` to `exit 0` and this test still passed, because the header
+    comment contains the words "`exit 1`s the CALLING shell". Same substring,
+    different line -- the exact class of survivor that let a deleted install path
+    through elsewhere in this file.
+    """
+    code = _probe_code()
+    assert "NOT running" in code, "the probe degrades silently when nothing is usable"
+    assert ">&2" in code and "exit 1" in code, (
+        "refusal must reach stderr AND exit non-zero, or it lands in the debug log only"
+    )
+    assert "exit 0" not in code, "the probe must never refuse with a zero exit"
 
 
-def test_no_wiring_uses_the_bare_command_v_chain():
+def test_the_refusal_message_names_the_escape_hatch():
+    """A user whose interpreter is somewhere stages 2 and 3 do not look needs to
+    be told what to do about it, in the message they actually see."""
+    src = _probe_source()
+    assert "Set CLA_PYTHON" in src, (
+        "the refusal message does not tell the user how to fix it"
+    )
+
+
+def test_probe_does_not_use_the_bare_command_v_chain():
     """The exact shape that shipped broken. Pinned by text because the failure
     is invisible at runtime on a machine where `python3` happens to work."""
-    for cmd in _wiring_commands():
-        assert "command -v python3 2>/dev/null || command -v py" not in cmd, (
-            "a wiring reverted to the trust-the-first-name probe:\n" + cmd[:160]
-        )
+    assert "command -v python3 2>/dev/null || command -v py" not in _probe_source(), (
+        "the probe reverted to the trust-the-first-name form"
+    )
 
 
-def test_every_wiring_announces_when_no_interpreter_works():
-    """Fail-open is right for a guard, but fail-open-and-silent means the user
-    believes they are protected when nothing is running."""
-    for cmd in _wiring_commands():
-        assert "NOT running" in cmd, (
-            "a wiring degrades silently when no interpreter is usable:\n" + cmd[:160]
-        )
-
-
-def test_every_wiring_probes_the_same_candidates_in_the_same_order():
-    """The candidate ORDER is the load-bearing part of the probe.
+def test_probe_tries_the_candidate_names_in_the_same_order():
+    """The candidate ORDER is the load-bearing part of stage 2.
 
     `python3` first matters on Windows, where it commonly resolves to the Store
     alias stub: the probe RUNS each candidate rather than trusting the first
     name that resolves, so a stub that cannot execute is skipped instead of
     silently disabling every dispatched hook.
 
-    This used to be a parity check against `claw`, which carried the probe
-    first. `claw` is gone (its reason to exist went with
-    `guard-worktree-isolation.py`) and `cla` never had a probe at all, so
-    hooks.json is now the sole holder and this pins it directly.
+    The `break` is half of it and is asserted separately: without it the LAST
+    working name wins, and this header assertion cannot see that. Executed
+    counterpart: `test_the_first_working_candidate_name_wins`.
     """
-    for cmd in _wiring_commands():
-        assert "for c in python3 py python" in cmd
+    code = _probe_code()
+    assert "for _c in python3 py python" in code
+    assert "PYEXE=$_p; break" in code, (
+        "without the break the last working candidate wins, not the first"
+    )
+
+
+def test_probe_searches_install_locations_off_path():
+    """The three NAMES are not enough, and the failure is invisible from pytest.
+
+    Measured on one Windows machine: the hook's PATH and the PATH a tool call
+    sees are different, and the real interpreter is on the second but not the
+    first. Under the hook's PATH `python3` is a wrapper delegating to `python`,
+    which there is the Store alias stub; `py` is absent; `python` is the same
+    stub. All three fail the version assertion, the probe reports that nothing
+    is usable, and every dispatched hook stops running.
+
+    `test_probe_still_selects_a_working_interpreter` cannot catch this -- it runs
+    the probe under the TEST process's PATH, which has a real python on it.
+
+    Both families are asserted because the defect is not Windows-specific: a hook
+    PATH missing `/usr/local/bin` fails the same way. An unmatched glob stays
+    literal, `-x` is then false, and the entry is skipped -- so each family is
+    inert on the other's platform.
+
+    EVERY location is pinned individually, against CODE and not against the file.
+    This assertion has now been fooled TWICE by the same trick, which is why it
+    reads `_probe_code()`:
+
+    - v1 asserted `"Python3*/python.exe" in src` once. Deleting the per-user
+      Windows path -- the single location that fixed the machine this defect came
+      from -- still passed, because the all-users path two lines down matches the
+      same substring.
+    - v2 pinned all six, but against `_probe_source()`. Deleting `/usr/bin/python3`
+      still passed, because the COMMENT above the list names it as an example.
+
+    Dropping a location should cost a second edit here, on purpose.
+    """
+    src = _probe_code()
+    expected = (
+        '"$HOME"/AppData/Local/Programs/Python/Python3*/python.exe',  # per-user installer
+        "/c/Program\\ Files/Python3*/python.exe",                     # all-users installer
+        "/c/Python3*/python.exe",                                     # legacy root install
+        "/opt/homebrew/bin/python3",                                  # Apple Silicon Homebrew
+        "/usr/local/bin/python3",                                     # Intel Homebrew, /usr/local
+        "/usr/bin/python3",                                           # system python
+    )
+    missing = [p for p in expected if p not in src]
+    assert not missing, f"stage 3 no longer searches: {missing}"
 
 
 # --------------------------------------------------------------------------- #
@@ -495,13 +662,38 @@ import subprocess as _sp
 
 
 def _probe_prefix() -> str:
-    """The probe half of a wiring's command, up to the interpreter invocation."""
+    """The probe half of a wiring's command, up to the interpreter invocation.
+
+    Taken from the LIVE wiring rather than hand-written, so these executed tests
+    exercise the same text a hook actually runs. Reading only wiring [0] is safe
+    ONLY because `test_every_wiring_is_byte_identical_up_to_its_hook` proves the
+    other four are the same string; without that, this samples one of five.
+    """
     cfg = json.loads((_HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
     cmd = cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
     return cmd.split('; "$PYEXE"')[0]
 
 
+# The wiring expands ${CLAUDE_PLUGIN_ROOT}; these tests pass a restricted env, so
+# they must supply it. Forward slashes because a POSIX shell reads `C:\...`
+# backslashes as escapes -- `C:/...` it resolves.
+_PLUGIN_ROOT_SH = str(_PLUGIN_ROOT).replace("\\", "/")
+
 _BASH = shutil.which("bash")
+
+# Claude Code runs a hook command through `sh -c` on macOS/Linux and Git Bash on
+# Windows, so testing only `bash` tests neither documented production shell
+# exactly. The three disagree in ways this probe has already been bitten by:
+# `sh` and `dash` abort on a failed `.` where bash continues, and `dash` does NOT
+# strip the CR from a command substitution, which silently rejected a working
+# Python 3.13 until the version check moved to a byte write. Tests that assert
+# SHELL-DEPENDENT behaviour parametrise over whichever of these exist.
+_SHELLS = [p for p in (shutil.which(n) for n in ("bash", "sh", "dash")) if p]
+
+
+def _shell_ids(path):
+    from pathlib import Path as _P
+    return _P(path).stem
 
 
 @pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
@@ -509,8 +701,12 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
     """REGRESSION. The loop only assigns on success, so without an explicit
     clear `${PYEXE:-}` reads whatever the parent exported -- and the probe then
     hands every hook to it. The form this replaced (`PYEXE=$(command -v ...)`)
-    always overwrote, so this was a regression, and it drifts from both
-    launchers, which do clear it.
+    always overwrote, so this was a regression.
+
+    (This docstring used to add "and it drifts from both launchers, which do
+    clear it." Neither `cla` nor `cla.cmd` mentions PYEXE or probes for an
+    interpreter at all -- `grep -n "PYEXE\\|python" cla cla.cmd` returns nothing.
+    There is no launcher behaviour to drift from.)
 
     PATH must therefore contain no USABLE interpreter, which is why it points at
     an empty directory. Not `PATH=""` -- some shells read an empty PATH as the
@@ -527,7 +723,22 @@ def test_probe_rejects_a_stale_exported_pyexe(tmp_path):
     every POSIX sh, and never reaches the `"$p" -c ...` liveness call."""
     empty = tmp_path / "empty-path"
     empty.mkdir()
-    env = {"PATH": str(empty), "PYEXE": "/definitely/not/a/python"}
+    # CLA_PY_SEARCH empty suppresses stage 3, the install-location search.
+    # Without it the probe finds an interpreter off PATH entirely and the refusal
+    # path -- the only path this test examines -- is never reached. Three of the
+    # six stage-3 defaults (`/usr/bin/python3`, `/usr/local/bin/python3`,
+    # `/opt/homebrew/bin/python3`) are unconditional absolute paths that exist on
+    # a normal macOS or Linux box, so poisoning PATH is not enough: stage 3 has
+    # to be switched OFF. (An earlier version of this note blamed the
+    # `"$HOME"/AppData` glob and claimed bash supplies HOME from the passwd entry
+    # when absent. It does not -- `env -i bash -c 'echo $HOME'` prints nothing --
+    # and that glob is the one entry that is NOT the problem.)
+    env = {
+        "PATH": str(empty),
+        "PYEXE": "/definitely/not/a/python",
+        "CLA_PY_SEARCH": "",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     assert "SELECTED:/definitely/not/a/python" not in r.stdout
@@ -553,33 +764,419 @@ def test_probe_rejects_an_interpreter_that_exits_zero_for_everything(tmp_path):
     stub = stub_dir / "python3"
     stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     stub.chmod(0o755)
-    env = {"PATH": str(stub_dir)}
+    # See the note in the previous test: empty CLA_PY_SEARCH suppresses stage 3,
+    # which would otherwise satisfy the probe off PATH and hide the stub
+    # rejection this test exists to prove.
+    env = {
+        "PATH": str(stub_dir),
+        "CLA_PY_SEARCH": "",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     assert "SELECTED:" not in r.stdout or "SELECTED:\n" in r.stdout
     assert r.returncode == 1
 
 
+def _real_interpreter() -> str:
+    """An absolute path to a KNOWN-GOOD interpreter, in a form a POSIX shell
+    resolves.
+
+    `sys.executable`, deliberately, and not `command -v python3`: on the machine
+    that produced this whole defect the first `python3` on PATH is a wrapper that
+    delegates to `python`, so it fails the version check the moment PATH is
+    poisoned -- and these tests poison PATH on purpose. The process running
+    pytest is by definition a real Python.
+    """
+    import sys
+    return sys.executable.replace("\\", "/")
+
+
+def _inherited_env(**overrides) -> dict:
+    """The real environment plus CLAUDE_PLUGIN_ROOT, for the tests that want a
+    normal PATH rather than a poisoned one."""
+    import os
+    env = dict(os.environ)
+    env["CLAUDE_PLUGIN_ROOT"] = _PLUGIN_ROOT_SH
+    env.update(overrides)
+    return env
+
+
 @pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
 def test_probe_still_selects_a_working_interpreter():
     """Non-vacuity partner: the two tests above pass trivially if the probe
-    rejects everything."""
+    rejects everything.
+
+    Weaker evidence than it looks, and the comment is the point: this runs under
+    the TEST process's PATH. The defect that produced stage 3 was a hook PATH on
+    which every name failed while this test stayed green.
+    """
     r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
-                capture_output=True, text=True, encoding="utf-8", errors="replace")
-    assert r.returncode == 0
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=_inherited_env())
+    assert r.returncode == 0, r.stderr
     assert re.search(r"SELECTED:\S+", r.stdout), r.stdout
 
 
-def test_every_wiring_shares_one_probe():
-    """Seven inlined copies drifted from the `_pyexe` reference once already."""
-    cfg = json.loads((_HOOKS_DIR / "hooks.json").read_text(encoding="utf-8"))
-    probes = {
-        h["command"].split('; "$PYEXE"')[0]
-        for arr in cfg["hooks"].values() for m in arr for h in m["hooks"]
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_stage_three_finds_an_interpreter_that_is_not_on_path(tmp_path):
+    """The whole reason stage 3 exists, exercised rather than asserted by text.
+
+    PATH holds nothing usable, so stages 1 and 2 must fail; CLA_PY_SEARCH then
+    points stage 3 at a real interpreter by absolute path. Without a stage 3 this
+    refuses -- which is exactly what shipped, and what killed every guard hook on
+    a machine whose hook PATH differed from its tool PATH.
+    """
+    interpreter = _real_interpreter()
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    env = {
+        "PATH": str(empty),
+        "CLA_PY_SEARCH": interpreter,
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
     }
-    assert len(probes) == 1, f"{len(probes)} distinct probes across the wirings"
-    # `_pyexe` carries the trailing `;` that joins it to the interpreter call;
-    # splitting the live command on `; "$PYEXE"` consumes that separator.
-    assert probes.pop() == cfg["_pyexe"].rstrip("; "), (
-        "_pyexe drifted from the live wirings"
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 0, r.stderr
+    assert f"SELECTED:{interpreter}" in r.stdout, r.stdout
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_cla_python_overrides_a_working_path_interpreter():
+    """The escape hatch has to WIN, or it is not an escape hatch. PATH here is
+    the normal one, so stage 2 would succeed; CLA_PYTHON must be taken first."""
+    interpreter = _real_interpreter()
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=_inherited_env(CLA_PYTHON=interpreter))
+    assert r.returncode == 0, r.stderr
+    assert f"SELECTED:{interpreter}" in r.stdout, r.stdout
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+@pytest.mark.parametrize("bad", ["stub", "missing"])
+def test_an_unusable_cla_python_refuses_loudly(tmp_path, bad):
+    """An override is not a bypass, AND it is not silently discardable.
+
+    Two halves. The stub must not be accepted -- that is the bypass half, and it
+    was already covered. The new half is that an unusable CLA_PYTHON must REFUSE
+    rather than fall through to stages 2 and 3: this variable is what a user
+    reaches for BECAUSE the automatic stages picked wrong, so falling through
+    hands every hook the interpreter they were trying to replace, with no signal.
+    Observed for real during review -- a known-good `sys.executable` passed as
+    CLA_PYTHON came back as a DIFFERENT interpreter with exit status 0.
+
+    The previous assertion was `str(stub) not in r.stdout` alone: an absence, with
+    no returncode check, so a probe that silently substituted another interpreter
+    passed it.
+    """
+    if bad == "stub":
+        target = tmp_path / "fake-python"
+        target.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        target.chmod(0o755)
+        target = str(target)
+    else:
+        target = "/definitely/not/a/python"
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=_inherited_env(CLA_PYTHON=target))
+    assert target not in r.stdout, "an unusable CLA_PYTHON was accepted"
+    assert r.returncode == 1, (
+        "an unusable CLA_PYTHON was silently discarded and some other interpreter "
+        f"used instead: rc={r.returncode} stdout={r.stdout!r}"
     )
+    assert "SELECTED:" not in r.stdout, r.stdout
+    assert "CLA_PYTHON" in r.stderr, "the refusal does not name the variable at fault"
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_stage_two_rejects_a_stub_and_stage_three_rescues(tmp_path):
+    """The real-world scenario stage 3 was written for, which no other test hits.
+
+    Every other stage-3 test poisons PATH with an EMPTY directory, so stage 2
+    finds nothing. The measured defect was different and worse: stage 2 found
+    `python3`, RAN it, rejected it, and had nowhere left to look. This exercises
+    that exact transition.
+    """
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir()
+    stub = stub_dir / "python3"
+    stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+    interpreter = _real_interpreter()
+    env = {
+        "PATH": str(stub_dir),
+        "CLA_PY_SEARCH": interpreter,
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 0, r.stderr
+    assert f"SELECTED:{interpreter}" in r.stdout, r.stdout
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_the_stage_three_DEFAULT_list_is_actually_applied(tmp_path):
+    """The default `set --` branch had never executed in any test, on any machine.
+
+    Every other stage-3 test sets CLA_PY_SEARCH, which REPLACES the default list --
+    so a mutation making the default branch unreachable left its text byte-identical
+    and the suite green. This leaves CLA_PY_SEARCH unset and points HOME at a fake
+    Windows install tree, which also exercises the `"$HOME"/...` quoting and the
+    "an unmatched glob stays literal, `-x` is then false, entry skipped" claim for
+    the five entries that do not match.
+    """
+    home = tmp_path / "home"
+    install = home / "AppData/Local/Programs/Python/Python312"
+    install.mkdir(parents=True)
+    shim = install / "python.exe"
+    # Not a real python: the probe only asks for one byte on stdout, so a shim is
+    # a faithful stand-in and keeps the test off the machine's actual installs.
+    shim.write_text("#!/bin/sh\nprintf 1\n", encoding="utf-8")
+    shim.chmod(0o755)
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    env = {
+        "PATH": str(empty),
+        "HOME": str(home).replace("\\", "/"),
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 0, r.stderr
+    assert "AppData/Local/Programs/Python/Python312/python.exe" in r.stdout, r.stdout
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_cla_py_search_takes_a_multi_entry_list(tmp_path):
+    """`set -- $CLA_PY_SEARCH` is deliberately unquoted so the value splits and
+    globs. Every other test passes exactly ONE path, so quoting it -- the natural
+    "fix" a reviewer or linter would suggest -- would break multi-entry search
+    with no test failing. First entry is a dud, so selection proves the loop
+    continued rather than stopping at entry one.
+    """
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    interpreter = _real_interpreter()
+    env = {
+        "PATH": str(empty),
+        "CLA_PY_SEARCH": f"/nope/python3 {interpreter}",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 0, r.stderr
+    assert f"SELECTED:{interpreter}" in r.stdout, r.stdout
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_stage_three_stops_at_its_first_match(tmp_path):
+    """The stage-3 `break`, which no test could see and a mutation run proved it.
+
+    Stage 3 runs in a command substitution and `printf`s the winner, so without
+    the break EVERY working candidate is printed and `$PYEXE` becomes the paths
+    concatenated. On this machine only one default matches, so the mutant was
+    invisible; two entries in CLA_PY_SEARCH make it visible anywhere.
+
+    The damage is bounded rather than silent -- `[ -x ]` on a concatenation fails,
+    so the wiring refuses rather than running garbage -- which is why this is a
+    correctness test and not a fail-open one.
+    """
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    interpreter = _real_interpreter()
+    # The same real interpreter twice: two matching entries, one expected result.
+    env = {
+        "PATH": str(empty),
+        "CLA_PY_SEARCH": f"{interpreter} {interpreter}",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 0, r.stderr
+    assert f"SELECTED:{interpreter}\n" in r.stdout, (
+        f"stage 3 did not stop at its first match; selected {r.stdout!r}"
+    )
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_a_python_2_lookalike_that_prints_zero_is_rejected(tmp_path):
+    """The half of the version claim no test covered.
+
+    Three separate docstrings assert the check rejects "a Python 2, which prints
+    0" -- but every stub in this suite printed NOTHING, so only the silent-wrapper
+    half was ever exercised, and weakening the comparison from `= 1` to
+    "non-empty" survived a mutation run. This is the missing stub.
+    """
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir()
+    stub = stub_dir / "python3"
+    stub.write_text("#!/bin/sh\necho 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+    env = {
+        "PATH": str(stub_dir),
+        "CLA_PY_SEARCH": "",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 1, f"an interpreter printing 0 was accepted: {r.stdout!r}"
+    assert "SELECTED:" not in r.stdout, r.stdout
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_the_first_working_candidate_name_wins(tmp_path):
+    """Executed counterpart to the candidate-ORDER assertion, which pins only the
+    loop header. Two WORKING stubs, `python3` and `python`; without the `break`
+    the loop runs to the end and `python` wins. `python3` first is the whole point
+    on Windows, where the later names are commonly the Store alias stub.
+    """
+    stub_dir = tmp_path / "stubs"
+    stub_dir.mkdir()
+    for name in ("python3", "python"):
+        s = stub_dir / name
+        s.write_text("#!/bin/sh\nprintf 1\n", encoding="utf-8")
+        s.chmod(0o755)
+    env = {
+        "PATH": str(stub_dir),
+        "CLA_PY_SEARCH": "",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    r = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip().endswith("python3"), (
+        f"the candidate order or the break is broken; selected {r.stdout!r}"
+    )
+
+
+@pytest.mark.skipif(not _SHELLS, reason="no POSIX shell available")
+@pytest.mark.parametrize("shell", _SHELLS, ids=_shell_ids)
+def test_sourcing_does_not_clobber_the_callers_positional_parameters(shell, tmp_path):
+    """Stage 3's `set --` runs inside a command substitution for this reason.
+
+    Sourced directly it rewrites the CALLING shell's `$@`, and only on the stage-3
+    path -- so it manifests only on the machines that need stage 3, which are the
+    ones already in trouble. Harmless with today's wirings, which pass no
+    arguments; asserted so it stays that way.
+    """
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    env = {
+        "PATH": str(empty),
+        "CLA_PY_SEARCH": _real_interpreter(),
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+    }
+    r = _sp.run([shell, "-c", _probe_prefix() + '; echo "ARGS:[$*]"', "argv0", "alpha", "beta"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r.returncode == 0, r.stderr
+    assert "ARGS:[alpha beta]" in r.stdout, (
+        f"sourcing the probe clobbered the caller's positional parameters: {r.stdout!r}"
+    )
+
+
+@pytest.mark.skipif(not _SHELLS, reason="no POSIX shell available")
+@pytest.mark.parametrize("shell", _SHELLS, ids=_shell_ids)
+@pytest.mark.parametrize("damage", ["absent", "empty", "truncated", "directory"])
+def test_wiring_refuses_when_the_probe_is_unusable(shell, damage, tmp_path):
+    """Every way the probe file can fail to set $PYEXE, on every shell present.
+
+    THREE separate defects live here, all measured:
+
+    - `empty` and `truncated` are the failures EXTRACTION created. `.` returns 0
+      on a zero-byte file, so the original `. probe || {...}` clause never fired
+      and the wiring ran `"" some-hook.py` -- rc=127 on bash, sh AND dash, tool
+      call proceeds, output `: command not found`, naming neither cla nor the
+      probe. A truncated hooks.json was invalid JSON and loaded nothing; a
+      truncated .sh degrades to silence. This is why the wiring checks
+      `[ -n "$PYEXE" ]` rather than the source's exit status.
+    - `absent` under sh/dash: both ABORT on a failed `.` and never reach a
+      trailing clause, so on the shells Claude Code documents for macOS/Linux the
+      plugin's own diagnostic was never printed. `[ -r "$_cla_probe" ]` keeps `.`
+      from failing at all, so every shell reaches the same message.
+    - `directory` is the same shape with a different cause, and is why the message
+      says "missing or unusable" rather than "missing": the earlier wording named
+      a cause it had not established, so a user who confirmed the file exists was
+      actively misled.
+    CRLF is deliberately NOT one of these cases -- it has its own test, because
+    its correct outcome is shell-dependent rather than "refuse".
+
+    Parametrised over shells because bash alone tests neither documented
+    production shell exactly -- `sh -c` on macOS/Linux, Git Bash on Windows.
+    """
+    root = tmp_path / "root"
+    probe = root / "hooks" / "probe-python.sh"
+    if damage != "absent":
+        probe.parent.mkdir(parents=True)
+
+    def _write(text, newline="\n"):
+        # newline= is load-bearing: Python's default on Windows rewrites every \n
+        # to \r\n, which silently turned the `truncated` fixture into a CRLF one
+        # and made it fail for the wrong reason. Each damage case must test the
+        # ONE thing it names.
+        with open(probe, "w", encoding="utf-8", newline=newline) as fh:
+            fh.write(text)
+
+    if damage == "empty":
+        _write("")
+    elif damage == "truncated":
+        # Cut before the refusal block: a plausible partial write, and the shape
+        # that returns 0 having set nothing.
+        _write(_probe_source().split("# --- 1. explicit override")[0])
+    elif damage == "directory":
+        probe.mkdir()
+
+    r = _sp.run([shell, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                # PYEXE exported deliberately: without the wiring's own `PYEXE=;`
+                # a probe that never runs leaves the parent's value in place and
+                # the postcondition passes on a stale interpreter.
+                env=_inherited_env(CLAUDE_PLUGIN_ROOT=str(root).replace("\\", "/"),
+                                   PYEXE="/definitely/not/a/python"))
+    assert r.returncode != 0, f"an unusable probe ({damage}) let the wiring proceed"
+    assert "SELECTED:" not in r.stdout, r.stdout
+    assert "NOT running" in r.stderr, (
+        f"no cla diagnostic on {shell} for a {damage} probe; stderr={r.stderr!r}"
+    )
+
+
+@pytest.mark.skipif(not _SHELLS, reason="no POSIX shell available")
+@pytest.mark.parametrize("shell", _SHELLS, ids=_shell_ids)
+def test_a_crlf_probe_never_yields_a_broken_interpreter(shell, tmp_path):
+    """CRLF is a shell-dependent hazard, so the contract is not "refuses".
+
+    Measured on this machine: Git Bash and its POSIX mode STRIP the CR and the
+    probe works normally; dash does not, mis-parses the file, and -- before the
+    postcondition moved from `-n` to `-x` -- left `PYEXE` holding a bare carriage
+    return, which `-n` waved through so the wiring ran `<CR> some-hook.py`. That
+    is how this test found a live fail-open.
+
+    So two outcomes are acceptable and the third is not:
+      OK   refuse, and say so
+      OK   succeed with an interpreter that can actually run a hook
+      NOT  succeed with something that cannot
+    The `-c 'print("ALIVE")'` is what separates the second from the third -- it
+    asserts the postcondition's whole purpose rather than its spelling.
+
+    `.gitattributes` pins `hooks/*.sh` to LF in both this repo and the published
+    plugin tree, so this should never fire in practice. It exists because that pin
+    depends on a checkout setting, and this does not.
+    """
+    root = tmp_path / "root"
+    probe = root / "hooks" / "probe-python.sh"
+    probe.parent.mkdir(parents=True)
+    with open(probe, "w", encoding="utf-8", newline="\r\n") as fh:
+        fh.write(_probe_source())
+
+    cmd = _probe_prefix() + '; "$PYEXE" -c \'print("ALIVE")\''
+    r = _sp.run([shell, "-c", cmd],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=_inherited_env(CLAUDE_PLUGIN_ROOT=str(root).replace("\\", "/"),
+                                   PYEXE="/definitely/not/a/python"))
+    if r.returncode == 0:
+        assert "ALIVE" in r.stdout, (
+            f"{shell} accepted a CRLF probe's $PYEXE but it cannot run a hook; "
+            f"stdout={r.stdout!r} stderr={r.stderr!r}"
+        )
+    else:
+        assert "ALIVE" not in r.stdout, r.stdout

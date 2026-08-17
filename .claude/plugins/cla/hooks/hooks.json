@@ -1,47 +1,43 @@
 {
   "_comment": [
-    "Every command below shares one interpreter probe, `_pyexe`. It RUNS each",
-    "candidate before accepting it, rather than trusting the first name that",
-    "resolves.",
+    "Every command below sources ONE interpreter probe, `hooks/probe-python.sh`,",
+    "then checks the POSTCONDITION it actually needs: `$PYEXE` is set. That",
+    "script carries the full rationale — why it RUNS each candidate instead of",
+    "trusting `command -v`, why the version comes back on stdout as one byte, why",
+    "the three names are not sufficient, and why refusal is non-zero but",
+    "fail-open. Read it before changing anything here.",
     "",
-    "The previous form was `command -v python3 || command -v py || command -v",
-    "python`, and on Windows that is actively wrong: `python3` commonly resolves",
-    "to the Store alias stub in WindowsApps, which exists and is executable, so",
-    "`command -v` SUCCEEDS and the `||` fallbacks never fire. Every dispatched",
-    "hook was then invoked through an interpreter that cannot run it — the hook",
-    "exited non-zero without producing output, and because a PreToolUse hook",
-    "that fails to run is indistinguishable from one that ran and allowed, the",
-    "entire guard set silently did nothing. Reproduced by putting a",
-    "non-functional `python3` first on PATH: current probe picks it and the hook",
-    "exits 9009 with no warning; this probe skips it.",
+    "The probe used to be a 350-char one-liner inlined into all five commands,",
+    "plus a `_pyexe` reference copy in this file. JSON has no substitution, so",
+    "the copies were held equal only by a test, and they had drifted from the",
+    "reference once already. Both the duplication and `_pyexe` are gone; the",
+    "script is the single source, and `test_every_wiring_sources_the_shared_probe`",
+    "pins that every command still reaches it.",
     "",
-    "These wirings assert the interpreter's VERSION via stdout, not merely its",
-    "liveness: a bare `-c \"import sys\"` passes on Python 2.7 and on any wrapper",
-    "that swallows `-c` and exits 0. The candidate ORDER is the other",
-    "load-bearing half, and `python3` must stay first.",
+    "WHY THE CHECK IS `-x` AND NOT `-n`. Measured, on a truncated CRLF probe",
+    "under dash: the probe's first statement is the ASSIGNMENT `PYEXE=`, so a",
+    "trailing CR makes it `PYEXE=<CR>` — set, non-empty, and useless. `-n` passed",
+    "it and the wiring ran `<CR> some-hook.py`; `-x` refuses it. `[ -x \"\" ]` is",
+    "false too, so `-x` subsumes the emptiness check rather than adding to it.",
     "",
-    "This block used to describe the probe by comparing it with the `claw`",
-    "launcher's. `claw` has been deleted — it existed only to dodge",
-    "`guard-worktree-isolation.py`'s SessionStart heartbeat, and that hook is",
-    "gone too — so hooks.json is now the sole holder of this probe, and",
-    "`test_every_wiring_probes_the_same_candidates_in_the_same_order` pins it.",
+    "WHY THE CHECK IS A POSTCONDITION AND NOT `. probe || { ... }`. The first",
+    "form of this wiring chained the failure clause to `.`, which misses the case",
+    "extraction created: a probe file that is PRESENT but empty or truncated. `.`",
+    "returns 0 on a zero-byte file, so the clause never fired and the wiring ran",
+    "`\"\" some-hook.py` — measured rc=127 on bash, sh AND dash, tool call",
+    "proceeds, output `: command not found`, naming neither cla nor the probe.",
+    "A truncated hooks.json was invalid JSON and loaded nothing; a truncated .sh",
+    "degrades to silence. `[ -r \"$_cla_probe\" ]` also keeps `.` from FAILING,",
+    "which matters because sh and dash abort on a failed `.` and never reach a",
+    "trailing clause — so on the shells Claude Code documents for macOS/Linux the",
+    "plugin's own diagnostic was never printed. Verified: identical message and",
+    "rc=1 on bash, sh and dash, for a missing probe and a zero-byte one.",
     "",
-    "Note also that JSON has no substitution: `_pyexe` is a reference copy, and",
-    "`test_every_wiring_shares_one_probe` is what holds the inlined copies equal",
-    "to it.",
-    "",
-    "Failure is announced rather than silent: if NO candidate runs, the command",
-    "says so on stderr and exits 1. NON-ZERO is deliberate, and this block used",
-    "to say 'exits 0 (fail-open)' — describing, as intended behaviour, exactly",
-    "the invisible degradation the probe exists to prevent. stderr from an",
-    "exit-0 hook reaches the debug log only, so a machine with no usable Python",
-    "would have looked protected while running no guards at all.",
-    "`test_every_wiring_exits_non_zero_when_no_interpreter_works` pins the 1;",
-    "the code and the test were fixed once already and this comment was not,",
-    "which matters because it is the sentence a future editor consults before",
-    "changing that exit code."
+    "`PYEXE=;` leads every command for the same reason it leads the probe. The",
+    "probe clears it, but the probe only runs when the file is readable — so",
+    "without this clear, a missing probe plus an exported `PYEXE` would satisfy",
+    "the postcondition and hand every hook a stale interpreter."
   ],
-  "_pyexe": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi;",
   "hooks": {
     "PreToolUse": [
       {
@@ -49,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -59,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -69,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -81,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-wholesale-rewrite.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-wholesale-rewrite.py\"",
             "timeout": 15
           }
         ]
@@ -91,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYEXE=; for c in python3 py python; do p=$(command -v $c 2>/dev/null) || continue; [ \"$(\"$p\" -c \"import sys; print(1 if sys.version_info >= (3,8) else 0)\" 2>/dev/null)\" = 1 ] && PYEXE=$p && break; done; if [ -z \"${PYEXE:-}\" ]; then echo \"cla: no working python interpreter (tried python3, py, python) — guard hooks are NOT running\" >&2; exit 1; fi; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/log-commit-provenance.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/log-commit-provenance.py\"",
             "timeout": 15
           }
         ]
