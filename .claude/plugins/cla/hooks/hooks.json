@@ -1,24 +1,42 @@
 {
   "_comment": [
     "Every command below sources ONE interpreter probe, `hooks/probe-python.sh`,",
-    "which leaves a usable Python 3.8+ in $PYEXE or refuses and exits 1. That",
-    "script carries the full rationale: why it RUNS each candidate instead of",
-    "trusting `command -v`, why the check is a version rather than liveness, why",
-    "the three names are not sufficient on their own, and why refusal is",
-    "non-zero. Read it before changing anything here.",
+    "then checks the POSTCONDITION it actually needs: `$PYEXE` is set. That",
+    "script carries the full rationale — why it RUNS each candidate instead of",
+    "trusting `command -v`, why the version comes back on stdout as one byte, why",
+    "the three names are not sufficient, and why refusal is non-zero but",
+    "fail-open. Read it before changing anything here.",
     "",
-    "The probe used to be a ~500-char one-liner inlined into all five commands,",
+    "The probe used to be a 350-char one-liner inlined into all five commands,",
     "plus a `_pyexe` reference copy in this file. JSON has no substitution, so",
     "the copies were held equal only by a test, and they had drifted from the",
     "reference once already. Both the duplication and `_pyexe` are gone; the",
     "script is the single source, and `test_every_wiring_sources_the_shared_probe`",
     "pins that every command still reaches it.",
     "",
-    "The `||` clause covers the one case sourcing adds: a MISSING probe file.",
-    "bash prints its own error and then CONTINUES, which would run the hook with",
-    "$PYEXE empty; sh exits 1 on its own and never reaches the clause. Verified",
-    "on both. An `exit` inside a probe that IS present exits this shell",
-    "immediately, so the clause cannot mask a refusal."
+    "WHY THE CHECK IS `-x` AND NOT `-n`. Measured, on a truncated CRLF probe",
+    "under dash: the probe's first statement is the ASSIGNMENT `PYEXE=`, so a",
+    "trailing CR makes it `PYEXE=<CR>` — set, non-empty, and useless. `-n` passed",
+    "it and the wiring ran `<CR> some-hook.py`; `-x` refuses it. `[ -x \"\" ]` is",
+    "false too, so `-x` subsumes the emptiness check rather than adding to it.",
+    "",
+    "WHY THE CHECK IS A POSTCONDITION AND NOT `. probe || { ... }`. The first",
+    "form of this wiring chained the failure clause to `.`, which misses the case",
+    "extraction created: a probe file that is PRESENT but empty or truncated. `.`",
+    "returns 0 on a zero-byte file, so the clause never fired and the wiring ran",
+    "`\"\" some-hook.py` — measured rc=127 on bash, sh AND dash, tool call",
+    "proceeds, output `: command not found`, naming neither cla nor the probe.",
+    "A truncated hooks.json was invalid JSON and loaded nothing; a truncated .sh",
+    "degrades to silence. `[ -r \"$_cla_probe\" ]` also keeps `.` from FAILING,",
+    "which matters because sh and dash abort on a failed `.` and never reach a",
+    "trailing clause — so on the shells Claude Code documents for macOS/Linux the",
+    "plugin's own diagnostic was never printed. Verified: identical message and",
+    "rc=1 on bash, sh and dash, for a missing probe and a zero-byte one.",
+    "",
+    "`PYEXE=;` leads every command for the same reason it leads the probe. The",
+    "probe clears it, but the probe only runs when the file is readable — so",
+    "without this clear, a missing probe plus an exported `PYEXE` would satisfy",
+    "the postcondition and hand every hook a stale interpreter."
   ],
   "hooks": {
     "PreToolUse": [
@@ -27,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ". \"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\" || { echo \"cla: interpreter probe missing at ${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -37,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ". \"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\" || { echo \"cla: interpreter probe missing at ${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -47,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ". \"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\" || { echo \"cla: interpreter probe missing at ${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-bash-pretooluse.py\"",
             "timeout": 15
           }
         ]
@@ -59,7 +77,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ". \"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\" || { echo \"cla: interpreter probe missing at ${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-wholesale-rewrite.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/warn-wholesale-rewrite.py\"",
             "timeout": 15
           }
         ]
@@ -69,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ". \"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\" || { echo \"cla: interpreter probe missing at ${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/log-commit-provenance.py\"",
+            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/log-commit-provenance.py\"",
             "timeout": 15
           }
         ]
