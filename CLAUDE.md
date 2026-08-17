@@ -187,7 +187,8 @@ everywhere) from *facts* (per-repo, never synced):
   marketplace ships the whole directory. Four files still fall outside both scanners and are watched
   by hand: the plugin's own `README.md` (its install commands legitimately name this repo),
   `skills/_shared/README.md`, `run_tests.py`, and `mutate.py`. Non-`.py`/`.md` files
-  (`hooks/hooks.json`, a skill's own `.mjs`) are outside both too. Listed in TODO.md.
+  (`hooks/hooks.json`, `hooks/probe-python.sh`, a skill's own `.mjs`) are outside both too. Listed
+  in TODO.md.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not

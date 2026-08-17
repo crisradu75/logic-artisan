@@ -119,6 +119,14 @@ and these four are not:
 
 None is a leak today. Revisit if a fifth appears, or if one of these grows repo-specific prose.
 
+Separately, both scanners are extension-scoped to `.md` and `.py`, so the shipped non-source files
+are outside them by construction: `hooks/hooks.json`, `hooks/probe-python.sh`, and a skill's own
+`.mjs`. `probe-python.sh` is the newest and the one worth naming — it is executable shell that every
+guard hook sources, and it carries absolute install paths, which is exactly the shape the hardcoded-
+path rule exists to catch. The paths in it are generic (`$HOME/AppData/...`, `/usr/local/bin/...`)
+rather than developer-specific, so there is nothing to flag today; a third extension in the scanner
+is the fix if that stops being true.
+
 ## Why the push-to-main guard is a git hook, not a PreToolUse hook
 
 Kept as a one-paragraph note because the question recurs. A PreToolUse hook has to parse a command
