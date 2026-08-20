@@ -366,7 +366,16 @@ def test_a_mixed_reason_prompt_names_the_broad_variable_not_the_narrow_one(
         _run("git push --force origin feature/x && gh pr merge 27", monkeypatch, capsys)
     )
     assert "ALLOW_DESTRUCTIVE_GIT" in reason
-    assert "ALLOW_PR_MERGE=1 to authorize a deliberate unattended merge" not in reason
+    assert "ALLOW_PR_MERGE" not in reason
+
+
+def test_a_reset_and_merge_mix_also_names_the_broad_variable(monkeypatch, capsys):
+    """Same rule as the force-push+merge mix, for the other non-narrow reason —
+    reset --hard has no narrow equivalent either, so the merge alongside it
+    must not make the prompt claim the narrow variable covers this command."""
+    reason = _reason(_run("git reset --hard && gh pr merge 27", monkeypatch, capsys))
+    assert "ALLOW_DESTRUCTIVE_GIT" in reason
+    assert "ALLOW_PR_MERGE" not in reason
 
 
 def test_the_override_silences_the_merge_prompt_too(monkeypatch, capsys):
