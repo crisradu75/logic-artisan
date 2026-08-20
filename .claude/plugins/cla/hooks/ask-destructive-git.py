@@ -69,15 +69,19 @@ Escape hatches:
     (`multi-pr`, `multi-lite`); force-push and `reset --hard` stay checked.
     Prefer it per-command over exporting it.
   - `ALLOW_DESTRUCTIVE_GIT=1` — drops every check below, for a deliberate
-    unattended batch.
+    unattended batch. Environment only: this hook runs before the command's own
+    shell exists, so an inline prefix on the command text never reaches this
+    process's `os.environ` and silently does nothing. Export it (or set it for
+    the whole session) — there is no per-command form, unlike `ALLOW_PR_MERGE`.
 
 `ALLOW_DESTRUCTIVE_GIT`'s scope widened when `gh pr merge` was added, and the
 name stopped describing it — it now also silences an AUTHORIZATION checkpoint,
 so a value exported weeks ago for a force-push batch would wave through every
 PR merge too. `ALLOW_PR_MERGE` exists so that trade never has to be made: an
 unattended run that merges declares exactly that, and keeps its force-push and
-reset guards. Prefer either per-command over exporting it for a session; the
-stderr `DISABLED` notice fires on every command they suppress.
+reset guards, and can be granted per-command rather than exported for a whole
+session. The stderr `DISABLED` notice fires on every command either one
+suppresses.
 
 Exit codes:
   0 — always. The decision travels as JSON on stdout, never as an exit code:
@@ -327,6 +331,33 @@ def main() -> int:
     if not found:
         return 0
 
+    # A reader's only lever against a PreToolUse hook is an inline command-text
+    # prefix — `ALLOW_DESTRUCTIVE_GIT` is env-only (see the module docstring's
+    # "Escape hatches" section, above), so recommending it here for a
+    # merge-only prompt sends the reader to a variable that silently does
+    # nothing as an inline prefix. When the merge reason is the ONLY one
+    # present, point at the narrow variable that's actually honoured from
+    # command text (`_ALLOW_MERGE_PREFIX`, above). Force-push and
+    # `reset --hard` have no narrow equivalent, so those (and any mix that
+    # includes them) still name the broad, env-only variable — worded as
+    # "export" so the inline/environment distinction is explicit.
+    #
+    # `found == [MERGE_REASON]` depends on `_reasons()` always appending in
+    # the fixed order force-push, reset --hard, merge (never in the order the
+    # command text names them) — that's what makes list equality a safe
+    # "merge is the only reason" test. If `_reasons()`'s check order or set of
+    # reasons ever changes, re-verify this equality still means what it says.
+    if found == [MERGE_REASON]:
+        hatch_note = (
+            "Prefix this one command with ALLOW_PR_MERGE=1 to authorize a "
+            "deliberate unattended merge without this prompt; "
+        )
+    else:
+        hatch_note = (
+            "Set ALLOW_DESTRUCTIVE_GIT=1 in the environment to run a "
+            "deliberate unattended batch without this prompt; "
+        )
+
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -334,9 +365,9 @@ def main() -> int:
             "permissionDecisionReason": (
                 "This command performs "
                 + " and ".join(found)
-                + ". Confirm it is what you intend. (Set ALLOW_DESTRUCTIVE_GIT=1 "
-                "to run a deliberate unattended batch without this prompt; "
-                "hook: ask-destructive-git.py)"
+                + ". Confirm it is what you intend. ("
+                + hatch_note
+                + "hook: ask-destructive-git.py)"
             ),
         }
     }))
