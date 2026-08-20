@@ -327,6 +327,26 @@ def main() -> int:
     if not found:
         return 0
 
+    # A reader's only lever against a PreToolUse hook is an inline command-text
+    # prefix — `ALLOW_DESTRUCTIVE_GIT` is env-only (see the comment on its own
+    # check, above), so recommending it here for a merge-only prompt sends the
+    # reader to a variable that silently does nothing as an inline prefix. When
+    # the merge reason is the ONLY one present, point at the narrow variable
+    # that's actually honoured from command text (`_ALLOW_MERGE_PREFIX`, above).
+    # Force-push and `reset --hard` have no narrow equivalent, so those (and any
+    # mix that includes them) still name the broad, env-only variable — worded
+    # as "export" so the inline/environment distinction is explicit.
+    if found == [MERGE_REASON]:
+        hatch_note = (
+            "Prefix this one command with ALLOW_PR_MERGE=1 to authorize a "
+            "deliberate unattended merge without this prompt; "
+        )
+    else:
+        hatch_note = (
+            "Export ALLOW_DESTRUCTIVE_GIT=1 to run a deliberate unattended "
+            "batch without this prompt; "
+        )
+
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -334,9 +354,9 @@ def main() -> int:
             "permissionDecisionReason": (
                 "This command performs "
                 + " and ".join(found)
-                + ". Confirm it is what you intend. (Set ALLOW_DESTRUCTIVE_GIT=1 "
-                "to run a deliberate unattended batch without this prompt; "
-                "hook: ask-destructive-git.py)"
+                + ". Confirm it is what you intend. ("
+                + hatch_note
+                + "hook: ask-destructive-git.py)"
             ),
         }
     }))
