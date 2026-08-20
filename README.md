@@ -16,15 +16,18 @@ Two commands, scoped to the project:
 ```bash
 claude plugin marketplace add crisradu75/logic-artisan
 claude plugin install cla@cris-logic-artisan --scope project
-claude plugin list    # expect "✔ enabled", not "✘ failed to load"
 ```
+
+Then run `claude plugin list` and check `cla`'s status isn't an error (e.g. "isn't installed") —
+see the Windows note below for a way that can happen silently.
 
 > **Windows:** run the install from the same shell your sessions launch with — Git Bash, or a
 > Claude Code session's own Bash tool. PowerShell's `Set-Location` rewrites path casing to the
 > on-disk name, and Claude Code records an install keyed by that exact string; a session launched
-> from a shell using a different casing for the same directory then reports "✘ failed to load"
-> with none of `cla`'s skills or guard hooks active, and nothing else says so. If both spellings are
-> genuinely in use, install from each.
+> from a shell using a different casing for the same directory can then find `cla` "enabled in
+> project settings but isn't installed" — a status `claude plugin list` reports as
+> "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
+> so. If both spellings are genuinely in use, install from each.
 
 Then, inside the repo: `/cla:cla-init` (scaffold `cla.io/` + overlay stubs) and `/cla:sync-context`
 (populate the repo's facts). Pick up later releases with `/plugin marketplace update`. Details:
