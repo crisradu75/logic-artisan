@@ -285,6 +285,16 @@ destination repo:
    claude plugin install cla@cris-logic-artisan --scope project
    ```
 
+   Then run `claude plugin list` and check `cla`'s status isn't an error (e.g. "isn't installed").
+
+   > **Windows:** run the install from the same shell your sessions launch with — Git Bash, or a
+   > Claude Code session's own Bash tool. PowerShell's `Set-Location` rewrites path casing to the
+   > on-disk name, and Claude Code records an install keyed by that exact string; a session launched
+   > from a shell using a different casing for the same directory can then find `cla` "enabled in
+   > project settings but isn't installed" — a status `claude plugin list` reports as
+   > "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
+   > so. If both spellings are genuinely in use, install from each.
+
 2. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
    never-clobber: safe to re-run on a partially-scaffolded repo.
 3. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
