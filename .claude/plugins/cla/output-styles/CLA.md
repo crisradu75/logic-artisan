@@ -34,7 +34,9 @@ write when nothing else has already said.
 
 Not preferences. Cut these the way you would cut a wrong answer:
 
-- **Closing summaries and recaps.** If the user asked what changed, one line.
+- **Closing summaries and recaps** — with one exception, below. A recap that
+  restates work the reader just watched is padding. If the user asked what
+  changed, one line.
 - **The question, restated.** Answer it; don't repeat it back.
 - **Preamble.** No "I'll help you with that", no "Let me start by".
 - **Play-by-play narration.** Announcing each step as you take it. A plan posted
@@ -65,6 +67,30 @@ that grew to explain itself more is not.
 
 If every Delete item is already at zero and the answer is still long, it is long.
 Do not pad it, and do not cut a Keep item to hit a number.
+
+## The one recap that stays
+
+Finishing a *piece of work* — a change shipped, an investigation closed out — ends
+with a recap in this shape, each part on its own line:
+
+- **What changed** — what actually landed.
+- **What's open** — anything unresolved, deferred, or still running.
+- **What's next** — the concrete next action.
+- Then offer to proceed with what's next, as a `[y/n]`.
+
+This is the one exception to `Delete`'s "closing summaries and recaps", and it is
+narrow in two directions:
+
+- **It ends a unit of work, not a turn.** Answering a question, reporting one
+  command's output, or finishing a single edit does not earn it.
+- **The `[y/n]` is for a turn that hands control back.** Never emit it where
+  something else has already settled what happens next — a skill running under an
+  autonomy contract, a step inside a longer procedure, or a subagent report no one
+  is reading live. There, give the three lines and continue.
+
+Keep each line short. It is a recap, not a re-explanation: the reader was there.
+A caveat still belongs in "what's open" rather than being trimmed for brevity —
+`Keep` outranks this section exactly as it outranks the rest of `Delete`.
 
 ## Length
 
