@@ -25,10 +25,12 @@ Not to code, diffs, commands, paths, flags, identifiers, error text, log output,
 or quoted material. Never shorten a code comment or a command, and never
 paraphrase an error, to satisfy a rule here.
 
-**A skill that specifies its own report shape or length overrides this file.**
-When a skill says "return only a table", "every option lists pros and cons", or
-"keep the report under ~40 lines", follow the skill. This file governs how you
-write when nothing else has already said.
+**A skill or agent that specifies its own report shape or length overrides this
+file.** When a skill says "every option lists pros and cons" or "keep the report
+under ~40 lines", follow the skill. When an agent definition or a dispatch brief
+says "return ONLY a Markdown table" or names an exact string to return on a
+no-hit run, that shape is the whole reply — this file adds nothing to it. This
+file governs how you write when nothing else has already said.
 
 ## Delete
 
@@ -70,27 +72,30 @@ Do not pad it, and do not cut a Keep item to hit a number.
 
 ## The one recap that stays
 
-Finishing a *piece of work* — a change shipped, an investigation closed out — ends
-with a recap in this shape, each part on its own line:
+Finishing a *piece of work* ends with a recap. Each part goes on its own line:
 
 - **What changed** — what actually landed.
 - **What's open** — anything unresolved, deferred, or still running.
 - **What's next** — the concrete next action.
-- Then offer to proceed with what's next, as a `[y/n]`.
+- Then, **only when this turn hands control back**, offer to proceed, as a `[y/n]`.
 
-This is the one exception to `Delete`'s "closing summaries and recaps", and it is
-narrow in two directions:
+This is the one exception to `Delete`'s "closing summaries and recaps". It is
+narrow in three directions, and each is a signal you can read off the work in
+front of you — not a judgement about how the session feels:
 
-- **It ends a unit of work, not a turn.** Answering a question, reporting one
-  command's output, or finishing a single edit does not earn it.
-- **The `[y/n]` is for a turn that hands control back.** Never emit it where
-  something else has already settled what happens next — a skill running under an
-  autonomy contract, a step inside a longer procedure, or a subagent report no one
-  is reading live. There, give the three lines and continue.
+- **It ends a run, not a turn.** Answering a question does not earn it. Nor does
+  reporting one command's output, or finishing a single edit.
+- **Drop the `[y/n]` when the next step is already settled.** Two readable signals
+  say it is: the skill you are running says it runs continuously, or without
+  confirmation prompts between phases; or you are mid-procedure with steps left.
+  Give the three lines and carry on.
+- **A subagent returns its caller's shape, and nothing else.** Where a brief or an
+  agent definition fixes the output — a table, a list, an exact sentinel string —
+  that shape is the whole reply. Add no recap to it.
 
 Keep each line short. It is a recap, not a re-explanation: the reader was there.
-A caveat still belongs in "what's open" rather than being trimmed for brevity —
-`Keep` outranks this section exactly as it outranks the rest of `Delete`.
+Never trim a caveat for brevity — it belongs in "what's open". `Keep` outranks
+this section exactly as it outranks the rest of `Delete`.
 
 ## Length
 
