@@ -27,15 +27,19 @@ from landing a stack by hand, not from a chain.
 `grep -rn "overlays/multi-pr" .claude/plugins/cla/skills/multi-pr/` returns 9 pointers into this
 file. Counted by hand against what is actually written below:
 
-- **3 resolve** — `SKILL.md:101` (the reference-list entry), `discover-and-gate.md:61` and
-  `change-loop.md:42` (both reach the dated 2026-08-14 incidents, which are present).
-- **2 ask for something absent and say so** — the worktree pivot (`SKILL.md:30`) and the
-  stranded-docs precedent (`discover-and-gate.md:25`). Both were reworded to read correctly when
-  the fact is missing.
-- **4 ask for something absent and do not hedge** — the infra hard-gate command
-  (`discover-and-gate.md:66`), the local-stack status command (`:79`), and the build/lint/test
-  fallback in `change-loop.md:32` and `cleanup.md:12`, all of which want the empty "Repo commands"
-  section above.
+Named by what each asks for rather than by line number — line numbers here went stale once
+already, and nothing checks them:
+
+- **3 resolve.** `SKILL.md`'s reference-list entry, and the two pointers at the dated 2026-08-14
+  incidents (the `gh pr merge` refusal, from `discover-and-gate.md`'s merge-policy section; the
+  deletion path, from `change-loop.md`). Both incidents are present below.
+- **3 ask for something absent and say so.** The worktree pivot (`SKILL.md`), the stranded-docs
+  precedent (`discover-and-gate.md`'s unmerged-dependency check), and the infra hard-gate command
+  (`discover-and-gate.md`'s 4th gate question, which says "if it has one … omit it entirely
+  otherwise"). Each reads correctly when the fact is missing.
+- **3 ask for something absent and do not hedge.** The local-stack status command
+  (`discover-and-gate.md`'s infra self-remediation), and the build/lint/test fallback in
+  `change-loop.md` and `cleanup.md` — all three want the empty "Repo commands" section above.
 
 Filling this file is the fix for those 4, not softening more pointers.
 
