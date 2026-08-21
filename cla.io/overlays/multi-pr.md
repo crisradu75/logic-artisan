@@ -18,6 +18,31 @@ only the sections its SKILL.md references, delete the rest.
 
 ## Incident / offense history
 
+**No `/cla:multi-pr` chain has reached Phase 1c in this repo.** There is no
+`cla.io/retro/multi-pr-run-notes-*.md` file — the file a chain first writes at Phase 1c step 4, and
+appends measured actuals to at Phase 3 step 6. So this repo has no measured per-change timings, no
+worktree-pivot precedent, and no stranded-docs precedent to offer; the two incidents below came
+from landing a stack by hand, not from a chain.
+
+`grep -rn "overlays/multi-pr" .claude/plugins/cla/skills/multi-pr/` returns 9 pointers into this
+file. Counted by hand against what is actually written below:
+
+Named by what each asks for rather than by line number — line numbers here went stale once
+already, and nothing checks them:
+
+- **3 resolve.** `SKILL.md`'s reference-list entry, and the two pointers at the dated 2026-08-14
+  incidents (the `gh pr merge` refusal, from `discover-and-gate.md`'s merge-policy section; the
+  deletion path, from `change-loop.md`). Both incidents are present below.
+- **3 ask for something absent and say so.** The worktree pivot (`SKILL.md`), the stranded-docs
+  precedent (`discover-and-gate.md`'s unmerged-dependency check), and the infra hard-gate command
+  (`discover-and-gate.md`'s 4th gate question, which says "if it has one … omit it entirely
+  otherwise"). Each reads correctly when the fact is missing.
+- **3 ask for something absent and do not hedge.** The local-stack status command
+  (`discover-and-gate.md`'s infra self-remediation), and the build/lint/test fallback in
+  `change-loop.md` and `cleanup.md` — all three want the empty "Repo commands" section above.
+
+Filling this file is the fix for those 4, not softening more pointers.
+
 **2026-08-14 — host classifier refused `gh pr merge` regardless of configuration.** In this repo,
 on Claude Code with `--permission-mode auto`: `Bash(gh *)` present in `.claude/settings.local.json`,
 `ALLOW_PR_MERGE=1` prefixed (the plugin's own hook confirmed it was disarmed), and the merge was
