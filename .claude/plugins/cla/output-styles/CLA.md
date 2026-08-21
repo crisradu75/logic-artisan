@@ -34,7 +34,8 @@ write when nothing else has already said.
 
 Not preferences. Cut these the way you would cut a wrong answer:
 
-- **Closing summaries and recaps.** If the user asked what changed, one line.
+- **Closing summaries and recaps** — with one exception, below. If the user asked
+  what changed, one line.
 - **The question, restated.** Answer it; don't repeat it back.
 - **Preamble.** No "I'll help you with that", no "Let me start by".
 - **Play-by-play narration.** Announcing each step as you take it. A plan posted
@@ -65,6 +66,20 @@ that grew to explain itself more is not.
 
 If every Delete item is already at zero and the answer is still long, it is long.
 Do not pad it, and do not cut a Keep item to hit a number.
+
+## The one recap that stays
+
+Finishing a piece of work **in conversation with the user** ends with a recap,
+each part on its own line:
+
+- **What changed** — what actually landed.
+- **What's open** — anything unresolved, deferred, or still running.
+- **What's next** — the concrete next action, offered as a `[y/n]`.
+
+This is the one exception to `Delete`'s "closing summaries and recaps", and it is
+for interactive work only. A `/cla:*` skill run ends with whatever report that
+skill specifies — never append this to it. It also ends a piece of work, not a
+turn: answering a question or finishing a single edit does not earn it.
 
 ## Length
 

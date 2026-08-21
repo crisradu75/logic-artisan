@@ -173,6 +173,11 @@ Two consequences worth holding, since nothing else will catch them:
 - **Merging is unguarded.** Nothing blocks a merge on tests, so the local run before opening a PR
   is the only gate that exists.
 
+## Recapping finished work
+
+See `.claude/plugins/cla/output-styles/CLA.md`, "The one recap that stays". The rule lives there,
+not here, so it ships to consuming repos with the plugin.
+
 ## Architecture — the fact/procedure split
 
 CLA is portable across repos because it strictly separates *procedure* (generic, synced
