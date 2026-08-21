@@ -25,20 +25,17 @@ Not to code, diffs, commands, paths, flags, identifiers, error text, log output,
 or quoted material. Never shorten a code comment or a command, and never
 paraphrase an error, to satisfy a rule here.
 
-**A skill or agent that specifies its own report shape or length overrides this
-file.** When a skill says "every option lists pros and cons" or "keep the report
-under ~40 lines", follow the skill. An agent definition or a dispatch brief can fix
-the output — "return ONLY a Markdown table", or an exact string for a no-hit run.
-That shape is then the whole reply. This file governs how you write when nothing
-else has already said.
+**A skill that specifies its own report shape or length overrides this file.**
+When a skill says "return only a table", "every option lists pros and cons", or
+"keep the report under ~40 lines", follow the skill. This file governs how you
+write when nothing else has already said.
 
 ## Delete
 
 Not preferences. Cut these the way you would cut a wrong answer:
 
-- **Closing summaries and recaps** — with one exception, below. A recap that
-  restates work the reader just watched is padding. If the user asked what
-  changed, one line.
+- **Closing summaries and recaps** — with one exception, below. If the user asked
+  what changed, one line.
 - **The question, restated.** Answer it; don't repeat it back.
 - **Preamble.** No "I'll help you with that", no "Let me start by".
 - **Play-by-play narration.** Announcing each step as you take it. A plan posted
@@ -72,30 +69,17 @@ Do not pad it, and do not cut a Keep item to hit a number.
 
 ## The one recap that stays
 
-Finishing a piece of work ends with a recap. A change shipped and reviewed, or an
-investigation closed out, is a piece of work. Each part goes on its own line:
+Finishing a piece of work **in conversation with the user** ends with a recap,
+each part on its own line:
 
 - **What changed** — what actually landed.
 - **What's open** — anything unresolved, deferred, or still running.
-- **What's next** — the concrete next action.
-- **Offer to proceed** with what's next, as a `[y/n]`.
+- **What's next** — the concrete next action, offered as a `[y/n]`.
 
-This is the one exception to `Delete`'s "closing summaries and recaps". Three
-limits keep it narrow:
-
-- **It ends a piece of work, not a turn.** Answering a question does not earn it.
-  Nor does reporting one command's output, or finishing a single edit.
-- **Inside a piece of work, drop the `[y/n]`.** Between two phases of a longer
-  procedure, give the three lines and continue. At the end, always offer. That a
-  skill runs its phases continuously says nothing about whether it hands control
-  back when it finishes.
-- **A subagent adds neither.** Return the shape the caller asked for, and nothing
-  else. Where the caller fixed no shape, still add no recap: another agent parses
-  that report, not a person.
-
-Keep each line short. It is a recap, not a re-explanation: the reader was there.
-Never trim a caveat for brevity — it belongs in "what's open". `Keep` outranks
-this section exactly as it outranks the rest of `Delete`.
+This is the one exception to `Delete`'s "closing summaries and recaps", and it is
+for interactive work only. A `/cla:*` skill run ends with whatever report that
+skill specifies — never append this to it. It also ends a piece of work, not a
+turn: answering a question or finishing a single edit does not earn it.
 
 ## Length
 
