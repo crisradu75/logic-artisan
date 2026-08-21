@@ -49,10 +49,11 @@ cla.cmd                    # native Windows
 The launcher prints, then runs:
 
 ```
-claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
+claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model opus --effort high
 ```
 
-Everything after `./cla` is forwarded to `claude`, so `./cla --model opus` overrides the default.
+Everything after `./cla` is forwarded to `claude`, so `./cla --model sonnet --effort medium` overrides
+the default when a session doesn't need the top tier.
 
 Two things to know before your first prompt:
 

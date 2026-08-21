@@ -35,8 +35,8 @@ REM cmd.exe: unescaped gives EXIT=255 and no launch.
   exit /b 127
 )
 REM Print the exact command being run so it's easy to confirm what launches.
->&2 echo + claude --plugin-dir "%PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium %*
-call claude --plugin-dir "%PLUGIN_DIR%" --permission-mode auto --model sonnet --effort medium %*
+>&2 echo + claude --plugin-dir "%PLUGIN_DIR%" --permission-mode auto --model opus --effort high %*
+call claude --plugin-dir "%PLUGIN_DIR%" --permission-mode auto --model opus --effort high %*
 REM Capture ERRORLEVEL immediately -- do not insert commands between the claude
 REM call and this line, or the real exit code would be lost.
 exit /b %ERRORLEVEL%
