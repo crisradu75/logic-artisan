@@ -22,11 +22,15 @@ only the sections its SKILL.md references, delete the rest.
 `cla.io/retro/multi-pr-run-notes-*.md` file — the file a chain first writes at Phase 1c step 4, and
 appends measured actuals to at Phase 3 step 6. So this repo has no measured per-change timings, no
 worktree-pivot precedent, and no stranded-docs precedent to offer; the two incidents below came
-from landing a stack by hand, not from a chain. Four places in `multi-pr`'s prose point at a fact
-this repo does not have — the stranded-docs precedent and the caps run-history statistic in
-`references/discover-and-gate.md`, the worktree pivot in `SKILL.md`, and the per-bucket timings,
-which look for the run-notes files rather than this file. Each is written to read correctly when
-the fact is absent; the absence is the answer, not a broken pointer.
+from landing a stack by hand, not from a chain.
+
+`grep -rn "overlays/multi-pr" .claude/plugins/cla/` returns 9 pointers into this file, and most of
+the sections they want are still empty stubs — including "Repo commands", which `change-loop.md`
+and `cleanup.md` reach for as a build/lint/test fallback, and the local-stack and infra-gate
+commands `discover-and-gate.md` names. Three of the 9 were reworded to read correctly when the
+fact is absent (the stranded-docs precedent, the caps run-history statistic, the worktree pivot);
+the rest are unhedged and will simply find nothing. Filling this file is the fix, not softening
+more pointers.
 
 **2026-08-14 — host classifier refused `gh pr merge` regardless of configuration.** In this repo,
 on Claude Code with `--permission-mode auto`: `Bash(gh *)` present in `.claude/settings.local.json`,
