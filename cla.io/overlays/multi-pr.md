@@ -24,13 +24,20 @@ appends measured actuals to at Phase 3 step 6. So this repo has no measured per-
 worktree-pivot precedent, and no stranded-docs precedent to offer; the two incidents below came
 from landing a stack by hand, not from a chain.
 
-`grep -rn "overlays/multi-pr" .claude/plugins/cla/` returns 9 pointers into this file, and most of
-the sections they want are still empty stubs — including "Repo commands", which `change-loop.md`
-and `cleanup.md` reach for as a build/lint/test fallback, and the local-stack and infra-gate
-commands `discover-and-gate.md` names. Three of the 9 were reworded to read correctly when the
-fact is absent (the stranded-docs precedent, the caps run-history statistic, the worktree pivot);
-the rest are unhedged and will simply find nothing. Filling this file is the fix, not softening
-more pointers.
+`grep -rn "overlays/multi-pr" .claude/plugins/cla/skills/multi-pr/` returns 9 pointers into this
+file. Counted by hand against what is actually written below:
+
+- **3 resolve** — `SKILL.md:101` (the reference-list entry), `discover-and-gate.md:61` and
+  `change-loop.md:42` (both reach the dated 2026-08-14 incidents, which are present).
+- **2 ask for something absent and say so** — the worktree pivot (`SKILL.md:30`) and the
+  stranded-docs precedent (`discover-and-gate.md:25`). Both were reworded to read correctly when
+  the fact is missing.
+- **4 ask for something absent and do not hedge** — the infra hard-gate command
+  (`discover-and-gate.md:66`), the local-stack status command (`:79`), and the build/lint/test
+  fallback in `change-loop.md:32` and `cleanup.md:12`, all of which want the empty "Repo commands"
+  section above.
+
+Filling this file is the fix for those 4, not softening more pointers.
 
 **2026-08-14 — host classifier refused `gh pr merge` regardless of configuration.** In this repo,
 on Claude Code with `--permission-mode auto`: `Bash(gh *)` present in `.claude/settings.local.json`,
