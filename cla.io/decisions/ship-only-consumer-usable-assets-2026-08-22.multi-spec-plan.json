@@ -1,0 +1,26 @@
+{
+  "decisions_file": "cla.io/decisions/ship-only-consumer-usable-assets-2026-08-22.md",
+  "batch_slug": "ship-only-consumer-usable-assets",
+  "branch": "docs/propose-ship-only-consumer-usable-assets",
+  "sequence_source": "file-sequencing-section",
+  "changes": [
+    {
+      "name": "decouple-skills-from-dev-assets",
+      "decisions_covered": ["2", "3", "4"],
+      "one_line_scope": "Promote the two downstream-live conformance guards to skill scripts, rewrite the mutation gate in lite-pr 2b and revise.md 2b as prose, and rename both aggregate.py — all in place, no file moves.",
+      "depends_on": []
+    },
+    {
+      "name": "extract-dev-tree-from-plugin",
+      "decisions_covered": ["1", "2", "3", "4", "5b"],
+      "one_line_scope": "Move every dev-only asset out of the published plugin tree into <repo>/plugin-tests/ as one pytest scope, relocate the release skill to <repo>/.claude/skills/release/, and delete run_tests.py, the three SOURCE-REPO-ONLY.md markers, and test_source_only_markers.py.",
+      "depends_on": ["decouple-skills-from-dev-assets"]
+    },
+    {
+      "name": "guard-shipped-asset-boundary",
+      "decisions_covered": ["5", "5b"],
+      "one_line_scope": "Add the shipped-tree scan as a precondition of the relocated release skill, then reconcile CLAUDE.md, the plugin README.md, DEVELOPER-GUIDE.md, the root .gitattributes, and TODO.md with the new layout.",
+      "depends_on": ["extract-dev-tree-from-plugin"]
+    }
+  ]
+}
