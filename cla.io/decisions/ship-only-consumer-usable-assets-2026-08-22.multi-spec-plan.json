@@ -12,15 +12,17 @@
     },
     {
       "name": "extract-dev-tree-from-plugin",
-      "decisions_covered": ["1", "2", "3", "4", "5b"],
-      "one_line_scope": "Move every dev-only asset out of the published plugin tree into <repo>/plugin-tests/ as one pytest scope, relocate the release skill to <repo>/.claude/skills/release/, and delete run_tests.py, the three SOURCE-REPO-ONLY.md markers, and test_source_only_markers.py.",
+      "decisions_covered": ["1", "2", "3", "4", "5", "5b"],
+      "one_line_scope": "Move every dev-only asset out of the published plugin tree into <repo>/plugin-tests/ as one pytest scope, relocate the release skill to <repo>/.claude/skills/release/, delete run_tests.py and the SOURCE-REPO-ONLY markers, add the release-time shipped-tree scan, and reconcile the docs.",
       "depends_on": ["decouple-skills-from-dev-assets"]
-    },
+    }
+  ],
+  "plan_amendments": [
     {
-      "name": "guard-shipped-asset-boundary",
-      "decisions_covered": ["5", "5b"],
-      "one_line_scope": "Add the shipped-tree scan as a precondition of the relocated release skill, then reconcile CLAUDE.md, the plugin README.md, DEVELOPER-GUIDE.md, the root .gitattributes, and TODO.md with the new layout.",
-      "depends_on": ["extract-dev-tree-from-plugin"]
+      "date": "2026-08-23",
+      "what": "Q6's three-change split became two: guard-shipped-asset-boundary was folded into extract-dev-tree-from-plugin and its directory deleted.",
+      "why": "The Phase 4 batch review found that .claude/plugins/cla/consistency-checks/tests/test_doc_facts.py enforces doc/code agreement — stated pytest-scope counts, skills-shipping-tests counts, the root README skill count, and test_no_doc_names_a_plugin_path_that_no_longer_exists. Moving the tree while deferring every doc fix to a later change lands the relocating change with its own bare-pytest gate red, by construction. The two are one atomic unit; the decisions file's Q6 rationale (each change reviewable in its own diff mode) does not survive contact with that guard.",
+      "decided_by": "user, in session, after the review reported it"
     }
   ]
 }
