@@ -46,6 +46,7 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 | | `multi-lite` | Chain several `lite-pr` runs extracted from one decisions doc, dependency-first |
 | | `multi-pr` | Chain several OpenSpec changes → PRs, merging each before its dependents (or stacking PRs on their parents when merging is unavailable) |
 | **4. Review & assure** | `project-review` | CTO-level review of the whole repo: vision, structure, requirements, architecture, validation |
+| | `annotate` | Render a doc as a page, open it chrome-less, and collect the user's own comments against selected passages — read back and worked through here |
 | | (agents) | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to |
 | **5. Learn & improve** | `codify-learnings` | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
 | | `codify-retro` | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
@@ -135,9 +136,9 @@ has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can dele
 ## Testing
 
 CLA's own suite runs in the repo that develops it, not in a repo that consumes it — the installed
-tree is read-only. Each skill *that ships tests* (5 today), plus `skills/_shared/`, `hooks/`,
+tree is read-only. Each skill *that ships tests* (6 today), plus `skills/_shared/`, `hooks/`,
 `lib/`, `conformance-checks/`, `consistency-checks/`, and `launcher-checks/`, is its own isolated
-pytest scope (own `pyproject.toml` + `tests/`) — 11 in all; several ship same-named helper modules, so
+pytest scope (own `pyproject.toml` + `tests/`) — 12 in all; several ship same-named helper modules, so
 they can't share one pytest process. Run the whole suite at once:
 
 ```bash
@@ -147,7 +148,7 @@ python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each p
 
 Three scopes carry a `SOURCE-REPO-ONLY.md` and are skipped outside the canonical repo (they assert its own launchers, catalog, and token list) — you will see a SKIP row for each in the summary rather than a failure. Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`. The one Node
 script (`project-review/scripts/mechanical-checks.mjs`) has its own sibling `node --test` suite,
-which `run_tests.py` **does** run as a 12th entry — invoke it alone only while iterating on it:
+which `run_tests.py` **does** run as a 13th entry — invoke it alone only while iterating on it:
 
 ```bash
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs

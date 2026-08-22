@@ -70,9 +70,9 @@ pytest .claude/plugins/cla/hooks/tests
 ```
 
 **Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (5 today), plus `skills/_shared/`, plus `lib/`, plus `hooks/`,
+design. Each skill that ships tests (6 today), plus `skills/_shared/`, plus `lib/`, plus `hooks/`,
 plus `conformance-checks/`, plus `consistency-checks/`, plus `launcher-checks/`, is its own isolated
-pytest scope — 11 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
+pytest scope — 12 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
 `pythonpath` pointing at that scope's importable code — `["scripts"]` for a skill and for
 `consistency-checks`/`launcher-checks`, `["."]` for `hooks/` and `lib/`, whose modules sit at the
 scope root, and none at all for `conformance-checks`, whose tests import nothing).
@@ -147,9 +147,28 @@ review found — the mutants covered the branch the author was reasoning about, 
 branch they got wrong. So mutate what the fix *touches*, not what it targets, and treat a
 green run as one input to the ship decision rather than the decision itself.
 
+**Match the checking to the change, and run each gate once.** The four checks above are
+priced for a *fix* or a new component — the cases where being wrong is expensive and
+invisible. An increment to something already built and already tested does not earn them,
+and paying them anyway is not caution, it is waste with the shape of rigour. The defaults:
+
+| | run |
+|---|---|
+| Editing one skill or scope | that scope's `pytest`, **once** |
+| Fixing a defect a review found | that scope, plus a mutation batch over what the fix touches |
+| Adding a new script, skill, or hook | the four checks above, in full |
+| Before opening a PR | `run_tests.py`, once |
+
+**A green run does not get more true by being repeated.** Re-running a suite to see whether
+a failure recurs is the one case that justifies it — and then the finding is the flake, so
+fix the mechanism rather than counting clean runs as evidence against it. Recorded
+2026-08-22, after adding a navigation rail to `annotate` cost five full scope runs, a whole
+`run_tests.py` sweep, and an unrelated change to a server, for an edit whose real gate was
+one 13-second scope run and looking at the page.
+
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
 sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as a
-12th entry alongside the 11 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
+13th entry alongside the 12 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
 while iterating on that one script:
 
 ```bash
@@ -159,8 +178,9 @@ node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.
 ### No CI — verification is local, by design
 
 This repo runs **no GitHub Actions and no CI of any kind**, deliberately. `run_tests.py` is the
-whole verification story — every pytest scope plus the Node suite, in one command. Run it before
-calling a change done.
+whole verification story — every pytest scope plus the Node suite, in one command. Run it once
+before opening a PR. **It is the shipping gate, not the edit loop** — while iterating, run the one
+scope you are changing; see the table above.
 
 Do not add a workflow. If a change seems to need one, raise it rather than adding it.
 
@@ -239,6 +259,12 @@ isn't a survivor.** (Guard hooks are listed separately below.)
 | `codify-retro`, `spec-to-pr-retro` `scripts/aggregate.py` | Deterministic counting over 40–130 JSONL records, including malformed-shape and producer-drift buckets a reader would gloss. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos today. |
+| `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
+| `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
+| `annotate/scripts/annotate_server.py` | Serves the page on loopback, validates each record before it reaches the file, and opens a chrome-less browser window. |
+| `annotate/scripts/openspec_change.py` | Extracts a change's claims and the links between them, with thresholds measured over 355 real changes rather than reasoned about — the first cut left 83% of promises falsely uncovered. |
+| `annotate/scripts/sweep_changes.py` | Runs the link detector over a corpus of real changes and reports the coverage split — the command behind every threshold in `openspec_change.py`, and how a consuming repo re-measures before trusting the coverage tab. |
+| `annotate/scripts/render_change.py` | Lays a change's files into one annotatable page, binding each claim to its block one-match-or-none and keeping injected counterparts outside the blocks whose offsets they would corrupt. |
 | `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
 | `_shared/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across four skills. |
 | `spec-to-pr/scripts/_git_common.py` | Repo root plus the `branch-prefix.local.md` overlay contract, for `probe_state.py`. |
