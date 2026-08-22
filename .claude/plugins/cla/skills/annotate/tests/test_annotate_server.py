@@ -28,6 +28,10 @@ class Server:
         annotate_server.Handler.doc_key = store.doc_key(str(doc), str(root))
         annotate_server.Handler.root = str(root)
         annotate_server.Handler.page_path = str(page)
+        # Reset explicitly. These are CLASS attributes, so the first change-mode
+        # server anyone adds would otherwise leak `is_change=True` into every
+        # test that ran after it, in whatever order pytest chose.
+        annotate_server.Handler.is_change = False
         self.srv = ThreadingHTTPServer(
             ("127.0.0.1", 0), partial(annotate_server.Handler, directory=str(serve_dir)))
         self.port = self.srv.server_address[1]
