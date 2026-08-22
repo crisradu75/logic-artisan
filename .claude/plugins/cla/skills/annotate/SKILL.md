@@ -15,10 +15,11 @@ exists to spend it on the document rather than on the tool: the page opens
 without browser furniture, the annotations save themselves, and the report is
 four lines.
 
-**This skill runs three scripts and interprets what comes back. It does not
-reimplement them.** [scripts/render_doc.py](scripts/render_doc.py) builds the
-page and [scripts/annotate_server.py](scripts/annotate_server.py) serves it and
-records annotations. **The corpus's format — the kinds of line and the merge
+**This skill runs its scripts and interprets what comes back. It does not
+reimplement them.** [scripts/render_doc.py](scripts/render_doc.py) builds a
+document's page, [scripts/render_change.py](scripts/render_change.py) builds a
+whole change's, and [scripts/annotate_server.py](scripts/annotate_server.py)
+serves either and records annotations. **The corpus's format — the kinds of line and the merge
 rule — is [scripts/annotations_store.py](scripts/annotations_store.py) and is
 read there, never restated.**
 
@@ -139,16 +140,25 @@ through them, because their notes may already be answered — and read those fir
 ### The coverage view is a reading aid, never a verdict
 
 The change page derives a coverage view — which promises a task implements, and
-which nothing does. **Report it as what it is: what the detector found.** Three
+which nothing does. **Report it as what it is: what the detector found.** Four
 groups, and only the first is a finding:
 
 - **Uncovered** — the bullet names a file or an identifier and no task names it
   back. Worth raising.
 - **Not checkable** — the bullet names neither, so there was nothing to match on.
-  Measured across 355 real changes, **half of all proposal bullets land here**;
-  design and product bullets are prose, and prose is not a link. Never present
-  these as gaps.
-- **Covered** — a task names the same file, or cites the bullet outright.
+  **51% of proposal bullets land here** — design and product bullets are prose,
+  and prose is not a link. Never present these as gaps.
+- **Covered** — a task names the same file, or cites the bullet outright (22%).
+- **Not done** — a task whose box is unticked. Its own group, never added to
+  Uncovered: an unstarted change has every task open, and reporting that as
+  "18 uncovered" is the overclaim the whole tab exists to prevent.
+
+Those percentages come from `scripts/sweep_changes.py` over 355 real changes.
+**In a repo whose proposals are written differently the split will differ** — run
+that command before relying on the tab, and say what it reported.
+
+**A page reporting `Nothing to check` means no `## What Changes` bullets were
+parsed**, not that the change is clean. Say which it is.
 
 **Never restate a coverage row as a defect in the change.** Say "no task names
 this bullet's file", which is what was measured, rather than "this is not

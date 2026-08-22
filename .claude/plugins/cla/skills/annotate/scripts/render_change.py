@@ -223,24 +223,85 @@ render();
 """
 
 
+class ChangeUnreadable(Exception):
+    """This change cannot be rendered. A real exception rather than SystemExit,
+    which is a BaseException: raised inside the server's worker thread it was
+    caught by nothing — `_render` catches OSError, `ThreadingMixIn` catches
+    Exception — and `threading` swallowed it in silence. The reader saw the
+    browser's generic "Failed to fetch", identical to a dead server, while the
+    one sentence saying what to fix was constructed and thrown into a void."""
+
+
 def esc_attr(s):
     return html.escape(s or "", quote=True)
 
 
 def add_class(html_str, blk, cls):
+    """Add `cls` to the block's opening tag, merging with any class already
+    there. Inserting a second `class=` attribute is not a merge — HTML keeps the
+    first and silently drops the rest, so a block that already had one would lose
+    it. No markdown-rendered block carries one today; `<p class="pt">` in
+    plain-text mode does, and that is one caller away."""
     import re
-    return re.sub(r'(<\w+)([^>]*\bdata-blk="%s")' % re.escape(blk),
-                  r'\1 class="%s"\2' % cls, html_str, count=1)
+    m = re.search(r'<(\w+)([^>]*)\bdata-blk="%s"' % re.escape(blk), html_str)
+    if not m:
+        return html_str
+    if re.search(r'\bclass="', m.group(2)):
+        return (html_str[:m.start(2)]
+                + re.sub(r'\bclass="', 'class="%s ' % cls, m.group(2), count=1)
+                + html_str[m.end(2):])
+    return html_str[:m.end(1)] + ' class="%s"' % cls + html_str[m.end(1):]
+
+
+def _outermost_block(html_str, blk):
+    """The match for the outermost element carrying `data-blk` that encloses the
+    one named — or the block itself when nothing encloses it."""
+    import re
+    m = re.search(r"<(\w+)([^>]*\bdata-blk=\"%s\")" % re.escape(blk), html_str)
+    if not m:
+        return None
+    for outer in re.finditer(r"<(\w+)([^>]*\bdata-blk=\"[^\"]+\")", html_str):
+        if outer.start() >= m.start():
+            break
+        if _element_end(html_str, outer) > m.start():
+            return outer          # it opens before and closes after: it encloses
+    return m
+
+
+def _element_end(html_str, m):
+    """The index just past the closing tag of the element `m` opens."""
+    import re
+    tag, i, depth = m.group(1), m.end(), 1
+    open_re, close_re = re.compile(r"<%s\b" % tag), re.compile(r"</%s>" % tag)
+    while depth and i < len(html_str):
+        o, c = open_re.search(html_str, i), close_re.search(html_str, i)
+        if not c:
+            return len(html_str)
+        if o and o.start() < c.start():
+            depth += 1
+            i = o.end()
+        else:
+            depth -= 1
+            i = c.end()
+    return i
 
 
 def after_block(html_str, blk, extra):
-    """Insert `extra` immediately AFTER the element carrying data-blk=`blk`.
+    """Insert `extra` immediately after the element carrying data-blk=`blk`, and
+    outside every block that encloses it.
 
-    A sibling, never a child: inside the block its text would be counted into
-    every offset measured against that block.
+    A sibling, never a child: inside a block, `extra`'s words are counted into
+    every offset measured against that block, and annotations on it start
+    reporting themselves lost against a document nobody touched.
+
+    Closing the inner element is not enough, because blocks NEST. A nested list
+    puts `<li data-blk="tasks:b2">` inside `<li data-blk="tasks:b1">`, so landing
+    after the inner `</li>` lands inside the outer block — which is the failure
+    this docstring already forbade, arriving one level up. Walk out to the
+    outermost enclosing block first.
     """
     import re
-    m = re.search(r"<(\w+)([^>]*\bdata-blk=\"%s\")" % re.escape(blk), html_str)
+    m = _outermost_block(html_str, blk)
     if not m:
         return html_str
     tag, i, depth = m.group(1), m.end(), 1
@@ -318,9 +379,11 @@ def counterparts(model, bodies, ctxs, labels):
         marks, cards = "", ""
         # Strongest first: a citation, then a path, then an identifier, then
         # shared wording — so the best evidence is the one read first.
-        order = {"reference": 0, "path": 1, "identifier": 2, "wording": 3}
+        order = {k: i for i, k in enumerate(OC.LINK_KINDS)}
         seen = set()
-        for other, link in sorted(partners, key=lambda p: order.get(p[1]["kind"], 9)):
+        # No .get default: a kind nobody ranked is a bug, and sorting it
+        # quietly last is how it stays one.
+        for other, link in sorted(partners, key=lambda p: order[p[1]["kind"]]):
             if not other or not other.get("blk") or other["id"] in seen:
                 continue
             seen.add(other["id"])
@@ -351,8 +414,10 @@ def coverage_pane(model, labels):
     cov = model["coverage"]
     st = cov["stats"]
     out = ['<h1 style="margin-top:1.4rem">Coverage</h1>',
-           '<p class="cov-prov">read %d files · %d claims · %d links · %d tasks (%d done)</p>'
-           % (st["files"], st["claims"], st["links"], st["tasks"], st["tasks_done"]),
+           '<p class="cov-prov">read %d files · %d promises · %d claims · %d links · '
+           '%d tasks (%d done)</p>'
+           % (st["files"], st["promises"], st["claims"], st["links"],
+              st["tasks"], st["tasks_done"]),
            '<p class="cov-note"><strong>Uncovered means no link was found</strong>, which is '
            'not the same as no link existing — every row says what was looked for. '
            'A bullet naming no file and no identifier gives nothing to match on at all; '
@@ -386,7 +451,17 @@ def coverage_pane(model, labels):
         buf.append("</div>")
         return "".join(buf)
 
+    if not st["promises"]:
+        # "Nothing was parsed" and "nothing is wrong" printed identically, in the
+        # one view whose whole purpose is saying what nothing answers.
+        out.append('<div class="cov cov-bad"><h2>Nothing to check</h2>'
+                   '<div class="cov-row"><span class="cov-src">proposal</span>'
+                   '<p class="cov-claim">No <code>## What Changes</code> bullets were '
+                   'found.</p><span class="cov-why">this tab has nothing to check — '
+                   'coverage below is empty because nothing was parsed, not because '
+                   'nothing is owed</span></div></div>')
     out.append(rows(cov["uncovered"], "cov cov-bad", "Uncovered"))
+    out.append(rows(cov.get("undone", []), "cov cov-grey", "Not done"))
     out.append(rows(cov["unchecked"], "cov cov-grey", "Not checkable"))
     out.append(rows(cov["covered"], "cov", "Covered"))
 
@@ -401,11 +476,36 @@ def coverage_pane(model, labels):
     return "".join(out)
 
 
+class _MergedCtx:
+    """Every pane's blocks under one roof, for the anchor check.
+
+    Block ids are namespaced per file, so they cannot collide — which is what
+    makes one merged view of them correct rather than merely convenient.
+    """
+
+    def __init__(self, ctxs):
+        self.blocks = {}
+        for ctx in ctxs.values():
+            self.blocks.update(ctx.blocks)
+
+
+def check_change_anchors(ctxs, corpus):
+    """Which open annotations no longer find their text anywhere in the change.
+
+    The single-document path has done this from the beginning; the change path
+    did not, and printed a cheerful build summary over a corpus whose every
+    anchor the rebuild had just orphaned. That is the case where anchors are most
+    fragile — several files, all edited in response to the very review the
+    annotations are — and it was the one with no reporting at all.
+    """
+    return R.check_anchors(_MergedCtx(ctxs), corpus)
+
+
 def build(change_dir, root=None, out=None):
     root = root or store.repo_root(change_dir)
     files = OC.change_files(change_dir)
     if not files:
-        raise SystemExit("no readable files in %s" % change_dir)
+        raise ChangeUnreadable("no readable files in %s" % change_dir)
 
     texts, bodies, ctxs, labels = {}, {}, {}, {}
     for key, label, path in files:
@@ -419,7 +519,7 @@ def build(change_dir, root=None, out=None):
     bind_claims(model, ctxs)
     bodies = counterparts(model, bodies, ctxs, labels)
 
-    change_key = "openspec/changes/" + os.path.basename(change_dir)
+    change_key = store.doc_key(change_dir, root)
     total_words = sum(len(t.split()) for c in ctxs.values() for t in c.blocks.values())
 
     tabs, panes, rails = [], [], []
@@ -435,6 +535,7 @@ def build(change_dir, root=None, out=None):
 
     cov = model["coverage"]
     bad = len(cov["uncovered"]) + len([c for c in cov["capabilities"] if c["why"]])
+    undone = cov.get("undone", [])
     tabs.append('<span class="tab-gap"></span>'
                 '<button class="tab tab-cov" data-tab="__coverage__">'
                 '<span class="cov-glyph">∑</span>coverage'
@@ -449,6 +550,7 @@ def build(change_dir, root=None, out=None):
                      '<span class="rail-n%s">%d</span></span></a>'
                      % (name, " rail-n-danger" if danger else "", n)
                      for name, n, danger in (("Uncovered", len(cov["uncovered"]), True),
+                                             ("Not done", len(undone), False),
                                              ("Not checkable", len(cov["unchecked"]), False),
                                              ("Covered", len(cov["covered"]), False)))
                  + "</div>")
@@ -500,8 +602,24 @@ def main(argv=None):
           % (st["files"], sum(len(c.blocks) for c in ctxs.values()), out))
     print("claims    %d · %d links · %d tasks (%d done)"
           % (st["claims"], st["links"], st["tasks"], st["tasks_done"]))
-    print("coverage  %d uncovered · %d not checkable · %d covered"
-          % (len(cov["uncovered"]), len(cov["unchecked"]), len(cov["covered"])))
+    print("coverage  %d uncovered · %d not checkable · %d covered · %d task(s) not done"
+          % (len(cov["uncovered"]), len(cov["unchecked"]), len(cov["covered"]),
+             len(cov.get("undone", []))))
+    if not st["promises"]:
+        print("          NO PROMISES PARSED — no `## What Changes` bullets found;"
+              " coverage is empty because nothing was read, not because nothing is owed")
+    corpus = store.path_for(d, root)
+    checked, lost, problems, fatal = check_change_anchors(ctxs, corpus)
+    if fatal:
+        print("CORPUS UNREADABLE: %s" % fatal)
+    elif checked:
+        print("anchors   %d open, %d could not be read back" % (checked, len(lost)))
+        if lost:
+            # Named, not just counted: these are the ones the reader cannot see
+            # in place on the page, so they are the ones to read first.
+            print("          ANCHOR LOST: %s" % ", ".join(lost[:10]))
+    if problems:
+        print("          %d line(s) of %s could not be read" % (len(problems), corpus))
     unbound = [c for c in model["claims"] if not c.get("blk")]
     if unbound:
         # Reported, never hidden: a claim with no block is a row the reader

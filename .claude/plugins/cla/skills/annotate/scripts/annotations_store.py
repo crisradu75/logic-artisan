@@ -58,15 +58,10 @@ import re
 import secrets
 import subprocess
 import threading
-import unicodedata
 from datetime import datetime, timezone
 
 LOCK = threading.Lock()
 COUNTER = itertools.count(1)
-
-# Flipped by the test suite to show the merge rule's absence is something the
-# tests actually notice. Never change it in normal use.
-MERGE_UPDATES = True
 
 CONFLICT_MARKERS = ("<<<<<<<", "=======", ">>>>>>>")
 BOM = "﻿"
@@ -93,21 +88,21 @@ def new_id():
                             next(COUNTER) % 1000, secrets.token_hex(2))
 
 
-def norm(s):
-    """Compare-form: NFC, whitespace collapsed. Two strings differing only by a
-    non-breaking space or a decomposed accent are the same passage, and treating
-    one as a replacement for the other records an edit that never happened."""
-    return unicodedata.normalize("NFC", " ".join((s or "").split()))
-
-
 def repo_root(start=None):
     """The repo the annotations belong to.
 
     git first, because it is right in a worktree, a submodule and a linked
     checkout, where walking up for a `.git` *directory* is not — a worktree's
     `.git` is a file. The walk is the fallback for a git that is absent or
-    refuses, and the cwd is the last resort so a caller always gets a path
-    rather than an exception it has no way to act on.
+    refuses, and `start`'s own directory is the last resort — the cwd only when
+    the caller passed nothing — so a caller always gets a path rather than an
+    exception it has no way to act on.
+
+    When git refuses, its reason is printed. "detected dubious ownership", a
+    corrupt index and "not a repository" are different problems with the same
+    silent consequence: the fallback relocates the corpus, `read_all` finds
+    nothing there, and the banner says "no annotations yet; this is the first
+    pass" over work that is safe in a file the reader cannot find.
     """
     start = os.path.abspath(start or os.getcwd())
     base = start if os.path.isdir(start) else os.path.dirname(start)
@@ -117,6 +112,8 @@ def repo_root(start=None):
                              encoding="utf-8", errors="replace")
         if out.returncode == 0 and out.stdout.strip():
             return os.path.abspath(out.stdout.strip())
+        if out.stderr.strip():
+            print("git could not resolve the repo root: %s" % out.stderr.strip())
     except (OSError, subprocess.SubprocessError):
         pass
     cur = base
@@ -134,8 +131,9 @@ def rel_to_root(doc_path, root):
     lies outside.
 
     Not `os.path.relpath`, which happily returns a `..`-prefixed path for a
-    document outside the tree and, on Windows, for one inside it spelled with
-    different casing. The prefix is compared under `normcase` and the *original*
+    document outside the tree — this needs to know that, not paper over it.
+    (`ntpath.relpath` does normcase its own comparison, so casing alone is not
+    the problem it looks like.) The prefix is compared under `normcase` and the *original*
     spelling is sliced out, so the corpus path keeps the document's own casing
     while the comparison stays case-insensitive where the filesystem is.
     """
@@ -187,7 +185,8 @@ def page_name(doc_path, root=None):
 
 def documents_with_annotations(root=None):
     """Every document key that has a corpus, in path order. The inverse of
-    `doc_key`: strip the `.jsonl` and what remains is the document's own path."""
+    strip the `.jsonl` and what remains is the document's own path — except
+    for an external document, whose key carries a hash and is not invertible."""
     root = root or repo_root()
     base = os.path.join(root, *ANNOTATIONS_DIR)
     if not os.path.isdir(base):
@@ -210,8 +209,19 @@ def read_raw(path, problems=None):
     could not be used. A caller that passes nothing still gets the records, but
     the corpus's own silence about damage is then its problem to explain.
     """
-    if not os.path.exists(path):
+    # `os.path.exists` answers False for a stat that FAILED — a permission error
+    # on any parent, an I/O error, or a path over MAX_PATH on Windows, which
+    # corpus paths court because they are the document's own path plus ~25
+    # characters. Returning None there means the caller prints "no annotations
+    # yet; this is the first pass" over a corpus full of work. Three states, and
+    # this is the primitive that has two.
+    try:
+        os.stat(path)
+    except FileNotFoundError:
         return None
+    except OSError as e:
+        raise CorpusUnreadable(
+            "%s exists but cannot be read (%s). This is not an empty corpus." % (path, e))
     try:
         with open(path, "r", encoding="utf-8", newline="") as fh:
             raw_lines = fh.readlines()
@@ -246,7 +256,7 @@ def read_raw(path, problems=None):
     return out
 
 
-def read_all(path, include_deleted=False, problems=None):
+def read_all(path, include_deleted=False, problems=None, merge=True):
     """Merged records, in the order their first line appeared. None if the file
     does not exist — a different state from a file holding nothing, and callers
     must say which one they found.
@@ -254,6 +264,11 @@ def read_all(path, include_deleted=False, problems=None):
     Deleted ones are dropped unless asked for; resolved ones are always kept,
     because a resolved annotation is the finished half of a pair and hiding it
     is how the corpus would quietly become a list of open complaints.
+
+    `merge=False` exists for the one test that proves the merge rule is not
+    vacuous. It was a module-level global — a test seam shipped in the plugin,
+    which any caller could flip for the whole process, taking the `at` exemption
+    with it.
     """
     raw = read_raw(path, problems)
     if raw is None:
@@ -264,7 +279,7 @@ def read_all(path, include_deleted=False, problems=None):
         if rid not in merged:
             merged[rid] = {}
             order.append(rid)
-        if MERGE_UPDATES:
+        if merge:
             first_at = merged[rid].get("at")
             merged[rid].update(rec)
             if first_at:                      # the objection's own date survives
@@ -303,6 +318,14 @@ def append(path, rec):
     write leaves a fragment, and appending onto it would make the pair parse as
     neither, costing the next annotation as well as the torn one.
     """
+    # Refused at the WRITE, not only at the read. `read_raw` drops an id-less
+    # line and counts it as damage — but by then the write has returned cleanly,
+    # fsynced, and told the page it saved, in a store whose whole premise is that
+    # nothing is ever lost. The server guards this on its own path; `append` is
+    # the module's public writer and the server is one caller of it.
+    if not isinstance(rec, dict) or not rec.get("id"):
+        raise ValueError("a record with no id is dropped by every reader; "
+                         "refusing to write it to %s" % path)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with LOCK:
         if os.path.exists(path):

@@ -110,14 +110,19 @@ def test_the_original_date_survives_a_later_line(tmp_path):
     assert store.read_all(p)[0]["at"] == "2026-01-01T00:00:00Z"
 
 
-def test_the_merge_rule_is_not_vacuous(tmp_path, monkeypatch):
+def test_the_merge_rule_is_not_vacuous(tmp_path):
     """Turning the rule off must change the answer, or the test above proves
-    nothing about the rule."""
+    nothing about the rule.
+
+    A parameter, not a module global. As a global it was a test seam shipped in
+    the plugin that any caller could flip for the whole process — taking the `at`
+    exemption with it, and restoring exactly the behaviour the docstring calls
+    wrong."""
     p = str(tmp_path / "c.jsonl")
     store.append(p, {"id": "a1", "text": "t", "note": "n"})
     store.append(p, {"id": "a1", "deleted": False, "resolved": True})
-    monkeypatch.setattr(store, "MERGE_UPDATES", False)
-    assert "note" not in store.read_all(p)[0]
+    assert "note" not in store.read_all(p, merge=False)[0]
+    assert "note" in store.read_all(p)[0]
 
 
 def test_a_tombstone_hides_but_never_removes(tmp_path):

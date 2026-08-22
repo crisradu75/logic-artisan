@@ -232,8 +232,12 @@ def test_a_promise_with_nothing_to_match_on_is_not_called_uncovered(model):
     assert "no file path or identifier" in model["coverage"]["unchecked"][0]["why"]
 
 
-def test_an_unchecked_task_is_reported_with_its_denominator(model):
-    rows = [r for r in model["coverage"]["uncovered"] if r["claim"]["kind"] == "task"]
+def test_an_undone_task_is_its_own_bucket_not_an_uncovered_claim(model):
+    """Mixing the two made every summary report one number for two different
+    things: an unstarted change with 18 tasks read as "18 uncovered", which is
+    the overclaim this module exists to prevent."""
+    assert not [r for r in model["coverage"]["uncovered"] if r["claim"]["kind"] == "task"]
+    rows = model["coverage"]["undone"]
     assert len(rows) == 1 and rows[0]["claim"]["num"] == "2.1"
     # The denominator is what stops this reading as an alarm in an in-flight
     # change, where most tasks being open is the normal state.

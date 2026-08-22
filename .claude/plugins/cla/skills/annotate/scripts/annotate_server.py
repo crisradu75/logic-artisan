@@ -59,6 +59,25 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *a):
         sys.stderr.write("  %s\n" % (fmt % a))
 
+    def _local_request(self):
+        """Loopback is not authentication. A browser will happily send a
+        cross-origin POST to 127.0.0.1 from any page the user has open: a JSON
+        body sent as `text/plain` is a CORS *simple* request, so there is no
+        preflight to refuse it, and the opaque response does not matter because
+        the write has already landed — in a committed corpus this skill forbids
+        ever rewriting. An absent Host check also leaves DNS rebinding open,
+        which turns the read side into an exfiltration path.
+
+        Two headers close both, and cost nothing locally.
+        """
+        host = (self.headers.get("Host") or "").strip()
+        if host.rsplit(":", 1)[0].strip("[]") not in ("127.0.0.1", "localhost", "::1"):
+            return False, "Host %r is not loopback" % host
+        origin = (self.headers.get("Origin") or "").strip()
+        if origin and urlparse(origin).hostname not in ("127.0.0.1", "localhost", "::1"):
+            return False, "Origin %r is not this page" % origin
+        return True, ""
+
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
         self.send_response(code)
@@ -77,14 +96,18 @@ class Handler(SimpleHTTPRequestHandler):
             return base + "; charset=utf-8"
         return t
 
-    # An annotation must carry these to be findable again. A tombstone and a
-    # resolution legitimately carry only an id plus their own flag, so those are
-    # named exemptions rather than the validation being skipped: a fieldless
-    # record stores happily and then surfaces downstream as a phantom ANCHOR
-    # LOST, saying the document moved when it did not.
+    # An annotation must carry these to be findable again. A tombstone, a
+    # resolution and a note amendment legitimately carry only an id plus their
+    # own flag, so those three are named exemptions rather than the validation
+    # being skipped: a fieldless record stores happily and then surfaces
+    # downstream as a phantom ANCHOR LOST, saying the document moved when it did
+    # not.
     REQUIRED = ("text", "blk", "note")
 
     def do_GET(self):
+        ok, why = self._local_request()
+        if not ok:
+            return self._json({"error": "refused: %s" % why}, 403)
         if urlparse(self.path).path == "/api/annotations":
             # Resolved ones are returned too. The page takes them off the reading
             # surface and keeps only their count, but the count has to be derived
@@ -118,14 +141,32 @@ class Handler(SimpleHTTPRequestHandler):
                 out, model, ctxs = render_change.build(
                     self.doc_path, self.root, self.page_path)
                 cov = model["coverage"]
-                summary = ("%d files, %d blocks · %d uncovered, %d not checkable"
+                summary = ("%d files, %d blocks · %d uncovered, %d not checkable, "
+                           "%d task(s) not done"
                            % (cov["stats"]["files"],
                               sum(len(c.blocks) for c in ctxs.values()),
-                              len(cov["uncovered"]), len(cov["unchecked"])))
+                              len(cov["uncovered"]), len(cov["unchecked"]),
+                              len(cov.get("undone", []))))
                 print("rebuilt   %s  ->  %s" % (summary, out))
-                warn = ["%d claim(s) could not be bound to a block"
-                        % len([c for c in model["claims"] if not c.get("blk")])] \
-                    if any(not c.get("blk") for c in model["claims"]) else []
+                warn = []
+                unbound = [c for c in model["claims"] if not c.get("blk")]
+                if unbound:
+                    warn.append("%d claim(s) could not be bound to a block" % len(unbound))
+                # The document path has always reported this. The change path
+                # returned before reading the corpus at all, so a rebuild that
+                # orphaned every anchor printed a clean summary — in the case
+                # where anchors are most fragile and the corpus is largest.
+                checked, lost, problems, fatal = render_change.check_change_anchors(
+                    ctxs, self.out_path)
+                if fatal:
+                    warn.append("CORPUS UNREADABLE: %s" % fatal)
+                if lost:
+                    warn.append("%d annotation(s) could not be read back: %s"
+                                % (len(lost), ", ".join(lost[:10])))
+                if problems:
+                    warn.append("%d line(s) could not be read" % len(problems))
+                for w in warn:
+                    print("          %s" % w)
                 return self._json({"ok": True, "summary": summary, "warnings": warn})
             out, ctx, words = render_doc.build(self.doc_path, self.root, self.page_path)
         except OSError as e:
@@ -138,6 +179,9 @@ class Handler(SimpleHTTPRequestHandler):
             msg = "%s is not valid UTF-8 (%s at byte %d)" % (self.doc_path, e.reason, e.start)
             print("REBUILD FAILED: %s" % msg)
             return self._json({"error": msg}, 500)
+        except render_change.ChangeUnreadable as e:
+            print("REBUILD FAILED: %s" % e)
+            return self._json({"error": str(e)}, 500)
         summary = "%d blocks, %s words" % (len(ctx.blocks), format(words, ",d"))
         print("rebuilt   %s  ->  %s" % (summary, out))
         checked, lost, problems, fatal = render_doc.check_anchors(ctx, self.out_path)
@@ -154,6 +198,10 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json({"ok": True, "summary": summary, "warnings": warn})
 
     def do_POST(self):
+        ok, why = self._local_request()
+        if not ok:
+            print("REFUSED cross-origin request: %s" % why)
+            return self._json({"error": "refused: %s" % why}, 403)
         path = urlparse(self.path).path
         if path == "/api/render":
             return self._render()
@@ -177,6 +225,20 @@ class Handler(SimpleHTTPRequestHandler):
             if rec.get("deleted") or rec.get("resolved") or rec.get("edited"):
                 return self._json({"error": "amendment with no id"}, 400)
             rec["id"] = store.new_id()
+        # Every page carries the document it was built for. One temp directory
+        # holds every rendered page for a repo, and a browser window outlives the
+        # server that opened it — so a stale window for document A, reloaded
+        # against a server now annotating B, would post A's notes into B's
+        # corpus, stamped with A's name and invisible in both. The page already
+        # sends `doc`; this is the only place that can compare it.
+        if rec.get("doc") and rec["doc"] != self.doc_key:
+            print("REFUSED a record for %s; this server is annotating %s"
+                  % (rec["doc"], self.doc_key))
+            return self._json(
+                {"error": "this page was built for %s, but this server is "
+                          "annotating %s — refusing to write into the wrong "
+                          "corpus" % (rec["doc"], self.doc_key), "wrong_doc": True}, 409)
+
         amendment = bool(rec.get("deleted") or rec.get("resolved") or rec.get("edited"))
         if rec.get("edited") and not rec.get("note"):
             return self._json({"error": "edit with no note"}, 400)
@@ -216,9 +278,11 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 # A Chromium browser started with --app gives a window with no address bar, no
-# tab strip and no bookmarks — the document and nothing else. Both platforms, so
-# both sets of paths; `shutil.which` first, because a browser on PATH beats a
-# guess at where it was installed.
+# tab strip and no bookmarks — the document and nothing else. Three platforms,
+# so three sets of candidates. A bare name is resolved with `shutil.which` and an
+# absolute one by existence: the win32 and linux lists lead with names on PATH,
+# which beats guessing an install location, while the darwin list carries no PATH
+# candidates at all, so there the guess is the only route.
 APP_BROWSERS = {
     "win32": [
         "chrome", "msedge", "brave",
@@ -240,7 +304,9 @@ APP_BROWSERS["linux"] = ["google-chrome", "chromium", "chromium-browser",
 
 
 def open_app_window(url, profile_dir):
-    """Open the page in a chrome-less window, or say why it could not.
+    """Open the page in a chrome-less window. Returns the browser used, or None
+    when there was none to use — the caller says so. Only an OSError is reported
+    from here, because only that carries a reason worth printing.
 
     Reports, never gates: a missing browser must not stop the server, because the
     URL is printed either way and it can be opened by hand.
@@ -320,12 +386,24 @@ def main(argv=None):
 
     # Bound to the loopback address and nowhere else. It has no authentication
     # because it does not need any, and that stays true only while it is local.
+    class Server(ThreadingHTTPServer):
+        # HTTPServer sets allow_reuse_address = 1. On Windows that permits
+        # binding a port ALREADY IN ACTIVE USE: the second bind succeeds, every
+        # request is answered by the first server, and the second document's
+        # annotations are appended to the first document's corpus with nothing
+        # reported anywhere. On POSIX the bind fails and the user is told. There
+        # is no CI here, so this only ever showed up on the machine it broke on.
+        allow_reuse_address = False
+        daemon_threads = True
+
     try:
-        srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
+        srv = Server(("127.0.0.1", a.port), Handler)
     except OSError as e:
         print("could not bind port %d: %s" % (a.port, e))
         print("another server is probably already up — try --port %d" % (a.port + 1))
-        return 1                              # report, never gate
+        # This one IS a gate, deliberately. Serving a second document on a port
+        # already held would send its annotations to the first document's corpus.
+        return 1
 
     problems = []
     try:
@@ -350,7 +428,11 @@ def main(argv=None):
     print("stop with ctrl-c")
 
     if not a.no_open:
-        prof = os.path.join(pages, ".browser-profile")
+        # Outside `pages`, which is the HTTP document root: SimpleHTTPRequestHandler
+        # serves that tree with directory listings and no hidden-file filter, so
+        # the app window's cookies, local storage and history were fetchable.
+        prof = os.path.join(os.path.dirname(pages.rstrip("\\/")) or pages,
+                            "cla-annotate-profile")
 
         def launch():
             if not a.tab and open_app_window(url, prof):

@@ -44,7 +44,8 @@ import tempfile
 
 import annotations_store as store
 
-# The page injects exactly one thing into the prose: the annotation marker. This
+# What the page injects into the prose that the document does not contain: the
+# annotation marker, and the change page's link gutter. This
 # constant is the Python half of the page's own NON_SOURCE, and the two must
 # agree — an annotation records the document's characters, so anything the
 # renderer added has to come out on both sides, or the browser and this script
@@ -143,9 +144,9 @@ def inline(text, doc_dir):
         return '<a class="imglink" href="%s" target="_blank" rel="noopener">%s</a>' % (
             attr(src), alt or src)
 
-    text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)", image, text)
+    text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", image, text)
     text = re.sub(
-        r"\[([^\]]+)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)",
+        r"\[([^\]]+)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
         lambda m: '<a href="%s" target="_blank" rel="noopener">%s</a>'
                   % (attr(_safe_href(m.group(2))), m.group(1)),
         text)
@@ -267,7 +268,13 @@ def render_blocks(lines, ctx, top=False):
                 i += 1
             i += 1                              # the closing fence, if there was one
             code = "\n".join(body)
-            cls = ' class="language-%s"' % esc(lang) if lang else ""
+            # quote=True, and not `esc()`. `esc()` is quote=False — right for
+            # text nodes, wrong here, because this is the one place a document's
+            # own characters reach an ATTRIBUTE. A fence opened
+            # ```js"onmouseover="alert(1) closed the class attribute and left a
+            # live handler on a page that is same-origin with the endpoint
+            # appending to a committed, never-rewritten corpus.
+            cls = ' class="language-%s"' % html.escape(lang, quote=True) if lang else ""
             out.append("<pre%s><code%s>%s</code></pre>"
                        % (ctx.attrs(code, lno), cls, esc(code)))
             continue
@@ -857,8 +864,8 @@ document.getElementById('cd-x').onclick = () => setCmt(false);
 document.getElementById('scrim').onclick = () => setCmt(false);
 function openList(id) {
   setCmt(true);
-  const card = document.getElementById('card-' + id);
-  if (card) card.scrollIntoView({block:'center', behavior:'smooth'});
+  const el = document.getElementById('card-' + id);   // not `card` — that is the renderer
+  if (el) el.scrollIntoView({block:'center', behavior:'smooth'});
 }
 
 /* Bring a block into view. On a single-document page that is a scroll; on a page
@@ -901,7 +908,8 @@ function textNodes(host) {
 /* Locate a painted selection in the source text of its block. What the browser
    hands back is what is on screen, and that is not always what the block says —
    CSS can transform it and layout can insert breaks the source does not have.
-   Three fallback passes, narrowest first, each returning the SOURCE spelling
+   Four passes, narrowest first — exact, case-folded, whitespace-normalised,
+   whitespace-stripped — each returning the SOURCE spelling
    rather than the painted one. One match or none at every pass: guessing files
    an annotation against the wrong sentence while showing text that looks right. */
 function findLoose(full, text) {
@@ -1001,6 +1009,11 @@ function captureSelection() {
 document.addEventListener('mouseup', e => {
   if (e.target.closest('#cmt-pop') || e.target.closest('#sel-btn')
       || e.target.closest('.drawer')) return;
+  /* While the popup is open it is QUOTING the pending passage. Letting a new
+     selection replace `pending` underneath it filed the note against a passage
+     the reader was not looking at — and the stored record is self-consistent, so
+     nothing downstream could ever notice. */
+  if (!CMT.el.pop.hidden) return;
   const cap = captureSelection();
   const b = CMT.el.btn;
   if (!cap) { b.hidden = true; return; }
@@ -1054,7 +1067,7 @@ async function submit() {
        know how to show. */
     closePop();
     CMT.list.push(Object.assign({note, doc: DOC, unsaved: true,
-                                 id: 'local-' + CMT.list.length}, cap));
+                                 id: localId()}, cap));
     return render();
   }
   closePop();
@@ -1064,6 +1077,11 @@ document.getElementById('cmt-save').onclick = () => submit();
 CMT.el.text.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit();
 });
+
+/* Never `CMT.list.length`: it is reused after a delete, and two records sharing
+   an id means find() returns the first while filter() removes both. */
+let LOCAL_N = 0;
+function localId() { return 'local-' + (++LOCAL_N) + '-' + Date.now(); }
 
 async function postAnnotation(rec) {
   try {
@@ -1084,7 +1102,7 @@ async function postAnnotation(rec) {
     rec.unsaved = false;
     CMT.err = null;
   } catch (err) {
-    rec.id = rec.id || ('local-' + Date.now());
+    rec.id = rec.id || localId();
     rec.unsaved = true;
     CMT.err = String(err.message || err);
   }
@@ -1106,7 +1124,11 @@ async function del(id) {
     const r = await fetch('/api/annotations', {method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({id, deleted: true})});
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status;
+      try { msg = (await r.json()).error || msg; } catch (e) {}
+      throw new Error(msg);
+    }
     CMT.list = CMT.list.filter(c => c.id !== id);
     CMT.err = null;
   } catch (e) {
@@ -1151,8 +1173,10 @@ async function editNote(id, note) {
 }
 
 /* ---- paint anchors back into the prose ---- */
-/* extractContents splits <em>, <strong> and <code> when a range ends inside one,
-   and unwrapping the highlight does not put the halves back together. */
+/* extractContents splits an inline element when a range ends inside one, and
+   unwrapping the highlight does not put the halves back together. Covers every
+   inline the renderer emits — em, strong, code, del and a — and compares href so
+   that two different links are never welded into one. */
 function mergeSplitInline(root) {
   root.querySelectorAll('em, strong, code, del, a').forEach(el => {
     let next = el.nextSibling;
@@ -1269,8 +1293,18 @@ function paint() {
       m.appendChild(r.extractContents());
       r.insertNode(m);
     } catch (e) {
-      if (!m.parentNode && m.firstChild) {
-        try { r.insertNode(m.firstChild); } catch (e2) {}
+      /* Put ALL of it back, not just the first node: a fragment spanning <em> or
+         <code> has several children, and restoring one silently drops the rest —
+         the block's text then differs from the document, and its neighbours
+         start reporting themselves lost against a file nobody touched. And say
+         so rather than swallowing: an empty catch here loses a clause of the
+         prose the reader is annotating. */
+      if (!m.parentNode) {
+        try { while (m.firstChild) r.insertNode(m.lastChild); }
+        catch (e2) {
+          CMT.err = 'a passage could not be repainted — press Rebuild;'
+                  + ' the corpus is untouched';
+        }
       }
       c.lost = true;
       return;
@@ -1294,48 +1328,10 @@ function paint() {
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-function render() {
-  paint();
-  paintRailCounts();          // after paint(), which is what decides `lost`
-  const live = openOnes(), done = doneOnes();
-  CMT.el.n.textContent = live.length;
-  /* Derived from the records, never from a last-write-wins flag: one failed save
-     followed by one successful save used to read 'saved' over an annotation that
-     existed only in this tab. */
-  const unsaved = CMT.list.filter(c => c.unsaved).length;
-  const damaged = (CMT.problems || []).length;
-  CMT.el.st.textContent =
-    CMT.fatal ? CMT.fatal
-    : damaged ? (damaged + ' LINE(S) UNREADABLE')
-    : CMT.err ? CMT.err
-    : unsaved ? (unsaved + ' NOT SAVED')
-    : !CMT.list.length ? 'none yet'
-    : (done.length ? 'saved · ' + done.length + ' resolved' : 'saved');
-
-  if (CMT.fatal) {
-    CMT.el.list.innerHTML = '<p class="cmt-empty cmt-fatal">' + esc(CMT.fatal) + '</p>';
-    return;
-  }
-  if (!CMT.list.length && damaged) {
-    /* Not "none yet". The file exists and every line of it failed to parse,
-       which must never read like a corpus nobody has started. */
-    CMT.el.list.innerHTML = '<p class="cmt-empty cmt-fatal">' + damaged
-      + ' line(s) of the annotations file could not be read, and no record'
-      + ' survived.<br><br>The file is on disk and is not empty. Resolve it by'
-      + ' hand — keeping every side, because every line is evidence.</p>';
-    return;
-  }
-  if (!CMT.list.length) {
-    CMT.el.list.innerHTML = '<p class="cmt-empty">No annotations yet.<br><br>'
-      + 'Select any text and an <strong>annotate</strong> button appears.'
-      + ' Cmd/Ctrl+Enter saves.<br><br>'
-      + 'Each one records the section, the source line, the selected words and'
-      + ' the text either side of them, so it can be found again after the'
-      + ' document moves underneath it.</p>';
-    return;
-  }
-
-  const card = (c, i) => '<div class="cmt-card" id="card-' + c.id + '" data-id="' + c.id + '">'
+/* Hoisted out of render(): the fatal branch renders unsaved cards too, and it
+   runs before render()'s own declarations. A function declaration hoists; a
+   const does not, and referencing it early is a ReferenceError. */
+const card = (c, i) => '<div class="cmt-card" id="card-' + c.id + '" data-id="' + c.id + '">'
     + '<div class="cmt-head">'
     + '<span class="cmt-idx">' + (i + 1) + '</span>'
     + '<button class="cmt-loc" data-go="' + c.id + '">'
@@ -1366,15 +1362,7 @@ function render() {
         : '<p class="cmt-note" title="click to edit">' + esc(c.note) + '</p>')
     + '</div>';
 
-  /* A resolved annotation leaves the page. It has been answered, and leaving it
-     in view means reading the same objection twice — once as work to do and once
-     as work already done. It is not deleted: the corpus keeps every one, and the
-     count stays, so a page showing none is never mistaken for a corpus holding
-     none. */
-  CMT.el.list.innerHTML = live.map(card).join('')
-    + (done.length ? '<p class="cmt-sep">' + done.length
-        + ' resolved · kept in the annotations file, off the page</p>' : '');
-
+function wireCards() {
   CMT.el.list.querySelectorAll('[data-del]').forEach(b => b.onclick = () => del(b.dataset.del));
   CMT.el.list.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
     const c = CMT.list.find(x => x.id === b.dataset.edit); if (!c) return;
@@ -1416,6 +1404,80 @@ function render() {
   });
 }
 
+function render() {
+  paint();
+  paintRailCounts();          // after paint(), which is what decides `lost`
+  const live = openOnes(), done = doneOnes();
+  CMT.el.n.textContent = live.length;
+  /* Derived from the records, never from a last-write-wins flag: one failed save
+     followed by one successful save used to read 'saved' over an annotation that
+     existed only in this tab. */
+  const unsaved = CMT.list.filter(c => c.unsaved).length;
+  const damaged = (CMT.problems || []).length;
+  const bits = [];
+  if (damaged) bits.push(damaged + ' LINE(S) UNREADABLE');
+  if (unsaved) bits.push(unsaved + ' NOT SAVED');
+  if (CMT.err) bits.push(CMT.err);
+  /* Joined, not ranked. A damaged corpus and unsaved work are independent facts
+     and the second one is the reader's own words; precedence hid it behind the
+     first. */
+  CMT.el.st.textContent =
+    CMT.fatal ? CMT.fatal
+    : bits.length ? bits.join(' · ')
+    : !CMT.list.length ? 'none yet'
+    : (done.length ? 'saved · ' + done.length + ' resolved' : 'saved');
+
+  if (CMT.fatal) {
+    /* Unsaved cards render ABOVE the banner rather than instead of it. Returning
+       here dropped them entirely — and `readonly` is only ever set alongside
+       `fatal`, so this was the one state in which a note written after the
+       failure could be seen, and it could not be. The comment on submit()'s
+       read-only branch claimed the card list already knew how to show these; it
+       did not. */
+    const held = CMT.list.filter(c => c.unsaved);
+    CMT.el.list.innerHTML =
+      '<p class="cmt-empty cmt-fatal">' + esc(CMT.fatal) + '</p>'
+      + (held.length
+          ? '<p class="cmt-sep">' + held.length + ' annotation(s) written since the'
+            + ' failure are held in this tab only, and are lost if it closes</p>'
+            + held.map(card).join('')
+          : '');
+    wireCards();
+    return;
+  }
+  if (!CMT.list.length && damaged) {
+    /* Not "none yet". The file exists and every line of it failed to parse,
+       which must never read like a corpus nobody has started. */
+    CMT.el.list.innerHTML = '<p class="cmt-empty cmt-fatal">' + damaged
+      + ' line(s) of the annotations file could not be read, and no record'
+      + ' survived.<br><br>The file is on disk and is not empty. Resolve it by'
+      + ' hand — keeping every side, because every line is evidence.</p>';
+    return;
+  }
+  if (!CMT.list.length) {
+    CMT.el.list.innerHTML = '<p class="cmt-empty">No annotations yet.<br><br>'
+      + 'Select any text and an <strong>annotate</strong> button appears.'
+      + ' Cmd/Ctrl+Enter saves.<br><br>'
+      + 'Each one records the section, the source line, the selected words and'
+      + ' the text either side of them, so it can be found again after the'
+      + ' document moves underneath it.</p>';
+    return;
+  }
+
+
+
+  /* A resolved annotation leaves the page. It has been answered, and leaving it
+     in view means reading the same objection twice — once as work to do and once
+     as work already done. It is not deleted: the corpus keeps every one, and the
+     count stays, so a page showing none is never mistaken for a corpus holding
+     none. */
+  CMT.el.list.innerHTML = live.map(card).join('')
+    + (done.length ? '<p class="cmt-sep">' + done.length
+        + ' resolved · kept in the annotations file, off the page</p>' : '');
+
+  wireCards();
+}
+
 /* Rebuild, not reload. The page is a view of the document, so reloading a stale
    file shows prose the document no longer contains. The server runs the renderer
    on its own document and the page then reloads — which keeps this window, where
@@ -1430,6 +1492,9 @@ function render() {
   };
   rb.onclick = async () => {
     if (CMT.list.some(c => c.editing)) return fail('finish the open edit before rebuilding');
+    const pending = CMT.list.filter(c => c.unsaved).length;
+    if (pending) return fail(pending + ' annotation(s) are not saved — rebuilding reloads'
+                             + ' the page and they exist nowhere else');
     rb.disabled = true; rb.classList.remove('failed'); rb.title = 'rebuilding…';
     try {
       const r = await fetch('/api/render', {method: 'POST'});
@@ -1446,14 +1511,28 @@ function render() {
   };
 })();
 
+/* The corpus is the only copy of a saved note, and this tab is the only copy of
+   an unsaved one. */
+addEventListener('beforeunload', e => {
+  if (CMT.list.some(c => c.unsaved || c.editing)) { e.preventDefault(); e.returnValue = ''; }
+});
+
 /* Three states, and they must never print the same thing: reachable and empty,
    unreachable, and unreadable. A bare catch here would paint "No annotations
    yet." over a corpus that exists and cannot be parsed. */
 (async function load() {
   try {
     const r = await fetch('/api/annotations');
-    const j = await r.json().catch(() => ({}));
+    let j = null;
+    try { j = await r.json(); } catch (e) { j = null; }
+    if (r.ok && (!j || !Array.isArray(j.annotations))) {
+      CMT.fatal = 'the server answered, but not with an annotation list — nothing is'
+                + ' shown, and nothing should be written, until this is understood';
+      CMT.readonly = true;
+      return render();
+    }
     if (!r.ok) {
+      j = j || {};
       CMT.fatal = j.unreadable
         ? 'CORPUS UNREADABLE — ' + (j.error || 'HTTP ' + r.status)
           + '. Nothing is shown, and nothing should be written, until this is'
@@ -1577,11 +1656,14 @@ def check_anchors(ctx, corpus_path):
         hits = [t for t in texts if full in t]
         if len(hits) == 1:
             continue
-        # One match or none, the same rule the page applies. Falling back to a
-        # bare text search here would call an annotation anchored that the page
-        # paints as lost — a disagreement about the same corpus.
-        if not hits and sum(1 for t in texts if needle in t) == 1:
-            continue
+        # One match or none, the same rule the page's hostFor() applies: it
+        # tries the stored block, then the context needle, and returns null
+        # otherwise. This used to fall back to a bare text search across every
+        # block — which the comment already said it must not, three lines above
+        # the line that did it. The fallback only fires when the context search
+        # missed, i.e. exactly when the page CANNOT relocate the record, so it
+        # was wrong every time it triggered: the CLI reported "0 could not be
+        # read back" over annotations the drawer was painting as ANCHOR LOST.
         lost.append(c.get("id", "?"))
     return len(openc), lost, problems, None
 
@@ -1596,7 +1678,7 @@ def page_dir(root):
     keeps, and writing it into the tree would need a `.gitignore` entry in every
     consuming repo — which an install has no business adding.
     """
-    key = store.hashlib.sha1(
+    key = hashlib.sha1(
         os.path.normcase(os.path.abspath(root)).encode("utf-8")).hexdigest()[:10]
     return os.path.join(tempfile.gettempdir(), "cla-annotate", key)
 

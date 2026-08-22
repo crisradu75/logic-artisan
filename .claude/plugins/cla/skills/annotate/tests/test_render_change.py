@@ -242,8 +242,8 @@ def test_a_claim_with_no_block_degrades_to_text_rather_than_a_dead_link(built):
         {"coverage": {"uncovered": [{"claim": {"file": "proposal", "kind": "promise",
                                                "num": "p9", "text": "unbound", "blk": None},
                                      "why": "x", "pays": []}],
-                      "unchecked": [], "covered": [], "capabilities": [],
-                      "stats": {"files": 1, "claims": 1, "links": 0,
+                      "unchecked": [], "covered": [], "undone": [], "capabilities": [],
+                      "stats": {"files": 1, "claims": 1, "links": 0, "promises": 1,
                                 "tasks": 0, "tasks_done": 0}}},
         {"proposal": "proposal"})
     assert 'class="cov-dead"' in html_str
@@ -252,7 +252,9 @@ def test_a_claim_with_no_block_degrades_to_text_rather_than_a_dead_link(built):
 
 def test_the_provenance_line_states_what_was_read(built):
     pane = built["html"].rsplit('data-pane="__coverage__"', 1)[1]
-    assert re.search(r"read 4 files · \d+ claims · \d+ links", pane)
+    # Not `\d+` for the counts that matter: `\d+` matches 0, so the line passed
+    # with every link destroyed.
+    assert re.search(r"read 4 files · 2 promises · [1-9]\d* claims · [1-9]\d* links", pane)
 
 
 # ---------------------------------------------------------------- binding
@@ -289,10 +291,15 @@ def test_a_weak_link_is_marked_weak_wherever_it_shows(built):
 
 
 def test_build_refuses_a_directory_that_is_not_a_change(tmp_path):
+    """A real exception, never SystemExit. SystemExit is a BaseException: raised
+    in the server's worker thread it is caught by nothing and swallowed by
+    `threading`, so the reader saw the browser's generic "Failed to fetch" and
+    the server printed nothing at all."""
     empty = tmp_path / "nothing"
     empty.mkdir()
-    with pytest.raises(SystemExit):
+    with pytest.raises(RC.ChangeUnreadable):
         RC.build(str(empty), str(tmp_path))
+    assert not issubclass(RC.ChangeUnreadable, SystemExit)
 
 
 def test_find_change_accepts_a_directory_path(change):

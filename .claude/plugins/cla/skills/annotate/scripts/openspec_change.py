@@ -23,39 +23,46 @@ and only the first two settle anything:
 
   reference   an explicit citation: "design decision 3", "task 2.1", or a
               capability name resolving to its spec delta
-  path        a file path — or a directory — named in two claims; the strongest
-              signal a change offers, because a path names one thing
+  path        a file path — or a directory of two segments or more — named in
+              two claims IN DIFFERENT FILES; the strongest signal a change
+              offers, because a path names one thing
   identifier  a backticked code identifier of `IDENT_MIN` characters or more
   wording     two or more distinctive words in common, for the half of all
               promises that name no file and no identifier at all
 
-**Only a reference or a path discharges a promise.** A bullet can MENTION a name
-without being about it — this repo's own sweep bullet lists `sync-context` among
+**Only a reference or a path link TO A TASK discharges a promise.** A bullet can
+MENTION a name without being about it — this repo's own sweep bullet lists `sync-context` among
 its candidates and was read as implemented by every task touching that skill.
 Identifier and wording links are shown, because they are often the useful thing
 to read, and are never counted as coverage.
 
 **A token shared by too many PROMISES is not evidence.** What disqualifies a
 token is failing to discriminate between the claims that need covering. Counting
-holders across every claim instead was measured over 355 real changes and left
-83% of promises falsely uncovered: a path named in one promise and twelve tasks
-is the best evidence a change has, and it looked like vocabulary.
+holders across every claim instead left 83% of promises falsely uncovered —
+`sweep_changes.py`, 355 changes — because a path named in one promise and twelve
+tasks is the best evidence a change has, and it looked like vocabulary.
 
 **Three outcomes, and only one is a finding.** *Uncovered* means the bullet names
 a file or an identifier and nothing names it back. *Not checkable* means it names
-neither, so there was nothing to match on — half of all promises, because design
-and product bullets are prose and prose is not a link; calling those uncovered is
-the overclaim this module exists to avoid. *Covered* is the rest. Every row states
-what was looked for, because the reader is the one who can tell the difference.
+neither, so there was nothing to match on — 51% of promises across the sweep,
+because design and product bullets are prose and prose is not a link; calling
+those uncovered is the overclaim this module exists to avoid. *Covered* is the
+rest, 22%. A task not yet done is none of the three and has its own bucket.
+Every row states what was looked for, because the reader is the one who can tell
+the difference. Re-measure with `sweep_changes.py` before trusting any of this in
+a repo whose changes are written differently.
 """
 import os
 import re
 
-# A token linking more than this many claims is treated as vocabulary rather
-# than evidence. Measured against this repo's own archived change: `CLAUDE.md`
-# reaches 6 claims and `update-cla` reaches 14, while every genuinely useful
-# path — `test_no_project_tokens.py`, `.cla-sync-lock.json` — reaches 2 or 3.
-# The line sits above the useful band and below the noise.
+# A token held by more than this many PROMISES is vocabulary rather than
+# evidence: past that it cannot say which promise a task serves.
+#
+# Set from the sweep, not from one change — `sweep_changes.py` over every repo on
+# this machine: 355 changes, 2264 promises, covered 22%, uncovered 27%, not
+# checkable 51%. On this repo's own archived change the rule never fires at all
+# (no token reaches even two promises, and `stats["ubiquitous"]` comes back
+# empty), which is exactly why one change cannot set it.
 UBIQUITOUS = 4
 
 # An identifier shorter than this does not identify one thing. `cla-init` is
@@ -171,8 +178,16 @@ def change_files(change_dir):
 # ---------------------------------------------------------------- claims
 
 
+def claim_id(file_key, num):
+    """The join key for links, coverage and block binding. Spelled here and
+    nowhere else: `detect_links` used to rebuild it by hand for citations, and a
+    format change would have turned every citation into a silent no-op."""
+    return "%s:%s" % (file_key, num)
+
+
 def _claim(file_key, kind, num, text, line, **extra):
-    cid = "%s:%s" % (file_key, num)
+    assert kind in CLAIM_KINDS, kind
+    cid = claim_id(file_key, num)
     rec = {"id": cid, "file": file_key, "kind": kind, "num": num,
            "text": strip_md(text), "raw": text, "line": line}
     rec.update(extra)
@@ -345,8 +360,10 @@ rather instead including include includes included ensure ensures ensured
 
 WORD_RE = re.compile(r"[a-z][a-z0-9\-]{4,}")
 
-# A word held by more than this share of a change's claims is that change's
+# A word held by more than this share of a change's PROMISES is that change's
 # subject matter, not a link: in a change about audits, "audit" is in everything.
+# The `max(1, ...)` floor below means the effective share is far under 30% on a
+# small change — with five promises the ceiling is 1.
 COMMON_SHARE = 0.30
 
 # One shared word is a coincidence at this vocabulary size; two is a signal. It
@@ -356,6 +373,22 @@ LEXICAL_MIN = 2
 # At most this many wording links per promise, strongest first.
 LEXICAL_CAP = 3
 
+# Strongest evidence first. This ordering was spelled three times in three
+# encodings — a local RANK dict here, a membership tuple in coverage(), and an
+# inverted `order` dict with a silent .get default in render_change — and two of
+# them were inverses of each other, so a fifth kind could be added and only one
+# would say it had been forgotten.
+LINK_KINDS = ("reference", "path", "identifier", "wording")
+
+# Only these discharge a promise. A bullet can MENTION a name without being about
+# it, so an identifier or shared wording is shown and never counted.
+STRONG_KINDS = frozenset({"reference", "path"})
+
+# Every kind a claim may have. `coverage` scopes ubiquity to promises and falls
+# back to all claims when it finds none — so a typo in one producer does not skip
+# a branch, it silently restores the all-claims rule the sweep measured wrong.
+CLAIM_KINDS = frozenset({"promise", "impact", "requirement", "decision", "goal", "task"})
+
 
 def content_words(text):
     return {w for w in WORD_RE.findall((text or "").lower()) if w not in STOPWORDS}
@@ -364,10 +397,11 @@ def content_words(text):
 def detect_links(claims, caps=()):
     """-> (links, stats). Each link is {src, dst, why, kind}.
 
-    Direction is meaningless here and deliberately not modelled: a promise and
-    the task implementing it are the same relation read from either end, and
-    inventing a direction would have the page assert something the text does
-    not.
+    `src` and `dst` are the pair SORTED, not an ordering with meaning: a promise
+    and the task implementing it are the same relation read from either end, and
+    inventing a direction would have the page assert something the text does not.
+    Both consumers add the pair to their adjacency in both directions; the names
+    are a historical accident, and this sentence is the only thing that says so.
     """
     by_id = {c["id"]: c for c in claims}
     toks = {c["id"]: tokens_of(c) for c in claims}
@@ -393,7 +427,7 @@ def detect_links(claims, caps=()):
     # more segments wins. Two claims often share several tokens, and the page
     # shows only one as the reason — keeping whichever arrived first showed
     # `skill.md` where the evidence was `src/legacy/sync-engine/`.
-    RANK = {"reference": 3, "path": 2, "identifier": 1, "wording": 0}
+    RANK = {k: len(LINK_KINDS) - i for i, k in enumerate(LINK_KINDS)}
 
     def add(a, b, why, kind):
         if a == b or a not in by_id or b not in by_id:
@@ -428,9 +462,11 @@ def detect_links(claims, caps=()):
     for c in claims:
         body = (c.get("raw") or "") + " " + (c.get("body") or "")
         for m in DECISION_REF_RE.finditer(body):
-            add(c["id"], "design:%s" % m.group(1), "decision %s" % m.group(1), "reference")
+            add(c["id"], claim_id("design", m.group(1)),
+                "decision %s" % m.group(1), "reference")
         for m in TASK_REF_RE.finditer(body):
-            add(c["id"], "tasks:%s" % m.group(1), "task %s" % m.group(1), "reference")
+            add(c["id"], claim_id("tasks", m.group(1)),
+                "task %s" % m.group(1), "reference")
 
     # 3. a capability named in the proposal resolves to its own spec delta
     cap_names = {c["name"].lower(): c for c in caps}
@@ -454,7 +490,8 @@ def detect_links(claims, caps=()):
                 add(t["id"], req["id"], req["text"], "reference")
 
     # 5. shared wording, for the half of all promises that name no file and no
-    #    identifier — measured across 355 real changes, 51% of them. Design and
+    #    identifier — 51% of them across the sweep. The loop runs over EVERY
+    #    promise; that half is the motivation for the family, not a filter. Design and
     #    product bullets ("a warm-ink palette", "typography roles") are prose,
     #    and a detector that only reads paths is silent on them. This link is
     #    always WEAK: it is shown so the reader has somewhere to look, and it
@@ -525,7 +562,7 @@ def coverage(claims, links):
     tasks_all = [c for c in claims if c["kind"] == "task"]
     done = [t for t in tasks_all if t.get("done")]
 
-    covered, uncovered, unchecked = [], [], []
+    covered, uncovered, unchecked, undone = [], [], [], []
     for c in claims:
         if c["kind"] != "promise":
             continue
@@ -537,8 +574,8 @@ def coverage(claims, links):
         # candidates and was read as implemented by every task touching that
         # skill. A path names a file the change touches and a citation names its
         # target outright; neither can be a passing mention.
-        strong = [p for p in task_links if p[1]["kind"] in ("path", "reference")]
-        weak = [p for p in task_links if p[1]["kind"] not in ("path", "reference")]
+        strong = [p for p in task_links if p[1]["kind"] in STRONG_KINDS]
+        weak = [p for p in task_links if p[1]["kind"] not in STRONG_KINDS]
         others = [p for p in linked(c["id"]) if p[0]["kind"] in ("decision", "requirement")]
         if strong:
             covered.append({"claim": c, "pays": strong + weak + others})
@@ -561,20 +598,55 @@ def coverage(claims, links):
                        + (" — %d bullet%s share wording with it"
                           % (len(weak), "" if len(weak) == 1 else "s") if weak else ""),
             })
+    # A task not yet done is not an uncovered claim, and mixing the two made
+    # every summary — the rebuild line, the CLI, the red badge, the rail — report
+    # one number for two different things. An unstarted change with 18 tasks read
+    # as "18 uncovered", which is the overclaim this module exists to prevent.
     for t in tasks_all:
-        if not t.get("done"):
-            uncovered.append({"claim": t, "pays": linked(t["id"]),
-                              "why": "unchecked · %d of %d tasks done"
-                                     % (len(done), len(tasks_all))})
+        if not t["done"]:
+            undone.append({"claim": t, "pays": linked(t["id"]),
+                           "why": "not done · %d of %d tasks done"
+                                  % (len(done), len(tasks_all))})
 
     return {
         "covered": covered,
         "uncovered": uncovered,
         "unchecked": unchecked,
+        "undone": undone,
+        # Named here rather than bolted on by build(), so one function owns the
+        # complete shape and "did this go through build()?" stops being a
+        # question every consumer has to know the answer to.
+        "capabilities": [],
         "stats": {"claims": len(claims), "links": len(links),
                   "tasks": len(tasks_all), "tasks_done": len(done),
-                  "promises": len([c for c in claims if c["kind"] == "promise"])},
+                  "promises": len([c for c in claims if c["kind"] == "promise"]),
+                  "change": "", "files": 0, "ubiquitous": [], "tokens": 0},
     }
+
+
+def _disambiguate(claims):
+    """Make every claim id unique, in place.
+
+    `num` is an ordinal for promises, impacts, goals and requirements — those
+    cannot collide. It is AUTHOR-SUPPLIED for tasks and decisions, and both do:
+    a task list mixing numbered and unnumbered items produces two `tasks:1`
+    (`num` falls back to the running count), and a nested numbered list under
+    `## Decisions` produces two `design:1` (the pattern allows three leading
+    spaces).
+
+    A duplicate does not crash. It is silently dropped by every
+    `{c["id"]: c for c in claims}` downstream, so both claims keep their coverage
+    row and their block, while every lookup resolves to whichever won — painting
+    one claim's links onto the other's passage. That is the guess `bind_claims`
+    refuses to make, arriving through the id layer instead.
+    """
+    seen = {}
+    for c in claims:
+        n = seen.get(c["id"], 0)
+        seen[c["id"]] = n + 1
+        if n:
+            c["id"] = "%s#%d" % (c["id"], n + 1)
+    return claims
 
 
 def capability_coverage(caps, texts, claims):
@@ -618,6 +690,7 @@ def build(change_dir, texts):
     for key, text in texts.items():
         if key.startswith("spec-"):
             claims += requirements(text, key)
+    claims = _disambiguate(claims)
     links, stats = detect_links(claims, caps)
     cov = coverage(claims, links)
     cov["capabilities"] = capability_coverage(caps, texts, claims)
