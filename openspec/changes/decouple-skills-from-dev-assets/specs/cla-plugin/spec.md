@@ -149,7 +149,9 @@ The checker checks **path existence only**; it does NOT validate the non-path me
 
 Plugin scripts SHALL resolve repo locations independently of their own position in the tree, because the plugin's nested position under `.claude/plugins/cla/…` breaks any position-dependent resolver. Specifically: (a) scripts that read/write the retro dir (the shared writer `lib/log_run.py` and each retro loop's aggregator — `codify-retro/scripts/codify_aggregate.py` and `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py`) SHALL resolve it as `CLAUDE_RETRO_DIR` when set, otherwise `<git rev-parse --show-toplevel>/cla.io/retro`; (b) scripts that resolve a repo root for other repo files (`probe_state.py` via `_git_common.py`) SHALL resolve it via `git rev-parse --show-toplevel`, NOT a fixed `Path(__file__).resolve().parents[N]` depth. Scripts MUST NOT rely on walking to a `.claude` ancestor of the script nor on `${CLAUDE_PROJECT_DIR}` (empty in the script environment). A skill-bundled file (one that ships WITH the plugin, e.g. `references/required-permissions.json`) SHALL be resolved skill-relative to the script, while a project-level target — including every overlay under `cla.io/overlays/` — SHALL be resolved from the repo root.
 
-Each retro loop's aggregator SHALL carry a module name distinct from every other aggregator in the plugin, so that no two of them collide when imported in one process.
+Each retro loop's aggregator SHALL carry a module basename distinct from every other aggregator in the plugin, **and each aggregator's test file SHALL carry a distinct basename as well**.
+
+The reason is a **forward** one and SHALL NOT be recorded as a present import collision, because there is none: each retro test file loads its own aggregator by explicit file path under a distinct module name via `importlib.util.spec_from_file_location`, no test file imports an aggregator by bare module name, and the plugin's test scopes are executed as separate subprocesses — so no two aggregators, and no two aggregator test files, are ever resident in one interpreter. The requirement exists because the plugin's per-scope pytest split is consolidated into a **single** pytest scope, and two test files sharing the basename `test_aggregate.py` under one rootdir break pytest **collection** (a distinct failure from import shadowing). Distinct basenames are therefore a precondition of that consolidation, not a fix for a defect observable before it.
 
 #### Scenario: A plugin script writes to the repo's retro dir
 
@@ -170,5 +172,6 @@ Each retro loop's aggregator SHALL carry a module name distinct from every other
 #### Scenario: The two retro aggregators do not share a module name
 
 - **WHEN** the plugin's retro aggregators are enumerated
-- **THEN** `codify-retro` and `spec-to-pr-retro` each name their aggregator distinctly
-- **AND** every skill instruction, test, and cross-file path list that names an aggregator names the distinct one
+- **THEN** `codify-retro` and `spec-to-pr-retro` each name their aggregator script distinctly
+- **AND** the **test file** for each aggregator is named distinctly too — no two test files anywhere in the plugin share the basename `test_aggregate.py`, so a single consolidated pytest rootdir can collect both
+- **AND** every skill instruction, test, and cross-file path list that names an aggregator names the distinct one — including each test file's own `SCRIPT` path constant, the module docstrings that open `"""Tests for aggregate.py …"""`, and the `consistency-checks` path lists
