@@ -318,7 +318,7 @@ Contributing to the harness rather than using it? The extra rules:
 - **Run the whole verification story locally — there is no CI, by design:**
 
   ```bash
-  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (11), aggregated
+  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (12), aggregated
   node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
   ```
 
@@ -330,7 +330,7 @@ Contributing to the harness rather than using it? The extra rules:
   `SOURCE-REPO-ONLY.md`; `run_tests.py` runs them here and skips them anywhere else. Adding
   a scope that asserts a canonical-repo fact means adding that marker AND its name to
   `test_source_only_markers.py`'s expected set — the guard fails both ways.
-- **Never run bare `pytest` from the repo or plugin root.** Each scope (5 skills with tests, plus
+- **Never run bare `pytest` from the repo or plugin root.** Each scope (6 skills with tests, plus
   `skills/_shared/`, `lib/`, `hooks/`, `conformance-checks/`, `consistency-checks/`,
   `launcher-checks/`) is isolated on purpose — several ship
   same-named helper modules. Iterate on one scope with

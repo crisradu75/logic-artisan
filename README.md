@@ -70,7 +70,7 @@ openspec/                      OpenSpec config + specs for this repo's own chang
   .claude-plugin/plugin.json   manifest
   README.md                    the harness's scope + capabilities, by life-cycle phase
   run_tests.py                 aggregating test runner (all pytest scopes + the Node suite)
-  skills/                      20 workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
+  skills/                      21 workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
   skills/_shared/              references + one script that several skills share (not a skill)
   agents/                      helper agents (doc-sweeper, fact-gatherer)
   hooks/                       always-on guard hooks (blocks, asks, warns) + dispatchers + tests
@@ -95,7 +95,7 @@ There is **no CI, by design** — the local run below is the whole verification 
 gate before a merge:
 
 ```bash
-python3 .claude/plugins/cla/run_tests.py     # every pytest scope (11 today), aggregated pass/fail + exit code
+python3 .claude/plugins/cla/run_tests.py     # every pytest scope (12 today), aggregated pass/fail + exit code
 node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs   # the one Node suite
 ```
 
