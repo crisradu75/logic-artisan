@@ -50,7 +50,7 @@ import annotations_store as store
 # renderer added has to come out on both sides, or the browser and this script
 # disagree about what a block says. One constant per side, never a list per use
 # site: three hand-maintained copies is how a class gets missed.
-INJECTED_CLASSES = ("cmt-sup",)
+INJECTED_CLASSES = ("cmt-sup", "gut")
 
 MAX_INLINE_IMAGE_BYTES = 2 * 1024 * 1024
 
@@ -177,8 +177,13 @@ class Ctx:
     plain text of every addressable block (kept for the anchor check), and the
     section list the navigation rail is built from."""
 
-    def __init__(self, doc_dir):
+    def __init__(self, doc_dir, prefix=""):
+        # `prefix` namespaces block ids per file. Rendering several files into
+        # one page without it restarts every file at b1, and an annotation on
+        # one document then repaints onto another — found in the mock, where
+        # four files produced 251 blocks and colliding ids.
         self.doc_dir = doc_dir
+        self.prefix = prefix
         self.n = 0
         self.section = ""
         self.blocks = {}
@@ -189,7 +194,7 @@ class Ctx:
 
     def take(self, text):
         self.n += 1
-        blk = "b%d" % self.n
+        blk = "%sb%d" % (self.prefix, self.n)
         self.blocks[blk] = text
         if self.sections:
             # Words are attributed to the section open when the block was
@@ -208,7 +213,7 @@ class Ctx:
         """A heading's anchor, deduplicated. Two sections called "Notes" would
         otherwise share one `id`, and a document's own `[link](#notes)` would
         land on whichever the browser found first."""
-        base = slugify(title)
+        base = (self.prefix.replace(":", "-") + slugify(title)) if self.prefix else slugify(title)
         seen = self._slugs.get(base, 0)
         self._slugs[base] = seen + 1
         return base if not seen else "%s-%d" % (base, seen + 1)
@@ -218,7 +223,7 @@ class Ctx:
         scroll-spy key on; `slug` is the heading's own anchor and is what the
         document's internal links point at. They are separate because only one
         of them can be allowed to change when a heading is retitled."""
-        sid = "s%d" % (len(self.sections) + 1)
+        sid = "%ss%d" % (self.prefix, len(self.sections) + 1)
         self.sections.append({"id": sid, "level": level, "title": title,
                               "slug": slug, "line": line, "words": 0,
                               "titled": bool(title)})
@@ -445,9 +450,12 @@ def strip_html_comments(text):
                   lambda m: "\n" * m.group(0).count("\n"), text, flags=re.S)
 
 
-def render_document(text, doc_dir, plain_text=False):
-    """-> (body html, Ctx). `plain_text` renders with no markup interpretation."""
-    ctx = Ctx(doc_dir)
+def render_document(text, doc_dir, plain_text=False, prefix=""):
+    """-> (body html, Ctx). `plain_text` renders with no markup interpretation.
+
+    `prefix` namespaces this file's block ids, for a page holding several files.
+    """
+    ctx = Ctx(doc_dir, prefix)
     text = text.replace("\r\n", "\n").replace("\r", "\n").lstrip("﻿")
     lines = text.split("\n")
 
@@ -456,9 +464,9 @@ def render_document(text, doc_dir, plain_text=False):
     # the rail lights nothing until the reader scrolls past the first heading. It
     # gets no rail entry: it has no title to show. Opened before the front matter
     # is rendered, so that block's words are attributed like any other.
-    ctx.new_section(0, "", 1, "")
+    sid = ctx.new_section(0, "", 1, "")
     ctx.open_section = True
-    head = '<section class="sec" data-sec-id="s1">'
+    head = '<section class="sec" data-sec-id="%s">' % sid
 
     front = ""
     start = 0
@@ -564,7 +572,7 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 
 .bar{position:sticky;top:0;z-index:60;background:var(--paper);border-bottom:1px solid var(--rule);
  display:flex;align-items:center;gap:.85rem;padding:.55rem 1.1rem;
- font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.7rem}
+ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.72rem}
 .bar-doc{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
 .bar-stat{color:var(--muted);letter-spacing:.06em;text-transform:uppercase;
  font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -579,7 +587,7 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 .ico-svg{width:.95rem;height:.95rem;display:block;flex:none}
 .opener{font:inherit;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
- font-size:.7rem;cursor:pointer;display:flex;align-items:center;gap:.5rem;background:transparent;
+ font-size:.72rem;cursor:pointer;display:flex;align-items:center;gap:.5rem;background:transparent;
  border:1px solid var(--mark);border-radius:3px;padding:.36rem .55rem .36rem .7rem;color:var(--mark);
  letter-spacing:.07em;text-transform:uppercase;box-shadow:inset 3px 0 0 var(--mark)}
 .opener:hover{background:var(--mark-wash)}
@@ -593,7 +601,7 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
  align-items:start}
 .rail{position:sticky;top:2.9rem;height:calc(100vh - 2.9rem);overflow-y:auto;
  padding:1.3rem .8rem 3rem 1.1rem;border-right:1px solid var(--rule);background:var(--paper)}
-.rail-h{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.6rem;letter-spacing:.16em;
+.rail-h{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.62rem;letter-spacing:.16em;
  text-transform:uppercase;color:var(--muted);margin:0 0 .8rem .1rem}
 .rail-item{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;
  text-decoration:none;color:var(--ink-2);padding:.42rem .45rem;border-radius:2px;
@@ -605,7 +613,7 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 .rail-item[data-depth="3"]{padding-left:2.8rem}
 .rail-item[data-depth="4"]{padding-left:3.6rem}
 .rail-main{display:flex;flex-direction:column;gap:.3rem;min-width:0}
-.rail-title{font-size:.86rem;line-height:1.25}
+.rail-title{font-size:.9rem;line-height:1.25}
 .rail-item[data-depth="0"] .rail-title{font-weight:600}
 .rail-item[data-depth="2"] .rail-title,.rail-item[data-depth="3"] .rail-title,
 .rail-item[data-depth="4"] .rail-title{font-size:.8rem}
@@ -613,18 +621,18 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 .rail-bar i{display:block;height:100%;background:var(--accent-2);opacity:.5}
 .rail-item.on .rail-bar i{opacity:1}
 .rail-meta{display:flex;align-items:center;gap:.3rem;flex:none}
-.rail-n{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.62rem;
+.rail-n{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.66rem;
  font-variant-numeric:tabular-nums;color:var(--muted);text-align:right}
 .rail-item.on .rail-n{color:var(--accent)}
 /* The annotation count is the reason to look at the rail once a pass is under
    way: it says which sections were argued with, which is not the same question
    as which are long. */
-.rail-c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.6rem;
+.rail-c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.64rem;
  font-variant-numeric:tabular-nums;background:var(--mark);color:var(--paper);
  border-radius:999px;padding:.02rem .34rem;min-width:1.1rem;text-align:center}
 .rail-c[hidden]{display:none}
 .rail-foot{margin-top:1.1rem;padding-top:.9rem;border-top:1px solid var(--hair);
- font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.6rem;line-height:1.7;
+ font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.62rem;line-height:1.7;
  color:var(--muted)}
 .sec{scroll-margin-top:4rem}
 
@@ -715,7 +723,7 @@ body.cmt .scrim{opacity:1;pointer-events:auto}
 .dr-top{display:flex;align-items:baseline;gap:.6rem;padding:.8rem 1rem;
  border-bottom:1px solid var(--mark);flex:none}
 .dr-title{font-weight:600}
-.dr-sub{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.6rem;
+.dr-sub{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.62rem;
  letter-spacing:.07em;text-transform:uppercase;color:var(--muted);overflow:hidden;
  text-overflow:ellipsis;white-space:nowrap}
 .dr-x{display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;
@@ -725,7 +733,7 @@ body.cmt .scrim{opacity:1;pointer-events:auto}
 .cmt-card{padding:.9rem 0;border-bottom:1px solid var(--hair)}
 .cmt-head{display:flex;gap:.55rem;align-items:baseline;margin-bottom:.35rem}
 .cmt-idx{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.66rem;color:var(--mark);flex:none}
-.cmt-loc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.6rem;color:var(--muted);
+.cmt-loc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.63rem;color:var(--muted);
  letter-spacing:.04em;cursor:pointer;background:none;border:0;padding:0;text-align:left}
 .cmt-loc:hover{color:var(--mark);text-decoration:underline}
 .cmt-acts{margin-left:auto;display:flex;gap:.15rem;flex:none}
@@ -853,6 +861,17 @@ function openList(id) {
   if (card) card.scrollIntoView({block:'center', behavior:'smooth'});
 }
 
+/* Bring a block into view. On a single-document page that is a scroll; on a page
+   of several files the tab has to change first, so a multi-file page replaces
+   this one function rather than carrying its own copy of the anchor layer. */
+window.focusBlock = function (blk) {
+  const h = blk ? document.querySelector('[data-blk="' + CSS.escape(blk) + '"]') : null;
+  if (!h) return false;
+  setCmt(false);
+  h.scrollIntoView({block: 'center', behavior: 'smooth'});
+  return true;
+};
+
 /* Everything the renderer injects that the document does not contain. An
    annotation records the document's characters, so every one of these must come
    out before text is read or offsets are counted — in all three places, from
@@ -965,6 +984,10 @@ function captureSelection() {
     blk: host.dataset.blk,
     line: Number(host.dataset.line) || 0,
     sec: host.dataset.sec || '',
+    /* Which file the passage came from, read off the enclosing pane. Empty on a
+       single-document page, which has no panes — the field costs nothing there
+       and is the whole address on a page holding a change's four files. */
+    file: (host.closest('[data-pane]') || {dataset: {}}).dataset.pane || '',
     off, text,
     /* Sixty characters is the authoritative figure and it is set here. The
        replay uses the inner 24 to bracket the passage; the far context usually
@@ -1316,7 +1339,10 @@ function render() {
     + '<div class="cmt-head">'
     + '<span class="cmt-idx">' + (i + 1) + '</span>'
     + '<button class="cmt-loc" data-go="' + c.id + '">'
-    + esc(c.sec || DOC) + ' · line ' + (c.line || '?')
+    /* On a change, which FILE an annotation is on outranks which section: the
+       reader is deciding whether to switch tabs. */
+    + esc(c.file ? c.file + (c.sec ? ' · ' + c.sec : '') : (c.sec || DOC))
+    + ' · line ' + (c.line || '?')
     + (c.lost ? ' · ANCHOR LOST' : '')
     + (c.unsaved ? ' · unsaved' : '')
     + (c.delFailed ? ' · DELETE FAILED' : '')
@@ -1385,9 +1411,8 @@ function render() {
     if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
   });
   CMT.el.list.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
-    const c = CMT.list.find(x => x.id === b.dataset.go); if (!c) return;
-    const h = c.blk ? document.querySelector('[data-blk="' + CSS.escape(c.blk) + '"]') : null;
-    if (h) { setCmt(false); h.scrollIntoView({block:'center', behavior:'smooth'}); }
+    const c = CMT.list.find(x => x.id === b.dataset.go);
+    if (c) window.focusBlock(c.blk);
   });
 }
 

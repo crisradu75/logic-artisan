@@ -32,6 +32,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 import annotations_store as store
+import openspec_change
+import render_change
 import render_doc
 
 # stdout buffers when it is not a terminal, and this server is normally run in
@@ -48,10 +50,11 @@ class Handler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     out_path = None      # the corpus
-    doc_path = None      # the document being annotated
+    doc_path = None      # the document, or the change directory, being annotated
     doc_key = None
     root = None
     page_path = None
+    is_change = False    # a whole OpenSpec change rather than one file
 
     def log_message(self, fmt, *a):
         sys.stderr.write("  %s\n" % (fmt % a))
@@ -111,6 +114,19 @@ class Handler(SimpleHTTPRequestHandler):
         only one of them says what to fix.
         """
         try:
+            if self.is_change:
+                out, model, ctxs = render_change.build(
+                    self.doc_path, self.root, self.page_path)
+                cov = model["coverage"]
+                summary = ("%d files, %d blocks · %d uncovered, %d not checkable"
+                           % (cov["stats"]["files"],
+                              sum(len(c.blocks) for c in ctxs.values()),
+                              len(cov["uncovered"]), len(cov["unchecked"])))
+                print("rebuilt   %s  ->  %s" % (summary, out))
+                warn = ["%d claim(s) could not be bound to a block"
+                        % len([c for c in model["claims"] if not c.get("blk")])] \
+                    if any(not c.get("blk") for c in model["claims"]) else []
+                return self._json({"ok": True, "summary": summary, "warnings": warn})
             out, ctx, words = render_doc.build(self.doc_path, self.root, self.page_path)
         except OSError as e:
             # The type is half the diagnosis: FileNotFoundError, PermissionError
@@ -253,7 +269,8 @@ def open_app_window(url, profile_dir):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("document", help="the document that was rendered")
+    ap.add_argument("document",
+                    help="a .md/.txt file, an OpenSpec change directory, or a change id")
     ap.add_argument("--port", type=int, default=8741)
     ap.add_argument("--root", help="repo root (default: resolved from git)")
     ap.add_argument("--page", help="the rendered page (default: the temp-dir path)")
@@ -263,14 +280,23 @@ def main(argv=None):
                     help="open an ordinary browser tab instead of a chrome-less app window")
     a = ap.parse_args(argv)
 
-    if not os.path.isfile(a.document):
-        print("no such document: %s" % a.document)
+    # A change is a directory of files that are only reviewable together, so it
+    # is one target, one corpus and one page. Resolved first: a bare change id is
+    # neither a file nor a directory, and would otherwise read as "no such
+    # document" for a change that plainly exists.
+    root = os.path.abspath(a.root) if a.root else store.repo_root(a.document)
+    change_dir = openspec_change.find_change(a.document, root)
+    if change_dir:
+        doc, is_change = change_dir, True
+    elif os.path.isfile(a.document):
+        doc, is_change = os.path.abspath(a.document), False
+    else:
+        print("no such document or change: %s" % a.document)
         return 1
-    doc = os.path.abspath(a.document)
-    root = os.path.abspath(a.root) if a.root else store.repo_root(doc)
     pages = render_doc.page_dir(root)
-    page = os.path.abspath(a.page) if a.page else os.path.join(
-        pages, store.page_name(doc, root))
+    default_page = ("change-" + os.path.basename(doc) + ".html" if is_change
+                    else store.page_name(doc, root))
+    page = os.path.abspath(a.page) if a.page else os.path.join(pages, default_page)
     # Resolved once, here, and used everywhere. `os.chdir` below changes what a
     # relative path means, so a guard computed before it and a write computed
     # after it were checking and writing to two different files.
@@ -278,7 +304,8 @@ def main(argv=None):
 
     if not os.path.exists(page):
         print("no page at %s" % page)
-        print("build it first:  python3 render_doc.py %s" % a.document)
+        print("build it first:  python3 %s %s"
+              % ("render_change.py" if is_change else "render_doc.py", a.document))
         return 1
 
     serve_dir = os.path.dirname(page)
@@ -288,6 +315,7 @@ def main(argv=None):
     Handler.doc_key = store.doc_key(doc, root)
     Handler.root = root
     Handler.page_path = page
+    Handler.is_change = is_change
     url = "http://127.0.0.1:%d/%s" % (a.port, os.path.basename(page))
 
     # Bound to the loopback address and nowhere else. It has no authentication
