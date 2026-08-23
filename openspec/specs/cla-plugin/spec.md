@@ -619,6 +619,33 @@ The rule's three properties — the mechanical check, the pending-event discrimi
 - **WHEN** a skill states the rule
 - **THEN** the mechanical check, the discriminator, and "announcing is not a mechanism" sit in one block
 - **AND** a guard over them distinguishes that from the three merely appearing somewhere in the file
+### Requirement: Completeness signals read the claim, not the glyph
+
+A skill that reports a task list complete SHALL NOT rest that report solely on checkbox state. A checkbox count is a presence check on the glyph: it cannot distinguish a task that was done from one that was ticked. An artifact-presence flag is weaker still — it does not read task state at all — so neither is evidence that the work behind a task happened.
+
+A task whose text asserts a **measurement** — a confirmed value, a count, a mutation-test result — SHALL record the measured value inline on the ticked line rather than the tick standing as its own evidence, and the post-check SHALL re-measure a small sample rather than trusting the ticks wholesale.
+
+The skill SHALL state the underlying convention as well as enforcing it: a task is `[ ]` until it is done, and the prose beneath it explains why it is still open.
+
+**A mechanical scan of a ticked task's body for self-negating text is NOT required, and the reason is recorded so it is not re-attempted blind.** It was built and withdrawn: measured over this repo's own archived `tasks.md` corpus — 173 ticked tasks — such a scan reached 6 lines, produced 0 true positives and 4 false positives, and its trip words collided with vocabulary the skills use deliberately. A repo whose task prose sits on the task line rather than beneath it gets no coverage from the obvious implementation. Anyone rebuilding it SHALL first measure the target corpus, and SHALL reuse the task parser the plugin already ships rather than hand-rolling one. Full evidence: GitHub issue #105.
+
+#### Scenario: A measurement-bearing task carries its measurement
+
+- **WHEN** a task asserts a confirmed value, a count, or a mutation-test result
+- **THEN** the ticked line records the measured value
+- **AND** a sample of such tasks is re-measured rather than trusted
+
+### Requirement: Deferred findings are separated by reason
+
+A skill reporting findings it did not apply SHALL split them into named subsections distinguishing a hold that cannot be resolved now, a hold whose trigger has not fired, and an item skipped for neither reason. The third SHALL be mechanically detectable, so that a policy breach is found by a grep rather than by re-reading every item.
+
+Collapsing all three under one label SHALL be treated as a defect rather than a formatting preference: undifferentiated, a genuine breach and a legitimate hold read identically, which leaves only two options — accept the section unread, or re-read it in full on every change.
+
+#### Scenario: A skipped item is distinguishable from a legitimate hold
+
+- **WHEN** a fix round reports items it did not apply
+- **THEN** each appears under one of the three named subsections
+- **AND** a non-empty "skipped" list fails the reporting phase under a no-deferrals policy
 
 ### Requirement: Shipped-asset boundary
 

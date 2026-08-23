@@ -10,7 +10,17 @@ From the orchestrator's working memory of each phase. Use this exact shape (one 
 - Phases table: one row per phase with glyph (`✓` / `⚠` / `✗`), phase name, and the one-line summary you held in context for that phase.
 - Counts at a glance: ✓/⚠/✗ phase tally; Critical/Important/Suggestion remaining; failing test names if any.
 - Issues encountered: bulleted list of `warn`/`fail` outcomes from any phase. Empty section when there are none — print "(none)".
-- **Deferred Known Issues:** bulleted list of every Critical/Important PR-review finding triaged as Deferred-Known-Issue in Revise, each with its one-line rationale. This section is the durable record of "we saw it, we chose not to fix it now, here's why." Empty section when there are none — print "(none)".
+- **Deferred Known Issues:** every Critical/Important PR-review finding triaged as Deferred-Known-Issue in Revise, each with its one-line rationale. This section is the durable record of "we saw it, we chose not to fix it now, here's why." Empty section when there are none — print "(none)".
+
+  **Split into three named subsections, always, even when one or two are empty:**
+
+  ```
+  **Blocked on a missing artifact** — cannot be resolved now; name the artifact.
+  **Trigger condition not yet fired** — the case it guards has not arisen yet.
+  **Skipped** — no reason above applies.
+  ```
+
+  Under the full-severity policy the first two are legitimate holds and `Skipped` is a policy breach, so **a non-empty `Skipped` fails Handoff.** One bucket under a single alarming label makes the two indistinguishable without re-reading every item, which in practice means the section gets waved through unread. Keep the headings verbatim so the check stays a grep rather than a judgement.
 - Deferred to TODO.md: bulleted residue list (Suggestion-level only, plus any cap-exhausted untriaged residue). Empty when none.
 - Next steps for you (see step 4 for the gating rule).
 
