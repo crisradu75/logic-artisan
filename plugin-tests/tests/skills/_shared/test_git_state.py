@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "git_state.py"
+_SCRIPT = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills" / "_shared" / "scripts" / "git_state.py"
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:

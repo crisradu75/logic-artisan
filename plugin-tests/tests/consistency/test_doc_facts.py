@@ -32,7 +32,7 @@ from pathlib import Path
 
 import pytest
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 _REPO_ROOT = _PLUGIN_ROOT.parents[2]
 
 _DOCS = {

@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
 # (skill that writes, the prose file carrying the invocation, the reader's aggregator)
 _LEDGER_CONTRACTS = [

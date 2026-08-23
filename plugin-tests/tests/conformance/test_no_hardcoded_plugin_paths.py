@@ -38,7 +38,7 @@ BAD = ".claude/plugins/cla"
 SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")
 SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
 
 def _scanned_files():

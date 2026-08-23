@@ -21,7 +21,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 _GUARD = _PLUGIN_ROOT / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py"
 
 

@@ -21,7 +21,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
 _CHECK_SCOPES = ("conformance-checks", "consistency-checks")
 

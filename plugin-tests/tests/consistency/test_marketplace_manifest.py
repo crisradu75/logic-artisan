@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 _REPO_ROOT = _PLUGIN_ROOT.parents[2]
 _MANIFEST = _REPO_ROOT / ".claude-plugin" / "marketplace.json"
 _PLUGIN_JSON = _PLUGIN_ROOT / ".claude-plugin" / "plugin.json"

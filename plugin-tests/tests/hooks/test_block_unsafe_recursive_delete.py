@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-_HOOK = Path(__file__).resolve().parent.parent / "block-unsafe-recursive-delete.py"
+_HOOK = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks" / "block-unsafe-recursive-delete.py"
 
 
 def _load_module():

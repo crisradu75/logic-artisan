@@ -17,7 +17,7 @@ from types import ModuleType
 
 import pytest
 
-_HOOKS_DIR = Path(__file__).resolve().parent.parent
+_HOOKS_DIR = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks"
 _LIB_PATH = _HOOKS_DIR / "_dispatch_lib.py"
 
 
@@ -666,7 +666,15 @@ def test_every_environment_escape_hatch_is_neutralised_by_conftest():
     Measured with `ALLOW_DESTRUCTIVE_GIT=1` exported before the fixture existed:
     64 tests failed and the one non-vacuity guarantee passed vacuously.
     """
-    import conftest
+    # Loaded by PATH, not as `import conftest`. The dev tree is one pytest scope
+    # holding five sibling `conftest.py` files, so a bare `import conftest`
+    # resolves to whichever one reached `sys.modules` first — which is not
+    # necessarily this directory's, and the wrong one has no `_ESCAPE_HATCHES`.
+    spec = importlib.util.spec_from_file_location(
+        "_ut_hooks_conftest", Path(__file__).resolve().parent / "conftest.py"
+    )
+    conftest = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(conftest)
 
     hatches = set()
     for path in _HOOKS_DIR.glob("*.py"):

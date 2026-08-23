@@ -1,6 +1,6 @@
 """Mutant batch for `tests/test_project_facts_paths.py`.
 
-Run: `python3 <plugin>/mutate.py <plugin>/conformance-checks/mutants/test_project_facts_paths.py`
+Run: python3 plugin-tests/mutate.py plugin-tests/mutants/conformance/test_project_facts_paths.py
 
 The guard was promoted out of this scope into a program at
 `skills/sync-context/scripts/check_fact_paths.py`; the tests for it stayed here.
@@ -27,9 +27,10 @@ path works on one machine and leaks a repo name into synced core.
 
 from pathlib import Path
 
-PLUGIN = Path(__file__).resolve().parents[2]
+PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
+DEV = Path(__file__).resolve().parents[2]
 CHECKER = PLUGIN / "skills" / "sync-context" / "scripts" / "check_fact_paths.py"
-TARGETS = [PLUGIN / "conformance-checks" / "tests"]
+TARGETS = [DEV / "tests" / "conformance"]
 
 MUTANTS = [
     (

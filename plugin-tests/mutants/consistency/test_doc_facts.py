@@ -1,14 +1,15 @@
 """Mutation batch for test_doc_facts.py — break each doc claim it pins and
 confirm a test fails.
 
-Run: python3 <plugin>/mutate.py <plugin>/consistency-checks/mutants/test_doc_facts.py
+Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_doc_facts.py
 """
 
 from pathlib import Path
 
-PLUGIN = Path(__file__).resolve().parents[2]
+PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
+DEV = Path(__file__).resolve().parents[2]
 REPO = PLUGIN.parents[2]
-TARGETS = [PLUGIN / "consistency-checks" / "tests"]
+TARGETS = [DEV / "tests" / "consistency"]
 
 MUTANTS = [
     (

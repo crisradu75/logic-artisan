@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-_HOOK = Path(__file__).resolve().parents[1] / "block-cd-in-bash.py"
+_HOOK = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks" / "block-cd-in-bash.py"
 
 
 def _load():

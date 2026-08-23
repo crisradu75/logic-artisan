@@ -28,20 +28,25 @@ normalizes on read. Restores are byte-exact and asserted.
 USAGE. Write a batch file — a Python module defining `MUTANTS`, a list of
 `(name, path, old, new, targets)`:
 
+Batches live in `plugin-tests/mutants/<area>/`, mirroring `plugin-tests/tests/`.
+The subject usually stays in the published plugin while its tests live here, so
+a batch commonly needs both roots:
+
     from pathlib import Path
-    PLUGIN = Path(__file__).resolve().parents[1]     # adjust to where you put it
+    DEV = Path(__file__).resolve().parents[2]        # <repo>/plugin-tests
+    PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
     HOOKS = PLUGIN / "hooks"
     MUTANTS = [
         ("the git matcher stops case-folding the command name",
          HOOKS / "_dispatch_lib.py",
          r'GIT_CMD = r"\\b(?i:git)(?:\\.(?i:exe|cmd|bat|com|ps1))?"',
          r'GIT_CMD = r"\\bgit(?:\\.(?i:exe|cmd|bat|com|ps1))?"',
-         [HOOKS / "tests"]),
+         [DEV / "tests" / "hooks"]),
     ]
 
 then run it:
 
-    python3 .claude/plugins/cla/mutate.py <batch.py>
+    python3 plugin-tests/mutate.py <batch.py>
 
 `old` must appear EXACTLY ONCE in the file. A missing anchor means that mutant
 silently stopped checking anything; an ambiguous one silently mutates a site you

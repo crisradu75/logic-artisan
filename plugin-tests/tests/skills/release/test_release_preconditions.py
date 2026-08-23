@@ -28,12 +28,17 @@ import json
 import re
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[3]
-_REPO_ROOT = _PLUGIN_ROOT.parents[2]
+# Three subjects in three different trees, so the repo root is resolved once and
+# all three are derived from it. A single `parents[N]` cannot express this:
+# `extract-dev-tree-from-plugin` left this test in the dev tree, its `SKILL.md`
+# subject in the repo-local skills tree, and `plugin.json` in the published
+# plugin. A "corrected depth" would have had to be three different depths.
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_PLUGIN_ROOT = _REPO_ROOT / ".claude" / "plugins" / "cla"
 
 _PLUGIN_JSON = _PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
 _MARKETPLACE_JSON = _REPO_ROOT / ".claude-plugin" / "marketplace.json"
-_SKILL_MD = _PLUGIN_ROOT / "skills" / "release" / "SKILL.md"
+_SKILL_MD = _REPO_ROOT / ".claude" / "skills" / "release" / "SKILL.md"
 
 TAG_SHAPE = re.compile(r"^cla--v(\d+\.\d+\.\d+)$")
 

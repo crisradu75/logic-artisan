@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-_PRE_PUSH = Path(__file__).resolve().parent.parent / "git" / "pre-push"
+_PRE_PUSH = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks" / "git" / "pre-push"
 _SH = shutil.which("sh")
 
 # Every hook here is a POSIX sh script; git runs it under its bundled sh even

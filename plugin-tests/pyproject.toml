@@ -34,6 +34,14 @@
 # published plugin tree — only their tests live here.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `testpaths` alone is NOT enough, which the design of this move got wrong.
+# It applies only when pytest is given no path argument, and the gate IS a path
+# argument (`pytest plugin-tests`). Without `norecursedirs` that invocation
+# walks into `mutants/`, collects the batches as tests, and dies on the basename
+# collision between `mutants/consistency/test_doc_facts.py` and
+# `tests/consistency/test_doc_facts.py`. Excluding them here makes every
+# invocation correct rather than only the argument-less one.
+norecursedirs = ["mutants", "node"]
 pythonpath = [
   "scripts",
   "../.claude/skills/release/scripts",

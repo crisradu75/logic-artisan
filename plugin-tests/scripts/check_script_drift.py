@@ -1,5 +1,5 @@
-"""Detect logic drift between sibling scripts that live in different skills'
-isolated pytest scopes and so can't share a single importable module.
+"""Detect logic drift between sibling scripts that deliberately carry duplicate
+copies of the same logic and so can't share a single importable module.
 
 The ledger writer (`lib/log_run.py`) and both readers of what it writes (the
 two retro aggregators) each carry their own copy of the resolver that
@@ -12,12 +12,12 @@ particular is silent, since the reader then finds no records and reports a
 cold start.
 
 This can't be fixed by extracting a shared module the way
-`hooks/_dispatch_lib.py` or `spec-to-pr/scripts/_git_common.py` do — those
-live inside ONE pytest scope each; these siblings are deliberately spread
-across scopes that are collected separately, each with its own `pythonpath`
-(see `run_tests.py`'s own docstring). So instead of sharing code, this compares
-the actual LOGIC of each named function across its sibling files, once per
-`run_tests.py` pass.
+`hooks/_dispatch_lib.py` or `spec-to-pr/scripts/_git_common.py` do — each of
+those is imported by exactly one skill, whereas these siblings are shipped
+inside three different skills that a consuming repo may install and invoke
+independently, so none of them may import from another. So instead of sharing
+code, this compares the actual LOGIC of each named function across its sibling
+files.
 
 The comparison ignores string constants (docstrings, log filenames, error
 messages) — each sibling legitimately customizes those per skill — but not
@@ -32,10 +32,18 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+PLUGIN_ROOT = _REPO_ROOT / ".claude" / "plugins" / "cla"
+DEV_TREE_ROOT = _REPO_ROOT / "plugin-tests"
 
 # Each group: a set of function names expected to be logic-identical across a
-# set of sibling files (paths relative to PLUGIN_ROOT).
+# set of sibling files, plus the `root` its paths are relative to.
+#
+# The root is per-group and not global because `extract-dev-tree-from-plugin`
+# split the siblings across two trees. Groups 1 and 2 name shipped scripts that
+# stayed in the plugin; group 3 names test helpers that moved to the dev tree
+# while their subjects stayed behind. One root cannot address both sets, and a
+# single corrected depth would silently resolve half of them to nothing.
 SIBLING_GROUPS = [
     # The pair that can actually fail silently: the ledger WRITER and the two
     # READERS of what it writes. An earlier version of this group compared the
@@ -46,6 +54,7 @@ SIBLING_GROUPS = [
     # `_runs_dir()`, which is why only the dir resolver is compared here.
     {
         "name": "retro ledger dir resolver (writer + both readers)",
+        "root": PLUGIN_ROOT,
         "functions": ("_git_toplevel", "_runs_dir"),
         "files": (
             "lib/log_run.py",
@@ -55,6 +64,7 @@ SIBLING_GROUPS = [
     },
     {
         "name": "retro aggregator record loading",
+        "root": PLUGIN_ROOT,
         "functions": ("_load_records", "_coerce_int"),
         "files": (
             "skills/codify-retro/scripts/codify_aggregate.py",
@@ -62,11 +72,9 @@ SIBLING_GROUPS = [
         ),
     },
     {
-        # Duplicated rather than shared for the same reason as the families
-        # above: `run_tests.py` runs each scope as its own pytest process, each
-        # rooted on its own `pyproject.toml`, so a shared import across scopes
-        # would break that isolation. Registered here so the copies cannot
-        # drift instead.
+        # Duplicated rather than shared because each copy is a test-local
+        # helper in a different area of the suite, with no importable home
+        # between them. Registered here so the copies cannot drift instead.
         #
         # This helper is what makes three tests actually RUN on Windows. They
         # previously called `os.symlink(..., target_is_directory=True)` and
@@ -75,11 +83,12 @@ SIBLING_GROUPS = [
         # path handling they exist to check, while the suite reported green. A
         # junction needs no elevation and `realpath` resolves it identically.
         "name": "make_dir_alias test helper",
+        "root": DEV_TREE_ROOT,
         "functions": ("make_dir_alias",),
         "files": (
-            "hooks/tests/test_block_worktree_path_escape.py",
-            "hooks/tests/test_block_unsafe_recursive_delete.py",
-            "skills/new-worktree/tests/test_manual_worktree.py",
+            "tests/hooks/test_block_worktree_path_escape.py",
+            "tests/hooks/test_block_unsafe_recursive_delete.py",
+            "tests/skills/new-worktree/test_manual_worktree.py",
         ),
     },
 ]
@@ -169,7 +178,7 @@ def check_group(group: dict, root: Path) -> list[str]:
 def main() -> int:
     problems: list[str] = []
     for group in SIBLING_GROUPS:
-        problems.extend(check_group(group, PLUGIN_ROOT))
+        problems.extend(check_group(group, group["root"]))
 
     if problems:
         print("Sibling script drift detected:")

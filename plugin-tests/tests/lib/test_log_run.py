@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "log_run.py"
+SCRIPT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "lib" / "log_run.py"
 
 LEDGER = "spec-to-pr-runs.jsonl"
 

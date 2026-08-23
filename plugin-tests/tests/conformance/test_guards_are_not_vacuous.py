@@ -29,7 +29,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
 # Names that, by this repo's own convention, hold "things that went wrong".
 # An empty-assert over one of these is the plugin's standard guard shape.

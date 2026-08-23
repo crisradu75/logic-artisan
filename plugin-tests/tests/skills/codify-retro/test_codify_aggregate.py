@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "codify_aggregate.py"
+SCRIPT = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills" / "codify-retro" / "scripts" / "codify_aggregate.py"
 
 
 def _write_log(path: Path, records: list[dict]) -> None:

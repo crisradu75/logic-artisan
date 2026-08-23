@@ -6,6 +6,7 @@ operate against the test fixture. `gh` is mocked via monkeypatched _run.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
@@ -13,7 +14,19 @@ from pathlib import Path
 import pytest
 
 import probe_state
-from conftest import commit_on_branch, make_change
+
+# Loaded by PATH, not as `from conftest import ...`. The dev tree is one pytest
+# scope holding five sibling `conftest.py` files, so a bare conftest import
+# resolves to whichever one reached `sys.modules` first. That is import-order
+# dependent, and the identical import in `tests/hooks/` resolved to the wrong
+# module the first time this scope was collapsed into one.
+_spec = importlib.util.spec_from_file_location(
+    "_ut_spec_to_pr_conftest", Path(__file__).resolve().parent / "conftest.py"
+)
+_conftest = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_conftest)
+commit_on_branch = _conftest.commit_on_branch
+make_change = _conftest.make_change
 
 
 REPO_VIEW_KEY = ("gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner")

@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 CHECKER = _PLUGIN_ROOT / "skills" / "sync-context" / "scripts" / "check_fact_paths.py"
 
 

@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-_HOOK = Path(__file__).resolve().parents[1] / "log-commit-provenance.py"
+_HOOK = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks" / "log-commit-provenance.py"
 
 
 def _load():

@@ -17,7 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-_HOOKS_DIR = Path(__file__).resolve().parent.parent
+_HOOKS_DIR = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks"
 _BASH_DISPATCH = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
 _EDIT_WRITE_DISPATCH = _HOOKS_DIR / "dispatch-edit-write-pretooluse.py"
 

@@ -44,7 +44,7 @@ from pathlib import Path
 
 import pytest
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
 # Bytes UNDEFINED in cp1252. Decoding them with that codec raises; with utf-8 +
 # errors="replace" they become U+FFFD. This is Cyrillic `ст` (U+0441 U+0442),

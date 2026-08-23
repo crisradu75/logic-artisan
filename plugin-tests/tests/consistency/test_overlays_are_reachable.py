@@ -25,7 +25,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 _REPO_ROOT = _PLUGIN_ROOT.parents[2]
 _OVERLAYS = _REPO_ROOT / "cla.io" / "overlays"
 

@@ -33,7 +33,7 @@ import subprocess
 
 import pytest
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parents[5]
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 _CLA = _REPO_ROOT / "cla"
 _CLA_CMD = _REPO_ROOT / "cla.cmd"
 

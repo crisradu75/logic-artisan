@@ -1,7 +1,7 @@
 """`mutate.py` is the one script here that writes to source files. Test it hard.
 
-Lives in `consistency-checks/` for the same reason `test_runner_stream_encoding.py`
-does: `mutate.py` sits at the plugin root and belongs to no pytest scope.
+Lives beside the other checks on this repo's own source: `mutate.py` is a
+developer tool at the dev tree's root, not a shipped plugin asset.
 
 WHY THESE TESTS EXIST. The first version of the tool shipped with none, and a
 review found four ways it reported `All mutants killed` while proving nothing:
@@ -27,8 +27,8 @@ from pathlib import Path
 
 import pytest
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-_MUTATE = _PLUGIN_ROOT / "mutate.py"
+_DEV_TREE_ROOT = Path(__file__).resolve().parents[2]
+_MUTATE = _DEV_TREE_ROOT / "mutate.py"
 
 
 def _load_mutate():
@@ -200,8 +200,9 @@ def test_a_mutation_that_only_breaks_the_parse_is_inconclusive_not_a_kill(tmp_pa
 
 
 def test_it_refuses_to_run_at_all_without_pytest(tmp_path):
-    """`run_tests.py` guards this; the tool did not, so under an interpreter with
-    no pytest every mutant reported killed and the run exited 0."""
+    """The deleted `run_tests.py` used to guard this; the tool did not, so under
+    an interpreter with no pytest every mutant reported killed and the run
+    exited 0. Now that the runner is gone, this is the only guard there is."""
     venv = tmp_path / "bare"
     subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(venv)], check=True)
     exe = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")

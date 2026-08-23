@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-_HOOK = Path(__file__).resolve().parent.parent / "warn-stacked-pr-merge.py"
+_HOOK = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks" / "warn-stacked-pr-merge.py"
 
 
 def _load_module():

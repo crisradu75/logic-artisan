@@ -1,6 +1,6 @@
 """Mutant batch for `tests/test_skill_lint.py`.
 
-Run: `python3 <plugin>/mutate.py <plugin>/conformance-checks/mutants/test_skill_lint.py`
+Run: python3 plugin-tests/mutate.py plugin-tests/mutants/conformance/test_skill_lint.py
 
 Each entry breaks one thing the lint claims to catch. A SURVIVOR means the lint
 does not actually check that thing — which has happened here twice, so these are
@@ -12,10 +12,11 @@ path works on one machine and leaks a repo name into synced core.
 
 from pathlib import Path
 
-PLUGIN = Path(__file__).resolve().parents[2]
+PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
+DEV = Path(__file__).resolve().parents[2]
 SKILL = PLUGIN / "skills" / "right-model" / "SKILL.md"
 LINT = PLUGIN / "conformance-checks" / "tests" / "test_skill_lint.py"
-TARGETS = [PLUGIN / "conformance-checks" / "tests"]
+TARGETS = [DEV / "tests" / "conformance"]
 
 H = "# Right-model: cost-aware model + effort picker"
 

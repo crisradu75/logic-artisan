@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-_HOOK = Path(__file__).resolve().parent.parent / "warn-stray-scratch-artifact.py"
+_HOOK = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks" / "warn-stray-scratch-artifact.py"
 
 
 def _load_module():

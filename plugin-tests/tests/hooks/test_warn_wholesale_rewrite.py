@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-HOOKS_DIR = Path(__file__).resolve().parents[1]
+HOOKS_DIR = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks"
 HOOK_PATH = HOOKS_DIR / "warn-wholesale-rewrite.py"
 _spec = importlib.util.spec_from_file_location("warn_wholesale_rewrite", HOOK_PATH)
 hook = importlib.util.module_from_spec(_spec)
