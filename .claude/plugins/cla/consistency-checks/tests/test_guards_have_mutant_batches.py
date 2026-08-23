@@ -42,8 +42,6 @@ _EXEMPT = {
     # "new files only" — so the debt is countable and shrinks visibly. Delete a
     # line here the moment its batch lands. Tracked in TODO.md.
     "conformance-checks/tests/test_no_hardcoded_plugin_paths.py": "grandfathered",
-    "conformance-checks/tests/test_no_project_tokens.py": "grandfathered",
-    "conformance-checks/tests/test_project_facts_paths.py": "grandfathered",
     "consistency-checks/tests/test_check_script_drift.py": "grandfathered",
     "consistency-checks/tests/test_ledger_names_agree.py": "grandfathered",
     "consistency-checks/tests/test_marketplace_manifest.py": "grandfathered",

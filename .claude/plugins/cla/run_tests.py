@@ -4,12 +4,21 @@
 Each skill *that ships tests* (and the guard-hooks dir) is its own isolated
 pytest scope with its own ``pyproject.toml`` (``[tool.pytest.ini_options]`` —
 ``pythonpath = ["scripts"]`` / ``testpaths = ["tests"]``) and a sibling
-``tests/`` dir. They CANNOT share one
-pytest process: multiple scopes ship a top-level ``scripts/aggregate.py`` and
-``scripts/log_run.py``, and Python refuses to import two different modules under
-the same name in one interpreter. A root ``conftest.py``/``pyproject.toml``
+``tests/`` dir. They are NOT collected as one
+pytest process: each scope carries its own ``pythonpath``/``testpaths``, so a
+single rootdir cannot serve them all. A root ``conftest.py``/``pyproject.toml``
 therefore can't collect the whole plugin — running ``pytest`` from the plugin
 root fails collection by design.
+
+This paragraph used to justify the split by naming a module collision —
+"multiple scopes ship a top-level ``scripts/aggregate.py`` and
+``scripts/log_run.py``". Half of that was already false when written: searching
+the plugin for ``log_run.py`` (excluding ``__pycache__``) returns exactly one
+file, ``lib/log_run.py``, whose scope declares ``pythonpath = ["."]``. The other
+half is gone too — the two retro aggregators were renamed apart
+(``codify_aggregate.py`` / ``spec_to_pr_aggregate.py``), and no two scopes now
+ship a same-named top-level script. The split stands on the per-scope-config
+reason above, not on a collision.
 
 This runner instead discovers every isolated scope and runs ``pytest`` once per
 scope as a separate subprocess, with that scope as the working dir so its own

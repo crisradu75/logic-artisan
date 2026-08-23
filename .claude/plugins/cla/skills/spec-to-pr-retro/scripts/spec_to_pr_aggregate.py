@@ -131,7 +131,7 @@ def _runs_dir() -> Path:
     """The in-repo, git-synced ledger dir: <repo-root>/cla.io/retro/.
 
     Raises on a non-absolute override or an unresolvable repo root rather than
-    guessing a path: the consumers (the retro skills' `aggregate.py`) resolve
+    guessing a path: the consumers (the two retro aggregators) resolve
     independently with identical logic, so a silently-wrong path here would make
     logged runs vanish from the retro with no error.
     """

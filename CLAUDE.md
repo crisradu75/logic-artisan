@@ -79,10 +79,13 @@ scope root, and none at all for `conformance-checks`, whose tests import nothing
 
 `lib/` and the three `*-checks/` scopes are the odd ones out: not skills (no `SKILL.md`) and not
 guard hooks. `lib/` holds `log_run.py`, the one ledger writer every retro-logging skill invokes as
-a program. `conformance-checks/` holds the four portable guards that police the fact/procedure split for the
-whole plugin: no project token in synced core, no hardcoded plugin path, no dead path in
-`cla.io/project-facts.md` or an overlay, and no SKILL.md with broken frontmatter or a reference
-that resolves nowhere. `consistency-checks/` holds a drift check over the ledger-dir resolver that the isolation
+a program. `conformance-checks/` directly implements two of the four portable guards that police the
+fact/procedure split for the whole plugin — no hardcoded plugin path, and no SKILL.md with broken
+frontmatter or a reference that resolves nowhere — plus the unit, CLI, and subprocess-invocation test
+coverage for the other two, which are now standalone programs a skill invokes: no project token in
+synced core (`skills/_shared/scripts/check_no_project_tokens.py`) and no dead path in
+`cla.io/project-facts.md` or an overlay (`skills/sync-context/scripts/check_fact_paths.py`).
+`consistency-checks/` holds a drift check over the ledger-dir resolver that the isolation
 rule below deliberately prevents from sharing a module, plus checks on this repo's own source;
 **Three scopes are source-repo-only** — `consistency-checks/`, `launcher-checks/`, and `skills/release/tests/` assert facts about THIS repo's own source, so each carries a `SOURCE-REPO-ONLY.md` and `run_tests.py` skips it (with a summary SKIP row) in any repo that is not the canonical source; a consumer would otherwise get failures it cannot fix. `launcher-checks/` tests the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin
 tree entirely (`claw`/`claw.cmd` were deleted alongside the worktree-isolation guard, the hook they
@@ -204,10 +207,12 @@ CLA is portable across repos because it strictly separates *procedure* (generic,
 everywhere) from *facts* (per-repo, never synced):
 
 - **Synced core** — `.claude/plugins/cla/{skills,agents,hooks,output-styles}/`: portable procedure
-  only. A pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
-  developer path, leaks into synced core — one scanner covers `SKILL.md`/`references/*.md` prose
-  under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`
-  (frontmatter-exempt the same way `SKILL.md`'s own `description:` is). The source scanner covers
+  only. A conformance guard — `skills/_shared/scripts/check_no_project_tokens.py`, run as a program
+  and, in this repo, also invoked as a subprocess by a `conformance-checks/` pytest test — fails if a
+  distinctive project token, or a hardcoded absolute developer path, leaks into synced core — one
+  scanner covers `SKILL.md`/`references/*.md` prose under `skills/`, a second covers every `.py` file
+  plus `agents/*.md` and `output-styles/*.md` (frontmatter-exempt the same way `SKILL.md`'s own
+  `description:` is). The source scanner covers
   eight roots — the four synced dirs plus `lib/` and the three `*-checks/` scopes — because the
   marketplace ships the whole directory. Four files still fall outside both scanners and are watched
   by hand: the plugin's own `README.md` (its install commands legitimately name this repo),
@@ -250,13 +255,21 @@ cannot do reliably. Seven that failed that bar were deleted; these are the survi
 rule going in is the rule going out — **if a script here can't be justified in one line, it
 isn't a survivor.** (Guard hooks are listed separately below.)
 
+Paths below are given relative to `.claude/plugins/cla/` and never repeat that prefix — a bare
+top-level path (`run_tests.py`, `mutate.py`, `lib/...`) for a script outside `skills/`, and a
+skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script that belongs to one,
+matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scripts/codify_aggregate.py`,
+`annotate/scripts/*.py`, and so on).
+
 | Script | Why prose can't do it |
 |---|---|
 | `run_tests.py` | Runs each isolated scope as its own process and aggregates; there is no CI, so this is the only gate. |
 | `mutate.py` | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
 | `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses a path-shaped ledger argument. |
 | `consistency-checks/scripts/check_script_drift.py` | Compares the ledger-dir resolver across the writer and both readers. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
-| `codify-retro`, `spec-to-pr-retro` `scripts/aggregate.py` | Deterministic counting over 40–130 JSONL records, including malformed-shape and producer-drift buckets a reader would gloss. |
+| `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
+| `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
+| `codify-retro/scripts/codify_aggregate.py`, `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over 40–130 JSONL records, including malformed-shape and producer-drift buckets a reader would gloss. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos today. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |

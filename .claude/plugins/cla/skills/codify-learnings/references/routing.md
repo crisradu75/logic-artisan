@@ -77,4 +77,4 @@ The ladder above is an *ascent from weakest to strongest enforcement*. Name the 
 
 Two consequences worth stating:
 - **When graduating a re-offender to a hook, choose Prompted vs Mechanical deliberately.** A rule whose violation is always wrong and cheaply detectable (a forbidden command shape, a path escape) → **Mechanical** (`exit 2`, block). A rule with legitimate exceptions the hook can't distinguish → **Prompted** (`exit 0` + warning) so it flags without false-blocking. Don't default every graduation to a hard block; match the tier to how absolute the rule is. (This repo's existing hooks already split this way — `block-*` are Mechanical, `warn-*` are Prompted.)
-- **The rung enum in the Step-7 log record is unchanged** (`checklist|memory|claude_md|skill_md|hook|script` — a data contract with `aggregate.py`). The tier names are a descriptive overlay on top of it, not a new field.
+- **The rung enum in the Step-7 log record is unchanged** (`checklist|memory|claude_md|skill_md|hook|script` — a data contract with `codify_aggregate.py`). The tier names are a descriptive overlay on top of it, not a new field.

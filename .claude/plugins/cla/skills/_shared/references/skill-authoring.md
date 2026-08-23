@@ -36,7 +36,7 @@ These invariants commonly live in *phase-step prose* rather than the hoisted blo
 ## Validation (before shipping)
 
 - **`wc -w -c` after** — note before/after. The ~size target is **aspirational, not a gate**: correctness prose staying inline WINS over hitting a number. Never relocate an invariant to shrink the file (the `wc` proxy is gameable exactly this way — the "invariants stay inline" spec scenario is the guard).
-- **Conformance guard** — `python3 -m pytest ${CLAUDE_PLUGIN_ROOT}/conformance-checks/tests/test_no_project_tokens.py -q` MUST pass (no repo token leaked into a new synced-core reference).
+- **Conformance guard** — `python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_no_project_tokens.py` MUST **exit 0** (no repo token, and no hardcoded absolute developer path, leaked into a new synced-core reference). It is a program, not a pytest module: a consuming repo has no test gate over the plugin cache.
 - **Pointer resolution** — every mandatory-read pointer resolves to a real file; a cross-skill pointer (e.g. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`) uses the full path.
 - **A behavior-preservation read** — diff removed-vs-retained lines and confirm no correctness-gating invariant left inline context and each stub is self-sufficient.
 

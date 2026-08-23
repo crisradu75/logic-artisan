@@ -1,4 +1,4 @@
-"""Tests for aggregate.py — deterministic metrics over JSONL run records."""
+"""Tests for spec_to_pr_aggregate.py — deterministic metrics over JSONL run records."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "aggregate.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "spec_to_pr_aggregate.py"
 
 
 def _write_log(path: Path, records: list[dict]) -> None:
@@ -530,8 +530,9 @@ def test_missing_ledger_warns_and_reports_zero(tmp_path: Path) -> None:
 
 
 def _import_default_log_path():
-    # Load by explicit path under a unique name so spec-to-pr-retro's and
-    # codify-retro's identically-named aggregate.py can't collide.
+    # Load by explicit path: the aggregator is a `scripts/` file reached by
+    # path, not a module on `sys.path`, so an explicit-path load is what makes
+    # it importable at all here.
     import importlib.util
     spec = importlib.util.spec_from_file_location("_ut_s2p_aggregate", SCRIPT)
     mod = importlib.util.module_from_spec(spec)

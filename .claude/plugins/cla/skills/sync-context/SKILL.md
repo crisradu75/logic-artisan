@@ -148,7 +148,9 @@ hardcoded parser — that's what makes this skill portable across differing tech
 Produce the full proposed file content, organized under headed sections per the categories above. Open
 with a heading and a one-line note that this is the repo's consolidated, never-distributed
 project-facts file (lives in `cla.io/`, outside the plugin directory), maintained by this skill and linted by
-the staleness guard (`${CLAUDE_PLUGIN_ROOT}/conformance-checks/tests/test_project_facts_paths.py`).
+this skill's own staleness checker, `${CLAUDE_PLUGIN_ROOT}/skills/sync-context/scripts/check_fact_paths.py`
+— run it as a program (`python3 <path>`; exit 0 clean, non-zero with every stale path named), no
+pytest required in the repo being checked.
 
 While drafting, also look for a fact **restated verbatim (or near-verbatim) across two or more**
 overlays that isn't in one of the categories above — that's a genuine tie-break hit found empirically
@@ -214,12 +216,33 @@ than partially applying. **Every target must be repo content** — `cla.io/**` o
 If a confirmed target resolves inside the plugin tree, stop and report it as a migration
 recommendation instead of writing it (Step 4).
 
+**After writing, run the staleness checker against what was just written** — this is the one real
+invocation of `check_fact_paths.py` in the whole plugin; without it, nothing ever runs the script this
+skill's own prose points at:
+
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/sync-context/scripts/check_fact_paths.py
+```
+
+It MUST exit 0, and the two non-zero codes mean different things — do not collapse them, because the
+remedy differs and only one of them names a path to fix:
+
+| Exit | Meaning | What to do |
+|---|---|---|
+| `0` | No stale path. | Done. |
+| `1` | Stale paths found, each named with its file and line. | The write just made (a fact, an overlay pointer edit) introduced or left them. Fix every path the checker names and re-run until it exits 0. |
+| `2` | The checker could not look — an unresolvable repo root, an unreadable input, or a scan that extracted nothing. | **No path is named, so there is nothing to "fix" by editing the facts file.** Read the stderr reason and resolve *that* (pass `--repo-root`, fix the unreadable file). Never treat a 2 as a clean pass, and never re-run hoping for a 1. |
+
 ### Step 8 — Report
 
 Summarize what changed: `cla.io/project-facts.md` created vs updated (and which sections changed),
 which overlays gained a pointer line, which `project-tokens.local.md` entries were added (or note none
 were needed), and any `cla.io/terminology.md` reconciliation applied (or note none was needed/found).
 If any candidate proposal was declined, say so and leave that file untouched.
+
+**Confirm the Step 7 staleness-checker run exited 0** and say so in this report. If it did not, name
+every stale path it reported — this run is the only place that check happens, so a report that omits
+a non-zero result loses it entirely.
 
 **List every migration recommendation from Step 4** — each overlay still sitting at the legacy
 `skills/*/references/project-context.md` path, and where it should move to. These are the only

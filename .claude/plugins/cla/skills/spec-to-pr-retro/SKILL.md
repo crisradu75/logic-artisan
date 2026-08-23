@@ -24,7 +24,7 @@ command and the interpretation heuristics.
 ### 1. Read the aggregated metrics
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/aggregate.py --limit <N>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit <N>
 ```
 
 Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrapper), or `10` if `$ARGUMENTS` is empty. Substitute the literal number before invoking — the script does not expand shell variables.
@@ -71,7 +71,7 @@ Don't list every metric. Pick the 2-4 patterns that would actually change orches
 
 If schema-integrity rows are non-zero, fix the producer (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md` field obligations or the orchestrator's serialization) BEFORE acting on workflow heuristics — those rates may be computed against a partly-poisoned window.
 
-(Per-agent finding YIELD is now logged and surfaced — `revise_findings.<agent>` carries `found`/`phantom`/`runs` from the pinned per-agent shape of `routing.revise_findings_by_tier` (schema pinned in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`; before the pin the field appeared in two other, mutually-incompatible shapes — model-tier and severity — which `aggregate.py` counts under `revise_findings_legacy_records` and excludes from yield). Join `revise_findings` with `revise_agents.<agent>.dispatches` for the dispatch-vs-yield picture. `found` is Critical+Important combined (Suggestions excluded at the producer) but not split between the two — a high count could be all Important, so verify the actual severity in the PR before acting on a low-yield trim.)
+(Per-agent finding YIELD is now logged and surfaced — `revise_findings.<agent>` carries `found`/`phantom`/`runs` from the pinned per-agent shape of `routing.revise_findings_by_tier` (schema pinned in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`; before the pin the field appeared in two other, mutually-incompatible shapes — model-tier and severity — which `spec_to_pr_aggregate.py` counts under `revise_findings_legacy_records` and excludes from yield). Join `revise_findings` with `revise_agents.<agent>.dispatches` for the dispatch-vs-yield picture. `found` is Critical+Important combined (Suggestions excluded at the producer) but not split between the two — a high count could be all Important, so verify the actual severity in the PR before acting on a low-yield trim.)
 
 Single-digit run counts in a category mean "interesting anecdote, not a pattern" — call them out as such, don't propose changes.
 

@@ -26,7 +26,7 @@ and the interpretation heuristics.
 ### 1. Read the aggregated metrics
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/aggregate.py --limit <N>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit <N>
 ```
 
 Where `<N>` is the value from `$ARGUMENTS`, or `10` if empty. Substitute the literal number before

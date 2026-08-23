@@ -1,6 +1,8 @@
 # project tokens — this repo's own vocabulary, never to appear in synced core
 
-Read as data by `tests/test_no_project_tokens.py`. One token per `- ` bullet; an inline
+Read as data by `.claude/plugins/cla/skills/_shared/scripts/check_no_project_tokens.py` (its unit and
+CLI tests live at `.claude/plugins/cla/conformance-checks/tests/test_no_project_tokens.py`). One
+token per `- ` bullet; an inline
 `# comment` and surrounding backticks are stripped. This file is a `*.local.md` overlay living in
 the repo's own `cla.io/` tree, outside the distributed plugin directory — each repo curates its own.
 
