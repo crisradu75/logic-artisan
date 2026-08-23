@@ -9,12 +9,16 @@ import check_script_drift as csd
 
 
 def test_no_drift_in_the_real_repo_today():
-    """This is the actual enforcement: run_tests.py runs this scope on every
-    pass, so a future edit that lands in one sibling but not the others fails
-    the suite here instead of silently drifting."""
+    """This is the actual enforcement: the suite runs this on every pass, so a
+    future edit that lands in one sibling but not the others fails here instead
+    of silently drifting.
+
+    Each group carries its own root — the siblings live in two different trees
+    since the dev tree moved out of the plugin — so passing one root for all of
+    them would resolve a third of the files to nothing."""
     problems = []
     for group in csd.SIBLING_GROUPS:
-        problems.extend(csd.check_group(group, csd.PLUGIN_ROOT))
+        problems.extend(csd.check_group(group, group["root"]))
     assert problems == [], problems
 
 

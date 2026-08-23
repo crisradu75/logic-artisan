@@ -21,9 +21,14 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
+_DEV_TREE = Path(__file__).resolve().parents[2]
 
-_CHECK_SCOPES = ("conformance-checks", "consistency-checks")
+# The AREAS under the dev tree that hold guards: the subdirectory name shared
+# by `tests/<area>/` and `mutants/<area>/`. These were the two `*-checks`
+# scope directories before the dev tree moved out of the plugin. The mirrored
+# layout is what keeps the guard<->batch pairing below a one-step name
+# substitution in each direction; a flat `mutants/` would break both.
+_GUARD_AREAS = ("conformance", "consistency")
 
 # Guard files exempt from needing a batch, each for a stated reason. Keep this
 # list short and justified — it is the pressure valve that could quietly empty
@@ -31,9 +36,9 @@ _CHECK_SCOPES = ("conformance-checks", "consistency-checks")
 _EXEMPT = {
     # This file and its sibling ARE the meta-guards; a mutant batch for them
     # would assert that the pairing checker checks pairing, which is circular.
-    "consistency-checks/tests/test_guards_have_mutant_batches.py":
+    "tests/consistency/test_guards_have_mutant_batches.py":
         "meta-guard: mutating it only tests itself",
-    "conformance-checks/tests/test_guards_are_not_vacuous.py":
+    "tests/conformance/test_guards_are_not_vacuous.py":
         "meta-guard: carries seeded-input tests of its own checker instead",
 
     # GRANDFATHERED, not excused. These guards predate the convention and have
@@ -41,16 +46,15 @@ _EXEMPT = {
     # They are listed individually — rather than the rule being softened to
     # "new files only" — so the debt is countable and shrinks visibly. Delete a
     # line here the moment its batch lands. Tracked in TODO.md.
-    "conformance-checks/tests/test_no_hardcoded_plugin_paths.py": "grandfathered",
-    "consistency-checks/tests/test_check_script_drift.py": "grandfathered",
-    "consistency-checks/tests/test_ledger_names_agree.py": "grandfathered",
-    "consistency-checks/tests/test_marketplace_manifest.py": "grandfathered",
-    "consistency-checks/tests/test_overlays_are_reachable.py": "grandfathered",
-    "consistency-checks/tests/test_pre_push_is_installed.py": "grandfathered",
-    "consistency-checks/tests/test_subprocess_encoding.py": "grandfathered",
-    "consistency-checks/tests/test_token_list_is_curated_here.py": "grandfathered",
-    "consistency-checks/tests/test_mutate.py": "grandfathered",
-    "consistency-checks/tests/test_runner_stream_encoding.py": "grandfathered",
+    "tests/conformance/test_no_hardcoded_plugin_paths.py": "grandfathered",
+    "tests/consistency/test_check_script_drift.py": "grandfathered",
+    "tests/consistency/test_ledger_names_agree.py": "grandfathered",
+    "tests/consistency/test_marketplace_manifest.py": "grandfathered",
+    "tests/consistency/test_overlays_are_reachable.py": "grandfathered",
+    "tests/consistency/test_pre_push_is_installed.py": "grandfathered",
+    "tests/consistency/test_subprocess_encoding.py": "grandfathered",
+    "tests/consistency/test_token_list_is_curated_here.py": "grandfathered",
+    "tests/consistency/test_mutate.py": "grandfathered",
 }
 
 
@@ -68,13 +72,13 @@ def test_the_grandfather_list_only_shrinks():
 
 def _guard_files():
     out = []
-    for scope in _CHECK_SCOPES:
-        out.extend(sorted((_PLUGIN_ROOT / scope / "tests").glob("test_*.py")))
+    for area in _GUARD_AREAS:
+        out.extend(sorted((_DEV_TREE / "tests" / area).glob("test_*.py")))
     return out
 
 
 def _rel(p: Path) -> str:
-    return p.relative_to(_PLUGIN_ROOT).as_posix()
+    return p.relative_to(_DEV_TREE).as_posix()
 
 
 def test_every_guard_file_has_a_mutant_batch_beside_its_scope():
@@ -83,14 +87,14 @@ def test_every_guard_file_has_a_mutant_batch_beside_its_scope():
         rel = _rel(path)
         if rel in _EXEMPT:
             continue
-        batch = path.parents[1] / "mutants" / path.name
+        batch = _DEV_TREE / "mutants" / path.parent.name / path.name
         if not batch.is_file():
             missing.append(f"  {rel} -> expected {_rel(batch)}")
     assert not missing, (
         "guard(s) with no mutant batch — nobody has shown these can fail:\n"
         + "\n".join(missing)
         + "\n\nWrite one, then prove it: "
-        "python3 <plugin>/mutate.py <plugin>/<scope>/mutants/<name>.py"
+        "python3 plugin-tests/mutate.py plugin-tests/mutants/<area>/<name>.py"
     )
 
 
@@ -99,8 +103,8 @@ def test_every_batch_is_loadable_and_declares_real_targets():
     reports every mutant as an anchor error — which reads like a tooling problem
     and gets ignored, so the guard it covers quietly stops being proven."""
     problems = []
-    for scope in _CHECK_SCOPES:
-        for batch in sorted((_PLUGIN_ROOT / scope / "mutants").glob("test_*.py")):
+    for area in _GUARD_AREAS:
+        for batch in sorted((_DEV_TREE / "mutants" / area).glob("test_*.py")):
             rel = _rel(batch)
             try:
                 tree = ast.parse(batch.read_text(encoding="utf-8"), filename=str(batch))
@@ -116,7 +120,7 @@ def test_every_batch_is_loadable_and_declares_real_targets():
             }
             if "MUTANTS" not in names:
                 problems.append(f"  {rel}: defines no MUTANTS list")
-            guarded = batch.parents[1] / "tests" / batch.name
+            guarded = _DEV_TREE / "tests" / batch.parent.name / batch.name
             if not guarded.is_file():
                 problems.append(f"  {rel}: guards {_rel(guarded)}, which does not exist")
     assert not problems, "mutant batch problems:\n" + "\n".join(problems)
@@ -126,8 +130,8 @@ def test_no_batch_hardcodes_an_absolute_path():
     """A batch resolving from an absolute developer path works on one machine and
     leaks a repo name into a directory the marketplace ships."""
     offenders = []
-    for scope in _CHECK_SCOPES:
-        for batch in sorted((_PLUGIN_ROOT / scope / "mutants").glob("*.py")):
+    for area in _GUARD_AREAS:
+        for batch in sorted((_DEV_TREE / "mutants" / area).glob("*.py")):
             for lineno, line in enumerate(
                 batch.read_text(encoding="utf-8").splitlines(), 1
             ):
@@ -144,7 +148,7 @@ def test_the_scan_is_not_vacuous():
     assert len(files) >= 6, f"guard discovery collapsed to {len(files)} files"
     batches = [
         b
-        for scope in _CHECK_SCOPES
-        for b in (_PLUGIN_ROOT / scope / "mutants").glob("test_*.py")
+        for area in _GUARD_AREAS
+        for b in (_DEV_TREE / "mutants" / area).glob("test_*.py")
     ]
     assert batches, "no mutant batches found at all; the convention has evaporated"

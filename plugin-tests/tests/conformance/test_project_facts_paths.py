@@ -39,7 +39,7 @@ def _vendored_repo_root():
     marketplace install puts the plugin in a version-keyed cache, where
     `parents[2]` is a cache directory, and running the real-repo gate from there
     reintroduces the wrong-root-reads-as-success defect the checkers were fixed
-    for. Same layout rule as `run_tests.py`'s `_is_source_repo`.
+    for. Same layout rule the deleted `run_tests.py` used.
     """
     if _PLUGIN_ROOT.name != "cla" or _PLUGIN_ROOT.parent.name != "plugins":
         return None
@@ -673,11 +673,10 @@ def test_iterdir_fallback_inside_a_real_git_repo_is_reported(monkeypatch, tmp_pa
 # calls its functions in-process — it never actually runs it as the program a
 # consuming repo is meant to run. That gap is exactly how a synced-core leak
 # (a curated token from cla.io/project-tokens.local.md appended to a SKILL.md,
-# or here, a stale repo-relative path) can leave `run_tests.py` fully green
+# or here, a stale repo-relative path) can leave the suite fully green
 # while the checker itself exits non-zero. This test is the missing
 # invocation: it runs the real program, as a real subprocess, against the
-# real repo root, so a real leak turns this scope — and therefore
-# `run_tests.py` — red again.
+# real repo root, so a real leak turns the suite red again.
 
 
 @pytest.mark.skipif(

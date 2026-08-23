@@ -29,7 +29,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
+_DEV_TREE = Path(__file__).resolve().parents[2]
 
 # Names that, by this repo's own convention, hold "things that went wrong".
 # An empty-assert over one of these is the plugin's standard guard shape.
@@ -37,15 +37,17 @@ _COLLECTION_NAMES = frozenset(
     {"problems", "offenders", "violations", "missing", "stray", "leaks", "errors", "bad"}
 )
 
-# Scopes whose tests are guards over the repo itself. A skill's own unit tests
-# are ordinary tests and are not held to this shape.
-_GUARD_TEST_DIRS = ("conformance-checks/tests", "consistency-checks/tests")
+# The dev-tree directories whose tests are guards over the repo itself. A
+# skill's own unit tests are ordinary tests and are not held to this shape.
+# These were the two `*-checks` scopes before the dev tree moved out of the
+# plugin; the guards themselves did not change, only where they live.
+_GUARD_TEST_DIRS = ("tests/conformance", "tests/consistency")
 
 
 def _guard_test_files():
     out = []
     for rel in _GUARD_TEST_DIRS:
-        out.extend(sorted((_PLUGIN_ROOT / rel).glob("test_*.py")))
+        out.extend(sorted((_DEV_TREE / rel).glob("test_*.py")))
     return out
 
 
@@ -116,7 +118,7 @@ def test_no_guard_asserts_over_a_collection_it_never_fills():
     files = _guard_test_files()
     vacuous = find_vacuous_asserts(files)
     detail = "\n".join(
-        f"  {p.relative_to(_PLUGIN_ROOT).as_posix()}::{fn} — `{n}` is asserted "
+        f"  {p.relative_to(_DEV_TREE).as_posix()}::{fn} — `{n}` is asserted "
         f"empty but nothing ever adds to it"
         for p, fn, n in vacuous
     )

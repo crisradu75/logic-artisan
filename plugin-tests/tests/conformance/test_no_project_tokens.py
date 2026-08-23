@@ -50,7 +50,7 @@ def _vendored_repo_root():
     no token list, prints the trivial-pass note and exits 0. A green gate that
     never looked at the repo it claims to check.
 
-    Same layout rule as `run_tests.py`'s `_is_source_repo`. Returns None when it
+    Same layout rule the deleted `run_tests.py` used. Returns None when it
     does not hold, and the gate below skips rather than asserting against a root
     it cannot trust.
     """
@@ -724,10 +724,10 @@ def test_main_exits_two_when_the_repo_root_cannot_be_resolved(monkeypatch, capsy
 # calls its functions in-process — it never actually runs it as the program a
 # consuming repo is meant to run. That gap is exactly how a synced-core leak
 # (a curated token from cla.io/project-tokens.local.md appended to a SKILL.md)
-# can leave `run_tests.py` fully green while the checker itself exits 1. This
+# can leave the suite fully green while the checker itself exits 1. This
 # test is the missing invocation: it runs the real program, as a real
-# subprocess, against the real repo root, so a real leak turns this scope —
-# and therefore `run_tests.py` — red again.
+# subprocess, against the real repo root, so a real leak turns the suite
+# red again.
 
 
 @pytest.mark.skipif(

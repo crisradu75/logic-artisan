@@ -26,11 +26,9 @@ a CRLF shebang (`#!/usr/bin/env bash\\r`) breaks the POSIX launchers — and
 normalizes on read. Restores are byte-exact and asserted.
 
 USAGE. Write a batch file — a Python module defining `MUTANTS`, a list of
-`(name, path, old, new, targets)`:
-
-Batches live in `plugin-tests/mutants/<area>/`, mirroring `plugin-tests/tests/`.
-The subject usually stays in the published plugin while its tests live here, so
-a batch commonly needs both roots:
+`(name, path, old, new, targets)`. Batches live in `plugin-tests/mutants/<area>/`,
+mirroring `plugin-tests/tests/`. The subject usually stays in the published
+plugin while its tests live here, so a batch commonly needs both roots:
 
     from pathlib import Path
     DEV = Path(__file__).resolve().parents[2]        # <repo>/plugin-tests
@@ -328,10 +326,9 @@ def check(mutants: list[tuple]) -> int:
             print("  killed", flush=True)
         elif code == EXIT_TESTS_FAILED:
             # Exit 1 with nothing collected. `-x` turns a collection ERROR into a
-            # "failure", so a target list that cannot even be imported — two
-            # scopes with same-named modules, which is the whole reason
-            # `run_tests.py` exists — reads as exit 1 and would otherwise be
-            # reported `killed`. That is this tool manufacturing the confidence
+            # "failure", so a target list that cannot even be imported — say two
+            # same-named modules that shadow each other — reads as exit 1 and
+            # would otherwise be reported `killed`. That is this tool manufacturing the confidence
             # it exists to supply.
             print("  INCONCLUSIVE — pytest exited 1 but no test ran "
                   "(collection error, or every test deselected)", flush=True)

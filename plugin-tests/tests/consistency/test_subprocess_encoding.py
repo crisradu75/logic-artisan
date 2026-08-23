@@ -44,7 +44,21 @@ from pathlib import Path
 
 import pytest
 
-_PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_PLUGIN_ROOT = _REPO_ROOT / ".claude" / "plugins" / "cla"
+
+# THREE trees, not one. This guard's subject is "every `.py` this repo owns
+# that could spawn a subprocess", and `extract-dev-tree-from-plugin` split
+# that population across the published plugin, the dev tree, and the
+# repo-local skills tree. Leaving the scan pointed at the plugin alone would
+# have dropped it from 84 files to 27 — and the floor below would then have
+# had to be lowered, which is exactly the false relaxation this file's own
+# comment forbids.
+_SCAN_ROOTS = (
+    _PLUGIN_ROOT,
+    _REPO_ROOT / "plugin-tests",
+    _REPO_ROOT / ".claude" / "skills",
+)
 
 # Bytes UNDEFINED in cp1252. Decoding them with that codec raises; with utf-8 +
 # errors="replace" they become U+FFFD. This is Cyrillic `ст` (U+0441 U+0442),
@@ -52,8 +66,8 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cl
 _UNDECODABLE_IN_CP1252 = "ст".encode("utf-8")
 
 
-# Mirrors `run_tests.py`'s own EXCLUDE_PARTS. Scanning a vendored `.venv` or
-# `node_modules` would fail this suite on third-party code nobody here can fix.
+# Scanning a vendored `.venv` or `node_modules` would fail this suite on
+# third-party code nobody here can fix.
 _EXCLUDE_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules"}
 
 # The spawners, and the module names they are reached through in this tree.
@@ -65,18 +79,24 @@ _SPAWN_MODULES = {"subprocess", "_sp", "sp"}
 
 
 def _scanned_files() -> list[Path]:
-    """Every `.py` under the plugin that could spawn a subprocess.
+    """Every `.py` this repo owns that could spawn a subprocess.
 
-    Stated as "everything, minus a named exclusion" rather than as a positive
-    allow-list of two globs. The allow-list version silently missed
-    `run_tests.py` at the plugin root, `skills/*/tests/conftest.py`, and every
+    Stated as "everything under each root, minus a named exclusion" rather
+    than as a positive allow-list of globs. The allow-list version silently
+    missed the root-level runner, `skills/*/tests/conftest.py`, and every
     `tests/` directory — 47 swept sites that no guard could see. An
-    under-scanning guard is the same defect class this file exists to prevent.
+    under-scanning guard is the same defect class this file exists to prevent,
+    which is also why the root list is three trees and not just the plugin.
     """
-    return sorted(
-        p for p in _PLUGIN_ROOT.rglob("*.py")
-        if not set(p.parts) & _EXCLUDE_PARTS
-    )
+    out = []
+    for root in _SCAN_ROOTS:
+        if not root.is_dir():
+            continue
+        out.extend(
+            p for p in root.rglob("*.py")
+            if not set(p.parts) & _EXCLUDE_PARTS
+        )
+    return sorted(set(out))
 
 
 def _is_spawn(func: ast.expr) -> bool:
@@ -137,7 +157,7 @@ def test_every_subprocess_text_call_pins_encoding_and_errors():
         except (SyntaxError, UnicodeDecodeError) as exc:  # pragma: no cover
             pytest.fail(f"{f}: {exc}")
         for lineno, why in _unpinned_calls(tree):
-            offenders.append(f"{f.relative_to(_PLUGIN_ROOT).as_posix()}:{lineno} ({why})")
+            offenders.append(f"{f.relative_to(_REPO_ROOT).as_posix()}:{lineno} ({why})")
     assert not offenders, (
         'subprocess text decode left to the ambient locale — add encoding="utf-8", '
         'errors="replace":\n  ' + "\n  ".join(offenders)
@@ -147,25 +167,32 @@ def test_every_subprocess_text_call_pins_encoding_and_errors():
 def test_the_scan_reaches_the_places_the_first_version_missed():
     """Non-vacuity partner, naming the exact files an allow-list glob excluded.
     A guard that scans nothing passes forever, and this one already did once."""
-    names = {p.relative_to(_PLUGIN_ROOT).as_posix() for p in _scanned_files()}
-    # Tracks the real count (55, down from 82 across the guard-hook trim, the
-    # ledger consolidation, the script audit, and the update-cla removal, which
-    # took 9 of its own .py files with it) rather than sitting well below
-    # it, where a collapse that halved the scan set would still pass. The named
-    # anchors below are the stronger half of this pair — they span four subtrees,
-    # so an exclusion that drops any one of them fails here even if the count
-    # survives.
+    names = {p.relative_to(_REPO_ROOT).as_posix() for p in _scanned_files()}
+    # Tracks the real count rather than sitting well below it, where a collapse
+    # that halved the scan set would still pass. RE-DERIVED, not adjusted:
+    # `extract-dev-tree-from-plugin` moved the tests out of the plugin, so the
+    # plugin alone now holds 27 `.py` files. Scanning only the plugin would
+    # have forced this floor down to ~25 — a check certifying what it had
+    # stopped checking. Scanning all three trees the repo actually owns keeps
+    # the population at 80 (84 in the plugin alone before the move, less the 4
+    # `.py` files this change deletes), so the floor stays where it was. The
+    # named anchors below are the stronger half of this pair — they span four
+    # subtrees, so an exclusion that drops any one of them fails here even if
+    # the count survives.
     #
     # A DELIBERATE deletion is expected to trip this and get the floor lowered
     # with it; that is the check working. Lower it to the new real count, never
     # to a number chosen to be safe from future deletions.
     assert len(names) >= 55, f"scan set collapsed to {len(names)} files"
     for expected in (
-        "run_tests.py",                             # plugin root
-        "hooks/tests/test_dispatch.py",             # a tests/ dir
-        "skills/spec-to-pr/tests/conftest.py",      # a conftest
-        "skills/spec-to-pr/scripts/probe_state.py", # a skill script
-        "hooks/_dispatch_lib.py",                   # enforcing code
+        # `run_tests.py` stood at the head of this list as "plugin root".
+        # It was deleted with the twelve-scope split; `plugin-tests/mutate.py`
+        # takes its place as the dev tree's root-level runner.
+        "plugin-tests/mutate.py",                          # a dev-tree root script
+        "plugin-tests/tests/hooks/test_dispatch.py",       # a tests/ dir
+        "plugin-tests/tests/skills/spec-to-pr/conftest.py", # a conftest
+        ".claude/plugins/cla/skills/spec-to-pr/scripts/probe_state.py", # a skill script
+        ".claude/plugins/cla/hooks/_dispatch_lib.py",      # enforcing code
     ):
         assert expected in names, f"{expected} is not scanned"
 
@@ -238,7 +265,7 @@ def test_no_module_reaches_a_spawner_by_a_bare_name():
         for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom) and node.module == "subprocess":
                 names = ", ".join(a.name for a in node.names)
-                offenders.append(f"{f.relative_to(_PLUGIN_ROOT).as_posix()}:{node.lineno} ({names})")
+                offenders.append(f"{f.relative_to(_REPO_ROOT).as_posix()}:{node.lineno} ({names})")
     assert not offenders, (
         "`from subprocess import ...` bypasses the callee check — import the "
         "module instead:\n  " + "\n  ".join(offenders)

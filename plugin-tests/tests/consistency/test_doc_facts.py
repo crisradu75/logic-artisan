@@ -55,38 +55,59 @@ def real_skill_count() -> int:
 
 
 def real_scope_dirs() -> list[Path]:
-    """Mirror `run_tests.py`'s discovery rule: a dir with BOTH a pytest-configured
-    pyproject.toml and a tests/ subdir. Deliberately re-derived here rather than
-    imported — `run_tests.py` sits at the plugin root with no package, and a drift
-    between the two rules is itself worth catching."""
+    """Every pytest scope in the repo: a dir with BOTH a pytest-configured
+    pyproject.toml and a tests/ subdir.
+
+    Scanned from the REPO root, not the plugin root. Before
+    `extract-dev-tree-from-plugin` the twelve scopes lived inside the plugin,
+    so scanning the plugin was the same question. They now live in
+    `<repo>/plugin-tests/`, and a plugin-rooted scan would answer 0 — which
+    would silently demand every doc claim "0 pytest scopes" rather than the
+    one that exists."""
     pytest_dirs = {
         p.parent
-        for p in _PLUGIN_ROOT.rglob("pyproject.toml")
+        for p in _REPO_ROOT.rglob("pyproject.toml")
         if not _EXCLUDED_DIRS & set(p.parts)
         and _PYTEST_MARKER in p.read_text(encoding="utf-8")
     }
     tests_dirs = {
         p.parent
-        for p in _PLUGIN_ROOT.rglob("tests")
+        for p in _REPO_ROOT.rglob("tests")
         if p.is_dir() and not _EXCLUDED_DIRS & set(p.parts)
     }
     return sorted(pytest_dirs & tests_dirs)
 
 
 def real_skills_with_tests() -> int:
-    """Scopes that are actually SKILLS, not merely directories under `skills/`.
+    """Directories under the dev tree's `tests/skills/` that are actually SKILLS.
 
-    `skills/_shared/` is a scope and lives under `skills/`, but it has no SKILL.md
-    and is therefore not a skill — counting it here would make every doc that says
-    "N skills ship tests" wrong by one, which is exactly the drift this file is
-    supposed to detect rather than cause."""
-    return len(
-        [
-            d
-            for d in real_scope_dirs()
-            if d.parent.name == "skills" and (d / "SKILL.md").is_file()
-        ]
-    )
+    Re-derived over `plugin-tests/tests/skills/` rather than over the scope
+    list. Before `extract-dev-tree-from-plugin` a skill's tests sat inside the
+    skill and each was its own scope, so "scope under skills/ with a SKILL.md"
+    was the whole question. The tests moved out; the FACT did not change and is
+    still worth pinning, so the helper follows the tests rather than being
+    deleted.
+
+    `tests/skills/_shared/` has tests and lives under `skills/`, but `_shared/`
+    has no SKILL.md and is therefore not a skill — counting it would make every
+    doc that says "N skills ship tests" wrong by one, which is exactly the drift
+    this file is supposed to detect rather than cause.
+
+    A skill's SKILL.md may sit in the plugin OR in `<repo>/.claude/skills/`:
+    `release` is a skill with tests, it is simply repo-local rather than
+    shipped."""
+    tests_root = _REPO_ROOT / "plugin-tests" / "tests" / "skills"
+    if not tests_root.is_dir():
+        return 0
+    count = 0
+    for d in sorted(tests_root.iterdir()):
+        if not d.is_dir() or _EXCLUDED_DIRS & {d.name}:
+            continue
+        shipped = _PLUGIN_ROOT / "skills" / d.name / "SKILL.md"
+        repo_local = _REPO_ROOT / ".claude" / "skills" / d.name / "SKILL.md"
+        if shipped.is_file() or repo_local.is_file():
+            count += 1
+    return count
 
 
 def _numbers_near(doc: str, phrase: str) -> list[int]:
