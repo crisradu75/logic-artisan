@@ -639,28 +639,35 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_CANNOT_RUN
         plugin_root = _vendored_plugin_root(repo_root) or _plugin_root()
 
-    if repo_root is None:
-        # `_repo_root()` could not resolve anything at all (no git, no
-        # non-global `.claude` ancestor). It used to fall back to `Path.cwd()`,
-        # which reported a WRONG root as a trivial clean pass; never let an
-        # unresolved root produce a clean verdict.
-        print(
-            f"{_PROG}: could not resolve the repo root to check — not inside a "
-            "git working tree, and no non-global .claude ancestor found; pass "
-            "--repo-root explicitly",
-            file=sys.stderr,
-        )
-        return EXIT_CANNOT_RUN  # branch: repo-root resolution failed
-
     skills_root = plugin_root / "skills"
-    token_path = repo_root / TOKEN_LIST_RELPATH
+    # `repo_root` is needed ONLY to locate the consuming repo's token list, i.e.
+    # for checks (a) and (b). Checks (c) absolute-developer-paths and (d)
+    # readability read `plugin_root`, already resolved from `__file__`.
+    token_path = None if repo_root is None else repo_root / TOKEN_LIST_RELPATH
 
     notes: list[str] = []
     blockers: list[str] = []
     violations: list[str] = []
 
     tokens: list[str] = []
-    if not token_path.is_file():
+    if token_path is None:
+        # `_repo_root()` could not resolve anything at all (no git, no non-global
+        # `.claude` ancestor). It used to fall back to `Path.cwd()`, which
+        # reported a WRONG root as a trivial clean pass; never let an unresolved
+        # root produce a clean verdict — so this is a BLOCKER.
+        #
+        # It is not, however, a reason to stop: returning here short-circuited
+        # (c) and (d), which need no repo root, so a real absolute-path leak or
+        # an unreadable synced file was masked by "I could not look". That is the
+        # same blocker-outranks-violations inversion the precedence rule below
+        # exists to prevent, reached one step earlier.
+        blockers.append(
+            "could not resolve the repo root — not inside a git working tree, "
+            "and no non-global .claude ancestor found; the two token scans "
+            "could not run (pass --repo-root explicitly). Checks (c) and (d) "
+            "still ran against the plugin tree."
+        )
+    elif not token_path.is_file():
         # A fresh destination repo has installed the guard but not curated a
         # token list yet — trivial pass for the two token scans, NOT for (c) and
         # (d), neither of which needs a list.

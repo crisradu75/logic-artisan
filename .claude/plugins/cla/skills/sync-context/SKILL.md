@@ -224,9 +224,14 @@ skill's own prose points at:
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/sync-context/scripts/check_fact_paths.py
 ```
 
-It MUST exit 0. A non-zero exit means the write just made (a fact, an overlay pointer edit) introduced
-or left a stale path — the write is not finished until it does. Fix every stale path the checker names
-and re-run it until it exits 0.
+It MUST exit 0, and the two non-zero codes mean different things — do not collapse them, because the
+remedy differs and only one of them names a path to fix:
+
+| Exit | Meaning | What to do |
+|---|---|---|
+| `0` | No stale path. | Done. |
+| `1` | Stale paths found, each named with its file and line. | The write just made (a fact, an overlay pointer edit) introduced or left them. Fix every path the checker names and re-run until it exits 0. |
+| `2` | The checker could not look — an unresolvable repo root, an unreadable input, or a scan that extracted nothing. | **No path is named, so there is nothing to "fix" by editing the facts file.** Read the stderr reason and resolve *that* (pass `--repo-root`, fix the unreadable file). Never treat a 2 as a clean pass, and never re-run hoping for a 1. |
 
 ### Step 8 — Report
 

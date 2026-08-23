@@ -116,4 +116,28 @@ MUTANTS = [
         "    return []",
         TARGETS,
     ),
+    (
+        # Round 2, and the sharpest one here: the restored real-repo gate asserted
+        # only `returncode == 0`, but exit 0 ALSO covers a trivial pass. Point the
+        # token list at a name that does not exist and the two token scans degrade
+        # to "0 token(s) loaded" while the program still exits 0 — the only gate
+        # stays green with checks (a) and (b) disarmed. This mutant SURVIVED until
+        # the gate asserted the summary line.
+        "the token list resolves to a name that does not exist (trivial pass)",
+        CHECKER,
+        'TOKEN_LIST_RELPATH = Path("cla.io") / "project-tokens.local.md"',
+        'TOKEN_LIST_RELPATH = Path("cla.io") / "project-tokens.local.MISSING.md"',
+        TARGETS,
+    ),
+    (
+        # Round 2: an unresolved repo root used to `return EXIT_CANNOT_RUN` before
+        # checks (c) and (d) ran, though neither needs a repo root — so a real
+        # absolute-path leak or unreadable synced file was masked by "I could not
+        # look". Restoring the early return reverts that.
+        "an unresolved repo root again short-circuits checks (c) and (d)",
+        CHECKER,
+        "    if token_path is None:",
+        "    if token_path is None and sys.exit(EXIT_CANNOT_RUN):",
+        TARGETS,
+    ),
 ]

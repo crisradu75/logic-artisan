@@ -451,15 +451,24 @@ def scan(repo_root: Path):
     top_level_names = _top_level_names(repo_root)
     checked = 0
     stale: list[tuple[str, int, str]] = []
+    unreadable: list[tuple[str, str]] = []
     for path in _iter_scanned_files(repo_root):
         rel = path.relative_to(repo_root).as_posix()
-        text = path.read_text(encoding="utf-8")
+        # Per-file, so ONE unreadable input cannot discard every stale path found
+        # before it. Letting the read raise out of the loop made an unreadable
+        # file outrank confirmed findings — the same "a blocker masks violations"
+        # inversion the sibling checker fixed, reached from the other side.
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            unreadable.append((rel, f"{type(exc).__name__}: {exc}"))
+            continue
         for lineno, line in enumerate(text.splitlines(), start=1):
             for candidate in extract_path_candidates(line, top_level_names):
                 checked += 1
                 if not (repo_root / candidate).exists():
                     stale.append((rel, lineno, candidate))
-    return checked, stale
+    return checked, stale, unreadable
 
 
 def find_stale_paths(repo_root: Path):
@@ -582,19 +591,27 @@ def main(argv: list[str] | None = None) -> int:
             "checkouts of the same commit (see _tracked_top_level_names)"
         )
 
-    try:
-        checked, stale = scan(repo_root)
-    except (OSError, UnicodeDecodeError) as exc:
-        # An input that EXISTS but cannot be read. Reporting this as "clean"
-        # would be the vacuous-pass bug; reporting it as "stale paths found"
-        # would send the caller hunting a staleness that does not exist.
+    checked, stale, unreadable = scan(repo_root)
+
+    # An input that EXISTS but cannot be read. Reporting it as "clean" would be
+    # the vacuous-pass bug; reporting it as "stale paths found" would send the
+    # caller hunting a staleness that does not exist. So it is always NAMED —
+    # but it does not outrank confirmed stale paths, which are real findings the
+    # caller can act on now. Precedence, in order: stale paths (1) > unreadable
+    # input (2) > clean (0). Matches `check_no_project_tokens.py`, where real
+    # violations likewise win over a coexisting blocker.
+    for rel, why in unreadable:
         print(
-            f"{_PROG}: a scanned file could not be read "
-            f"({type(exc).__name__}: {exc}) — the scan is incomplete, so no "
-            "verdict is reported",
+            f"{_PROG}: {rel} could not be read ({why}) — the scan is incomplete",
             file=sys.stderr,
         )
-        return EXIT_CANNOT_RUN  # branch: unreadable input
+    if unreadable and not stale:
+        print(
+            f"{_PROG}: {len(unreadable)} scanned file(s) could not be read and "
+            "no stale path was found in the rest — no verdict is reported",
+            file=sys.stderr,
+        )
+        return EXIT_CANNOT_RUN  # branch: unreadable input, nothing else to report
 
     # Non-vacuous guard: whenever ANY input was scanned (facts file present, OR
     # overlays present with no facts file — the early `scanned_files` gate above

@@ -98,4 +98,26 @@ MUTANTS = [
         "    return token",
         TARGETS,
     ),
+    (
+        # Round 2: the diagnostic the test is NAMED for was never asserted — the
+        # branch returns EXIT_CLEAN whether or not it prints, so deleting the
+        # whole `if` survived. The test now captures stdout; this mutant is what
+        # proves that.
+        "the live iterdir-fallback diagnostic stops being printed",
+        CHECKER,
+        '    if _tracked_top_level_names(repo_root) is None and (repo_root / ".git").exists():',
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        # Round 2: one unreadable input used to raise out of `scan()`, discarding
+        # every stale path found before it and returning 2 — a blocker outranking
+        # confirmed violations. Collapsing the per-file guard back into a bare
+        # read restores that inversion.
+        "an unreadable input again discards the stale paths already found",
+        CHECKER,
+        "            unreadable.append((rel, f\"{type(exc).__name__}: {exc}\"))",
+        "            raise",
+        TARGETS,
+    ),
 ]

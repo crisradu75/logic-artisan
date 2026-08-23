@@ -30,8 +30,26 @@ import pytest
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 CHECKER = _PLUGIN_ROOT / "skills" / "sync-context" / "scripts" / "check_fact_paths.py"
-# cla -> plugins -> .claude -> repo root.
-REPO_ROOT = _PLUGIN_ROOT.parents[2]
+
+
+def _vendored_repo_root():
+    """The repo root ONLY when this plugin is vendored at `<root>/.claude/plugins/cla`.
+
+    See the twin helper in `test_no_project_tokens.py` for the full rationale: a
+    marketplace install puts the plugin in a version-keyed cache, where
+    `parents[2]` is a cache directory, and running the real-repo gate from there
+    reintroduces the wrong-root-reads-as-success defect the checkers were fixed
+    for. Same layout rule as `run_tests.py`'s `_is_source_repo`.
+    """
+    if _PLUGIN_ROOT.name != "cla" or _PLUGIN_ROOT.parent.name != "plugins":
+        return None
+    if _PLUGIN_ROOT.parents[1].name != ".claude":
+        return None
+    root = _PLUGIN_ROOT.parents[2]
+    return root if (root / ".git").exists() else None
+
+
+REPO_ROOT = _vendored_repo_root()
 
 
 def _load_checker():
@@ -322,7 +340,7 @@ def test_scan_reports_checked_count_and_is_nonzero_when_facts_present(tmp_path):
     (tmp_path / "cla.io" / "project-facts.md").write_text(
         "Real: `apps/real`. Stale: `apps/gone`.\n", encoding="utf-8"
     )
-    checked, stale = scan(tmp_path)
+    checked, stale, _unreadable = scan(tmp_path)
     assert checked == 2
     assert stale == [("cla.io/project-facts.md", 1, "apps/gone")]
 
@@ -458,7 +476,7 @@ def test_a_dead_dotfile_path_is_actually_reported(tmp_path):
     (tmp_path / "cla.io" / "project-facts.md").write_text(
         "Hooks live in `.claude/hooks/gone.py`.\n", encoding="utf-8"
     )
-    _checked, stale = scan(tmp_path)
+    _checked, stale, _unreadable = scan(tmp_path)
     assert [s[2] for s in stale] == [".claude/hooks/gone.py"], (
         f"a dead .claude/-rooted path was not reported: {stale}"
     )
@@ -623,7 +641,7 @@ def test_main_exits_two_when_the_repo_root_cannot_be_resolved(monkeypatch, capsy
     assert "could not resolve the repo root" in captured.err
 
 
-def test_iterdir_fallback_inside_a_real_git_repo_is_reported(monkeypatch, tmp_path):
+def test_iterdir_fallback_inside_a_real_git_repo_is_reported(monkeypatch, tmp_path, capsys):
     # SUGGESTION-9: `_tracked_top_level_names` returns `None` on ANY git
     # failure, not only the expected "this isn't a git repo" case, silently
     # reverting to the non-deterministic `iterdir()` mode the design rejected.
@@ -637,7 +655,14 @@ def test_iterdir_fallback_inside_a_real_git_repo_is_reported(monkeypatch, tmp_pa
     )
     monkeypatch.setattr(_checker, "_tracked_top_level_names", lambda repo_root: None)
     result = main(["--repo-root", str(tmp_path)])
+    captured = capsys.readouterr()
     assert result == EXIT_CLEAN  # the fallback is a diagnostic, not a failure
+    # The exit code alone is NOT the subject of this test: EXIT_CLEAN is what the
+    # branch returns whether or not it says anything. Assert the diagnostic
+    # itself, or deleting the `print` leaves this test green while the silence
+    # the test is named for comes straight back.
+    assert "git ls-files` could not be used" in captured.out
+    assert "live directory listing" in captured.out
 
 
 # --------------------------------------------------------------------------- #
@@ -655,6 +680,10 @@ def test_iterdir_fallback_inside_a_real_git_repo_is_reported(monkeypatch, tmp_pa
 # `run_tests.py` — red again.
 
 
+@pytest.mark.skipif(
+    REPO_ROOT is None,
+    reason="plugin is not vendored at <root>/.claude/plugins/cla — see _vendored_repo_root",
+)
 def test_the_real_repo_is_clean_when_invoked_as_a_subprocess():
     result = subprocess.run(
         [sys.executable, str(CHECKER)],
@@ -662,7 +691,18 @@ def test_the_real_repo_is_clean_when_invoked_as_a_subprocess():
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         timeout=120,
     )
+    detail = f"(cwd={REPO_ROOT})\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     assert result.returncode == 0, (
-        f"check_fact_paths.py exited {result.returncode} against the real repo "
-        f"(cwd={REPO_ROOT}):\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        f"check_fact_paths.py exited {result.returncode} against the real repo {detail}"
+    )
+    # Exit 0 alone is NOT enough — it also covers a trivial pass. Assert the scan
+    # actually looked at something, or a resolver regression that scans nothing
+    # keeps this gate green. Same reasoning as the twin gate in
+    # `test_no_project_tokens.py`, where the trivial-pass mutation survived until
+    # the summary line was asserted.
+    scanned = re.search(r"(\d+) file\(s\) scanned", result.stdout)
+    checked = re.search(r"(\d+) path candidate\(s\) checked", result.stdout)
+    assert scanned and int(scanned.group(1)) > 0, f"zero files scanned {detail}"
+    assert checked and int(checked.group(1)) > 0, (
+        f"zero path candidates checked — the guard looked at nothing {detail}"
     )

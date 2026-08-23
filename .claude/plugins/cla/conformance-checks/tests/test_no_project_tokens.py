@@ -35,8 +35,34 @@ import pytest
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 CHECKER = _PLUGIN_ROOT / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py"
-# cla -> plugins -> .claude -> repo root.
-REPO_ROOT = _PLUGIN_ROOT.parents[2]
+
+
+def _vendored_repo_root():
+    """The repo root ONLY when this plugin is vendored at `<root>/.claude/plugins/cla`.
+
+    `_PLUGIN_ROOT.parents[2]` assumes that layout. A marketplace install does NOT
+    have it — the plugin sits in a version-keyed cache under the user's global
+    `~/.claude`, where `parents[2]` is a cache directory. Running the real-repo
+    gate from there is the exact defect this file's own checker was fixed for
+    (upstream issue #52, recorded in `check_no_project_tokens.py`'s `_repo_root`):
+    a wrong root either fails a consuming repo for something it did not do, or —
+    if the cache happens to sit under some git repo — resolves THAT repo, finds
+    no token list, prints the trivial-pass note and exits 0. A green gate that
+    never looked at the repo it claims to check.
+
+    Same layout rule as `run_tests.py`'s `_is_source_repo`. Returns None when it
+    does not hold, and the gate below skips rather than asserting against a root
+    it cannot trust.
+    """
+    if _PLUGIN_ROOT.name != "cla" or _PLUGIN_ROOT.parent.name != "plugins":
+        return None
+    if _PLUGIN_ROOT.parents[1].name != ".claude":
+        return None
+    root = _PLUGIN_ROOT.parents[2]
+    return root if (root / ".git").exists() else None
+
+
+REPO_ROOT = _vendored_repo_root()
 
 
 def _load_checker():
@@ -704,6 +730,10 @@ def test_main_exits_two_when_the_repo_root_cannot_be_resolved(monkeypatch, capsy
 # and therefore `run_tests.py` — red again.
 
 
+@pytest.mark.skipif(
+    REPO_ROOT is None,
+    reason="plugin is not vendored at <root>/.claude/plugins/cla — see _vendored_repo_root",
+)
 def test_the_real_repo_is_clean_when_invoked_as_a_subprocess():
     result = subprocess.run(
         [sys.executable, str(CHECKER)],
@@ -711,7 +741,25 @@ def test_the_real_repo_is_clean_when_invoked_as_a_subprocess():
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         timeout=120,
     )
+    detail = (
+        f"(cwd={REPO_ROOT})\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )
     assert result.returncode == 0, (
         f"check_no_project_tokens.py exited {result.returncode} against the "
-        f"real repo (cwd={REPO_ROOT}):\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        f"real repo {detail}"
     )
+    # Exit 0 alone is NOT enough, and this is the recursion of the very defect
+    # this gate exists for: exit 0 also covers a TRIVIAL PASS. Point
+    # `TOKEN_LIST_RELPATH` at a name that does not exist and the token scans
+    # degrade to "0 token(s) loaded" and still exit 0 — the gate stays green with
+    # checks (a) and (b) disarmed. Measured: that mutation survived until these
+    # assertions existed. So assert the scan was non-vacuous, not just quiet.
+    tokens = re.search(r"(\d+) token\(s\) loaded", result.stdout)
+    assert tokens and int(tokens.group(1)) > 0, (
+        f"the guard loaded no tokens — checks (a)/(b) were disarmed and it still "
+        f"exited 0 {detail}"
+    )
+    prose = _PROSE_COUNT_RE.search(result.stdout)
+    source = _SOURCE_COUNT_RE.search(result.stdout)
+    assert prose and int(prose.group(1)) > 0, f"zero prose files scanned {detail}"
+    assert source and int(source.group(1)) > 0, f"zero source files scanned {detail}"

@@ -64,7 +64,7 @@ def test_the_staleness_guard_scans_this_repos_overlays():
     # existing, and this repo has none — so a regression in candidate extraction
     # would leave `checked == 0`, `stale == []`, and a green guard. Pin the floor
     # here, where the overlays are known to exist.
-    checked, _stale = guard.scan(_REPO_ROOT)
+    checked, _stale, _unreadable = guard.scan(_REPO_ROOT)
     assert checked > 0, (
         "the staleness guard extracted zero path candidates from this repo's "
         "overlays — it scanned files but checked nothing, which passes green"
