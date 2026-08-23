@@ -103,10 +103,182 @@ def test_reset_hard_shapes_prompt(command, monkeypatch, capsys):
     assert "reset --hard" in _reason(payload)
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git branch -D feature/x",
+        "git branch -D feature/x feature/y",
+        # Bundled clusters, the same shape the force-push arm exists for.
+        "git branch -aD feature/x",
+        "git branch -Dr origin/feature/x",
+        # `-D` is only a SHORTCUT for `--delete --force` (git-branch(1)), so
+        # every decomposition of it destroys a commit just as thoroughly. A
+        # first cut matched only the shortcut and the long-long pair, leaving
+        # these five silent — 3 of 8 spellings covered.
+        "git branch -d -f feature/x",
+        "git branch -f -d feature/x",
+        "git branch -df feature/x",
+        "git branch -fd feature/x",
+        "git branch -d --force feature/x",
+        "git branch --delete -f feature/x",
+        # Long form, both orders — the two flags are matched independently, so
+        # order cannot smuggle one past.
+        "git branch --delete --force feature/x",
+        "git branch --force --delete feature/x",
+        # git accepts any UNAMBIGUOUS long-option abbreviation.
+        "git branch --dele --forc feature/x",
+        "git branch --d --forc feature/x",
+        # The flag may be the last token, so the boundary must admit end-of-
+        # string. The force-push block pins this; branch-delete did not, and a
+        # mutation dropping the `$` alternative survived every case.
+        "git branch feature/x -D",
+        # The shapes every other rule here is also tested against.
+        "git -C /some/path branch -D feature/x",
+        "git --git-dir /some/path/.git branch -D feature/x",
+        "git branch \\\n  -D feature/x",
+        "git \\\n branch -D feature/x",
+        "git branch \\\r\n  -D feature/x",
+        # The continuation with NO space before the backslash. The shell strips
+        # `\`+newline before word-splitting, so this really does force-delete
+        # (verified against git: `Deleted branch cont1`), and a terminator of
+        # `(?=\s|$)` alone rejected it because the `\` abuts the `D`.
+        "git branch -D\\\n  feature/x",
+        "git branch --delete\\\n  --force feature/x",
+        # Mirrored, so BOTH long terminators are load-bearing. Without this row
+        # a mutation reverting only `_FORCE_LONG`'s backslash survived: the case
+        # above puts the continuation after `--delete`, leaving `--force ` to
+        # match on an ordinary space.
+        "git branch --force\\\n  --delete feature/x",
+    ],
+)
+def test_force_branch_delete_shapes_prompt(command, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert "force-delete" in _reason(payload)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git.exe branch -D feature/x",
+        "git.cmd branch -D feature/x",
+        "GIT branch -D feature/x",
+        "Git.Exe branch -D feature/x",
+    ],
+)
+def test_branch_delete_fires_on_every_executable_spelling(
+    command, monkeypatch, capsys
+):
+    """The sibling force-push test exists because a rule once proved its FLAG
+    constant while nothing proved the command-shape composition. Branch-delete
+    shipped without this row, and a mutation swapping `_GIT_CMD` for a literal
+    lowercase `git` survived all nine positives — on the platform whose
+    tab-completion emits `git.exe`."""
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert "force-delete" in _reason(payload)
+
+
+def test_a_branch_delete_inside_a_quoted_string_does_not_prompt(monkeypatch, capsys):
+    """Quote-stripping is what stops the hook prompting about text that merely
+    MENTIONS a destructive command. Branch-delete shipped with no case pinning
+    it, and replacing `_strip_quoted_spans` with the identity function survived
+    every positive and negative in the block."""
+    assert _run('echo "never run git branch -D old here"', monkeypatch, capsys) is None
+    assert (
+        _run('git commit -m "drop it with git branch -D old"', monkeypatch, capsys)
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # A delete WITHOUT force: per git-branch(1) the branch must be "fully
+        # merged in its upstream branch, or in HEAD if no upstream was set",
+        # so git refuses the destructive case itself. Force is what overrides
+        # that refusal, which is why force is half the predicate.
+        "git branch -d feature/x",
+        "git branch --delete feature/x",
+        "git branch -d -r origin/feature/x",
+        # `--force` WITHOUT a delete flag. Excluded deliberately, but NOT
+        # because it is safe: git-branch(1) says `--force` resets an existing
+        # branch to a new start-point, so the old tip is orphaned exactly as a
+        # force-delete orphans it. Excluded because ref-moving is frequent
+        # enough that prompting on it would make the prompt routine. An earlier
+        # revision of this comment claimed it "does not destroy a commit",
+        # which is false — measured: `git branch --force keepme main` leaves
+        # the old tip unreachable from every ref.
+        "git branch --force feature/x main",
+        "git branch -f feature/x main",
+        "git branch -M old new",
+        "git branch -C old new",
+        # A branch NAME ending in capital D is not a flag cluster.
+        "git branch -d featureD",
+        "git branch featureD",
+        # `--format` shares a prefix with `--force`; only `--forc` is
+        # unambiguous, so the abbreviation arm must not reach this.
+        "git branch --format='%(refname)'",
+        "git branch -a --sort=-committerdate",
+        # An option's ARGUMENT shaped like a flag cluster. Each was run against
+        # real git and left the branch intact, so a prompt here is pure noise —
+        # and noise is what stops a checkpoint being read. The `-u` and `-t`
+        # values and the `--sort` key supply the letters; the alphabet filter is
+        # what rejects them, since `e`/`v`/`H` are not `git branch` options.
+        "git branch -uDev feature/x",
+        "git branch --sort -HEAD",
+        "git branch -f -tdirect newbranch main",
+        "git branch --sort -refname -d merged1",
+        "git branch --sort -committerdate -f main origin/main",
+        # The pairing that makes the `--forc`-not-`--fo` boundary load-bearing.
+        # With a delete flag present, a too-greedy force pattern reads
+        # `--format` as force and turns an ordinary non-force delete into a
+        # prompt. Measured: widening to `--fo[a-z]*` fails nothing WITHOUT this
+        # case, because a lone `--format` never satisfies the delete half.
+        "git branch -d --format='%(refname)' feature/x",
+        "git branch --delete --format='%(refname)' feature/x",
+        # Ordinary listing.
+        "git branch",
+        "git branch -a",
+        "git branch --list",
+    ],
+)
+def test_non_destructive_branch_shapes_stay_silent(command, monkeypatch, capsys):
+    assert _run(command, monkeypatch, capsys) is None, f"unexpected ask for: {command!r}"
+
+
+def test_a_branch_delete_flag_from_a_later_command_is_not_attributed(
+    monkeypatch, capsys
+):
+    """Same attribution bug the force-push rule was fixed for: a `-D` belonging
+    to a different command must not make an innocent `git branch` prompt."""
+    assert _run("git branch && rm -D /tmp/scratch", monkeypatch, capsys) is None
+
+
 def test_both_shapes_in_one_line_are_reported_together(monkeypatch, capsys):
     payload = _run("git reset --hard && git push -f origin feature/x", monkeypatch, capsys)
     reason = _reason(payload)
     assert "force-push" in reason and "reset --hard" in reason
+
+
+def test_a_branch_delete_is_reported_alongside_another_cause(monkeypatch, capsys):
+    """`main()`'s escape-hatch advice keys off `found == [MERGE_REASON]`, an
+    equality that depends on `_reasons()`'s fixed append order. Inserting a
+    fourth reason is exactly the change the comment there asks to be
+    re-verified, and nothing pinned it."""
+    reason = _reason(
+        _run("git reset --hard && git branch -D feature/x", monkeypatch, capsys)
+    )
+    assert "reset --hard" in reason and "force-delete" in reason
+
+
+def test_a_branch_delete_with_a_merge_still_names_the_broad_hatch(monkeypatch, capsys):
+    """Two reasons where one is the merge: the advice must point at the broad
+    variable, since the narrow one would leave the branch guard armed."""
+    payload = _run("git branch -D feature/x && gh pr merge 27", monkeypatch, capsys)
+    reason = _reason(payload)
+    assert "force-delete" in reason
+    assert "ALLOW_DESTRUCTIVE_GIT" in json.dumps(payload)
 
 
 @pytest.mark.parametrize(
@@ -480,6 +652,52 @@ def test_allow_pr_merge_does_NOT_silence_a_reset_hard(monkeypatch, capsys):
     monkeypatch.setenv("ALLOW_PR_MERGE", "1")
     reason = _reason(_run("git reset --hard HEAD~1", monkeypatch, capsys))
     assert "reset --hard" in reason
+
+
+def test_allow_pr_merge_does_NOT_silence_a_branch_force_delete(monkeypatch, capsys):
+    """`multi-pr` and `multi-lite` set this variable AND delete branches, so the
+    two meeting is an ordinary occurrence rather than a corner case."""
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    reason = _reason(_run("git branch -D feature/x", monkeypatch, capsys))
+    assert "force-delete" in reason
+
+
+def test_the_allow_pr_merge_notice_names_branch_delete_as_still_armed(
+    monkeypatch, capsys
+):
+    """The note is the only place a human is TOLD what stays armed. It listed
+    force-push and reset --hard for one release after branch-delete was added,
+    so a reader was told, incorrectly, that this guard was off."""
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    # Driven directly rather than through `_run`, which drains capsys.
+    monkeypatch.setattr(
+        sys, "stdin",
+        io.StringIO(json.dumps({"tool_input": {"command": "gh pr merge 27"}})),
+    )
+    assert hook.main() == 0
+    err = capsys.readouterr().err
+    assert "DISABLED" in err and "ALLOW_PR_MERGE" in err
+    for still_armed in ("Force-push", "reset --hard", "branch force-delete"):
+        assert still_armed in err, (
+            f"the ALLOW_PR_MERGE notice does not name {still_armed!r} among the "
+            "guards that stay armed, so it under-reports the hook's own scope"
+        )
+
+
+def test_allow_destructive_git_silences_a_branch_force_delete(monkeypatch, capsys):
+    monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "1")
+    # Driven directly rather than through `_run`, which drains capsys.
+    monkeypatch.setattr(
+        sys, "stdin",
+        io.StringIO(json.dumps({"tool_input": {"command": "git branch -D feature/x"}})),
+    )
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "", "the broad hatch must suppress the ask entirely"
+    assert "DISABLED" in captured.err, (
+        "a branch force-delete waved through by the broad hatch must still "
+        "announce itself, or it is indistinguishable from one nothing checked"
+    )
 
 
 def test_a_command_that_merges_AND_force_pushes_still_prompts_on_the_push(

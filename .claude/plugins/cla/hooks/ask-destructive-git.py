@@ -4,10 +4,11 @@ r"""PreToolUse hook: escalate history-destroying git commands to a prompt.
 Why ASK rather than BLOCK
 -------------------------
 `.claude/settings.local.json` allows `Bash(git *)` wholesale, and the launcher
-runs `--permission-mode auto`. Between them, the two genuinely irreversible git
+runs `--permission-mode auto`. Between them, the genuinely irreversible git
 operations run unattended: a force-push (rewrites a remote branch other people
-and other worktrees may have based work on) and `reset --hard` (discards
-uncommitted work with no reflog entry for what was in the working tree).
+and other worktrees may have based work on), `reset --hard` (discards
+uncommitted work with no reflog entry for what was in the working tree), and a
+branch force-delete (destroys a commit reachable from nowhere else).
 
 The `git/pre-push` hook covers pushes that TARGET main/master. It does not
 cover a force-push to a feature branch, which is the common shape here —
@@ -41,6 +42,22 @@ Detection scope
 - `git push` with a `+`-prefixed refspec (`git push origin +feat:feat`), which
   is git's other force syntax and carries no flag at all.
 - `git reset` carrying `--hard`.
+- `git branch` carrying a DELETE flag and a FORCE flag: `-D`, which
+  `git-branch(1)` defines as "Shortcut for `--delete --force`", and equally
+  `-d -f`, `-df`, `-fd`, `-d --force`, `--delete -f`, and unambiguous
+  abbreviations of the long forms. Same hazard class as `reset --hard`: a
+  branch whose commit exists nowhere else loses that commit outright,
+  recoverable only from the reflog and only within its expiry window. Added
+  after issue #123, where this destroyed a commit holding 45 sections of run
+  notes, recovered only via `git reflog` plus `git show <sha>:<path>`.
+
+  Bare `-d` is deliberately NOT matched, and this one IS considered: per
+  `git-branch(1)` a delete without force requires the branch to be "fully
+  merged in its upstream branch, or in `HEAD` if no upstream was set", so git
+  refuses the destructive case itself. Force is what overrides that refusal,
+  which is why force is half the predicate rather than `-D` being the whole of
+  it. Matching only `-D` — the first cut here — covered 3 of the 8 spellings
+  of one act.
 - `gh pr merge`, including behind global options and as `gh.exe`/`gh.cmd`. Not
   destructive in the same sense, but outward-facing and effectively
   irreversible, and the thing that fails there is AUTHORIZATION — which a hook
@@ -57,8 +74,23 @@ stops being read. The `(?:\s|=|$)` boundary excludes them for free, since
 
 Deliberately out of scope: `git clean`, `git checkout -- <path>`, `git restore`.
 They discard uncommitted work too, but they are frequent enough in ordinary
-flow that including them would bury the two operations above in noise. Revisit
-only with evidence of a real incident.
+flow that including them would bury the operations above in noise. Revisit only
+with evidence of a real incident — which is exactly how the branch force-delete
+got in, so this list is a standing judgement rather than a closed one.
+
+Also out of scope, and worth naming because the reason is NOT "they are safe":
+`git branch --force <existing> <start-point>` and `git branch -M`/`-C` over an
+existing name. Per `git-branch(1)`, `--force` resets an existing branch to a new
+start-point, so if the old tip was reachable from nowhere else it is orphaned —
+the same outcome as a force-delete. They are excluded because ref-moving is
+frequent in ordinary flow and prompting on it would make the prompt routine,
+which is how a checkpoint stops being read. An earlier revision of this hook
+excluded them on the false ground that they "move a ref, they do not destroy a
+commit"; the exclusion survives, its stated reason does not.
+
+Likewise out of scope: `git push origin --delete <branch>` and
+`git push origin :<branch>`, which delete a REMOTE branch. Named here so the
+omission reads as a decision rather than an oversight.
 
 Best-effort, not an exhaustive git parser — see `GIT_GLOBAL_OPTS`'s own
 docstring for the option shapes it does and does not consume.
@@ -66,8 +98,8 @@ docstring for the option shapes it does and does not consume.
 Escape hatches:
   - `ALLOW_PR_MERGE=1` — drops ONLY the PR-merge confirmation. This is the one
     to use for a skill that merges as an ordinary step of a long unattended run
-    (`multi-pr`, `multi-lite`); force-push and `reset --hard` stay checked.
-    Prefer it per-command over exporting it.
+    (`multi-pr`, `multi-lite`); force-push, `reset --hard` and `branch -D`
+    stay checked. Prefer it per-command over exporting it.
   - `ALLOW_DESTRUCTIVE_GIT=1` — drops every check below, for a deliberate
     unattended batch. Environment only: this hook runs before the command's own
     shell exists, so an inline prefix on the command text never reaches this
@@ -78,9 +110,9 @@ Escape hatches:
 name stopped describing it — it now also silences an AUTHORIZATION checkpoint,
 so a value exported weeks ago for a force-push batch would wave through every
 PR merge too. `ALLOW_PR_MERGE` exists so that trade never has to be made: an
-unattended run that merges declares exactly that, and keeps its force-push and
-reset guards, and can be granted per-command rather than exported for a whole
-session. The stderr `DISABLED` notice fires on every command either one
+unattended run that merges declares exactly that, and keeps its force-push,
+branch-delete and reset guards, and can be granted per-command rather than
+exported for a whole session. The stderr `DISABLED` notice fires on every command either one
 suppresses.
 
 Exit codes:
@@ -129,6 +161,7 @@ _SEP = r"(?:[ \t]|\\\r?\n)+"
 _TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
 _PUSH = re.compile(_GIT_CMD + _SEP + _G + r"push\b" + _TAIL)
 _RESET = re.compile(_GIT_CMD + _SEP + _G + r"reset\b" + _TAIL)
+_BRANCH = re.compile(_GIT_CMD + _SEP + _G + r"branch\b" + _TAIL)
 
 # Two shapes force a push. The long flag, where `(?:\s|=|$)` is what spares
 # `--force-with-lease` / `--force-if-includes` (both are followed by `-`, which
@@ -141,6 +174,77 @@ _FORCE_FLAG = re.compile(
 # `git push origin +feat:feat` — force expressed in the refspec, no flag at all.
 _FORCE_REFSPEC = re.compile(r"(?:^|\s)\+\S+")
 _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
+
+# Force-deleting a branch is the same hazard class as `reset --hard`: on a branch
+# whose commit exists nowhere else it destroys that commit outright, recoverable
+# only from the reflog, inside its expiry window, and only by someone who thinks
+# to look.
+#
+# The predicate is DELETE-flag AND FORCE-flag, not "contains a capital D". An
+# earlier cut matched only `-D` and the literal `--delete`+`--force` pair, which
+# is 3 of the 8 spellings of the same act: `-d -f`, `-df`, `-fd`, `-d --force`
+# and `--delete -f` all force-delete and all went unmatched. `git-branch(1)`
+# states the relation outright — "`-D`: Shortcut for `--delete --force`", and
+# `--force` "in combination with `-d` (or `--delete`), allow deleting the branch
+# irrespective of its merged status". `-D` is shorthand for the pair; encoding
+# the shorthand as if it were the operation is what left the gap.
+#
+# Bare `-d` stays unmatched, and that IS a considered exclusion rather than an
+# oversight: `git-branch(1)` says a `--delete` without force must be "fully
+# merged in its upstream branch, or in `HEAD` if no upstream was set", so git
+# itself refuses the destructive case. Adding force is what overrides that
+# refusal, which is why force is half the predicate.
+# Both boundaries are ZERO-WIDTH, and that is load-bearing rather than stylistic.
+# A consuming `(?:^|\s)...(?:\s|$)` eats the separator between two clusters, so
+# `findall` resumes past it and the next cluster has no leading whitespace left
+# to match: `-d -f` yielded only `-d`, and the pair went unmatched while the
+# bundled `-df` was caught.
+#
+# The terminator admits a backslash as well as whitespace: the shell strips
+# `\`+newline before word-splitting, so `git branch -D\`+newline+`  feat` is an
+# ordinary force-delete, and a bare `(?=\s|$)` rejected it because the `\` sits
+# directly against the `D`.
+_SHORT_CLUSTER = re.compile(r"(?<!\S)-([A-Za-z]+)(?=[\s\\]|$)")
+
+# `git branch`'s complete short-option alphabet, from `git branch -h`:
+# -a -c -C -d -D -f -i -l -m -M -q -r -t -u -v. A dash-prefixed token whose
+# letters are not all drawn from this set is NOT an option cluster — it is an
+# option's ARGUMENT that merely looks like one, and treating it as flags is a
+# false-positive machine. Measured, each verified against real git as harmless:
+# `git branch -uDev feat` (the `-u` value supplies a capital D), `git branch
+# --sort -HEAD` (the sort key does), `git branch -f -tdirect newb main` (the
+# `-t` value supplies the `d`). Filtering on the alphabet drops all three and
+# loses none of the sixteen genuine force-delete spellings.
+_BRANCH_SHORT_OPTS = frozenset("acCdDfilmMqrtuv")
+# Long-option prefixes, because git accepts any UNAMBIGUOUS abbreviation.
+# `--delete` is the only `--d*` option `git branch` has, so every prefix down to
+# `--d` resolves to it. `--force` shares `--fo` with `--format`, so `--forc` is
+# the shortest unambiguous one — a looser `--fo[a-z]*` would fire on the
+# perfectly ordinary `git branch --format=...`.
+# The terminators admit `\` for the same reason `_SHORT_CLUSTER`'s does — a
+# backslash continuation abutting the flag is an ordinary multi-line command,
+# not a malformed one. All three patterns carry it; fixing only the short-flag
+# one left `--delete\`+newline+`--force` silently unmatched.
+_DELETE_LONG = re.compile(r"(?:^|\s)--d(?:e(?:l(?:e(?:t(?:e)?)?)?)?)?(?:[\s\\]|=|$)")
+_FORCE_LONG = re.compile(r"(?:^|\s)--forc(?:e)?(?:[\s\\]|=|$)")
+
+
+def _force_deletes_a_branch(tail: str) -> bool:
+    """True when `tail` carries both a delete flag and a force flag.
+
+    Short flags are gathered across every cluster in the tail, so `-df`, `-d -f`
+    and `-f -d` are one case rather than three. A branch NAME cannot contribute:
+    the cluster must be `-`-prefixed, which is also why a branch called
+    `featureD` does not read as `-D`.
+    """
+    clusters = "".join(
+        c for c in _SHORT_CLUSTER.findall(tail) if set(c) <= _BRANCH_SHORT_OPTS
+    )
+    if "D" in clusters:
+        return True  # the documented shortcut, carrying both halves at once
+    deleting = "d" in clusters or _DELETE_LONG.search(tail) is not None
+    forcing = "f" in clusters or _FORCE_LONG.search(tail) is not None
+    return deleting and forcing
 
 # `gh pr merge` — not destructive in the reset/force-push sense, but it is
 # outward-facing and effectively irreversible: it publishes to a shared branch,
@@ -212,11 +316,13 @@ _GH_PR_MERGE = re.compile(
 
 
 # Named so `main()` can suppress THIS reason alone under `ALLOW_PR_MERGE=1`,
-# without touching the force-push and reset checks. The narrow variable exists
+# without touching the force-push, reset and branch-delete checks. The narrow
+# variable exists
 # because `multi-pr` and `multi-lite` merge as an ordinary loop step of a long
 # unattended run — an audit of every mutating command those skills emit found
 # the merge prompt was the only NEW thing standing in their way. Silencing it
-# with the broad `ALLOW_DESTRUCTIVE_GIT` would have disarmed force-push and
+# with the broad `ALLOW_DESTRUCTIVE_GIT` would have disarmed force-push,
+# branch-delete and
 # `reset --hard` for the same commands, which is a strictly worse trade.
 # An inline `ALLOW_PR_MERGE=1` env-assignment prefix, at the start of the whole
 # command or of a segment after a shell separator. Anchored so it cannot be
@@ -247,6 +353,12 @@ def _reasons(command: str) -> list[str]:
         found.append(
             "`git reset --hard`, which discards uncommitted working-tree "
             "changes with no reflog entry to recover them from"
+        )
+    if any(_force_deletes_a_branch(m.group(1)) for m in _BRANCH.finditer(scanned)):
+        found.append(
+            "a force-delete of a branch (`git branch -D`, or `-d` with "
+            "`--force`) — if its commit exists nowhere else it is destroyed, "
+            "recoverable only from the reflog and only within its expiry window"
         )
     if _GH_PR_MERGE.search(scanned):
         found.append(MERGE_REASON)
@@ -323,8 +435,9 @@ def main() -> int:
         if len(kept) != len(found):
             print(
                 "[ask-destructive-git] note: the PR-merge confirmation is "
-                "DISABLED by ALLOW_PR_MERGE=1 for this command. Force-push and "
-                "reset --hard are still checked. (hook: ask-destructive-git.py)",
+                "DISABLED by ALLOW_PR_MERGE=1 for this command. Force-push, "
+                "reset --hard and branch force-delete are still checked. "
+                "(hook: ask-destructive-git.py)",
                 file=sys.stderr,
             )
         found = kept
@@ -343,10 +456,11 @@ def main() -> int:
     # "export" so the inline/environment distinction is explicit.
     #
     # `found == [MERGE_REASON]` depends on `_reasons()` always appending in
-    # the fixed order force-push, reset --hard, merge (never in the order the
-    # command text names them) — that's what makes list equality a safe
-    # "merge is the only reason" test. If `_reasons()`'s check order or set of
-    # reasons ever changes, re-verify this equality still means what it says.
+    # the fixed order force-push, reset --hard, branch force-delete, merge
+    # (never in the order the command text names them) — that's what makes list
+    # equality a safe "merge is the only reason" test. If `_reasons()`'s check
+    # order or set of reasons ever changes, re-verify this equality still means
+    # what it says.
     if found == [MERGE_REASON]:
         hatch_note = (
             "Prefix this one command with ALLOW_PR_MERGE=1 to authorize a "

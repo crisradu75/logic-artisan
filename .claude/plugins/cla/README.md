@@ -78,7 +78,7 @@ instead of blocking outright; **warns** (`warn-*`) surface a caution without blo
 calls) · `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
 `block-worktree-path-escape` (writes escaping a worktree boundary).
 
-**Asks:** `ask-destructive-git` (force-push, `reset --hard`, PR merges, and other
+**Asks:** `ask-destructive-git` (force-push, `reset --hard`, branch force-delete, PR merges, and other
 destructive-but-possibly-legitimate git/gh commands; `ALLOW_PR_MERGE=1` drops only the PR-merge
 confirmation, for the `multi-*` chainers' unattended runs).
 

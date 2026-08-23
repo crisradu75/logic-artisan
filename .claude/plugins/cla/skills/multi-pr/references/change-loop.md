@@ -52,9 +52,10 @@ For each change in the confirmed order:
    chain is the legitimate exception: the user confirmed the whole plan,
    including this dependency edge, in Phase 1, and the run is unattended by
    design, so a prompt here would simply hang. Use the narrow variable, NOT
-   `ALLOW_DESTRUCTIVE_GIT=1` — that one would also disarm the force-push and
-   `reset --hard` checks for the same command. Do not export either; prefixing
-   the single command is what keeps the exception scoped to it.
+   `ALLOW_DESTRUCTIVE_GIT=1` — that one would also disarm the force-push,
+   `reset --hard` and branch-force-delete checks for the same command. Do not
+   export either; prefixing the single command is what keeps the exception
+   scoped to it.
    **Verification branches on whether THIS worktree holds `<base-branch>`/`main`.** `gh pr merge --delete-branch` performs the remote merge first, then tries to switch the *local* checkout to the base branch and delete the local copy of the feature branch:
    - **If this worktree holds `<base-branch>`/`main`** (the primary clone, or a worktree that legitimately checked it out): the local-checkout switch succeeds. Sync it with two separate commands (not chained with `&&`, per the inherited bash-discipline rule):
      ```
