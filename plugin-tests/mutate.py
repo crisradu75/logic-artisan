@@ -192,7 +192,11 @@ def preflight(mutants: list[tuple]) -> None:
             # message is. Measured: the trap cost two preflight rounds across two
             # batches in one session, with the explanation sitting 130 lines up.
             hint = ""
-            if "\n" in old and "\r\n" in text:
+            # `"\r\n" not in old` matters: an author who spelled the separator
+            # correctly still has `\n` in the anchor, and telling them it
+            # "contains a bare \n, which cannot match" sends the one person who
+            # did the right thing off to fix the one thing that is right.
+            if "\n" in old and "\r\n" not in old and "\r\n" in text:
                 hint = (
                     f" — NOTE: {path.name} uses CRLF line endings and this anchor "
                     "contains a bare \\n, which cannot match. Anchor within a "

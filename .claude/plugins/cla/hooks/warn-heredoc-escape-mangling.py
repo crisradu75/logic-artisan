@@ -40,52 +40,93 @@ import json
 import re
 import sys
 
-from pathlib import Path
-
-# The `_dispatch_lib` import below resolves through `sys.path`; running
-# standalone normally puts the hooks dir at `sys.path[0]`, but that is
-# suppressed under `PYTHONSAFEPATH=1` / `python -I` / `python -P`. Insert it
-# explicitly so an import failure can't silently disable this hook.
-_HOOKS_DIR = str(Path(__file__).resolve().parent)
-if _HOOKS_DIR not in sys.path:
-    sys.path.insert(0, _HOOKS_DIR)
+# Deliberately no `_dispatch_lib` import and no `sys.path` insert. The sibling
+# warn hooks carry both because they use its git/quoting helpers; this one is
+# pure text over the command string, so copying the block would have been an
+# inert stanza whose own comment claimed a protection it did not provide.
 
 # Opening delimiter: `<<WORD`, `<<'WORD'`, `<<"WORD"`, `<<-WORD`.
-_HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+#
+# The two lookarounds are not decoration — both were measured firing on real
+# commands. `(?<!<)` rejects a HERESTRING (`grep foo <<<bar`), which otherwise
+# matched at offset 1 and made `bar` a delimiter. `(?!<)` rejects the same shape
+# from the other side. The arithmetic left-shift (`$((1 << n))`) also matches
+# this pattern by construction — `n` is a valid delimiter name — and is excluded
+# instead by requiring a terminator line, below.
+_HEREDOC_OPEN = re.compile(r"(?<!<)<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2(?!<)")
 
 # The escapes that a shell/inner-language sandwich actually eats.
 #
-# The lookbehind is load-bearing, not decoration: without it `\\n` matches on its
-# SECOND backslash and the hook fires on a doubled escape — the case an author
-# has already thought about, and precisely the false positive that would get a
-# warn hook muted. This repo's own test for it failed on the first cut.
-_EATEN_ESCAPE = re.compile(r"(?<!\\)\\[nrtbfva0xu]")
+# Trimmed from the first cut's `[nrtbfva0xu]`. `\a \v \f \0` are near-noise —
+# nobody writes them in a heredoc — and every character in the class widens the
+# false-positive surface, which on a Windows checkout already includes `\t` and
+# `\b` from any backslash-separated path with `temp` or `build` in it. `\U` and
+# `\N` are added because they are real Python manglers the first cut missed.
+_EATEN = "nrtbxuUN"
+
+
+def _eaten_escapes(body: str) -> list[str]:
+    """Distinct eaten escapes in `body`, sorted, skipping escaped backslashes.
+
+    Counts backslash PARITY rather than looking one character behind. A single
+    lookbehind gets `\\\\n` right (doubled, deliberate — leave it alone) but gets
+    `\\\\\\n` wrong: three backslashes is an escaped backslash followed by a
+    genuinely eaten `\\n`, and the lookbehind sees a backslash and stays silent.
+    Only an odd run of backslashes actually escapes the character after it.
+    """
+    found: set[str] = set()
+    i = 0
+    while i < len(body):
+        if body[i] != "\\":
+            i += 1
+            continue
+        run = 0
+        while i < len(body) and body[i] == "\\":
+            run += 1
+            i += 1
+        if run % 2 and i < len(body) and body[i] in _EATEN:
+            found.add("\\" + body[i])
+        # An even run is `\\` pairs — the next char is literal, not escaped.
+    return sorted(found)
 
 
 def _heredoc_bodies(cmd: str) -> list[tuple[str, str]]:
     """Every `(delimiter, body)` pair the command opens.
 
-    Scans line by line rather than with one regex over the whole string: a
-    command can open more than one heredoc, and the body runs to a line that is
-    exactly the delimiter. An unterminated heredoc yields the rest of the
-    command, which is the right conservative reading — that text IS the body.
+    Two things this gets right that the first cut did not, both measured:
+
+    - **Every opener on a line, not just the first.** `cat <<A <<B` opens two;
+      `search()` found only `A` and left `B`'s body unscanned. Bash queues the
+      bodies in opener order, which is what `finditer` reproduces.
+    - **A terminator is REQUIRED.** Treating an unterminated opener's remaining
+      text as the body sounds conservative, but it is what made `$((1 << n))`
+      swallow the rest of the command and warn on any `\\n` anywhere in it. A
+      real heredoc in a tool call is terminated; an arithmetic shift never is.
+      The cost is a genuinely unterminated heredoc going unscanned — accepted,
+      because a warn hook that cries wolf gets muted, and muted is the same as
+      absent.
+
+    Terminator matching follows bash: exact for `<<WORD`, leading whitespace
+    stripped only for the tab-stripping `<<-WORD` form.
     """
     lines = cmd.splitlines()
     out: list[tuple[str, str]] = []
-    i = 0
-    while i < len(lines):
-        m = _HEREDOC_OPEN.search(lines[i])
-        if not m:
-            i += 1
-            continue
-        delim = m.group(2)
-        body: list[str] = []
-        i += 1
-        while i < len(lines) and lines[i].strip() != delim:
-            body.append(lines[i])
-            i += 1
-        i += 1  # step past the terminator (or off the end)
-        out.append((delim, "\n".join(body)))
+    consumed = 0  # index of the next line not yet claimed as some body
+
+    for i, line in enumerate(lines):
+        for m in _HEREDOC_OPEN.finditer(line):
+            dash, delim = m.group(1), m.group(3)
+            start = max(i + 1, consumed)
+            end = None
+            for j in range(start, len(lines)):
+                candidate = lines[j].strip() if dash else lines[j]
+                if candidate == delim:
+                    end = j
+                    break
+            if end is None:
+                continue  # unterminated — not a heredoc we can trust
+            out.append((delim, "\n".join(lines[start:end])))
+            consumed = end + 1
     return out
 
 
@@ -93,7 +134,7 @@ def offending_heredocs(cmd: str) -> list[tuple[str, list[str]]]:
     """`(delimiter, sorted distinct escapes)` for each body carrying an eaten escape."""
     found = []
     for delim, body in _heredoc_bodies(cmd):
-        escapes = sorted({m.group(0) for m in _EATEN_ESCAPE.finditer(body)})
+        escapes = _eaten_escapes(body)
         if escapes:
             found.append((delim, escapes))
     return found

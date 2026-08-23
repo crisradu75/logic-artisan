@@ -84,7 +84,9 @@ confirmation, for the `multi-*` chainers' unattended runs).
 
 **Warns:** `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard) ·
 `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
-`warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one).
+`warn-heredoc-escape-mangling` (a heredoc body carrying a backslash escape the shell/inner-language
+layering eats) · `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially
+shorter one).
 
 **Direct pushes to `main` are NOT guarded by any of these.** That protection is a git `pre-push`
 hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no command spelling

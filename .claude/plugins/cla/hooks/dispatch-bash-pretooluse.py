@@ -85,7 +85,7 @@ _HOOK_FILES = [
 # budget remains for them. Every hook that changes the OUTCOME of the call — one
 # that can return 2, plus `ask-destructive-git.py`, which returns 0 but escalates
 # to a permission prompt via stdout — is deliberately absent from this set AND
-# ordered ahead of these two in `_HOOK_FILES`, so budget pressure costs warnings
+# ordered ahead of these three in `_HOOK_FILES`, so budget pressure costs warnings
 # before it can cost enforcement. Note the ask hook is why the wiring test cannot
 # key on `return 2` alone: skipping it would silently downgrade an ask to an
 # allow, an enforcement loss no exit code would reveal.

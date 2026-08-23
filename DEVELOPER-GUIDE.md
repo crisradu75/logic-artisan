@@ -229,7 +229,9 @@ three severities.
   restores one.
 - **Warns** surface a caution and let the call through: `warn-comment-dates`,
   `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard),
-  `warn-stray-scratch-artifact` (scratch files left in the repo root), and
+  `warn-stray-scratch-artifact` (scratch files left in the repo root),
+  `warn-heredoc-escape-mangling` (a heredoc body carrying a backslash escape the shell/inner-language
+  layering eats — `\n` arrives as a real newline), and
   `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one — it
   asks you to name what you dropped, since a `Write` keeps only what you carried across).
 

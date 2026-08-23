@@ -47,11 +47,17 @@ floor to survive a change**; a floor relaxed to go green certifies exactly what 
 stopped checking, which is worse than never having written it, because now something
 green is standing where the check used to be.
 
-Measured in one session (2026-08-23) during a ~70-file tree move: `>= 55` against a
-real 83 — a 34% collapse would have passed; `>= 6` against a real 15; and `>= 95`
-against 96, which is the shape working as intended. State what you derived the number
-from, in the assertion's own comment, so the next person moving the tree can re-derive
-it rather than guess whether the margin is deliberate.
+Measured in one session (2026-08-23) during a ~70-file tree move, three floors found
+stale in the source repo and each raised in the same edit that found it: one sat at
+`>= 55` against a real 83 (a 34% collapse would have passed) and is now `>= 80`;
+another at `>= 6` against a real 17 and is now `>= 15`; a third at `>= 95` against 96,
+which is the shape working as intended and was left alone. Quote the *current* value
+when citing one — a floor named here after being raised is a number a reader will
+grep for and not find.
+
+State what you derived the number from, in the assertion's own comment, so the next
+person moving the tree can re-derive it rather than guess whether the margin is
+deliberate.
 
 ## Prove a gate by planting what it is supposed to catch
 

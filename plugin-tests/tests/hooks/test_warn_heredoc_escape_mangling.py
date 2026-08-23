@@ -65,10 +65,19 @@ def test_more_than_one_heredoc_in_one_command_is_all_reported():
     assert [d for d, _ in found] == ["A", "B"]
 
 
-def test_an_unterminated_heredoc_still_has_its_body_scanned():
-    """Conservative reading: the text after the opener IS the body. Bailing out
-    here would make a truncated command the way to slip past the hook."""
-    assert offending_heredocs("python3 - <<'PY'\ns = \"a\\nb\"")
+def test_an_odd_backslash_run_of_three_is_still_an_eaten_escape():
+    """`\\\\\\n` is an escaped backslash followed by a real `\\n`. The first cut
+    used a one-character lookbehind, which saw a backslash and stayed silent —
+    parity is what actually decides this."""
+    assert offending_heredocs("cat <<'EOF'\nx = 'a\\\\\\nb'\nEOF")
+
+
+def test_every_opener_on_one_line_is_scanned_not_just_the_first():
+    """`cat <<A <<B` queues two bodies. `search()` found only A and left B's body
+    unchecked — measured, with an offending B."""
+    cmd = "cat <<A <<B\nplain\nA\nx='a\\nb'\nB"
+    found = offending_heredocs(cmd)
+    assert [d for d, _ in found] == ["B"], f"B's body was not scanned: {found}"
 
 
 # --------------------------------------------------------------------------- #
@@ -95,6 +104,40 @@ def test_a_doubled_backslash_is_left_alone():
 def test_text_after_the_terminator_is_not_part_of_the_body():
     cmd = "cat <<'EOF'\nclean prose\nEOF\necho \"tail \\n here\""
     assert offending_heredocs(cmd) == []
+
+
+def test_a_herestring_is_not_a_heredoc():
+    """`<<<bar` matched the opener at offset 1 and made `bar` a delimiter."""
+    assert offending_heredocs("grep -q foo <<<bar\necho 'a\\nb'") == []
+
+
+def test_an_arithmetic_left_shift_is_not_a_heredoc():
+    """`$((1 << n))` matches the opener by construction — `n` is a valid
+    delimiter name. Requiring a terminator is what excludes it; without that, the
+    rest of the command became `n`'s body and any later escape fired."""
+    assert offending_heredocs("echo $((1 << n))\nx=\"a\\nb\"") == []
+
+
+def test_a_windows_path_in_a_body_does_not_fire():
+    """`C:\\temp\\build` carries `\\t` and `\\b`. Trimming the escape class does not
+    save this one — it is the reason the class should stay narrow and the reason
+    this stays warn-only rather than blocking."""
+    found = offending_heredocs("cat <<'EOF'\nsee C:\\temp\\build for output\nEOF")
+    assert [e for _, e in found] == [["\\b", "\\t"]], (
+        "documents the known false positive rather than pretending it is absent"
+    )
+
+
+def test_a_clean_heredoc_beside_an_offending_one_is_not_blamed():
+    cmd = "cat <<'A'\nclean prose\nA\ncat <<'B'\nx='p\\tq'\nB"
+    assert [d for d, _ in offending_heredocs(cmd)] == ["B"]
+
+
+def test_an_unterminated_opener_is_not_treated_as_a_body():
+    """Deliberate reversal of the first cut. Treating the remainder as a body is
+    what let the arithmetic shift swallow the command; a real heredoc in a tool
+    call is terminated. The miss is accepted so the hook stays believable."""
+    assert offending_heredocs("python3 - <<'PY'\ns = \"a\\nb\"") == []
 
 
 # --------------------------------------------------------------------------- #
