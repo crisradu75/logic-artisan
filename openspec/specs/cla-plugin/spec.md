@@ -578,26 +578,56 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
 
+### Requirement: Unattended-run turn liveness
+
+A skill that drives a multi-step run designed to proceed without a human present SHALL state, among its hoisted skill-level rules, that a turn is never ended while nothing is pending that would re-invoke the session. The obligation SHALL be stated as a **check the agent can apply without judgement** — whether the message contains a tool call — rather than only as a prohibition on how a message reads, because the judgement form has been observed to fail in the one way that matters: an author writes a closing-shaped status report and then behaves like its reader.
+
+The rule SHALL distinguish itself from the existing no-confirmation-prompt rules such skills already carry. Those forbid *asking permission*; this failure asks nothing, and an orchestrator hitting it believes it is continuing. The stated discriminator SHALL be whether a pending event will re-invoke the session — a backgrounded dispatch whose completion notification wakes it — and NOT whether a question was asked. The rule SHALL state that announcing the next step is not a mechanism.
+
+The exhaustive set of conditions under which ending a turn is legitimate SHALL be exactly two: a backgrounded dispatch is genuinely in flight, or the run is complete. A skill SHALL NOT add a third. In particular it SHALL NOT admit "blocked on a decision already surfaced to the user", because that clause is satisfied by writing a paragraph and is therefore the shape a stalling orchestrator most easily adopts — a genuine blocker is surfaced with a tool call, which does not end the turn at all. Every skill stating this rule SHALL name the same two, so no two skills assert differently-sized exhaustive sets.
+
+The rule SHALL be restated at the seam between units of work in whichever reference file carries that seam's procedure, because the seam is reached with the reference closed and the orchestrator running on the `SKILL.md` summary.
+
+The rule's three properties — the mechanical check, the pending-event discriminator, and "announcing the next step is not a mechanism" — SHALL appear together in one block of prose rather than scattered across a file. A rule whose parts arrive separately can be gutted while each part survives somewhere, and a guard that checks for them file-wide cannot tell the two apart.
+
+#### Scenario: The rule is stated mechanically, not only as a prohibition
+
+- **WHEN** an unattended-run skill states its turn-liveness rule
+- **THEN** the rule gives a check requiring no judgement (whether the message carries a tool call)
+- **AND** it does not rest solely on the agent noticing that its own text reads as an ending
+
+#### Scenario: The rule is distinguished from the no-pause rules
+
+- **WHEN** the rule appears alongside an existing "no ready-to-continue pauses" rule
+- **THEN** it states that the failure it covers asks the user nothing
+- **AND** it names the pending-event discriminator rather than the asked-a-question one
+
+#### Scenario: The seam carries its own restatement
+
+- **WHEN** a skill's per-unit loop lives in a reference file
+- **THEN** that file restates the obligation at the point where one unit ends and the next begins
+- **AND** it says why the restatement is there rather than relying on the hoisted copy
+
+#### Scenario: The exhaustive set is the same two everywhere
+
+- **WHEN** two skills each state the turn-liveness rule
+- **THEN** both name the same two legitimate conditions
+- **AND** neither admits a third that a paragraph of prose could satisfy
+
+#### Scenario: The rule's parts arrive together
+
+- **WHEN** a skill states the rule
+- **THEN** the mechanical check, the discriminator, and "announcing is not a mechanism" sit in one block
+- **AND** a guard over them distinguishes that from the three merely appearing somewhere in the file
 ### Requirement: Completeness signals read the claim, not the glyph
 
-A skill that reports a task list complete SHALL NOT rest that report solely on checkbox state. Checkbox counts and artifact-presence flags are presence checks on the glyph: they cannot distinguish a task that was done from one that was ticked, and a task ticked `[x]` whose own body states the work was not done passes every such check at once.
-
-The skill SHALL therefore scan each ticked task's body for self-negating text before reporting completion, and SHALL fail rather than report complete on a hit. The scan SHALL require no judgement about whether the stated reason is good — the inconsistency is the defect, independent of its cause. It SHALL gate on the task being ticked, so that the same words under an unticked box, which is the honest filing, are not flagged.
+A skill that reports a task list complete SHALL NOT rest that report solely on checkbox state. A checkbox count is a presence check on the glyph: it cannot distinguish a task that was done from one that was ticked. An artifact-presence flag is weaker still — it does not read task state at all — so neither is evidence that the work behind a task happened.
 
 A task whose text asserts a **measurement** — a confirmed value, a count, a mutation-test result — SHALL record the measured value inline on the ticked line rather than the tick standing as its own evidence, and the post-check SHALL re-measure a small sample rather than trusting the ticks wholesale.
 
 The skill SHALL state the underlying convention as well as enforcing it: a task is `[ ]` until it is done, and the prose beneath it explains why it is still open.
 
-#### Scenario: A ticked task carrying its own denial fails the gate
-
-- **WHEN** a task line matches `- [x]` and its body says the work was not done
-- **THEN** the phase fails and names that task
-- **AND** the outcome does not depend on judging whether the reason was acceptable
-
-#### Scenario: The honest filing is not punished
-
-- **WHEN** an UNTICKED task's body carries the same negating words
-- **THEN** the scan does not flag it
+**A mechanical scan of a ticked task's body for self-negating text is NOT required, and the reason is recorded so it is not re-attempted blind.** It was built and withdrawn: measured over this repo's own archived `tasks.md` corpus — 173 ticked tasks — such a scan reached 6 lines, produced 0 true positives and 4 false positives, and its trip words collided with vocabulary the skills use deliberately. A repo whose task prose sits on the task line rather than beneath it gets no coverage from the obvious implementation. Anyone rebuilding it SHALL first measure the target corpus, and SHALL reuse the task parser the plugin already ships rather than hand-rolling one. Full evidence: GitHub issue #105.
 
 #### Scenario: A measurement-bearing task carries its measurement
 
