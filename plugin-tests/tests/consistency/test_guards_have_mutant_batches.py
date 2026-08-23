@@ -41,7 +41,19 @@ def _guard_areas() -> tuple[str, ...]:
     mutants_root = _DEV_TREE / "mutants"
     if not mutants_root.is_dir():
         return ()
-    return tuple(sorted(p.name for p in mutants_root.iterdir() if p.is_dir()))
+    # An area is a directory that HOLDS A BATCH. Taking every subdirectory made
+    # `__pycache__` a phantom area the moment anything ran under `mutants/` —
+    # it resolves to no `tests/` directory, so it failed the resolution check
+    # while being nobody's guard. The two filters must match the ones the
+    # non-vacuity test compares against, or the comparison fails on a
+    # difference that is real in neither direction.
+    return tuple(
+        sorted(
+            p.name
+            for p in mutants_root.iterdir()
+            if p.is_dir() and not p.name.startswith("__") and any(p.glob("test_*.py"))
+        )
+    )
 
 # Guard files exempt from needing a batch, each for a stated reason. Keep this
 # list short and justified — it is the pressure valve that could quietly empty

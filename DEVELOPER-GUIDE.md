@@ -214,8 +214,8 @@ one — a common failure mode when a stale absolute path sneaks into a prompt.
 ## 8. The guardrails you'll meet
 
 Hooks wire themselves from `hooks/hooks.json` at plugin load — no `settings.json` step. Two
-dispatchers each run several leaf hooks in one Python process (5 on the Bash/PowerShell matcher, 2
-on Edit/Write), plus `warn-wholesale-rewrite` and `log-commit-provenance` wired directly on PostToolUse: **9 leaf hooks**, in
+dispatchers each run several leaf hooks in one Python process (6 on the Bash/PowerShell matcher, 2
+on Edit/Write), plus `warn-wholesale-rewrite` and `log-commit-provenance` wired directly on PostToolUse: **10 leaf hooks**, in
 three severities.
 
 - **Blocks** stop the tool call:

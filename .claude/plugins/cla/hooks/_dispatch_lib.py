@@ -160,6 +160,9 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     "ask-destructive-git.py": 0.0,
     "block-unsafe-recursive-delete.py": 0.0,
     "warn-comment-dates.py": 0.0,
+    # Scans the command string for heredoc bodies carrying an eaten backslash
+    # escape. Line-oriented regex over one string, no git and no filesystem.
+    "warn-heredoc-escape-mangling.py": 0.0,
     # 2 x _run_git(3s): combined `rev-parse` + `--show-toplevel`.
     "block-worktree-path-escape.py": 6.0,
     # 1 x `git status --porcelain`(4s) — walks the working tree, so it gets more

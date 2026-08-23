@@ -112,11 +112,11 @@ were deleted alongside the worktree-isolation guard, the hook they existed to do
 
 All scripts are stdlib-only Python (no third-party deps beyond pytest itself).
 
-### Before shipping a change here, run four checks
+### Before shipping a change here, run five checks
 
 The plugin's behaviour lives mostly in markdown, so a prose edit ships like code but
 nothing compiles it. Every defect that reached review in this repo had one shape: the
-artifact was checked, the system it lands in was not. These four checks are cheap and
+artifact was checked, the system it lands in was not. These five checks are cheap and
 each one comes from a real escape:
 
 1. **Inserted a step into an ordered sequence?** Read the step immediately before and
@@ -150,6 +150,17 @@ each one comes from a real escape:
    another, which is how `lint_profile` traded a silent no-op on the default path for the
    identical no-op on the overlay path.
 
+5. **Changed a function's signature — its arity, its return shape, its parameter list?**
+   Grep for its callers across the WHOLE repo before running anything, and fix them in the
+   same edit. The scope you are working in is not the blast radius: a caller in another
+   directory does not announce itself, and running that one scope green is what makes the
+   omission feel finished. Measured 2026-08-23 — `scan()` in `check_fact_paths.py` gained a
+   third return value, the three callers in `tests/conformance/` were updated, that scope
+   passed, and a fourth caller in `tests/consistency/` went red only when the full suite ran.
+   One `grep -rn "<name>(" ` would have found it before the first edit. This is check 4's
+   second-branch problem one level up: there, the other branch is inside the function; here,
+   it is in a file you were not looking at.
+
 **A clean mutation run is not a licence to stop.** It is evidence about the mutants you
 thought of, and nothing else. Measured on this repo: commits `1cf09da` and `0027bc7` each
 recorded "three mutations checked, all caught" and each shipped a critical that a later
@@ -157,7 +168,7 @@ review found — the mutants covered the branch the author was reasoning about, 
 branch they got wrong. So mutate what the fix *touches*, not what it targets, and treat a
 green run as one input to the ship decision rather than the decision itself.
 
-**Match the checking to the change, and run each gate once.** The four checks above are
+**Match the checking to the change, and run each gate once.** The five checks above are
 priced for a *fix* or a new component — the cases where being wrong is expensive and
 invisible. An increment to something already built and already tested does not earn them,
 and paying them anyway is not caution, it is waste with the shape of rigour. The defaults:
@@ -166,7 +177,7 @@ and paying them anyway is not caution, it is waste with the shape of rigour. The
 |---|---|
 | Editing one skill or area | `pytest plugin-tests/tests/<area>`, **once** |
 | Fixing a defect a review found | that area, plus a mutation batch over what the fix touches |
-| Adding a new script, skill, or hook | the four checks above, in full |
+| Adding a new script, skill, or hook | the five checks above, in full |
 | Before opening a PR | `pytest plugin-tests` and `node --test plugin-tests/node/mechanical-checks.test.mjs`, each once |
 
 **A green run does not get more true by being repeated.** Re-running a suite to see whether
@@ -332,8 +343,8 @@ Typical flows: small change → `shape-decision` → `lite-pr`; larger → `shap
 ### Guard hooks (conventions enforced, not just advised)
 
 Wired automatically by `hooks/hooks.json` when the plugin loads — these apply in this repo's own
-sessions too. Two dispatchers run 7 leaf hooks between them; `warn-wholesale-rewrite` and
-`log-commit-provenance` are wired directly on PostToolUse, making 9 leaf hook files in all. Three
+sessions too. Two dispatchers run 8 leaf hooks between them; `warn-wholesale-rewrite` and
+`log-commit-provenance` are wired directly on PostToolUse, making 10 leaf hook files in all. Three
 severities: **blocks** stop the call, **asks** escalate to a permission prompt, **warns** let it
 through with a caution. Full enumeration and the rationale per hook:
 `.claude/plugins/cla/README.md` and DEVELOPER-GUIDE §8.
