@@ -102,16 +102,11 @@ def _numbers_near(doc: str, phrase: str) -> list[int]:
 # ---------- the assertions ----------
 
 
-def test_the_scope_discovery_rule_here_matches_what_run_tests_finds():
-    """Non-vacuity with teeth: if this file's re-derived rule ever stops matching
-    `run_tests.py`'s, every count below is measured against the wrong truth."""
-    runner = (_PLUGIN_ROOT / "run_tests.py").read_text(encoding="utf-8")
-    assert _PYTEST_MARKER in runner, (
-        "run_tests.py no longer keys scope discovery on "
-        f"{_PYTEST_MARKER!r}; re-derive real_scope_dirs() to match it"
-    )
-    scopes = real_scope_dirs()
-    assert len(scopes) >= 8, f"scope discovery collapsed to {len(scopes)}"
+# `test_the_scope_discovery_rule_here_matches_what_run_tests_finds` stood here.
+# It read `run_tests.py` and asserted `len(real_scope_dirs()) >= 8`. Both halves
+# died with `extract-dev-tree-from-plugin`: the runner is deleted, and the twelve
+# scopes are now one, which no `>= 8` floor can satisfy. Do not restore it — a
+# check against a file that no longer exists is not coverage.
 
 
 def test_the_release_version_agrees_across_the_manifest_and_the_prose():
