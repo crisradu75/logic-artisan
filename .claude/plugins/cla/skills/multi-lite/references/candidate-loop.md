@@ -38,9 +38,9 @@ For each candidate in the confirmed order:
    legitimate exception: the user confirmed the candidate plan, including this
    dependency edge, in Phase 1, and the run is unattended by design, so a
    prompt here would hang. Use the narrow variable, NOT
-   `ALLOW_DESTRUCTIVE_GIT=1` — that would also disarm the force-push and
-   `reset --hard` checks. Do not export either; prefixing this one command is
-   what keeps the exception scoped.
+   `ALLOW_DESTRUCTIVE_GIT=1` — that would also disarm the force-push,
+   `reset --hard` and branch-force-delete checks. Do not export either;
+   prefixing this one command is what keeps the exception scoped.
    (separate commands, per bash-discipline). Confirm the merge landed (`git log --oneline -1`) before moving on, and update the candidate's run-notes status to `merged`. If **nothing** depends on this candidate, leave its PR **open** — merging is the user's call for independents — and set its status to `open`. Mark the task `completed` either way.
 
 Move to the next candidate.
