@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -43,7 +44,24 @@ _DOCS = {
 }
 
 _PYTEST_MARKER = "[tool.pytest.ini_options]"
-_EXCLUDED_DIRS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules"}
+# `worktrees` is the entry that is NOT about generated caches. This repo's own
+# `new-worktree` skill puts every worktree at `.claude/worktrees/<name>`
+# (`manual_worktree.py` returns exactly that relative path), and the Agent tool's
+# worktree isolation uses the same directory — so a full checkout of the repo
+# sits inside the repo whenever anyone works the way the repo tells them to.
+# Without this entry `real_scope_dirs()` finds that copy's `plugin-tests/` and
+# reports 2 pytest scopes, failing a doc claim that is CORRECT. Measured on this
+# branch, planting `.claude/worktrees/probe-fixture/plugin-tests/` with a
+# pytest-configured `pyproject.toml` and a `tests/` dir took `real_scope_dirs()`
+# from `['plugin-tests']` to `['.claude/worktrees/probe-fixture/plugin-tests',
+# 'plugin-tests']`; the same shape is pinned as a test below.
+# `real_scope_dirs()` is the only repo-root-wide walk in this scope — measured
+# with `grep -rn 'rglob\|\.glob(' plugin-tests/tests/{consistency,conformance}/`,
+# whose other 18 hits all start from the plugin root, the dev tree, or
+# `.claude/skills`, none of which contains a worktree copy.
+_EXCLUDED_DIRS = {
+    "__pycache__", ".pytest_cache", ".git", ".venv", "node_modules", "worktrees",
+}
 
 
 # ---------- ground truth, computed from the tree ----------
@@ -52,6 +70,25 @@ _EXCLUDED_DIRS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules
 def real_skill_count() -> int:
     """A skill is a directory with a SKILL.md. `_shared/` has none, by design."""
     return len(list((_PLUGIN_ROOT / "skills").glob("*/SKILL.md")))
+
+
+def _excluded(path: Path) -> bool:
+    """True if `path` sits under an excluded directory INSIDE the repo.
+
+    Relative to `_REPO_ROOT`, not against the absolute parts. The absolute form
+    reads the parts of the whole filesystem path, so a repo that happens to be
+    checked out under a directory with an excluded name excludes its own entire
+    tree and every count silently becomes 0 — measured on this branch, running
+    from `<repo>/.claude/worktrees/agent-<id>/` took `real_scope_dirs()` to `[]`
+    and turned four correct doc claims red with `assert 0 in [1]`. That is the
+    same false-failure shape the `worktrees` entry was added to remove, reached
+    from the other side, and it applies to `.git`/`node_modules`/`.venv` too.
+    """
+    try:
+        parts = path.relative_to(_REPO_ROOT).parts
+    except ValueError:  # pragma: no cover - callers only pass repo-relative paths
+        parts = path.parts
+    return bool(_EXCLUDED_DIRS & set(parts))
 
 
 def real_scope_dirs() -> list[Path]:
@@ -67,13 +104,12 @@ def real_scope_dirs() -> list[Path]:
     pytest_dirs = {
         p.parent
         for p in _REPO_ROOT.rglob("pyproject.toml")
-        if not _EXCLUDED_DIRS & set(p.parts)
-        and _PYTEST_MARKER in p.read_text(encoding="utf-8")
+        if not _excluded(p) and _PYTEST_MARKER in p.read_text(encoding="utf-8")
     }
     tests_dirs = {
         p.parent
         for p in _REPO_ROOT.rglob("tests")
-        if p.is_dir() and not _EXCLUDED_DIRS & set(p.parts)
+        if p.is_dir() and not _excluded(p)
     }
     return sorted(pytest_dirs & tests_dirs)
 
@@ -208,6 +244,63 @@ def test_every_stated_pytest_scope_count_is_the_real_one(name, phrase):
     assert len(real_scope_dirs()) in claimed, (
         f"{name} states {claimed} near {lookup!r}; the real scope count is "
         f"{len(real_scope_dirs())}"
+    )
+
+
+def test_a_worktree_copy_is_not_counted_as_a_second_scope(tmp_path, monkeypatch):
+    """Plant the worktree, rather than waiting for someone to have one.
+
+    A live worktree is not a fixture — it exists on the machine of whoever
+    happens to be mid-task and nowhere else, so on a clean clone this exclusion
+    has no witness at all and a mutant that removes it would survive. The whole
+    defect was invisible for the same reason: the checks above pass in a bare
+    clone and go red the moment `/cla:new-worktree` or the Agent tool's worktree
+    isolation puts a full checkout at `.claude/worktrees/<name>/`. Worse, they go
+    red on a doc statement that is CORRECT, which invites someone to "fix" the
+    docs to match the miscount — the exact drift this file exists to prevent,
+    caused by this file.
+    """
+    real = tmp_path / "plugin-tests"
+    (real / "tests").mkdir(parents=True)
+    (real / "pyproject.toml").write_text(_PYTEST_MARKER + "\n", encoding="utf-8")
+
+    copy = tmp_path / ".claude" / "worktrees" / "agent-xyz" / "plugin-tests"
+    (copy / "tests").mkdir(parents=True)
+    (copy / "pyproject.toml").write_text(_PYTEST_MARKER + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys.modules[__name__], "_REPO_ROOT", tmp_path)
+    found = real_scope_dirs()
+
+    assert found == [real], (
+        f"real_scope_dirs() returned {found}; a checkout under "
+        ".claude/worktrees/ is the SAME scope seen twice, not a second one"
+    )
+
+
+def test_the_exclusion_reads_repo_relative_parts_not_absolute_ones(
+    tmp_path, monkeypatch
+):
+    """The other side of the same coin, and the one with no natural witness.
+
+    An exclusion matched against a path's ABSOLUTE parts is scoped to the whole
+    filesystem, so it fires on the repo's own location. A clone at
+    `<repo>/.claude/worktrees/agent-<id>/` — where this very branch was
+    developed, and where every isolated agent runs — has `worktrees` in the
+    absolute parts of every file it owns, so the scan excludes the entire tree
+    and reports 0 scopes. It only shows up where the repo happens to live, so
+    the repo root is planted under an excluded name here rather than hoping.
+    """
+    root = tmp_path / "worktrees" / "clone"
+    (root / "plugin-tests" / "tests").mkdir(parents=True)
+    (root / "plugin-tests" / "pyproject.toml").write_text(
+        _PYTEST_MARKER + "\n", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(sys.modules[__name__], "_REPO_ROOT", root)
+
+    assert real_scope_dirs() == [root / "plugin-tests"], (
+        "a repo checked out under a directory with an excluded name excluded "
+        "its own whole tree; the scan must be relative to the repo root"
     )
 
 

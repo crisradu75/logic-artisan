@@ -23,17 +23,18 @@ DEV = Path(__file__).resolve().parents[2]
 SKILLS = PLUGIN / "skills"
 GUARD = DEV / "tests" / "consistency" / "test_orchestrators_state_turn_liveness.py"
 
-# Scoped to the ONE guard under test, never to `tests/consistency/` as a whole.
-# `pytest plugin-tests/tests/consistency/` is 1-failed today, so a batch pointed
-# at the area would report every mutant "killed" on an unrelated failure and
-# prove nothing. That failure is PRE-EXISTING and is itself a bug, not a stable
-# fact to design around: `test_overlays_are_reachable.py` imports the staleness
-# guard from `.claude/plugins/cla/conformance-checks/tests`, a directory the
-# dev-tree extraction deleted. It resolves in a full run only because collecting
-# `tests/conformance/` first puts a module of that name on `sys.path` — so the
-# guard passes by an ambient import rather than by the path it names. When that
-# is fixed, this file-scoping stays correct on its own merits; only the
-# justification below expires.
+# Scoped to the ONE guard under test, never to `tests/consistency/` as a whole:
+# a batch pointed at an area reports every mutant "killed" the moment anything
+# else in that area is red, and proves nothing it claims to.
+#
+# That was not hypothetical here. `pytest plugin-tests/tests/consistency/` was
+# 1-failed for exactly this reason until `fix/consistency-scope-import`:
+# `test_overlays_are_reachable.py` imported the staleness guard from
+# `.claude/plugins/cla/conformance-checks/tests`, a directory the dev-tree
+# extraction deleted, and it resolved in a FULL run only because collecting
+# `tests/conformance/` first put a module of that name in `sys.modules`. The
+# guard is fixed and the area is green now; the file-scoping stays on its own
+# merits.
 TARGETS = [GUARD]
 
 MUTANTS = [

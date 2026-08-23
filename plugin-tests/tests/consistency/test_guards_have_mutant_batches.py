@@ -83,7 +83,6 @@ _EXEMPT = {
     "tests/consistency/test_check_script_drift.py": "grandfathered",
     "tests/consistency/test_ledger_names_agree.py": "grandfathered",
     "tests/consistency/test_marketplace_manifest.py": "grandfathered",
-    "tests/consistency/test_overlays_are_reachable.py": "grandfathered",
     "tests/consistency/test_pre_push_is_installed.py": "grandfathered",
     "tests/consistency/test_subprocess_encoding.py": "grandfathered",
     "tests/consistency/test_token_list_is_curated_here.py": "grandfathered",
