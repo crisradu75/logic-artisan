@@ -3,7 +3,7 @@
 When `log_run.py` was consolidated into one shared writer, the ledger filename
 moved out of Python and into markdown: each skill now names its own ledger as an
 argument, in prose. The readers still hardcode it, as a constant in their
-`aggregate.py`.
+own aggregator script.
 
 So the two halves of a single contract now live in different languages, in
 different files, with nothing comparing them. A typo on the writer side is
@@ -29,17 +29,17 @@ import pytest
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 
-# (skill that writes, the prose file carrying the invocation, the reader's aggregate.py)
+# (skill that writes, the prose file carrying the invocation, the reader's aggregator)
 _LEDGER_CONTRACTS = [
     (
         "codify-learnings",
         _PLUGIN_ROOT / "skills" / "codify-learnings" / "SKILL.md",
-        _PLUGIN_ROOT / "skills" / "codify-retro" / "scripts" / "aggregate.py",
+        _PLUGIN_ROOT / "skills" / "codify-retro" / "scripts" / "codify_aggregate.py",
     ),
     (
         "spec-to-pr",
         _PLUGIN_ROOT / "skills" / "_shared" / "references" / "run-log-schema.md",
-        _PLUGIN_ROOT / "skills" / "spec-to-pr-retro" / "scripts" / "aggregate.py",
+        _PLUGIN_ROOT / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py",
     ),
 ]
 

@@ -148,7 +148,9 @@ hardcoded parser — that's what makes this skill portable across differing tech
 Produce the full proposed file content, organized under headed sections per the categories above. Open
 with a heading and a one-line note that this is the repo's consolidated, never-distributed
 project-facts file (lives in `cla.io/`, outside the plugin directory), maintained by this skill and linted by
-the staleness guard (`${CLAUDE_PLUGIN_ROOT}/conformance-checks/tests/test_project_facts_paths.py`).
+this skill's own staleness checker, `${CLAUDE_PLUGIN_ROOT}/skills/sync-context/scripts/check_fact_paths.py`
+— run it as a program (`python3 <path>`; exit 0 clean, non-zero with every stale path named), no
+pytest required in the repo being checked.
 
 While drafting, also look for a fact **restated verbatim (or near-verbatim) across two or more**
 overlays that isn't in one of the categories above — that's a genuine tie-break hit found empirically

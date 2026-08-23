@@ -2,7 +2,7 @@
 isolated pytest scopes and so can't share a single importable module.
 
 The ledger writer (`lib/log_run.py`) and both readers of what it writes (the
-retro skills' `aggregate.py`) each carry their own copy of the resolver that
+two retro aggregators) each carry their own copy of the resolver that
 decides WHERE the ledger lives (`_git_toplevel`, `_runs_dir`), and the two
 readers additionally share their record-loading helpers (`_load_records`,
 `_coerce_int`). Each file's own docstring says to keep these byte-identical to
@@ -14,8 +14,8 @@ cold start.
 This can't be fixed by extracting a shared module the way
 `hooks/_dispatch_lib.py` or `spec-to-pr/scripts/_git_common.py` do — those
 live inside ONE pytest scope each; these siblings are deliberately spread
-across scopes that CANNOT share a same-named top-level module (see
-`run_tests.py`'s own docstring). So instead of sharing code, this compares
+across scopes that are collected separately, each with its own `pythonpath`
+(see `run_tests.py`'s own docstring). So instead of sharing code, this compares
 the actual LOGIC of each named function across its sibling files, once per
 `run_tests.py` pass.
 
@@ -49,22 +49,22 @@ SIBLING_GROUPS = [
         "functions": ("_git_toplevel", "_runs_dir"),
         "files": (
             "lib/log_run.py",
-            "skills/codify-retro/scripts/aggregate.py",
-            "skills/spec-to-pr-retro/scripts/aggregate.py",
+            "skills/codify-retro/scripts/codify_aggregate.py",
+            "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",
         ),
     },
     {
-        "name": "retro aggregate.py record loading",
+        "name": "retro aggregator record loading",
         "functions": ("_load_records", "_coerce_int"),
         "files": (
-            "skills/codify-retro/scripts/aggregate.py",
-            "skills/spec-to-pr-retro/scripts/aggregate.py",
+            "skills/codify-retro/scripts/codify_aggregate.py",
+            "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",
         ),
     },
     {
         # Duplicated rather than shared for the same reason as the families
-        # above: `run_tests.py` runs each scope as its own pytest process
-        # precisely because same-named modules collide, so a shared import
+        # above: `run_tests.py` runs each scope as its own pytest process, each
+        # rooted on its own `pyproject.toml`, so a shared import across scopes
         # would break that isolation. Registered here so the copies cannot
         # drift instead.
         #

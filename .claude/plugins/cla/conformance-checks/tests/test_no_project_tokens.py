@@ -1,559 +1,102 @@
-"""Conformance guard: no project-specific tokens in synced core.
+"""Unit tests for the promoted project-token / developer-path checker.
 
-A generic, repo-agnostic checker enforcing the cla plugin's fact/procedure
-separation (``cla-overlay-convention`` + ``cla-skill-context-extraction``): a
-project-specific token must live behind an overlay (``project-context.md`` /
-``*.local.md``), never baked into a synced-core ``SKILL.md`` or
-``references/**/*.md``, or the marketplace install would carry it verbatim into
-every destination repo. The token list itself is a per-repo overlay
-(``project-tokens.local.md``) read as data — the checker hard-codes no token.
+The checker itself is no longer here. It is a program at
+``skills/_shared/scripts/check_no_project_tokens.py`` — a consuming repo has no
+pytest gate over the plugin cache, so a guard filed as a test module is
+unreachable there in practice, while ``python3 <script>`` is not. What stays in
+this file is the evidence that the checker works: the unit tests of both
+scanners, the non-vacuity tests, and the CLI-layer tests of the exit-code
+contract.
 
-The checker obeys the same split it enforces: generic *procedure* (this file,
-distributed to every repo) + a repo-specific *fact* (the token list, which lives
-in the repo's own ``cla.io/`` tree and is never distributed).
+The module is loaded **by file path** via ``importlib.util.spec_from_file_location``
+rather than by adding a ``pythonpath`` entry to this scope's ``pyproject.toml``.
+This scope deliberately has no ``pythonpath`` (its tests import nothing), and a
+path-based load survives a later relocation of the checker with a one-line edit
+instead of a scope-config change.
+
+The FOUR repo-level assertions that used to live here —
+``test_no_project_tokens_in_synced_core``,
+``test_no_project_tokens_in_synced_source``,
+``test_no_absolute_developer_paths_in_synced_source`` and
+``test_every_scanned_file_is_actually_readable`` — are now the body of the
+checker's ``main()``, which runs all four and accumulates across them. Nothing
+else was dropped.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-OVERLAY_FILE_NAME = "project-context.md"
-OVERLAY_LOCAL_SUFFIX = ".local.md"
-EXCLUDED_SUBTREES = frozenset({"tests", "scripts"})
-# Token-list overlay, relative to the REPO root — it is per-repo data, so it
-# lives in `cla.io/` with the rest of it rather than inside the plugin tree.
-# Being outside the synced core also means neither scan below can reach it, so
-# it cannot flag its own contents.
-TOKEN_LIST_RELPATH = Path("cla.io") / "project-tokens.local.md"
-MAX_EXCERPT = 120
+_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+CHECKER = _PLUGIN_ROOT / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py"
 
 
-def _plugin_root() -> Path:
-    """Resolve the ``.claude/plugins/cla`` root from this file's own location — a
-    fixed internal layout identical in every repo, with no repo-specific absolute
-    path or repository name baked in."""
-    for parent in Path(__file__).resolve().parents:
-        if parent.name == "cla" and parent.parent.name == "plugins":
-            return parent
-    # Fallback for an unexpected layout: tests/ -> conformance-checks/ -> cla/
-    return Path(__file__).resolve().parents[2]
+def _load_checker():
+    spec = importlib.util.spec_from_file_location("_ut_check_no_project_tokens", CHECKER)
+    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+        raise RuntimeError(f"cannot load the checker at {CHECKER}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def _repo_root() -> Path:
-    """The repo being checked — asked of git, from the PROCESS's cwd.
+_checker = _load_checker()
 
-    The token list is per-repo data in `cla.io/`, so the anchor must be the
-    consuming repo. This used to walk to the first `.claude` ancestor of
-    `__file__`, which under a marketplace install is the user's GLOBAL
-    `~/.claude` — so it returned the home directory, found no token list, and
-    the guard skipped green in every consuming repo (upstream issue #52).
-    """
-    import subprocess
+# Bound at module level so every test below reads exactly as it did when the
+# implementation lived in this file — the names and signatures are unchanged.
+_plugin_root = _checker._plugin_root
+_repo_root = _checker._repo_root
+load_tokens = _checker.load_tokens
+_is_overlay = _checker._is_overlay
+_iter_scanned_files = _checker._iter_scanned_files
+_body_lines = _checker._body_lines
+_violations_in = _checker._violations_in
+find_violations = _checker.find_violations
+_iter_scanned_source_files = _checker._iter_scanned_source_files
+find_source_violations = _checker.find_source_violations
+_starts_with_placeholder_user = _checker._starts_with_placeholder_user
+find_absolute_path_leaks = _checker.find_absolute_path_leaks
+find_unreadable_files = _checker.find_unreadable_files
+main = _checker.main
 
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=10,
-        )
-        if out.returncode == 0 and out.stdout.strip():
-            return Path(out.stdout.strip())
-    except (OSError, subprocess.SubprocessError):
-        pass
-    home_claude = (Path.home() / ".claude").resolve()
-    for parent in Path(__file__).resolve().parents:
-        if parent.name == ".claude" and parent.resolve() != home_claude:
-            return parent.parent
-    return Path.cwd()
-
-
-def load_tokens(path: Path) -> list[str]:
-    """Parse the markdown token-list overlay into a list of tokens.
-
-    One token per ``- ``/``* `` bullet (the text after the marker, trimmed, with
-    an optional trailing `` # comment`` and surrounding backticks stripped).
-    ``#`` headings, blank lines, and ``<!-- ... -->`` comment lines are ignored.
-    A missing file yields ``[]`` (trivial pass — see the main test)."""
-    if not path.is_file():
-        return []
-    text = path.read_text(encoding="utf-8")
-    # Strip HTML comment spans FIRST — they may span multiple lines and legitimately
-    # contain `- `/`* ` bullets (e.g. this overlay's "excluded candidates" block),
-    # which MUST NOT be parsed as tokens. Line-by-line skipping alone can't do this.
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
-    tokens: list[str] = []
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("- ") or line.startswith("* "):
-            body = line[2:]
-            # Strip an inline trailing "token  # why" comment. (A token containing a
-            # literal '#' — a hex color, an anchor — is unsupported by this split, but
-            # none is needed for the compound repo tokens this list holds.)
-            if "#" in body:
-                body = body.split("#", 1)[0]
-            body = body.strip().strip("`").strip()
-            if body:
-                tokens.append(body)
-    return tokens
+ABS_PATH_EXEMPT_MARKER = _checker.ABS_PATH_EXEMPT_MARKER
+TOKEN_LIST_RELPATH = _checker.TOKEN_LIST_RELPATH
+SOURCE_SCAN_ROOTS = _checker.SOURCE_SCAN_ROOTS
+EXIT_CLEAN = _checker.EXIT_CLEAN
+EXIT_VIOLATIONS = _checker.EXIT_VIOLATIONS
+EXIT_CANNOT_RUN = _checker.EXIT_CANNOT_RUN
 
 
-def _is_overlay(path: Path) -> bool:
-    leaf = path.name.lower()
-    return leaf == OVERLAY_FILE_NAME or leaf.endswith(OVERLAY_LOCAL_SUFFIX)
-
-
-def _iter_scanned_files(skills_root: Path):
-    """Yield every ``SKILL.md`` + ``references/**/*.md`` under ``skills/**``,
-    excluding overlay files and the ``tests/``/``scripts/`` subtrees."""
-    if not skills_root.is_dir():
-        return
-    for path in sorted(skills_root.rglob("*.md")):
-        if not path.is_file() or _is_overlay(path):
-            continue
-        ancestors = path.relative_to(skills_root).parts[:-1]
-        if any(part in EXCLUDED_SUBTREES for part in ancestors):
-            continue
-        if path.name == "SKILL.md" or "references" in ancestors:
-            yield path
-
-
-def _body_lines(text: str, strip_frontmatter: bool):
-    """Yield ``(1-based line number, line text)`` for a file's body, optionally
-    skipping a leading YAML frontmatter block (``---`` ... ``---``) for MATCHING
-    while keeping line numbers accurate. A skill's ``description:``/``argument-hint:``
-    frontmatter legitimately names the host repo so the skill triggers — it is
-    metadata, not portable procedure prose. ``strip_frontmatter`` is True ONLY for
-    ``SKILL.md`` (the only file type that carries frontmatter); for a ``references``
-    ``.md`` a leading ``---`` is a Markdown horizontal rule, never a frontmatter
-    fence, so its body must not be silently exempted."""
-    lines = text.splitlines()
-    start = 0
-    if strip_frontmatter and lines and lines[0].strip() == "---":
-        for i in range(1, len(lines)):
-            if lines[i].strip() == "---":
-                start = i + 1
-                break
-    for idx in range(start, len(lines)):
-        yield idx + 1, lines[idx]
-
-
-def _violations_in(path: Path, rel: str, lowered: list[tuple[str, str]], strip_fm: bool):
-    """Token hits in one file's body, as ``(rel, token, line_number, excerpt)``."""
-    found: list[tuple[str, str, int, str]] = []
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        # A binary or unreadable file is not prose and not source we can check.
-        # Swallowed so one odd file cannot take the guard down — but silence
-        # here would mean the guard quietly stops covering that file, so
-        # `test_every_scanned_file_is_actually_readable` asserts separately that
-        # the set of unreadable files is empty.
-        return found
-    for lineno, line in _body_lines(text, strip_fm):
-        haystack = line.lower()
-        for tok, tok_l in lowered:
-            if tok_l in haystack:
-                excerpt = line.strip()
-                if len(excerpt) > MAX_EXCERPT:
-                    excerpt = excerpt[: MAX_EXCERPT - 3] + "..."
-                found.append((rel, tok, lineno, excerpt))
-    return found
-
-
-def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
-    """Return ``(rel_path, token, line_number, excerpt)`` for every case-insensitive
-    literal-substring token hit in a scanned file's body. ``rel_path`` is reported
-    relative to ``report_root`` (the plugin root in the real run)."""
-    lowered = [(tok, tok.lower()) for tok in tokens]
-    violations: list[tuple[str, str, int, str]] = []
-    for path in _iter_scanned_files(skills_root):
-        rel = path.relative_to(report_root).as_posix()
-        violations.extend(
-            _violations_in(path, rel, lowered, strip_fm=path.name == "SKILL.md")
-        )
-    return violations
-
-
-# ---------- source-file scan: the prose guard's blind spots ----------
-#
-# The scan above deliberately covers PROSE only — `SKILL.md` and
-# `references/**/*.md` under `skills/`. A real leak sat outside it on three
-# independent counts at once, which is why it went unnoticed through several
-# passes:
-#
-#   1. `.py` files. The prose scan globs `*.md`; a token in a Python string
-#      literal or docstring was never in scope.
-#   2. `tests/` and `scripts/`. Both are in `EXCLUDED_SUBTREES`, on the
-#      reasoning that they carry no portable prose. They carry portable
-#      STRINGS, and the install ships them to every destination repo just
-#      the same.
-#   3. `hooks/`, `agents/`, and `output-styles/`. None lives under `skills/`,
-#      so all three are outside the prose scan's root entirely.
-#
-# Kept as a separate scanner rather than widening the one above, because the
-# rules genuinely differ: the prose guard's frontmatter exemption exists for a
-# `SKILL.md` `description:` that legitimately names the host repo so the skill
-# triggers, which has no analogue in a `.py` file.
-
-# The categories this guard keeps clean: the four dirs holding portable
-# procedure that a consuming repo executes.
-#
-# This list was once DERIVED from `update-cla`'s `discover.SCAN_DIRS`, because a
-# hand-typed copy here and a second one in the sync tool's tests BOTH missed
-# `output-styles` when it was added to the real list — caught by review, not by
-# any test, since every test against the stale copies stayed green. A comparison
-# test guarded that drift until file-sync distribution was removed; with the
-# sync tool deleted there is nothing left to compare against, so the list stands
-# on its own and any new synced root must be added here by hand.
-#
-# These roots cover everything the marketplace publishes that this guard can
-# meaningfully scan. The install ships `path: .claude/plugins/cla` — the WHOLE
-# directory — so the four "portable procedure" roots are not the whole shipped
-# surface: `lib/`, the three `*-checks/` scopes, `run_tests.py`, and `mutate.py`
-# reach a consuming repo too. The first four of those are scanned here.
-#
-# FOUR files are not scanned. Counted, not estimated — every other `.md`/`.py`
-# the marketplace ships falls inside a root below:
-#
-#   - The plugin's own root `README.md`. Its install commands legitimately name
-#     this repository, which is what makes them copy-pasteable. Scanning it would
-#     flag the one file whose whole job is to identify the source.
-#   - `skills/_shared/README.md`. It sits directly under a skills subdirectory
-#     rather than under a `references/` ancestor, so the prose scanner's rule
-#     misses it and the source scanner only takes `.md` under `agents`/
-#     `output-styles`.
-#   - `run_tests.py` and `mutate.py` at the tree root. They sit outside every
-#     root below; adding a bare-file traversal for two files is not worth a
-#     second rule, and both are read at review time.
-#
-# A deliberate path-parsing fixture stays scannable by carrying the
-# `path-fixture-ok` marker on its line, rather than by exempting a whole file.
-SOURCE_SCAN_ROOTS = (
-    "skills",
-    "agents",
-    "hooks",
-    "output-styles",
-    "lib",
-    "conformance-checks",
-    "consistency-checks",
-    "launcher-checks",
-)
-CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
-
-
-def _iter_scanned_source_files(plugin_root: Path):
-    """Yield every synced-core SOURCE file the prose scan cannot see.
-
-    `.py` anywhere under the synced roots (including `tests/` and `scripts/`),
-    plus every `.md` under `agents/` or `output-styles/` (agent definitions and
-    output-style files, neither reachable from the prose scan's `skills/` root).
-    Overlays stay exempt by the same convention, and bytecode/cache directories
-    are skipped — a stale `.pyc` still holds the string it was compiled from and
-    would report a leak already fixed in source.
-    """
-    md_roots = ("agents", "output-styles")
-    for root_name in SOURCE_SCAN_ROOTS:
-        root = plugin_root / root_name
-        if not root.is_dir():
-            continue
-        for path in sorted(root.rglob("*")):
-            if not path.is_file() or _is_overlay(path):
-                continue
-            if any(part in CACHE_DIRS for part in path.relative_to(root).parts):
-                continue
-            if path.suffix == ".py" or (root_name in md_roots and path.suffix == ".md"):
-                yield path
-
-
-def find_source_violations(plugin_root: Path, tokens: list[str]):
-    """`find_violations`'s counterpart over source files. Same result shape."""
-    lowered = [(tok, tok.lower()) for tok in tokens]
-    violations: list[tuple[str, str, int, str]] = []
-    for path in _iter_scanned_source_files(plugin_root):
-        rel = path.relative_to(plugin_root).as_posix()
-        # An `agents/*.md` or `output-styles/*.md` frontmatter `description:` can
-        # legitimately name the host repo (an agent that triggers on it, a style
-        # description shown in the picker), the same reason a `SKILL.md` one does
-        # — so both get the same exemption. A `.py` file has no frontmatter concept.
-        violations.extend(
-            _violations_in(path, rel, lowered, strip_fm=path.suffix == ".md")
-        )
-    return violations
-
-
-# ---------- the guard ----------
-
-
-def test_no_project_tokens_in_synced_core():
-    """Fail if any non-overlay synced-core file leaks a listed project token."""
-    plugin_root = _plugin_root()
-    skills_root = plugin_root / "skills"
-    token_path = _repo_root() / TOKEN_LIST_RELPATH
-    if not token_path.is_file():
-        # A fresh destination repo has synced the guard but not curated a token list
-        # yet (the overlay is never seeded by sync) — trivial pass, not a red CI.
-        pytest.skip(
-            "no project-tokens.local.md overlay present — trivial pass; each "
-            "destination repo curates its own token list"
-        )
-    tokens = load_tokens(token_path)
-    if not tokens:
-        # The file EXISTS but parses to zero tokens. That is a defect (a broken/
-        # reformatted list), not a fresh repo — fail loudly rather than silently
-        # disabling the guard. To intentionally disable it, DELETE the file.
-        pytest.fail(
-            f"{token_path.name} exists but yields no tokens — likely a formatting "
-            "error (each token must be a `- token` / `* token` bullet). Delete the "
-            "file to intentionally disable the guard."
-        )
-    scanned = list(_iter_scanned_files(skills_root))
-    assert scanned, (
-        f"guard scanned zero files under {skills_root} — the scan root or filters "
-        "may be broken (a populated token list with nothing to scan is a silent no-op)"
-    )
-    violations = find_violations(skills_root, plugin_root, tokens)
-    if violations:
-        detail = "\n".join(
-            f"{rel}:{lineno}  token {tok!r}  → {excerpt}"
-            for rel, tok, lineno, excerpt in violations
-        )
-        pytest.fail(
-            f"{len(violations)} project-token leak(s) in synced core "
-            f"(move the fact behind an overlay, or curate the token out):\n{detail}"
+def test_the_promoted_module_still_exposes_the_symbols_its_consumers_read():
+    """`consistency-checks/tests/test_token_list_is_curated_here.py` reads these
+    three off the guard rather than recomputing them, because a version of that
+    check which computed its own repo root passed happily while the guard's
+    anchor was off by one level and the guard skipped. A promotion that folded
+    any of them into `main()` would break the guard that guards the token list,
+    and nothing else would notice."""
+    for name in ("_repo_root", "TOKEN_LIST_RELPATH", "load_tokens"):
+        assert hasattr(_checker, name), (
+            f"{name} is no longer a module-level name on the promoted checker"
         )
 
 
-def test_no_project_tokens_in_synced_source():
-    """Fail if any synced-core SOURCE file leaks a listed project token.
-
-    Same contract as the prose guard, over the files it cannot see. Split into
-    its own test so a failure names which surface leaked — prose and source get
-    curated differently (prose moves behind an overlay; a source hit is usually
-    a fixture string that should just be neutral).
-    """
-    plugin_root = _plugin_root()
-    token_path = _repo_root() / TOKEN_LIST_RELPATH
-    if not token_path.is_file():
-        pytest.skip(
-            "no project-tokens.local.md overlay present — trivial pass; each "
-            "destination repo curates its own token list"
-        )
-    tokens = load_tokens(token_path)
-    if not tokens:
-        pytest.fail(
-            f"{token_path.name} exists but yields no tokens — likely a formatting "
-            "error (each token must be a `- token` / `* token` bullet). Delete the "
-            "file to intentionally disable the guard."
-        )
-    scanned = list(_iter_scanned_source_files(plugin_root))
-    assert scanned, (
-        f"source guard scanned zero files under {plugin_root} — the scan roots or "
-        "filters may be broken (a populated token list with nothing to scan is a "
-        "silent no-op)"
-    )
-    violations = find_source_violations(plugin_root, tokens)
-    if violations:
-        detail = "\n".join(
-            f"{rel}:{lineno}  token {tok!r}  → {excerpt}"
-            for rel, tok, lineno, excerpt in violations
-        )
-        pytest.fail(
-            f"{len(violations)} project-token leak(s) in synced source files "
-            f"(rename the fixture value, or curate the token out):\n{detail}"
-        )
-
-
-# ---------- absolute-path guard: the list-free half ----------
-#
-# Both guards above need a curated `project-tokens.local.md` to do anything, and
-# that model fits a CONSUMING repo most obviously, where the list is closed and
-# self-known: you know your own project's vocabulary.
-#
-# This comment used to continue "In the SOURCE repo it inverts — there are no
-# local product tokens to protect", and on that reasoning the source repo
-# curated no list at all. The reasoning conflated two lists, and the half it got
-# wrong shipped six leaks: the source repo's own name and one of its internal
-# systems, both named inside portable core, plus a consuming repo's name in a
-# docstring that then failed THAT repo's guard on arrival. (Naming any of them
-# here would itself trip the guard — which is the shortest possible proof that
-# the second list below is real.)
-#
-#   - Names of OTHER repos, arriving via pasted examples and fixtures. Listing
-#     those does mean enumerating every repo the author works in: open-ended,
-#     externally determined, stale the moment a new project starts, and it
-#     catches only the names you already know — which are the ones you already
-#     fixed. That objection stands, and the list-free path guard below is the
-#     answer to it.
-#   - The source repo's OWN name and systems. Closed, finite, self-known —
-#     exactly like a consuming repo's vocabulary. A source repo does know what
-#     it is called, and a source-side token is the more damaging of the two,
-#     because once synced it reads as a fact about the DESTINATION.
-#
-# So the guards above are armed in both directions; only the list's contents
-# differ per repo, which is what makes it an overlay.
-#
-# What still has no mechanical guard, stated so nobody assumes otherwise: prose
-# that names no token but asserts a source-repo FACT — "this repo ships no
-# product code", "this repo is on Windows". Measured before ruling it out: the
-# synced tree has 113 occurrences of "this repo", and the overwhelming majority
-# are legitimate deictics that re-bind per repo (`ask-git-identity`'s "this repo
-# has no `user.email` configured" is about whatever repo is running it). No
-# pattern separates those from a leak, so this class is watched by review, not
-# by a test.
-#
-# This check needs no list. A synced-core file has no business carrying a
-# hardcoded absolute DEVELOPER path — whatever repo or user it names — because
-# such a path cannot be correct in any destination repo. That is closed-form,
-# so it catches a name nobody has ever seen before. It is also what would
-# actually have caught the real leak, which was mostly absolute paths.
-#
-# Tuned against the real tree rather than synthetic cases only. Two findings
-# from that pass, both of which a synthetic-only rule would have shipped:
-#   - A naive drive-letter pattern matches `https://…`, because `s:` followed
-#     by `//` satisfies it. Hence the `(?<![A-Za-z0-9])` guard.
-#   - Every remaining hit was a LEGITIMATE fixture (path-parsing tests need
-#     realistic absolute paths). Hence the marker below rather than a blanket
-#     ban or a `tests/` exemption — `tests/` is exactly where the real leak was.
-
-ABS_PATH_EXEMPT_MARKER = "path-fixture-ok"
-PLACEHOLDER_USERS = frozenset({
-    "me", "you", "user", "username", "someuser", "someone", "dev",
-})
-# Separator-stripped Windows path (`C:UsersaliceAppData...`, path-fixture-ok). The shape
-# `warn-stray-scratch-artifact.py` exists to parse, so its fixtures carry it —
-# and with the separators gone neither pattern below can see it, which is
-# exactly how a real developer username survived the previous sweep.
-MANGLED_WIN_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:Users([A-Za-z0-9]+)")
-# Single drive letter, NOT preceded by another alnum (or a URL scheme matches).
-# Consumes the whole path-ish run, so the placeholder test below can inspect it.
-#
-# TWO separators are required, not one, and that is the fix for a real false
-# positive rather than a tightening for its own sake. With one separator the
-# pattern matched the tail of any Python source line ending a clause with a
-# name: `except OSError as e:` followed by an escaped newline reads as drive
-# `E:` + path `\n`, and `print("a:\tb")` reads as drive `A:` + path `\tb`. Both
-# lines contain no path at all. A hardcoded developer path — the only thing this
-# guard exists to catch — always has a second segment (`C:\Users\alice\...`),
-# while an escape sequence never does, so the separator count separates them
-# cleanly where a character-class tweak could not: `\t` is equally the start of
-# `C:\temp` and of a tab.
-WIN_ABS_PATH = re.compile(
-    r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{1,2}[A-Za-z0-9._<>-]+[\\/]{1,2}[A-Za-z0-9._<>\\/-]*"
-)
-HOME_ABS_PATH = re.compile(r"(?:^|[\s\"'`(])/(?:Users|home)/([A-Za-z0-9._-]+)/")
-# `C:\Code\<repo>\...` and `C:\Users\...\AppData\...` are illustrative prose, not
-# paths anyone could run. Exempt automatically — reserving the explicit marker for
-# fixtures that genuinely need a REAL-looking absolute path (parser tests), so the
-# marker keeps meaning "a human decided this one is fine" instead of becoming noise.
-PLACEHOLDER_PATH_HINTS = ("<", "...")
-
-
-def _starts_with_placeholder_user(segment: str) -> bool:
-    """Whether a separator-stripped run begins with an obvious placeholder name.
-
-    With the separators gone the username cannot be delimited, so the run is
-    tested by prefix: ``someuserAppDataLocal`` is a placeholder, ``aliceAppData``
-    names a real person.
-    """
-    low = segment.lower()
-    return any(low.startswith(p) for p in PLACEHOLDER_USERS)
-
-
-def find_absolute_path_leaks(plugin_root: Path):
-    """Return ``(rel_path, kind, line_number, excerpt)`` per hardcoded absolute
-    developer path in a synced-core source file.
-
-    A line carrying ``path-fixture-ok`` is exempt — the declared way to keep a
-    deliberate path-parsing fixture. A home path whose user segment is an
-    obvious placeholder (``/Users/me/``) is exempt without a marker, since it
-    names nobody.
-    """
-    leaks: list[tuple[str, str, int, str]] = []
-    for path in _iter_scanned_source_files(plugin_root):
-        rel = path.relative_to(plugin_root).as_posix()
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        for lineno, line in enumerate(text.splitlines(), 1):
-            if ABS_PATH_EXEMPT_MARKER in line:
-                continue
-            # Each shape is tested INDEPENDENTLY. An `elif` chain here meant a
-            # line carrying a placeholder Windows path skipped the home-path
-            # check entirely, so a real `/Users/<name>/` on that same line
-            # shipped unreported.
-            kinds: list[str] = []
-            win = WIN_ABS_PATH.search(line)
-            if win and not any(h in win.group(0) for h in PLACEHOLDER_PATH_HINTS):
-                kinds.append("windows-drive-path")
-            home = HOME_ABS_PATH.search(line)
-            if home and home.group(1).lower() not in PLACEHOLDER_USERS:
-                kinds.append("home-directory-path")
-            mangled = MANGLED_WIN_PATH.search(line)
-            if mangled and not _starts_with_placeholder_user(mangled.group(1)):
-                kinds.append("mangled-windows-path")
-            for kind in kinds:
-                excerpt = line.strip()
-                if len(excerpt) > MAX_EXCERPT:
-                    excerpt = excerpt[: MAX_EXCERPT - 3] + "..."
-                leaks.append((rel, kind, lineno, excerpt))
-    return leaks
-
-
-def test_no_absolute_developer_paths_in_synced_source():
-    """Unlike the two token guards, this one is always armed — no overlay needed."""
-    plugin_root = _plugin_root()
-    leaks = find_absolute_path_leaks(plugin_root)
-    if leaks:
-        detail = "\n".join(
-            f"{rel}:{lineno}  [{kind}]  → {excerpt}"
-            for rel, kind, lineno, excerpt in leaks
-        )
-        pytest.fail(
-            f"{len(leaks)} hardcoded absolute developer path(s) in synced core — "
-            "such a path cannot be correct in any destination repo. Use a relative "
-            f"path, or mark a deliberate fixture line with `{ABS_PATH_EXEMPT_MARKER}`:"
-            f"\n{detail}"
-        )
-
-
-def find_unreadable_files(plugin_root: Path):
-    """Every scanned file that cannot be decoded as UTF-8, as ``(rel, reason)``.
-
-    All three scanners swallow a decode/IO error per file so one odd file cannot
-    take the whole guard down. That is the right robustness choice and the wrong
-    reporting one: an unreadable file returns "no violations", which is exactly
-    what a clean file returns. The counters the scanners assert on
-    (``assert scanned``) count files ITERATED, not files READ, so every file in
-    the tree could fail to decode and every guard would still pass green.
-    """
-    bad: list[tuple[str, str]] = []
-    seen: set[Path] = set()
-    for path in list(_iter_scanned_files(plugin_root / "skills")) + list(
-        _iter_scanned_source_files(plugin_root)
-    ):
-        if path in seen:
-            continue
-        seen.add(path)
-        try:
-            path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
-            bad.append((path.relative_to(plugin_root).as_posix(), type(exc).__name__))
-    return bad
-
-
-def test_every_scanned_file_is_actually_readable():
-    plugin_root = _plugin_root()
-    bad = find_unreadable_files(plugin_root)
-    assert not bad, (
-        "these synced-core files cannot be read as UTF-8, so every token and "
-        "path guard silently skips them and reports clean:\n"
-        + "\n".join(f"{rel}  [{reason}]" for rel, reason in bad)
+def test_the_positional_fallback_resolves_to_the_plugin_root_from_here():
+    """The `parents[N]` fallback in `_plugin_root` is silent when wrong: the
+    primary walk succeeds in every normal layout, so a stale depth surfaces only
+    in the unexpected-layout case the fallback exists for. Checked by counting
+    from the checker's ACTUAL location rather than by reading the literal."""
+    depth = len(CHECKER.resolve().relative_to(_PLUGIN_ROOT).parts) - 1
+    assert CHECKER.resolve().parents[depth] == _PLUGIN_ROOT
+    source = CHECKER.read_text(encoding="utf-8")
+    assert f"parents[{depth}]" in source, (
+        f"the fallback depth should be parents[{depth}] from "
+        f"{CHECKER.relative_to(_PLUGIN_ROOT).as_posix()}"
     )
 
 
@@ -736,6 +279,26 @@ def test_references_md_scanned_but_stray_md_and_subtrees_ignored(tmp_path):
     assert [v[0] for v in violations] == ["skills/demo/references/note.md"]
 
 
+def test_a_skill_shaped_fixture_tree_under_an_excluded_subtree_is_not_scanned(tmp_path):
+    # `EXCLUDED_SUBTREES` was unproven: emptying it left every test green. The
+    # test above seeds plain `.md` files under `tests/` and `scripts/`, and those
+    # are skipped anyway for being neither `SKILL.md` nor under a `references/`
+    # ancestor — so the exclusion never decided anything there.
+    #
+    # It only bites for a fixture tree that MIMICS a skill, which is exactly what
+    # a scope's `tests/` dir is likely to hold: a `references/` dir, or a
+    # `SKILL.md`, nested inside `tests/` or `scripts/`. Found by a surviving
+    # mutant, not by reading.
+    skills = tmp_path / "skills"
+    fixture_refs = skills / "demo" / "tests" / "fixtures" / "references"
+    fixture_refs.mkdir(parents=True)
+    (fixture_refs / "note.md").write_text("has funnel-demo\n", encoding="utf-8")
+    fixture_skill = skills / "demo" / "scripts" / "fixtures"
+    fixture_skill.mkdir(parents=True)
+    (fixture_skill / "SKILL.md").write_text("has funnel-demo\n", encoding="utf-8")
+    assert find_violations(skills, tmp_path, ["funnel-demo"]) == []
+
+
 def test_matching_is_case_insensitive(tmp_path):
     skills = tmp_path / "skills"
     (skills / "demo").mkdir(parents=True)
@@ -897,3 +460,157 @@ def test_source_scan_of_the_real_plugin_is_non_vacuous():
     scanned = list(_iter_scanned_source_files(_plugin_root()))
     assert len(scanned) > 20, f"expected the real plugin to have source files, got {len(scanned)}"
     assert any(p.suffix == ".py" for p in scanned)
+
+
+# --------------------------------------------------------------------------- #
+# CLI layer — the exit-code contract the promotion introduced
+# --------------------------------------------------------------------------- #
+#
+# The checker is now a program, so "does it exit 0/1/2 for the right reason, and
+# does one run really perform all four checks" is a behaviour with no test above
+# this line. Driven as a real subprocess rather than by calling `main()`
+# in-process, because `sys.exit(main())` is part of the contract a consumer
+# scripts against and an in-process call cannot see it.
+
+_PROSE_COUNT_RE = re.compile(r"(\d+) prose file\(s\)")
+_SOURCE_COUNT_RE = re.compile(r"(\d+) source file\(s\)")
+
+
+def _run_cli(*args: str):
+    return subprocess.run(
+        [sys.executable, str(CHECKER), *args],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=120,
+    )
+
+
+def _seed_vendored_plugin(tmp_path: Path) -> Path:
+    """A minimal, CLEAN vendored plugin tree inside a fake consuming repo.
+
+    Built as path components rather than one literal string for the same reason
+    the checker builds it that way: a sibling guard fails a synced-core file that
+    spells the install path out.
+    """
+    plugin = tmp_path / ".claude" / "plugins" / "cla"
+    (plugin / "skills" / "demo").mkdir(parents=True)
+    (plugin / "skills" / "demo" / "SKILL.md").write_text(
+        "# Demo\n\nPortable prose with nothing project-specific in it.\n",
+        encoding="utf-8",
+    )
+    # A `.py` under skills/ as well as one under hooks/, so the source scan has
+    # two roots to reach. `skills/**/*.md` is prose-only — it contributes nothing
+    # to the source scan — so seeding SKILL.md alone would leave `skills` absent
+    # from the reached-roots line and make that assertion meaningless.
+    (plugin / "skills" / "demo" / "scripts").mkdir(parents=True)
+    (plugin / "skills" / "demo" / "scripts" / "helper.py").write_text(
+        'BASE = "skills/demo/fixtures"\n', encoding="utf-8"
+    )
+    (plugin / "hooks").mkdir(parents=True)
+    (plugin / "hooks" / "sample.py").write_text(
+        'BASE = "hooks/tests/fixtures"\n', encoding="utf-8"
+    )
+    return plugin
+
+
+def _seed_token_list(tmp_path: Path, body: str) -> None:
+    path = tmp_path / TOKEN_LIST_RELPATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+
+def test_cli_exits_clean_and_reports_nonzero_scanned_counts(tmp_path):
+    # A zero-file scan reporting "0 violations" is the vacuous-pass bug, not a
+    # pass — so the printed counts are asserted, not merely the exit code.
+    _seed_vendored_plugin(tmp_path)
+    _seed_token_list(tmp_path, "- funnel-demo\n")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+    prose = _PROSE_COUNT_RE.search(result.stdout)
+    source = _SOURCE_COUNT_RE.search(result.stdout)
+    assert prose and int(prose.group(1)) > 0, result.stdout
+    assert source and int(source.group(1)) > 0, result.stdout
+    # The count alone cannot show a source scan that collapsed to one root, so
+    # the run names the roots it reached and both seeded ones must appear.
+    assert "source roots reached: hooks, skills" in result.stdout, result.stdout
+
+
+def test_cli_exits_clean_with_a_stated_reason_when_the_token_list_is_absent(tmp_path):
+    # A destination repo that has installed the plugin but not curated a list
+    # must not get a failing result — and must say why it passed.
+    _seed_vendored_plugin(tmp_path)
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+    assert "no token verdict" not in result.stderr
+    assert TOKEN_LIST_RELPATH.as_posix() in result.stdout
+    assert "trivial pass" in result.stdout
+
+
+def test_cli_fails_on_a_present_but_empty_token_list_and_says_how_to_disable(tmp_path):
+    # A populated list broken by a later formatting change is a defect, not a
+    # fresh repo. Silently skipping it would disable the guard with no signal.
+    _seed_vendored_plugin(tmp_path)
+    _seed_token_list(tmp_path, "# heading only\n<!-- a comment -->\n\n")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_VIOLATIONS, result.stdout + result.stderr
+    assert "yields no tokens" in result.stdout
+    assert "Delete the file" in result.stdout
+
+
+def test_cli_reports_violations_from_more_than_one_check_in_a_single_run(tmp_path):
+    # The accumulate-across-all-four promise. Three of the four checks are made
+    # to fire at once: (a) a project token in prose, (c) a hardcoded developer
+    # path in source, and (d) a file the scanners cannot read. Stopping after
+    # the first would leave the other two invisible, and check (d) in particular
+    # is invisible to every other assertion.
+    plugin = _seed_vendored_plugin(tmp_path)
+    _seed_token_list(tmp_path, "- funnel-demo\n")
+    (plugin / "skills" / "demo" / "SKILL.md").write_text(
+        "# Demo\n\nThis names funnel-demo in the body.\n", encoding="utf-8"
+    )
+    (plugin / "hooks" / "leak.py").write_text(
+        'BASE = "C:/Users/alice/code/thing"\n', encoding="utf-8"  # path-fixture-ok
+    )
+    (plugin / "hooks" / "binary.py").write_bytes(b"\xff\xfe\x00\x01 not utf-8 \xff")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_VIOLATIONS, result.stdout + result.stderr
+    assert "funnel-demo" in result.stdout, result.stdout
+    assert "windows-drive-path" in result.stdout, result.stdout
+    assert "hooks/binary.py" in result.stdout, result.stdout
+
+
+def test_cli_reports_the_readability_check_even_when_nothing_else_fires(tmp_path):
+    # Check (d) on its own. It reads like plumbing and is the one keeping the
+    # other three from passing vacuously, so it gets a case that cannot be
+    # satisfied by any of them.
+    plugin = _seed_vendored_plugin(tmp_path)
+    _seed_token_list(tmp_path, "- funnel-demo\n")
+    (plugin / "hooks" / "binary.py").write_bytes(b"\xff\xfe\x00\x01 not utf-8 \xff")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_VIOLATIONS, result.stdout + result.stderr
+    assert "hooks/binary.py" in result.stdout
+    assert "cannot be read as UTF-8" in result.stdout
+
+
+def test_cli_exits_two_on_a_bad_argument():
+    result = _run_cli("--not-a-real-flag")
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert result.returncode != EXIT_VIOLATIONS
+
+
+def test_cli_exits_two_when_the_repo_root_does_not_exist(tmp_path):
+    result = _run_cli("--repo-root", str(tmp_path / "no-such-dir"))
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert "not a directory" in result.stderr
+
+
+def test_cli_exits_two_when_a_populated_token_list_has_nothing_to_scan(tmp_path):
+    # "I could not look" is not "I found nothing". A populated token list with an
+    # empty scan root means the roots or filters broke; reporting that as clean
+    # is the silent no-op the guard exists to preclude.
+    plugin = tmp_path / ".claude" / "plugins" / "cla"
+    plugin.mkdir(parents=True)
+    _seed_token_list(tmp_path, "- funnel-demo\n")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert result.returncode != EXIT_CLEAN
+    assert "scanned zero files" in result.stderr

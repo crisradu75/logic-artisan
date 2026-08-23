@@ -93,11 +93,13 @@ Pass the captured diff to each Agent prompt. If `PREV_FIX_SHA` is empty or the d
    **Verify before applying any Critical that claims internal control-flow behavior.** When an agent's Critical finding asserts "code path X runs in context Y" or "step A happens before step B" or "function Z is called from path W" — verify against the actual code by reading the surrounding flow before applying a fix. Agent reasoning over code can produce phantom findings even with verbatim source pasted into the prompt (the agent reads the bytes but builds the wrong mental model). Cost of verification: 1 Read call; cost of applying the wrong fix: a misleading "fix" commit + a follow-up revert. **If the Critical instead claims RUNTIME or DB semantics (a race, a constraint-timing behavior, an RPC return shape) and you resolve it by *running* a scratch check, the harness MUST structurally mirror the real object** — same columns/constraint shape, a genuinely non-unique grouping column where the real constraint is a partial/grouped unique index — never a simplified stand-in that is accidentally already unique. A verification built on a structurally-wrong harness produces false confidence in *either* direction; when faithful verification is hard, prefer deferring to the change's own implementation test (faithful by construction). See `review-change/references/checklist.md`'s "Empirical-verification fidelity" note for the full rationale and the past offense it comes from.
 2b. **Mutation gate (required before the commit in step 3).** A fix for a Critical/Important
    finding is a change like any other and earns the same evidence the original code needed —
-   "the reviewer's finding is now handled" is not that evidence. Run
-   `python3 ${CLAUDE_PLUGIN_ROOT}/mutate.py <batch.py>` with a batch that breaks **what the fix
+   "the reviewer's finding is now handled" is not that evidence. Break **what the fix
    touches**, not only what it targets: correcting one return path routinely breaks another, which
    is how a real fix here once traded a silent no-op on the default path for the identical no-op on
-   the overlay path. Fix a surviving mutant, or name it in the Handoff report with a reason. A clean
+   the overlay path. Do each one by hand: edit the code so the defect is back, run the affected
+   test, confirm it FAILS, then restore the edit exactly — a test that still passes has not been
+   shown to catch anything, and an unrestored edit ships the defect.
+   Fix a surviving mutant, or name it in the Handoff report with a reason. A clean
    run is evidence about the mutants you thought of and nothing else — two commits in this repo each
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.
 3. Stage + commit as `fix: review round <N>`. The fix-round commit subject is structurally meaningful (it drives `probe_state.py`'s round counter and the round-N-on-fix-diff scoping above). Before staging, verify git-state:

@@ -35,8 +35,8 @@ def test_the_ledger_resolver_group_still_covers_the_writer_and_both_readers():
     )
     assert set(resolver["files"]) == {
         "lib/log_run.py",
-        "skills/codify-retro/scripts/aggregate.py",
-        "skills/spec-to-pr-retro/scripts/aggregate.py",
+        "skills/codify-retro/scripts/codify_aggregate.py",
+        "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",
     }, f"the writer/reader trio changed: {resolver['files']}"
     assert "_runs_dir" in resolver["functions"], (
         "the dir resolver itself must be compared, not only `_git_toplevel`"

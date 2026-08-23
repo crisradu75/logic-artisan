@@ -24,7 +24,7 @@ command and the interpretation heuristics.
 ### 1. Read the aggregated metrics
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/aggregate.py --limit <N>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit <N>
 ```
 
 Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrapper), or `10` if `$ARGUMENTS` is empty. Substitute the literal number before invoking — the script does not expand shell variables.
