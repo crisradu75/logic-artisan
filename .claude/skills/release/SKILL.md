@@ -40,6 +40,7 @@ git status --porcelain
 git fetch origin
 git status -sb
 pytest plugin-tests
+node --test plugin-tests/node/mechanical-checks.test.mjs
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 ```
 
@@ -48,7 +49,8 @@ python3 .claude/skills/release/scripts/check_shipped_tree.py
 | On the repo's default branch | A tag cut from a feature branch pins commits that may never merge. |
 | Working tree clean | An uncommitted edit is either in the release or it isn't; a dirty tree means nobody knows which. |
 | Up to date with `origin` | Tagging a stale local branch publishes a tree that is not what `main` holds. |
-| `pytest plugin-tests` fully green | There is no CI. This run is the only gate that exists. |
+| `pytest plugin-tests` fully green | There is no CI. This run, plus the Node run below, is the whole gate that exists. |
+| `node --test plugin-tests/node/mechanical-checks.test.mjs` fully green | `pytest plugin-tests` does not reach it — `norecursedirs` excludes `node` — so a broken `mechanical-checks.mjs`, a SHIPPED file, ships behind an all-green pytest run without this line. Not hypothetical: commit `ee3e359` on `extract-dev-tree-from-plugin` fixed this suite failing with `ERR_MODULE_NOT_FOUND` while pytest stayed green throughout. |
 | The work is reviewed and merged | See the invariant above. |
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 
@@ -89,6 +91,7 @@ the three copies agree — and commit all three together:
 
 ```bash
 pytest plugin-tests
+node --test plugin-tests/node/mechanical-checks.test.mjs
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude-plugin/marketplace.json CLAUDE.md
 git commit -m "release: <new>"

@@ -99,3 +99,39 @@ def test_the_skill_states_the_never_move_invariant():
     assert "never moved" in body or "never move" in body, (
         "release/SKILL.md no longer states that a published tag is never moved"
     )
+
+
+def test_the_precondition_block_names_every_command_the_documented_gate_runs():
+    """CLAUDE.md's "Before opening a PR" row is this repo's own statement of what
+    the shipping gate consists of — currently two commands, `pytest plugin-tests`
+    and the `node --test` run `pytest` cannot reach (`norecursedirs` excludes
+    `node`). The deleted `run_tests.py` used to fold both into one 13-entry run,
+    so cutting it over to this skill's two-command precondition list silently
+    dropped Node coverage from the tag gate: `check_shipped_tree.py` ships
+    `project-review/scripts/mechanical-checks.mjs`, and nothing in the
+    preconditions ran its tests. Commit `ee3e359` on
+    `extract-dev-tree-from-plugin` is the proof — it fixed that suite failing
+    with `ERR_MODULE_NOT_FOUND` while `pytest` stayed green throughout.
+
+    Derived from CLAUDE.md rather than hardcoded, so a future change to what
+    "before opening a PR" runs is what this test forces release/SKILL.md to
+    follow, instead of letting the two drift apart silently again."""
+    claude_md = (_REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    match = re.search(r"\|\s*Before opening a PR\s*\|(.+)\|\s*\n", claude_md)
+    assert match, "CLAUDE.md no longer states a 'Before opening a PR' gate row"
+    gate_commands = re.findall(r"`([^`]+)`", match.group(1))
+    assert gate_commands, (
+        "no `command` spans found in CLAUDE.md's 'Before opening a PR' row — "
+        "the gate can no longer be read out of the doc"
+    )
+
+    body = _SKILL_MD.read_text(encoding="utf-8")
+    assert "## Step 1" in body, "release/SKILL.md no longer has a Step 1 section"
+    step1 = body.split("## Step 1", 1)[1].split("## Step 2", 1)[0]
+    missing = [cmd for cmd in gate_commands if cmd not in step1]
+    assert not missing, (
+        f"release/SKILL.md's Step 1 preconditions do not run: {missing} — "
+        "CLAUDE.md's documented shipping gate and the release skill's "
+        "preconditions have drifted apart, exactly the drop this test exists "
+        "to catch"
+    )

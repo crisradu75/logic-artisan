@@ -174,9 +174,10 @@ def test_the_scan_reaches_the_places_the_first_version_missed():
     # plugin alone now holds 27 `.py` files. Scanning only the plugin would
     # have forced this floor down to ~25 — a check certifying what it had
     # stopped checking. Scanning all three trees the repo actually owns keeps
-    # the population at 80 (84 in the plugin alone before the move, less the 4
-    # `.py` files this change deletes), so the floor stays where it was. The
-    # named anchors below are the stronger half of this pair — they span four
+    # the population at 83 — measured by running `_scanned_files()` over the
+    # tree as it stands, not by re-deriving it from a pre-move arithmetic that
+    # turned out to land on 80, three short of the real count. The named
+    # anchors below are the stronger half of this pair — they span four
     # subtrees, so an exclusion that drops any one of them fails here even if
     # the count survives.
     #

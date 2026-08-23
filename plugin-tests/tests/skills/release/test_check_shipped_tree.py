@@ -75,6 +75,15 @@ def _run(repo: Path) -> subprocess.CompletedProcess:
                      id="draft-accepted-hooks-tests"),
         pytest.param("hooks/pyproject.toml",
                      id="draft-accepted-hooks-pyproject"),
+        # The fourteen-pattern list's own hole: a pytest MODULE is exactly a
+        # denylist shape (`test_*.py`), and `skills/<x>/scripts/[^/.]+\.py`
+        # matched it just as legitimately as a real helper. Planted directly —
+        # not via the seeded-repo's own tests/ tree — so the assertion is about
+        # the `scripts/` pattern specifically, not about `tests-dir` above.
+        pytest.param("skills/annotate/scripts/test_render_doc.py",
+                     id="pytest-module-as-script"),
+        pytest.param("hooks/test_dispatch.py",
+                     id="pytest-module-in-hooks"),
     ],
 )
 def test_a_planted_dev_asset_is_refused_and_named(tmp_path, planted):

@@ -27,8 +27,10 @@ the orchestration, the guard rails, and the learning loops on top, and keeps all
 
 ## The software life cycle, phase by phase
 
-CLA's skills map onto the arc of a change. Each is invocable as `/cla:<name>` or by natural
-language; `[loop]` marks a self-improvement retro over prior runs of another skill.
+CLA's skills map onto the arc of a change. Each shipped skill is invocable as `/cla:<name>` or by
+natural language; `[loop]` marks a self-improvement retro over prior runs of another skill. One
+skill, `release`, is not shipped — it acts on this repo's own distribution, so it is repo-local
+and invoked bare as `/release`.
 
 | Phase | Skill | What it does |
 |---|---|---|

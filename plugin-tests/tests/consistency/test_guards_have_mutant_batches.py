@@ -8,8 +8,10 @@ calling it). Only a mutant catches that, and only if someone writes one.
 
 `mutate.py` is invoked by hand, so "write a mutant" was advice, and advice is
 what gets skipped at the end of a long session. This makes the pairing checkable:
-every guard test file in a checks scope has a same-named batch beside it under
-`mutants/`, and every batch names a target that exists.
+every guard test file in a checks scope has a same-named batch under `mutants/`,
+and every batch names a target that exists — found by basename, not by assuming
+the batch's area also names its guard's immediate parent under `tests/`, which
+is false for `mutants/release/` (see `_find_guard_for_batch`).
 
 It deliberately does NOT run the mutants — a mutation run edits real files and
 takes minutes, which does not belong in the ordinary gate. It asserts only that
@@ -23,12 +25,23 @@ from pathlib import Path
 
 _DEV_TREE = Path(__file__).resolve().parents[2]
 
-# The AREAS under the dev tree that hold guards: the subdirectory name shared
-# by `tests/<area>/` and `mutants/<area>/`. These were the two `*-checks`
-# scope directories before the dev tree moved out of the plugin. The mirrored
-# layout is what keeps the guard<->batch pairing below a one-step name
-# substitution in each direction; a flat `mutants/` would break both.
-_GUARD_AREAS = ("conformance", "consistency")
+
+def _guard_areas() -> tuple[str, ...]:
+    """Every subdirectory actually present under `mutants/` — i.e. every area
+    that holds at least one mutant batch.
+
+    Was a fixed two-tuple, `("conformance", "consistency")`, mirroring the two
+    `*-checks` scope directories that predated the dev-tree move. That shape
+    could not address this PR's own new pairing, `mutants/release/` <->
+    `tests/skills/release/` — a fixed tuple is silently unpoliced the moment a
+    new area is added, which is exactly the kind of drop this file exists to
+    catch elsewhere. Deriving the list from the filesystem means a future new
+    area is discovered rather than requiring someone to remember to add it
+    here."""
+    mutants_root = _DEV_TREE / "mutants"
+    if not mutants_root.is_dir():
+        return ()
+    return tuple(sorted(p.name for p in mutants_root.iterdir() if p.is_dir()))
 
 # Guard files exempt from needing a batch, each for a stated reason. Keep this
 # list short and justified — it is the pressure valve that could quietly empty
@@ -72,13 +85,27 @@ def test_the_grandfather_list_only_shrinks():
 
 def _guard_files():
     out = []
-    for area in _GUARD_AREAS:
+    for area in _guard_areas():
         out.extend(sorted((_DEV_TREE / "tests" / area).glob("test_*.py")))
     return out
 
 
 def _rel(p: Path) -> str:
     return p.relative_to(_DEV_TREE).as_posix()
+
+
+def _find_guard_for_batch(batch: Path) -> list[Path]:
+    """Every file under `tests/` sharing the batch's basename.
+
+    NOT `tests/<area>/<name>` — that two-segment substitution assumes a batch's
+    area name is also its guard's immediate parent directory under `tests/`,
+    which `mutants/release/test_check_shipped_tree.py` breaks: its guard lives
+    at `tests/skills/release/test_check_shipped_tree.py`, two segments deeper.
+    A basename search finds it regardless of nesting. `conftest.py` is the only
+    basename this repo's own tests tree duplicates (measured in
+    `plugin-tests/pyproject.toml`'s own comment), and no batch is ever named
+    `conftest.py`, so a search here stays unambiguous in practice."""
+    return sorted(p for p in (_DEV_TREE / "tests").rglob(batch.name) if p.is_file())
 
 
 def test_every_guard_file_has_a_mutant_batch_beside_its_scope():
@@ -103,7 +130,7 @@ def test_every_batch_is_loadable_and_declares_real_targets():
     reports every mutant as an anchor error — which reads like a tooling problem
     and gets ignored, so the guard it covers quietly stops being proven."""
     problems = []
-    for area in _GUARD_AREAS:
+    for area in _guard_areas():
         for batch in sorted((_DEV_TREE / "mutants" / area).glob("test_*.py")):
             rel = _rel(batch)
             try:
@@ -120,9 +147,12 @@ def test_every_batch_is_loadable_and_declares_real_targets():
             }
             if "MUTANTS" not in names:
                 problems.append(f"  {rel}: defines no MUTANTS list")
-            guarded = _DEV_TREE / "tests" / batch.parent.name / batch.name
-            if not guarded.is_file():
-                problems.append(f"  {rel}: guards {_rel(guarded)}, which does not exist")
+            guarded = _find_guard_for_batch(batch)
+            if not guarded:
+                problems.append(
+                    f"  {rel}: guards no file named {batch.name} anywhere under "
+                    "tests/"
+                )
     assert not problems, "mutant batch problems:\n" + "\n".join(problems)
 
 
@@ -130,7 +160,7 @@ def test_no_batch_hardcodes_an_absolute_path():
     """A batch resolving from an absolute developer path works on one machine and
     leaks a repo name into a directory the marketplace ships."""
     offenders = []
-    for area in _GUARD_AREAS:
+    for area in _guard_areas():
         for batch in sorted((_DEV_TREE / "mutants" / area).glob("*.py")):
             for lineno, line in enumerate(
                 batch.read_text(encoding="utf-8").splitlines(), 1
@@ -146,9 +176,11 @@ def test_no_batch_hardcodes_an_absolute_path():
 def test_the_scan_is_not_vacuous():
     files = _guard_files()
     assert len(files) >= 6, f"guard discovery collapsed to {len(files)} files"
+    areas = _guard_areas()
+    assert areas, "no area directories found under mutants/ at all"
     batches = [
         b
-        for area in _GUARD_AREAS
+        for area in areas
         for b in (_DEV_TREE / "mutants" / area).glob("test_*.py")
     ]
     assert batches, "no mutant batches found at all; the convention has evaporated"

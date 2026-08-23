@@ -116,6 +116,15 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
 # appears, ahead of every pattern above.
 EXCLUDED_LEAF_NAMES = frozenset({"conftest.py"})
 
+# A pytest MODULE is exactly a denylist shape: `skills/foo/scripts/test_foo.py`
+# matches pattern 14 (`skills/[^/]+/scripts/[^/.]+\.(?:py|mjs)`) just as
+# legitimately as a real helper does, and so do `hooks/test_x.py` and
+# `lib/test_x.py`. The docstring's whole claim — that these 14 patterns are
+# narrow enough that nothing a denylist catches gets through — was false for
+# this one shape, so it is excluded by leaf shape here, the same way
+# `conftest.py` is excluded by leaf name above.
+_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.py$")
+
 _COMPILED = tuple(re.compile(rf"^{pattern}$") for pattern, _ in ALLOWLIST)
 
 
@@ -149,7 +158,10 @@ def tracked_plugin_files(repo_root: Path) -> list[str]:
 
 def is_allowed(rel: str) -> bool:
     """True when `rel` (plugin-root-relative, posix) matches a declared shape."""
-    if rel.rsplit("/", 1)[-1] in EXCLUDED_LEAF_NAMES:
+    leaf = rel.rsplit("/", 1)[-1]
+    if leaf in EXCLUDED_LEAF_NAMES:
+        return False
+    if _EXCLUDED_LEAF_PATTERN.match(leaf):
         return False
     return any(rx.match(rel) for rx in _COMPILED)
 

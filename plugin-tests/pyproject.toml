@@ -41,7 +41,14 @@ testpaths = ["tests"]
 # collision between `mutants/consistency/test_doc_facts.py` and
 # `tests/consistency/test_doc_facts.py`. Excluding them here makes every
 # invocation correct rather than only the argument-less one.
-norecursedirs = ["mutants", "node"]
+# Setting `norecursedirs` REPLACES pytest's own default list rather than
+# extending it (`pytest --help` / `_pytest.main`'s own `addini` call: default
+# `["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv",
+# "{arch}"]`), so that default set is restated here alongside the two this move
+# added — otherwise a `.venv`, a `build/` dir, or any other default-pruned name
+# would be walked and collected against, silently reappearing the moment one
+# exists under this tree.
+norecursedirs = ["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "mutants", "node"]
 pythonpath = [
   "scripts",
   "../.claude/skills/release/scripts",

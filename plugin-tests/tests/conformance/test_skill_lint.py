@@ -43,6 +43,31 @@ REQUIRED_KEYS = ("name", "description")
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
+# `extract-dev-tree-from-plugin` moved `release` out of the shipped plugin to
+# `.claude/skills/release/` — it acts on THIS repo's own distribution (the
+# marketplace catalog, the release tags), so a consuming repo has nothing for
+# it to act on and it does not ship. It is still a SKILL.md whose frontmatter
+# can break the same way a shipped one can, so its frontmatter is linted below
+# by the same `parse_frontmatter`/`REQUIRED_KEYS` rules. Deliberately NOT
+# folded into `_skill_files()` / `_referencing_files()`: those feed the
+# reference-graph checks (`extract_reference_paths`,
+# `_resolves_under_some_other_skill`, the `${CLAUDE_PLUGIN_ROOT}` pattern, the
+# `/cla:<name>` resolution test), which are specifically about the SHIPPED
+# tree's own cross-skill citation graph — a repo-local skill invoked bare as
+# `/release`, never `/cla:release`, is not a member of that graph, and
+# widening those checks to a second root would need them to carry which root a
+# citation resolves against rather than assuming `_PLUGIN_ROOT` everywhere,
+# which is more machinery than the one repo-local skill that exists today
+# justifies.
+_REPO_LOCAL_SKILLS_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "skills"
+
+
+def _repo_local_skill_files():
+    """Every repo-local `SKILL.md` — today, just `release`."""
+    if not _REPO_LOCAL_SKILLS_ROOT.is_dir():
+        return []
+    return sorted(p for p in _REPO_LOCAL_SKILLS_ROOT.glob("*/SKILL.md") if p.is_file())
+
 
 def _skill_files():
     """Every `skills/<name>/SKILL.md`. A dir WITHOUT one is not a skill and is
@@ -211,6 +236,42 @@ def test_every_skill_has_parseable_frontmatter_with_required_keys():
     assert not problems, (
         "SKILL.md frontmatter problems — a skill with broken frontmatter does not "
         "register at all, and every other test still passes:\n" + "\n".join(problems)
+    )
+
+
+def test_every_repo_local_skill_has_parseable_frontmatter_with_required_keys():
+    """The shipped-skill sibling of this test, scoped to `.claude/skills/`
+    instead of the plugin. `release` moved here in `extract-dev-tree-from-plugin`
+    and was left with no lint at all until this test — broken frontmatter would
+    have deregistered it silently, exactly the failure this whole file exists
+    to catch for shipped skills."""
+    problems = []
+    for path in _repo_local_skill_files():
+        rel = path.relative_to(_REPO_LOCAL_SKILLS_ROOT.parent.parent).as_posix()
+        mapping, error = parse_frontmatter(path.read_text(encoding="utf-8"))
+        if error:
+            problems.append(f"  {rel}: {error}")
+            continue
+        for key in REQUIRED_KEYS:
+            if not mapping.get(key):
+                problems.append(f"  {rel}: frontmatter has no non-empty `{key}:`")
+        name = _unquote(mapping.get("name", ""))
+        if name and name != path.parent.name:
+            problems.append(
+                f"  {rel}: frontmatter name `{name}` != directory `{path.parent.name}`; "
+                "`/{name}` would not resolve to this skill"
+            )
+    assert not problems, (
+        "repo-local SKILL.md frontmatter problems:\n" + "\n".join(problems)
+    )
+
+
+def test_the_repo_local_skill_scan_is_not_vacuous():
+    """`release` is the one repo-local skill today; a scan finding none has
+    stopped reading the tree rather than found an empty one."""
+    assert _repo_local_skill_files(), (
+        "no repo-local SKILL.md found under .claude/skills/ — `release` should "
+        "be there"
     )
 
 

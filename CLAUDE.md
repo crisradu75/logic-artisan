@@ -167,7 +167,7 @@ and paying them anyway is not caution, it is waste with the shape of rigour. The
 | Editing one skill or area | `pytest plugin-tests/tests/<area>`, **once** |
 | Fixing a defect a review found | that area, plus a mutation batch over what the fix touches |
 | Adding a new script, skill, or hook | the four checks above, in full |
-| Before opening a PR | `pytest plugin-tests`, once |
+| Before opening a PR | `pytest plugin-tests` and `node --test plugin-tests/node/mechanical-checks.test.mjs`, each once |
 
 **A green run does not get more true by being repeated.** Re-running a suite to see whether
 a failure recurs is the one case that justifies it — and then the finding is the flake, so

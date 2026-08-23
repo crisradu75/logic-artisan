@@ -149,18 +149,28 @@ def test_the_release_version_agrees_across_the_manifest_and_the_prose():
     )
 
 
+# The two path prefixes worth existence-checking in prose. Was
+# `.claude/plugins/cla/` alone, which is exactly what `extract-dev-tree-from-plugin`
+# broke: it moved the docs' most-cited paths — every test, the mutation runner,
+# `mutate.py` invocations — into `plugin-tests/`, which sat unchecked by this
+# guard the whole time the docs were being rewritten to point at it.
+_DEAD_PATH_PREFIXES = (r"\.claude/plugins/cla/", r"plugin-tests/")
+
+
 @pytest.mark.parametrize("name", sorted(_DOCS))
 def test_no_doc_names_a_plugin_path_that_no_longer_exists(name):
-    """Paths under `.claude/plugins/cla/` named in prose, checked for existence.
-    Concrete paths only — a glob or placeholder segment names a shape, not a file."""
+    """Paths under `.claude/plugins/cla/` or `plugin-tests/` named in prose,
+    checked for existence. Concrete paths only — a glob or placeholder segment
+    names a shape, not a file."""
     doc = _DOCS[name].read_text(encoding="utf-8")
     missing = []
-    for raw in re.findall(r"\.claude/plugins/cla/[A-Za-z0-9._/-]+", doc):
-        cleaned = raw.rstrip(".,;:)`")
-        if any(ch in cleaned for ch in "*<>") or cleaned.endswith("/"):
-            continue
-        if not (_REPO_ROOT / cleaned).exists():
-            missing.append(f"  {name}: {cleaned}")
+    for prefix in _DEAD_PATH_PREFIXES:
+        for raw in re.findall(prefix + r"[A-Za-z0-9._/-]+", doc):
+            cleaned = raw.rstrip(".,;:)`")
+            if any(ch in cleaned for ch in "*<>") or cleaned.endswith("/"):
+                continue
+            if not (_REPO_ROOT / cleaned).exists():
+                missing.append(f"  {name}: {cleaned}")
     assert not missing, "doc names a plugin path that does not exist:\n" + "\n".join(missing)
 
 

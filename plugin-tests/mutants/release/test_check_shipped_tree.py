@@ -19,6 +19,12 @@ three-valued exit contract and the report-all loop, not just the pattern list:
      single cleanup into as many release attempts as there are files.
   5. the conftest.py leaf-name exclusion neutered — the one dev-asset shape whose
      name is otherwise a legal script name.
+  6. the test_*.py / *_test.py leaf-shape exclusion widened to never match — the
+     hole a review measured directly: `skills/foo/scripts/test_foo.py`,
+     `hooks/test_x.py`, and `lib/test_x.py` all returned ALLOW before this
+     exclusion existed, because a pytest module is exactly a denylist shape and
+     matches pattern 14 (or the hooks/lib patterns) just as legitimately as a
+     real helper does.
 """
 
 from pathlib import Path
@@ -77,6 +83,14 @@ MUTANTS = [
         SCAN,
         r'(r"hooks/[^/]+\.py",',
         r'(r"hooks/.+",',
+        TARGETS,
+    ),
+    (
+        "the test_*.py / *_test.py leaf-shape exclusion never matches, "
+        "re-accepting a pytest module as a shipped script",
+        SCAN,
+        r'_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.py$")',
+        r'_EXCLUDED_LEAF_PATTERN = re.compile(r"(?!x)x")',
         TARGETS,
     ),
 ]

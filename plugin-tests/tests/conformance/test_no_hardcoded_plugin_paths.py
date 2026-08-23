@@ -83,10 +83,16 @@ def test_the_scan_is_not_vacuous():
     """A guard that scans nothing passes forever, and two guards in this repo
     already did once."""
     files = list(_scanned_files())
-    # The real count is 99. Pinned near it, not comfortably below it, matching
-    # the rule `test_subprocess_encoding.py` states for its own floor: lower it
-    # to the new real count when something is deliberately deleted, never to a
-    # number chosen to be safe from future deletions.
+    # Re-measured: the real count is 96 (was 99 before this repo's dev tree
+    # moved out of the plugin and took 3 scanned files with it). Pinned near
+    # it, not comfortably below it, matching the rule `test_subprocess_encoding.py`
+    # states for its own floor: lower it to the new real count when something
+    # is deliberately deleted, never to a number chosen to be safe from future
+    # deletions. That leaves a margin of exactly one, which is the philosophy
+    # working as intended rather than a defect to pad out: the next deliberate
+    # deletion is EXPECTED to trip this floor and get it lowered along with it,
+    # so a false sense of headroom is exactly what "pinned near it" is for this
+    # guard to not have.
     assert len(files) >= 95, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
