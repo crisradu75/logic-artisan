@@ -214,8 +214,8 @@ one — a common failure mode when a stale absolute path sneaks into a prompt.
 ## 8. The guardrails you'll meet
 
 Hooks wire themselves from `hooks/hooks.json` at plugin load — no `settings.json` step. Two
-dispatchers each run several leaf hooks in one Python process (5 on the Bash/PowerShell matcher, 2
-on Edit/Write), plus `warn-wholesale-rewrite` and `log-commit-provenance` wired directly on PostToolUse: **9 leaf hooks**, in
+dispatchers each run several leaf hooks in one Python process (6 on the Bash/PowerShell matcher, 2
+on Edit/Write), plus `warn-wholesale-rewrite` and `log-commit-provenance` wired directly on PostToolUse: **10 leaf hooks**, in
 three severities.
 
 - **Blocks** stop the tool call:
@@ -229,7 +229,9 @@ three severities.
   restores one.
 - **Warns** surface a caution and let the call through: `warn-comment-dates`,
   `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard),
-  `warn-stray-scratch-artifact` (scratch files left in the repo root), and
+  `warn-stray-scratch-artifact` (scratch files left in the repo root),
+  `warn-heredoc-escape-mangling` (a heredoc body carrying a backslash escape the shell/inner-language
+  layering eats — `\n` arrives as a real newline), and
   `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one — it
   asks you to name what you dropped, since a `Write` keeps only what you carried across).
 

@@ -186,8 +186,25 @@ def preflight(mutants: list[tuple]) -> None:
             continue
         hits = text.count(old)
         if hits == 0:
+            # Name the CRLF cause when it is the likely one. The module docstring
+            # already explains it ("KEEP \n OUT OF AN ANCHOR"), but a docstring
+            # is not what anyone reads at the moment the preflight refuses — this
+            # message is. Measured: the trap cost two preflight rounds across two
+            # batches in one session, with the explanation sitting 130 lines up.
+            hint = ""
+            # `"\r\n" not in old` matters: an author who spelled the separator
+            # correctly still has `\n` in the anchor, and telling them it
+            # "contains a bare \n, which cannot match" sends the one person who
+            # did the right thing off to fix the one thing that is right.
+            if "\n" in old and "\r\n" not in old and "\r\n" in text:
+                hint = (
+                    f" — NOTE: {path.name} uses CRLF line endings and this anchor "
+                    "contains a bare \\n, which cannot match. Anchor within a "
+                    'single line, or build the separator off the file: '
+                    '`_NL = "\\r\\n" if b"\\r\\n" in path.read_bytes() else "\\n"`'
+                )
             problems.append(f"{name}: anchor not found in {path.name} — this "
-                            "mutant checks nothing")
+                            f"mutant checks nothing{hint}")
         elif hits > 1:
             problems.append(f"{name}: anchor appears {hits}x in {path.name} — only "
                             "the first would be mutated, so a kill might belong to "

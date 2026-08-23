@@ -1,6 +1,119 @@
 # Lessons learned
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
+
+## Lessons learned — 2026-08-23 — scope: repo-wide (`shape-decision` → `multi-spec` → `multi-pr` ×2; the ship-only-consumer-usable-assets program)
+
+### Session summary
+
+Shaped a decision, authored it into OpenSpec changes, and drove both to merged PRs. Outcome: the
+published plugin tree went from **171 tracked files to 101** — 41% of the payload was validation
+machinery a consumer could not run. Three PRs merged (#129, #131, #132) plus the proposals PR (#128).
+
+The whole session's centre of gravity turned out to be one defect class, found four times in four
+different places: **a check that keeps reporting success after it has stopped looking.**
+
+1. Promoting two conformance guards into programs deleted five repo-level assertions and left
+   nothing invoking them — a real token leak passed `run_tests.py` green. Reproduced by planting one.
+2. The *restored* gate was itself partly vacuous: it asserted only `returncode == 0`, and exit 0 also
+   covers a trivial pass. Pointing the token list at a missing name disarmed two of four checks and
+   the mutant **survived**.
+3. Deleting `run_tests.py` silently removed the Node suite from the release gate — a shipped `.mjs`
+   could ship broken behind a fully green precondition list.
+4. The 14-pattern allowlist accepted `test_*.py` under `scripts/` — the exact denylist shape it
+   replaced a denylist to catch.
+
+None was found by reading. Each took a planted failure or a mutant. That is suggestion 7.
+
+### Suggestions
+
+1. **APPLIED** — `plugin-tests/mutate.py`: the "anchor not found" preflight message now detects the
+   CRLF case and names it, with the remedy inline. The docstring already explained it in full at
+   lines 54–59 ("KEEP `\n` OUT OF AN ANCHOR") — 130 lines above the error, which is not what anyone
+   reads when the preflight refuses. Cost two rounds across two batches. *Routing: script change —
+   the knowledge already existed at rung 2 and did not prevent it.* Verified by probe: the hint fires.
+2. **APPLIED** — new `hooks/warn-heredoc-escape-mangling.py`, wired into the Bash dispatcher as
+   advisory, budget 0.0, 9 tests. **Re-offense ×3.** `feedback_no_heredocs_for_file_content` and
+   `bash-discipline.md` both say this; it happened twice writing mutant batches and **a third time
+   while writing the verification for the fix to the first two**. Detection is narrow — a heredoc
+   body carrying a genuinely-eaten escape, `\\n` excluded via lookbehind (the hook's own test caught
+   that false positive on the first cut). *Routing: memory + SKILL.md → hook.* It fired on a real
+   command within minutes of being wired.
+3. **APPLIED** — `cla.io/overlays/spec-to-pr.md` gains its first incident entry, and the autonomy
+   gate in `spec-to-pr/SKILL.md` gains the mechanical form of its rule: **status text and the next
+   tool call go in the same message; no tool call means the phase is not over.** The prohibition
+   ("no finality-shaped block") was stated three times and still lost, because it asks the author to
+   notice mid-flow that what they are writing *reads* as an ending. The check needs no judgement.
+4. **APPLIED** — `CLAUDE.md` gains a fifth pre-ship check: **changed a function's signature? grep
+   callers repo-wide before running anything.** **Re-offense** of `validate-the-blast-radius`. I gave
+   `scan()` a third return value, fixed three callers in the area I was editing, ran that area green,
+   and a fourth caller in another area went red only under the full suite. All four "four checks"
+   count claims updated to five.
+5. **APPLIED** — `spec-to-pr/SKILL.md` caps table gains a Phase column. `--review-rounds` is the
+   PRE-implementation review and `--pr-rounds` is the PR review; the names read backwards, the user
+   guessed the opposite in this run, and guessing wrong silently disables the gate you meant to keep.
+6. **APPLIED** — `_shared/references/test-quality.md`: a non-vacuity floor must be re-derived
+   whenever its population changes, and lowering one to survive a change is forbidden. Three stale
+   floors in one session: `>= 55` against a real 83 (a 34% collapse passed), `>= 6` against 15,
+   `>= 95` against 96.
+7. **APPLIED** — `test-quality.md`: prove a gate by planting what it must catch. `CLAUDE.md` already
+   says "break the fix and confirm a test fails"; this points the same discipline at a *guard*. Three
+   decisive uses this session, ~60 seconds each.
+
+### Recurring patterns
+
+- **RE-OFFENSE ×3 — memory `feedback_no_heredocs_for_file_content` + `bash-discipline.md`.**
+  Escalated **to a hook** (suggestion 2). The third instance happened while fixing the first two,
+  which is what settled the earlier hesitation about whether two instances justified machinery.
+- **RE-OFFENSE — memory `feedback_validate_the_blast_radius`.** Escalated **to `CLAUDE.md`** as a
+  fifth pre-ship check (suggestion 4). The full-suite gate caught it, so the cost was one red run
+  rather than a ship — but the memory existed and did not fire.
+- **RE-OFFENSE — `spec-to-pr/SKILL.md` autonomy gate.** Escalated **within SKILL.md to a different
+  rule shape** (prohibition → mechanical check) plus a dated overlay incident (suggestion 3). Not
+  hook-able: the rule is about not emitting text, which no PreToolUse hook can see.
+- **PREVENTED — memory `check-for-counterexamples`.** Repeatedly and decisively: caught the
+  `aggregate.py` consumer list being wider than claimed, caught a reviewer's own claim that
+  `test_guards_are_not_vacuous` had no floor (it has two), and caught a phantom finding that
+  `test_runner_stream_encoding.py` was an unnamed fourth deletion (it is the "5" in 9+5+1).
+- **PREVENTED — memory `a-measurement-has-an-expiry`.** `design.md`'s pinned baseline was written
+  before change (a) landed; re-measured 1105→1128, 173→175, 31→35 before dispatching a 70-file move.
+- **PREVENTED — memory `read-primary-source-first`.** Verified `git-subdir` has no exclusion field
+  against the live docs, and `norecursedirs` defaults against `_pytest.main` rather than a comment
+  describing them.
+- **PREVENTED — `failure-modes.md` "shared resource ceiling".** Adding a hook immediately failed the
+  wiring guard for a missing budget entry, exactly as that bullet says it should.
+- **PREVENTED — Implement/fix delegate contract.** A fix delegate returned `done` with no evidence;
+  the contract treats that as not done, and it was recorded as a Handoff issue rather than absorbed.
+
+### Codify-process notes
+
+- **Step 2.6 retire-on-escalation was a genuine no-op**: nothing escalated *off* `failure-modes.md`
+  this run — the two re-offenses were memory-rung, not checklist-rung. Both size thresholds are clear
+  (51 bullets of ~60; 8 log entries of ~12), so no maintenance edits were proposed.
+- **The prefer-fixes rule earned its place again.** The instinct for lesson 1 was a doc line about
+  CRLF anchors. The rule forced "could the tool have prevented the detour", and the honest answer was
+  that the tool already *documented* it and the author never saw it — which reroutes the fix from
+  prose to the error message. Same shape as the run that produced `mutate.py` itself.
+- **One observation for `/cla:codify-retro`:** three of this run's seven suggestions came from
+  mistakes made *during the codify run itself* (the heredoc third instance, the hook's own regex
+  false positive, the phantom `__pycache__` area). A retro that only reviews the *session under
+  audit* would have missed all three. Worth considering whether Step 1's arc reconstruction should
+  explicitly include the codify run's own tool calls.
+
+### Lessons (meta)
+
+- **A rule stated three times in the same file is not under-stated; it is at the wrong rung.** The
+  autonomy gate, the heredoc rule, and the blast-radius memory all failed while fully present in
+  context. Restating any of them would have been the weaker half of the fix.
+- **A prohibition asks for a judgement; a check does not.** "Don't write a finality-shaped block"
+  requires noticing, mid-flow, how your own prose reads. "Is there a tool call in this message?" does
+  not. Where a rule keeps losing, look for the mechanical restatement before adding emphasis.
+- **The tests I added found bugs in the fixes I added them for**, three times: the hook's regex
+  matched `\\n`, `_guard_areas()` turned `__pycache__` into a phantom area, and the doc-facts guard
+  caught three stale hook counts. Writing the test first would not have helped — writing it *at all*,
+  immediately, is what did.
+
+---
 ## Lessons learned — 2026-08-14 — scope: repo-wide (`.claude/plugins/cla/` — CTO review, the straight-A program, 0.10.0, and the harness-feedback round)
 
 ### Session summary

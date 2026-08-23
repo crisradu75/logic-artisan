@@ -21,6 +21,7 @@ the evidence CAN be produced and points at the command that produces it.
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 _DEV_TREE = Path(__file__).resolve().parents[2]
@@ -41,7 +42,26 @@ def _guard_areas() -> tuple[str, ...]:
     mutants_root = _DEV_TREE / "mutants"
     if not mutants_root.is_dir():
         return ()
-    return tuple(sorted(p.name for p in mutants_root.iterdir() if p.is_dir()))
+    # Dunder directories only. Taking EVERY subdirectory made `__pycache__` a
+    # phantom area the moment anything ran under `mutants/`.
+    #
+    # A first cut also required `any(p.glob("test_*.py"))` — and that condition
+    # was a fifth instance of the exact defect this whole change set exists to
+    # fix. An area whose batches are deleted would stop BEING an area, so its
+    # guards silently dropped out of every assertion here instead of failing.
+    # Measured: with a `mutants/hooks/` area present, deleting its one batch took
+    # `_guard_files()` from 30 to 17 and left all three assertions GREEN. The
+    # `__pycache__` bug is fixed by the dunder half alone; the glob half only
+    # bought silence. An emptied area now survives into the list and fails
+    # `test_every_derived_area_resolves_to_a_tests_directory` loudly, which is
+    # the whole point of this file.
+    return tuple(
+        sorted(
+            p.name
+            for p in mutants_root.iterdir()
+            if p.is_dir() and not p.name.startswith("__")
+        )
+    )
 
 # Guard files exempt from needing a batch, each for a stated reason. Keep this
 # list short and justified — it is the pressure valve that could quietly empty
@@ -219,9 +239,56 @@ def test_no_batch_hardcodes_an_absolute_path():
     )
 
 
+def test_the_area_filter_rejects_both_shapes_it_exists_for(tmp_path, monkeypatch):
+    """Plant the two directories the filter must reject, rather than relying on
+    one happening to be there.
+
+    `_guard_areas()` filters `__pycache__`-style dunder dirs AND directories
+    holding no batch. Its only witness in the real tree is `mutants/__pycache__`,
+    which is GITIGNORED — a runtime artifact, not a fixture. On a fresh clone,
+    before anything has run, it does not exist, and the cross-check in
+    `test_the_scan_is_not_vacuous` then compares two sets that are trivially
+    equal whether the filter is there or not. The second condition
+    (a batch-less directory that is not a dunder) has no witness at all, ever.
+
+    So both are planted here on a fake tree. This is the rule this repo's own
+    `test-quality.md` states: prove a guard by planting what it must catch."""
+    (tmp_path / "mutants" / "__pycache__").mkdir(parents=True)
+    (tmp_path / "mutants" / "__pycache__" / "test_stale.py").write_text("x", encoding="utf-8")
+    (tmp_path / "mutants" / "empty_area").mkdir()
+    (tmp_path / "mutants" / "empty_area" / "notes.md").write_text("x", encoding="utf-8")
+    (tmp_path / "mutants" / "real_area").mkdir()
+    (tmp_path / "mutants" / "real_area" / "test_thing.py").write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(sys.modules[__name__], "_DEV_TREE", tmp_path)
+    areas = _guard_areas()
+
+    assert "__pycache__" not in areas, (
+        "a dunder directory is a runtime artifact, not an area — even when it "
+        "holds a `test_*.py`, which a cached batch does"
+    )
+    # `empty_area` MUST survive. Filtering a batch-less directory out was the
+    # tempting second condition, and it is the one that turns "this area lost its
+    # batches" from a red run into silence. It stays in the list precisely so the
+    # resolution check below can fail on it.
+    assert "empty_area" in areas, (
+        "a directory that lost its batches must remain an area and fail loudly; "
+        "filtering it out is how an unpoliced area becomes invisible"
+    )
+    assert areas == ("empty_area", "real_area")
+    assert _area_test_dir("empty_area") is None, (
+        "the planted batch-less area must be the thing that fails resolution"
+    )
+
+
 def test_the_scan_is_not_vacuous():
     files = _guard_files()
-    assert len(files) >= 6, f"guard discovery collapsed to {len(files)} files"
+    # 17 today: `ls tests/{conformance,consistency,skills/release}/test_*.py | wc -l`.
+    # Was `>= 6` against that same 17 — decorative, since a 65% collapse passed.
+    # Re-derived here rather than left, per this repo's own `test-quality.md`:
+    # a floor tracks its population or it is not a floor. Lower it to the new
+    # real count when the population genuinely shrinks; never to survive a move.
+    assert len(files) >= 15, f"guard discovery collapsed to {len(files)} files"
     areas = _guard_areas()
     assert areas, "no area directories found under mutants/ at all"
     batches = [

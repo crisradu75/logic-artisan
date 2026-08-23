@@ -236,6 +236,58 @@ def test_the_restore_is_byte_exact_for_both_line_endings(tmp_path, ending):
     assert source.read_bytes() == raw, "the restore rewrote the file's line endings"
 
 
+def test_a_multi_line_anchor_against_a_crlf_file_names_the_cause(tmp_path):
+    """The preflight already refuses this; the point is that it says WHY.
+
+    Anchors match raw bytes, so a `\\n` in `old` finds nothing in a CRLF file
+    even though the lines are plainly there. The module docstring explains it —
+    130 lines above the error message nobody scrolls back from. Measured: the
+    trap cost two preflight rounds across two batches in one session before the
+    hint existed. Assert the hint, not just the refusal, or removing it leaves
+    this test green and the next author on the same detour."""
+    source, tests = _make_scope(tmp_path)
+    source.write_bytes(b"\r\n".join([b"def verdict():", b"    return 'ON'", b""]))
+    batch = _batch(
+        tmp_path,
+        f'("crlf", Path(r"{source}"), "def verdict():\\n    return \'ON\'", '
+        f'"def verdict():\\n    return \'OFF\'", [Path(r"{tests}")]),',
+    )
+    out = _run(batch).stdout + _run(batch).stderr
+    assert "anchor not found" in out
+    assert "CRLF" in out, "the refusal did not name the cause it can detect"
+
+
+def test_a_crlf_aware_anchor_that_simply_misses_is_not_blamed_on_crlf(tmp_path):
+    """An anchor spelling the separator `\\r\\n` still contains `\\n`. Gating the
+    hint on that alone told the one author who did it right to fix the one thing
+    that was right."""
+    source, tests = _make_scope(tmp_path)
+    source.write_bytes(b"\r\n".join([b"def verdict():", b"    return 'ON'", b""]))
+    batch = _batch(
+        tmp_path,
+        f'("crlf-aware", Path(r"{source}"), "nope\\r\\nstill nope", "x", '
+        f'[Path(r"{tests}")]),',
+    )
+    out = _run(batch).stdout + _run(batch).stderr
+    assert "anchor not found" in out
+    assert "CRLF" not in out, "blamed CRLF for an anchor that already spells \\r\\n"
+
+
+def test_a_missing_anchor_in_an_lf_file_does_not_blame_crlf(tmp_path):
+    """The hint is gated on the file actually using CRLF. Ungated, it would fire
+    on every missing anchor and become noise that gets read past — which is how
+    a diagnostic stops being one."""
+    source, tests = _make_scope(tmp_path)
+    source.write_bytes(b"\n".join([b"def verdict():", b"    return 'ON'", b""]))
+    batch = _batch(
+        tmp_path,
+        f'("lf", Path(r"{source}"), "not in the file at all", "x", [Path(r"{tests}")]),',
+    )
+    out = _run(batch).stdout + _run(batch).stderr
+    assert "anchor not found" in out
+    assert "CRLF" not in out, "blamed CRLF for a plain missing anchor in an LF file"
+
+
 def test_a_crash_leaves_a_backup_beside_the_file_and_blocks_the_next_run(tmp_path):
     """The `finally` cannot run for a hard kill. A sidecar backup survives it, and
     refusing to start while one exists stops a half-restored tree from being

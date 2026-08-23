@@ -9,11 +9,12 @@ hooks, so a force-push, a push straight to main, or a wrong-identity commit
 issued through it bypassed every git guard in the tree.
 
 Runs block-cd-in-bash, ask-destructive-git, block-unsafe-recursive-delete,
-warn-stacked-pr-merge, and warn-stray-scratch-artifact in ONE Python process
-instead of five, reading the tool-call JSON from stdin once and handing it to
-each in turn via `_dispatch_lib`. Cuts per-Bash-call hook overhead from 5
-interpreter spawns to 1 — commonly cited as ~100-200ms of process-start cost
-each on Windows, though not independently benchmarked for this repo.
+warn-stacked-pr-merge, warn-stray-scratch-artifact, and
+warn-heredoc-escape-mangling in ONE Python process instead of six, reading the
+tool-call JSON from stdin once and handing it to each in turn via
+`_dispatch_lib`. Cuts per-Bash-call hook overhead from 6 interpreter spawns to
+1 — commonly cited as ~100-200ms of process-start cost each on Windows, though
+not independently benchmarked for this repo.
 
 Pushes to main/master are NOT guarded here. That check moved to `git/pre-push`,
 which git hands the resolved refspec — no command string to parse, so none of
@@ -77,19 +78,21 @@ _HOOK_FILES = [
     "block-unsafe-recursive-delete.py",
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
+    "warn-heredoc-escape-mangling.py",
 ]
 
 # Hooks that can only ever warn, and so may be dropped when too little handler
 # budget remains for them. Every hook that changes the OUTCOME of the call — one
 # that can return 2, plus `ask-destructive-git.py`, which returns 0 but escalates
 # to a permission prompt via stdout — is deliberately absent from this set AND
-# ordered ahead of these two in `_HOOK_FILES`, so budget pressure costs warnings
+# ordered ahead of these three in `_HOOK_FILES`, so budget pressure costs warnings
 # before it can cost enforcement. Note the ask hook is why the wiring test cannot
 # key on `return 2` alone: skipping it would silently downgrade an ask to an
 # allow, an enforcement loss no exit code would reveal.
 _ADVISORY_HOOKS = frozenset({
     "warn-stacked-pr-merge.py",
     "warn-stray-scratch-artifact.py",
+    "warn-heredoc-escape-mangling.py",
 })
 
 

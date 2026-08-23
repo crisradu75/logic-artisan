@@ -68,9 +68,9 @@ and invoked bare as `/release`.
 
 Guard hooks wire themselves via the plugin's own `hooks/hooks.json` when the plugin loads — no
 `settings.json` step. Two dispatchers (one for Bash/PowerShell, one for Edit/Write) each run
-several leaf hooks in one Python process — 7 distinct leaf hooks between them (5 on the
+several leaf hooks in one Python process — 8 distinct leaf hooks between them (6 on the
 Bash/PowerShell matcher, 2 on Edit/Write) — plus `warn-wholesale-rewrite` and `log-commit-provenance` wired
-directly on PostToolUse: 9 leaf hook files in all. They run throughout every phase.
+directly on PostToolUse: 10 leaf hook files in all. They run throughout every phase.
 **Blocks** (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt
 instead of blocking outright; **warns** (`warn-*`) surface a caution without blocking.
 
@@ -84,7 +84,9 @@ confirmation, for the `multi-*` chainers' unattended runs).
 
 **Warns:** `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard) ·
 `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
-`warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially shorter one).
+`warn-heredoc-escape-mangling` (a heredoc body carrying a backslash escape the shell/inner-language
+layering eats) · `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially
+shorter one).
 
 **Direct pushes to `main` are NOT guarded by any of these.** That protection is a git `pre-push`
 hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no command spelling

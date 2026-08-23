@@ -285,6 +285,8 @@ The user invoked `/cla:spec-to-pr` precisely to skip those interruptions. A phas
 
 **No finality-suggesting headers between phases either.** A `## Implementation Complete` / `## Done` / `## Summary` Markdown header at the end of Implement (or any intermediate phase) reads as a *terminus* to the user even when the next tool call is queued. Likewise, between Ship (PR open) and Revise (agent dispatch), any narrative paragraph longer than one sentence reads as a stop. Rule: in `--auto`, phase transitions emit AT MOST one brief sentence per boundary (e.g. `**Revise:** dispatching 3 review agents.`). No headers, no bullet lists, no itemized summaries. The Handoff terminal report is the ONLY place a finality-shaped block is appropriate.
 
+**The mechanical form of that rule, because the prohibition above has lost in practice: status text and the next tool call go in the SAME message.** If you have no tool call to pair the text with, the phase is not over — start the next phase instead of narrating the last one. Ending a turn is legitimate in exactly two cases: a backgrounded `Agent`/`Workflow` dispatch is genuinely in flight (the completion notification re-invokes the session — that is the harness, not a pause), or the run is complete. Nothing else. This is stated as a check rather than a prohibition deliberately: the rule above asks you to notice mid-flow that what you are writing *reads* as an ending, which is a judgement, and a real chain lost a round-trip to exactly that judgement going wrong — the author wrote the banned shape and then behaved like its reader. "Is there a tool call in this message?" needs no judgement. Dated incident: `cla.io/overlays/spec-to-pr.md` "Incident / offense history".
+
 Three narrow exceptions:
 - **Bootstrap permission decline** (already defined above) — halts before any phase runs.
 - **`--gate-on-push` or `--interactive` flag explicitly passed in the invocation args** — pauses immediately before push + PR open. Decline → halt cleanly, mark Ship/Revise as `skip` with reason "user declined gate", proceed to terminal report.
@@ -349,11 +351,18 @@ User-driven mid-run interrupts (Ctrl-C, an explicit "stop" / "halt" / "wait" mes
 
 ## Per-loop caps and fix loops
 
-| Loop | Default cap | Override flag | What "round" means |
-|---|---|---|---|
-| review-change | 1 | `--review-rounds N` | one full review → apply Critical+Important → cycle |
-| tests | 3 | `--test-rounds N` | one full `npm run build` + `npm run lint` pass → fix failures → cycle |
-| pr-review | 2 | `--pr-rounds N` | one full or scoped PR-review → apply C+I → push → cycle |
+| Loop | Default cap | Override flag | Phase | What "round" means |
+|---|---|---|---|---|
+| review-change | 1 | `--review-rounds N` | **Review — PRE-implementation**, before Implement; reviews the *artifacts* (proposal/design/tasks/specs) | one full review → apply Critical+Important → cycle |
+| tests | 3 | `--test-rounds N` | Test | one full `npm run build` + `npm run lint` pass → fix failures → cycle |
+| pr-review | 2 | `--pr-rounds N` | **Revise — POST-implementation**, after Ship; reviews the *code* on the open PR | one full or scoped PR-review → apply C+I → push → cycle |
+
+**The two review flags read backwards from their names, so state the phase, not the flag.**
+`--review-rounds` sounds like the PR review and is not; `--pr-rounds` is. A user reading the
+flag names alone guessed the opposite in a real run, and the cost of guessing wrong is silent:
+you disable the gate you meant to keep and keep the one you meant to drop, and nothing reports
+a missing review. `--review-rounds 0` skips reviewing the change *before* it is built;
+`--pr-rounds 0` skips reviewing the code *after* it is built.
 
 **Cap exhaustion behavior:** mark phase `warn`, capture unresolved findings for the Handoff Issues section, **continue to the next phase**. Never halt on cap exhaustion.
 
