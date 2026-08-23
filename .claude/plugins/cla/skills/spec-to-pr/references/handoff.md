@@ -2,6 +2,43 @@
 
 The Handoff phase's step-by-step procedure. `SKILL.md`'s Handoff stub carries the load-bearing invariants (the next-steps gating rule, the run-log-must-be-committed-not-dangling rule, the feature-branch-only guard); this file carries the report shape and the recipes.
 
+## 0. Ticked-but-not-done scan (runs before the report is built)
+
+Every other completeness signal in this workflow reads the checkbox glyph:
+`openspec status --json isComplete` checks artifact presence, the box count
+checks the glyph, and this report inherits both. None reads the prose beneath a
+task, so a task ticked `[x]` whose own body says the work was not done reports as
+complete through the entire chain. It happened; reading the paragraph was the
+only thing that would have caught it.
+
+```bash
+awk '/^- \[/          {ticked = ($0 ~ /^- \[x\]/); task = $0; next}
+     /^#/             {ticked = 0; next}
+     ticked && tolower($0) ~ /not done|could not|deferred/ {print task "  <-- " $0}' \
+  openspec/changes/<name>/tasks.md
+```
+
+A **state machine**, not a slurp, and that is the part worth keeping. The obvious
+version — read the task line, then `getline` the body until it looks like the
+next task — tests the ACCUMULATED body against `^- \[`, and the body starts with
+indentation, so the guard never fires and it consumes to end-of-file. Verified
+against a fixture: it named a task with a clean, correct body as the offender,
+because it had swallowed a later task's text. A check that reports the wrong
+task is worse than no check, since the reader goes and looks.
+
+Any hit → **fail Handoff** and name the task. No judgement about whether the
+reason was good: a ticked task carrying its own denial makes the box count, the
+`isComplete` flag and this report wrong at once, and which of those matters is a
+separate question from whether the state is inconsistent.
+
+Note it gates on `ticked`, so the same words under an unticked box — the honest
+filing — are correctly ignored.
+
+The convention this enforces, stated so the enforcement is not the only teacher:
+**a task is `[ ]` until it is done, and the prose explains why it is still open.**
+An honest "blocked on X" under an unticked box is exactly right and costs nothing;
+the same sentence under a ticked box is what breaks every downstream count.
+
 ## 1. Emit the terminal report inline
 
 From the orchestrator's working memory of each phase. Use this exact shape (one section per row, in this order):
@@ -10,7 +47,17 @@ From the orchestrator's working memory of each phase. Use this exact shape (one 
 - Phases table: one row per phase with glyph (`✓` / `⚠` / `✗`), phase name, and the one-line summary you held in context for that phase.
 - Counts at a glance: ✓/⚠/✗ phase tally; Critical/Important/Suggestion remaining; failing test names if any.
 - Issues encountered: bulleted list of `warn`/`fail` outcomes from any phase. Empty section when there are none — print "(none)".
-- **Deferred Known Issues:** bulleted list of every Critical/Important PR-review finding triaged as Deferred-Known-Issue in Revise, each with its one-line rationale. This section is the durable record of "we saw it, we chose not to fix it now, here's why." Empty section when there are none — print "(none)".
+- **Deferred Known Issues:** every Critical/Important PR-review finding triaged as Deferred-Known-Issue in Revise, each with its one-line rationale. This section is the durable record of "we saw it, we chose not to fix it now, here's why." Empty section when there are none — print "(none)".
+
+  **Split into three named subsections, always, even when one or two are empty:**
+
+  ```
+  **Blocked on a missing artifact** — cannot be resolved now; name the artifact.
+  **Trigger condition not yet fired** — the case it guards has not arisen yet.
+  **Skipped** — no reason above applies.
+  ```
+
+  Under the full-severity policy the first two are legitimate holds and `Skipped` is a policy breach, so **a non-empty `Skipped` fails Handoff.** One bucket under a single alarming label makes the two indistinguishable without re-reading every item, which in practice means the section gets waved through unread. Keep the headings verbatim so the check stays a grep rather than a judgement.
 - Deferred to TODO.md: bulleted residue list (Suggestion-level only, plus any cap-exhausted untriaged residue). Empty when none.
 - Next steps for you (see step 4 for the gating rule).
 

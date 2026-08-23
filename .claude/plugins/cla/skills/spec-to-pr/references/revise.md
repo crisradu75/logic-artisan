@@ -84,6 +84,16 @@ Pass the captured diff to each Agent prompt. If `PREV_FIX_SHA` is empty or the d
 
    A finding cannot exit the loop as "unaddressed" — it must be Applied OR explicitly Deferred with rationale. Suggestion-level findings flow to the optional `docs: TODO.md` commit.
 
+   **Deferred items are reported under three named subsections, never one bucket.** Use these headings verbatim, printing "(none)" under an empty one:
+
+   ```
+   **Blocked on a missing artifact** — name the artifact it waits on.
+   **Trigger condition not yet fired** — name the condition.
+   **Skipped** — no reason above applies.
+   ```
+
+   The first two are legitimate holds; `Skipped` is a policy breach under the full-severity default, and Handoff fails on it. Collapsed into one list they read identically, which leaves the orchestrator two bad options — wave the section through unread, or re-read every item on every change. Measured: a round returned four items under a single "not applied" heading; three were legitimate and one was a genuinely cheap fix nobody had done, and only a full re-read separated them. Keeping the headings fixed is what makes the distinction a grep instead of a judgement.
+
    **Fix-delegate default (thin-orchestrator, per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`).** When the round's fix-set is large — past the existing sized-trigger (> ~15 subtasks-equivalent OR > ~8 files) — delegate the mechanical EDIT APPLICATION to the existing generic coding `Agent(model: sonnet)` (the same escape-hatch delegate Implement uses; there is NO separate "fix-applier" agent), with its evidence-based `done`/`blocked` terminal contract. **Delegation covers edit application ONLY — the orchestrator retains its own post-fix re-verification (INT-CAP/INT-SYC/SIR-TEST below); that discipline is never delegated.** Below the trigger, apply inline.
 
    **Subtle-implementation-risk findings need a proving test to count as Applied (SIR-TEST).** When a Revise finding is the "implementer followed the letter of a prior fix but missed its spirit" class — the pre-implementation Review's `review-change/references/checklist.md` names this class and mandates a proving-test *task* for it, but the Implement delegate can still ship an incomplete version, which is exactly why it resurfaces here — the fix is not fully Applied until a **dedicated regression test that would fail on the letter-but-not-spirit implementation** exists and passes. A prose/code edit that corrects the current instance without a test guarding the invariant leaves the defect one refactor away from returning. (Concrete precedents in this repo — a "reuse an existing helper" fix re-implemented with the wrong fallback value; a "gate this control like its true sibling" fix shipped with only half the gate tested — are in `cla.io/overlays/spec-to-pr.md` "Incident history".) For a SIR finding, "Applied" = the correcting edit **plus** the proving test, both landed and passing.

@@ -578,6 +578,45 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
 
+### Requirement: Completeness signals read the claim, not the glyph
+
+A skill that reports a task list complete SHALL NOT rest that report solely on checkbox state. Checkbox counts and artifact-presence flags are presence checks on the glyph: they cannot distinguish a task that was done from one that was ticked, and a task ticked `[x]` whose own body states the work was not done passes every such check at once.
+
+The skill SHALL therefore scan each ticked task's body for self-negating text before reporting completion, and SHALL fail rather than report complete on a hit. The scan SHALL require no judgement about whether the stated reason is good — the inconsistency is the defect, independent of its cause. It SHALL gate on the task being ticked, so that the same words under an unticked box, which is the honest filing, are not flagged.
+
+A task whose text asserts a **measurement** — a confirmed value, a count, a mutation-test result — SHALL record the measured value inline on the ticked line rather than the tick standing as its own evidence, and the post-check SHALL re-measure a small sample rather than trusting the ticks wholesale.
+
+The skill SHALL state the underlying convention as well as enforcing it: a task is `[ ]` until it is done, and the prose beneath it explains why it is still open.
+
+#### Scenario: A ticked task carrying its own denial fails the gate
+
+- **WHEN** a task line matches `- [x]` and its body says the work was not done
+- **THEN** the phase fails and names that task
+- **AND** the outcome does not depend on judging whether the reason was acceptable
+
+#### Scenario: The honest filing is not punished
+
+- **WHEN** an UNTICKED task's body carries the same negating words
+- **THEN** the scan does not flag it
+
+#### Scenario: A measurement-bearing task carries its measurement
+
+- **WHEN** a task asserts a confirmed value, a count, or a mutation-test result
+- **THEN** the ticked line records the measured value
+- **AND** a sample of such tasks is re-measured rather than trusted
+
+### Requirement: Deferred findings are separated by reason
+
+A skill reporting findings it did not apply SHALL split them into named subsections distinguishing a hold that cannot be resolved now, a hold whose trigger has not fired, and an item skipped for neither reason. The third SHALL be mechanically detectable, so that a policy breach is found by a grep rather than by re-reading every item.
+
+Collapsing all three under one label SHALL be treated as a defect rather than a formatting preference: undifferentiated, a genuine breach and a legitimate hold read identically, which leaves only two options — accept the section unread, or re-read it in full on every change.
+
+#### Scenario: A skipped item is distinguishable from a legitimate hold
+
+- **WHEN** a fix round reports items it did not apply
+- **THEN** each appears under one of the three named subsections
+- **AND** a non-empty "skipped" list fails the reporting phase under a no-deferrals policy
+
 ### Requirement: Shipped-asset boundary
 
 The plugin directory `.claude/plugins/cla/` SHALL contain **only assets a consuming repo can use** —
