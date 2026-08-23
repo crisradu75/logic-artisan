@@ -1,25 +1,19 @@
 """Mutation batch for test_orchestrators_state_turn_liveness.py.
 
-The guard reads prose, so it carries the ordinary risk of a prose-matching check:
-it can pass by finding a word while the rule it vouches for has quietly lost the
+The guard reads prose, so it carries the ordinary risk of a prose-matching
+check: passing by finding a word while the rule it vouches for has lost the
 property that made it work. Each mutant removes ONE property and leaves the
-surrounding text intact, which is what a real rewrite would do — none deletes the
-rule outright. Mutants 8 and 9 aim at the GUARD rather than a skill, because two
-of its properties (the declared-family tripwire, the adjacency requirement) are
-its own structure and cannot be exercised from the asset side.
+surrounding text intact, which is what a real rewrite would do.
+
+Mutants 9-12 aim at the GUARD rather than a skill. Its structural properties —
+the declared family, the seam exemption, the span cap — cannot be exercised from
+the asset side, and every one of them was a live defect in an earlier revision:
+a review proved that emptying `_FAMILY` or `_MARKERS` left tests passing while
+reading nothing, that an unconstrained `None` silenced two of three seams, and
+that markers scattered through one large block satisfied a plain "same block"
+test. A batch that only mutates the assets would have caught none of those.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_orchestrators_state_turn_liveness.py
-
-A correction worth keeping, because an earlier revision of this file taught the
-wrong model of the tool. It claimed a mutant survived because "the phrase occurs
-twice and mutate.py replaces one occurrence". That is not what happened, and
-mutate.py does not behave that way: its preflight REFUSES any anchor matching
-more than once ("anchor appears {hits}x ... Anchor on something unique"). What
-actually happened is subtler. The anchor was unique, but the phrase the guard's
-own derivation read at the time — "ready to continue" — occurs a second time
-elsewhere in the same file, so removing the anchored bullet left family
-membership intact and no assertion moved. That derivation is gone now (the family
-is a declared literal), which is the durable fix.
 """
 
 from pathlib import Path
@@ -38,8 +32,8 @@ GUARD = DEV / "tests" / "consistency" / "test_orchestrators_state_turn_liveness.
 # dev-tree extraction deleted. It resolves in a full run only because collecting
 # `tests/conformance/` first puts a module of that name on `sys.path` — so the
 # guard passes by an ambient import rather than by the path it names. When that
-# is fixed, this file-scoping stays correct on its own merits (narrowest target
-# that could catch the mutation); only the justification below expires.
+# is fixed, this file-scoping stays correct on its own merits; only the
+# justification below expires.
 TARGETS = [GUARD]
 
 MUTANTS = [
@@ -93,10 +87,16 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The declared-family tripwire. Dropping a chain skill from _FAMILY must
-        # fail via `promising <= set(_FAMILY)`, not pass by quietly checking one
-        # skill fewer — that silent-shrink is the failure the literal replaced a
-        # derived key to prevent.
+        "a skill drifts back to a third legitimate exit case",
+        SKILLS / "multi-pr" / "SKILL.md",
+        "legitimate in exactly two cases",
+        "legitimate in exactly three cases",
+        TARGETS,
+    ),
+    (
+        # The declared-family tripwire. Dropping a chain skill must fail via
+        # `promising <= set(_FAMILY)` and the floor, not pass by checking one
+        # fewer — that silent shrink is why the literal replaced a derived key.
         "a chain skill silently drops out of the declared family",
         GUARD,
         '"multi-lite": ("references/candidate-loop.md", "move to the next candidate"),',
@@ -104,14 +104,46 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The adjacency property. This single replace BOTH removes the marker
-        # from the rule's own bullet AND re-adds it as a separate bullet, so the
-        # phrase is still present file-wide while the rule is gutted. A file-wide
-        # `in` test passes here; only the block check catches it.
-        "a marker survives file-wide but leaves the rule's own block",
-        SKILLS / "multi-pr" / "SKILL.md",
-        'Nothing else — **announcing the next step is not a mechanism**, and "Is there a tool call in this message?" needs no judgement.',
-        'Nothing else, and "Is there a tool call in this message?" needs no judgement.\n- **Aside.** Announcing the next step is not a mechanism.',
+        # An unconstrained None was a silent opt-out from the seam requirement.
+        "the seam exemption stops being pinned to spec-to-pr alone",
+        GUARD,
+        '_SEAMLESS = {"spec-to-pr"}',
+        '_SEAMLESS = {"spec-to-pr", "multi-pr", "multi-lite", "multi-spec"}',
+        TARGETS,
+    ),
+    (
+        # Without the cap, markers scattered through a large unrelated block
+        # satisfy "same block". A reviewer defeated the guard exactly this way.
+        "the adjacency cap widens until any block satisfies it",
+        GUARD,
+        "_MAX_SPAN = 1200",
+        "_MAX_SPAN = 100000",
         TARGETS,
     ),
 ]
+
+# Two properties are NOT mutated, deliberately. Recorded here rather than left as
+# a silent gap, because "the batch is all-green" would otherwise imply a coverage
+# this batch does not have.
+#
+# **The `_MARKERS` floor.** Replacing `assert len(_MARKERS) == 3 and all(_MARKERS)`
+# with `assert True` survives, and correctly. In an earlier revision empty markers
+# made every check vacuously pass, which is why the floor exists — but the rewrite
+# made `_span_of_best_block` compute `max()` over an empty sequence, so empty
+# markers now RAISE rather than pass. The floor buys a legible message instead of
+# a `ValueError`; it is no longer what stops the vacuity.
+#
+# **The line/paragraph granularity split.** Switching SKILL.md to
+# `paragraphs=True` also survives, because `_blocks` is a strict superset of
+# `_lines` and the span function takes the TIGHTEST span — so adding paragraph
+# blocks can only lower it, never raise it. The split still matters (it rejects
+# markers spread across two adjacent bullets that happen to fall inside the span
+# cap), but that is unreachable by mutating source against a healthy tree.
+#
+# Both are the same class: a floor is unexercised while the thing it floors is
+# healthy. They are covered structurally instead, by
+# `test_the_guard_notices_when_its_own_state_is_gutted`,
+# `test_the_adjacency_cap_is_load_bearing` and
+# `test_line_granularity_rejects_markers_split_across_bullets` — which is the
+# form `_shared/references/test-quality.md` prefers anyway, since a tamper test
+# keeps holding after a later refactor turns the check into a no-op.
