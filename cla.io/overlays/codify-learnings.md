@@ -28,24 +28,23 @@ prefer the one whose slug matches this repo's path (`C--code-logic-artisan`).
 
 ## Repo stack + verification path
 
-Verification path for this repo — a change is not "done" until the aggregated suite passes:
+Verification path for this repo — a change is not "done" until the suite passes:
 
 ```bash
-python3 .claude/plugins/cla/run_tests.py        # every pytest scope, aggregated
-python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each scope
-pytest .claude/plugins/cla/skills/<name>/tests  # one scope, while iterating
-pytest .claude/plugins/cla/hooks/tests          # the hooks scope
-node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
+pytest plugin-tests                      # the whole suite: one scope, one command
+pytest plugin-tests/tests/hooks          # one area, while iterating
+pytest plugin-tests -k <name>            # one subject, across areas
+node --test plugin-tests/node/mechanical-checks.test.mjs
 ```
 
-Never run bare `pytest` from the repo or plugin root — collection fails by design.
+The plugin's own tests do NOT live in the plugin. `.claude/plugins/cla/` ships to
+consuming repos and carries only assets a consumer can use, so every test, mutation
+batch and pytest config lives in this repo's own `plugin-tests/` tree instead.
 
 There is no CI — the local commands above are the whole verification story. Run
-`run_tests.py` (every scope) plus the Node suite before calling a change done.
+`pytest plugin-tests` plus the Node suite before calling a change done.
 
-Scope count (skills with tests, plus `hooks/`) is stated in root `CLAUDE.md`, which owns
-that fact — read it there rather than duplicating the number here. `run_tests.py`
-reports per-scope skip counts — a skipped guard has not run, and several guards are
+The suite reports skips — a skipped guard has not run, and several guards are
 dormant without an overlay file, so treat a skip line as a finding rather than noise.
 
 ## Packages, paths, and app names
@@ -74,7 +73,7 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
 - **2026-08-13 — two shipped guards asserted nothing.** One greped for a function's name
   instead of calling it; one lost its `problems.append` in an edit, leaving
   `assert not []`. Both passed cleanly and were caught only by mutation. Now guarded by
-  `conformance-checks/tests/test_guards_are_not_vacuous.py`.
+  `plugin-tests/tests/conformance/test_guards_are_not_vacuous.py`.
 - **2026-08-06 — a review sub-agent changed repository state.** A dispatched agent briefed
   "make NO edits" ran `git checkout` to read a branch and restored to `main` rather than the
   branch the session was on; four subsequent verification commands answered about the wrong
@@ -114,7 +113,7 @@ Docs that must stay in lockstep with the code:
 - `.claude/plugins/cla/skills/*/SKILL.md` and their `references/*.md`
 - `.claude/plugins/cla/hooks/_dispatch_lib.py` — `HOOK_WORST_CASE_SECONDS` must match each
   hook's real (call sites × timeout). The wiring test
-  (`.claude/plugins/cla/hooks/tests/test_hooks_wiring.py`) asserts that every dispatched
+  (`plugin-tests/tests/hooks/test_hooks_wiring.py`) asserts that every dispatched
   hook HAS an entry, that no entry is stale, and that the enforcing hooks' sum fits the
   handler budget — what it never verifies is that a given number matches that hook's real
   (call sites × timeout), so a wrong-but-small value passes silently

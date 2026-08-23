@@ -133,7 +133,7 @@ def _default_log_path() -> Path:
     """This loop's ledger inside the dir the writer resolves.
 
     `_runs_dir` above is byte-identical to `lib/log_run.py`'s — the producer of
-    the very file this reads — and `consistency-checks` compares the two so they
+    the very file this reads — and a drift check compares the two so they
     cannot drift apart. If they ever did, this reader would look somewhere the
     writer never writes and report zero runs, which is indistinguishable from a
     cold start.

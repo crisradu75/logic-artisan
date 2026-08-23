@@ -37,6 +37,6 @@ dangerous one through.
 
 Both are failure modes where the suite goes green and the coverage is imaginary —
 the same class as a guard that asserts over a collection it never fills
-(`conformance-checks/tests/test_guards_are_not_vacuous.py`). Rules about naming,
+(the source repo's `plugin-tests/tests/conformance/test_guards_are_not_vacuous.py`). Rules about naming,
 length, or structure are style; these two are about whether the test can fail at
 all.

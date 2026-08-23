@@ -36,10 +36,12 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 
 One script lives here on the same rule: `git_state.py` returns a single deterministic exit code for
 "an in-progress rebase / cherry-pick / merge exists", and four skills check it at every commit
-boundary. It is stdlib-only and imports nothing local. Its test and this scope's `pyproject.toml`
-sit beside it — `run_tests.py` fails the whole run as a "near-miss" if a directory has a
-pytest-configured `pyproject.toml` without a `tests/`, or the reverse, so the three move together
-or not at all.
+boundary. It is stdlib-only and imports nothing local.
+
+Its tests do **not** sit beside it. The plugin ships only what a consuming repo can use, so every
+test lives outside the published tree, in the canonical source repo's own development tree — this
+script's are at `plugin-tests/tests/skills/_shared/test_git_state.py` there. The script moves alone;
+there is no sibling `tests/` or `pyproject.toml` to move with it.
 
 ## How to reference one
 
@@ -50,8 +52,8 @@ ${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md
 ```
 
 A bare `references/<file>` reads as "this skill's own reference" and resolves to
-nothing from another skill. `conformance-checks/tests/test_skill_lint.py` fails
-the suite on both mistakes — a path that resolves nowhere, and a bare path that
+nothing from another skill. The source repo's
+`plugin-tests/tests/conformance/test_skill_lint.py` fails the suite on both mistakes — a path that resolves nowhere, and a bare path that
 actually means someone else's file.
 
 ## Scanning

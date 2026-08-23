@@ -7,11 +7,11 @@ filename as an argument:
     python ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl < record.json
 
 There used to be five near-identical copies of this file (one per skill), kept
-in step by a dedicated drift check in `consistency-checks/`. The copies existed
-because `run_tests.py` runs each scope as its own pytest process — same-named
-modules in one interpreter collide — so a skill could not import a sibling's
-helper. Living at the plugin root instead of under `skills/<name>/scripts/`
-sidesteps that entirely: nothing imports it, the skills invoke it as a program.
+in step by a dedicated drift check. The copies existed because a skill cannot
+import another skill's helper — a consuming repo may install and invoke each
+one independently. Living at the plugin root instead of under
+`skills/<name>/scripts/` sidesteps that entirely: nothing imports it, the
+skills invoke it as a program.
 
 Three of those five ledgers had no reader at all (`multi-pr`, `multi-spec`,
 `multi-lite`) and were deleted rather than migrated. Only `spec-to-pr-runs` and

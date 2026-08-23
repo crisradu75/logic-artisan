@@ -71,9 +71,10 @@ portable to any repo) driven by *data* it reads live off the repo tree (the fact
 file + overlays + the repo's own top-level entries) — no repo name or path prefix
 is hard-coded here.
 
-The unit tests of every function below live in
-``conformance-checks/tests/test_project_facts_paths.py``, which loads this file by
-path.
+The unit tests of every function below live in the canonical source repo's own
+development tree, at ``plugin-tests/tests/conformance/test_project_facts_paths.py``,
+which loads this file by path. They are not shipped: the plugin carries only
+assets a consuming repo can use.
 """
 
 from __future__ import annotations

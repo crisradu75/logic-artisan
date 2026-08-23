@@ -75,9 +75,10 @@ that repo's copy; otherwise the checker scans its own plugin root, as it does
 under a marketplace install. The flag exists so the CLI layer is testable
 against a temporary tree; the skills invoke the bare form.
 
-The unit tests of every function below live in
-``conformance-checks/tests/test_no_project_tokens.py``, which loads this file by
-path.
+The unit tests of every function below live in the canonical source repo's own
+development tree, at ``plugin-tests/tests/conformance/test_no_project_tokens.py``,
+which loads this file by path. They are not shipped: the plugin carries only
+assets a consuming repo can use.
 """
 
 from __future__ import annotations
@@ -107,9 +108,9 @@ def _plugin_root() -> Path:
             return parent
     # Fallback for an unexpected layout: scripts/ -> _shared/ -> skills/ -> cla/
     # The depth and this comment are one fact written twice; the comment is what
-    # makes the depth checkable. It was `parents[2]` while this checker lived in
-    # `conformance-checks/tests/`, where the walk was tests/ -> conformance-checks/
-    # -> cla/. From here that lands on `skills/`, not the plugin root. The primary
+    # makes the depth checkable. It was `parents[2]` while this checker lived
+    # among the plugin's own guard tests, two levels below the plugin root. From
+    # here that lands on `skills/`, not the plugin root. The primary
     # walk above still succeeds in every normal layout, so the wrong depth would
     # have failed silently and ONLY in the unexpected-layout case this fallback
     # exists to cover.
@@ -293,11 +294,18 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 #
 # These roots cover everything the marketplace publishes that this guard can
 # meaningfully scan. The install ships the plugin dir as its `path` — the WHOLE
-# directory — so the four "portable procedure" roots are not the whole shipped
-# surface: `lib/`, the three `*-checks/` scopes, `run_tests.py`, and `mutate.py`
-# reach a consuming repo too. The first four of those are scanned here.
+# directory — so the four "portable procedure" roots are not quite the whole
+# shipped surface: `lib/` reaches a consuming repo too, and is scanned here.
 #
-# FOUR files are not scanned. Counted, not estimated — every other `.md`/`.py`
+# This list was EIGHT until `extract-dev-tree-from-plugin` moved the plugin's
+# own validation machinery to `<repo>/plugin-tests/`. The three `*-checks/`
+# scopes it also named no longer exist inside the plugin, and a root that is
+# not a directory is skipped by `_iter_scanned_source_files`. Left in place
+# they made `_missing_source_roots` fire on every install, so the shipped
+# guard refused to run at all (exit 2) in every consuming repo. Pruned to the
+# five roots that actually ship.
+#
+# TWO files are not scanned. Counted, not estimated — every other `.md`/`.py`
 # the marketplace ships falls inside a root below:
 #
 #   - The plugin's own root `README.md`. Its install commands legitimately name
@@ -307,9 +315,9 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 #     rather than under a `references/` ancestor, so the prose scanner's rule
 #     misses it and the source scanner only takes `.md` under `agents`/
 #     `output-styles`.
-#   - `run_tests.py` and `mutate.py` at the tree root. They sit outside every
-#     root below; adding a bare-file traversal for two files is not worth a
-#     second rule, and both are read at review time.
+#
+# (`run_tests.py` and `mutate.py` were the third and fourth. The first is
+# deleted and the second moved to the dev tree, so neither ships any more.)
 #
 # A deliberate path-parsing fixture stays scannable by carrying the
 # `path-fixture-ok` marker on its line, rather than by exempting a whole file.
@@ -319,9 +327,6 @@ SOURCE_SCAN_ROOTS = (
     "hooks",
     "output-styles",
     "lib",
-    "conformance-checks",
-    "consistency-checks",
-    "launcher-checks",
 )
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 
@@ -329,7 +334,7 @@ CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 def _missing_source_roots(plugin_root: Path) -> list[str]:
     """`SOURCE_SCAN_ROOTS` entries that are not a directory under `plugin_root`.
 
-    All eight ship as part of the same plugin directory in every install (the
+    All five ship as part of the same plugin directory in every install (the
     marketplace publishes the whole tree verbatim), so a root's absence here
     means a broken/partial install, not a smaller shipped surface. Without this,
     `_iter_scanned_source_files`'s `if not root.is_dir(): continue` skips an
