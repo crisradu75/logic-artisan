@@ -103,6 +103,62 @@ def test_reset_hard_shapes_prompt(command, monkeypatch, capsys):
     assert "reset --hard" in _reason(payload)
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git branch -D feature/x",
+        "git branch -D feature/x feature/y",
+        # Bundled clusters, the same shape the force-push arm exists for.
+        "git branch -aD feature/x",
+        "git branch -Dr origin/feature/x",
+        # Long form, both orders — they are matched independently, not as a
+        # sequence, precisely so the order cannot smuggle one past.
+        "git branch --delete --force feature/x",
+        "git branch --force --delete feature/x",
+        # The shapes every other rule here is also tested against.
+        "git -C /some/path branch -D feature/x",
+        "git branch \\\n  -D feature/x",
+        "git \\\n branch -D feature/x",
+    ],
+)
+def test_force_branch_delete_shapes_prompt(command, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert "branch -D" in _reason(payload)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # `-d` refuses on its own for an unmerged branch, so it is not the
+        # destructive act — `-D` is what overrides that refusal. Prompting on
+        # `-d` would make the prompt routine, which is how it stops being read.
+        "git branch -d feature/x",
+        "git branch --delete feature/x",
+        # `--force` on `branch` without `--delete` is `--force` for `-m`/`-c`
+        # or branch creation: it moves a ref, it does not destroy a commit.
+        "git branch --force feature/x main",
+        # A branch NAME ending in capital D is not a flag cluster.
+        "git branch -d featureD",
+        "git branch featureD",
+        # Ordinary listing.
+        "git branch",
+        "git branch -a",
+        "git branch --list",
+    ],
+)
+def test_non_destructive_branch_shapes_stay_silent(command, monkeypatch, capsys):
+    assert _run(command, monkeypatch, capsys) is None, f"unexpected ask for: {command!r}"
+
+
+def test_a_branch_delete_flag_from_a_later_command_is_not_attributed(
+    monkeypatch, capsys
+):
+    """Same attribution bug the force-push rule was fixed for: a `-D` belonging
+    to a different command must not make an innocent `git branch` prompt."""
+    assert _run("git branch && rm -D /tmp/scratch", monkeypatch, capsys) is None
+
+
 def test_both_shapes_in_one_line_are_reported_together(monkeypatch, capsys):
     payload = _run("git reset --hard && git push -f origin feature/x", monkeypatch, capsys)
     reason = _reason(payload)

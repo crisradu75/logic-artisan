@@ -41,6 +41,17 @@ Detection scope
 - `git push` with a `+`-prefixed refspec (`git push origin +feat:feat`), which
   is git's other force syntax and carries no flag at all.
 - `git reset` carrying `--hard`.
+- `git branch` carrying `-D` (including a bundled cluster like `-aD`), or
+  `--delete` and `--force` together in either order. Same hazard class as
+  `reset --hard`: a branch whose commit exists nowhere else loses that commit
+  outright, recoverable only from the reflog and only within its expiry
+  window. `-d` is deliberately NOT matched — git already refuses it for an
+  unmerged branch, so `-D` IS the act of overriding that refusal, and the
+  prompt lands exactly where the safety net was just removed. An earlier
+  version of this docstring listed neither `-D` nor a reason for omitting it,
+  which made the gap look considered when it was not; it is included here
+  after a real incident (issue #123) destroyed a commit holding 45 sections of
+  run notes, recovered only via `git reflog` plus `git show <sha>:<path>`.
 - `gh pr merge`, including behind global options and as `gh.exe`/`gh.cmd`. Not
   destructive in the same sense, but outward-facing and effectively
   irreversible, and the thing that fails there is AUTHORIZATION — which a hook
@@ -57,8 +68,9 @@ stops being read. The `(?:\s|=|$)` boundary excludes them for free, since
 
 Deliberately out of scope: `git clean`, `git checkout -- <path>`, `git restore`.
 They discard uncommitted work too, but they are frequent enough in ordinary
-flow that including them would bury the two operations above in noise. Revisit
-only with evidence of a real incident.
+flow that including them would bury the operations above in noise. Revisit only
+with evidence of a real incident — which is exactly how `branch -D` got in, so
+this list is a standing judgement rather than a closed one.
 
 Best-effort, not an exhaustive git parser — see `GIT_GLOBAL_OPTS`'s own
 docstring for the option shapes it does and does not consume.
@@ -66,8 +78,8 @@ docstring for the option shapes it does and does not consume.
 Escape hatches:
   - `ALLOW_PR_MERGE=1` — drops ONLY the PR-merge confirmation. This is the one
     to use for a skill that merges as an ordinary step of a long unattended run
-    (`multi-pr`, `multi-lite`); force-push and `reset --hard` stay checked.
-    Prefer it per-command over exporting it.
+    (`multi-pr`, `multi-lite`); force-push, `reset --hard` and `branch -D`
+    stay checked. Prefer it per-command over exporting it.
   - `ALLOW_DESTRUCTIVE_GIT=1` — drops every check below, for a deliberate
     unattended batch. Environment only: this hook runs before the command's own
     shell exists, so an inline prefix on the command text never reaches this
@@ -78,9 +90,9 @@ Escape hatches:
 name stopped describing it — it now also silences an AUTHORIZATION checkpoint,
 so a value exported weeks ago for a force-push batch would wave through every
 PR merge too. `ALLOW_PR_MERGE` exists so that trade never has to be made: an
-unattended run that merges declares exactly that, and keeps its force-push and
-reset guards, and can be granted per-command rather than exported for a whole
-session. The stderr `DISABLED` notice fires on every command either one
+unattended run that merges declares exactly that, and keeps its force-push,
+branch-delete and reset guards, and can be granted per-command rather than
+exported for a whole session. The stderr `DISABLED` notice fires on every command either one
 suppresses.
 
 Exit codes:
@@ -129,6 +141,7 @@ _SEP = r"(?:[ \t]|\\\r?\n)+"
 _TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
 _PUSH = re.compile(_GIT_CMD + _SEP + _G + r"push\b" + _TAIL)
 _RESET = re.compile(_GIT_CMD + _SEP + _G + r"reset\b" + _TAIL)
+_BRANCH = re.compile(_GIT_CMD + _SEP + _G + r"branch\b" + _TAIL)
 
 # Two shapes force a push. The long flag, where `(?:\s|=|$)` is what spares
 # `--force-with-lease` / `--force-if-includes` (both are followed by `-`, which
@@ -141,6 +154,23 @@ _FORCE_FLAG = re.compile(
 # `git push origin +feat:feat` — force expressed in the refspec, no flag at all.
 _FORCE_REFSPEC = re.compile(r"(?:^|\s)\+\S+")
 _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
+
+# `git branch -D` is the same hazard class as `reset --hard`: on a branch whose
+# commit exists nowhere else it destroys that commit outright, recoverable only
+# from the reflog, inside its expiry window, and only by someone who thinks to
+# look. `-d` is NOT matched — git already refuses it for an unmerged branch, so
+# the destructive case is exactly the one that needed `-D` to get past that
+# refusal.
+#
+# Two shapes, mirroring `_FORCE_FLAG`. A bundled short cluster containing a
+# capital `D` (`-D`, `-aD`, `-Dr`) — the arm cannot reach into a long flag,
+# because the character after the leading `-` there is another `-`, not a
+# letter, and it cannot match a branch NAME ending in `D` because the token must
+# be `-`-prefixed. And the long form, whose two flags may appear in either
+# order, so they are matched independently rather than as one sequence.
+_DELETE_FORCE_CLUSTER = re.compile(r"(?:^|\s)-[A-Za-z]*D[A-Za-z]*(?:\s|$)")
+_DELETE_LONG = re.compile(r"(?:^|\s)--delete(?:\s|=|$)")
+_FORCE_LONG = re.compile(r"(?:^|\s)--force(?:\s|=|$)")
 
 # `gh pr merge` — not destructive in the reset/force-push sense, but it is
 # outward-facing and effectively irreversible: it publishes to a shared branch,
@@ -212,11 +242,13 @@ _GH_PR_MERGE = re.compile(
 
 
 # Named so `main()` can suppress THIS reason alone under `ALLOW_PR_MERGE=1`,
-# without touching the force-push and reset checks. The narrow variable exists
+# without touching the force-push, reset and branch-delete checks. The narrow
+# variable exists
 # because `multi-pr` and `multi-lite` merge as an ordinary loop step of a long
 # unattended run — an audit of every mutating command those skills emit found
 # the merge prompt was the only NEW thing standing in their way. Silencing it
-# with the broad `ALLOW_DESTRUCTIVE_GIT` would have disarmed force-push and
+# with the broad `ALLOW_DESTRUCTIVE_GIT` would have disarmed force-push,
+# branch-delete and
 # `reset --hard` for the same commands, which is a strictly worse trade.
 # An inline `ALLOW_PR_MERGE=1` env-assignment prefix, at the start of the whole
 # command or of a segment after a shell separator. Anchored so it cannot be
@@ -247,6 +279,16 @@ def _reasons(command: str) -> list[str]:
         found.append(
             "`git reset --hard`, which discards uncommitted working-tree "
             "changes with no reflog entry to recover them from"
+        )
+    if any(
+        _DELETE_FORCE_CLUSTER.search(m.group(1))
+        or (_DELETE_LONG.search(m.group(1)) and _FORCE_LONG.search(m.group(1)))
+        for m in _BRANCH.finditer(scanned)
+    ):
+        found.append(
+            "`git branch -D`, which force-deletes a branch — if its commit "
+            "exists nowhere else it is destroyed, recoverable only from the "
+            "reflog and only within its expiry window"
         )
     if _GH_PR_MERGE.search(scanned):
         found.append(MERGE_REASON)
