@@ -216,12 +216,28 @@ than partially applying. **Every target must be repo content** — `cla.io/**` o
 If a confirmed target resolves inside the plugin tree, stop and report it as a migration
 recommendation instead of writing it (Step 4).
 
+**After writing, run the staleness checker against what was just written** — this is the one real
+invocation of `check_fact_paths.py` in the whole plugin; without it, nothing ever runs the script this
+skill's own prose points at:
+
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/sync-context/scripts/check_fact_paths.py
+```
+
+It MUST exit 0. A non-zero exit means the write just made (a fact, an overlay pointer edit) introduced
+or left a stale path — the write is not finished until it does. Fix every stale path the checker names
+and re-run it until it exits 0.
+
 ### Step 8 — Report
 
 Summarize what changed: `cla.io/project-facts.md` created vs updated (and which sections changed),
 which overlays gained a pointer line, which `project-tokens.local.md` entries were added (or note none
 were needed), and any `cla.io/terminology.md` reconciliation applied (or note none was needed/found).
 If any candidate proposal was declined, say so and leave that file untouched.
+
+**Confirm the Step 7 staleness-checker run exited 0** and say so in this report. If it did not, name
+every stale path it reported — this run is the only place that check happens, so a report that omits
+a non-zero result loses it entirely.
 
 **List every migration recommendation from Step 4** — each overlay still sitting at the legacy
 `skills/*/references/project-context.md` path, and where it should move to. These are the only

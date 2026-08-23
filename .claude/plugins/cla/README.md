@@ -101,9 +101,12 @@ CLA is portable because it separates *procedure* (generic, synced everywhere) fr
 (per-repo, never synced):
 
 - **Synced core** — `skills/`, `agents/`, `hooks/`, `output-styles/`: portable procedure only. A
-  pytest **conformance guard** fails if a distinctive project token, or a hardcoded absolute
-  developer path, leaks into synced core — one scanner covers `SKILL.md`/reference prose under
-  `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`.
+  **conformance guard** — `skills/_shared/scripts/check_no_project_tokens.py`, run as a program
+  (exit 0 clean / 1 violations / 2 could-not-run) — fails if a distinctive project token, or a
+  hardcoded absolute developer path, leaks into synced core: one scanner covers `SKILL.md`/reference
+  prose under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`.
+  It is a program rather than a test precisely so it runs here — an installed plugin is a read-only
+  cache with no pytest gate over it.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` beside them: the repo's own
   facts and tuned checks. They live in YOUR repo, not in the plugin: the installed plugin tree is a
   read-only, version-keyed cache, so a fact stored there would be unwritable and would vanish on
@@ -167,7 +170,9 @@ There is no CI — these local runs are the whole verification story.
   hooks/                       guard hooks + hooks.json wiring + tests, and git/pre-push
   lib/                         log_run.py — the one retro-ledger writer
   output-styles/               the project's writing convention (force-for-plugin: true)
-  conformance-checks/          portable guards: no project token, no dead path in the fact file
+  conformance-checks/          portable guards: no hardcoded plugin path, no broken SKILL.md;
+                                plus test coverage for the two checks promoted to skill scripts
+                                (no project token, no dead path in the fact file)
   consistency-checks/          cross-scope drift checks — guards the source repo, not yours
   launcher-checks/             tests for the source repo's own launchers
   skills/<name>/               (references/ scripts/ tests/ present as each skill needs)

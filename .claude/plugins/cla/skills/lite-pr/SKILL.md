@@ -132,9 +132,7 @@ One pass. Then:
    touches**, not only what it targets: correcting one return path routinely breaks another, which
    is how a real fix here once traded a silent no-op on the default path for the identical no-op on
    the overlay path. Do each one by hand: edit the code so the defect is back, run the affected
-   test, confirm it FAILS, then restore the edit exactly — a test that still passes has not been
-   shown to catch anything, and an unrestored edit ships the defect.
-   Fix a surviving mutant, or name it in the final report with a reason. A clean
+   test, confirm it FAILS, then restore the edit exactly. Fix a surviving mutant, or name it in the final report with a reason. A clean
    run is evidence about the mutants you thought of and nothing else — two commits in this repo each
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.
 3. Stage the fixed files, commit (`fix: address review findings`), push.

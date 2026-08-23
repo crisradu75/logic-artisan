@@ -97,9 +97,7 @@ Pass the captured diff to each Agent prompt. If `PREV_FIX_SHA` is empty or the d
    touches**, not only what it targets: correcting one return path routinely breaks another, which
    is how a real fix here once traded a silent no-op on the default path for the identical no-op on
    the overlay path. Do each one by hand: edit the code so the defect is back, run the affected
-   test, confirm it FAILS, then restore the edit exactly — a test that still passes has not been
-   shown to catch anything, and an unrestored edit ships the defect.
-   Fix a surviving mutant, or name it in the Handoff report with a reason. A clean
+   test, confirm it FAILS, then restore the edit exactly. Fix a surviving mutant, or name it in the Handoff report with a reason. A clean
    run is evidence about the mutants you thought of and nothing else — two commits in this repo each
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.
 3. Stage + commit as `fix: review round <N>`. The fix-round commit subject is structurally meaningful (it drives `probe_state.py`'s round counter and the round-N-on-fix-diff scoping above). Before staging, verify git-state:

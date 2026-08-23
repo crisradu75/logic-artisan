@@ -35,6 +35,8 @@ import pytest
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 CHECKER = _PLUGIN_ROOT / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py"
+# cla -> plugins -> .claude -> repo root.
+REPO_ROOT = _PLUGIN_ROOT.parents[2]
 
 
 def _load_checker():
@@ -509,6 +511,13 @@ def _seed_vendored_plugin(tmp_path: Path) -> Path:
     (plugin / "hooks" / "sample.py").write_text(
         'BASE = "hooks/tests/fixtures"\n', encoding="utf-8"
     )
+    # Every entry in SOURCE_SCAN_ROOTS must exist for this to read as a CLEAN,
+    # complete install — `_missing_source_roots` (IMPORTANT-5 fix) treats an
+    # absent root as a broken/partial install and blocks on it. The other six
+    # roots carry no test content, so they're created empty; only `skills` and
+    # `hooks` above need real files.
+    for root_name in SOURCE_SCAN_ROOTS:
+        (plugin / root_name).mkdir(parents=True, exist_ok=True)
     return plugin
 
 
@@ -614,3 +623,95 @@ def test_cli_exits_two_when_a_populated_token_list_has_nothing_to_scan(tmp_path)
     assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
     assert result.returncode != EXIT_CLEAN
     assert "scanned zero files" in result.stderr
+
+
+def test_cli_exits_two_when_scan_finds_nothing_even_without_a_token_list(tmp_path):
+    # IMPORTANT-3: the zero-files-scanned blocker used to fire ONLY when a
+    # token list had loaded, so a scan that found NOTHING AT ALL — including
+    # for checks (c)/(d), which the docstring says are always armed regardless
+    # of a token list — silently passed clean whenever no token list existed.
+    plugin = tmp_path / ".claude" / "plugins" / "cla"
+    for root_name in SOURCE_SCAN_ROOTS:
+        (plugin / root_name).mkdir(parents=True, exist_ok=True)
+    # No token list, and every scan root exists but is empty.
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert result.returncode != EXIT_CLEAN
+    assert "scanned zero files" in result.stderr
+
+
+def test_cli_exits_two_when_an_expected_source_scan_root_is_missing(tmp_path):
+    # IMPORTANT-5: `_iter_scanned_source_files` silently `continue`s past an
+    # absent scan root — only REACHED roots were ever named, never
+    # expected-but-absent ones — so a whole missing root (heavy coverage loss)
+    # used to exit 0 clean.
+    plugin = _seed_vendored_plugin(tmp_path)
+    _seed_token_list(tmp_path, "- funnel-demo\n")
+    (plugin / "lib").rmdir()  # empty dir seeded by _seed_vendored_plugin
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert result.returncode != EXIT_CLEAN
+    assert "lib" in result.stderr
+    assert "expected-but-absent: lib" in result.stdout
+
+
+def test_cli_violations_win_over_a_coexisting_blocker(tmp_path):
+    # IMPORTANT-10: when blockers and confirmed violations coexist in the same
+    # run, violations must win — exit 1 with both reported — not exit 2, which
+    # would let "I could not look" mask "I found problems" from a caller
+    # reading only the exit code.
+    plugin = _seed_vendored_plugin(tmp_path)
+    # An unreadable token list is a BLOCKER (the token-load try/except).
+    token_path = tmp_path / TOKEN_LIST_RELPATH
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_bytes(b"- funnel-demo\xff\xfe not utf-8\n")
+    # An absolute developer path leak is a VIOLATION via check (c), which needs
+    # no token list at all — independent of the blocker above.
+    (plugin / "hooks" / "leak.py").write_text(
+        'BASE = "C:/Users/alice/code/thing"\n', encoding="utf-8"  # path-fixture-ok
+    )
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_VIOLATIONS, result.stdout + result.stderr
+    assert result.returncode != EXIT_CANNOT_RUN
+    assert "windows-drive-path" in result.stdout, result.stdout
+    assert "could not be read" in result.stderr, result.stderr
+
+
+def test_main_exits_two_when_the_repo_root_cannot_be_resolved(monkeypatch, capsys):
+    # IMPORTANT-4: a failed repo-root resolution used to fall back to
+    # `Path.cwd()`, which reports a WRONG root as a trivial clean pass. Driven
+    # in-process (not via subprocess) so the failure can be forced
+    # deterministically regardless of the actual machine's git/`.claude` state.
+    monkeypatch.setattr(_checker, "_repo_root", lambda: None)
+    result = main([])
+    captured = capsys.readouterr()
+    assert result == EXIT_CANNOT_RUN
+    assert result != EXIT_CLEAN
+    assert "could not resolve the repo root" in captured.err
+
+
+# --------------------------------------------------------------------------- #
+# CRITICAL-1 — nothing actually INVOKES this program anywhere in the repo
+# --------------------------------------------------------------------------- #
+#
+# Every test above this line loads the checker as a MODULE (by file path) and
+# calls its functions in-process — it never actually runs it as the program a
+# consuming repo is meant to run. That gap is exactly how a synced-core leak
+# (a curated token from cla.io/project-tokens.local.md appended to a SKILL.md)
+# can leave `run_tests.py` fully green while the checker itself exits 1. This
+# test is the missing invocation: it runs the real program, as a real
+# subprocess, against the real repo root, so a real leak turns this scope —
+# and therefore `run_tests.py` — red again.
+
+
+def test_the_real_repo_is_clean_when_invoked_as_a_subprocess():
+    result = subprocess.run(
+        [sys.executable, str(CHECKER)],
+        cwd=str(REPO_ROOT),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=120,
+    )
+    assert result.returncode == 0, (
+        f"check_no_project_tokens.py exited {result.returncode} against the "
+        f"real repo (cwd={REPO_ROOT}):\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )

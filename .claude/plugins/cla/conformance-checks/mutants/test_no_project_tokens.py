@@ -45,10 +45,22 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "'I could not look' is reported as 'I found violations'",
+        "a blocker with no violations is reported as violations found",
         CHECKER,
-        "        return EXIT_CANNOT_RUN  # branch: a check could not run",
-        "        return EXIT_VIOLATIONS  # branch: a check could not run",
+        "        return EXIT_CANNOT_RUN  # branch: could not run, and no violation to report",
+        "        return EXIT_VIOLATIONS  # branch: could not run, and no violation to report",
+        TARGETS,
+    ),
+    (
+        # This is IMPORTANT-10's own fix: confirmed violations must win over a
+        # coexisting blocker (exit 1, not 2). Mutating the gate back to `if
+        # False:` reverts to the pre-fix behaviour where a blocker masks real
+        # violations as "could not look" — silent from the caller's exit-code
+        # perspective, since violations are still PRINTED either way.
+        "confirmed violations no longer win over a coexisting blocker",
+        CHECKER,
+        "    if violations:",
+        "    if False:",
         TARGETS,
     ),
     (
@@ -91,6 +103,17 @@ MUTANTS = [
         CHECKER,
         'PLACEHOLDER_PATH_HINTS = ("<", "...")',
         "PLACEHOLDER_PATH_HINTS = ()",
+        TARGETS,
+    ),
+    (
+        # IMPORTANT-5's own fix: `_iter_scanned_source_files` silently `continue`s
+        # past an absent scan root, so a whole missing root (heavy coverage loss)
+        # was invisible before this function existed. Forcing it to always report
+        # "nothing missing" reverts to that silent behaviour.
+        "a missing expected source scan root is never reported",
+        CHECKER,
+        "    return [name for name in SOURCE_SCAN_ROOTS if not (plugin_root / name).is_dir()]",
+        "    return []",
         TARGETS,
     ),
 ]

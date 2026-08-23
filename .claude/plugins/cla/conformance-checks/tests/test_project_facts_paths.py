@@ -30,6 +30,8 @@ import pytest
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 CHECKER = _PLUGIN_ROOT / "skills" / "sync-context" / "scripts" / "check_fact_paths.py"
+# cla -> plugins -> .claude -> repo root.
+REPO_ROOT = _PLUGIN_ROOT.parents[2]
 
 
 def _load_checker():
@@ -587,3 +589,80 @@ def test_cli_exits_two_when_a_present_facts_file_yields_no_candidates(tmp_path):
     assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
     assert result.returncode != EXIT_CLEAN
     assert "zero path candidates" in result.stderr
+
+
+def test_cli_exits_two_when_overlays_present_but_facts_file_absent_yields_no_candidates(tmp_path):
+    # IMPORTANT-2: the zero-candidates blocker used to be gated on
+    # `facts_file.is_file()`, so a repo with overlays but NO
+    # cla.io/project-facts.md that extracts zero candidates exited 0 clean
+    # instead of 2 — the guard silently checking nothing, just reached via the
+    # overlay-only path instead of the facts-file path. An absent facts file
+    # WITH overlays present must still lint the overlays and still be able to
+    # report could-not-run.
+    overlays = tmp_path / "cla.io" / "overlays"
+    overlays.mkdir(parents=True)
+    (overlays / "demo.md").write_text(
+        "Prose with no repo-relative path in it at all.\n", encoding="utf-8"
+    )
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert result.returncode != EXIT_CLEAN
+    assert "zero path candidates" in result.stderr
+
+
+def test_main_exits_two_when_the_repo_root_cannot_be_resolved(monkeypatch, capsys):
+    # IMPORTANT-4: a failed repo-root resolution used to fall back to
+    # `Path.cwd()`, which reports a WRONG root as a trivial clean pass. Driven
+    # in-process (not via subprocess) so the failure can be forced
+    # deterministically regardless of the actual machine's git/`.claude` state.
+    monkeypatch.setattr(_checker, "_repo_root_from_here", lambda: None)
+    result = main([])
+    captured = capsys.readouterr()
+    assert result == EXIT_CANNOT_RUN
+    assert result != EXIT_CLEAN
+    assert "could not resolve the repo root" in captured.err
+
+
+def test_iterdir_fallback_inside_a_real_git_repo_is_reported(monkeypatch, tmp_path):
+    # SUGGESTION-9: `_tracked_top_level_names` returns `None` on ANY git
+    # failure, not only the expected "this isn't a git repo" case, silently
+    # reverting to the non-deterministic `iterdir()` mode the design rejected.
+    # Forcing that branch INSIDE a real git repo must surface a diagnostic
+    # rather than stay silent, even though it does not change the exit code.
+    _init_git_repo(tmp_path, ["apps"])
+    (tmp_path / "apps" / "real").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Real: `apps/real`.\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(_checker, "_tracked_top_level_names", lambda repo_root: None)
+    result = main(["--repo-root", str(tmp_path)])
+    assert result == EXIT_CLEAN  # the fallback is a diagnostic, not a failure
+
+
+# --------------------------------------------------------------------------- #
+# CRITICAL-1 — nothing actually INVOKES this program anywhere in the repo
+# --------------------------------------------------------------------------- #
+#
+# Every test above this line loads the checker as a MODULE (by file path) and
+# calls its functions in-process — it never actually runs it as the program a
+# consuming repo is meant to run. That gap is exactly how a synced-core leak
+# (a curated token from cla.io/project-tokens.local.md appended to a SKILL.md,
+# or here, a stale repo-relative path) can leave `run_tests.py` fully green
+# while the checker itself exits non-zero. This test is the missing
+# invocation: it runs the real program, as a real subprocess, against the
+# real repo root, so a real leak turns this scope — and therefore
+# `run_tests.py` — red again.
+
+
+def test_the_real_repo_is_clean_when_invoked_as_a_subprocess():
+    result = subprocess.run(
+        [sys.executable, str(CHECKER)],
+        cwd=str(REPO_ROOT),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=120,
+    )
+    assert result.returncode == 0, (
+        f"check_fact_paths.py exited {result.returncode} against the real repo "
+        f"(cwd={REPO_ROOT}):\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )

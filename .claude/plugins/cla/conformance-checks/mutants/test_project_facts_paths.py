@@ -75,6 +75,18 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        # IMPORTANT-2's own fix: the zero-candidates blocker used to be gated on
+        # `facts_file.is_file()`, so an overlay-only repo (no facts file) that
+        # extracted zero candidates exited 0 clean instead of 2. Restoring that
+        # gate (using the module-level `PROJECT_FACTS_RELPATH` since the local
+        # `facts_file` variable no longer exists) reverts the fix.
+        "the zero-candidates blocker is re-gated on the facts file specifically",
+        CHECKER,
+        "    if checked == 0:",
+        "    if (repo_root / PROJECT_FACTS_RELPATH).is_file() and checked == 0:",
+        TARGETS,
+    ),
+    (
         # Anchored on the function body rather than on the regex literal. The
         # sibling guard `test_no_batch_hardcodes_an_absolute_path` reads a colon
         # followed by a backslash as a Windows drive path, and the line-suffix

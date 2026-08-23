@@ -27,15 +27,19 @@ EXIT CODES:
     indistinguishable from a clean result. A trivial pass states its reason.
   - ``1`` — stale paths found. Every one is named, one per line, in a single run;
     the checker never stops at the first.
-  - ``2`` — the checker could not do its job (bad arguments, an input that exists
-    but cannot be read, or a facts file that yields zero path candidates, which
-    means the extraction is broken). Diagnostic goes to stderr. Never conflated
-    with ``1``: "I found problems" and "I could not look" are different answers,
-    and a caller scripting the exit code must be able to tell them apart.
+  - ``2`` — the checker could not do its job: bad arguments, a repo root that
+    could not be resolved at all, an input that exists but cannot be read, or
+    anything was scanned (a facts file OR overlays) yet it yielded zero path
+    candidates, which means the extraction is broken. Diagnostic goes to
+    stderr. Never conflated with ``1``: "I found problems" and "I could not
+    look" are different answers, and a caller scripting the exit code must be
+    able to tell them apart.
 
 ``--repo-root <path>`` overrides the default self-resolution (git, then a
-``.claude`` walk that refuses the user's global one, then cwd). It exists so the
-CLI layer is testable against a temporary tree; the skills invoke the bare form.
+``.claude`` walk that refuses the user's global one, then a hard failure —
+never a silent ``cwd`` fallback, which used to report a wrong root as clean).
+It exists so the CLI layer is testable against a temporary tree; the skills
+invoke the bare form.
 
 COVERAGE LIMITS (read before trusting this guard blindly):
   - This is a **path-existence check only**. It does NOT validate the non-path
@@ -135,8 +139,11 @@ _EMPHASIS_MARKERS = ("**", "__", "*", "_")
 # paths, whose intent is unambiguous, are checked. (See TODO.md, PR #158.)
 
 
-def _repo_root_from_here() -> Path:
-    """The repo being checked — asked of git, from the PROCESS's cwd.
+def _repo_root_from_here() -> Path | None:
+    """The repo being checked — asked of git, from the PROCESS's cwd. Returns
+    ``None`` when resolution genuinely fails (no git, no non-global ``.claude``
+    ancestor) — the caller must treat that as ``EXIT_CANNOT_RUN``, never as a
+    silent trivial pass over whatever directory happens to be current.
 
     This guard's subject is the consuming repo's `cla.io/` files, so the root
     must be that repo. It used to walk up from `__file__` to the first `.claude`
@@ -173,10 +180,11 @@ def _repo_root_from_here() -> Path:
     for parent in Path(__file__).resolve().parents:
         if parent.name == ".claude" and parent.resolve() != home_claude:
             return parent.parent
-    # Nothing resolved. Return the cwd rather than a parents[N] guess: the
-    # caller treats a missing facts file as a trivial pass, so a wrong root here
-    # is silent, and cwd is at least the directory the user ran from.
-    return Path.cwd()
+    # Nothing resolved. This used to return `Path.cwd()` as a last resort, which
+    # made an unresolved root report as a trivial CLEAN pass over whatever
+    # directory happened to be current — a wrong root silently producing a
+    # green verdict. The caller now treats `None` as EXIT_CANNOT_RUN instead.
+    return None
 
 
 _BACKTICK_SPAN_RE = re.compile(r"`([^`]+)`")
@@ -502,7 +510,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "The repo to check. Defaults to the process's own repo (git, then a "
-            "non-global `.claude` walk, then the cwd)."
+            "non-global `.claude` walk; exits 2 if neither resolves)."
         ),
     )
     return parser
@@ -534,7 +542,18 @@ def main(argv: list[str] | None = None) -> int:
             )
             return EXIT_CANNOT_RUN
 
-    facts_file = repo_root / PROJECT_FACTS_RELPATH
+    if repo_root is None:
+        # `_repo_root_from_here` could not resolve anything at all (no git, no
+        # non-global `.claude` ancestor). It used to fall back to `Path.cwd()`,
+        # which reported a WRONG root as a trivial clean pass; never let an
+        # unresolved root produce a clean verdict.
+        print(
+            f"{_PROG}: could not resolve the repo root to check — not inside a "
+            "git working tree, and no non-global .claude ancestor found; pass "
+            "--repo-root explicitly",
+            file=sys.stderr,
+        )
+        return EXIT_CANNOT_RUN  # branch: repo-root resolution failed
 
     # Trivial pass ONLY when there is genuinely nothing to scan (a fresh repo
     # with no facts file AND no overlays). An absent facts file does NOT skip the
@@ -550,6 +569,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         return EXIT_CLEAN
 
+    # Report — but never gate on — a live `iterdir()` fallback for top-level-name
+    # recognition. Firing INSIDE a real git repo means `git ls-files` failed
+    # unexpectedly (not "this isn't a git repo", the expected/silent case), which
+    # reverts to the non-deterministic mode `_tracked_top_level_names` exists to
+    # avoid (see its docstring) — worth a diagnostic even though it isn't fatal.
+    if _tracked_top_level_names(repo_root) is None and (repo_root / ".git").exists():
+        print(
+            f"{_PROG}: {repo_root} looks like a git repository but `git "
+            "ls-files` could not be used to list tracked top-level entries — "
+            "falling back to a live directory listing, which can vary between "
+            "checkouts of the same commit (see _tracked_top_level_names)"
+        )
+
     try:
         checked, stale = scan(repo_root)
     except (OSError, UnicodeDecodeError) as exc:
@@ -564,15 +596,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         return EXIT_CANNOT_RUN  # branch: unreadable input
 
-    # Non-vacuous guard: when the facts file is present it MUST yield concrete
-    # path candidates. Zero-checked-with-facts-present means the extraction broke
-    # (wrong root shrinking the top-level set, a heuristic regression) — a silent
-    # no-op passing green is the exact failure this guard exists to preclude, so
-    # it is "could not look", not "nothing to report".
-    if facts_file.is_file() and checked == 0:
+    # Non-vacuous guard: whenever ANY input was scanned (facts file present, OR
+    # overlays present with no facts file — the early `scanned_files` gate above
+    # already ruled out "nothing to scan"), the scan MUST yield concrete path
+    # candidates. This used to be gated on `facts_file.is_file()`, so a repo with
+    # overlays but no facts file that extracted zero candidates exited 0 clean —
+    # the exact silent no-op this guard exists to preclude, just reached via the
+    # overlay-only path instead of the facts-file path. Zero-checked-with-something-
+    # scanned means the extraction broke (wrong root shrinking the top-level set,
+    # a heuristic regression) — "could not look", not "nothing to report".
+    if checked == 0:
         print(
-            f"{_PROG}: {PROJECT_FACTS_RELPATH.as_posix()} is present but zero "
-            "path candidates were extracted — the path-extraction heuristic or "
+            f"{_PROG}: {len(scanned_files)} file(s) scanned but zero path "
+            "candidates were extracted — the path-extraction heuristic or "
             "repo-root resolution is broken (the guard would silently check "
             "nothing)",
             file=sys.stderr,

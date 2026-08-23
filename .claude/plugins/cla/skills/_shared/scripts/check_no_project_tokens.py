@@ -48,12 +48,16 @@ EXIT CODES:
     indistinguishable from a clean result. A trivial pass states its reason.
   - ``1`` — violations found. Each is named with its repo-relative path, the
     matched token (or leak kind), the line number and an excerpt, one per line.
-  - ``2`` — the checker could not do its job (bad arguments, an input that exists
-    but cannot be read, or a scan root that yielded zero files while a populated
-    token list said there was something to check). Diagnostic goes to stderr.
-    Never conflated with ``1``: "I found problems" and "I could not look" are
-    different answers, and a caller scripting the exit code must be able to tell
-    them apart.
+  - ``2`` — the checker could not do its job: bad arguments, a repo root that
+    could not be resolved at all, an input that exists but cannot be read, a
+    scan root that yielded zero files (checked on its own evidence — never
+    gated on whether a token list happened to load, since checks (c)/(d) read
+    the same file lists and need no list at all), or an expected source scan
+    root missing entirely (a partial/broken install). Diagnostic goes to
+    stderr. **Confirmed violations win when both are true in the same run** —
+    if any violation was found, the run exits ``1`` and reports the blocker(s)
+    too, rather than exiting ``2`` and letting "I could not look" mask "I found
+    problems".
 
 ABSENT VS. EMPTY TOKEN LIST. No token-list overlay → checks (a) and (b) are a
 stated trivial pass; (c) and (d) still run, because neither needs a list and a
@@ -64,10 +68,12 @@ skipping it would disable the safety check with no signal. Deleting the file is
 the way to intentionally disable it.
 
 ``--repo-root <path>`` overrides the default self-resolution of the repo whose
-token list is read. When the plugin is vendored inside that repo, the tree
-scanned is that repo's copy; otherwise the checker scans its own plugin root, as
-it does under a marketplace install. The flag exists so the CLI layer is
-testable against a temporary tree; the skills invoke the bare form.
+token list is read (git, then a non-global ``.claude`` walk; exits 2 if neither
+resolves — never a silent ``cwd`` fallback, which used to report a wrong root
+as clean). When the plugin is vendored inside that repo, the tree scanned is
+that repo's copy; otherwise the checker scans its own plugin root, as it does
+under a marketplace install. The flag exists so the CLI layer is testable
+against a temporary tree; the skills invoke the bare form.
 
 The unit tests of every function below live in
 ``conformance-checks/tests/test_no_project_tokens.py``, which loads this file by
@@ -110,8 +116,11 @@ def _plugin_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _repo_root() -> Path:
-    """The repo being checked — asked of git, from the PROCESS's cwd.
+def _repo_root() -> Path | None:
+    """The repo being checked — asked of git, from the PROCESS's cwd. Returns
+    ``None`` when resolution genuinely fails (no git, no non-global ``.claude``
+    ancestor) — the caller must treat that as ``EXIT_CANNOT_RUN``, never fall
+    back to a silent ``Path.cwd()`` that reports a wrong root as clean.
 
     The token list is per-repo data in `cla.io/`, so the anchor must be the
     consuming repo. This used to walk to the first `.claude` ancestor of
@@ -135,7 +144,10 @@ def _repo_root() -> Path:
     for parent in Path(__file__).resolve().parents:
         if parent.name == ".claude" and parent.resolve() != home_claude:
             return parent.parent
-    return Path.cwd()
+    # Nothing resolved. Previously fell back to `Path.cwd()`, which reported an
+    # unresolved root as a trivial CLEAN pass over whatever directory happened
+    # to be current.
+    return None
 
 
 def load_tokens(path: Path) -> list[str]:
@@ -312,6 +324,19 @@ SOURCE_SCAN_ROOTS = (
     "launcher-checks",
 )
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
+
+
+def _missing_source_roots(plugin_root: Path) -> list[str]:
+    """`SOURCE_SCAN_ROOTS` entries that are not a directory under `plugin_root`.
+
+    All eight ship as part of the same plugin directory in every install (the
+    marketplace publishes the whole tree verbatim), so a root's absence here
+    means a broken/partial install, not a smaller shipped surface. Without this,
+    `_iter_scanned_source_files`'s `if not root.is_dir(): continue` skips an
+    absent root SILENTLY — only reached roots were ever named, never
+    expected-but-absent ones — so a heavy coverage loss (a whole scan root
+    missing) still exits 0 clean."""
+    return [name for name in SOURCE_SCAN_ROOTS if not (plugin_root / name).is_dir()]
 
 
 def _iter_scanned_source_files(plugin_root: Path):
@@ -572,8 +597,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "The repo whose token-list overlay is read. Defaults to the "
-            "process's own repo (git, then a non-global `.claude` walk, then the "
-            "cwd)."
+            "process's own repo (git, then a non-global `.claude` walk; exits 2 "
+            "if neither resolves)."
         ),
     )
     return parser
@@ -614,6 +639,19 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_CANNOT_RUN
         plugin_root = _vendored_plugin_root(repo_root) or _plugin_root()
 
+    if repo_root is None:
+        # `_repo_root()` could not resolve anything at all (no git, no
+        # non-global `.claude` ancestor). It used to fall back to `Path.cwd()`,
+        # which reported a WRONG root as a trivial clean pass; never let an
+        # unresolved root produce a clean verdict.
+        print(
+            f"{_PROG}: could not resolve the repo root to check — not inside a "
+            "git working tree, and no non-global .claude ancestor found; pass "
+            "--repo-root explicitly",
+            file=sys.stderr,
+        )
+        return EXIT_CANNOT_RUN  # branch: repo-root resolution failed
+
     skills_root = plugin_root / "skills"
     token_path = repo_root / TOKEN_LIST_RELPATH
 
@@ -652,28 +690,44 @@ def main(argv: list[str] | None = None) -> int:
 
     prose_files = list(_iter_scanned_files(skills_root))
     source_files = list(_iter_scanned_source_files(plugin_root))
+    missing_source_roots = _missing_source_roots(plugin_root)
 
     # ---- (a) prose scan ----
+    # The zero-files blocker fires on ITS OWN evidence (the scan found nothing),
+    # never gated on `tokens` — checks (c)/(d) below read the SAME `prose_files`/
+    # `source_files` lists and need no token list at all, so a broken scan root
+    # was previously invisible to them whenever no token list happened to be
+    # present. Only the VIOLATION search (which needs something to search for)
+    # stays gated on `tokens`.
+    if not prose_files:
+        blockers.append(
+            f"guard scanned zero files under {skills_root} — the scan root or "
+            "filters may be broken (a scan with nothing to check is a silent "
+            "no-op for every one of the four checks, not only the token scans)"
+        )
     if tokens:
-        if not prose_files:
-            blockers.append(
-                f"guard scanned zero files under {skills_root} — the scan root or "
-                "filters may be broken (a populated token list with nothing to "
-                "scan is a silent no-op)"
-            )
         for rel, tok, lineno, excerpt in find_violations(skills_root, plugin_root, tokens):
             violations.append(f"{rel}:{lineno}  token {tok!r}  → {excerpt}")
 
     # ---- (b) source scan ----
+    if not source_files:
+        blockers.append(
+            f"source guard scanned zero files under {plugin_root} — the scan "
+            "roots or filters may be broken (a scan with nothing to check is a "
+            "silent no-op for every one of the four checks, not only the token "
+            "scans)"
+        )
     if tokens:
-        if not source_files:
-            blockers.append(
-                f"source guard scanned zero files under {plugin_root} — the scan "
-                "roots or filters may be broken (a populated token list with "
-                "nothing to scan is a silent no-op)"
-            )
         for rel, tok, lineno, excerpt in find_source_violations(plugin_root, tokens):
             violations.append(f"{rel}:{lineno}  token {tok!r}  → {excerpt}")
+
+    if missing_source_roots:
+        blockers.append(
+            "expected source scan root(s) missing under "
+            f"{plugin_root}: {', '.join(missing_source_roots)} — a partial or "
+            "broken plugin install (heavy coverage loss would otherwise exit "
+            "clean silently)"
+        )
 
     # ---- (c) absolute developer paths — always armed, no token list needed ----
     for rel, kind, lineno, excerpt in find_absolute_path_leaks(plugin_root):
@@ -702,34 +756,36 @@ def main(argv: list[str] | None = None) -> int:
         f"token(s) loaded, {len(violations)} violation(s); source roots reached: "
         + (", ".join(roots_reached) or "(none)")
     )
+    if missing_source_roots:
+        summary += "; expected-but-absent: " + ", ".join(missing_source_roots)
 
     for note in notes:
         print(f"{_PROG}: {note}")
 
-    if blockers:
-        # "I could not look" outranks "I found nothing", and it must not be
-        # reported as "I found problems" either: a caller scripting the exit
-        # code would go hunting a leak that was never established.
-        print(summary)
-        for line in violations:
-            print(line)
-        for line in blockers:
-            print(f"{_PROG}: {line}", file=sys.stderr)
-        return EXIT_CANNOT_RUN  # branch: a check could not run
-
     print(summary)
-
-    if not violations:
-        return EXIT_CLEAN
 
     for line in violations:
         print(line)
-    print(
-        f"{len(violations)} conformance violation(s) in synced core — move the "
-        "fact behind an overlay, rename the fixture value, curate the token out, "
-        f"or mark a deliberate path fixture with `{ABS_PATH_EXEMPT_MARKER}`."
-    )
-    return EXIT_VIOLATIONS
+
+    for line in blockers:
+        print(f"{_PROG}: {line}", file=sys.stderr)
+
+    # Confirmed violations win over a blocker: "I found problems" must not be
+    # masked by "I could not look" when both are true in the same run — a
+    # caller reading only the exit code must still see the real leak, not a
+    # could-not-run verdict that reads as "nothing to act on".
+    if violations:
+        print(
+            f"{len(violations)} conformance violation(s) in synced core — move the "
+            "fact behind an overlay, rename the fixture value, curate the token out, "
+            f"or mark a deliberate path fixture with `{ABS_PATH_EXEMPT_MARKER}`."
+        )
+        return EXIT_VIOLATIONS  # branch: confirmed violations win over a blocker
+
+    if blockers:
+        return EXIT_CANNOT_RUN  # branch: could not run, and no violation to report
+
+    return EXIT_CLEAN
 
 
 if __name__ == "__main__":  # pragma: no cover
