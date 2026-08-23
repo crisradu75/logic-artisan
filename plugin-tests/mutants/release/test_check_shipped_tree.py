@@ -35,12 +35,18 @@ SCAN = REPO / ".claude" / "skills" / "release" / "scripts" / "check_shipped_tree
 
 TARGETS = [DEV / "tests" / "skills" / "release"]
 
+# `mutate.py` reads `read_bytes().decode()`, so line endings survive verbatim and
+# a hardcoded `\n` does not match a CRLF checkout. Read the separator off the
+# file rather than assuming it: a wrong guess fails the preflight loudly, but
+# only after someone has spent a round wondering why.
+_NL = "\r\n" if b"\r\n" in SCAN.read_bytes() else "\n"
+
 MUTANTS = [
     (
         "an empty enumeration reports clean instead of could-not-run",
         SCAN,
-        "            file=sys.stderr,\n        )\n        return EXIT_CANNOT_RUN\n\n    offenders",
-        "            file=sys.stderr,\n        )\n        return EXIT_CLEAN\n\n    offenders",
+        _NL.join(["            file=sys.stderr,", "        )", "        return EXIT_CANNOT_RUN", "", "    offenders"]),
+        _NL.join(["            file=sys.stderr,", "        )", "        return EXIT_CLEAN", "", "    offenders"]),
         TARGETS,
     ),
     (
@@ -89,7 +95,7 @@ MUTANTS = [
         "the test_*.py / *_test.py leaf-shape exclusion never matches, "
         "re-accepting a pytest module as a shipped script",
         SCAN,
-        r'_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.py$")',
+        r'_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.(?:py|mjs)$")',
         r'_EXCLUDED_LEAF_PATTERN = re.compile(r"(?!x)x")',
         TARGETS,
     ),

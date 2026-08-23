@@ -123,7 +123,7 @@ EXCLUDED_LEAF_NAMES = frozenset({"conftest.py"})
 # narrow enough that nothing a denylist catches gets through — was false for
 # this one shape, so it is excluded by leaf shape here, the same way
 # `conftest.py` is excluded by leaf name above.
-_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.py$")
+_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.(?:py|mjs)$")
 
 _COMPILED = tuple(re.compile(rf"^{pattern}$") for pattern, _ in ALLOWLIST)
 

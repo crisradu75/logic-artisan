@@ -95,9 +95,19 @@ def test_the_skill_names_every_file_its_own_procedure_bumps():
 def test_the_skill_states_the_never_move_invariant():
     """The one rule whose violation cannot be undone. If it is ever edited out of
     the skill, the skill has stopped being safe to run."""
-    body = _SKILL_MD.read_text(encoding="utf-8").lower()
-    assert "never moved" in body or "never move" in body, (
-        "release/SKILL.md no longer states that a published tag is never moved"
+    body = _SKILL_MD.read_text(encoding="utf-8")
+
+    # A substring search anywhere in the file is NOT this assertion. Measured:
+    # `never move` occurs three times — the frontmatter `description:`, the
+    # normative statement, and a precondition-table cell — so rewriting the
+    # normative one to "may be moved when convenient" left the other two alive
+    # and the old `"never move" in body` check green. A mutant caught it; no
+    # amount of reading would have. Pin the emphasized statement itself.
+    assert "**A published tag is never moved.**" in body, (
+        "release/SKILL.md no longer carries the emphasized invariant "
+        '"**A published tag is never moved.**" as its own statement. Other '
+        "mentions of the phrase elsewhere in the file do not substitute for it: "
+        "this is the rule whose breach cannot be undone."
     )
 
 
@@ -127,8 +137,23 @@ def test_the_precondition_block_names_every_command_the_documented_gate_runs():
 
     body = _SKILL_MD.read_text(encoding="utf-8")
     assert "## Step 1" in body, "release/SKILL.md no longer has a Step 1 section"
+    assert "## Step 2" in body, (
+        "release/SKILL.md no longer has a Step 2 heading — without it the Step 1 "
+        "slice below runs to end of file and swallows Step 3's re-run block, "
+        "which repeats these same commands, so Step 1 could lose one entirely "
+        "and this test would still pass"
+    )
     step1 = body.split("## Step 1", 1)[1].split("## Step 2", 1)[0]
-    missing = [cmd for cmd in gate_commands if cmd not in step1]
+
+    # Match against the RUNNABLE block, not the whole section. Step 1 also holds
+    # a precondition TABLE that names both commands in backticks, so searching
+    # the section made this test satisfiable by the prose describing the gate
+    # rather than by the gate. Measured: deleting both commands from the fenced
+    # bash block left this test passing.
+    blocks = re.findall(r"```(?:bash|sh)?\n(.*?)```", step1, re.S)
+    assert blocks, "release/SKILL.md's Step 1 has no fenced command block to run"
+    runnable = "\n".join(blocks)
+    missing = [cmd for cmd in gate_commands if cmd not in runnable]
     assert not missing, (
         f"release/SKILL.md's Step 1 preconditions do not run: {missing} — "
         "CLAUDE.md's documented shipping gate and the release skill's "

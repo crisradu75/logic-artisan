@@ -259,7 +259,7 @@ def test_every_repo_local_skill_has_parseable_frontmatter_with_required_keys():
         if name and name != path.parent.name:
             problems.append(
                 f"  {rel}: frontmatter name `{name}` != directory `{path.parent.name}`; "
-                "`/{name}` would not resolve to this skill"
+                f"`/{name}` would not resolve to this skill"
             )
     assert not problems, (
         "repo-local SKILL.md frontmatter problems:\n" + "\n".join(problems)

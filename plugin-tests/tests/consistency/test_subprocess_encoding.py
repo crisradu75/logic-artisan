@@ -184,7 +184,7 @@ def test_the_scan_reaches_the_places_the_first_version_missed():
     # A DELIBERATE deletion is expected to trip this and get the floor lowered
     # with it; that is the check working. Lower it to the new real count, never
     # to a number chosen to be safe from future deletions.
-    assert len(names) >= 55, f"scan set collapsed to {len(names)} files"
+    assert len(names) >= 80, f"scan set collapsed to {len(names)} files"
     for expected in (
         # `run_tests.py` stood at the head of this list as "plugin root".
         # It was deleted with the twelve-scope split; `plugin-tests/mutate.py`

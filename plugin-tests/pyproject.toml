@@ -48,7 +48,7 @@ testpaths = ["tests"]
 # added — otherwise a `.venv`, a `build/` dir, or any other default-pruned name
 # would be walked and collected against, silently reappearing the moment one
 # exists under this tree.
-norecursedirs = ["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "mutants", "node"]
+norecursedirs = ["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}", "mutants", "node"]
 pythonpath = [
   "scripts",
   "../.claude/skills/release/scripts",

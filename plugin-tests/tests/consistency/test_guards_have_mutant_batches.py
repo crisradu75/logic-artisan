@@ -83,10 +83,46 @@ def test_the_grandfather_list_only_shrinks():
     )
 
 
+def _area_test_dir(area: str) -> Path | None:
+    """The `tests/` directory belonging to `area`, wherever it sits.
+
+    NOT `tests/<area>` — that is the same two-segment assumption
+    `_find_guard_for_batch` was fixed to abandon, and it is false for exactly
+    the area this change adds: `mutants/release/`'s guards live at
+    `tests/skills/release/`, one segment deeper. Left as `tests/<area>`, the
+    derived `release` area contributed ZERO files and `Path.glob` on a missing
+    directory returns empty SILENTLY — so the area looked policed, the file
+    count was byte-identical to the old hardcoded pair, and nothing said so.
+    Generalising only the batch->guard direction fixed the half that does not
+    catch a guard shipped without a batch."""
+    root = _DEV_TREE / "tests"
+    direct = root / area
+    if direct.is_dir():
+        return direct
+    nested = sorted(p for p in root.rglob(area) if p.is_dir())
+    if len(nested) == 1:
+        return nested[0]
+    return None
+
+
+def test_every_derived_area_resolves_to_a_tests_directory():
+    """An area whose tests directory cannot be located contributes nothing, and
+    contributing nothing is indistinguishable from being clean. Fail loudly
+    instead — including on an ambiguous match, which would otherwise pick one
+    arbitrarily."""
+    unresolved = [a for a in _guard_areas() if _area_test_dir(a) is None]
+    assert not unresolved, (
+        f"area(s) {unresolved} have mutant batches but no single matching "
+        f"directory under tests/ — their guards are policed by nothing"
+    )
+
+
 def _guard_files():
     out = []
     for area in _guard_areas():
-        out.extend(sorted((_DEV_TREE / "tests" / area).glob("test_*.py")))
+        d = _area_test_dir(area)
+        if d is not None:
+            out.extend(sorted(d.glob("test_*.py")))
     return out
 
 
@@ -114,9 +150,19 @@ def test_every_guard_file_has_a_mutant_batch_beside_its_scope():
         rel = _rel(path)
         if rel in _EXEMPT:
             continue
-        batch = _DEV_TREE / "mutants" / path.parent.name / path.name
-        if not batch.is_file():
-            missing.append(f"  {rel} -> expected {_rel(batch)}")
+        # Search every area rather than assuming the guard's immediate parent
+        # directory names its batch's area — false for `tests/skills/release/`,
+        # whose batches live under `mutants/release/`. This is the mirror of
+        # `_find_guard_for_batch`; fixing only that direction left the one that
+        # actually catches a guard shipped without a batch still broken.
+        found = [
+            b
+            for area in _guard_areas()
+            for b in [_DEV_TREE / "mutants" / area / path.name]
+            if b.is_file()
+        ]
+        if not found:
+            missing.append(f"  {rel} -> no batch named {path.name} under mutants/")
     assert not missing, (
         "guard(s) with no mutant batch — nobody has shown these can fail:\n"
         + "\n".join(missing)
@@ -184,3 +230,36 @@ def test_the_scan_is_not_vacuous():
         for b in (_DEV_TREE / "mutants" / area).glob("test_*.py")
     ]
     assert batches, "no mutant batches found at all; the convention has evaporated"
+
+    # Non-EMPTY is not the same as COMPLETE, and only the second one is the
+    # property this file needs. `_guard_areas()` used to be the fixed tuple
+    # `("conformance", "consistency")`; reverting it to any hardcoded tuple
+    # leaves `assert areas` above perfectly green while a whole area — the
+    # `mutants/release/` this change adds — goes unpoliced by all four
+    # assertions here. That is the same "still reports success, stopped
+    # looking" shape this file exists to catch in other guards, so assert
+    # against the filesystem rather than against truthiness.
+    on_disk = {
+        d.name
+        for d in (_DEV_TREE / "mutants").iterdir()
+        if d.is_dir() and not d.name.startswith("__") and any(d.glob("test_*.py"))
+    }
+    assert set(areas) == on_disk, (
+        f"_guard_areas() returned {sorted(areas)} but mutants/ holds batches in "
+        f"{sorted(on_disk)} — an area missing here is an area nothing checks"
+    )
+
+    # The comparison above is TAUTOLOGICAL on its own: both sides are derived
+    # from `mutants/`, so deleting a whole area directory keeps them equal while
+    # silently dropping that area's guards from every assertion in this file
+    # (measured: removing `mutants/conformance/` takes `_guard_files()` from 15
+    # to 10 and all four assertions still pass). Discovery cannot floor itself.
+    # So the floor is stated here instead: these areas exist, and losing one is
+    # a deletion someone must argue for, not a green run.
+    required = {"conformance", "consistency", "release"}
+    assert required <= set(areas), (
+        f"area(s) {sorted(required - set(areas))} have no mutant batch directory "
+        "any more — their guards just stopped being policed by this file. "
+        "Removing an area is a deliberate change: delete it from `required` in "
+        "the same commit, with a reason."
+    )
