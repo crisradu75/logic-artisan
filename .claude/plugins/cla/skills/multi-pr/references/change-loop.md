@@ -83,12 +83,13 @@ a pause: an idle turn has no pending event to re-invoke the session, so the chai
 human notices. One six-change chain lost ~4.5 hours here with 4 of 6 changes unstarted, its closing
 line being "Starting change 3: …".
 
-The hoisted rule in `SKILL.md` ("Never end a turn with nothing in flight") binds here and is
-restated because this is exactly the point at which that file has been closed and the orchestrator
-is running on the `SKILL.md` summary. Mechanically: step 7's report and the next change's step-1
-resume check go in **one** message. If there is no tool call to pair the report with, the change is
-not over. Announcing the next change is not a mechanism — only a backgrounded dispatch, or a
-watchdog armed before the message ends, actually wakes the session.
+The hoisted turn-liveness rule in `SKILL.md` binds here, and is restated because this is exactly the
+point at which that file has been closed and the orchestrator is running on the `SKILL.md` summary.
+Mechanically: step 7's report and the next change's step-1 resume check go **in the same message**.
+If there is no tool call to pair the report with, the change is not over. The test is whether a
+**pending event** will re-invoke this session, not whether you asked the user anything — announcing
+the next change **is not a mechanism**, while a backgrounded dispatch, the next
+`Skill(cla:spec-to-pr, …)` call itself, or a watchdog armed before the message ends all are.
 
 ## Resume behavior
 

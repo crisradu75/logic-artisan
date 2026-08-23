@@ -43,7 +43,21 @@ For each candidate in the confirmed order:
    what keeps the exception scoped.
    (separate commands, per bash-discipline). Confirm the merge landed (`git log --oneline -1`) before moving on, and update the candidate's run-notes status to `merged`. If **nothing** depends on this candidate, leave its PR **open** — merging is the user's call for independents — and set its status to `open`. Mark the task `completed` either way.
 
-Move to the next candidate.
+Move to the next candidate — **in the same message as step 8's outcome.**
+
+This seam is where a chain has been measured to die. Step 8 produces a natural closing shape (a
+candidate done, a PR left open or merged, a status written to the ledger), and a well-written status
+report reads as a legitimate place to stop even though nothing is blocked and nobody is waiting on
+input. It is not a pause: an idle turn has no pending event to re-invoke the session, so the chain
+stops until a human notices, and this run is unattended by design.
+
+The hoisted turn-liveness rule in `SKILL.md` binds here, and is restated because this is exactly the
+point at which that file has been closed and the orchestrator is running on the `SKILL.md` summary.
+Mechanically: step 8's outcome and the next candidate's step-1 quarantine check go **in the same
+message**. If there is no tool call to pair the report with, the candidate is not over. The test is
+whether a **pending event** will re-invoke this session, not whether you asked the user anything —
+announcing the next candidate **is not a mechanism**, while a backgrounded dispatch, the next
+`Skill(cla:lite-pr, …)` call itself, or a watchdog armed before the message ends all are.
 
 ## Resume mechanics
 
