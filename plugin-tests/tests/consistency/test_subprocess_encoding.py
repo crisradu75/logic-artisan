@@ -193,6 +193,10 @@ def test_the_scan_reaches_the_places_the_first_version_missed():
         "plugin-tests/tests/skills/spec-to-pr/conftest.py", # a conftest
         ".claude/plugins/cla/skills/spec-to-pr/scripts/probe_state.py", # a skill script
         ".claude/plugins/cla/hooks/_dispatch_lib.py",      # enforcing code
+        # The repo-local skills tree — the third root. `check_shipped_tree.py`
+        # spawns `git ls-files`, so it is exactly this guard's subject, and it
+        # lives in the one tree a plugin-only scan would never have reached.
+        ".claude/skills/release/scripts/check_shipped_tree.py",
     ):
         assert expected in names, f"{expected} is not scanned"
 

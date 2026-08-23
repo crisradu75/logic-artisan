@@ -1,11 +1,11 @@
 ---
 name: release
-description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the plugin manifest, the marketplace catalog ref, and the CLAUDE.md release line in one commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /cla:release or natural language like 'cut a release', 'publish a new version', 'tag 0.10.0', 'ship the plugin', 'bump the plugin version'."
+description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the plugin manifest, the marketplace catalog ref, and the CLAUDE.md release line in one commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /release or natural language like 'cut a release', 'publish a new version', 'tag 0.10.0', 'ship the plugin', 'bump the plugin version'."
 argument-hint: "[major|minor|patch|<explicit version>] (default: ask)"
 allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 ---
 
-# /cla:release — publish a new version of the plugin
+# /release — publish a new version of the plugin
 
 Cutting a release is a **three-file edit plus a tag**, and getting either half wrong is
 expensive in a way ordinary mistakes are not: a published tag is what consumers have
@@ -39,7 +39,8 @@ git rev-parse --abbrev-ref HEAD
 git status --porcelain
 git fetch origin
 git status -sb
-python3 ${CLAUDE_PLUGIN_ROOT}/run_tests.py
+pytest plugin-tests
+python3 .claude/skills/release/scripts/check_shipped_tree.py
 ```
 
 | Precondition | Why it is not negotiable |
@@ -47,8 +48,9 @@ python3 ${CLAUDE_PLUGIN_ROOT}/run_tests.py
 | On the repo's default branch | A tag cut from a feature branch pins commits that may never merge. |
 | Working tree clean | An uncommitted edit is either in the release or it isn't; a dirty tree means nobody knows which. |
 | Up to date with `origin` | Tagging a stale local branch publishes a tree that is not what `main` holds. |
-| `run_tests.py` fully green | There is no CI. This run is the only gate that exists. |
+| `pytest plugin-tests` fully green | There is no CI. This run is the only gate that exists. |
 | The work is reviewed and merged | See the invariant above. |
+| `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 
 Resolve the default branch, never assume it: `git symbolic-ref --quiet refs/remotes/origin/HEAD`
 (take the segment after the last `/`); if unset, use whichever of `main` / `master`
@@ -56,7 +58,7 @@ exists.
 
 ## Step 2 — Choose the version
 
-Read the current version from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`.
+Read the current version from `.claude/plugins/cla/.claude-plugin/plugin.json`.
 
 If `$ARGUMENTS` names a bump (`major` / `minor` / `patch`) or an explicit version, use
 it. Otherwise ask with `AskUserQuestion`, showing what changed since the last tag
@@ -73,11 +75,11 @@ and resolving paths is verified; running a task through it is the remaining gate
 ## Step 3 — The three-file edit, in one commit
 
 All three files must move together. A test fails when they disagree
-(`consistency-checks/tests/test_marketplace_manifest.py`), and a third copy of the
+(`plugin-tests/tests/consistency/test_marketplace_manifest.py`), and a third copy of the
 version lives in `CLAUDE.md`'s "Current release" line, pinned by
-`consistency-checks/tests/test_doc_facts.py`.
+`plugin-tests/tests/consistency/test_doc_facts.py`.
 
-1. `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` → `"version": "<new>"`
+1. `.claude/plugins/cla/.claude-plugin/plugin.json` → `"version": "<new>"`
 2. `.claude-plugin/marketplace.json` (repo root) → the plugin entry's
    `source.ref` → `"cla--v<new>"`
 3. `CLAUDE.md` → `**Current release: `cla--v<new>`.**`
@@ -86,8 +88,9 @@ Then re-run the suite — the two manifest tests and the doc-fact test are what 
 the three copies agree — and commit all three together:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/run_tests.py
-git add -- "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" .claude-plugin/marketplace.json CLAUDE.md
+pytest plugin-tests
+python3 .claude/skills/release/scripts/check_shipped_tree.py
+git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude-plugin/marketplace.json CLAUDE.md
 git commit -m "release: <new>"
 git push
 ```
