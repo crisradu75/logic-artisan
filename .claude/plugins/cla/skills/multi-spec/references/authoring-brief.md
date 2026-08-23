@@ -54,3 +54,16 @@ git commit -m "docs(openspec): propose <name>"
 git push
 ```
 `git push` (not just commit) is deliberate — a local-only commit still doesn't survive a dead disk; pushing after every change is what actually protects against a local-machine incident. **Then run the push post-check** (`references/phases.md`) before moving to the next change — an unverified push here is the exact silent-loss scenario this skill exists to prevent.
+
+This is the one point in the loop with nothing pending: the previous change's `Agent` has returned,
+its commit is pushed, and the next dispatch has not been made yet. A post-check result reads as a
+natural place to stop, and the batch then stops rather than pauses, with nothing blocked and nobody
+waiting.
+
+The hoisted turn-liveness rule in `SKILL.md` binds here, and is restated because this is exactly the
+point at which that file has been closed and the orchestrator is running on its summary.
+Mechanically: the post-check result and the next change's dispatch go **in the same message**. If
+there is no tool call to pair the result with, the change is not over. The test is whether a
+**pending event** will re-invoke this session, not whether you asked the user anything — announcing
+the next change **is not a mechanism**, while the next `Agent` dispatch is, because a tool call does
+not end the turn at all.

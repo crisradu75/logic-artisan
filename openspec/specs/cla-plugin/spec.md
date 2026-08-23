@@ -578,6 +578,48 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
 
+### Requirement: Unattended-run turn liveness
+
+A skill that drives a multi-step run designed to proceed without a human present SHALL state, among its hoisted skill-level rules, that a turn is never ended while nothing is pending that would re-invoke the session. The obligation SHALL be stated as a **check the agent can apply without judgement** — whether the message contains a tool call — rather than only as a prohibition on how a message reads, because the judgement form has been observed to fail in the one way that matters: an author writes a closing-shaped status report and then behaves like its reader.
+
+The rule SHALL distinguish itself from the existing no-confirmation-prompt rules such skills already carry. Those forbid *asking permission*; this failure asks nothing, and an orchestrator hitting it believes it is continuing. The stated discriminator SHALL be whether a pending event will re-invoke the session — a backgrounded dispatch whose completion notification wakes it — and NOT whether a question was asked. The rule SHALL state that announcing the next step is not a mechanism.
+
+The exhaustive set of conditions under which ending a turn is legitimate SHALL be exactly two: a backgrounded dispatch is genuinely in flight, or the run is complete. A skill SHALL NOT add a third. In particular it SHALL NOT admit "blocked on a decision already surfaced to the user", because that clause is satisfied by writing a paragraph and is therefore the shape a stalling orchestrator most easily adopts — a genuine blocker is surfaced with a tool call, which does not end the turn at all. Every skill stating this rule SHALL name the same two, so no two skills assert differently-sized exhaustive sets.
+
+The rule SHALL be restated at the seam between units of work in whichever reference file carries that seam's procedure, because the seam is reached with the reference closed and the orchestrator running on the `SKILL.md` summary.
+
+The rule's three properties — the mechanical check, the pending-event discriminator, and "announcing the next step is not a mechanism" — SHALL appear together in one block of prose rather than scattered across a file. A rule whose parts arrive separately can be gutted while each part survives somewhere, and a guard that checks for them file-wide cannot tell the two apart.
+
+#### Scenario: The rule is stated mechanically, not only as a prohibition
+
+- **WHEN** an unattended-run skill states its turn-liveness rule
+- **THEN** the rule gives a check requiring no judgement (whether the message carries a tool call)
+- **AND** it does not rest solely on the agent noticing that its own text reads as an ending
+
+#### Scenario: The rule is distinguished from the no-pause rules
+
+- **WHEN** the rule appears alongside an existing "no ready-to-continue pauses" rule
+- **THEN** it states that the failure it covers asks the user nothing
+- **AND** it names the pending-event discriminator rather than the asked-a-question one
+
+#### Scenario: The seam carries its own restatement
+
+- **WHEN** a skill's per-unit loop lives in a reference file
+- **THEN** that file restates the obligation at the point where one unit ends and the next begins
+- **AND** it says why the restatement is there rather than relying on the hoisted copy
+
+#### Scenario: The exhaustive set is the same two everywhere
+
+- **WHEN** two skills each state the turn-liveness rule
+- **THEN** both name the same two legitimate conditions
+- **AND** neither admits a third that a paragraph of prose could satisfy
+
+#### Scenario: The rule's parts arrive together
+
+- **WHEN** a skill states the rule
+- **THEN** the mechanical check, the discriminator, and "announcing is not a mechanism" sit in one block
+- **AND** a guard over them distinguishes that from the three merely appearing somewhere in the file
+
 ### Requirement: Shipped-asset boundary
 
 The plugin directory `.claude/plugins/cla/` SHALL contain **only assets a consuming repo can use** —
