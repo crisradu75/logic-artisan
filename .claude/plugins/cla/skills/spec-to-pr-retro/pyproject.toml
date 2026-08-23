@@ -1,5 +1,0 @@
-# Pytest config for the spec-to-pr-retro skill's test suite.
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["scripts"]

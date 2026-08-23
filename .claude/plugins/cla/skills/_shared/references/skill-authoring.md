@@ -53,7 +53,7 @@ For each numbered step or phase you write, the reader must be able to answer
 - ✅ "Review every file the Impact section names; each one gets a verdict line
   in the report." → done is countable against a list.
 - ❌ "Make sure the tests still pass." → which tests, and what proves it?
-- ✅ "`run_tests.py` exits 0 with no near-miss warning." → one command, one bit.
+- ✅ "`pytest` over the repo's test scope exits 0." → one command, one bit.
 
 Two shapes that satisfy this cheaply: name the artifact the step must produce
 (a row, a commit, a file), or name the command whose exit code settles it. A

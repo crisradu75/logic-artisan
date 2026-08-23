@@ -1,5 +1,0 @@
-# Pytest config for the codify-retro skill's test suite.
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["scripts"]

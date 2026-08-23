@@ -66,18 +66,17 @@ cla (+ .cmd twin)              session launcher for THIS repo (loads the plugin 
 .claude-plugin/                marketplace.json — how every other repo installs CLA
 cla.io/                        this repo's own per-repo state (decisions, feedback, retro ledgers)
 openspec/                      OpenSpec config + specs for this repo's own changes
-.claude/plugins/cla/
+plugin-tests/                  the plugin's tests — one pytest scope, NOT published
+.claude/skills/release/        repo-local skill invoked as /release — NOT published
+.claude/plugins/cla/           everything below here IS published, and nothing else is
   .claude-plugin/plugin.json   manifest
   README.md                    the harness's scope + capabilities, by life-cycle phase
-  run_tests.py                 aggregating test runner (all pytest scopes + the Node suite)
-  skills/                      21 workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
-  skills/_shared/              references + one script that several skills share (not a skill)
+  skills/                      20 workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
+  skills/_shared/              references + scripts that several skills share (not a skill)
   agents/                      helper agents (doc-sweeper, fact-gatherer)
-  hooks/                       always-on guard hooks (blocks, asks, warns) + dispatchers + tests
+  hooks/                       always-on guard hooks (blocks, asks, warns) + dispatchers
+  lib/log_run.py               the one retro-ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
-  conformance-checks/          portable guards for the fact/procedure split
-  consistency-checks/          cross-scope drift checks (assert this repo's own source)
-  launcher-checks/             tests for the repo-root launchers (assert this repo's own source)
 ```
 
 ## Canonical vs. per-repo
@@ -86,23 +85,25 @@ This repo carries **portable procedure only**. Every project-specific overlay
 (`cla.io/overlays/<skill>.md`, `*.local.md`) here is a **neutral stub** — a destination repo
 fills in its own facts, and no install ever overwrites them — they live in the repo, outside the
 plugin directory. Per-repo state (`cla.io/` decisions, feedback, retro logs) is never part of the
-distributed core. Pytest conformance guards fail
-the suite if a project-specific token or a hardcoded developer path leaks into the synced core.
+distributed core. A conformance guard
+(`skills/_shared/scripts/check_no_project_tokens.py`) fails if a project-specific token or a
+hardcoded developer path leaks into the synced core. It is a program rather than a test, so it
+also runs in a consuming repo, which has no pytest gate over its plugin cache.
 
 ## Testing
 
-There is **no CI, by design** — the local run below is the whole verification story and the only
-gate before a merge:
+There is **no CI, by design** — the two local runs below are the whole verification story and the
+only gate before a merge:
 
 ```bash
-python3 .claude/plugins/cla/run_tests.py     # every pytest scope (12 today), aggregated pass/fail + exit code
-node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs   # the one Node suite
+pytest plugin-tests                                    # every pytest scope (1 today)
+node --test plugin-tests/node/mechanical-checks.test.mjs   # the one Node suite pytest cannot reach
 ```
 
-Do not run bare `pytest` from the repo or plugin root — scopes are isolated on purpose (several
-ship same-named helper modules) and collection fails by design. Run one scope with
-`pytest .claude/plugins/cla/skills/<name>/tests` (or `hooks/tests`, `consistency-checks/tests`,
-`launcher-checks/tests`).
+The plugin's tests deliberately live outside the plugin: `.claude/plugins/cla/` is published whole
+to consuming repos and carries only assets a consumer can use. Run part of the suite with
+`pytest plugin-tests/tests/<area>` — the areas are `conformance`, `consistency`, `launcher`,
+`hooks`, `lib`, and `skills/<name>`.
 
 ---
 

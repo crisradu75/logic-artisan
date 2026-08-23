@@ -27,8 +27,10 @@ the orchestration, the guard rails, and the learning loops on top, and keeps all
 
 ## The software life cycle, phase by phase
 
-CLA's skills map onto the arc of a change. Each is invocable as `/cla:<name>` or by natural
-language; `[loop]` marks a self-improvement retro over prior runs of another skill.
+CLA's skills map onto the arc of a change. Each shipped skill is invocable as `/cla:<name>` or by
+natural language; `[loop]` marks a self-improvement retro over prior runs of another skill. One
+skill, `release`, is not shipped — it acts on this repo's own distribution, so it is repo-local
+and invoked bare as `/release`.
 
 | Phase | Skill | What it does |
 |---|---|---|
@@ -52,7 +54,6 @@ language; `[loop]` marks a self-improvement retro over prior runs of another ski
 | | `codify-retro` | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
 | | `spec-to-pr-retro` | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
 | | `report-upstream` | File a defect in CLA's own portable core as an issue against the canonical source |
-| | `release` | Cut a new plugin release: verify preconditions, bump manifest + catalog together, tag it |
 | | `checkpoint` | Compact a session into a resumable briefing (`cla.io/checkpoints/`) |
 | **Any phase** (utility) | `right-model` | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 
@@ -104,16 +105,18 @@ CLA is portable because it separates *procedure* (generic, synced everywhere) fr
   **conformance guard** — `skills/_shared/scripts/check_no_project_tokens.py`, run as a program
   (exit 0 clean / 1 violations / 2 could-not-run) — fails if a distinctive project token, or a
   hardcoded absolute developer path, leaks into synced core: one scanner covers `SKILL.md`/reference
-  prose under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`.
+  prose under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`,
+  across five roots — `skills/`, `agents/`, `hooks/`, `output-styles/`, `lib/`.
   It is a program rather than a test precisely so it runs here — an installed plugin is a read-only
-  cache with no pytest gate over it.
+  cache with no pytest gate over it, so a guard filed as a test module would be unreachable.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` beside them: the repo's own
   facts and tuned checks. They live in YOUR repo, not in the plugin: the installed plugin tree is a
   read-only, version-keyed cache, so a fact stored there would be unwritable and would vanish on
   the next update. A plugin update never touches them.
 - **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, `retro/` run ledgers,
   `lessons-learned/`, and the consolidated **`project-facts.md`** (one physical copy of every fact
-  shared across skills). A **staleness guard** fails when a path named there no longer exists.
+  shared across skills). A **staleness guard** (`skills/sync-context/scripts/check_fact_paths.py`, also a program) fails
+  when a path named there no longer exists.
 
 ## Installing and updating
 
@@ -138,49 +141,42 @@ has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can dele
 
 ## Testing
 
-CLA's own suite runs in the repo that develops it, not in a repo that consumes it — the installed
-tree is read-only. Each skill *that ships tests* (6 today), plus `skills/_shared/`, `hooks/`,
-`lib/`, `conformance-checks/`, `consistency-checks/`, and `launcher-checks/`, is its own isolated
-pytest scope (own `pyproject.toml` + `tests/`) — 12 in all; several ship same-named helper modules, so
-they can't share one pytest process. Run the whole suite at once:
+**The plugin ships no tests, and that is deliberate.** Everything under this directory is an asset
+you can invoke, read, or have fire on your behalf; nothing here is validation machinery you have no
+way to run. An installed plugin is a read-only, version-keyed cache with no pytest gate over it, so
+a test filed here would be unreachable in your repo by construction.
+
+CLA's own suite therefore runs only in the repo that develops it, where it is one isolated
+pytest scope — 1 in total, down from 12 — living outside the plugin directory entirely. Each skill
+*that ships tests* (6 today) has its tests there rather than beside itself, alongside the guards over
+the hooks, the shared library, and the source repo's own launchers and catalog. The one Node script
+(`project-review/scripts/mechanical-checks.mjs`) has a `node --test` suite in the same place.
+
+There is no CI — that local run is the whole verification story. **Nothing in it is a command for
+you to run**; if you want to check your own repo's conformance, the two guards above are programs:
 
 ```bash
-python3 .claude/plugins/cla/run_tests.py        # every scope, aggregated pass/fail + exit code
-python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each pytest
+python3 <plugin>/skills/_shared/scripts/check_no_project_tokens.py
+python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py
 ```
-
-Three scopes carry a `SOURCE-REPO-ONLY.md` and are skipped outside the canonical repo (they assert its own launchers, catalog, and token list) — you will see a SKIP row for each in the summary rather than a failure. Run one scope in isolation with `pytest .claude/plugins/cla/skills/<name>/tests`. The one Node
-script (`project-review/scripts/mechanical-checks.mjs`) has its own sibling `node --test` suite,
-which `run_tests.py` **does** run as a 13th entry — invoke it alone only while iterating on it:
-
-```bash
-node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
-```
-
-There is no CI — these local runs are the whole verification story.
 
 ## Layout
 
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
-  run_tests.py                 aggregating test runner (all scopes + the Node suite)
-  mutate.py                    mutation checker: break a fix, confirm a test fails, restore
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers)
-  hooks/                       guard hooks + hooks.json wiring + tests, and git/pre-push
+  hooks/                       guard hooks + hooks.json wiring, and git/pre-push
   lib/                         log_run.py — the one retro-ledger writer
   output-styles/               the project's writing convention (force-for-plugin: true)
-  conformance-checks/          portable guards: no hardcoded plugin path, no broken SKILL.md;
-                                plus test coverage for the two checks promoted to skill scripts
-                                (no project token, no dead path in the fact file)
-  consistency-checks/          cross-scope drift checks — guards the source repo, not yours
-  launcher-checks/             tests for the source repo's own launchers
-  skills/<name>/               (references/ scripts/ tests/ present as each skill needs)
+  skills/<name>/               (references/ scripts/ present as each skill needs)
     SKILL.md                   the skill (portable procedure)
     references/                supporting refs (portable — overlays live in your cla.io/)
     scripts/                   deterministic helpers (stdlib Python)
-    tests/                     that skill's pytest scope
 ```
+
+That is the whole published tree. The suite, the mutation corpora, the pytest configuration and the
+release workflow all live outside it, in the canonical source repo only — see *Testing* above.
 
 Per-repo state lives outside the plugin, at your repo root under `cla.io/` — including
 `overlays/<skill>.md`. Nothing in the plugin tree is yours to edit.

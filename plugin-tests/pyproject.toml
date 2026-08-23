@@ -1,0 +1,63 @@
+# The cla plugin's development tree: tests, mutation batches, and the two
+# helper scripts whose whole subject is this repository's own source.
+#
+# ONE pytest scope, where there used to be twelve.
+#
+# The twelve-scope split existed for exactly one reason: pytest's default import
+# mode cannot hold two test modules with the same basename. Measured over every
+# test file in the plugin, immediately before the move:
+#
+#   $ git ls-files '.claude/plugins/cla/**/tests/*.py' | xargs -n1 basename | sort | uniq -d
+#   conftest.py
+#
+# `conftest.py` is the only duplicate, and pytest special-cases it — one per
+# directory is legal and expected. (The other historical duplicate,
+# `test_aggregate.py`, was renamed to `test_codify_aggregate.py` /
+# `test_spec_to_pr_aggregate.py` by change `decouple-skills-from-dev-assets`.)
+# With the collision set empty, one scope is viable.
+#
+# Note for anyone re-deriving this: do NOT take the reason from the deleted
+# `run_tests.py`'s own docstring, which claimed a second collision on
+# `scripts/log_run.py`. `git ls-files | grep log_run` returned exactly two paths
+# — one module and its one test — so that half was never true.
+#
+# `mutants/` is deliberately a SIBLING of `tests/`, not a child: the batches are
+# `test_*.py` by name, so under `tests/` pytest would collect and run them, and
+# `mutants/conformance/test_skill_lint.py` would collide with
+# `tests/conformance/test_skill_lint.py`. `testpaths` alone keeps them out,
+# exactly as it did in the twelve old scopes. The batch subdirectories mirror
+# the `tests/` ones because `test_guards_have_mutant_batches.py` maps guard to
+# batch positionally in both directions.
+#
+# `pythonpath` entries are resolved against rootdir, which is this file's own
+# directory. The `../` entries reach the scripts under test, which stay in the
+# published plugin tree — only their tests live here.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `testpaths` alone is NOT enough, which the design of this move got wrong.
+# It applies only when pytest is given no path argument, and the gate IS a path
+# argument (`pytest plugin-tests`). Without `norecursedirs` that invocation
+# walks into `mutants/`, collects the batches as tests, and dies on the basename
+# collision between `mutants/consistency/test_doc_facts.py` and
+# `tests/consistency/test_doc_facts.py`. Excluding them here makes every
+# invocation correct rather than only the argument-less one.
+# Setting `norecursedirs` REPLACES pytest's own default list rather than
+# extending it (`pytest --help` / `_pytest.main`'s own `addini` call: default
+# `["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv",
+# "{arch}"]`), so that default set is restated here alongside the two this move
+# added — otherwise a `.venv`, a `build/` dir, or any other default-pruned name
+# would be walked and collected against, silently reappearing the moment one
+# exists under this tree.
+norecursedirs = ["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}", "mutants", "node"]
+pythonpath = [
+  "scripts",
+  "../.claude/skills/release/scripts",
+  "../.claude/plugins/cla/hooks",
+  "../.claude/plugins/cla/lib",
+  "../.claude/plugins/cla/skills/_shared/scripts",
+  "../.claude/plugins/cla/skills/annotate/scripts",
+  "../.claude/plugins/cla/skills/codify-retro/scripts",
+  "../.claude/plugins/cla/skills/new-worktree/scripts",
+  "../.claude/plugins/cla/skills/spec-to-pr/scripts",
+  "../.claude/plugins/cla/skills/spec-to-pr-retro/scripts",
+]
