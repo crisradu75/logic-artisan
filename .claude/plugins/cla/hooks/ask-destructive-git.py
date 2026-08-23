@@ -199,14 +199,34 @@ _HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
 # `findall` resumes past it and the next cluster has no leading whitespace left
 # to match: `-d -f` yielded only `-d`, and the pair went unmatched while the
 # bundled `-df` was caught.
-_SHORT_CLUSTER = re.compile(r"(?<!\S)-([A-Za-z]+)(?=\s|$)")
+#
+# The terminator admits a backslash as well as whitespace: the shell strips
+# `\`+newline before word-splitting, so `git branch -D\`+newline+`  feat` is an
+# ordinary force-delete, and a bare `(?=\s|$)` rejected it because the `\` sits
+# directly against the `D`.
+_SHORT_CLUSTER = re.compile(r"(?<!\S)-([A-Za-z]+)(?=[\s\\]|$)")
+
+# `git branch`'s complete short-option alphabet, from `git branch -h`:
+# -a -c -C -d -D -f -i -l -m -M -q -r -t -u -v. A dash-prefixed token whose
+# letters are not all drawn from this set is NOT an option cluster — it is an
+# option's ARGUMENT that merely looks like one, and treating it as flags is a
+# false-positive machine. Measured, each verified against real git as harmless:
+# `git branch -uDev feat` (the `-u` value supplies a capital D), `git branch
+# --sort -HEAD` (the sort key does), `git branch -f -tdirect newb main` (the
+# `-t` value supplies the `d`). Filtering on the alphabet drops all three and
+# loses none of the sixteen genuine force-delete spellings.
+_BRANCH_SHORT_OPTS = frozenset("acCdDfilmMqrtuv")
 # Long-option prefixes, because git accepts any UNAMBIGUOUS abbreviation.
 # `--delete` is the only `--d*` option `git branch` has, so every prefix down to
 # `--d` resolves to it. `--force` shares `--fo` with `--format`, so `--forc` is
 # the shortest unambiguous one — a looser `--fo[a-z]*` would fire on the
 # perfectly ordinary `git branch --format=...`.
-_DELETE_LONG = re.compile(r"(?:^|\s)--d(?:e(?:l(?:e(?:t(?:e)?)?)?)?)?(?:\s|=|$)")
-_FORCE_LONG = re.compile(r"(?:^|\s)--forc(?:e)?(?:\s|=|$)")
+# The terminators admit `\` for the same reason `_SHORT_CLUSTER`'s does — a
+# backslash continuation abutting the flag is an ordinary multi-line command,
+# not a malformed one. All three patterns carry it; fixing only the short-flag
+# one left `--delete\`+newline+`--force` silently unmatched.
+_DELETE_LONG = re.compile(r"(?:^|\s)--d(?:e(?:l(?:e(?:t(?:e)?)?)?)?)?(?:[\s\\]|=|$)")
+_FORCE_LONG = re.compile(r"(?:^|\s)--forc(?:e)?(?:[\s\\]|=|$)")
 
 
 def _force_deletes_a_branch(tail: str) -> bool:
@@ -217,7 +237,9 @@ def _force_deletes_a_branch(tail: str) -> bool:
     the cluster must be `-`-prefixed, which is also why a branch called
     `featureD` does not read as `-D`.
     """
-    clusters = "".join(_SHORT_CLUSTER.findall(tail))
+    clusters = "".join(
+        c for c in _SHORT_CLUSTER.findall(tail) if set(c) <= _BRANCH_SHORT_OPTS
+    )
     if "D" in clusters:
         return True  # the documented shortcut, carrying both halves at once
     deleting = "d" in clusters or _DELETE_LONG.search(tail) is not None
@@ -435,10 +457,10 @@ def main() -> int:
     #
     # `found == [MERGE_REASON]` depends on `_reasons()` always appending in
     # the fixed order force-push, reset --hard, branch force-delete, merge
-    # (never in the order the command text names them) — that's what makes
-    # list equality a safe
-    # "merge is the only reason" test. If `_reasons()`'s check order or set of
-    # reasons ever changes, re-verify this equality still means what it says.
+    # (never in the order the command text names them) — that's what makes list
+    # equality a safe "merge is the only reason" test. If `_reasons()`'s check
+    # order or set of reasons ever changes, re-verify this equality still means
+    # what it says.
     if found == [MERGE_REASON]:
         hatch_note = (
             "Prefix this one command with ALLOW_PR_MERGE=1 to authorize a "

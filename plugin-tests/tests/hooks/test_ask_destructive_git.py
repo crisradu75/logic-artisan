@@ -138,6 +138,17 @@ def test_reset_hard_shapes_prompt(command, monkeypatch, capsys):
         "git branch \\\n  -D feature/x",
         "git \\\n branch -D feature/x",
         "git branch \\\r\n  -D feature/x",
+        # The continuation with NO space before the backslash. The shell strips
+        # `\`+newline before word-splitting, so this really does force-delete
+        # (verified against git: `Deleted branch cont1`), and a terminator of
+        # `(?=\s|$)` alone rejected it because the `\` abuts the `D`.
+        "git branch -D\\\n  feature/x",
+        "git branch --delete\\\n  --force feature/x",
+        # Mirrored, so BOTH long terminators are load-bearing. Without this row
+        # a mutation reverting only `_FORCE_LONG`'s backslash survived: the case
+        # above puts the continuation after `--delete`, leaving `--force ` to
+        # match on an ordinary space.
+        "git branch --force\\\n  --delete feature/x",
     ],
 )
 def test_force_branch_delete_shapes_prompt(command, monkeypatch, capsys):
@@ -209,6 +220,16 @@ def test_a_branch_delete_inside_a_quoted_string_does_not_prompt(monkeypatch, cap
         # unambiguous, so the abbreviation arm must not reach this.
         "git branch --format='%(refname)'",
         "git branch -a --sort=-committerdate",
+        # An option's ARGUMENT shaped like a flag cluster. Each was run against
+        # real git and left the branch intact, so a prompt here is pure noise —
+        # and noise is what stops a checkpoint being read. The `-u` and `-t`
+        # values and the `--sort` key supply the letters; the alphabet filter is
+        # what rejects them, since `e`/`v`/`H` are not `git branch` options.
+        "git branch -uDev feature/x",
+        "git branch --sort -HEAD",
+        "git branch -f -tdirect newbranch main",
+        "git branch --sort -refname -d merged1",
+        "git branch --sort -committerdate -f main origin/main",
         # The pairing that makes the `--forc`-not-`--fo` boundary load-bearing.
         # With a delete flag present, a too-greedy force pattern reads
         # `--format` as force and turns an ordinary non-force delete into a
