@@ -1,11 +1,10 @@
 // Tests for mechanical-checks.mjs's generic check engine.
 //
-// Run: node --test ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.test.mjs
+// Run: node --test plugin-tests/node/mechanical-checks.test.mjs
 //
-// Not wired into run_tests.py: that runner discovers Python pytest scopes only
-// (a dir with a pytest-configured pyproject.toml + a tests/ dir) -- this is a
-// deliberately separate `node --test` file, not a `tests/` dir, so it stays
-// invisible to (and can't trip) that discovery's near-miss detection.
+// NOT reached by `pytest plugin-tests`, which collects Python only. This is a
+// second command you run deliberately, and the dev tree's pyproject.toml lists
+// `node` in norecursedirs so pytest never tries to walk it.
 //
 // Path-based checks resolve everything through MECHANICAL_CHECKS_ROOT (see
 // withRoot below) so no test touches this repo's real files; loadConfig's own
@@ -19,7 +18,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const SCRIPT_PATH = fileURLToPath(new URL('./mechanical-checks.mjs', import.meta.url));
+// The subject stays in the PUBLISHED plugin — it is shipped code a consuming
+// repo configures and runs. Only this test moved out to the dev tree.
+const SCRIPT_PATH = fileURLToPath(new URL('../../.claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs', import.meta.url));
 
 import {
   getOverlayPath,
@@ -35,7 +36,7 @@ import {
   specMatches,
   runChecks,
   main,
-} from './mechanical-checks.mjs';
+} from '../../.claude/plugins/cla/skills/project-review/scripts/mechanical-checks.mjs';
 
 const HEADING_RE = /^#{1,6}\s*mechanical checks/i;
 
