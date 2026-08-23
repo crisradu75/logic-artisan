@@ -87,47 +87,55 @@ asset is being rewritten (otherwise it never fires for already-synced repos — 
 population); and tolerate any malformed declaration shape, since one bad edit would otherwise
 break discovery for every consumer.
 
-## Source-repo-only scopes — chosen: a per-scope marker file
+## Source-repo-only scopes — closed, the mechanism has no subject
 
-**Resolved.** `consistency-checks/`, `launcher-checks/`, and `skills/release/` assert facts about
-the canonical repo's own source (repo-root launchers, the marketplace catalog, a curated token
-list, CLAUDE.md's release line). Each now carries a `SOURCE-REPO-ONLY.md`, and `run_tests.py`
-skips a marked scope — with a SKIP row in the summary — wherever `_is_source_repo()` is false.
-`consistency-checks/tests/test_source_only_markers.py` pins both ends, including the detection
-branches this repo cannot exercise on itself.
+**Closed by `extract-dev-tree-from-plugin`, not by being done.** Source-repo-only became
+*structural*: the whole dev tree now lives at `<repo>/plugin-tests/` and never ships, so every
+asset in it is source-repo-only by construction and there is nothing left to mark or skip. The
+three `SOURCE-REPO-ONLY.md` files, the guard that pinned them, and the runner's skip logic were
+all deleted together — the decision this entry recorded is moot rather than discharged.
 
-Option 3 (a scope-level marker) was taken over option 2 (per-assertion skips) for being one
-mechanism instead of dozens. **The cost, recorded rather than hidden:** the skip is
-directory-granular, so a consuming repo loses `consistency-checks`' genuinely portable coverage
-too — measured at 78 of 103 tests, including the ledger-resolver drift check that CLAUDE.md names
-as guarding a *silent* failure. Splitting the portable assertions into their own unmarked scope
-is the natural follow-up; it was not done here because it is a scope reorganisation, not a
-one-line fix.
+The cost it recorded — a directory-granular skip losing 78 of 103 portable assertions in a
+consuming repo — describes a skip that no longer exists. See the entry below for what became of
+the follow-up it proposed.
 
-## Remaining unscanned surface after the scan-root widening (small, known)
+## Remaining unscanned surface (small, known)
 
-`SOURCE_SCAN_ROOTS` now covers `skills`, `agents`, `hooks`, `output-styles`, `lib`, and the three
-`*-checks/` scopes. Counted against the shipped tree: 120 `.md`/`.py` files ship, 116 are scanned,
-and these four are not:
+`SOURCE_SCAN_ROOTS` covers `skills`, `agents`, `hooks`, `output-styles`, `lib` — **five roots, down
+from eight**, since the three `*-checks/` scopes left the plugin with the dev tree. Re-measured
+against the shipped tree rather than adjusted by arithmetic (`git ls-files .claude/plugins/cla`
+against both scanners' own file iterators): **101 files ship, 96 are reached by at least one
+scanner, 5 by none.**
+
+Two of the five are prose a scanner would otherwise read, and are watched by hand:
 
 - The plugin's own root `README.md`, whose install commands legitimately name this repository.
   Scanning it would flag the one file whose job is to identify the source.
 - `skills/_shared/README.md`, which sits directly under a skills subdirectory rather than beneath a
-  `references/` ancestor, so neither scanner's rule reaches it.
-- `run_tests.py` and `mutate.py` at the tree root, which sit outside every scanned root. Adding a
-  bare-file traversal for two files was judged not worth a second scan rule.
+  `references/` ancestor, so the token scanners' rule does not reach it. (The hardcoded-path
+  scanner does cover it — `.md` under `skills/`.)
 
-None is a leak today. Revisit if a fifth appears, or if one of these grows repo-specific prose.
+`run_tests.py` and `mutate.py` used to be the third and fourth. The first is deleted and the second
+moved to the dev tree, so neither ships and neither is a gap any more.
 
-Separately, `.claude/plugins/cla/hooks/probe-python.sh` is outside **both** scanners, and it is the
-only shipped file that is. The two rules do not have the same reach, and an earlier version of this
-paragraph got that wrong in a way worth recording, because the counterexample was a comment in the
-scanner itself:
+The other three are not prose at all: `.claude-plugin/plugin.json` and `.gitattributes` sit outside
+every scan root, and `hooks/git/pre-push` is covered below.
 
-- `test_no_hardcoded_plugin_paths.py:39` scans `.md`/`.py`/`.mjs`/`.json` under five roots including
-  `hooks/`. So `hooks.json` and a skill's `.mjs` **are** covered — the paragraph previously claimed
-  they were not.
-- `test_no_project_tokens.py:269` really is `.py`/`.md` only.
+None is a leak today. Revisit if a third prose file appears, or if one of these grows
+repo-specific content.
+
+Separately, TWO shipped files sit inside a scan root and are outside **both** scanner families:
+`hooks/probe-python.sh` and `hooks/git/pre-push`. The two rules do not have the same reach, and an
+earlier version of this paragraph got that wrong in a way worth recording, because the
+counterexample was a comment in the scanner itself — and the same error was made again, in the
+opposite direction, while reconciling these docs for `extract-dev-tree-from-plugin`:
+
+- `plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py` scans `.md`/`.py`/`.mjs`/`.json`
+  under five roots including `hooks/`. So `hooks.json` and a skill's `.mjs` **are** covered — this
+  paragraph once claimed they were not, and a later edit briefly claimed it again.
+- `check_no_project_tokens.py`'s own scanners really are `.py`/`.md` only.
+- `hooks/git/pre-push` has NO suffix, so the suffix-keyed rule skips it as surely as `.sh`. It was
+  never named here; the count above is the first measurement that caught it.
 
 Neither reaches `.sh`. Adding it would be the scanner's **fifth** suffix, not its third. Nor would
 either rule flag what is actually in the file: the hardcoded-path rule looks for the literal
@@ -185,14 +193,6 @@ verifying file/line claims against source — so flagging file-path/line-number 
 - Which of the three sub-rules to adopt: just the anti-file-path/line-number rule, or the full
   three-part discipline (also testable acceptance criteria and explicit out-of-scope per subtask)?
 
-## Split `consistency-checks` so consumers keep its portable half
-
-Follow-up to the source-repo-only marker (above). The skip is directory-granular, so a consuming
-repo loses ~78 of 103 genuinely portable assertions along with the ~25 source-only ones — including
-`check_script_drift`'s ledger-resolver check, which CLAUDE.md names as guarding a *silent* failure.
-Move the portable assertions into their own unmarked scope and leave only the canonical-repo ones
-behind the marker. A scope reorganisation, not a one-line fix, which is why it was deferred.
-
 ## Report the stale `TodoWrite` reference upstream to OpenSpec
 
 `openspec-propose`'s SKILL.md instructs the model to use the `TodoWrite` tool, which does not exist
@@ -219,15 +219,23 @@ first contact, unchanged); research-as-procedure (user memory already carries it
 primitive extraction — measured overlap between `shape-decision` and `feedback` is two sentences of
 principle, below the shared-reference bar.
 
-## Write mutant batches for the 12 grandfathered guards
+## Write mutant batches for the 9 grandfathered guards
 
-`consistency-checks/tests/test_guards_have_mutant_batches.py` requires every guard in a checks
-scope to ship a same-named batch under `mutants/`, so a new guard cannot land unproven. Twelve
-predate the convention and are listed individually in that file's `_EXEMPT` map — countable
-debt, not a softened rule. Three batches exist and kill everything they fire at
-(`test_skill_lint`, `test_source_only_markers`, `test_doc_facts`).
+`plugin-tests/tests/consistency/test_guards_have_mutant_batches.py` requires every guard in the
+`conformance` and `consistency` areas to ship a same-named batch under `mutants/<area>/`, so a new
+guard cannot land unproven. Nine predate the convention and are listed individually in that file's
+`_EXEMPT` map — countable debt, not a softened rule.
+
+**The count shrank without anyone writing a batch, and the reason matters:** it was twelve when
+this entry was written and ten after `decouple-skills-from-dev-assets` (which brought two batches
+with it); `extract-dev-tree-from-plugin` then deleted `test_runner_stream_encoding` along with the
+runner it tested. A guard that disappears pays no debt — it just stops existing.
+
+Four batches exist and kill everything they fire at (`test_skill_lint`, `test_doc_facts`,
+`test_no_project_tokens`, `test_project_facts_paths`); `test_source_only_markers`' batch was deleted
+with its guard.
 
 Delete an `_EXEMPT` line the moment its batch lands. A companion test caps the list at its
-current size, so it can only shrink. Highest value first: `test_no_project_tokens` and
-`test_check_script_drift` — CLAUDE.md names the latter as guarding a *silent* failure, which is
-exactly the class where an unproven guard is worth least.
+original size, so it can only shrink. Highest value first: `test_check_script_drift` — CLAUDE.md
+names it as guarding a *silent* failure, which is exactly the class where an unproven guard is
+worth least.

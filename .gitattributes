@@ -22,7 +22,7 @@ cla.cmd text eol=crlf
 # `#!/bin/sh` script that every clone copies into `.git/hooks/`. Checked out
 # CRLF it becomes `#!/bin/sh\r`, which fails to execute — and a pre-push hook
 # that cannot run is a push guard that silently is not there.
-# `consistency-checks/tests/test_pre_push_is_installed.py` catches an absent or
+# `plugin-tests/tests/consistency/test_pre_push_is_installed.py` catches an absent or
 # drifted copy, but a CRLF one is present and byte-identical and still refused
 # by git, so pin the endings here as well.
 .claude/plugins/cla/hooks/git/pre-push text eol=lf
@@ -44,9 +44,7 @@ cla.cmd text eol=crlf
 # anything this repo sets — so a fresh Windows clone gets it wrong by default and
 # there is no repo setting to go looking for.
 #
-# TWO BELTS to this braces, because this file governs only THIS repo's checkout:
-#   - `.claude/plugins/cla/.gitattributes` carries the same pin inside the
-#     published tree, where a `git-subdir` install can see it.
-#   - `hooks/tests/test_hooks_wiring.py::test_the_probe_has_no_carriage_returns`
-#     ships with the plugin, so it also fires in a consuming repo.
+# A SECOND BELT to this braces, because this file governs only THIS repo's
+# checkout: `.claude/plugins/cla/.gitattributes` carries the same pin inside
+# the published tree, where a `git-subdir` install can see it.
 .claude/plugins/cla/hooks/*.sh text eol=lf

@@ -15,7 +15,7 @@ from pathlib import Path
 PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 DEV = Path(__file__).resolve().parents[2]
 SKILL = PLUGIN / "skills" / "right-model" / "SKILL.md"
-LINT = PLUGIN / "conformance-checks" / "tests" / "test_skill_lint.py"
+LINT = DEV / "tests" / "conformance" / "test_skill_lint.py"
 TARGETS = [DEV / "tests" / "conformance"]
 
 H = "# Right-model: cost-aware model + effort picker"

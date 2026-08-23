@@ -15,15 +15,15 @@ MUTANTS = [
     (
         "README understates the skill count",
         REPO / "README.md",
-        "19 workflow skills",
+        "20 workflow skills",
         "18 workflow skills",
         TARGETS,
     ),
     (
         "README's pytest-scope count goes stale",
         REPO / "README.md",
-        "# every pytest scope (11 today), aggregated",
-        "# every pytest scope (8 today), aggregated",
+        "# every pytest scope (1 today)",
+        "# every pytest scope (8 today)",
         TARGETS,
     ),
     (
@@ -36,15 +36,15 @@ MUTANTS = [
     (
         "CLAUDE.md's skills-with-tests count goes stale",
         REPO / "CLAUDE.md",
-        "Each skill that ships tests (5 today)",
-        "Each skill that ships tests (9 today)",
+        "— 6 areas under `skills/`, one",
+        "— 9 areas under `skills/`, one",
         TARGETS,
     ),
     (
         "a doc names a plugin path that no longer exists",
         REPO / "DEVELOPER-GUIDE.md",
-        "python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (11), aggregated",
-        "python3 .claude/plugins/cla/run_tests_gone.py    # all pytest scopes (11), aggregated",
+        "pytest plugin-tests    # all pytest scopes (1)",
+        "pytest .claude/plugins/cla/gone    # all pytest scopes (1)",
         TARGETS,
     ),
 ]

@@ -318,32 +318,35 @@ Contributing to the harness rather than using it? The extra rules:
 - **Run the whole verification story locally — there is no CI, by design:**
 
   ```bash
-  python3 .claude/plugins/cla/run_tests.py    # all pytest scopes (12), aggregated
-  node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
+  pytest plugin-tests    # all pytest scopes (1) — the whole suite, one command
+  node --test plugin-tests/node/mechanical-checks.test.mjs
   ```
 
-  Both green is the only gate before a PR. Watch the skip count in the summary — a skipped guard
-  has not run (one pre-push permission-bit test always skips on Windows).
+  Both green is the only gate before a PR — and they ARE two commands: `pytest` does not reach the
+  Node suite. Watch the skip count — a skipped guard has not run (one pre-push permission-bit test
+  always skips on Windows).
 
-- **Three scopes are source-repo-only.** `consistency-checks/`, `launcher-checks/`, and
-  `skills/release/tests/` assert facts about this repo's own source. Each carries a
-  `SOURCE-REPO-ONLY.md`; `run_tests.py` runs them here and skips them anywhere else. Adding
-  a scope that asserts a canonical-repo fact means adding that marker AND its name to
-  `test_source_only_markers.py`'s expected set — the guard fails both ways.
-- **Never run bare `pytest` from the repo or plugin root.** Each scope (6 skills with tests, plus
-  `skills/_shared/`, `lib/`, `hooks/`, `conformance-checks/`, `consistency-checks/`,
-  `launcher-checks/`) is isolated on purpose — several ship
-  same-named helper modules. Iterate on one scope with
-  `pytest .claude/plugins/cla/skills/<name>/tests`.
+- **The plugin's tests do not live in the plugin.** `.claude/plugins/cla/` is published whole to
+  consuming repos and carries only assets a consumer can use, so every test, mutation batch, the
+  mutation runner and the pytest config live in `plugin-tests/` at the repo root. Source-repo-only
+  is now structural rather than declared: the dev tree exists only here, so there is nothing to mark
+  and nothing to skip. The `SOURCE-REPO-ONLY.md` mechanism and its guard were deleted with the
+  runner that read them.
+- **Bare `pytest` over the dev tree IS the gate** — the inversion of the old rule, which forbade it.
+  There is one scope now, not twelve, because the split rested on a single module-basename collision
+  that no longer exists. Inside `plugin-tests/tests/` the old scope names survive as areas
+  (`conformance/`, `consistency/`, `launcher/`, `hooks/`, `lib/`, and 6 skills with tests plus
+  `_shared/` under `skills/`). Iterate on one with `pytest plugin-tests/tests/<area>`.
 
-- **Keep facts out of the synced core.** Pytest conformance guards fail the suite if a
-  project-specific token or an absolute developer path leaks into `skills/`, `agents/`, `hooks/`,
-  or `output-styles/`. Overlays in this repo stay neutral stubs — this is the source, not a
-  consumer.
+- **Keep facts out of the synced core.** A conformance guard fails if a project-specific token or an
+  absolute developer path leaks into `skills/`, `agents/`, `hooks/`, `output-styles/` or `lib/`. It
+  is a program (`skills/_shared/scripts/check_no_project_tokens.py`), not a test, precisely so it
+  also runs in a consuming repo, which has no pytest gate over its plugin cache. Overlays in this
+  repo stay neutral stubs — this is the source, not a consumer.
 
 - **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself), with one Node
   exception noted above. Same-named sibling scripts that must stay in lockstep are watched by
-  `consistency-checks/`.
+  `plugin-tests/scripts/check_script_drift.py`.
 
 - **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
   covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work
@@ -351,34 +354,35 @@ Contributing to the harness rather than using it? The extra rules:
 
 ### Adding a skill
 
-Five contracts, each enforced by a test rather than by convention — so a miss fails the suite
-rather than shipping:
+Four contracts, each enforced by a test rather than by convention — so a miss fails the suite
+rather than shipping. (It was five: a fifth required a test scope to carry `pyproject.toml` AND
+`tests/` together, enforced by the deleted runner's "near-miss" rule. Both the requirement and its
+enforcer are gone — a skill has no scope of its own any more.)
 
 1. **`skills/<name>/SKILL.md` is the entrypoint, and the directory name is the command.** Its
    frontmatter needs a non-empty `name` and `description`, and `name` must equal the directory —
    otherwise `/cla:<dir>` resolves to nothing. Pinned by
-   `conformance-checks/tests/test_skill_lint.py`.
+   `plugin-tests/tests/conformance/test_skill_lint.py`.
 2. **The `description` is trigger metadata, not documentation.** It is what natural-language
    invocation matches against; keep it under the style ceiling the same test enforces. Write it in
    the third person and name concrete trigger phrases.
 3. **Every reference the body names must exist.** A bare `references/<file>` means *this skill's
    own* file; to cite another skill's, write the explicit
    `${CLAUDE_PLUGIN_ROOT}/skills/<owner>/references/<file>`. Both mistakes fail the same test.
-4. **A test scope needs `pyproject.toml` AND `tests/` together.** `run_tests.py` treats a directory
-   with only one of the two as a "near-miss" and fails the entire run — so add both in one commit,
-   or neither.
-5. **Project-specific facts go in an overlay, never in the body.** If the skill reads
+4. **Project-specific facts go in an overlay, never in the body.** If the skill reads
    `cla.io/overlays/<name>.md`, add it to `cla-init`'s seeding list so a fresh repo gets a stub.
    The token guard fails the suite if a repo name leaks into the body.
 
 Then update the counts: the skill tables in `CLAUDE.md` and the plugin README, and the cheat sheet
-below. `consistency-checks/tests/test_doc_facts.py` fails if you forget.
+below. `plugin-tests/tests/consistency/test_doc_facts.py` fails if you forget. A new skill's tests
+go in `plugin-tests/tests/skills/<name>/`, not beside the skill.
 
 ## Release and distribution history
 
 Background a working session rarely needs, which is why it lives here rather than in `CLAUDE.md`.
 The operative rules — the three-file bump, the preconditions, the never-move invariant — are in
-`/cla:release`'s own SKILL.md; this section is only the *why* behind them.
+`/release`'s own SKILL.md (repo-local at `.claude/skills/release/`, not shipped, because a
+consuming repo has no catalog of its own to bump); this section is only the *why* behind them.
 
 **A published tag is never moved.** `0.9.0` was cut, a consumer installed it, and the very next fix
 therefore became `0.9.1` rather than a re-tag — moving it would have changed what that consumer had
@@ -426,5 +430,5 @@ still carrying a `.cla-sync-lock.json` can delete that file; nothing reads it.
 | Set up CLA in a new repo | marketplace install → `cla-init` → `sync-context` |
 | Pull newer CLA core into a repo | `/plugin marketplace update` |
 | Report a defect in the portable core | `report-upstream` |
-| Publish a new version of the plugin | `release` |
+| Publish a new version of the plugin | `/release` (repo-local, not `/cla:release`) |
 | Hand off a long session | `checkpoint` |

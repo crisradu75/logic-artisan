@@ -54,54 +54,61 @@ you realise mid-flight that the work wants isolation. No penalty for deciding la
 
 ## Commands
 
-Run the full test suite (aggregates every isolated pytest scope):
+Run the full test suite:
 
 ```bash
-python3 .claude/plugins/cla/run_tests.py        # every scope, aggregated pass/fail + exit code
-python3 .claude/plugins/cla/run_tests.py -q     # extra args forwarded to each scope's pytest
-python3 .claude/plugins/cla/run_tests.py -k branch   # filter by name across scopes
+pytest plugin-tests              # the whole suite: one scope, one command
+pytest plugin-tests -q           # extra args go straight to pytest
+pytest plugin-tests -k branch    # filter by name
 ```
 
-Run a single scope in isolation (e.g. while iterating on one skill):
+Run part of it (e.g. while iterating on one skill):
 
 ```bash
-pytest .claude/plugins/cla/skills/<name>/tests
-pytest .claude/plugins/cla/hooks/tests
+pytest plugin-tests/tests/hooks
+pytest plugin-tests/tests/skills/<name>
 ```
 
-**Do not run bare `pytest` from the plugin root or repo root** — it will fail collection by
-design. Each skill that ships tests (6 today), plus `skills/_shared/`, plus `lib/`, plus `hooks/`,
-plus `conformance-checks/`, plus `consistency-checks/`, plus `launcher-checks/`, is its own isolated
-pytest scope — 12 in total — each with its own `pyproject.toml` (`testpaths = ["tests"]`, plus a
-`pythonpath` pointing at that scope's importable code — `["scripts"]` for a skill and for
-`consistency-checks`/`launcher-checks`, `["."]` for `hooks/` and `lib/`, whose modules sit at the
-scope root, and none at all for `conformance-checks`, whose tests import nothing).
+**The plugin's tests do not live in the plugin.** `.claude/plugins/cla/` is published whole to
+consuming repos and carries only assets a consumer can use, so every test, every mutation batch,
+the mutation runner, and the pytest configuration live in this repo's own `plugin-tests/` tree.
+It is the repo's ONLY pytest scope — 1 in total, down from 12 — with a single `pyproject.toml`
+(`testpaths = ["tests"]`, `norecursedirs = ["mutants", "node"]`, and a `pythonpath` of 10 entries
+reaching out of the dev tree into the plugin, because the scripts under test stay shipped and only
+their tests moved).
 
-`lib/` and the three `*-checks/` scopes are the odd ones out: not skills (no `SKILL.md`) and not
-guard hooks. `lib/` holds `log_run.py`, the one ledger writer every retro-logging skill invokes as
-a program. `conformance-checks/` directly implements two of the four portable guards that police the
-fact/procedure split for the whole plugin — no hardcoded plugin path, and no SKILL.md with broken
-frontmatter or a reference that resolves nowhere — plus the unit, CLI, and subprocess-invocation test
-coverage for the other two, which are now standalone programs a skill invokes: no project token in
-synced core (`skills/_shared/scripts/check_no_project_tokens.py`) and no dead path in
-`cla.io/project-facts.md` or an overlay (`skills/sync-context/scripts/check_fact_paths.py`).
-`consistency-checks/` holds a drift check over the ledger-dir resolver that the isolation
-rule below deliberately prevents from sharing a module, plus checks on this repo's own source;
-**Three scopes are source-repo-only** — `consistency-checks/`, `launcher-checks/`, and `skills/release/tests/` assert facts about THIS repo's own source, so each carries a `SOURCE-REPO-ONLY.md` and `run_tests.py` skips it (with a summary SKIP row) in any repo that is not the canonical source; a consumer would otherwise get failures it cannot fix. `launcher-checks/` tests the repo-root `cla`/`cla.cmd` launchers, which live outside the plugin
-tree entirely (`claw`/`claw.cmd` were deleted alongside the worktree-isolation guard, the hook they
-existed to dodge).
+The twelve-scope split existed for exactly one reason — pytest's default import mode cannot hold
+two test modules with the same basename — and the collision set is now empty. Measured with
+`git ls-files '.claude/plugins/cla/**/tests/*.py' | xargs -n1 basename | sort | uniq -d`, the only
+duplicate is `conftest.py`, which pytest special-cases per directory. (Note for anyone re-deriving
+this: the split's usual justification named a second collision on `scripts/log_run.py`, which
+`git ls-files | grep log_run` shows never existed — one module, one test. The measurement, not the
+folklore.)
 
-All four sit outside the synced set (`skills`/`agents`/`hooks`/`output-styles`), but they do not
-all mean the same thing by it. `consistency-checks` and `launcher-checks` guard this repo's own
-source and are meant to stay here. `conformance-checks` is portable core that reaches
-consuming repos because the marketplace publishes the whole plugin directory — where both guards
-have caught real leaks. Several scopes
-ship same-named helper modules (e.g. `scripts/aggregate.py`), so they can't
-share one pytest process — this is why `run_tests.py` exists: it discovers every scope
-(dir with both a pytest-configured `pyproject.toml` and a `tests/` subdir) and runs `pytest` once
-per scope as a subprocess, then aggregates results. A dir with only one of those two signals is
-treated as a "near-miss" (half-removed/misconfigured scope) and fails the run rather than being
-silently skipped.
+Inside `plugin-tests/tests/` the old scope names survive as area directories: `conformance/`,
+`consistency/`, `launcher/`, `hooks/`, `lib/`, and `skills/<name>/` — 6 areas under `skills/`, one
+per skill that ships tests, plus `_shared/`. `mutants/` is a SIBLING of `tests/`, mirroring its
+subdirectory names, so the batches are never collected as tests and each guard maps to its batch by
+a one-step name substitution.
+
+**`lib/` is the odd one out in the plugin**: not a skill (no `SKILL.md`) and not a guard hook. It
+holds `log_run.py`, the one ledger writer every retro-logging skill invokes as a program.
+
+Of the four portable guards that police the fact/procedure split, **two reach consuming repos and
+two do not, and the difference is where they live.** No project token in synced core
+(`skills/_shared/scripts/check_no_project_tokens.py`) and no dead path in `cla.io/project-facts.md`
+or an overlay (`skills/sync-context/scripts/check_fact_paths.py`) are skill scripts inside the
+shipped tree, so a consumer gets them and can run them as programs. No hardcoded plugin path and no
+SKILL.md with broken frontmatter or a dead reference are pytest guards in `plugin-tests/`; they
+police the plugin's own source and do not reach a consumer at all, which is deliberate — a consuming
+repo has no pytest gate over its plugin cache, so a guard filed as a test module is unreachable
+there in practice.
+
+Source-repo-only is now **structural rather than declared**. The whole dev tree exists only here, so
+there is nothing to mark and nothing to skip; the `SOURCE-REPO-ONLY.md` marker mechanism and its
+guard were deleted with the runner that read them. `plugin-tests/tests/launcher/` still tests the
+repo-root `cla`/`cla.cmd` launchers, which live outside the plugin tree entirely (`claw`/`claw.cmd`
+were deleted alongside the worktree-isolation guard, the hook they existed to dodge).
 
 All scripts are stdlib-only Python (no third-party deps beyond pytest itself).
 
@@ -135,7 +142,7 @@ each one comes from a real escape:
    rule: a commit count nobody had run, in three files including the hook written to
    measure it.
 4. **Fixing a defect a review found?** Break the fix and confirm a test fails —
-   `python3 .claude/plugins/cla/mutate.py <batch.py>` runs a batch of those (a batch is a
+   `python3 plugin-tests/mutate.py <batch.py>` runs a batch of those (a batch is a
    Python module defining `MUTANTS`; see the tool's docstring) and reports survivors. A
    fix is a change like any other and earns the same evidence the original code needed;
    "the reviewer's finding is now handled" is not that evidence. A fix also has a second
@@ -157,33 +164,34 @@ and paying them anyway is not caution, it is waste with the shape of rigour. The
 
 | | run |
 |---|---|
-| Editing one skill or scope | that scope's `pytest`, **once** |
-| Fixing a defect a review found | that scope, plus a mutation batch over what the fix touches |
+| Editing one skill or area | `pytest plugin-tests/tests/<area>`, **once** |
+| Fixing a defect a review found | that area, plus a mutation batch over what the fix touches |
 | Adding a new script, skill, or hook | the four checks above, in full |
-| Before opening a PR | `run_tests.py`, once |
+| Before opening a PR | `pytest plugin-tests`, once |
 
 **A green run does not get more true by being repeated.** Re-running a suite to see whether
 a failure recurs is the one case that justifies it — and then the finding is the flake, so
 fix the mechanism rather than counting clean runs as evidence against it. Recorded
 2026-08-22, after adding a navigation rail to `annotate` cost five full scope runs, a whole
-`run_tests.py` sweep, and an unrelated change to a server, for an edit whose real gate was
-one 13-second scope run and looking at the page.
+sweep of the entire suite, and an unrelated change to a server, for an edit whose real gate
+was one 13-second run over that one area and looking at the page. (The runner those runs
+used is gone; the lesson is about the count, not the command.)
 
-The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has its own
-sibling `node --test` suite. It is not a pytest scope, but `run_tests.py` **does** run it — as a
-13th entry alongside the 12 pytest scopes — so a bare `run_tests.py` covers it. Run it alone only
-while iterating on that one script:
+The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has a
+`node --test` suite, which lives in the dev tree with every other test. It is not a pytest scope
+and **nothing runs it for you** — `pytest plugin-tests` does not reach it, so it is a second
+command you run deliberately:
 
 ```bash
-node --test .claude/plugins/cla/skills/project-review/scripts/mechanical-checks.test.mjs
+node --test plugin-tests/node/mechanical-checks.test.mjs
 ```
 
 ### No CI — verification is local, by design
 
-This repo runs **no GitHub Actions and no CI of any kind**, deliberately. `run_tests.py` is the
-whole verification story — every pytest scope plus the Node suite, in one command. Run it once
-before opening a PR. **It is the shipping gate, not the edit loop** — while iterating, run the one
-scope you are changing; see the table above.
+This repo runs **no GitHub Actions and no CI of any kind**, deliberately. Two local commands are
+the whole verification story: `pytest plugin-tests` for the suite, and `node --test` for the one
+Node suite it does not reach. Run both once before opening a PR. **They are the shipping gate, not
+the edit loop** — while iterating, run the one area you are changing; see the table above.
 
 Do not add a workflow. If a change seems to need one, raise it rather than adding it.
 
@@ -208,18 +216,25 @@ everywhere) from *facts* (per-repo, never synced):
 
 - **Synced core** — `.claude/plugins/cla/{skills,agents,hooks,output-styles}/`: portable procedure
   only. A conformance guard — `skills/_shared/scripts/check_no_project_tokens.py`, run as a program
-  and, in this repo, also invoked as a subprocess by a `conformance-checks/` pytest test — fails if a
-  distinctive project token, or a hardcoded absolute developer path, leaks into synced core — one
+  and, in this repo, also invoked as a subprocess by a `plugin-tests/tests/conformance/` test — fails
+  if a distinctive project token, or a hardcoded absolute developer path, leaks into synced core — one
   scanner covers `SKILL.md`/`references/*.md` prose under `skills/`, a second covers every `.py` file
   plus `agents/*.md` and `output-styles/*.md` (frontmatter-exempt the same way `SKILL.md`'s own
-  `description:` is). The source scanner covers
-  eight roots — the four synced dirs plus `lib/` and the three `*-checks/` scopes — because the
-  marketplace ships the whole directory. Four files still fall outside both scanners and are watched
-  by hand: the plugin's own `README.md` (its install commands legitimately name this repo),
-  `skills/_shared/README.md`, `run_tests.py`, and `mutate.py`. The two scanners do not have the same reach:
-  the hardcoded-path one covers `.md`/`.py`/`.mjs`/`.json`, so `hooks/hooks.json` and a skill's
-  `.mjs` are in scope; the project-token one is `.py`/`.md` only. `hooks/probe-python.sh` is the one
-  shipped file outside **both**, because neither scans `.sh`. Listed in TODO.md.
+  `description:` is). The source scanner covers **five** roots — the four synced dirs plus `lib/` —
+  because the marketplace ships the whole directory. It was eight until the dev tree moved out; the
+  three `*-checks/` entries then named directories that no longer exist, and a stale root is worse
+  than a missing one, because the guard refuses to run at all rather than quietly scanning less.
+  Two files still fall outside both TOKEN scanners and are watched by hand: the plugin's own
+  `README.md` (its install commands legitimately name this repo) and `skills/_shared/README.md`.
+  It was four — `run_tests.py` and `mutate.py` were the other two, and neither ships any more.
+  The two scanner families do not have the same reach: the hardcoded-path one
+  (`plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py`) covers
+  `.md`/`.py`/`.mjs`/`.json`, so `hooks/hooks.json` and a skill's `.mjs` **are** in scope; the
+  project-token one is `.py`/`.md` only. Measured across both families:
+  **101 files ship, 96 are reached by at least one scanner, 5 by none** —
+  `.claude-plugin/plugin.json`, `.gitattributes` and the plugin `README.md` (all outside every scan
+  root), plus `hooks/probe-python.sh` and `hooks/git/pre-push`, which sit inside a scan root but
+  carry a suffix (`.sh`) and no suffix respectively that no scanner opens. Listed in TODO.md.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not
@@ -228,24 +243,41 @@ everywhere) from *facts* (per-repo, never synced):
   `lessons-learned/`, `project-tokens.local.md` (the conformance guard's curated token list), and
   (in a consuming repo) a consolidated `project-facts.md` and `terminology.md` (internal naming
   disambiguation, format owned by `sync-context`, written inline by other skills as terms resolve).
-  Never part of the synced core; a staleness guard fails when a path named there no longer exists.
+  Never part of the synced core; a staleness guard
+  (`skills/sync-context/scripts/check_fact_paths.py`) fails when a path named there no longer exists.
 
 ### Skill layout
+
+The published plugin — everything here ships to a consuming repo:
 
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
-  run_tests.py                 aggregating test runner (all scopes + the Node suite)
-  mutate.py                    mutation checker: break a fix, confirm a test fails, restore
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
-  hooks/                       guard hooks + hooks.json wiring + tests
+  hooks/                       guard hooks + hooks.json wiring
+  lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill)
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
     references/                supporting docs (portable; overlays live in cla.io/overlays/)
     scripts/                   deterministic helpers (stdlib Python)
-    tests/                     that skill's isolated pytest scope
+```
+
+…and the two repo-root trees that do NOT ship, which is where the tests and the release workflow
+went:
+
+```
+plugin-tests/                  the repo's ONE pytest scope
+  pyproject.toml               testpaths, norecursedirs, and the 10-entry pythonpath
+  mutate.py                    mutation checker: break a fix, confirm a test fails, restore
+  tests/<area>/                conformance, consistency, launcher, hooks, lib, skills/<name>
+  mutants/<area>/              mutation batches, mirroring tests/ — a sibling, never a child
+  scripts/check_script_drift.py
+  node/mechanical-checks.test.mjs
+.claude/skills/release/        repo-local skill, invoked as /release (not /cla:release)
+  SKILL.md
+  scripts/check_shipped_tree.py
 ```
 
 ### Every script, and why it exists
@@ -255,22 +287,22 @@ cannot do reliably. Seven that failed that bar were deleted; these are the survi
 rule going in is the rule going out — **if a script here can't be justified in one line, it
 isn't a survivor.** (Guard hooks are listed separately below.)
 
-Paths below are given relative to `.claude/plugins/cla/` and never repeat that prefix — a bare
-top-level path (`run_tests.py`, `mutate.py`, `lib/...`) for a script outside `skills/`, and a
+Shipped scripts are given relative to `.claude/plugins/cla/` and never repeat that prefix — a bare
+top-level path (`lib/...`) for a script outside `skills/`, and a
 skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script that belongs to one,
 matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scripts/codify_aggregate.py`,
 `annotate/scripts/*.py`, and so on).
 
 | Script | Why prose can't do it |
 |---|---|
-| `run_tests.py` | Runs each isolated scope as its own process and aggregates; there is no CI, so this is the only gate. |
-| `mutate.py` | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
+| `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
 | `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses a path-shaped ledger argument. |
-| `consistency-checks/scripts/check_script_drift.py` | Compares the ledger-dir resolver across the writer and both readers. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
+| `plugin-tests/scripts/check_script_drift.py` *(dev tree)* | Compares the ledger-dir resolver across the writer and both readers. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
 | `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
 | `codify-retro/scripts/codify_aggregate.py`, `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over 40–130 JSONL records, including malformed-shape and producer-drift buckets a reader would gloss. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
+| `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 14-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
 | `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos today. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
 | `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
@@ -284,9 +316,13 @@ matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scrip
 
 ### Skills by life-cycle phase
 
-Every skill is invocable as `/cla:<name>` or by natural language, and Claude Code already surfaces
-each one's name and description — so the full phase table lives in `.claude/plugins/cla/README.md`
-rather than being restated here. The arc it maps: bootstrap → discover & shape → specify & plan →
+Every shipped skill is invocable as `/cla:<name>` or by natural language, and Claude Code already
+surfaces each one's name and description — so the full phase table lives in
+`.claude/plugins/cla/README.md` rather than being restated here. **One skill is not shipped and
+carries no namespace:** `release` acts on the plugin's own *distribution* — it edits the repo-root
+marketplace catalog and cuts `cla--v<version>` tags — so it is repo-local at
+`.claude/skills/release/` and is invoked bare as `/release`. A consuming repo has nothing for it
+to act on, which is why it does not ship rather than shipping and doing nothing. The arc it maps: bootstrap → discover & shape → specify & plan →
 build & ship → review & assure → learn & improve, plus phase-agnostic utilities.
 
 Typical flows: small change → `shape-decision` → `lite-pr`; larger → `shape-decision` →
