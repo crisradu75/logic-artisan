@@ -578,6 +578,32 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
 
+### Requirement: Unattended-run turn liveness
+
+A skill that drives a multi-step run designed to proceed without a human present SHALL state, among its hoisted skill-level rules, that a turn is never ended while nothing is pending that would re-invoke the session. The obligation SHALL be stated as a **check the agent can apply without judgement** — whether the message contains a tool call — rather than only as a prohibition on how a message reads, because the judgement form has been observed to fail in the one way that matters: an author writes a closing-shaped status report and then behaves like its reader.
+
+The rule SHALL distinguish itself from the existing no-confirmation-prompt rules such skills already carry. Those forbid *asking permission*; this failure asks nothing, and an orchestrator hitting it believes it is continuing. The stated discriminator SHALL be whether a pending event will re-invoke the session — a backgrounded dispatch whose completion notification wakes it — and NOT whether a question was asked. The rule SHALL state that announcing the next step is not a mechanism.
+
+The rule SHALL name the exhaustive set of conditions under which ending a turn is legitimate, and SHALL be restated at the seam between units of work in whichever reference file carries that seam's procedure, because the seam is reached with the reference closed and the orchestrator running on the `SKILL.md` summary.
+
+#### Scenario: The rule is stated mechanically, not only as a prohibition
+
+- **WHEN** an unattended-run skill states its turn-liveness rule
+- **THEN** the rule gives a check requiring no judgement (whether the message carries a tool call)
+- **AND** it does not rest solely on the agent noticing that its own text reads as an ending
+
+#### Scenario: The rule is distinguished from the no-pause rules
+
+- **WHEN** the rule appears alongside an existing "no ready-to-continue pauses" rule
+- **THEN** it states that the failure it covers asks the user nothing
+- **AND** it names the pending-event discriminator rather than the asked-a-question one
+
+#### Scenario: The seam carries its own restatement
+
+- **WHEN** a skill's per-unit loop lives in a reference file
+- **THEN** that file restates the obligation at the point where one unit ends and the next begins
+- **AND** it says why the restatement is there rather than relying on the hoisted copy
+
 ### Requirement: Shipped-asset boundary
 
 The plugin directory `.claude/plugins/cla/` SHALL contain **only assets a consuming repo can use** —

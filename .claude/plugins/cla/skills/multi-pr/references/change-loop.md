@@ -74,7 +74,21 @@ For each change in the confirmed order:
    - State the measured minutes (step 6's timestamp minus step 2's) against the Phase 1c predicted minutes for this change's complexity bucket, e.g. "operator-x: 72 min actual vs ~90 min predicted (large-extend)."
    - Restate the remaining-chain estimate as a range. If the run is trending clearly faster or slower than its Phase 1c predictions across the changes done so far, nudge the remaining estimate in that direction — no need for a precise per-change ratio recomputation, just don't keep quoting an upfront number the run has visibly diverged from (e.g. "the run's been running ~20% ahead, so the last change is likely ~65–80 min rather than its ~90 min prediction"). Refresh it after each subsequent change.
 
-Move to the next change in the sequence.
+Move to the next change in the sequence — **in the same message as step 7's report.**
+
+This seam is where the chain has been measured to die. Step 7 produces a natural closing shape (a
+finished change, a wall-clock figure, a revised estimate), and a well-written status report reads as
+a legitimate place to stop even though nothing is blocked and nobody is waiting on input. It is not
+a pause: an idle turn has no pending event to re-invoke the session, so the chain stops until a
+human notices. One six-change chain lost ~4.5 hours here with 4 of 6 changes unstarted, its closing
+line being "Starting change 3: …".
+
+The hoisted rule in `SKILL.md` ("Never end a turn with nothing in flight") binds here and is
+restated because this is exactly the point at which that file has been closed and the orchestrator
+is running on the `SKILL.md` summary. Mechanically: step 7's report and the next change's step-1
+resume check go in **one** message. If there is no tool call to pair the report with, the change is
+not over. Announcing the next change is not a mechanism — only a backgrounded dispatch, or a
+watchdog armed before the message ends, actually wakes the session.
 
 ## Resume behavior
 
