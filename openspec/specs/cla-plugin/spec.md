@@ -635,6 +635,53 @@ The skill SHALL state the underlying convention as well as enforcing it: a task 
 - **THEN** the ticked line records the measured value
 - **AND** a sample of such tasks is re-measured rather than trusted
 
+### Requirement: A measurement names the command that produced it
+
+A skill that owns a commit-creating Ship step SHALL require that every measurement the change asserts — a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact, in the diff or in the message — names the exact command that produced it, as one git trailer per claim at the end of the commit message. The trailer's format SHALL require the command to be **runnable as written**: a trailer naming "the test suite" or an elided invocation reproduces nothing and satisfies a bare-token rule, which is the failure the trailer exists to close. The same obligation SHALL cover any measurement written into the PR body.
+
+**The obligation SHALL be stated at the pre-commit stop, not at authoring time.** This is the requirement's whole point and is not a placement preference. The rule has existed as project guidance for months and kept failing in careful work, and the reason is that it had no chokepoint: `grep -rin "five checks\|check 3" .claude/plugins/cla/` returns 0 — no shipped asset referenced it — while of the five such pre-ship checks this repo states, exactly one (rewrote-a-file) has a moment-of-edit mechanism, `hooks/warn-wholesale-rewrite.py` on the `Write` matcher. Project guidance loads at session start; the claims are written hundreds of tool calls later. The stop the skill already performs before committing is where the author is already halted and already assembling claims into a message, so that is where the obligation binds.
+
+**The discharge SHALL be an edit rather than an answer.** A claim the author cannot pair with a runnable command has exactly two exits: run the command now, or delete the claim and restate it as the reasoning it is. A skill SHALL NOT offer a third exit in which the claim ships and the command is owed. A change asserting no measurement SHALL carry no trailer, and a skill SHALL NOT accept a null certification such as `Measured-by: none` — a line certifying a check nobody performed is worse than no line, because it reads as evidence that one happened.
+
+**The trailer token SHALL be distinguishable from narrative prose.** Bare `Measured:` is ordinary narrative text in the shipped tree (`grep -rl "Measured:" .claude/plugins/cla/ | wc -l` — 4 files, none of them a trailer), so a bare token would collide both with a drift check over shipped prose and with `git log --grep`. The hyphenated git-trailer form `Measured-by:` is load-bearing rather than cosmetic.
+
+**This obligation is NOT covered by the Completeness-signals requirement above**, whose measurement clause reads in full: *"A task whose text asserts a **measurement** — a confirmed value, a count, a mutation-test result — SHALL record the measured value inline on the ticked line rather than the tick standing as its own evidence, and the post-check SHALL re-measure a small sample rather than trusting the ticks wholesale."* That binds a **task list** to record a **value**; this binds a **commit** to name a **command**. A recorded value is the claim restated in another place — it is exactly what every escape this requirement addresses already had. Only the command lets a reader reproduce it, and the two clauses also bind different artifacts at different moments, so neither subsumes the other.
+
+**A keyword scan over the diff SHALL NOT be the mechanism, and the measurement is recorded so it is not re-attempted blind.** The Completeness-signals requirement already records one withdrawal of this idea for ticked task bodies (GitHub issue #105: 173 ticked tasks, 6 lines reached, 0 true positives, 4 false positives, trip words colliding with vocabulary the skills use deliberately) and requires that anyone rebuilding it measure the target corpus first. Re-measured here for the diff-side variant, over this repo's own history:
+
+```
+git log -8 -p --format= --unified=0 | grep -cE '^\+'
+  -> 7280 added lines
+
+git log -8 -p --format= --unified=0 | grep -E '^\+' | grep -icE 'measured|verified|counted|\bzero\b|no (violation|hit|match|instance|offender)s?\b|[0-9]+ of [0-9]+|exactly (one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\b'
+  -> 169 hits (2.3%)
+```
+
+A systematic 21-line sample of those 169 (every 8th hit, `| awk 'NR%8==1'`) was dominated by test function names, string literals inside assertions, spec scenario prose, and claims that already named their command. That is issue #105's failure shape again, so the mechanism SHALL be authored rather than discovered: the author wrote the claims and needs no scanner to find them, and what gets checked is the artifact.
+
+#### Scenario: A change asserting a measurement carries its command
+
+- **WHEN** a Ship step commits a change whose text asserts a count, a coverage figure, or any number offered as fact
+- **THEN** the commit message carries one trailer per claim naming the exact command that produced it
+- **AND** the command is a real invocation runnable as written
+
+#### Scenario: A claim with no command is edited, not carried
+
+- **WHEN** the author cannot name a command for a measurement the change asserts
+- **THEN** the claim is either backed by running the command now or deleted and restated as reasoning
+- **AND** no exit exists in which the claim ships with the command owed
+
+#### Scenario: A change asserting nothing certifies nothing
+
+- **WHEN** a change asserts no measurement
+- **THEN** the commit message carries no measurement trailer
+- **AND** a null certification line is not written in its place
+
+#### Scenario: The rule binds at the pre-commit stop
+
+- **WHEN** a skill that owns a commit-creating Ship step states the obligation
+- **THEN** it is stated after that step's pre-commit state check, not among its authoring-time guidance
+
 ### Requirement: Deferred findings are separated by reason
 
 A skill reporting findings it did not apply SHALL split them into named subsections distinguishing a hold that cannot be resolved now, a hold whose trigger has not fired, and an item skipped for neither reason. The third SHALL be mechanically detectable, so that a policy breach is found by a grep rather than by re-reading every item.

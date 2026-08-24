@@ -108,13 +108,21 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
 
 Exit 0 → proceed. Any non-zero exit → halt and surface via `AskUserQuestion` — same contract as `/cla:spec-to-pr`: never infer "probably fine" on a non-zero exit. This bare invocation passes no `--expect-branch` (lite-pr's feature branch doesn't exist until `commit-push-pr` runs), so a non-zero exit means an in-progress rebase/cherry-pick from another session (exit 2) or an unresolvable/corrupt git state (exit 1) — not a branch mismatch. Resolving an exit-2 in-progress op: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`. If another session is active in this same clone, prefer running lite-pr from an isolated worktree (`/cla:new-worktree`) in the first place — a shared-clone `git commit` mid-flow is a real collision risk here, not a hypothetical one (see `cla.io/overlays/lite-pr.md` for a recorded incident in this repo).
 
+**Then, before handing off: every measurement this change asserts names the command that produced it.** This stop is where the change's claims are assembled into a message, which is why the obligation is discharged here rather than while an edit is being typed — a rule that fires at the keyboard fires hundreds of tool calls before the claim is written down. For each measurement the change asserts — a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact — one trailer line goes at the end of the commit message:
+
+```
+Measured-by: <the exact command, runnable as written> — <the claim it produced>
+```
+
+The command is a real invocation, not "the test suite" and not an elided one; the point of the trailer is that a reader can re-run it. You wrote the claims, so finding them needs no scanner. A claim you cannot pair with a runnable command has two exits and both are edits: **run the command now, or delete the claim** and restate it as the reasoning it actually is ("expected", "by inspection", "should"). There is no third exit in which the claim ships and the command is owed. A change asserting no measurement carries no trailer — never `Measured-by: none`, which certifies a check nobody ran while reading as evidence that one happened. The same obligation covers any measurement written into the PR body.
+
 Then hand off entirely:
 
 ```
 Skill(commit-commands:commit-push-pr)
 ```
 
-No pause before this runs — continuous by design (see Autonomy below). Use `commit-push-pr`'s own branch-naming and commit-message conventions as-is; lite-pr does not add any naming logic on top.
+No pause before this runs — continuous by design (see Autonomy below). Use `commit-push-pr`'s own branch-naming and commit-message conventions as-is; lite-pr does not add any naming logic on top. The `Measured-by:` trailers are message *content* rather than a naming convention, so they are not an exception to that: hand them to `commit-push-pr` as part of the commit message it writes.
 
 ### Review
 
