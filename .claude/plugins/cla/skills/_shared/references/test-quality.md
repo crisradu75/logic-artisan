@@ -78,14 +78,79 @@ to reject (planted a dev asset — the scan reported clean), and a non-vacuity c
 whose assertion was tautological (hardcoded the value it derived — every assertion
 still passed). None was found by reading. Each took ~60 seconds to plant.
 
+## Three ways the planting itself goes wrong
+
+Planting a failure only proves something if the plant reaches the value the assertion
+reads. Each of these produced a confident, wrong conclusion in a real run.
+
+**The plant must land on the tested value, not merely change the file.** Three shapes,
+all of which report "caught" while testing nothing. A plant that is a *superstring* of
+the asserted value — renaming an index to `<name>_MUTATED` still satisfies a
+`toContain`, and the author concluded the *test* was broken. A plant that lands in a
+comment or docstring beside the data rather than in the data. And a plant that leaves
+the file malformed, so the guard exits non-zero because it is rejecting a broken file,
+not because it detected the change. Before reading the result, confirm what actually
+moved.
+
+**A mirror that greps the guard's own source proves only that a word was written.**
+When a guard needs live or external data the test suite cannot supply, the tempting
+substitute is a test asserting the guard's *source text* contains certain strings.
+`expect(script).toContain("declared AVAILABLE")` cannot distinguish a guard sound in
+both directions from one sound in only one, because both produce the same source.
+Extract the comparison as a pure function and feed it synthetic inputs in every
+direction the guard claims to check. Doing exactly that once immediately surfaced a
+real bug in the extraction — a loop reading a module-level constant instead of its own
+parameter, so the function silently ignored its first argument.
+
+**A guard scoped to more than one tree needs a plant in EACH tree.** A pattern copied
+from a sibling guard carries the sibling's path assumptions, and the failure mode is
+"matches nothing, exits 0" — indistinguishable from passing. One real instance printed
+`OK` with the forbidden import sitting on line 2 of the file whose reachability was the
+stated reason for widening the guard's scope.
+
+## Where planting is worth the cost, and where it is not
+
+**Plant when a passing assertion is uninformative on its own** — the test asserts
+*absence* ("no violations", "nothing found", "exit 0", an empty list). A broken
+implementation produces the identical green, so nothing in the output distinguishes
+working from dead.
+
+**Do not bother when the assertion pins a specific positive value** — a count, a
+string, a returned shape. There the test already is the plant: break the code and the
+value changes, so it goes red on its own.
+
+**Planting is blind to an input space you never enumerated, and this is the expensive
+one.** It tests the implementation you wrote, never the cases you failed to think of.
+Measured: a guard reported every planted failure caught while missing five of the eight
+spellings of the operation it existed to detect, because the plants were derived from
+the code rather than from the tool's documented grammar. For anything parsing an
+external contract — command-line flags, a file format, an API shape — **enumerate from
+the primary source first, then plant.** Reversing that order buys confidence in the
+half you already had right.
+
+**A floor is unexercised while the thing it floors is healthy.** A minimum-count
+assertion, or a cap that only bites on bad input, cannot be reached by planting against
+a correct tree — the plant has nothing to change. Cover those structurally instead,
+with a test that gives the check bad state and asserts it notices. That form keeps
+holding after a later refactor turns the check into a no-op, which a one-time plant
+does not.
+
 ## Why these and not a longer list
 
 Every rule above is the same failure mode seen from a different angle: the suite goes
 green and the coverage is imaginary. A tautological assertion cannot fail; a floor far
 below its population will not fail; a gate nobody planted a failure against has not
-been shown to fail. All of them are the class a guard asserting over a collection it
+been shown to fail; a plant that missed the value under test proves nothing while
+reporting success; and a plant derived from the code cannot reach a case the code
+never considered. All of them are the class a guard asserting over a collection it
 never fills belongs to (the source repo's
 `plugin-tests/tests/conformance/test_guards_are_not_vacuous.py`).
+
+Note the shape of the last two. The earlier rules ask whether a test *can* fail. Those
+two ask whether the evidence you gathered is about the thing you meant — which is why a
+clean run is evidence about the plants you thought of and nothing else, and why it is
+worth naming what you did not plant rather than letting an all-green report imply a
+coverage it does not have.
 
 Rules about naming, length, or structure are style. These are about whether the test
 can fail at all — which is the only property that makes a green run mean anything.
