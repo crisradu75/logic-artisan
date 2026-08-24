@@ -64,6 +64,81 @@ State what you derived the number from, in the assertion's own comment, so the n
 person moving the tree can re-derive it rather than guess whether the margin is
 deliberate.
 
+## An alarm must be able to fire at the volume it will really see
+
+The floor above is *decorative* when its number drifts below its population: the
+comparison still runs and only its failing branch is dead. Here the number sits
+**above** the population, and the enforcement path does not run at all — the guard
+is correct, and the volume it meets on an ordinary day is outside the range where
+it does anything.
+
+**The boundary between the two sections is what you can count.** The floor rule
+above assumes a population you can enumerate in the tree — files on disk, entries
+in a manifest — so its instruction is to re-derive the number from the real count
+in the same edit. Where the population is **runtime traffic** — a nightly batch, a
+live rate, an incoming corpus — there is nothing in the tree to re-derive from,
+and that is the case this section owns.
+
+Three shapes, one cause. The instances below were measured in one six-change run
+in a repo consuming this plugin, and are reported here rather than re-derived:
+
+- **A minimum-sample precondition larger than any real batch.** The enforcement
+  path exists and never runs. A rate floor required 200 samples, in a job seeing
+  113–190 a night.
+- **A threshold tuned on the wrong run, or against the wrong statistic.** Pinned
+  to a backfill or a full-corpus measurement, it false-fires on the small batches
+  that are the steady state. One was derived from a measured share of items
+  missing a *term* while the code it guarded counted missing *records* — the same
+  defect reached from the calibration end rather than the volume end.
+- **An alarm too coarse to see the failure it is for.** One watching a combined
+  counter sees only total collapse: retire three of four terms and one whole
+  category stops permanently while the total stays in the thousands, well clear
+  of anything. *The same alarm* would also have fired on roughly half of all
+  two-item batches, because only 30% of real items carried the thing it counted —
+  one alarm, unreachable in one direction and trigger-happy in the other.
+
+**So state the volume, and where the volume came from.** Any new alarm, threshold
+or minimum-sample precondition carries, in a comment beside itself:
+
+1. **The volume it will see in ordinary steady-state operation, and the source of
+   that figure** — the query, log window or run it came from, named so the next
+   person can re-run it rather than guess. This is the condition that bites: the
+   defect happens because the author is holding a backfill-sized or full-corpus
+   sample at the moment the number is chosen, and requiring the *number* without
+   its provenance leaves that exact mistake available.
+2. **The guard's outcome at both ends of that range**, not at one point — which is
+   what separates "cannot fire" from "fires constantly".
+3. **Confirmation that whatever sample it was calibrated against sits inside that
+   range** — and if it does not, which run it came from.
+
+The third shape needs one more, because stating a volume does not fix it: an alarm
+over an **aggregate** also names the sub-population it can no longer see.
+
+**What this shares with the sections below, and what it does not.** Two of them
+come close, and both reach this only under a condition they do not state — which
+is what this section adds rather than replaces.
+
+- **"A check planting cannot reach still has to be proven, structurally"** is the
+  nearest, and it names a minimum-count floor outright. Its remedy — hand the
+  check bad state and assert it notices — does catch this, *if the bad state is
+  sized to the real operating point.* Supply a batch of 150 against a
+  200-precondition and it goes red immediately; supply a comfortable 500 and it
+  passes, having proven the guard works at a volume it will never see.
+- **"A mirror that greps the guard's own source"** has the same conditional
+  remedy: extract the comparison as a pure function and feed it synthetic inputs
+  *in every direction the guard claims to check*. Sizes below the precondition are
+  one of those directions, and are the one nobody thinks to supply.
+
+What reaches it nowhere is a plant against the live tree. The guard fires
+correctly, because the comparison was never the broken part — what goes
+unexamined is the **precondition gating when the comparison runs**. Mutating that
+constant does surface it, but as a *surviving* mutant rather than a red run, which
+is the signal most easily read as noise.
+
+So the distinguishing question is neither "can this assertion fail" nor "does this
+test check the logic", but **"at the volume this will meet on an ordinary day, is
+this reachable at all?"**
+
 ## Which gates are worth planting against
 
 Not a rule about how a test fails — a routing question, answered before the gate
@@ -172,7 +247,8 @@ order buys confidence in the half you already had right, and buys it loudly.
 
 Every *rule* here is the same failure mode seen from a different angle: the suite goes
 green and the coverage is imaginary. A tautological assertion cannot fail; a floor far
-below its population will not fail; a gate nobody planted a failure against has not
+below its population will not fail; an alarm whose precondition sits above the volume
+it will really see never runs at all; a gate nobody planted a failure against has not
 been shown to fail; a plant that missed the value under test proves nothing while
 reporting success; and a plant derived from the code cannot reach a case the code
 never considered. All of them are the class a guard asserting over a collection it
@@ -181,9 +257,12 @@ never fills belongs to (the source repo's
 example; a consuming repo has no such file, which is why it is named as the source
 repo's rather than as something to go and run).
 
-("Which gates are worth planting against" is the exception, and deliberately so — it
-is routing, not a rule. It answers whether the gate sections after it apply to you at
-all, which is why it sits before them rather than claiming membership in this list.)
+(Two sections are not in that list. "Which gates are worth planting against" is
+routing, not a rule — it answers whether the gate sections after it apply to you at
+all, which is why it sits before them rather than claiming membership here. "No
+implementation-detail testing" is a rule, but its failure mode is the opposite one:
+the test fails too easily rather than not at all, so it does not belong to the shared
+shape this list is drawn around.)
 
 Note the shape of the last two entries. The earlier ones ask whether a test *can* fail.
 Those ask whether the evidence you gathered is about the thing you meant — which is why

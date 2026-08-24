@@ -799,7 +799,14 @@ Where the reference states how a planted failure goes wrong, it SHALL give **che
 
 The reference SHALL state that planting exercises only the implementation that exists, and therefore cannot reach an input the author never enumerated — and SHALL direct that anything parsing an external contract is enumerated from its primary source **before** it is planted against.
 
+
 **Scope boundary.** Guidance about when planting is worth its cost is routing, and SHALL NOT be read as narrowing any other obligation. In particular the **Review-fix evidence gate** stays unconditional: a fix for a review finding earns its evidence regardless of which technique supplies it. A reference stating both SHALL say so explicitly, because the two sit close enough to be read as one.
+
+**Unreachability at the operating point.** The reference SHALL also carry the sibling case, where the enumerated input space is correct and the guard is nonetheless unreachable because the volume it meets in ordinary operation sits outside the range where it acts: a minimum-sample precondition larger than any real batch, a threshold pinned against a backfill-sized sample or against a different statistic than the code measures, or an alarm over an aggregate too coarse to see the sub-population that failed.
+
+It SHALL require any new alarm, threshold or minimum-sample precondition to state the volume it will meet in ordinary steady-state operation **and the source of that figure**, so the number can be re-derived rather than guessed — the omission that produces this defect is an author choosing a number while holding a backfill-sized sample, which requiring the number alone leaves available. It SHALL require the guard's outcome to be stated at both ends of that range, since one end distinguishes "cannot fire" from "fires constantly" and neither end alone does.
+
+It SHALL state where this sits relative to the planting rules rather than leaving the reader to infer it, and SHALL NOT claim the planting rules reach none of it. A plant against the live tree does not reach it — the comparison it fires is correct, and what goes unexamined is the precondition gating when that comparison runs — but a neighbouring rule whose remedy is to supply the check with bad state DOES reach it, conditionally on that state being sized to the real operating point. Where such a condition exists it SHALL be stated, because a reader told the neighbouring rules are irrelevant is steered away from the only remedy the reference offers.
 
 #### Scenario: A reader is routed before being asked to read gate doctrine
 
@@ -816,6 +823,14 @@ The reference SHALL state that planting exercises only the implementation that e
 - **WHEN** the reference describes a plant that FAILED TO LAND on the value under test
 - **THEN** it names the conditions distinguishing a landed plant from one that missed
 - **AND** a trap of a different shape gives its own remedy rather than being forced into that form
+
+#### Scenario: A correct guard that cannot fire at its real volume is covered
+
+- **WHEN** the reference is read by someone adding an alarm, threshold, or minimum-sample precondition
+- **THEN** it requires the volume that alarm will meet in ordinary steady-state operation to be stated
+- **AND** it requires both directions to be answered at that volume — that the alarm can fire, and that it fires only when it should
+- **AND** it states that a plant against the live tree reaches none of this, because the comparison it fires is correct and what goes unexamined is the precondition gating when that comparison runs
+- **AND** where a neighbouring rule's remedy does reach it, the condition under which it does is stated rather than left implicit
 
 ### Requirement: Shipped-asset boundary
 
