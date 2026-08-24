@@ -230,13 +230,22 @@ adopted area — `conformance`, `consistency` and `release` today — to ship a 
 `mutants/<area>/`, so a new guard cannot land unproven. Eight predate the convention and are listed
 individually in that file's `_EXEMPT` map — countable debt, not a softened rule.
 
-**A NEW area is adopted one guard at a time**, via `_PARTIAL_AREAS` in the same file: list the guard
-basenames covered so far and the rest are not demanded. It is a ratchet, not an exemption — a listed
-name that loses its batch fails. Before it existed, creating the first batch in a new area made that
-whole area policed at once (measured: 12 further guards, none exemptable), so the affordable move was
-to write no batch — which is why `mutants/hooks/` still does not exist and the batch proving
-`ask-destructive-git`'s `git branch -D` detection lives nowhere. Writing that batch is the first job
-the mechanism unblocks. The count here and the bound in
+**A NEW area is adopted one guard at a time**, via `_PENDING_ADOPTION` in the same file: one line per
+guard still awaiting a batch, keyed by the same relative path as `_EXEMPT` and bounded by
+`_PENDING_ADOPTION_CEILING`, which may be raised only in the commit that adopts an area. Before it
+existed, creating the first batch in a new area made that whole area policed at once (measured: 12
+further guards, none exemptable), so the affordable move was to write no batch — which is why
+`mutants/hooks/` still does not exist and the batch proving `ask-destructive-git`'s `git branch -D`
+detection lives nowhere. Writing that batch is the first job the mechanism unblocks.
+
+It is deliberately per-**file**, not per-area. A per-area version was written first and review
+measured three holes, all from the same cause: a guard added to a listed area *later* could never be
+in a set written before it existed, so it was exempt forever; an empty set unpoliced the whole area
+green; and mutating the branch into a blanket exemption passed every test written for it. Per file
+there is no area-level branch to mutate, an unlisted guard is demanded the moment it appears, and the
+debt is countable the way `_EXEMPT` is. Three further tests enforce what the entries may be: the
+guard must exist, its area must already hold a batch (otherwise it is an exemption, not an adoption),
+and it must not already have a batch (a stale entry outlived its reason). The count here and the bound in
 `test_the_grandfather_list_only_shrinks` both move down when an entry is deleted; nothing in the
 suite reads this file, so that pairing is a convention rather than a check.
 
