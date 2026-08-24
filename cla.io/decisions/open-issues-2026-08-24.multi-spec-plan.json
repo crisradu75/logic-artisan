@@ -1,0 +1,49 @@
+{
+  "decisions_file": "cla.io/decisions/open-issues-2026-08-24.md",
+  "batch_slug": "open-issues-lane2",
+  "branch": "docs/propose-open-issues-lane2",
+  "sequence_source": "file-sequencing-section",
+  "scope_note": "Lane 2 ONLY. The decisions file's Lane 1 table is marked SHIPPED (PRs #147-#150, merged 2026-08-24) and is history; re-proposing from it is a defect. Slug carries the -lane2 suffix because a bare open-issues slug would be ambiguous with the Lane 1 batch derived from the same file.",
+  "capability_overlap": {
+    "capabilities_in_repo": ["cla-plugin"],
+    "touched_by_more_than_one_change": ["cla-plugin"],
+    "note": "Maximal overlap, and uninformative. This repo has exactly one capability, so every change in any batch touches it and the matrix cannot discriminate colliding changes from independent ones. Recorded because this is the first batch since PR #149 added the check. Not harmful: #149's fix round moved the re-base TRIGGER off the overlap axis onto the presence of a `## MODIFIED Requirements` block, which still discriminates correctly here. The overlap matrix degrades to noise in a single-capability repo; the trigger does not."
+  },
+  "changes": [
+    {
+      "name": "fix-brief-binding-defect",
+      "decisions_covered": ["A"],
+      "closes_issues": [96, 121, 107, 112],
+      "one_line_scope": "One brief contract: the defect binds and the remedy is rejectable, the defect's own factual claims are checkable, an orchestrator-directed fix is a first-class review subject, and every fact row is tagged agent-reported or orchestrator-verified.",
+      "depends_on": []
+    },
+    {
+      "name": "delegate-liveness-contract",
+      "decisions_covered": ["B"],
+      "closes_issues": [113, 115, 125],
+      "one_line_scope": "A return with no evidence block is `blocked`, never `done`; long gates run synchronously; the orchestrator runs no git state-changing command in a checkout where its own delegate is live; and 'stop rather than invent data' becomes standard brief language.",
+      "depends_on": ["fix-brief-binding-defect"]
+    },
+    {
+      "name": "grounding-contract-claim-shapes",
+      "decisions_covered": ["C"],
+      "closes_issues": [124, 126, 118, 119, 109],
+      "one_line_scope": "Extend review-change's Grounding contract with a named list of claim shapes (demo-state producibility, cited-precedent consistency, code-vs-deployment guarantee, compensating-coverage verification) rather than appending four numbered checks to a file already carrying 0a-0k, plus one severity tie-break on a split finding.",
+      "depends_on": []
+    },
+    {
+      "name": "modified-block-diff-scope",
+      "decisions_covered": ["D2"],
+      "closes_issues": [97],
+      "one_line_scope": "Scope the in-plugin half of the wholesale-MODIFIED-replacement problem, resolving RENAMED first and reporting ADDED counts alongside missing; a proposal concluding 'report upstream to openspec, add nothing here' is a legitimate outcome.",
+      "depends_on": []
+    },
+    {
+      "name": "revise-round-two-question",
+      "decisions_covered": ["H"],
+      "closes_issues": [106],
+      "one_line_scope": "Give a second Revise round its own distinct question — does this fix introduce the defect it fixed, somewhere else — WITHOUT changing the --pr-rounds default, which already defaults to 2 and whose change rests on n=1 evidence the decisions doc explicitly recommends against acting on.",
+      "depends_on": ["fix-brief-binding-defect"]
+    }
+  ]
+}
