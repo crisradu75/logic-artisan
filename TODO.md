@@ -219,12 +219,14 @@ first contact, unchanged); research-as-procedure (user memory already carries it
 primitive extraction — measured overlap between `shape-decision` and `feedback` is two sentences of
 principle, below the shared-reference bar.
 
-## Write mutant batches for the 9 grandfathered guards
+## Write mutant batches for the 8 grandfathered guards
 
 `plugin-tests/tests/consistency/test_guards_have_mutant_batches.py` requires every guard in the
 `conformance` and `consistency` areas to ship a same-named batch under `mutants/<area>/`, so a new
-guard cannot land unproven. Nine predate the convention and are listed individually in that file's
-`_EXEMPT` map — countable debt, not a softened rule.
+guard cannot land unproven. Eight predate the convention and are listed individually in that file's
+`_EXEMPT` map — countable debt, not a softened rule. The count here and the bound in
+`test_the_grandfather_list_only_shrinks` both move down when an entry is deleted; nothing in the
+suite reads this file, so that pairing is a convention rather than a check.
 
 **The count shrank without anyone writing a batch, and the reason matters:** it was twelve when
 this entry was written and ten after `decouple-skills-from-dev-assets` (which brought two batches

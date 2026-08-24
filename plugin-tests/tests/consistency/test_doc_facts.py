@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -45,6 +46,50 @@ _DOCS = {
 _PYTEST_MARKER = "[tool.pytest.ini_options]"
 _EXCLUDED_DIRS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules"}
 
+# Generated caches are excluded by NAME above. A nested CHECKOUT cannot be, and
+# that distinction is the whole of `_is_nested_checkout` below.
+#
+# This repo's `new-worktree` skill puts a worktree at `.claude/worktrees/<name>`
+# by default, and the Agent tool's worktree isolation uses the same place — so a
+# second full checkout of the repo sits inside the repo whenever anyone works the
+# way the repo tells them to. `real_scope_dirs()` then finds that copy's
+# `plugin-tests/` and reports 2 pytest scopes, failing a doc claim that is
+# CORRECT, which is the worst shape of false failure: it invites someone to
+# "fix" the docs to match a miscount.
+#
+# Excluding the literal name `worktrees` was the first fix and it is too narrow.
+# `manual_worktree.py` exposes `--worktree-dir`, so the default is an input, not
+# a law; a worktree at `.worktrees/`, at `wt/`, or reached through a directory
+# junction is still a second checkout and was still counted. It is also too
+# broad in the other direction — it would hide any directory that merely happens
+# to be named `worktrees`.
+#
+# A git worktree and a submodule both carry their own `.git` entry, and the repo
+# root's own `.git` is the one that must not count. That is structural, so it
+# holds for every placement rather than for the default one.
+#
+# `real_scope_dirs()` is the only repo-root-wide walk in this scope. Measured:
+# `grep -rn 'rglob\|\.glob(' plugin-tests/tests/{consistency,conformance}/`
+# returns 22 hits, of which exactly 2 are `_REPO_ROOT.rglob` and both are in
+# `real_scope_dirs()`; the rest start from the plugin root, the dev tree,
+# `cla.io/overlays`, or `.claude/skills`, none of which contains a checkout.
+
+
+def _is_nested_checkout(directory: Path) -> bool:
+    """True for a second checkout inside the repo — a worktree or a submodule.
+
+    Both carry their own `.git` entry (a file for a worktree, a directory for a
+    clone).
+
+    The `!= _REPO_ROOT` guard is belt-and-braces, not the mechanism: `_excluded`
+    walks ancestors STRICTLY BELOW the root, so this is never called with the
+    root and a mutant removing the guard cannot be killed. What actually keeps
+    the root's own `.git` harmless is that loop's starting point. The guard stays
+    because this helper reads as general-purpose and a future caller may not
+    share that invariant — but it is not what the tests are proving.
+    """
+    return directory != _REPO_ROOT and (directory / ".git").exists()
+
 
 # ---------- ground truth, computed from the tree ----------
 
@@ -52,6 +97,40 @@ _EXCLUDED_DIRS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules
 def real_skill_count() -> int:
     """A skill is a directory with a SKILL.md. `_shared/` has none, by design."""
     return len(list((_PLUGIN_ROOT / "skills").glob("*/SKILL.md")))
+
+
+def _excluded(path: Path) -> bool:
+    """True if `path` sits under an excluded directory INSIDE the repo.
+
+    Relative to `_REPO_ROOT`, not against the absolute parts. The absolute form
+    reads the parts of the whole filesystem path, so a repo that happens to be
+    checked out under a directory with an excluded name excludes its own entire
+    tree and every count silently becomes 0 — measured on this branch, running
+    from `<repo>/.claude/worktrees/agent-<id>/` took `real_scope_dirs()` to `[]`
+    and turned four correct doc claims red with `assert 0 in [1]`. That is the
+    same false-failure shape the `worktrees` entry was added to remove, reached
+    from the other side, and it applies to `.git`/`node_modules`/`.venv` too.
+    """
+    try:
+        rel = path.relative_to(_REPO_ROOT)
+    except ValueError:  # pragma: no cover - callers only pass paths under the root
+        # Falling back to `path.parts` here would re-introduce the exact bug this
+        # function exists to remove: it reads the parts of the whole filesystem
+        # path, so a repo checked out below a directory with an excluded name
+        # excludes its own entire tree. Say "not excluded" instead — a path
+        # outside the root is not this repo's, and the caller's walk never
+        # produces one.
+        return False
+    if _EXCLUDED_DIRS & set(rel.parts):
+        return True
+    # Any ANCESTOR that is itself a checkout means this path belongs to a second
+    # copy of the repo, not to this one.
+    directory = _REPO_ROOT
+    for part in rel.parts[:-1]:
+        directory = directory / part
+        if _is_nested_checkout(directory):
+            return True
+    return False
 
 
 def real_scope_dirs() -> list[Path]:
@@ -67,13 +146,12 @@ def real_scope_dirs() -> list[Path]:
     pytest_dirs = {
         p.parent
         for p in _REPO_ROOT.rglob("pyproject.toml")
-        if not _EXCLUDED_DIRS & set(p.parts)
-        and _PYTEST_MARKER in p.read_text(encoding="utf-8")
+        if not _excluded(p) and _PYTEST_MARKER in p.read_text(encoding="utf-8")
     }
     tests_dirs = {
         p.parent
         for p in _REPO_ROOT.rglob("tests")
-        if p.is_dir() and not _EXCLUDED_DIRS & set(p.parts)
+        if p.is_dir() and not _excluded(p)
     }
     return sorted(pytest_dirs & tests_dirs)
 
@@ -211,6 +289,131 @@ def test_every_stated_pytest_scope_count_is_the_real_one(name, phrase):
     )
 
 
+def test_a_worktree_copy_is_not_counted_as_a_second_scope(tmp_path, monkeypatch):
+    """Plant the worktree, rather than waiting for someone to have one.
+
+    A live worktree is not a fixture — it exists on the machine of whoever
+    happens to be mid-task and nowhere else, so on a clean clone this exclusion
+    has no witness at all and a mutant that removes it would survive. The whole
+    defect was invisible for the same reason: the checks above pass in a bare
+    clone and go red the moment `/cla:new-worktree` or the Agent tool's worktree
+    isolation puts a full checkout at `.claude/worktrees/<name>/`. Worse, they go
+    red on a doc statement that is CORRECT, which invites someone to "fix" the
+    docs to match the miscount — the exact drift this file exists to prevent,
+    caused by this file.
+    """
+    real = tmp_path / "plugin-tests"
+    (real / "tests").mkdir(parents=True)
+    (real / "pyproject.toml").write_text(_PYTEST_MARKER + "\n", encoding="utf-8")
+
+    # A real worktree carries its own `.git` — a FILE holding a `gitdir:`
+    # pointer, where a clone would have a directory. The exclusion keys on that
+    # rather than on the directory's name, so it holds wherever the worktree is
+    # put. `manual_worktree.py` exposes `--worktree-dir`, so the default
+    # `.claude/worktrees` is an input, not a law.
+    wt = tmp_path / ".claude" / "worktrees" / "agent-xyz"
+    (wt / "plugin-tests" / "tests").mkdir(parents=True)
+    (wt / "plugin-tests" / "pyproject.toml").write_text(
+        _PYTEST_MARKER + "\n", encoding="utf-8"
+    )
+    (wt / ".git").write_text("gitdir: /somewhere/.git/worktrees/agent-xyz\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys.modules[__name__], "_REPO_ROOT", tmp_path)
+    found = real_scope_dirs()
+
+    assert found == [real], (
+        f"real_scope_dirs() returned {found}; a checkout under "
+        ".claude/worktrees/ is the SAME scope seen twice, not a second one"
+    )
+
+
+@pytest.mark.parametrize(
+    "where",
+    [
+        ".worktrees/agent-xyz",          # a leading-dot variant
+        "wt/agent-xyz",                  # nothing worktree-shaped in the name
+        ".claude/worktree/agent-xyz",    # singular, a plausible typo or config
+        "vendor/nested/checkout",        # somewhere nobody would think to exclude
+    ],
+)
+def test_a_checkout_is_excluded_wherever_it_is_placed(where, tmp_path, monkeypatch):
+    """The name-based exclusion only covered the default placement.
+
+    `manual_worktree.py` takes `--worktree-dir`, so a worktree can legitimately
+    sit anywhere, and a submodule always does. Keying on the `.git` entry makes
+    the rule structural: it is a second checkout because it carries its own
+    checkout marker, not because of what someone named the directory.
+    """
+    real = tmp_path / "plugin-tests"
+    (real / "tests").mkdir(parents=True)
+    (real / "pyproject.toml").write_text(_PYTEST_MARKER + "\n", encoding="utf-8")
+
+    nested = tmp_path / Path(where)
+    (nested / "plugin-tests" / "tests").mkdir(parents=True)
+    (nested / "plugin-tests" / "pyproject.toml").write_text(
+        _PYTEST_MARKER + "\n", encoding="utf-8"
+    )
+    (nested / ".git").write_text("gitdir: /somewhere\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys.modules[__name__], "_REPO_ROOT", tmp_path)
+    found = real_scope_dirs()
+    assert found == [real], (
+        f"a checkout at {where!r} was counted as a second scope; the exclusion "
+        "is keyed on the directory's NAME rather than on it being a checkout"
+    )
+
+
+def test_a_directory_merely_named_worktrees_is_still_counted(tmp_path, monkeypatch):
+    """The over-exclusion side, which the name-based rule got wrong.
+
+    Excluding every directory called `worktrees` hides a real scope that
+    happens to sit under one. No witness in this repo today, which is exactly
+    why it needs planting rather than waiting for one.
+    """
+    real = tmp_path / "docs" / "worktrees" / "plugin-tests"
+    (real / "tests").mkdir(parents=True)
+    (real / "pyproject.toml").write_text(_PYTEST_MARKER + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys.modules[__name__], "_REPO_ROOT", tmp_path)
+    found = real_scope_dirs()
+    assert found == [real], (
+        f"real_scope_dirs() returned {found}; a directory named 'worktrees' "
+        "that holds no .git is not a checkout and must stay visible"
+    )
+
+
+def test_the_exclusion_reads_repo_relative_parts_not_absolute_ones(
+    tmp_path, monkeypatch
+):
+    """The other side of the same coin, and the one with no natural witness.
+
+    An exclusion matched against a path's ABSOLUTE parts is scoped to the whole
+    filesystem, so it fires on the repo's own location: every file below a repo
+    that happens to sit under an excluded name inherits that name, the scan
+    excludes the entire tree, and four correct doc claims fail as
+    `assert 0 in [1]`. It only shows up where the repo happens to live, so the
+    root is planted under an excluded name here rather than hoping.
+
+    The containing name must be one that is STILL excluded. This fixture used
+    `worktrees`, and when the exclusion became structural — keyed on a `.git`
+    entry rather than on the name — the fixture stopped reproducing the bug and
+    a mutant restoring `path.parts` survived. `node_modules` is a name-based
+    entry and is not going away.
+    """
+    root = tmp_path / "node_modules" / "clone"
+    (root / "plugin-tests" / "tests").mkdir(parents=True)
+    (root / "plugin-tests" / "pyproject.toml").write_text(
+        _PYTEST_MARKER + "\n", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(sys.modules[__name__], "_REPO_ROOT", root)
+
+    assert real_scope_dirs() == [root / "plugin-tests"], (
+        "a repo checked out under a directory with an excluded name excluded "
+        "its own whole tree; the scan must be relative to the repo root"
+    )
+
+
 @pytest.mark.parametrize(
     "name,phrase",
     [
@@ -290,4 +493,26 @@ def test_every_named_leaf_hook_exists():
                 missing.append(f"  {name}: `{hook}` has no hooks/{stem}.py")
     assert not missing, (
         "doc names a guard hook that does not exist on disk:\n" + "\n".join(missing)
+    )
+
+
+def test_the_repo_roots_own_git_does_not_exclude_the_whole_tree(tmp_path, monkeypatch):
+    """The identity guard in `_is_nested_checkout`, which has no natural witness.
+
+    Every real repo root holds a `.git`. Without `directory != _REPO_ROOT` the
+    root reads as a nested checkout, every path below it is "inside a checkout",
+    and `real_scope_dirs()` returns [] — the same `assert 0 in [1]` failure the
+    absolute-parts bug produces, reached from a third direction. No fixture in
+    this file planted a root-level `.git`, so a mutant removing the guard
+    survived while every other one was killed.
+    """
+    (tmp_path / ".git").mkdir()
+    real = tmp_path / "plugin-tests"
+    (real / "tests").mkdir(parents=True)
+    (real / "pyproject.toml").write_text(_PYTEST_MARKER + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys.modules[__name__], "_REPO_ROOT", tmp_path)
+    assert real_scope_dirs() == [real], (
+        "the repo root's own .git made it read as a nested checkout, so the "
+        "scan excluded the entire tree it was pointed at"
     )
