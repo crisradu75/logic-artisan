@@ -89,10 +89,15 @@ MUTANTS = [
     ),
     (
         # Anchored on the function body rather than on the regex literal. The
-        # sibling guard `test_no_batch_hardcodes_an_absolute_path` reads a colon
-        # followed by a backslash as a Windows drive path, and the line-suffix
-        # pattern contains exactly that pair before its digit class — so quoting
-        # the pattern here would trip the guard rather than mutate the code.
+        # sibling guard `test_no_batch_hardcodes_an_absolute_path` USED TO read a
+        # colon followed by a backslash as a Windows drive path, and the
+        # line-suffix pattern contains exactly that pair before its digit class —
+        # so quoting the pattern here tripped the guard rather than mutating the
+        # code. That constraint is gone: the guard now borrows
+        # `check_no_project_tokens.py`'s `WIN_ABS_PATH`, which requires a path
+        # SHAPE (two separators) rather than a colon beside a backslash, so a
+        # regex literal is safe to quote. This anchor is left as-is because it
+        # works, not because it is still forced.
         "the carried-over `:line[:col]` strip stops removing the suffix",
         CHECKER,
         "    return _TRAILING_LINE_COL_RE.sub(\"\", token)",
