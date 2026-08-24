@@ -63,7 +63,22 @@ Lane 1 leaves, not against this document's description of it.
 what a brief's slots bind, and B adds a terminal-contract rule that sits inside that shape. Within
 Lane 1 all four items touch disjoint files and may run in any order.
 
-## Lane 1 candidates
+## Lane 1 candidates — ✅ SHIPPED 2026-08-24, do not re-propose
+
+All four merged: **F** → PR #147 (closes #138, #139) · **G** → #148 (#143) ·
+**E** → #149 (#142, #99) · **D1** → #150 (#144). Run record and review-findings
+breakdown: `cla.io/retro/multi-lite-run-notes-2026-08-24.md`.
+
+**The table below is history.** A skill extracting candidates from this document takes its work
+from the Lane 2 section only.
+
+**What the run said about this plan.** All four candidates needed an enforcement round and this
+document predicted none. Candidate F needed a design rebuild rather than a patch: a mutant that
+turned its mechanism into the blanket exemption its own comment denied being passed all five tests
+written for it. The classification was wrong because issue #138 said "possible directions, not a
+prescription" — a design question — and this plan read it as a specification. **The Lane 1/Lane 2
+test is not "does the issue name a fix" but "does the issue name a fix, or a direction".** Apply
+that when sorting the next batch.
 
 | id | description | depends_on |
 |---|---|---|
@@ -151,9 +166,14 @@ Lane 1 all four items touch disjoint files and may run in any order.
 
 ## Suggested order
 
-Lane 1 first, in any order — F and G are disjoint from everything, E and D1 are disjoint from each
-other. Then Lane 2: **A → B** (serial, shared `subagent-brief.md`), then **C**, then **D2**. **H**
-last, and probably not at all this pass.
+~~Lane 1 first~~ — **done, shipped as #147–#150.** Remaining: **A → B** (serial, shared
+`subagent-brief.md`), then **C**, then **D2**. **H** last, and probably not at all this pass.
+
+**One Lane 1 outcome changes a Lane 2 assumption.** PR #149 rewrote `multi-pr` Phase 1, and PR #150
+edited `spec-to-pr/references/archive.md`, `archive-preflight.md`, `change-loop.md`, `lite-pr` and
+both orchestrator `SKILL.md` files. Lane 2's proposals are authored against **the tree those left**,
+not against this document's description of it — which is this plan's own sequencing rule, applied to
+itself.
 
 Both guards F touches sit in one file, so F is one edit, not two — `_guard_areas()` (line 30) and
 `test_no_batch_hardcodes_an_absolute_path` (line 229) in
