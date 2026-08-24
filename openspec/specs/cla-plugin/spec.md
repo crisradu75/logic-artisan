@@ -516,6 +516,36 @@ The checker checks **path existence only**; it does NOT validate the non-path me
 - **THEN** it exits 0 and reports how many files it scanned
 - **AND** a run that scanned zero files is distinguishable from one that scanned files and found nothing stale
 
+### Requirement: The live specification set is validated where it is written
+
+A skill that writes or hand-edits the live specification set SHALL validate that set's own parse integrity before the commit that lands the edit, and SHALL NOT treat validation of a *change* as covering it. The two are different objects: a change's validation reads the change, while the defect here is a structurally broken document under the live specification directory, which every per-change check passes over.
+
+**The obligation attaches to the edit, not to the delta.** It SHALL cover any hand-edit to a live specification's prose — filling a placeholder section, rewording, adding a canonical heading — including edits that pass through no delta and no archive at all. A live specification is a parsed document rather than a prose file, and the guidance SHALL say so where such edits are performed, because the flow otherwise treats one as a comment.
+
+**Where a step's own remediation instructs a hand-edit to a live specification, that step SHALL carry the validation with it.** A remediation that adds a canonical heading is itself capable of producing a duplicated heading, which closes the section and makes every requirement below it invisible to validation, listing and archiving while the file still reads correctly to a human.
+
+**In a sequence of changes, a broken live set SHALL halt rather than warn.** Each change starts from the specification set the previous one left, so the failure compounds and surfaces at a later change's archive, far from the edit that caused it.
+
+This requirement is distinct from any check comparing a delta's modified-requirement block against the live specification for silently dropped scenarios: that concerns the *content* a sync writes, whereas this concerns the live set's *parse integrity after any edit*, and the measured instance passed through no delta at all.
+
+#### Scenario: The write site validates the live set, not only the change
+
+- **WHEN** a phase materializes or edits the live specification set
+- **THEN** the live set is validated before the commit that lands the edit
+- **AND** a non-zero result halts and surfaces rather than proceeding to commit
+
+#### Scenario: A hand-edit outside any delta is covered
+
+- **WHEN** a live specification's prose is edited by hand, with no delta and no archive involved
+- **THEN** the guidance at that point requires validating the live set before the commit
+- **AND** it states that a live specification is a parsed document rather than a prose file
+
+#### Scenario: A chain does not carry a broken live set forward
+
+- **WHEN** a change in a sequence leaves the live specification set failing validation
+- **THEN** it is treated as a structural failure that halts the sequence
+- **AND** it is not deferred to the next change, whose archive would fail instead
+
 ### Requirement: Skill token-efficiency disciplines
 
 cla-plugin skills SHALL be authored to minimize the static token cost of the skill definition, and orchestrator/multi-phase skills SHALL additionally be executed to minimize the runtime context they accumulate — both without weakening correctness-gating behavior. Two disciplines are load-bearing:

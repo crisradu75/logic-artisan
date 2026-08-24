@@ -20,12 +20,17 @@ The archive command warns about unticked task boxes when run via `--yes`; that's
 
 **First, enumerate the capabilities this change modifies** — a change can materialize MORE THAN ONE (see `cla.io/overlays/spec-to-pr.md` for a real named precedent in this repo). List the change's own spec deltas: `ls openspec/changes/<change-name>/specs/` — each subdirectory there is one capability whose active `openspec/specs/<cap>/` the archive materializes. Stage **one `openspec/specs/<cap>/` path group per capability in that list**, not a single hardcoded one.
 
-**Pre-commit git-state + archive-scope checks (both required):**
+**Pre-commit git-state + live-spec + archive-scope checks (all three required):**
 ```
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <branch>
+openspec validate --specs --strict
 git add openspec/changes/<change-name>/ openspec/changes/archive/<YYYY-MM-DD>-<change-name>/ openspec/specs/<cap1>/ [openspec/specs/<cap2>/ ...]
 git diff --name-only --cached
 ```
+
+**Why `--specs` and not just the change.** `openspec validate <change> --strict` validates the CHANGE. Nothing here validated the **live spec set**, and this step is the one that rewrites it — so a materialization that lands a structurally broken `openspec/specs/<cap>/spec.md` was committed, pushed and merged with every check green. Non-zero exit → **halt and surface via `AskUserQuestion`**; do not commit. It needs no database and no build and takes seconds, which is why it belongs at every write site rather than at one.
+
+The failure it catches is silent by construction and lands far from its cause: measured in a six-change chain in a repo consuming this plugin, two live specs each ended up with a **duplicated `## Requirements` heading** — the second one closes the section, so every requirement in both specs became invisible to `validate`, `list` and `archive`. Both merged broken. It surfaced one whole change later, as an aborted archive.
 **Stage the specific archive-move path groups, NOT a broad `git add openspec/`.** `git add openspec/` stages *untracked* files too, so in a `multi-pr` chain — where every other not-yet-shipped change still sits as an untracked `openspec/changes/<sibling>/` directory in the same worktree — the broad form sweeps those siblings into this change's archive commit, tripping the scope-assertion halt below on *every* archive in the chain. The enumerated paths cover exactly what the archive produces (the change dir's deletions, the new dated archive dir's additions, and the materialized `openspec/specs/<cap>/` for **every** capability the change touched) and nothing else. (If a capability's materialization touched sibling spec assets beyond `spec.md`, add those specific files by name too — still never the bare `openspec/`.)
 
 Inspect the `git diff --name-only --cached` output in Claude's context. Every staged path MUST match one of these shapes for the archive commit:

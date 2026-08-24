@@ -18,6 +18,28 @@ grep -L '^## Purpose' openspec/specs/<capability>/spec.md
 If either returns the file path, edit the main spec to add the canonical headings (Purpose: one-line
 capability description; Requirements: the section directly above the first `### Requirement:`).
 
+**Then validate, because this remediation is itself how the worst version of this gets made.**
+A live spec is a **parsed document, not a prose file**, and the flow treats an edit to one as if it
+were a comment. Adding the canonical headings by hand is exactly the edit that has produced a
+**duplicated `## Requirements`** — the replacement text ends with the heading while the original
+line survives. A second `## Requirements` *closes* the section, so every requirement below it
+becomes invisible to `validate`, `list` and `archive`, and the file still reads correctly to a
+human.
+
+So: **any hand-edit under `openspec/specs/` is followed by**
+
+```
+openspec validate --specs --strict
+```
+
+**before the commit** — not `openspec validate <change> --strict`, which validates the change and
+never looks at the live set. It needs no database and no build and takes seconds.
+
+Measured in a six-change chain in a repo consuming this plugin, and reported here rather than
+re-derived: two live specs were broken this way while working change 1, and nothing caught them —
+the change's own archive had already run, and the repo's verify command never looks at live specs.
+Both merged broken and surfaced one whole change later, as an aborted archive far from its cause.
+
 ## (b) Per-requirement `### Requirement:` prefix
 
 Legacy specs use plain `### <Name>` headings; the materialization step matches MODIFIED blocks by
