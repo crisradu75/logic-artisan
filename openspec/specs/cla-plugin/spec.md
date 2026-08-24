@@ -669,8 +669,9 @@ The reference SHALL state that planting exercises only the implementation that e
 
 #### Scenario: A trap is stated as something the reader can check
 
-- **WHEN** the reference describes a way planting fails
-- **THEN** it names the condition that distinguishes a landed plant from one that missed
+- **WHEN** the reference describes a plant that FAILED TO LAND on the value under test
+- **THEN** it names the conditions distinguishing a landed plant from one that missed
+- **AND** a trap of a different shape gives its own remedy rather than being forced into that form
 
 ### Requirement: Shipped-asset boundary
 

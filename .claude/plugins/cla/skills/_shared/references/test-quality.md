@@ -5,12 +5,12 @@ turns red. A rule that arrives after the assertion exists only bites on the
 rewrite, which is the smaller half of the risk.
 
 A green gate proves the assertion passed. It never proves the assertion was worth
-making, and this file is the ways it is not.
+making, and these are the ways it is not.
 
-**Read what applies.** The first three sections are about any test at all. The rest
-are about a **gate** — a check whose feature is detecting something, where a green
-run is the evidence everyone downstream relies on. If you are writing an ordinary
-unit test, the first three are the whole file for you.
+**Read what applies.** Everything above "A non-vacuity floor" is about any test at
+all. From that section onward the subject is a **gate** — a check whose feature is
+detecting something, where a green run is the evidence everyone downstream relies
+on. Writing an ordinary unit test, the opening sections are the whole file for you.
 
 ## No tautological assertion
 
@@ -66,7 +66,7 @@ deliberate.
 
 ## Which gates are worth planting against
 
-Not a rule about how a test fails — a routing question, answered before the two
+Not a rule about how a test fails — a routing question, answered before the gate
 sections below are worth reading.
 
 **Plant when a passing assertion is uninformative on its own** — the test asserts
@@ -79,17 +79,12 @@ returned shape. There the test already is the plant: break the code and the valu
 changes, so it goes red unaided. This narrows nothing else; a fix for a review finding
 still earns its evidence, and this only says which technique supplies it.
 
-**Some checks cannot be reached from the asset side at all.** A minimum-count floor,
-or a cap that only bites on malformed input, has nothing to change when you plant
-against a correct tree — the tree is already the good case. That does not mean they
-cannot be proven: mutate the *check* rather than the asset, or better, write a test
-that hands the check bad state and asserts it notices. Prefer the second. A planted
-failure is evidence at one moment; a test that supplies bad state keeps holding after
-a later refactor turns the check into a no-op.
+Those two are the whole of the routing. What to do about a check planting cannot
+reach is a rule, and lives with the other rules below.
 
 ## Prove a gate by planting what it is supposed to catch
 
-The rules above are about a test that cannot fail. A **gate** — a guard standing
+The first rules in this file are about a test that cannot fail. A **gate** — a guard standing
 between a defect and a release — has a sharper version of the same problem, because
 its green run is the evidence everyone downstream relies on.
 
@@ -145,14 +140,21 @@ parameter, so the function silently ignored its first argument.
 from a sibling guard carries the sibling's path assumptions, and the failure mode is
 "matches nothing, exits 0" — indistinguishable from passing. One real instance printed
 `OK` with the forbidden import sitting on line 2 of a file in the very tree whose
-reachability was the stated reason for widening the guard's scope.
+reachability was the stated reason for widening the guard's scope. "I modelled this on
+the existing guard X" is itself the trigger for this one — it is the sentence that
+should make you plant in every tree rather than trust the pattern, and the fix there
+was to match the import specifier's path tail rather than a prefix that only held for
+the original's tree.
 
-Two corollaries from the same incident. **"I modelled this on the existing guard X" is
-itself the trigger** — it is the sentence that should make you plant in every tree
-rather than trusting the pattern. And **prefer matching a resolved or structural
-property over a hand-anchored prefix**: the fix there was to match the import
-specifier's path tail rather than a `lib/`-shaped prefix that only held for the
-original's tree.
+**A check planting cannot reach still has to be proven, structurally.** A minimum-count
+floor, or a cap that only bites on malformed input, has nothing to change when you
+plant against a correct tree — the tree is already the good case, so the plant is a
+no-op and reports nothing. Two ways out, and the second is better: mutate the *check*
+rather than the asset, or write a test that hands the check bad state and asserts it
+notices. A planted failure is evidence at one moment; a test that supplies bad state
+keeps holding after a later refactor turns the check into a no-op. Left uncovered,
+these are the pure form of this file's subject — a check that passes, reads as
+protection, and has never once been shown able to fail.
 
 **Planting is blind to an input space you never enumerated, and this is the expensive
 one.** It exercises the implementation you wrote, never the cases you failed to think
@@ -174,10 +176,13 @@ below its population will not fail; a gate nobody planted a failure against has 
 been shown to fail; a plant that missed the value under test proves nothing while
 reporting success; and a plant derived from the code cannot reach a case the code
 never considered. All of them are the class a guard asserting over a collection it
-never fills belongs to.
+never fills belongs to (the source repo's
+`plugin-tests/tests/conformance/test_guards_are_not_vacuous.py` is the worked
+example; a consuming repo has no such file, which is why it is named as the source
+repo's rather than as something to go and run).
 
 ("Which gates are worth planting against" is the exception, and deliberately so — it
-is routing, not a rule. It answers whether the two sections after it apply to you at
+is routing, not a rule. It answers whether the gate sections after it apply to you at
 all, which is why it sits before them rather than claiming membership in this list.)
 
 Note the shape of the last two entries. The earlier ones ask whether a test *can* fail.
