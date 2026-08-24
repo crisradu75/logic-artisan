@@ -1,0 +1,218 @@
+## ADDED Requirements
+
+### Requirement: A fix brief binds the defect and offers the remedy
+
+A cla-plugin sub-agent brief whose purpose is to remedy a defect SHALL state the defect and the
+proposed fix as separately-named fields carrying different authority, and SHALL NOT merge them into a
+single instruction.
+
+The **defect** — what is true now and why that is wrong — SHALL be **binding**: the dispatched agent
+may not decide the defect is acceptable and stop. The **candidate remedy** — the fix the dispatching
+orchestrator proposes — SHALL be **rejectable with reasons**, and a reasoned rejection SHALL be a
+successful return rather than a failure return, so that the return status carries no penalty for
+having been right.
+
+The brief's terminal contract for such a dispatch SHALL ask for evidence that the **defect** is gone,
+not evidence that the remedy landed. Concretely, `done` SHALL require the defect check named in the
+brief — the command or read that exhibits the defect — re-run with its output showing the defect
+absent, in addition to whatever work evidence the contract already requires. The contract SHALL state
+explicitly that evidence the candidate remedy was applied is NOT evidence the defect is gone, because
+a compliant agent that implements a wrong remedy returns work evidence that is entirely genuine, and
+the regression it ships is indistinguishable from success under a contract keyed on the remedy.
+
+A brief that cannot name a defect check SHALL be treated as a brief whose defect is not grounded,
+rather than as a case exempt from the contract.
+
+The dispatching skill SHALL NOT achieve this by adding a permission for the agent to disagree while
+leaving the terminal contract unchanged. A permission stated beside an instruction that carries a
+deliverable does not reach a compliant agent; what the terminal contract *requires* is the only lever
+that does.
+
+Where a brief format is shared across skills and cited by slot name, this SHALL be introduced as a
+second form of the existing task slot rather than as an additional slot, so that citing sites naming
+the slot list remain correct.
+
+#### Scenario: A fix brief separates the two fields
+
+- **WHEN** a skill dispatches an agent to remedy a defect
+- **THEN** the brief names the defect in its own field, marked binding
+- **AND** it names the candidate remedy in a separate field, marked rejectable
+- **AND** the two are not merged into one instruction sentence
+
+#### Scenario: The terminal contract asks for defect-gone evidence
+
+- **WHEN** a fix dispatch's terminal contract is stated
+- **THEN** `done` requires the brief's named defect check, re-run, with output showing the defect absent
+- **AND** the contract states that evidence the remedy was applied is not evidence the defect is gone
+- **AND** a return claiming `done` without defect-gone evidence is treated as not done
+
+#### Scenario: A reasoned rejection is a successful return
+
+- **WHEN** the dispatched agent finds the candidate remedy wrong
+- **THEN** it returns a rejection status distinct from the blocked status, with its reason
+- **AND** that return is treated as a successful outcome, not a delegate failure
+- **AND** the orchestrator's response is to re-decide the remedy rather than to resolve a blocker
+
+#### Scenario: The slot list is not renumbered
+
+- **WHEN** the fix-brief form is added to a shared brief format cited by slot name
+- **THEN** it is introduced as a second form of the existing task slot
+- **AND** no slot is renamed, renumbered, or added
+- **AND** every site citing the brief by slot name remains correct without edits
+
+### Requirement: A brief's factual claims are checkable and carry their source
+
+A cla-plugin brief that states a defect SHALL list the factual sub-claims the defect rests on — a
+type's field list, a signature, a line number, a count — as separately-enumerated rows, each naming
+the source that resolves it (a path with a line, or a runnable command). Such sub-claims SHALL NOT
+ship as unattributed ground truth inside the defect prose, where nothing marks them as claims and
+nothing tells the reader where they came from.
+
+The dispatched agent's first action SHALL be to re-resolve each row against its named source, each row
+resolving to verbatim evidence or an explicit not-found, per the grounding contract the plugin already
+applies to review claims.
+
+A wrong sub-claim SHALL NOT automatically void the defect. Three outcomes SHALL be distinguished:
+
+1. Every row resolves as stated — the agent proceeds.
+2. A row is wrong **and** the defect does not survive its correction — the agent returns the remedy
+   rejected, with the corrected row, and does not implement.
+3. A row is wrong **but** the defect survives its correction — the agent corrects the row, proceeds,
+   and reports the correction.
+
+Corrections SHALL be returned in a required field that is printed with an explicit empty marker when
+there are none, and SHALL NOT be omitted when empty: an omitted field and a field nobody filled in are
+indistinguishable to the reader, which defeats the purpose of requiring it.
+
+#### Scenario: The defect's factual sub-claims are enumerated with sources
+
+- **WHEN** a fix brief states a defect resting on a field list, a signature, a line number, or a count
+- **THEN** each such claim appears as its own row rather than inside the defect prose
+- **AND** each row names the path-with-line or the runnable command that resolves it
+
+#### Scenario: The agent re-resolves the rows before implementing
+
+- **WHEN** an agent receives a fix brief carrying fact rows
+- **THEN** its first action is to re-resolve each row against its named source
+- **AND** each row resolves to verbatim evidence or an explicit not-found
+
+#### Scenario: A wrong sub-claim that the defect survives is corrected, not escalated
+
+- **WHEN** a fact row is wrong and the defect remains real once the row is corrected
+- **THEN** the agent corrects the row and proceeds with the work
+- **AND** it returns the correction in the required corrections field
+
+#### Scenario: A wrong sub-claim that the defect depends on stops the work
+
+- **WHEN** a fact row is wrong and the defect does not survive the row's correction
+- **THEN** the agent returns the remedy rejected with the corrected row
+- **AND** it does not implement the candidate remedy
+
+#### Scenario: The corrections field is never omitted
+
+- **WHEN** an agent returns from a fix dispatch having found no wrong fact rows
+- **THEN** the corrections field is present with an explicit empty marker
+- **AND** it is not omitted from the return
+
+### Requirement: An orchestrator-specified remedy is reviewed as a decision
+
+A cla-plugin skill that applies fixes SHALL NOT let a remedy the orchestrator itself specified escape
+the scrutiny a delegated remedy receives. A delegated remedy is reviewed by the agent that may reject
+it; an orchestrator-applied remedy has no such reader, because the party that decided it is also the
+party triaging the findings on it.
+
+Where the fix is applied by the orchestrator itself — below a delegation threshold, or in a
+pre-implementation artifact-fix loop where no delegate exists — the orchestrator's own post-fix
+re-verification SHALL additionally check the applied remedy against the change's own design document,
+specifically its rejected-alternatives or explicitly-rejected-decisions content, and confirm the
+remedy does not reintroduce something that document rejected. The design document SHALL be the named
+source for this check; the proposal and the task list SHALL NOT be substituted for it.
+
+Each such remedy SHALL be **marked** on the round's finding record as orchestrator-specified, so that a
+later reader can tell which changes had no independent author. Where a later review round runs over
+that diff, the marked hunks SHALL be named to it along with the same rejected-alternatives check. Where
+no later round runs, the marks SHALL surface in the skill's terminal report.
+
+This obligation SHALL NOT be discharged by raising a round cap or by making an additional round
+unconditional. The control is in-round and is deliberately weaker than an independent reader; the
+skill's text SHALL say so rather than implying the two are equivalent.
+
+#### Scenario: An orchestrator-applied fix is checked against the rejected alternatives
+
+- **WHEN** the orchestrator applies a fix for a finding itself rather than delegating it
+- **THEN** its post-fix re-verification reads the change's design document rejected-alternatives content
+- **AND** it confirms the applied remedy does not reintroduce a rejected alternative
+
+#### Scenario: The remedy is marked for the next reader
+
+- **WHEN** a fix round contains a remedy the orchestrator specified
+- **THEN** that finding's record carries an orchestrator-specified marker
+- **AND** a later review round over that diff is told which hunks carry the marker
+- **AND** where no later round runs, the marker appears in the terminal report
+
+#### Scenario: The control does not change a round cap
+
+- **WHEN** this obligation is stated in a skill
+- **THEN** no round cap or default round count is raised to satisfy it
+- **AND** the text states that the in-round check is weaker than an independent reader
+
+### Requirement: Fact-row provenance travels, and re-measurement follows the findings
+
+A cla-plugin skill that offloads mechanical claim-checking to a sub-agent SHALL tag every returned
+fact row with its provenance — agent-reported or orchestrator-verified — as a field on the row itself
+rather than as a note about the dispatch, because a note about the dispatch does not survive the row
+being copied and the row is what travels.
+
+The orchestrator SHALL NOT relabel a row as verified without re-running that row's own resolving
+command or read; re-running it is what the verified label means. The tag SHALL travel with the row
+wherever it is copied — into the context brief, into the report's verified-claims section, and into any
+finding derived from it, which inherits the tag until the row is re-measured. The verified-claims
+section of a report SHALL NOT carry an untagged row, since that section is precisely where an
+agent-reported row and an orchestrator-run row currently print identically.
+
+The adjudication rule SHALL widen, bounded by severity: the orchestrator SHALL adjudicate every failed
+row itself, as before, **and** SHALL re-measure — re-run the resolving command or read — every row,
+passing or failing, that a Critical or Important finding depends on. A row supporting only a
+Suggestion, or supporting no finding at all, SHALL stay agent-reported and SHALL be reported as such.
+
+The widening SHALL NOT be extended to every returned row: doing so restores the whole context cost the
+offload exists to avoid, and buys verification of rows that no decision rests on. The cost of the
+bounded form SHALL be stated as what it is — proportional to the Critical and Important findings the
+review produced, not to the change's row count — and SHALL NOT be asserted as a measured per-review
+figure unless a command that produced it is named.
+
+So that the cost and the catch rate can be priced from evidence rather than re-argued, the skill's run
+record SHALL carry the count of rows re-measured and the count whose re-measurement disagreed with the
+reporting agent.
+
+#### Scenario: A returned row carries its provenance
+
+- **WHEN** a sub-agent returns a fact table to an orchestrator
+- **THEN** each row carries an agent-reported or orchestrator-verified tag as a field on the row
+- **AND** the tag is not expressed only as a note about the dispatch
+
+#### Scenario: A row is relabelled only by re-running its source
+
+- **WHEN** an orchestrator marks a row orchestrator-verified
+- **THEN** it has re-run that row's own resolving command or read
+- **AND** a row it has not re-run remains agent-reported
+
+#### Scenario: The tag survives being copied into the report
+
+- **WHEN** a fact row is copied into the context brief, the verified-claims section, or a finding
+- **THEN** its provenance tag travels with it
+- **AND** the verified-claims section carries no untagged row
+
+#### Scenario: Re-measurement follows the findings, not the rows
+
+- **WHEN** a review produces Critical or Important findings from an offloaded fact table
+- **THEN** every row those findings depend on is re-measured, whether it passed or failed
+- **AND** every failed row is adjudicated by the orchestrator as before
+- **AND** a row supporting only a Suggestion, or no finding, stays agent-reported and is reported as such
+
+#### Scenario: The widening's cost is bounded and not overstated
+
+- **WHEN** the widened rule's cost is described
+- **THEN** it is stated as proportional to the Critical and Important findings produced, not to the row count
+- **AND** no per-review figure is asserted without naming the command that produced it
+- **AND** the run record carries the count of rows re-measured and the count that disagreed
