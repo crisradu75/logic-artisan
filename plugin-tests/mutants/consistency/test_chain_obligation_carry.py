@@ -1,15 +1,23 @@
 """Mutation batch for test_chain_obligation_carry.py.
 
-The guard reads prose across three files, so it carries the ordinary risk of a
+The guard reads prose across four files, so it carries the ordinary risk of a
 prose-matching check: passing by finding a word while the hand-off it vouches for
 has lost the property that made it work. Each mutant removes ONE property and
 leaves the surrounding text intact, which is what a real rewrite would do.
 
-Mutants 9-10 aim at the GUARD rather than an asset. Its structural properties —
-the declared region set and the region-width cap — cannot be exercised from the
-asset side while the tree is healthy, and both were live defects in the first
-revision: a file-wide marker test passed with the whole Review block deleted, and
-an unbounded region passed with its end anchor removed.
+Mutants 18-21 aim at the GUARD rather than an asset. Its structural properties —
+the flag constant, the region-width cap, the parity floor and the per-file
+coverage floor — cannot be exercised from the asset side while the tree is
+healthy. The two floors are mutable only because the guard now carries tamper
+tests that put the tree INTO the state each floor exists for; an earlier revision
+claimed they were "covered structurally" by the gutting cases, and a reviewer
+measured that false (each gutting case trips an earlier assertion and never
+reaches the floor).
+
+Mutant 11 is the C3 regression: the report template migrating back into the
+orchestrator, where the three dispatched review agents never read it. Mutant 13
+is the C1 regression: the read scoped to this run's dated notes file, which hides
+every obligation an earlier session recorded.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_chain_obligation_carry.py
 """
@@ -23,6 +31,7 @@ SKILLS = PLUGIN / "skills"
 SPEC_TO_PR = SKILLS / "spec-to-pr" / "SKILL.md"
 MULTI_PR = SKILLS / "multi-pr" / "SKILL.md"
 CHANGE_LOOP = SKILLS / "multi-pr" / "references" / "change-loop.md"
+CHECKLIST = SKILLS / "review-change" / "references" / "checklist.md"
 GUARD = DEV / "tests" / "consistency" / "test_chain_obligation_carry.py"
 
 # Scoped to the ONE guard under test, never to `tests/consistency/` as a whole:
@@ -31,25 +40,84 @@ GUARD = DEV / "tests" / "consistency" / "test_chain_obligation_carry.py"
 TARGETS = [GUARD]
 
 MUTANTS = [
+    # ---- the checklist, which owns review behaviour -----------------------
     (
-        "the review verdict stops being settled by a command",
-        SPEC_TO_PR,
-        'Settle each verdict with one command rather than by reading: `grep -rl "<token>" openspec/changes/<change-name>/`.',
-        "Settle each verdict by reading the change's artifacts and judging.",
+        "the obligation verdict stops being settled by a command",
+        CHECKLIST,
+        'grep -rl "<token>" openspec/changes/<name>/',
+        "read the artifacts and judge whether the obligation is honoured",
         TARGETS,
     ),
     (
-        "the required field stops being required — a missing line reads as a pass",
-        SPEC_TO_PR,
-        "**done is countable — one verdict line per `;`-separated entry, and a missing line is a failed round, not a pass.**",
-        "cover the entries that seem relevant to this change.",
+        "settling moves behind the size gate, so the answer depends on the path",
+        CHECKLIST,
+        "**Settle each entry HERE, in Step 2b, on BOTH size-gate paths.**",
+        "**Settle each entry inside whichever review path Step 3 selects.**",
         TARGETS,
     ),
     (
-        "a dropped obligation stops being a Critical finding",
+        "a pasted token becomes a valid discharge",
+        CHECKLIST,
+        "a `tasks.md` subtask naming the field and what reads it, plus the delta spec",
+        "a sentence in `proposal.md` naming the field, plus the delta spec",
+        TARGETS,
+    ),
+    (
+        "the countability rule goes, so a missing verdict line reads as a pass",
+        CHECKLIST,
+        "Fewer lines than entries means the round did not complete — a missing line is a failed round, not a pass.",
+        "Cover the entries that look relevant to this change.",
+        TARGETS,
+    ),
+    (
+        "the verdict stops moving — READY can sit beside NOT ADDRESSED",
+        CHECKLIST,
+        "**and every Step 2b inherited obligation `HONOURED`.**",
+        "and nothing else outstanding.",
+        TARGETS,
+    ),
+    (
+        "the omit-empty exemption goes, so an all-honoured section is dropped",
+        CHECKLIST,
+        "**except `### Inherited obligations`, which is omitted only when the caller supplied no entries.**",
+        "This applies to every section without exception.",
+        TARGETS,
+    ),
+    (
+        "the dispatched agents stop being told what an obligation row means",
+        CHECKLIST,
+        "not a mention pasted into prose",
+        "however the artifacts prefer to phrase it",
+        TARGETS,
+    ),
+    # ---- spec-to-pr, which delivers ---------------------------------------
+    (
+        "the flag stops outliving the phase probe",
         SPEC_TO_PR,
-        "**`VIOLATED` and `NOT ADDRESSED` are each a Critical finding**",
-        "`VIOLATED` and `NOT ADDRESSED` are each worth a note",
+        "**The flag is not resumable-past**",
+        "**The flag is handled once, in Review**",
+        TARGETS,
+    ),
+    (
+        "the resume rule loses the reason it exists",
+        SPEC_TO_PR,
+        "The JSON above has **no `review` field**:",
+        "The JSON above lists the phases it knows about:",
+        TARGETS,
+    ),
+    (
+        "the hand-off stops naming the step it hands to",
+        SPEC_TO_PR,
+        "pass the entries into the checklist's **Step 2b**,",
+        "pass the entries into the review below,",
+        TARGETS,
+    ),
+    (
+        # C3, exactly: review logic migrating back into the orchestrator.
+        "the report template migrates back into the orchestrator",
+        SPEC_TO_PR,
+        "do not restate its rules here.**",
+        "the template is `HONOURED | VIOLATED | NOT ADDRESSED`.**",
         TARGETS,
     ),
     (
@@ -57,6 +125,15 @@ MUTANTS = [
         SPEC_TO_PR,
         "which by definition post-date this change's authoring — not from the batch as proposed",
         "which the chain plan already described up front",
+        TARGETS,
+    ),
+    # ---- multi-pr, which records and reads back ----------------------------
+    (
+        # C1, exactly: the notes file is dated, so a later-date resume sees none.
+        "the read is scoped to this run's notes file only",
+        CHANGE_LOOP,
+        "**Read EVERY running-notes file, not just this run's**",
+        "**Read this run's running-notes file**",
         TARGETS,
     ),
     (
@@ -67,17 +144,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the read step stops naming the step that writes the rows",
+        "an empty carry reverts to a word anyone can type",
         CHANGE_LOOP,
-        "**This is the only place anything reads those rows back, and reading them back is the entire mechanism** — step 4a writes them,",
-        "**This is where the rows are read back** — they are written earlier in the loop,",
+        "**Zero obligations is a real answer, and it is written as the DERIVATION, never the bare word.**",
+        "**Zero obligations is written as `none`.**",
         TARGETS,
     ),
     (
-        "an empty carry stops being written down, so a resume cannot tell it from nobody looking",
+        "the third derivation source goes — the finding that names its consumer outright",
         CHANGE_LOOP,
-        "   - **Zero obligations is a real answer and is written down as `none`** beside this change's name, under the same heading.",
-        "   - Zero obligations needs no entry; simply move on.",
+        "genuinely out of scope for this change — belongs to a different change entirely",
+        "genuinely large in scope",
         TARGETS,
     ),
     (
@@ -87,9 +164,8 @@ MUTANTS = [
         "**A carry list should be fed into the dependent's own Review**",
         TARGETS,
     ),
+    # ---- the guard's own structure ----------------------------------------
     (
-        # The guard's own notion of the flag drifting away from both files it
-        # checks — the parity assertion then vouches for a flag nobody passes.
         "the guard's carry-flag constant drifts from the files it guards",
         GUARD,
         '_CARRY_FLAG = "--inherits"',
@@ -97,32 +173,38 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Without the cap, a region whose end anchor was deleted runs on into
-        # neighbouring prose where the markers may live by coincidence.
         "the region cap widens until any slice satisfies it",
         GUARD,
-        "_MAX_REGION = 4000",
+        "_MAX_REGION = 5000",
         "_MAX_REGION = 1000000",
+        TARGETS,
+    ),
+    (
+        # Reachable only because `test_the_parity_floor_is_reachable` puts the
+        # tree into the state the floor exists for.
+        "the parity floor is relaxed to nothing",
+        GUARD,
+        "    assert len(flags) >= 5, (",
+        "    assert len(flags) >= 0, (",
+        TARGETS,
+    ),
+    (
+        # Likewise `test_the_coverage_floor_is_reachable`.
+        "the per-file coverage floor is relaxed to nothing",
+        GUARD,
+        "        assert covered.count(path) >= sides, (",
+        "        assert covered.count(path) >= 0, (",
         TARGETS,
     ),
 ]
 
-# Two properties are NOT mutated, deliberately, so "the batch is all-green" does
-# not imply coverage this batch lacks.
+# One property is NOT mutated, deliberately, so "the batch is all-green" does not
+# imply coverage this batch lacks.
 #
-# **The parity floor** (`len(flags) >= 5`) and **the per-file region-coverage
-# floor**. Both defend against a state the tree is not in, so a mutation over
-# healthy files cannot reach them. Measured: a throwaway batch relaxing
-# `len(flags) >= 5` and `covered.count(path) >= sides` to `>= 0` and run through
-# `python3 plugin-tests/mutate.py` reported 2 of 2 SURVIVED. They are
-# covered structurally instead, by the `_INVOCATION`-stops-matching and
-# one-region-dropped cases in `test_the_guard_notices_when_its_own_state_is_
-# gutted` — the form `_shared/references/test-quality.md` prefers anyway, since a
-# tamper test keeps holding after a later refactor turns the check into a no-op.
-#
-# **Deleting a whole region entry** is likewise not mutated: `mutate.py` anchors
-# on a single line and a region entry spans several, so the drop cannot be
-# expressed as a one-line substitution. Renaming its key — the one-line
-# approximation — was tried and SURVIVED, correctly: a rename changes no file,
-# no anchor and no marker, so nothing should notice. The real drop is exercised
-# by the tamper case above.
+# **Deleting a whole region entry.** `mutate.py` anchors on a single line and a
+# region entry spans several, so the drop cannot be expressed as a one-line
+# substitution. Renaming its key — the one-line approximation — was tried and
+# SURVIVED, correctly: a rename changes no file, no anchor and no marker, so
+# nothing should notice. The real drop is exercised by
+# `test_the_coverage_floor_is_reachable`, and the floor it trips is itself
+# mutated above.
