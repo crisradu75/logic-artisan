@@ -34,6 +34,13 @@ them is recorded as `null` rather than guessed at — a wrong attribution is wor
 than an honest unknown, because it inflates exactly the number this exists to
 measure.
 
+WHAT ELSE IT RECORDS. `measured_by_count` and `measured_by` — the `Measured-by:`
+trailers the Ship and Revise commit steps require, one per measurement a change
+asserts. Nothing gates a single commit, so a trailer that was never written is
+invisible without a ledger; this is the column that makes "is the rule actually
+being followed?" a countable question rather than an unfalsifiable one. Same
+posture as `skill`: recorded, never adjudicated here.
+
 FAILURE POSTURE. Best-effort and silent: any parse failure, missing git, absent
 ledger dir, or non-zero git exit ends in exit 0 with nothing written. A telemetry
 hook must never disrupt a workflow, and a missing line is infinitely preferable
@@ -71,6 +78,22 @@ _SUBJECT_TO_SKILL = (
 )
 
 _LEDGER_NAME = "commit-provenance.jsonl"
+
+# `Measured-by:` trailers, recorded for the same reason as `skill`: a rule stated
+# in a skill has no adoption number until something counts it. The Ship and
+# Revise commit steps require one trailer per measurement the change asserts, and
+# nothing gates a single commit — so whether the rule is being followed is
+# answerable only from a ledger. Same posture as the rest of this hook: it
+# records what happened and leaves adjudication to the retro.
+#
+# `measured_by_count` is exact and always written; `measured_by` holds the values
+# and is what gets shortened under the line ceiling, never the count. A trailer
+# can be long (a real command plus the claim it produced), and the alternative —
+# letting an oversize record drop the whole line — would silently remove the
+# commit from the denominator too.
+_TRAILER_KEY = "Measured-by"
+_MAX_TRAILERS = 10
+_MAX_TRAILER_CHARS = 160
 
 # One line must stay well under the atomic-append ceiling `lib/log_run.py`
 # enforces for the same reason: a single small write cannot interleave with a
@@ -123,6 +146,25 @@ def _detect_skill(subject: str) -> str | None:
     return None
 
 
+def _measured_by(cwd: Path) -> list[str]:
+    """Every `Measured-by:` trailer value on HEAD, in order.
+
+    `unfold=true` joins a trailer continued across lines, so a wrapped command
+    is recorded as the one value it is rather than as two fragments. A commit
+    with no such trailer yields an empty list, which is the honest reading: the
+    rule says a change asserting no measurement writes none.
+    """
+    raw = _git(
+        "log",
+        "-1",
+        f"--pretty=%(trailers:key={_TRAILER_KEY},valueonly=true,unfold=true)",
+        cwd=cwd,
+    )
+    if not raw:
+        return []
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -151,14 +193,27 @@ def main() -> int:
         # into per-repo state, and this hook is not the place to decide it should.
         return 0
 
+    measured = _measured_by(cwd)
     record = {
         "ts": _git("log", "-1", "--pretty=%cI", cwd=cwd) or "",
         "sha": head,
         "subject": subject[:120],
         "branch": _git("rev-parse", "--abbrev-ref", "HEAD", cwd=cwd) or "",
         "skill": _detect_skill(subject),
+        "measured_by_count": len(measured),
+        "measured_by": [v[:_MAX_TRAILER_CHARS] for v in measured[:_MAX_TRAILERS]],
     }
-    line = json.dumps(record, ensure_ascii=False) + "\n"
+
+    def _line() -> str:
+        return json.dumps(record, ensure_ascii=False) + "\n"
+
+    # Shed trailer VALUES until the record fits; `measured_by_count` is never
+    # touched, so a shortened list stays distinguishable from an absent one and
+    # the adoption number survives intact.
+    line = _line()
+    while len(line.encode("utf-8")) > _MAX_LINE_BYTES and record["measured_by"]:
+        record["measured_by"] = record["measured_by"][:-1]
+        line = _line()
     if len(line.encode("utf-8")) > _MAX_LINE_BYTES:
         return 0
 

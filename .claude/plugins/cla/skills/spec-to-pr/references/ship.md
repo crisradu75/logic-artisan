@@ -40,6 +40,22 @@ Exit 0 → proceed. Exit 2 (in-progress git op) or 3 (wrong branch) → halt and
 
 Run `git status --porcelain` and scan the untracked (`??`) entries for a stray scratch artifact — a background-agent tool-redirect bug can write a mangled, extension-bearing filename literally into the repo root instead of the actual scratchpad directory. Recognize it by: sitting at repo root (no `/` in the path) AND containing a substring characteristic of a scratch/temp-dir path (see `cla.io/overlays/spec-to-pr.md` "Incident history" for the exact signature this repo has hit). This is tool-generated garbage, never the user's or the change's own work — read its first few lines to confirm (it's typically a `git diff` dump or similar), then delete it (`rm "<path>"`) before staging. Do NOT silently fold it into the commit via a broad add, and do NOT skip this check because Implement's delegate reported success — the two are independent (the file is a side effect of the delegate's tool use, not a task output).
 
+## 2b. Every measurement this change asserts names the command that produced it
+
+This stop is where the change's claims are assembled into a message, which is why the obligation is discharged here rather than while an edit is being typed — a rule that fires at the keyboard fires hundreds of tool calls before the claim is written down, and by the commit the claim already reads as settled. For each measurement the change asserts — a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact, in the diff or in the message — one trailer line goes at the end of the commit message:
+
+```
+Measured-by: <the exact command, runnable as written> — <the claim it produced>
+```
+
+The command is a real invocation, not "the test suite" and not an elided one; the point of the trailer is that a reader can re-run it. You wrote the claims, so finding them needs no scanner. A claim you cannot pair with a runnable command has two exits and both are edits: **run the command now, or delete the claim** and restate it as the reasoning it actually is ("expected", "by inspection", "should"). There is no third exit in which the claim ships and the command is owed. A change asserting no measurement carries no trailer — never `Measured-by: none`, which certifies a check nobody ran while reading as evidence that one happened.
+
+**The trigger is a claim this change asserts, not a check that ran.** The standing pre-PR gates — the test suite, the linters, the conformance scripts every commit runs anyway — are not claims the change puts into the diff or the message, so they earn no trailer. Trailering them turns the block into fixed boilerplate on every commit, and a block that is identical every time stops being read, which costs exactly what this step was added to buy. The Test phase's outcome already has its home in the PR body's `Checks:` line.
+
+Trailers are the one deliberate exception to the subject-only default in `SKILL.md`'s message-style table, and they are not detail: they are the evidence a claim already owes. They also make the corpus queryable — `git log --grep='^Measured-by:'` returns every measurement this repo has shipped, each with the command that reproduces it.
+
+The same obligation covers the PR body in step 4. The default one-line body already names its checks; a measurement added to it names its command the same way, or is not asserted there.
+
 ## 3. Stage, commit, push
 
 Path-scoped staging — NEVER `git add -A` (see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/bash-discipline.md` for why). There is no repo-root `src/` — the monorepo split moved it under each app/package, so name the specific `apps/<app>/src/` and/or `packages/<package>/src/` directories the change actually touched (determine which from `git status --porcelain` or the tasks.md file list), alongside the change directory:
@@ -48,6 +64,15 @@ git add openspec/changes/<change-name>/ apps/<app>/src/ packages/<package>/src/
 git commit -m "feat: <change-name>"
 git push -u origin <branch>
 ```
+
+**Carrying the §2b trailers needs no scratch file.** A second `-m` holding every `Measured-by:` line, newline-separated, becomes the message's last paragraph, which is what makes it a trailer block:
+
+```
+git commit -m "feat: <change-name>" -m "Measured-by: <command> — <claim>
+Measured-by: <command> — <claim>"
+```
+
+One `-m` per trailer would put a blank line between them and break the block into separate paragraphs, so keep them in a single `-m`. Omit the second `-m` entirely when the change asserts no measurement.
 List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change scoped to one app stages just that app's `src/`; a change touching a shared package plus its consumer stages both. If your change legitimately touches other top-level paths (e.g. a per-app stylesheet, a smoke-test script, a config file, root `TODO.md`, a sub-app's own doc file, or — for a `.claude/`-meta change — the specific harness files it edited **inside this repo** (never a path in the installed plugin tree, which is outside the repo and not stageable at all) — see `cla.io/overlays/spec-to-pr.md` for this repo's worked examples), add each by name on the same `git add` line — never expand to `-A`. No commit-msg file; the change name is enough.
 
 ## 4. Open the PR
