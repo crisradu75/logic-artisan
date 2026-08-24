@@ -116,6 +116,13 @@ identifier from the reporting instances travels into the portable text.
 - **THEN** the contract covers it whether or not it matches one of the named shapes
 - **AND** the contract states this as a signature rather than as a closing disclaimer
 
+#### Scenario: The shapes reach the reviewers who produce the findings
+
+- **WHEN** a review dispatches agents to produce its findings rather than adjudicating inline
+- **THEN** the shape list is carried in those agents' own briefs, not only in the orchestrator's sweep
+- **AND** it is carried by reference to the contract rather than duplicated, so the two cannot drift
+- **AND** a shape whose resolution requires re-reading the change artifacts is stated as not delegable to that dispatch
+
 #### Scenario: The sweep reaches the shapes and is not delegated
 
 - **WHEN** the workflow's verification sweep runs

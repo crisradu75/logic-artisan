@@ -75,15 +75,18 @@ the round-count question to its own decision item.
 
 ## Impact
 
-Prose-only, in four shipped files. Measured with
+Prose-only, in five shipped files. Measured with
 `wc -l` and `grep -n '^### \|^## '` on 2026-08-25:
 
 | File | lines | where the edit lands |
 |---|---|---|
-| `.claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md` | 116 | §2 (line 37) gains the fix-brief form; §5 (line 78) gains the defect-gone terminal contract |
+| `.claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md` | 115 | §2 (line 37) gains the fix-brief form; §5 (line 78) gains the defect-gone terminal contract |
 | `.claude/plugins/cla/skills/spec-to-pr/SKILL.md` | 431 | Review (line 191) fix loop; Revise stub (line 327) invariant line |
 | `.claude/plugins/cla/skills/spec-to-pr/references/revise.md` | 135 | the round-N≥2 scoping (line 68) and the INT-CAP re-read (line 101) |
 | `.claude/plugins/cla/skills/review-change/references/checklist.md` | 316 | the cost-offload paragraph (line 64) and `### Verified claims` (line 262) |
+| `.claude/plugins/cla/skills/_shared/references/run-log-schema.md` | 177 | the `Review` phase object (line ~26) gains `rows_remeasured` and `rows_remeasured_disagreed` |
+
+**The fifth file is the one an implementer would miss.** Task 4.6 sits in a group otherwise scoped to `checklist.md`, and `checklist.md` defines no run record at all — so "where the review's run record is defined" resolves to `run-log-schema.md` and nowhere else. Naming it here is what stops the counts being added to a file nothing reads them from. **Sibling note:** `revise-round-two-question` also edits this file, adding `findings_by_round` to the **`Revise`** phase object. Different objects, so no textual conflict is expected — but the two changes must not both claim this file is theirs alone.
 
 **Blast radius checked.** `grep -rn 'subagent-brief' .claude/plugins/cla/` returns exactly two
 citing sites — `spec-to-pr/SKILL.md:234` and `lite-pr/SKILL.md:141` — and both cite the brief by its

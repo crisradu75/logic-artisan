@@ -69,9 +69,20 @@ Prose and one schema field, all inside the shipped plugin tree. No executable co
 - Closes GitHub issue **#106**, partially and deliberately: the question is encoded, the default
   change is declined with a stated reversal condition rather than left open.
 
-**Disjointness from the four sibling changes in this batch.** `fix-brief-binding-defect` also edits
-`revise.md`, at §"No capitulation on discharge" (INT-CAP) and inside §"Round N (N ≥ 2)"; the other
-three touch `review-change/references/checklist.md` and `subagent-brief.md`, which this change does
-not open. Both changes' edits to §"Round N (N ≥ 2)" are additive paragraphs to the same section,
-which is an ordering constraint rather than a conflict; this change is last in the batch and edits
-last. `run-log-schema.md` is touched by no sibling.
+**Shared files across this batch.** Three files are touched by more than one change, and two earlier
+statements of this were wrong — corrected here rather than left standing:
+
+| file | changes touching it | shape |
+|---|---|---|
+| `spec-to-pr/references/revise.md` | `fix-brief-binding-defect`, this change | both append to §"Round N (N ≥ 2)"; additive, ordering constraint only |
+| `spec-to-pr/SKILL.md` | `fix-brief-binding-defect` (Review, Revise stub), `delegate-liveness-contract` (Concurrent runs, brief citation, References), this change (Revise stub, Handoff) | **three** changes, and changes 1 and this one both add a bullet to the SAME Revise-stub list |
+| `_shared/references/run-log-schema.md` | `fix-brief-binding-defect` (`rows_remeasured*` on the **`Review`** object), this change (`findings_by_round` on the **`Revise`** object) | different phase objects; no textual conflict expected, but the file is NOT this change's alone |
+
+An earlier draft asserted "`run-log-schema.md` is touched by no sibling" and accounted only for
+`revise.md`. Both were false. `review-change/references/checklist.md` and `subagent-brief.md` this
+change genuinely does not open.
+
+This change is last in the batch and edits last, so on every shared file it appends after the
+siblings rather than ahead of them. Its task 1.3 reads each shared region as it actually stands
+before editing — which is the only reason the two corrected claims above do not also make its tasks
+wrong.

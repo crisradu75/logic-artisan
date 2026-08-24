@@ -52,10 +52,16 @@ shipped prose as a constant, since a constant is wrong in every harness whose li
 
 ### Requirement: A return is classified by its evidence, not by its prose
 
-A cla-plugin skill that dispatches an agent SHALL classify every return by a scan for the fields its
-own brief required, performed before the return's prose is acted on. The scan SHALL check two things:
-that the return carries a status token from the closed set the brief named, and that it carries every
-evidence field the brief's terminal contract required.
+A cla-plugin skill SHALL classify every return from a dispatch **whose brief declares a terminal-status contract** by a scan for the fields that brief required, performed before the return's prose is acted on. The scan SHALL check two things: that the return carries a status token from the closed set the brief named, and that it carries every evidence field the brief's terminal contract required.
+
+**The scope is set by the brief, not by the fact of dispatching.** A dispatch whose brief declares no
+status set and no evidence contract — a read-only gatherer returning a pass/fail table, a sweeper
+returning a hit list, a reviewer returning severity-prefixed finding lines — is outside this
+requirement, and a skill SHALL NOT classify such a return as blocked for lacking a token its brief
+never asked for. This is the same test this change applies to its other obligations: a rule is
+stated over a dispatch kind only where it is applicable to every instance of that kind. Where a
+skill wants this protection for a gatherer-shaped dispatch, the way to get it is to give that brief a
+terminal-status contract, not to widen the scan.
 
 A return missing either SHALL be treated as **blocked**, whatever its prose says — including a return
 that reads as finished, that reports a result, or that states it is waiting on something. The
@@ -76,6 +82,12 @@ observable rather than absorbed.
 - **WHEN** a dispatched agent returns without a status token or without a required evidence field
 - **THEN** the orchestrator classifies the return as blocked
 - **AND** it does so regardless of whether the return's prose reads as finished
+
+#### Scenario: A dispatch with no declared status contract is out of scope
+
+- **WHEN** a skill dispatches an agent whose brief declares no status set and no evidence contract
+- **THEN** the return is not classified as blocked for lacking a status token
+- **AND** the requirement's scope is read from the brief rather than from the fact that a dispatch occurred
 
 #### Scenario: The classification is a scan, not a reading
 

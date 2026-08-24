@@ -16,7 +16,7 @@ rather than four appended rules.
 Current state, measured 2026-08-25:
 
 ```
-wc -l .claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md      → 116
+wc -l .claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md      → 115
 grep -n '^### \|^## ' .../subagent-brief.md
     → :29 "The five slots", :37 "2. Task — one sentence, one deliverable",
       :78 "5. Done when — a condition you will check, with evidence",

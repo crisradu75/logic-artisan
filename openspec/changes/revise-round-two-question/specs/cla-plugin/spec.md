@@ -1,6 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: A second review round asks a different question
+### Requirement: A second Revise round asks a different question
 
 A Revise round N ≥ 2 SHALL be framed by a question distinct from round 1's, and MUST NOT be dispatched as a repeat of round 1 over a smaller diff.
 
@@ -62,6 +62,15 @@ written, that count is zero by construction at the end of round 1, so the loop e
 default cap never binds. A reader who takes `default 2` as a promise of two rounds is reasoning about
 the wrong control, which is precisely the misreading that makes the round-count question look already
 answered.
+
+**That is what the text says, and practice diverges from it.** The run ledger records `rounds_used`
+of 1, 2, 2 against a cap of 2 — two of three logged runs ran a second round the gate as written
+should have ended. The statement this requirement obliges SHALL describe the exit gate as the
+control **without asserting that a second round does not occur**, because a live specification
+claiming a behaviour the ledger contradicts is a false statement with a specification's authority.
+Reconciling the divergence — closing it upward or downward — is explicitly NOT this requirement's
+job: closing it upward is the default change this change declines, and closing it downward would
+delete an observed behaviour on the strength of a document.
 
 This requirement is satisfied by an accurate statement at the sites that name the cap and at the exit
 gate itself. It SHALL NOT change the cap's value, the exit gate's threshold, or anything that alters

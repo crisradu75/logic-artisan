@@ -16,6 +16,19 @@
 - [ ] 2.7 Close with the openness paragraph: the common signature (truth depends on something outside the artifact even where the grammar is not assertive) plus the four hiding grammars, ending with the statement that a matching sentence is in scope whether or not it is listed. Write it as a signature, not as a trailing disclaimer.
 - [ ] 2.8 Confirm every shape meets the executability bar — trigger, resolution steps, failure mode, severity floor, all four present: `grep -c 'Trigger:' .claude/plugins/cla/skills/review-change/references/checklist.md` and the same for `Resolution:`, `Failure mode:`, `Severity floor:` — measured: `<paste the four counts>`. Each must be 4. A count below 4 means a shape is stated as "check that the claim is grounded" and this task fails rather than the shape being waived.
 
+## 2b. Route the shapes to the agents who actually produce findings
+
+Step 2's sweep is orchestrator-only — `checklist.md:60`: *"All checks above … are run by the
+orchestrator (you), not by agents."* On the large path the findings come from the three Step-4
+agents, and `checklist.md:144` tells them *"Do NOT re-read these files — use only the content
+provided."* So a shape list that lives only in the Step-2 contract reaches the orchestrator and
+never reaches the reviewers. Without this group the change is a rule nobody applying it can see.
+
+- [ ] 2b.1 Confirm the gap before fixing it, so the fix is aimed at something real: `grep -n 'run by the orchestrator (you), not by agents' .claude/plugins/cla/skills/review-change/references/checklist.md` and `grep -n 'Do NOT re-read these files' …` — measured: `<paste both>`.
+- [ ] 2b.2 Add the shape list to the **Design Reviewer** and **Spec & Codebase Reviewer** prompts in Step 4 — those two adjudicate artifact claims; the Task Reviewer scope is task feasibility and does not need it. Reference the shapes by their four names plus the one-line trigger each, and point at the contract subsection for the resolution steps rather than duplicating them: a second copy in the prompt is the drift this repo's fact/procedure split exists to prevent.
+- [ ] 2b.3 The agents are told not to re-read change artifacts but MAY read source (`checklist.md:144`). Confirm the shape resolutions only ever require reading **source**, never re-reading the change artifacts — measured: `<name each shape's resolution and the file class it reads>`. A shape needing an artifact re-read cannot be delegated to Step 4 at all and must say so.
+- [ ] 2b.4 Verify the routing landed: `grep -c '<shape-1-name>' .claude/plugins/cla/skills/review-change/references/checklist.md` — measured: `<paste>`. Expect at least 2 (the contract subsection, plus the agent prompt). A count of 1 means the shapes are still orchestrator-only and this group did not take.
+
 ## 3. The one numbered check, and its non-delegability
 
 - [ ] 3.1 Insert `0l. **Claim-shape sweep**` immediately after `0k` and before `### Applies when the change touches allocation math, mock data, or i18n`. Its content points at the contract's shape list; it does **not** restate the shapes. Model its brevity on `0f–0i`, the existing one-line entry that delegates four checks elsewhere.

@@ -128,6 +128,15 @@ specifically its rejected-alternatives or explicitly-rejected-decisions content,
 remedy does not reintroduce something that document rejected. The design document SHALL be the named
 source for this check; the proposal and the task list SHALL NOT be substituted for it.
 
+**A hit is a Critical finding on the fix itself, not a note.** Where the check finds that the applied
+remedy reintroduces something the design document rejected, the skill SHALL treat it as a Critical
+finding against that remedy and SHALL NOT let the fix stand on the reasoning that it resolved the
+original finding — resolving one finding by reintroducing a rejected decision is the failure this
+check exists to catch, and it is indistinguishable from success on the original finding's own
+evidence. The remedy SHALL be withdrawn or re-specified, and where the design document's rejection is
+the thing now judged wrong, that document SHALL be amended explicitly rather than contradicted
+silently; "the fix brief said so" SHALL NOT be accepted as an amendment.
+
 Each such remedy SHALL be **marked** on the round's finding record as orchestrator-specified, so that a
 later reader can tell which changes had no independent author. Where a later review round runs over
 that diff, the marked hunks SHALL be named to it along with the same rejected-alternatives check. Where
@@ -142,6 +151,13 @@ skill's text SHALL say so rather than implying the two are equivalent.
 - **WHEN** the orchestrator applies a fix for a finding itself rather than delegating it
 - **THEN** its post-fix re-verification reads the change's design document rejected-alternatives content
 - **AND** it confirms the applied remedy does not reintroduce a rejected alternative
+
+#### Scenario: The check finds a reintroduced rejected alternative
+
+- **WHEN** the rejected-alternatives check finds that the applied remedy reintroduces a rejected decision
+- **THEN** it is raised as a Critical finding against that remedy
+- **AND** the remedy is withdrawn or re-specified rather than allowed to stand on having resolved the original finding
+- **AND** where the rejection itself is judged wrong, the design document is amended explicitly rather than contradicted silently
 
 #### Scenario: The remedy is marked for the next reader
 

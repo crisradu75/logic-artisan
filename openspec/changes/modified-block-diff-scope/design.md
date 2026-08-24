@@ -120,7 +120,7 @@ look like precedence, and `spec-to-pr`'s archive-time use is not a review.
 **Alternative considered — restate it at each of the four sites.** Rejected outright; that is how
 this repo produced three wrong copies of one correct rule before.
 
-### D4 — Three binding sites, deliberately, because they close different windows
+### D4 — Five binding sites, deliberately, because they close different windows
 
 **Decision.** Bind at `review-change` (dispatch item 5), `archive-preflight` (check (c)), and
 `multi-pr` (the existing re-base check).
@@ -129,7 +129,17 @@ They are not redundant placements of one check; each is the only cover for a dis
 
 | site | window it covers | what it costs |
 |---|---|---|
-| `review-change` item 5 | Authoring error in **any** path, caught pre-implementation, when the delta is still cheap to fix | One live-spec read per MODIFIED requirement, inside a dispatch already reading the delta |
+| `review-change` item 5 | Authoring error on the **large** path, caught pre-implementation, when the delta is still cheap to fix | One live-spec read per MODIFIED requirement, inside a dispatch already reading the delta |
+
+**The small path is not covered by item 5, and this is the batch's honest gap.** `checklist.md:122`
+sends a small change past the 3-agent dispatch — "Skip the 3-agent dispatch… Go straight to Step 5" —
+and `:136` records "Modal case in this repo: small." So a binding that lives only in Step 4's
+dispatch item reaches the minority of reviews. The change closes this at Step 5, which **both** paths
+reach, with a single sentence rather than a numbered check: a numbered entry would compete for `0l`
+with the sibling `grounding-contract-claim-shapes`, and D7's reason for adding none still holds.
+`archive-preflight` remains the backstop, but it is deliberately not the answer here — D4 already
+rejects last-detection as the design, and accepting it for the modal path would be that rejection
+reversed by omission.
 | `archive-preflight` (c) | Everything after review — a Revise-round delta edit, a hand-resolved merge conflict in the delta — and the last moment before materialization deletes anything | One grep per MODIFIED heading, inside a loop that already runs |
 | `multi-pr` re-base check | The **baseline moving**: a sibling, an archived change from a previous chain, a `/cla:lite-pr` landing in between. A correct delta going stale, which neither of the above is looking for | Already in the flow; this change replaces "diff" with the procedure |
 

@@ -30,7 +30,7 @@
 - [ ] 4.3 In the same paragraph, state the cost as proportional to the Critical and Important findings produced rather than to the row count, and state that re-measuring every row is rejected because it restores the context cost the offload exists to avoid.
 - [ ] 4.4 At `### Verified claims` (the report-format block and its "Why `### Verified claims` is mandatory" note), require the provenance tag on every row and state that the section may carry no untagged row.
 - [ ] 4.5 State that the tag travels with the row into the context brief and into any finding derived from it, which inherits the tag until the row is re-measured.
-- [ ] 4.6 Add the two run-record counts — `rows_remeasured` and `rows_remeasured_disagreed` — where the review's run record is defined, so the widening's real cost and catch rate can be priced from the ledger rather than re-argued.
+- [ ] 4.6 Add the two run-record counts — `rows_remeasured` and `rows_remeasured_disagreed` — to the **`Review` phase object in `.claude/plugins/cla/skills/_shared/references/run-log-schema.md`** (line ~26), so the widening's real cost and catch rate can be priced from the ledger rather than re-argued. **This is a FIFTH file, outside this task group's `checklist.md` scope** — `checklist.md` defines no run record (`grep -n 'run record' review-change/references/checklist.md` → no hits), and putting the counts there would define them where nothing reads them. Re-derive the object's location by content before editing; do not trust the line number.
 
 ## 5. Verify
 

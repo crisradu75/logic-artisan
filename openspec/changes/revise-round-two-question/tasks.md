@@ -34,6 +34,23 @@
 - [ ] 5.4 Add the reversal condition to the same note, so the field says what it is for at the point someone reads its shape.
 - [ ] 5.5 In `SKILL.md`'s Handoff invariants, extend the run-log bullet so the producer obligation is named where the record is assembled — `findings_by_round` is built at triage time from what each round actually found, not reconstructed afterwards from memory of the rounds.
 
+## 5b. Dry-run the question against a real fix, because a question nobody ran is a proposal
+
+This is the only change in the batch with no dry-run of its own mechanism. The sibling changes each
+walk their motivating incident through their new procedure; this one asserts the question would have
+surfaced a regression without ever running it.
+
+**The precedent this change cites is not reachable from this repo.** `MATCH_ROW_LIMIT` comes from a
+consuming repo's chain, and `git log -S'MATCH_ROW_LIMIT' --all` here returns only commits quoting it
+second-hand. So the dry-run uses a fix from **this** repo's own history instead — the point is that
+the question fires on a real sibling-instance regression, not that it fires on that particular one.
+
+- [ ] 5b.1 Confirm the citation problem is real before working around it: `git log -S'MATCH_ROW_LIMIT' --all --oneline` — measured: `<paste>`. Only second-hand quotes means the case cannot be re-derived here, and `design.md`'s reliance on it as the sole justification should say so.
+- [ ] 5b.2 Pick a fix from this repo's history whose round-1 remedy created or missed a sibling instance. One known candidate, recorded in `CLAUDE.md`'s own five checks: `lint_profile`, which "traded a silent no-op on the default path for the identical no-op on the overlay path" — a fix that reintroduced its own defect on a second path, which is the exact shape this question targets. Confirm it: `grep -n 'lint_profile' CLAUDE.md` — measured: `<paste>`.
+- [ ] 5b.3 Apply the new question's enumeration obligation to that fix **as worded**, and write down the list it produces. The deliverable is the enumeration, not a verdict: name every other instance of the resource or shape the fix concerns.
+- [ ] 5b.4 Confirm the second site appears in that list. If it does not, the question's wording does not reach the shape it was written for, and **this task fails rather than the wording being waived** — the enumeration obligation is the whole mechanism, and one that misses its own motivating shape has not been shown to do anything.
+- [ ] 5b.5 Record the dry-run's outcome in `design.md` beside the precedent, replacing "would have surfaced" with what was actually run. A claim that survives being tested is worth more than the same claim asserted.
+
 ## 6. Verify
 
 - [ ] 6.1 Confirm no script change was needed: `log_run.py` validates only the ledger filename shape, UTF-8, that the top level is an object, and the 4 KiB ceiling — `grep -n 'def main' -A 60 .claude/plugins/cla/lib/log_run.py | grep -n 'allowlist\|phases\|Revise'` returns nothing — measured: `<paste the result>`
