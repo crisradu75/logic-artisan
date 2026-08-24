@@ -637,13 +637,17 @@ The skill SHALL state the underlying convention as well as enforcing it: a task 
 
 ### Requirement: A measurement names the command that produced it
 
-A skill that owns a commit-creating Ship step SHALL require that every measurement the change asserts — a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact, in the diff or in the message — names the exact command that produced it, as one git trailer per claim at the end of the commit message. The trailer's format SHALL require the command to be **runnable as written**: a trailer naming "the test suite" or an elided invocation reproduces nothing and satisfies a bare-token rule, which is the failure the trailer exists to close. The same obligation SHALL cover any measurement written into the PR body.
+A skill that owns a commit-creating step SHALL require, at **every** such step rather than only the first, that every measurement the change asserts — a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact, in the diff or in the message — names the exact command that produced it, as one git trailer per claim at the end of the commit message. The trailer's format SHALL require the command to be **runnable as written**: a trailer naming "the test suite" or an elided invocation reproduces nothing and satisfies a bare-token rule, which is the failure the trailer exists to close. The same obligation SHALL cover any measurement written into the PR body.
 
 **The obligation SHALL be stated at the pre-commit stop, not at authoring time.** This is the requirement's whole point and is not a placement preference. The rule has existed as project guidance for months and kept failing in careful work, and the reason is that it had no chokepoint: `grep -rin "five checks\|check 3" .claude/plugins/cla/` returns 0 — no shipped asset referenced it — while of the five such pre-ship checks this repo states, exactly one (rewrote-a-file) has a moment-of-edit mechanism, `hooks/warn-wholesale-rewrite.py` on the `Write` matcher. Project guidance loads at session start; the claims are written hundreds of tool calls later. The stop the skill already performs before committing is where the author is already halted and already assembling claims into a message, so that is where the obligation binds.
 
 **The discharge SHALL be an edit rather than an answer.** A claim the author cannot pair with a runnable command has exactly two exits: run the command now, or delete the claim and restate it as the reasoning it is. A skill SHALL NOT offer a third exit in which the claim ships and the command is owed. A change asserting no measurement SHALL carry no trailer, and a skill SHALL NOT accept a null certification such as `Measured-by: none` — a line certifying a check nobody performed is worse than no line, because it reads as evidence that one happened.
 
-**The trailer token SHALL be distinguishable from narrative prose.** Bare `Measured:` is ordinary narrative text in the shipped tree (`grep -rl "Measured:" .claude/plugins/cla/ | wc -l` — 4 files, none of them a trailer), so a bare token would collide both with a drift check over shipped prose and with `git log --grep`. The hyphenated git-trailer form `Measured-by:` is load-bearing rather than cosmetic.
+**The trigger SHALL be a claim the change asserts, not a check that ran.** The standing pre-ship gates — the test suite, the linters, the conformance scripts every commit runs anyway — are not claims the change puts into the diff or the message, and a skill SHALL NOT require a trailer for them. Trailering them turns the block into fixed boilerplate on every commit, and a block identical every time stops being read, which costs precisely what the step was added to buy. This is the same decay the null certification above is forbidden for, reached by over-application rather than by emptiness.
+
+**Adoption SHALL be recorded rather than asserted.** Nothing gates a single commit, so a trailer that was never written is invisible; the obligation's own effectiveness would otherwise be an unfalsifiable claim, which is the failure this requirement exists to prevent. The plugin's commit-provenance hook SHALL record, per commit, the count of measurement trailers and their values, so the question is answered from a ledger. Under the line ceiling that ledger enforces, the trailer VALUES SHALL be shortened before the record is dropped, and the count SHALL remain exact — a dropped line would remove the commit from the denominator the ledger exists to supply.
+
+**The trailer token SHALL be distinguishable from narrative prose.** Bare `Measured:` is ordinary narrative text in the shipped tree (`git grep -l "Measured:" -- .claude/plugins/cla | wc -l` — 4 tracked files, none of them a trailer; `grep -rl` answers 5 because it also opens a `__pycache__` `.pyc`), so a bare token would collide both with a drift check over shipped prose and with `git log --grep`. The hyphenated git-trailer form `Measured-by:` is load-bearing rather than cosmetic.
 
 **This obligation is NOT covered by the Completeness-signals requirement above**, whose measurement clause reads in full: *"A task whose text asserts a **measurement** — a confirmed value, a count, a mutation-test result — SHALL record the measured value inline on the ticked line rather than the tick standing as its own evidence, and the post-check SHALL re-measure a small sample rather than trusting the ticks wholesale."* That binds a **task list** to record a **value**; this binds a **commit** to name a **command**. A recorded value is the claim restated in another place — it is exactly what every escape this requirement addresses already had. Only the command lets a reader reproduce it, and the two clauses also bind different artifacts at different moments, so neither subsumes the other.
 
@@ -677,10 +681,23 @@ A systematic 21-line sample of those 169 (every 8th hit, `| awk 'NR%8==1'`) was 
 - **THEN** the commit message carries no measurement trailer
 - **AND** a null certification line is not written in its place
 
-#### Scenario: The rule binds at the pre-commit stop
+#### Scenario: The rule binds at every commit chokepoint
 
-- **WHEN** a skill that owns a commit-creating Ship step states the obligation
-- **THEN** it is stated after that step's pre-commit state check, not among its authoring-time guidance
+- **WHEN** a skill states the obligation for a commit-creating step
+- **THEN** it is stated after that step's pre-commit state check and before its commit, not among the skill's authoring-time guidance
+- **AND** a skill with more than one commit-creating step states it at each, rather than at the first and by reference elsewhere
+
+#### Scenario: A standing gate is not a claim the change asserts
+
+- **WHEN** a change runs the pre-ship test suite, linters, and conformance scripts every commit runs
+- **THEN** those results earn no trailer
+- **AND** a trailer is written only for a number the change puts into the diff or the message
+
+#### Scenario: Adoption is answerable from the ledger
+
+- **WHEN** a commit is recorded by the commit-provenance hook
+- **THEN** the record carries the exact count of measurement trailers and their values
+- **AND** an oversize record sheds trailer values rather than being dropped, leaving the count intact
 
 ### Requirement: Deferred findings are separated by reason
 

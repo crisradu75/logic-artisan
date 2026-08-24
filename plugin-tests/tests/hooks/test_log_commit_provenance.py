@@ -196,3 +196,103 @@ def test_malformed_stdin_exits_zero(tmp_path):
         errors="replace",
     )
     assert r.returncode == 0
+
+
+# ---------- the Measured-by column ----------
+#
+# The Ship and Revise commit steps require one `Measured-by:` trailer per
+# measurement a change asserts, and nothing gates a single commit. Whether that
+# rule is followed is therefore answerable only from this ledger, which makes
+# these columns the evidence — so they are tested for the two ways a count goes
+# wrong: reading nothing when trailers exist, and reporting a shortened list as
+# though it were the whole one.
+
+
+def _commit_with(repo: Path, subject: str, trailer_block: str | None) -> None:
+    (repo / "f.txt").write_text(subject + "\n", encoding="utf-8")
+    args = ["git", "commit", "-q", "-a", "-m", subject]
+    if trailer_block is not None:
+        args += ["-m", trailer_block]
+    subprocess.run(args, cwd=repo, check=True, capture_output=True)
+
+
+def test_trailers_are_recorded_with_an_exact_count(tmp_path):
+    repo = _repo(tmp_path)
+    _commit_with(
+        repo,
+        "fix: review round 2",
+        "Measured-by: pytest plugin-tests -q — 1237 passed\n"
+        "Measured-by: node --test x.mjs — 70 pass",
+    )
+    assert _run(repo, "git commit -m 'fix: review round 2'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 2
+    assert row["measured_by"] == [
+        "pytest plugin-tests -q — 1237 passed",
+        "node --test x.mjs — 70 pass",
+    ]
+
+
+def test_a_commit_asserting_nothing_records_an_empty_list_not_a_missing_key(tmp_path):
+    """The rule says a change asserting no measurement writes no trailer, so
+    zero is a real reading rather than an absence. A missing key would be
+    indistinguishable from a hook that could not parse the commit."""
+    repo = _repo(tmp_path)
+    _commit_with(repo, "chore: no claims here", None)
+    assert _run(repo, "git commit -m 'chore: no claims here'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 0
+    assert row["measured_by"] == []
+
+
+def test_a_wrapped_trailer_is_one_value_not_two_fragments(tmp_path):
+    """`unfold=true`. A long command wrapped across lines is still one claim;
+    recorded as fragments it would inflate the count it exists to report."""
+    repo = _repo(tmp_path)
+    _commit_with(
+        repo,
+        "feat: wrapped",
+        "Measured-by: git log -8 -p --format= --unified=0\n"
+        "  | grep -cE '^[+]' — 7280 added lines",
+    )
+    assert _run(repo, "git commit -m 'feat: wrapped'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 1
+    assert "7280 added lines" in row["measured_by"][0]
+
+
+def test_an_oversize_record_sheds_values_but_never_the_count(tmp_path):
+    """The ceiling must cost detail, not the commit. Dropping the whole line
+    would remove the commit from the denominator too — the number this hook was
+    built to supply."""
+    repo = _repo(tmp_path)
+    trailers = "\n".join(
+        f"Measured-by: {'c' * 300} — claim {i}" for i in range(12)
+    )
+    _commit_with(repo, "feat: many claims", trailers)
+    assert _run(repo, "git commit -m 'feat: many claims'").returncode == 0
+    rows = _ledger(repo)
+    # One hook invocation, one line. The fixture's own commit predates the hook
+    # and writes nothing, so a dropped line would leave the ledger empty.
+    assert len(rows) == 1, "the line must still be written, not dropped"
+    row = rows[-1]
+    assert row["measured_by_count"] == 12, "the count is exact regardless of shedding"
+    assert len(row["measured_by"]) < 12, "values must have been shed to fit"
+    assert all(len(v) <= mod._MAX_TRAILER_CHARS for v in row["measured_by"])
+    line_bytes = len(json.dumps(row, ensure_ascii=False).encode("utf-8")) + 1
+    assert line_bytes <= mod._MAX_LINE_BYTES
+
+
+def test_the_shedding_loop_terminates_on_a_record_that_can_never_fit(monkeypatch):
+    """A subject alone over the ceiling exhausts the list and must then return
+    without writing, rather than looping. Reached by shrinking the ceiling,
+    since no real subject is 2 KiB."""
+    monkeypatch.setattr(mod, "_MAX_LINE_BYTES", 10)
+    record = {"subject": "x" * 50, "measured_by_count": 3, "measured_by": ["a", "b", "c"]}
+    while (
+        len(json.dumps(record, ensure_ascii=False).encode("utf-8")) > mod._MAX_LINE_BYTES
+        and record["measured_by"]
+    ):
+        record["measured_by"] = record["measured_by"][:-1]
+    assert record["measured_by"] == []
+    assert record["measured_by_count"] == 3

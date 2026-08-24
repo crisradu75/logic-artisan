@@ -51,9 +51,16 @@ MUTANTS = [
     (
         # A call site dropping out of the declared family must fail via the
         # tripwire, not pass by checking one fewer file.
+        #
+        # Anchored WITHIN one line. A first cut spanned the line ending
+        # (`'    "lite-pr/SKILL.md",\n'`) and aborted the whole batch on a CRLF
+        # checkout — `mutate.py`'s preflight rejects a bare `\n` in an anchor,
+        # and it fails the batch rather than the mutant, so the run reported
+        # nothing mutated at all. Leaving the indent behind is harmless: a blank
+        # line inside the tuple still drops the entry.
         "a call site silently drops out of the declared family",
         GUARD,
-        '    "lite-pr/SKILL.md",\n',
+        '"lite-pr/SKILL.md",',
         "",
         TARGETS,
     ),
@@ -74,6 +81,38 @@ MUTANTS = [
         GUARD,
         '_TRAILER = "measured-by:"',
         '_TRAILER = "measured:"',
+        TARGETS,
+    ),
+    (
+        # Revise's fix-round commit is the highest-frequency chokepoint and was
+        # missing from the first cut of this change: the skill ASSERTED the rule
+        # covered `fix:` commits while the only binding statement sat ~38k chars
+        # away in another file — the loads-early-claim-written-later shape this
+        # whole change rejects.
+        "Revise's fix-round commit loses the two exits",
+        SKILLS / "spec-to-pr" / "references" / "revise.md",
+        "**run the command now, or delete the claim**",
+        "**note the claim as unverified**",
+        TARGETS,
+    ),
+    (
+        # Without a commit action on the far side, a rule block parked after a
+        # trailing reference-list mention of the pre-commit check clears both the
+        # window cap and the gap bound. A reviewer moved the block to EOF exactly
+        # this way and it passed.
+        "the far side of the chokepoint sandwich is removed",
+        GUARD,
+        '_COMMIT_ACTIONS = ("git commit", "commit-push-pr")',
+        "_COMMIT_ACTIONS = ()",
+        TARGETS,
+    ),
+    (
+        # An unbounded gap accepts any position after the first mention of the
+        # check — measured at roughly 40% of `lite-pr/SKILL.md`.
+        "the chokepoint gap widens until anything downstream counts as at it",
+        GUARD,
+        "_MAX_CHOKEPOINT_GAP = 2600",
+        "_MAX_CHOKEPOINT_GAP = 1000000",
         TARGETS,
     ),
 ]

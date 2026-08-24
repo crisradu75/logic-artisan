@@ -122,6 +122,8 @@ Pass the captured diff to each Agent prompt. If `PREV_FIX_SHA` is empty or the d
    git commit -m "fix: review round <N>"
    git push
    ```
+   **Every measurement this round asserts names the command that produced it**, as one `Measured-by: <the exact command, runnable as written> — <the claim it produced>` trailer per claim, in a single second `-m` with the lines newline-separated (`git commit -m "fix: review round <N>" -m "Measured-by: …"`). A fix round is where the mutation results, the counts and the "this is now handled" claims get written, so the obligation binds here exactly as it does in Ship. A claim you cannot pair with a runnable command has two exits and both are edits: **run the command now, or delete the claim** and restate it as the reasoning it is. A round asserting no measurement carries no trailer — never `Measured-by: none`, which certifies a check nobody ran while reading as evidence that one happened. The standing pre-PR gates are not claims this round asserts; a trailer is for a number this round puts into the diff or the message.
+
    **`git diff --cached --name-only` must list at least one path. Empty output means NOTHING was staged — stop there.** Do not commit, do not push. Name which of `<changed-paths>` produced nothing and mark Revise `warn`.
 
    (`--name-only`, not `--quiet`, deliberately: `--quiet` signals through its exit code, and the *healthy* case — differences present — is exit **1**, which this skill's own hoisted rule would read as a failure and halt on. Inverting a check into halting every successful round is no better than not having it.)
