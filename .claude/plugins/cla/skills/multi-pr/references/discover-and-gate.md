@@ -20,6 +20,42 @@ Then read each change's own `proposal.md`/`design.md`/`tasks.md` for what it say
 
   **Do the same for every change a proposal names as a prerequisite, not just every doc.** A prerequisite can exist as specs and tasks with no code written anywhere — an open, proposal-only PR — and nothing about the batch looks wrong until a dependent reads a store nobody wrote, hours in. For each name, ask where its code actually lives: archived on `<base-branch>`, in scope for this run, or on an open PR. Resolve an archive directory with the rule `spec-to-pr/scripts/probe_state.py`'s `_archived` already implements (it handles the `<YYYY-MM-DD>-` prefix and the suffix collisions a naive match hits) rather than restating it here, and use `gh pr diff --name-only` to see whether an open PR carries code at all. A prerequisite whose code exists nowhere — and that no in-scope change will write first — is a **Phase 1 gate question**, not a note.
 
+### Capability overlap — the second thing to compute, before the gate
+
+Ordering by dependency answers "does A need B's code". It does not answer "do A and
+B write to the same capability spec", and two changes can be dependency-independent
+while colliding on one.
+
+The mechanism: `/cla:multi-spec` authors a batch in parallel, so **every change's
+delta is written against the pre-batch spec text**, and a `## MODIFIED Requirements`
+block replaces its requirement **wholesale** rather than patching it. When two
+in-scope changes modify the same requirement, the later one silently reverts or
+corrupts the earlier one's delta. Nothing flags it: each change's artifacts are
+internally consistent, and the collision is only visible across the batch.
+
+Measured on one batch in a repo consuming this plugin, and reported here rather
+than re-derived: change 4 hit this twice — its delta would have deleted an
+exception clause a sibling had just merged into one capability, and two scenarios
+plus an ownership record from another. It was caught because that change's own task
+list happened to warn, which is luck, not a check.
+
+So compute the overlap matrix, once, right here:
+
+```
+ls openspec/changes/<name>/specs/          # per in-scope change → its capabilities
+```
+
+Report every capability touched by more than one in-scope change, naming the
+changes. Each such change's delta then carries a **mandatory re-base check** before
+that change's review: diff its delta against the live spec **as of that moment**,
+not as the delta was originally authored. Record the overlap next to `depends_on` in
+the sequence table.
+
+The clean answer is worth as much as the dirty one, and is the usual result. On
+that same batch, changes 5, 6 and 7 each added exactly one brand-new capability, so
+all three carried zero re-base risk — information otherwise re-derived per change,
+or never established at all.
+
 ## 1b. The pre-flight gate — ask everything now
 
 **`AskUserQuestion` accepts at most 4 questions per call.** There are up to 5 candidate decisions below, but two of them (sequence confirmation, infra-unavailability policy) are *conditional* — they only need asking when the situation actually calls for a decision, not by default. In the common case that keeps everything to one call:
@@ -30,7 +66,37 @@ Then read each change's own `proposal.md`/`design.md`/`tasks.md` for what it say
 
    - **merge before dependents** — merge each PR before starting the next change that depends on it. A later change's Implement phase may need the earlier change's code actually present in `<base-branch>`, not just an open PR. Best when it works: each PR is insulated from its siblings' review churn.
    - **stacked** — no merges at all. Each dependent change branches off its parent's feature branch instead of `<base-branch>`, so the parent's code is present without anything landing; mechanically, the child's `/cla:spec-to-pr` invocation carries `--pr-base <parent-branch>` — the branch the parent's run recorded in the running notes (change-loop steps 2 and 5-alt); the flag's semantics are spec-to-pr's `<pr-base>` rule, which also opens the child's PR against the parent so each diff shows only its own work. The chain ends as a stack of open PRs the user lands parents-first with the commands the final report provides. Use this whenever merging is blocked, and prefer it when the user wants the whole chain reviewable before anything reaches `<base-branch>`.
-   - **open all, merge nothing** — every change branches off `<base-branch>` independently. Only valid when NO change depends on another; with a real dependency, the dependent's Implement phase runs against a tree missing its parent's code.
+   - **open all, merge nothing** — every change branches off `<base-branch>` independently. Only valid when no change depends on another **and no change moves shared environment state** (see the edge below); with a real dependency, the dependent's Implement phase runs against a tree missing its parent's code.
+
+   **`depends_on` is not the only edge, and the other one is invisible to it.** The
+   vocabulary above — "merge before dependents", "independents stay open" — can only
+   see edges the dependency graph records, and that graph records **source-level**
+   dependencies: one change's code or spec needing another's. A change also creates
+   an edge by moving **shared mutable environment state** that later changes will run
+   against: applying a database migration, seeding shared fixture data, performing a
+   provisioning step.
+
+   When it does, **that change merges before the next one starts, whether or not
+   anything depends on its code.** The shared state has already moved for every
+   subsequent branch, and only merging its source makes the tree consistent with it
+   again. Ask it per change while sequencing, and record the answer in the run's
+   sequence table next to `depends_on`.
+
+   Measured on a six-change chain in a repo consuming this plugin, and reported
+   here rather than re-derived: change 1 was listed `depends_on: []` and no
+   sibling named it, so the confirmed policy pointed at leaving its PR open. Its
+   migration was already applied and checksummed on the shared development database,
+   and a guard comparing database state against the working tree fails hard when the
+   database has applied a migration whose file is absent from the branch — so the
+   next five changes would each have failed a gate that had nothing to do with their
+   own work. The orchestrator caught it by reasoning mid-chain. Nothing in Phase 1
+   asked, and a run that took the confirmed policy at face value — which is what the
+   policy is for — would have met it as five consecutive unexplained failures.
+
+   The detection mechanism there is repo-specific; the shape is not. Any harness
+   running changes serially against one shared development environment has this edge,
+   and any guard that compares environment state against the working tree surfaces it
+   as an unrelated failure in an innocent change.
 
    **When merging is unavailable.** A host runtime may refuse `gh pr merge` outright — separately from, and in addition to, this plugin's own `ask-destructive-git` hook, which `ALLOW_PR_MERGE=1` already satisfies — and an allowlist entry covering `gh` does not necessarily clear it, with or without `--delete-branch`. (A dated instance lives in `cla.io/overlays/multi-pr.md` "Incident / offense history".) Do NOT hunt for a flag spelling that gets through — that is working around a safety gate, not configuring one. Treat the first refusal as the answer: switch to **stacked** for the rest of the chain, say so in the run report, and hand the user the ordered, parents-first landing commands at the end.
 

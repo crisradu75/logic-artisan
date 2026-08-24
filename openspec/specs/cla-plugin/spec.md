@@ -578,6 +578,35 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
 
+### Requirement: Sequencing edges beyond the source dependency graph
+
+A skill that sequences a batch of changes SHALL establish, before the batch runs, the edges its source dependency graph cannot express, and SHALL NOT present a merge or landing policy in vocabulary that can only see that graph. A dependency list records **source-level** need — one change's code or spec requiring another's — and two edges outside it are each sufficient to break a later change whose own work is correct.
+
+**Shared mutable environment state.** A change that applies a migration to a shared environment, seeds shared fixture data, or performs a provisioning step SHALL create a merge-before-next edge **regardless of whether any other change depends on its code**. That state has already moved for every subsequent branch, so only merging its source makes the tree consistent with it again. The skill SHALL ask this per change while sequencing and record the answer alongside the dependency list, rather than leaving it to be re-derived mid-run. Where the skill states a default in terms of "independents", that statement SHALL name both edges, including in any hoisted summary that binds when the detailed reference is not loaded — a summary keyed on the dependency list alone is the form in which this defect is actually met.
+
+**Capability overlap.** Where changes are authored in parallel against a shared specification set, every change's delta is written against the pre-batch text, and a modified-requirement block that replaces its requirement wholesale SHALL be treated as a collision risk whenever two in-scope changes touch the same capability. The skill SHALL compute which capabilities are touched by more than one in-scope change, name them, and require each such change's delta to be re-checked against the live specification **as of that moment** — not as the delta was authored — before that change is reviewed. This SHALL NOT rest on an individual change's own task list happening to warn, which is the only thing that has caught it.
+
+The absence of an overlap SHALL be reported as well as its presence: a change confirmed to touch only a capability nobody else touches carries no re-base risk, and establishing that once for the batch is cheaper than re-deriving it per change.
+
+#### Scenario: An independent change that moved shared state still merges first
+
+- **WHEN** a change in a batch applies a migration, seeds shared fixture data, or provisions shared infrastructure
+- **THEN** it creates a merge-before-next edge even though no other change depends on its code
+- **AND** the sequencing step records that edge next to the change's dependency list
+
+#### Scenario: A policy summary does not describe only the dependency edge
+
+- **WHEN** a skill states a merge-policy default in terms of dependents and independents
+- **THEN** the statement names the shared-environment-state edge as well as the source dependency
+- **AND** it does so in the hoisted summary too, not only in the detailed reference
+
+#### Scenario: Capabilities touched by more than one change are named before review
+
+- **WHEN** a batch is sequenced
+- **THEN** the capabilities touched by more than one in-scope change are computed and reported by name
+- **AND** each affected change's delta is re-checked against the live specification as of that moment before that change is reviewed
+- **AND** a batch with no overlap has that reported too, rather than left unstated
+
 ### Requirement: Cross-change obligation carry
 
 A skill that drives a SEQUENCE of changes SHALL treat an obligation one change creates for a later one as chain state that is both **recorded** and **delivered**, and SHALL NOT discharge it by recording alone. An obligation here is an addition a change's own review or fix round makes — a stored field, column, response key, or required behaviour — that the change itself does not consume, whose sole justification is that a named later change reads it. Such an obligation is invisible to every check scoped to a single change: the downstream change's artifacts stay internally consistent while never mentioning it.
