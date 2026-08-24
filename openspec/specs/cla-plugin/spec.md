@@ -578,6 +578,46 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
 
+### Requirement: Cross-change obligation carry
+
+A skill that drives a SEQUENCE of changes SHALL treat an obligation one change creates for a later one as chain state that is both **recorded** and **delivered**, and SHALL NOT discharge it by recording alone. An obligation here is an addition a change's own review or fix round makes — a stored field, column, response key, or required behaviour — that the change itself does not consume, whose sole justification is that a named later change reads it. Such an obligation is invisible to every check scoped to a single change: the downstream change's artifacts stay internally consistent while never mentioning it.
+
+The obligation SHALL be derived from what the prerequisite **actually became**, not from the batch as proposed. A chain plan's dependency list is a snapshot taken before any review round runs, and a prerequisite's review round is precisely where these obligations are created, so a downstream change reviewed against the plan is reviewed against a state its prerequisite has already left.
+
+**Delivery SHALL travel in the invocation that starts the downstream change** — the same argument channel that already carries that change's caps and its stacked-chain base — so that recording an obligation and delivering it are not separable acts. A carry list the orchestrator writes and then does not feed into the dependent's own review is indistinguishable from never having written it, and SHALL NOT be accepted as satisfying this requirement.
+
+When obligations are delivered, the downstream change's **pre-implementation** review SHALL emit one verdict per obligation — honoured, violated, or not addressed — as a required output field ahead of any other finding, and SHALL settle "not addressed" mechanically, by the absence of the obligation's literal token anywhere in that change's own artifacts, rather than by judgement. A non-honoured verdict SHALL be a Critical finding, so the fix edits the artifacts before implementation rather than after. The count of verdict lines SHALL equal the count of delivered obligations; a missing line SHALL NOT read as a pass.
+
+An empty carry SHALL be recorded explicitly rather than left as an absent section, so a resumed run can distinguish "nothing was owed" from "nobody looked".
+
+**A dedicated checker script SHALL NOT be added for this.** The per-obligation check is one `grep` for one token against one change directory, which the plugin's script bar — a script earns its place only by doing something a direct command plus a sentence of prose cannot do reliably — does not clear. The recurring failure was never that the grep was hard to run; it was that nobody was obliged to run it.
+
+#### Scenario: The obligation is delivered, not merely recorded
+
+- **WHEN** a change's review or fix round creates an obligation for a named later change in the chain
+- **THEN** the obligation is recorded in the run's own notes with the token to grep for, the creating change, the owing change, and the failure if dropped
+- **AND** the later change's invocation carries that obligation as an argument
+- **AND** the recording step names the reading step, so a row written but never delivered is a defect rather than a completed step
+
+#### Scenario: The carry is derived from the prerequisite's actual state
+
+- **WHEN** a prerequisite's own review round adds a field after a dependent's artifacts were authored
+- **THEN** the obligation is derived from the applied findings and the prerequisite's final diff
+- **AND** it is not derived from the chain plan's description of that prerequisite
+
+#### Scenario: The downstream review answers for each obligation by name
+
+- **WHEN** a change is reviewed with inherited obligations delivered to it
+- **THEN** the report opens with one honoured / violated / not-addressed line per obligation, before any other finding
+- **AND** a token absent from the whole change directory yields "not addressed" without judgement
+- **AND** a non-honoured verdict is a Critical finding applied to the artifacts before implementation
+
+#### Scenario: An empty carry is written down
+
+- **WHEN** a change creates no obligation for any later change
+- **THEN** that is recorded explicitly for that change
+- **AND** a resumed run can tell it apart from a change nobody examined
+
 ### Requirement: Unattended-run turn liveness
 
 A skill that drives a multi-step run designed to proceed without a human present SHALL state, among its hoisted skill-level rules, that a turn is never ended while nothing is pending that would re-invoke the session. The obligation SHALL be stated as a **check the agent can apply without judgement** — whether the message contains a tool call — rather than only as a prohibition on how a message reads, because the judgement form has been observed to fail in the one way that matters: an author writes a closing-shaped status report and then behaves like its reader.
