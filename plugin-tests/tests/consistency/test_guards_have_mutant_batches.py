@@ -95,10 +95,15 @@ def test_the_grandfather_list_only_shrinks():
     list may lose entries but must never gain one, or the convention becomes
     opt-in and the whole check evaporates."""
     grandfathered = sum(1 for v in _EXEMPT.values() if v == "grandfathered")
-    assert grandfathered <= 12, (
-        f"{grandfathered} grandfathered guards; the list was 12 when the "
-        "convention landed and is only allowed to shrink. A NEW guard needs a "
-        "mutant batch, not an exemption."
+    # RATCHET this down to the new real count whenever an entry is deleted. Left
+    # at its original 12 while the real count fell to 8, it silently permitted
+    # four new exemptions — a bound far above its population is the same
+    # decorative-floor defect `test-quality.md` describes, applied to a ceiling.
+    assert grandfathered <= 8, (
+        f"{grandfathered} grandfathered guards; the bound is the real count at "
+        "the last deletion and is only allowed to shrink. A NEW guard needs a "
+        "mutant batch, not an exemption — and deleting an entry means lowering "
+        "this number in the same commit."
     )
 
 
