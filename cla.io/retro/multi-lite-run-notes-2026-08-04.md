@@ -1,6 +1,7 @@
 # multi-lite run notes — cla-upstream port from claude-plugins
 
-**Source doc:** `cla.io/decisions/cla-upstream-port-from-claude-plugins.md`
+**Source doc:** `cla.io/decisions/cla-upstream-port-from-claude-plugins.md` — deleted 2026-08-24;
+recover with `git show eaa579b:cla.io/decisions/cla-upstream-port-from-claude-plugins.md`.
 **Base branch:** `main` (primary clone)
 **Plan confirmed:** yes — run as derived, dependency-first, PRs 1–3 merged as dependencies, #4 left open.
 

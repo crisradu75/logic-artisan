@@ -32,7 +32,8 @@ cross-references for no gain; the scope is stated here instead. Read this propos
 directory name, for what the change covers.
 
 This is the second and final change from
-`cla.io/decisions/ship-only-consumer-usable-assets-2026-08-22.md`, superseding the decision doc's
+`cla.io/decisions/ship-only-consumer-usable-assets-2026-08-22.md` (deleted 2026-08-24; recover with
+`git show eaa579b:<that path>`), superseding the decision doc's
 (b)/(c) split. It must land strictly after (a).
 
 ## What Changes

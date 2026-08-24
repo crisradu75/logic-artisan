@@ -1,6 +1,7 @@
 # multi-lite run notes — 2026-08-20
 
-Source doc: cla.io/decisions/open-issues-batch-2026-08-20.md
+Source doc: cla.io/decisions/open-issues-batch-2026-08-20.md — deleted 2026-08-24;
+recover with `git show eaa579b:cla.io/decisions/open-issues-batch-2026-08-20.md`.
 
 | id | status | branch | pr_number |
 |---|---|---|---|

@@ -4,8 +4,10 @@ Deferred items — things intentionally not done now, kept here so they aren't l
 
 ## Build the `/cla:diagnose` skill (shaped, ready to implement)
 
-**Shaped 2026-08-14** — all four open questions resolved. The design constraints live in
-`cla.io/decisions/diagnose-skill-2026-08-14.md`; read that, not this entry, before building.
+**Shaped 2026-08-14** — all four open questions resolved. The design constraints lived in
+`cla.io/decisions/diagnose-skill-2026-08-14.md`, deleted 2026-08-24 in a decisions-directory
+cleanup. Recover it first — `git show eaa579b:cla.io/decisions/diagnose-skill-2026-08-14.md` — and
+read that, not this entry, before building.
 
 In one line each: a standalone skill PLUS a thin escalation hook in both Test phases; the trigger
 is two rounds on the same stated cause with the gate still red; it sits in the "Any phase
@@ -158,7 +160,9 @@ hook ever saw. The cost is that git hooks cannot be installed by a plugin, so ev
 Postponed mid-`shape-decision` on 2026-07-26. Ported idea from the peer repo `mattpocock/skills`
 (idea #4 in the original comparison, from its `triage/AGENT-BRIEF.md`) — see
 `cla.io/decisions/domain-terminology-glossary-2026-07-26.md` for the full comparison and sibling
-ideas #1 (adopted), #2 (skipped, ADRs), #3 (postponed, `/diagnose` skill, above).
+ideas #1 (adopted), #2 (skipped, ADRs), #3 (postponed, `/diagnose` skill, above). That doc was
+deleted 2026-08-24; recover it with
+`git show eaa579b:cla.io/decisions/domain-terminology-glossary-2026-07-26.md`.
 
 **The idea:** write `tasks.md` subtasks as behavioral contracts, not directions to a specific
 code location — describe *what* should be true ("the retry mechanism gives up after N attempts"),

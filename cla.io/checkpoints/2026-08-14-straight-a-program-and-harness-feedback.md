@@ -47,6 +47,9 @@ Also merged earlier in the program: the stacked-chain mode branch (#68) and the
 - **`/cla:diagnose` is shaped and approved but not built.** Seven questions
   answered in `cla.io/decisions/diagnose-skill-2026-08-14.md`; that doc, not the
   original `mattpocock/skills` comparison, is the spec. Do not re-shape it.
+  **(That doc was deleted 2026-08-24 in a decisions-directory cleanup. It is
+  tracked, so recover it with `git show eaa579b:cla.io/decisions/diagnose-skill-2026-08-14.md`
+  before building the skill — the spec is there, not here.)**
 - **No CI, still.** Reaffirmed rather than revisited. `run_tests.py` is the whole
   gate. If a change seems to need a workflow, raise it instead of adding one.
 - **A published tag is never moved.** `cla--v0.10.0` is cut from reviewed `main`
