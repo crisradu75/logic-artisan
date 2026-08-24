@@ -1,0 +1,59 @@
+{"ts": "2026-08-17T19:52:47+03:00", "sha": "fca0836", "subject": "fix: interpreter probe — own file, three stages, postcondition wiring (#81)", "branch": "main", "skill": null}
+{"ts": "2026-08-17T19:52:47+03:00", "sha": "fca0836", "subject": "fix: interpreter probe — own file, three stages, postcondition wiring (#81)", "branch": "main", "skill": null}
+{"ts": "2026-08-17T19:52:47+03:00", "sha": "fca0836", "subject": "fix: interpreter probe — own file, three stages, postcondition wiring (#81)", "branch": "main", "skill": null}
+{"ts": "2026-08-20T10:15:06+03:00", "sha": "3c46c8c", "subject": "fix: name the narrow ALLOW_PR_MERGE hatch in the merge-only ask prompt", "branch": "fix/merge-hatch-message-issue-82", "skill": null}
+{"ts": "2026-08-20T10:18:37+03:00", "sha": "2fa9cff", "subject": "docs: warn about PowerShell path-casing breaking the Windows install", "branch": "docs/windows-install-note-issue-60", "skill": null}
+{"ts": "2026-08-20T10:19:58+03:00", "sha": "192554b", "subject": "chore: multi-lite run notes — open-issues-batch-2026-08-20", "branch": "chore/multi-lite-run-notes-2026-08-20", "skill": null}
+{"ts": "2026-08-20T10:24:48+03:00", "sha": "d81409c", "subject": "fix: resolve deferred review findings", "branch": "docs/windows-install-note-issue-60", "skill": null}
+{"ts": "2026-08-20T10:26:53+03:00", "sha": "3d70c14", "subject": "fix: address review findings", "branch": "fix/merge-hatch-message-issue-82", "skill": "lite-pr"}
+{"ts": "2026-08-21T11:31:52+03:00", "sha": "fd56acc", "subject": "fix: multi-pr prerequisite sweep covers change references, not just docs (#87)", "branch": "fix/multi-pr-change-reference-prereq-sweep", "skill": null}
+{"ts": "2026-08-21T11:47:58+03:00", "sha": "1811d3a", "subject": "fix: address review findings on the change-reference sweep", "branch": "fix/multi-pr-change-reference-prereq-sweep", "skill": null}
+{"ts": "2026-08-21T12:05:23+03:00", "sha": "47692e8", "subject": "fix: simplify the change-reference sweep, correct the overlay pointers", "branch": "fix/multi-pr-change-reference-prereq-sweep", "skill": null}
+{"ts": "2026-08-21T12:07:59+03:00", "sha": "0f934c7", "subject": "feat: recap format for finished work, in the output style", "branch": "feat/recap-format-output-style", "skill": null}
+{"ts": "2026-08-21T17:48:56+03:00", "sha": "9d67e49", "subject": "fix: decouple the gate from bucket names, drop an invented stacking rule", "branch": "fix/multi-pr-change-reference-prereq-sweep", "skill": null}
+{"ts": "2026-08-21T17:53:37+03:00", "sha": "3ce50eb", "subject": "fix: stop the recap rule overriding fixed-shape agent reports", "branch": "feat/recap-format-output-style", "skill": null}
+{"ts": "2026-08-21T17:54:24+03:00", "sha": "5f1f3ac", "subject": "chore: launch the cla harness on Opus at high effort", "branch": "chore/launcher-opus-high", "skill": null}
+{"ts": "2026-08-21T18:12:43+03:00", "sha": "46548ba", "subject": "fix: the [y/n] was dying exactly where it exists to fire", "branch": "feat/recap-format-output-style", "skill": null}
+{"ts": "2026-08-21T18:38:14+03:00", "sha": "31e9487", "subject": "refactor: cut the recap rule back to what was actually asked for", "branch": "feat/recap-format-output-style", "skill": null}
+{"ts": "2026-08-21T18:45:33+03:00", "sha": "5c5b4ff", "subject": "refactor: cut the sweep back to what issue #87 asked for", "branch": "fix/multi-pr-change-reference-prereq-sweep", "skill": null}
+{"ts": "2026-08-21T19:56:21+03:00", "sha": "6654a3c", "subject": "fix: overlay audit block cited pre-revert line numbers", "branch": "fix/multi-pr-change-reference-prereq-sweep", "skill": null}
+{"ts": "2026-08-21T20:46:39+03:00", "sha": "23abd05", "subject": "fix: say that fact-gatherer cannot run commands", "branch": "fix/fact-gatherer-no-shell", "skill": null}
+{"ts": "2026-08-21T20:47:16+03:00", "sha": "57d1f15", "subject": "fix: scope the --pr-base promise to the policy that can keep it", "branch": "fix/pr-base-policy-honesty", "skill": null}
+{"ts": "2026-08-22T22:10:26+03:00", "sha": "2a50f85", "subject": "docs(openspec): multi-spec plan for ship-only-consumer-usable-assets", "branch": "docs/propose-ship-only-consumer-usable-assets", "skill": null}
+{"ts": "2026-08-22T22:30:09+03:00", "sha": "c82bb99", "subject": "docs(openspec): propose decouple-skills-from-dev-assets", "branch": "docs/propose-ship-only-consumer-usable-assets", "skill": null}
+{"ts": "2026-08-22T22:56:07+03:00", "sha": "9abf152", "subject": "docs(openspec): propose extract-dev-tree-from-plugin", "branch": "docs/propose-ship-only-consumer-usable-assets", "skill": null}
+{"ts": "2026-08-22T23:24:54+03:00", "sha": "18d7228", "subject": "docs(openspec): propose guard-shipped-asset-boundary", "branch": "docs/propose-ship-only-consumer-usable-assets", "skill": null}
+{"ts": "2026-08-23T00:58:19+03:00", "sha": "e937f1c", "subject": "docs(openspec): apply review fixes to decouple-skills-from-dev-assets", "branch": "docs/propose-ship-only-consumer-usable-assets", "skill": null}
+{"ts": "2026-08-23T01:29:03+03:00", "sha": "945362e", "subject": "docs(openspec): fold guard-shipped-asset-boundary into extract-dev-tree-from-plugin", "branch": "docs/propose-ship-only-consumer-usable-assets", "skill": null}
+{"ts": "2026-08-23T01:29:57+03:00", "sha": "8aeeead", "subject": "docs(openspec): amend the multi-spec plan to two changes", "branch": "docs/propose-ship-only-consumer-usable-assets", "skill": null}
+{"ts": "2026-08-23T11:39:58+03:00", "sha": "ee8eb13", "subject": "fix: review round 2", "branch": "feature/decouple-skills-from-dev-assets", "skill": "spec-to-pr"}
+{"ts": "2026-08-23T11:42:07+03:00", "sha": "289d2e6", "subject": "chore: archive decouple-skills-from-dev-assets", "branch": "feature/decouple-skills-from-dev-assets", "skill": "spec-to-pr"}
+{"ts": "2026-08-23T11:45:31+03:00", "sha": "634b5c6", "subject": "chore: spec-to-pr run log", "branch": "feature/decouple-skills-from-dev-assets", "skill": "spec-to-pr"}
+{"ts": "2026-08-23T14:53:47+03:00", "sha": "474f5db", "subject": "fix: review round 1", "branch": "feature/extract-dev-tree-from-plugin", "skill": "spec-to-pr"}
+{"ts": "2026-08-23T15:30:48+03:00", "sha": "f1f0f74", "subject": "fix: review round 2", "branch": "feature/extract-dev-tree-from-plugin", "skill": "spec-to-pr"}
+{"ts": "2026-08-23T15:33:56+03:00", "sha": "9638e58", "subject": "chore: archive extract-dev-tree-from-plugin", "branch": "feature/extract-dev-tree-from-plugin", "skill": "spec-to-pr"}
+{"ts": "2026-08-23T15:35:37+03:00", "sha": "f126d0c", "subject": "chore: spec-to-pr run log", "branch": "feature/extract-dev-tree-from-plugin", "skill": "spec-to-pr"}
+{"ts": "2026-08-23T15:42:30+03:00", "sha": "709a387", "subject": "chore: multi-pr run notes — ship-only-consumer-usable-assets", "branch": "chore/multi-pr-run-notes-2026-08-23", "skill": null}
+{"ts": "2026-08-23T19:37:49+03:00", "sha": "ba0c042", "subject": "chore: codify session learnings — heredoc hook, signature-change check, gate-proving doctrine", "branch": "chore/codify-2026-08-23", "skill": null}
+{"ts": "2026-08-23T20:18:50+03:00", "sha": "485bc5b", "subject": "fix: address PR review — the area filter turned a loud failure silent", "branch": "chore/codify-2026-08-23", "skill": null}
+{"ts": "2026-08-23T22:59:12+03:00", "sha": "5e55552", "subject": "fix: never end a chain turn with nothing in flight", "branch": "fix/chain-turn-liveness", "skill": null}
+{"ts": "2026-08-23T23:58:54+03:00", "sha": "9608ee7", "subject": "fix: address review findings on the turn-liveness rule", "branch": "fix/chain-turn-liveness", "skill": null}
+{"ts": "2026-08-24T00:15:25+03:00", "sha": "043aed6", "subject": "fix: prompt before `git branch -D` destroys an unreferenced commit", "branch": "fix/ask-on-force-branch-delete", "skill": null}
+{"ts": "2026-08-24T00:15:25+03:00", "sha": "043aed6", "subject": "fix: prompt before `git branch -D` destroys an unreferenced commit", "branch": "fix/ask-on-force-branch-delete", "skill": null}
+{"ts": "2026-08-24T00:15:25+03:00", "sha": "043aed6", "subject": "fix: prompt before `git branch -D` destroys an unreferenced commit", "branch": "fix/ask-on-force-branch-delete", "skill": null}
+{"ts": "2026-08-24T00:50:00+03:00", "sha": "8fba912", "subject": "fix: address review findings — match the delete+force predicate, not `-D`", "branch": "fix/ask-on-force-branch-delete", "skill": null}
+{"ts": "2026-08-23T20:26:12+03:00", "sha": "84d12a1", "subject": "chore: codify session learnings — heredoc hook, signature-change check, gate-proving doctrine (#133)", "branch": "main", "skill": null}
+{"ts": "2026-08-24T01:07:04+03:00", "sha": "10a1117", "subject": "fix: completeness signals read the claim, not the checkbox glyph", "branch": "fix/completeness-reads-the-claim", "skill": null}
+{"ts": "2026-08-24T01:54:35+03:00", "sha": "6532fca", "subject": "fix: reject argument-shaped clusters, admit a continuation after the flag", "branch": "fix/ask-on-force-branch-delete", "skill": null}
+{"ts": "2026-08-24T02:11:21+03:00", "sha": "6f88286", "subject": "fix: make the guard's own floors real, and bound adjacency by span", "branch": "fix/chain-turn-liveness", "skill": null}
+{"ts": "2026-08-24T02:30:37+03:00", "sha": "d11d7aa", "subject": "Merge main, and withdraw the ticked-but-not-done scan", "branch": "fix/completeness-reads-the-claim", "skill": null}
+{"ts": "2026-08-24T03:00:08+03:00", "sha": "577c152", "subject": "docs: how planting a failure goes wrong, and when it is worth the cost", "branch": "fix/gate-planting-traps", "skill": null}
+{"ts": "2026-08-24T03:19:19+03:00", "sha": "fca8b04", "subject": "fix: exclude a checkout structurally, and ratchet two stale counts", "branch": "fix/consistency-scope-import", "skill": null}
+{"ts": "2026-08-24T10:32:19+03:00", "sha": "db1d730", "subject": "Merge main into fix/gate-planting-traps", "branch": "fix/gate-planting-traps", "skill": null}
+{"ts": "2026-08-24T22:27:17+03:00", "sha": "9026a1f", "subject": "fix: address review findings — rebuild adoption per-file, borrow the path detector", "branch": "fix/mutants-area-adoption-and-path-check", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-08-24T22:35:09+03:00", "sha": "d8f698b", "subject": "docs: an alarm must be able to fire at the volume it will really see", "branch": "docs/alarm-operating-point", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-08-24T22:48:48+03:00", "sha": "2227442", "subject": "fix: address review findings — the section's claims about its neighbours were wrong", "branch": "docs/alarm-operating-point", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-08-24T22:56:38+03:00", "sha": "22373bb", "subject": "fix: Phase 1 records the two chain edges `depends_on` cannot express", "branch": "fix/phase1-non-source-edges", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-08-24T23:09:59+03:00", "sha": "7b3c98b", "subject": "fix: address review findings — a record with no reader, and a false premise", "branch": "fix/phase1-non-source-edges", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-08-24T23:17:29+03:00", "sha": "9a3599c", "subject": "fix: validate the live spec set where it is written", "branch": "fix/validate-live-spec-set", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-08-24T23:33:59+03:00", "sha": "c6f7338", "subject": "fix: address review findings — the check was vacuous, misdiagnosing, and absent from the site it named", "branch": "fix/validate-live-spec-set", "skill": null, "measured_by_count": 0, "measured_by": []}
