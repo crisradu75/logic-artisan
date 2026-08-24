@@ -578,6 +578,86 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
 
+### Requirement: Cross-change obligation carry
+
+A skill that drives a SEQUENCE of changes SHALL treat an obligation one change creates for a later one as chain state that is both **recorded** and **delivered**, and SHALL NOT discharge it by recording alone. An obligation here is an addition a change's own review or fix round makes — a stored field, column, response key, or required behaviour — that the change itself does not consume, whose sole justification is that a named later change reads it. Such an obligation is invisible to every check scoped to a single change: the downstream change's artifacts stay internally consistent while never mentioning it.
+
+The obligation SHALL be derived from what the prerequisite **actually became**, not from the batch as proposed. A chain plan's dependency list is a snapshot taken before any review round runs, and a prerequisite's review round is precisely where these obligations are created, so a downstream change reviewed against the plan is reviewed against a state its prerequisite has already left. The derivation SHALL also cover findings the run set aside as belonging to a **different** change: such a finding names its consumer explicitly, yet it is by construction absent from both the applied-findings list and the diff, so a derivation resting on those two alone discards the most explicit obligation available to it.
+
+**The record SHALL remain readable across sessions.** Where the record lives in a per-run, date-named artifact, the reading step SHALL read the whole family of such artifacts rather than only the current run's, because a run resumed on a later date creates a new one — and a reader scoped to the current run's file makes every obligation an earlier session recorded invisible on precisely the path the mechanism exists to survive.
+
+**Delivery SHALL travel in the invocation that starts the downstream change** — the same argument channel that already carries that change's caps and its stacked-chain base — so that recording an obligation and delivering it are not separable acts. A carry list the orchestrator writes and then does not feed into the dependent's own review is indistinguishable from never having written it, and SHALL NOT be accepted as satisfying this requirement.
+
+When obligations are delivered, the downstream change's **pre-implementation** review SHALL emit one verdict per obligation — honoured, violated, or not addressed — as a required output field ahead of any other finding, and SHALL settle "not addressed" mechanically, by the absence of the obligation's literal token anywhere in that change's own artifacts, rather than by judgement. The count of verdict lines SHALL equal the count of delivered obligations; a missing line SHALL NOT read as a pass.
+
+**The required field SHALL be defined where review behaviour is defined, not in the orchestrator that delivers it.** Where a plugin names one file as the single source of truth for a review's checks, report shape and verdict rubric, this field belongs in that file: an orchestrator-side copy prescribes a position in a template it does not own, and — where the review may be produced by dispatched agents rather than inline — reaches neither the agents' prompts nor the material they are given. The obligation SHALL be settled before any size or mode gate selects between review paths, so the answer does not depend on which path ran.
+
+**A non-honoured verdict SHALL be wired into the verdict that selects the fix round**, not only reported: it SHALL be a Critical finding and SHALL exclude a "ready" verdict. A report that can pair "not addressed" with "ready" has a required field that changes nothing. Where the report format omits empty sections by default, this field SHALL be exempted — its honoured lines are the answer, and omitting them removes the evidence that anyone looked.
+
+**A non-honoured obligation SHALL NOT be discharged by making the token match.** Pasting the token into narrative prose satisfies the mechanical check while changing nothing an implementer does; the discharge SHALL be an implementable task naming the field and its consumer, plus the requirement delta where the obligation is a required field or behaviour.
+
+**Delivered obligations SHALL be answered on a resumed run.** Where phase-resumption is driven by a state probe, and that probe reports no state for the review phase, a resumed change skips review entirely — so the obligation step SHALL run regardless of the probe's verdict whenever obligations were delivered. The skill SHALL surface the verdict lines in its own terminal report so the delivering caller can count them against what it sent; without that count, a run that answered every obligation and one that discarded the delivery are indistinguishable to the caller — the same "written and fed nowhere" failure one layer up.
+
+An empty carry SHALL be recorded explicitly rather than left as an absent section. It SHALL be recorded as the **derivation** — the counts each source yielded, at least one of them a command's output — and not as a bare marker word, because a bare marker is satisfiable by typing it and therefore only renames the "nobody looked" failure it is meant to exclude.
+
+**A dedicated checker script SHALL NOT be added for this.** The per-obligation check is one `grep` for one token against one change directory, which the plugin's script bar — a script earns its place only by doing something a direct command plus a sentence of prose cannot do reliably — does not clear. The recurring failure was never that the grep was hard to run; it was that nobody was obliged to run it.
+
+#### Scenario: The obligation is delivered, not merely recorded
+
+- **WHEN** a change's review or fix round creates an obligation for a named later change in the chain
+- **THEN** the obligation is recorded in the run's own notes with the token to grep for, the creating change, the owing change, and the failure if dropped
+- **AND** the later change's invocation carries that obligation as an argument
+- **AND** the recording step names the reading step, so a row written but never delivered is a defect rather than a completed step
+
+#### Scenario: The carry is derived from the prerequisite's actual state
+
+- **WHEN** a prerequisite's own review round adds a field after a dependent's artifacts were authored
+- **THEN** the obligation is derived from the applied findings and the prerequisite's final diff
+- **AND** it is not derived from the chain plan's description of that prerequisite
+
+#### Scenario: The downstream review answers for each obligation by name
+
+- **WHEN** a change is reviewed with inherited obligations delivered to it
+- **THEN** the report opens with one honoured / violated / not-addressed line per obligation, before any other finding
+- **AND** a token absent from the whole change directory yields "not addressed" without judgement
+- **AND** a non-honoured verdict is a Critical finding applied to the artifacts before implementation
+
+#### Scenario: The required field is defined where the reviewer reads it
+
+- **WHEN** a plugin names one file as the single source of truth for review behaviour
+- **THEN** the obligation field is defined in that file rather than in the orchestrator that delivers it
+- **AND** it is settled before the gate that selects between an inline and a dispatched review
+- **AND** the obligations reach whatever material a dispatched reviewer is given
+
+#### Scenario: A non-honoured verdict changes the verdict
+
+- **WHEN** a report carries a "not addressed" obligation line
+- **THEN** the verdict cannot be "ready"
+- **AND** the field is exempt from the rule that omits empty sections
+
+#### Scenario: The discharge is implementable, not a matching token
+
+- **WHEN** a "not addressed" obligation is fixed
+- **THEN** the fix adds a task naming the field and its consumer
+- **AND** a token pasted into narrative prose alone is re-flagged rather than accepted
+
+#### Scenario: A resumed change still answers
+
+- **WHEN** a change is resumed and the state probe reports no review-phase state
+- **THEN** the obligation step runs anyway and emits its verdict lines
+- **AND** the delivering caller can count those lines against the obligations it sent
+
+#### Scenario: The record survives a resume on a later date
+
+- **WHEN** the record lives in a per-run, date-named artifact and the run resumes on a later date
+- **THEN** the reading step reads the whole family of those artifacts, not only the current run's
+
+#### Scenario: An empty carry is written down as its derivation
+
+- **WHEN** a change creates no obligation for any later change
+- **THEN** that is recorded for that change as the counts its derivation sources yielded
+- **AND** at least one of those counts is the output of a named command, so the entry is falsifiable rather than a word
+
 ### Requirement: Unattended-run turn liveness
 
 A skill that drives a multi-step run designed to proceed without a human present SHALL state, among its hoisted skill-level rules, that a turn is never ended while nothing is pending that would re-invoke the session. The obligation SHALL be stated as a **check the agent can apply without judgement** — whether the message contains a tool call — rather than only as a prohibition on how a message reads, because the judgement form has been observed to fail in the one way that matters: an author writes a closing-shaped status report and then behaves like its reader.

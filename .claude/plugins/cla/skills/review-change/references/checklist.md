@@ -85,6 +85,27 @@ Build a table like this as the verification step produces results. This table be
 
 If a row ends with ✗ and isn't just "to-be-created by this change," it is a candidate finding for the report.
 
+### Step 2b: Inherited obligations — a required output field whenever the caller supplies any
+
+**Input.** A caller may hand this review a set of obligations the change INHERITS from a change that shipped ahead of it — a stored field, column, response key, or required behaviour an earlier change added *for this one to consume*. `/cla:spec-to-pr` passes them from its `<inherits>` argument, one entry per `;`, each `<token> — <the failure if it is dropped>`. No entries → skip this section entirely and the report omits it. This is the ONE input a change's own artifacts can never supply: the obligation's justification lives in the change that created it, so every check scoped to this change is blind to it by construction.
+
+**Settle each entry HERE, in Step 2b, on BOTH size-gate paths.** Do it before Step 3 decides small vs large, because the answer must not depend on which path ran — the large path's findings come from three dispatched agents, and an obligation nobody passed them would simply go unanswered. One command per entry, not a reading:
+
+```
+grep -rl "<token>" openspec/changes/<name>/
+```
+
+- **No match anywhere in the change directory → `NOT ADDRESSED`, always.** A change cannot have honoured a field none of its four documents names, and this is the case that recurs.
+- **A match → read it and choose.** `HONOURED` when the artifacts consume the field the way the obligation requires; `VIOLATED` when they name it and get it wrong or contradict it — an `## Impact` still saying "Migration: none", a Non-Goals section still calling the producing module read-only.
+
+Add one row per entry to the context brief, tagged `INHERITED OBLIGATION`, so the large path's agents receive them with everything else they are given.
+
+**A pasted token is not a discharge.** The fix for a `VIOLATED` or `NOT ADDRESSED` obligation makes the consumption *implementable*: a `tasks.md` subtask naming the field and what reads it, plus the delta spec when the obligation is a required field or behaviour. Prose in `proposal.md` alone satisfies the grep and changes nothing an implementer does — re-flag an obligation whose only fix was prose, exactly as the subtle-implementation-risk rule below re-flags an artifact fix with no proving-test task.
+
+**Effect on the verdict — this is what makes the field load-bearing rather than decorative.** Every non-`HONOURED` entry is a **Critical** finding, and a report carrying one can never be `READY`; see the verdict rubric's carve-out in Step 6. Without that wiring a report could state `<token>: NOT ADDRESSED` beside `Verdict: READY` and no fix round would ever run.
+
+**Countability.** One verdict line per supplied entry, no exceptions. Fewer lines than entries means the round did not complete — a missing line is a failed round, not a pass.
+
 ## Step 3: Size gate — decide review mode
 
 Count five things from the artifacts:
@@ -121,6 +142,8 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 **Model routing:** `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` is the shared routing source for *all* review-agent dispatch in this repo (spec-to-pr Review, this checklist, and project-review) — not a spec-to-pr-private table. Pass an explicit `model:` per its "Review-agent dispatch" rows — **Agent 1 (Design Reviewer) → `opus`** (it catches the "the whole premise is wrong" class, worth the top tier); **Agents 2 & 3 (Task, Spec & Codebase) → `sonnet`** (structured rubric application). When invoked from `/cla:spec-to-pr` this is mandatory. The standalone `/cla:review-change` path SHOULD apply the same routing (it's the same judgment work regardless of entry point); the only reason to fall back to the session model for all three is a session already at Opus, where routing Agent 1 to opus is a no-op and routing 2 & 3 down to sonnet is the one real economy — apply it when the session is above Sonnet.
 
 **Important instruction for all agents:** You have been given the COMPLETE text of all change artifacts. Do NOT re-read these files — use only the content provided. You MAY read source files (across whichever app/package Step 2 identified) to verify claims, but never re-read the change artifacts themselves.
+
+**Inherited-obligation rows in the context brief.** Step 2b tags any obligation this change inherits from an earlier change as an `INHERITED OBLIGATION` row in the context brief every agent below receives. A row reading `VIOLATED` or `NOT ADDRESSED` is a **Critical** finding: report it, and say what the artifacts must state instead — a `tasks.md` subtask naming the field and what reads it, not a mention pasted into prose. These rows are the one input that cannot be derived from the artifacts in front of you; their justification lives in a different change.
 
 **Injection is mandatory, not optional (Decision C).** Every `<inject: ...>` placeholder below MUST be replaced with the actual repo-fact content from `cla.io/overlays/review-change.md` before the prompt is dispatched — the orchestrator reads the overlay (already done in Step 2) and pastes the relevant facts directly into the prompt text at dispatch time. A dispatched agent never loads the skill or resolves `cla.io/overlays/review-change.md` itself, so a placeholder left un-filled, or replaced with a bare "see cla.io/overlays/review-change.md" pointer, leaves that agent reviewing blind — strictly worse than embedding the facts. The check *structure* below (what to verify, in what order) is the portable part; the injected content is what makes each check concrete for this repo.
 
@@ -233,6 +256,9 @@ Print a **compact** report:
 **Mode:** direct analysis (small change, a=.., b=.., c=.., d=..)   OR
 **Mode:** 3-agent dispatch (a=.., b=.., c=.., d=.., [complexity-concentration override] if it fired) | Design: N | Tasks: N | Specs: N
 
+### Inherited obligations
+- <token>: HONOURED | VIOLATED | NOT ADDRESSED — <evidence>
+
 ### Verified claims
 - ✓ <thing checked>: <result>
 - ✓ <thing checked>: <result>
@@ -260,7 +286,7 @@ Estimated speedup: X groups can run in parallel vs Y sequential
 ```
 
 **Verdict rubric:**
-- **READY** — 0 Critical, 0 Important.
+- **READY** — 0 Critical, 0 Important, **and every Step 2b inherited obligation `HONOURED`.** A non-`HONOURED` entry is a Critical, so it is already excluded by the count — this clause is stated anyway because the verdict is what selects the caller's fix round, and an obligation answered in the report but not reflected in the verdict changes nothing. A report may never pair `NOT ADDRESSED` with `READY`.
 - **FIX FIRST** — ≥1 Critical and/or Important finding, AS LONG AS every one of them (regardless of severity label) can be resolved by editing the artifact text (pinning a wording detail, splitting a task, adding a missing subtask, fixing a count, adding a missing i18n key, threading a prop, correcting a wrong SQL clause, pinning an under-specified value, etc.) without revisiting the design's premise. The number of edits doesn't matter; their *kind* does — and severity label doesn't gate this either: a Critical finding with a concrete, contained, single-edit fix (e.g. "this migration uses the wrong `ON DELETE` clause syntax," "this task bundles two unrelated concerns") is FIX FIRST, not an automatic RETHINK.
 - **RETHINK** — at least one Critical or Important finding whose fix requires re-opening the design conversation (an unstated assumption about how the allocation math works, a data-flow inversion, a goal/non-goal that needs renegotiation, a genuinely missing architectural decision like "how is this value even obtained"). RETHINK is about *the kind of work needed to resolve the finding*, not about the count OR the severity label. A change with 8 Important (or even 2 Critical) findings that are all "edit this paragraph," "fix this clause," or "add this task" is FIX FIRST; a change with 1 Important finding that says "the whole approach assumes the engine returns X but it returns Y" is RETHINK. **Do not shortcut this to "any Critical → RETHINK"** — that literal reading contradicted this same rubric's own principle in an earlier version and corrupted the `verdict` field's meaning in `/cla:spec-to-pr-retro`'s telemetry (multiple real runs had Criticals that were single-edit fixes, correctly resolved in one Review round, yet got mislabeled RETHINK). Judge by the fix's nature, always.
 
@@ -285,6 +311,6 @@ Silent "✓" work is invisible to the user — they can't tell whether the revie
 ### Report constraints
 
 - One line per finding.
-- Omit any section with zero findings (don't print empty headers).
+- Omit any section with zero findings (don't print empty headers) — **except `### Inherited obligations`, which is omitted only when the caller supplied no entries.** It is a required output field, not a findings list: `HONOURED` lines are the answer, not an empty section, and dropping them because "there is nothing to fix" removes the evidence that anyone looked.
 - Total report should fit on one screen (~40 lines max).
 - If `Verified claims` would be longer than 6 lines, keep the 6 most load-bearing (the ones directly tied to the artifacts' top claims).
