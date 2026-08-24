@@ -5,7 +5,12 @@ turns red. A rule that arrives after the assertion exists only bites on the
 rewrite, which is the smaller half of the risk.
 
 A green gate proves the assertion passed. It never proves the assertion was worth
-making, and these are the two ways it is not.
+making, and this file is the ways it is not.
+
+**Read what applies.** The first three sections are about any test at all. The rest
+are about a **gate** — a check whose feature is detecting something, where a green
+run is the evidence everyone downstream relies on. If you are writing an ordinary
+unit test, the first three are the whole file for you.
 
 ## No tautological assertion
 
@@ -59,9 +64,32 @@ State what you derived the number from, in the assertion's own comment, so the n
 person moving the tree can re-derive it rather than guess whether the margin is
 deliberate.
 
+## Which gates are worth planting against
+
+Not a rule about how a test fails — a routing question, answered before the two
+sections below are worth reading.
+
+**Plant when a passing assertion is uninformative on its own** — the test asserts
+*absence*: "no violations", "nothing found", "exit 0", an empty list. A broken
+implementation produces the identical green, so nothing in the output distinguishes
+working from dead.
+
+**Skip it when the assertion pins a specific positive value** — a count, a string, a
+returned shape. There the test already is the plant: break the code and the value
+changes, so it goes red unaided. This narrows nothing else; a fix for a review finding
+still earns its evidence, and this only says which technique supplies it.
+
+**Some checks cannot be reached from the asset side at all.** A minimum-count floor,
+or a cap that only bites on malformed input, has nothing to change when you plant
+against a correct tree — the tree is already the good case. That does not mean they
+cannot be proven: mutate the *check* rather than the asset, or better, write a test
+that hands the check bad state and asserts it notices. Prefer the second. A planted
+failure is evidence at one moment; a test that supplies bad state keeps holding after
+a later refactor turns the check into a no-op.
+
 ## Prove a gate by planting what it is supposed to catch
 
-The two rules above are about a test that cannot fail. A **gate** — a guard standing
+The rules above are about a test that cannot fail. A **gate** — a guard standing
 between a defect and a release — has a sharper version of the same problem, because
 its green run is the evidence everyone downstream relies on.
 
@@ -78,7 +106,7 @@ to reject (planted a dev asset — the scan reported clean), and a non-vacuity c
 whose assertion was tautological (hardcoded the value it derived — every assertion
 still passed). None was found by reading. Each took ~60 seconds to plant.
 
-## Three ways the planting itself goes wrong
+## How planting goes wrong
 
 Planting a failure only proves something if the plant reaches the value the assertion
 reads. Each of these produced a confident, wrong conclusion in a real run.
@@ -86,11 +114,22 @@ reads. Each of these produced a confident, wrong conclusion in a real run.
 **The plant must land on the tested value, not merely change the file.** Three shapes,
 all of which report "caught" while testing nothing. A plant that is a *superstring* of
 the asserted value — renaming an index to `<name>_MUTATED` still satisfies a
-`toContain`, and the author concluded the *test* was broken. A plant that lands in a
-comment or docstring beside the data rather than in the data. And a plant that leaves
-the file malformed, so the guard exits non-zero because it is rejecting a broken file,
-not because it detected the change. Before reading the result, confirm what actually
-moved.
+string-containment `toContain`, and the author concluded the *test* was broken (against
+an array, the same plant correctly fails to match). A plant that lands in a comment or
+docstring beside the data rather than in the data. And a plant that leaves the file
+malformed, so the guard exits non-zero because it is rejecting a broken file, not
+because it detected the change.
+
+Three checkable conditions, before you read the result. Diff the planted file and
+confirm the change sits in the data, not in a comment. Re-parse or re-load it and
+confirm it is still well-formed. And read the failure message — it must name the value
+you planted. A non-zero exit that names nothing, or a diff touching only a comment,
+means the plant did not land: restore and re-plant rather than recording a kill.
+
+**A plant reported by someone else is a claim, not a result.** When a delegate says it
+mutation-tested its own guard, re-run one of the plants yourself before believing the
+guard is sound in both directions. This is the step most worth never skipping, because
+its cost is one command and its failure mode is a guard everyone believes in.
 
 **A mirror that greps the guard's own source proves only that a word was written.**
 When a guard needs live or external data the test suite cannot supply, the tempting
@@ -105,50 +144,45 @@ parameter, so the function silently ignored its first argument.
 **A guard scoped to more than one tree needs a plant in EACH tree.** A pattern copied
 from a sibling guard carries the sibling's path assumptions, and the failure mode is
 "matches nothing, exits 0" — indistinguishable from passing. One real instance printed
-`OK` with the forbidden import sitting on line 2 of the file whose reachability was the
-stated reason for widening the guard's scope.
+`OK` with the forbidden import sitting on line 2 of a file in the very tree whose
+reachability was the stated reason for widening the guard's scope.
 
-## Where planting is worth the cost, and where it is not
-
-**Plant when a passing assertion is uninformative on its own** — the test asserts
-*absence* ("no violations", "nothing found", "exit 0", an empty list). A broken
-implementation produces the identical green, so nothing in the output distinguishes
-working from dead.
-
-**Do not bother when the assertion pins a specific positive value** — a count, a
-string, a returned shape. There the test already is the plant: break the code and the
-value changes, so it goes red on its own.
+Two corollaries from the same incident. **"I modelled this on the existing guard X" is
+itself the trigger** — it is the sentence that should make you plant in every tree
+rather than trusting the pattern. And **prefer matching a resolved or structural
+property over a hand-anchored prefix**: the fix there was to match the import
+specifier's path tail rather than a `lib/`-shaped prefix that only held for the
+original's tree.
 
 **Planting is blind to an input space you never enumerated, and this is the expensive
-one.** It tests the implementation you wrote, never the cases you failed to think of.
-Measured: a guard reported every planted failure caught while missing five of the eight
-spellings of the operation it existed to detect, because the plants were derived from
-the code rather than from the tool's documented grammar. For anything parsing an
-external contract — command-line flags, a file format, an API shape — **enumerate from
-the primary source first, then plant.** Reversing that order buys confidence in the
-half you already had right.
+one.** It exercises the implementation you wrote, never the cases you failed to think
+of — so a guard can report every plant caught while missing most of what it exists to
+detect. Measured on this plugin's own destructive-git hook: every plant was reported
+caught, and the hook matched three of the eight ways the operation can be spelled,
+because the plants were derived from the regex that existed rather than from the
+command's documented grammar. One line of the tool's manual page named the other five.
 
-**A floor is unexercised while the thing it floors is healthy.** A minimum-count
-assertion, or a cap that only bites on bad input, cannot be reached by planting against
-a correct tree — the plant has nothing to change. Cover those structurally instead,
-with a test that gives the check bad state and asserts it notices. That form keeps
-holding after a later refactor turns the check into a no-op, which a one-time plant
-does not.
+So for anything parsing an external contract — command-line flags, a file format, an
+API shape — **enumerate from the primary source first, then plant.** Reversing that
+order buys confidence in the half you already had right, and buys it loudly.
 
 ## Why these and not a longer list
 
-Every rule above is the same failure mode seen from a different angle: the suite goes
+Every *rule* here is the same failure mode seen from a different angle: the suite goes
 green and the coverage is imaginary. A tautological assertion cannot fail; a floor far
 below its population will not fail; a gate nobody planted a failure against has not
 been shown to fail; a plant that missed the value under test proves nothing while
 reporting success; and a plant derived from the code cannot reach a case the code
 never considered. All of them are the class a guard asserting over a collection it
-never fills belongs to (the source repo's
-`plugin-tests/tests/conformance/test_guards_are_not_vacuous.py`).
+never fills belongs to.
 
-Note the shape of the last two. The earlier rules ask whether a test *can* fail. Those
-two ask whether the evidence you gathered is about the thing you meant — which is why a
-clean run is evidence about the plants you thought of and nothing else, and why it is
+("Which gates are worth planting against" is the exception, and deliberately so — it
+is routing, not a rule. It answers whether the two sections after it apply to you at
+all, which is why it sits before them rather than claiming membership in this list.)
+
+Note the shape of the last two entries. The earlier ones ask whether a test *can* fail.
+Those ask whether the evidence you gathered is about the thing you meant — which is why
+a clean run is evidence about the plants you thought of and nothing else, and why it is
 worth naming what you did not plant rather than letting an all-green report imply a
 coverage it does not have.
 

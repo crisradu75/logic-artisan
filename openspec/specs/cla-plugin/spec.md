@@ -647,6 +647,31 @@ Collapsing all three under one label SHALL be treated as a defect rather than a 
 - **THEN** each appears under one of the three named subsections
 - **AND** a non-empty "skipped" list fails the reporting phase under a no-deferrals policy
 
+### Requirement: Planting doctrine is carried where tests are authored
+
+The plugin SHALL carry, in a shared reference read at the point tests are authored, the rules that decide whether a test can fail at all. That reference SHALL distinguish rules applying to any test from rules applying only to a **gate** — a check whose feature is detecting something — and SHALL say which is which at its head, so a reader writing an ordinary unit test is not sent through gate doctrine that does not apply to them.
+
+Where the reference states how a planted failure goes wrong, it SHALL give **checkable conditions rather than an exhortation**. "Confirm what moved" is not a condition; "diff the file and confirm the change is in the data, re-parse it and confirm it is well-formed, and read the failure message for the value you planted" is three.
+
+The reference SHALL state that planting exercises only the implementation that exists, and therefore cannot reach an input the author never enumerated — and SHALL direct that anything parsing an external contract is enumerated from its primary source **before** it is planted against.
+
+**Scope boundary.** Guidance about when planting is worth its cost is routing, and SHALL NOT be read as narrowing any other obligation. In particular the **Review-fix evidence gate** stays unconditional: a fix for a review finding earns its evidence regardless of which technique supplies it. A reference stating both SHALL say so explicitly, because the two sit close enough to be read as one.
+
+#### Scenario: A reader is routed before being asked to read gate doctrine
+
+- **WHEN** the shared test-quality reference is opened
+- **THEN** its head names which sections apply to any test and which apply only to a gate
+
+#### Scenario: The cost guidance does not narrow the review-fix gate
+
+- **WHEN** the reference says a planted failure is unnecessary for some assertions
+- **THEN** it states that this leaves the review-fix evidence obligation unchanged
+
+#### Scenario: A trap is stated as something the reader can check
+
+- **WHEN** the reference describes a way planting fails
+- **THEN** it names the condition that distinguishes a landed plant from one that missed
+
 ### Requirement: Shipped-asset boundary
 
 The plugin directory `.claude/plugins/cla/` SHALL contain **only assets a consuming repo can use** —
