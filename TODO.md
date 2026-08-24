@@ -225,10 +225,18 @@ principle, below the shared-reference bar.
 
 ## Write mutant batches for the 8 grandfathered guards
 
-`plugin-tests/tests/consistency/test_guards_have_mutant_batches.py` requires every guard in the
-`conformance` and `consistency` areas to ship a same-named batch under `mutants/<area>/`, so a new
-guard cannot land unproven. Eight predate the convention and are listed individually in that file's
-`_EXEMPT` map — countable debt, not a softened rule. The count here and the bound in
+`plugin-tests/tests/consistency/test_guards_have_mutant_batches.py` requires every guard in a fully
+adopted area — `conformance`, `consistency` and `release` today — to ship a same-named batch under
+`mutants/<area>/`, so a new guard cannot land unproven. Eight predate the convention and are listed
+individually in that file's `_EXEMPT` map — countable debt, not a softened rule.
+
+**A NEW area is adopted one guard at a time**, via `_PARTIAL_AREAS` in the same file: list the guard
+basenames covered so far and the rest are not demanded. It is a ratchet, not an exemption — a listed
+name that loses its batch fails. Before it existed, creating the first batch in a new area made that
+whole area policed at once (measured: 12 further guards, none exemptable), so the affordable move was
+to write no batch — which is why `mutants/hooks/` still does not exist and the batch proving
+`ask-destructive-git`'s `git branch -D` detection lives nowhere. Writing that batch is the first job
+the mechanism unblocks. The count here and the bound in
 `test_the_grandfather_list_only_shrinks` both move down when an entry is deleted; nothing in the
 suite reads this file, so that pairing is a convention rather than a check.
 

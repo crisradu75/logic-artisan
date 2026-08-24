@@ -21,6 +21,7 @@ the evidence CAN be produced and points at the command that produces it.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -90,6 +91,66 @@ _EXEMPT = {
 }
 
 
+# Areas adopted ONE GUARD AT A TIME: area -> the guard basenames covered so far.
+# A guard in a listed area needs a batch only when its own name appears here.
+#
+# Without this, the first batch in a new area dragged every other guard in that
+# area in with it. `_guard_areas()` derives areas from the directories present
+# under `mutants/`, so creating `mutants/hooks/` for ONE guard made `hooks` an
+# area, and `test_every_guard_file_has_a_mutant_batch_beside_its_scope` then
+# demanded a batch for the 12 other guards in `tests/hooks/` at once — none of
+# them exemptable, because the grandfather list above only shrinks. The rational
+# response was to not write the batch, so the check discouraged exactly the
+# behaviour it exists to encourage. Measured for real: the batch proving
+# `ask-destructive-git`'s `git branch -D` detection was run from outside the repo
+# tree and committed nowhere, so it now exists nowhere.
+#
+# This is a RATCHET, not a second exemption list, and the distinction is the
+# whole design. Every name listed here MUST still have a batch — see
+# `test_a_partial_area_cannot_silently_lose_an_adopted_batch` — so the property
+# the full-area rule gets right, that a guard which once had a batch cannot
+# quietly lose it, holds identically inside a partial area. The list moves in one
+# direction: add a name when its batch lands, and delete the whole entry once
+# every guard in the area is covered, which returns the area to full policing
+# with no further edit.
+#
+# An area ABSENT from this dict is fully adopted and unchanged: every guard in it
+# needs a batch, exactly as before.
+_PARTIAL_AREAS: dict[str, frozenset[str]] = {}
+
+
+def _adopted_in(area: str) -> frozenset[str] | None:
+    """The adopted-guard set for `area`, or None when the area is fully policed."""
+    return _PARTIAL_AREAS.get(area)
+
+
+def _missing_adopted_batches(dev_tree: Path, partial: dict[str, frozenset[str]]):
+    """Adopted names whose batch is gone — the ratchet's whole content.
+
+    Split out from its test so both directions can be exercised against a
+    planted tree. A ratchet asserted only over the real `_PARTIAL_AREAS` is
+    vacuous while that dict is empty, and a vacuous assertion is what this file
+    exists to catch elsewhere."""
+    gone = []
+    for area, names in sorted(partial.items()):
+        for name in sorted(names):
+            if not (dev_tree / "mutants" / area / name).is_file():
+                gone.append(f"  mutants/{area}/{name}")
+    return gone
+
+
+def test_a_partial_area_cannot_silently_lose_an_adopted_batch():
+    """Adoption ratchets up. A name listed in `_PARTIAL_AREAS` is a batch that
+    was written and proven; losing it must be a red run, not a quiet return to
+    the unpoliced state the entry was added to leave."""
+    gone = _missing_adopted_batches(_DEV_TREE, _PARTIAL_AREAS)
+    assert not gone, (
+        "adopted guard(s) whose mutant batch no longer exists — adoption only "
+        "ratchets up:\n" + "\n".join(gone) + "\n\nRestore the batch, or remove "
+        "the name in the same commit with a reason."
+    )
+
+
 def test_the_grandfather_list_only_shrinks():
     """The pressure valve, bounded. A grandfathered guard is unproven debt; the
     list may lose entries but must never gain one, or the convention becomes
@@ -141,13 +202,25 @@ def test_every_derived_area_resolves_to_a_tests_directory():
     )
 
 
-def _guard_files():
+def _guard_files_by_area():
+    """`(area, guard path)` pairs.
+
+    `_guard_files()` throws the area away, and the partial-adoption rule needs
+    it: a guard's area is what decides whether a missing batch is a failure or
+    simply a guard nobody has adopted yet."""
     out = []
     for area in _guard_areas():
         d = _area_test_dir(area)
         if d is not None:
-            out.extend(sorted(d.glob("test_*.py")))
+            out.extend((area, p) for p in sorted(d.glob("test_*.py")))
     return out
+
+
+def _guard_files():
+    """Same list, same order, area dropped — kept so the two callers that only
+    want paths (`test_the_scan_is_not_vacuous`, and the floor it asserts) do not
+    change shape."""
+    return [p for _, p in _guard_files_by_area()]
 
 
 def _rel(p: Path) -> str:
@@ -168,11 +241,23 @@ def _find_guard_for_batch(batch: Path) -> list[Path]:
     return sorted(p for p in (_DEV_TREE / "tests").rglob(batch.name) if p.is_file())
 
 
-def test_every_guard_file_has_a_mutant_batch_beside_its_scope():
+def _guards_missing_a_batch():
+    """Guards that owe a batch and do not have one, as report lines.
+
+    Extracted from its test so the partial-vs-full rule can be exercised against
+    a planted tree. `_PARTIAL_AREAS` is empty as this ships, so a test reading
+    only the real tree would assert nothing about the branch it exists for."""
     missing = []
-    for path in _guard_files():
+    for area, path in _guard_files_by_area():
         rel = _rel(path)
         if rel in _EXEMPT:
+            continue
+        adopted = _adopted_in(area)
+        if adopted is not None and path.name not in adopted:
+            # An un-adopted guard in a partially-adopted area. NOT a failure:
+            # the area is being taken on one guard at a time, and demanding the
+            # rest of it at once is precisely what made the first batch too
+            # expensive to write.
             continue
         # Search every area rather than assuming the guard's immediate parent
         # directory names its batch's area — false for `tests/skills/release/`,
@@ -181,12 +266,17 @@ def test_every_guard_file_has_a_mutant_batch_beside_its_scope():
         # actually catches a guard shipped without a batch still broken.
         found = [
             b
-            for area in _guard_areas()
-            for b in [_DEV_TREE / "mutants" / area / path.name]
+            for a in _guard_areas()
+            for b in [_DEV_TREE / "mutants" / a / path.name]
             if b.is_file()
         ]
         if not found:
             missing.append(f"  {rel} -> no batch named {path.name} under mutants/")
+    return missing
+
+
+def test_every_guard_file_has_a_mutant_batch_beside_its_scope():
+    missing = _guards_missing_a_batch()
     assert not missing, (
         "guard(s) with no mutant batch — nobody has shown these can fail:\n"
         + "\n".join(missing)
@@ -226,6 +316,35 @@ def test_every_batch_is_loadable_and_declares_real_targets():
     assert not problems, "mutant batch problems:\n" + "\n".join(problems)
 
 
+# A Windows drive path: a SINGLE letter, a colon, then a separator. The
+# single-letter part is carried by the lookbehind, and it is what makes this
+# narrower than the `":\\" in line` substring test it replaces.
+#
+# That substring test flagged any line holding a colon next to a backslash, which
+# a regex does constantly: `(?:\s`, `(?:\S` and `(?:\d` all contain it and none
+# is a path. Measured — three of five mutants in one hook batch were rejected,
+# every one a regex anchor. The false positive landed hardest on hook batches,
+# which are disproportionately regex-mutating and so are exactly the batches most
+# worth writing, and its message sent the author to fix something already
+# correct. It is already visible in the committed corpus:
+# `mutants/conformance/test_project_facts_paths.py` anchors one mutant on a
+# function body rather than on the regex literal it wanted, solely to dodge this.
+#
+# The lookbehind is not decorative. A bare `[A-Za-z]:[\\/]` matches the `s:/`
+# inside `https://` and the `e:/` inside `file:///`, so narrowing to a drive
+# letter WITHOUT it trades one false-positive class for another.
+_ABS_WINDOWS_PATH = re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]")
+
+
+def _looks_like_absolute_path(line: str) -> bool:
+    """Whether `line` carries an absolute developer path.
+
+    A predicate rather than an inline condition so both directions can be pinned
+    by fixtures: the real corpus holds zero drive paths, so the catching half has
+    no live witness and would otherwise be asserted by nothing."""
+    return bool(_ABS_WINDOWS_PATH.search(line)) or line.lstrip().startswith("/home/")
+
+
 def test_no_batch_hardcodes_an_absolute_path():
     """A batch resolving from an absolute developer path works on one machine and
     leaks a repo name into a directory the marketplace ships."""
@@ -235,7 +354,7 @@ def test_no_batch_hardcodes_an_absolute_path():
             for lineno, line in enumerate(
                 batch.read_text(encoding="utf-8").splitlines(), 1
             ):
-                if ":\\" in line or line.lstrip().startswith("/home/"):
+                if _looks_like_absolute_path(line):
                     offenders.append(f"  {_rel(batch)}:{lineno}  {line.strip()[:80]}")
     assert not offenders, (
         "mutant batch(es) with an absolute path — resolve from `Path(__file__)` "
@@ -283,6 +402,114 @@ def test_the_area_filter_rejects_both_shapes_it_exists_for(tmp_path, monkeypatch
     assert _area_test_dir("empty_area") is None, (
         "the planted batch-less area must be the thing that fails resolution"
     )
+
+
+def _plant_partial_area(tmp_path):
+    """One area, two guards, one batch — the exact shape adoption must survive.
+
+    `test_covered` has a batch; `test_uncovered` does not. Which of the two the
+    pairing rule complains about is the entire question this fix answers, so
+    both tests below run against this same tree and differ only in whether the
+    area is declared partial."""
+    (tmp_path / "mutants" / "partial").mkdir(parents=True)
+    (tmp_path / "mutants" / "partial" / "test_covered.py").write_text(
+        "MUTANTS = []\n", encoding="utf-8"
+    )
+    guards = tmp_path / "tests" / "partial"
+    guards.mkdir(parents=True)
+    (guards / "test_covered.py").write_text("def test_a(): pass\n", encoding="utf-8")
+    (guards / "test_uncovered.py").write_text("def test_b(): pass\n", encoding="utf-8")
+
+
+def test_a_partial_area_is_adopted_one_guard_at_a_time(tmp_path, monkeypatch):
+    """The defect this fixes: the FIRST batch in a new area demanded a batch for
+    every other guard in it at once — 12 of them, measured, none exemptable —
+    so the affordable move was to write no batch at all."""
+    _plant_partial_area(tmp_path)
+    monkeypatch.setattr(sys.modules[__name__], "_DEV_TREE", tmp_path)
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_PARTIAL_AREAS",
+        {"partial": frozenset({"test_covered.py"})},
+    )
+
+    assert _guards_missing_a_batch() == [], (
+        "an un-adopted guard in a partially-adopted area must not be demanded — "
+        "that demand is what makes adopting an area unaffordable"
+    )
+
+
+def test_a_fully_adopted_area_still_demands_a_batch_for_every_guard(
+    tmp_path, monkeypatch
+):
+    """The other direction, on the SAME planted tree. Without this, a change that
+    simply stopped demanding batches would pass the test above and look correct;
+    the partial branch has to be the only thing that relaxes anything."""
+    _plant_partial_area(tmp_path)
+    monkeypatch.setattr(sys.modules[__name__], "_DEV_TREE", tmp_path)
+    monkeypatch.setattr(sys.modules[__name__], "_PARTIAL_AREAS", {})
+
+    missing = _guards_missing_a_batch()
+    assert len(missing) == 1 and "test_uncovered.py" in missing[0], (
+        f"a fully-adopted area must still demand a batch for every guard; got "
+        f"{missing}"
+    )
+
+
+def test_the_adoption_ratchet_catches_a_deleted_batch(tmp_path, monkeypatch):
+    """Adoption only goes up. Naming a guard in `_PARTIAL_AREAS` and then losing
+    its batch must be red — otherwise the partial branch above is just a quieter
+    way to be unpoliced, which is the state the entry was added to leave."""
+    _plant_partial_area(tmp_path)
+    monkeypatch.setattr(sys.modules[__name__], "_DEV_TREE", tmp_path)
+    partial = {"partial": frozenset({"test_covered.py"})}
+
+    assert _missing_adopted_batches(tmp_path, partial) == [], (
+        "an adopted guard whose batch is present must not be reported"
+    )
+
+    (tmp_path / "mutants" / "partial" / "test_covered.py").unlink()
+    gone = _missing_adopted_batches(tmp_path, partial)
+    assert gone == ["  mutants/partial/test_covered.py"], (
+        f"deleting an adopted batch must be caught by the ratchet; got {gone}"
+    )
+
+
+def test_the_absolute_path_check_pins_both_directions():
+    """The real corpus holds ZERO drive paths, so neither direction of this
+    predicate has a live witness and both are asserted here instead.
+
+    The rejected half is the defect (#139): a regex anchor is not a path. The
+    accepted half is the guard's actual job, and narrowing without pinning it is
+    how a check quietly stops catching anything."""
+    caught = [
+        r'BASE = "C:\Users\alice\code"',  # path-fixture-ok
+        r"root = 'd:/work/example-repo'",  # path-fixture-ok
+        "    /home/alice/src/thing.py",  # path-fixture-ok
+    ]
+    ignored = [
+        # The three that were measured as rejected — every one a regex anchor.
+        r'_CLUSTER = re.compile(r"(?:^|\s)-[A-Za-z]*D[A-Za-z]*(?:\s|$)")',
+        r'PAT = r"(?:\S+)"',
+        r'PAT = r"(?:\d+)"',
+        # Not in #139, but a bare `[A-Za-z]:[\\/]` without the lookbehind would
+        # flag both of these — a narrowing that swapped one false-positive class
+        # for another would still pass the three lines above.
+        '    # see https://github.com/example/repo',
+        '    URI = "file:///tmp/x"',
+    ]
+    # Both directions are collected and asserted ONCE, rather than as two loops
+    # that each raise. Written as a caught-loop followed by an ignored-loop, the
+    # first failure short-circuits the second — and reverting this fix to its old
+    # `":\\" in line` substring test made exactly that happen: the run failed on
+    # a forward-slash drive path the old check never caught, never reaching the
+    # regex-anchor lines that are the defect (#139) being fixed. A plant that
+    # fails for the wrong reason reads as proof and is not.
+    failures = [f"should be caught, was not: {ln!r}" for ln in caught
+                if not _looks_like_absolute_path(ln)]
+    failures += [f"should be ignored, was flagged: {ln!r}" for ln in ignored
+                 if _looks_like_absolute_path(ln)]
+    assert not failures, "\n".join(failures)
 
 
 def test_the_scan_is_not_vacuous():
