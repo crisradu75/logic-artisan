@@ -44,6 +44,14 @@ Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (th
 
 1. Make the code change.
 2. Update the spec.md section(s) the plan named — edit the existing `### Requirement:` / `#### Scenario:` blocks in place if the file already uses that structure; for a genuinely new capability with no existing file, plain prose describing the behavior is fine. Prefer this repo's canonical terms from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term). Never create a delta file, never touch `openspec/changes/`.
+
+   **A live spec is a parsed document, not a prose file — validate it before the commit.** This step is the plugin's one write site with no delta and no archive behind it, so nothing downstream re-parses what you just wrote. An ordinary prose edit can leave the file reading correctly to a human while its structure is broken: a `## Requirements` heading duplicated by a replacement that ended with one, for instance, *closes* the section, and every requirement below it becomes invisible to `validate`, `list` and `archive`. In a repo using OpenSpec, run:
+
+   ```
+   openspec validate --specs --strict
+   ```
+
+   `✗ spec/<cap>` in the output → fix it before committing. Non-zero with **no** `✗` line (`command not found`, `unknown option`) is a tooling fault, not a spec fault — say so rather than attributing it to this edit. `No items found to validate.` is **not** a pass: it means nothing was checked, which is also what a repo not using OpenSpec sees — there, say so once and skip the step rather than recording a vacuous success.
 3. Update the `CLAUDE.md` section(s) the plan named (most often "Allocation math" or "Conventions to preserve").
 4. Add or update the test file(s) the plan named.
 

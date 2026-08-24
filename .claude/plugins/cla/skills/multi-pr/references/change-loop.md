@@ -74,7 +74,25 @@ For each change in the confirmed order:
    - An independent change (no parent in this chain) still branches off `<base-branch>` normally — stacking is for dependency edges, not a house style, so a chain can be a forest: several stacks plus independents.
    - **Landing (the user's, at the end — Phase 4 hands over the checklist).** Parents first, retarget-first, merge commits. Per parent, two commands in this order: `gh pr edit <child> --base <base-branch>` FIRST, then `gh pr merge <#> --merge --delete-branch`. Do NOT rely on GitHub's documented auto-retargeting: `gh`'s `--delete-branch` deletion CLOSED a dependent PR before any retarget in a live landing (see the dated incident in `cla.io/overlays/multi-pr.md`; recovery took restoring the deleted base from the merge commit's second parent). Retargeting the child first makes the deletion close nothing. The merge STRATEGY matters equally: a **merge commit, never a squash** — squash-merging a stacked parent rewrites its commits, so a surviving child re-shows the parent's entire diff and its own merge conflicts, measured on a throwaway 3-deep stack. With a merge commit each child's diff collapses to its own work the moment its parent lands. If the repo requires squash-merges: after each parent lands, rebase its child before merging it — `git rebase --onto origin/<base-branch> <parent-tip-sha> <child-branch>` then `git push --force-with-lease` — using the parent tip sha step 2 recorded.
 
-5. **Merge (only under the "merge before dependents" policy).** Once the change is genuinely done (Tier A clean, Tier B findings resolved per step 4):
+4b. **Validate the live spec set — BEFORE the merge, not after.**
+
+   ```
+   openspec validate --specs --strict
+   ```
+
+   Placement is the whole point. `/cla:spec-to-pr`'s own Archive already validated at its commit, so this exists to cover the two windows that open *after* it returns: step 4's deferred-finding fix rounds, and any hand-resolved merge conflict in a materialized spec — which is a documented occurrence in this plugin, and is exactly the hand-edit this check is about.
+
+   Run it here, while **the branch is alive and the PR is open**. Step 5 merges with `--delete-branch`; a check placed after it would report a broken base branch and a branch that no longer exists to fix it on. Under step 5-alt (stacked) nothing has merged either way, so the same placement works for both policies.
+
+   Reading the result — the exit code alone conflates three outcomes:
+
+   - **`✗ spec/<cap>` in the output** → this change left the live spec set broken. **Tier A structural failure** (step 3): halt the chain. A chain is where this compounds — the next change starts from these specs, and *its* archive is what aborts, one whole change from the cause. Fix on this change's still-open branch and re-verify before step 5.
+   - **Non-zero with no `✗` line** (`command not found`, `unknown option`) → the check could not run. A **tooling fault**, not a spec fault; halting a six-change chain and reporting "this change broke the live spec set" when the real fix is a `PATH` entry sends an absent user to the wrong subsystem entirely.
+   - **`No items found to validate.`** → exit 0 and nothing checked. **Not a pass.** Confirm the `Totals:` line names at least one item; in a repo not using OpenSpec, say so once and skip rather than recording a vacuous success.
+
+   This is the live set's **parse integrity after any edit**, including edits that never touch a delta — the measured instance was a hand-filled TBD `## Purpose`, with no delta involved. It is not the same check as diffing a `## MODIFIED Requirements` block against the live spec for silently dropped scenarios, which is a separate concern.
+
+5. **Merge (only under the "merge before dependents" policy).** Once the change is genuinely done (Tier A clean, Tier B findings resolved per step 4, live spec set clean per step 4b):
    ```
    ALLOW_PR_MERGE=1 gh pr merge <#> --squash --delete-branch
    ```
