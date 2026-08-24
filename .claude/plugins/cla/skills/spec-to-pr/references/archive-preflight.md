@@ -18,13 +18,23 @@ grep -L '^## Purpose' openspec/specs/<capability>/spec.md
 If either returns the file path, edit the main spec to add the canonical headings (Purpose: one-line
 capability description; Requirements: the section directly above the first `### Requirement:`).
 
-**Then validate, because this remediation is itself how the worst version of this gets made.**
+**Then validate, because this remediation is the same class of edit as the one that has bitten.**
 A live spec is a **parsed document, not a prose file**, and the flow treats an edit to one as if it
-were a comment. Adding the canonical headings by hand is exactly the edit that has produced a
-**duplicated `## Requirements`** — the replacement text ends with the heading while the original
-line survives. A second `## Requirements` *closes* the section, so every requirement below it
-becomes invisible to `validate`, `list` and `archive`, and the file still reads correctly to a
-human.
+were a comment.
+
+The measured failure was a hand-edit filling a **TBD `## Purpose`** — a heading that was present,
+not missing — whose replacement text ended with a `## Requirements` heading while the original line
+survived, leaving a **duplicate**. A second `## Requirements` *closes* the section, so every
+requirement below it becomes invisible to `validate`, `list` and `archive`, and the file still reads
+correctly to a human.
+
+That was **not** this remediation, and the distinction is worth keeping straight: check (a) fires on
+an *absent* heading, and adding one that is genuinely absent cannot duplicate it. What makes the two
+the same class is the edit, not the cause — hand-writing canonical headings into a parsed document,
+where the failure is silent and reads fine. Note also that the instruction above says "the canonical
+headings", plural and unconditional, while the greps report them individually: **add only the
+heading the grep actually reported missing.** Re-adding one that is already there is how the
+duplicate gets made.
 
 So: **any hand-edit under `openspec/specs/` is followed by**
 
@@ -50,7 +60,7 @@ found` when the prefix is missing. Run:
 grep -n '^### ' openspec/specs/<capability>/spec.md | grep -v '^.*:### Requirement: '
 ```
 
-Each match is a legacy heading — rewrite it to `### Requirement: <Name>` before archiving.
+Each match is a legacy heading — rewrite it to `### Requirement: <Name>` before archiving. This is a hand-edit under `openspec/specs/` — the validate rule in check (a) applies to it too.
 
 ## (c) MODIFIED-block heading existence
 
@@ -58,7 +68,7 @@ For every `## MODIFIED Requirements` block in the change's delta
 (`openspec/changes/<name>/specs/<capability>/spec.md`), confirm the `### Requirement: <Name>` heading
 exists *verbatim* in the active spec. If the delta **renames** a requirement (new name on the
 heading, broader scope in the body), the active spec still has the **old** name and the
-materialization aborts. Rename the active heading to the new name first, in the same archive commit.
+materialization aborts. Rename the active heading to the new name first, in the same archive commit. This is a hand-edit under `openspec/specs/` — the validate rule in check (a) applies to it too.
 Quick check:
 
 ```
@@ -74,7 +84,8 @@ grep -F '### Requirement: <Name>' openspec/specs/<capability>/spec.md
 (`openspec/specs/<capability>/spec.md`) for cross-references to the retired path. The change's
 spec-delta only replaces modified-requirement *blocks*; cross-refs in traceability matrices,
 "Implementation" tables, or other non-modified requirements remain stale unless explicitly cleaned in
-this PR. Add the cleanup edits to the active spec before running `openspec archive` so they ship with
+this PR. Add the cleanup edits to the active spec — another hand-edit, so check (a)'s validate rule applies —
+before running `openspec archive` so they ship with
 the archive commit.
 
 ## Failure modes these checks catch

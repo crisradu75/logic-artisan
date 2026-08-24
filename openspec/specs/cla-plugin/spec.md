@@ -528,23 +528,37 @@ A skill that writes or hand-edits the live specification set SHALL validate that
 
 This requirement is distinct from any check comparing a delta's modified-requirement block against the live specification for silently dropped scenarios: that concerns the *content* a sync writes, whereas this concerns the live set's *parse integrity after any edit*, and the measured instance passed through no delta at all.
 
-#### Scenario: The write site validates the live set, not only the change
+#### Scenario: EVERY write site validates the live set, not only the change
 
-- **WHEN** a phase materializes or edits the live specification set
-- **THEN** the live set is validated before the commit that lands the edit
-- **AND** a non-zero result halts and surfaces rather than proceeding to commit
+- **WHEN** any phase in any skill materializes or edits the live specification set
+- **THEN** that phase validates the live set before the commit that lands the edit
+- **AND** a result naming a broken specification halts and surfaces rather than proceeding to commit
+- **AND** a skill with one compliant write site and another that writes without validating does not satisfy this
 
-#### Scenario: A hand-edit outside any delta is covered
+#### Scenario: The no-delta, no-archive write site runs the check
 
-- **WHEN** a live specification's prose is edited by hand, with no delta and no archive involved
-- **THEN** the guidance at that point requires validating the live set before the commit
-- **AND** it states that a live specification is a parsed document rather than a prose file
+- **WHEN** a skill edits a live specification in place, creating no delta and running no archive
+- **THEN** that skill's own step runs the live-set validation before its commit
+- **AND** this is satisfied by the check running at that site, not by another file describing the rule
 
-#### Scenario: A chain does not carry a broken live set forward
+#### Scenario: A chain validates before it merges
 
 - **WHEN** a change in a sequence leaves the live specification set failing validation
 - **THEN** it is treated as a structural failure that halts the sequence
+- **AND** the check runs before that change's pull request is merged, so the failing specifications do not reach the base branch and the branch is still available to fix on
 - **AND** it is not deferred to the next change, whose archive would fail instead
+
+#### Scenario: A check that could not run is not reported as a broken specification
+
+- **WHEN** the validation exits non-zero without naming a failing specification
+- **THEN** it is reported as a tooling fault
+- **AND** it is not attributed to the change's own specifications, and does not halt a sequence as a structural failure
+
+#### Scenario: A run that validated nothing is not a pass
+
+- **WHEN** the validation reports that it found no items to validate
+- **THEN** that is distinguished from a clean result rather than recorded as success
+- **AND** a repository not using the specification tooling has that stated once rather than accruing vacuous passes
 
 ### Requirement: Skill token-efficiency disciplines
 

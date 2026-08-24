@@ -74,7 +74,25 @@ For each change in the confirmed order:
    - An independent change (no parent in this chain) still branches off `<base-branch>` normally — stacking is for dependency edges, not a house style, so a chain can be a forest: several stacks plus independents.
    - **Landing (the user's, at the end — Phase 4 hands over the checklist).** Parents first, retarget-first, merge commits. Per parent, two commands in this order: `gh pr edit <child> --base <base-branch>` FIRST, then `gh pr merge <#> --merge --delete-branch`. Do NOT rely on GitHub's documented auto-retargeting: `gh`'s `--delete-branch` deletion CLOSED a dependent PR before any retarget in a live landing (see the dated incident in `cla.io/overlays/multi-pr.md`; recovery took restoring the deleted base from the merge commit's second parent). Retargeting the child first makes the deletion close nothing. The merge STRATEGY matters equally: a **merge commit, never a squash** — squash-merging a stacked parent rewrites its commits, so a surviving child re-shows the parent's entire diff and its own merge conflicts, measured on a throwaway 3-deep stack. With a merge commit each child's diff collapses to its own work the moment its parent lands. If the repo requires squash-merges: after each parent lands, rebase its child before merging it — `git rebase --onto origin/<base-branch> <parent-tip-sha> <child-branch>` then `git push --force-with-lease` — using the parent tip sha step 2 recorded.
 
-5. **Merge (only under the "merge before dependents" policy).** Once the change is genuinely done (Tier A clean, Tier B findings resolved per step 4):
+4b. **Validate the live spec set — BEFORE the merge, not after.**
+
+   ```
+   openspec validate --specs --strict
+   ```
+
+   Placement is the whole point. `/cla:spec-to-pr`'s own Archive already validated at its commit, so this exists to cover the two windows that open *after* it returns: step 4's deferred-finding fix rounds, and any hand-resolved merge conflict in a materialized spec — which is a documented occurrence in this plugin, and is exactly the hand-edit this check is about.
+
+   Run it here, while **the branch is alive and the PR is open**. Step 5 merges with `--delete-branch`; a check placed after it would report a broken base branch and a branch that no longer exists to fix it on. Under step 5-alt (stacked) nothing has merged either way, so the same placement works for both policies.
+
+   Reading the result — the exit code alone conflates three outcomes:
+
+   - **`✗ spec/<cap>` in the output** → this change left the live spec set broken. **Tier A structural failure** (step 3): halt the chain. A chain is where this compounds — the next change starts from these specs, and *its* archive is what aborts, one whole change from the cause. Fix on this change's still-open branch and re-verify before step 5.
+   - **Non-zero with no `✗` line** (`command not found`, `unknown option`) → the check could not run. A **tooling fault**, not a spec fault; halting a six-change chain and reporting "this change broke the live spec set" when the real fix is a `PATH` entry sends an absent user to the wrong subsystem entirely.
+   - **`No items found to validate.`** → exit 0 and nothing checked. **Not a pass.** Confirm the `Totals:` line names at least one item; in a repo not using OpenSpec, say so once and skip rather than recording a vacuous success.
+
+   This is the live set's **parse integrity after any edit**, including edits that never touch a delta — the measured instance was a hand-filled TBD `## Purpose`, with no delta involved. It is not the same check as diffing a `## MODIFIED Requirements` block against the live spec for silently dropped scenarios, which is a separate concern.
+
+5. **Merge (only under the "merge before dependents" policy).** Once the change is genuinely done (Tier A clean, Tier B findings resolved per step 4, live spec set clean per step 4b):
    ```
    ALLOW_PR_MERGE=1 gh pr merge <#> --squash --delete-branch
    ```
@@ -102,17 +120,7 @@ For each change in the confirmed order:
 
    **Local `<base-branch>`/`main` is never auto-updated by a sibling worktree's merge.** In a worktree that doesn't hold `<base-branch>`/`main` (the second case above), this worktree's local base-branch ref goes stale the moment ANY merge happens — including this chain's own earlier merges — since there's no `git checkout <base-branch> && git pull` step to refresh it. Any later diff-scoping command in this run (e.g. Revise's `git diff <base-branch>..HEAD` for a *subsequent* change in the chain) MUST target `origin/<base-branch>` (after an explicit `git fetch origin <base-branch>`), never the local `<base-branch>`/`main` ref — a stale local ref silently produces a diff padded with every prior change's own files. Confirmed in practice via an ad hoc file-count sanity check against the expected total, but no such check is built into this skill — treat "target `origin/<base-branch>`, always" as the actual safeguard, not the possibility of noticing the padding after the fact. **Stacked-child exception:** a stacked child's diff anchor is its `<pr-base>`, per spec-to-pr's `<pr-base>` rule — there the safeguard reads "target `origin/<pr-base>`, after `git fetch origin <pr-base>`"; anchoring a stacked child to `origin/<base-branch>` produces exactly the padded diff this rule exists to prevent.
 
-6. **Validate the live spec set, then capture a real end timestamp.**
-
-   ```
-   openspec validate --specs --strict
-   ```
-
-   Non-zero → this change broke the live spec set. **Treat it as a Tier A structural failure** (step 3): halt the chain and surface it, because the next change starts from these specs and a chain is precisely where the damage compounds. A duplicated `## Requirements` heading closes the section, so every requirement below it becomes invisible to `validate`, `list` and `archive` — and the next change's own archive is what aborts, one whole change away from the edit that caused it. Fix it on this change's branch and re-verify before moving on.
-
-   This is the live set's **parse integrity after any edit**, including edits that never touch a delta — the measured instance came from hand-filling a `## Purpose`, with no delta involved. It is not the same check as diffing a `## MODIFIED Requirements` block against the live spec for silently dropped scenarios, which is a separate concern.
-
-   Then `date -u +%Y-%m-%dT%H:%M:%SZ` via Bash — closing the window opened in step 2. This spans the change's full per-change loop (the `/cla:spec-to-pr` run, any step 4 fix round, and step 5's merge or step 5-alt's bookkeeping), i.e. genuine measured wall-clock for everything this change actually cost, not just its `/cla:spec-to-pr` sub-call. Record the delta in the per-run running-notes file next to the Phase 1c prediction for this change. Mark the change's `TaskCreate` entry `completed`.
+6. **Capture a real end timestamp** — `date -u +%Y-%m-%dT%H:%M:%SZ` via Bash — closing the window opened in step 2. This spans the change's full per-change loop (the `/cla:spec-to-pr` run, any step 4 fix round, and step 5's merge or step 5-alt's bookkeeping), i.e. genuine measured wall-clock for everything this change actually cost, not just its `/cla:spec-to-pr` sub-call. Record the delta in the per-run running-notes file next to the Phase 1c prediction for this change. Mark the change's `TaskCreate` entry `completed`.
 
 7. **Report the actual wall-clock this change took against its Phase 1c prediction, then a revised ballpark for the rest of the chain.** This is a long unattended run and the user has no other way to gauge progress or remaining time. Keep it rough — a ballpark is the goal, not a precise forecast.
    - State the measured minutes (step 6's timestamp minus step 2's) against the Phase 1c predicted minutes for this change's complexity bucket, e.g. "operator-x: 72 min actual vs ~90 min predicted (large-extend)."
