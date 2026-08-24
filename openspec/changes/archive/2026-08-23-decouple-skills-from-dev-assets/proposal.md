@@ -8,7 +8,8 @@ conformance guards that genuinely run against a *consuming* repo's data are reac
 modules inside a scope that is about to disappear.
 
 This is change (a) of a **two**-change batch from
-`cla.io/decisions/ship-only-consumer-usable-assets-2026-08-22.md`. The other is
+`cla.io/decisions/ship-only-consumer-usable-assets-2026-08-22.md` (deleted 2026-08-24; recover with
+`git show eaa579b:<that path>`). The other is
 `extract-dev-tree-from-plugin`, the single successor that carries everything the decision doc
 sketched as changes (b) and (c): moving every dev-only asset out of the published plugin tree,
 relocating the `release` skill to `<repo>/.claude/skills/release/`, adding a release-time
