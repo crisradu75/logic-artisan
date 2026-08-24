@@ -578,6 +578,65 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
 
+### Requirement: Sequencing edges beyond the source dependency graph
+
+A skill that sequences a batch of changes SHALL establish, before the batch runs, the edges its source dependency graph cannot express, and SHALL NOT present a merge or landing policy in vocabulary that can only see that graph. A dependency list records **source-level** need — one change's code or spec requiring another's — and two edges outside it are each sufficient to break a later change whose own work is correct.
+
+**Shared mutable environment state.** A change that applies a migration to a shared environment, seeds shared fixture data, or performs a provisioning step SHALL create a merge-before-next edge **regardless of whether any other change depends on its code**. That state has already moved for every subsequent branch, so only merging its source makes the tree consistent with it again.
+
+The skill SHALL determine this **per change, from named artifacts, as an orchestrator-computed fact rather than a user preference** — the change is unimplemented at sequencing time, so the determination SHALL name the sources that are available then rather than a diff that does not yet exist. A negative SHALL carry its derivation rather than the bare word, on the same reasoning the skill already applies to a counted zero elsewhere: a determination whose default is negative and whose negative is never shown is an exemption rather than a check.
+
+**It SHALL survive any autonomy mode.** Where the skill offers a mode that pre-answers its gate with recommended defaults, this determination SHALL NOT be among the pre-answered items, and SHALL appear in whatever output that mode requires. An unattended run is where this edge was measured to cost the most, so establishing it only in attended runs inverts the fix.
+
+**Every statement of the policy SHALL name both edges**, including any hoisted summary that binds when the detailed reference is not loaded, and including the statement that governs the merge itself — a summary keyed on the dependency list alone is the form in which this defect is actually met, and the statement nearest the merge is the one that decides it.
+
+**A policy that performs no merges SHALL NOT silently absorb this edge.** Where the skill offers a stacked or open-all policy, or falls back to one mid-run, a change sitting after a shared-state edge cannot satisfy it by branching, and the conflict SHALL be surfaced rather than proceeded through.
+
+**Stale delta baselines.** Where a batch's changes are authored against one baseline of a shared specification set and no delta is applied before the others are written — which holds whether authoring is sequential or parallel — a modified-requirement block that replaces its requirement wholesale SHALL be treated as a collision risk. The obligation SHALL attach to **every in-scope change carrying such a block**, not only to those whose capability another in-scope change also touches: text that reached the live specification after authoring moves the baseline identically whether it came from a sibling in this batch, a change landed by another workflow, or a hand edit. Each such change's delta SHALL be re-checked against the live specification **as of that moment**, not as the delta was authored, before that change is reviewed.
+
+The skill SHALL additionally compute and name which capabilities are touched by more than one in-scope change, which prioritises the check and identifies the sibling to compare against. This SHALL NOT rest on an individual change's own task list happening to warn, which is the only thing that has caught it.
+
+**The result SHALL carry its denominator**, so that a check which failed to run is distinguishable from one that ran and found nothing: how many in-scope changes were scanned, how many carried spec deltas, and how many capabilities were found. A non-zero exit from the enumeration SHALL be reported as a failed check rather than as an empty result, since a run from an unexpected working directory otherwise yields a confident batch-wide clean answer.
+
+**Both edges SHALL be delivered, not only recorded.** A finding this step produces is acted on by a review that runs in a later phase, from a different reference; recording it in a run artifact that nothing reads back SHALL NOT satisfy this requirement. The skill SHALL feed each finding into the invocation that starts the change it concerns, by the same channel that already carries that change's inherited obligations.
+
+#### Scenario: An independent change that moved shared state still merges first
+
+- **WHEN** a change in a batch applies a migration, seeds shared fixture data, or provisions shared infrastructure
+- **THEN** it creates a merge-before-next edge even though no other change depends on its code
+- **AND** the sequencing step records that edge next to the change's dependency list
+
+#### Scenario: A policy summary does not describe only the dependency edge
+
+- **WHEN** a skill states a merge-policy default in terms of dependents and independents
+- **THEN** the statement names the shared-environment-state edge as well as the source dependency
+- **AND** it does so in the hoisted summary too, not only in the detailed reference
+
+#### Scenario: A stale delta baseline is checked whether or not a sibling overlaps
+
+- **WHEN** an in-scope change carries a block that replaces a requirement wholesale
+- **THEN** its delta is re-checked against the live specification as of that moment, before that change is reviewed
+- **AND** the check attaches even when no other in-scope change touches that capability
+- **AND** the capabilities touched by more than one in-scope change are additionally computed and named
+
+#### Scenario: A check that could not run is not reported as a clean batch
+
+- **WHEN** the enumeration of a change's spec deltas exits non-zero
+- **THEN** it is reported as a failed check rather than as a change contributing no capabilities
+- **AND** the result carries how many changes were scanned and how many carried deltas
+
+#### Scenario: A finding reaches the review it is for
+
+- **WHEN** sequencing produces a re-base obligation or a shared-state edge for a named change
+- **THEN** it is delivered in the invocation that starts that change, by the channel already carrying inherited obligations
+- **AND** recording it in a run artifact that nothing reads back does not satisfy the requirement
+
+#### Scenario: The determination survives an autonomy mode
+
+- **WHEN** a mode pre-answers the pre-flight gate with recommended defaults
+- **THEN** the shared-state determination is still made per change, from artifacts
+- **AND** it appears with its derivation in that mode's required output
+
 ### Requirement: Cross-change obligation carry
 
 A skill that drives a SEQUENCE of changes SHALL treat an obligation one change creates for a later one as chain state that is both **recorded** and **delivered**, and SHALL NOT discharge it by recording alone. An obligation here is an addition a change's own review or fix round makes — a stored field, column, response key, or required behaviour — that the change itself does not consume, whose sole justification is that a named later change reads it. Such an obligation is invisible to every check scoped to a single change: the downstream change's artifacts stay internally consistent while never mentioning it.
