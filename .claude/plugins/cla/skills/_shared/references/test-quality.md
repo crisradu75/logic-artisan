@@ -64,6 +64,50 @@ State what you derived the number from, in the assertion's own comment, so the n
 person moving the tree can re-derive it rather than guess whether the margin is
 deliberate.
 
+## An alarm must be able to fire at the volume it will really see
+
+The floor above is unreachable because its number drifted from its population.
+There is a second way to be unreachable, and it survives every check in this
+file: the guard is **correct**, its comparison executes, and the volume it meets
+on an ordinary day sits outside the range where it does anything.
+
+Two shapes, one cause. All three instances below were measured in one six-change
+run in a repo consuming this plugin, and are reported here rather than re-derived:
+
+- **A minimum-sample precondition larger than any real batch.** The enforcement
+  path exists and never runs. A rate floor required 200 samples, in a job seeing
+  113–190 a night.
+- **A threshold tuned on the wrong run, or against the wrong statistic.** Pinned
+  to a backfill or a full-corpus measurement, it false-fires on the small batches
+  that are the steady state. One alarm would have fired on roughly half of all
+  two-item batches, because only 30% of real items carried the thing it counted.
+  Another used a threshold of 70 derived from one measured share while the code
+  it guarded counted a *different* quantity — the same defect reached from the
+  calibration end rather than the volume end.
+
+An alarm can also be unreachable by being too coarse. One that watches a combined
+counter sees only total collapse: retire three of four terms and one whole
+category stops permanently while the total stays in the thousands, well clear of
+anything.
+
+**So state the volume before the number.** Any new alarm, threshold or
+minimum-sample precondition says, in a comment beside itself, what volume it will
+see in ordinary steady-state operation — not the sample that happened to be in
+front of whoever wrote it — and answers two questions at that volume: **can this
+fire at all, and will it fire only when it should?**
+
+The usual reason this is missed is that the author is holding a backfill-sized or
+full-corpus sample at the moment the number is chosen, and nobody re-checks it
+against the nightly run that will actually exercise it.
+
+**This is why the section sits here and not below.** Nothing in the planting
+sections reaches it. Plant a failure and the guard fires correctly; mutate the
+comparison and the test goes red exactly as designed — because the comparison was
+never the broken part. A verify-time mirror finds nothing either: the logic it
+would execute is right. The distinguishing question is neither "can this assertion
+fail" nor "does this test check the logic", but **"at the volume this will meet on
+an ordinary day, is this reachable at all?"**
+
 ## Which gates are worth planting against
 
 Not a rule about how a test fails — a routing question, answered before the gate

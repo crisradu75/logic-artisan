@@ -799,6 +799,8 @@ Where the reference states how a planted failure goes wrong, it SHALL give **che
 
 The reference SHALL state that planting exercises only the implementation that exists, and therefore cannot reach an input the author never enumerated — and SHALL direct that anything parsing an external contract is enumerated from its primary source **before** it is planted against.
 
+**Unreachability at the operating point.** The reference SHALL also carry the sibling case, where the enumerated input space is correct and the guard is nonetheless unreachable: a minimum-sample precondition larger than any real batch, or a threshold pinned against a backfill-sized sample or a different statistic than the code measures. It SHALL require any new alarm, threshold or minimum-sample precondition to state the volume it will meet in ordinary steady-state operation and to answer, at that volume, whether it can fire at all and whether it fires only when it should. It SHALL distinguish this from the planting rules explicitly, because a plant reaches none of it: the comparison is correct and fires as designed, so mutating it goes red exactly as intended while the precondition gating it stays unexamined.
+
 **Scope boundary.** Guidance about when planting is worth its cost is routing, and SHALL NOT be read as narrowing any other obligation. In particular the **Review-fix evidence gate** stays unconditional: a fix for a review finding earns its evidence regardless of which technique supplies it. A reference stating both SHALL say so explicitly, because the two sit close enough to be read as one.
 
 #### Scenario: A reader is routed before being asked to read gate doctrine
@@ -816,6 +818,13 @@ The reference SHALL state that planting exercises only the implementation that e
 - **WHEN** the reference describes a plant that FAILED TO LAND on the value under test
 - **THEN** it names the conditions distinguishing a landed plant from one that missed
 - **AND** a trap of a different shape gives its own remedy rather than being forced into that form
+
+#### Scenario: A correct guard that cannot fire at its real volume is covered
+
+- **WHEN** the reference is read by someone adding an alarm, threshold, or minimum-sample precondition
+- **THEN** it requires the volume that alarm will meet in ordinary steady-state operation to be stated
+- **AND** it requires both directions to be answered at that volume — that the alarm can fire, and that it fires only when it should
+- **AND** it states that planting and mutation reach none of this, because the comparison under them is correct
 
 ### Requirement: Shipped-asset boundary
 
