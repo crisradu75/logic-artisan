@@ -1,6 +1,6 @@
 # discover-and-gate — Phase 1 full mechanics (discover, sequence, pre-flight gate, chain-time estimate)
 
-Phase 1's step-by-step procedure: how to discover and order the changes, the full pre-flight-gate question wording + rationale (including the explicit-autonomy override, the bounded-window-autonomy mode, and infra self-remediation), and the chain-time-estimate recipe. `SKILL.md`'s Phase 1 stub carries the load-bearing invariants (batch-then-run-continuous, the recommended defaults, the cycle and unresolved-prerequisite exceptions, the caps pass-through); this file carries the recipes and reasoning.
+Phase 1's step-by-step procedure: how to discover and order the changes, the two edges `depends_on` cannot express (shared environment state, and a stale delta baseline), the full pre-flight-gate question wording + rationale (including the explicit-autonomy override, the bounded-window-autonomy mode, and infra self-remediation), and the chain-time-estimate recipe. `SKILL.md`'s Phase 1 stub carries the load-bearing invariants (batch-then-run-continuous, the recommended defaults, the cycle and unresolved-prerequisite exceptions, the caps pass-through); this file carries the recipes and reasoning.
 
 ## 1a. Discover and propose an order
 
@@ -26,12 +26,18 @@ Ordering by dependency answers "does A need B's code". It does not answer "do A 
 B write to the same capability spec", and two changes can be dependency-independent
 while colliding on one.
 
-The mechanism: `/cla:multi-spec` authors a batch in parallel, so **every change's
-delta is written against the pre-batch spec text**, and a `## MODIFIED Requirements`
-block replaces its requirement **wholesale** rather than patching it. When two
-in-scope changes modify the same requirement, the later one silently reverts or
-corrupts the earlier one's delta. Nothing flags it: each change's artifacts are
-internally consistent, and the collision is only visible across the batch.
+The mechanism, and it is **not** parallel authoring — `/cla:multi-spec` dispatches
+one call per change, awaited sequentially, never parallel (`multi-spec/SKILL.md`).
+Sequential authoring collides identically, for a different reason: every change in
+the batch is written against **one baseline**, because `multi-spec` writes only
+under `openspec/changes/<name>/specs/` and never touches `openspec/specs/`, which is
+updated at archive time. No delta is applied before the others are authored. Add
+that a `## MODIFIED Requirements` block replaces its requirement **wholesale**
+rather than patching it, and two in-scope changes modifying the same requirement
+means the later one silently reverts or corrupts the earlier one's delta.
+
+Nothing flags it: each change's artifacts are internally consistent, and the
+collision is only visible across the batch.
 
 Measured on one batch in a repo consuming this plugin, and reported here rather
 than re-derived: change 4 hit this twice — its delta would have deleted an
@@ -39,22 +45,44 @@ exception clause a sibling had just merged into one capability, and two scenario
 plus an ownership record from another. It was caught because that change's own task
 list happened to warn, which is luck, not a check.
 
-So compute the overlap matrix, once, right here:
+So compute the matrix, once, right here:
 
 ```
 ls openspec/changes/<name>/specs/          # per in-scope change → its capabilities
 ```
 
-Report every capability touched by more than one in-scope change, naming the
-changes. Each such change's delta then carries a **mandatory re-base check** before
-that change's review: diff its delta against the live spec **as of that moment**,
-not as the delta was originally authored. Record the overlap next to `depends_on` in
-the sequence table.
+**A non-zero exit is a FAILED CHECK, not an empty result.** Run from the wrong cwd —
+a dedicated worktree, or a repo that roots OpenSpec elsewhere — every call errors,
+and an errors-are-empty reading turns that into a confident batch-wide "no overlap".
+Report the denominator so the two cannot be confused: *N in-scope changes scanned, M
+with a `specs/` directory, K distinct capabilities, J touched by more than one.* A
+change with no `specs/` directory is a real, reportable answer; a change whose `ls`
+errored is not.
 
-The clean answer is worth as much as the dirty one, and is the usual result. On
-that same batch, changes 5, 6 and 7 each added exactly one brand-new capability, so
-all three carried zero re-base risk — information otherwise re-derived per change,
-or never established at all.
+**The re-base check triggers on `## MODIFIED Requirements`, not on overlap.** The
+mechanism above is about *when the delta was authored*, and anything that reached
+the live spec afterwards moves the text out from under it — an archived change from
+a previous chain, a `/cla:lite-pr` landed in between, a hand edit. So **every**
+in-scope change carrying a MODIFIED block earns the check: diff its delta against
+the live spec **as of that moment**, not as the delta was authored. In-scope overlap
+does not create the obligation; it raises the priority and names which sibling to
+compare against.
+
+A change that only ADDS a brand-new capability is genuinely clean, and that is worth
+recording — on the batch above, changes 5, 6 and 7 each added exactly one new
+capability and carried zero re-base risk. Report that too, per change, rather than
+leaving it unstated.
+
+**Then deliver it, because a record with no reader is not a mechanism.** This is the
+same failure the `## Carried obligations` machinery exists to prevent (`SKILL.md`
+Phase 3, from GitHub issues #98/#100/#102): the review this check gates happens
+inside `Skill(cla:spec-to-pr, …)` hours later, in a different phase, from a
+reference file that is closed by then. Write one row per affected change under
+`## Capability re-base` in `cla.io/retro/multi-pr-run-notes-<date>.md` — change,
+capability, the sibling or landed change to diff against, and the one-line failure
+if dropped — and let change-loop step 2 turn the rows owed by a change into
+`--inherits` entries the same way it does for carried obligations. A batch with
+nothing to carry writes the counted denominator above, not a bare `none`.
 
 ## 1b. The pre-flight gate — ask everything now
 
@@ -64,7 +92,7 @@ or never established at all.
 
 1. **Merge policy.** Three options, and the right default depends on whether merging is available to this session at all (see "When merging is unavailable" below):
 
-   - **merge before dependents** — merge each PR before starting the next change that depends on it. A later change's Implement phase may need the earlier change's code actually present in `<base-branch>`, not just an open PR. Best when it works: each PR is insulated from its siblings' review churn.
+   - **merge before dependents** — merge each PR before starting the next change that **needs it merged**: one that depends on its code, *or* one that follows a change which moved shared environment state (both edges, per the paragraph below). A later change's Implement phase may need the earlier change's code actually present in `<base-branch>`, not just an open PR. Best when it works: each PR is insulated from its siblings' review churn.
    - **stacked** — no merges at all. Each dependent change branches off its parent's feature branch instead of `<base-branch>`, so the parent's code is present without anything landing; mechanically, the child's `/cla:spec-to-pr` invocation carries `--pr-base <parent-branch>` — the branch the parent's run recorded in the running notes (change-loop steps 2 and 5-alt); the flag's semantics are spec-to-pr's `<pr-base>` rule, which also opens the child's PR against the parent so each diff shows only its own work. The chain ends as a stack of open PRs the user lands parents-first with the commands the final report provides. Use this whenever merging is blocked, and prefer it when the user wants the whole chain reviewable before anything reaches `<base-branch>`.
    - **open all, merge nothing** — every change branches off `<base-branch>` independently. Only valid when no change depends on another **and no change moves shared environment state** (see the edge below); with a real dependency, the dependent's Implement phase runs against a tree missing its parent's code.
 
@@ -79,8 +107,42 @@ or never established at all.
    When it does, **that change merges before the next one starts, whether or not
    anything depends on its code.** The shared state has already moved for every
    subsequent branch, and only merging its source makes the tree consistent with it
-   again. Ask it per change while sequencing, and record the answer in the run's
-   sequence table next to `depends_on`.
+   again.
+
+   **This is determined by the orchestrator from artifacts, not asked of the user** —
+   it is a fact about each change, not a preference, and the gate's one call is
+   already at its 4-question budget. Determine it in §1a, per change, from four named
+   sources, because at Phase 1 the change is unimplemented and there is no diff to
+   read:
+
+   1. Files its `tasks.md` or proposal Impact section says it will ADD under a
+      migrations directory, a seed/fixture script, or a provisioning manifest.
+   2. `tasks.md` steps that RUN a migrate/seed/provision command during
+      implementation — a change can move shared state without adding a file.
+   3. Whether this repo's development environment is shared across branches at all
+      (`cla.io/overlays/multi-pr.md` → *Infrastructure values*). A per-branch or
+      ephemeral environment has no such edge and the whole determination is vacuous —
+      say so once for the batch rather than per change.
+   4. Whether the repo has a guard comparing environment state against the working
+      tree — the thing that converts the edge into a failure. Same overlay section.
+
+   **A NO carries its derivation, never the bare word.** "No migration directory
+   entry in tasks.md, no migrate/seed step, dev environment per-branch" is an answer;
+   "no" is a word, and a question whose default is NO and whose NO is never shown is
+   an exemption with a question mark on it. Same rule, and same reason, as the
+   counted `none` the carried-obligations record already requires.
+
+   Record the per-change answer under `## Sequence` in
+   `cla.io/retro/multi-pr-run-notes-<date>.md` — change, `depends_on`, moves-shared-
+   state with its derivation — written when §1c step 4 creates that file, which is
+   the first moment it exists.
+
+   **Under the explicit-autonomy override and the bounded-window mode, this is still
+   established.** It is not one of the gate's pre-answerable preferences, so applying
+   a default to it is not available: the override's own required output ("state the
+   applied defaults transparently as the first output") carries the per-change
+   determination and its derivation. An unattended run is exactly where this edge was
+   measured to cost the most, so skipping it there inverts the fix.
 
    Measured on a six-change chain in a repo consuming this plugin, and reported
    here rather than re-derived: change 1 was listed `depends_on: []` and no
@@ -97,6 +159,16 @@ or never established at all.
    running changes serially against one shared development environment has this edge,
    and any guard that compares environment state against the working tree surfaces it
    as an unrelated failure in an innocent change.
+
+   **Stacked cannot satisfy this edge, and must not silently absorb it.** Stacked
+   performs no merges, so a change that moved shared state cannot merge before the
+   next one starts — the state has moved and branching does not un-move it. So: a
+   confirmed shared-state edge makes **stacked** and **open all, merge nothing**
+   unavailable for the changes after it, and that is part of what question 1 is
+   choosing between. It also binds the mid-run fallback below: when a `gh pr merge`
+   refusal converts the chain to stacked, re-check whether any remaining change sits
+   after a shared-state edge, and **surface that rather than proceeding** — the
+   fallback silently turns a satisfied edge into an unsatisfiable one otherwise.
 
    **When merging is unavailable.** A host runtime may refuse `gh pr merge` outright — separately from, and in addition to, this plugin's own `ask-destructive-git` hook, which `ALLOW_PR_MERGE=1` already satisfies — and an allowlist entry covering `gh` does not necessarily clear it, with or without `--delete-branch`. (A dated instance lives in `cla.io/overlays/multi-pr.md` "Incident / offense history".) Do NOT hunt for a flag spelling that gets through — that is working around a safety gate, not configuring one. Treat the first refusal as the answer: switch to **stacked** for the rest of the chain, say so in the run report, and hand the user the ordered, parents-first landing commands at the end.
 
