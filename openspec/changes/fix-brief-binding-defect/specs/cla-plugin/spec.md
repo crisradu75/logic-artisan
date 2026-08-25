@@ -60,6 +60,44 @@ the slot list remain correct.
 - **AND** no slot is renamed, renumbered, or added
 - **AND** every site citing the brief by slot name remains correct without edits
 
+#### Scenario: A brief that cannot name a defect check
+
+- **WHEN** an orchestrator authoring a fix brief cannot name a check that exhibits the defect
+- **THEN** the brief is treated as one whose defect is not grounded
+- **AND** it is NOT treated as a dispatch exempt from the terminal contract
+- **AND** the stated remedy is to ground the defect before dispatching, not to waive the field
+
+#### Scenario: Every site restating the terminal contract states the same one
+
+- **WHEN** the terminal contract is restated outside the brief that defines it
+- **THEN** every site briefing a dispatch that remedies a defect states the three-status form
+- **AND** a site briefing a dispatch that never remedies a defect is left unchanged
+- **AND** no fix dispatch briefs against a contract with fewer statuses than the definition carries
+
+### Requirement: A rejected remedy has a receiving branch in the fix loop
+
+A skill whose fix loop triages findings into outcomes SHALL define an outcome for a rejected remedy.
+A rejection SHALL discharge the round's attempt at the finding without closing the finding, SHALL NOT
+be counted as untriaged residue by the loop's exit gate, and SHALL NOT consume a round.
+
+#### Scenario: A rejection is triaged rather than counted as residue
+
+- **WHEN** a dispatched delegate returns a rejection of the candidate remedy
+- **THEN** the fix loop's triage records it as a third outcome beside applied and deferred
+- **AND** the exit gate does not count that finding as untriaged residue
+- **AND** the round is not marked warn on account of the rejection
+
+#### Scenario: A rejection reopens the remedy, not the finding
+
+- **WHEN** a finding's remedy is rejected
+- **THEN** the finding remains open and is re-attempted with a re-decided remedy
+- **AND** the finding is not recorded as resolved by the rejection
+
+#### Scenario: A rejection costs no round
+
+- **WHEN** a round contains a rejected remedy
+- **THEN** no round cap is raised and no additional round is consumed by the rejection
+
 ### Requirement: A brief's factual claims are checkable and carry their source
 
 A cla-plugin brief that states a defect SHALL list the factual sub-claims the defect rests on — a
@@ -172,63 +210,16 @@ skill's text SHALL say so rather than implying the two are equivalent.
 - **THEN** no round cap or default round count is raised to satisfy it
 - **AND** the text states that the in-round check is weaker than an independent reader
 
-### Requirement: Fact-row provenance travels, and re-measurement follows the findings
+#### Scenario: The check reads the document as it stood before the remedy
 
-A cla-plugin skill that offloads mechanical claim-checking to a sub-agent SHALL tag every returned
-fact row with its provenance — agent-reported or orchestrator-verified — as a field on the row itself
-rather than as a note about the dispatch, because a note about the dispatch does not survive the row
-being copied and the row is what travels.
+- **WHEN** the orchestrator's remedy is itself an edit to the rejected-alternatives document
+- **THEN** the check reads the committed version of that document, not the working tree
+- **AND** a remedy is never adjudicated against a document the same remedy just edited
 
-The orchestrator SHALL NOT relabel a row as verified without re-running that row's own resolving
-command or read; re-running it is what the verified label means. The tag SHALL travel with the row
-wherever it is copied — into the context brief, into the report's verified-claims section, and into any
-finding derived from it, which inherits the tag until the row is re-measured. The verified-claims
-section of a report SHALL NOT carry an untagged row, since that section is precisely where an
-agent-reported row and an orchestrator-run row currently print identically.
+#### Scenario: A fix loop with no rejected-alternatives document is out of scope
 
-The adjudication rule SHALL widen, bounded by severity: the orchestrator SHALL adjudicate every failed
-row itself, as before, **and** SHALL re-measure — re-run the resolving command or read — every row,
-passing or failing, that a Critical or Important finding depends on. A row supporting only a
-Suggestion, or supporting no finding at all, SHALL stay agent-reported and SHALL be reported as such.
+- **WHEN** a skill applies orchestrator-specified fixes but operates on no change directory
+- **THEN** it has no rejected-alternatives document and the check does not bind it
+- **AND** the obligation is stated as conditional on such a document existing
+- **AND** the absence of the document is not reported as a breach of the obligation
 
-The widening SHALL NOT be extended to every returned row: doing so restores the whole context cost the
-offload exists to avoid, and buys verification of rows that no decision rests on. The cost of the
-bounded form SHALL be stated as what it is — proportional to the Critical and Important findings the
-review produced, not to the change's row count — and SHALL NOT be asserted as a measured per-review
-figure unless a command that produced it is named.
-
-So that the cost and the catch rate can be priced from evidence rather than re-argued, the skill's run
-record SHALL carry the count of rows re-measured and the count whose re-measurement disagreed with the
-reporting agent.
-
-#### Scenario: A returned row carries its provenance
-
-- **WHEN** a sub-agent returns a fact table to an orchestrator
-- **THEN** each row carries an agent-reported or orchestrator-verified tag as a field on the row
-- **AND** the tag is not expressed only as a note about the dispatch
-
-#### Scenario: A row is relabelled only by re-running its source
-
-- **WHEN** an orchestrator marks a row orchestrator-verified
-- **THEN** it has re-run that row's own resolving command or read
-- **AND** a row it has not re-run remains agent-reported
-
-#### Scenario: The tag survives being copied into the report
-
-- **WHEN** a fact row is copied into the context brief, the verified-claims section, or a finding
-- **THEN** its provenance tag travels with it
-- **AND** the verified-claims section carries no untagged row
-
-#### Scenario: Re-measurement follows the findings, not the rows
-
-- **WHEN** a review produces Critical or Important findings from an offloaded fact table
-- **THEN** every row those findings depend on is re-measured, whether it passed or failed
-- **AND** every failed row is adjudicated by the orchestrator as before
-- **AND** a row supporting only a Suggestion, or no finding, stays agent-reported and is reported as such
-
-#### Scenario: The widening's cost is bounded and not overstated
-
-- **WHEN** the widened rule's cost is described
-- **THEN** it is stated as proportional to the Critical and Important findings produced, not to the row count
-- **AND** no per-review figure is asserted without naming the command that produced it
-- **AND** the run record carries the count of rows re-measured and the count that disagreed

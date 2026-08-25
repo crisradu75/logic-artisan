@@ -1,9 +1,9 @@
 ## Why
 
 A sub-agent brief has no notion of how much authority any line in it carries. The defect statement,
-the fix the orchestrator happens to prefer, a field list the orchestrator recalled rather than read,
-and a row a haiku delegate reported all arrive in the delegate's context as flat, equally-binding
-prose. Four filed issues are four faces of that one gap:
+the fix the orchestrator happens to prefer, and a field list the orchestrator recalled rather than
+read all arrive in the delegate's context as flat, equally-binding prose. Three filed issues are
+three faces of that one gap:
 
 - **#96** — the brief binds the *remedy*, not the *defect*. A perfectly compliant delegate
   implements the named remedy, returns `done` with the evidence the terminal contract asks for
@@ -17,18 +17,20 @@ prose. Four filed issues are four faces of that one gap:
   the remedy is also the one triaging the findings on it. Change 4's third round found two Criticals
   and both sat in an orchestrator-directed fix — one of which reintroduced a bias the change's own
   `design.md` had explicitly rejected.
-- **#112** — nothing marks a fact row as agent-reported versus orchestrator-verified. The
-  cost-offload default hands the mechanical claim checks to a haiku `fact-gatherer`; its rows land in
-  a table headed `### Verified claims` with no tag distinguishing them from rows the orchestrator ran
-  itself. A haiku dispatch was wrong on load-bearing rows twice in one dispatch.
+These do not want three appended rules. They want one contract that says, of every line in a brief,
+**what authority it carries and what evidence would overturn it.**
 
-These do not want four appended rules. They want one contract that says, of every line in a brief and
-every row in a report, **what authority it carries and what evidence would overturn it.**
+**Scope note — #112 is deliberately not here.** A fourth filed issue, #112 (nothing marks a fact row
+as agent-reported versus orchestrator-verified), was proposed alongside these and cut from this
+change at review. Its subject is a *review report's* fact table, not a brief: it has no dispatch, no
+delegate, and no authority level, and carrying it dragged this change into a second skill, a fifth
+file, and a run-record edit whose consumer was never in scope. It is tracked separately as
+`fact-row-provenance`.
 
 ## What Changes
 
-One contract — *the brief's authority contract* — with three authority levels and one provenance tag,
-applied uniformly across the brief, the terminal contract, and the fact tables that feed a review:
+One contract — *the brief's authority contract* — with three authority levels, applied uniformly
+across the brief, its terminal contract, and the sites that restate either:
 
 - **Slot 2 of the brief gains a fix-brief form.** A dispatch whose purpose is to remedy a defect
   states three named fields instead of one task sentence: a **binding** `Defect`, a set of
@@ -49,13 +51,15 @@ applied uniformly across the brief, the terminal contract, and the fact tables t
   or in the Review phase's artifact-fix loop, where there is no delegate at all — its own post-fix
   re-verification additionally checks the applied remedy against the change's `design.md` rejected
   alternatives, and the remedy is marked so the next reader knows it had no independent author.
-- **Provenance is a column on the row, not a note about the dispatch.** Every row a delegate returns
-  is `agent-reported` until the orchestrator re-runs its resolving command itself; the tag travels
-  into the context brief, into `### Verified claims`, and into any finding derived from the row.
-- **The adjudication rule widens, bounded.** The orchestrator adjudicates every ✗ row as it does
-  today, **and** re-measures every row — ✓ or ✗ — that a Critical or Important finding depends on. A
-  row supporting only a Suggestion, or supporting no finding, stays `agent-reported` and is reported
-  as such. The cost is proportional to findings, not to rows.
+- **Every site that restates the terminal contract states the new one.** The contract is written in
+  three places besides the brief — the Implement delegation step, the Revise fix-delegate default,
+  and the Revise stub's invariant line — and a rule added only to the brief leaves a dispatch
+  launched from any of those three briefing against the old two-status contract. All three are
+  edited in the same change as the brief itself.
+- **`remedy-rejected` gets a receiving branch.** Revise triages every Critical and Important finding
+  into Applied or Deferred-Known-Issue, and its exit gate counts anything in neither as untriaged
+  residue. A rejection is a *successful* return and belongs in neither bucket, so the triage gains an
+  explicit third outcome and the exit gate is told to stop counting it against the round.
 
 No caps change. Nothing forces an additional Revise or Review round; this change deliberately leaves
 the round-count question to its own decision item.
@@ -68,25 +72,36 @@ the round-count question to its own decision item.
 
 ### Modified Capabilities
 
-- `cla-plugin`: four ADDED requirements covering the brief's authority contract — the binding
-  defect / rejectable remedy split and its terminal contract, checkable factual sub-claims, review of
-  an orchestrator-specified remedy, and fact-row provenance plus the bounded re-measurement rule. No
-  existing requirement's text changes.
+- `cla-plugin`: three ADDED requirements covering the brief's authority contract — the binding
+  defect / rejectable remedy split and its terminal contract, checkable factual sub-claims, and
+  review of an orchestrator-specified remedy. No existing requirement's text changes.
 
 ## Impact
 
-Prose-only, in five shipped files. Measured with
+Prose-only, in three shipped files. Measured with
 `wc -l` and `grep -n '^### \|^## '` on 2026-08-25:
 
 | File | lines | where the edit lands |
 |---|---|---|
 | `.claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md` | 115 | §2 (line 37) gains the fix-brief form; §5 (line 78) gains the defect-gone terminal contract |
-| `.claude/plugins/cla/skills/spec-to-pr/SKILL.md` | 431 | Review (line 191) fix loop; Revise stub (line 327) invariant line |
-| `.claude/plugins/cla/skills/spec-to-pr/references/revise.md` | 135 | the round-N≥2 scoping (line 68) and the INT-CAP re-read (line 101) |
-| `.claude/plugins/cla/skills/review-change/references/checklist.md` | 316 | the cost-offload paragraph (line 64) and `### Verified claims` (line 262) |
-| `.claude/plugins/cla/skills/_shared/references/run-log-schema.md` | 177 | the `Review` phase object (line ~26) gains `rows_remeasured` and `rows_remeasured_disagreed` |
+| `.claude/plugins/cla/skills/spec-to-pr/SKILL.md` | 431 | Review (line 191) fix loop; Implement's delegation contract (line 239); the Revise stub (line 327) invariant lines |
+| `.claude/plugins/cla/skills/spec-to-pr/references/revise.md` | 135 | the round-N≥2 scoping (line 68), the fix-delegate default (line 97), the triage buckets (line 82) and exit gate (line 134), and the INT-CAP re-read (line 101) |
 
-**The fifth file is the one an implementer would miss.** Task 4.6 sits in a group otherwise scoped to `checklist.md`, and `checklist.md` defines no run record at all — so "where the review's run record is defined" resolves to `run-log-schema.md` and nowhere else. Naming it here is what stops the counts being added to a file nothing reads them from. **Sibling note:** `revise-round-two-question` also edits this file, adding `findings_by_round` to the **`Revise`** phase object. Different objects, so no textual conflict is expected — but the two changes must not both claim this file is theirs alone.
+**The restating sites are what an implementer would miss.** The `done`/`blocked` contract is written
+in five places, not one. Measured 2026-08-25 with
+``grep -rn 'explicit `done`\|`done`/`blocked`' .claude/plugins/cla/skills/`` — five hits:
+
+| site | dispatch it briefs | in scope here |
+|---|---|---|
+| `spec-to-pr/references/subagent-brief.md:83` | the definition every other site cites | **yes** |
+| `spec-to-pr/SKILL.md:239` | Implement's coding delegate | **yes** |
+| `spec-to-pr/SKILL.md:337` | Revise's fix-delegate, stub line | **yes** |
+| `spec-to-pr/references/revise.md:97` | Revise's fix-delegate, full recipe | **yes** |
+| `multi-spec/references/authoring-brief.md:46` | authors proposals; never remedies a defect | **no** — named so it is not "fixed" by mistake |
+
+Editing only the definition leaves three fix-dispatch sites briefing against the old two-status
+contract, and `remedy-rejected` arriving at a triage (`revise.md:82`) that has no bucket for it and
+an exit gate (`revise.md:134`) that counts it as untriaged residue.
 
 **Blast radius checked.** `grep -rn 'subagent-brief' .claude/plugins/cla/` returns exactly two
 citing sites — `spec-to-pr/SKILL.md:234` and `lite-pr/SKILL.md:141` — and both cite the brief by its
@@ -96,3 +111,24 @@ slot and adds no sixth, both citations stay correct and `lite-pr` needs no edit.
 No script changes, no hook changes, no test-suite changes beyond the plugin's existing prose gates.
 This is synced core, so every edit must stay portable: no repo token, no dev-tree path, no absolute
 developer path.
+
+## Sibling coupling
+
+This change lands first in its batch, so the note is for whoever runs the others.
+
+- **`delegate-liveness-contract` must carve out `remedy-rejected`.** That change classifies a return
+  missing the evidence fields its brief's slot 5 named as `blocked`. A legitimate `remedy-rejected`
+  return carries no defect-check output *by construction* — the delegate rejected the remedy rather
+  than applying it — so the naive rule reclassifies a successful return as a failure, which is the
+  exact ledger distortion this change rejected `blocked` to avoid. The carve-out belongs in that
+  change, since this one ships before it and cannot reference a rule that does not yet exist.
+- **`fact-row-provenance` inherits the cut scope.** #112, the adjudication widening, and the
+  `rows_remeasured` / `rows_remeasured_disagreed` run-record counts. Two findings travel with it and
+  are not this change's to fix: `agents/fact-gatherer.md` pins a four-column output table and
+  "Do not add any text outside the table", so a provenance column needs that file edited; and
+  `spec_to_pr_aggregate.py` reads no such counts, which `run-log-schema.md`'s own line 8 forbids
+  ("adding fields the aggregator doesn't consume is dead weight").
+- **`modified-block-diff-scope` verifies edits this change never makes.** Its task list checks that
+  siblings' edits to `checklist.md` §Grounding-contract, `0l`, and Step 6 survived. This change makes
+  no `checklist.md` edit at all — before and after the split — so that check will look for edits that
+  never existed.
