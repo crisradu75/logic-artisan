@@ -52,7 +52,7 @@ CHANGE_CSS = """
 .tab.on{color:var(--ink);background:var(--paper);border-color:var(--rule);
  box-shadow:inset 0 2px 0 var(--accent)}
 .tab-n{font-variant-numeric:tabular-nums;background:var(--mark-wash);color:var(--mark);
- border-radius:999px;padding:.02rem .34rem;font-size:.62rem;min-width:1rem;text-align:center}
+ border-radius:999px;padding:.02rem .34rem;font-size:0.69rem;min-width:1rem;text-align:center}
 :root{--danger:#B3261E}
 :root[data-theme="dark"]{--danger:#E5534B}
 .tab-gap{flex:none;width:1px;align-self:center;height:1.1rem;background:var(--rule);margin:0 .7rem}
@@ -73,7 +73,7 @@ CHANGE_CSS = """
 .tgl-group{margin-left:auto;margin-bottom:.28rem;flex:none;display:flex;align-items:center;
  gap:.18rem;background:var(--sunk);border:1px solid var(--rule);border-radius:3px;
  padding:.1rem .1rem .1rem .45rem}
-.tgl-l{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.58rem;letter-spacing:.16em;
+.tgl-l{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;letter-spacing:.16em;
  text-transform:uppercase;color:var(--muted);margin-right:.28rem;white-space:nowrap;line-height:1}
 .tgl{font:inherit;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.72rem;
  cursor:pointer;color:var(--ink-2);background:transparent;border:1px solid transparent;
@@ -82,6 +82,13 @@ CHANGE_CSS = """
 .tgl:hover{color:var(--accent);background:var(--paper)}
 .tgl[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--paper)}
 
+/* The panes sit in the reading column of render_doc's grid, and the annotation
+   margin takes the other track. `.col` inside a pane is not a DIRECT child of
+   `.wrap`, so it does not pick up the sizing that neutralises the standalone
+   page's centred 44rem measure — it has to be said here, or every pane
+   overflows its own track. */
+.wrap>.panes{min-width:0}
+.panes .col{max-width:none;margin:0;padding-top:0}
 .col{padding-left:4rem}
 .linked{position:relative}
 /* Anchored to the text's left edge rather than a fixed offset, so a block with
@@ -89,7 +96,7 @@ CHANGE_CSS = """
    prose — the marks stay aligned to the same edge whatever their number. */
 .gut{position:absolute;right:100%;margin-right:.5rem;top:.2rem;display:flex;gap:.14rem}
 .gut b{display:inline-flex;align-items:center;justify-content:center;width:1.25rem;
- height:1.25rem;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.68rem;
+ height:1.25rem;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  font-weight:400;border-radius:2px;border:1px solid var(--accent-2);color:var(--accent);
  background:var(--accent-wash);cursor:pointer;line-height:1}
 .gut b:hover{background:var(--accent);color:var(--paper)}
@@ -99,10 +106,10 @@ CHANGE_CSS = """
  font-size:.82rem;line-height:1.5;color:var(--ink-2)}
 .cf.weak{border-left-style:dashed}
 .cf + .cf{margin-top:-.7rem;border-top:1px solid var(--paper)}
-.cf-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.56rem;
+.cf-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:.2rem}
 .cf-why{opacity:.7;text-transform:none;letter-spacing:.02em}
-.cf-go{float:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.56rem;
+.cf-go{float:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  color:var(--accent);cursor:pointer;opacity:.75}
 .cf-go:hover{opacity:1;text-decoration:underline}
 body.nocf .cf{display:none}
@@ -110,7 +117,7 @@ body.nocf .cf{display:none}
  border:1px solid var(--accent);border-left:3px solid var(--accent);border-radius:3px;
  box-shadow:0 8px 30px rgba(0,0,0,.24);padding:.7rem .85rem;font-size:.84rem;line-height:1.55;
  color:var(--ink-2)}
-.peek-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.58rem;
+.peek-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:.35rem}
 @keyframes flash{0%{background:var(--accent-wash)}100%{background:transparent}}
 .flash{animation:flash 1.6s ease-out}
@@ -126,7 +133,7 @@ body.nocf .cf{display:none}
  padding:.7rem .85rem;margin:0 0 .55rem}
 .cov-bad .cov-row{border-left-color:var(--mark);background:var(--mark-wash)}
 .cov-grey .cov-row{border-left-color:var(--rule)}
-.cov-src,.cov-src-go{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.66rem;
+.cov-src,.cov-src-go{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:block;
  margin-bottom:.25rem}
 .cov-go{cursor:pointer;border-bottom:1px dotted var(--accent-2)}
@@ -151,10 +158,17 @@ CHANGE_JS = """
 const PANES = [...document.querySelectorAll('.pane')];
 const TABS  = [...document.querySelectorAll('.tab')];
 const RAILS = [...document.querySelectorAll('.rail-wrap')];
+/* Every control on this page that changes the FLOW has to go through
+   syncMargin, not just the resize handler. A margin note's top is an absolute
+   pixel computed once from where its block was standing; switching tabs swaps
+   one whole document for another, so every note would be left beside a block
+   from the pane that is no longer showing — with its tie still drawn SOLID,
+   which is the page's promise that the note is level with its own line. */
 function showTab(key) {
   TABS.forEach(t => t.classList.toggle('on', t.dataset.tab === key));
   PANES.forEach(p => p.classList.toggle('on', p.dataset.pane === key));
   RAILS.forEach(r => r.classList.toggle('on', r.dataset.rail === key));
+  syncMargin();                        // one whole document just swapped for another
 }
 TABS.forEach(t => t.onclick = () => { showTab(t.dataset.tab); window.scrollTo(0, 0); });
 
@@ -176,7 +190,10 @@ const cfBtn = document.getElementById('cf-toggle');
 cfBtn.onclick = () => {
   const on = cfBtn.getAttribute('aria-pressed') !== 'true';
   cfBtn.setAttribute('aria-pressed', String(on));
+  /* `.cf{display:none}` takes every counterpart out of the FLOW, so a pane with
+     thirty of them moves by thousands of pixels. Same reason as showTab. */
   document.body.classList.toggle('nocf', !on);
+  syncMargin();                        // every counterpart just left the flow
 };
 
 let peek = null;
@@ -561,14 +578,28 @@ def build(change_dir, root=None, out=None):
 
     page = (R.page(os.path.basename(change_dir), change_key, "", 0, 0)
             .replace("</head>", "<style>" + CHANGE_CSS + "</style>\n</head>"))
+    # The reading half of render_doc's page, with an empty document in it — the
+    # exact run this build replaces with its own tabbed shell. Built from
+    # R.SHELL_MARKUP rather than hand-copied: a hand-copied literal turns into a
+    # silent no-op the moment that markup changes, and the change page then
+    # renders with an empty column and no error anywhere.
+    target = ('<div class="shell">' + R.SHELL_MARKUP.replace("__BODY__", "")
+              + '</div>')
     shell = ('<div class="tabs"><div class="tabs-scroll">' + "".join(tabs) + '</div>'
              + toggle + '</div>\n'
              '<div class="shell"><nav class="rail" aria-label="Sections">'
              + "".join(rails) + '</nav>'
-             '<main class="page" id="doc">' + "".join(panes) + '</main></div>')
-    page = page.replace(
-        '<div class="shell"><main class="page"><div class="col" id="doc"></div></main></div>',
-        shell)
+             '<main class="page"><div class="wrap">'
+             '<div class="panes" id="doc">' + "".join(panes) + '</div>'
+             '<div class="gutter" id="gutter" aria-label="Annotations in the margin"></div>'
+             '</div></main></div>')
+    if target not in page:
+        # Never a silent no-op. This is a string match against another module's
+        # markup, which is exactly the coupling that breaks without a symptom.
+        raise ChangeUnreadable(
+            "render_doc's shell markup did not match what this build expects; "
+            "the tabbed shell was not substituted")
+    page = page.replace(target, shell)
     page = page.replace("</body>", "<script>" + CHANGE_JS + "</script>\n</body>")
     page = page.replace("0 blocks · 0 words",
                         "%d files · %d blocks · %s words"

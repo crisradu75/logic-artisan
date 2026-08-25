@@ -543,7 +543,11 @@ def rail(sections):
 
 FAVICON_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-    '<style>.a{fill:#2F5C57}.b{fill:#C8622F}'
+    # The two accents, spelled out rather than read from the stylesheet: this
+    # SVG is base64'd into a data URI and never sees a CSS variable. `.b` is
+    # --mark and moves with it — it was left at the old #C8622F when --mark was
+    # darkened for contrast, which put a differently-coloured bar on the tab.
+    '<style>.a{fill:#2F5C57}.b{fill:#9E4718}'
     '@media (prefers-color-scheme:dark){.a{fill:#84B8B0}.b{fill:#E0915E}}</style>'
     '<path class="a" d="M3.4 1h5.3l3.9 3.9V15H3.4z"/>'
     '<path class="a" opacity=".55" d="M8.7 1l3.9 3.9H8.7z"/>'
@@ -553,10 +557,25 @@ FAVICON_SVG = (
 CSS = """
 :root{
  --paper:#F2F2EE;--ground:#E5E6E1;--sunk:#DCDDD7;
- --ink:#1A1D1F;--ink-2:#3E4447;--muted:#6E7478;--rule:#C9CBC5;--hair:#DBDCD6;
+ --ink:#1A1D1F;--ink-2:#3E4447;--muted:#585E62;--rule:#C9CBC5;--hair:#DBDCD6;
  --accent:#2F5C57;--accent-2:#4C837C;--accent-wash:#DCE7E3;
- --mark:#C8622F;--mark-wash:#F1DFD4;
+ --mark:#9E4718;--mark-wash:#F1DFD4;
 }
+/* --muted carries nearly every label on this page and --mark carries the whole
+   annotation layer, so both are read as text and both answer to WCAG AA (4.5:1)
+   on all three light surfaces, not just on --paper. They did not: --muted was
+   4.22 / 3.78 / 3.47 and --mark 3.57 / 3.19 / 2.93. They now measure 5.86 /
+   5.24 / 4.81 and 5.55 / 4.97 / 4.56, so the worst pair on the page is 4.56 —
+   --mark on --sunk, which is the drawer's own ground and the pair nobody looks
+   at. Changing either value re-derives every one of those six numbers, and the
+   command that produces them is the test:
+
+     python3 -m pytest plugin-tests/tests/skills/annotate/test_render_doc.py -k wcag
+
+   It reads the palette out of the rendered page and fails below 4.5:1, so it
+   goes red on a value this comment has not been updated for. The old hex codes
+   are deliberately not repeated here: dead colours in prose are a grep magnet
+   that nothing fails on. */
 /* Light is the default outright, and there is deliberately no
    `prefers-color-scheme` rule: this page is a reading surface for a working
    document, and it opens the same way on every machine rather than tracking a
@@ -565,11 +584,15 @@ CSS = """
    asked for it — which also means no flash of the other palette on load. */
 :root[data-theme="dark"]{
  --paper:#16191B;--ground:#101314;--sunk:#1C2022;
- --ink:#DCDEDA;--ink-2:#B0B5B3;--muted:#828885;--rule:#2B3033;--hair:#23282A;
+ --ink:#DCDEDA;--ink-2:#B0B5B3;--muted:#8E9491;--rule:#2B3033;--hair:#23282A;
  --accent:#84B8B0;--accent-2:#5E938C;--accent-wash:#172523;
  --mark:#E0915E;--mark-wash:#291A11;
 }
 *{box-sizing:border-box}
+/* No declaration on this page goes below .69rem. `rem` resolves against the
+   ROOT, which is 16px — `body{font-size:17px}` below does not move it — so
+   .69rem is 11.04px and anything under it was 9–10px type carrying locators,
+   counts and failure states. 21 declarations were below that floor. */
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-height:1.65;
  font-family:ui-serif,Charter,"Iowan Old Style",Georgia,Cambria,"Times New Roman",serif}
@@ -600,15 +623,23 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 .opener:hover{background:var(--mark-wash)}
 .opener[aria-expanded="true"]{background:var(--mark);border-color:var(--mark);color:var(--paper);
  box-shadow:inset 3px 0 0 var(--paper)}
+/* The one always-visible surface, so it carries any state the drawer would
+   otherwise hold off-screen — an unreadable corpus, a dead server, an unsaved
+   note. Not a colour alone: the dot is what survives a reader who cannot tell
+   these two oranges apart. */
+.opener.failing{border-color:var(--mark);background:var(--mark);color:var(--paper);
+ box-shadow:inset 3px 0 0 var(--paper)}
+.opener.failing::after{content:"!";font-weight:700;margin-left:.15rem}
+.opener.failing .cmt-n{background:var(--paper);color:var(--mark)}
 .cmt-n{font-variant-numeric:tabular-nums;background:var(--mark-wash);color:var(--mark);
- border-radius:999px;padding:.05rem .42rem;font-size:.68rem;min-width:1.35rem;text-align:center}
+ border-radius:999px;padding:.05rem .42rem;font-size:0.69rem;min-width:1.35rem;text-align:center}
 .opener[aria-expanded="true"] .cmt-n{background:var(--paper);color:var(--mark)}
 
 .shell{display:grid;grid-template-columns:clamp(13rem,18vw,17rem) minmax(0,1fr);
  align-items:start}
 .rail{position:sticky;top:2.9rem;height:calc(100vh - 2.9rem);overflow-y:auto;
  padding:1.3rem .8rem 3rem 1.1rem;border-right:1px solid var(--rule);background:var(--paper)}
-.rail-h{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.62rem;letter-spacing:.16em;
+.rail-h{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;letter-spacing:.16em;
  text-transform:uppercase;color:var(--muted);margin:0 0 .8rem .1rem}
 .rail-item{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;
  text-decoration:none;color:var(--ink-2);padding:.42rem .45rem;border-radius:2px;
@@ -628,18 +659,18 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 .rail-bar i{display:block;height:100%;background:var(--accent-2);opacity:.5}
 .rail-item.on .rail-bar i{opacity:1}
 .rail-meta{display:flex;align-items:center;gap:.3rem;flex:none}
-.rail-n{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.66rem;
+.rail-n{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  font-variant-numeric:tabular-nums;color:var(--muted);text-align:right}
 .rail-item.on .rail-n{color:var(--accent)}
 /* The annotation count is the reason to look at the rail once a pass is under
    way: it says which sections were argued with, which is not the same question
    as which are long. */
-.rail-c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.64rem;
+.rail-c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  font-variant-numeric:tabular-nums;background:var(--mark);color:var(--paper);
  border-radius:999px;padding:.02rem .34rem;min-width:1.1rem;text-align:center}
 .rail-c[hidden]{display:none}
 .rail-foot{margin-top:1.1rem;padding-top:.9rem;border-top:1px solid var(--hair);
- font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.62rem;line-height:1.7;
+ font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;line-height:1.7;
  color:var(--muted)}
 .sec{scroll-margin-top:4rem}
 
@@ -669,7 +700,7 @@ img{max-width:100%;height:auto;border-radius:2px}
 .imglink{font-style:italic}
 .fm{margin:0 0 2rem;border:1px dashed var(--rule);border-radius:3px;padding:.5rem .7rem;
  background:var(--ground)}
-.fm-t{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.58rem;
+.fm-t{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:.4rem}
 .fm pre{margin:0;background:none;border:0;padding:0}
 .pt{white-space:pre-wrap}
@@ -679,7 +710,7 @@ th,td{border:1px solid var(--hair);padding:.4rem .6rem;text-align:left;vertical-
 th{background:var(--sunk);font-weight:600}
 
 .sel-btn{position:absolute;z-index:90;cursor:pointer;background:var(--mark);color:var(--paper);
- font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.62rem;letter-spacing:.1em;
+ font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;letter-spacing:.1em;
  text-transform:uppercase;border-radius:3px;padding:.34rem .6rem;
  box-shadow:0 2px 10px rgba(0,0,0,.22);user-select:none}
 .sel-btn span{margin-right:.25rem}
@@ -691,9 +722,9 @@ th{background:var(--sunk);font-weight:600}
  background:var(--sunk);color:var(--ink);border:1px solid var(--rule);border-radius:2px;
  resize:vertical}
 .cmt-actions,.cmt-erow{display:flex;align-items:center;gap:.35rem;margin-top:.5rem}
-.cmt-where{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.6rem;
+.cmt-where{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  color:var(--muted);letter-spacing:.06em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cmt-hint{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.58rem;color:var(--muted)}
+.cmt-hint{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;color:var(--muted)}
 .cmt-ico{width:1.5rem;height:1.5rem;display:inline-flex;align-items:center;justify-content:center;
  border:1px solid var(--rule);border-radius:2px;background:transparent;color:var(--ink-2);
  cursor:pointer;font-size:.82rem;line-height:1;padding:0}
@@ -710,7 +741,7 @@ th{background:var(--sunk);font-weight:600}
  border:1px solid var(--mark);background:var(--mark-wash);color:var(--mark);
  font-variant-numeric:tabular-nums;line-height:1;padding:0;display:inline-flex;
  align-items:center;justify-content:center;height:1.2rem}
-.cmt-num{font-size:.68rem;min-width:1.25rem;border-radius:2px}
+.cmt-num{font-size:0.69rem;min-width:1.25rem;border-radius:2px}
 .cmt-x{font-size:.8rem;width:0;min-width:0;opacity:0;overflow:hidden;border-left:0;
  border-radius:0 2px 2px 0;transition:opacity .12s ease,width .12s ease}
 .cmt-sup:hover .cmt-num,.cmt-sup:focus-within .cmt-num{border-radius:2px 0 0 2px}
@@ -730,7 +761,7 @@ body.cmt .scrim{opacity:1;pointer-events:auto}
 .dr-top{display:flex;align-items:baseline;gap:.6rem;padding:.8rem 1rem;
  border-bottom:1px solid var(--mark);flex:none}
 .dr-title{font-weight:600}
-.dr-sub{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.62rem;
+.dr-sub{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  letter-spacing:.07em;text-transform:uppercase;color:var(--muted);overflow:hidden;
  text-overflow:ellipsis;white-space:nowrap}
 .dr-x{display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;
@@ -739,19 +770,126 @@ body.cmt .scrim{opacity:1;pointer-events:auto}
 .dr-body{overflow-y:auto;padding:0 1rem 3rem}
 .cmt-card{padding:.9rem 0;border-bottom:1px solid var(--hair)}
 .cmt-head{display:flex;gap:.55rem;align-items:baseline;margin-bottom:.35rem}
-.cmt-idx{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.66rem;color:var(--mark);flex:none}
-.cmt-loc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.63rem;color:var(--muted);
+.cmt-idx{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;color:var(--mark);flex:none}
+.cmt-loc{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;color:var(--muted);
  letter-spacing:.04em;cursor:pointer;background:none;border:0;padding:0;text-align:left}
 .cmt-loc:hover{color:var(--mark);text-decoration:underline}
-.cmt-acts{margin-left:auto;display:flex;gap:.15rem;flex:none}
+.cmt-acts{margin-left:auto;display:flex;gap:.15rem;flex:none;align-items:center}
+/* A destructive action says what it does and is big enough to mean it. This was
+   a 24px unlabelled ✕ beside an identical ✎, which is two glyphs and one
+   irreversible outcome. Same control as the margin's, same words. */
+.cmt-act{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;letter-spacing:.08em;
+ text-transform:uppercase;color:var(--muted);background:none;border:0;cursor:pointer;
+ padding:.28rem .4rem;border-radius:2px;min-height:26px}
+.cmt-act:hover{color:var(--mark);background:var(--mark-wash)}
 .cmt-quote{margin:0 0 .4rem;font-size:.84rem;line-height:1.45;color:var(--ink-2);
  border-left:2px solid var(--mark);padding-left:.6rem}
 .cmt-note{margin:0;font-size:.9rem;line-height:1.5;cursor:text;white-space:pre-wrap}
 .cmt-empty{color:var(--muted);font-size:.86rem;line-height:1.6;padding:1.4rem 0}
 .cmt-fatal{color:var(--mark)}
-.cmt-sep{margin:1.1rem 0 .5rem;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.6rem;
+.cmt-sep{margin:1.1rem 0 .5rem;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--rule);
  padding-top:.6rem}
+
+/* ---------- the comment margin ---------- */
+/* The reading column sat centred with ~214px of dead paper either side at
+   1440px, and the drawer — the one surface that describes the prose — was laid
+   ON TOP of it. An annotation and the sentence it names could not be read at
+   once, which is the whole reason this page exists. The right-hand dead paper is
+   the margin now, and the column moves off centre to pay for it: 40rem here
+   against the 44rem it had, so the measure is 64px narrower when the margin is
+   up. Below 1000px the margin folds away and the inline markers carry every
+   annotation, so nothing is ever unreachable. */
+.wrap{display:grid;grid-template-columns:minmax(0,40rem) minmax(11rem,19rem);
+ gap:clamp(1rem,2.5vw,3rem);justify-content:center;align-items:start;padding-top:2.4rem}
+.wrap>.col{max-width:none;min-width:0;margin:0;padding-top:0}
+.gutter{position:relative}
+@media (max-width:999px){
+ .wrap{display:block;max-width:44rem;margin:0 auto}
+ .gutter{display:none}
+}
+/* The drawer is a fixed overlay 27rem wide, so on anything narrower than the
+   rail plus the column plus the margin plus the drawer, an open drawer lands ON
+   the margin — notes rendered, hoverable, and covered. The margin folds away
+   instead while the drawer is open. Nothing is lost by that: the two surfaces
+   hold the same records, and the drawer is the one the reader just opened.
+   Above 1600px they fit side by side, and there the drawer stops being modal —
+   the scrim would sit over the margin and swallow every click on it. */
+@media (max-width:1599px){
+ body.cmt .wrap{display:block;max-width:44rem;margin:0 auto}
+ body.cmt .gutter{display:none}
+}
+@media (min-width:1600px){
+ body.cmt .page{padding-right:27rem}
+ body.cmt .scrim{opacity:0;pointer-events:none}
+}
+/* A note stands beside the block it names. Two notes on one block stack: the
+   second is pushed below the first and switches to a dashed rule, so a displaced
+   note never pretends to be level with its own line. */
+.mnote{position:absolute;left:0;width:100%;cursor:pointer;
+ padding:.5rem .6rem .55rem .7rem;border-left:2px solid var(--mark);
+ background:transparent;border-radius:0 2px 2px 0;
+ transition:background .15s ease,top .18s cubic-bezier(.4,0,.2,1)}
+.mnote:hover,.mnote.lit{background:var(--mark-wash)}
+.mnote.stacked{border-left-style:dashed}
+/* Not anchored to a block, so it does not pretend to be: no tie, no number, and
+   it sits under the last note rather than beside anything. */
+.mnote.mn-lost{border-left-style:dotted;cursor:default}
+.mnote.mn-lost:hover{background:transparent}
+/* A button centres its own text, and this one wraps to two lines — so the
+   sentence sat centred while every other note in the margin is ragged-right. */
+.mn-lost .mn-act{padding-left:0;text-transform:none;letter-spacing:.02em;
+ font-size:.78rem;color:var(--mark);text-align:left;line-height:1.45}
+.mn-lost .mn-act:hover{background:transparent;text-decoration:underline}
+.mn-head{display:flex;align-items:baseline;gap:.45rem;margin-bottom:.2rem}
+.mn-i{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
+ color:var(--mark);flex:none;font-variant-numeric:tabular-nums}
+.mn-note{margin:0;font-size:.88rem;line-height:1.5;color:var(--ink-2);white-space:pre-wrap}
+.mnote.lit .mn-note{color:var(--ink)}
+.mn-acts{margin-left:auto;display:flex;gap:.1rem;opacity:0;transition:opacity .12s ease}
+.mnote:hover .mn-acts,.mnote:focus-within .mn-acts{opacity:1}
+@media (hover:none){.mn-acts{opacity:1}}
+/* A destructive action says what it does and is big enough to mean it. The
+   drawer's delete is a 24px unlabelled glyph beside an identical edit glyph. */
+.mn-act{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;letter-spacing:.08em;
+ text-transform:uppercase;color:var(--muted);background:none;border:0;cursor:pointer;
+ padding:.28rem .4rem;border-radius:2px;min-height:26px}
+.mn-act:hover{color:var(--mark);background:var(--paper)}
+.mn-tie{position:absolute;left:-2.5rem;top:.85rem;width:2.5rem;height:1px;background:var(--hair)}
+.mnote.lit .mn-tie{background:var(--mark)}
+.mn-ta{width:100%;font:inherit;font-size:.88rem;line-height:1.5;padding:.4rem .45rem;
+ border:1px solid var(--mark);border-radius:3px;background:var(--sunk);color:var(--ink);
+ resize:vertical}
+.mn-erow{display:flex;gap:.15rem;margin-top:.35rem;align-items:center}
+/* Hovering either end lights both. */
+.cmt-hl.lit{background:var(--mark);color:var(--paper);box-shadow:0 0 0 2px var(--mark)}
+.cmt-card.lit{background:var(--mark-wash)}
+
+/* ---------- state, as a badge rather than a caption ---------- */
+/* `unsaved`, `DELETE FAILED` and `EDIT NOT SAVED` were appended to the locator
+   line in 10px --muted — the same size and weight as the routine locator they
+   were bolted onto, for four states of which three mean the reader's work did
+   not reach the file. */
+.badge{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;letter-spacing:.09em;
+ text-transform:uppercase;padding:.1rem .35rem;border-radius:2px;flex:none;white-space:nowrap}
+.b-fail{background:var(--mark);color:var(--paper);font-weight:600}
+.b-warn{border:1px solid var(--mark);color:var(--mark);font-weight:600}
+.b-info{border:1px solid var(--rule);color:var(--muted)}
+
+/* ---------- undo ---------- */
+/* The corpus is append-only, so a deleted record is still on disk. That makes an
+   undo cheap, and a delete with no way back inexcusable. */
+.undo{position:fixed;left:50%;bottom:1.4rem;transform:translateX(-50%) translateY(1.5rem);
+ z-index:120;display:flex;align-items:center;gap:.9rem;opacity:0;pointer-events:none;
+ background:var(--ink);color:var(--paper);border-radius:4px;padding:.55rem .75rem .55rem 1rem;
+ box-shadow:0 6px 26px rgba(0,0,0,.3);font-family:ui-monospace,Menlo,Consolas,monospace;
+ font-size:.75rem;line-height:1.5;max-width:min(34rem,92vw);
+ transition:opacity .16s ease,transform .16s ease}
+.undo.on{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+.undo-b{font:inherit;background:none;border:1px solid var(--paper);border-radius:3px;
+ color:var(--paper);cursor:pointer;padding:.2rem .6rem;letter-spacing:.08em;
+ text-transform:uppercase;flex:none;min-height:26px}
+.undo-b:hover{background:var(--paper);color:var(--ink)}
 @media (max-width:900px){
  .col{max-width:none}
  .shell{grid-template-columns:1fr}
@@ -855,9 +993,26 @@ function paintRailCounts() {
 }
 
 /* ---- the drawer ---- */
+/* A closed drawer is translated off-screen, which removes it from view and from
+   nothing else: every button inside it stayed in the tab order, so tabbing
+   across the page walked an invisible list of edit and delete controls. `inert`
+   is what actually takes it out — and it is set here rather than in the CSS
+   because it also has to be true before the first click, which the initial call
+   below provides. */
 function setCmt(on) {
   document.body.classList.toggle('cmt', on);
   CMT.el.open.setAttribute('aria-expanded', String(on));
+  const dr = document.getElementById('cdrawer');
+  if (dr) { dr.toggleAttribute('inert', !on); dr.setAttribute('aria-hidden', String(!on)); }
+  /* Above the wide breakpoint the margin stays up while the drawer is open, so
+     both surfaces would render an editor for the same record; below it the
+     margin folds away entirely. Either way the answer to "is there a margin"
+     changes with the drawer, so opening or closing one is a geometry event.
+     Called unguarded: syncMargin is a function declaration and is hoisted, and
+     every caller of setCmt runs after load. A `typeof` guard here bought
+     nothing and made the call impossible to distinguish, in a test, from a call
+     that can never fire. */
+  syncMargin();
 }
 CMT.el.open.onclick = () => setCmt(!document.body.classList.contains('cmt'));
 document.getElementById('cd-x').onclick = () => setCmt(false);
@@ -1116,25 +1271,47 @@ async function postAnnotation(rec) {
 async function del(id) {
   const rec = CMT.list.find(c => c.id === id); if (!rec) return;
   if (rec.unsaved && String(rec.id).startsWith('local-')) {
-    CMT.list = CMT.list.filter(c => c.id !== id);      // never reached the file
+    /* A local- id means postComment's catch fired, which happens for a lost
+       response as well as a failed write — so this record MAY be on the file
+       under a server id. Dropping it from the page is still right, because the
+       page has no id the server would accept; the strip says what is actually
+       known rather than claiming a clean removal. */
+    CMT.list = CMT.list.filter(c => c.id !== id);
+    undoBar(true, 'Removed from this page. It was never confirmed saved, so it'
+                + ' may still be in the annotations file.', null);
+    clearTimeout(undoT);
+    undoT = setTimeout(hideUndo, 9000);
     return render();
   }
-  rec.deleting = true; render();
+  rec.deleting = true;
+  /* A retry must not look identical to the failure it is retrying: stateBadge
+     tests delFailed first, so leaving it set shows "delete failed" over an
+     in-flight second attempt. */
+  rec.delFailed = false;
+  render();
+  rec.wasAt = CMT.list.indexOf(rec);          // so undo can put it back in place
   try {
     const r = await fetch('/api/annotations', {method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({id, deleted: true})});
     if (!r.ok) {
+      /* The server distinguishes an unreadable corpus from a failed write from a
+         refused amendment, and says which in the body. Throwing the status alone
+         drops the one sentence naming what to fix. */
       let msg = 'HTTP ' + r.status;
       try { msg = (await r.json()).error || msg; } catch (e) {}
       throw new Error(msg);
     }
     CMT.list = CMT.list.filter(c => c.id !== id);
     CMT.err = null;
+    /* The corpus is append-only, so the record is still on disk and the undo is
+       one POST. A delete with no way back, from an unlabelled 24px glyph, is
+       not a thing this page should offer. */
+    offerUndo(rec);
   } catch (e) {
     rec.deleting = false;
-    rec.delFailed = true;
-    CMT.err = 'delete failed: ' + String(e.message || e);
+    rec.delFailed = String(e.message || e);
+    CMT.err = 'delete failed: ' + rec.delFailed;
   }
   render();
 }
@@ -1146,9 +1323,32 @@ async function del(id) {
 async function editNote(id, note) {
   const rec = CMT.list.find(c => c.id === id); if (!rec) return;
   note = (note || '').trim();
+  /* An emptied note is not a no-op the reader meant, and discarding it in
+     silence is indistinguishable from a save. The store has no way to record
+     "no note" — that is what deleting is for — so it is refused out loud.
+
+     The refusal rides on the RECORD, not on CMT.err, and the editor stays open.
+     CMT.err renders only into #cmt-status, which lives inside the drawer, and
+     the whole point of the margin is that the reader now works with the drawer
+     closed — so a message sent there is a message nobody reads. And an editor
+     that closes on a refusal looks exactly like an editor that saved. */
+  if (!note) {
+    rec.editFailed = 'an annotation cannot have an empty note — delete it instead';
+    return render();
+  }
   rec.editing = false;
-  if (!note || note === rec.note) return render();          // nothing to record
+  /* `!rec.editFailed` is what makes a retry possible at all. `rec.note` is set
+     optimistically below, so after a failed POST the record already holds the
+     text the reader typed — reopening the editor prefills it, and Save then hit
+     `note === rec.note` and returned with no POST, no message and the badge
+     unchanged. The reader was retrying a failed save and the page did nothing,
+     forever, unless they thought to alter a character. del() was given exactly
+     this fix and editNote was not. */
+  if (note === rec.note && !rec.editFailed) return render();   // nothing to record
   rec.note = note;
+  /* Cleared at the START of the attempt, so an in-flight retry does not wear the
+     badge of the failure it is retrying. Same rule as del()'s delFailed. */
+  rec.editFailed = false;                    // before the POST, not after it
   if (rec.unsaved && String(rec.id).startsWith('local-')) return render();
   render();
   try {
@@ -1165,9 +1365,11 @@ async function editNote(id, note) {
   } catch (e) {
     /* The new wording stays on screen rather than being rolled back — throwing
        away what was just typed is a worse failure than an unsaved one, and the
-       card says which it is. */
-    rec.editFailed = true;
-    CMT.err = 'edit failed: ' + String(e.message || e);
+       badge says which it is. The MESSAGE is carried on the record, not only in
+       CMT.err: CMT.err renders inside the drawer, and with the margin up the
+       drawer is closed. */
+    rec.editFailed = String(e.message || e);
+    CMT.err = 'edit failed: ' + rec.editFailed;
   }
   render();
 }
@@ -1275,9 +1477,19 @@ function rangeFor(host, off, text) {
   return r;
 }
 
+/* Whether the last paint() ran with a margin or without one. paint() chooses
+   between a margin note and an inline marker, so when that answer changes the
+   page has to be REPAINTED, not merely re-laid-out. Null until the first paint,
+   so the first sync after load always repaints. */
+let paintedMarginOff = null;
+
 function paint() {
   clearMarks();
+  paintedMarginOff = marginOff();
   openOnes().forEach((c, i) => {
+    c.idx = i + 1;
+    c.mark = null;
+    c.paintFailed = false;
     const host = hostFor(c);
     if (!host) { c.lost = true; return; }
     c.off = offsetOf(c, host);
@@ -1306,27 +1518,304 @@ function paint() {
                   + ' the corpus is untouched';
         }
       }
+      /* Distinct from `lost`, and both are set. Reporting only ANCHOR LOST told
+         the reader their document had moved — for an annotation whose text is
+         exactly where it was. This one is a fault in the page, not in the
+         corpus, and it is the only state here the reader can do nothing about
+         except rebuild. */
+      c.paintFailed = true;
       c.lost = true;
       return;
     }
     c.lost = false;
-    const sup = document.createElement('sup');
-    sup.className = 'cmt-sup';
-    const num = document.createElement('button');
-    num.className = 'cmt-num'; num.textContent = String(i + 1);
-    num.title = c.note; num.setAttribute('aria-label', 'annotation ' + (i + 1));
-    num.onclick = e => { e.stopPropagation(); openList(c.id); };
-    const x = document.createElement('button');
-    x.className = 'cmt-x'; x.textContent = '×';
-    x.title = 'delete this annotation';
-    x.setAttribute('aria-label', 'delete annotation ' + (i + 1));
-    x.onclick = e => { e.stopPropagation(); del(c.id); };
-    sup.append(num, x);
-    m.after(sup);
+    c.mark = m;
+    m.dataset.cmt = c.id;
+    m.onmouseenter = () => lite(c.id, true);
+    m.onmouseleave = () => lite(c.id, false);
+    /* The inline marker is what the margin replaces. It stays for the widths
+       where there is no margin — a phone, a narrow window — so no annotation is
+       ever unreachable. syncMargin() is what keeps that true across a resize. */
+    if (paintedMarginOff) {
+      const sup = document.createElement('sup');
+      sup.className = 'cmt-sup';
+      const num = document.createElement('button');
+      num.className = 'cmt-num'; num.textContent = String(i + 1);
+      num.title = c.note; num.setAttribute('aria-label', 'annotation ' + (i + 1));
+      num.onclick = e => { e.stopPropagation(); openList(c.id); };
+      const x = document.createElement('button');
+      x.className = 'cmt-x'; x.textContent = '×';
+      x.title = 'delete this annotation';
+      x.setAttribute('aria-label', 'delete annotation ' + (i + 1));
+      x.onclick = e => { e.stopPropagation(); del(c.id); };
+      sup.append(num, x);
+      m.after(sup);
+    }
   });
+  layoutMargin();
 }
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+/* ---- the annotation margin ---- */
+const GUTTER = document.getElementById('gutter');
+function marginOff() {
+  return !GUTTER || getComputedStyle(GUTTER).display === 'none';
+}
+
+/* The drawer being open decides which surface owns editing. */
+function drawerOpen() { return document.body.classList.contains('cmt'); }
+
+/* The ONE entry point for "the geometry moved". Every reading control that
+   changes the FLOW has to come through here — not just a resize. On the change
+   page, switching tabs and hiding the counterparts both move every block by
+   hundreds of pixels, and margin tops are absolute pixels computed once. Nothing
+   re-laid them out, so a toggle left every note beside a different sentence with
+   its tie still drawn SOLID, which is this page's promise that the note is level
+   with its own line. Repaint when the margin has appeared or disappeared;
+   otherwise just move the notes. */
+function syncMargin() {
+  if (marginOff() !== paintedMarginOff) render();
+  else layoutMargin();
+}
+
+/* Light the note and its anchor together, from whichever end was touched. */
+function lite(id, on) {
+  document.querySelectorAll('[data-cmt="' + CSS.escape(id) + '"]')
+    .forEach(el => el.classList.toggle('lit', on));
+  const card = document.getElementById('card-' + id);
+  if (card) card.classList.toggle('lit', on);
+}
+
+function layoutMargin() {
+  if (!GUTTER) return;
+  GUTTER.textContent = '';
+  GUTTER.style.height = '';
+  if (marginOff()) return;
+  const top0 = GUTTER.getBoundingClientRect().top + window.scrollY;
+  let floor = -Infinity;
+  /* `isConnected` is not the test. On a change page every file is in the
+     document at once and only the showing tab is displayed, so a mark in a
+     hidden pane is connected, has a zero-sized rect, and produced a note pinned
+     at the top of the margin beside nothing — measured at top:-135.78px while
+     the tasks tab was showing and the note belonged to the proposal.
+     getClientRects() is empty for a `display:none` subtree, which is the
+     question actually being asked: is this mark on screen. */
+  openOnes().filter(c => !c.lost && c.mark && c.mark.getClientRects().length).forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'mnote';
+    el.tabIndex = 0;
+    el.dataset.cmt = c.id;
+    el.innerHTML =
+      '<span class="mn-tie"></span>'
+      + '<div class="mn-head"><span class="mn-i">' + c.idx + '</span>' + stateBadge(c)
+      + '<span class="mn-acts">'
+      + '<button class="mn-act" data-medit="' + esc(c.id) + '">Edit</button>'
+      + '<button class="mn-act" data-mdel="' + esc(c.id) + '">Delete</button>'
+      + '</span></div>'
+      /* ONE editor at a time. Above the wide breakpoint the margin is not hidden
+         while the drawer is open, so both surfaces would render a textarea for
+         the same c.editing, each prefilled from c.note — and saving from the
+         drawer would read ITS stale textarea, match `note === rec.note`, and
+         repaint the old wording with no message. The drawer owns editing
+         whenever it is open. */
+      + (c.editing && !drawerOpen()
+          ? '<textarea class="mn-ta" rows="3" data-med="' + esc(c.id) + '">' + esc(c.note) + '</textarea>'
+            + '<div class="mn-erow"><button class="mn-act" data-mesave="' + esc(c.id) + '">Save</button>'
+            + '<button class="mn-act" data-mecancel="' + esc(c.id) + '">Cancel</button></div>'
+          : '<p class="mn-note">' + esc(c.note) + '</p>');
+    GUTTER.appendChild(el);
+    /* Anchored to the marked block, then pushed clear of the note above it. A
+       pushed note switches to a dashed rule: it is no longer level with its own
+       line and should not say that it is. */
+    let top = c.mark.getBoundingClientRect().top + window.scrollY - top0 - 6;
+    if (top < floor + 8) { top = floor + 8; el.classList.add('stacked'); }
+    el.style.top = top + 'px';
+    floor = top + el.offsetHeight;
+    el.onmouseenter = () => lite(c.id, true);
+    el.onmouseleave = () => lite(c.id, false);
+    el.addEventListener('focus', () => lite(c.id, true));
+    el.addEventListener('blur', () => lite(c.id, false));
+  });
+  /* An annotation whose passage the document no longer has cannot stand beside a
+     block, and paint() gives it no inline marker either — so with the drawer
+     closed it was on NO surface the reader had open. The margin says how many
+     and opens the drawer. */
+  const lostN = openOnes().filter(c => c.lost).length;
+  if (lostN) {
+    const note = document.createElement('div');
+    note.className = 'mnote mn-lost';
+    note.style.top = (floor > -Infinity ? floor + 24 : 0) + 'px';
+    note.innerHTML =
+      '<p class="mn-note"><button class="mn-act" id="mn-lost-b">'
+      + (lostN === 1
+          ? '1 annotation has lost its place in the document'
+          : lostN + ' annotations have lost their place in the document')
+      + ' →</button></p>';
+    GUTTER.appendChild(note);
+    note.querySelector('#mn-lost-b').onclick = () => setCmt(true);
+    floor = (floor > -Infinity ? floor + 24 : 0) + note.offsetHeight;
+  }
+  GUTTER.style.height = (floor > -Infinity ? floor + 40 : 0) + 'px';
+
+  GUTTER.querySelectorAll('[data-mdel]').forEach(bn =>
+    bn.onclick = e => { e.stopPropagation(); del(bn.dataset.mdel); });
+  GUTTER.querySelectorAll('[data-medit]').forEach(bn =>
+    bn.onclick = e => {
+      e.stopPropagation();
+      const c = CMT.list.find(x => x.id === bn.dataset.medit); if (!c) return;
+      CMT.list.forEach(x => { x.editing = (x === c); });
+      render();
+      /* With the drawer open the margin renders no textarea, so focus has to
+         follow the editor to the surface that actually has it — otherwise Edit
+         looks like it did nothing. */
+      const t = GUTTER.querySelector('[data-med]')
+             || CMT.el.list.querySelector('[data-ed="' + CSS.escape(c.id) + '"]');
+      if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+    });
+  GUTTER.querySelectorAll('[data-mecancel]').forEach(bn =>
+    bn.onclick = e => {
+      e.stopPropagation();
+      const c = CMT.list.find(x => x.id === bn.dataset.mecancel);
+      if (c) { c.editing = false; render(); }
+    });
+  GUTTER.querySelectorAll('[data-mesave]').forEach(bn =>
+    bn.onclick = e => {
+      e.stopPropagation();
+      const t = GUTTER.querySelector('[data-med="' + CSS.escape(bn.dataset.mesave) + '"]');
+      /* A missing textarea is a DOM fault, not an empty note. Feeding '' to
+         editNote makes the two indistinguishable and throws away what the reader
+         typed. */
+      if (!t) { CMT.err = 'the editor went missing; nothing was saved'; return render(); }
+      editNote(bn.dataset.mesave, t.value);
+    });
+  GUTTER.querySelectorAll('[data-med]').forEach(t => t.onkeydown = e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); editNote(t.dataset.med, t.value); }
+    if (e.key === 'Escape') {
+      const c = CMT.list.find(x => x.id === t.dataset.med);
+      if (c) { c.editing = false; render(); }
+    }
+  });
+}
+
+/* State as a badge. More than one can be true at once — a failed undo and then a
+   failed edit — so the worst is shown and the rest are counted rather than
+   dropped. `lost` is deliberately absent: the drawer card marks it and the
+   margin's foot counts it, because it is information, not a failure. */
+/* Each entry is [class, label, detail]. The label is what the badge prints and
+   stays short enough to sit in a margin note's head; the detail is the server's
+   own sentence naming what to fix, and it goes in the title alongside every
+   other state that is true at once. Three of the flags carry a message string
+   rather than `true`, because with the margin up the drawer is closed and
+   CMT.err — which is where those sentences used to go — is inside it. */
+function stateBadge(c) {
+  const all = [];
+  const detail = v => (typeof v === 'string' && v) ? v : '';
+  if (c.paintFailed) all.push(['b-fail', 'could not be marked', '']);
+  if (c.undoFailed)  all.push(['b-fail', 'undo not confirmed', detail(c.undoFailed)]);
+  if (c.delFailed)   all.push(['b-fail', 'delete failed', detail(c.delFailed)]);
+  if (c.editFailed)  all.push(['b-fail', 'edit not saved', detail(c.editFailed)]);
+  if (c.unsaved)     all.push(['b-warn', 'not saved', '']);
+  if (c.deleting)    all.push(['b-info', 'deleting…', '']);
+  if (!all.length) return '';
+  const more = all.length > 1 ? ' +' + (all.length - 1) : '';
+  const title = all.map(x => x[2] ? x[1] + ' — ' + x[2] : x[1]).join(', ');
+  return '<span class="badge ' + all[0][0] + '" title="' + esc(title) + '">'
+       + all[0][1] + more + '</span>';
+}
+
+let marginT;
+addEventListener('resize', () => { clearTimeout(marginT); marginT = setTimeout(syncMargin, 120); });
+
+/* ---- undo ---- */
+const UNDO = {
+  bar:  document.getElementById('undo'),
+  text: document.getElementById('undo-t'),
+  btn:  document.getElementById('undo-b'),
+};
+
+/* opacity:0 does not remove a button from the tab order, and a handler holding
+   its closure over the deleted record would let a keyboard user fire an
+   un-delete long after the window closed. */
+function undoBar(on, msg, onClick, label) {
+  UNDO.text.textContent = msg || '';
+  UNDO.btn.textContent = label || 'Undo';
+  UNDO.btn.onclick = onClick || null;
+  /* An informational strip has no action, and two call sites pass none: the
+     local- delete, and the in-flight "Restoring…" state. The button used to
+     render anyway — visible, focusable, labelled "Undo", and doing nothing, for
+     the full nine seconds. A dead control is worse than an absent one, because
+     it advertises a recovery that does not exist, and it advertised it hardest
+     to the reader who had just destroyed the only copy of their own words.
+     `hidden`, not opacity, for the same reason the bar itself is `inert`. */
+  UNDO.btn.hidden = !onClick;
+  UNDO.bar.classList.toggle('on', !!on);
+  UNDO.bar.toggleAttribute('inert', !on);
+  UNDO.bar.setAttribute('aria-hidden', String(!on));
+}
+let undoT;
+function hideUndo() { clearTimeout(undoT); undoBar(false); }
+
+/* A record's own name, for a strip read in a hurry. `idx` is assigned in paint()
+   and a lost-anchor annotation still gets one, but a record deleted before the
+   first paint has none. */
+function nameOf(rec) {
+  if (rec.idx) return 'Annotation ' + rec.idx;
+  return rec.line ? ('The annotation on line ' + rec.line) : 'That annotation';
+}
+
+function offerUndo(rec) {
+  undoBar(true, nameOf(rec) + ' deleted.', () => undoDelete(rec));
+  clearTimeout(undoT);
+  undoT = setTimeout(hideUndo, 7000);
+}
+
+async function undoDelete(rec) {
+  clearTimeout(undoT);
+  /* The strip stays up THROUGH the POST, saying what it is doing. Dismissing it
+     first is what sends the failure to a panel nobody has open. */
+  undoBar(true, 'Restoring ' + nameOf(rec).toLowerCase() + '…', null);
+  delete rec.deleted; delete rec.deleting; delete rec.delFailed;
+  delete rec.undoFailed;
+  /* Back where it was, not re-sorted: sorting would renumber the whole list and
+     put it out of step with the file's own order.
+
+     Guarded, because the catch below leaves `rec` IN the list and re-arms the
+     strip with this same function and this same object. A retry after a failed
+     undo therefore ran this line a second time and spliced one record in twice:
+     two margin notes, the second marked `.stacked` as though it were a separate
+     annotation on the same block, two drawer cards sharing one DOM id, and a
+     header count one too high — with no error anywhere. The page invented an
+     annotation. Every further retry added another. */
+  if (CMT.list.indexOf(rec) < 0) {
+    const at = typeof rec.wasAt === 'number' ? rec.wasAt : CMT.list.length;
+    CMT.list.splice(Math.min(at, CMT.list.length), 0, rec);
+  }
+  render();
+  try {
+    const r = await fetch('/api/annotations', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: rec.id, deleted: false})});
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status;
+      try { msg = (await r.json()).error || msg; } catch (e2) {}
+      throw new Error(msg);
+    }
+    CMT.err = null;
+    hideUndo();
+  } catch (e) {
+    /* NOT "still deleted". This catch fires for a refused write AND for a lost
+       response — a killed server, a slept laptop, a reset socket — and in the
+       second case the tombstone may well have been lifted. Asserting the file's
+       state is something the client cannot do from here, and `del()`'s local-
+       branch already reasons this way about the same ambiguity. What is true in
+       both cases is that the undo was not confirmed. */
+    rec.undoFailed = String(e.message || e);
+    CMT.err = 'undo not confirmed: ' + rec.undoFailed;
+    undoBar(true, 'Undo could not be confirmed — reload to see the file. '
+                + rec.undoFailed, () => undoDelete(rec), 'Retry');
+  }
+  render();
+}
 
 /* Hoisted out of render(): the fatal branch renders unsaved cards too, and it
    runs before render()'s own declarations. A function declaration hoists; a
@@ -1339,18 +1828,20 @@ const card = (c, i) => '<div class="cmt-card" id="card-' + c.id + '" data-id="' 
        reader is deciding whether to switch tabs. */
     + esc(c.file ? c.file + (c.sec ? ' · ' + c.sec : '') : (c.sec || DOC))
     + ' · line ' + (c.line || '?')
+    /* ANCHOR LOST stays on the locator: it describes WHERE the annotation is,
+       which is the locator's job, and it is information rather than a failure.
+       The three states that mean the reader's work did not reach the file are
+       badges — they were 10px --muted suffixes on this same line, the same size
+       and weight as the routine locator they were bolted onto. */
     + (c.lost ? ' · ANCHOR LOST' : '')
-    + (c.unsaved ? ' · unsaved' : '')
-    + (c.delFailed ? ' · DELETE FAILED' : '')
-    + (c.editFailed ? ' · EDIT NOT SAVED' : '')
-    + (c.deleting ? ' · deleting…' : '')
     + '</button>'
+    + stateBadge(c)
     + '<span class="cmt-acts">'
     + '<button class="cmt-ico' + (c.editing ? ' is-on' : '') + '" data-edit="' + c.id + '"'
     + ' title="edit this note" aria-label="edit annotation ' + (i + 1) + '">✎</button>'
-    + (c.editing ? '' : '<button class="cmt-ico" data-del="' + c.id + '"'
+    + (c.editing ? '' : '<button class="cmt-act" data-del="' + c.id + '"'
         + ' title="delete this annotation" aria-label="delete annotation ' + (i + 1)
-        + '">✕</button>')
+        + '">Delete</button>')
     + '</span></div>'
     + '<p class="cmt-quote">' + esc(c.text) + '</p>'
     + (c.editing
@@ -1426,6 +1917,17 @@ function render() {
     : bits.length ? bits.join(' · ')
     : !CMT.list.length ? 'none yet'
     : (done.length ? 'saved · ' + done.length + ' resolved' : 'saved');
+
+  /* #cmt-status lives INSIDE the drawer, which is translateX(101%) when closed —
+     and this page's whole premise is that the reader now works with the drawer
+     closed, beside the margin. Every sentence above was therefore written to a
+     surface nobody has open, including "no server" and "CORPUS UNREADABLE": a
+     dead server rendered as an empty margin and an opener reading 0, which is
+     pixel-identical to a document nobody has annotated yet.
+     The opener is always visible, so it carries the alarm. */
+  const alarm = CMT.fatal || bits.length ? (CMT.fatal || bits.join(' · ')) : '';
+  CMT.el.open.classList.toggle('failing', !!alarm);
+  CMT.el.open.title = alarm || 'Open the annotations';
 
   if (CMT.fatal) {
     /* Unsaved cards render ABOVE the banner rather than instead of it. Returning
@@ -1564,6 +2066,17 @@ ICON_CLOSE = ('<svg class="ico-svg" viewBox="0 0 16 16" aria-hidden="true"><path
               'stroke-width="1.5" stroke-linecap="round"/></svg>')
 
 
+# The reading half of the page, with `__BODY__` where the document goes.
+# render_change.py replaces this whole run with its own tabbed shell, and it
+# matched it as a hand-copied literal — so changing the markup here silently
+# turned that replace into a no-op and rendered the change page with an empty
+# column. One constant, read by both, and a test that the substitution fired.
+SHELL_MARKUP = ('<main class="page"><div class="wrap">'
+                '<div class="col" id="doc">__BODY__</div>'
+                '<div class="gutter" id="gutter" aria-label="Annotations in the margin"></div>'
+                '</div></main>')
+
+
 def page(title, doc_key, body_html, blocks, words, sections=()):
     favicon = "data:image/svg+xml;base64," + base64.b64encode(
         FAVICON_SVG.encode("utf-8")).decode("ascii")
@@ -1599,9 +2112,13 @@ def page(title, doc_key, body_html, blocks, words, sections=()):
         '<button class="opener" id="cmt-open" aria-expanded="false">'
         '<span>Annotations</span><span class="cmt-n" id="cmt-count">0</span></button>'
         '</div>\n'
+        # `.wrap` is the two-column reading grid: the prose, and the margin the
+        # annotations stand in. render_change.py substitutes this exact markup
+        # for its own tabbed shell, so SHELL_MARKUP below is the one copy of the
+        # string and both sides read it from there.
         '<div class="shell">' + nav
-        + '<main class="page"><div class="col" id="doc">' + body_html
-        + '</div></main></div>\n'
+        + SHELL_MARKUP.replace("__BODY__", body_html)
+        + '</div>\n'
         '<div class="sel-btn" id="sel-btn" hidden><span>+</span> annotate</div>\n'
         '<div class="cmt-pop" id="cmt-pop" hidden>'
         '<p class="cmt-anchor" id="cmt-anchor"></p>'
@@ -1613,13 +2130,19 @@ def page(title, doc_key, body_html, blocks, words, sections=()):
         ' aria-label="Save annotation">✓</button>'
         '</div></div>\n'
         '<div class="scrim" id="scrim"></div>\n'
-        '<aside class="drawer" id="cdrawer" aria-label="Annotations">'
+        # `inert` from the markup, not from the script: the drawer opens closed,
+        # and a keyboard user reaching it before the first click is exactly the
+        # state a script-set attribute would miss. setCmt() owns it after that.
+        '<aside class="drawer" id="cdrawer" aria-label="Annotations" inert aria-hidden="true">'
         '<div class="dr-top"><span class="dr-title">Annotations</span>'
         '<span class="dr-sub" id="cmt-status">—</span>'
         '<button class="dr-x" id="cd-x" title="Close" aria-label="Close annotations">'
         + ICON_CLOSE + '</button></div>'
         '<div class="dr-body"><div id="cmt-list"></div></div>'
         '</aside>\n'
+        '<div class="undo" id="undo" inert aria-hidden="true">'
+        '<span id="undo-t"></span>'
+        '<button class="undo-b" id="undo-b">Undo</button></div>\n'
         '<script>' + js + '</script>\n'
         '</body>\n</html>\n'
     )

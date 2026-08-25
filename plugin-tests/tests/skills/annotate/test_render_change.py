@@ -304,3 +304,78 @@ def test_build_refuses_a_directory_that_is_not_a_change(tmp_path):
 
 def test_find_change_accepts_a_directory_path(change):
     assert OC.find_change(change["dir"], change["root"]) == change["dir"]
+
+
+# ---------------------------------------------------------------- the seam with render_doc
+
+
+def test_the_tabbed_shell_actually_replaces_render_docs_reading_column(built):
+    """This build takes render_doc's whole page and swaps one run of markup for
+    its own tabs, panes and rails. That is a string match against another
+    module's output — the coupling that breaks with no symptom.
+
+    A missed match leaves render_doc's EMPTY column in the page and drops every
+    pane on the floor, and the page still renders: a bar, a rail, a theme
+    toggle, and no document."""
+    html = built["html"]
+    assert '<div class="col" id="doc"></div>' not in html, \
+        "render_doc's empty reading column survived; the substitution did not fire"
+    assert html.count('<div class="pane') >= 3
+    assert '<div class="panes" id="doc">' in html
+
+
+def test_the_substitution_refuses_rather_than_silently_doing_nothing(change, monkeypatch):
+    """The guard, exercised. Left unguarded, a divergence turns `str.replace`
+    into a no-op and the failure is a blank page nobody can attribute.
+
+    Patching SHELL_MARKUP alone cannot make this fire, and that is the refactor
+    working: both sides read the one constant, so they cannot disagree about it.
+    What the guard still has to catch is `page()` no longer emitting it — a
+    wrapper around the column, a renamed class, an id moved — so that is what is
+    simulated here."""
+    real = R.page
+    monkeypatch.setattr(
+        R, "page",
+        lambda *a, **k: real(*a, **k).replace('<div class="wrap">',
+                                              '<div class="wrap" data-v2="1">'))
+    with pytest.raises(RC.ChangeUnreadable) as e:
+        RC.build(change["dir"], change["root"])
+    assert "shell markup" in str(e.value)
+
+
+def test_the_panes_and_the_margin_share_one_reading_grid(built):
+    """The annotation margin takes the second track. `.col` inside a pane is not
+    a DIRECT child of `.wrap`, so the sizing that neutralises the standalone
+    page's centred 44rem measure has to be restated here — or every pane
+    overflows its own track."""
+    html = built["html"]
+    assert '<div class="gutter" id="gutter"' in html
+    css = "".join(re.findall(r"<style>(.*?)</style>", html, flags=re.S))
+    assert ".panes .col{max-width:none" in css
+    # Two rules, two different failures. Without `.panes .col` every pane keeps
+    # the standalone page's centred 44rem measure inside a 40rem track; without
+    # `min-width:0` the grid track refuses to shrink below its content and the
+    # pane overflows it. Only the first was asserted.
+    assert ".wrap>.panes{min-width:0}" in css
+
+
+@pytest.mark.parametrize("control", ["showTab", "cf-toggle"])
+def test_every_flow_changing_control_here_relays_the_margin(built, control):
+    """Switching tabs swaps one whole document for another and hiding the
+    counterparts moves a pane by hundreds of pixels — measured at 871px on a real
+    change. A margin top is an absolute pixel computed once, so both have to
+    re-lay-out the notes or every tie points at the wrong line."""
+    script = "".join(re.findall(r"<script>(.*?)</script>", built["html"], flags=re.S))
+    if control == "showTab":
+        block = script[script.index("function showTab("):]
+        block = block[:block.index("\n}")]
+    else:
+        block = script[script.index("cfBtn.onclick"):]
+        block = block[:block.index("\n};")]
+    # The whole STATEMENT, not the substring. `if (false) syncMargin();` still
+    # contains "syncMargin()", so a presence check reads a dead call as a live
+    # one — measured, it survives here at both call sites. The doc page's
+    # equivalent check was strengthened for exactly this and this twin, written
+    # in the same commit, was left as a presence check.
+    assert re.search(r"^\s*syncMargin\(\);", block, flags=re.M), \
+        "%s does not call syncMargin unconditionally" % control
