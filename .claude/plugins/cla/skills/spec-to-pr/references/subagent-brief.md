@@ -81,12 +81,26 @@ verdict cannot.
 
 Then, by what you found:
 
-1. **Every row holds** → proceed with the work.
+1. **Every row holds** → the defect's factual base is sound. Now judge the *remedy*, which
+   is a separate question — see below. Rows holding does not mean the proposed fix is right.
 2. **A row is wrong AND the defect does not survive its correction** → return
    `remedy-rejected` with the corrected row. Do not implement. The defect itself was the
    casualty; there is nothing left to remedy.
-3. **A row is wrong BUT the defect survives its correction** → correct the row, proceed,
-   and report the correction. A wrong sub-claim does not void a real defect.
+3. **A row is wrong BUT the defect survives its correction** → correct the row, and treat it
+   as case 1: the defect stands, so judge the remedy. Report the correction either way. A
+   wrong sub-claim does not void a real defect.
+4. **A row cannot be resolved either way** → say `unresolved: <why>` for that row and judge
+   the defect on the rows that did resolve. An unresolved row is not a pass and not a
+   failure; guessing it either way is worse than naming the gap.
+
+**Then, in every case where the defect stands, judge the candidate remedy — this is the
+step the whole form exists for.** The remedy is *rejectable*, and checking the facts is not
+the same as agreeing with the fix. If the proposed remedy is wrong — it does not remove the
+defect, it removes a symptom, it reintroduces something worse, it is aimed at the wrong
+layer — return `remedy-rejected` with your reason and, where you can see one, a better
+remedy. **Do not implement a remedy you believe is wrong merely because the facts checked
+out.** A compliant delegate that implements a wrong remedy and returns genuine work evidence
+is the exact failure this contract was written to stop.
 
 ### 3. Do not touch — the files another agent owns, named
 
@@ -177,6 +191,16 @@ the incentive that keeps a delegate compliant with a bad remedy.
 so it supplies the command or read that exhibits it. A fix brief that cannot name one is a
 brief whose defect has not been grounded. That is a defect in the brief, to be fixed before
 dispatch; it is not a dispatch exempt from this contract.
+
+**And the orchestrator must have RUN it and seen it exhibit the defect, before dispatching.**
+A check written from memory — a grep whose pattern never matched, a command that reports
+nothing on a healthy *and* a broken tree — returns empty output, the delegate truthfully
+reports the defect absent, and `done` passes with the defect fully intact. This is the same
+"confirm it fails first" discipline the plugin already applies to a mutation test, and for
+the same reason: a check that has never been seen to fail proves nothing when it passes.
+So the brief states the check **together with the output it produced when the orchestrator
+ran it**, which is what the delegate's re-run is compared against. A check nobody has run is
+in the same position as a defect nobody grounded — fix it before dispatch.
 
 ---
 

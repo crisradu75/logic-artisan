@@ -35,12 +35,18 @@ Skip entirely when there are no issues.
 - **Few short issues:** edit the body inline as one line — e.g. `gh pr edit <#> --body "Closes openspec/changes/<name>/. Checks: build + lint passed. Known issues: <comma-separated brief list>."`.
 - **Long or multi-line issues:** write a single short Markdown body to `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run — no per-run timestamped dir), then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`. The file body is intentionally terse: original one-liner + a `## Known issues` section with one bullet per issue. No restated test plan, no closing summary.
 
-## 3. Persist Deferred-Known-Issues + Suggestions to TODO.md
+**Mirror "Rejected remedies, still open" too, and put it first.** It is the most severe thing the report carries — a live Critical — so a PR body naming the Deferred-Known-Issues while omitting it inverts the severity order the body exists to convey. One line per finding with the delegate's reason.
+
+## 3. Persist Deferred-Known-Issues + Rejected-remedies-still-open + Suggestions to TODO.md
 
 Durable record beyond PR-body staleness. The PR body goes stale once the PR merges; `TODO.md` is the load-bearing follow-up tracker per repo CLAUDE.md ("Deferred ideas and follow-ups, organized by plugin"). When the Revise output has any Deferred-Known-Issues OR Suggestions:
 - Append a single section to `TODO.md` at the repo root (create the file if absent) with the shape:
   ```
   ## Deferred from PR #<N> (<change-name>) — <YYYY-MM-DD>
+
+  **Rejected remedies, still open** (findings whose proposed fix a delegate rejected with reasons; the defect is REAL and UNFIXED):
+  - [Critical] <issue> — remedy rejected because: <the delegate's reason>
+  - ...
 
   **Deferred-Known-Issues** (Important PR-review findings the team consciously deferred):
   - [Important] <issue> — rationale: <one line>
@@ -56,7 +62,11 @@ Durable record beyond PR-body staleness. The PR body goes stale once the PR merg
 
 ## 4. Next-steps gating (INVARIANT — also stubbed inline in SKILL.md)
 
-The terminal report's "Next steps for you" section is gated on the overall phase tally, **and on the "Rejected remedies, still open" section being empty.** A non-empty one is treated as a ⚠ for this gating even if every phase glyph is ✓: those findings are live Criticals the run did not close, and the phase tally cannot see them — Revise legitimately reports `ok` on a round in which a rejection was correctly triaged. Gating on glyphs alone would print a merge command over an open Critical, which is the failure the exit gate's two-count split exists to prevent one layer down; this is the same rule at the reporting layer.
+The terminal report's "Next steps for you" section is gated on the overall phase tally, **and on the "Rejected remedies, still open" section being empty.** A non-empty one takes the **✗ branch** below — it does NOT print `gh pr merge` — even when every phase glyph is ✓.
+
+**Why ✗ and not ⚠.** The ⚠ branch still names `gh pr merge` as the eventual command, so routing there would print a merge command over an open Critical, which is the failure this gate exists to prevent. The ⚠ branch also lists "each ⚠ phase's one-line summary", and a rejected remedy is not a phase — it would print a warning header over an empty list, which reads as boilerplate. So: ✗ branch, and list each open rejected finding with the delegate's reason in place of the failing-phase list.
+
+**How this state is reached, since Revise's own gate is meant to prevent it.** `revise.md`'s exit gate does not release the loop `ok` while a finding is open, so an open rejected finding survives to Handoff only via **cap exhaustion**, which marks Revise `warn`. The glyph tally would therefore usually catch it. This gate exists for the case it would not: a `warn` on Revise routes to the ⚠ branch, which names `gh pr merge` — correct for an ordinary warn, wrong for a live Critical. Gating on the section rather than on the glyph is what distinguishes them.
 - **All ✓:** print `gh pr merge <#> --squash --delete-branch` as the next step. Single line, no preamble. **Stacked-child exception (`--pr-base` passed):** never print a bare merge command — squash-merging a stacked parent breaks every child PR. Print "lands with its chain — see the multi-pr report" instead; the chain report carries the parents-first, merge-commit landing checklist.
 - **Any ⚠ (warn):** print a "**Review warnings before merging.**" line FIRST, then list each ⚠ phase's one-line summary indented. Only after that — and on a new line — name `gh pr merge` as the eventual command. The intent: the user should not type `gh pr merge` without first reading what warned.
 - **Any ✗ (fail):** print "**This PR is NOT ready to merge.**" and DO NOT name `gh pr merge` at all. List the failing phases. The user can override by typing merge themselves, but the report does not endorse it.
