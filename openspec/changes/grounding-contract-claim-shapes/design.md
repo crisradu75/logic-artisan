@@ -13,7 +13,9 @@ wc -l .claude/plugins/cla/skills/review-change/references/checklist.md   → 316
 grep -n 'Grounding contract' .../checklist.md                           → 68
 grep -n 'Deduplicate' .../checklist.md                                  → 249
 grep -n '^## Step 6' .../checklist.md                                   → 247
-grep -c '^### Requirement:' openspec/specs/cla-plugin/spec.md          → 25
+grep -c '^### Requirement:' openspec/specs/cla-plugin/spec.md          → 29  (was 25 when first
+                                                                          measured; a merged sibling
+                                                                          added 4, none in this file)
 ```
 
 316 is the same count the decision document recorded on 2026-08-24, so PRs #147–#150 did not reach
@@ -66,7 +68,7 @@ exhibit, observed on its lucky branch.
 - Adding a fifth claim shape that nobody has filed. The list is *stated* as open; it is not padded.
 - Any script, hook, or test. This change is portable prose in synced core.
 - The `### Verified claims` report block and the cost-offload paragraph's adjudication sentence, both
-  of which the sibling change `fix-brief-binding-defect` edits. See "Batch coupling" below.
+  of which no sibling change edits. See "Batch coupling" below.
 - Changing what `fact-gatherer` does. This change only states that `0l` is outside its reach.
 
 ## Decisions
@@ -146,13 +148,25 @@ what is written below.
 **Shape 1 — Producible state (#124).** *Trigger:* an artifact specifies a fixed set of
 example/demo/fixture/sample states a surface must show. *Resolution, per state:* (a) name the
 production function or query that would produce it, and read it; (b) resolve the predicate that gates
-the state against the **real corpus**, not the fixture's — the count or the condition; (c) record
+the state against the **real data the system will run on**, not the fixture's — the count or the condition; (c) record
 `producible: <path:line of the producing path> + <the corpus figure>` or
-`NOT PRODUCIBLE: <the line that forbids it>`. *Failure mode:* being unable to name a producing path is
-`NOT PRODUCIBLE`, not `unresolved` — that asymmetry is the point, because the default here must be
-negative. *Severity floor:* an unproducible state written as a requirement is **Critical**. Reason,
-from the issue: a requirement the product cannot satisfy does not fail loudly, it gets satisfied
-dishonestly — the available resolution under implementation pressure is always to invent the data.
+`NOT PRODUCIBLE: <the line that forbids it>`, or `unresolved: <why>`. *Failure mode — and the
+distinction the whole shape turns on:* **searching and finding nothing is `NOT PRODUCIBLE`; not having
+searched is `unresolved`.** The default is negative once you have looked, because an absent producing
+path is itself the finding. It is not negative because you ran out of budget. *Severity floor:* a state
+recorded `NOT PRODUCIBLE` and written as a requirement is **Critical** — from the issue, a requirement
+the product cannot satisfy does not fail loudly, it gets satisfied dishonestly, and the available
+resolution under implementation pressure is always to invent the data. An `unresolved` row carries **no
+severity floor**; it is an honest gap for the orchestrator to adjudicate.
+
+**Stated this way because the earlier draft collided with the paragraph this shape is nested inside.**
+The Grounding contract's own closing clause says that when a claim "genuinely cannot be resolved either
+way in the budget available", the reviewer says `unresolved: <why>` rather than guessing — "an honest
+gap is adjudicable; a fabricated verdict is not". A draft reading "being unable to name a producing
+path is `NOT PRODUCIBLE`, not `unresolved`" reverses that three lines below where it is written, and
+pairing it with a Critical floor means a reviewer who merely ran out of budget is obliged to emit a
+Critical. Two failures follow: fabricated Criticals, and a shape that teaches reviewers to distrust the
+contract containing it.
 
 **Shape 2 — Precedent strictness (#126).** *Trigger:* an artifact names an existing shipped
 implementation as the precedent it mirrors, follows, or is modelled on. *Resolution:* (a) read the
@@ -185,7 +199,7 @@ issue reports them as one event.
   grep the replacement file for the mechanism the claim names — then state the replacement's strength
   relative to what was given up. *Failure mode:* accepting the description. The given-up half is
   visible in the diff; the replacement is a promise, so the promise is the half to verify.
-- *Trigger (b):* an exclusion entry is added to any route-, page-, or file-keyed allowlist or
+- *Trigger (b):* an exclusion entry is added to any keyed allowlist or denylist — a route, a page, a
   denylist. *Resolution:* enumerate the components or modules reachable **only** through the excluded
   surface, and for each, name where it is otherwise covered or state that it is not. *Failure mode:*
   the entry names a page file, so the exclusion reads as excluding a route while in practice it
@@ -216,11 +230,39 @@ the check.
 ### D4 — #109 goes to Step 6's deduplication step, keyed on evidence rather than on agent role
 
 **Decision:** at Step 6's "Deduplicate findings" line, add: when two dispatched reports carry the same
-finding at different severities, the merged severity comes from the report whose evidence for that
-severity is **implementation-level** — a source line, a schema, a migration, a query result — over the
-report whose evidence is the spec delta or the artifact text alone. Where neither report's evidence is
-implementation-level, or both are, keep the higher severity. Either way, record the tie-break on the
-finding line so a reader can see one happened.
+finding at different severities, **keep the higher severity** — and record, on the finding line, which
+report's evidence was implementation-level (a source line, a schema, a migration, a query result) and
+which rested on the spec delta or artifact text alone. The evidence class is recorded, never used to
+lower the severity.
+
+**Why this is not the evidence-ranked tie-break an earlier draft pinned.** That draft let the
+implementation-level report's severity win outright, which demotes whenever the higher-severity report
+happened to argue from the artifact. Three things break under it:
+
+1. **It contradicts a load-bearing rule in the same pipeline.** `spec-to-pr`'s Revise applies SEV-MAX
+   to the identical situation — "the same finding rated differently by two agents is triaged at the
+   HIGHER severity, always", stated explicitly as "the aggregation analogue of the
+   never-demote-a-real-finding principle". A single `/cla:spec-to-pr` run would then carry opposite
+   merge rules in Review and Revise with nothing saying why the phases differ.
+2. **It can flip a verdict to READY with the finding unresolved.** READY requires 0 Critical and 0
+   Important, so demoting one Important to Suggestion clears the gate — which the same file's INT-CAP
+   clause forbids by name: a finding is discharged only by evidence the underlying issue is gone,
+   never by a budget, a deadline, or a reclassification.
+3. **The evidence key is inverted for this phase.** `review-change` runs *pre-implementation*. Its
+   core output — an under-specified task, a wrong count, a premise defect — is *correctly* evidenced by
+   the artifact text, because the implementation does not exist yet. A rule that systematically ranks
+   source-line evidence above artifact evidence demotes precisely what this review is for.
+
+Recording the evidence class still buys what #109 wanted: a reader can see at a glance which reviewer
+had ground truth, and a reviewer who only had the artifact is visible as such. What it does not do is
+let that visibility silently lower a severity.
+
+**On #109's cited evidence.** An earlier draft justified rejecting always-higher-severity by pointing
+at the verdict rubric's "do not shortcut this to 'any Critical → RETHINK'" warning. That warning is
+about the FIX-FIRST/RETHINK boundary, which the rubric decides by the *kind* of fix and states twice
+is not gated on severity label or count. The axis severity inflation actually threatens is
+READY-vs-FIX-FIRST, which is the one the demotion above would have breached. The citation was from the
+wrong half of the rubric.
 
 **Why keyed on evidence, not on which agent reported it.** The issue's wording is "the one who read
 the implementation wins, not the one who read the spec." In this checklist all three Step-4 agents are
@@ -320,19 +362,27 @@ siblings' deltas — no collision):
 **Delta type:** `## ADDED Requirements` only. No live requirement's text or scenarios change, so no
 MODIFIED block is written and nothing can be dropped at archive-sync.
 
-## Batch coupling — `fix-brief-binding-defect` edits the same file
+## Batch coupling — there is none; this change owns `checklist.md` alone
 
-Both changes land in one PR and both edit `checklist.md`. The overlap and its resolution:
+An earlier draft of this section described an overlap with `fix-brief-binding-defect` and pinned an
+ordering to resolve it. **That overlap never existed.** That change shipped (merged) without editing
+`checklist.md` at all — its own design says so in as many words, and `gh pr view` on its PR lists
+`multi-pr/references/change-loop.md`, `multi-spec/references/review-gate.md`, `spec-to-pr/SKILL.md`
+and three `spec-to-pr/references/*.md` files, with `checklist.md` absent. The draft was written from
+the batch **as proposed**, before that change's scope was cut, and nobody re-derived it afterwards.
 
-| region | this change | `fix-brief-binding-defect` | collision |
-|---|---|---|---|
-| cost-offload paragraph (line 64) | appends one sentence naming `0l` as non-delegable | tasks 4.1–4.3 add a provenance-field requirement and **replace the adjudication sentence** | **Yes — same paragraph.** Resolved by ordering: the sibling's 4.1–4.3 land first, this change appends after, and task 4.1 here re-greps the paragraph and confirms both edits are present |
-| §Grounding contract (68–70) | adds a `####` subsection after the paragraph | its task 4.5 states that a provenance tag travels into the context brief and into derived findings, without naming a location — the contract is a plausible home | **Soft.** Same region, different sentences, no shared text. Whichever lands second reads the region first rather than assuming its shape |
-| `### Verified claims` (262, 307) | **not touched, deliberately** | task 4.4 requires the provenance tag there | None |
-| Step 6 dedup (249) | adds the tie-break paragraph | not touched | None |
-| `0a–0k` list, line 60 | adds `0l`, updates the enumeration | not touched | None |
+Two consequences, both load-bearing:
 
-`delegate-liveness-contract` does not touch `checklist.md` at all; it is disjoint.
+- **No ordering constraint.** This change may land whenever. Tasks 1.3 and 5.7 were rewritten from
+  "confirm the sibling's edits survived" — a check guaranteed to find nothing and to read that
+  nothing as a defect — into a guard that the provenance tag stays **out** of this file.
+- **The provenance tag must not be added here.** The merged requirement states it "SHALL apply to a
+  brief's fact rows and SHALL NOT be required of a review report's claim table". `checklist.md` is
+  that claim table. Extending it here is the deferred `fact-row-provenance` change, not this one, and
+  the earlier draft's ordering advice would have driven an implementer straight into that violation.
+
+`delegate-liveness-contract` does not touch `checklist.md` either. This change is disjoint from every
+sibling in the batch.
 
 ## Risks / Trade-offs
 
