@@ -28,7 +28,7 @@ the placeholder ALREADY substituted, so commands written here are safe. A
 `references/` file is opened with `Read`, which returns the raw bytes — the
 placeholder arrives literal there, and that is the case this rule exists for.
 
-**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 10 high-yield verification checks, the context-brief table format, the size gate (small vs large), the 3-agent dispatch (with full agent prompts), the parallelism analysis, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 12 high-yield verification checks (`0a`–`0l`), the context-brief table format, the size gate (small vs large), the 3-agent dispatch (with full agent prompts), the parallelism analysis, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).
 
 Pass `$ARGUMENTS` (the change name, optional) through to Step 1 of the checklist.
 
