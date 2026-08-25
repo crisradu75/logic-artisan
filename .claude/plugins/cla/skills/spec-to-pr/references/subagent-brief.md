@@ -167,7 +167,13 @@ gone.
 > survive its correction. Give the reason and, where you can see one, a better remedy.
 >
 > Report `Fact corrections:` in every return — one line per fact row that did not resolve
-> as stated, or `(none)`. Never omit the field.
+> as stated **or that you could not resolve at all**, or `(none)`. An `unresolved:` row belongs
+> here: it is a gap in the defect's factual base, and reporting `(none)` while holding one hides
+> exactly what the field exists to surface. Never omit the field.
+>
+> If this brief names a defect check but does not record the output the dispatcher got when it
+> ran the check, return `blocked` and say so. An unrun check cannot tell you whether the defect
+> is gone, so no evidence you could produce would satisfy `done`.
 
 **Return these fields, in this order:** `status`, defect-check output, test-run summary
 line, ticked-task count, `Fact corrections:`. A fixed order is what lets the orchestrator
