@@ -179,6 +179,68 @@ def test_a_delete_is_a_tombstone_and_the_original_line_stays(live):
     assert store.read_all(live.corpus, include_deleted=True)[0]["note"] == "too vague"
 
 
+def test_an_un_delete_is_accepted_and_restores_the_record(live):
+    """`deleted: false` is an amendment, decided by the key's PRESENCE.
+
+    Tested for TRUTH it reads as a brand-new annotation, which then fails the
+    anchor-field check for fields an undo was never going to send — so the page's
+    Undo could not work at all. The store has always merged an un-delete
+    correctly; nothing could ask it to."""
+    rec_id = body(live.post("/api/annotations", VALID))["id"]
+    live.post("/api/annotations", {"id": rec_id, "deleted": True})
+    assert body(live.get("/api/annotations"))["annotations"] == []
+
+    code, raw, _ = live.post("/api/annotations", {"id": rec_id, "deleted": False})
+    assert code == 200, json.loads(raw).get("error")
+    rows = body(live.get("/api/annotations"))["annotations"]
+    assert len(rows) == 1 and rows[0]["id"] == rec_id
+    assert rows[0]["text"] == "harbour"          # the merge rule kept the anchor
+    assert len(store.read_raw(live.corpus)) == 3   # and nothing was rewritten
+
+
+@pytest.mark.parametrize("key", ["deleted", "resolved", "edited"])
+def test_a_non_boolean_amendment_flag_is_refused(live, key):
+    """The server reads these by presence and the store reads `deleted` by truth.
+
+    So the string "false" would arrive as an amendment and land in the file as a
+    tombstone — deleting the record the caller meant to restore."""
+    rec_id = body(live.post("/api/annotations", VALID))["id"]
+    code, raw, _ = live.post("/api/annotations",
+                             {"id": rec_id, key: "false", "note": "x"})
+    assert code == 400 and "true or false" in json.loads(raw)["error"]
+    assert body(live.get("/api/annotations"))["annotations"][0]["note"] == "too vague"
+
+
+@pytest.mark.parametrize("amendment", [
+    {"deleted": True}, {"resolved": True}, {"edited": True, "note": "x"},
+    {"deleted": False},
+])
+def test_an_amendment_naming_an_unknown_id_is_refused(live, amendment):
+    """Appended, it becomes a live record carrying nothing but that id.
+
+    The page then has to draw a card for it: every field reads `undefined`, and
+    the reader is told an annotation lost its place in a document nobody has
+    touched."""
+    live.post("/api/annotations", VALID)
+    code, raw, _ = live.post("/api/annotations", dict(amendment, id="never-existed"))
+    assert code == 404 and "never-existed" in json.loads(raw)["error"]
+    assert len(store.read_raw(live.corpus)) == 1        # nothing was written
+
+
+def test_an_amendment_against_a_damaged_corpus_says_so_rather_than_404(live):
+    """"Not in the file" and "in the file on a line that will not parse" reach
+    the same branch, because read_raw skips what it cannot read. Answering 404
+    for the second sends the reader to look for a document edit that never
+    happened."""
+    live.post("/api/annotations", VALID)                # the file exists now
+    with open(live.corpus, "a", encoding="utf-8") as fh:
+        fh.write("{not json at all\n")
+    code, raw, _ = live.post("/api/annotations", {"id": "unknown", "deleted": True})
+    j = json.loads(raw)
+    assert code == 409 and j["damaged"] == 1
+    assert "could not be read" in j["error"]
+
+
 def test_a_resolution_is_stamped_and_stays_visible_to_the_reader(live):
     rec_id = body(live.post("/api/annotations", VALID))["id"]
     code, raw, _ = live.post("/api/annotations",

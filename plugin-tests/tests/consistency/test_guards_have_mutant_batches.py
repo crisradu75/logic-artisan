@@ -132,13 +132,32 @@ _EXEMPT = {
 # EXISTS, must sit in an area that already has at least one batch (otherwise it
 # is an exemption wearing adoption's name), and must NOT already have a batch
 # (a stale entry is an exemption that outlived its reason).
-_PENDING_ADOPTION: dict[str, str] = {}
+_PENDING_ADOPTION: dict[str, str] = {
+    # `annotate` was adopted as an area by the change that put the annotations in
+    # the page's right-hand margin. That change touched three of the six guards
+    # in the area and wrote a batch for each; these are the other three, which it
+    # did not touch. Listed rather than exempted, so the debt is countable — and
+    # the batch to write first is the store's, since the corpus is the one thing
+    # on disk that outlives every page.
+    "tests/skills/annotate/test_annotations_store.py":
+        "adoption debt: untouched by the margin change; the corpus format is the "
+        "highest-value batch still owed here",
+    "tests/skills/annotate/test_openspec_change.py":
+        "adoption debt: untouched by the margin change; its thresholds are "
+        "measured by sweep_changes.py rather than asserted, so a batch has to "
+        "mutate the detector rather than a constant",
+    "tests/skills/annotate/test_review_findings.py":
+        "adoption debt: untouched by the margin change",
+}
 
 # Re-derive on the commit that adopts an area, then only lower it. This is the
 # one bound in the file allowed to move UP, and only there — see
 # `test_adoption_debt_only_shrinks` for why that is stated as a number rather
 # than trusted to the diff.
-_PENDING_ADOPTION_CEILING = 0
+# Raised 0 -> 3 in the commit that adopts `annotate` as a mutants area, which is
+# the one direction this number is allowed to move and only there. Three of the
+# area's six guards got a batch in that commit; these are the other three.
+_PENDING_ADOPTION_CEILING = 3
 
 
 def test_adoption_debt_only_shrinks():
@@ -209,10 +228,12 @@ def test_the_policed_population_has_its_own_floor():
         for p in _guard_files()
         if _rel(p) not in _EXEMPT and _rel(p) not in _PENDING_ADOPTION
     ]
-    # 10 today: 20 discovered, minus 8 grandfathered, minus 2 meta-guards, minus
-    # 0 pending. Re-derive when an entry is deleted or an area is adopted; lower
-    # it only with an argument, never to make a move go green.
-    assert len(policed) >= 10, (
+    # 13 today: 26 discovered, minus 8 grandfathered, minus 2 meta-guards, minus
+    # 3 pending. Re-derive when an entry is deleted or an area is adopted; lower
+    # it only with an argument, never to make a move go green. Was 10 against 20
+    # discovered; adopting `annotate` added 6 to discovery and 3 to policing,
+    # which is the ratio this floor exists to keep honest.
+    assert len(policed) >= 13, (
         f"only {len(policed)} guards are actually policed for a batch, out of "
         f"{len(_guard_files())} discovered. Exemptions and pending-adoption "
         "entries have eaten the check."
@@ -667,7 +688,11 @@ def test_the_scan_is_not_vacuous():
     # The comment said 17 and the floor said 15 while the real count had reached
     # 20 — the same drift, one revision later, found by running the command the
     # comment names instead of trusting it.
-    assert len(files) >= 18, f"guard discovery collapsed to {len(files)} files"
+    #
+    # 26 today, up from 20: adopting `annotate` as an area brings the 6 guard
+    # files in `tests/skills/annotate/` into discovery. Re-derived by running
+    # `_guard_files()` rather than by adding 6 to the old number.
+    assert len(files) >= 24, f"guard discovery collapsed to {len(files)} files"
     areas = _guard_areas()
     assert areas, "no area directories found under mutants/ at all"
     batches = [

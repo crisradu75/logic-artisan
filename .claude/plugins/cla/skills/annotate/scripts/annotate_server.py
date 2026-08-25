@@ -215,6 +215,23 @@ class Handler(SimpleHTTPRequestHandler):
         if not isinstance(rec, dict):
             return self._json({"error": "not an object"}, 400)
 
+        # An amendment is decided by the PRESENCE of its key, never by its truth.
+        # Testing `rec.get("deleted")` for truth reads an un-delete — the
+        # {"id": ..., "deleted": false} an undo posts — as a brand-new
+        # annotation, which then fails the REQUIRED check for anchor fields it
+        # was never going to carry. The store has always merged an un-delete
+        # correctly; nothing could ask it to.
+        #
+        # `deleted` must also be a real boolean. The store tests it for truth
+        # while this reads it by presence, so the string "false" would arrive
+        # here as an amendment and land in the file as a tombstone — deleting
+        # the record the caller meant to restore.
+        AMEND_KEYS = ("deleted", "resolved", "edited")
+        for k in AMEND_KEYS:
+            if k in rec and not isinstance(rec[k], bool):
+                return self._json({"error": "%s must be true or false" % k}, 400)
+        amendment = any(k in rec for k in AMEND_KEYS)
+
         # setdefault does not fire on a key that is present but empty, and
         # read_raw then drops an id-less line forever — a silent loss in a store
         # whose whole premise is that nothing is ever lost. And an amendment
@@ -222,7 +239,7 @@ class Handler(SimpleHTTPRequestHandler):
         # into a new fieldless record, which surfaces later as a phantom ANCHOR
         # LOST saying the document moved when it did not.
         if not rec.get("id"):
-            if rec.get("deleted") or rec.get("resolved") or rec.get("edited"):
+            if amendment:
                 return self._json({"error": "amendment with no id"}, 400)
             rec["id"] = store.new_id()
         # Every page carries the document it was built for. One temp directory
@@ -239,7 +256,37 @@ class Handler(SimpleHTTPRequestHandler):
                           "annotating %s — refusing to write into the wrong "
                           "corpus" % (rec["doc"], self.doc_key), "wrong_doc": True}, 409)
 
-        amendment = bool(rec.get("deleted") or rec.get("resolved") or rec.get("edited"))
+        # An amendment naming an id the corpus never held is refused, not
+        # appended. Appended, it becomes a live record carrying nothing but that
+        # id — no blk, no text, no note — and the page then has to render a card
+        # for it. Every field reads `undefined`, and the reader is told an
+        # annotation lost its place in a document nobody has touched.
+        if amendment:
+            damage = []
+            try:
+                known = store.read_all(self.out_path, include_deleted=True,
+                                       problems=damage) or []
+            except store.CorpusUnreadable as e:
+                print("REFUSED an amendment: %s" % e)
+                return self._json({"error": str(e), "unreadable": True}, 409)
+            if not any(r.get("id") == rec["id"] for r in known):
+                # read_raw skips a line it cannot parse. So "the id is not here"
+                # and "the id is here on a line that will not parse" reach this
+                # point identically, and answering 404 for the second is the
+                # wrong diagnosis — it sends the reader to look for a document
+                # edit that never happened. The problems list is what tells them
+                # apart, which is the whole reason it is collected.
+                if damage:
+                    print("REFUSED an amendment against a damaged corpus: %s" % rec["id"])
+                    return self._json(
+                        {"error": "%d line(s) of %s could not be read, so whether"
+                                  " %s is among them is unknown — resolve the file"
+                                  " by hand rather than writing over it"
+                                  % (len(damage), self.out_path, rec["id"]),
+                         "damaged": len(damage)}, 409)
+                print("REFUSED an amendment naming an unknown id: %s" % rec["id"])
+                return self._json(
+                    {"error": "no annotation with id %s to amend" % rec["id"]}, 404)
         if rec.get("edited") and not rec.get("note"):
             return self._json({"error": "edit with no note"}, 400)
         if not amendment:
