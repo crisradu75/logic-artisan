@@ -21,12 +21,13 @@ grep -n '^### \|^## ' .../subagent-brief.md
     → :29 "The five slots", :37 "2. Task — one sentence, one deliverable",
       :78 "5. Done when — a condition you will check, with evidence",
       :93 "What the brief cannot do"
-grep -n 'adjudicat' .../review-change/references/checklist.md
-    → :64 "You still adjudicate every ✗ row yourself" (the cost-offload paragraph)
-grep -n '^###' .../review-change/references/checklist.md
-    → :262 "### Verified claims", :297 "### Verdict integrity — no capitulation, no sycophancy"
 grep -n '^## \|^Cap' .../spec-to-pr/references/revise.md
-    → :5 "Cap: --pr-rounds N (default 2).", :68 "Round N (N ≥ 2)"
+    → :5 "Cap: `--pr-rounds N` (default `2`).", :68 "Round N (N ≥ 2)"
+grep -n 'Applied\|Deferred-Known-Issue\|Exit gate' .../spec-to-pr/references/revise.md
+    → :82 "Applied", :83 "Deferred-Known-Issue", :134 "Exit gate"  (two buckets, no third)
+grep -rn 'explicit `done`|`done`/`blocked`' .claude/plugins/cla/skills/
+    → subagent-brief.md:83, SKILL.md:239, SKILL.md:337, revise.md:97,
+      multi-spec/references/authoring-brief.md:46   (five sites; the last is not a fix dispatch)
 grep -rn 'subagent-brief' .claude/plugins/cla/
     → spec-to-pr/SKILL.md:234, lite-pr/SKILL.md:141   (two citing sites, both by slot name)
 ```
@@ -39,13 +40,13 @@ name from two skills, so renaming or adding a slot is a three-file edit whose co
 
 **Goals:**
 
-- One contract that closes #96, #121, #107 and #112, expressible in a few lines of brief prose and
+- One contract that closes #96, #121 and #107, expressible in a few lines of brief prose and
   legible to a delegate reading it cold.
 - Change what `done` *requires*, not merely what the delegate is *permitted* to do — a compliant
   delegate is the failure mode in #96, and permission does not reach a compliant delegate.
-- Make every factual claim, in a brief or in a review table, carry its source and whether anyone has
-  actually run that source.
-- Price the adjudication widening and adopt a bounded form of it, rather than leaving it open.
+- Make every factual claim **in a brief** carry its source and whether anyone has actually run that
+  source.
+- Land each new rule at every site that restates it, so no dispatch briefs against the old contract.
 
 **Non-Goals:**
 
@@ -55,10 +56,15 @@ name from two skills, so renaming or adding a slot is a three-file edit whose co
   would smuggle a per-run cost through a design about brief format.
 - **No new agent type, no new script, no new hook.** Every mechanism below is prose in a file that is
   already read at the moment it binds.
-- **No change to the size gate, the agent-selection table, or the cost-offload default itself.** The
-  offload stays; what changes is what a row it returns is worth.
-- **Not the review checklist's claim-shape enumeration.** That is a separate item; this change touches
-  the checklist only at the cost-offload paragraph and the `### Verified claims` heading.
+- **No change to the size gate, the agent-selection table, or the cost-offload default.** This change
+  does not touch `review-change/references/checklist.md` at all.
+- **Not fact-row provenance in a review report, and not the adjudication widening.** Issue #112 was
+  proposed alongside these three and cut at review. It is about a *report's* fact table rather than a
+  brief — no dispatch, no delegate, no authority level — and carrying it pulled in a second skill, a
+  run-record edit whose consumer (`spec_to_pr_aggregate.py`) was never in scope, and a rule binding
+  the standalone `/cla:review-change` path, which has no run record to carry a count in. Tracked as
+  `fact-row-provenance`.
+- **Not the review checklist's claim-shape enumeration.** That is a separate item too.
 
 ## Decisions
 
@@ -77,17 +83,18 @@ line only.** That single sentence is what makes the contract more than a taxonom
 a compliant delegate cannot ship #96's regression, because "I applied the remedy you named" no longer
 satisfies `done`.
 
-The four issues fall out of the three levels: #96 is the binding/rejectable split, #121 is the
-checkable level, #107 is what happens when the rejectable level has nobody to exercise it, and #112
-is the provenance tag on the checkable level.
+The three issues fall out of the three levels: #96 is the binding/rejectable split, #121 is the
+checkable level, and #107 is what happens when the rejectable level has nobody to exercise it. (A
+fourth, #112, was proposed alongside them and cut at review — it is the provenance tag on a *review
+report's* rows rather than on a brief's, and the three levels do not reach it. See Non-Goals.)
 
-**Rejected alternative — four appended rules.** Add a "the delegate may push back" sentence to slot 2,
-a "check the facts you were given" sentence beside it, an "orchestrator fixes get reviewed too" rule
-in `revise.md`, and a provenance note in `checklist.md`. Rejected on three grounds. First, an
+**Rejected alternative — three appended rules.** Add a "the delegate may push back" sentence to slot 2,
+a "check the facts you were given" sentence beside it, and an "orchestrator fixes get reviewed too"
+rule in `revise.md`. Rejected on three grounds. First, an
 appended permission does not change what `done` requires, so it does not reach the compliant delegate
 that #96 describes — the delegate reads a permission next to an instruction with a deliverable
-attached, and the instruction wins. Second, four rules cover four filed instances and leave the fifth
-uncovered; a stated authority level covers a shape nobody has filed yet. Third, four prose blocks in
+attached, and the instruction wins. Second, three rules cover three filed instances and leave the fourth
+uncovered; a stated authority level covers a shape nobody has filed yet. Third, three prose blocks in
 three files go stale independently, which is the exact failure the brief reference was created to fix
 (`subagent-brief.md` lines 9–11: one dispatch site had three carefully-reasoned rules and another had
 a single sentence).
@@ -173,6 +180,16 @@ explicitly-rejected-decisions section and confirms the applied remedy does not r
 is the named, sourced form of what #107 records: the Critical reintroduced a bias the change's own
 `design.md` had explicitly rejected, so `design.md` is the document that would have caught it.
 
+**Two scope conditions, because the naive form of this check does not hold.** First, on the Review
+path the remedy is frequently *an edit to that very `design.md`* — Review's fix loop applies findings
+to the change's own artifacts. Reading the working tree would then have the remedy adjudicate itself.
+So the check reads the pre-edit version, `git show HEAD:<path>`, and the design says so rather than
+leaving an implementer to notice. Second, the check needs a rejected-alternatives document to exist,
+and a skill that applies orchestrator fixes without operating on an OpenSpec change has none — the
+lightweight PR workflow has no change directory by construction. The check is therefore conditioned
+on a change directory being present, not asserted universally; a skill with no such document is out
+of its scope rather than in breach of it.
+
 The remedy is additionally **marked** — `remedy: orchestrator-specified` on the round's finding row —
 so the next reader knows this hunk had no independent author. Where a later round runs, that round's
 dispatch is told which hunks carry the mark and to check each against the same rejected-alternatives
@@ -191,52 +208,28 @@ fan-out to buy a focus question. Revise round N ≥ 2 already dispatches over ex
 commit's diff (`revise.md` line 68), so the reviewer was never missing; what was missing was anything
 telling that reviewer which hunks had nobody to argue with.
 
-### Decision 5 — Provenance is a column on the row, and the adjudication rule widens, bounded
+### Decision 5 — `remedy-rejected` needs a receiving branch, not just a name
 
-**The tag.** Two values, `agent-reported` and `orchestrator-verified`, on the row itself rather than
-in a note about the dispatch. Notes about a dispatch do not survive the row being copied; the row is
-what travels. Three rules:
+Adding a third terminal status is half a change. `revise.md` triages every Critical and Important
+finding into **Applied** or **Deferred-Known-Issue**, and its exit gate counts anything in neither
+bucket as untriaged residue that turns the round `warn`. A `remedy-rejected` return fits neither: the
+delegate did the work, understood the defect, and reported that the proposed fix is wrong. Landing
+the status without the branch converts a *successful* return into a warned round, which is precisely
+the ledger distortion Decision 2 rejected `blocked` to avoid.
 
-- Every row a delegate returns arrives `agent-reported`. The orchestrator may not re-label a row
-  without re-running that row's own resolving command or read. Re-running it is what "verified" means.
-- The tag travels wherever the row goes — into the context brief, into `### Verified claims`, and into
-  any finding derived from the row, which inherits the tag until the row is re-measured.
-- `### Verified claims` may not carry an untagged row. That heading is where the distinction currently
-  disappears: a haiku-reported row and an orchestrator-run row print identically under it today, which
-  is #112's mechanism.
+So the triage gains an explicit third outcome, with one asymmetry that has to be stated rather than
+inferred: a rejection discharges **the round's attempt** at the finding, not the finding. The
+orchestrator re-decides the remedy; the finding stays open and is re-attempted. The exit gate stops
+counting it as residue, and the round cap does not move — a rejection is information, and charging a
+round for it would teach the orchestrator to avoid asking.
 
-**The widening.** Current rule, `checklist.md` line 64: *"You still adjudicate every ✗ row yourself."*
-New rule:
+**Rejected alternative — let a rejection close the finding.** It makes rejection the cheapest exit
+from any hard finding, which is the escape hatch the Risks section already names. A rejection that
+closes nothing costs the orchestrator one decision and cannot be gamed.
 
-> Adjudicate every ✗ row yourself, as now, **and** re-measure — re-run the row's own resolving command
-> or read — every row, ✓ or ✗, that a Critical or Important finding depends on. A row that supports
-> only a Suggestion, or supports no finding, stays `agent-reported` and is reported as such.
-
-**Why bounded there.** #112's failure is a *load-bearing* row that was wrong. A ✓ row nothing rests on
-being wrong costs nothing; a ✓ row a Critical rests on being wrong costs a phantom Critical, a fix
-round, and a "fix" commit against a defect that was never there. Severity is exactly the line where the
-cost of a wrong row starts to exceed the cost of re-running one grep.
-
-**The price, honestly.** The re-measurement set is bounded by (Critical + Important findings) × (rows
-per finding), not by row count — a review that finds nothing pays nothing, and a review that finds a
-lot pays in proportion to what it found. The offload only applies to **large** changes, where the
-context brief carries many more rows than the report carries Critical/Important findings, and a finding
-typically rests on one or two rows; each re-measurement is one grep or one file read in the
-orchestrator's own context. So the widening is affordable for a structural reason, not a measured one,
-and this design does not claim a per-review number it has not run. To make the next pass able to price
-it for real, the run record gains two counts — rows re-measured, and rows whose re-measurement
-disagreed with the delegate — so a retro can compute the actual cost and the actual catch rate instead
-of re-arguing this paragraph.
-
-**Rejected alternative — re-measure every row.** It deletes the cost offload. The offload exists
-because a large change's mechanical claim-checking is the bulk of the review's raw material; re-running
-all of it in the orchestrator's context restores exactly the context cost the dispatch was created to
-avoid, and buys verification of rows that no finding, and therefore no decision, depends on.
-
-**Rejected alternative — keep "adjudicate every ✗" unchanged and rely on the tag alone.** A tag with no
-obligation attached is a label. #112's rows were wrong and load-bearing; labelling them
-`agent-reported` and proceeding would have shipped the same findings with an accurate adjective on
-them.
+**Rejected alternative — spend a round on a rejection.** A delegate that rejects a remedy has done
+*more* work than one that applies it, and the round budget exists to bound fix attempts, not
+understanding. Charging for it makes the contract more expensive exactly where it is working.
 
 ## Pinned implementation parameters
 
@@ -279,11 +272,18 @@ test-run summary line, ticked-task count, `Fact corrections:`.
 **The rejected-alternatives check's source document:** the change's own `design.md`, its
 rejected-alternatives / explicitly-rejected-decisions content. Not the proposal, not the tasks file.
 
-**Adjudication rule's exact scope:** every ✗ row (unchanged), plus every row — ✓ or ✗ — that a
-**Critical or Important** finding depends on. Suggestion-supporting rows and finding-free rows are
-explicitly out of scope and stay `agent-reported`.
+**Provenance tag scope:** the tag is a field on a **brief's** fact row and nothing else. It tells the
+delegate which facts someone has actually run and which the orchestrator recalled — which is what
+makes the row checkable. It does **not** travel into `### Verified claims`, the context brief, or any
+review report, and no adjudication rule changes here. That widening is `fact-row-provenance`.
 
-**Run-record counts added:** `rows_remeasured` and `rows_remeasured_disagreed`.
+**Terminal-status set (exactly three, and the triage has a branch for each):** `done`, `blocked`,
+`remedy-rejected`. A rejection discharges the round's attempt at a finding, not the finding, and
+consumes no round.
+
+**Rejected-alternatives check reads the PRE-EDIT document.** Where the orchestrator's remedy is
+itself an edit to the change's `design.md`, the check reads `git show HEAD:<path>` rather than the
+working tree. A document the remedy just edited cannot adjudicate the remedy.
 
 ## Risks / Trade-offs
 
