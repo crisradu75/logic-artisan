@@ -379,3 +379,66 @@ def test_no_argument_prints_usage_and_exits_two(tmp_path):
     assert result.returncode == 2
     assert "usage:" in result.stderr
     assert "MUTANTS" in result.stderr
+
+
+# ---------------------------------------------------------------- stale bytecode
+
+
+def test_a_run_leaves_no_stale_bytecode_for_the_file_it_mutated(tmp_path):
+    """The restore is byte-exact and still not enough on its own.
+
+    CPython validates a `.pyc` on the source's mtime **in whole seconds** plus
+    its size. This tool writes a mutant, runs pytest — which compiles and caches
+    it — then restores the original, and a mutant is usually the SAME LENGTH as
+    what it replaced. Land the cycle inside one second and the restored file's
+    (mtime, size) matches the pair recorded for the MUTANT, so every later import
+    gets the mutant's bytecode from a file whose bytes on disk are correct.
+
+    Measured on this repo, 2026-08-25: a same-length palette swap left the
+    mutant cached, and the next full suite went red on a test that had passed
+    minutes earlier with `git diff` showing nothing. The same mechanism can leave
+    a suite GREEN over mutant code, which is the expensive direction.
+
+    `'ON'` -> `'OF'` deliberately: equal length, so this reproduces the collision
+    rather than dodging it on a size difference."""
+    source, tests = _make_scope(tmp_path)
+    original = source.read_bytes()
+    batch = _batch(tmp_path, f"(\"same length\", Path(r\"{source}\"), \"'ON'\", "
+                             f"\"'OF'\", [Path(r\"{tests}\")]),")
+    _run(batch)
+
+    assert source.read_bytes() == original
+    cached = sorted((source.parent / "__pycache__").glob("mymod.*.pyc"))
+    assert cached == [], f"stale bytecode survived the restore: {cached}"
+
+
+def test_the_bytecode_a_restore_leaves_behind_would_actually_be_reused(tmp_path):
+    """The non-vacuity partner: proves the cache this tool drops is one CPython
+    would really have trusted, rather than one it would have recompiled anyway.
+
+    Without it the test above passes for the wrong reason the moment the cycle
+    happens to straddle a second boundary, and a guard that only fires on a fast
+    machine is not a guard."""
+    source, _tests = _make_scope(tmp_path)
+    original = source.read_bytes()
+    import py_compile
+
+    cache = py_compile.compile(str(source), doraise=True)
+    mutant = original.replace(b"'ON'", b"'OF'")
+    assert len(mutant) == len(original), "the fixture no longer reproduces the collision"
+
+    stat = os.stat(source)
+    source.write_bytes(mutant)
+    # Same whole-second mtime and same size — exactly what a fast mutate/restore
+    # cycle produces, and precisely the pair a pyc header records.
+    os.utime(source, (stat.st_atime, stat.st_mtime))
+
+    header = Path(cache).read_bytes()[:16]
+    import struct
+
+    _magic, _flags, mtime, size = struct.unpack("<IIII", header)
+    assert mtime == int(os.stat(source).st_mtime) and size == os.stat(source).st_size, \
+        "the cached header no longer matches the source; the collision is not reproduced"
+
+    mutate._drop_bytecode(source)
+    assert not Path(cache).exists()

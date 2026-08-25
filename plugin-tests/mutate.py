@@ -306,6 +306,45 @@ def run_pytest(targets: list[Path]) -> tuple[int, str]:
     return proc.returncode, proc.stdout + proc.stderr
 
 
+def _drop_bytecode(path: Path) -> None:
+    """Delete the cached bytecode for a file this tool just rewrote twice.
+
+    WHY THIS EXISTS, AND WHY IT IS NOT PARANOIA. CPython decides a `.pyc` is
+    valid by comparing the source's mtime **in whole seconds** and its size
+    against the pair recorded in the pyc's header. This tool writes a mutant,
+    runs pytest (which compiles and caches it), then restores the original — and
+    a mutant is very often the SAME LENGTH as what it replaced, because most of
+    them swap one token for another of equal width. When the whole cycle lands
+    inside one second, the restored file's (mtime, size) matches what the pyc
+    recorded for the MUTANT, so every later import silently gets the mutant's
+    bytecode from a file whose bytes on disk are correct.
+
+    Measured on this repo, 2026-08-25: a batch swapping `--mark:#9E4718;` for
+    `--mark:#C8622F;` — same length — left `render_doc.cpython-314.pyc` holding
+    the mutant after a clean "all killed" run. The next full suite went RED on a
+    test that had passed minutes earlier, with `git diff` showing nothing. The
+    same mechanism can leave a suite GREEN over mutant code, which is the
+    direction that actually costs something.
+
+    Restoring the mtime instead would make this worse, not better: it guarantees
+    the collision rather than merely risking it. Dropping the cache is the
+    version with no timing in it at all.
+    """
+    for cached in (
+        path.with_suffix(".pyc"),                       # legacy, alongside
+        *(path.parent / "__pycache__").glob(path.stem + ".*.pyc"),
+    ):
+        try:
+            # `missing_ok`, because the legacy sibling almost never exists and
+            # reporting its absence on every single mutant is how a real warning
+            # gets trained out of being read.
+            cached.unlink(missing_ok=True)
+        except OSError:
+            # A cache we cannot delete is not worth failing a run over — but it
+            # is worth saying, because the symptom otherwise looks like a flake.
+            print(f"  note: could not drop stale bytecode {cached}", flush=True)
+
+
 def check(mutants: list[tuple]) -> int:
     dirty = uncommitted([Path(str(p)) for _, p, _, _, _ in mutants])
     if dirty:
@@ -330,6 +369,7 @@ def check(mutants: list[tuple]) -> int:
             code, output = run_pytest([Path(str(t)) for t in targets])
         finally:
             path.write_bytes(original)
+            _drop_bytecode(path)
 
         if path.read_bytes() != original:
             # Never observed, but a restore that cannot prove it restored is the

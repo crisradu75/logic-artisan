@@ -112,6 +112,32 @@ were deleted alongside the worktree-isolation guard, the hook they existed to do
 
 All scripts are stdlib-only Python (no third-party deps beyond pytest itself).
 
+**One optional exception, and it is opt-in by construction.**
+`plugin-tests/tests/skills/annotate/test_page_in_a_browser.py` drives the
+annotation page in a real headless Chromium. It calls `pytest.importorskip` at
+module level, so a checkout without Playwright runs the suite exactly as before
+and sees one skip — nothing is added to the install path, and nothing in the
+shipped plugin depends on it. Enable it with:
+
+```bash
+pip install playwright && playwright install chromium
+```
+
+**Why it earns the exception.** Every other check on that page is a string grep
+against generated HTML and JS, which is all a stdlib suite can do. During the
+review of the margin change, a reviewer simulated 21 plausible regressions
+against the rendered page and **19 survived all 46 tests then covering it** — and
+two defects that shipped in that change were found only by driving a browser: an
+open drawer laid on top of the margin at 1440px, and a note drawn at
+`top:-135.78px` beside nothing for a block on a hidden tab. Neither has a string
+to grep for. Its mutant batch re-breaks six such regressions and all six die
+(`plugin-tests/mutants/annotate/test_page_in_a_browser.py`).
+
+Keep it to what a string cannot answer — geometry, stacking, what a breakpoint
+does to the flow, whether a round-trip leaves the page in the state it claims.
+Anything checkable by reading the generated source belongs in `test_render_doc.py`,
+which is cheaper and always runs.
+
 ### Before shipping a change here, run five checks
 
 The plugin's behaviour lives mostly in markdown, so a prose edit ships like code but

@@ -228,16 +228,22 @@ def test_the_policed_population_has_its_own_floor():
         for p in _guard_files()
         if _rel(p) not in _EXEMPT and _rel(p) not in _PENDING_ADOPTION
     ]
-    # 13 today: 26 discovered, minus 8 grandfathered, minus 2 meta-guards, minus
-    # 3 pending. Re-derive when an entry is deleted or an area is adopted; lower
-    # it only with an argument, never to make a move go green. Was 10 against 20
-    # discovered; adopting `annotate` added 6 to discovery and 3 to policing,
-    # which is the ratio this floor exists to keep honest.
-    assert len(policed) >= 13, (
-        f"only {len(policed)} guards are actually policed for a batch, out of "
-        f"{len(_guard_files())} discovered. Exemptions and pending-adoption "
-        "entries have eaten the check."
+    # PER-AREA again, and for the same reason as its sibling above: this was
+    # `>= 10`, then `>= 13`, and each move was a hand re-derivation asserted as
+    # a fact. The property it protects is that exemptions and pending entries
+    # have not eaten the check — and the shape that failure actually takes is an
+    # area every one of whose guards is excused, which reads as fully policed
+    # while policing nothing. A global count cannot see that: an area going
+    # wholly unpoliced is invisible as long as the other areas are large enough
+    # to hold the total up. `_PENDING_ADOPTION`'s own docstring records this
+    # exact hole being found three times from three directions.
+    unpoliced = _areas_policing_nothing(_guard_areas(), _EXEMPT, _PENDING_ADOPTION)
+    assert unpoliced == [], (
+        f"every guard in these areas is exempt or pending: {unpoliced}. The area "
+        "has batches, so it reads as adopted, and not one of its guards is "
+        "actually policed for one."
     )
+    assert policed, "no guard anywhere is policed for a batch"
 
 
 def test_pending_adoption_entries_are_live():
@@ -298,6 +304,46 @@ def test_every_derived_area_resolves_to_a_tests_directory():
     assert not unresolved, (
         f"area(s) {unresolved} have mutant batches but no single matching "
         f"directory under tests/ — their guards are policed by nothing"
+    )
+
+
+def _areas_discovering_nothing(areas) -> list[str]:
+    """Areas that contribute no guard files at all.
+
+    The collapse a global `len(files) >= N` floor was standing in for, asserted
+    where it actually happens. `_area_test_dir` returning None and `Path.glob`
+    over a missing directory both yield empty rather than raising, so an area can
+    stop contributing in total silence.
+
+    `areas` is a parameter rather than a read of `_guard_areas()` so a planted
+    list can redden this — the same rule `_stale_pending_entries` follows, and
+    for the reason stated there."""
+    out = []
+    for area in areas:
+        d = _area_test_dir(area)
+        if d is None or not list(d.glob("test_*.py")):
+            out.append(area)
+    return sorted(out)
+
+
+def _areas_policing_nothing(areas, exempt, pending) -> list[str]:
+    """Areas in which every discovered guard is exempt or pending.
+
+    Such an area holds batches, so it reads as adopted, while not one of its
+    guards is actually demanded to have one. A global count of policed files
+    cannot see it: the other areas hold the total up.
+
+    All three inputs are parameters, so each branch can be planted."""
+    by_area: dict[str, list[str]] = {}
+    for area in areas:
+        d = _area_test_dir(area)
+        if d is None:
+            continue
+        by_area[area] = [_rel(p) for p in sorted(d.glob("test_*.py"))]
+    return sorted(
+        area
+        for area, rels in by_area.items()
+        if rels and not [r for r in rels if r not in exempt and r not in pending]
     )
 
 
@@ -368,8 +414,16 @@ def test_every_guard_file_has_a_mutant_batch_beside_its_scope():
     assert not missing, (
         "guard(s) with no mutant batch — nobody has shown these can fail:\n"
         + "\n".join(missing)
-        + "\n\nWrite one, then prove it: "
-        "python3 plugin-tests/mutate.py plugin-tests/mutants/<area>/<name>.py"
+        + "\n\nWrite one, then prove it:"
+        "\n  python3 plugin-tests/mutate.py plugin-tests/mutants/<area>/<name>.py"
+        "\n\nADOPTING A NEW AREA? Creating mutants/<area>/ makes <area> an area, "
+        "which demands a batch for every guard in it at once — and the rational "
+        "answer to that is to write no batch, which is the opposite of what this "
+        "check wants. It already cost one batch that now exists nowhere. So the "
+        "first batch is all you owe: add the area's OTHER guards to "
+        "_PENDING_ADOPTION with a one-line reason each, and raise "
+        "_PENDING_ADOPTION_CEILING to match in the same commit. Both lists only "
+        "shrink after that. No other number in this file needs re-deriving."
     )
 
 
@@ -679,20 +733,25 @@ def test_the_absolute_path_check_pins_both_directions():
 
 def test_the_scan_is_not_vacuous():
     files = _guard_files()
-    # 20 today: `ls tests/{conformance,consistency,skills/release}/test_*.py | wc -l`.
-    # Was `>= 6` against 17 — decorative, since a 65% collapse passed. Re-derived
-    # here rather than left, per this repo's own `test-quality.md`: a floor tracks
-    # its population or it is not a floor. Lower it to the new real count when the
-    # population genuinely shrinks; never to survive a move.
+    # PER-AREA, not a global count. This was `len(files) >= N` for four
+    # successive values of N — 6, 15, 18, 24 — and the history of that line is
+    # the argument against it: it was decorative at 6 (a 65% collapse passed),
+    # its comment said 17 while the assertion said 15 and the truth was 20, and
+    # every area added since has forced a hand re-derivation that is itself a
+    # measurement nobody re-runs.
     #
-    # The comment said 17 and the floor said 15 while the real count had reached
-    # 20 — the same drift, one revision later, found by running the command the
-    # comment names instead of trusting it.
-    #
-    # 26 today, up from 20: adopting `annotate` as an area brings the 6 guard
-    # files in `tests/skills/annotate/` into discovery. Re-derived by running
-    # `_guard_files()` rather than by adding 6 to the old number.
-    assert len(files) >= 24, f"guard discovery collapsed to {len(files)} files"
+    # What the number was ever guarding is COLLAPSE — discovery quietly finding
+    # less than it used to. An area contributing zero files is what that looks
+    # like, and it is exactly what `_area_test_dir` returning None produces,
+    # silently, because `Path.glob` on a missing directory is empty rather than
+    # an error. Asserting it per area catches the same failure, catches it in the
+    # area where it happened, and needs no maintenance when an area is added.
+    empty = _areas_discovering_nothing(_guard_areas())
+    assert empty == [], (
+        f"these mutants areas contribute no guard files at all: {empty}. An area "
+        "that discovers nothing is indistinguishable from an area that is clean."
+    )
+    assert files, "guard discovery found no files in any area"
     areas = _guard_areas()
     assert areas, "no area directories found under mutants/ at all"
     batches = [
@@ -734,3 +793,48 @@ def test_the_scan_is_not_vacuous():
         "Removing an area is a deliberate change: delete it from `required` in "
         "the same commit, with a reason."
     )
+
+
+# ---------------------------------------------------------------- the two collapse checks
+#
+# Both replaced a hand-maintained integer floor. A floor that has been re-derived
+# four times (6, 15, 18, 24) is a measurement someone has to re-run on every
+# move, and this file's own history records it drifting out of step with its
+# comment twice. These two need no maintenance — but that is worth nothing
+# unless they can still go red, so both are planted here.
+
+
+def test_an_area_that_discovers_nothing_is_named(tmp_path, monkeypatch):
+    """`_area_test_dir` returns None for an area whose tests directory cannot be
+    located, and `Path.glob` over a missing directory is empty rather than an
+    error — so the area contributes zero files and looks exactly like an area
+    with nothing wrong."""
+    assert _areas_discovering_nothing(_guard_areas()) == []      # the real tree
+    assert _areas_discovering_nothing(("no-such-area",)) == ["no-such-area"]
+
+    # And an area that RESOLVES but holds no guard files, which is the other way
+    # to contribute nothing.
+    (tmp_path / "tests" / "hollow").mkdir(parents=True)
+    monkeypatch.setattr(sys.modules[__name__], "_DEV_TREE", tmp_path)
+    assert _areas_discovering_nothing(("hollow",)) == ["hollow"]
+
+
+def test_an_area_whose_every_guard_is_excused_is_named():
+    """The failure a global policed-count cannot see: an area holding batches,
+    reading as adopted, with not one guard actually demanded to have one. The
+    other areas keep the total up."""
+    areas = _guard_areas()
+    assert _areas_policing_nothing(areas, _EXEMPT, _PENDING_ADOPTION) == []
+
+    # Excuse every guard in one area and it must be named. Built from the tree
+    # rather than hardcoded, so this keeps working as areas come and go.
+    victim = "annotate"
+    assert victim in areas, "the planted area no longer exists; pick another"
+    rels = [_rel(p) for p in sorted(_area_test_dir(victim).glob("test_*.py"))]
+    assert rels, "the planted area discovers nothing, so this proves nothing"
+    swollen = dict(_PENDING_ADOPTION, **{r: "planted" for r in rels})
+    assert _areas_policing_nothing(areas, _EXEMPT, swollen) == [victim]
+
+    # Via _EXEMPT too — the other half of the disjunction.
+    swollen2 = dict(_EXEMPT, **{r: "planted" for r in rels})
+    assert _areas_policing_nothing(areas, swollen2, _PENDING_ADOPTION) == [victim]
