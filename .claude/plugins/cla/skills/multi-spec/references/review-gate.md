@@ -52,9 +52,19 @@ The checklist's "no capitulation, no sycophancy" (INT-CAP / INT-SYC) rules apply
 
 ## Step 7 — Apply fixes and commit (after the dispatch reports)
 
-1. Apply every Critical/Important finding as a direct `Edit`/`Write` fix to the relevant change's artifacts (routed by its `[<change-name>]` prefix from Step 5).
-2. Re-validate each touched change: `openspec validate <name> --strict`.
-3. Commit all fixes as **one** follow-up commit (mirrors the real precedent's two-commit-class shape):
+1. **Capture the rejected-alternatives snapshot — before applying anything.** For each change you are about to touch, read its `design.md` rejected-alternatives / explicitly-rejected-decisions content and hold it for the rest of the gate. Step 3's check is worthless without it, and step 2's fixes routinely edit `design.md` itself. Not `git show HEAD:<path>` — a change authored in this same batch may not be committed yet. **No snapshot captured ⇒ step 3's check has not run**: report that, and never record it clean.
+2. Apply every Critical/Important finding as a direct `Edit`/`Write` fix to the relevant change's artifacts (routed by its `[<change-name>]` prefix from Step 5).
+3. **Check each applied remedy against the alternatives that change already rejected.** Every fix here is one the orchestrator specified: there is no delegate to reject it, and the party that decided the remedy is the party judging it. The check is defined once, for every skill that applies orchestrator fixes to a change's artifacts, in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/SKILL.md` (its Review fix loop) — **read the rule there rather than maintaining a second copy of it**, the same reuse-not-fork policy this file already applies to `review-change/references/checklist.md`. What it requires, in brief:
+
+   - **The snapshot is step 1** — captured before step 2 applies anything, for the reasons stated there.
+   - **A hit is a Critical finding on the fix itself, not a note.** Withdraw or re-specify that remedy; it does not stand on having resolved the original finding. Where the rejection is what now looks wrong, amend that change's `design.md` explicitly rather than contradicting it silently.
+   - A change with no `design.md` has no such document and is out of scope for the check rather than in breach of it.
+
+   **Withdrawing a remedy leaves the original finding unfixed, and this gate has no loop to catch it.** Step 6 permits only "apply it or explicitly note it's out of scope", and a withdrawal is neither, so a withdrawn remedy would otherwise reach step 4's commit and Phase 5's PR with a live Critical — and the resume note below then reads the commit as "review is done". So: after withdrawing, either **re-specify the remedy and apply it in this same gate**, or record the finding as an explicit out-of-scope deferral with the withdrawal reason as its rationale. A finding never leaves this gate merely because its first remedy was wrong.
+
+   Every remedy in this gate is orchestrator-specified, so per-remedy marking would discriminate nothing — state the fact once for the gate in the batch report instead. **The check is weaker than an independent reader and adds no round** — one extra read per touched change, and the report says so rather than implying parity.
+4. Re-validate each touched change: `openspec validate <name> --strict`.
+5. Commit all fixes as **one** follow-up commit (mirrors the real precedent's two-commit-class shape):
    ```
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch docs/propose-<batch-slug>
    git add -- openspec/changes/
@@ -62,6 +72,6 @@ The checklist's "no capitulation, no sycophancy" (INT-CAP / INT-SYC) rules apply
    git push
    ```
    `openspec/changes/` is safe to path-scope broadly here specifically because this is the ONE point in the run where every change in the batch — and nothing else — is expected to be dirty; if `git status --porcelain` outside `openspec/changes/` is non-empty, name those paths explicitly instead of widening the add.
-4. Run the push post-check (`references/phases.md`) before proceeding to Phase 5.
+6. Run the push post-check (`references/phases.md`) before proceeding to Phase 5.
 
 **Resume note:** if a commit matching `docs(openspec): apply review fixes to <batch-slug> proposals` already exists on this branch, review is done — skip straight to Phase 5.

@@ -32,6 +32,14 @@ Where a brief format is shared across skills and cited by slot name, this SHALL 
 second form of the existing task slot rather than as an additional slot, so that citing sites naming
 the slot list remain correct.
 
+**Where a fix dispatch is briefed over more than one finding, its return SHALL carry a per-finding
+outcome in addition to an overall status.** A dispatch spanning a set of findings whose return
+carries only one status cannot express the ordinary mixed result — most findings remedied, one
+remedy rejected — and forcing it into a single status either discards the completed work or hides
+the rejection. Since every branch that consumes such a return triages, counts, and reports **per
+finding**, the return SHALL be per finding too. A dispatch over a single finding SHALL use the same
+contract, returning a one-row list, so that there is one contract rather than two.
+
 #### Scenario: A fix brief separates the two fields
 
 - **WHEN** a skill dispatches an agent to remedy a defect
@@ -74,11 +82,44 @@ the slot list remain correct.
 - **AND** a site briefing a dispatch that never remedies a defect is left unchanged
 - **AND** no fix dispatch briefs against a contract with fewer statuses than the definition carries
 
+#### Scenario: A permission to disagree does not satisfy the requirement
+
+- **WHEN** a skill adds prose permitting the dispatched agent to disagree with the proposed fix
+- **AND** the terminal contract's evidence requirement is left keyed on the remedy having been applied
+- **THEN** the requirement is NOT satisfied
+- **AND** the stated remedy is to change what `done` requires, not to add a further permission
+
+#### Scenario: A dispatch over a set of findings reports each one
+
+- **WHEN** a fix dispatch is briefed over more than one finding at once
+- **THEN** its return carries one overall status AND one outcome row per finding the brief enumerated
+- **AND** a finding whose remedy is rejected is identifiable from that list rather than only from the overall status
+- **AND** a dispatch over a single finding returns a one-row list under the same contract
+
 ### Requirement: A rejected remedy has a receiving branch in the fix loop
 
 A skill whose fix loop triages findings into outcomes SHALL define an outcome for a rejected remedy.
 A rejection SHALL discharge the round's attempt at the finding without closing the finding, SHALL NOT
 be counted as untriaged residue by the loop's exit gate, and SHALL NOT consume a round.
+
+**Triaged and closed SHALL be distinguished, and the exit gate SHALL test both.** A loop whose exit
+gate counts only untriaged findings SHALL NOT be considered to satisfy this requirement: a rejected
+finding is triaged and still open, so such a gate reports the loop clean while a Critical finding is
+live, and the skill's own completion signal then endorses shipping it. The gate SHALL count
+*untriaged* findings (in no outcome) and *open* findings (in an outcome but not closed) separately,
+SHALL require both to be zero to exit clean, and where open findings remain with budget available
+SHALL re-enter the loop rather than exit.
+
+**The terminal report SHALL carry a bucket for a rejected-but-open finding**, distinct from the
+bucket for consciously-deferred findings and from the bucket for suggestion-level residue. An
+outcome a report cannot print is an outcome nobody reads.
+
+**Where a rejection cites a disproved defect, the finding SHALL be closed rather than re-attempted.**
+Where the agent's stated reason is that a factual claim the defect rested on is wrong and the defect
+does not survive its correction, re-deciding the remedy is the wrong next move — there is no defect
+left to remedy — and a loop that re-attempts it will do so until its cap is exhausted. Such a finding
+SHALL be recorded as closed by disproof, with the corrected claim as the evidence, and SHALL NOT be
+recorded as fixed.
 
 #### Scenario: A rejection is triaged rather than counted as residue
 
@@ -93,6 +134,26 @@ be counted as untriaged residue by the loop's exit gate, and SHALL NOT consume a
 - **THEN** the finding remains open and is re-attempted with a re-decided remedy
 - **AND** the finding is not recorded as resolved by the rejection
 
+#### Scenario: The exit gate does not release the loop on an open finding
+
+- **WHEN** a round ends with a rejected finding triaged and still open, and no untriaged findings
+- **THEN** the exit gate does not report the loop clean
+- **AND** with budget remaining the loop re-enters rather than exiting
+- **AND** at cap exhaustion the round is warned and the open finding is captured as residue
+
+#### Scenario: A rejected finding has a home in the terminal report
+
+- **WHEN** a run ends with a finding whose remedy was rejected and which is still open
+- **THEN** the terminal report prints it under a bucket of its own
+- **AND** it is not filed as a conscious deferral or as suggestion-level residue
+
+#### Scenario: A rejection citing a disproved defect closes the finding
+
+- **WHEN** the rejection's stated reason is that the defect does not survive the correction of a claim it rested on
+- **THEN** the finding is closed rather than re-attempted with a re-decided remedy
+- **AND** the corrected claim is recorded as the evidence of closure
+- **AND** the finding is not recorded as fixed
+
 #### Scenario: A rejection costs no round
 
 - **WHEN** a round contains a rejected remedy
@@ -106,9 +167,22 @@ the source that resolves it (a path with a line, or a runnable command). Such su
 ship as unattributed ground truth inside the defect prose, where nothing marks them as claims and
 nothing tells the reader where they came from.
 
+Each row SHALL additionally carry a **provenance tag** recording whether the claim was verified by the
+party writing the brief or merely reported to it. Two values SHALL be distinguished: a claim someone
+has actually resolved against its source, and a claim relayed from a dispatched agent's report without
+independent resolution. Without the tag the source field says only where a claim *could* be checked,
+not whether anyone did, and the rows the reader most needs to re-run are indistinguishable from the
+rows already settled — which is the condition that let a four-field claim about a three-field type
+ship as ground truth.
+
+The tag SHALL apply to a brief's fact rows and SHALL NOT be required of a review report's claim table;
+extending it there is a separate concern with a separate consumer.
+
 The dispatched agent's first action SHALL be to re-resolve each row against its named source, each row
 resolving to verbatim evidence or an explicit not-found, per the grounding contract the plugin already
-applies to review claims.
+applies to review claims. The brief SHALL state that resolving-quote-or-not-found rule in its own text
+rather than only citing the document that defines it, because a dispatched agent reads the brief and
+does not load the plugin's review checklist.
 
 A wrong sub-claim SHALL NOT automatically void the defect. Three outcomes SHALL be distinguished:
 
@@ -127,6 +201,7 @@ indistinguishable to the reader, which defeats the purpose of requiring it.
 - **WHEN** a fix brief states a defect resting on a field list, a signature, a line number, or a count
 - **THEN** each such claim appears as its own row rather than inside the defect prose
 - **AND** each row names the path-with-line or the runnable command that resolves it
+- **AND** each row carries a provenance tag saying whether the claim was independently resolved or relayed unverified
 
 #### Scenario: The agent re-resolves the rows before implementing
 
@@ -175,10 +250,18 @@ evidence. The remedy SHALL be withdrawn or re-specified, and where the design do
 the thing now judged wrong, that document SHALL be amended explicitly rather than contradicted
 silently; "the fix brief said so" SHALL NOT be accepted as an amendment.
 
-Each such remedy SHALL be **marked** on the round's finding record as orchestrator-specified, so that a
-later reader can tell which changes had no independent author. Where a later review round runs over
-that diff, the marked hunks SHALL be named to it along with the same rejected-alternatives check. Where
-no later round runs, the marks SHALL surface in the skill's terminal report.
+Each such remedy SHALL be **marked** as orchestrator-specified on the record the skill already keeps
+for that finding's triage outcome, so that a later reader can tell which changes had no independent
+author. The mark SHALL NOT be specified as a field of a structure the skill does not have. Where a
+later review round runs over that diff, the marked hunks SHALL be named to it along with the same
+rejected-alternatives check. Where no later round runs, the marks SHALL surface in the skill's
+terminal report.
+
+**Marking SHALL be required only where it discriminates.** In a fix loop that has no delegate at all,
+every remedy is orchestrator-specified, so a per-remedy mark distinguishes nothing and its presence
+would read as a signal it does not carry; there the fact SHALL be stated once for the loop instead.
+Per-remedy marking SHALL be required where delegated and orchestrator-applied remedies can occur in
+the same round. The adjudication check itself SHALL run on both.
 
 This obligation SHALL NOT be discharged by raising a round cap or by making an additional round
 unconditional. The control is in-round and is deliberately weaker than an independent reader; the
@@ -213,13 +296,15 @@ skill's text SHALL say so rather than implying the two are equivalent.
 #### Scenario: The check reads the document as it stood before the remedy
 
 - **WHEN** the orchestrator's remedy is itself an edit to the rejected-alternatives document
-- **THEN** the check reads the committed version of that document, not the working tree
+- **THEN** the check reads that document as captured at the start of the fix round, before the round's edits
 - **AND** a remedy is never adjudicated against a document the same remedy just edited
+- **AND** the pre-edit content is obtained without requiring the document to be committed, since a fix loop that runs before the change is first committed would otherwise have no version to read
 
 #### Scenario: A fix loop with no rejected-alternatives document is out of scope
 
 - **WHEN** a skill applies orchestrator-specified fixes but operates on no change directory
 - **THEN** it has no rejected-alternatives document and the check does not bind it
+- **AND** the marking obligation does not bind it either, there being nothing for a later reader to check a mark against
 - **AND** the obligation is stated as conditional on such a document existing
 - **AND** the absence of the document is not reported as a breach of the obligation
 

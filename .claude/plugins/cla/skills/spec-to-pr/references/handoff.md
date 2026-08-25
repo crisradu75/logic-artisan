@@ -21,6 +21,9 @@ From the orchestrator's working memory of each phase. Use this exact shape (one 
   ```
 
   Under the full-severity policy the first two are legitimate holds and `Skipped` is a policy breach, so **a non-empty `Skipped` fails Handoff.** One bucket under a single alarming label makes the two indistinguishable without re-reading every item, which in practice means the section gets waved through unread. Keep the headings verbatim so the check stays a grep rather than a judgement.
+- **Rejected remedies, still open:** every Critical/Important finding a fix delegate returned `remedy-rejected` on **citing the remedy**, and which the run ended without closing. One line each: the finding, and the delegate's stated reason for rejecting the fix. Empty section when there are none — print "(none)".
+
+  This is its own bucket and not a variant of either neighbour. It is **not** a Deferred Known Issue — nobody chose to defer it; a delegate examined the proposed fix and found it wrong, which is a *successful* return and leaves the defect real and unfixed. It is **not** Suggestion-level residue either. Filing it under either heading loses the one thing a reader needs: that a live Critical remains and the reason the obvious fix for it was rejected. A finding closed by disproof — the defect itself shown not to exist — does not appear here; it closed, and nothing is outstanding.
 - Deferred to TODO.md: bulleted residue list (Suggestion-level only, plus any cap-exhausted untriaged residue). Empty when none.
 - Next steps for you (see step 4 for the gating rule).
 
@@ -32,12 +35,18 @@ Skip entirely when there are no issues.
 - **Few short issues:** edit the body inline as one line — e.g. `gh pr edit <#> --body "Closes openspec/changes/<name>/. Checks: build + lint passed. Known issues: <comma-separated brief list>."`.
 - **Long or multi-line issues:** write a single short Markdown body to `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run — no per-run timestamped dir), then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`. The file body is intentionally terse: original one-liner + a `## Known issues` section with one bullet per issue. No restated test plan, no closing summary.
 
-## 3. Persist Deferred-Known-Issues + Suggestions to TODO.md
+**Mirror "Rejected remedies, still open" too, and put it first.** It is the most severe thing the report carries — a live Critical — so a PR body naming the Deferred-Known-Issues while omitting it inverts the severity order the body exists to convey. One line per finding with the delegate's reason.
 
-Durable record beyond PR-body staleness. The PR body goes stale once the PR merges; `TODO.md` is the load-bearing follow-up tracker per repo CLAUDE.md ("Deferred ideas and follow-ups, organized by plugin"). When the Revise output has any Deferred-Known-Issues OR Suggestions:
+## 3. Persist Deferred-Known-Issues + Rejected-remedies-still-open + Suggestions to TODO.md
+
+Durable record beyond PR-body staleness. The PR body goes stale once the PR merges; `TODO.md` is the load-bearing follow-up tracker per repo CLAUDE.md ("Deferred ideas and follow-ups, organized by plugin"). When the Revise output has any Deferred-Known-Issues, any **rejected remedies still open**, OR any Suggestions:
 - Append a single section to `TODO.md` at the repo root (create the file if absent) with the shape:
   ```
   ## Deferred from PR #<N> (<change-name>) — <YYYY-MM-DD>
+
+  **Rejected remedies, still open** (findings whose proposed fix a delegate rejected with reasons; the defect is REAL and UNFIXED):
+  - [Critical] <issue> — remedy rejected because: <the delegate's reason>
+  - ...
 
   **Deferred-Known-Issues** (Important PR-review findings the team consciously deferred):
   - [Important] <issue> — rationale: <one line>
@@ -48,12 +57,16 @@ Durable record beyond PR-body staleness. The PR body goes stale once the PR merg
   - ...
   ```
 - Stage + commit as `docs: TODO.md`. Push to the same feature branch (the user merges it with the rest of the PR; TODO.md becomes part of history).
-- Skip entirely if BOTH lists are empty.
+- Skip entirely only if ALL THREE lists are empty. A run whose only residue is rejected-open findings still writes the section — that is the case the rejected-remedies block was added for, and a two-list trigger would skip exactly it.
 - This commit lands AFTER the archive commit, so the TODO.md edit reflects the final state. The pr-review agents do NOT re-review it (mechanical doc edit).
 
 ## 4. Next-steps gating (INVARIANT — also stubbed inline in SKILL.md)
 
-The terminal report's "Next steps for you" section is gated on the overall phase tally:
+The terminal report's "Next steps for you" section is gated on the overall phase tally, **and on the "Rejected remedies, still open" section being empty.** A non-empty one takes the **✗ branch** below — it does NOT print `gh pr merge` — even when every phase glyph is ✓.
+
+**Why ✗ and not ⚠.** The ⚠ branch still names `gh pr merge` as the eventual command, so routing there would print a merge command over an open Critical, which is the failure this gate exists to prevent. The ⚠ branch also lists "each ⚠ phase's one-line summary", and a rejected remedy is not a phase — it would print a warning header over an empty list, which reads as boilerplate. So: ✗ branch, and list each open rejected finding with the delegate's reason in place of the failing-phase list.
+
+**How this state is reached.** `revise.md`'s exit gate never releases the loop `ok` while a finding is open, so an open rejected finding reaches Handoff by one of two routes, both of which mark Revise `warn`: **re-attempt exhaustion** (the finding's remedy was rejected twice, by two independently-decided remedies, and nothing is left to try) or **cap exhaustion**. So the glyph is `warn`, not `✓` — and that is exactly why this gate is needed rather than redundant: the ⚠ branch names `gh pr merge` as the eventual command, which is right for an ordinary warn and wrong for a live Critical. Gating on the *section* rather than the *glyph* is what tells those two apart, because the glyph cannot.
 - **All ✓:** print `gh pr merge <#> --squash --delete-branch` as the next step. Single line, no preamble. **Stacked-child exception (`--pr-base` passed):** never print a bare merge command — squash-merging a stacked parent breaks every child PR. Print "lands with its chain — see the multi-pr report" instead; the chain report carries the parents-first, merge-commit landing checklist.
 - **Any ⚠ (warn):** print a "**Review warnings before merging.**" line FIRST, then list each ⚠ phase's one-line summary indented. Only after that — and on a new line — name `gh pr merge` as the eventual command. The intent: the user should not type `gh pr merge` without first reading what warned.
 - **Any ✗ (fail):** print "**This PR is NOT ready to merge.**" and DO NOT name `gh pr merge` at all. List the failing phases. The user can override by typing merge themselves, but the report does not endorse it.
