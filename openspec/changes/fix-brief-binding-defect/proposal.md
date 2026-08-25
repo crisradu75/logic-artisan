@@ -48,18 +48,31 @@ across the brief, its terminal contract, and the sites that restate either:
   prints `(none)` rather than being omitted.
 - **An orchestrator-specified remedy is reviewed as a decision.** Where the fix is delegated, the
   rejectable field is that review. Where the orchestrator applies the fix itself — inline in Revise,
-  or in the Review phase's artifact-fix loop, where there is no delegate at all — its own post-fix
-  re-verification additionally checks the applied remedy against the change's `design.md` rejected
-  alternatives, and the remedy is marked so the next reader knows it had no independent author.
-- **Every site that restates the terminal contract states the new one.** The contract is written in
-  three places besides the brief — the Implement delegation step, the Revise fix-delegate default,
-  and the Revise stub's invariant line — and a rule added only to the brief leaves a dispatch
-  launched from any of those three briefing against the old two-status contract. All three are
-  edited in the same change as the brief itself.
-- **`remedy-rejected` gets a receiving branch.** Revise triages every Critical and Important finding
-  into Applied or Deferred-Known-Issue, and its exit gate counts anything in neither as untriaged
-  residue. A rejection is a *successful* return and belongs in neither bucket, so the triage gains an
-  explicit third outcome and the exit gate is told to stop counting it against the round.
+  in the Review phase's artifact-fix loop, or in `multi-spec`'s per-change review gate, none of which
+  has a delegate — its own post-fix re-verification additionally checks the applied remedy against
+  the change's `design.md` rejected alternatives, reading a **round-start snapshot** rather than the
+  working tree. A hit is a Critical finding on the remedy itself, not a note: the remedy is withdrawn
+  or re-specified. On the Revise path, where delegated and orchestrator-applied fixes mix, the remedy
+  is marked so the next reader knows which hunks had no independent author.
+- **Every site that restates the terminal contract for a FIX dispatch states the new one.** The
+  contract is written in four places besides the brief, but only two of them brief a dispatch that
+  remedies a defect — the Revise fix-delegate default and the Revise stub's invariant line. Both are
+  edited here. Implement's coding delegate and `multi-spec`'s authoring brief are named as out of
+  scope so neither is "fixed" by mistake.
+- **`remedy-rejected` gets a receiving branch at every point that receives one.** Three, not one.
+  The **triage** gains an explicit third outcome beside Applied and Deferred-Known-Issue. The **exit
+  gate** splits its single counter in two — *untriaged* and *open* — because a rejected finding is
+  the first that is triaged and still open, and a gate counting only untriaged would exit the loop
+  clean while a Critical is live. The **terminal report** gains its own bucket for it, distinct from
+  conscious deferrals and from Suggestions. And because Revise's fix-delegate has no return-handling
+  prose of its own today, this change writes that branch too.
+- **A set-level dispatch returns per-finding outcomes.** The fix-delegate is dispatched once over a
+  whole fix-set while every branch receiving its result is per finding, so the return carries one
+  overall status plus one row per finding — fourteen applied and one rejected has to be sayable.
+- **A rejection citing a disproved defect closes the finding.** A rejection normally leaves the
+  finding open for a re-decided remedy. Where the delegate has shown the defect itself does not
+  exist, re-attempting it forever is the wrong move: that case closes, with the corrected fact row as
+  the evidence.
 
 No caps change. Nothing forces an additional Revise or Review round; this change deliberately leaves
 the round-count question to its own decision item.
@@ -78,14 +91,16 @@ the round-count question to its own decision item.
 
 ## Impact
 
-Prose-only, in three shipped files. Measured with
+Prose-only, in five shipped files. Measured with
 `wc -l` and `grep -n '^### \|^## '` on 2026-08-25:
 
 | File | lines | where the edit lands |
 |---|---|---|
 | `.claude/plugins/cla/skills/spec-to-pr/references/subagent-brief.md` | 115 | §2 (line 37) gains the fix-brief form; §5 (line 78) gains the defect-gone terminal contract |
-| `.claude/plugins/cla/skills/spec-to-pr/SKILL.md` | 431 | Review (line 191) fix loop; Implement's delegation contract (line 239); the Revise stub (line 327) invariant lines |
-| `.claude/plugins/cla/skills/spec-to-pr/references/revise.md` | 135 | the round-N≥2 scoping (line 68), the fix-delegate default (line 97), the triage buckets (line 82) and exit gate (line 134), and the INT-CAP re-read (line 101) |
+| `.claude/plugins/cla/skills/spec-to-pr/SKILL.md` | 431 | Review (line 191) fix loop; the Revise stub (line 327) invariant lines. **Implement (lines 239/243) is deliberately NOT edited** — see the site classification below |
+| `.claude/plugins/cla/skills/spec-to-pr/references/revise.md` | 135 | the round-N≥2 scoping (line 68), the fix-delegate default (line 97), the triage buckets (line 82) and exit gate (line 134), the INT-CAP re-read (line 101), plus a new return-handling branch the fix-delegate currently lacks entirely |
+| `.claude/plugins/cla/skills/spec-to-pr/references/handoff.md` | — | the terminal report's deferred buckets (lines 13, 24) gain a third for a rejected-but-open finding |
+| `.claude/plugins/cla/skills/multi-spec/references/review-gate.md` | — | Step 7 (line 55) applies findings as direct Edit/Write to a change's artifacts with no delegate — a second site inside the orchestrator-specified-remedy rule |
 
 **The restating sites are what an implementer would miss.** The `done`/`blocked` contract is written
 in five places, not one. Measured 2026-08-25 with
@@ -94,14 +109,30 @@ in five places, not one. Measured 2026-08-25 with
 | site | dispatch it briefs | in scope here |
 |---|---|---|
 | `spec-to-pr/references/subagent-brief.md:83` | the definition every other site cites | **yes** |
-| `spec-to-pr/SKILL.md:239` | Implement's coding delegate | **yes** |
 | `spec-to-pr/SKILL.md:337` | Revise's fix-delegate, stub line | **yes** |
 | `spec-to-pr/references/revise.md:97` | Revise's fix-delegate, full recipe | **yes** |
-| `multi-spec/references/authoring-brief.md:46` | authors proposals; never remedies a defect | **no** — named so it is not "fixed" by mistake |
+| `spec-to-pr/SKILL.md:239` | Implement's coding delegate — implements enumerated tasks | **no** |
+| `multi-spec/references/authoring-brief.md:46` | authors proposals; never remedies a defect | **no** |
 
-Editing only the definition leaves three fix-dispatch sites briefing against the old two-status
-contract, and `remedy-rejected` arriving at a triage (`revise.md:82`) that has no bucket for it and
-an exit gate (`revise.md:134`) that counts it as untriaged residue.
+**Two of the five are not fix dispatches, and both are named so they are not "fixed" by mistake.**
+`multi-spec`'s authoring brief writes proposals. `SKILL.md:239` is Implement's coding delegate, and
+excluding it is a correction: an earlier draft counted it in scope, which contradicts this change's
+own rule that a site briefing a dispatch that never remedies a defect is left unchanged. Implement's
+delegate implements the tasks it is handed, under a rule two lines above that same bullet requiring
+full-task enumeration because the delegate "will NOT invent an omitted task" — a delegate with no
+discretion to reject the plan cannot be given a contract whose third status is a reasoned rejection.
+
+**Which relocates the real gap rather than removing it.** `SKILL.md:243` — the prose that receives a
+delegate's return and branches on it — is the only delegate-return receiver in the skill, and it
+lives in Implement. Revise's fix-delegate has no return-handling prose of its own at all. So
+excluding Implement does not leave Revise covered; it shows that Revise's fix-delegate is dispatched
+with nothing written to receive what it returns. This change writes that branch in `revise.md`,
+where it belongs, and leaves `SKILL.md:239`/`:243` untouched.
+
+Editing only the definition leaves two fix-dispatch sites briefing against the old two-status
+contract, and `remedy-rejected` arriving at a triage (`revise.md:82`) that has no bucket for it, an
+exit gate (`revise.md:134`) that lets it exit the loop while the finding is still open, and a
+terminal report (`handoff.md`) with no bucket to print it in.
 
 **Blast radius checked.** `grep -rn 'subagent-brief' .claude/plugins/cla/` returns exactly two
 citing sites — `spec-to-pr/SKILL.md:234` and `lite-pr/SKILL.md:141` — and both cite the brief by its
@@ -122,8 +153,19 @@ This change lands first in its batch, so the note is for whoever runs the others
   than applying it — so the naive rule reclassifies a successful return as a failure, which is the
   exact ledger distortion this change rejected `blocked` to avoid. The carve-out belongs in that
   change, since this one ships before it and cannot reference a rule that does not yet exist.
-- **`fact-row-provenance` inherits the cut scope.** #112, the adjudication widening, and the
-  `rows_remeasured` / `rows_remeasured_disagreed` run-record counts. Two findings travel with it and
+  **Two additions from this change's review:** the carve-out must key on the **per-finding outcome
+  list**, not the overall status — a set-level dispatch returning `remedy-rejected` overall may carry
+  thirteen applied rows whose evidence fields are fully populated, so "missing evidence ⇒ blocked"
+  applied at the dispatch level misreads a mostly-successful return. And a rejection citing a
+  **disproved defect** carries no defect-check output for the same by-construction reason, yet closes
+  its finding rather than leaving it open; classifying it `blocked` would reopen something this
+  change closes.
+- **`fact-row-provenance` inherits the cut scope, and gains the telemetry.** #112, the adjudication
+  widening, and the `rows_remeasured` / `rows_remeasured_disagreed` run-record counts —
+  **plus the rejection counts this change deliberately does not add.** `remedy-rejected` ships here
+  with no ledger field, so `/cla:spec-to-pr-retro` cannot price the escape-hatch risk the design
+  names; the field and its consumer in `spec_to_pr_aggregate.py` have to land together, which makes
+  it that change's work rather than this one's. Two findings travel with it and
   are not this change's to fix: `agents/fact-gatherer.md` pins a four-column output table and
   "Do not add any text outside the table", so a provenance column needs that file edited; and
   `spec_to_pr_aggregate.py` reads no such counts, which `run-log-schema.md`'s own line 8 forbids

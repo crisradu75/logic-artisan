@@ -27,10 +27,36 @@ grep -n 'Applied\|Deferred-Known-Issue\|Exit gate' .../spec-to-pr/references/rev
     → :82 "Applied", :83 "Deferred-Known-Issue", :134 "Exit gate"  (two buckets, no third)
 grep -rn 'explicit `done`|`done`/`blocked`' .claude/plugins/cla/skills/
     → subagent-brief.md:83, SKILL.md:239, SKILL.md:337, revise.md:97,
-      multi-spec/references/authoring-brief.md:46   (five sites; the last is not a fix dispatch)
+      multi-spec/references/authoring-brief.md:46
+      (five sites; TWO are not fix dispatches — see the classification below)
 grep -rn 'subagent-brief' .claude/plugins/cla/
     → spec-to-pr/SKILL.md:234, lite-pr/SKILL.md:141   (two citing sites, both by slot name)
 ```
+
+**The census's two literals do not find every site this change binds, and a second census is
+therefore required.** The grep above finds sites that *restate a terminal contract*. Decision 4
+binds a different population — sites where an **orchestrator applies a fix to an OpenSpec change's
+own artifacts with no delegate present** — and those say nothing about `done`/`blocked`, so the
+first census cannot see them. Measured 2026-08-25:
+
+```
+grep -rn 'finding via direct\|finding as a direct\|deferred Critical/Important findings' \
+    .claude/plugins/cla/skills/
+    → spec-to-pr/SKILL.md:215            (Review's fix loop)
+      multi-spec/references/review-gate.md:55  (Step 7, per change, design.md present)
+      multi-lite/references/candidate-loop.md:22,23 (enforcement round over lite-pr candidates)
+```
+
+The three sites word the same action three different ways — "via direct Edit/Write", "as a direct
+`Edit`/`Write` fix", "deferred Critical/Important findings" — which is why one literal does not find
+them and why the pattern above is an alternation. That is also the general lesson: a census whose
+pattern was written from one site's phrasing finds one site.
+
+`multi-spec/references/review-gate.md:55` is squarely inside Decision 4(b): it applies findings as
+direct `Edit`/`Write` to a change's artifacts, the change has a `design.md`, and there is no
+delegate. It is in scope and this change edits it. `multi-lite/references/candidate-loop.md:23`
+enforces `lite-pr`'s deferred findings, and `lite-pr` has no change directory by construction, so
+it is exempt under Decision 4's stated condition rather than in breach of it.
 
 Two constraints bound every option below. The brief file is **synced core** — it ships verbatim to
 consuming repos, so nothing repo-specific and no dev-tree path may enter it. And it is cited by slot
@@ -70,7 +96,8 @@ name from two skills, so renaming or adding a slot is a three-file edit whose co
 
 ### The contract: three authority levels and one provenance tag
 
-Every line a brief contains, and every row a report contains, is exactly one of:
+Every line a **brief** contains is exactly one of. (A review *report*'s rows are out of scope here
+— that widening is `fact-row-provenance`; see Non-Goals.)
 
 | Level | What it means | Who may overturn it, and how |
 |---|---|---|
@@ -88,13 +115,26 @@ checkable level, and #107 is what happens when the rejectable level has nobody t
 fourth, #112, was proposed alongside them and cut at review — it is the provenance tag on a *review
 report's* rows rather than on a brief's, and the three levels do not reach it. See Non-Goals.)
 
+**The unification is honest for two of the three, and stated as such rather than claimed for all.**
+#96 and #121 are brief-format issues: the binding/rejectable split and the checkable level are both
+fields in slot 2, and both change what `done` requires. #107 is not. Its closure (Decision 4(b))
+attaches a cross-check to the orchestrator's own re-verification *precisely because* the rejectable
+level has nobody to exercise it on that path — the authority contract diagnoses #107 but does not
+close it, and the mechanism that does close it carries no authority level. The contract is still the
+right frame, because it is what makes the gap on that path nameable; but "one contract closes three
+issues" would be overclaiming, and this design says two-and-a-diagnosis instead.
+
 **Rejected alternative — three appended rules.** Add a "the delegate may push back" sentence to slot 2,
 a "check the facts you were given" sentence beside it, and an "orchestrator fixes get reviewed too"
 rule in `revise.md`. Rejected on three grounds. First, an
 appended permission does not change what `done` requires, so it does not reach the compliant delegate
 that #96 describes — the delegate reads a permission next to an instruction with a deliverable
-attached, and the instruction wins. Second, three rules cover three filed instances and leave the fourth
-uncovered; a stated authority level covers a shape nobody has filed yet. Third, three prose blocks in
+attached, and the instruction wins. Second, three rules cover exactly the three filed instances; a
+stated authority level covers a shape nobody has filed yet. (An earlier draft argued this ground by
+counting #112 as the uncovered fourth. That does not hold: #112 is cut from this change too, so it
+is uncovered either way and refutes nothing. The ground survives only in its general form — that a
+rule enumerating instances stops at the instances enumerated — which is weaker than the count made
+it look.) Third, three prose blocks in
 three files go stale independently, which is the exact failure the brief reference was created to fix
 (`subagent-brief.md` lines 9–11: one dispatch site had three carefully-reasoned rules and another had
 a single sentence).
@@ -154,6 +194,29 @@ outcomes:
    the corrected row. Do not implement.
 3. A row is wrong **but** the defect survives → correct the row, proceed, and report the correction.
 
+**Outcome 2 and a rejected remedy are the same status with opposite next moves, and the difference
+is what the rejection cites.** Decision 5 makes a rejection discharge the round's attempt at a
+finding *without closing the finding*, because the normal case is "your remedy is wrong, re-decide
+it" and the finding is still real. Outcome 2 is not that case: the delegate has shown the defect
+itself does not exist. Left under Decision 5's rule, a finding proven false could never close — it
+would be re-attempted with a re-decided remedy for a defect that is not there, every round, until
+the cap ran out.
+
+So the orchestrator's move on a rejection is chosen by reading the rejection's reason, and the two
+branches are named:
+
+- **The rejection cites the remedy** (the defect stands, the proposed fix is wrong) → re-decide the
+  remedy; the finding stays open, per Decision 5.
+- **The rejection cites a disproved defect** (outcome 2 — a fact row was wrong and the defect does
+  not survive its correction) → **close the finding**, with the corrected row as the evidence of
+  closure. Record it as closed-by-disproof rather than as applied, so the ledger does not claim a
+  fix that never happened.
+
+A fourth terminal status was considered and rejected: the two cases are already distinguishable from
+the reason the delegate must supply anyway, and a fourth status would need a fourth arm on every
+receiving branch this change is adding — the triage, the exit gate, the terminal report, and the
+delegate-return receiver — for information the third status already carries.
+
 Outcome 3 is #121 exactly: four asserted fields, three real, defect still real. The correction is
 returned in a required field, `Fact corrections:`, which prints `(none)` when empty rather than being
 omitted — an omitted field and "nobody looked" are indistinguishable, which is the same reasoning the
@@ -183,17 +246,48 @@ is the named, sourced form of what #107 records: the Critical reintroduced a bia
 **Two scope conditions, because the naive form of this check does not hold.** First, on the Review
 path the remedy is frequently *an edit to that very `design.md`* — Review's fix loop applies findings
 to the change's own artifacts. Reading the working tree would then have the remedy adjudicate itself.
-So the check reads the pre-edit version, `git show HEAD:<path>`, and the design says so rather than
-leaving an implementer to notice. Second, the check needs a rejected-alternatives document to exist,
-and a skill that applies orchestrator fixes without operating on an OpenSpec change has none — the
-lightweight PR workflow has no change directory by construction. The check is therefore conditioned
-on a change directory being present, not asserted universally; a skill with no such document is out
-of its scope rather than in breach of it.
+So the check reads the rejected-alternatives content **as it stood at the start of the fix round**,
+captured before any of that round's edits, and the design says so rather than leaving an implementer
+to notice. Second, the check needs a rejected-alternatives document to exist, and a skill that
+applies orchestrator fixes without operating on an OpenSpec change has none — the lightweight PR
+workflow has no change directory by construction. The check is therefore conditioned on a change
+directory being present, not asserted universally; a skill with no such document is out of its scope
+rather than in breach of it.
 
-The remedy is additionally **marked** — `remedy: orchestrator-specified` on the round's finding row —
-so the next reader knows this hunk had no independent author. Where a later round runs, that round's
-dispatch is told which hunks carry the mark and to check each against the same rejected-alternatives
-list. Where no later round runs, the mark surfaces in the terminal report so a human sees the list.
+**Why a round-start snapshot and not `git show HEAD:<path>`.** An earlier draft pinned the git
+command, and it does not work on the path it was written for. The phase order is
+Precheck → Propose → **Review** → Implement → Test → **Ship**, so on a freshly-proposed change the
+change directory is still untracked when Review's fix loop runs, and
+`git show HEAD:openspec/changes/<name>/design.md` fails with a path-does-not-exist error on the
+common case. The requirement was never "the committed version" — it is "a version this remedy has
+not touched", and a snapshot taken at round start satisfies that on both paths with no dependence on
+whether the file is tracked yet.
+
+**A hit is a Critical finding on the fix, not a note.** Where the check finds the applied remedy
+reintroduces something the design rejected, that is a Critical finding against the remedy itself.
+The remedy is withdrawn or re-specified; it does not stand on having resolved the original finding,
+because resolving one finding by reintroducing a rejected decision is exactly the failure the check
+exists to catch and is indistinguishable from success on the original finding's own evidence. Where
+the rejection is what is now judged wrong, the `design.md` is amended explicitly — "the fix brief
+said so" is not an amendment. Stating the response matters as much as stating the check: a check
+whose only defined outcome is a note gets read as a note.
+
+The remedy is additionally **marked** — `remedy: orchestrator-specified` — so the next reader knows
+this hunk had no independent author. Where a later round runs, that round's dispatch is told which
+hunks carry the mark and to check each against the same rejected-alternatives content. Where no
+later round runs, the mark surfaces in the terminal report so a human sees the list.
+
+**Where the mark actually lives, and where it carries signal.** Two corrections to the naive form.
+First, Revise's round-1 findings are a schema'd object (`revise.md`'s fan-out returns
+`{severity, file, line, summary}`); there is no "finding row" table anywhere in Revise for a marker
+to sit on. The mark is therefore a field the orchestrator carries **on its own triage record** for
+the finding — the same record that already holds Applied / Deferred-Known-Issue — and it is that
+record the terminal report reads. Second, on the **Review** path there is no delegate at all, so
+*every* remedy is orchestrator-specified and a per-remedy mark there discriminates nothing. The mark
+is therefore load-bearing on the **Revise** path, where delegated and orchestrator-applied fixes mix
+in one round; on the Review path the fact is a property of the phase and is stated once per run
+rather than once per finding. The check itself still runs on both paths — it is the *marking* that
+is Revise-specific, not the adjudication.
 
 **Priced, and stated plainly: an orchestrator-specified remedy does NOT force an extra round.** The
 stronger option — every orchestrator-specified remedy triggers one more review round — would buy an
@@ -219,9 +313,38 @@ the ledger distortion Decision 2 rejected `blocked` to avoid.
 
 So the triage gains an explicit third outcome, with one asymmetry that has to be stated rather than
 inferred: a rejection discharges **the round's attempt** at the finding, not the finding. The
-orchestrator re-decides the remedy; the finding stays open and is re-attempted. The exit gate stops
-counting it as residue, and the round cap does not move — a rejection is information, and charging a
-round for it would teach the orchestrator to avoid asking.
+orchestrator re-decides the remedy; the finding stays open and is re-attempted. The round cap does
+not move — a rejection is information, and charging a round for it would teach the orchestrator to
+avoid asking.
+
+**"Triaged" and "may exit the loop" are two different predicates, and conflating them is how the
+third status silently ships a Critical.** `revise.md`'s exit gate reads: *count un-triaged Critical
+and Important findings; if 0 untriaged → status `ok`, exit loop.* Applied and Deferred-Known-Issue
+are both triaged **and** both closed, so on the two-bucket triage the two predicates coincided and
+one counter served for both. A rejected finding is the first that is triaged and **open**. Told only
+"stop counting it as residue", the gate sees zero untriaged, returns `ok`, and exits — with a live
+Critical on the change and Handoff's all-✓ next-steps then printing `gh pr merge`. Nothing warns,
+because every phase really did report `ok`.
+
+The gate therefore splits into two counts, and both must be zero to exit clean:
+
+- **Untriaged** — Critical/Important findings in no bucket at all. Unchanged; a rejection is not one
+  of these.
+- **Open** — findings triaged but not closed. A rejected-and-re-attemptable finding is exactly this.
+  Non-zero open with budget remaining → **re-loop** (this is the branch the naive rule made
+  unreachable). Non-zero open at cap exhaustion → status `warn`, and the open findings are captured
+  as residue for the report, not dropped.
+
+A finding closed by disproof (Decision 3's outcome 2) is closed and counts in neither.
+
+**And a triage outcome with no bucket in the terminal report is a triage outcome nobody reads.**
+Handoff's report has exactly two deferred buckets: *Deferred Known Issues* (Revise's
+Deferred-Known-Issue, each with rationale) and *Deferred to TODO.md* (Suggestions plus
+cap-exhausted untriaged residue). A rejected-but-open finding is neither — it is not a conscious
+deferral and it is not a Suggestion. It needs its own named bucket in the report, for the same
+reason the report already splits its "not applied" list by cause rather than pooling it: an
+undifferentiated list is one nobody can act on. Landing the status without the bucket repeats, one
+layer up, the exact half-a-change this decision exists to prevent.
 
 **Rejected alternative — let a rejection close the finding.** It makes rejection the cheapest exit
 from any hard finding, which is the escape hatch the Risks section already names. A rejection that
@@ -261,7 +384,30 @@ dispatches, and is quoted as a block in `subagent-brief.md` §5):
 > or `(none)`. Never omit the field.
 
 **Required return fields** (a fix brief's return, in this order): `status`, defect-check output,
-test-run summary line, ticked-task count, `Fact corrections:`.
+test-run summary line, ticked-task count, `Fact corrections:`. The order is part of the pin, not a
+presentation preference — a fixed order is what lets the orchestrator check for a missing field
+rather than scanning prose for it.
+
+**A set-level dispatch returns one status PLUS a per-finding outcome list.** Revise's fix-delegate
+fires past the sized trigger (`> ~15 subtasks-equivalent OR > ~8 files`) and is dispatched **once
+over a whole fix-set**, while every branch receiving its result — the triage, the exit gate, the
+report — is **per finding**. A single `status` cannot express the ordinary case of fourteen findings
+applied and one remedy rejected, and forcing it to would either discard the fourteen or bury the
+one. So a fix-set dispatch returns:
+
+- one overall `status` for the dispatch (`done` / `blocked` / `remedy-rejected`), plus
+- a per-finding outcome list, one row per finding the brief enumerated, each row carrying that
+  finding's own outcome and — for a rejection — its reason.
+
+The overall status is `remedy-rejected` when any finding's row is; the orchestrator then reads the
+list rather than the status to decide what to re-attempt. A single-finding dispatch degenerates to a
+one-row list, so there is one contract, not two. Dispatching per finding instead was considered and
+rejected: it would change the delegation trigger, which Non-Goals holds fixed.
+
+**Where the orchestrator-specified marker lives:** on the orchestrator's own triage record for the
+finding — the record that already carries Applied / Deferred-Known-Issue — not on a "finding row",
+which does not exist as a structure in Revise. Revise's round-1 findings arrive as a schema'd
+`{severity, file, line, summary}` object.
 
 **Provenance tag values** (exactly two, lowercase, hyphenated): `agent-reported`,
 `orchestrator-verified`.
@@ -281,9 +427,19 @@ review report, and no adjudication rule changes here. That widening is `fact-row
 `remedy-rejected`. A rejection discharges the round's attempt at a finding, not the finding, and
 consumes no round.
 
-**Rejected-alternatives check reads the PRE-EDIT document.** Where the orchestrator's remedy is
-itself an edit to the change's `design.md`, the check reads `git show HEAD:<path>` rather than the
-working tree. A document the remedy just edited cannot adjudicate the remedy.
+**Rejected-alternatives check reads a ROUND-START SNAPSHOT.** The check reads the change's
+rejected-alternatives content as it stood at the start of the fix round, captured before any of that
+round's edits. A document the remedy just edited cannot adjudicate the remedy. It is explicitly NOT
+`git show HEAD:<path>`: Review runs before Ship, so a freshly-proposed change directory is untracked
+at that point and the git form errors on the common case.
+
+**Terminal-report bucket (Handoff):** a rejected-but-open finding gets its own named bucket, distinct
+from *Deferred Known Issues* (conscious deferrals) and *Deferred to TODO.md* (Suggestions plus
+cap-exhausted residue).
+
+**Exit-gate counters (exactly two, both must be zero to exit clean):** *untriaged* (in no bucket) and
+*open* (triaged, not closed). A rejected finding is triaged-and-open. A finding closed by disproof is
+closed and counts in neither.
 
 ## Risks / Trade-offs
 
@@ -298,9 +454,15 @@ working tree. A document the remedy just edited cannot adjudicate the remedy.
 - **The in-round `design.md` check is weaker than an independent reader** → stated as such in
   Decision 4 rather than implied to be equivalent, and the marker carries into the terminal report so
   the weakness is visible per run rather than silent.
-- **The widening's cost is argued structurally, not measured** → this is why the two run-record counts
-  are pinned. The claim made here is a bound on the shape of the cost, not a number; the number comes
-  from the ledger.
+- **`remedy-rejected` ships with no telemetry, so its own escape-hatch risk is unobservable** → the
+  run-record counts that would have measured it went with `fact-row-provenance`, and
+  `spec_to_pr_aggregate.py` reads nothing about rejections, so `/cla:spec-to-pr-retro` cannot price
+  the risk above across runs. Accepted deliberately rather than closed here: adding a field the
+  aggregator does not consume is dead weight by `run-log-schema.md`'s own rule, so the field and its
+  consumer have to land together, and that is a change about the ledger rather than about the brief.
+  The consequence is stated plainly — the first evidence that a rejection is being used as an escape
+  hatch will come from a human reading a terminal report, not from the ledger. Tracked with the
+  sibling change.
 - **`Fact corrections: (none)` invites a reflexive `(none)`** → the same risk every mandatory
   "(none)" field carries. It is accepted for the same reason those were: an omitted field and a
   checked-and-clean field are indistinguishable, and a reflexive `(none)` at least leaves a row the

@@ -21,6 +21,9 @@ From the orchestrator's working memory of each phase. Use this exact shape (one 
   ```
 
   Under the full-severity policy the first two are legitimate holds and `Skipped` is a policy breach, so **a non-empty `Skipped` fails Handoff.** One bucket under a single alarming label makes the two indistinguishable without re-reading every item, which in practice means the section gets waved through unread. Keep the headings verbatim so the check stays a grep rather than a judgement.
+- **Rejected remedies, still open:** every Critical/Important finding a fix delegate returned `remedy-rejected` on **citing the remedy**, and which the run ended without closing. One line each: the finding, and the delegate's stated reason for rejecting the fix. Empty section when there are none — print "(none)".
+
+  This is its own bucket and not a variant of either neighbour. It is **not** a Deferred Known Issue — nobody chose to defer it; a delegate examined the proposed fix and found it wrong, which is a *successful* return and leaves the defect real and unfixed. It is **not** Suggestion-level residue either. Filing it under either heading loses the one thing a reader needs: that a live Critical remains and the reason the obvious fix for it was rejected. A finding closed by disproof — the defect itself shown not to exist — does not appear here; it closed, and nothing is outstanding.
 - Deferred to TODO.md: bulleted residue list (Suggestion-level only, plus any cap-exhausted untriaged residue). Empty when none.
 - Next steps for you (see step 4 for the gating rule).
 
@@ -53,7 +56,7 @@ Durable record beyond PR-body staleness. The PR body goes stale once the PR merg
 
 ## 4. Next-steps gating (INVARIANT — also stubbed inline in SKILL.md)
 
-The terminal report's "Next steps for you" section is gated on the overall phase tally:
+The terminal report's "Next steps for you" section is gated on the overall phase tally, **and on the "Rejected remedies, still open" section being empty.** A non-empty one is treated as a ⚠ for this gating even if every phase glyph is ✓: those findings are live Criticals the run did not close, and the phase tally cannot see them — Revise legitimately reports `ok` on a round in which a rejection was correctly triaged. Gating on glyphs alone would print a merge command over an open Critical, which is the failure the exit gate's two-count split exists to prevent one layer down; this is the same rule at the reporting layer.
 - **All ✓:** print `gh pr merge <#> --squash --delete-branch` as the next step. Single line, no preamble. **Stacked-child exception (`--pr-base` passed):** never print a bare merge command — squash-merging a stacked parent breaks every child PR. Print "lands with its chain — see the multi-pr report" instead; the chain report carries the parents-first, merge-commit landing checklist.
 - **Any ⚠ (warn):** print a "**Review warnings before merging.**" line FIRST, then list each ⚠ phase's one-line summary indented. Only after that — and on a new line — name `gh pr merge` as the eventual command. The intent: the user should not type `gh pr merge` without first reading what warned.
 - **Any ✗ (fail):** print "**This PR is NOT ready to merge.**" and DO NOT name `gh pr merge` at all. List the failing phases. The user can override by typing merge themselves, but the report does not endorse it.
