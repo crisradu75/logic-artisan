@@ -7,7 +7,7 @@ Adapts `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` — 
 Two reasons, both from the real precedent this skill automates:
 
 1. **Cross-change staleness is the batch-specific defect class.** A rescoped change (e.g. #3 folding in a nullable-columns rework) can leave a stale cross-reference in a sibling change (e.g. #4's caveat still describing the old model) — this is invisible to a reviewer that only ever sees one change directory at a time. PR #119's actual follow-up commit fixed exactly this shape of finding six times over.
-2. **Cost.** Three agents × N single-change dispatches is N times the cost of three agents × one dispatch fed all N changes' artifacts. The verification work (checks 0a-0i) is naturally batchable — read all N proposal/design/tasks/specs sets once, verify claims once, dispatch once.
+2. **Cost.** Three agents × N single-change dispatches is N times the cost of three agents × one dispatch fed all N changes' artifacts. The verification work (checks `0a`–`0l`) is naturally batchable — read all N proposal/design/tasks/specs sets once, verify claims once, dispatch once.
 
 ## Step 1 — Skip this whole gate for a batch of exactly 1
 
@@ -19,7 +19,7 @@ Read every change's `openspec/changes/<name>/{.openspec.yaml,proposal.md,design.
 
 Run the same high-yield checks **per change** — note that `0a`–`0e` and `0j`–`0l` live in `checklist.md` itself; only the domain-specific checks (`0f`–`0i`) and the allocation-math/i18n/mock-data checks (1–9) live in the project overlay `cla.io/overlays/review-change.md`, which the checklist reads alongside itself. Read that overlay here too, or the batch gate silently skips exactly the repo-specific checks (the overlay's domain-specific 0f–0i and 1–9 checks) that catch the most repo-specific defects. Then add one check this adaptation introduces:
 
-**0j — Cross-change cross-reference check (the reason this gate is batched at all).** For every claim in one change's artifacts that references another change in this same batch (by name, by a shared data model, by "depends on X" prose), verify it against that OTHER change's actual authored artifacts, not just against the referencing change's own assumptions. This is the direct analogue of checks 0a-0b but pointed across change boundaries instead of at source code — a claim like "change B's new nullable columns are read by this change" must be checked against change B's actual `design.md`/`specs/`, not assumed correct because change B "should have" done that.
+**0m — Cross-change cross-reference check (the reason this gate is batched at all).** *(Labelled `0m`, not `0j`: `checklist.md` defines `0a`–`0l`, and `0j` there is the real-data/scale grounding check. An earlier draft of this file used `0j` for this batch-only check while claiming only `0a`–`0e` came from the checklist, so the label was free; correcting that enumeration made it a collision, and a collision here means an orchestrator that already ran checklist `0j` reads "add 0j" as done and skips the one check this gate exists for.)* For every claim in one change's artifacts that references another change in this same batch (by name, by a shared data model, by "depends on X" prose), verify it against that OTHER change's actual authored artifacts, not just against the referencing change's own assumptions. This is the direct analogue of checks 0a-0b but pointed across change boundaries instead of at source code — a claim like "change B's new nullable columns are read by this change" must be checked against change B's actual `design.md`/`specs/`, not assumed correct because change B "should have" done that.
 
 Build ONE context brief covering all N changes (same table format as the checklist, with a `Change` column prepended so findings are attributable).
 
@@ -39,7 +39,7 @@ Use the same three agent prompts verbatim from the checklist, with these adaptat
 - **"Change:"** becomes a list of all N change names.
 - **"Affected area:"** becomes the union of affected apps/packages across the batch.
 - **Content fields** (Proposal/Design/Tasks/Delta specs content) carry the FULL text of every change's corresponding artifact, clearly delimited by a `## Change: <name>` heading per change, so the agent can attribute findings to the right one.
-- **Add check 0j** (cross-change cross-reference verification) to each agent's existing check list, framed the same way the checklist frames its own domain-specific checks.
+- **Add check 0m** (cross-change cross-reference verification) to each agent's existing check list, framed the same way the checklist frames its own domain-specific checks.
 - **Output format** — same one-line-per-issue shape, but each line is prefixed with `[<change-name>]` so Phase 4's fix-application step can route each finding to the right change directory: `- [<change-name>] [Critical/Important/Suggestion] Issue description`.
 
 ## Step 5 — Aggregate and report, grouped by change
