@@ -40,4 +40,11 @@ MUTANTS = [
      "                if damage:",
      "                if False:",
      TESTS),
+
+    ("an amendment against a conflicted corpus 500s from the append path "
+     "instead of 409ing from the read",
+     SERVER,
+     "                print(\"REFUSED an amendment: %s\" % e)",
+     "                raise",
+     TESTS),
 ]

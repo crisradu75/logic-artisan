@@ -352,6 +352,11 @@ def test_the_panes_and_the_margin_share_one_reading_grid(built):
     assert '<div class="gutter" id="gutter"' in html
     css = "".join(re.findall(r"<style>(.*?)</style>", html, flags=re.S))
     assert ".panes .col{max-width:none" in css
+    # Two rules, two different failures. Without `.panes .col` every pane keeps
+    # the standalone page's centred 44rem measure inside a 40rem track; without
+    # `min-width:0` the grid track refuses to shrink below its content and the
+    # pane overflows it. Only the first was asserted.
+    assert ".wrap>.panes{min-width:0}" in css
 
 
 @pytest.mark.parametrize("control", ["showTab", "cf-toggle"])
@@ -363,7 +368,14 @@ def test_every_flow_changing_control_here_relays_the_margin(built, control):
     script = "".join(re.findall(r"<script>(.*?)</script>", built["html"], flags=re.S))
     if control == "showTab":
         block = script[script.index("function showTab("):]
-        assert "syncMargin()" in block[:block.index("\n}")]
+        block = block[:block.index("\n}")]
     else:
         block = script[script.index("cfBtn.onclick"):]
-        assert "syncMargin()" in block[:block.index("\n};")]
+        block = block[:block.index("\n};")]
+    # The whole STATEMENT, not the substring. `if (false) syncMargin();` still
+    # contains "syncMargin()", so a presence check reads a dead call as a live
+    # one — measured, it survives here at both call sites. The doc page's
+    # equivalent check was strengthened for exactly this and this twin, written
+    # in the same commit, was left as a presence check.
+    assert re.search(r"^\s*syncMargin\(\);", block, flags=re.M), \
+        "%s does not call syncMargin unconditionally" % control

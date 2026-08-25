@@ -364,3 +364,22 @@ def test_html_is_served_as_utf8(live):
 
 def test_the_api_is_never_cached(live):
     assert live.get("/api/annotations")[2]["cache-control"] == "no-store"
+
+
+def test_an_amendment_against_a_conflicted_corpus_is_a_409_not_a_500(live):
+    """The amendment path reads the corpus BEFORE `store.append`, so it meets an
+    unreadable corpus one step earlier than a new annotation does and answers
+    409, not the 500 the append path gives.
+
+    Both pre-existing unreadable-corpus tests post a new record, so they take the
+    append path and never reach this branch — and the page puts the server's
+    sentence straight into the undo strip, so the code and the message are both
+    read by a human."""
+    rec_id = body(live.post("/api/annotations", VALID))["id"]
+    with open(live.corpus, "a", encoding="utf-8") as fh:
+        fh.write("<<<<<<< HEAD\n")
+    code, raw, _ = live.post("/api/annotations", {"id": rec_id, "deleted": False})
+    j = json.loads(raw)
+    assert code == 409, "an amendment against a conflicted corpus must not 500"
+    assert j["unreadable"] is True
+    assert "conflict" in j["error"]

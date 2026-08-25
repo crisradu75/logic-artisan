@@ -564,11 +564,18 @@ CSS = """
 /* --muted carries nearly every label on this page and --mark carries the whole
    annotation layer, so both are read as text and both answer to WCAG AA (4.5:1)
    on all three light surfaces, not just on --paper. They did not: --muted was
-   #6E7478 (4.22 on paper, 3.78 on ground, 3.47 on sunk) and --mark was #C8622F
-   (3.57 / 3.19 / 2.93). Now 4.81 and 4.14 at worst. Measured with the ratio
-   command in the commit's Measured-by trailer; re-run it before changing either
-   value, because the failing pair is the one nobody looks at — --muted on
-   --sunk, which is the drawer's own ground. */
+   4.22 / 3.78 / 3.47 and --mark 3.57 / 3.19 / 2.93. They now measure 5.86 /
+   5.24 / 4.81 and 5.55 / 4.97 / 4.56, so the worst pair on the page is 4.56 —
+   --mark on --sunk, which is the drawer's own ground and the pair nobody looks
+   at. Changing either value re-derives every one of those six numbers, and the
+   command that produces them is the test:
+
+     python3 -m pytest plugin-tests/tests/skills/annotate/test_render_doc.py -k wcag
+
+   It reads the palette out of the rendered page and fails below 4.5:1, so it
+   goes red on a value this comment has not been updated for. The old hex codes
+   are deliberately not repeated here: dead colours in prose are a grep magnet
+   that nothing fails on. */
 /* Light is the default outright, and there is deliberately no
    `prefers-color-scheme` rule: this page is a reading surface for a working
    document, and it opens the same way on every machine rather than tracking a
@@ -616,6 +623,14 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 .opener:hover{background:var(--mark-wash)}
 .opener[aria-expanded="true"]{background:var(--mark);border-color:var(--mark);color:var(--paper);
  box-shadow:inset 3px 0 0 var(--paper)}
+/* The one always-visible surface, so it carries any state the drawer would
+   otherwise hold off-screen — an unreadable corpus, a dead server, an unsaved
+   note. Not a colour alone: the dot is what survives a reader who cannot tell
+   these two oranges apart. */
+.opener.failing{border-color:var(--mark);background:var(--mark);color:var(--paper);
+ box-shadow:inset 3px 0 0 var(--paper)}
+.opener.failing::after{content:"!";font-weight:700;margin-left:.15rem}
+.opener.failing .cmt-n{background:var(--paper);color:var(--mark)}
 .cmt-n{font-variant-numeric:tabular-nums;background:var(--mark-wash);color:var(--mark);
  border-radius:999px;padding:.05rem .42rem;font-size:0.69rem;min-width:1.35rem;text-align:center}
 .opener[aria-expanded="true"] .cmt-n{background:var(--paper);color:var(--mark)}
@@ -1308,16 +1323,32 @@ async function del(id) {
 async function editNote(id, note) {
   const rec = CMT.list.find(c => c.id === id); if (!rec) return;
   note = (note || '').trim();
-  rec.editing = false;
   /* An emptied note is not a no-op the reader meant, and discarding it in
      silence is indistinguishable from a save. The store has no way to record
-     "no note" — that is what deleting is for — so it is refused out loud. */
+     "no note" — that is what deleting is for — so it is refused out loud.
+
+     The refusal rides on the RECORD, not on CMT.err, and the editor stays open.
+     CMT.err renders only into #cmt-status, which lives inside the drawer, and
+     the whole point of the margin is that the reader now works with the drawer
+     closed — so a message sent there is a message nobody reads. And an editor
+     that closes on a refusal looks exactly like an editor that saved. */
   if (!note) {
-    CMT.err = 'an annotation cannot have an empty note — delete it instead';
+    rec.editFailed = 'an annotation cannot have an empty note — delete it instead';
     return render();
   }
-  if (note === rec.note) return render();                   // nothing to record
+  rec.editing = false;
+  /* `!rec.editFailed` is what makes a retry possible at all. `rec.note` is set
+     optimistically below, so after a failed POST the record already holds the
+     text the reader typed — reopening the editor prefills it, and Save then hit
+     `note === rec.note` and returned with no POST, no message and the badge
+     unchanged. The reader was retrying a failed save and the page did nothing,
+     forever, unless they thought to alter a character. del() was given exactly
+     this fix and editNote was not. */
+  if (note === rec.note && !rec.editFailed) return render();   // nothing to record
   rec.note = note;
+  /* Cleared at the START of the attempt, so an in-flight retry does not wear the
+     badge of the failure it is retrying. Same rule as del()'s delFailed. */
+  rec.editFailed = false;                    // before the POST, not after it
   if (rec.unsaved && String(rec.id).startsWith('local-')) return render();
   render();
   try {
@@ -1334,9 +1365,11 @@ async function editNote(id, note) {
   } catch (e) {
     /* The new wording stays on screen rather than being rolled back — throwing
        away what was just typed is a worse failure than an unsaved one, and the
-       card says which it is. */
-    rec.editFailed = true;
-    CMT.err = 'edit failed: ' + String(e.message || e);
+       badge says which it is. The MESSAGE is carried on the record, not only in
+       CMT.err: CMT.err renders inside the drawer, and with the margin up the
+       drawer is closed. */
+    rec.editFailed = String(e.message || e);
+    CMT.err = 'edit failed: ' + rec.editFailed;
   }
   render();
 }
@@ -1668,18 +1701,26 @@ function layoutMargin() {
    failed edit — so the worst is shown and the rest are counted rather than
    dropped. `lost` is deliberately absent: the drawer card marks it and the
    margin's foot counts it, because it is information, not a failure. */
+/* Each entry is [class, label, detail]. The label is what the badge prints and
+   stays short enough to sit in a margin note's head; the detail is the server's
+   own sentence naming what to fix, and it goes in the title alongside every
+   other state that is true at once. Three of the flags carry a message string
+   rather than `true`, because with the margin up the drawer is closed and
+   CMT.err — which is where those sentences used to go — is inside it. */
 function stateBadge(c) {
   const all = [];
-  if (c.paintFailed) all.push(['b-fail', 'could not be marked']);
-  if (c.undoFailed)  all.push(['b-fail', 'still deleted']);
-  if (c.delFailed)   all.push(['b-fail', 'delete failed']);
-  if (c.editFailed)  all.push(['b-fail', 'edit not saved']);
-  if (c.unsaved)     all.push(['b-warn', 'not saved']);
-  if (c.deleting)    all.push(['b-info', 'deleting…']);
+  const detail = v => (typeof v === 'string' && v) ? v : '';
+  if (c.paintFailed) all.push(['b-fail', 'could not be marked', '']);
+  if (c.undoFailed)  all.push(['b-fail', 'undo not confirmed', detail(c.undoFailed)]);
+  if (c.delFailed)   all.push(['b-fail', 'delete failed', detail(c.delFailed)]);
+  if (c.editFailed)  all.push(['b-fail', 'edit not saved', detail(c.editFailed)]);
+  if (c.unsaved)     all.push(['b-warn', 'not saved', '']);
+  if (c.deleting)    all.push(['b-info', 'deleting…', '']);
   if (!all.length) return '';
   const more = all.length > 1 ? ' +' + (all.length - 1) : '';
-  return '<span class="badge ' + all[0][0] + '" title="'
-       + esc(all.map(x => x[1]).join(', ')) + '">' + all[0][1] + more + '</span>';
+  const title = all.map(x => x[2] ? x[1] + ' — ' + x[2] : x[1]).join(', ');
+  return '<span class="badge ' + all[0][0] + '" title="' + esc(title) + '">'
+       + all[0][1] + more + '</span>';
 }
 
 let marginT;
@@ -1699,10 +1740,17 @@ function undoBar(on, msg, onClick, label) {
   UNDO.text.textContent = msg || '';
   UNDO.btn.textContent = label || 'Undo';
   UNDO.btn.onclick = onClick || null;
+  /* An informational strip has no action, and two call sites pass none: the
+     local- delete, and the in-flight "Restoring…" state. The button used to
+     render anyway — visible, focusable, labelled "Undo", and doing nothing, for
+     the full nine seconds. A dead control is worse than an absent one, because
+     it advertises a recovery that does not exist, and it advertised it hardest
+     to the reader who had just destroyed the only copy of their own words.
+     `hidden`, not opacity, for the same reason the bar itself is `inert`. */
+  UNDO.btn.hidden = !onClick;
   UNDO.bar.classList.toggle('on', !!on);
   UNDO.bar.toggleAttribute('inert', !on);
   UNDO.bar.setAttribute('aria-hidden', String(!on));
-  if (!on) UNDO.btn.onclick = null;
 }
 let undoT;
 function hideUndo() { clearTimeout(undoT); undoBar(false); }
@@ -1729,9 +1777,19 @@ async function undoDelete(rec) {
   delete rec.deleted; delete rec.deleting; delete rec.delFailed;
   delete rec.undoFailed;
   /* Back where it was, not re-sorted: sorting would renumber the whole list and
-     put it out of step with the file's own order. */
-  const at = typeof rec.wasAt === 'number' ? rec.wasAt : CMT.list.length;
-  CMT.list.splice(Math.min(at, CMT.list.length), 0, rec);
+     put it out of step with the file's own order.
+
+     Guarded, because the catch below leaves `rec` IN the list and re-arms the
+     strip with this same function and this same object. A retry after a failed
+     undo therefore ran this line a second time and spliced one record in twice:
+     two margin notes, the second marked `.stacked` as though it were a separate
+     annotation on the same block, two drawer cards sharing one DOM id, and a
+     header count one too high — with no error anywhere. The page invented an
+     annotation. Every further retry added another. */
+  if (CMT.list.indexOf(rec) < 0) {
+    const at = typeof rec.wasAt === 'number' ? rec.wasAt : CMT.list.length;
+    CMT.list.splice(Math.min(at, CMT.list.length), 0, rec);
+  }
   render();
   try {
     const r = await fetch('/api/annotations', {method:'POST',
@@ -1745,13 +1803,16 @@ async function undoDelete(rec) {
     CMT.err = null;
     hideUndo();
   } catch (e) {
-    /* The deletion still stands in the file. That is a different sentence from
-       "not saved", which everywhere else means the text never reached the file
-       at all — here the text IS in the file and the tombstone is on top of it. */
+    /* NOT "still deleted". This catch fires for a refused write AND for a lost
+       response — a killed server, a slept laptop, a reset socket — and in the
+       second case the tombstone may well have been lifted. Asserting the file's
+       state is something the client cannot do from here, and `del()`'s local-
+       branch already reasons this way about the same ambiguity. What is true in
+       both cases is that the undo was not confirmed. */
     rec.undoFailed = String(e.message || e);
-    CMT.err = 'undo failed: ' + rec.undoFailed;
-    undoBar(true, 'Undo failed — still deleted. ' + rec.undoFailed,
-            () => undoDelete(rec), 'Retry');
+    CMT.err = 'undo not confirmed: ' + rec.undoFailed;
+    undoBar(true, 'Undo could not be confirmed — reload to see the file. '
+                + rec.undoFailed, () => undoDelete(rec), 'Retry');
   }
   render();
 }
@@ -1856,6 +1917,17 @@ function render() {
     : bits.length ? bits.join(' · ')
     : !CMT.list.length ? 'none yet'
     : (done.length ? 'saved · ' + done.length + ' resolved' : 'saved');
+
+  /* #cmt-status lives INSIDE the drawer, which is translateX(101%) when closed —
+     and this page's whole premise is that the reader now works with the drawer
+     closed, beside the margin. Every sentence above was therefore written to a
+     surface nobody has open, including "no server" and "CORPUS UNREADABLE": a
+     dead server rendered as an empty margin and an opener reading 0, which is
+     pixel-identical to a document nobody has annotated yet.
+     The opener is always visible, so it carries the alarm. */
+  const alarm = CMT.fatal || bits.length ? (CMT.fatal || bits.join(' · ')) : '';
+  CMT.el.open.classList.toggle('failing', !!alarm);
+  CMT.el.open.title = alarm || 'Open the annotations';
 
   if (CMT.fatal) {
     /* Unsaved cards render ABOVE the banner rather than instead of it. Returning

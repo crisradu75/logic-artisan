@@ -534,6 +534,18 @@ def script_of(page):
     return "".join(re.findall(r"<script>(.*?)</script>", page, flags=re.S))
 
 
+def code_of(page):
+    """The script with its comments removed.
+
+    Counting a function's call sites over the raw script counts the times it is
+    NAMED IN PROSE too. Measured: `syncMargin` appears three times in the script
+    — one declaration, one real call, and one mention inside paint()'s comment —
+    so deleting its only call site left the "and called" check green, satisfied
+    by a comment, for the one function the whole margin turns on."""
+    s = re.sub(r"/\*.*?\*/", "", page if page else "", flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", "", s)
+
+
 def media_block(css, query):
     """The body of one @media rule, brace-counted. A `[^}]*` match cannot span an
     inner rule, so it silently finds nothing the moment a second declaration is
@@ -632,10 +644,12 @@ def test_every_margin_function_is_declared_once_and_called(doc_page):
     """A named list, not a general identifier resolver: a general one has too
     many false positives against DOM globals to be trusted, and an untrustworthy
     check gets weakened until it passes."""
-    script = script_of(doc_page)
+    script = code_of(script_of(doc_page))
     for fn in MARGIN_FUNCS:
         decl = len(re.findall(r"function %s\s*\(" % fn, script))
         assert decl == 1, "%s is declared %d times" % (fn, decl)
+        # Over the COMMENT-STRIPPED script, or a function named in prose counts
+        # as called. See code_of().
         uses = len(re.findall(r"\b%s\s*\(" % fn, script))
         assert uses > 1, "%s is declared and never called" % fn
 
@@ -661,6 +675,14 @@ def test_the_margin_folds_away_where_there_is_no_room_for_it(doc_page):
     rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     assert ".gutter{display:none}" in media_block(rules, "@media(max-width:999px)")
     assert "body.cmt.gutter{display:none}" in media_block(rules, "@media(max-width:1599px)")
+    # The third state, and the only one where both surfaces are up at once. Its
+    # two rules are load-bearing and both were unguarded: without the padding the
+    # drawer overlaps the reading column, and without the scrim override the
+    # scrim sits OVER the margin and swallows every click on it — a margin that
+    # renders, hovers, and cannot be used.
+    wide = media_block(rules, "@media(min-width:1600px)")
+    assert "body.cmt.page{padding-right:27rem}" in wide
+    assert "body.cmt.scrim{opacity:0;pointer-events:none}" in wide
 
 
 def test_the_inline_marker_is_drawn_only_when_there_is_no_margin(doc_page):
@@ -670,6 +692,24 @@ def test_the_inline_marker_is_drawn_only_when_there_is_no_margin(doc_page):
     assert "if (paintedMarginOff) {" in script
     # And the answer is re-derived on every paint, never cached across one.
     assert "paintedMarginOff = marginOff();" in script
+
+
+def test_margin_off_means_the_gutter_is_not_displayed(doc_page):
+    """The sense of the comparison, not just its presence.
+
+    `marginOff` is the hinge the whole feature turns on: paint() picks the
+    margin note or the inline marker by it, and syncMargin decides repaint-vs-
+    relayout by it. Inverting the one comparison inside it — `=== 'none'` to
+    `!== 'none'` — flips BOTH, giving every annotation an inline marker exactly
+    when it already has a margin note. That is the duplication bug, reached by a
+    single character, and every other test on this page survived it: they assert
+    that `marginOff` is declared and named, never what it returns."""
+    body = script_of(doc_page)
+    body = body[body.index("function marginOff()"):]
+    body = body[:body.index("\n}")]
+    assert "getComputedStyle(GUTTER).display === 'none'" in body, \
+        "marginOff no longer means 'the gutter is not displayed'"
+    assert "!==" not in body, "marginOff's comparison is inverted"
 
 
 def test_a_hidden_pane_gets_no_margin_note(doc_page):
@@ -689,7 +729,13 @@ def test_every_flow_changing_control_routes_through_syncmargin(doc_page):
     note sits beside a different sentence with its tie still drawn SOLID, which
     is this page's promise that the note is level with its own line."""
     script = script_of(doc_page)
-    assert re.search(r"addEventListener\('resize'.*?syncMargin", script, flags=re.S)
+    # Bounded to the listener's own statement. With `re.S` and an unbounded
+    # `.*?` this matched any later `syncMargin` ANYWHERE in the file — it passes
+    # today only because the resize handler happens to be the file's last
+    # mention of the name, and goes vacuous the moment anything is added below.
+    resize = re.search(r"addEventListener\('resize',[^\n]*", script)
+    assert resize and "syncMargin" in resize.group(0), \
+        "the resize listener does not re-lay-out the margin"
     setcmt = script[script.index("function setCmt("):]
     body = setcmt[:setcmt.index("\n}")]
     # The whole statement, not the substring. `if (false) syncMargin();` still
@@ -732,7 +778,7 @@ def test_a_delete_offers_a_way_back(doc_page):
     assert '{id: rec.id, deleted: false}' in script
     # The strip stays up THROUGH the POST. Dismissing it first is what sends the
     # failure to a panel nobody has open.
-    assert "'Undo failed — still deleted. '" in script
+    assert "'Undo could not be confirmed — reload to see the file. '" in script
 
 
 def test_the_undo_strip_leaves_the_tab_order_when_it_closes(doc_page):
@@ -755,12 +801,25 @@ def test_the_closed_drawer_leaves_the_tab_order(doc_page):
 # ---------------------------------------------------------------- legibility
 
 
-def test_no_type_on_the_page_is_smaller_than_11px(doc_page):
+@pytest.mark.parametrize("which", ["doc", "change"])
+def test_no_type_on_either_page_is_smaller_than_11px(doc_page, change_page, which):
     """`rem` resolves against the ROOT, which is 16px — `body{font-size:17px}`
-    does not move it. .69rem is 11.04px; 21 declarations were below that floor,
-    carrying locators, counts and failure states."""
-    css = "".join(re.findall(r"<style>(.*?)</style>", doc_page, flags=re.S))
-    small = [m for m in re.findall(r"font-size:(\d*\.?\d+)rem", css) if float(m) < 0.69]
+    does not move it. .69rem is 11.04px.
+
+    21 declarations were below that floor, carrying locators, counts and failure
+    states — 14 in render_doc.py and 7 in render_change.py. Both pages, because
+    the split is where the gap was: the change page got five of the bumps and had
+    no floor holding them, so the next `.62rem` added to CHANGE_CSS would have
+    gone in unopposed.
+
+    `px` as well as `rem`. A regression spelled `font-size:10px` passed a
+    rem-only scan, and the only px declaration on either page is the 17px body."""
+    page = doc_page if which == "doc" else change_page
+    css = "".join(re.findall(r"<style>(.*?)</style>", page, flags=re.S))
+    small = [m + "rem" for m in re.findall(r"font-size:(\d*\.?\d+)rem", css)
+             if float(m) < 0.69]
+    small += [m + "px" for m in re.findall(r"font-size:(\d*\.?\d+)px", css)
+              if float(m) < 11]
     assert small == []
 
 
@@ -813,3 +872,92 @@ def test_the_favicon_carries_the_same_two_accents_as_the_stylesheet(doc_page):
             colour = dict(re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", block))[var]
             assert (".%s{fill:%s}" % (cls, colour)) in half, \
                 "the favicon's .%s is not %s's %s (%s)" % (cls, selector, var, colour)
+
+
+# ---------------------------------------------------------------- what review found
+
+
+def test_a_retried_undo_cannot_insert_the_same_record_twice(doc_page):
+    """undoDelete splices the record back BEFORE the POST, and its catch leaves
+    it in the list while re-arming the strip with the same function and the same
+    object. Unguarded, a retry spliced one record in twice: two margin notes —
+    the second marked `.stacked`, as though it were a separate annotation on the
+    same block — two drawer cards sharing one DOM id, and a header count one too
+    high, with no error anywhere. The page invented an annotation."""
+    script = code_of(script_of(doc_page))
+    undo = script[script.index("async function undoDelete("):]
+    undo = undo[:undo.index("\n}")]
+    assert "CMT.list.indexOf(rec) < 0" in undo, \
+        "the re-insert is not guarded against a retry"
+    assert undo.index("CMT.list.indexOf(rec) < 0") < undo.index("CMT.list.splice("), \
+        "the guard does not precede the splice"
+
+
+def test_a_failed_undo_does_not_assert_what_the_file_says(doc_page):
+    """The catch fires for a refused write AND for a lost response, and in the
+    second case the tombstone may well have been lifted. "still deleted" states
+    the file's contents, which the client cannot know from here."""
+    # Over the COMMENT-STRIPPED script. The comment explaining why that wording
+    # was dropped quotes it, so a raw scan finds the phrase in the very sentence
+    # saying it is gone — the failure CLAUDE.md records verbatim, reproduced here
+    # on the first run of this check.
+    script = code_of(script_of(doc_page))
+    assert "still deleted" not in script
+    assert "could not be confirmed" in script
+
+
+def test_a_failed_edit_can_be_retried(doc_page):
+    """`rec.note` is set optimistically before the POST, so after a failure the
+    record already holds the text the reader typed. Reopening the editor prefills
+    it and Save then hit `note === rec.note` and returned with no POST, no
+    message and the badge unchanged — the reader retried forever."""
+    script = code_of(script_of(doc_page))
+    edit = script[script.index("async function editNote("):]
+    edit = edit[:edit.index("\n}")]
+    assert "note === rec.note && !rec.editFailed" in edit, \
+        "an unchanged note short-circuits even when the last save failed"
+    # And an in-flight retry must not wear the badge of the failure it retries.
+    assert edit.index("rec.editFailed = false") < edit.index("await fetch")
+
+
+def test_an_emptied_note_is_refused_on_the_record_and_keeps_the_editor_open(doc_page):
+    """CMT.err renders only into #cmt-status, inside the drawer — and with the
+    margin up the drawer is closed. A refusal sent there, from an editor that
+    then closes, is indistinguishable from a save."""
+    script = code_of(script_of(doc_page))
+    edit = script[script.index("async function editNote("):]
+    edit = edit[:edit.index("\n}")]
+    empty = edit[edit.index("if (!note) {"):]
+    empty = empty[:empty.index("}")]
+    assert "rec.editFailed" in empty, "the refusal is not carried on the record"
+    assert "CMT.err" not in empty, "the refusal goes to the closed drawer"
+    # `rec.editing = false` must come AFTER the refusal, or the editor collapses.
+    assert edit.index("if (!note) {") < edit.index("rec.editing = false")
+
+
+def test_the_always_visible_opener_carries_the_alarm(doc_page):
+    """Every CMT.err and CMT.fatal message renders into #cmt-status, which lives
+    inside the drawer at translateX(101%) when closed. This page's premise is
+    that the reader now works with the drawer closed, so "no server" and "CORPUS
+    UNREADABLE" were written to a surface nobody has open — a dead server read as
+    an empty margin and an opener showing 0, which is what a document nobody has
+    annotated looks like."""
+    css = "".join(re.findall(r"<style>(.*?)</style>", doc_page, flags=re.S))
+    script = code_of(script_of(doc_page))
+    assert "CMT.el.open.classList.toggle('failing', !!alarm)" in script
+    assert "CMT.el.open.title = alarm" in script
+    assert ".opener.failing{" in css
+    # Not colour alone — the two oranges are not distinguishable to every reader.
+    assert '.opener.failing::after{content:"!"' in css
+
+
+def test_the_undo_strip_hides_its_button_when_there_is_nothing_to_undo(doc_page):
+    """Two call sites pass no handler — the local- delete and the in-flight
+    "Restoring…" state — and the button rendered anyway: visible, focusable,
+    labelled Undo, doing nothing, for the full nine seconds. It advertised a
+    recovery that did not exist to the reader who had just destroyed the only
+    copy of their own words."""
+    script = code_of(script_of(doc_page))
+    bar = script[script.index("function undoBar("):]
+    bar = bar[:bar.index("\n}")]
+    assert "UNDO.btn.hidden = !onClick;" in bar

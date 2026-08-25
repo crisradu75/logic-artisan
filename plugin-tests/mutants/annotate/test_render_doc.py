@@ -124,4 +124,75 @@ MUTANTS = [
      "'@media (prefers-color-scheme:dark){.a{fill:#84B8B0}.b{fill:#E0915E}}</style>'",
      "'</style>'",
      TESTS),
+    # ---- what review found, and the checks written for it ----
+    ("marginOff's comparison is inverted — every annotation gets an inline "
+     "marker exactly when it already has a margin note",
+     DOC,
+     "getComputedStyle(GUTTER).display === 'none'",
+     "getComputedStyle(GUTTER).display !== 'none'",
+     TESTS),
+
+    ("a retried undo splices the same record in a second time",
+     DOC,
+     "  if (CMT.list.indexOf(rec) < 0) {",
+     "  if (true) {",
+     TESTS),
+
+    ("a failed undo asserts the file's contents again",
+     DOC,
+     "'Undo could not be confirmed — reload to see the file. '",
+     "'Undo failed — still deleted. '",
+     TESTS),
+
+    ("a failed edit becomes unretryable again",
+     DOC,
+     "  if (note === rec.note && !rec.editFailed) return render();",
+     "  if (note === rec.note) return render();",
+     TESTS),
+
+    # Single-line anchor: mutate.py matches raw bytes, so a `\n` in an anchor
+    # finds nothing on a CRLF checkout and the mutant is refused on a platform
+    # nobody here runs. The trailing comment is what makes this line unique
+    # against the identical reset inside the try block.
+    ("an in-flight edit retry wears the badge of the failure it is retrying",
+     DOC,
+     "  rec.editFailed = false;                    // before the POST, not after it",
+     "  /* nothing */",
+     TESTS),
+
+    ("the emptied-note refusal goes back to the closed drawer",
+     DOC,
+     "    rec.editFailed = 'an annotation cannot have an empty note",
+     "    CMT.err = 'an annotation cannot have an empty note",
+     TESTS),
+
+    ("the alarm stops reaching the always-visible opener",
+     DOC,
+     "  CMT.el.open.classList.toggle('failing', !!alarm);",
+     "  /* nothing */",
+     TESTS),
+
+    ("the failing opener is a colour change with no glyph",
+     DOC,
+     '.opener.failing::after{content:"!"',
+     '.opener.failing::before{content:""',
+     TESTS),
+
+    ("the undo strip shows a dead Undo button again",
+     DOC,
+     "  UNDO.btn.hidden = !onClick;",
+     "  /* nothing */",
+     TESTS),
+
+    ("the wide layout stops reserving room for the drawer",
+     DOC,
+     " body.cmt .page{padding-right:27rem}",
+     " body.cmt .page{padding-right:0}",
+     TESTS),
+
+    ("the scrim goes back over the margin and swallows every click on it",
+     DOC,
+     " body.cmt .scrim{opacity:0;pointer-events:none}",
+     " body.cmt .scrim{opacity:1}",
+     TESTS),
 ]
