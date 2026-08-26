@@ -262,3 +262,82 @@ Delete an `_EXEMPT` line the moment its batch lands. A companion test caps the l
 original size, so it can only shrink. Highest value first: `test_check_script_drift` — CLAUDE.md
 names it as guarding a *silent* failure, which is exactly the class where an unproven guard is
 worth least.
+
+## Claim-shape sweep (`0l`): the two questions PR #158 could not settle
+
+`grounding-contract-claim-shapes` (PR #158, **open and not merged**) adds four claim shapes to
+`review-change/references/checklist.md`, a numbered check `0l` pointing at them, and a severity
+tie-break at Step 6. It went through Review (3 agents, FIX FIRST, 11 findings applied) and two
+Revise rounds (27 findings). It stopped at the `--pr-rounds` cap with the findings below still open.
+
+**The branch is `feature/grounding-contract-claim-shapes`; nothing here is lost while it exists.**
+Recorded in this file because the findings themselves were not — they lived in a terminal report and
+in commit trailers, which is the "reported but not durable" shape the run spent its rounds arguing
+against. If the PR is closed, do **not** let the remote branch be deleted: a `[gone]` local branch is
+what `clean_gone` force-deletes, and its merged-PR check reads CLOSED the same as never-merged.
+
+**Why it stopped rather than continuing.** The round-over-round finding count did not converge —
+Review 11, Revise round 1 fifteen, Revise round 2 twelve, with four of round 2's Criticals caused by
+round 1's own fixes. Two more rounds would most likely have behaved the same way, because what is
+left is not wording. It is two questions the fix loop cannot answer.
+
+### Question 1 — where does a row that is neither a ✓ nor a finding print?
+
+The four shapes produce three record forms (`producible:`, `NOT PRODUCIBLE:`, `unresolved:`). The
+report has `### Verified claims` (documented as *positive* verifications, rendered `- ✓ …`, capped at
+six lines) and three findings sections. A shape row fits neither cleanly, and four consequences
+follow that are individually small and collectively fatal:
+
+- An `unresolved` row is required to be "reported as an open question" and there is no section for
+  one. `grep -c '^### Open questions'` returns 0.
+- `0l` is required to leave a trace on every review that ran it, so "swept and found nothing" does
+  not read as "nobody swept". The six-line cap deselects exactly that row, because a row saying "no
+  sentence triggered any shape" is tied to no artifact claim. `### Inherited obligations` has an
+  explicit carve-out from omission for this same reason; `0l` has none.
+- A `NOT PRODUCIBLE` row must print twice — once as a `✓` in the claims table and once as a Critical
+  in a findings section — in two incompatible formats, with no rule saying which wins.
+- Severity now appears both as a section and as a label on the finding line, with no precedence rule.
+  A `[Critical]` label is expressible under `### Suggestions`, which `spec-to-pr` routes to this file.
+
+Adding the mandatory row also inflates `verified_claims_count`, which `/cla:spec-to-pr-retro` keys a
+going-silent alarm on (`review_verified_claims.mean < 3`). Two real verifications plus the mandatory
+row logs three, so the alarm can no longer fire at the volume it will really see.
+
+### Question 2 — what does a producibility check mean before the code exists?
+
+`review-change` runs pre-implementation. Shape 1 asks the reviewer to name the production path for a
+specified demo state, and grades an absent path Critical. For the ordinary change that adds a surface
+*and* its query together, the path is absent because the change has not been implemented yet.
+
+The attempted fix — a carve-out for "a state whose producing path this change itself adds" — left
+that case with no legal record at all: `NOT PRODUCIBLE` is carved out, `producible:` demands a
+`path:line` that does not exist yet, and `unresolved:` was narrowed to mean a search that was not
+run. All three are excluded.
+
+Underneath it is a harder problem. The branch distinguishing `NOT PRODUCIBLE` (searched, found
+nothing — carries a Critical floor) from `unresolved` (did not search — carries none) turns on a fact
+that exists only inside the reviewer. Nothing downstream can tell them apart, so the no-floor branch
+is self-certifying. An earlier wording was checkable and contradicted the Grounding contract's own
+budget clause three lines above it; the current wording agrees with the contract and is not
+checkable. Both are wrong in different directions, which is the signal that the shape needs a
+decision rather than another edit.
+
+### Two smaller ones, same branch
+
+- The promotion rule from a context-brief row to a finding is written in Shape 1's vocabulary
+  (`producible:` / `NOT PRODUCIBLE:` / `unresolved:`). Shapes 2–4 record differently, so their
+  severity floors have no path to a finding. Shape 3's floor is unreachable in the ordinary case:
+  a guarantee correctly classified as a deployment property with no named trigger hit no failure
+  mode, carries no ✗, and matches neither promotion clause.
+- The two Step-4 agent prompts carry the shapes through an `<inject: …>` placeholder. An unfilled
+  placeholder deletes check 6 from that agent's prompt while the prompt still reads complete, and
+  nothing detects it — the orchestrator's own sweep satisfies the trace requirement either way.
+  This replaced a worse problem (three hand-maintained copies that had already diverged in the
+  commit that created them), but the replacement is unpoliced.
+
+### Suggested next step
+
+Take Question 1 through `/cla:shape-decision` first. It blocks the others: three of the four
+consequences above are report-format decisions, and Question 2's carve-out cannot be worded until
+there is somewhere for a non-✓, non-finding row to go. The claim shapes themselves survived review —
+the delta spec was found sound, portable, and free of collisions with the merged sibling.
