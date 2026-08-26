@@ -59,16 +59,16 @@ MUTANTS = [
         # The defect that actually shipped, in PR #158's feature commit. Its own
         # Measured-by grep was scoped to checklist.md, so this line in another
         # file was never looked at.
-        "review-gate claims only 0a-0e live in the checklist, omitting 0j-0k",
+        "review-gate claims only 0a-0e live in the checklist, omitting 0j-0l",
         REVIEW_GATE,
-        "note that `0a`–`0e` and `0j`–`0k` live in `checklist.md` itself; only the domain-specific checks (`0f`–`0i`)",
+        "note that `0a`–`0e` and `0j`–`0l` live in `checklist.md` itself; only the domain-specific checks (`0f`–`0i`)",
         "note that only 0a–0e live in `checklist.md` itself; the domain-specific checks (0f–0i)",
         TARGETS,
     ),
     (
         "an entry point advertises the old check count",
         RC_SKILL,
-        "the 11 high-yield verification checks (`0a`–`0k`)",
+        "the 12 high-yield verification checks (`0a`–`0l`)",
         "the 10 high-yield verification checks",
         TARGETS,
     ),

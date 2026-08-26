@@ -165,7 +165,14 @@ _REGIONS: dict[str, tuple[Path, str, str, tuple[str, ...]]] = {
         _CHECKLIST,
         "- Omit any section with zero findings",
         "- Total report should fit",
-        ("inherited obligations", "required output field"),
+        # "except `### inherited obligations`" is the only marker the exemption
+        # CLAUSE carries. The two generic markers that preceded it — "inherited
+        # obligations" and "required output field" — are also supplied by the
+        # sentences that follow the clause, so deleting the exemption outright
+        # left both standing and the region still passed. Measured: replacing the
+        # whole clause with "This applies to every section without exception."
+        # was green. The batch entry for that mutation was proving nothing.
+        ("except `### inherited obligations`", "required output field"),
     ),
     # ---- producer: multi-pr writes the rows and reads them back
     "multi-pr reads the rows into the flag": (
