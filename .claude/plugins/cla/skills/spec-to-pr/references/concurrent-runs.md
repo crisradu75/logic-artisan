@@ -1,6 +1,6 @@
 # Concurrent runs — worktree per session (full recipe)
 
-Read when running two or more `/cla:spec-to-pr` flows at once in one repo. A single run needs none of this.
+Read when running two or more `/cla:spec-to-pr` flows at once in one repo. A single run needs none of the worktree recipe — but it does need the last section, which is about one session sharing a checkout with its own delegate.
 
 A single `/cla:spec-to-pr` run needs no special setup — it creates `<branch>` in place and nothing arbitrates two sessions in one clone — the hook that used to is gone, so the discipline below is the whole protection.
 
@@ -18,4 +18,14 @@ git worktree add <worktrees-dir>/<change> -b <branch> origin/<base-branch>
 - **existing-change mode:** the change dir must already be committed (so `git worktree add` from `<base-branch>` includes it). **description / explore-result mode:** the artifacts are created inside the worktree during Propose — fine.
 - The two runs are fully isolated: different worktrees, different HEADs, different change dirs. Shared-file merge conflicts are limited to append-only `cla.io/retro/spec-to-pr-runs.jsonl` and `TODO.md` (trivial "keep both lines" resolutions if both PRs touch them).
 - **Cleanup:** the worktree persists after the run (the session lives in it). After the PR merges, remove it from the primary clone: `git worktree remove <worktrees-dir>/<change>` (the branch is already deleted by `gh pr merge --delete-branch`).
+
+## The orchestrator vs. its own live delegate
+
+Everything above separates two *sessions*. A single session has the same problem with itself, and needs no worktree to hit it: while an Implement or fix delegate is working, the orchestrator is sharing that delegate's checkout, and git's HEAD is per-clone.
+
+**While a delegate is live, the orchestrator runs no repository-state command and no test suite in that checkout.** Not `git checkout`, `switch`, `commit`, `push`, `branch`, or `stash`; not the verify/test command; not killing node or other build processes. A `git checkout` mid-suite moves the files under a running test process and manufactures failures — failures that are indistinguishable, from the output alone, from a real regression the delegate just introduced.
+
+**Read a delegate's interference report as "my delegate is live", not as a third party.** A delegate that detects concurrent mutation cannot tell whose it is, so it names an external session by default, and that report is the orchestrator's own commands coming back at it. Treating it as a genuine third party is the expensive branch: one real run spent roughly 40 minutes investigating manufactured test failures as a possible regression before finding its own `git checkout` was the cause. If you need repository state to settle down, wait for the delegate's terminal return — that is what the return is for.
+
+**The agent-side half of this already ships and does not cover the orchestrator.** `references/subagent-brief.md` slot 3 carries the forbidden-verb list and a paste-ready sentence, but a brief binds only the party receiving it. Nothing the orchestrator writes into a brief constrains the orchestrator, which is why this rule lives here instead.
 
