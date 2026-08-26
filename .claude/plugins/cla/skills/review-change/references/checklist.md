@@ -77,7 +77,7 @@ Every row in the context brief below (and every finding derived from one) MUST r
 
 These are recognition failures, not procedure failures — in each reported instance the reviewer held the grounding rule and the license to read source, and did not engage either, because the sentence presented as an explanation, a comparison, an output specification, or a trade.
 
-**Shape 1 — Producible state.** *Trigger:* an artifact specifies a fixed set of example/demo/fixture/sample states a surface must show. *Resolution, per state:* (a) name the production function or query that would produce it, and read it; (b) resolve the predicate that gates the state against the **real data the system will run on**, not the fixture's — the count or the condition; (c) record ONE of exactly three, and each names what you did:
+**Shape 1 — Producible state.** *Trigger:* an artifact specifies a fixed set of example/demo/fixture/sample states a surface must show. *Resolution, per state:* (a) name the production function or query that would produce it, and read it; (b) resolve the predicate that gates the state against the **real data the system will run on**, not the fixture's — the count or the condition; (c) record ONE of exactly four, and each names what you did:
 `producible: <path:line of the producing path> + <the figure the predicate resolves to>`;
 `NOT PRODUCIBLE: <the line that forbids it>` **or** `NOT PRODUCIBLE: not found: <what you searched, where>` — the second form is the normal one, because an absent producing path is an absence, not a prohibition, and there is no forbidding line to quote;
 `unresolved: <what you would have had to search, and why you did not>`.
@@ -110,7 +110,14 @@ Build a table like this as the verification step produces results. This table be
 
 If a row ends with ✗ and isn't just "to-be-created by this change," it is a candidate finding for the report.
 
-**A `0l` shape row promotes on its own verdict, not on a ✗.** Its Result column reads `producible: …`, `NOT PRODUCIBLE: …` or `unresolved: …`, none of which is a ✗, so the rule above never fires for the one check whose results are not tick-or-cross. Read it this way instead: **a shape row is a candidate finding at that shape's severity floor whenever its resolution produced the thing that shape's floor grades** — not only when the reviewer notices a failure mode. Per shape: a state recorded `NOT PRODUCIBLE`; a provision the cited precedent does not satisfy or does not have; a guarantee that is a deployment property, whether or not it was left unclassified; a compensating claim whose replacement was not read, or an excluded surface with a component that has no named alternative coverage. An earlier wording keyed promotion on the failure mode alone, which describes the *reviewer's* omission rather than the artifact's defect — so a guarantee correctly classified as a deployment property with no trigger hit no failure mode, carried no ✗, and reached no finding, leaving its floor unreachable. An `unresolved` row is not a finding — it goes to `### Open questions`, naming what would settle it. It carries no severity and does not block a READY verdict on its own.
+**A `0l` shape row promotes on its own verdict, not on a ✗.** Its Result column reads `producible: …`, `NOT PRODUCIBLE: …`, `unresolved: …` or `open: …`, none of which is a ✗, so the rule above never fires for the one check whose results are not tick-or-cross. Read it this way instead: **a shape row is a candidate finding at that shape's severity floor whenever its resolution produced the thing that shape's floor grades** — not only when the reviewer notices a failure mode. Per shape, matching each floor's own wording rather than a paraphrase of it:
+
+  - **Shape 1** — a state recorded `NOT PRODUCIBLE` (Critical). An `open:` or `unresolved:` row is not a finding.
+  - **Shape 2** — a provision the cited precedent does not satisfy or does not have **and whose benefit cannot be stated** (Important), rising to **Critical** when the provision blocks implementation. A provision the precedent lacks whose benefit the artifact does state is compliant, not a finding.
+  - **Shape 3** — a deployment property **with no named trigger** (Important), or one **described as a code property** (Critical). A deployment property correctly classified and given its trigger is compliant.
+  - **Shape 4** — a compensating claim whose replacement was not read (Important), rising to **Critical** where the replacement is measurably weaker than what it replaced; an excluded surface with a component that has no named alternative coverage (Important), rising to **Critical** where the exclusion drops a surface the change elsewhere claims is covered.
+
+  Two earlier drafts got this wrong in opposite directions, which is why each entry above carries its floor's qualifier verbatim: keying promotion on the reviewer noticing a failure mode left three of four floors unreachable, and paraphrasing the floors without their qualifiers graded compliant work as a finding. An earlier wording keyed promotion on the failure mode alone, which describes the *reviewer's* omission rather than the artifact's defect — so a guarantee correctly classified as a deployment property with no trigger hit no failure mode, carried no ✗, and reached no finding, leaving its floor unreachable. An `unresolved` row is not a finding — it goes to `### Open questions`, naming what would settle it. It carries no severity and does not block a READY verdict on its own.
 
 ### Step 2b: Inherited obligations — a required output field whenever the caller supplies any
 
@@ -200,6 +207,14 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 >
 > Output format — one line per issue:
 > - [Critical/Important/Suggestion] Issue description
+>
+> One more line kind, for a claim shape you could not settle, a state whose
+> producing code this change itself adds, or a sweep that triggered nothing:
+> - [Open] <what could not be settled>: <what it would take to settle it>
+>
+> An `[Open]` line is NOT a finding and carries no severity. Never relabel one
+> as Critical/Important/Suggestion to make it fit — that manufactures a problem
+> out of a question, which is the failure this line kind exists to prevent.
 
 ### Agent 2: Task Reviewer  (`model: sonnet`)
 
@@ -257,6 +272,14 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 >
 > Output format — one line per issue:
 > - [Critical/Important/Suggestion] Issue description
+>
+> One more line kind, for a claim shape you could not settle, a state whose
+> producing code this change itself adds, or a sweep that triggered nothing:
+> - [Open] <what could not be settled>: <what it would take to settle it>
+>
+> An `[Open]` line is NOT a finding and carries no severity. Never relabel one
+> as Critical/Important/Suggestion to make it fit — that manufactures a problem
+> out of a question, which is the failure this line kind exists to prevent.
 
 ## Step 5: Analyze task parallelism
 
@@ -279,7 +302,7 @@ Analyze `tasks.md` for implementation parallelism. Build a dependency graph:
 
 ## Step 6: Aggregate and report
 
-Deduplicate findings. When multiple findings trace to one root cause, group them: "Root cause: X — fixing this resolves N of M findings."
+**An `[Open]` line from any agent goes to `### Open questions`, never into a findings section.** Deduplicate open lines the same way as findings — two agents raising the same unsettled question is one row. Deduplicate findings. When multiple findings trace to one root cause, group them: "Root cause: X — fixing this resolves N of M findings."
 
 **Severity tie-break, when two dispatched reports carry the same finding at different severities.** Keep the **higher severity**, full stop. Where a report actually carried implementation-level evidence for its severity (a source line, a schema, a migration, a query result) and the other rested on the spec delta or artifact text alone, note which — but **only when the reports give you that**, and never as a reason to lower a severity.
 
@@ -309,6 +332,7 @@ Print a **compact** report:
 
 ### Open questions
 - <what could not be settled>: <what it would take to settle it>
+- swept for claim shapes: <the shape that triggered and how it resolved, or "no sentence triggered any shape">
 
 ### Fix before implementing
 - [source] [Critical/Important/Suggestion] Issue description
@@ -357,7 +381,7 @@ Silent "✓" work is invisible to the user — they can't tell whether the revie
 ### Report constraints
 
 - One line per finding.
-- Omit any section with zero findings (don't print empty headers) — **except `### Inherited obligations` (omitted only when the caller supplied no entries) and `### Open questions` (never omitted; print "(none)").** It is a required output field, not a findings list: `HONOURED` lines are the answer, not an empty section, and dropping them because "there is nothing to fix" removes the evidence that anyone looked.
+- Omit any section with zero findings (don't print empty headers) — **except `### Inherited obligations` (omitted only when the caller supplied no entries) and `### Open questions` (never omitted; print "(none)").** Both are required output fields rather than findings lists. For `### Inherited obligations`, `HONOURED` lines are the answer, not an empty section; for `### Open questions`, an explicit "(none)" is. Dropping either because "there is nothing to fix" removes the evidence that anyone looked.
 - Total report should fit on one screen (~40 lines max).
-- If `Verified claims` would be longer than 6 lines, keep the 6 most load-bearing (the ones directly tied to the artifacts' top claims). **`### Open questions` is not trimmed.** It is short by nature, and trimming it deletes precisely the rows nobody has resolved — the opposite of what a budget should drop first.
-- **`### Open questions` is where a row goes that is neither a pass nor a finding.** Three kinds land here: a check the reviewer could not run and why; a claim whose answer depends on code this change has not written yet, which is normal before implementation and is not a defect; and a one-line note that a sweep ran and found nothing, so a review that did the work does not print identically to one that skipped it. Each row names what would settle it. **An open question is not a finding and carries no severity** — it does not block a READY verdict on its own; it tells the reader what was not established, which is a different thing from telling them what is wrong.
+- If `Verified claims` would be longer than 6 lines, keep the 6 most load-bearing (the ones directly tied to the artifacts' top claims). **`### Open questions` is not trimmed, and is kept short by grouping rather than by cutting.** Trimming it would delete precisely the rows nobody has resolved, which is the opposite of what a budget should drop first. But one shape resolves *per state*, so a change specifying many demo states can emit many near-identical rows: group those into one row naming the count and the shared reason (`4 demo states: producing paths are added by this change, not yet written`) rather than listing each. Group, never drop.
+- **`### Open questions` is where a row goes that is neither a pass nor a finding.** Three kinds land here: a check the reviewer could not run and why; a claim whose answer depends on code this change has not written yet, which is normal before implementation and is not a defect; and a one-line note that a sweep ran and found nothing, so a review that did the work does not print identically to one that skipped it. A row of the first kind names what would settle it. The sweep row is the second kind and names no outstanding question — it exists so a review that ran the sweep does not print identically to one that skipped it. **An open question is not a finding and carries no severity** — it does not block a READY verdict on its own; it tells the reader what was not established, which is a different thing from telling them what is wrong.

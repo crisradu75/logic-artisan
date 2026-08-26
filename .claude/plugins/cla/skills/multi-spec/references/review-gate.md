@@ -54,7 +54,7 @@ Use the same three agent prompts verbatim from the checklist, with these adaptat
 
 ## Step 5 — Aggregate and report, grouped by change
 
-Same deduplication and report shape as the checklist's Step 6, with one addition: group the `### Fix before implementing` / `### Fix during implementation` / `### Suggestions` sections by `[<change-name>]` prefix so Phase 4's fix step can work through them change-by-change. Compute the READY / FIX FIRST / RETHINK verdict **per change** (a batch can have one change RETHINK-worthy while the rest are READY — do not collapse to a single batch-wide verdict, since Phase 4's fix step needs to know which specific change(s) need edits).
+Same deduplication and report shape as the checklist's Step 6, with one addition: group the `### Fix before implementing` / `### Fix during implementation` / `### Suggestions` / `### Open questions` sections by `[<change-name>]` prefix so Phase 4's fix step can work through them change-by-change. Compute the READY / FIX FIRST / RETHINK verdict **per change** (a batch can have one change RETHINK-worthy while the rest are READY — do not collapse to a single batch-wide verdict, since Phase 4's fix step needs to know which specific change(s) need edits).
 
 ## Step 6 — Verdict integrity
 
