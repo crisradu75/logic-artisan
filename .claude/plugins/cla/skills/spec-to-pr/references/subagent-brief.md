@@ -208,6 +208,38 @@ So the brief states the check **together with the output it produced when the or
 ran it**, which is what the delegate's re-run is compared against. A check nobody has run is
 in the same position as a defect nobody grounded — fix it before dispatch.
 
+#### When the evidence cannot honestly be produced
+
+Both contracts above ask for evidence, and both leave one move that satisfies the contract
+while destroying the thing it exists for: authoring the evidence instead of recording it.
+An assertion whose data does not exist — a state the real corpus does not contain, an
+outcome only a credentialed live run could produce, a fixture no run has ever emitted —
+presents a delegate under implementation pressure with two visible options, fail the task
+or make it pass. Everything else here rewards the second: `done` wants a green summary
+line, the Post-check reads a ticked-task count, and invented data produces both. Put the
+third option in the brief, in these words:
+
+> If producing the evidence this task needs would mean **authoring** the data rather than
+> recording it — inventing values, hand-writing an outcome no real run produced, filling a
+> fixture from what the spec imagines — that is the defect, and reporting it is the task.
+> Return `blocked`, name what could not be produced and why, and list the options you can
+> see. Do NOT author it.
+
+State it rather than trusting it to be inferred: nothing else in the brief implies it, and
+a delegate that stops here has to be able to point at the sentence that sanctioned
+stopping. **A stop of this kind is a successful return, and the run record must show it as
+one** — the same reason `remedy-rejected` exists separately from `blocked`. A ticked task
+resting on invented data is worse than an unticked one, because the tick is the only signal
+anything downstream reads, and the two are indistinguishable in it.
+
+Where the unproducible state was written as a *requirement*, the defect is older than this
+dispatch and belongs upstream: `review-change`'s Shape 1
+(`${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md`, "Producible state")
+grades a state recorded `NOT PRODUCIBLE` and written as a requirement as
+a **Critical** before implementation ever starts. A delegate hitting it here means that
+check did not run or did not fire — worth saying in the `blocked` return, because the fix is
+to the requirement, not to the task.
+
 ---
 
 ## What the brief cannot do

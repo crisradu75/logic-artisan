@@ -160,10 +160,17 @@ Use `Skill()` only when the sub-skill genuinely encapsulates capability the orch
 
 A single run needs no setup — it creates `<branch>` in place. To run two or more flows at once in
 the same repo, each session needs its own `git worktree`: **read `references/concurrent-runs.md`**
-for the setup commands, the base-branch trap, and cleanup. The one rule worth holding without
-reloading it: branch off `origin/<base-branch>` explicitly (or `origin/<pr-base>` for a stacked
-child) — a bare `git worktree add -b <branch>` takes whatever the primary clone's local ref happens
-to be, which goes stale the moment any sibling change merges.
+for the setup commands, the base-branch trap, cleanup, and the orchestrator-vs-own-delegate rule.
+Two rules worth holding without reloading it:
+
+- Branch off `origin/<base-branch>` explicitly (or `origin/<pr-base>` for a stacked child) — a bare
+  `git worktree add -b <branch>` takes whatever the primary clone's local ref happens to be, which
+  goes stale the moment any sibling change merges.
+- **While your own Implement or fix delegate is live, run no repository-state command and no test
+  suite in that checkout** — no `checkout`/`switch`/`commit`/`push`/`branch`/`stash`, no verify run,
+  no killing build processes. This one applies to a **single** run, which is why it is here and not
+  only in the reference: a `git checkout` mid-suite manufactures failures that read as a real
+  regression, and a delegate reporting interference is reporting you, not a third party.
 
 ## Session-model routing & escalate-up
 
