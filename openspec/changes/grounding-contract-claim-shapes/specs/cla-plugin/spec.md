@@ -19,10 +19,9 @@ confirm that a claim is grounded SHALL NOT satisfy this requirement.
 
 1. **Producible state.** Triggered by an artifact specifying a fixed set of example, demo, fixture, or
    sample states a surface must show. Resolution: name and read the production function or query that
-   would produce each state; resolve the predicate gating it against the **real corpus** rather than
+   would produce each state; resolve the predicate gating it against the **real data the system will run on** rather than
    the fixture's; record the producing path with the corpus figure, or an explicit not-producible with
-   the line that forbids it. Being unable to name a producing path SHALL resolve as **not producible**
-   rather than as unresolved. Severity floor: an unproducible state written as a requirement is
+   the line that forbids it. Having searched and found no producing path SHALL resolve as **not producible**; NOT having searched SHALL resolve as unresolved, and SHALL carry no severity floor. The negative default applies once the reviewer has looked, because an absent producing path is itself the finding — it does not apply to a reviewer who ran out of budget, which the grounding contract already routes to unresolved. Severity floor: an unproducible state written as a requirement is
    **Critical**, because such a requirement does not fail loudly — the available resolution under
    implementation pressure is to invent the data.
 2. **Precedent strictness.** Triggered by an artifact naming an existing shipped implementation as the
@@ -47,8 +46,7 @@ confirm that a claim is grounded SHALL NOT satisfy this requirement.
    automated coverage for a named alternative, the resolution SHALL be to read the named replacement
    and confirm what kind of assertion it actually runs, then state its strength relative to what was
    given up — the given-up half is visible in the diff and the replacement is a promise, so the promise
-   is the half verified. Where an exclusion entry is added to any route-, page-, or file-keyed
-   allowlist or denylist, the resolution SHALL be to enumerate the components or modules reachable only
+   is the half verified. Where an exclusion entry is added to any keyed allowlist or denylist, the resolution SHALL be to enumerate the components or modules reachable only
    through the excluded surface and, for each, name where it is otherwise covered or state that it is
    not. Severity floor: **Important** for an unverified compensating claim, **Critical** where the
    replacement is measurably weaker than what it replaced.
@@ -87,9 +85,10 @@ identifier from the reporting instances travels into the portable text.
 
 #### Scenario: An unproducible demo state resolves negative rather than unresolved
 
-- **WHEN** a reviewer cannot name the production path that would produce a specified demo state
+- **WHEN** a reviewer has searched for the production path that would produce a specified demo state and found none
 - **THEN** the state resolves as not producible rather than as unresolved
 - **AND** the requirement specifying it is graded Critical
+- **AND** where the reviewer has not searched, the row resolves as unresolved instead and carries no severity floor
 
 #### Scenario: A guarantee is classified before it is accepted
 
@@ -106,9 +105,22 @@ identifier from the reporting instances travels into the portable text.
 
 #### Scenario: An exclusion's reach is enumerated
 
-- **WHEN** an exclusion entry is added to a route-, page-, or file-keyed allowlist or denylist
+- **WHEN** an exclusion entry is added to a keyed allowlist or denylist
 - **THEN** the components or modules reachable only through the excluded surface are enumerated
 - **AND** each is paired with where it is otherwise covered, or stated to be uncovered
+
+#### Scenario: The enumeration carries its reason
+
+- **WHEN** the claim shapes are stated in the contract
+- **THEN** the text says why they are enumerated — that these are recognition failures, not procedure failures
+- **AND** it is stated with the list rather than left to a reader to infer from the shapes themselves
+
+#### Scenario: A shape carries no trace of the instance that produced it
+
+- **WHEN** a shape is written from a specific reported failure
+- **THEN** its text names no repository, product, module, route, or infrastructure identifier from that instance
+- **AND** the shape is stated so a repository with a different architecture can still apply it
+- **AND** a shape that can only fire in the reporting instance's kind of product is rewritten or dropped
 
 #### Scenario: An unnamed shape matching the signature is in scope
 
@@ -120,7 +132,7 @@ identifier from the reporting instances travels into the portable text.
 
 - **WHEN** a review dispatches agents to produce its findings rather than adjudicating inline
 - **THEN** the shape list is carried in those agents' own briefs, not only in the orchestrator's sweep
-- **AND** it is carried by reference to the contract rather than duplicated, so the two cannot drift
+- **AND** the shape text is carried into each prompt in full, never as a pointer to the contract, because a dispatched agent does not load the skill and cannot resolve one
 - **AND** a shape whose resolution requires re-reading the change artifacts is stated as not delegable to that dispatch
 
 #### Scenario: The sweep reaches the shapes and is not delegated

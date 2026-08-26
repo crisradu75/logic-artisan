@@ -192,7 +192,7 @@ Order: Precheck → Propose → Review → Implement → Test → Ship → Revis
 
 Cap: `--review-rounds N` (default `1`).
 
-**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and execute it inline against `<change-name>`.** That file is the single source of truth for review behavior — it defines change selection, parallel artifact reads, the 11 high-yield verification checks (`0a`–`0k`), the context-brief table format, the size gate (small → in-context analysis; large → 3-agent dispatch), the agent prompts, parallelism analysis, and the report shape + verdict rubric.
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and execute it inline against `<change-name>`.** That file is the single source of truth for review behavior — it defines change selection, parallel artifact reads, the 12 high-yield verification checks (`0a`–`0l`), the context-brief table format, the size gate (small → in-context analysis; large → 3-agent dispatch), the agent prompts, parallelism analysis, and the report shape + verdict rubric.
 
 Do NOT invoke `Skill(cla:review-change)` from Review — that adds a 1-2 turn skill-load round trip with no extra capability, because the checklist file already carries everything. The standalone `/cla:review-change` slash-command path uses the same checklist via the thin `SKILL.md` shell, so verdicts remain consistent regardless of entry point. To revise review behavior, edit `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md`; do NOT add review logic to either the spec-to-pr orchestrator or the review-change `SKILL.md` shell.
 

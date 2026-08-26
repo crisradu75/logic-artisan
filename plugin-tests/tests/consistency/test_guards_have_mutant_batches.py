@@ -455,7 +455,69 @@ def test_every_batch_is_loadable_and_declares_real_targets():
                     f"  {rel}: guards no file named {batch.name} anywhere under "
                     "tests/"
                 )
+            problems.extend(f"  {rel}: {p}" for p in _unresolvable_anchors(batch))
     assert not problems, "mutant batch problems:\n" + "\n".join(problems)
+
+
+def _unresolvable_anchors(batch):
+    """Every mutant's `old` string must appear EXACTLY ONCE in its target file.
+
+    This is the condition `mutate.py` refuses on, and refusing is a preflight
+    abort: it reports "anchor not found" and runs NO mutant in the batch, so a
+    batch of twenty checks reports nothing rather than failing. Nothing in the
+    suite went red for it, because a batch is not a test.
+
+    Measured twice on one branch. An edit to `checklist.md` killed
+    `test_chain_obligation_carry`'s anchor and its 21 mutants stopped running for
+    three review rounds; separately, renumbering a check from `0k` to `0l` killed
+    two anchors in `test_check_labels_agree` and took its 5 down. Both times the
+    full suite was green. The guard above already says a batch that "reports every
+    mutant as an anchor error ... quietly stops being proven" — it just never
+    opened the target to check.
+
+    Anchors are prose fragments in markdown by design, so they WILL be broken by
+    ordinary edits. The point is not to prevent that; it is to make it loud.
+    """
+    problems = []
+    try:
+        tree = ast.parse(batch.read_text(encoding="utf-8"), filename=str(batch))
+    except (OSError, SyntaxError):
+        return problems  # already reported by the caller
+
+    # Every batch resolves its target paths from `__file__`, so the namespace has
+    # to carry it — without it each batch dies on a NameError and this guard
+    # reports a tooling problem instead of the anchors it exists to check.
+    namespace = {"__file__": str(batch), "__name__": batch.stem}
+    try:
+        exec(compile(tree, str(batch), "exec"), namespace)  # noqa: S102 - our own file
+    except Exception as exc:  # a batch that cannot evaluate is reported, not skipped
+        return [f"could not evaluate to read its anchors ({exc.__class__.__name__}: {exc})"]
+
+    for mutant in namespace.get("MUTANTS", []):
+        try:
+            name, target, old, _new, _targets = mutant
+        except (TypeError, ValueError):
+            problems.append("has a MUTANTS entry that is not a 5-tuple")
+            continue
+        try:
+            # `read_bytes().decode()`, not `read_text()`, because that is exactly
+            # what mutate.py does and the difference is not cosmetic: `read_text`
+            # translates line endings, so an anchor built with a literal `\r\n`
+            # on a CRLF checkout — which several batches do deliberately — reads
+            # as absent and this guard reports a healthy batch as broken. Caught
+            # by running the two batches it accused; both ran fine.
+            text = Path(target).read_bytes().decode("utf-8")
+        except OSError:
+            problems.append(f"mutant {name!r} targets a missing file: {target}")
+            continue
+        found = text.count(old)
+        if found != 1:
+            problems.append(
+                f"mutant {name!r} anchors on a string appearing {found} times in "
+                f"{Path(target).name} (needs exactly 1) — mutate.py aborts the WHOLE "
+                "batch in preflight, so none of its mutants run"
+            )
+    return problems
 
 
 # The absolute-path detector is BORROWED, not written here.

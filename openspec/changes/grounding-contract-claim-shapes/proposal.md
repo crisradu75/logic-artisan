@@ -53,9 +53,23 @@ so no MODIFIED block is written and nothing can be silently dropped at sync.
 
 **Modified**
 
-- `.claude/plugins/cla/skills/review-change/references/checklist.md` — one new subsection under
-  §"Grounding contract", one new numbered check `0l`, one sentence in the cost-offload paragraph, one
-  clause at line 60's check enumeration, one paragraph at Step 6's deduplication step.
+- `.claude/plugins/cla/skills/review-change/references/checklist.md` — **six edit sites**, all in
+  this one file:
+  1. one new subsection under §"Grounding contract" (the four claim shapes);
+  2. one new numbered check `0l`;
+  3. one sentence appended to the cost-offload paragraph naming `0l` as non-delegable;
+  4. the check enumerations updated to name `0l` — **all of them**, not only the one at line 60: the
+     sentence that launches parallel batch 2 and the INT-SYC clause both spell out `0a–0k` today, and
+     a stale enumeration is how a check goes quietly unrun;
+  5. one paragraph at Step 6's deduplication step (the severity tie-break);
+  6. the **Step 4 agent prompts** — the Design Reviewer and Spec & Codebase Reviewer prompts carry the
+     shape text in full, since those two adjudicate artifact claims and a dispatched agent cannot
+     resolve a pointer back to the contract.
+
+  Site 6 is the one an earlier draft omitted: it was implemented in `tasks.md` and required by a
+  delta-spec scenario while being absent from this list and from `design.md`'s pinned parameters, so
+  the artifacts disagreed on what the change edits. The line-count estimate in `design.md`'s Risks
+  section is for sites 1–5 and does not include it.
 
 **New**
 
@@ -63,10 +77,16 @@ so no MODIFIED block is written and nothing can be silently dropped at sync.
 
 **Batch coupling**
 
-- `fix-brief-binding-defect` (same PR) edits the **same file**: the cost-offload paragraph's
-  adjudication sentence, and the `### Verified claims` report block. This change touches the
-  cost-offload paragraph too, with a different sentence, and deliberately does not touch
-  `### Verified claims`. Ordering is pinned in `tasks.md`.
+- **None.** No sibling in this batch edits `checklist.md`. An earlier draft claimed
+  `fix-brief-binding-defect` edited the cost-offload paragraph and the `### Verified claims` block,
+  and pinned an ordering to resolve the overlap; that change has since merged having touched neither,
+  and its own design states it does not touch this file at all. The draft was written from the batch
+  as proposed, before that change's scope was cut.
+- One **negative** obligation survives from it, and it points the opposite way to the old note: its
+  merged requirement scopes the `agent-reported` / `orchestrator-verified` provenance tag to a brief's
+  fact rows and bars it from a review report's claim table. `checklist.md` is that claim table, so
+  this change must not add the tag here — that is the deferred `fact-row-provenance` change. Task 5.7
+  guards it.
 
 **Portability**
 

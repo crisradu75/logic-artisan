@@ -79,8 +79,12 @@ MUTANTS = [
     (
         "the omit-empty exemption goes, so an all-honoured section is dropped",
         CHECKLIST,
-        "**except `### Inherited obligations`, which is omitted only when the caller supplied no entries.**",
-        "This applies to every section without exception.",
+        # Anchored on the short, stable fragment rather than the whole sentence.
+        # Twice now an unrelated edit to the surrounding clause has silently
+        # killed this anchor, taking the WHOLE batch down in preflight — so no
+        # mutant ran and the batch reported nothing rather than failing loudly.
+        "except `### Inherited obligations`",
+        "including `### Inherited obligations`",
         TARGETS,
     ),
     (
