@@ -341,3 +341,49 @@ Take Question 1 through `/cla:shape-decision` first. It blocks the others: three
 consequences above are report-format decisions, and Question 2's carve-out cannot be worded until
 there is somewhere for a non-✓, non-finding row to go. The claim shapes themselves survived review —
 the delta spec was found sound, portable, and free of collisions with the merged sibling.
+
+## Make the check-label coverage rule general, by marking the enumerations
+
+`plugin-tests/tests/consistency/test_check_labels_agree.py` guards agreement between
+`checklist.md`'s check definitions (`0a`, `0b`, …) and the places restating that set. It shipped
+**partial**, and its module docstring says so rather than implying otherwise. This entry is the
+uncovered half.
+
+**What is uncovered.** Rule 3 — "a line claiming which checks *live in* the checklist must account
+for all of them" — fires only on that one prose idiom, and exactly one line in the watched set uses
+it. So the checklist's own internal restatements are seen by nothing: the parallel-batch-2 sentence,
+the "All checks above … are run by the orchestrator" line, and the INT-SYC clause. Two reviewers
+independently reproduced it: add a check, update only what the guard's failure messages name, and
+those three stay stale with the suite green. The first two are the lines an orchestrator actually
+reads to decide which checks to run, so this is the guard's own claim failing on its most
+load-bearing target.
+
+**Why it is not simply a better regex.** Three attempts, each failing in a different direction:
+
+- *presence* ("the newest label appears somewhere in the file") — passes while another sentence in
+  the same file enumerates the old set; that is the exact shape that shipped in PR #158;
+- *any range starting at `0a`* — false-positives on every legitimate subset that also starts there
+  (`0a–0h` is the delegable portion, `0a–0e` appears in a comparison);
+- *the residence idiom* — narrow and true, but covers one line.
+
+Inferring "this sentence enumerates the whole set" from phrasing is the wrong problem. The exact
+version **marks** the enumerating lines — an HTML comment is invisible when rendered — and the guard
+then checks every marked line and asserts a minimum marker count. Roughly four lines of prose to
+mark. It also makes the contract legible to whoever edits the prose next, which the inferred version
+never can.
+
+**Two smaller items from the same review:**
+
+- `_ENUMERATING_FILES` is a hand-maintained four-file list. `agents/fact-gatherer.md` names a range
+  in its frontmatter and is deliberately unwatched, and nothing detects a fifth file appearing. The
+  marker approach removes this too — a marker is greppable repo-wide.
+- **`0m` is inside the checklist's growth path.** `review-gate.md`'s own batch-only check was
+  relabelled `0j` → `0m` to end a collision; `0l` is already claimed by the unmerged
+  `feature/grounding-contract-claim-shapes`, so `0m` is the next label the checklist reaches. At that
+  point the relabel has to happen again. A prefix outside the `0[a-z]` namespace the guard scans
+  (say `B1`) closes the class permanently instead of deferring it.
+
+**One operational note, learned the hard way.** Running `mutate.py` while review agents read the same
+tree corrupts their environment — a reviewer saw this guard flake 3-of-5 runs because a concurrent
+mutation batch was rewriting `review-gate.md` underneath it. Mutation runs and agent reviews need to
+be serialised, or the batch needs to run in an isolated copy.
