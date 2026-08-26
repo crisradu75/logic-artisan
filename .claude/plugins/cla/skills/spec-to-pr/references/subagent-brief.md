@@ -118,8 +118,26 @@ diff to notice it by. Nor does a well-behaved agent undo it: it *restores* to th
 assumes was the baseline, usually `main` rather than the branch the session was on. Spell
 out the forbidden verbs, and for a diff review name the read-only way to get it:
 
-> Read the diff with `git diff <base>...<branch>`. Do NOT run `git checkout`, `switch`,
-> `stash`, `branch`, or `worktree add`, or anything else that mutates repository state.
+> Read the diff with `git diff <base>...<branch>`, and a committed file with
+> `git show <ref>:<path>`. Do NOT run `git checkout`, `switch`, `stash`, `branch`, or
+> `worktree add`, or anything else that mutates repository state. Do NOT run
+> `git checkout -- <path>`, `git restore`, or `git reset`, or edit or revert a file
+> directly — the tree may hold uncommitted work in the very files you are reading.
+
+**Two different losses, and the second verb list is the one that gets left out.** The verbs
+above split into moving HEAD (`checkout`, `switch`, `branch`, `worktree add`) and
+overwriting tracked files (`checkout -- <path>`, `restore`, `reset`, a direct edit or
+revert); `stash` does both. A HEAD move is recoverable — the orchestrator switches back. An
+overwrite of an uncommitted file is not: there is no reflog for content that was never
+committed, and the agent cannot see whether the file it is about to restore held an hour of
+someone's work. A real incident had a review agent run `git checkout --` over three files
+carrying ~344 uncommitted insertions and report success; the work survived on timing alone.
+So name both lists, not the first one because it is the one about git's own state.
+
+**Where a check genuinely needs the code mutated** — mutation-testing a guard, reproducing a
+failure — say so and give the agent the safe route: copy the file to the session scratchpad,
+mutate the copy there, and report that the result was NOT verified against the live tree. The
+instinct to mutate is usually a good one; it is the target that is wrong.
 
 Where the agent is read-only, prefer the mechanical form: per "What the brief cannot do"
 below, a `tools:` allowlist or `permissionMode: plan` makes these commands impossible
