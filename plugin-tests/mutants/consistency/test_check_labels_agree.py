@@ -18,9 +18,21 @@ correctly so: a guard weakening cannot be detected on a tree with nothing stale
 to catch, and expressing the pair needs two files mutated at once, which this
 batch format does not carry. The same is true of narrowing `_DEFINITION` back to the
 checklist's single heading spelling: with the `0j` collision already resolved there
-is nothing for the narrow pattern to miss. Mutant 3 is what holds the broad pattern
-in place — narrow the regex and mutant 3 stops dying, so the batch reports it on the
-next run. The weakness was measured directly instead, by
+is nothing for the narrow pattern to miss.
+
+An earlier version of this paragraph claimed "mutant 3 is what holds the broad
+pattern in place — narrow the regex and mutant 3 stops dying". **A reviewer
+measured that and it is false.** Narrowing `_DEFINITION` leaves `pytest` green and
+makes `mutate.py` abort in *preflight* — mutant 5's `old` string is the whole
+`_DEFINITION` line, so any edit to that regex trips its anchor before mutant 3
+ever runs. The protection is real but it comes from mutant 5's anchor, not from
+mutant 3, and the claim as written was reasoning presented as measurement. Stated
+correctly: **any edit to `_DEFINITION` fails this batch at preflight**, which is
+coarser than a kill but is what actually holds it. `_RANGE` has the same coupling
+through mutant 4, and `claims_residence` has no mutant at all — its non-vacuity is
+asserted by a test instead.
+
+The presence-check weakness was measured directly, by
 replaying the four historical defects against both drafts: the presence-check
 draft caught 3 of 4, the coverage rule catches 4 of 4. Mutant 1 is what holds the
 coverage rule in place from here.
