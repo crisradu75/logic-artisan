@@ -41,7 +41,7 @@ repo root rather than typing `claude` directly. It resolves its own absolute pat
 passes `--plugin-dir <repo>/.claude/plugins/cla` regardless of your cwd:
 
 ```bash
-./cla   # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model opus --effort high
+./cla   # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model opus --effort medium
 ```
 
 `--plugin-dir` loads the plugin live from this working tree, so you run the harness you are

@@ -30,5 +30,5 @@ if ! command -v claude >/dev/null 2>&1; then
 fi
 
 # Print the exact command being run so it's easy to confirm what launches.
-echo "+ claude --plugin-dir \"$plugin_dir\" --permission-mode auto --model opus --effort high $*" >&2
-exec claude --plugin-dir "$plugin_dir" --permission-mode auto --model opus --effort high "$@"
+echo "+ claude --plugin-dir \"$plugin_dir\" --permission-mode auto --model opus --effort medium $*" >&2
+exec claude --plugin-dir "$plugin_dir" --permission-mode auto --model opus --effort medium "$@"
