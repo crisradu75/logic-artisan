@@ -97,7 +97,15 @@ These are recognition failures, not procedure failures — in each reported inst
 
 ### Context brief — standard format
 
-Build a table like this as the verification step produces results. This table becomes the `### Verified claims` section of the final report and the substrate for each agent prompt (if agents are dispatched).
+Build a table like this as the verification step produces results. It is the substrate for each agent prompt (if agents are dispatched), and its **✓ rows** become the `### Verified claims` section of the final report.
+
+**Only ✓ rows.** That section is the positive-verification list and renders `- ✓ …` entries. Every other row reaches the report by its own route:
+
+- a ✗ row, by the promotion rule below;
+- a `0l` shape row, by its severity floor;
+- a row that is neither a pass nor a finding, through `### Open questions` — a ✗ that is just to-be-created by this change, an `unresolved:`, an `open:`.
+
+Stated here rather than left to the template's shape. A reader taking "becomes the section" literally renders a failed check as a verified one.
 
 ```
 | Claim in artifact                                | Source location    | Verification                        | Result                                  |
@@ -180,7 +188,26 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 
 **Inherited-obligation rows in the context brief.** Step 2b tags any obligation this change inherits from an earlier change as an `INHERITED OBLIGATION` row in the context brief every agent below receives. A row reading `VIOLATED` or `NOT ADDRESSED` is a **Critical** finding: report it, and say what the artifacts must state instead — a `tasks.md` subtask naming the field and what reads it, not a mention pasted into prose. These rows are the one input that cannot be derived from the artifacts in front of you; their justification lives in a different change.
 
-**An unfilled placeholder deletes a check, and the agent's prompt still reads complete.** Before dispatching, confirm no `<inject:` survives in any prompt you are about to send. There is no other detector: the orchestrator's own sweep satisfies the reporting requirement either way, so a dispatch where both agents lost their claim-shape check produces a report identical to one where both ran it.
+**An unfilled placeholder deletes a check, and the agent's prompt still reads complete.** A dispatch where both agents lost their claim-shape check produces a report identical to one where both ran it, so nothing downstream reveals it.
+
+**Write each composed prompt to a scratch file and grep it before dispatching.** Not a re-read — a command with an exit code:
+
+```
+grep -c 'inject:' <the composed prompt file>     # expected: 0
+```
+
+A non-zero count is a prompt that must not be sent. Fill the placeholder from the source its own text names and re-run the grep. Delete the scratch files after dispatch.
+
+Reading the prompt back instead is the failure this replaces. It asks the party that filled the placeholders to notice that it did not. A placeholder reads as ordinary text in a long prompt. The grep is a different act, not a more careful version of the same one.
+
+**Do not delegate this check to the dispatched agent.** Its prompt is the thing under test. An agent that never scanned returns the same "no placeholder here" as one that did, so a clean answer is not evidence. This instruction's own text also contains the token being searched for, so a literal reading of it reports itself.
+
+**Two failures the grep does not catch**, named so nobody reads a clean run as full coverage:
+
+- a placeholder **deleted** rather than left unfilled;
+- one replaced by a bare "see the overlay" pointer, the failure line 198 names.
+
+Both leave a prompt with no placeholder text and no injected content. Only reading the composed prompt finds those. This check does not claim to.
 
 **Injection is mandatory, not optional (Decision C).** Every `<inject: ...>` placeholder below MUST be replaced with actual content before the prompt is dispatched — for most placeholders that is repo-fact content from `cla.io/overlays/review-change.md`; the claim-shape placeholders instead take their content from this file's own §"Grounding contract", and a reader who goes to the overlay for those will find nothing and leave the placeholder unfilled. Each placeholder names its own source; read it — the orchestrator reads the overlay (already done in Step 2) and pastes the relevant facts directly into the prompt text at dispatch time. A dispatched agent never loads the skill or resolves `cla.io/overlays/review-change.md` itself, so a placeholder left un-filled, or replaced with a bare "see cla.io/overlays/review-change.md" pointer, leaves that agent reviewing blind — strictly worse than embedding the facts. The check *structure* below (what to verify, in what order) is the portable part; the injected content is what makes each check concrete for this repo.
 
@@ -390,6 +417,7 @@ Silent "✓" work is invisible to the user — they can't tell whether the revie
 ### Report constraints
 
 - One line per finding.
+- **A `[Critical]` or `[Important]` never prints under `### Suggestions`.** Severity is stated twice, by the section and by the label. On a disagreement the finding moves and the label stands; never edit the label down to match the section. The two Fix sections are timing-based, so the move goes to whichever of them the fix's timing warrants. Only the move out of `### Suggestions` is forced. **The cost, stated because this reads as cosmetic:** `spec-to-pr`'s Review loop applies each Critical and Important finding and does nothing with Suggestions. A Critical filed under that heading is **dropped**, not deferred. This is not Step 6's tie-break, which settles two dispatched reports grading one finding differently — that one settles two reviewers, this one settles a single finding's two statements of itself.
 - Omit any section with zero findings (don't print empty headers) — **except `### Inherited obligations` (omitted only when the caller supplied no entries) and `### Open questions` (never omitted — and note it can never legitimately read "(none)": the claim-shape sweep runs on every review and always emits its one row, so an empty section means the sweep was skipped, not that nothing was found).** Both are required output fields rather than findings lists. For `### Inherited obligations`, `HONOURED` lines are the answer, not an empty section; for `### Open questions`, the sweep row is — an empty one is evidence the sweep did not run. Dropping either because "there is nothing to fix" removes the evidence that anyone looked.
 - Total report should fit on one screen (~40 lines max).
 - If `Verified claims` would be longer than 6 lines, keep the 6 most load-bearing (the ones directly tied to the artifacts' top claims). **`### Open questions` is not trimmed, and is kept short by grouping rather than by cutting.** Trimming it would delete precisely the rows nobody has resolved, which is the opposite of what a budget should drop first. But one shape resolves *per state*, so a change specifying many demo states can emit many near-identical rows: group those into one row naming the count and the shared reason (`4 demo states: producing paths are added by this change, not yet written`) rather than listing each. Group, never drop.
