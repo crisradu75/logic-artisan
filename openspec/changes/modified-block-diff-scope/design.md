@@ -2,8 +2,10 @@
 
 `openspec` applies a `## MODIFIED Requirements` block by **replacing** the named requirement in
 `openspec/specs/<capability>/spec.md` with the block's contents. It is not a merge. A scenario
-present on the live requirement and absent from the delta is therefore deleted, and no tool reports
-it. GitHub issue #97 records the failure shipping once in a consuming repo — three live scenarios
+present on the live requirement and absent from the delta is therefore deleted. `openspec` refuses
+that apply from 1.11.0 — the guard is `findMissingCurrentScenarios`, and since their #1482
+`openspec validate` runs the same check — so the loss is caught at apply time by a tool this plugin
+does not own, on a version a consuming repo may not be running. GitHub issue #97 records the failure shipping once in a consuming repo — three live scenarios
 dropped from one block, caught by hand — and one change in the 2026-08-20 chain carrying **six**
 MODIFIED blocks across six capability specs, which is where hand-diffing stops happening in
 practice.
@@ -73,7 +75,12 @@ false positives.
 `discover-and-gate.md`'s existing obligation unexecutable, which is worse than absent: a stated check
 that cannot be performed correctly reads as coverage. (ii) The upstream fix, if it lands, lands on a
 version of `openspec` a consuming repo may not be running for a long time; the plugin's own
-instructions are what its skills follow today. (iii) The two design notes are knowledge this repo
+instructions are what its skills follow today. **That prediction was tested and held.** The
+enforcing check had already landed upstream when this was written — and this repo, along with the
+seven others on the machine, ran between four and eight minor versions behind it until 2026-08-27.
+An upstream fix that exists is not an upstream fix that runs. What the landing does cost D1 is the
+never-lands half of this ground: the reason to build the in-scope half is now (i) and (iii), plus
+the version lag, not the possibility that nothing ever ships upstream. (iii) The two design notes are knowledge this repo
 paid for and would lose — they are about how to *read* a delta, not about how `openspec` should
 behave. **The upstream half is still reported** (`tasks.md` §6), so this is not a substitution.
 
@@ -171,6 +178,24 @@ exactly one destroys a live `SHALL`. That is a permanent property of the format,
 procedure — so a residual false-positive rate is designed in, and a guard that refused on a hit would
 refuse on a legitimate rename. The requirement is written so that flagging both and making a human
 adjudicate is the *correct* behaviour, not a tolerated weakness.
+
+**The upstream guard took the opposite decision, and that is now the sharpest argument for this
+one.** `openspec` ≥1.11.0 refuses a MODIFIED block whose scenario set does not cover the live one,
+which means a scenario renamed in place — the `company-events` case above, the one rename
+resolution provably cannot catch — is not a false positive there but a hard block. Their open issue
+#1697 is exactly that complaint, and the corpus replay in its thread measures the cost: across 75
+archived changes carrying a MODIFIED block, **29 (39%) would be blocked**, every detection correct,
+and of the 26 findings hand-classified for intent, **16 (62%) were intended omissions** —
+supersessions, deliberate deletions, and a stale base. Roughly three intended omissions blocked for
+every two losses stopped.
+
+Two things follow for this design. First, D5's "never refuse" is no longer only a preference: it is
+the behaviour a measured corpus says a refusal gets wrong at a 62% rate on the cases it fires over,
+and this procedure runs *before* implementation, where a false block costs a change rather than a
+line of adjudication. Second, the rename-resolution ordering (P4) gains a second audience. It was
+written for a reader catching a loss; it now also serves an author who must satisfy an upstream
+guard that reads their rename as one — the ordering is what tells them which of their flags are
+renames before `openspec` refuses the apply over them.
 
 **Task-list note carried from this:** the brief for D2 in `cla.io/decisions/open-issues-2026-08-24.md`
 compresses this to rename resolution being "what produced both false positives". The source (#97,

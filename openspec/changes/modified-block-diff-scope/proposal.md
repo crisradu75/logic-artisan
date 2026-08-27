@@ -2,9 +2,10 @@
 
 An OpenSpec `## MODIFIED Requirements` block **replaces** the requirement it names rather than
 patching it, so a scenario that exists on the live requirement and is absent from the delta is
-deleted from `openspec/specs/` at sync/archive time with nothing reporting the loss. A repo
-consuming this plugin shipped exactly that once, dropping three live scenarios from one block,
-caught by hand.
+deleted from `openspec/specs/` at sync/archive time. `openspec` ≥1.11.0 refuses such an apply, so
+the loss is now caught — but at apply time, by a tool this plugin does not own, in a version a
+consuming repo may not be running. A repo consuming this plugin shipped exactly that once, dropping
+three live scenarios from one block, caught by hand.
 
 The decision this change implements (`cla.io/decisions/open-issues-2026-08-24.md`, item **D2**,
 GitHub issue #97) opens with a genuine fork: #97's own proposed fix is a refusal inside

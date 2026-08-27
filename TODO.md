@@ -263,84 +263,110 @@ original size, so it can only shrink. Highest value first: `test_check_script_dr
 names it as guarding a *silent* failure, which is exactly the class where an unproven guard is
 worth least.
 
-## Claim-shape sweep (`0l`): the two questions PR #158 could not settle
+## Claim-shape sweep (`0l`): three edits left, and a merge that should not have happened
 
-`grounding-contract-claim-shapes` (PR #158, **open and not merged**) adds four claim shapes to
+`grounding-contract-claim-shapes` (PR #158, **merged 2026-08-26 as `a6b2862`**) adds four claim shapes to
 `review-change/references/checklist.md`, a numbered check `0l` pointing at them, and a severity
 tie-break at Step 6. It went through Review (3 agents, FIX FIRST, 11 findings applied) and two
-Revise rounds (27 findings). It stopped at the `--pr-rounds` cap with the findings below still open.
+Revise rounds (27 findings). It stopped at the `--pr-rounds` cap with 2 Critical and 4 Important
+still open — most of which were then resolved before the merge without this section being updated.
+What actually survives is below, re-verified rather than restated.
 
-**The branch is `feature/grounding-contract-claim-shapes`; nothing here is lost while it exists.**
-Recorded in this file because the findings themselves were not — they lived in a terminal report and
+**This file is now the only record, and the safety net it described is gone.** It was written while
+the PR was open, and said the findings could not be lost while the branch existed. The PR merged on
+2026-08-26 and the branch with it — `git branch -a --list "*grounding*"` returns nothing (measured
+2026-08-27). So the paragraph's own remedy, keeping the remote branch alive, is no longer available,
+and the findings below are open **against `main`**, not parked on a branch someone can go read.
+
+That is a worse position than the one this section was written for, and it is worth stating why it
+happened rather than only that it did. The PR body led with `NOT READY TO MERGE — Revise hit its
+2-round cap with 2 Critical and 4 Important findings unresolved; Archive deliberately not run`, and
+it was merged anyway. Nothing in this repo blocks a merge — CLAUDE.md says so under "No CI" — so a
+refusal written into a PR body is a note, not a gate. The change is fully implemented (35/35 tasks)
+and correctly **not archived**, since archiving would assert a completion the findings contradict.
+
+Recorded here because the findings themselves were not durable — they lived in a terminal report and
 in commit trailers, which is the "reported but not durable" shape the run spent its rounds arguing
-against. If the PR is closed, do **not** let the remote branch be deleted: a `[gone]` local branch is
-what `clean_gone` force-deletes, and its merged-PR check reads CLOSED the same as never-merged.
+against. That argument is now demonstrated rather than asserted.
 
 **Why it stopped rather than continuing.** The round-over-round finding count did not converge —
 Review 11, Revise round 1 fifteen, Revise round 2 twelve, with four of round 2's Criticals caused by
-round 1's own fixes. Two more rounds would most likely have behaved the same way, because what is
-left is not wording. It is two questions the fix loop cannot answer.
+round 1's own fixes. Two more rounds would most likely have behaved the same way.
 
-### Question 1 — where does a row that is neither a ✓ nor a finding print?
+**The judgement in that last sentence was half right, and the half it got wrong is instructive.** It
+concluded that what remained needed a decision rather than an edit. Re-verified against the merged
+file a day later, most of it needed neither — it was already fixed, in the rounds this section was
+written to explain. A finding list written at the moment a loop gives up records the loop's own
+frustration alongside its findings, and the two are not distinguishable afterwards without going
+back to the file.
 
-The four shapes produce three record forms (`producible:`, `NOT PRODUCIBLE:`, `unresolved:`). The
-report has `### Verified claims` (documented as *positive* verifications, rendered `- ✓ …`, capped at
-six lines) and three findings sections. A shape row fits neither cleanly, and four consequences
-follow that are individually small and collectively fatal:
+### What was still open at the cap, and what survives it
 
-- An `unresolved` row is required to be "reported as an open question" and there is no section for
-  one. `grep -c '^### Open questions'` returns 0.
-- `0l` is required to leave a trace on every review that ran it, so "swept and found nothing" does
-  not read as "nobody swept". The six-line cap deselects exactly that row, because a row saying "no
-  sentence triggered any shape" is tied to no artifact claim. `### Inherited obligations` has an
-  explicit carve-out from omission for this same reason; `0l` has none.
-- A `NOT PRODUCIBLE` row must print twice — once as a `✓` in the claims table and once as a Critical
-  in a findings section — in two incompatible formats, with no rule saying which wins.
-- Severity now appears both as a section and as a label on the finding line, with no precedence rule.
-  A `[Critical]` label is expressible under `### Suggestions`, which `spec-to-pr` routes to this file.
+**Re-verified against `main` on 2026-08-27, line by line.** The list below was written at the Revise
+cap; more work landed before the merge, and this section was never updated to match. Most of what it
+called blocking is fixed in the shipped file. Keeping the resolved items here, struck and sourced,
+rather than deleting them — a finding that quietly disappears is indistinguishable from one that was
+waved through, which is the failure this whole section exists to record.
 
-Adding the mandatory row also inflates `verified_claims_count`, which `/cla:spec-to-pr-retro` keys a
-going-silent alarm on (`review_verified_claims.mean < 3`). Two real verifications plus the mandatory
-row logs three, so the alarm can no longer fire at the volume it will really see.
+**Resolved before the merge:**
 
-### Question 2 — what does a producibility check mean before the code exists?
+| Recorded as blocking | State on `main` |
+|---|---|
+| An `unresolved` row has nowhere to print; `grep -c '^### Open questions'` returns 0 | The section exists, and "Report constraints" makes it **never omitted** — an empty one is evidence the sweep did not run |
+| The six-line cap on `### Verified claims` deselects `0l`'s mandatory trace row | `0l` routes to `### Open questions` instead, naming the cap as the reason. That section is explicitly **not trimmed**, and is kept short by grouping rather than cutting |
+| The mandatory row inflates `verified_claims_count`, disarming the going-silent alarm | Same routing. The alarm is named as the second reason for it |
+| Q2: the carve-out left a not-yet-implemented producing path with no legal record | A fourth record form exists — `open: producing path is added by this change, not yet written` — routed to `### Open questions` |
+| The promotion rule is written in Shape 1's vocabulary, so Shapes 2–4 cannot reach a finding | Promotion now fires on the row's **own verdict** rather than on a ✗, per shape, matching each floor's wording |
 
-`review-change` runs pre-implementation. Shape 1 asks the reviewer to name the production path for a
-specified demo state, and grades an absent path Critical. For the ordinary change that adds a surface
-*and* its query together, the path is absent because the change has not been implemented yet.
+**Still open, and smaller than the section claimed.** None of these is the "needs a design decision"
+shape the heading promised. Three edits, no decision:
 
-The attempted fix — a carve-out for "a state whose producing path this change itself adds" — left
-that case with no legal record at all: `NOT PRODUCIBLE` is carved out, `producible:` demands a
-`path:line` that does not exist yet, and `unresolved:` was narrowed to mean a search that was not
-run. All three are excluded.
+- **A `[Critical]` label is expressible under `### Suggestions`, and nothing says which wins.** Every
+  findings section in the report template carries the same `[Critical/Important/Suggestion]` label,
+  so severity is expressed twice — once by the section, once by the label — with no precedence rule.
+  `spec-to-pr` routes `### Suggestions` to this file, so a Critical can be labelled a Critical and
+  still land in a to-do list. There **is** a precedence rule at Step 6, but it settles a different
+  question: two reviewers grading one finding differently, where the higher severity wins. That is
+  #109's tie-break, not this.
+- **Nothing states that a non-✓ result row stays out of `### Verified claims`.** The verification
+  table "becomes" that section, the template renders it as `- ✓ …` entries, and a `NOT PRODUCIBLE`
+  row is not a ✓ — so in practice it does not render there. But that is inferred from the template's
+  shape rather than stated, which is exactly the kind of unwritten rule this change was about. One
+  sentence closes it.
+- **The `<inject:` placeholder is unpoliced, and the file says so.** A pre-dispatch confirmation was
+  added — *"Before dispatching, confirm no `<inject:` survives"* — followed by *"There is no other
+  detector."* An instruction to check is not a check. This is the one item that may deserve more than
+  an edit, since the failure is silent: both agents can lose their claim-shape check and the report
+  reads identical to one where both ran it.
 
-Underneath it is a harder problem. The branch distinguishing `NOT PRODUCIBLE` (searched, found
-nothing — carries a Critical floor) from `unresolved` (did not search — carries none) turns on a fact
-that exists only inside the reviewer. Nothing downstream can tell them apart, so the no-floor branch
-is self-certifying. An earlier wording was checkable and contradicted the Grounding contract's own
-budget clause three lines above it; the current wording agrees with the contract and is not
-checkable. Both are wrong in different directions, which is the signal that the shape needs a
-decision rather than another edit.
+### The merge is the finding worth carrying forward
 
-### Two smaller ones, same branch
+The findings above cost two Revise rounds and did not converge — Review 11, round 1 fifteen, round 2
+twelve, with four of round 2's Criticals caused by round 1's own fixes. Then the PR merged anyway,
+with `NOT READY TO MERGE` as the first line of its own body, and this section went stale for a day
+while its subject sat on `main`.
 
-- The promotion rule from a context-brief row to a finding is written in Shape 1's vocabulary
-  (`producible:` / `NOT PRODUCIBLE:` / `unresolved:`). Shapes 2–4 record differently, so their
-  severity floors have no path to a finding. Shape 3's floor is unreachable in the ordinary case:
-  a guarantee correctly classified as a deployment property with no named trigger hit no failure
-  mode, carries no ✗, and matches neither promotion clause.
-- The two Step-4 agent prompts carry the shapes through an `<inject: …>` placeholder. An unfilled
-  placeholder deletes check 6 from that agent's prompt while the prompt still reads complete, and
-  nothing detects it — the orchestrator's own sweep satisfies the trace requirement either way.
-  This replaced a worse problem (three hand-maintained copies that had already diverged in the
-  commit that created them), but the replacement is unpoliced.
+Two things worth holding, and neither is about claim shapes:
+
+- **A refusal in a PR body is not a gate.** Nothing in this repo blocks a merge; CLAUDE.md says so
+  under "No CI". The run did everything right — it warned, it skipped Archive, it wrote the findings
+  down here — and none of that could stop the merge, because none of it is a mechanism.
+- **This is a second data point for GitHub #106**, from a different run than the one that issue was
+  filed on. The decisions doc (`cla.io/decisions/open-issues-2026-08-24.md`, item **H**) declined to
+  change the Revise default until a second chain supplied one, and this ledger entry is it:
+  `cla.io/retro/spec-to-pr-runs.jsonl`, the `grounding-contract-claim-shapes` run, Revise `warn`,
+  *"each round's fixes introduced new Criticals rather than converging"*. H's own reversal condition
+  is closer to met than the doc records. It is still one repo and still not a base rate.
 
 ### Suggested next step
 
-Take Question 1 through `/cla:shape-decision` first. It blocks the others: three of the four
-consequences above are report-format decisions, and Question 2's carve-out cannot be worded until
-there is somewhere for a non-✓, non-finding row to go. The claim shapes themselves survived review —
-the delta spec was found sound, portable, and free of collisions with the merged sibling.
+The three remaining items are edits, not decisions — `/cla:lite-pr` fits them better than
+`/cla:shape-decision`, which the earlier version of this section recommended when the list looked
+like four report-format questions. Take the placeholder one first if only one is done: it is the only
+one whose failure is silent.
+
+The claim shapes themselves survived review — the delta spec was found sound, portable, and free of
+collisions with the merged sibling.
 
 ## Make the check-label coverage rule general, by marking the enumerations
 
