@@ -35,6 +35,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
      "reason": "<iff warn/fail>", "report_chars": N},
     {"name": "Revise",    "status": "...", "rounds_used": N, "rounds_cap": N,
      "agents": ["code-reviewer", "silent-failure-hunter", ...],
+     "findings_by_round": [{"round": 1, "found": N, "sibling_instance": 0},
+                           {"round": 2, "found": N, "sibling_instance": N}],
      "reason": "<iff warn/fail>", "report_chars": N},
     {"name": "Archive",   "status": "...", "reason": "<iff warn/fail>", "report_chars": N},
     {"name": "Handoff",   "status": "ok", "report_chars": N}
@@ -148,6 +150,27 @@ ratios). Emit it whenever any routed dispatch happened in the run.
 - `escalate_up_fired`: `true` iff the session was below Opus AND the Review-verdict escalate-up
   dispatch happened (a RETHINK-borderline verdict seconded by an opus `Agent`); `false` on an Opus
   session or when no escalation was needed.
+- `findings_by_round`: one entry per dispatched Revise round, in round order. `found` is that
+  round's **deduplicated** Critical+Important count after triage — the findings, not the agent
+  reports of them. `sibling_instance` counts those the round-≥2 question surfaced: another instance
+  of the resource or shape the previous round's fix concerned, which that fix did not reach. It is
+  `0` on round 1 by construction, since there is no previous fix to have missed anything.
+  **Optional, and absent on records written before it existed** — absent is not `found: 0`, and a
+  reader must distinguish them rather than treating a missing field as a measured zero.
+
+  **`findings_by_round[*].found` is NOT the sum of `revise_findings_by_tier[*].found`, and they are
+  not meant to reconcile.** The per-agent field credits one finding to every agent that surfaced it,
+  so two agents reporting the same defect count twice there and once here. Both are spelled `found`,
+  which is exactly why this sentence exists: an equality between them looks like an invariant worth
+  asserting and is false.
+
+  **What it is for.** Revise does not make a second round automatic, and the reason is that the
+  evidence for doing so is one chain of three to four changes. This field is what would end that
+  deferral: revisit when the ledger holds **two or more chains** and at least **eight changes** that
+  reached a round ≥2, with a **majority** recording a finding attributed to that round. The two-chain
+  floor comes from the originating decision; the eight-change denominator and the majority bar are
+  stated judgements, chosen so the question is not re-argued on another sample of four.
+
 - `revise_findings_by_tier`: **per-AGENT** count of Revise findings, keyed by the SAME canonical
   agent ids the Revise `agents` list uses (`code-reviewer`, `silent-failure-hunter`,
   `type-design-analyzer`, `pr-test-analyzer`, `comment-analyzer`, `plugin-dev:skill-reviewer`) —

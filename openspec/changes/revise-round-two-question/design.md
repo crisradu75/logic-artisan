@@ -115,6 +115,30 @@ per instance, and an empty list is a stated result ("no other instance exists") 
 skipped step — the same reasoning the deferred-findings sections already use for their mandatory
 `(none)`.
 
+**That precedent is not re-derivable from this repo, so the question was run against one that is.**
+`git log -S'MATCH_ROW_LIMIT' --all --oneline` returns two commits, `d6c99ee` and `66969df`, and both
+are planning documents quoting the case second-hand — the fix itself lives in a consuming repo's
+history. A justification nobody here can check is a weak foundation for a mandatory field, so the
+dry-run used a fix from **this** repo's own record instead.
+
+**The case: `lint_profile`, recorded in `cla.io/lessons-learned/lessons-learned.md` and in
+`CLAUDE.md`'s pre-ship checks.** A round-2 fix corrected the function's no-overlay return path,
+which had returned `()` for args and made the hook a silent no-op in every JS repo. Round 3 then
+found that the same fix had moved the identical no-op to the **overlay** path.
+
+Applying the question's enumeration obligation as worded — *enumerate every other instance of the
+resource or shape the fix concerns* — the resource is the return paths of `lint_profile` that yield
+the args tuple, and the enumeration is two entries: the no-overlay path, which the fix touched, and
+the overlay path, which it did not. **The second site is in the list.** The wording reaches the shape
+it was written for.
+
+Two things the run establishes beyond that. The enumeration was **cheap** — the function's own
+comment states the fact that made the second path break, so the verdict per instance needed no
+investigation, only the list. And the case is a **stronger** precedent than the cited one: it is
+this repo's, it is reproducible from its own history, and it was already escalated into `CLAUDE.md`
+as a standing pre-ship check, which is independent evidence that this shape recurs rather than
+being one chain's anecdote.
+
 **Rejected alternative — fold the question into the round-1 prompt.** Round 1 has no previous fix to
 be adversarial about; the question is literally unanswerable there. Asking it anyway trains the
 reader to skim it, which is how a mandatory field becomes decorative.
