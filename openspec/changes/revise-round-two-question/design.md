@@ -42,11 +42,16 @@ Three constraints bound everything below.
 **The cap is not the thing that ends Revise.** `--pr-rounds` defaults to `2`, so a run that stops
 after one round did not hit a cap. Step 2 of §"For each round" requires every Critical and Important
 finding to be triaged into Applied or Deferred-Known-Issue **in the round that surfaced it**; step 4
-then counts *untriaged* findings and exits at zero. Step 5 says so outright — cap exhaustion is
-"the only scenario where untriaged residue exists — step 2's rule otherwise prevents it". So as
-literally written, the untriaged count is zero by construction at the end of round 1 and the loop
-exits there; the default cap of `2` is a ceiling that ordinarily never binds. Anyone reasoning about
-this item from the cap alone is reasoning about the wrong control.
+then counts *untriaged* findings alongside *open* ones and exits when both are zero. The default cap
+of `2` is a ceiling, and anyone reasoning about this item from the cap alone is reasoning about the
+wrong control.
+
+**Corrected after review: the untriaged count is NOT zero by construction, and an earlier draft of
+this section said it was.** A rejection carrying no reason that resolves against the brief counts as
+untriaged at the gate, and step 5 branches on the cap being exhausted with findings still untriaged —
+a state a by-construction zero would forbid. The gate is also two counts, so a loop holding open
+findings is ended by the cap regardless of the untriaged one. The claim was shipped in three files
+and is withdrawn from all of them.
 
 **Practice already diverges from that text, and the divergence is data, not noise.** Two of the three
 logged runs used two rounds. The §"Round N (N ≥ 2)" section exists and scopes a second round to the
@@ -138,18 +143,28 @@ for.
 
 **The walk-through's first draft got its own enumeration wrong, and that is the most useful thing it
 produced.** It listed two paths, the no-overlay one and the overlay one. `git show
-0a55138:.claude/plugins/cla/hooks/warn-lint-on-edit.py` shows **three**: no-overlay, the
+b241a39:.claude/plugins/cla/hooks/warn-lint-on-edit.py` shows **three**: no-overlay, the
 half-configured-overlay fallback, and the valid overlay. An enumeration written by the author of the
 enumeration rule, over a function whose whole point was a missed second path, missed a third. That
 is a stronger argument for the rule than the tidy version was — and a direct argument for the
 citation requirement, since a list nobody can see the search behind is a list nobody can check.
 
-**What this does not establish.** The case is weaker as a precedent than it first looked. PR #41 is a
-single squash commit, so the round-2 and round-3 intermediate states are not in this repo's history
-either — the record is a lessons-learned narrative, the same second-hand status that disqualified
-`MATCH_ROW_LIMIT` above. The function was later deleted from the tree entirely. So: the question's
-wording has been walked against one real shape with a known answer, and nothing more. The evidence
-that it works on an unknown answer can only come from a round that runs it.
+**What this does not establish.** The question's wording has been walked against one real shape whose
+answer was already known, and nothing more. Evidence that it works on an *unknown* answer can only
+come from a round that runs it.
+
+**Two corrections to earlier drafts of this paragraph, both found by review.** The first called this
+case "reproducible from its own history" without checking. The second over-corrected and said the
+round-2 and round-3 states are "not in this repo's history either" — also false: `gh pr view 41
+--json commits` lists six commits including `b241a39` and `8fa572e`, and both resolve under
+`git show`. The accurate statement is narrower than either. The intermediate commits exist and are
+readable; what is *not* re-derivable is the enumeration a round-2 agent would have produced, because
+the round-2 and round-3 reviews themselves live only in a lessons-learned narrative. The function was
+later deleted from the tree, so nothing here can be re-run against live code.
+
+A note on how both errors happened, since it is the same one twice: each was a claim about repository
+history written from memory of the repository rather than from a command. `gh pr view 41` costs one
+call and settles it.
 
 **Rejected alternative — fold the question into the round-1 prompt.** Round 1 has no previous fix to
 be adversarial about; the question is literally unanswerable there. Asking it anyway trains the
@@ -162,10 +177,17 @@ in this batch.
 
 ### Decision 2 — State the exit gate where the cap is named, and change neither
 
-Both places that currently say `Cap: --pr-rounds N (default 2)` gain a clarifying half-sentence: the
-loop ordinarily ends at the exit gate, not at the cap, because step 2 requires every Critical and
-Important finding to be triaged in the round that surfaced it. Step 4's own text gains the same
-observation, phrased as what the count means rather than as a new rule.
+Both places that currently say `Cap: --pr-rounds N (default 2)` gain a clarifying half-sentence:
+the default is **a ceiling, not a target**.
+
+**This decision was drafted with a false reason attached and is corrected here.** The draft said the
+loop ordinarily ends at the exit gate rather than the cap "because step 2 requires every Critical and
+Important finding to be triaged in the round that surfaced it, so the untriaged count is zero by
+construction". Review falsified it twice over: a reason-less rejection routes to untriaged, and the
+gate counts open findings too, so a loop with open findings is ended by the cap. The draft also
+planned a matching annotation on step 4's own text; that is dropped rather than reworded, because
+the observation it would have recorded is not true. What survives is the half-sentence, which needed
+no reason to be accurate.
 
 This is a documentation-accuracy change with no behavioural effect, and it is in scope because the
 decision this change implements is *about* the cap and would be misread without it. It is also the
@@ -310,9 +332,15 @@ Optional; absent on records written before this change.
 > least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical
 > or Important finding on a majority of them.
 
-**The stated non-equality** (for the schema note): `findings_by_round[*].found` is a deduplicated
-per-round total and is NOT expected to equal the sum of `routing.revise_findings_by_tier[*].found`,
-which credits one finding to every agent that surfaced it.
+**The stated relation** (for the schema note): `findings_by_round[*].found` is a deduplicated
+per-round total, so the sum of `routing.revise_findings_by_tier[*].found` is **greater than or equal
+to** it — that field credits one finding to every agent that surfaced it, and also counts phantoms.
+They are equal whenever every finding was surfaced by exactly one agent, which is common.
+
+**Corrected after review.** An earlier draft of this pin said the two are NOT expected to be equal,
+and the schema note shipped that as "NOT expected to equal". Two reviewers endorsed it; a third
+caught it. A note written to stop a reader planting a false invariant planted the opposite one, and
+the honest statement is an inequality with a named equality case, not a prohibition.
 
 **Consistency with the sibling change.** `fix-brief-binding-defect`'s design states that an
 orchestrator-specified remedy does **not** force an extra round and that "round counts stay as they

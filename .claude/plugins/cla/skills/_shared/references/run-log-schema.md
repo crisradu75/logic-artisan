@@ -14,9 +14,16 @@ exceptions, and both are narrow:
   explicitly deferred on evidence this field is the only thing that would supply, and its reversal
   condition names it. Recording it from the first run is the point: a decision waiting on a ledger
   that starts collecting the day someone finally reads it waits another year. **This exception is
-  not a general licence** — a field qualifies only when a written deferral names it as its own
-  reversal condition, which is checkable rather than a matter of taste. If the deferral is settled
-  and no consumer was ever written, the field becomes dead weight under the main rule and goes.
+  not a general licence.** A field qualifies only when a **materialized spec requirement** names it
+  as the evidence its own reversal condition reads — a requirement in `openspec/specs/`, not prose
+  written beside the field in the same change. That distinction is the whole test: a deferral and the
+  field it excuses, authored together by one author, certify each other, and anyone could qualify an
+  unread field by adding a paragraph naming it. A requirement that survived review and archive
+  cannot be written to order.
+
+  **The exit.** When that requirement's condition is met, or the requirement is removed, the field
+  loses its exception and falls back under the main rule — added to the aggregator or dropped. Check
+  it at the next schema change that touches this phase, since nothing else will notice.
 
 The producer (this skill) is the contract: `aggregate.py` silently absorbs missing fields, so a missing
 field is a silent loss of retro signal, not an error.
@@ -162,8 +169,7 @@ ratios). Emit it whenever any routed dispatch happened in the run.
   session or when no escalation was needed.
 - `findings_by_round`: one entry per dispatched Revise round, in round order. `found` is that
   round's **deduplicated** Critical+Important count after triage — the findings, not the agent
-  reports of them. `sibling_instance` counts those the round-≥2 question surfaced: another instance
-  of the resource or shape the previous round's fix concerned, which that fix did not reach. It is
+  reports of them. `sibling_instance` is, verbatim: *Of that round's `found`, how many were the shape the round-≥2 question targets: a defect the previous round's fix introduced, or a sibling instance of the defect the previous round's fix missed. `0` on round 1, which has no previous fix.* It is
   `0` on round 1, which has no previous fix to have missed anything. **It is also `0` on a
   round ≥ 2 that was never asked the question** — one entered on an empty `PREV_FIX_SHA`,
   or a rejection-only re-entry dispatched against open findings rather than a diff. Those
@@ -173,17 +179,19 @@ ratios). Emit it whenever any routed dispatch happened in the run.
   **Optional, and absent on records written before it existed** — absent is not `found: 0`, and a
   reader must distinguish them rather than treating a missing field as a measured zero.
 
-  **`findings_by_round[*].found` is NOT the sum of `revise_findings_by_tier[*].found`, and they are
-  not meant to reconcile.** The per-agent field credits one finding to every agent that surfaced it,
-  so two agents reporting the same defect count twice there and once here. Both are spelled `found`,
-  which is exactly why this sentence exists: an equality between them looks like an invariant worth
-  asserting and is false.
+  **The sum of `revise_findings_by_tier[*].found` is greater than or equal to the sum of
+  `findings_by_round[*].found`.** The per-agent field credits one finding to every agent that
+  surfaced it, and counts phantoms; this one is deduplicated after triage. Two agents reporting the
+  same defect count twice there and once here. **They are equal whenever every finding was surfaced
+  by exactly one agent**, which is common, so do not read a match as a producer bug — and do not
+  read the relation as an equality to assert either. Both fields are spelled `found`, which is why
+  the direction is stated rather than left to be inferred.
 
   **What it is for.** Revise does not make a second round automatic, and the reason is that the
   evidence for doing so is one chain of three to four changes. This field is what would end that
-  deferral: revisit when the ledger holds **two or more chains** and at least **eight changes** that
-  reached a round ≥2, with a **majority** recording at least one **Critical or Important**
-  finding attributed to that round. The two-chain
+  deferral: the condition is, verbatim:
+
+  > Revisit the `--pr-rounds` default when `findings_by_round` covers at least eight changes across at least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical or Important finding on a majority of them. The two-chain
   floor comes from the originating decision; the eight-change denominator and the majority bar are
   stated judgements, chosen so the question is not re-argued on another sample of four.
 

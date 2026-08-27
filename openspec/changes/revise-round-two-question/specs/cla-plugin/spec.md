@@ -51,17 +51,64 @@ not reloaded.
 - **THEN** the round-≥2 question is not part of that dispatch, because round 1 has no previous fix
   for it to be adversarial about
 
+### Requirement: The enumeration is made answerable, and its answer is checkable
+
+A dispatch carrying the round-≥2 question SHALL supply the three things without which the
+enumeration cannot honestly be produced. The question alone is not the mechanism; asking for a list
+an agent has no way to build yields a confident list nobody built.
+
+**The orchestrator SHALL name the resource.** It holds the finding, the remedy and the reason that
+remedy was chosen; a dispatched agent holds a diff. The resource SHALL be named concretely enough to
+bound the search — a function's call sites, a function's branches returning a given value, the
+readers of a config key — rather than left for each agent to infer. An unnamed resource yields a
+different scope per agent and nothing comparable between them.
+
+**The dispatch SHALL grant the search.** The round's prompt inlines a scoped diff and instructs the
+agent not to re-read it, and a sibling instance is by definition outside that diff. The prompt SHALL
+therefore state that the agent may read and search the repository to answer this question, under the
+read-only discipline the sub-agent brief already carries. Without the grant the question is
+unanswerable as briefed.
+
+**The return SHALL cite the search it ran**, and an enumeration that cites none is a **missing**
+result rather than an empty one. A confident "no other instance" costs an agent nothing to write, so
+the citation, not the conclusion, is what the orchestrator checks — by re-running the cited search
+and comparing its hits against the enumerated list.
+
+#### Scenario: The prompt names a bounded resource
+
+- **WHEN** a round ≥ 2 is dispatched over a previous fix
+- **THEN** the prompt names the specific resource or shape that fix concerns
+- **AND** it does not leave each agent to infer the subject of the enumeration
+
+#### Scenario: The agent is told it may search
+
+- **WHEN** the dispatch carries the enumeration question
+- **THEN** it states that the agent may read and search the repository to answer it
+- **AND** that grant coexists with the instruction not to re-read the inlined diff, which governs the
+  diff rather than the repository
+
+#### Scenario: An uncited enumeration is not an empty one
+
+- **WHEN** a return states that no other instance exists but names no search
+- **THEN** the result is treated as missing rather than as an empty enumeration
+- **AND** the round does not record it as a measured zero
+
 ### Requirement: The Revise round cap is a ceiling, not the loop's exit condition
 
 Wherever the Revise round cap is stated, the skill SHALL also state that the loop ordinarily ends at the exit gate rather than at the cap.
 
 `--pr-rounds` defaults to `2`. The loop's step "triage every Critical and Important finding" requires
-each such finding to be resolved into Applied or Deferred-Known-Issue **in the round that surfaced
-it**, and the exit gate then counts *untriaged* Critical and Important findings and exits at zero. As
-written, that count is zero by construction at the end of round 1, so the loop exits there and the
-default cap never binds. A reader who takes `default 2` as a promise of two rounds is reasoning about
-the wrong control, which is precisely the misreading that makes the round-count question look already
-answered.
+each such finding to be resolved in the round that surfaced it, and the exit gate then counts
+*untriaged* Critical and Important findings alongside *open* ones, exiting only when both are zero.
+A reader who takes `default 2` as a promise of two rounds is reasoning about the wrong control, which
+is precisely the misreading that makes the round-count question look already answered.
+
+**The untriaged count is NOT zero by construction, and this requirement SHALL NOT say that it is.**
+An earlier draft did. A rejection carrying no reason that resolves against the brief's own defect or
+fact rows counts as untriaged at the gate, and the loop's own step 5 branches on the cap being
+exhausted with findings still untriaged — a state a by-construction zero would forbid. The gate is
+also two counts, not one: a loop with open findings is ended by the cap, so a zero untriaged count
+would not on its own establish what ends the loop.
 
 **That is what the text says, and practice diverges from it.** The run ledger records `rounds_used`
 of 1, 2, 2 against a cap of 2 — two of three logged runs ran a second round the gate as written
@@ -80,9 +127,9 @@ how often a second round runs.
 
 - **WHEN** a reader encounters the `--pr-rounds` default in either the Revise reference or the
   orchestrator skill's Revise stub
-- **THEN** the same sentence tells them the loop ordinarily ends at the exit gate, not at the cap
-- **AND** it names the reason: every Critical and Important finding is triaged in the round that
-  surfaced it, so the untriaged count is zero when round 1 finishes
+- **THEN** the same sentence tells them the default is a ceiling rather than a target
+- **AND** it does not claim the untriaged count is zero by construction, because a reason-less
+  rejection routes to untriaged and the cap does end a loop that still holds open findings
 
 #### Scenario: The clarification changes no numbers
 

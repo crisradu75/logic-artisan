@@ -25,11 +25,12 @@ not a base rate.
   carrying the defect or not.
 - **The round cap's description is corrected where it is stated.** `--pr-rounds` already defaults
   to `2`, so the cap has never been what ends Revise early; the exit gate at step 4 — zero
-  *untriaged* Critical/Important findings — is. Because step 2 requires every Critical and Important
-  finding to be triaged in the round that surfaced it, that count is zero by construction at the end
-  of round 1, so as written the loop ordinarily exits there and the default cap never binds. The
-  skill will say so at the point it names the cap, so a reader stops mistaking `default 2` for a
-  promise of two rounds.
+  *untriaged* Critical/Important findings, alongside *open* ones — is. Both sites that name the cap
+  say so: the default is a ceiling, not a target, so a reader stops mistaking `default 2` for a
+  promise of two rounds. **An earlier draft justified this with "the untriaged count is zero by
+  construction at the end of round 1"; that is false** — a reason-less rejection routes to untriaged,
+  and a loop holding open findings is ended by the cap — so the claim is gone from every file and
+  the half-sentence stands without it.
 - **The Revise phase record gains a later-round yield field** in
   `_shared/references/run-log-schema.md`, so the deferral above has an instrument that can end it.
   Today the ledger records `rounds_used` and a per-agent finding count summed across all rounds —
