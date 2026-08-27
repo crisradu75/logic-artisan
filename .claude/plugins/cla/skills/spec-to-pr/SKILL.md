@@ -156,7 +156,7 @@ Use `Skill()` only when the sub-skill genuinely encapsulates capability the orch
 
 **Implement is the exception.** `Skill(openspec-apply-change)` carries non-trivial workflow logic (read tasks.md → for each subtask, locate the implementing module/test → edit → tick the checkbox → re-validate). The work is not a thin shell wrapper, so the indirection is worth it. **When to inline instead:** use direct `Edit`/`Write` calls when you already hold the relevant artifact + source text in context from Review and adding a `Skill()` hop would be pure indirection, OR when the work needs repo-specific side knowledge the skill doesn't carry (e.g. a packaging gotcha you need to apply mid-flight). Use judgment, not a subtask-count threshold.
 
-## Concurrent runs (worktree-per-session)
+## Concurrent runs (two sessions, and one session with its own delegate)
 
 A single run needs no setup — it creates `<branch>` in place. To run two or more flows at once in
 the same repo, each session needs its own `git worktree`: **read `references/concurrent-runs.md`**
@@ -244,14 +244,16 @@ For each round:
 
    Structure the brief per `references/subagent-brief.md` (scope / task / do-not-touch / report / done-when) — this delegate is where that file's "done when" slot came from. Its **do-not-touch** slot is the one this site has historically left implicit: name the paths the orchestrator is holding and any a sibling dispatch owns, since scope alone doesn't say what is *someone else's*.
 
-   Three rules make the delegation safe:
+   Five rules make the delegation safe:
    - **Full-task enumeration.** The brief MUST enumerate **every** task in `tasks.md` (or explicitly mark the ones you're deferring) — an agent implements exactly what the brief lists and will NOT invent an omitted task, so a task left out of the brief silently stays undone.
    - **Trimmed brief.** Inline `tasks.md` plus ONLY the `design.md` sections the tasks actually reference — not the full proposal/design/spec. The agent needs the task list and the design decisions those tasks implement, nothing more; a full-artifact dump is wasted input tokens.
    - **Evidence-based terminal contract.** Instruct the agent to end with an explicit `done` or `blocked` status. `done` is valid ONLY when accompanied by hard evidence: the test-run summary line (e.g. `npm run test` output, or the relevant suite's pass count) and the ticked-task count (`- [x]` count vs total). A return that claims done without that evidence is treated as **not done** — do not trust it.
+   - **A return carrying no status at all is `blocked`, never `done`** (`references/subagent-brief.md`, "A gate that outlives your turn"). The stall shape: a delegate backgrounds a long gate, ends its turn, and what comes back is a standing-by message with no status and no evidence — shaped exactly like a normal return. Absence of the field is the whole signal, and classifying it is a scan, not a reading. Brief delegates to run named gates in the **foreground** and to return `blocked` naming the gate when they cannot.
+   - **On a miss, re-dispatch once. Do not take the tree over first.** Taking over is what produced the recorded ~40-minute incident, and it is only safe once nothing the previous dispatch started is still running. So gate it: run a **read-only** check that the tree is quiet — no test process, no build, no command from that dispatch — and take over only after it comes back clean. Take-over *before* that check is not permitted. The orchestrator-vs-own-delegate rule above says why; this is the same rule at the moment it is most tempting to break.
 
    After the agent returns, run the Post-check task-box count **regardless of what the agent reported** and finish any task it skipped. The post-check is the deterministic backstop; the terminal contract just catches a hallucinated-completion one phase earlier.
 
-   **Contract firings leave a trace.** When the contract fires — the delegate claimed `done` without evidence, OR the post-check finds unfinished tasks after a `done` — recovering inline is correct, but the event MUST be recorded as a Handoff Issue (e.g. `Implement delegate claimed done without evidence; 3 tasks finished inline`). Silently absorbing it would mask exactly the delegation-reliability signal the routing telemetry exists to collect. On a `blocked` return: finish the remaining tasks inline (or resolve the blocker and re-dispatch once), and record the blocker as a Handoff Issue either way.
+   **Contract firings leave a trace.** When the contract fires — the delegate claimed `done` without evidence, OR returned no status at all, OR the post-check finds unfinished tasks after a `done` — recovering inline is correct, but the event MUST be recorded as a Handoff Issue (e.g. `Implement delegate claimed done without evidence; 3 tasks finished inline`). Silently absorbing it would mask exactly the delegation-reliability signal the routing telemetry exists to collect. On a `blocked` return: finish the remaining tasks inline (or resolve the blocker and re-dispatch once), and record the blocker as a Handoff Issue either way.
 
 4. **Post-check:** `openspec status --change <name> --json` returns `isComplete: true` AND every `- [ ]` in `tasks.md` is now `- [x]`. ✓ on both true. ⚠ otherwise; capture the unfinished tasks for the Handoff Issues section.
 
@@ -427,7 +429,7 @@ The terminal report's "Next steps for you" section names `gh pr merge --squash -
 ## References
 
 - `references/precheck.md` — the Precheck phase's full recipe (mandatory-read from its stub)
-- `references/concurrent-runs.md` — worktree-per-session setup for parallel runs
+- `references/concurrent-runs.md` — both single-writer cases: worktree-per-session setup for parallel runs, and the orchestrator vs. its own live delegate (which a SINGLE run hits)
 - `references/workflow-diagram.md` — visual phase flow + glyphs + caps
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` — per-dispatch model + effort routing table (single source of truth), the escalate-up rule, and the phantom-finding rationale; pointed at from the hoisted rules, Implement, Revise, and Handoff
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md` — the thin-orchestrator runtime disciplines (delegation, I/O hygiene, batching, structured output); pointed at from the hoisted rules and each phase that handles bulk raw material

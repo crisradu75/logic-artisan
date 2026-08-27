@@ -1,4 +1,4 @@
-# Concurrent runs — worktree per session (full recipe)
+# One checkout, two writers — the worktree recipe, and the orchestrator vs. its own delegate
 
 Read when running two or more `/cla:spec-to-pr` flows at once in one repo. A single run needs none of the worktree recipe — but it does need the last section, which is about one session sharing a checkout with its own delegate.
 
@@ -28,4 +28,6 @@ Everything above separates two *sessions*. A single session has the same problem
 **Read a delegate's interference report as "my delegate is live", not as a third party.** A delegate that detects concurrent mutation cannot tell whose it is, so it names an external session by default, and that report is the orchestrator's own commands coming back at it. Treating it as a genuine third party is the expensive branch: one real run spent roughly 40 minutes investigating manufactured test failures as a possible regression before finding its own `git checkout` was the cause. If you need repository state to settle down, wait for the delegate's terminal return — that is what the return is for.
 
 **The agent-side half of this already ships and does not cover the orchestrator.** `references/subagent-brief.md` slot 3 carries the forbidden-verb list and a paste-ready sentence, but a brief binds only the party receiving it. Nothing the orchestrator writes into a brief constrains the orchestrator, which is why this rule lives here instead.
+
+**Why both cases share one file.** Two sessions in one clone and one session with its own delegate are the same invariant — two writers, one checkout — reached by different routes. Splitting one invariant across two documents is how the two halves drift: a later edit tightens the case its author had in mind and leaves the other stating the old rule, with nothing to notice the divergence. They are also not equally likely to be read. The worktree recipe is opened deliberately, when someone knows they are starting a second run; the delegate case is hit by a single run that had no reason to open this file at all, which is why its one load-bearing rule is lifted into `SKILL.md`'s stub as well.
 

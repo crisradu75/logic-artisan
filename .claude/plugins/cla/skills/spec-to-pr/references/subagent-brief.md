@@ -123,11 +123,21 @@ out the forbidden verbs, and for a diff review name the read-only way to get it:
 > `worktree add`, or anything else that mutates repository state. Do NOT run
 > `git checkout -- <path>`, `git restore`, or `git reset`, or edit or revert a file
 > directly — the tree may hold uncommitted work in the very files you are reading.
+> Do NOT run `git commit` or `git push` unless this brief asks you to: the
+> orchestrator may have staged work of its own, and a commit sweeps it in.
+> Two non-git resources are shared the same way. Do NOT kill, restart or clean up a
+> process you did not start. Do NOT delete or regenerate a build, cache or dependency
+> directory you did not create.
+
+**This block is standard in every dispatch, not written per brief.** The test for making
+something standard is that no dispatch kind exists for which it is inapplicable, and every
+dispatch runs in the orchestrator's own checkout. A field whose honest content would be
+"not applicable" in some dispatches is the opposite case, and teaches readers to skim.
 
 **Two different losses, and the second verb list is the one that gets left out.** The verbs
 above split into moving HEAD (`checkout`, `switch`, `branch`, `worktree add`) and
-overwriting tracked files (`checkout -- <path>`, `restore`, `reset`, a direct edit or
-revert); `stash` does both. A HEAD move is recoverable — the orchestrator switches back. An
+overwriting or recording over tracked files (`checkout -- <path>`, `restore`, `reset`,
+`commit`, `push`, a direct edit or revert); `stash` does both. A HEAD move is recoverable — the orchestrator switches back. An
 overwrite of an uncommitted file is not: there is no reflog for content that was never
 committed, and the agent cannot see whether the file it is about to restore held an hour of
 someone's work. A real incident had a review agent run `git checkout --` over three files
@@ -225,6 +235,36 @@ the same reason: a check that has never been seen to fail proves nothing when it
 So the brief states the check **together with the output it produced when the orchestrator
 ran it**, which is what the delegate's re-run is compared against. A check nobody has run is
 in the same position as a defect nobody grounded — fix it before dispatch.
+
+#### A gate that outlives your turn
+
+Both contracts above are satisfied by a status plus evidence, and both are defeated by a
+return carrying neither. A delegate that backgrounds a long gate — a multi-minute verify, a
+full suite — and then ends its turn sends a return shaped exactly like a finish. Measured in
+one chain: four delegates stalled this way, two returning a sentence saying they were standing
+by for a completion notification. Three never returned. The notification could not reach them,
+because their turn ending *was* their return.
+
+Put it in the brief in these words:
+
+> Run the gates this brief names in the **foreground** and report their real output. Do not
+> start a command and then end your turn — your turn ending is your return, and no
+> notification reaches you afterwards.
+>
+> If a gate cannot finish inside one foreground call, do not background it. Return `blocked`,
+> name the gate, and say what you did produce.
+
+**The rule keys on the runner, not on the duration.** The orchestrator's own backgrounding is
+unchanged, because a completion notification *does* re-invoke a session. Only the dispatched
+agent has a turn that ends for good.
+
+**And one rule the orchestrator applies, because a delegate cannot enforce its own liveness:
+a return carrying no status is `blocked`, never `done`.** It is a scan, not a reading: does
+the return carry a status token from the closed set, and every evidence field slot 5 named? A
+miss is `blocked` whatever the prose says — including a return that reads as finished, and
+including one announcing that it is waiting on something. No status is added for this case;
+the set stays `done` / `blocked` / `remedy-rejected`. What changes is who classifies an
+evidence-free return: the orchestrator, by scanning, rather than the agent, by asserting.
 
 #### When the evidence cannot honestly be produced
 
