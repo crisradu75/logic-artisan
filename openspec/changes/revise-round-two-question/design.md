@@ -115,29 +115,41 @@ per instance, and an empty list is a stated result ("no other instance exists") 
 skipped step — the same reasoning the deferred-findings sections already use for their mandatory
 `(none)`.
 
-**That precedent is not re-derivable from this repo, so the question was run against one that is.**
-`git log -S'MATCH_ROW_LIMIT' --all --oneline` returns two commits, `d6c99ee` and `66969df`, and both
-are planning documents quoting the case second-hand — the fix itself lives in a consuming repo's
-history. A justification nobody here can check is a weak foundation for a mandatory field, so the
-dry-run used a fix from **this** repo's own record instead.
+**That precedent is not re-derivable from this repo.** `git log -S'MATCH_ROW_LIMIT' --all --oneline`
+returns only planning documents quoting the case second-hand — the fix itself lives in a consuming
+repo's history. (Stated without a count on purpose: an earlier draft said "exactly two commits", and
+the commit carrying that sentence quoted the token and made it three. A count of matches for a
+string is falsified by writing it down.)
+
+So the question was tried against a fix from **this** repo's record instead. **What follows is a
+walk-through, not a test, and the difference matters enough to state before the result.** It was
+written by someone who already knew which site the later round found, and who chose how to frame the
+resource. A trial that cannot fail establishes less than its author wants it to.
 
 **The case: `lint_profile`, recorded in `cla.io/lessons-learned/lessons-learned.md` and in
 `CLAUDE.md`'s pre-ship checks.** A round-2 fix corrected the function's no-overlay return path,
 which had returned `()` for args and made the hook a silent no-op in every JS repo. Round 3 then
 found that the same fix had moved the identical no-op to the **overlay** path.
 
-Applying the question's enumeration obligation as worded — *enumerate every other instance of the
-resource or shape the fix concerns* — the resource is the return paths of `lint_profile` that yield
-the args tuple, and the enumeration is two entries: the no-overlay path, which the fix touched, and
-the overlay path, which it did not. **The second site is in the list.** The wording reaches the shape
-it was written for.
+Applying the enumeration obligation as worded — *enumerate every other instance of the resource or
+shape the fix concerns* — the resource is the return paths of `lint_profile` that yield the args
+tuple. The site the later round found is among them, so the wording reaches the shape it was written
+for.
 
-Two things the run establishes beyond that. The enumeration was **cheap** — the function's own
-comment states the fact that made the second path break, so the verdict per instance needed no
-investigation, only the list. And the case is a **stronger** precedent than the cited one: it is
-this repo's, it is reproducible from its own history, and it was already escalated into `CLAUDE.md`
-as a standing pre-ship check, which is independent evidence that this shape recurs rather than
-being one chain's anecdote.
+**The walk-through's first draft got its own enumeration wrong, and that is the most useful thing it
+produced.** It listed two paths, the no-overlay one and the overlay one. `git show
+0a55138:.claude/plugins/cla/hooks/warn-lint-on-edit.py` shows **three**: no-overlay, the
+half-configured-overlay fallback, and the valid overlay. An enumeration written by the author of the
+enumeration rule, over a function whose whole point was a missed second path, missed a third. That
+is a stronger argument for the rule than the tidy version was — and a direct argument for the
+citation requirement, since a list nobody can see the search behind is a list nobody can check.
+
+**What this does not establish.** The case is weaker as a precedent than it first looked. PR #41 is a
+single squash commit, so the round-2 and round-3 intermediate states are not in this repo's history
+either — the record is a lessons-learned narrative, the same second-hand status that disqualified
+`MATCH_ROW_LIMIT` above. The function was later deleted from the tree entirely. So: the question's
+wording has been walked against one real shape with a known answer, and nothing more. The evidence
+that it works on an unknown answer can only come from a round that runs it.
 
 **Rejected alternative — fold the question into the round-1 prompt.** Round 1 has no previous fix to
 be adversarial about; the question is literally unanswerable there. Asking it anyway trains the

@@ -5,10 +5,20 @@ Handoff step 5 serializes the in-context phase outcomes as a single JSON object 
 data source for `/cla:spec-to-pr-retro`.
 
 `aggregate.py` is the consumer. **The schema below lists every field it actually reads** — adding
-fields the aggregator doesn't consume is dead weight (drop them rather than carry them). Exception:
-`change`, `mode`, and `args` are identification-only fields — not read by the aggregator, kept so a
-human (or a future heuristic) can attribute a ledger line to a specific run. The
-producer (this skill) is the contract: `aggregate.py` silently absorbs missing fields, so a missing
+fields the aggregator doesn't consume is dead weight (drop them rather than carry them). Two
+exceptions, and both are narrow:
+
+- `change`, `mode`, and `args` are identification-only — not read by the aggregator, kept so a human
+  (or a future heuristic) can attribute a ledger line to a specific run.
+- `findings_by_round` is a **deferred-decision instrument**. A rule elsewhere in this plugin is
+  explicitly deferred on evidence this field is the only thing that would supply, and its reversal
+  condition names it. Recording it from the first run is the point: a decision waiting on a ledger
+  that starts collecting the day someone finally reads it waits another year. **This exception is
+  not a general licence** — a field qualifies only when a written deferral names it as its own
+  reversal condition, which is checkable rather than a matter of taste. If the deferral is settled
+  and no consumer was ever written, the field becomes dead weight under the main rule and goes.
+
+The producer (this skill) is the contract: `aggregate.py` silently absorbs missing fields, so a missing
 field is a silent loss of retro signal, not an error.
 
 ## Invocation
@@ -154,7 +164,12 @@ ratios). Emit it whenever any routed dispatch happened in the run.
   round's **deduplicated** Critical+Important count after triage — the findings, not the agent
   reports of them. `sibling_instance` counts those the round-≥2 question surfaced: another instance
   of the resource or shape the previous round's fix concerned, which that fix did not reach. It is
-  `0` on round 1 by construction, since there is no previous fix to have missed anything.
+  `0` on round 1, which has no previous fix to have missed anything. **It is also `0` on a
+  round ≥ 2 that was never asked the question** — one entered on an empty `PREV_FIX_SHA`,
+  or a rejection-only re-entry dispatched against open findings rather than a diff. Those
+  zeros mean "not asked", not "asked and found none", and nothing in the record separates
+  them; a reader counting them as evidence of a quiet round would be counting rounds where
+  the question was ill-posed.
   **Optional, and absent on records written before it existed** — absent is not `found: 0`, and a
   reader must distinguish them rather than treating a missing field as a measured zero.
 
@@ -167,7 +182,8 @@ ratios). Emit it whenever any routed dispatch happened in the run.
   **What it is for.** Revise does not make a second round automatic, and the reason is that the
   evidence for doing so is one chain of three to four changes. This field is what would end that
   deferral: revisit when the ledger holds **two or more chains** and at least **eight changes** that
-  reached a round ≥2, with a **majority** recording a finding attributed to that round. The two-chain
+  reached a round ≥2, with a **majority** recording at least one **Critical or Important**
+  finding attributed to that round. The two-chain
   floor comes from the originating decision; the eight-change denominator and the majority bar are
   stated judgements, chosen so the question is not re-argued on another sample of four.
 
