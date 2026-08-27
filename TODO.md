@@ -263,14 +263,15 @@ original size, so it can only shrink. Highest value first: `test_check_script_dr
 names it as guarding a *silent* failure, which is exactly the class where an unproven guard is
 worth least.
 
-## Claim-shape sweep (`0l`): three edits left, and a merge that should not have happened
+## Claim-shape sweep (`0l`): CLOSED — kept for the merge, and for how the finding list read three ways
 
 `grounding-contract-claim-shapes` (PR #158, **merged 2026-08-26 as `a6b2862`**) adds four claim shapes to
 `review-change/references/checklist.md`, a numbered check `0l` pointing at them, and a severity
 tie-break at Step 6. It went through Review (3 agents, FIX FIRST, 11 findings applied) and two
 Revise rounds (27 findings). It stopped at the `--pr-rounds` cap with 2 Critical and 4 Important
 still open — most of which were then resolved before the merge without this section being updated.
-What actually survives is below, re-verified rather than restated.
+**All of it is now closed**, the last three by PR #169 on 2026-08-27. What follows is the record of
+how it got there, kept because two things in it outlive the work.
 
 **This file is now the only record, and the safety net it described is gone.** It was written while
 the PR was open, and said the findings could not be lost while the branch existed. The PR merged on
@@ -318,26 +319,40 @@ waved through, which is the failure this whole section exists to record.
 | Q2: the carve-out left a not-yet-implemented producing path with no legal record | A fourth record form exists — `open: producing path is added by this change, not yet written` — routed to `### Open questions` |
 | The promotion rule is written in Shape 1's vocabulary, so Shapes 2–4 cannot reach a finding | Promotion now fires on the row's **own verdict** rather than on a ✗, per shape, matching each floor's wording |
 
-**Still open, and smaller than the section claimed.** None of these is the "needs a design decision"
-shape the heading promised. Three edits, no decision:
+**The last three — closed by PR #169 (2026-08-27).** They were edits, not decisions, which is what
+the re-verification above established. Kept here with what they became, because the third one's
+first attempt is worth more than its outcome:
 
-- **A `[Critical]` label is expressible under `### Suggestions`, and nothing says which wins.** Every
-  findings section in the report template carries the same `[Critical/Important/Suggestion]` label,
-  so severity is expressed twice — once by the section, once by the label — with no precedence rule.
-  `spec-to-pr` routes `### Suggestions` to this file, so a Critical can be labelled a Critical and
-  still land in a to-do list. There **is** a precedence rule at Step 6, but it settles a different
-  question: two reviewers grading one finding differently, where the higher severity wins. That is
-  #109's tie-break, not this.
-- **Nothing states that a non-✓ result row stays out of `### Verified claims`.** The verification
-  table "becomes" that section, the template renders it as `- ✓ …` entries, and a `NOT PRODUCIBLE`
-  row is not a ✓ — so in practice it does not render there. But that is inferred from the template's
-  shape rather than stated, which is exactly the kind of unwritten rule this change was about. One
-  sentence closes it.
-- **The `<inject:` placeholder is unpoliced, and the file says so.** A pre-dispatch confirmation was
-  added — *"Before dispatching, confirm no `<inject:` survives"* — followed by *"There is no other
-  detector."* An instruction to check is not a check. This is the one item that may deserve more than
-  an edit, since the failure is silent: both agents can lose their claim-shape check and the report
-  reads identical to one where both ran it.
+- **A `[Critical]` label was expressible under `### Suggestions`, with no rule for the
+  disagreement.** Closed: the finding moves and the label stands. The two Fix sections are
+  timing-based, so only the move out of `### Suggestions` is forced. **The reason recorded above was
+  wrong** — it said `spec-to-pr` routes `### Suggestions` to this file, so a Critical would land as a
+  to-do. That routing belongs to **Revise**, not Review. The Review loop applies each Critical and
+  Important and does nothing with Suggestions (`spec-to-pr/SKILL.md:223`, `:388`), so such a Critical
+  is **dropped**. The rule was right and its stated cost was too kind.
+- **Nothing stated that a non-✓ row stays out of `### Verified claims`.** Closed at the sentence that
+  causes it — the verification table's *tick* rows become that section — rather than downstream in
+  the report constraints, where the first draft put it.
+- **The `<inject:` placeholder was unpoliced, and the file said so.** Closed as a command with an
+  exit code: write each composed prompt to a scratch file and `grep -c 'inject:'` it before dispatch.
+  Two failures it cannot catch are named in the file, so a clean run is not read as full coverage.
+
+**The first attempt at that third one is the part worth keeping.** It made the dispatched agent
+report on its own prompt — a mandatory `PROMPT-INTACT: yes|no` first line, an agent returning `no` or
+omitting it treated as not having reviewed. It was sold as failing closed. Review found it did the
+opposite, on two counts:
+
+- **It failed open on the case it existed for.** `yes` is cheap pattern-completion, and an agent that
+  never scanned is indistinguishable from one that did. It failed *closed* only on a formatting slip,
+  which cost a whole discarded review.
+- **It false-positived on itself.** The instruction naming `<inject: …>` contained `<inject: …>`, so a
+  literal agent reported the rule — and the remedy re-dispatched an identical prompt. A loop, in
+  three copies.
+
+The deterministic grep had been considered and rejected, as "the same party checking whether it
+filled them". That conflates a mechanical scan with a judgement, and it is the reason the weaker
+detector got built. **A check delegated to the thing under test is not a check**, and the file now
+carries both hazards as the reason not to delegate this one.
 
 ### The merge is the finding worth carrying forward
 
@@ -358,15 +373,23 @@ Two things worth holding, and neither is about claim shapes:
   *"each round's fixes introduced new Criticals rather than converging"*. H's own reversal condition
   is closer to met than the doc records. It is still one repo and still not a base rate.
 
-### Suggested next step
+### Nothing left to do here
 
-The three remaining items are edits, not decisions — `/cla:lite-pr` fits them better than
-`/cla:shape-decision`, which the earlier version of this section recommended when the list looked
-like four report-format questions. Take the placeholder one first if only one is done: it is the only
-one whose failure is silent.
+All of it is closed: five items before the merge, three by PR #169. The claim shapes themselves
+survived review — the delta spec was found sound, portable, and free of collisions with the merged
+sibling.
 
-The claim shapes themselves survived review — the delta spec was found sound, portable, and free of
-collisions with the merged sibling.
+**Kept rather than deleted, for the one thing it records that no other file does.** Three successive
+readings of the same finding list reached three different verdicts. At the Revise cap it read as two
+questions needing a design decision. Re-verified against the merged file a day later, most of it was
+already fixed and the rest was three edits. Reviewed again after those edits, the most confident of
+them was wrong in the direction it claimed to be safe. Each reading was honest and each was made with
+the file open.
+
+What separates them is not care. It is that a finding written at the moment a loop gives up carries
+the loop's own frustration alongside its findings, and nothing downstream can tell the two apart.
+That is the argument for re-deriving a finding list before acting on it, and it is the reason this
+section stays.
 
 ## Make the check-label coverage rule general, by marking the enumerations
 
