@@ -62,6 +62,32 @@ Also: on a miss, the orchestrator's default move is **re-dispatch once**, not ta
 take-over is gated on a read-only check that nothing the previous dispatch started is still running.
 A rule that said "take over" without that gate would re-specify #115.
 
+## What already landed, and what that leaves
+
+**PR #163 (merged 2026-08-26, after this proposal was written) shipped part of rules three and four
+directly, as prose, closing #115 and #125.** It touched no spec, so the live specification still
+carries no requirement for that behaviour. This change therefore does two things now: it
+**ratifies** what landed as requirements, and it **implements** what did not.
+
+Measured against the tree 2026-08-27, not against #163's description of itself:
+
+| | state |
+|---|---|
+| Orchestrator-facing prohibition, plus the not-a-regression half | **landed** — `concurrent-runs.md` §"The orchestrator vs. its own live delegate" |
+| `SKILL.md` §Concurrent runs stub and its References-list line | **landed** |
+| "Stop rather than invent data", adjacent to the evidence requirement | **landed** — `subagent-brief.md` §"When the evidence cannot honestly be produced" |
+| Agent-facing enumeration: `commit`, `push`, process-kill, build/cache directory | **not landed** — slot 3 reads `checkout, switch, stash, branch, worktree add, checkout --, restore, reset`. `reset` is present; the rest are not |
+| The two-cases retitle, and the one-invariant rationale | **not landed** — the H1 still reads "worktree per session (full recipe)" |
+| Everything under #113 — foreground gates, evidence classification, the on-a-miss ladder | **not landed** |
+
+**The agent-facing gap is the one that reads as closed and is not.** #163 added `commit` and `push`
+to the **orchestrator's** rule, where they are plainly visible; the brief's own list, which binds the
+other party, was left as it was. An implementer trusting the issue titles — #115 closed, #113 open —
+would conclude rule three is done. It is half done, in the half a brief reaches.
+
+**Both closed issues stay cited.** The remaining work is the rest of one design, not a new one, and
+dropping #115 and #125 would leave rules one and two standing on nothing.
+
 ## Capabilities
 
 ### New Capabilities
