@@ -129,15 +129,29 @@ out the forbidden verbs, and for a diff review name the read-only way to get it:
 > process you did not start. Do NOT delete or regenerate a build, cache or dependency
 > directory you did not create.
 
-**This block is standard in every dispatch, not written per brief.** The test for making
-something standard is that no dispatch kind exists for which it is inapplicable, and every
-dispatch runs in the orchestrator's own checkout. A field whose honest content would be
-"not applicable" in some dispatches is the opposite case, and teaches readers to skim.
+**This block is standard in every dispatch, not written per brief.** Every dispatch runs in the
+orchestrator's own checkout, so no dispatch kind is exempt. That is the test for making something
+standard rather than a per-brief field: a field whose honest content is sometimes "not applicable"
+teaches readers to skim.
 
-**Two different losses, and the second verb list is the one that gets left out.** The verbs
-above split into moving HEAD (`checkout`, `switch`, `branch`, `worktree add`) and
+**Where an exception goes.** Three of these prohibitions carry an "unless this brief asks you to",
+and a standard block is the wrong place to write the grant. Put it in **slot 2, with the task that
+needs it** — `commit the migration once the suite is green`, `regenerate the build directory before
+measuring` — so the reader finds the exception attached to the work, not buried in a block they are
+told is boilerplate. A grant nowhere in slot 2 does not exist, whatever the agent infers.
+
+**A blocked gate is a `blocked` return, not a licence.** A stale cache or a stuck watcher the agent
+did not start is an ordinary obstacle, and clearing it is exactly what these two prohibitions
+forbid. Say so and stop: `blocked`, naming what is in the way. Where the check genuinely needs
+mutation, the scratchpad route below applies — copy, mutate the copy, and report that the result
+was not verified against the live tree.
+
+**Two different losses, and the second verb list is the one that gets left out.** The **git**
+verbs above split into moving HEAD (`checkout`, `switch`, `branch`, `worktree add`) and
 overwriting or recording over tracked files (`checkout -- <path>`, `restore`, `reset`,
-`commit`, `push`, a direct edit or revert); `stash` does both. A HEAD move is recoverable — the orchestrator switches back. An
+`commit`, `push`, a direct edit or revert); `stash` does both. The two non-git prohibitions —
+a process you did not start, a directory you did not create — are a third kind, and are about a
+resource the orchestrator is using rather than one git can restore. A HEAD move is recoverable — the orchestrator switches back. An
 overwrite of an uncommitted file is not: there is no reflog for content that was never
 committed, and the agent cannot see whether the file it is about to restore held an hour of
 someone's work. A real incident had a review agent run `git checkout --` over three files
@@ -241,9 +255,9 @@ in the same position as a defect nobody grounded — fix it before dispatch.
 Both contracts above are satisfied by a status plus evidence, and both are defeated by a
 return carrying neither. A delegate that backgrounds a long gate — a multi-minute verify, a
 full suite — and then ends its turn sends a return shaped exactly like a finish. Measured in
-one chain: four delegates stalled this way, two returning a sentence saying they were standing
-by for a completion notification. Three never returned. The notification could not reach them,
-because their turn ending *was* their return.
+one chain: **four delegates stalled this way, and only one of the four ever returned again.**
+Two of them returned a sentence saying they were standing by for a completion notification.
+It could not reach them: their turn ending *was* their return.
 
 Put it in the brief in these words:
 
@@ -258,13 +272,39 @@ Put it in the brief in these words:
 unchanged, because a completion notification *does* re-invoke a session. Only the dispatched
 agent has a turn that ends for good.
 
+**This rule has no detector, and saying so is part of stating it.** Nothing the orchestrator
+observes distinguishes a gate run in the foreground from one backgrounded and summarised
+plausibly. What catches the latter is the contract above: a `done` needs the gate's real output,
+and a delegate that never saw the gate finish has none to give. So the enforcement is the evidence
+requirement, and this section is the instruction that keeps an honest delegate out of the trap.
+
+**Expect the trap to be baited.** When a long gate hits the tool's own timeout, the error text
+recommends re-running in the background — the forbidden route, offered by the platform, at the
+moment this brief is furthest from attention. That is the case all four recorded stalls came from.
+Returning `blocked` naming the gate is the sanctioned answer to exactly that prompt.
+
 **And one rule the orchestrator applies, because a delegate cannot enforce its own liveness:
-a return carrying no status is `blocked`, never `done`.** It is a scan, not a reading: does
-the return carry a status token from the closed set, and every evidence field slot 5 named? A
-miss is `blocked` whatever the prose says — including a return that reads as finished, and
-including one announcing that it is waiting on something. No status is added for this case;
-the set stays `done` / `blocked` / `remedy-rejected`. What changes is who classifies an
-evidence-free return: the orchestrator, by scanning, rather than the agent, by asserting.
+a return carrying no status token is `blocked`, never `done`.**
+
+The test is one question, and only one: **does the return carry a token from the closed set —
+`done`, `blocked`, or `remedy-rejected`?** No token means `blocked`, whatever the prose says.
+That covers a return reading as finished, and one announcing that it is waiting on something.
+
+**Do not fold the evidence requirement into this test.** A missing evidence field is already
+handled, above, by each contract's own "`done` is valid ONLY when accompanied by…" rule. Testing
+for both here would misfire on the one return that is *supposed* to arrive without work evidence:
+`remedy-rejected` carries no defect-check output, no test-run summary and no ticked-task count,
+by design. Classifying it `blocked` would collapse the two statuses that "Why the third status
+exists" keeps apart, and would send a delegate that was right back to redo it.
+
+**Scope: dispatches under a declared status contract**, which is what slot 5 gives a dispatch
+that edits code. A read-only dispatch briefed to return findings and nothing else has no token to
+carry, so this rule does not reach it — an empty findings list from such an agent is a result, not
+a stall.
+
+No status is added for any of this; the set stays `done` / `blocked` / `remedy-rejected`. What
+changes is who classifies a tokenless return: the orchestrator, by scanning, rather than the agent,
+by asserting.
 
 #### When the evidence cannot honestly be produced
 
