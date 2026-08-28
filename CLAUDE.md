@@ -194,6 +194,17 @@ review found — the mutants covered the branch the author was reasoning about, 
 branch they got wrong. So mutate what the fix *touches*, not what it targets, and treat a
 green run as one input to the ship decision rather than the decision itself.
 
+**And a SURVIVOR is not automatically a finding about the code.** Some mutants cannot be
+killed, because the edit is unobservable in a correct tree — a floor constant that only
+binds when something is missing, or two expressions that agree on every input the real
+files reach. Measured 2026-08-28 on `test_check_labels_agree`: two of nine survived and
+neither could have done otherwise. The fix for the second was to mutate the *prose* the
+guard reads instead of the guard, which does discriminate and is killed; the first was
+deleted from the batch with the reason recorded in it. **Where a guard's two candidate
+rules agree on all correct inputs, mutate the input, not the guard** — and never leave an
+unkillable mutant in a batch, because a survivor nobody acts on trains the next reader to
+skip the whole list.
+
 **Match the checking to the change, and run each gate once.** The five checks above are
 priced for a *fix* or a new component — the cases where being wrong is expensive and
 invisible. An increment to something already built and already tested does not earn them,
@@ -240,6 +251,17 @@ Two consequences worth holding, since nothing else will catch them:
   run is evidence about that machine, not about the others.
 - **Merging is unguarded.** Nothing blocks a merge on tests, so the local run before opening a PR
   is the only gate that exists.
+- **And nothing checks that a merged change was archived.** Archive is a phase of
+  `/cla:spec-to-pr`, not a consequence of merging, so a PR that merges without it leaves the
+  change directory in `openspec/changes/` and its requirements out of the live spec. Measured
+  2026-08-28: three fully-implemented merged changes had accumulated that way, and
+  `openspec/specs/cla-plugin/spec.md` was missing 11 requirements — the shipped skills carried
+  behaviour no live spec described. **After merging a change, check `ls openspec/changes/`**;
+  anything there that is not still in flight needs archiving.
+
+**Deferred work lives in GitHub issues**, not in a file. `TODO.md` was retired on 2026-08-28
+(issues #173–180). The root `TODO.md` that reappears is a different artifact — `/cla:spec-to-pr`'s
+Handoff writes Suggestion residue there, in this repo and in every consuming repo.
 
 ## Recapping finished work
 

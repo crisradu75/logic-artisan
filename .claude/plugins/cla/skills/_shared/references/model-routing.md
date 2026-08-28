@@ -94,14 +94,21 @@ design; the task/spec/structure/validation reviewers apply a well-specified rubr
 sufficient. **These dispatches are `Agent`-based, so effort is not dialable** (inherits the session —
 see the mechanism table above); only the Revise round-1 `Workflow` fan-out can set effort per call.
 
-**Escalate-up is the normal path, not the exception — price it accordingly.** The repo-root `cla`
-launcher hardcodes `--model sonnet --effort medium`, so a session started the documented way is
-below Opus. Every rule below phrased as "when the session is sub-Opus" therefore describes the
-DEFAULT run, and the "no-op on an Opus session" branch only applies to a session someone started
-by hand with `./cla --model opus`. Budget for it: a normal `spec-to-pr` run pays an extra opus
-`Agent` dispatch for Propose authoring and for each Agent-1-class review dispatch, on top of a
-sonnet session. That is the intended trade — the alternative is a sonnet-quality design review —
-but it is a cost that shows up on every run, not an occasional one.
+**Which branch is the normal path depends on how the session was started, so check rather than
+assume.** Every rule below phrased as "when the session is sub-Opus" applies only when it actually
+is, and the "no-op on an Opus session" branch applies otherwise. Neither is the default in the
+abstract: a launcher pins a model, and a launcher's pin is a local decision that changes.
+
+Read the session's own model rather than a documented default. **When the session is below Opus,
+budget for escalate-up as a per-run cost, not an occasional one:** a normal `spec-to-pr` run pays
+an extra opus `Agent` dispatch for Propose authoring and for each Agent-1-class review dispatch, on
+top of the session's own tier. That is the intended trade — the alternative is a design review at
+the cheaper tier — but it shows up on every run.
+
+**When the session is already Opus, those dispatches are no-ops** and the run pays nothing extra;
+the escalation rules below simply do not fire. A prior version of this note asserted the sub-Opus
+branch was the default, on the strength of a launcher pin that had since changed — which made the
+budgeting advice exactly backwards for anyone reading it.
 
 **When the session is already Opus**, routing Agent-1-class dispatches to `opus` is a no-op and the
 real economy is routing the rubric-application agents *down* to `sonnet`. When the session is at or
