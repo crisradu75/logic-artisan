@@ -197,17 +197,56 @@ _PUSH = re.compile(_GIT_CMD + _SEP + _G + r"push\b" + _TAIL)
 _RESET = re.compile(_GIT_CMD + _SEP + _G + r"reset\b" + _TAIL)
 _BRANCH = re.compile(_GIT_CMD + _SEP + _G + r"branch\b" + _TAIL)
 
-# Two shapes force a push. The long flag, where `(?:\s|=|$)` is what spares
+def _abbrev(word: str, floor: int) -> str:
+    """Regex for any prefix of `word` at least `floor` characters long.
+
+    git accepts any UNAMBIGUOUS long-option abbreviation, so a matcher that
+    spells an option out in full is a silent bypass for every shorter spelling
+    git still resolves. `floor` is that command's shortest resolving prefix and
+    must be read off THAT command's own option set — it differs per command, and
+    guessing it wrong fails in both directions (too low over-matches a prefix git
+    refuses; too high misses one it accepts).
+
+    Generated rather than hand-written. The nesting is fine at four characters
+    and stops being fine at fifteen: a hand-written `--discard-changes` form
+    shipped here with unbalanced parentheses, and the whole module then failed to
+    import — which the dispatcher reports as a hook that did not run, i.e. every
+    check in this file silently off.
+    """
+    out = ""
+    for char in reversed(word[floor:]):
+        out = "(?:" + re.escape(char) + out + ")?"
+    return re.escape(word[:floor]) + out
+
+
+# What may follow a flag. `\\` is in the set because the shell strips
+# `\`+newline before word-splitting, so `git reset --hard\`+newline+`  HEAD~1`
+# is an ordinary hard reset — and a terminator of `(?:\s|=|$)` rejected it,
+# because the `\` sits directly against the `d`. That was fixed for
+# `git branch -D` and NOT carried to `--force`/`--hard`, which left the two
+# oldest and most-cited rules in this file bypassable by a line continuation
+# long after the same bug was closed one rule over.
+_END = r"(?:[\s\\]|=|$)"
+
+# Two shapes force a push. The long flag, where the terminator is what spares
 # `--force-with-lease` / `--force-if-includes` (both are followed by `-`, which
 # the boundary rejects); and a bundled short cluster containing `f`. The
 # `-[A-Za-z]*f[A-Za-z]*` arm cannot reach into `--force-with-lease`, because the
 # character after the leading `-` there is another `-`, not a letter.
+#
+# `--force` stays spelled OUT here, and that is a measured exception rather than
+# an oversight: `git push` also has `--follow-tags`, `--force-with-lease` and
+# `--force-if-includes`, so `--f`, `--fo`, `--for` and `--forc` are all
+# ambiguous and git refuses them. There is no shorter spelling to miss.
 _FORCE_FLAG = re.compile(
-    r"(?:^|\s)(?:--force(?:\s|=|$)|-[A-Za-z]*f[A-Za-z]*(?:\s|$))"
+    r"(?:^|\s)(?:--force" + _END + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
 )
 # `git push origin +feat:feat` — force expressed in the refspec, no flag at all.
 _FORCE_REFSPEC = re.compile(r"(?:^|\s)\+\S+")
-_HARD_FLAG = re.compile(r"(?:^|\s)--hard(?:\s|=|$)")
+# `--hard` is `git reset`'s ONLY `--h*` option, so the floor is 1 and
+# `git reset --h` is an ordinary hard reset. It went unmatched — the loosest
+# abbreviation in the file, on the rule the module docstring names first.
+_HARD_FLAG = re.compile(r"(?:^|\s)--" + _abbrev("hard", 1) + _END)
 
 # Force-deleting a branch is the same hazard class as `reset --hard`: on a branch
 # whose commit exists nowhere else it destroys that commit outright, recoverable
@@ -324,23 +363,6 @@ _CLEAN = re.compile(_GIT_CMD + _SEP + _G + r"clean\b" + _TAIL)
 #              so git REFUSES `--f`/`--fo`/`--forc` as ambiguous (verified) and
 #              only the full `--force` is spellable. `--discard-changes` shares
 #              `--d` with `--detach`, so `--di` is its shortest resolving form.
-def _abbrev(word: str, floor: int) -> str:
-    """Regex for any prefix of `word` at least `floor` characters long.
-
-    Generated rather than hand-written. `_FORCE_LONG`/`_DELETE_LONG` above spell
-    their nesting out by hand, which is fine at four characters and stops being
-    fine at fifteen: the hand-written `--discard-changes` form shipped with
-    unbalanced parentheses, and the whole module then failed to import — which
-    the dispatcher reports as a hook that did not run, i.e. every check in this
-    file silently off. One generator, no counting.
-    """
-    out = ""
-    for char in reversed(word[floor:]):
-        out = "(?:" + re.escape(char) + out + ")?"
-    return re.escape(word[:floor]) + out
-
-
-_END = r"(?:[\s\\]|=|$)"
 _FORCE_DISCARD = re.compile(
     r"(?:^|\s)(?:"
     + "--" + _abbrev("force", 1) + _END
@@ -407,6 +429,38 @@ def _operands(scanned_tail: str, raw_tail: str) -> list[str]:
     flags = [flag for flag, _ in tokens]
     if "--" in flags:
         return [real for _, real in tokens[flags.index("--") + 1:] if real]
+    return _unseparated_operands(tokens)
+
+
+def _names_a_tree_ish(scanned_tail: str) -> bool:
+    """True when a `checkout` tail names a source tree BEFORE its `--`.
+
+    `git checkout HEAD -- <path>` and `git checkout main -- <path>` write the
+    named tree into the INDEX as well as the working tree, so they destroy
+    staged work that a bare `git checkout -- <path>` cannot touch. Only the
+    explicit `--` form is detected, because it is the only unambiguous one:
+    without a separator, `git checkout HEAD f.txt` and `git checkout a.txt
+    b.txt` are the same shape, and guessing between them is how this file
+    acquired its false positives. Named in the module docstring's known misses.
+    """
+    tokens = [t for t in re.findall(r"\S+", scanned_tail)]
+    if "--" not in tokens:
+        return False
+    before = tokens[: tokens.index("--")]
+    skip_next = False
+    for flag in before:
+        if skip_next:
+            skip_next = False
+            continue
+        if flag.startswith("-"):
+            skip_next = flag in _VALUE_OPTS
+            continue
+        return True
+    return False
+
+
+def _unseparated_operands(tokens: list[tuple[str, str]]) -> list[str]:
+    """Operands from a tail with no `--` separator."""
     operands: list[str] = []
     skip_next = False
     for flag, real in tokens:
@@ -432,8 +486,12 @@ _CLEAN_FORCE = re.compile(
     r"(?:^|\s)(?:--" + _abbrev("force", 1) + _END
     + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
 )
+# `--dry-run` is clean's only `--d*` option, so `git clean -f --d` really is a
+# dry run and prompting on it is pure noise. `_CLEAN_FORCE` two lines up got the
+# abbreviation treatment while its sibling on the same predicate did not.
 _CLEAN_DRY_RUN = re.compile(
-    r"(?:^|\s)(?:--dry-run(?:[\s\\]|=|$)|-[A-Za-z]*n[A-Za-z]*(?:[\s\\]|$))"
+    r"(?:^|\s)(?:--" + _abbrev("dry-run", 1) + _END
+    + r"|-[A-Za-z]*n[A-Za-z]*(?:[\s\\]|$))"
 )
 # `-x` also removes ignored files; `-X` removes ONLY ignored files. Neither has
 # a long form. Case matters, so these are two patterns rather than one.
@@ -651,6 +709,17 @@ DISCARD_REASON = (
     "path(s) named here hold such changes right now"
 )
 
+# A forced checkout or switch names no path and is not a `<path>` form, so
+# `DISCARD_REASON`'s wording — which asserts something about "the path(s) named
+# here" — is false of it. That is the same defect `UNCHECKED_REASON` was split
+# out to fix, left in the branch it was diagnosed from.
+WHOLE_TREE_REASON = (
+    "a FORCED checkout or switch (`-f` / `--discard-changes`), which overrides "
+    "git's own refusal to clobber uncommitted changes — it resets the whole "
+    "working tree and index, and overwrites untracked files colliding with the "
+    "target branch; this tree holds work that would not survive it"
+)
+
 UNCHECKED_REASON = (
     "a command that can discard uncommitted work, whose safety check COULD NOT "
     "BE RUN — the hook is asking because it was unable to look, not because it "
@@ -717,16 +786,35 @@ def _reasons(command: str, cwd: str) -> list[str]:
     try:
         discard_paths: list[str] = []
         discard_whole_tree = False
+        # Accumulated per invocation and unioned, because the kinds at stake are
+        # a property of the COMMAND, not of the batch. A first cut decided them
+        # once from `discard_whole_tree`, which gave every pathed discard
+        # `{"worktree"}` — and `git checkout HEAD -- <path>` and
+        # `git restore --staged --worktree <path>` are pathed AND reset the
+        # index, so on a staged-but-clean-in-tree file they were silent while
+        # really wiping the staged content. Widening the whole `else` branch
+        # instead would put the routine prompt back on a bare
+        # `git checkout -- <path>`, which is what `_line_kind` exists to avoid.
+        discard_wanted: set[str] = set()
         for pattern in (_CHECKOUT, _SWITCH, _RESTORE):
             for m in pattern.finditer(scanned):
                 tail = m.group(1)
                 if pattern is _RESTORE:
-                    if _RESTORE_STAGED.search(tail) and not _RESTORE_WORKTREE.search(tail):
-                        continue
+                    if _RESTORE_STAGED.search(tail):
+                        if not _RESTORE_WORKTREE.search(tail):
+                            continue
+                        # `--staged --worktree` resets the index by definition.
+                        discard_wanted.add("index")
                 elif _FORCE_DISCARD.search(tail):
                     # Force overrides git's own refusal, so the operands say
-                    # nothing about the blast radius — the whole tree is at risk.
+                    # nothing about the blast radius — the whole tree is at risk,
+                    # in all three columns. `untracked` belongs here because `-f`
+                    # also overrides git's refusal to clobber an untracked file
+                    # colliding with one in the target branch: measured, a tree
+                    # holding only `?? collide.txt` was silent, and the real
+                    # command overwrote it with the branch's version.
                     discard_whole_tree = True
+                    discard_wanted |= {"worktree", "index", "untracked"}
                     continue
                 elif pattern is _SWITCH:
                     # `git switch` is matched ONLY in its forced form, which the
@@ -737,20 +825,23 @@ def _reasons(command: str, cwd: str) -> list[str]:
                     # refuses on conflict. The module docstring claimed this
                     # `continue` existed before it did.
                     continue
+                if pattern is _CHECKOUT and _names_a_tree_ish(tail):
+                    # `git checkout HEAD -- <path>` writes the named tree into
+                    # the index too.
+                    discard_wanted.add("index")
+                discard_wanted.add("worktree")
                 discard_paths += _operands(tail, command[m.start(1):m.end(1)])
         if discard_whole_tree or discard_paths:
-            # A forced discard resets the INDEX as well as the worktree, so it
-            # destroys staged-but-clean-in-tree work a pathed discard cannot
-            # touch. The two callers therefore want different kinds.
-            wanted = {"worktree", "index"} if discard_whole_tree else {"worktree"}
             if _holds_work(
                 cwd,
                 [] if discard_whole_tree else discard_paths,
-                wanted,
-                False,
+                discard_wanted,
+                "ignored" in discard_wanted,
                 whole_tree,
             ):
-                found.append(DISCARD_REASON)
+                found.append(
+                    WHOLE_TREE_REASON if discard_whole_tree else DISCARD_REASON
+                )
 
         clean_paths: list[str] = []
         clean_wanted: set[str] = set()
@@ -909,8 +1000,10 @@ def main() -> int:
     #
     # `found == [MERGE_REASON]` depends on `_reasons()` always appending in
     # the fixed order force-push, reset --hard, branch force-delete, working-tree
-    # discard, clean, merge (never in the order the command text names them) —
-    # merge stays LAST, which is what makes list
+    # discard (or the forced whole-tree one), clean, unchecked, merge — never in
+    # the order the command text names them. Only one property is load-bearing:
+    # MERGE STAYS LAST, and it does so structurally, because its check is the
+    # only one outside the `try` above and sits after it. That is what makes list
     # equality a safe "merge is the only reason" test. If `_reasons()`'s check
     # order or set of reasons ever changes, re-verify this equality still means
     # what it says.

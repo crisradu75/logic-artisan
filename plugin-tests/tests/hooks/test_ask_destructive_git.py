@@ -1124,9 +1124,15 @@ def test_the_discard_probe_is_not_vacuous(dirty, monkeypatch, capsys):
 def test_a_forced_checkout_or_switch_prompts_on_a_dirty_tree(
     command, dirty, monkeypatch, capsys
 ):
+    """The forced path has its OWN reason. `DISCARD_REASON` asserts something
+    about "the path(s) named here", and a forced checkout names none -- the same
+    false-measurement defect `UNCHECKED_REASON` was split out to fix, left in the
+    branch it was diagnosed from."""
     payload = _run(command, monkeypatch, capsys, cwd=str(dirty))
     assert payload is not None, f"expected an ask for: {command!r}"
-    assert "discard of uncommitted work" in _reason(payload)
+    reason = _reason(payload)
+    assert "FORCED checkout or switch" in reason
+    assert "path(s) named here" not in reason
 
 
 @pytest.mark.parametrize(
@@ -1492,7 +1498,7 @@ def test_a_raise_leaves_a_trace_on_stderr(repo, monkeypatch, capsys):
 def test_an_abbreviated_force_flag_still_prompts(command, dirty, monkeypatch, capsys):
     payload = _run(command, monkeypatch, capsys, cwd=str(dirty))
     assert payload is not None, f"expected an ask for: {command!r}"
-    assert "discard of uncommitted work" in _reason(payload)
+    assert "FORCED checkout or switch" in _reason(payload)
 
 
 @pytest.mark.parametrize("command", ["git clean --f", "git clean --forc -d"])
@@ -1568,7 +1574,7 @@ def test_a_forced_branch_change_prompts_on_staged_only_work(
     calling this state safe made the two disagree."""
     payload = _run(command, monkeypatch, capsys, cwd=str(staged_only))
     assert payload is not None, f"expected an ask for: {command!r}"
-    assert "discard of uncommitted work" in _reason(payload)
+    assert "FORCED checkout or switch" in _reason(payload)
 
 
 def test_a_pathed_discard_stays_silent_on_the_same_staged_only_tree(
@@ -1601,7 +1607,7 @@ def test_a_forced_checkout_on_a_conflicted_tree_prompts(repo, monkeypatch, capsy
     (repo / "tracked.txt").write_text("HOURS OF RESOLUTION WORK\n", encoding="utf-8")
     payload = _run("git checkout -f", monkeypatch, capsys, cwd=str(repo))
     assert payload is not None, _git_status(repo)
-    assert "discard of uncommitted work" in _reason(payload)
+    assert "FORCED checkout or switch" in _reason(payload)
 
 
 def _git_status(repo: Path) -> str:
@@ -1669,12 +1675,12 @@ def test_creating_a_branch_by_switch_never_prompts(command, repo, monkeypatch, c
 @pytest.mark.parametrize(
     "command,expected",
     [
-        ("git -C . \\\ncheckout -f", "discard of uncommitted work"),
+        ("git -C . \\\ncheckout -f", "FORCED checkout or switch"),
         # The continuation BETWEEN a global option and its value, which is a
         # different separator position inside the same blob. Without this row a
         # mutation reverting only the `-[cC]` separator survives every case
         # above, because those all continue AFTER the option-value pair.
-        ("git -C \\\n. checkout -f", "discard of uncommitted work"),
+        ("git -C \\\n. checkout -f", "FORCED checkout or switch"),
         ("git --git-dir \\\n.git push --force origin f", "force-push"),
         ("git -C . \\\npush --force origin f", "force-push"),
         ("git -C . \\\nreset --hard", "reset --hard"),
@@ -1716,3 +1722,306 @@ def test_a_bare_newline_after_a_global_option_is_still_a_command_boundary(
         "git -c core.x=y\npush --force origin f",
         monkeypatch, capsys, cwd=str(dirty),
     ) is None
+
+
+# =========================================================================== #
+# The construct matrix
+#
+# WHY THIS EXISTS. Four review rounds over this hook each found roughly five
+# real bypasses, and every one after the first had the SAME shape: a construct
+# was handled correctly for one rule and not carried to the others. The list is
+# not anecdote -- each row below is a bug that shipped and was found by a human
+# or an agent reading the file, never by a test:
+#
+#   line continuation abutting a flag   fixed for `branch -D`, missed on
+#                                       `--force` and `--hard` for three rounds
+#   continuation at a separator         fixed at `git`->subcommand, missed
+#                                       inside `GIT_GLOBAL_OPTS`
+#   long-option abbreviation            fixed for `branch`, then for four new
+#                                       commands, never carried back to `reset`
+#   `.exe`/case spelling of `git`       fixed for force-push, missed on
+#                                       branch-delete until a mutation caught it
+#
+# The cause is structural: every rule is hand-written per command, so each new
+# construct has to be manually carried to N places and one gets missed. A test
+# per bug cannot fix that -- it pins the instance, not the class.
+#
+# So this is a CROSS PRODUCT, not a list of cases. Every rule x every construct.
+# Adding a rule to `RULES` immediately demands it handle every construct;
+# adding a construct to `CONSTRUCTS` immediately demands every rule handle it.
+# The displacement becomes a red test rather than the next reviewer's finding.
+#
+# HOW TO EXTEND. Add the rule or construct and run it. If a cell legitimately
+# does not apply -- a command has no long flag to abbreviate, say -- put it in
+# `_INAPPLICABLE` with the reason. An empty exemption is not allowed to be
+# silent, which `test_no_inapplicable_cell_is_a_placeholder` enforces.
+# =========================================================================== #
+
+
+# (id, a command that MUST prompt, the reason fragment it must carry)
+RULES = [
+    ("force-push", "git push --force origin feat", "force-push"),
+    ("force-push-short", "git push -f origin feat", "force-push"),
+    ("reset-hard", "git reset --hard", "reset --hard"),
+    ("branch-delete", "git branch -D feat", "force-delete"),
+    ("discard-pathed", "git checkout -- tracked.txt", "discard of uncommitted work"),
+    ("discard-restore", "git restore tracked.txt", "discard of uncommitted work"),
+    ("discard-forced", "git checkout -f", "FORCED checkout or switch"),
+    ("clean", "git clean -fd", "git clean"),
+]
+
+# Each construct rewrites a command's text. `None` from a rewriter means the
+# construct does not apply to that command, which `_INAPPLICABLE` must justify.
+
+
+def _exe_spelling(command):
+    return command.replace("git ", "git.exe ", 1)
+
+
+def _upper_spelling(command):
+    return command.replace("git ", "GIT ", 1)
+
+
+def _continuation_after_git(command):
+    return command.replace("git ", "git \\\n", 1)
+
+
+def _continuation_before_flag(command):
+    """A continuation immediately BEFORE the first flag."""
+    parts = command.split(" ")
+    for i, tok in enumerate(parts):
+        if tok.startswith("-"):
+            return " ".join(parts[:i]) + " \\\n" + " ".join(parts[i:])
+    return None
+
+
+def _continuation_abutting_flag(command):
+    """A continuation with NO space before it, abutting the flag it follows.
+
+    The shell strips `\\`+newline before word-splitting, so this really runs --
+    and a terminator of `(?:\\s|$)` rejects it because the backslash sits
+    directly against the flag's last character. Missed on `--force`/`--hard`
+    for three rounds after being fixed on `git branch -D`.
+    """
+    parts = command.split(" ")
+    for i, tok in enumerate(parts):
+        if tok.startswith("-") and i + 1 < len(parts):
+            return " ".join(parts[: i + 1]) + "\\\n  " + " ".join(parts[i + 1:])
+    return None
+
+
+def _global_option(command):
+    return command.replace("git ", "git -C . ", 1)
+
+
+def _global_option_continuation(command):
+    return command.replace("git ", "git -C . \\\n", 1)
+
+
+def _chained(command):
+    return "git status --porcelain && " + command
+
+
+CONSTRUCTS = [
+    ("exe-spelling", _exe_spelling),
+    ("upper-spelling", _upper_spelling),
+    ("continuation-after-git", _continuation_after_git),
+    ("continuation-before-flag", _continuation_before_flag),
+    ("continuation-abutting-flag", _continuation_abutting_flag),
+    ("global-option", _global_option),
+    ("global-option-continuation", _global_option_continuation),
+    ("chained", _chained),
+]
+
+# (rule_id, construct_id) -> why the cell cannot apply. Every entry is a claim
+# that must be re-derivable; a bare "n/a" is rejected by the test below.
+_INAPPLICABLE: dict[tuple[str, str], str] = {
+    # `git checkout -f` has no token after its flag, so there is nothing for a
+    # continuation to abut. The `-f main` form is covered by its own test.
+    ("discard-forced", "continuation-abutting-flag"):
+        "no token follows the flag in this command, so the construct has no site",
+    ("clean", "continuation-abutting-flag"):
+        "no token follows the flag in this command, so the construct has no site",
+    ("reset-hard", "continuation-abutting-flag"):
+        "no token follows the flag in this command; the `--hard HEAD~1` form is "
+        "covered by test_a_continuation_abutting_the_hard_flag_still_prompts",
+    # `git checkout -- tracked.txt` and `git restore tracked.txt`: the first
+    # dash-prefixed token is the `--` separator itself, so inserting a
+    # continuation before or abutting it produces a different command shape
+    # rather than the same one spelled differently.
+    ("discard-pathed", "continuation-abutting-flag"):
+        "the only dash-prefixed token is the `--` separator, not a flag",
+    # `git restore tracked.txt` carries no flag at all, so neither
+    # flag-positioned continuation has anywhere to go. The flagged forms of the
+    # same rule (`--staged`, `--worktree`) are covered by their own tests above.
+    ("discard-restore", "continuation-before-flag"):
+        "this command carries no flag, so a flag-positioned construct has no site",
+    ("discard-restore", "continuation-abutting-flag"):
+        "this command carries no flag, so a flag-positioned construct has no site",
+}
+
+
+@pytest.fixture
+def matrix_repo(repo: Path) -> Path:
+    """Dirty enough that EVERY rule above has something real to find."""
+    _git(repo, "branch", "feat")
+    (repo / "tracked.txt").write_text("original\nuncommitted\n", encoding="utf-8")
+    (repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
+    return repo
+
+
+@pytest.mark.parametrize("rule_id,command,fragment", RULES, ids=[r[0] for r in RULES])
+@pytest.mark.parametrize("construct_id,rewrite", CONSTRUCTS, ids=[c[0] for c in CONSTRUCTS])
+def test_every_rule_survives_every_construct(
+    rule_id, command, fragment, construct_id, rewrite, matrix_repo, monkeypatch, capsys
+):
+    if (rule_id, construct_id) in _INAPPLICABLE:
+        pytest.skip(_INAPPLICABLE[(rule_id, construct_id)])
+    rewritten = rewrite(command)
+    assert rewritten is not None, (
+        f"{construct_id} could not be applied to {command!r}; either the "
+        "rewriter is wrong or the cell belongs in _INAPPLICABLE with a reason"
+    )
+    payload = _run(rewritten, monkeypatch, capsys, cwd=str(matrix_repo))
+    assert payload is not None, (
+        f"{rule_id} went SILENT under {construct_id}: {rewritten!r}"
+    )
+    assert fragment in _reason(payload), (
+        f"{rule_id} prompted for the wrong reason under {construct_id}: "
+        f"{rewritten!r}"
+    )
+
+
+def test_the_matrix_is_not_vacuous(matrix_repo, monkeypatch, capsys):
+    """Every base command must prompt UNMODIFIED. Without this the whole matrix
+    could pass because the repo state stopped making any rule fire."""
+    for rule_id, command, fragment in RULES:
+        payload = _run(command, monkeypatch, capsys, cwd=str(matrix_repo))
+        assert payload is not None, f"{rule_id} does not fire even unmodified"
+        assert fragment in _reason(payload), rule_id
+
+
+def test_no_inapplicable_cell_is_a_placeholder():
+    """An exemption is a claim, and a claim with no reason is how a matrix
+    quietly stops covering the thing it was built for."""
+    for key, reason in _INAPPLICABLE.items():
+        assert len(reason) > 30, f"{key} is exempted with no real reason: {reason!r}"
+    stale = [
+        k for k in _INAPPLICABLE
+        if k[0] not in {r[0] for r in RULES} or k[1] not in {c[0] for c in CONSTRUCTS}
+    ]
+    assert not stale, f"_INAPPLICABLE names rules/constructs that no longer exist: {stale}"
+
+
+def test_a_continuation_abutting_the_hard_flag_still_prompts(
+    matrix_repo, monkeypatch, capsys
+):
+    """The cell `_INAPPLICABLE` defers, made explicit so the exemption is not a
+    hole. This exact command was silent for three review rounds while the
+    identical shape on `git branch -D` had already been fixed."""
+    payload = _run(
+        "git reset --hard\\\n  HEAD~1", monkeypatch, capsys, cwd=str(matrix_repo)
+    )
+    assert payload is not None
+    assert "reset --hard" in _reason(payload)
+
+
+@pytest.mark.parametrize(
+    "command,fragment",
+    [
+        ("git reset --h", "reset --hard"),
+        ("git reset --ha", "reset --hard"),
+        ("git reset --har", "reset --hard"),
+    ],
+)
+def test_an_abbreviated_hard_flag_still_prompts(
+    command, fragment, matrix_repo, monkeypatch, capsys
+):
+    """`--hard` is `git reset`'s only `--h*` option, so every prefix down to
+    `--h` resolves. Measured: `git reset --h` performed a full hard reset while
+    the hook printed nothing -- the abbreviation reasoning was carried to
+    `branch` and to four new commands, and never back to the rule the module
+    docstring names first."""
+    payload = _run(command, monkeypatch, capsys, cwd=str(matrix_repo))
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert fragment in _reason(payload)
+
+
+def test_push_force_is_not_abbreviated_because_git_refuses_it(
+    matrix_repo, monkeypatch, capsys
+):
+    """The other half of the abbreviation rule, and the reason each floor has to
+    be read off its OWN command's option set: `git push` also has
+    `--follow-tags`, `--force-with-lease` and `--force-if-includes`, so `--forc`
+    is ambiguous and git refuses it. Matching it would be a false positive on a
+    command that cannot run."""
+    assert _run(
+        "git push --forc origin feat", monkeypatch, capsys, cwd=str(matrix_repo)
+    ) is None
+
+
+# --- pathed discards that also reset the index ------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git restore --staged --worktree tracked.txt",
+        "git restore -SW tracked.txt",
+        "git restore --staged --w tracked.txt",
+        "git checkout HEAD -- tracked.txt",
+        "git checkout main -- tracked.txt",
+    ],
+)
+def test_a_pathed_discard_that_resets_the_index_prompts_on_staged_only_work(
+    command, staged_only, monkeypatch, capsys
+):
+    """These are PATHED, so they took `{"worktree"}` -- and they reset the index
+    too, so on a staged-but-clean-in-tree file they were silent while really
+    wiping the staged content. Measured: running `git checkout HEAD --
+    tracked.txt` left an empty status. The `--staged --w` spelling is the one the
+    previous round added abbreviation matching for, which then reached a probe
+    whose wanted-set made it silent anyway."""
+    payload = _run(command, monkeypatch, capsys, cwd=str(staged_only))
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert "discard of uncommitted work" in _reason(payload)
+
+
+def test_a_bare_pathed_discard_is_still_silent_on_staged_only_work(
+    staged_only, monkeypatch, capsys
+):
+    """Non-vacuity partner, and the reason the wanted-set is per invocation
+    rather than widened for everyone: a bare `git checkout -- <path>` copies the
+    index over a file that already equals it, which really is a no-op."""
+    assert _run(
+        "git checkout -- tracked.txt", monkeypatch, capsys, cwd=str(staged_only)
+    ) is None
+
+
+def test_an_untracked_collision_prompts_on_a_forced_branch_change(
+    repo, monkeypatch, capsys
+):
+    """`-f` also overrides git's refusal to clobber an untracked file colliding
+    with one in the target branch. Measured: a tree holding only
+    `?? collide.txt` was silent, and the real command overwrote it with the
+    branch's version -- content in no commit and no reflog."""
+    _git(repo, "checkout", "-q", "-b", "other")
+    (repo / "collide.txt").write_text("from the branch\n", encoding="utf-8")
+    _git(repo, "add", "collide.txt")
+    _git(repo, "commit", "-qm", "add collide")
+    _git(repo, "checkout", "-q", "main")
+    (repo / "collide.txt").write_text("UNCOMMITTED UNTRACKED WORK\n", encoding="utf-8")
+    payload = _run("git checkout -f other", monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None
+    assert "FORCED checkout or switch" in _reason(payload)
+
+
+@pytest.mark.parametrize("command", ["git clean -f --d", "git clean -f --dr", "git clean -f --dry"])
+def test_an_abbreviated_dry_run_still_deletes_nothing(
+    command, repo, monkeypatch, capsys
+):
+    """`--dry-run` is clean's only `--d*` option, so these are genuine dry runs.
+    Over-prompting on them is the noise this rule's own rationale says makes the
+    checkpoint stop being read."""
+    (repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
+    assert _run(command, monkeypatch, capsys, cwd=str(repo)) is None, command

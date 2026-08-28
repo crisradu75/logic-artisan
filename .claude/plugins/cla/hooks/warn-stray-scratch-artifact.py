@@ -49,9 +49,15 @@ if _HOOKS_DIR not in sys.path:
 
 from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
+from _dispatch_lib import GIT_SEP as _SEP  # noqa: E402
 from _dispatch_lib import strip_quoted_spans  # noqa: E402
 
-_GIT_ADD_OR_COMMIT = re.compile(_GIT_CMD + r"\s+" + _G + r"(?:add|commit)\b")
+# `_SEP`, not `\s+`, at the `git`→subcommand position — the same separator rule
+# every other git matcher in this package uses. A plain `\s+` is wrong in both
+# directions: it cannot match `git \`+newline+`add .` (a joined line, so an
+# ordinary command, which went unmatched) and it DOES match a bare newline, so
+# `git`+newline+`add .` — two separate commands — matched as one.
+_GIT_ADD_OR_COMMIT = re.compile(_GIT_CMD + _SEP + _G + r"(?:add|commit)\b")
 _SUSPICIOUS_NAME = re.compile(r"AppData|LocalTemp|scratchpad", re.IGNORECASE)
 
 
