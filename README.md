@@ -11,7 +11,23 @@ feed learnings back into the next run.
 
 ## Install (any repo)
 
-Two commands, scoped to the project:
+### CLA does not stand alone — install its dependencies too
+
+CLA is orchestration on top of existing skills rather than a replacement for them, so several of
+its phases **call out to other plugins and fail without them**. `plugin.json` cannot declare
+dependencies, so nothing installs these for you and nothing warns when one is missing — a phase
+simply cannot run.
+
+| Dependency | Needed by | How hard |
+|---|---|---|
+| **OpenSpec** — the `opsx:*` skills **and** the `openspec` CLI | `spec-to-pr`, `multi-spec`, `multi-pr`, `review-change`, `lite-pr` | **Required** for anything spec-scale. The CLI is invoked directly ~49 times across the skills (`validate`, `archive`, `status`, `apply`). |
+| **`pr-review-toolkit`** (Anthropic) — `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer` | every PR-review pass: `spec-to-pr`, `lite-pr`, `multi-pr` | **Required.** `spec-to-pr`'s Revise phase states there is no degraded mode — it dispatches the full agent-selection table or it does not review. |
+| **`commit-commands`** (Anthropic) | `lite-pr`'s commit/push/PR step | **Required** for the lightweight path; the spec-scale path commits directly. |
+| **`plugin-dev`** — `skill-reviewer` | review of a diff that changes a `SKILL.md` or is prose-dominant | **Conditional.** One row of the agent-selection table; it never fires in a repo whose changes don't touch skills. |
+
+Install them before, or alongside, CLA. Then:
+
+### The two commands, scoped to the project
 
 ```bash
 claude plugin marketplace add crisradu75/logic-artisan

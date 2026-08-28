@@ -301,11 +301,31 @@ Two utilities worth knowing at any phase:
 
 ## 10. Adopting CLA in another repo
 
-CLA is installed *into* a repo, scoped to that project, not installed globally. Three steps, in the
+CLA is installed *into* a repo, scoped to that project, not installed globally. Four steps, in the
 destination repo:
 
-1. **Install from the marketplace** — the plugin arrives as a versioned snapshot pinned to an exact
-   release tag:
+1. **Install the plugins CLA depends on.** CLA is orchestration over existing skills, not a
+   replacement for them, and `plugin.json` has no way to declare a dependency — so nothing installs
+   these for you, and nothing warns when one is missing. A phase that needs an absent plugin simply
+   cannot run, which reads as CLA being broken.
+
+   - **OpenSpec** — both the `opsx:*` skills and the `openspec` CLI. Required by `spec-to-pr`,
+     `multi-spec`, `multi-pr`, `review-change` and `lite-pr`; the CLI is invoked directly around 49
+     times across the skills (`validate`, `archive`, `status`, `apply`).
+   - **`pr-review-toolkit`** — supplies `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`,
+     `comment-analyzer` and `type-design-analyzer`. Required by every PR-review pass.
+     `spec-to-pr`'s Revise phase is explicit that there is **no degraded mode**: it dispatches the
+     full agent-selection table or it does not review at all.
+   - **`commit-commands`** — required by `lite-pr`, which calls `commit-push-pr` for its
+     commit/push/PR step. The spec-scale path commits directly and does not need it.
+   - **`plugin-dev`** — supplies `skill-reviewer`, one conditional row of the agent-selection table.
+     It fires only on a diff that changes a `SKILL.md` or is prose-dominant, so a repo whose changes
+     never touch skills never reaches it.
+
+   The first two are the ones a repo notices immediately; the third only on the lightweight path.
+
+2. **Install CLA from the marketplace** — the plugin arrives as a versioned snapshot pinned to an
+   exact release tag:
 
    ```bash
    claude plugin marketplace add crisradu75/logic-artisan
@@ -322,9 +342,9 @@ destination repo:
    > "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
    > so. If both spellings are genuinely in use, install from each.
 
-2. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
+3. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
    never-clobber: safe to re-run on a partially-scaffolded repo.
-3. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
+4. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
    members, dev/build/test commands, ports, affected-file map, test locations, env files. This is
    the single physical copy of every fact the skills share.
 
