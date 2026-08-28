@@ -23,13 +23,15 @@ not a base rate.
   `SKILL.md`'s Revise stub. The question binds an **enumeration** obligation, not just a re-read:
   every other instance of the resource or shape the fix concerns is listed, and each is stated as
   carrying the defect or not.
-- **The round cap's description is corrected where it is stated.** `--pr-rounds` already defaults
-  to `2`, so the cap has never been what ends Revise early; the exit gate at step 4 — zero
-  *untriaged* Critical/Important findings — is. Because step 2 requires every Critical and Important
-  finding to be triaged in the round that surfaced it, that count is zero by construction at the end
-  of round 1, so as written the loop ordinarily exits there and the default cap never binds. The
-  skill will say so at the point it names the cap, so a reader stops mistaking `default 2` for a
-  promise of two rounds.
+- **The round cap's description is corrected where it is stated.** Both sites that name
+  `--pr-rounds` now say the default is a ceiling, not a target, so a reader stops mistaking
+  `default 2` for a promise of two rounds. That is the whole edit, and it deliberately stops short of
+  saying what *does* end the loop. **An earlier draft said the loop ordinarily ends at the exit gate,
+  justified by "the untriaged count is zero by construction at the end of round 1". Both halves are
+  false** — a reason-less rejection routes to untriaged, a loop holding open findings is ended by the
+  cap, and the ledger shows four of the five logged runs that ran Revise using a second round the
+  gate as written should have ended. The claim is gone from every file, the annotation it would have
+  put at the exit gate was withdrawn rather than written, and the half-sentence stands without it.
 - **The Revise phase record gains a later-round yield field** in
   `_shared/references/run-log-schema.md`, so the deferral above has an instrument that can end it.
   Today the ledger records `rounds_used` and a per-agent finding count summed across all rounds —
@@ -46,18 +48,22 @@ not a base rate.
 
 ### Modified Capabilities
 
-- `cla-plugin`: three ADDED requirements — a distinct framing question for a second review round;
-  an accurate statement of what ends the Revise loop, with the round cap left where it is; and a
-  per-round finding attribution in the run record so the declined default has a stated reversal
-  condition someone can check.
+- `cla-plugin`: five ADDED requirements — a distinct framing question for a second review round; the
+  three things that make its enumeration answerable and its answer checkable; an accurate statement
+  that the round cap is a ceiling, with the cap left where it is; a per-round finding attribution in
+  the run record so the declined default has a stated reversal condition someone can check; and the
+  qualifying test a ledger field must meet to be kept for a deferred decision rather than for the
+  aggregator.
 
 ## Impact
 
 Prose and one schema field, all inside the shipped plugin tree. No executable code changes.
 
-- `.claude/plugins/cla/skills/spec-to-pr/references/revise.md` — §"Round N (N ≥ 2)" (line 68) gains
-  the framing question; §"For each round" step 4 (line 134) gains the accurate exit-gate statement;
-  the `Cap:` line (line 5) gains its clarifying half-sentence.
+- `.claude/plugins/cla/skills/spec-to-pr/references/revise.md` — §"Round N (N ≥ 2)" gains the
+  framing question, the three things that make it answerable, and the three-outcome check on the
+  returned enumeration; §"For each round" step 1 gains that check; the `Cap:` line (line 5) gains
+  its clarifying half-sentence. §"For each round" step 4, the exit gate, is **not** edited — the
+  annotation an earlier draft planned there was withdrawn.
 - `.claude/plugins/cla/skills/spec-to-pr/SKILL.md` — the Revise stub (line 329) gains the one-line
   invariant and the same cap clarification; the per-loop caps table (line 375) is left numerically
   unchanged.

@@ -2,7 +2,7 @@
 
 The Revise phase's step-by-step procedure, agent-selection table, dispatch snippet, and the full prose behind each triage invariant. `SKILL.md`'s Revise stub carries the load-bearing invariants as one-liners (never-demote, SEV-MAX, the Applied/Deferred triage requirement, SIR-TEST, INT-CAP/INT-SYC, verify-before-applying-a-control-flow-Critical, the exit gate, the fix-delegate default); this file carries the recipes and the reasoning.
 
-Cap: `--pr-rounds N` (default `2`).
+Cap: `--pr-rounds N` (default `2`) — a ceiling, not a target.
 
 ## Dispatch mechanism differs by round (per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`)
 
@@ -74,11 +74,40 @@ git diff $PREV_FIX_SHA..HEAD          # NB: `git diff`, NOT `gh pr diff` — gh 
 ```
 Pass the captured diff to each Agent prompt. If `PREV_FIX_SHA` is empty or the diff is empty, fall back to a full PR review (defensive — never review nothing and call it "all clean").
 
+**Ask this round its own question, and give it what the question needs.** Re-asking round 1's question over round 1's fix diff mostly re-confirms the fix. The question that catches what a later round finds is a different one:
+
+> Does this fix introduce the defect it fixed, somewhere else? Enumerate every other instance of the resource or shape the fix concerns.
+
+**The orchestrator names the resource. Do not leave each agent to infer it.** You hold the finding, the remedy, and why that remedy was chosen; an agent holds a diff. Name it concretely in the prompt — "every call site of `<function>`", "every branch of `<function>` that returns the args tuple", "every place `<key>` is read from config" — and the enumeration has a bounded, checkable subject. An unnamed resource yields a different scope per agent and nothing comparable between them.
+
+**Grant the search, because the enumeration is not answerable from the diff.** The dispatch rule above inlines the scoped diff and tells agents not to re-read it; a sibling instance is by definition *outside* that diff. So the prompt must say so explicitly: read and grep the repository freely to answer this question, under the read-only discipline in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md` slot 3. Without that grant the question is unanswerable as briefed, and what comes back is a guess.
+
+**The enumeration is the deliverable, not the re-read: the round's dispatch names every other instance of that resource or shape and states, per instance, whether the defect is present there. An empty enumeration is a stated result — "no other instance exists" — never a skipped step.**
+
+**The return cites the search, and that is what makes an empty result mean anything.** Report the command or the paths scanned, then the list, then a verdict per instance — does the fix's reasoning apply to it, and does the defect survive there. A round finding nothing returns `enumerated: no other instance of <the named resource>; searched: <the command>`. **An enumeration with no search behind it is not an empty result — it is a missing one**, and the two must not read alike. This is the whole mechanism: a confident "nothing else" costs an agent nothing to write, so the search is what the orchestrator checks, not the conclusion.
+
+**Two rounds this question does not fit, and both already exist below.** A round entered on an empty `PREV_FIX_SHA` reviews the whole PR rather than a fix, and a rejection-only re-entry dispatches against the open findings rather than a diff. Neither has a "this fix" to ask about. Skip the question rather than asking it anyway — a mandatory question asked where it is ill-posed is how a field becomes decorative — and record that round's `sibling_instance` as `null`, not `0`. `null` is the record's spelling for "no measurement"; a `0` there would be indistinguishable from a round that was asked and found nothing.
+
+**A second round is not made unconditional here, and the reason is the evidence, not the cost.** Every change that reached a round 2 in the originating chain found something new. That chain was three to four changes, one still in flight when it was logged. A hundred-percent rate on a denominator of four is suggestive; it is not a base rate, and a default that every run pays for wants one. **So this encodes the question and leaves the cap and the exit-gate threshold exactly as they are.** No round cap is raised anywhere in this position.
+
+**What would end that deferral, verbatim:**
+
+> Revisit the `--pr-rounds` default when `findings_by_round` covers at least eight changes across at least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical or Important finding on a majority of them.
+
+The two-chain floor is the originating decision's and carries its authority; the eight-change denominator and the majority bar are **stated judgements, not measurements**, chosen so the question is not re-argued on another sample of four. `findings_by_round` in the run-log schema is what records the tally, written per round as each closes. **No aggregator reads it yet**, so answering the question today means reading the ledger by hand — which is why the field is recorded from now rather than added when someone finally asks.
+
 **Name the orchestrator-specified hunks to each agent.** The previous round's fix commit mixes remedies a delegate reviewed against remedies the orchestrator both decided and triaged; only the latter had nobody to argue with. Tell each agent which hunks carry the `remedy: orchestrator-specified` mark and ask it to check each against the change's `design.md` rejected-alternatives content (round-start snapshot), on top of its normal review. This round already reviews exactly that diff, so the reviewer was never missing — what was missing was anything telling it which hunks had no independent author.
 
 ## For each round
 
 1. Aggregate Critical / Important / Suggestion counts (round 1: over the Workflow's merged findings list; round ≥2: across the individual `Agent` returns).
+
+   **On a round ≥2, check each return's enumeration before aggregating, and give the check somewhere to land.** Re-run the `searched:` command the return cites and compare its hits against the list. Three outcomes, and only the first is a result:
+   - **Cited and consistent** → take the enumeration, and count its confirmed sibling instances into this round's `sibling_instance`. **Count only the ones triaged Critical or Important**, because `sibling_instance` is a subset of that round's `found` and `found` is the deduplicated Critical+Important count. A confirmed sibling instance triaged as a Suggestion is a real result and is not this number.
+   - **Cited but inconsistent** — the search returns hits the enumeration does not list → treat the omissions as unexamined and check them yourself before triaging.
+   - **No citation** → the enumeration is **missing, not empty**. Re-dispatch that agent once with the resource named; if it returns uncited again, record `sibling_instance` for the round as `null` rather than `0`, and capture it as a Handoff Issue (`round N enumeration uncited`). A silent zero here is the one outcome that corrupts the ledger the deferral depends on, which is why it gets a bucket rather than a shrug.
+
+   The **check** changes no finding counts; it decides whether the round has an enumeration at all. The **re-dispatch** is not the check — it is an ordinary agent dispatch, and everything that follows from one follows here: its findings enter this round's counts and triage like any other agent's, and it counts once toward `cost.agents_dispatched` and `routing.models`. Read the count-neutrality as covering the comparison, never the dispatch it can trigger.
    - **Severity divergence → take the max (SEV-MAX).** When two agents flag the *same underlying finding* at *different* severities — e.g. `silent-failure-hunter` calls it Important while `code-reviewer` calls the identical issue a Suggestion — triage it at the **higher** severity, always. The `dedupeByFileAndLine` merge in the Workflow snippet already does this mechanically when both agents key the finding to the same `(file, line)`, but two agents often describe one issue at slightly different lines (or one gives no line at all), so the human aggregation step must apply the same rule by hand: a real finding one agent rated higher is not silently downgraded because another agent (or the mechanical dedup) rated it lower. This is the aggregation analogue of the never-demote-a-real-finding principle.
 2. **Triage every Critical and Important finding into one of three buckets:**
    - **Applied** — fix lands in this round via Edit/Write. *Closed.*

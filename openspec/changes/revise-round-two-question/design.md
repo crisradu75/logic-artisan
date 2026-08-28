@@ -42,11 +42,16 @@ Three constraints bound everything below.
 **The cap is not the thing that ends Revise.** `--pr-rounds` defaults to `2`, so a run that stops
 after one round did not hit a cap. Step 2 of §"For each round" requires every Critical and Important
 finding to be triaged into Applied or Deferred-Known-Issue **in the round that surfaced it**; step 4
-then counts *untriaged* findings and exits at zero. Step 5 says so outright — cap exhaustion is
-"the only scenario where untriaged residue exists — step 2's rule otherwise prevents it". So as
-literally written, the untriaged count is zero by construction at the end of round 1 and the loop
-exits there; the default cap of `2` is a ceiling that ordinarily never binds. Anyone reasoning about
-this item from the cap alone is reasoning about the wrong control.
+then counts *untriaged* findings alongside *open* ones and exits when both are zero. The default cap
+of `2` is a ceiling, and anyone reasoning about this item from the cap alone is reasoning about the
+wrong control.
+
+**Corrected after review: the untriaged count is NOT zero by construction, and an earlier draft of
+this section said it was.** A rejection carrying no reason that resolves against the brief counts as
+untriaged at the gate, and step 5 branches on the cap being exhausted with findings still untriaged —
+a state a by-construction zero would forbid. The gate is also two counts, so a loop holding open
+findings is ended by the cap regardless of the untriaged one. The claim was shipped in three files
+and is withdrawn from all of them.
 
 **Practice already diverges from that text, and the divergence is data, not noise.** Two of the three
 logged runs used two rounds. The §"Round N (N ≥ 2)" section exists and scopes a second round to the
@@ -80,7 +85,8 @@ produced them.
   after this change as before it; what changes is what a round ≥ 2 asks when one happens.
 - **No reconciliation of the gate-versus-§Round-N divergence.** It is named in this design and stated
   in the skill, and left as it is. Closing it upward (round 2 always runs) is the default change;
-  closing it downward (round 2 never runs) deletes a behaviour two of three logged runs performed.
+  closing it downward (round 2 never runs) deletes a behaviour four of the five logged runs that ran
+  Revise performed.
 - **Nothing consumes the new ledger field automatically.** No metric in
   `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py`, no new report row. The field is written so a
   human can answer one question over a handful of records; building an aggregator metric for a
@@ -115,6 +121,52 @@ per instance, and an empty list is a stated result ("no other instance exists") 
 skipped step — the same reasoning the deferred-findings sections already use for their mandatory
 `(none)`.
 
+**That precedent is not re-derivable from this repo.** `git log -S'MATCH_ROW_LIMIT' --all --oneline`
+returns only planning documents quoting the case second-hand — the fix itself lives in a consuming
+repo's history. (Stated without a count on purpose: an earlier draft said "exactly two commits", and
+the commit carrying that sentence quoted the token and made it three. A count of matches for a
+string is falsified by writing it down.)
+
+So the question was tried against a fix from **this** repo's record instead. **What follows is a
+walk-through, not a test, and the difference matters enough to state before the result.** It was
+written by someone who already knew which site the later round found, and who chose how to frame the
+resource. A trial that cannot fail establishes less than its author wants it to.
+
+**The case: `lint_profile`, recorded in `cla.io/lessons-learned/lessons-learned.md` and in
+`CLAUDE.md`'s pre-ship checks.** A round-2 fix corrected the function's no-overlay return path,
+which had returned `()` for args and made the hook a silent no-op in every JS repo. Round 3 then
+found that the same fix had moved the identical no-op to the **overlay** path.
+
+Applying the enumeration obligation as worded — *enumerate every other instance of the resource or
+shape the fix concerns* — the resource is the return paths of `lint_profile` that yield the args
+tuple. The site the later round found is among them, so the wording reaches the shape it was written
+for.
+
+**The walk-through's first draft got its own enumeration wrong, and that is the most useful thing it
+produced.** It listed two paths, the no-overlay one and the overlay one. `git show
+b241a39:.claude/plugins/cla/hooks/warn-lint-on-edit.py` shows **three**: no-overlay, the
+half-configured-overlay fallback, and the valid overlay. An enumeration written by the author of the
+enumeration rule, over a function whose whole point was a missed second path, missed a third. That
+is a stronger argument for the rule than the tidy version was — and a direct argument for the
+citation requirement, since a list nobody can see the search behind is a list nobody can check.
+
+**What this does not establish.** The question's wording has been walked against one real shape whose
+answer was already known, and nothing more. Evidence that it works on an *unknown* answer can only
+come from a round that runs it.
+
+**Two corrections to earlier drafts of this paragraph, both found by review.** The first called this
+case "reproducible from its own history" without checking. The second over-corrected and said the
+round-2 and round-3 states are "not in this repo's history either" — also false: `gh pr view 41
+--json commits` lists six commits including `b241a39` and `8fa572e`, and both resolve under
+`git show`. The accurate statement is narrower than either. The intermediate commits exist and are
+readable; what is *not* re-derivable is the enumeration a round-2 agent would have produced, because
+the round-2 and round-3 reviews themselves live only in a lessons-learned narrative. The function was
+later deleted from the tree, so nothing here can be re-run against live code.
+
+A note on how both errors happened, since it is the same one twice: each was a claim about repository
+history written from memory of the repository rather than from a command. `gh pr view 41` costs one
+call and settles it.
+
 **Rejected alternative — fold the question into the round-1 prompt.** Round 1 has no previous fix to
 be adversarial about; the question is literally unanswerable there. Asking it anyway trains the
 reader to skim it, which is how a mandatory field becomes decorative.
@@ -124,12 +176,19 @@ Wrong phase and wrong file. The checklist reviews artifacts before implementatio
 about a fix commit that exists only after Ship. The checklist is also a sibling change's territory
 in this batch.
 
-### Decision 2 — State the exit gate where the cap is named, and change neither
+### Decision 2 — Say the cap is a ceiling where it is named, and change nothing else
 
-Both places that currently say `Cap: --pr-rounds N (default 2)` gain a clarifying half-sentence: the
-loop ordinarily ends at the exit gate, not at the cap, because step 2 requires every Critical and
-Important finding to be triaged in the round that surfaced it. Step 4's own text gains the same
-observation, phrased as what the count means rather than as a new rule.
+Both places that currently say `Cap: --pr-rounds N (default 2)` gain a clarifying half-sentence:
+the default is **a ceiling, not a target**.
+
+**This decision was drafted with a false reason attached and is corrected here.** The draft said the
+loop ordinarily ends at the exit gate rather than the cap "because step 2 requires every Critical and
+Important finding to be triaged in the round that surfaced it, so the untriaged count is zero by
+construction". Review falsified it twice over: a reason-less rejection routes to untriaged, and the
+gate counts open findings too, so a loop with open findings is ended by the cap. The draft also
+planned a matching annotation on step 4's own text; that is dropped rather than reworded, because
+the observation it would have recorded is not true. What survives is the half-sentence, which needed
+no reason to be accurate.
 
 This is a documentation-accuracy change with no behavioural effect, and it is in scope because the
 decision this change implements is *about* the cap and would be misread without it. It is also the
@@ -199,15 +258,11 @@ One entry per round actually dispatched, in round order. `found` is that round's
 count **after triage dedup** — the number of distinct findings the round put into Applied or
 Deferred, matching what step 1 of §"For each round" already aggregates. `sibling_instance` is the
 subset of `found` that answers the round-2 question affirmatively: a defect the previous round's fix
-introduced, or a sibling instance the previous round's fix missed. It is `0` on round 1 by
-construction, since round 1 has no previous fix.
-
-**`found` here is deliberately NOT expected to equal the sum of `revise_findings_by_tier`'s per-agent
-`found`.** The per-agent field credits the same underlying finding to every agent that surfaced it,
-so its sum over-counts relative to a deduplicated round total. Stating a cross-field equality here
-would plant an invariant that is false the moment two agents agree — which is the common case, and
-which SEV-MAX exists to handle. The schema note must say this explicitly, because "these two fields
-both say `found`" is exactly the kind of assumed identity a later reader will act on.
+introduced, or a sibling instance the previous round's fix missed. It is `0` on round 1, which has no
+previous fix — a definition rather than a measurement. It is `null` on a round that produced no
+measurement at all: one never asked the question, or one whose enumeration stayed uncited after its
+single re-dispatch. See the pin below for the relation between the two `found` fields; the earlier
+paragraph here asserted a non-equality and was withdrawn as false.
 
 Additive and optional: `log_run.py` validates only the ledger filename shape, UTF-8 decoding, that
 the top level is a JSON object, and the 4 KiB atomic-append ceiling — it has no field allowlist, so
@@ -248,8 +303,7 @@ Nothing below is decided during implementation.
 | File | Site | Edit |
 |---|---|---|
 | `spec-to-pr/references/revise.md` | §`## Round N (N ≥ 2)` | the question + the enumeration obligation |
-| `spec-to-pr/references/revise.md` | the `Cap:` line | the exit-gate clarification |
-| `spec-to-pr/references/revise.md` | §`For each round` step 4, `**Exit gate.**` | what the untriaged count means at the end of round 1 |
+| `spec-to-pr/references/revise.md` | the `Cap:` line | "a ceiling, not a target" |
 | `spec-to-pr/SKILL.md` | Revise stub, the `Cap:` sentence | the same clarification |
 | `spec-to-pr/SKILL.md` | Revise stub, invariant bullets | one bullet carrying the question + enumeration |
 | `_shared/references/run-log-schema.md` | `Revise` phase object + its field notes | `findings_by_round` |
@@ -259,8 +313,10 @@ Nothing below is decided during implementation.
 keeps its numbers exactly.
 
 **Ledger field name and shape:** `findings_by_round`, on the `Revise` phase object, an array of
-`{"round": N, "found": N, "sibling_instance": N}` in round order, one entry per dispatched round.
-Optional; absent on records written before this change.
+`{"round": N, "found": N, "sibling_instance": N | null}` in round order, one entry per dispatched
+round. `sibling_instance` is an integer for a round that was asked and answered, and `null` for a
+round that produced no measurement — never `0` for the latter. Optional; absent on records written
+before this change.
 
 **`sibling_instance`'s definition, verbatim** (for the schema note):
 
@@ -274,9 +330,15 @@ Optional; absent on records written before this change.
 > least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical
 > or Important finding on a majority of them.
 
-**The stated non-equality** (for the schema note): `findings_by_round[*].found` is a deduplicated
-per-round total and is NOT expected to equal the sum of `routing.revise_findings_by_tier[*].found`,
-which credits one finding to every agent that surfaced it.
+**The stated relation** (for the schema note): `findings_by_round[*].found` is a deduplicated
+per-round total, so the sum of `routing.revise_findings_by_tier[*].found` is **greater than or equal
+to** it — that field credits one finding to every agent that surfaced it, and also counts phantoms.
+They are equal whenever every finding was surfaced by exactly one agent, which is common.
+
+**Corrected after review.** An earlier draft of this pin said the two are NOT expected to be equal,
+and the schema note shipped that as "NOT expected to equal". Two reviewers endorsed it; a third
+caught it. A note written to stop a reader planting a false invariant planted the opposite one, and
+the honest statement is an inequality with a named equality case, not a prohibition.
 
 **Consistency with the sibling change.** `fix-brief-binding-defect`'s design states that an
 orchestrator-specified remedy does **not** force an extra round and that "round counts stay as they
@@ -288,8 +350,9 @@ other raised a cap.
 ## Risks / Trade-offs
 
 - **A question nobody reads is worth nothing, and round 2 may rarely run under the current gate** →
-  accepted knowingly. Two of the three logged runs did run a round 2, so the framing lands on real
-  rounds today; and if the ledger later shows round 2 almost never running, that is itself the answer
+  accepted knowingly. Four of the five logged runs that ran Revise did run a round 2 — measured over
+  `cla.io/retro/spec-to-pr-runs.jsonl`, `rounds_used` of `1, 2, 2, 2, (skipped), 2` across six
+  records — so the framing lands on real rounds today; and if the ledger later shows round 2 almost never running, that is itself the answer
   to item H, arrived at by measurement instead of by a default change. This is the honest form of the
   trade: the cheap half ships now, the expensive half waits for the number that prices it.
 - **`sibling_instance` is a judgement call made by the same orchestrator that wrote the fix** → true,
