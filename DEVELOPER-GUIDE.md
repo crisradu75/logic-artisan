@@ -244,6 +244,13 @@ can evade it and it covers pushes from a terminal or IDE too. A plugin cannot wr
 cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ```
 
+**Why a git hook and not a PreToolUse hook, since the question recurs.** A PreToolUse hook has to
+parse a command string, and every spelling it does not anticipate is a hole: `--all`, `--mirror`,
+`heads/main`, `git.exe`, a here-string, a quoted remote. Several were closed one at a time and the
+list never felt finished. The git hook sees the refspec git has already resolved, so there is no
+string left to evade — and it covers pushes from a terminal or an IDE, which no PreToolUse hook ever
+saw. The cost is the `cp` line above, once per clone.
+
 When a hook fires, read its message before working around it — each one states why and what to do
 instead. The guards encode the harness's conventions; routing around them defeats the point.
 
@@ -265,7 +272,7 @@ ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the c
   runs of `codify-learnings` / `spec-to-pr` from the ledgers and improve the loop itself.
 
 The discipline throughout: log every run now, build the analyzer only once the ledger justifies it
-(several `*-retro` skills are deliberately not built yet — see `TODO.md`).
+(several `*-retro` skills are deliberately not built yet — see issue #174).
 
 Two utilities worth knowing at any phase:
 
@@ -352,7 +359,7 @@ Contributing to the harness rather than using it? The extra rules:
 
 - **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
   covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work
-  lives in `TODO.md`.
+  lives in GitHub issues.
 
 ### Adding a skill
 
@@ -410,6 +417,22 @@ was deleted; the launcher went with it, leaving `/cla:new-worktree` (section 7) 
 badly: a per-file 3-way reconcile with a provenance lockfile, solving a problem a whole-directory
 versioned snapshot does not have. Worse, it synced the launchers that kept consumers on it. A repo
 still carrying a `.cla-sync-lock.json` can delete that file; nothing reads it.
+
+Migrating a repo off it is two commands plus that deletion — `claude plugin marketplace add
+crisradu75/logic-artisan`, then `claude plugin install cla@cris-logic-artisan --scope project` —
+and also drop any in-repo `.claude/plugins/cla/` copy it kept. An unreferenced copy is dead weight,
+but a repo that *also* launches with `--plugin-dir` pointed at it runs two registrations of the
+same skills, and nothing detects that. Two things the sync used to handle now happen once, at
+migration time: a repo with a tuned check must author its `*.local.md` overlay after installing
+(an absent overlay is a silent no-op, and nothing warns), and improvements now flow one way —
+`/cla:report-upstream` files an issue here and the fix returns in the next release.
+
+**If drift detection is ever rebuilt, three constraints killed the last attempt** and are worth
+carrying into any replacement: treat an asset already identical to source as satisfied, not as
+"missing from the group"; check overlay presence against local state rather than only when the
+asset is being rewritten, or it never fires for already-synced repos — the entire affected
+population; and tolerate any malformed declaration shape, since one bad edit would otherwise break
+discovery for every consumer.
 
 ## Cheat sheet: "I want to…" → which skill
 

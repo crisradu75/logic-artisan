@@ -79,7 +79,7 @@ _EXEMPT = {
     # never had a mutant written for them, so nobody has shown they can fail.
     # They are listed individually — rather than the rule being softened to
     # "new files only" — so the debt is countable and shrinks visibly. Delete a
-    # line here the moment its batch lands. Tracked in TODO.md.
+    # line here the moment its batch lands. Tracked in issue #176.
     "tests/conformance/test_no_hardcoded_plugin_paths.py": "grandfathered",
     "tests/consistency/test_ledger_names_agree.py": "grandfathered",
     "tests/consistency/test_marketplace_manifest.py": "grandfathered",

@@ -137,7 +137,7 @@ _EMPHASIS_MARKERS = ("**", "__", "*", "_")
 # not contain — a general bare-filename check false-positives on exactly that (seen
 # for real: `package-lock.json` in a "no longer exists" sentence, `telemetry.json`
 # and `journal.jsonl` as external-tool artifacts). Only `/`-bearing repo-relative
-# paths, whose intent is unambiguous, are checked. (See TODO.md, PR #158.)
+# paths, whose intent is unambiguous, are checked. (See PR #158.)
 
 
 def _repo_root_from_here() -> Path | None:

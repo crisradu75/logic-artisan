@@ -736,3 +736,66 @@ convention, but the hook's regex didn't fire.
 No codify-process issues this run — this is the first run, so there was no prior ledger or memory index to cross-check against beyond the (absent) `MEMORY.md`, which the run created.
 
 ---
+
+## Lessons carried out of `TODO.md` when it was retired — 2026-08-28
+
+`TODO.md` was migrated to GitHub issues (#173–180) and deleted. Most entries became issues. Three
+things in it were not tasks at all — they were findings that would have been lost with the file, so
+they are recorded here instead. Two concern mutation testing; one concerns how a finding list reads
+afterwards.
+
+### A finding list written at the moment a loop gives up is not a neutral record
+
+From the `grounding-contract-claim-shapes` run (PR #158). Its Revise loop stopped at the round cap
+with 2 Critical and 4 Important still open, and the PR body led with `NOT READY TO MERGE`. It was
+merged anyway — nothing in this repo blocks a merge, so a refusal written into a PR body is a note,
+not a gate.
+
+**Three successive readings of the same finding list reached three different verdicts.** At the
+Revise cap it read as two questions needing a design decision. Re-verified against the merged file a
+day later, most of it was already fixed and the rest was three edits. Reviewed again after those
+edits, the most confident of them was wrong in the direction it claimed to be safe. Each reading was
+honest and each was made with the file open.
+
+What separates them is not care. It is that a finding written at the moment a loop gives up carries
+the loop's own frustration alongside its findings, and nothing downstream can tell the two apart.
+**Re-derive a finding list before acting on it**, rather than trusting the one the loop emitted as
+it stopped.
+
+Related, from the same run: the round-over-round count did not converge — Review 11, Revise round 1
+fifteen, Revise round 2 twelve, with four of round 2's Criticals caused by round 1's own fixes.
+
+### An unkillable mutant is worse than no mutant
+
+Writing the marked-enumeration rule for `test_check_labels_agree.py`, two of the mutants written for
+it SURVIVED, and neither could have done otherwise:
+
+- `_MIN_MARKED_LINES = 3` → `0`. The floor only binds when markers are missing, so with all three
+  present nothing observes the change. Killing it would mean asserting the constant against the live
+  count, which turns a floor into a population and deletes the protection it exists to give.
+- `defined - covered` → `defined - _delegated_labels() - covered`. Every marked line in the correct
+  tree covers the delegated labels anyway, so the two expressions agree everywhere the real file
+  reaches.
+
+The first was dropped from the batch with the reason recorded in it. **A survivor nobody acts on
+trains the next reader to skip the whole list**, which costs more than the mutant was ever worth.
+
+### Where two candidate rules agree on all correct inputs, mutate the input
+
+The second survivor above is the general case. Mutating the *guard* could not distinguish
+`defined - covered` from `defined - _delegated_labels() - covered`, because the correct tree never
+reaches a state where they differ. Mutating the *prose* did — dropping `0i` from a marked line makes
+one rule fail and the other pass, and that mutant is killed.
+
+When a mutant survives, ask whether the edit is unobservable in the correct tree before concluding
+the test is weak. If it is, the mutant is in the wrong file.
+
+### One more, on measurements in prose
+
+The retired file carried "101 files ship, 96 are reached by at least one scanner, 5 by none" as a
+settled measurement. Re-derived on 2026-08-28: `git ls-files .claude/plugins/cla | wc -l` → **102**.
+The count moved and nothing failed, because nothing re-derives it. A measurement with no
+re-derivation mechanism decays into a claim, and this one carried a scanner-coverage guarantee.
+Filed as issue #178; the number was replaced in `CLAUDE.md` with the command that produces it.
+
+---
