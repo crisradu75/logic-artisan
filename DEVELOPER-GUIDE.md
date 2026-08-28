@@ -159,6 +159,23 @@ When a change is too big to hold in one prompt, CLA drives it through OpenSpec (
 For exploration *before* any of this, `opsx:explore` is the thinking-partner mode — CLA
 orchestrates around OpenSpec rather than replacing it.
 
+**When you want to read a proposal yourself rather than have an agent check it, use `annotate`.**
+`review-change` reviews a change against the repo's standards; `annotate` puts it in front of *you*.
+It renders a Markdown document — or a whole OpenSpec change — as a self-contained page, opens it in
+a chrome-less browser window and serves it on loopback, so you can select any passage and comment on
+it. Each comment is stored with the passage it is about, in a file the session reads back and works
+through.
+
+```
+/cla:annotate openspec/changes/add-hook-config-overlay
+/cla:annotate cla.io/decisions/hook-config-redesign.md
+```
+
+A change opens as one page with proposal, design, tasks and spec deltas in tabs, the passages that
+answer each other shown side by side, and a derived coverage view of what nothing implements. It
+never writes to what you are annotating. Say "read my annotations" in a later session to pick the
+comments back up.
+
 ## 6. Batches: `multi-lite` and `multi-pr`
 
 One decisions doc often yields several independent changes. The chainers run them
@@ -443,6 +460,7 @@ discovery for every consumer.
 | Decide between approaches | `shape-decision` |
 | Turn a decision into spec proposals | `multi-spec` |
 | Sanity-check a proposal before building | `review-change` |
+| Read and mark up a document or a change yourself | `annotate` |
 | Drive one spec'd change to a PR | `spec-to-pr` |
 | Run a batch of small changes unattended | `multi-lite` |
 | Run a batch of spec'd changes unattended | `multi-pr` |

@@ -95,24 +95,50 @@ node --test plugin-tests/node/mechanical-checks.test.mjs
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude-plugin/marketplace.json CLAUDE.md
 git commit -m "release: <new>"
-git push
 ```
 
 Path-scoped `git add`, never `-A`.
 
-## Step 4 — Cut the tag
+**The release commit reaches `main` through a PR, not a push.** `hooks/git/pre-push`
+refuses a direct push to the default branch, and the `ALLOW_PUSH_TO_MAIN=1` override it
+names is for a genuine emergency — a release is a planned act, so using it here is
+routing around a guard rather than complying with one. Branch, push the branch, open the
+PR, merge it, and come back to `main`:
 
 ```bash
-claude plugin tag
+git checkout -b release/<new>
+git push -u origin release/<new>
+gh pr create --base <default-branch> --title "release: <new>"
+# merge it, then:
+git checkout <default-branch> && git pull --ff-only
+```
+
+Confirm `main` carries the bump before tagging — the tag must point at the merged commit,
+not at the branch. Earlier versions of this skill said `git push` here and were hand-run
+past the refusal every time; the step is written out so the next release does not
+rediscover it.
+
+## Step 4 — Cut the tag
+
+**Pass the plugin directory.** Bare `claude plugin tag` looks for a manifest at the repo
+root (`.claude-plugin/plugin.json`) and fails here with `No plugin manifest found` — this
+repo's root `.claude-plugin/` holds `marketplace.json`, and the plugin's own manifest is
+one level down. Dry-run first; it prints the exact git commands it will run, which is the
+last cheap moment before an irreversible step:
+
+```bash
+claude plugin tag .claude/plugins/cla --dry-run
+claude plugin tag .claude/plugins/cla --push
 ```
 
 It uses the shape `<name>--v<version>` and **refuses unless `plugin.json` and the
 marketplace entry already agree** — so a refusal here means step 3 is incomplete, not
-that the tool is wrong. Push the tag, then confirm it resolves:
+that the tool is wrong. `--push` sends the tag to `origin`; without it, tag and push by
+hand. Then confirm it resolves, and that it points where you think:
 
 ```bash
-git push origin cla--v<new>
 git ls-remote --tags origin cla--v<new>
+git rev-parse cla--v<new>^{} && git rev-parse origin/<default-branch>   # must match
 ```
 
 An empty result from that last command means the tag did not reach the remote, and
