@@ -89,35 +89,77 @@ version lives in `CLAUDE.md`'s "Current release" line, pinned by
 Then re-run the suite — the two manifest tests and the doc-fact test are what confirm
 the three copies agree — and commit all three together:
 
+**Branch BEFORE committing.** Step 1 put you on the default branch; committing there and
+branching afterwards leaves the local default branch carrying a commit `origin` does not
+have, and the `git pull` at the end of this step then refuses. Branch first and the
+default branch never moves:
+
 ```bash
+git checkout -b release/<new>
 pytest plugin-tests
 node --test plugin-tests/node/mechanical-checks.test.mjs
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude-plugin/marketplace.json CLAUDE.md
 git commit -m "release: <new>"
-git push
 ```
 
 Path-scoped `git add`, never `-A`.
 
-## Step 4 — Cut the tag
+**The release commit reaches the default branch through a PR, not a push.** Push the
+branch, open the PR, merge it, then return:
 
 ```bash
-claude plugin tag
+git push -u origin release/<new>
+gh pr create --base <default-branch> --title "release: <new>" \
+  --body "Version bump: <old> → <new>."
+# merge it, then:
+git checkout <default-branch> && git pull --ff-only
+```
+
+Pass `--body`: without it `gh pr create` opens an interactive editor, which in a
+non-interactive session is a hang two steps before an irreversible action.
+
+**Why a PR and not `git push`.** `hooks/git/pre-push` refuses a direct push to the default
+branch. The hook's message names an `ALLOW_PUSH_TO_MAIN=1` override, and it is not the
+answer here: that hatch is for a genuine emergency, and a release is a planned act, so
+reaching for it is routing around a guard rather than complying with one. Earlier versions
+of this skill said `git push` and were hand-run past the refusal every time.
+
+Confirm the default branch carries the bump before tagging — the tag must point at the
+merged commit, not at the branch.
+
+## Step 4 — Cut the tag
+
+**Pass the plugin directory.** Bare `claude plugin tag` looks for a manifest at the repo
+root (`.claude-plugin/plugin.json`) and fails here with `No plugin manifest found` — this
+repo's root `.claude-plugin/` holds `marketplace.json`, and the plugin's own manifest is
+one level down. Dry-run first; it prints the exact git commands it will run, which is the
+last cheap moment before an irreversible step:
+
+```bash
+claude plugin tag .claude/plugins/cla --dry-run
+claude plugin tag .claude/plugins/cla --push
 ```
 
 It uses the shape `<name>--v<version>` and **refuses unless `plugin.json` and the
 marketplace entry already agree** — so a refusal here means step 3 is incomplete, not
-that the tool is wrong. Push the tag, then confirm it resolves:
+that the tool is wrong. `--push` sends the tag to `origin`; without it, tag and push by
+hand. Then confirm it resolves, and that it points where you think:
 
 ```bash
-git push origin cla--v<new>
 git ls-remote --tags origin cla--v<new>
+git fetch origin && git merge-base --is-ancestor cla--v<new>^{} origin/<default-branch>
 ```
 
-An empty result from that last command means the tag did not reach the remote, and
+**An empty result from `git ls-remote` means the tag did not reach the remote**, and
 consumers will get an install failure with nothing visibly wrong in the catalog. Treat
 it as a failed release, not a cosmetic problem.
+
+The second command asserts the tag is *on* the default branch — the property that actually
+matters. Do not compare the two shas for equality instead: that breaks the moment any
+unrelated PR merges between the release merge and the tag, turning a correct release into
+an apparent failure. The `git fetch` is not optional, because step 1's fetch predates the
+merge being checked.
 
 ## Step 5 — Report
 

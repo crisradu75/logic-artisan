@@ -11,7 +11,18 @@ feed learnings back into the next run.
 
 ## Install (any repo)
 
-Two commands, scoped to the project:
+### CLA does not stand alone — install its dependencies first
+
+CLA is orchestration over existing skills, not a replacement for them, and `plugin.json` has no
+field for declaring a dependency: **nothing installs them for you and nothing warns when one is
+missing.** OpenSpec and `pr-review-toolkit` are required outright, `commit-commands` on the
+lightweight path, `plugin-dev` conditionally.
+
+The authoritative list — which skill reaches which, and how hard each dependency is — lives in
+[the plugin's own README](.claude/plugins/cla/README.md#install-these-first--cla-calls-out-to-them-and-cannot-substitute-for-them),
+because that is the file a consuming repo actually receives. Kept in one place on purpose.
+
+### The two commands, scoped to the project
 
 ```bash
 claude plugin marketplace add crisradu75/logic-artisan

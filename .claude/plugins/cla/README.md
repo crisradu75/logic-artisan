@@ -4,12 +4,24 @@ A Claude Code **dev-workflow harness**, distributed as a marketplace plugin. CLA
 application code and holds no product logic — it is the *process*
 layer: a set of skills, guard hooks, and helper agents that carry a change from a raw idea through
 specification, isolated implementation, review, and a PR, then feed what was learned back into the
-next run. It builds on existing skills rather than replacing them: OpenSpec
-(the `opsx:*` skills) authors and archives the spec artifacts, Anthropic's `commit-commands`
-plugin handles commit/push/PR in the lightweight path, and Anthropic's `pr-review-toolkit`
-agents (code review, silent-failure hunting, test analysis) run every PR-review pass. CLA adds
-the orchestration, the guard rails, and the learning loops on top, and keeps all per-repo state
+next run. It builds on existing skills rather than replacing them, and keeps all per-repo state
 (decisions, feedback, retro logs, lessons-learned) in the repo's own `cla.io/` tree.
+
+## Install these first — CLA calls out to them and cannot substitute for them
+
+`plugin.json` has no field for declaring a dependency, so **nothing installs these for you and
+nothing warns when one is missing.** A phase that needs an absent plugin simply cannot run, which
+reads as CLA being broken.
+
+| Dependency | Reached by | How hard |
+|---|---|---|
+| **OpenSpec** — the `opsx:*` / `openspec-*` skills **and** the `openspec` CLI | `spec-to-pr`, `multi-spec`, `multi-pr`, `review-change` | **Required** for the spec-scale path. The CLI is called directly — `validate`, `archive`, `status`. (`lite-pr` calls `openspec validate` once and documents skipping it in a repo not using OpenSpec, so it degrades rather than failing.) |
+| **`pr-review-toolkit`** — `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer` | every PR-review pass: `spec-to-pr`, `lite-pr` (and `multi-pr`/`multi-lite`, which chain them) | **Required.** The Revise phase names these agents directly and defines no fallback for their absence. |
+| **`commit-commands`** | `lite-pr`'s commit/push/PR step, and `multi-lite`, which chains it | **Required for the lightweight path.** The spec-scale path commits directly and does not need it. |
+| **`plugin-dev`** — `skill-reviewer` | two rows of the Revise agent-selection table, plus `lite-pr`'s own agent picking | **Conditional.** Fires on a changed `SKILL.md` **frontmatter**, a new skill, a new command under `.claude/commands/`, or a prose-dominant diff — not on a body-only prose edit. On the prose-dominant row it is never demoted. |
+
+There is no `openspec apply` CLI subcommand — apply is a skill. See `spec-to-pr/SKILL.md` for the
+full list of subcommands the CLI actually ships.
 
 ## Scope — what CLA is and isn't
 

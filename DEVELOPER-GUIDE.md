@@ -159,6 +159,27 @@ When a change is too big to hold in one prompt, CLA drives it through OpenSpec (
 For exploration *before* any of this, `opsx:explore` is the thinking-partner mode — CLA
 orchestrates around OpenSpec rather than replacing it.
 
+**When you want to read a proposal yourself rather than have an agent check it, use `annotate`.**
+`review-change` reviews a change against the repo's standards; `annotate` puts it in front of *you*.
+It renders a Markdown document — or a whole OpenSpec change — as a self-contained page, opens it in
+a chrome-less browser window and serves it on loopback, so you can select any passage and comment on
+it. Each comment is stored with the passage it is about, in a file the session reads back and works
+through.
+
+```
+/cla:annotate <change-id or openspec/changes/<change-id>>
+/cla:annotate <path>.md
+```
+
+A change opens as one page with proposal, design, tasks and spec deltas in tabs, each passage's
+counterpart inlined beneath the block it answers to — tabs alone show one side at a time — plus a
+derived coverage view of which claims nothing names. Read that view as a reading aid rather than a
+verdict: an uncovered row means no task names that bullet's file, not that the work is missing.
+
+It never writes to what you are annotating; the page is served read-only and a test pins that across
+a full annotate-and-rebuild cycle. Say "read my annotations" in a later session to pick the comments
+back up.
+
 ## 6. Batches: `multi-lite` and `multi-pr`
 
 One decisions doc often yields several independent changes. The chainers run them
@@ -284,11 +305,23 @@ Two utilities worth knowing at any phase:
 
 ## 10. Adopting CLA in another repo
 
-CLA is installed *into* a repo, scoped to that project, not installed globally. Three steps, in the
+CLA is installed *into* a repo, scoped to that project, not installed globally. Four steps, in the
 destination repo:
 
-1. **Install from the marketplace** — the plugin arrives as a versioned snapshot pinned to an exact
-   release tag:
+1. **Install the plugins CLA depends on.** CLA is orchestration over existing skills, not a
+   replacement for them, and `plugin.json` has no way to declare a dependency — so nothing installs
+   these for you, and nothing warns when one is missing. A phase that needs an absent plugin simply
+   cannot run, which reads as CLA being broken.
+
+   OpenSpec and `pr-review-toolkit` are required outright; `commit-commands` on the lightweight
+   path; `plugin-dev` conditionally. **Which skill reaches which, and how hard each one is:**
+   [the plugin's own README](.claude/plugins/cla/README.md#install-these-first--cla-calls-out-to-them-and-cannot-substitute-for-them).
+   That file is the one a consuming repo receives, so the list lives there and nowhere else — three
+   copies of a four-row table is three things to keep in sync, and an earlier draft of this very
+   section had already drifted from its sibling before either was read.
+
+2. **Install CLA from the marketplace** — the plugin arrives as a versioned snapshot pinned to an
+   exact release tag:
 
    ```bash
    claude plugin marketplace add crisradu75/logic-artisan
@@ -305,9 +338,9 @@ destination repo:
    > "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
    > so. If both spellings are genuinely in use, install from each.
 
-2. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
+3. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
    never-clobber: safe to re-run on a partially-scaffolded repo.
-3. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
+4. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
    members, dev/build/test commands, ports, affected-file map, test locations, env files. This is
    the single physical copy of every fact the skills share.
 
@@ -443,6 +476,7 @@ discovery for every consumer.
 | Decide between approaches | `shape-decision` |
 | Turn a decision into spec proposals | `multi-spec` |
 | Sanity-check a proposal before building | `review-change` |
+| Read and mark up a document or a change yourself | `annotate` |
 | Drive one spec'd change to a PR | `spec-to-pr` |
 | Run a batch of small changes unattended | `multi-lite` |
 | Run a batch of spec'd changes unattended | `multi-pr` |
