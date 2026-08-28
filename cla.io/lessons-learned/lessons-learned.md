@@ -739,10 +739,10 @@ No codify-process issues this run — this is the first run, so there was no pri
 
 ## Lessons carried out of `TODO.md` when it was retired — 2026-08-28
 
-`TODO.md` was migrated to GitHub issues (#173–180) and deleted. Most entries became issues. Three
+`TODO.md` was migrated to GitHub issues (#173–180) and deleted. Most entries became issues. Four
 things in it were not tasks at all — they were findings that would have been lost with the file, so
-they are recorded here instead. Two concern mutation testing; one concerns how a finding list reads
-afterwards.
+they are recorded here instead. Two concern mutation testing, one concerns how a finding list reads
+afterwards, and one concerns a measurement that decayed into a claim.
 
 ### A finding list written at the moment a loop gives up is not a neutral record
 

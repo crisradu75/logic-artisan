@@ -105,13 +105,13 @@ an extra opus `Agent` dispatch for Propose authoring and for each Agent-1-class 
 top of the session's own tier. That is the intended trade — the alternative is a design review at
 the cheaper tier — but it shows up on every run.
 
-**When the session is already Opus, those dispatches are no-ops** and the run pays nothing extra;
-the escalation rules below simply do not fire. A prior version of this note asserted the sub-Opus
-branch was the default, on the strength of a launcher pin that had since changed — which made the
-budgeting advice exactly backwards for anyone reading it.
+A prior version of this note asserted the sub-Opus branch was the default, on the strength of a
+launcher pin that had since changed — which made the budgeting advice exactly backwards for anyone
+reading it.
 
-**When the session is already Opus**, routing Agent-1-class dispatches to `opus` is a no-op and the
-real economy is routing the rubric-application agents *down* to `sonnet`. When the session is at or
+**When the session is already Opus**, the escalate-UP dispatches are no-ops and cost nothing extra;
+routing Agent-1-class dispatches to `opus` changes nothing, and the real economy is routing the
+rubric-application agents *down* to `sonnet`. When the session is at or
 below Sonnet, route the Agent-1-class dispatches *up* to `opus` (the same escalate-up logic as the
 inline-verdict rule below) and leave the rubric agents at the session model. Apply the routing
 whenever the session model differs from the target tier for a dimension.

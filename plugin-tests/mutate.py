@@ -25,6 +25,15 @@ a CRLF shebang (`#!/usr/bin/env bash\\r`) breaks the POSIX launchers — and
 `git diff` shows nothing for that change, because the `eol=lf` attribute
 normalizes on read. Restores are byte-exact and asserted.
 
+DO NOT RUN THIS WHILE A REVIEW AGENT IS READING THE SAME TREE. Every mutant is a
+real in-place edit to a real file, restored after the target runs, so anything
+else reading concurrently can see mutated source alongside a clean `git status` —
+which looks exactly like a genuine defect. Recorded after a guard flaked 3-of-5
+runs under a concurrent batch, and reproduced twice on 2026-08-28: one review
+agent read a mutated `check_script_drift.py`, another aborted at preflight on a
+leftover `.mutate-backup` from a run in flight. Serialise the two, or copy the
+tree and run the batch there.
+
 USAGE. Write a batch file — a Python module defining `MUTANTS`, a list of
 `(name, path, old, new, targets)`. Batches live in `plugin-tests/mutants/<area>/`,
 mirroring `plugin-tests/tests/`. The subject usually stays in the published

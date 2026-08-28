@@ -1,9 +1,16 @@
 """Mutation batch for test_check_labels_agree.py.
 
 The guard claims that no enumeration of `checklist.md`'s high-yield checks can go
-stale without a test going red. Each mutant below restores an enumeration to the
-exact defective text the repo actually carried before this session, so the batch
-measures the guard against history rather than against invented shapes.
+stale without a test going red.
+
+**Two provenances, and the batch says which is which.** Mutants 1–5 restore an
+enumeration to the exact defective text the repo actually carried before this
+session, so they measure the guard against history rather than invented shapes.
+Mutants 6–10 are constructed probes for rule 5, whose marker mechanism has no
+defective history yet — it was added in the same change they test. An earlier
+version of this paragraph claimed all of them were historical, which was false the
+moment rule 5's mutants were appended: the checklist never carried `0j–0k` on that
+line, and no prior tree could carry the absence of a marker that did not exist.
 
 Two mutants target the guard's own regexes rather than the prose, because both
 were places its first draft was wrong.
@@ -106,7 +113,7 @@ MUTANTS = [
     # short while the suite stays green.
     # ----------------------------------------------------------------------- #
     (
-        # The literal defect two reviewers reproduced: the orchestrator-runs-these
+        # The literal defect a reviewer reproduced: the orchestrator-runs-these
         # line names a set that stops short of what the checklist defines, so an
         # orchestrator reading it runs the old set.
         "a marked enumeration goes short by one check",
@@ -144,17 +151,43 @@ MUTANTS = [
         "plus the overlay's 0f–0h and 1–9)",
         TARGETS,
     ),
+    (
+        # The swap the population floor could not see: a review probe dropped the
+        # marker from the load-bearing line and added one elsewhere, keeping the
+        # count at three, and it SURVIVED. Anchoring is what binds — this removes
+        # the marker from a pinned line, and no decoy elsewhere can compensate.
+        "a pinned line in review-gate.md loses its marker",
+        REVIEW_GATE,
+        'verify claims once, dispatch once. <!-- enumerates-checks -->',
+        'verify claims once, dispatch once.',
+        TARGETS,
+    ),
+    (
+        # Non-vacuity for the pin itself. An anchor matching no line would pin
+        # nothing and the per-line assertion would never run, which is the same
+        # vacuity the population floor had one level up.
+        "a required anchor stops matching its line",
+        GUARD,
+        '(_CHECKLIST, "All checks above",',
+        '(_CHECKLIST, "All checks abov3",',
+        TARGETS,
+    ),
 ]
 
-# DELIBERATELY NOT A MUTANT: `_MIN_MARKED_LINES = 3` → `0`.
+# DELIBERATELY NOT A MUTANT: dropping an entry from `_REQUIRED_MARKED_LINES`.
 #
-# It was written, it survived, and it cannot do otherwise. The floor only binds
-# when markers are missing, and in the correct tree all three are present — so
-# lowering it changes no outcome any test can observe. Killing it would mean
-# asserting the constant's value against the live count, which turns the floor
-# into a population and deletes the protection it exists to give.
+# It survives, and it has to. Removing a pin stops that line being checked, but
+# the line still carries its marker, so every other assertion still passes — the
+# mutant asks "is this pin load-bearing?" and the honest answer is that a pin is
+# only observable when the thing it pins is also broken, which is two edits.
 #
-# The floor's real non-vacuity is the "a marked line loses its marker in a
-# reword" mutant above, which removes a marker and IS killed. Keeping an
-# unkillable mutant in the batch would report a survivor on every clean run,
-# and a survivor nobody acts on trains the next reader to skip the whole list.
+# The pins' non-vacuity comes from the two mutants above instead: one removes a
+# marker from a pinned line (killed by the pin), the other breaks an anchor
+# (killed by the exactly-one-match assertion). Keeping an unkillable mutant in the
+# batch would report a survivor on every clean run, and a survivor nobody acts on
+# trains the next reader to skip the whole list.
+#
+# The same reasoning retired an earlier `_MIN_MARKED_LINES = 3` → `0` mutant. That
+# constant is gone now: a population floor counts markers without pinning which
+# lines hold them, so it could not see a marker being MOVED. A reviewer built that
+# swap and it survived, which is why this batch pins lines instead of counting.

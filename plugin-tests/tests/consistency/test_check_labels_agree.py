@@ -7,7 +7,7 @@ author happened to grep for; the rest go stale silently. That is how a check goe
 quietly unrun, because an orchestrator reads the restatement to decide what to
 run, not the definitions.
 
-**What this guard actually covers, stated narrowly on purpose.** Four rules:
+**What this guard actually covers, stated narrowly on purpose.** Five rules:
 
 1. the checklist's own definitions form a contiguous run (a hole makes every
    range unsatisfiable);
@@ -73,11 +73,13 @@ _COUNT = re.compile(r"\b(\d+)\s+high-yield(?:\s+verification)?\s+checks\b")
 
 # Files that enumerate the checklist's checks. A file is listed here because it
 # tells a reader which checks to run; a file that merely mentions one is not.
+_REVIEW_GATE = _PLUGIN_ROOT / "skills" / "multi-spec" / "references" / "review-gate.md"
+
 _ENUMERATING_FILES = [
     _CHECKLIST,
     _PLUGIN_ROOT / "skills" / "review-change" / "SKILL.md",
     _PLUGIN_ROOT / "skills" / "spec-to-pr" / "SKILL.md",
-    _PLUGIN_ROOT / "skills" / "multi-spec" / "references" / "review-gate.md",
+    _REVIEW_GATE,
 ]
 
 # The checklist delegates a contiguous run of checks to the project overlay
@@ -238,11 +240,32 @@ def test_a_residence_claim_still_exists_somewhere_to_check() -> None:
 # distinguishes "enumerates the set" from "mentions a range".
 _ENUMERATION_MARKER = "<!-- enumerates-checks -->"
 
-# The count is a floor, not the population, and it is what stops the markers
-# being quietly deleted one at a time — the same bounded-debt shape
-# `test_guards_have_mutant_batches` uses. Raise it when a marked line is added;
-# it may not be lowered without deleting a line the checklist actually relies on.
-_MIN_MARKED_LINES = 3
+# The lines that MUST carry the marker, pinned by a stable substring rather than
+# counted.
+#
+# A population floor was tried first and is not enough: it counts markers without
+# pinning which lines hold them, so deleting the marker from the load-bearing line
+# and adding one to a trivially-correct line elsewhere keeps the count and leaves
+# the real enumeration unwatched. A reviewer built that swap and it survived. The
+# floor stops markers being deleted; it does not stop them being MOVED, and the
+# defect this rule exists for is a specific line going short.
+#
+# Pinned by substring, not by line number, so reflowing the prose does not break
+# the pin. Each anchor must match exactly one line in its file — enforced below,
+# because an anchor matching zero lines would silently pin nothing, and one
+# matching several would pin the wrong one.
+_REQUIRED_MARKED_LINES: tuple[tuple[Path, str, str], ...] = (
+    (_CHECKLIST, "Parallel batch 2",
+     "tells the orchestrator which checks to run in the parallel batch"),
+    (_CHECKLIST, "All checks above",
+     "the line an orchestrator reads to decide what it runs itself"),
+    (_CHECKLIST, "INT-SYC (no sycophancy)",
+     "names the checks that exist to refute an asserted premise"),
+    (_REVIEW_GATE, "The verification work (checks",
+     "the batch gate's own statement of what it batches"),
+    (_REVIEW_GATE, "not `0j`:",
+     "explains the 0m label by naming the set checklist.md owns"),
+)
 
 
 def _marked_lines(path: Path) -> list[tuple[int, str]]:
@@ -264,8 +287,9 @@ def test_every_marked_enumeration_covers_the_whole_defined_set(path: Path) -> No
     stale with the suite green.
 
     Unlike the residence rule, delegated labels are NOT subtracted. A marked line
-    claims the whole set, and the two lines that name the overlay's `0f–0i`
-    explicitly do account for them; a marked line that cannot is mismarked.
+    claims the whole set: the one marked line that itemises the overlay's `0f–0i`
+    accounts for them explicitly, and the rest cover them inside a full `0a–0l`
+    range. A marked line that can do neither is mismarked.
     """
     defined = _defined_labels()
     gaps = []
@@ -292,25 +316,44 @@ def test_every_marked_enumeration_covers_the_whole_defined_set(path: Path) -> No
     )
 
 
-def test_the_marked_enumerations_have_not_been_quietly_removed() -> None:
-    """Non-vacuity for the rule above, and the reason it is a floor.
+@pytest.mark.parametrize(
+    ("path", "anchor", "why"),
+    _REQUIRED_MARKED_LINES,
+    ids=lambda v: v if isinstance(v, str) else "",
+)
+def test_each_load_bearing_enumeration_still_carries_its_marker(
+    path: Path, anchor: str, why: str
+) -> None:
+    """Non-vacuity for the rule above, pinned per line rather than counted.
 
     Every assertion in `test_every_marked_enumeration_covers_the_whole_defined_set`
-    is inside a loop over marked lines. Delete the markers and it passes over an
-    empty list — the rule evaporates with the suite green, which is the exact
-    failure mode the residence idiom already had once.
+    sits inside a loop over marked lines, so with no markers it passes over an empty
+    list and the rule evaporates with the suite green — the failure mode the
+    residence idiom already had once.
+
+    A population floor closed only half of that. It counts markers without pinning
+    which lines carry them, so moving one — dropped from the load-bearing line,
+    added to a trivially-correct line elsewhere — keeps the count while leaving the
+    real enumeration unwatched. That swap was built and it survived. Pinning the
+    line is what binds.
     """
-    found = {
-        f"{path.relative_to(_PLUGIN_ROOT)}:{n}"
-        for path in _ENUMERATING_FILES
-        for n, _ in _marked_lines(path)
-    }
-    assert len(found) >= _MIN_MARKED_LINES, (
-        f"{len(found)} marked enumeration(s), below the floor of {_MIN_MARKED_LINES}: "
-        f"{sorted(found)}. A marker was deleted or a marked line was reworded without "
-        f"carrying `{_ENUMERATION_MARKER}` with it, which leaves the coverage rule "
-        "checking less than it did. Restore it, or lower the floor in the same commit "
-        "and say which line the checklist no longer relies on."
+    hits = [(n, line) for n, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1) if anchor in line]
+
+    assert len(hits) == 1, (
+        f"anchor {anchor!r} matches {len(hits)} lines in {path.name}, expected exactly 1. "
+        "An anchor matching none pins nothing and this test passes vacuously; one "
+        "matching several pins the wrong line. Re-anchor on text unique to the line "
+        f"that {why}."
+    )
+
+    lineno, line = hits[0]
+    assert _ENUMERATION_MARKER in line, (
+        f"{path.relative_to(_PLUGIN_ROOT)}:{lineno} lost its `{_ENUMERATION_MARKER}` "
+        f"marker. This line {why}, so an orchestrator reads it to decide what to run "
+        "and it must be checked against the whole defined set. Restore the marker, or "
+        "delete this entry from _REQUIRED_MARKED_LINES in the same commit and say why "
+        f"the line no longer enumerates. Line: {line.strip()[:120]}"
     )
 
 

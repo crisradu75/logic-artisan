@@ -4,29 +4,44 @@ CLAUDE.md names this guard as the one covering a *silent* failure: the ledger
 writer and its two readers each carry their own copy of the resolver that decides
 where the ledger lives, and a writer/reader disagreement makes the retro report
 zero runs — which reads as a cold start, not as a bug. An unproven guard is worth
-least exactly there, which is why this batch was the first one the TODO entry
-named.
+least exactly there, which is why this batch was the first one issue #176 named.
 
-Every mutant below re-breaks a defect `check_script_drift.py`'s own docstrings
-record as having shipped once. That is deliberate: these are not hypothetical
-edits, they are the versions of this file that existed and passed.
+**Provenance, per mutant, because the blanket version was false.** An earlier
+draft of this docstring said every mutant below "re-breaks a defect this file's
+own docstrings record as having shipped once… these are the versions of this file
+that existed and passed." Review measured it and only one is a git fact:
 
-- 1 restores the original `_normalize_constants`, which blanked every string
-  literal. The guarded functions are almost entirely string literals
-  (`["git", "rev-parse", "--show-toplevel"]`, `<root>/cla.io/retro`), so that
-  version reported CLEAN on a sibling switching git plumbing and on one writing
-  its ledger to a different directory. Three tests should object.
-- 2 restores `ast.walk`, under which a nested def sharing a guarded name
-  overwrites the real top-level one and the comparison runs against the wrong
-  body.
-- 3 drops the WRITER from the resolver group, leaving the two readers comparing
-  only against each other. Both can then be identically wrong about where the
-  ledger lives with the group still green — the precise silent failure, and the
-  reason the non-vacuity test pins all three files by name.
-- 4 restores the early return on a missing file, which reported the first and
-  hid every other problem in the group.
-- 5 drops the missing-function report, so a sibling that deleted a guarded
-  function compares equal to one that still has it.
+    git log --oneline --all --follow -- plugin-tests/scripts/check_script_drift.py
+    git log --all -S'for node in ast.walk(tree)' -- '*check_script_drift.py'
+
+The first returns six commits; the second returns only the commit that added THIS
+batch, i.e. the string never existed in the script. So the mutants divide three
+ways, and saying which is which is the whole point — a mutant justified by
+invented history is the reasoning-as-measurement defect this repo pays most for.
+
+**Git-verifiable defects.** Mutant 3 only. Before `086947e` ("Point the drift
+check at the pair that can actually fail silently") the resolver group listed the
+two readers and not the writer, so both could be identically wrong about where the
+ledger lives with the group green. That is the silent failure the whole script
+exists for.
+
+**Recorded by the script's own docstrings, from before its first commit
+(`873538f`), so not recoverable from history.** Mutants 1 and 4. The
+`_normalize_constants` docstring records a version that blanked every string
+literal — fatal here, because the guarded functions are almost entirely string
+literals (`["git", "rev-parse", "--show-toplevel"]`, `<root>/cla.io/retro`), so a
+sibling switching git plumbing compared EQUAL. Three tests should object to
+mutant 1. The `check_group` comment records an early return that reported the
+first missing file and hid every other problem in the group.
+
+**Constructed probes with no historical instance.** Mutants 2, 5, 6 and 7.
+Mutant 2 (`ast.walk` shadowing a top-level def by a nested one) is a rationale the
+code states, never a shipped bug — `for node in tree.body:` is in `873538f` and
+every commit since. Mutant 5 drops the missing-function report. Mutants 6 and 7
+empty and disable a `SIBLING_GROUPS` group; both SURVIVED until
+`test_every_group_still_compares_at_least_two_files_and_one_function` and
+`test_the_group_set_itself_has_not_shrunk` were added, because only the resolver
+group had ever been pinned by name.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_check_script_drift.py
 """
@@ -133,6 +148,28 @@ MUTANTS = [
         SCRIPT,
         _REPORT_MISSING_FN,
         _SWALLOW_MISSING_FN,
+        GUARD,
+    ),
+    (
+        # Group 3's helper is what makes three tests actually RUN on Windows; a
+        # group with no functions compares nothing and every test still passes.
+        # This mutant SURVIVED before `test_every_group_still_compares_at_least_
+        # _two_files_and_one_function` existed — the resolver group was pinned by
+        # name and the other two were not, so the protection stopped where someone
+        # had last been burned rather than where the risk was.
+        "a group is silently emptied of the functions it compares",
+        SCRIPT,
+        '        "functions": ("make_dir_alias",),',
+        '        "functions": (),',
+        GUARD,
+    ),
+    (
+        # And the level above: a group deleted outright leaves nothing to iterate,
+        # so narrowing checks cannot see it either.
+        "the aggregator record-loading group is dropped entirely",
+        SCRIPT,
+        '        "name": "retro aggregator record loading",',
+        '        "name": "retro aggregator record loading (disabled)",',
         GUARD,
     ),
 ]

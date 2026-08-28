@@ -47,6 +47,52 @@ def test_the_ledger_resolver_group_still_covers_the_writer_and_both_readers():
     )
 
 
+def test_every_group_still_compares_at_least_two_files_and_one_function():
+    """The same non-vacuity the resolver group gets, for the groups that had none.
+
+    `test_no_drift_in_the_real_repo_today` iterates whatever `SIBLING_GROUPS`
+    holds, so a group quietly narrowed to one file — or to no functions — compares
+    nothing and the suite stays green. Measured: emptying group 3's `functions`,
+    and narrowing group 2 to a single function, were both invisible to every test
+    here. The resolver group was pinned by name; the other two were not, so the
+    protection stopped exactly where someone had last been burned.
+
+    A comparison needs two files to compare and at least one function to compare
+    in them. Below that a group is decorative.
+    """
+    thin = []
+    for group in csd.SIBLING_GROUPS:
+        if len(group["files"]) < 2 or not group["functions"]:
+            thin.append(
+                f"{group['name']}: {len(group['files'])} file(s), "
+                f"{len(group['functions'])} function(s)"
+            )
+    assert not thin, (
+        "these groups compare nothing and would pass silently: " + "; ".join(thin)
+    )
+
+
+def test_the_group_set_itself_has_not_shrunk():
+    """A group deleted outright is the same silent loss, one level up.
+
+    Narrowing a group is caught above; removing it is not, because the loop then
+    has nothing to iterate for it. Pinned by name so a rename is a deliberate edit
+    rather than a quiet disappearance.
+    """
+    names = {g["name"] for g in csd.SIBLING_GROUPS}
+    expected = {
+        "retro ledger dir resolver (writer + both readers)",
+        "retro aggregator record loading",
+        "make_dir_alias test helper",
+    }
+    assert names == expected, (
+        f"SIBLING_GROUPS changed: missing {sorted(expected - names)}, "
+        f"unexpected {sorted(names - expected)}. Adding a group is welcome — add it "
+        "here in the same commit. Removing one needs a reason, because each group "
+        "exists for a divergence that was silent when it happened."
+    )
+
+
 def _write(path: Path, source: str) -> None:
     path.write_text(textwrap.dedent(source), encoding="utf-8")
 

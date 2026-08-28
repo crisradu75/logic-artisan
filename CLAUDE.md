@@ -197,13 +197,24 @@ green run as one input to the ship decision rather than the decision itself.
 **And a SURVIVOR is not automatically a finding about the code.** Some mutants cannot be
 killed, because the edit is unobservable in a correct tree — a floor constant that only
 binds when something is missing, or two expressions that agree on every input the real
-files reach. Measured 2026-08-28 on `test_check_labels_agree`: two of nine survived and
-neither could have done otherwise. The fix for the second was to mutate the *prose* the
-guard reads instead of the guard, which does discriminate and is killed; the first was
-deleted from the batch with the reason recorded in it. **Where a guard's two candidate
-rules agree on all correct inputs, mutate the input, not the guard** — and never leave an
-unkillable mutant in a batch, because a survivor nobody acts on trains the next reader to
-skip the whole list.
+files reach. Measured 2026-08-28 with
+`python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_check_labels_agree.py`
+over a then-nine-mutant batch: two survived and neither could have done otherwise. The
+`defined - _delegated_labels() - covered` one was fixed by mutating the *prose* the guard
+reads instead of the guard, which does discriminate and is killed; the `_MIN_MARKED_LINES`
+floor constant was deleted from the batch with the reason recorded in it. **Where a guard's
+two candidate rules agree on all correct inputs, mutate the input, not the guard** — and
+never leave an unkillable mutant in a batch, because a survivor nobody acts on trains the
+next reader to skip the whole list. (The batch has since been reworked, so re-run it rather
+than expecting nine.)
+
+**Never run `mutate.py` while a review agent is reading the same tree.** A batch rewrites
+real files in place and restores them after; an agent reading mid-run sees a mutated file
+and a clean `git status`, which is indistinguishable from a genuine defect. Recorded after
+a guard flaked 3-of-5 runs under a concurrent batch, and reproduced twice on 2026-08-28
+during the review of the commit that added this line — one agent read a mutated
+`check_script_drift.py`, another aborted at preflight on a leftover `.mutate-backup`.
+Serialise the two, or run the batch in an isolated copy.
 
 **Match the checking to the change, and run each gate once.** The five checks above are
 priced for a *fix* or a new component — the cases where being wrong is expensive and
@@ -289,7 +300,8 @@ everywhere) from *facts* (per-repo, never synced):
   The two scanner families do not have the same reach: the hardcoded-path one
   (`plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py`) covers
   `.md`/`.py`/`.mjs`/`.json`, so `hooks/hooks.json` and a skill's `.mjs` **are** in scope; the
-  project-token one is `.py`/`.md` only. **Five shipped files are reached by neither** —
+  project-token one is `.py`/`.md` only. **These shipped files are reached by neither** —
+  the list is the durable form, not a count of it —
   `.claude-plugin/plugin.json`, `.gitattributes` and the plugin `README.md` (all outside every scan
   root), plus `hooks/probe-python.sh` and `hooks/git/pre-push`, which sit inside a scan root but
   carry a suffix (`.sh`) and no suffix respectively that no scanner opens. The shipped-file total
