@@ -2,6 +2,69 @@
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
 
+## Lessons learned — 2026-08-29 — scope: repo-wide (issue triage → `lite-pr` → PR #186 `ask-destructive-git` working-tree discards; 4 review rounds; merged as `a274027`)
+
+### Session summary
+
+Triaged 10 open issues, picked #184 (`ask-destructive-git` should prompt on a `git checkout <path>` that would discard work) on the grounds that it was the only one with an incurred loss behind it. Ran `/cla:lite-pr`. Shipped PR #186, then reviewed it four times, each round finding roughly five real bypasses, all reproduced against real git. Merged (user-authorised) as `a274027`; branch deleted; `main` fast-forwarded.
+
+The four rounds, in one line each:
+
+1. **Round 1** (3 agents, on the feature commit) — 5 criticals: `git checkout -f` silent, `git clean -fdx` blind to ignored files, `git switch -f` unmatched, a pathless `clean` losing scope in a union, one bad pathspec silencing a whole batch.
+2. **Round 2** (on round 1's fixes, which nothing had reviewed) — 5 criticals, the widest being **pre-existing**: `GIT_GLOBAL_OPTS` kept a plain `\s+` where `_SEP` was applied everywhere else, so `git -C . \`+newline+`push --force` and `… reset --hard` were both silent on `main` already.
+3. **Round 3** — 4 criticals, three again pre-existing: `git reset --h` (abbreviation), `git reset --hard\`+newline and `git push --force\`+newline (terminator), plus an untracked-collision miss on a forced checkout.
+4. **Round 4** — clean of the displacement class, after a cross-product matrix replaced the case list.
+
+**The one fact worth carrying forward:** every round after the first found the *same shape* — a construct handled correctly for one rule and never carried to the others. It was not bad luck. Fixing instances four times did not converge; replacing the case list with an 8 × 8 matrix did.
+
+### Suggestions
+
+**1. Close the heredoc hook's even-run blind spot** — `hooks/warn-heredoc-escape-mangling.py` — **APPLIED**
+Line 87 fired only on an odd backslash run. Parity is a two-layer rule (shell → inner language); with three layers (shell → heredoc → a string literal inside it) the author doubles an escape and the run is even while the value still mangles. Predicate is now `run % 2 or run >= 4`; a run of exactly 2 stays silent, since that is the one unambiguously deliberate literal `\n` and it is common in a heredoc writing a regex. Two tests added.
+*Measured: reconstructed this session's failing command and ran it through the hook — SILENT before, flagged after. That command really did mangle and fail two steps later with a confusing regex error.*
+*Routing: re-offense of `feedback_no_heredocs_for_file_content` (memory, rung 2). The rung-3 hook already existed and had a gap, so the escalation was fixing the hook, not restating the memory.*
+
+**2. Add cross-product test guidance** — `skills/_shared/references/test-quality.md` — **APPLIED**
+New section "N rules × M constructs is a cross product, not a list of cases": the displacement signature, the instruction to generate a case per cell, the requirement that an inapplicable cell carry a written reason, and the prove-it-by-planting step (re-introduce the displacement and confirm a *matrix cell* goes red, not just a hand-written test). Enumeration in "Why these and not a longer list" updated in the same edit so the file does not immediately contradict itself.
+*Measured: 274 lines, zero prior hits for matrix/cross-product/per-command.*
+*Routing: new lesson entering at the rung that reaches work sessions — `lite-pr` and `spec-to-pr` both cite this file as test authority.*
+
+**3. Move the plain-language rule from memory into the output style** — `output-styles/CLA.md` — **APPLIED**
+Added to `## Words`: jargon from a practice gets defined on first use in the same sentence. The tell is a reply that needs a follow-up question before it is usable.
+*Routing: re-offense of `feedback_explain_in_plain_language` (memory, rung 2) → the output style, which auto-loads into every session and is the artifact that actually governs writing. Not hookable — a hook cannot inspect prose, so this is the highest reachable rung.*
+
+**4. Make `lite-pr` report the fix commit's weight against the reviewed one** — `skills/lite-pr/SKILL.md` — **APPLIED**
+Review phase step 5: state the fix commit's insertions against the reviewed commit's, and say plainly the fixes are unreviewed. A report line, not a new gate — the one-pass default stands.
+*Measured: 590 insertions of fixes against 474 reviewed, unstated, and the user had to ask "didn't we just reviewed 186?" to surface it. Reviewing that commit then found five criticals.*
+
+### Recurring patterns
+
+**RE-OFFENSES (2), both escalated rather than restated:**
+
+- **`feedback_no_heredocs_for_file_content`** (memory) — used a heredoc for file content twice; the second mangled and failed. The rung-3 hook existed and was silent on it. **Escalated to: the hook itself** (suggestion 1), because the artifact that failed was the hook, not the memory.
+- **`feedback_explain_in_plain_language`** (memory) — wrote "what it kills" bare and the user had to ask what that meant. **Escalated to: `output-styles/CLA.md`** (suggestion 3), which auto-loads where memory evidently did not bind.
+
+**PREVENTED, worth recording:**
+
+- **`feedback_never_route_around_a_guard`** — `gh pr merge` trips `ask-destructive-git`; ran the command and let the guard prompt rather than reaching for `ALLOW_PR_MERGE=1`. Stated so explicitly before running it.
+- **Checklist bullet "commit, push, or merge without explicit user authorization"** — the user's instruction was literally *"merge and clean"*, which is verbatim the phrase that bullet and the hook's own docstring name as the carry-forward incident. Here it was a direct reply to a "what's next" question, so it was authorisation and not carry-forward. Treated as such, with the no-human-review fact stated once before proceeding rather than as a blocking re-ask.
+- **CLAUDE.md check 3 (measurements name their command)** — every claim in this session's four commit messages carries a `Measured-by:` trailer or was reproduced against real git before being asserted. The one place it nearly slipped: a docstring claimed a wedged git holding an `index.lock` makes `git status` fail. Ran it — `status` returns 0 with correct output. Claim was reasoned, not run; corrected in the same commit.
+
+**Not a re-offense, but the round-2 finding is the same class one level up:** `_SEP` was created to fix a construct, applied at every separator position but one, and that one silently disarmed every guard in the file. The lesson that produced `_SEP` was learned; carrying it exhaustively was not. This is precisely what suggestion 2 exists to catch.
+
+### Lessons (meta)
+
+- **Four rounds of "fix the instances" did not converge; one structural change did.** Rounds 1–3 each fixed every finding correctly and each was followed by a round finding five more. The question worth asking at round 2, not round 4, is *what shape are these?* — and if the answer is "the same shape, one construct over", stop fixing instances.
+- **Reviewing the fixes is not the same as reviewing the change.** Round 1's fix commit was larger than the commit reviewed and contained five criticals. `lite-pr` deliberately does not re-review, which is a defensible cost choice — but the run must not *read* as though the whole diff was reviewed. Now covered by suggestion 4.
+- **A review of new code is the cheapest time to find old bugs in the same file.** Six of this session's criticals predate the PR entirely (`git reset --h`, the continuation terminators, `GIT_GLOBAL_OPTS`). Nobody was going to review that hook otherwise. Worth asking, when a review surfaces a pre-existing defect, whether it lands here or in its own PR — asked and answered by the user this session ("fix it in #186 too").
+- **A survivor in a mutation batch is not automatically a code finding.** Three of the five survivors across this session's batches were the batch pointing at the wrong test, or a test whose fixture reached a state where two candidate rules agreed. Each was resolved by fixing the test or the mutant's target, not the code — which is the repo's own recorded rule, and it held.
+
+### Codify-process notes
+
+No codify-process issues this run. The writability check resolved cleanly (plugin root inside the repo → writable, full ladder available). Both re-offenses had a rung above them to move to, so neither had to be parked. One observation worth a future eye: this run escalated nothing *off* `failure-modes.md` — both re-offenses lived in memory and a hook, never on the checklist — so the retire-on-escalation pass was a no-op. That is the expected outcome once the checklist's own lessons have mostly graduated, not a sign the pass is broken.
+
+---
+
 ## Lessons learned — 2026-08-23 — scope: repo-wide (`shape-decision` → `multi-spec` → `multi-pr` ×2; the ship-only-consumer-usable-assets program)
 
 ### Session summary

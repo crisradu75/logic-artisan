@@ -130,6 +130,17 @@ A technical term stays as-is — a function name, a config key, a domain term.
 "Verification" is this project's word for a real step; don't flatten it to
 "check" where it names that step.
 
+**Jargon from a practice gets defined on first use, in the same sentence.** A
+term of art carries a precise meaning inside its practice and none outside it —
+mutation testing's "kill" and "survive", a framework's lifecycle names, a
+protocol's verbs. Keeping the term is right; using it bare is not. Either define
+it inline ("killed it — a test failed, which is what you want") or use the plain
+phrasing and give the term once in parentheses. The tell is a reply that needs a
+follow-up question before it is usable: measured here, a report saying "what it
+kills" was answered with "what do you mean by what it kills", which cost a whole
+round trip to say something a five-word clause would have carried. This is the
+same rule as the plain-word table above, applied to terms the table cannot list.
+
 ## Grammar
 
 - Active voice. "The test writes a file", not "A file is written by the test".

@@ -153,3 +153,35 @@ def test_the_hook_file_exists_and_is_wired_into_the_bash_dispatcher():
     assert "warn-heredoc-escape-mangling.py" in dispatcher, (
         "the hook exists but nothing runs it — a hook file alone is inert"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Long even runs — the three-layer case parity alone cannot see
+# --------------------------------------------------------------------------- #
+
+
+def test_a_long_even_backslash_run_is_flagged():
+    """Parity alone is a TWO-layer rule. When the inner language re-reads the
+    text as a string literal of its own, the author has doubled an escape to
+    survive one layer: the run is even and the value still mangles.
+
+    Measured -- this hook was SILENT on the command below during the session
+    that added this test, and the command really did mangle and fail two steps
+    later with a confusing error, which is the whole failure this hook exists to
+    pre-empt.
+    """
+    body = "subs = [('''(\"git -C . \\\\\\\\\\\\ncheckout -f\", \"x\")''', 'y')]"
+    cmd = "python - path <<'PYEOF'\n" + body + "\nPYEOF"
+    assert offending_heredocs(cmd), (
+        "a doubled-for-a-nested-literal escape went unflagged"
+    )
+
+
+def test_a_run_of_exactly_two_stays_silent():
+    """The one even run left silent, and the reason the threshold is 4 rather
+    than 'any even run': `\\\\n` is unambiguously a deliberate literal
+    backslash-n, and it is common in a heredoc that writes a regex. Widening to
+    every even run would make this hook noisy on the file it most often guards.
+    """
+    cmd = "cat > re.py <<'PY'\nPATTERN = '\\\\n+'\nPY"
+    assert not offending_heredocs(cmd), "a deliberate literal `\\\\n` was flagged"

@@ -156,6 +156,9 @@ One pass. Then:
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.
 3. Stage the fixed files, commit (`fix: address review findings`), push.
 4. Do NOT re-dispatch the review agents afterward — no re-verification loop (step 2's self-read is deliberately lighter than that).
+5. **Say how big the fix commit is against the reviewed change, and that it is unreviewed.** One line, in the final report: the fix commit's insertions versus the reviewed commit's, and the plain statement that nobody has read the fixes. Step 4 is a cost decision, not a claim that the fixes are sound — and the two are easy to confuse, because a run that ends "review complete, fixes applied" reads as though the whole diff was reviewed. It was not: the reviewed artifact is the commit the agents read, and the fixes came after them.
+
+   This is a report line, not a new gate. It does not re-dispatch anything and it does not ask permission; it hands the user the one fact they need to decide whether to look. Measured: a run here produced a fix commit of 590 insertions against 474 reviewed, said nothing about it, and the user had to ask "didn't we just review this?" to find out. Reviewing that fix commit then found five criticals — so the number is worth stating, and the answer is not always "ship it".
 
 This is a deliberate scope limit: a full triage → fix → re-review loop is `/cla:spec-to-pr`'s Revise phase, and rebuilding it here would reintroduce the cost this skill exists to avoid.
 

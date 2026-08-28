@@ -73,6 +73,21 @@ def _eaten_escapes(body: str) -> list[str]:
     `\\\\\\n` wrong: three backslashes is an escaped backslash followed by a
     genuinely eaten `\\n`, and the lookbehind sees a backslash and stays silent.
     Only an odd run of backslashes actually escapes the character after it.
+
+    PARITY ALONE IS A TWO-LAYER RULE, and a long even run is the three-layer
+    case. "Even means the next character is literal" holds for shell → inner
+    language. It stops holding when the inner language then re-reads the text as
+    a string literal of its own: there, the author has DOUBLED an escape to
+    survive one layer, and the run is even while the value still mangles.
+    Measured — this hook stayed silent on a `python - <<'PY'` whose body carried
+    `\\\\\\\\\\\\n` inside a `'''...'''` literal, and that command really did
+    mangle and fail two steps later, which is the whole failure this hook exists
+    to pre-empt.
+
+    So a run of 4 or more also warns, whatever its parity. Exactly 2 stays
+    silent: that is the one even run that is unambiguously a deliberate literal
+    backslash-n, and it is common in a heredoc that writes a regex — widening to
+    every even run would make this hook noisy on the file it most often guards.
     """
     found: set[str] = set()
     i = 0
@@ -84,9 +99,11 @@ def _eaten_escapes(body: str) -> list[str]:
         while i < len(body) and body[i] == "\\":
             run += 1
             i += 1
-        if run % 2 and i < len(body) and body[i] in _EATEN:
+        if (run % 2 or run >= 4) and i < len(body) and body[i] in _EATEN:
             found.add("\\" + body[i])
-        # An even run is `\\` pairs — the next char is literal, not escaped.
+        # A run of exactly 2 is one `\\` pair — the next char is literal, and
+        # that is the only even run left silent. See the docstring for why 4+
+        # warns despite being even.
     return sorted(found)
 
 

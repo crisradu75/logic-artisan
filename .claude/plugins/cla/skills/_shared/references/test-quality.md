@@ -243,6 +243,42 @@ So for anything parsing an external contract — command-line flags, a file form
 API shape — **enumerate from the primary source first, then plant.** Reversing that
 order buys confidence in the half you already had right, and buys it loudly.
 
+## N rules × M constructs is a cross product, not a list of cases
+
+Some files carry a set of rules that each have to handle the same set of constructs.
+A guard matching several commands, a parser handling several node types, a formatter
+with several output modes — each rule is written by hand, so **every construct has to
+be carried to every rule by hand, and one gets missed.** The miss is invisible: the
+rule works for the constructs someone remembered, and the tests written for it pass.
+
+The failure has a signature. A construct is handled correctly for one rule, a reviewer
+finds it missing on a second, that one gets fixed, and the next review finds it missing
+on a third. Each fix is real and each is local, so the file appears to be converging
+while the same defect keeps surfacing one rule over.
+
+**Test the cross product.** Enumerate the rules, enumerate the constructs, and generate
+a case per cell — so adding a rule immediately demands it handle every construct, and
+adding a construct immediately demands every rule handle it. A cell that genuinely does
+not apply carries a written reason, and a guard rejects a placeholder one, because an
+unexplained exemption is how a matrix quietly stops covering what it was built for.
+
+The distinction that makes this worth the setup: **a per-bug test pins the instance, a
+matrix cell pins the class.** A test written after a bug exists only because the bug
+already shipped once — it proves the mistake is caught *today*, on the rule someone was
+burned on. A matrix cell exists before anyone is burned, which is the case that actually
+costs something.
+
+Prove it the way you would prove any gate — by planting. Re-introduce the displacement
+in a rule the matrix covers but no bug-specific test does, and confirm a *matrix cell*
+goes red. If only the hand-written tests fail, the matrix is decoration.
+
+Measured, in the source repo: a guard file with 8 command rules and 8 constructs went
+through four review rounds, each finding roughly five real bypasses, and every round
+after the first found the same displacement shape — a construct handled for one rule and
+never carried to the others. The matrix that replaced the case list killed three planted
+displacements that no bug-specific test covered, and the round after it was added was the
+first to come back clean.
+
 ## Why these and not a longer list
 
 Every *rule* here is the same failure mode seen from a different angle: the suite goes
@@ -250,8 +286,9 @@ green and the coverage is imaginary. A tautological assertion cannot fail; a flo
 below its population will not fail; an alarm whose precondition sits above the volume
 it will really see never runs at all; a gate nobody planted a failure against has not
 been shown to fail; a plant that missed the value under test proves nothing while
-reporting success; and a plant derived from the code cannot reach a case the code
-never considered. All of them are the class a guard asserting over a collection it
+reporting success; a plant derived from the code cannot reach a case the code
+never considered; and a case list over N rules × M constructs leaves most cells
+untested while reading as thorough. All of them are the class a guard asserting over a collection it
 never fills belongs to (the source repo's
 `plugin-tests/tests/conformance/test_guards_are_not_vacuous.py` is the worked
 example; a consuming repo has no such file, which is why it is named as the source
