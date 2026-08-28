@@ -85,7 +85,8 @@ produced them.
   after this change as before it; what changes is what a round ≥ 2 asks when one happens.
 - **No reconciliation of the gate-versus-§Round-N divergence.** It is named in this design and stated
   in the skill, and left as it is. Closing it upward (round 2 always runs) is the default change;
-  closing it downward (round 2 never runs) deletes a behaviour two of three logged runs performed.
+  closing it downward (round 2 never runs) deletes a behaviour four of the five logged runs that ran
+  Revise performed.
 - **Nothing consumes the new ledger field automatically.** No metric in
   `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py`, no new report row. The field is written so a
   human can answer one question over a handful of records; building an aggregator metric for a
@@ -175,7 +176,7 @@ Wrong phase and wrong file. The checklist reviews artifacts before implementatio
 about a fix commit that exists only after Ship. The checklist is also a sibling change's territory
 in this batch.
 
-### Decision 2 — State the exit gate where the cap is named, and change neither
+### Decision 2 — Say the cap is a ceiling where it is named, and change nothing else
 
 Both places that currently say `Cap: --pr-rounds N (default 2)` gain a clarifying half-sentence:
 the default is **a ceiling, not a target**.
@@ -257,15 +258,11 @@ One entry per round actually dispatched, in round order. `found` is that round's
 count **after triage dedup** — the number of distinct findings the round put into Applied or
 Deferred, matching what step 1 of §"For each round" already aggregates. `sibling_instance` is the
 subset of `found` that answers the round-2 question affirmatively: a defect the previous round's fix
-introduced, or a sibling instance the previous round's fix missed. It is `0` on round 1 by
-construction, since round 1 has no previous fix.
-
-**`found` here is deliberately NOT expected to equal the sum of `revise_findings_by_tier`'s per-agent
-`found`.** The per-agent field credits the same underlying finding to every agent that surfaced it,
-so its sum over-counts relative to a deduplicated round total. Stating a cross-field equality here
-would plant an invariant that is false the moment two agents agree — which is the common case, and
-which SEV-MAX exists to handle. The schema note must say this explicitly, because "these two fields
-both say `found`" is exactly the kind of assumed identity a later reader will act on.
+introduced, or a sibling instance the previous round's fix missed. It is `0` on round 1, which has no
+previous fix — a definition rather than a measurement. It is `null` on a round that produced no
+measurement at all: one never asked the question, or one whose enumeration stayed uncited after its
+single re-dispatch. See the pin below for the relation between the two `found` fields; the earlier
+paragraph here asserted a non-equality and was withdrawn as false.
 
 Additive and optional: `log_run.py` validates only the ledger filename shape, UTF-8 decoding, that
 the top level is a JSON object, and the 4 KiB atomic-append ceiling — it has no field allowlist, so
@@ -306,8 +303,7 @@ Nothing below is decided during implementation.
 | File | Site | Edit |
 |---|---|---|
 | `spec-to-pr/references/revise.md` | §`## Round N (N ≥ 2)` | the question + the enumeration obligation |
-| `spec-to-pr/references/revise.md` | the `Cap:` line | the exit-gate clarification |
-| `spec-to-pr/references/revise.md` | §`For each round` step 4, `**Exit gate.**` | what the untriaged count means at the end of round 1 |
+| `spec-to-pr/references/revise.md` | the `Cap:` line | "a ceiling, not a target" |
 | `spec-to-pr/SKILL.md` | Revise stub, the `Cap:` sentence | the same clarification |
 | `spec-to-pr/SKILL.md` | Revise stub, invariant bullets | one bullet carrying the question + enumeration |
 | `_shared/references/run-log-schema.md` | `Revise` phase object + its field notes | `findings_by_round` |
@@ -317,8 +313,10 @@ Nothing below is decided during implementation.
 keeps its numbers exactly.
 
 **Ledger field name and shape:** `findings_by_round`, on the `Revise` phase object, an array of
-`{"round": N, "found": N, "sibling_instance": N}` in round order, one entry per dispatched round.
-Optional; absent on records written before this change.
+`{"round": N, "found": N, "sibling_instance": N | null}` in round order, one entry per dispatched
+round. `sibling_instance` is an integer for a round that was asked and answered, and `null` for a
+round that produced no measurement — never `0` for the latter. Optional; absent on records written
+before this change.
 
 **`sibling_instance`'s definition, verbatim** (for the schema note):
 
@@ -352,8 +350,9 @@ other raised a cap.
 ## Risks / Trade-offs
 
 - **A question nobody reads is worth nothing, and round 2 may rarely run under the current gate** →
-  accepted knowingly. Two of the three logged runs did run a round 2, so the framing lands on real
-  rounds today; and if the ledger later shows round 2 almost never running, that is itself the answer
+  accepted knowingly. Four of the five logged runs that ran Revise did run a round 2 — measured over
+  `cla.io/retro/spec-to-pr-runs.jsonl`, `rounds_used` of `1, 2, 2, 2, (skipped), 2` across six
+  records — so the framing lands on real rounds today; and if the ledger later shows round 2 almost never running, that is itself the answer
   to item H, arrived at by measurement instead of by a default change. This is the honest form of the
   trade: the cheap half ships now, the expensive half waits for the number that prices it.
 - **`sibling_instance` is a judgement call made by the same orchestrator that wrote the fix** → true,

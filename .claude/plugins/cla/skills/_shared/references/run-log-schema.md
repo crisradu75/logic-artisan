@@ -14,12 +14,14 @@ exceptions, and both are narrow:
   explicitly deferred on evidence this field is the only thing that would supply, and its reversal
   condition names it. Recording it from the first run is the point: a decision waiting on a ledger
   that starts collecting the day someone finally reads it waits another year. **This exception is
-  not a general licence.** A field qualifies only when a **materialized spec requirement** names it
-  as the evidence its own reversal condition reads — a requirement in `openspec/specs/`, not prose
+  not a general licence.** A field qualifies only when a requirement **archived into this plugin's
+  own live spec** names it as the evidence that requirement's reversal condition reads — not prose
   written beside the field in the same change. That distinction is the whole test: a deferral and the
   field it excuses, authored together by one author, certify each other, and anyone could qualify an
   unread field by adding a paragraph naming it. A requirement that survived review and archive
-  cannot be written to order.
+  cannot be written to order. (The authority is the plugin's spec, wherever this file is read. In a
+  repo that installed the plugin, it is not your `openspec/specs/` — that tree holds your
+  requirements, and no requirement of yours qualifies a field in the plugin's schema.)
 
   **The exit.** When that requirement's condition is met, or the requirement is removed, the field
   loses its exception and falls back under the main rule — added to the aggregator or dropped. Check
@@ -53,7 +55,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
     {"name": "Revise",    "status": "...", "rounds_used": N, "rounds_cap": N,
      "agents": ["code-reviewer", "silent-failure-hunter", ...],
      "findings_by_round": [{"round": 1, "found": N, "sibling_instance": 0},
-                           {"round": 2, "found": N, "sibling_instance": N}],
+                           {"round": 2, "found": N, "sibling_instance": N | null}],
      "reason": "<iff warn/fail>", "report_chars": N},
     {"name": "Archive",   "status": "...", "reason": "<iff warn/fail>", "report_chars": N},
     {"name": "Handoff",   "status": "ok", "report_chars": N}
@@ -170,30 +172,43 @@ ratios). Emit it whenever any routed dispatch happened in the run.
 - `findings_by_round`: one entry per dispatched Revise round, in round order. `found` is that
   round's **deduplicated** Critical+Important count after triage — the findings, not the agent
   reports of them. `sibling_instance` is, verbatim: *Of that round's `found`, how many were the shape the round-≥2 question targets: a defect the previous round's fix introduced, or a sibling instance of the defect the previous round's fix missed. `0` on round 1, which has no previous fix.* It is
-  `0` on round 1, which has no previous fix to have missed anything. **It is also `0` on a
-  round ≥ 2 that was never asked the question** — one entered on an empty `PREV_FIX_SHA`,
-  or a rejection-only re-entry dispatched against open findings rather than a diff. Those
-  zeros mean "not asked", not "asked and found none", and nothing in the record separates
-  them; a reader counting them as evidence of a quiet round would be counting rounds where
-  the question was ill-posed.
-  **Optional, and absent on records written before it existed** — absent is not `found: 0`, and a
-  reader must distinguish them rather than treating a missing field as a measured zero.
+  `0` on round 1, which has no previous fix to have missed anything — a definition, not a
+  measurement.
 
-  **The sum of `revise_findings_by_tier[*].found` is greater than or equal to the sum of
-  `findings_by_round[*].found`.** The per-agent field credits one finding to every agent that
-  surfaced it, and counts phantoms; this one is deduplicated after triage. Two agents reporting the
-  same defect count twice there and once here. **They are equal whenever every finding was surfaced
-  by exactly one agent**, which is common, so do not read a match as a producer bug — and do not
-  read the relation as an equality to assert either. Both fields are spelled `found`, which is why
-  the direction is stated rather than left to be inferred.
+  **`null` is the spelling for "no measurement", and it is not `0`.** Write `null` on a round ≥ 2
+  that was never asked the question — one entered on an empty `PREV_FIX_SHA`, or a rejection-only
+  re-entry dispatched against open findings rather than a diff — and on a round whose enumeration
+  was still uncited after its one re-dispatch. Write `0` only for a round that was asked and found
+  no sibling instance. Three states, all distinguishable by a hand-reader: an integer is a count,
+  `null` is a round that produced none, and an absent `findings_by_round` is a record written before
+  the field existed. **Optional, and absent on records written before it existed** — absent is not
+  `found: 0`, and a reader must distinguish them rather than treating a missing field as a measured
+  zero.
+
+  **Over agent-surfaced findings, the sum of `revise_findings_by_tier[*].found` is greater than or
+  equal to the sum of `findings_by_round[*].found`.** The per-agent field credits one finding to
+  every agent that surfaced it, and counts phantoms; this one is deduplicated after triage. Two
+  agents reporting the same defect count twice there and once here. **They are equal whenever every
+  finding was surfaced by exactly one agent**, which is common, so do not read a match as a producer
+  bug — and do not read the relation as an equality to assert either. Both fields are spelled
+  `found`, which is why the direction is stated rather than left to be inferred.
+
+  **One case inverts it, and it is not drift.** A finding the *orchestrator* originates rather than
+  an agent — an INT-CAP/INT-SYC or SIR-TEST re-verification hit, or a Critical on an
+  orchestrator-specified remedy — is a real Critical or Important in the round's `found`, and lands
+  in no per-agent bucket, because `revise_findings_by_tier` is keyed strictly by canonical agent id.
+  Enough of those on one round and the per-round sum exceeds the per-agent sum. The direction above
+  is stated over agent-surfaced findings for exactly this reason.
 
   **What it is for.** Revise does not make a second round automatic, and the reason is that the
   evidence for doing so is one chain of three to four changes. This field is what would end that
   deferral: the condition is, verbatim:
 
-  > Revisit the `--pr-rounds` default when `findings_by_round` covers at least eight changes across at least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical or Important finding on a majority of them. The two-chain
-  floor comes from the originating decision; the eight-change denominator and the majority bar are
-  stated judgements, chosen so the question is not re-argued on another sample of four.
+  > Revisit the `--pr-rounds` default when `findings_by_round` covers at least eight changes across at least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical or Important finding on a majority of them.
+
+  The two-chain floor comes from the originating decision; the eight-change denominator and the
+  majority bar are stated judgements, chosen so the question is not re-argued on another sample of
+  four.
 
 - `revise_findings_by_tier`: **per-AGENT** count of Revise findings, keyed by the SAME canonical
   agent ids the Revise `agents` list uses (`code-reviewer`, `silent-failure-hunter`,

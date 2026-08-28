@@ -62,3 +62,85 @@ the question fires on a real sibling-instance regression, not that it fires on t
 - [x] 6.5 Run the full gate before opening a PR, each once: `pytest plugin-tests` and `node --test plugin-tests/node/mechanical-checks.test.mjs` — measured: `<paste both summary lines>` **measured: `pytest plugin-tests` 1319 passed, 8 skipped; `node --test` 70 pass, 0 fail**
 - [x] 6.6 Diff-review the three files against their pre-change state and state what, if anything, was dropped — none of these edits is a rewrite, so the expected answer is "nothing"; if it is not, that is the finding. ****REVISED again, round 2 of review.** measured at HEAD: `git diff main...HEAD --unified=0 -- .claude/ | grep -c '^-[^-]'` → **6**. The earlier note said three, which was true of the first commit and false the moment the response commit landed — and it was not marked as superseded, so it read as current. All six are lines this change replaces in place, none is a deletion: the `Cap:` lines, the Revise-stub read-first sentence, the Handoff run-log bullet, and the run-log-schema exception paragraph. Nothing was dropped**
 - [x] 6.7 Confirm the round-count claim this change makes is true of the tree it leaves: the only edits to a cap value anywhere in the diff are zero. `git diff --unified=0 -- .claude/plugins/cla/skills/spec-to-pr/ | grep -n '^[+-].*rounds' ` shows no line changing a default — measured: `<paste the result>` **measured: the only `rounds` lines in the diff are those three extensions, and each keeps its value verbatim — `--pr-rounds N` (default `2`) reads identically before and after. Zero cap values changed**
+
+## 7. Round 3 of review — the artifacts, not the shipped files
+
+Round 3 found the shipped prose sound and the change artifacts describing a version of the change
+that had been withdrawn. Every fix below is in `spec.md`, `design.md` or `proposal.md` except 7.5–7.9,
+which close defects in the shipped files that only a reader of both halves would see.
+
+- [x] 7.1 **The delta required the withdrawn exit-gate statement.** `spec.md`'s cap requirement said
+  the skill SHALL state "the loop ordinarily ends at the exit gate rather than at the cap", and that
+  it is satisfied only at the cap sites **and at the exit gate itself** — work tasks 3.1–3.3 withdrew
+  as false. Archiving would have materialised an obligation the change deliberately did not meet.
+  The requirement now obliges only "a ceiling, not a target" at the two cap sites, and says
+  explicitly that it SHALL NOT oblige an exit-gate annotation, naming why the earlier draft did.
+- [x] 7.2 **The delta required the non-equality claim `4e11af3` withdrew.** `spec.md` required the
+  schema note to say the two `found` counts are "NOT expected to equal", and a scenario repeated it.
+  That is the exact sentence a third reviewer falsified. Both now state the inequality with its
+  equality case named, matching the shipped note.
+- [x] 7.3 **`design.md` contradicted itself on the same point.** The Decision 4 paragraph still
+  asserted "deliberately NOT expected to equal" while the pin ~70 lines below declared that sentence
+  false. The paragraph is replaced with a pointer to the pin and a note that it was withdrawn.
+- [x] 7.4 **A ledger count nobody ran, in three files.** `spec.md`, `design.md`'s rejected
+  alternatives, and `design.md`'s risks each said the ledger records `rounds_used` of "1, 2, 2 — two
+  of three logged runs". Measured:
+  `python -c "import json;[print(r.get('change'),p.get('rounds_used')) for r in map(json.loads,open('cla.io/retro/spec-to-pr-runs.jsonl',encoding='utf-8')) for p in r['phases'] if p['name']=='Revise']"`
+  → six records, `1, 2, 2, 2, (skip), 2` — **four of the five runs that ran Revise**, not two of
+  three. `git show d6966b1^:cla.io/retro/spec-to-pr-runs.jsonl | grep -c .` → **6**, so the ledger
+  already held six records when the claim was written; this was never measured rather than gone
+  stale. Corrected in all three places, each now naming the command. This is the defect class this
+  change's own round-2 question exists to catch.
+- [x] 7.5 **`sibling_instance: unknown` had no spelling.** `revise.md` told the producer to record
+  `unknown`; every shape pin typed the field as an integer, and `log_run.py` has no field allowlist,
+  so `"unknown"`, `null` and omission all passed and meant different things to the hand-reader the
+  field exists for. `null` is now the spelling for "no measurement", stated in the schema, the JSON
+  skeleton, `revise.md`, `SKILL.md`, `design.md`'s pin, and a new spec scenario.
+- [x] 7.6 **"Say so in that round's record" was unexecutable.** `SKILL.md` and `revise.md` instructed
+  it; the schema said "nothing in the record separates them". `null` from 7.5 is the separation, so
+  all three now agree: not asked → `null`, asked and found none → `0`, field absent → predates the
+  field.
+- [x] 7.7 **The `≥` relation had a counterexample in this same skill.** An orchestrator-originated
+  finding — an INT-CAP/INT-SYC or SIR-TEST re-verification hit, or a Critical on an
+  orchestrator-specified remedy — enters the per-round `found` and no per-agent bucket, because
+  `revise_findings_by_tier` is keyed strictly by canonical agent id. The relation is now stated over
+  agent-surfaced findings, with the inverting case named. Supporting cases had been checked;
+  refuting ones had not.
+- [x] 7.8 **`sibling_instance` could exceed `found`.** The schema scopes it to the deduplicated
+  Critical-plus-Important count; `revise.md` said only "count its confirmed sibling instances" with no
+  severity filter. `revise.md` now carries the restriction at the point the number is produced.
+- [x] 7.9 **The uncited re-dispatch had no accounting.** "Nothing about this changes the round's own
+  finding counts" sat immediately after an instruction to dispatch a fresh agent, so a Critical
+  arriving there had no route into triage. `revise.md` now separates the count-neutral *check* from
+  the *re-dispatch*, which is an ordinary dispatch: its findings enter the round, and it counts once
+  toward `cost.agents_dispatched` and `routing.models`.
+- [x] 7.10 **Two shipped mechanisms had no requirement.** The deferred-decision-instrument exception
+  in `run-log-schema.md` — a general rule binding every future schema field — was covered by nothing,
+  and the "two rounds the question does not fit" skip was a carve-out from a Requirement 1 written as
+  unconditional. Requirement 1 now states the condition and the skip, with a scenario; a fifth
+  requirement covers the exception, its qualifying test and its exit.
+- [x] 7.11 **The exception's test was unresolvable downstream.** It demanded a requirement in
+  `openspec/specs/` — this repo's tree. The schema ships verbatim, so in a consuming repo that path
+  is *their* spec tree and the test could never be evaluated there. It now names the plugin's own
+  spec as the authority and says so explicitly for the consuming-repo reader.
+- [x] 7.12 **Requirement 2 covered three ingredients, not three branches.** Its scenarios covered
+  name/grant/cite; the shipped procedure branches on cited-and-consistent, cited-but-inconsistent and
+  uncited. The cited-but-inconsistent branch had no requirement prose at all. All three branches are
+  now in the requirement, with three added scenarios.
+- [x] 7.13 **`proposal.md` and `design.md` carried stale claims.** "Both sites that name the cap say
+  so" (they say "a ceiling, not a target"); an Impact row promising the withdrawn exit-gate edit;
+  `design.md`'s "Where each edit lands" table carrying the same row; Decision 2's heading still
+  naming the exit gate; "three ADDED requirements" where the delta has five. All corrected.
+- [x] 7.14 **Both "verbatim" reversal-condition blockquotes lost their fence to markdown lazy
+  continuation**, folding differing commentary into a quote the spec requires verbatim. The pasted
+  sentence was byte-correct in each; the following prose is now outside the quote in both files.
+- [x] 7.15 Re-run the full gate, each once — measured: `pytest plugin-tests` **1319 passed, 8
+  skipped**; `node --test plugin-tests/node/mechanical-checks.test.mjs` **70 pass, 0 fail**;
+  `python .claude/plugins/cla/skills/_shared/scripts/check_no_project_tokens.py` **exit 0, 0
+  violations, 5 source roots reached**; `npx openspec validate revise-round-two-question --strict`
+  **valid**.
+- [x] 7.16 Re-derive 6.6 and 6.7 against the working tree rather than `HEAD`, since the round-3 edits
+  were uncommitted when they were re-run. `git diff main -- .claude/ | grep -c '^-[^-]'` → **6**, and
+  all six are lines replaced in place (the schema's exception paragraph, the Revise-stub read-first
+  sentence, the `Cap:` line) — nothing dropped. `git diff main -- .claude/plugins/cla/skills/spec-to-pr/ | grep '^[+-]' | grep -o 'default \`[0-9]\`' | sort | uniq -c`
+  → **4 × ``default `2```**, both sides of both cap lines, so no cap value moved.
