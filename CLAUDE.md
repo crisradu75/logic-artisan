@@ -28,9 +28,11 @@ claude plugin install cla@cris-logic-artisan --scope project
 ```
 
 Cut the tag with **`claude plugin tag`** (shape `<name>--v<version>`); it refuses unless
-`plugin.json` and the marketplace entry already agree. **Current release: `cla--v0.10.0`.** `0.9.x`
-is the validation line; it becomes `1.0.0` once a real task has been run end-to-end through the
-plugin in a consuming repo.
+`plugin.json` and the marketplace entry already agree. **Current release: `cla--v1.0.0`.** The
+`0.9.x`/`0.10.x` validation line closed when a real task was run end-to-end through the plugin in a
+consuming repo — the gate `1.0.0` was waiting on. Versioning from here is ordinary: a breaking
+change to a consuming repo's usage is a major, a skill or guard added or removed is a minor, fixes
+and doc corrections are a patch.
 
 **A published tag is never moved** — cut it only from `main`, only after review. **Never publish
 from a local-directory marketplace.** Background for both rules, and the deleted `claw` launcher:

@@ -32,10 +32,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        # Anchored on the PREFIX, not on a version. Pinning the literal
+        # `cla--v0.10.0` meant every release broke this batch in preflight — and
+        # mutate.py aborts the whole batch on one bad anchor, so a stale anchor
+        # here silently disarmed the other mutants too. Caught by
+        # `test_every_batch_is_loadable_and_declares_real_targets` while cutting
+        # 1.0.0. Injecting a digit after the `v` drifts the line from plugin.json
+        # whatever the current version is.
         "CLAUDE.md's release line drifts from plugin.json",
         REPO / "CLAUDE.md",
-        "**Current release: `cla--v0.10.0`.**",
-        "**Current release: `cla--v0.9.9`.**",
+        "**Current release: `cla--v",
+        "**Current release: `cla--v9",
         TARGETS,
     ),
     (
