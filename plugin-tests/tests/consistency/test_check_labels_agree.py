@@ -17,19 +17,26 @@ run, not the definitions.
 4. a `"the N high-yield checks"` count equals the number defined, and no other
    watched file defines a label the checklist already owns.
 
-**What it does NOT cover, and this is the honest limit.** Rule 3 fires only on
-the "live in checklist.md" idiom, and at the time of writing exactly ONE line in
-the watched set uses it. It therefore does not see the checklist's own internal
-restatements — the parallel-batch-2 sentence, the orchestrator-runs-these line,
-the INT-SYC clause — going short. A reviewer reproduced that: add a check,
-update only what this guard's messages name, and those three stay stale with the
-suite green. Making rule 3 general needs the enumerating lines *marked* rather
-than inferred from phrasing; three attempts at inferring it failed in both
-directions (see the rule's own docstring). Recorded in `TODO.md`.
+5. every line MARKED as enumerating the whole set (`<!-- enumerates-checks -->`)
+   accounts for every defined label, with a floor on how many marked lines must
+   exist.
 
-`_ENUMERATING_FILES` is likewise a hand-maintained list. `agents/fact-gatherer.md`
-names a range in its frontmatter and is deliberately unwatched; nothing detects a
-fifth file appearing.
+**Rule 5 is the general form of rule 3, and it closed the gap this docstring
+used to record.** Rule 3 fires only on the "live in checklist.md" idiom, which
+exactly one line in the watched set uses, so the checklist's own internal
+restatements — the parallel-batch-2 sentence, the orchestrator-runs-these line,
+the INT-SYC clause — went stale with the suite green. A reviewer reproduced it.
+Inferring "this sentence enumerates the set" from phrasing failed three times in
+both directions, so the enumerating lines are now *marked* instead: an HTML
+comment, invisible when rendered, greppable repo-wide, and legible to whoever
+edits the prose next. Rule 3 is kept rather than replaced — it is a true
+statement about a different thing (residence), and it subtracts delegated labels
+where rule 5 does not.
+
+**What it still does NOT cover.** `_ENUMERATING_FILES` is a hand-maintained list.
+`agents/fact-gatherer.md` names a range in its frontmatter and is deliberately
+unwatched; nothing detects a fifth file appearing. The marker makes that
+findable by grep, but no rule here reads outside the four listed files.
 
 **Measured on `main` when this landed:** the guard caught three live defects that
 predate it — `review-gate.md` told batch orchestrators that `0j` and `0k` do not
@@ -217,6 +224,93 @@ def test_a_residence_claim_still_exists_somewhere_to_check() -> None:
         "test_each_enumerating_line_covers_the_whole_defined_set is checking nothing. "
         "Either a residence claim was reworded past this rule's one idiom, or it was "
         "deleted. Restore the phrasing or widen the rule — do not leave it inert."
+    )
+
+
+# The general form of rule 3. A line that enumerates the whole check set carries
+# an HTML comment saying so — invisible when the markdown renders, greppable
+# repo-wide, and legible to whoever edits the prose next. Inferring the same
+# thing from phrasing was tried three times and failed in both directions: a
+# presence check passes while another sentence in the same file names the old
+# set; treating any range opening at `0a` as an enumeration false-positives on
+# every legitimate subset that also opens there (`0a–0h` is the delegable
+# portion, `0a–0e` appears in a comparison). Marking is the only version that
+# distinguishes "enumerates the set" from "mentions a range".
+_ENUMERATION_MARKER = "<!-- enumerates-checks -->"
+
+# The count is a floor, not the population, and it is what stops the markers
+# being quietly deleted one at a time — the same bounded-debt shape
+# `test_guards_have_mutant_batches` uses. Raise it when a marked line is added;
+# it may not be lowered without deleting a line the checklist actually relies on.
+_MIN_MARKED_LINES = 3
+
+
+def _marked_lines(path: Path) -> list[tuple[int, str]]:
+    return [
+        (n, line)
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if _ENUMERATION_MARKER in line
+    ]
+
+
+@pytest.mark.parametrize("path", _ENUMERATING_FILES, ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)))
+def test_every_marked_enumeration_covers_the_whole_defined_set(path: Path) -> None:
+    """A marked line must name every check the checklist defines.
+
+    This is the rule the residence idiom could only reach on one line. It covers
+    the checklist's own internal restatements — the parallel-batch-2 sentence,
+    the orchestrator-runs-these line, the INT-SYC clause — which are the lines an
+    orchestrator actually reads to decide what to run, and which previously went
+    stale with the suite green.
+
+    Unlike the residence rule, delegated labels are NOT subtracted. A marked line
+    claims the whole set, and the two lines that name the overlay's `0f–0i`
+    explicitly do account for them; a marked line that cannot is mismarked.
+    """
+    defined = _defined_labels()
+    gaps = []
+
+    for lineno, line in _marked_lines(path):
+        ranges = _RANGE.findall(line)
+        assert ranges, (
+            f"{path.name}:{lineno} is marked as enumerating the checks but names no "
+            "range this guard can parse. A marked line that cannot be read is "
+            "indistinguishable from a correct one, so it fails rather than skipping. "
+            f"Line: {line.strip()[:160]}"
+        )
+        covered: set[str] = set()
+        for lo, hi in ranges:
+            covered |= _expand(lo, hi)
+        uncovered = defined - covered
+        if uncovered:
+            gaps.append(f"line {lineno} omits {', '.join(sorted(uncovered))}")
+
+    assert not gaps, (
+        f"{path.relative_to(_PLUGIN_ROOT)} carries a marked enumeration that does not "
+        f"account for every defined check: {'; '.join(gaps)}. An orchestrator reading "
+        "that line runs the old set."
+    )
+
+
+def test_the_marked_enumerations_have_not_been_quietly_removed() -> None:
+    """Non-vacuity for the rule above, and the reason it is a floor.
+
+    Every assertion in `test_every_marked_enumeration_covers_the_whole_defined_set`
+    is inside a loop over marked lines. Delete the markers and it passes over an
+    empty list — the rule evaporates with the suite green, which is the exact
+    failure mode the residence idiom already had once.
+    """
+    found = {
+        f"{path.relative_to(_PLUGIN_ROOT)}:{n}"
+        for path in _ENUMERATING_FILES
+        for n, _ in _marked_lines(path)
+    }
+    assert len(found) >= _MIN_MARKED_LINES, (
+        f"{len(found)} marked enumeration(s), below the floor of {_MIN_MARKED_LINES}: "
+        f"{sorted(found)}. A marker was deleted or a marked line was reworded without "
+        f"carrying `{_ENUMERATION_MARKER}` with it, which leaves the coverage rule "
+        "checking less than it did. Restore it, or lower the floor in the same commit "
+        "and say which line the checklist no longer relies on."
     )
 
 

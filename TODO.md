@@ -223,7 +223,7 @@ first contact, unchanged); research-as-procedure (user memory already carries it
 primitive extraction — measured overlap between `shape-decision` and `feedback` is two sentences of
 principle, below the shared-reference bar.
 
-## Write mutant batches for the 8 grandfathered guards
+## Write mutant batches for the 7 grandfathered guards
 
 `plugin-tests/tests/consistency/test_guards_have_mutant_batches.py` requires every guard in a fully
 adopted area — `conformance`, `consistency` and `release` today — to ship a same-named batch under
@@ -254,14 +254,22 @@ this entry was written and ten after `decouple-skills-from-dev-assets` (which br
 with it); `extract-dev-tree-from-plugin` then deleted `test_runner_stream_encoding` along with the
 runner it tested. A guard that disappears pays no debt — it just stops existing.
 
-Four batches exist and kill everything they fire at (`test_skill_lint`, `test_doc_facts`,
-`test_no_project_tokens`, `test_project_facts_paths`); `test_source_only_markers`' batch was deleted
-with its guard.
+Five batches exist and kill everything they fire at (`test_skill_lint`, `test_doc_facts`,
+`test_no_project_tokens`, `test_project_facts_paths`, `test_check_script_drift`);
+`test_source_only_markers`' batch was deleted with its guard.
+
+**`test_check_script_drift` is done** — it was the entry's named highest-value target, on the
+grounds that CLAUDE.md calls it the guard over a *silent* failure. Its batch is five mutants, each
+re-breaking a defect the script's own docstrings record as having shipped once: blanking every
+string constant (which made a sibling switching git plumbing compare equal), `ast.walk` letting a
+nested def shadow the real one, dropping the WRITER from the resolver group so the two readers only
+compare against each other, returning early on the first missing file, and swallowing a missing
+guarded function. All five killed; `_EXEMPT` and the `test_the_grandfather_list_only_shrinks` bound
+both moved 8 → 7 in the same commit.
 
 Delete an `_EXEMPT` line the moment its batch lands. A companion test caps the list at its
-original size, so it can only shrink. Highest value first: `test_check_script_drift` — CLAUDE.md
-names it as guarding a *silent* failure, which is exactly the class where an unproven guard is
-worth least.
+original size, so it can only shrink. Next highest value is a judgement call rather than a
+documented one — the remaining seven are listed in `_EXEMPT`.
 
 ## Claim-shape sweep (`0l`): CLOSED — kept for the merge, and for how the finding list read three ways
 
@@ -391,7 +399,34 @@ the loop's own frustration alongside its findings, and nothing downstream can te
 That is the argument for re-deriving a finding list before acting on it, and it is the reason this
 section stays.
 
-## Make the check-label coverage rule general, by marking the enumerations
+## Make the check-label coverage rule general, by marking the enumerations — DONE
+
+**Closed by marking the three lines.** `<!-- enumerates-checks -->` now sits on the
+parallel-batch-2 sentence, the "All checks above … are run by the orchestrator" line, and the
+INT-SYC clause — an HTML comment, invisible when the markdown renders and greppable repo-wide.
+`test_every_marked_enumeration_covers_the_whole_defined_set` checks every marked line against the
+full defined set, and `test_the_marked_enumerations_have_not_been_quietly_removed` holds a floor of
+three, because every assertion in the coverage rule sits inside a loop over marked lines and would
+evaporate silently if the markers went. Rule 3 is kept rather than replaced: it is a true statement
+about residence, and it subtracts delegated labels where rule 5 must not.
+
+Two mutants in the batch are worth carrying forward, because both were written, both SURVIVED, and
+neither could have done otherwise:
+
+- `_MIN_MARKED_LINES = 3` → `0`. The floor only binds when markers are missing, so with all three
+  present no test can observe the change. Killing it would mean asserting the constant against the
+  live count, which turns a floor into a population. Dropped from the batch with the reason recorded
+  in it — an unkillable mutant reports a survivor on every clean run, and a survivor nobody acts on
+  trains the next reader to skip the list.
+- `defined - covered` → `defined - _delegated_labels() - covered`. Every marked line in the correct
+  tree covers the delegated labels anyway, so the two expressions agree everywhere the real file
+  reaches. Replaced with a mutation of the *prose* — dropping `0i` from a marked line — which does
+  discriminate, and is killed. **Where a guard's two candidate rules agree on all correct inputs,
+  mutate the input, not the guard.**
+
+The record below is what the entry said before it was closed.
+
+### The original entry
 
 `plugin-tests/tests/consistency/test_check_labels_agree.py` guards agreement between
 `checklist.md`'s check definitions (`0a`, `0b`, …) and the places restating that set. It shipped
@@ -426,11 +461,13 @@ never can.
 - `_ENUMERATING_FILES` is a hand-maintained four-file list. `agents/fact-gatherer.md` names a range
   in its frontmatter and is deliberately unwatched, and nothing detects a fifth file appearing. The
   marker approach removes this too — a marker is greppable repo-wide.
-- **`0m` is inside the checklist's growth path.** `review-gate.md`'s own batch-only check was
-  relabelled `0j` → `0m` to end a collision; `0l` is already claimed by the unmerged
-  `feature/grounding-contract-claim-shapes`, so `0m` is the next label the checklist reaches. At that
-  point the relabel has to happen again. A prefix outside the `0[a-z]` namespace the guard scans
-  (say `B1`) closes the class permanently instead of deferring it.
+- **`0m` is inside the checklist's growth path — still open.** `review-gate.md`'s own batch-only
+  check was relabelled `0j` → `0m` to end a collision. `0l` has since merged (PR #158, `a6b2862`)
+  and is live at `checklist.md:56`, so `0m` is the next label the checklist reaches and the relabel
+  has to happen again at that point. A prefix outside the `0[a-z]` namespace the guard scans (say
+  `B1`) closes the class permanently instead of deferring it. *(This paragraph previously described
+  `0l` as claimed by an unmerged branch; that branch merged 2026-08-26 and was deleted —
+  `git branch -a --list '*grounding*'` returns nothing.)*
 
 **One operational note, learned the hard way.** Running `mutate.py` while review agents read the same
 tree corrupts their environment — a reviewer saw this guard flake 3-of-5 runs because a concurrent

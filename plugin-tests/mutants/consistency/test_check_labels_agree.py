@@ -100,4 +100,61 @@ MUTANTS = [
         '_DEFINITION = re.compile(r"^(?:\\*\\*)?(9[a-z])(?:\\.|\\s*[–—-])\\s", re.MULTILINE)',
         TARGETS,
     ),
+    # ----------------------------------------------------------------------- #
+    # Rule 5 — the marked enumerations. These re-break the defect the marker
+    # mechanism was added to close: a restatement inside the checklist going
+    # short while the suite stays green.
+    # ----------------------------------------------------------------------- #
+    (
+        # The literal defect two reviewers reproduced: the orchestrator-runs-these
+        # line names a set that stops short of what the checklist defines, so an
+        # orchestrator reading it runs the old set.
+        "a marked enumeration goes short by one check",
+        CHECKLIST,
+        "All checks above (generic 0a–0e and 0j–0l here, plus the overlay's 0f–0i and 1–9)",
+        "All checks above (generic 0a–0e and 0j–0k here, plus the overlay's 0f–0i and 1–9)",
+        TARGETS,
+    ),
+    (
+        # Rewording a marked line without carrying its marker leaves the prose
+        # unwatched. The floor is what turns that into a failure rather than a
+        # silently smaller rule.
+        "a marked line loses its marker in a reword",
+        CHECKLIST,
+        "not on the change's self-description. <!-- enumerates-checks -->",
+        "not on the change's self-description.",
+        TARGETS,
+    ),
+    (
+        # Discriminates the no-subtraction choice in the rule. Dropping a
+        # DELEGATED label (`0i`) from a marked line must fail: the rule compares
+        # against `defined`, so a marked line claiming the whole set has to name
+        # the overlay's checks too. Under the residence rule's `owned` set — with
+        # the delegated labels subtracted — this edit would pass, which is why
+        # the two rules deliberately do not share that subtraction.
+        #
+        # This replaced a direct mutation of `defined - covered` to
+        # `defined - _delegated_labels() - covered`, which SURVIVED. It had to:
+        # every marked line in the correct tree covers the delegated labels
+        # anyway, so the two expressions agree everywhere the real file reaches.
+        # Mutating the guard could not distinguish them; mutating the prose can.
+        "a marked enumeration drops a check the overlay owns",
+        CHECKLIST,
+        "plus the overlay's 0f–0i and 1–9)",
+        "plus the overlay's 0f–0h and 1–9)",
+        TARGETS,
+    ),
 ]
+
+# DELIBERATELY NOT A MUTANT: `_MIN_MARKED_LINES = 3` → `0`.
+#
+# It was written, it survived, and it cannot do otherwise. The floor only binds
+# when markers are missing, and in the correct tree all three are present — so
+# lowering it changes no outcome any test can observe. Killing it would mean
+# asserting the constant's value against the live count, which turns the floor
+# into a population and deletes the protection it exists to give.
+#
+# The floor's real non-vacuity is the "a marked line loses its marker in a
+# reword" mutant above, which removes a marker and IS killed. Keeping an
+# unkillable mutant in the batch would report a survivor on every clean run,
+# and a survivor nobody acts on trains the next reader to skip the whole list.

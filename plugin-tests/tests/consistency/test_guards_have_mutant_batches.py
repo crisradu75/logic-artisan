@@ -81,7 +81,6 @@ _EXEMPT = {
     # "new files only" — so the debt is countable and shrinks visibly. Delete a
     # line here the moment its batch lands. Tracked in TODO.md.
     "tests/conformance/test_no_hardcoded_plugin_paths.py": "grandfathered",
-    "tests/consistency/test_check_script_drift.py": "grandfathered",
     "tests/consistency/test_ledger_names_agree.py": "grandfathered",
     "tests/consistency/test_marketplace_manifest.py": "grandfathered",
     "tests/consistency/test_pre_push_is_installed.py": "grandfathered",
@@ -265,7 +264,7 @@ def test_the_grandfather_list_only_shrinks():
     # at its original 12 while the real count fell to 8, it silently permitted
     # four new exemptions — a bound far above its population is the same
     # decorative-floor defect `test-quality.md` describes, applied to a ceiling.
-    assert grandfathered <= 8, (
+    assert grandfathered <= 7, (
         f"{grandfathered} grandfathered guards; the bound is the real count at "
         "the last deletion and is only allowed to shrink. A NEW guard needs a "
         "mutant batch, not an exemption — and deleting an entry means lowering "
