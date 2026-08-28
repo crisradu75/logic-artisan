@@ -167,14 +167,18 @@ it. Each comment is stored with the passage it is about, in a file the session r
 through.
 
 ```
-/cla:annotate openspec/changes/add-hook-config-overlay
-/cla:annotate cla.io/decisions/hook-config-redesign.md
+/cla:annotate <change-id or openspec/changes/<change-id>>
+/cla:annotate <path>.md
 ```
 
-A change opens as one page with proposal, design, tasks and spec deltas in tabs, the passages that
-answer each other shown side by side, and a derived coverage view of what nothing implements. It
-never writes to what you are annotating. Say "read my annotations" in a later session to pick the
-comments back up.
+A change opens as one page with proposal, design, tasks and spec deltas in tabs, each passage's
+counterpart inlined beneath the block it answers to — tabs alone show one side at a time — plus a
+derived coverage view of which claims nothing names. Read that view as a reading aid rather than a
+verdict: an uncovered row means no task names that bullet's file, not that the work is missing.
+
+It never writes to what you are annotating; the page is served read-only and a test pins that across
+a full annotate-and-rebuild cycle. Say "read my annotations" in a later session to pick the comments
+back up.
 
 ## 6. Batches: `multi-lite` and `multi-pr`
 
@@ -309,20 +313,12 @@ destination repo:
    these for you, and nothing warns when one is missing. A phase that needs an absent plugin simply
    cannot run, which reads as CLA being broken.
 
-   - **OpenSpec** — both the `opsx:*` skills and the `openspec` CLI. Required by `spec-to-pr`,
-     `multi-spec`, `multi-pr`, `review-change` and `lite-pr`; the CLI is invoked directly around 49
-     times across the skills (`validate`, `archive`, `status`, `apply`).
-   - **`pr-review-toolkit`** — supplies `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`,
-     `comment-analyzer` and `type-design-analyzer`. Required by every PR-review pass.
-     `spec-to-pr`'s Revise phase is explicit that there is **no degraded mode**: it dispatches the
-     full agent-selection table or it does not review at all.
-   - **`commit-commands`** — required by `lite-pr`, which calls `commit-push-pr` for its
-     commit/push/PR step. The spec-scale path commits directly and does not need it.
-   - **`plugin-dev`** — supplies `skill-reviewer`, one conditional row of the agent-selection table.
-     It fires only on a diff that changes a `SKILL.md` or is prose-dominant, so a repo whose changes
-     never touch skills never reaches it.
-
-   The first two are the ones a repo notices immediately; the third only on the lightweight path.
+   OpenSpec and `pr-review-toolkit` are required outright; `commit-commands` on the lightweight
+   path; `plugin-dev` conditionally. **Which skill reaches which, and how hard each one is:**
+   [the plugin's own README](.claude/plugins/cla/README.md#install-these-first--cla-calls-out-to-them-and-cannot-substitute-for-them).
+   That file is the one a consuming repo receives, so the list lives there and nowhere else — three
+   copies of a four-row table is three things to keep in sync, and an earlier draft of this very
+   section had already drifted from its sibling before either was read.
 
 2. **Install CLA from the marketplace** — the plugin arrives as a versioned snapshot pinned to an
    exact release tag:

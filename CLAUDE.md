@@ -27,7 +27,9 @@ claude plugin marketplace add crisradu75/logic-artisan
 claude plugin install cla@cris-logic-artisan --scope project
 ```
 
-Cut the tag with **`claude plugin tag`** (shape `<name>--v<version>`); it refuses unless
+Cut the tag with **`claude plugin tag .claude/plugins/cla`** — the path argument is required here,
+because the bare form looks for a manifest at the repo root, where this repo keeps
+`marketplace.json` instead. Shape `<name>--v<version>`; it refuses unless
 `plugin.json` and the marketplace entry already agree. **Current release: `cla--v1.0.0`.** The
 `0.9.x`/`0.10.x` validation line closed when a real task was run end-to-end through the plugin in a
 consuming repo — the gate `1.0.0` was waiting on. Versioning from here is ordinary: a breaking
