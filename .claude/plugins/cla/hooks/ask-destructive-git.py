@@ -168,6 +168,7 @@ if _HOOKS_DIR not in sys.path:
 
 from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
+from _dispatch_lib import GIT_SEP as _GIT_SEP  # noqa: E402
 from _dispatch_lib import run_git as _run_git  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
@@ -176,7 +177,10 @@ from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E40
 # the command and must not. Both rules below and `_GH_PR_MERGE` share this —
 # four review rounds each found the same bug one construct over, every time
 # because one position used a plain `\s` or excluded the newline outright.
-_SEP = r"(?:[ \t]|\\\r?\n)+"
+# Imported rather than defined here: `GIT_GLOBAL_OPTS` needs the same thing, and
+# the two drifting is exactly how `git -C . \`+newline+`push --force` stayed a
+# silent bypass after every OTHER separator position had been fixed.
+_SEP = _GIT_SEP
 
 # The trailing tail stops at a shell separator so the flags of a LATER command
 # are never attributed to this one. A NEWLINE is such a separator: a multi-line
@@ -306,9 +310,43 @@ _CLEAN = re.compile(_GIT_CMD + _SEP + _G + r"clean\b" + _TAIL)
 # refuses on conflict the same way bare `checkout` does, and `git switch` takes
 # no pathspec at all — `restore` is its path-facing counterpart and is matched
 # separately.
+# git accepts any UNAMBIGUOUS long-option abbreviation, and each command's
+# abbreviation floor differs because it depends on that command's own option
+# set. `_FORCE_LONG`/`_DELETE_LONG` above already carry this reasoning for
+# `git branch`; not carrying it across to the new commands left
+# `git checkout --f`, `git switch --di other` and `git clean --f` silent while
+# each really discarded the tree.
+#
+# The floors, each read off the command's own `--` options:
+#   checkout — `--force` is its only `--f*`, so `--f` resolves.
+#   clean    — likewise `--f`.
+#   switch   — `--force` and `--force-create` share every prefix of `--force`,
+#              so git REFUSES `--f`/`--fo`/`--forc` as ambiguous (verified) and
+#              only the full `--force` is spellable. `--discard-changes` shares
+#              `--d` with `--detach`, so `--di` is its shortest resolving form.
+def _abbrev(word: str, floor: int) -> str:
+    """Regex for any prefix of `word` at least `floor` characters long.
+
+    Generated rather than hand-written. `_FORCE_LONG`/`_DELETE_LONG` above spell
+    their nesting out by hand, which is fine at four characters and stops being
+    fine at fifteen: the hand-written `--discard-changes` form shipped with
+    unbalanced parentheses, and the whole module then failed to import — which
+    the dispatcher reports as a hook that did not run, i.e. every check in this
+    file silently off. One generator, no counting.
+    """
+    out = ""
+    for char in reversed(word[floor:]):
+        out = "(?:" + re.escape(char) + out + ")?"
+    return re.escape(word[:floor]) + out
+
+
+_END = r"(?:[\s\\]|=|$)"
 _FORCE_DISCARD = re.compile(
-    r"(?:^|\s)(?:--force(?:[\s\\]|=|$)|--discard-changes(?:[\s\\]|=|$)"
-    r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
+    r"(?:^|\s)(?:"
+    + "--" + _abbrev("force", 1) + _END
+    + r"|--" + _abbrev("discard-changes", 2) + _END
+    + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$)"
+    + r")"
 )
 
 # `git restore --staged <path>` rewrites the INDEX from HEAD and never touches
@@ -317,11 +355,19 @@ _FORCE_DISCARD = re.compile(
 # the routine prompt this whole rule is shaped to avoid. `--staged --worktree`
 # together DO touch the tree, so only the staged-without-worktree form is
 # skipped. `-S`/`-W` are the short spellings, bundleable as `-SW`.
+#
+# Both take abbreviations, and the WORKTREE one is the dangerous half to miss:
+# it appears under a NOT, so failing to match it drops the invocation entirely.
+# `git restore --staged --w <path>` resets index AND worktree, and was silent.
+# `--worktree` is restore's only `--w*` option and `--staged` its only `--st*`
+# (`--source` shares only `--s`), so those are the floors.
 _RESTORE_STAGED = re.compile(
-    r"(?:^|\s)(?:--staged(?:[\s\\]|=|$)|-[A-Za-z]*S[A-Za-z]*(?:[\s\\]|$))"
+    r"(?:^|\s)(?:--" + _abbrev("staged", 2) + _END
+    + r"|-[A-Za-z]*S[A-Za-z]*(?:[\s\\]|$))"
 )
 _RESTORE_WORKTREE = re.compile(
-    r"(?:^|\s)(?:--worktree(?:[\s\\]|=|$)|-[A-Za-z]*W[A-Za-z]*(?:[\s\\]|$))"
+    r"(?:^|\s)(?:--" + _abbrev("worktree", 1) + _END
+    + r"|-[A-Za-z]*W[A-Za-z]*(?:[\s\\]|$))"
 )
 
 # Options whose VALUE is the next token, so that value is not a path operand.
@@ -379,8 +425,12 @@ def _operands(scanned_tail: str, raw_tail: str) -> list[str]:
 # nothing under `-n`/`--dry-run`, so neither shape is worth a prompt. Both
 # accept a bundled cluster (`-fdx`, `-nd`), which is how they are usually
 # typed.
+# `--f` resolves for clean: `--force` is its only `--f*` option. See
+# `_FORCE_DISCARD` for why each command's floor has to be read off its own
+# option set rather than assumed.
 _CLEAN_FORCE = re.compile(
-    r"(?:^|\s)(?:--force(?:[\s\\]|=|$)|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
+    r"(?:^|\s)(?:--" + _abbrev("force", 1) + _END
+    + r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
 )
 _CLEAN_DRY_RUN = re.compile(
     r"(?:^|\s)(?:--dry-run(?:[\s\\]|=|$)|-[A-Za-z]*n[A-Za-z]*(?:[\s\\]|$))"
@@ -416,7 +466,25 @@ def _line_kind(line: str) -> str:
         return "untracked"
     if line.startswith("!!"):
         return "ignored"
-    return "safe" if line[1:2] in (" ", "D", "") else "worktree"
+    index, worktree = line[0:1], line[1:2]
+    # Unmerged. A conflicted path holds resolution work that exists in no commit
+    # and no reflog. `UD` in particular has `D` in the worktree column and was
+    # classified "safe", so `git checkout -f` on a tree whose only status line
+    # was `UD` threw away the resolution silently. A pathed `git checkout --`
+    # refuses on an unmerged path, so this over-prompts slightly there — the
+    # right side to err on.
+    if "U" in (index, worktree) or index + worktree in ("DD", "AA"):
+        return "worktree"
+    if worktree not in (" ", "D", ""):
+        return "worktree"
+    # Column X — staged, with the worktree already matching. A PATHED discard
+    # cannot reach this (it copies the index over a file that equals it), which
+    # is why the first cut called it safe outright. A FORCED checkout can: it
+    # moves HEAD and resets both index and worktree, so `M ` reverts and `A `
+    # DELETES a file that was never committed anywhere. Measured — `git reset
+    # --hard` on the identical tree already prompts, so calling it safe made the
+    # two sibling rules disagree about the same state.
+    return "index" if index not in (" ", "?", "") else "safe"
 
 
 def _status_lines(cwd: str, paths: list[str], ignored: bool):
@@ -583,6 +651,12 @@ DISCARD_REASON = (
     "path(s) named here hold such changes right now"
 )
 
+UNCHECKED_REASON = (
+    "a command that can discard uncommitted work, whose safety check COULD NOT "
+    "BE RUN — the hook is asking because it was unable to look, not because it "
+    "found work at stake"
+)
+
 CLEAN_REASON = (
     "`git clean`, which deletes untracked files outright — the path(s) named "
     "here hold untracked files right now, and nothing recovers them"
@@ -654,12 +728,25 @@ def _reasons(command: str, cwd: str) -> list[str]:
                     # nothing about the blast radius — the whole tree is at risk.
                     discard_whole_tree = True
                     continue
+                elif pattern is _SWITCH:
+                    # `git switch` is matched ONLY in its forced form, which the
+                    # branch above has already taken. Falling through to
+                    # `_operands` contributed the BRANCH NAME to the probe, so
+                    # `git switch -c docs` prompted whenever a `docs/` path was
+                    # dirty — pure false-positive surface, since a bare switch
+                    # refuses on conflict. The module docstring claimed this
+                    # `continue` existed before it did.
+                    continue
                 discard_paths += _operands(tail, command[m.start(1):m.end(1)])
         if discard_whole_tree or discard_paths:
+            # A forced discard resets the INDEX as well as the worktree, so it
+            # destroys staged-but-clean-in-tree work a pathed discard cannot
+            # touch. The two callers therefore want different kinds.
+            wanted = {"worktree", "index"} if discard_whole_tree else {"worktree"}
             if _holds_work(
                 cwd,
                 [] if discard_whole_tree else discard_paths,
-                {"worktree"},
+                wanted,
                 False,
                 whole_tree,
             ):
@@ -695,9 +782,24 @@ def _reasons(command: str, cwd: str) -> list[str]:
             whole_tree,
         ):
             found.append(CLEAN_REASON)
-    except Exception:  # noqa: BLE001 — see the comment above the `try`
-        if DISCARD_REASON not in found:
-            found.append(DISCARD_REASON)
+    except Exception as exc:  # noqa: BLE001 — see the comment above the `try`
+        # A DISTINCT reason, not `DISCARD_REASON`. That text ends "the path(s)
+        # named here hold such changes right now", which is a measurement — and
+        # this is the one branch where nothing was measured. Reusing it made the
+        # prompt assert a fact it did not have, in exactly the case where the
+        # guard is blind, and for commands (`git clean -fdx`, `git switch -f`)
+        # that name no path and run no checkout.
+        if UNCHECKED_REASON not in found:
+            found.append(UNCHECKED_REASON)
+        # stderr from an exit-0 hook reaches the debug log only, so this costs
+        # nothing and is the difference between a guard silently degraded for
+        # weeks and a report someone can act on.
+        print(
+            f"[ask-destructive-git] the working-tree discard check raised "
+            f"{type(exc).__name__}: {exc} — asking rather than assuming. "
+            "(hook: ask-destructive-git.py)",
+            file=sys.stderr,
+        )
 
     if _GH_PR_MERGE.search(scanned):
         found.append(MERGE_REASON)

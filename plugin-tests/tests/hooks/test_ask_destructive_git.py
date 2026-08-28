@@ -1431,4 +1431,288 @@ def test_a_raise_in_the_probe_does_not_drop_the_other_guards(
         )
     )
     assert "force-push" in reason
-    assert "discard of uncommitted work" in reason
+    assert "COULD NOT BE RUN" in reason
+
+
+def test_the_unchecked_reason_does_not_claim_a_measurement(
+    repo, monkeypatch, capsys
+):
+    """`DISCARD_REASON` ends 'the path(s) named here hold such changes right
+    now', which is a measurement -- and the exception path is the one branch
+    where nothing was measured. Reusing it made the prompt assert a fact it did
+    not have, in the one case where the guard is blind, for a command that names
+    no path and runs no checkout."""
+    def boom(*args, **kwargs):
+        raise RuntimeError("probe exploded")
+
+    monkeypatch.setattr(hook, "_status_lines", boom)
+    reason = _reason(_run("git clean -fdx", monkeypatch, capsys, cwd=str(repo)))
+    assert "COULD NOT BE RUN" in reason
+    assert "hold such changes right now" not in reason
+
+
+def test_a_raise_leaves_a_trace_on_stderr(repo, monkeypatch, capsys):
+    """Without it, a coding bug in the operand parser degrades this guard to
+    'always ask' indefinitely and nothing says why."""
+    def boom(*args, **kwargs):
+        raise RuntimeError("probe exploded")
+
+    monkeypatch.setattr(hook, "_status_lines", boom)
+    monkeypatch.setattr(
+        sys, "stdin",
+        io.StringIO(json.dumps({
+            "tool_input": {"command": "git checkout -- tracked.txt"},
+            "cwd": str(repo),
+        })),
+    )
+    assert hook.main() == 0
+    err = capsys.readouterr().err
+    assert "RuntimeError" in err and "probe exploded" in err
+
+
+# --- long-option abbreviations ----------------------------------------------- #
+# git accepts any UNAMBIGUOUS abbreviation, and each command's floor depends on
+# its own option set. `git branch`'s rules carried this reasoning; the four
+# commands added here did not, so every row below was SILENT while really
+# discarding the tree.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git checkout --forc",
+        "git checkout --fo",
+        "git checkout --f",
+        "git checkout --f main",
+        "git switch --discard-change main",
+        "git switch --discar main",
+        "git switch --di main",
+    ],
+)
+def test_an_abbreviated_force_flag_still_prompts(command, dirty, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys, cwd=str(dirty))
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert "discard of uncommitted work" in _reason(payload)
+
+
+@pytest.mark.parametrize("command", ["git clean --f", "git clean --forc -d"])
+def test_an_abbreviated_clean_force_still_prompts(command, repo, monkeypatch, capsys):
+    (repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
+    payload = _run(command, monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert "git clean" in _reason(payload)
+
+
+def test_an_abbreviated_worktree_flag_is_seen(dirty, monkeypatch, capsys):
+    """`_RESTORE_WORKTREE` appears under a NOT, so failing to match an
+    abbreviation DROPS the invocation rather than merely widening it.
+    `git restore --staged --w <path>` resets index AND worktree, and was
+    silent."""
+    _git(dirty, "add", "tracked.txt")
+    (dirty / "tracked.txt").write_text("original\nand more\n", encoding="utf-8")
+    payload = _run(
+        "git restore --staged --w tracked.txt", monkeypatch, capsys, cwd=str(dirty)
+    )
+    assert payload is not None
+    assert "discard of uncommitted work" in _reason(payload)
+
+
+def test_an_abbreviated_staged_flag_is_still_exempt(dirty, monkeypatch, capsys):
+    """The other direction: `--st` is an unstage too, so the exemption must
+    cover it or the routine-prompt problem returns for that spelling."""
+    _git(dirty, "add", "tracked.txt")
+    (dirty / "tracked.txt").write_text("original\nand more\n", encoding="utf-8")
+    assert _run(
+        "git restore --st tracked.txt", monkeypatch, capsys, cwd=str(dirty)
+    ) is None
+
+
+def test_the_abbreviation_generator_bottoms_out_at_the_floor():
+    """A prefix SHORTER than the floor is ambiguous and git refuses it, so
+    matching it would be a false positive. Asserted on the generator directly --
+    the hand-written nesting it replaced shipped with unbalanced parentheses,
+    which made the whole module fail to import and every check in it silently
+    stop running."""
+    import re as _re
+
+    pattern = _re.compile(hook._abbrev("worktree", 1) + "$")
+    assert pattern.match("worktree") and pattern.match("w") and pattern.match("work")
+    assert not pattern.match("") and not pattern.match("worktrees")
+
+
+# --- the index column, which a FORCED discard puts at stake ------------------ #
+
+
+@pytest.fixture
+def staged_only(repo: Path) -> Path:
+    """Staged, with the worktree matching the index -- porcelain `M ` and `A `.
+    `newfile.txt` is in no commit anywhere, so a forced checkout deletes it with
+    nothing to recover from."""
+    _git(repo, "branch", "other")
+    (repo / "tracked.txt").write_text("original\nSTAGED WORK\n", encoding="utf-8")
+    (repo / "newfile.txt").write_text("NEVER COMMITTED ANYWHERE\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt", "newfile.txt")
+    return repo
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["git checkout -f other", "git switch -f other", "git switch --discard-changes other"],
+)
+def test_a_forced_branch_change_prompts_on_staged_only_work(
+    command, staged_only, monkeypatch, capsys
+):
+    """Measured: really running `git checkout -f other` on this tree reverts
+    `tracked.txt` and DELETES `newfile.txt`, leaving an empty status. The
+    sibling `git reset --hard` rule already prompts on the identical tree, so
+    calling this state safe made the two disagree."""
+    payload = _run(command, monkeypatch, capsys, cwd=str(staged_only))
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert "discard of uncommitted work" in _reason(payload)
+
+
+def test_a_pathed_discard_stays_silent_on_the_same_staged_only_tree(
+    staged_only, monkeypatch, capsys
+):
+    """Non-vacuity partner, and the reason the two callers want different kinds:
+    a PATHED `git checkout --` copies the index over a file that already equals
+    it, which really is a no-op. Widening both callers would reintroduce the
+    routine prompt the worktree-column fix removed."""
+    assert _run(
+        "git checkout -- tracked.txt", monkeypatch, capsys, cwd=str(staged_only)
+    ) is None
+
+
+def test_a_forced_checkout_on_a_conflicted_tree_prompts(repo, monkeypatch, capsys):
+    """Unmerged `UD` has `D` in the worktree column and was classified safe, so
+    a forced checkout threw away the conflict resolution silently. The work in a
+    conflicted file exists in no commit and no reflog."""
+    _git(repo, "checkout", "-q", "-b", "side")
+    (repo / "tracked.txt").write_text("side change\n", encoding="utf-8")
+    _git(repo, "commit", "-qam", "side")
+    _git(repo, "checkout", "-q", "main")
+    (repo / "tracked.txt").unlink()
+    _git(repo, "commit", "-qam", "delete on main")
+    merge = subprocess.run(
+        ["git", "-C", str(repo), "merge", "side"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    assert merge.returncode != 0, "expected a modify/delete conflict"
+    (repo / "tracked.txt").write_text("HOURS OF RESOLUTION WORK\n", encoding="utf-8")
+    payload = _run("git checkout -f", monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None, _git_status(repo)
+    assert "discard of uncommitted work" in _reason(payload)
+
+
+def _git_status(repo: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    ).stdout
+
+
+@pytest.mark.parametrize(
+    "porcelain,expected",
+    [
+        ("?? new.txt", "untracked"),
+        ("!! ign.txt", "ignored"),
+        (" M a.txt", "worktree"),
+        ("MM a.txt", "worktree"),
+        ("M  a.txt", "index"),
+        ("A  a.txt", "index"),
+        ("MD a.txt", "index"),
+        (" D a.txt", "safe"),
+        ("R  a -> b", "index"),
+        ("UD a.txt", "worktree"),
+        ("UU a.txt", "worktree"),
+        ("DD a.txt", "worktree"),
+        ("AA a.txt", "worktree"),
+        ("DU a.txt", "worktree"),
+    ],
+)
+def test_the_porcelain_classification(porcelain, expected):
+    """The table, so a change to one state cannot silently move another. `MD`
+    is the one worth reading twice: deleted in the worktree (so a pathed
+    checkout restores it) but STAGED-modified, so a forced one loses that."""
+    assert hook._line_kind(porcelain) == expected
+
+
+# --- git switch is matched only in its forced form --------------------------- #
+
+
+@pytest.mark.parametrize(
+    "command", ["git switch -c docs", "git switch --create docs", "git switch -C docs"]
+)
+def test_creating_a_branch_by_switch_never_prompts(command, repo, monkeypatch, capsys):
+    """`_VALUE_OPTS` carries `-b`/`-B` for checkout but not switch's `-c`/`-C`,
+    so the branch name reached the probe as a pathspec and `git switch -c docs`
+    prompted whenever a `docs/` path was dirty. A bare switch refuses on
+    conflict, so every path it contributes is pure false-positive surface --
+    which the module docstring already claimed was handled."""
+    (repo / "docs").mkdir()
+    (repo / "docs" / "x.md").write_text("a\n", encoding="utf-8")
+    _git(repo, "add", "docs/x.md")
+    _git(repo, "commit", "-qm", "docs")
+    (repo / "docs" / "x.md").write_text("a\nb\n", encoding="utf-8")
+    assert _run(command, monkeypatch, capsys, cwd=str(repo)) is None, command
+
+
+# --- the last separator position ---------------------------------------------- #
+# `_SEP` was introduced to stop a backslash continuation being a silent bypass,
+# and was applied at every position EXCEPT inside `GIT_GLOBAL_OPTS`, which kept
+# a plain `\s+`. That one omission disarmed every rule in this file at once --
+# force-push and `reset --hard` included, neither of which this change is about.
+# Verified in a real shell: `git -C <repo> \`+newline+`status --porcelain`
+# exits 0 with correct output, so the shape really runs.
+
+
+@pytest.mark.parametrize(
+    "command,expected",
+    [
+        ("git -C . \\\ncheckout -f", "discard of uncommitted work"),
+        # The continuation BETWEEN a global option and its value, which is a
+        # different separator position inside the same blob. Without this row a
+        # mutation reverting only the `-[cC]` separator survives every case
+        # above, because those all continue AFTER the option-value pair.
+        ("git -C \\\n. checkout -f", "discard of uncommitted work"),
+        ("git --git-dir \\\n.git push --force origin f", "force-push"),
+        ("git -C . \\\npush --force origin f", "force-push"),
+        ("git -C . \\\nreset --hard", "reset --hard"),
+        ("git --no-pager \\\nreset --hard", "reset --hard"),
+        ("git -c core.x=y \\\nclean -fdx", "git clean"),
+        ("git --git-dir .git \\\nbranch -D feature/x", "force-delete"),
+    ],
+)
+def test_a_continuation_after_a_global_option_does_not_disarm_a_rule(
+    command, expected, dirty, monkeypatch, capsys
+):
+    (dirty / "junk.txt").write_text("untracked\n", encoding="utf-8")
+    payload = _run(command, monkeypatch, capsys, cwd=str(dirty))
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert expected in _reason(payload)
+
+
+def test_a_bare_newline_after_a_global_option_is_still_a_command_boundary(
+    dirty, monkeypatch, capsys
+):
+    """The same plain `\\s+` was wrong in BOTH directions: it also matched a bare
+    newline, so a global option on one line and a subcommand word on the next
+    read as ONE command. `_SEP` fixes both, and this pins the direction that is
+    easy to lose while fixing the other.
+
+    The command is synthetic, and every part of its shape is load-bearing. The
+    newline must sit IMMEDIATELY after the global options, and the next line must
+    start with the bare subcommand word. Two earlier cuts were vacuous and each
+    passed against the bug it was written to catch:
+
+      git -c x=y status\\ngit push origin f   -- line 2 matches on its own merits
+      git -c x=y status\\npush --force …      -- `status` sits between the options
+                                                and the newline, so `push` never
+                                                lines up under either separator
+
+    Only with the options abutting the newline does the option-consuming blob
+    have to cross it, which is the thing being pinned."""
+    assert _run(
+        "git -c core.x=y\npush --force origin f",
+        monkeypatch, capsys, cwd=str(dirty),
+    ) is None
