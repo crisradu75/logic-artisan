@@ -244,7 +244,8 @@ three severities.
   absolute paths), `block-unsafe-recursive-delete` (`rm -rf` and its PowerShell equivalents),
   `block-worktree-path-escape` (section 7).
 - **Asks** escalate to a permission prompt, because the action may be legitimate:
-  `ask-destructive-git` (force-push, `reset --hard`, branch force-delete, PR merges — see section 6 for the
+  `ask-destructive-git` (force-push, `reset --hard`, branch force-delete, PR merges, and a
+  `git checkout`/`git restore`/`git clean` that would discard uncommitted work — see section 6 for the
   `ALLOW_PR_MERGE` hatch). This matters more than it looks: the launcher runs
   `--permission-mode auto`, which suppresses the usual confirmations, so this hook is what
   restores one.

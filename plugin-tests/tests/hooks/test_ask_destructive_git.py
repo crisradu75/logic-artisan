@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -38,11 +39,17 @@ def _load():
 hook = _load()
 
 
-def _run(command: str, monkeypatch, capsys) -> dict | None:
-    """Run the hook on `command`; return its parsed stdout JSON, or None."""
-    monkeypatch.setattr(
-        sys, "stdin", io.StringIO(json.dumps({"tool_input": {"command": command}}))
-    )
+def _run(command: str, monkeypatch, capsys, cwd: str | None = None) -> dict | None:
+    """Run the hook on `command`; return its parsed stdout JSON, or None.
+
+    `cwd` populates the payload field the working-tree probes resolve against.
+    Omitting it is what every text-only test does: the hook then falls back to
+    the process cwd, and none of those commands reaches a probe anyway.
+    """
+    payload: dict = {"tool_input": {"command": command}}
+    if cwd is not None:
+        payload["cwd"] = cwd
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     code = hook.main()
     assert code == 0, "this hook must never block — it escalates instead"
     out = capsys.readouterr().out.strip()
@@ -818,3 +825,258 @@ def test_the_prefix_is_honoured_after_a_shell_separator(monkeypatch, capsys):
     assert _run(
         "git fetch --prune && ALLOW_PR_MERGE=1 gh pr merge 27", monkeypatch, capsys
     ) is None
+
+
+# --------------------------------------------------------------------------- #
+# Working-tree discards -- `git checkout <path>`, `git restore <path>`,
+# `git clean`. Unlike every rule above, these are CONDITIONAL on the paths
+# actually holding work, so each test needs a real repository in a known state:
+# a matcher test alone would prove nothing about the half that keeps the prompt
+# affordable.
+# --------------------------------------------------------------------------- #
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True, capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    """A repository with one committed file, `tracked.txt`, and a clean tree."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    _git(root, "init", "-q", ".")
+    _git(root, "config", "user.email", "t@example.invalid")
+    _git(root, "config", "user.name", "t")
+    (root / "tracked.txt").write_text("original\n", encoding="utf-8")
+    _git(root, "add", "tracked.txt")
+    _git(root, "commit", "-qm", "seed")
+    return root
+
+
+@pytest.fixture
+def dirty(repo: Path) -> Path:
+    """The same repository with uncommitted work in `tracked.txt` -- the exact
+    state issue #184's incident was in when `git checkout <file>` erased it."""
+    (repo / "tracked.txt").write_text("original\nfifty more lines\n", encoding="utf-8")
+    return repo
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git checkout tracked.txt",
+        "git checkout -- tracked.txt",
+        "git restore tracked.txt",
+        "git restore -- tracked.txt",
+        # Behind a global option, and split across a line continuation -- the
+        # two shapes every other matcher in this file was found broken on.
+        "git -C . checkout tracked.txt",
+        "git checkout \\\n-- tracked.txt",
+        # Second in a chain, which is how it is actually typed mid-implementation.
+        "git status && git checkout tracked.txt",
+    ],
+)
+def test_a_discard_of_dirty_tracked_work_prompts(command, dirty, monkeypatch, capsys):
+    payload = _run(command, monkeypatch, capsys, cwd=str(dirty))
+    assert payload is not None, f"expected an ask for: {command!r}"
+    assert "discard of uncommitted work" in _reason(payload)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git checkout tracked.txt",
+        "git restore tracked.txt",
+        "git checkout -- .",
+    ],
+)
+def test_the_same_command_on_a_clean_path_stays_silent(
+    command, repo, monkeypatch, capsys
+):
+    """The half that makes the rule affordable. `ask-destructive-git`'s own
+    docstring rejected these commands for years because an unconditional prompt
+    would bury the force-push one in noise; if this test can be made to fail by
+    dropping the probe, the noise objection is back."""
+    assert _run(command, monkeypatch, capsys, cwd=str(repo)) is None, command
+
+
+def test_a_pathless_branch_checkout_stays_silent_even_in_a_dirty_tree(
+    dirty, monkeypatch, capsys
+):
+    """Explicitly out of scope: git already refuses a branch switch that would
+    clobber uncommitted changes. No branch-versus-path parser enforces this --
+    `main` is passed to the probe as a pathspec, matches no file, and reports no
+    work. This test is what says that resolution is intended rather than lucky."""
+    assert _run("git checkout main", monkeypatch, capsys, cwd=str(dirty)) is None
+
+
+def test_creating_a_branch_named_after_a_dirty_file_stays_silent(
+    dirty, monkeypatch, capsys
+):
+    """`-b`'s value is a branch name, not a path operand. Without `_VALUE_OPTS`
+    this prompts, because a file called `tracked.txt` is dirty right now."""
+    assert _run(
+        "git checkout -b tracked.txt", monkeypatch, capsys, cwd=str(dirty)
+    ) is None
+
+
+def test_an_untracked_file_does_not_make_a_checkout_prompt(repo, monkeypatch, capsys):
+    """`git checkout <path>` does not touch untracked files, so their presence
+    is not work it would destroy. This is why the probe distinguishes `??` lines
+    from tracked-modified ones rather than testing for any output at all."""
+    (repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
+    assert _run("git checkout -- .", monkeypatch, capsys, cwd=str(repo)) is None
+
+
+def test_a_quoted_path_containing_a_space_still_reaches_the_probe(
+    repo, monkeypatch, capsys
+):
+    """The reason operands are tokenised against the quote-stripped tail and
+    re-sliced from the raw one. Splitting the raw text would yield `"my` and
+    `file.txt"`, neither of which is a path, and the guard would go silent on a
+    real discard."""
+    (repo / "my file.txt").write_text("a\n", encoding="utf-8")
+    _git(repo, "add", "my file.txt")
+    _git(repo, "commit", "-qm", "add spaced")
+    (repo / "my file.txt").write_text("a\nb\n", encoding="utf-8")
+    payload = _run('git checkout -- "my file.txt"', monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None
+    assert "discard of uncommitted work" in _reason(payload)
+
+
+# --- git clean -------------------------------------------------------------- #
+
+
+def test_clean_prompts_when_untracked_files_exist(repo, monkeypatch, capsys):
+    (repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
+    payload = _run("git clean -fd", monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None
+    assert "git clean" in _reason(payload)
+
+
+def test_clean_stays_silent_when_there_is_nothing_untracked_to_delete(
+    dirty, monkeypatch, capsys
+):
+    """A dirty TRACKED file is not something `git clean` removes, so the tree
+    being dirty is not by itself a reason to prompt."""
+    assert _run("git clean -fd", monkeypatch, capsys, cwd=str(dirty)) is None
+
+
+@pytest.mark.parametrize(
+    "command", ["git clean -nd", "git clean --dry-run", "git clean -d"]
+)
+def test_a_clean_that_deletes_nothing_stays_silent(command, repo, monkeypatch, capsys):
+    """`-n`/`--dry-run` print and delete nothing; without a force flag git
+    refuses outright. Prompting on either is pure noise -- and `git clean -nd`
+    is itself the probe issue #184 proposed for this case, so firing on it would
+    make the guard prompt at anyone checking what a clean would do."""
+    (repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
+    assert _run(command, monkeypatch, capsys, cwd=str(repo)) is None, command
+
+
+# --- probe failure modes ---------------------------------------------------- #
+
+
+def test_a_wedged_git_prompts_rather_than_going_silent(dirty, monkeypatch, capsys):
+    """The probe not running is not evidence that nothing would be lost. A guard
+    that allows because it failed to look is indistinguishable from one that
+    looked and approved, which is the worst failure this layer has."""
+    monkeypatch.setattr(hook, "_run_git", lambda cwd, args: None)
+    payload = _run("git checkout tracked.txt", monkeypatch, capsys, cwd=str(dirty))
+    assert payload is not None
+    assert "discard of uncommitted work" in _reason(payload)
+
+
+def test_a_pathspec_git_itself_rejects_stays_silent(repo, monkeypatch, capsys):
+    """The other failure mode, treated differently on purpose: git refusing the
+    pathspec means the real command is about to be refused the same way, so
+    there is nothing to destroy."""
+    assert _run(
+        "git checkout -- ../outside.txt", monkeypatch, capsys, cwd=str(repo)
+    ) is None
+
+
+def test_outside_a_repository_the_guard_stays_silent(tmp_path, monkeypatch, capsys):
+    plain = tmp_path / "not-a-repo"
+    plain.mkdir()
+    (plain / "tracked.txt").write_text("x\n", encoding="utf-8")
+    assert _run("git checkout tracked.txt", monkeypatch, capsys, cwd=str(plain)) is None
+
+
+# --- interaction with the existing reasons ---------------------------------- #
+
+
+def test_a_discard_and_a_force_push_in_one_command_report_both(
+    dirty, monkeypatch, capsys
+):
+    reason = _reason(
+        _run(
+            "git checkout tracked.txt && git push --force origin x",
+            monkeypatch, capsys, cwd=str(dirty),
+        )
+    )
+    assert "discard of uncommitted work" in reason
+    assert "force-push" in reason
+
+
+def test_allow_pr_merge_does_not_silence_a_discard(dirty, monkeypatch, capsys):
+    """The narrow hatch drops the merge reason only -- the whole point of having
+    it separate from the broad one."""
+    monkeypatch.setenv("ALLOW_PR_MERGE", "1")
+    reason = _reason(
+        _run(
+            "git checkout tracked.txt && gh pr merge 27",
+            monkeypatch, capsys, cwd=str(dirty),
+        )
+    )
+    assert "discard of uncommitted work" in reason
+    assert "PR merge" not in reason
+
+
+def test_allow_destructive_git_covers_a_discard(dirty, monkeypatch, capsys):
+    """Folded into the broad hatch rather than given its own, per issue #184:
+    it is the same "I know this discards work" intent."""
+    monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "1")
+    # Driven directly rather than through `_run`, which drains capsys itself —
+    # the same shape `test_the_override_announces_itself_on_a_command_it_
+    # suppressed` uses, and for the same reason: stdout and stderr are two
+    # assertions about one run.
+    monkeypatch.setattr(
+        sys, "stdin",
+        io.StringIO(json.dumps({
+            "tool_input": {"command": "git checkout tracked.txt"},
+            "cwd": str(dirty),
+        })),
+    )
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "", "the override must suppress the prompt"
+    assert "DISABLED" in captured.err and "ALLOW_DESTRUCTIVE_GIT" in captured.err
+
+
+def test_a_discard_only_prompt_names_the_env_only_hatch(dirty, monkeypatch, capsys):
+    """`ALLOW_PR_MERGE` is honoured from command text; the broad one is not, and
+    the message must not send a reader to a variable that would silently do
+    nothing as an inline prefix."""
+    reason = _reason(
+        _run("git checkout tracked.txt", monkeypatch, capsys, cwd=str(dirty))
+    )
+    assert "ALLOW_DESTRUCTIVE_GIT=1 in the environment" in reason
+
+
+def test_the_discard_probe_is_not_vacuous(dirty, monkeypatch, capsys):
+    """Structural non-vacuity guarantee for a guard, per test-quality.md. The
+    prompt-on-dirty and silence-on-clean assertions above are each satisfiable
+    by a half-broken probe, so pin that BOTH outcomes are reachable from the
+    SAME repository by changing only its state -- which no constant-returning
+    probe can do."""
+    assert _run(
+        "git checkout tracked.txt", monkeypatch, capsys, cwd=str(dirty)
+    ) is not None
+    _git(dirty, "checkout", "--", "tracked.txt")
+    assert _run("git checkout tracked.txt", monkeypatch, capsys, cwd=str(dirty)) is None

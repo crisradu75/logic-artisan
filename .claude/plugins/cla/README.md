@@ -92,7 +92,9 @@ calls) · `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) 
 
 **Asks:** `ask-destructive-git` (force-push, `reset --hard`, branch force-delete, PR merges, and other
 destructive-but-possibly-legitimate git/gh commands; `ALLOW_PR_MERGE=1` drops only the PR-merge
-confirmation, for the `multi-*` chainers' unattended runs).
+confirmation, for the `multi-*` chainers' unattended runs). It also prompts on
+`git checkout <path>`, `git restore <path>` and `git clean` — but only when the paths they name
+actually hold uncommitted work, so on a clean path they stay silent.
 
 **Warns:** `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard) ·
 `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·

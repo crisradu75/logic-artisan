@@ -58,6 +58,28 @@ Detection scope
   which is why force is half the predicate rather than `-D` being the whole of
   it. Matching only `-D` — the first cut here — covered 3 of the 8 spellings
   of one act.
+- `git checkout <path>`, `git restore <path>` and `git clean` — but ONLY when
+  the paths they name actually hold uncommitted work. These three were excluded
+  for a long time, on the ground that they are frequent enough in ordinary flow
+  that an unconditional prompt would bury the operations above in noise. That
+  exclusion said "revisit only with evidence of a real incident", and issue #184
+  is that evidence: a `git checkout <file>` run mid-implementation to undo a
+  hand-edit restored the file from the index — the PRE-implementation state —
+  erasing ~50 lines of uncommitted work, with no reflog entry and nothing to
+  recover from. The trap is that `git checkout <file>` READS as "undo my last
+  edit" while it means "reset to the index"; those coincide only when the file
+  was clean before you touched it, which is exactly the case that does not hold
+  mid-implementation, and also when the loss is most expensive.
+
+  The noise objection is answered by a CONDITION rather than by dropping the
+  rule, because these commands only destroy something when their paths are
+  dirty. `_paths_hold_work` below probes that. On a clean path the command is a
+  no-op and the hook stays silent, so ordinary flow is untouched.
+
+  Pathless `git checkout <branch>` stays out of scope: git already refuses it
+  when it would clobber uncommitted changes. No branch-versus-path parser
+  enforces that — see `_operands`, where the probe resolves the ambiguity for
+  free.
 - `gh pr merge`, including behind global options and as `gh.exe`/`gh.cmd`. Not
   destructive in the same sense, but outward-facing and effectively
   irreversible, and the thing that fails there is AUTHORIZATION — which a hook
@@ -71,12 +93,6 @@ they are the guarded forms that refuse to clobber an unseen remote update, and
 prompting on them would make the prompt routine — which is how a checkpoint
 stops being read. The `(?:\s|=|$)` boundary excludes them for free, since
 `--force` there is followed by `-`.
-
-Deliberately out of scope: `git clean`, `git checkout -- <path>`, `git restore`.
-They discard uncommitted work too, but they are frequent enough in ordinary
-flow that including them would bury the operations above in noise. Revisit only
-with evidence of a real incident — which is exactly how the branch force-delete
-got in, so this list is a standing judgement rather than a closed one.
 
 Also out of scope, and worth naming because the reason is NOT "they are safe":
 `git branch --force <existing> <start-point>` and `git branch -M`/`-C` over an
@@ -98,8 +114,8 @@ docstring for the option shapes it does and does not consume.
 Escape hatches:
   - `ALLOW_PR_MERGE=1` — drops ONLY the PR-merge confirmation. This is the one
     to use for a skill that merges as an ordinary step of a long unattended run
-    (`multi-pr`, `multi-lite`); force-push, `reset --hard` and `branch -D`
-    stay checked. Prefer it per-command over exporting it.
+    (`multi-pr`, `multi-lite`); force-push, `reset --hard`, `branch -D` and the
+    working-tree discards stay checked. Prefer it per-command over exporting it.
   - `ALLOW_DESTRUCTIVE_GIT=1` — drops every check below, for a deliberate
     unattended batch. Environment only: this hook runs before the command's own
     shell exists, so an inline prefix on the command text never reaches this
@@ -139,6 +155,7 @@ if _HOOKS_DIR not in sys.path:
 
 from _dispatch_lib import GIT_CMD as _GIT_CMD  # noqa: E402
 from _dispatch_lib import GIT_GLOBAL_OPTS as _G  # noqa: E402
+from _dispatch_lib import run_git as _run_git  # noqa: E402
 from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
 # Horizontal whitespace, or a backslash line continuation. A continuation is a
@@ -246,6 +263,116 @@ def _force_deletes_a_branch(tail: str) -> bool:
     forcing = "f" in clusters or _FORCE_LONG.search(tail) is not None
     return deleting and forcing
 
+# --- Working-tree discards ---------------------------------------------------
+# `git checkout <path>`, `git restore <path>` and `git clean` throw away
+# uncommitted work with no reflog entry. Unlike every rule above, these are
+# CONDITIONAL: the shape alone is not enough, because the same commands are
+# ordinary and frequent on a clean path, where they destroy nothing. See the
+# module docstring's detection-scope bullet for the incident and for why the
+# condition is what makes the rule affordable.
+_CHECKOUT = re.compile(_GIT_CMD + _SEP + _G + r"checkout\b" + _TAIL)
+_RESTORE = re.compile(_GIT_CMD + _SEP + _G + r"restore\b" + _TAIL)
+_CLEAN = re.compile(_GIT_CMD + _SEP + _G + r"clean\b" + _TAIL)
+
+# Options whose VALUE is the next token, so that value is not a path operand.
+# Narrow on purpose — an over-included token costs almost nothing, because the
+# probe reports no work for a name that is not a file. The ones listed are the
+# ones whose values plausibly collide with a real filename: `git checkout -b
+# feature` in a tree holding a dirty file called `feature` would otherwise
+# prompt. Long forms taking `=` need no entry; the `=` keeps them one token.
+_VALUE_OPTS = frozenset(
+    {"-b", "-B", "-t", "--track", "--orphan", "-s", "--source", "-e", "--exclude",
+     "--conflict", "--pathspec-from-file"}
+)
+
+
+def _operands(scanned_tail: str, raw_tail: str) -> list[str]:
+    """The path operands in a `checkout`/`restore`/`clean` tail.
+
+    Tokenised against the QUOTE-STRIPPED tail so a quoted path containing
+    spaces stays one token, then re-sliced out of the RAW tail at the same
+    offsets to recover the real text — the round trip `strip_quoted_spans`'
+    length-preserving placeholder exists for. Splitting the raw tail directly
+    would tear `"my file.txt"` into two operands, neither of which is a path.
+
+    After a `--` separator every remaining token is a path by definition, and
+    that form is preferred when present. Without one, `git checkout main` and
+    `git checkout main.py` are genuinely ambiguous — git resolves it by looking,
+    and so does this: both are returned as candidates, and the probe reports no
+    work for a branch name, so the ambiguity costs a pathspec argument rather
+    than a parser. A trailing backslash is stripped because a line continuation
+    abuts the token it follows, exactly as it does for `_SHORT_CLUSTER`.
+    """
+    tokens = [
+        (scanned_tail[m.start():m.end()].rstrip("\\"),
+         raw_tail[m.start():m.end()].rstrip("\\").strip("'\"`"))
+        for m in re.finditer(r"\S+", scanned_tail)
+    ]
+    flags = [flag for flag, _ in tokens]
+    if "--" in flags:
+        return [real for _, real in tokens[flags.index("--") + 1:] if real]
+    operands: list[str] = []
+    skip_next = False
+    for flag, real in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if flag.startswith("-"):
+            skip_next = flag in _VALUE_OPTS
+            continue
+        if real:
+            operands.append(real)
+    return operands
+
+
+# `git clean` refuses to delete anything without a force flag, and deletes
+# nothing under `-n`/`--dry-run`, so neither shape is worth a prompt. Both
+# accept a bundled cluster (`-fdx`, `-nd`), which is how they are usually
+# typed.
+_CLEAN_FORCE = re.compile(
+    r"(?:^|\s)(?:--force(?:[\s\\]|=|$)|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
+)
+_CLEAN_DRY_RUN = re.compile(
+    r"(?:^|\s)(?:--dry-run(?:[\s\\]|=|$)|-[A-Za-z]*n[A-Za-z]*(?:[\s\\]|$))"
+)
+
+
+def _paths_hold_work(cwd: str, paths: list[str], untracked: bool) -> bool:
+    """True when `paths` hold work the matched command would destroy.
+
+    One `git status --porcelain` answers both halves of the question: a
+    tracked-modified line is what `checkout`/`restore` discard, a `??` line is
+    what `clean` removes. `git diff --quiet` — the probe issue #184 proposed —
+    cannot see untracked files at all, so `clean` would have needed a second
+    process.
+
+    An empty `paths` means the command named none, which for `clean` is the
+    whole tree; the callers never pass empty for `checkout`/`restore`, where a
+    pathless invocation is out of scope entirely.
+
+    The two failure modes are deliberately NOT treated alike:
+
+    - The probe could not run (`None` — a wedged git holding an index lock, or
+      no git at all). The check did not happen, and a guard that silently
+      allows because it failed to look is the worst outcome this layer has. Ask.
+    - The probe ran and git REFUSED (non-zero — a pathspec outside the
+      repository, or not a repository at all). That is git rejecting the
+      argument, and the real command is about to be rejected the same way, so
+      there is nothing to destroy. Stay silent.
+    """
+    args = ["status", "--porcelain"] + (["--", *paths] if paths else [])
+    result = _run_git(cwd, args)
+    if result is None:
+        return True
+    if result.returncode != 0:
+        return False
+    return any(
+        line.startswith("??") == untracked
+        for line in result.stdout.splitlines()
+        if line.strip()
+    )
+
+
 # `gh pr merge` — not destructive in the reset/force-push sense, but it is
 # outward-facing and effectively irreversible: it publishes to a shared branch,
 # can trigger deploys, and `--delete-branch` removes the source.
@@ -337,8 +464,27 @@ MERGE_REASON = (
 )
 
 
-def _reasons(command: str) -> list[str]:
-    """Every destructive shape present in `command`, as human-readable causes."""
+DISCARD_REASON = (
+    "a discard of uncommitted work — `git checkout <path>` and `git restore "
+    "<path>` restore from the index, NOT from your last edit, so a file changed "
+    "since it was last staged loses those changes with no reflog entry; the "
+    "path(s) named here hold such changes right now"
+)
+
+CLEAN_REASON = (
+    "`git clean`, which deletes untracked files outright — the path(s) named "
+    "here hold untracked files right now, and nothing recovers them"
+)
+
+
+def _reasons(command: str, cwd: str) -> list[str]:
+    """Every destructive shape present in `command`, as human-readable causes.
+
+    `cwd` is where the command is about to run, and is the working directory
+    the working-tree probes are resolved against. Every other check here is
+    pure text inspection; those two are the only reason this function needs a
+    directory at all.
+    """
     scanned = _strip_quoted_spans(command)
     found: list[str] = []
     if any(
@@ -360,9 +506,43 @@ def _reasons(command: str) -> list[str]:
             "`--force`) — if its commit exists nowhere else it is destroyed, "
             "recoverable only from the reflog and only within its expiry window"
         )
+    # Both probes are collected across EVERY matching invocation in the command
+    # and asked in one `git status` each, so the worst case is two subprocesses
+    # however many `git checkout` calls a `&&` chain strings together. That
+    # bound is what `HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"]` states;
+    # a per-invocation probe would make that entry a fiction.
+    discard_paths: list[str] = []
+    for pattern in (_CHECKOUT, _RESTORE):
+        for m in pattern.finditer(scanned):
+            discard_paths += _operands(m.group(1), command[m.start(1):m.end(1)])
+    if discard_paths and _paths_hold_work(cwd, discard_paths, untracked=False):
+        found.append(DISCARD_REASON)
+
+    clean_paths: list[str] = []
+    cleaning = False
+    for m in _CLEAN.finditer(scanned):
+        tail = m.group(1)
+        if not _CLEAN_FORCE.search(tail) or _CLEAN_DRY_RUN.search(tail):
+            continue
+        cleaning = True
+        clean_paths += _operands(tail, command[m.start(1):m.end(1)])
+    if cleaning and _paths_hold_work(cwd, clean_paths, untracked=True):
+        found.append(CLEAN_REASON)
+
     if _GH_PR_MERGE.search(scanned):
         found.append(MERGE_REASON)
     return found
+
+
+def _cwd_of(payload: object) -> str:
+    """Where the matched command will run.
+
+    Falls back to the process cwd when the payload omits it (older payload
+    shapes, and this hook's own tests, which set the process cwd instead) —
+    the same contract `block-unsafe-recursive-delete.py` uses.
+    """
+    cwd = payload.get("cwd") if isinstance(payload, dict) else None
+    return cwd if isinstance(cwd, str) and cwd else os.getcwd()
 
 
 def main() -> int:
@@ -377,7 +557,7 @@ def main() -> int:
             return 0
         tool_input = payload.get("tool_input", {}) if isinstance(payload, dict) else {}
         command = tool_input.get("command") if isinstance(tool_input, dict) else None
-        if isinstance(command, str) and command and _reasons(command):
+        if isinstance(command, str) and command and _reasons(command, _cwd_of(payload)):
             print(
                 "[ask-destructive-git] note: this command would normally prompt "
                 "for confirmation, but the check is DISABLED by "
@@ -395,7 +575,7 @@ def main() -> int:
     if not isinstance(command, str) or not command:
         return 0
 
-    found = _reasons(command)
+    found = _reasons(command, _cwd_of(payload))
 
     # `ALLOW_PR_MERGE=1` drops ONLY the merge reason. A command that also
     # force-pushes still prompts, on the force-push — which is the whole point
@@ -456,8 +636,9 @@ def main() -> int:
     # "export" so the inline/environment distinction is explicit.
     #
     # `found == [MERGE_REASON]` depends on `_reasons()` always appending in
-    # the fixed order force-push, reset --hard, branch force-delete, merge
-    # (never in the order the command text names them) — that's what makes list
+    # the fixed order force-push, reset --hard, branch force-delete, working-tree
+    # discard, clean, merge (never in the order the command text names them) —
+    # merge stays LAST, which is what makes list
     # equality a safe "merge is the only reason" test. If `_reasons()`'s check
     # order or set of reasons ever changes, re-verify this equality still means
     # what it says.
