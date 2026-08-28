@@ -248,3 +248,43 @@ def test_a_missing_cwd_degrades_without_crashing(monkeypatch):
     """`payload["cwd"]` can be stale, absent, or not a string."""
     for cwd in (None, "", "/definitely/not/here"):
         assert hook._porcelain_lines(cwd) is None or isinstance(hook._porcelain_lines(cwd), list)
+
+
+def test_main_warns_when_a_continuation_splits_git_from_its_subcommand(
+    monkeypatch, capsys
+):
+    """The `git`->subcommand position kept a plain `\\s+` after every other git
+    matcher in this package moved to the shared separator. `\\s+` cannot match a
+    backslash, so `git \\`+newline+`add .` -- a joined line, and therefore an
+    ordinary command -- went unmatched and this hook stayed silent on it.
+
+    The same omission on the ENFORCING hook next door was a silent bypass of the
+    force-push and `reset --hard` guards. Here it only loses a warning, which is
+    why it is a test rather than an incident.
+    """
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({"tool_input": {"command": "git \\\nadd ."}})),
+    )
+    monkeypatch.setattr(
+        hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"]
+    )
+    assert hook.main() == 0
+    assert "scratchpad_dump.txt" in capsys.readouterr().err
+
+
+def test_main_stays_silent_when_a_bare_newline_separates_two_commands(
+    monkeypatch, capsys
+):
+    """The other direction of the same defect, and the half that is easy to lose
+    while fixing the first: `\\s+` also matches a bare newline, so `git` on one
+    line and `add .` on the next -- two separate commands -- read as one."""
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(json.dumps({"tool_input": {"command": "git\nadd ."}})),
+    )
+    monkeypatch.setattr(
+        hook, "_porcelain_lines", lambda cwd=None: ["?? scratchpad_dump.txt"]
+    )
+    assert hook.main() == 0
+    assert capsys.readouterr().err == ""
