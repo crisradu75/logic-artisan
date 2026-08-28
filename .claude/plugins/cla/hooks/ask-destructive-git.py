@@ -73,13 +73,26 @@ Detection scope
 
   The noise objection is answered by a CONDITION rather than by dropping the
   rule, because these commands only destroy something when their paths are
-  dirty. `_paths_hold_work` below probes that. On a clean path the command is a
+  dirty. `_holds_work` below probes that. On a clean path the command is a
   no-op and the hook stays silent, so ordinary flow is untouched.
 
   Pathless `git checkout <branch>` stays out of scope: git already refuses it
   when it would clobber uncommitted changes. No branch-versus-path parser
   enforces that — see `_operands`, where the probe resolves the ambiguity for
-  free.
+  free. That argument holds ONLY without force, so `git checkout -f`,
+  `git checkout --force <branch>`, `git switch -f` and
+  `git switch --discard-changes` are matched and probe the whole tree instead;
+  `-f` exists precisely to override the refusal being relied on. See
+  `_FORCE_DISCARD`.
+
+  Known misses in this rule, named rather than implied. A path quoted at
+  something other than a token boundary (`git checkout -- dir/"f.txt"`) — the
+  operand keeps its inner quote and matches nothing, consistent with
+  `strip_quoted_spans`' own disclaimer about partial quoting.
+  `--pathspec-from-file=<f>`, whose paths live in a file a regex cannot read. A
+  `git clean` run from a SUBDIRECTORY with no path operands, where the probe
+  asks about the whole repository and so over-prompts on untracked files
+  outside the directory clean would touch.
 - `gh pr merge`, including behind global options and as `gh.exe`/`gh.cmd`. Not
   destructive in the same sense, but outward-facing and effectively
   irreversible, and the thing that fails there is AUTHORIZATION — which a hook
@@ -271,8 +284,45 @@ def _force_deletes_a_branch(tail: str) -> bool:
 # module docstring's detection-scope bullet for the incident and for why the
 # condition is what makes the rule affordable.
 _CHECKOUT = re.compile(_GIT_CMD + _SEP + _G + r"checkout\b" + _TAIL)
+_SWITCH = re.compile(_GIT_CMD + _SEP + _G + r"switch\b" + _TAIL)
 _RESTORE = re.compile(_GIT_CMD + _SEP + _G + r"restore\b" + _TAIL)
 _CLEAN = re.compile(_GIT_CMD + _SEP + _G + r"clean\b" + _TAIL)
+
+# A FORCED checkout or switch needs no path operand to destroy the tree, and
+# this is where the first cut of this rule was wrong. `git checkout -f`
+# overwrites every modified tracked file; `git checkout -f <branch>` and
+# `git switch -f <branch>` do the same and then move HEAD. Both were silent:
+# the bare form yields no operands so nothing was probed, and the branch form
+# yields the branch name, which matches no path and reports no work.
+#
+# The exclusion that let this through was stated as "git already refuses a
+# checkout that would clobber uncommitted changes" — true of a BARE checkout
+# and false of a forced one, since `-f` exists precisely to override that
+# refusal. Exactly the relation `--force` has to `git branch -d` above, missed
+# one command over. When force is present the operands are irrelevant and the
+# probe asks about the whole tree.
+#
+# `git switch` is matched only in this forced form. Bare `git switch <branch>`
+# refuses on conflict the same way bare `checkout` does, and `git switch` takes
+# no pathspec at all — `restore` is its path-facing counterpart and is matched
+# separately.
+_FORCE_DISCARD = re.compile(
+    r"(?:^|\s)(?:--force(?:[\s\\]|=|$)|--discard-changes(?:[\s\\]|=|$)"
+    r"|-[A-Za-z]*f[A-Za-z]*(?:[\s\\]|$))"
+)
+
+# `git restore --staged <path>` rewrites the INDEX from HEAD and never touches
+# the working tree, so it destroys nothing a probe of the working tree can see
+# — it is the canonical "unstage this" command, and prompting on it would be
+# the routine prompt this whole rule is shaped to avoid. `--staged --worktree`
+# together DO touch the tree, so only the staged-without-worktree form is
+# skipped. `-S`/`-W` are the short spellings, bundleable as `-SW`.
+_RESTORE_STAGED = re.compile(
+    r"(?:^|\s)(?:--staged(?:[\s\\]|=|$)|-[A-Za-z]*S[A-Za-z]*(?:[\s\\]|$))"
+)
+_RESTORE_WORKTREE = re.compile(
+    r"(?:^|\s)(?:--worktree(?:[\s\\]|=|$)|-[A-Za-z]*W[A-Za-z]*(?:[\s\\]|$))"
+)
 
 # Options whose VALUE is the next token, so that value is not a path operand.
 # Narrow on purpose — an over-included token costs almost nothing, because the
@@ -335,42 +385,104 @@ _CLEAN_FORCE = re.compile(
 _CLEAN_DRY_RUN = re.compile(
     r"(?:^|\s)(?:--dry-run(?:[\s\\]|=|$)|-[A-Za-z]*n[A-Za-z]*(?:[\s\\]|$))"
 )
+# `-x` also removes ignored files; `-X` removes ONLY ignored files. Neither has
+# a long form. Case matters, so these are two patterns rather than one.
+#
+# They are load-bearing rather than a refinement: `git status --porcelain` does
+# not list an ignored file without `--ignored`, so a tree whose only untracked
+# content is gitignored — a `.env`, a local config, a built directory — reported
+# nothing and `git clean -fdx` sailed through silently, deleting exactly the
+# files nothing recovers. Under `-X` the default `??` predicate is wrong in both
+# directions at once: it prompted on untracked files `-X` will not touch, and
+# stayed silent on the ignored ones it will.
+_CLEAN_ALSO_IGNORED = re.compile(r"(?:^|\s)-[A-Za-z]*x[A-Za-z]*(?:[\s\\]|$)")
+_CLEAN_IGNORED_ONLY = re.compile(r"(?:^|\s)-[A-Za-z]*X[A-Za-z]*(?:[\s\\]|$)")
 
 
-def _paths_hold_work(cwd: str, paths: list[str], untracked: bool) -> bool:
-    """True when `paths` hold work the matched command would destroy.
+def _line_kind(line: str) -> str:
+    """What a `git status --porcelain` line says is at stake.
 
-    One `git status --porcelain` answers both halves of the question: a
-    tracked-modified line is what `checkout`/`restore` discard, a `??` line is
-    what `clean` removes. `git diff --quiet` — the probe issue #184 proposed —
-    cannot see untracked files at all, so `clean` would have needed a second
-    process.
-
-    An empty `paths` means the command named none, which for `clean` is the
-    whole tree; the callers never pass empty for `checkout`/`restore`, where a
-    pathless invocation is out of scope entirely.
-
-    The two failure modes are deliberately NOT treated alike:
-
-    - The probe could not run (`None` — a wedged git holding an index lock, or
-      no git at all). The check did not happen, and a guard that silently
-      allows because it failed to look is the worst outcome this layer has. Ask.
-    - The probe ran and git REFUSED (non-zero — a pathspec outside the
-      repository, or not a repository at all). That is git rejecting the
-      argument, and the real command is about to be rejected the same way, so
-      there is nothing to destroy. Stay silent.
+    The XY prefix is two columns, and column Y is the WORKING TREE. Reading the
+    line as merely "`??` or not" over-prompts in three ordinary shapes, each
+    verified against git: `M ` is staged with the worktree already matching the
+    index, so `git checkout -- <path>` is a literal no-op; ` D` is deleted in
+    the worktree, which a checkout RESTORES rather than destroys; and a
+    `git restore --staged` on either never reaches the tree at all (handled by
+    `_RESTORE_STAGED`, above). A prompt that fires on those becomes routine,
+    which is how a checkpoint stops being read — the failure this whole rule is
+    shaped to avoid.
     """
-    args = ["status", "--porcelain"] + (["--", *paths] if paths else [])
+    if line.startswith("??"):
+        return "untracked"
+    if line.startswith("!!"):
+        return "ignored"
+    return "safe" if line[1:2] in (" ", "D", "") else "worktree"
+
+
+def _status_lines(cwd: str, paths: list[str], ignored: bool):
+    """Porcelain lines for `paths`, or a sentinel saying why there are none.
+
+    Tri-state on purpose, because the two ways of getting no answer must not be
+    treated alike:
+
+    - `None` — the probe could NOT RUN: no git on PATH, or a git that hung past
+      `GIT_TIMEOUT_SECONDS`. The check did not happen, and a guard that allows
+      because it failed to look is indistinguishable from one that looked and
+      approved, which is the worst outcome this layer has.
+    - `False` — the probe ran and git REFUSED (non-zero): a pathspec outside the
+      repository, an unknown pathspec magic, not a repository at all.
+
+    An empty `paths` asks about the whole tree.
+
+    (An earlier revision of this docstring named "a wedged git holding an index
+    lock" as a `None` trigger. Measured: with `.git/index.lock` present,
+    `git status --porcelain` returns 0 and correct output — it takes the lock
+    non-fatally — so a held lock produces neither sentinel. The claim was
+    reasoned rather than run, which is the failure CLAUDE.md's check 3 names.)
+    """
+    args = ["status", "--porcelain"] + (["--ignored"] if ignored else [])
+    if paths:
+        args += ["--", *paths]
     result = _run_git(cwd, args)
     if result is None:
-        return True
+        return None
     if result.returncode != 0:
         return False
-    return any(
-        line.startswith("??") == untracked
-        for line in result.stdout.splitlines()
-        if line.strip()
-    )
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def _holds_work(cwd, paths, wanted, ignored, whole_tree) -> bool:
+    """True when the matched commands would destroy something of kind `wanted`.
+
+    `whole_tree` is a zero-argument callable returning the pathless probe's
+    lines, memoised by the caller so it costs at most one extra subprocess per
+    hook run however many times this is asked.
+
+    A REFUSAL is silence only when a single path was probed — there, "git is
+    about to reject the real command the same way" is exactly true. It is NOT
+    true of a batch: this hook merges the operands of every matching invocation
+    into one probe to keep the subprocess count at two, and git rejects the
+    whole call for one bad pathspec. So
+
+        git checkout -- ../outside && git checkout -- tracked.txt
+
+    refused the merged probe, returned silence, and the shell then ran the
+    second command and destroyed `tracked.txt`. A refused BATCH therefore falls
+    back to the whole tree rather than to silence — over-prompting on a command
+    that half-fails, which is the right side to err on.
+    """
+    lines = _status_lines(cwd, paths, ignored)
+    if lines is None:
+        return True
+    if lines is False:
+        if len(paths) <= 1:
+            return False
+        lines = whole_tree()
+        if lines is None:
+            return True
+        if lines is False:
+            return False
+    return any(_line_kind(line) in wanted for line in lines)
 
 
 # `gh pr merge` — not destructive in the reset/force-push sense, but it is
@@ -506,28 +618,86 @@ def _reasons(command: str, cwd: str) -> list[str]:
             "`--force`) — if its commit exists nowhere else it is destroyed, "
             "recoverable only from the reflog and only within its expiry window"
         )
-    # Both probes are collected across EVERY matching invocation in the command
-    # and asked in one `git status` each, so the worst case is two subprocesses
-    # however many `git checkout` calls a `&&` chain strings together. That
-    # bound is what `HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"]` states;
-    # a per-invocation probe would make that entry a fiction.
-    discard_paths: list[str] = []
-    for pattern in (_CHECKOUT, _RESTORE):
-        for m in pattern.finditer(scanned):
-            discard_paths += _operands(m.group(1), command[m.start(1):m.end(1)])
-    if discard_paths and _paths_hold_work(cwd, discard_paths, untracked=False):
-        found.append(DISCARD_REASON)
+    # Operands are collected across EVERY matching invocation in the command and
+    # asked in one `git status` each, so a `&&` chain of six checkouts is two
+    # subprocesses, not twelve. Three is the ceiling: those two plus the shared
+    # whole-tree fallback below, which is memoised so a batch refusal on both
+    # halves still costs one. That is what
+    # `HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"]` states; a
+    # per-invocation probe would make that entry a fiction.
+    tree_cache: list = []
 
-    clean_paths: list[str] = []
-    cleaning = False
-    for m in _CLEAN.finditer(scanned):
-        tail = m.group(1)
-        if not _CLEAN_FORCE.search(tail) or _CLEAN_DRY_RUN.search(tail):
-            continue
-        cleaning = True
-        clean_paths += _operands(tail, command[m.start(1):m.end(1)])
-    if cleaning and _paths_hold_work(cwd, clean_paths, untracked=True):
-        found.append(CLEAN_REASON)
+    def whole_tree():
+        if not tree_cache:
+            # `--ignored` unconditionally, so one cached answer serves the
+            # discard check and a `git clean -x` alike.
+            tree_cache.append(_status_lines(cwd, [], ignored=True))
+        return tree_cache[0]
+
+    # Everything below this point parses operands and leaves the process. It is
+    # wrapped because `main()` calls `_reasons()` once and the dispatcher
+    # DISCARDS an errored hook's stdout entirely — so an exception raised here,
+    # after the four text-only reasons are already in `found`, would silently
+    # un-prompt a force-push. Failing to check is the "could not run" case, and
+    # that case asks.
+    try:
+        discard_paths: list[str] = []
+        discard_whole_tree = False
+        for pattern in (_CHECKOUT, _SWITCH, _RESTORE):
+            for m in pattern.finditer(scanned):
+                tail = m.group(1)
+                if pattern is _RESTORE:
+                    if _RESTORE_STAGED.search(tail) and not _RESTORE_WORKTREE.search(tail):
+                        continue
+                elif _FORCE_DISCARD.search(tail):
+                    # Force overrides git's own refusal, so the operands say
+                    # nothing about the blast radius — the whole tree is at risk.
+                    discard_whole_tree = True
+                    continue
+                discard_paths += _operands(tail, command[m.start(1):m.end(1)])
+        if discard_whole_tree or discard_paths:
+            if _holds_work(
+                cwd,
+                [] if discard_whole_tree else discard_paths,
+                {"worktree"},
+                False,
+                whole_tree,
+            ):
+                found.append(DISCARD_REASON)
+
+        clean_paths: list[str] = []
+        clean_wanted: set[str] = set()
+        clean_whole_tree = False
+        for m in _CLEAN.finditer(scanned):
+            tail = m.group(1)
+            if not _CLEAN_FORCE.search(tail) or _CLEAN_DRY_RUN.search(tail):
+                continue
+            if _CLEAN_IGNORED_ONLY.search(tail):
+                clean_wanted.add("ignored")
+            elif _CLEAN_ALSO_IGNORED.search(tail):
+                clean_wanted |= {"untracked", "ignored"}
+            else:
+                clean_wanted.add("untracked")
+            paths = _operands(tail, command[m.start(1):m.end(1)])
+            if paths:
+                clean_paths += paths
+            else:
+                # A pathless clean means the whole tree, and merging it into the
+                # union as "no paths" LOST that: `git clean -fd && git clean -fd
+                # sub` probed only `sub` and went silent on an untracked file at
+                # the root the first command would have deleted.
+                clean_whole_tree = True
+        if clean_wanted and _holds_work(
+            cwd,
+            [] if clean_whole_tree else clean_paths,
+            clean_wanted,
+            "ignored" in clean_wanted,
+            whole_tree,
+        ):
+            found.append(CLEAN_REASON)
+    except Exception:  # noqa: BLE001 — see the comment above the `try`
+        if DISCARD_REASON not in found:
+            found.append(DISCARD_REASON)
 
     if _GH_PR_MERGE.search(scanned):
         found.append(MERGE_REASON)

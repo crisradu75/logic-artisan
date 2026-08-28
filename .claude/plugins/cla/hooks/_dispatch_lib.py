@@ -162,12 +162,13 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # Scans the command string for heredoc bodies carrying an eaten backslash
     # escape. Line-oriented regex over one string, no git and no filesystem.
     "warn-heredoc-escape-mangling.py": 0.0,
-    # 2 x run_git(3s): at most one `git status --porcelain` for the
-    # checkout/restore paths and one for the `git clean` paths. Every other
-    # check in that hook is pure text inspection, and the two probes are
+    # 3 x run_git(3s): one `git status --porcelain` for the checkout/restore/
+    # switch paths, one for the `git clean` paths, and one memoised pathless
+    # fallback both fall back to when git refuses a merged pathspec batch. Every
+    # other check in that hook is pure text inspection, and the probes are
     # collected across all matching invocations rather than run per invocation,
-    # so a `&&` chain of six `git checkout`s is still two processes.
-    "ask-destructive-git.py": 6.0,
+    # so a `&&` chain of six `git checkout`s is still one process.
+    "ask-destructive-git.py": 9.0,
     # 2 x _run_git(3s): combined `rev-parse` + `--show-toplevel`.
     "block-worktree-path-escape.py": 6.0,
     # 1 x `git status --porcelain`(4s) — walks the working tree, so it gets more
