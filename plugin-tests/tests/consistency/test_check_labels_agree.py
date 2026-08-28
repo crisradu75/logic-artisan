@@ -7,7 +7,7 @@ author happened to grep for; the rest go stale silently. That is how a check goe
 quietly unrun, because an orchestrator reads the restatement to decide what to
 run, not the definitions.
 
-**What this guard actually covers, stated narrowly on purpose.** Four rules:
+**What this guard actually covers, stated narrowly on purpose.** Five rules:
 
 1. the checklist's own definitions form a contiguous run (a hole makes every
    range unsatisfiable);
@@ -17,19 +17,26 @@ run, not the definitions.
 4. a `"the N high-yield checks"` count equals the number defined, and no other
    watched file defines a label the checklist already owns.
 
-**What it does NOT cover, and this is the honest limit.** Rule 3 fires only on
-the "live in checklist.md" idiom, and at the time of writing exactly ONE line in
-the watched set uses it. It therefore does not see the checklist's own internal
-restatements — the parallel-batch-2 sentence, the orchestrator-runs-these line,
-the INT-SYC clause — going short. A reviewer reproduced that: add a check,
-update only what this guard's messages name, and those three stay stale with the
-suite green. Making rule 3 general needs the enumerating lines *marked* rather
-than inferred from phrasing; three attempts at inferring it failed in both
-directions (see the rule's own docstring). Recorded in `TODO.md`.
+5. every line MARKED as enumerating the whole set (`<!-- enumerates-checks -->`)
+   accounts for every defined label, with a floor on how many marked lines must
+   exist.
 
-`_ENUMERATING_FILES` is likewise a hand-maintained list. `agents/fact-gatherer.md`
-names a range in its frontmatter and is deliberately unwatched; nothing detects a
-fifth file appearing.
+**Rule 5 is the general form of rule 3, and it closed the gap this docstring
+used to record.** Rule 3 fires only on the "live in checklist.md" idiom, which
+exactly one line in the watched set uses, so the checklist's own internal
+restatements — the parallel-batch-2 sentence, the orchestrator-runs-these line,
+the INT-SYC clause — went stale with the suite green. A reviewer reproduced it.
+Inferring "this sentence enumerates the set" from phrasing failed three times in
+both directions, so the enumerating lines are now *marked* instead: an HTML
+comment, invisible when rendered, greppable repo-wide, and legible to whoever
+edits the prose next. Rule 3 is kept rather than replaced — it is a true
+statement about a different thing (residence), and it subtracts delegated labels
+where rule 5 does not.
+
+**What it still does NOT cover.** `_ENUMERATING_FILES` is a hand-maintained list.
+`agents/fact-gatherer.md` names a range in its frontmatter and is deliberately
+unwatched; nothing detects a fifth file appearing. The marker makes that
+findable by grep, but no rule here reads outside the four listed files.
 
 **Measured on `main` when this landed:** the guard caught three live defects that
 predate it — `review-gate.md` told batch orchestrators that `0j` and `0k` do not
@@ -66,11 +73,13 @@ _COUNT = re.compile(r"\b(\d+)\s+high-yield(?:\s+verification)?\s+checks\b")
 
 # Files that enumerate the checklist's checks. A file is listed here because it
 # tells a reader which checks to run; a file that merely mentions one is not.
+_REVIEW_GATE = _PLUGIN_ROOT / "skills" / "multi-spec" / "references" / "review-gate.md"
+
 _ENUMERATING_FILES = [
     _CHECKLIST,
     _PLUGIN_ROOT / "skills" / "review-change" / "SKILL.md",
     _PLUGIN_ROOT / "skills" / "spec-to-pr" / "SKILL.md",
-    _PLUGIN_ROOT / "skills" / "multi-spec" / "references" / "review-gate.md",
+    _REVIEW_GATE,
 ]
 
 # The checklist delegates a contiguous run of checks to the project overlay
@@ -217,6 +226,134 @@ def test_a_residence_claim_still_exists_somewhere_to_check() -> None:
         "test_each_enumerating_line_covers_the_whole_defined_set is checking nothing. "
         "Either a residence claim was reworded past this rule's one idiom, or it was "
         "deleted. Restore the phrasing or widen the rule — do not leave it inert."
+    )
+
+
+# The general form of rule 3. A line that enumerates the whole check set carries
+# an HTML comment saying so — invisible when the markdown renders, greppable
+# repo-wide, and legible to whoever edits the prose next. Inferring the same
+# thing from phrasing was tried three times and failed in both directions: a
+# presence check passes while another sentence in the same file names the old
+# set; treating any range opening at `0a` as an enumeration false-positives on
+# every legitimate subset that also opens there (`0a–0h` is the delegable
+# portion, `0a–0e` appears in a comparison). Marking is the only version that
+# distinguishes "enumerates the set" from "mentions a range".
+_ENUMERATION_MARKER = "<!-- enumerates-checks -->"
+
+# The lines that MUST carry the marker, pinned by a stable substring rather than
+# counted.
+#
+# A population floor was tried first and is not enough: it counts markers without
+# pinning which lines hold them, so deleting the marker from the load-bearing line
+# and adding one to a trivially-correct line elsewhere keeps the count and leaves
+# the real enumeration unwatched. A reviewer built that swap and it survived. The
+# floor stops markers being deleted; it does not stop them being MOVED, and the
+# defect this rule exists for is a specific line going short.
+#
+# Pinned by substring, not by line number, so reflowing the prose does not break
+# the pin. Each anchor must match exactly one line in its file — enforced below,
+# because an anchor matching zero lines would silently pin nothing, and one
+# matching several would pin the wrong one.
+_REQUIRED_MARKED_LINES: tuple[tuple[Path, str, str], ...] = (
+    (_CHECKLIST, "Parallel batch 2",
+     "tells the orchestrator which checks to run in the parallel batch"),
+    (_CHECKLIST, "All checks above",
+     "the line an orchestrator reads to decide what it runs itself"),
+    (_CHECKLIST, "INT-SYC (no sycophancy)",
+     "names the checks that exist to refute an asserted premise"),
+    (_REVIEW_GATE, "The verification work (checks",
+     "the batch gate's own statement of what it batches"),
+    (_REVIEW_GATE, "not `0j`:",
+     "explains the 0m label by naming the set checklist.md owns"),
+)
+
+
+def _marked_lines(path: Path) -> list[tuple[int, str]]:
+    return [
+        (n, line)
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if _ENUMERATION_MARKER in line
+    ]
+
+
+@pytest.mark.parametrize("path", _ENUMERATING_FILES, ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)))
+def test_every_marked_enumeration_covers_the_whole_defined_set(path: Path) -> None:
+    """A marked line must name every check the checklist defines.
+
+    This is the rule the residence idiom could only reach on one line. It covers
+    the checklist's own internal restatements — the parallel-batch-2 sentence,
+    the orchestrator-runs-these line, the INT-SYC clause — which are the lines an
+    orchestrator actually reads to decide what to run, and which previously went
+    stale with the suite green.
+
+    Unlike the residence rule, delegated labels are NOT subtracted. A marked line
+    claims the whole set: the one marked line that itemises the overlay's `0f–0i`
+    accounts for them explicitly, and the rest cover them inside a full `0a–0l`
+    range. A marked line that can do neither is mismarked.
+    """
+    defined = _defined_labels()
+    gaps = []
+
+    for lineno, line in _marked_lines(path):
+        ranges = _RANGE.findall(line)
+        assert ranges, (
+            f"{path.name}:{lineno} is marked as enumerating the checks but names no "
+            "range this guard can parse. A marked line that cannot be read is "
+            "indistinguishable from a correct one, so it fails rather than skipping. "
+            f"Line: {line.strip()[:160]}"
+        )
+        covered: set[str] = set()
+        for lo, hi in ranges:
+            covered |= _expand(lo, hi)
+        uncovered = defined - covered
+        if uncovered:
+            gaps.append(f"line {lineno} omits {', '.join(sorted(uncovered))}")
+
+    assert not gaps, (
+        f"{path.relative_to(_PLUGIN_ROOT)} carries a marked enumeration that does not "
+        f"account for every defined check: {'; '.join(gaps)}. An orchestrator reading "
+        "that line runs the old set."
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "anchor", "why"),
+    _REQUIRED_MARKED_LINES,
+    ids=lambda v: v if isinstance(v, str) else "",
+)
+def test_each_load_bearing_enumeration_still_carries_its_marker(
+    path: Path, anchor: str, why: str
+) -> None:
+    """Non-vacuity for the rule above, pinned per line rather than counted.
+
+    Every assertion in `test_every_marked_enumeration_covers_the_whole_defined_set`
+    sits inside a loop over marked lines, so with no markers it passes over an empty
+    list and the rule evaporates with the suite green — the failure mode the
+    residence idiom already had once.
+
+    A population floor closed only half of that. It counts markers without pinning
+    which lines carry them, so moving one — dropped from the load-bearing line,
+    added to a trivially-correct line elsewhere — keeps the count while leaving the
+    real enumeration unwatched. That swap was built and it survived. Pinning the
+    line is what binds.
+    """
+    hits = [(n, line) for n, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1) if anchor in line]
+
+    assert len(hits) == 1, (
+        f"anchor {anchor!r} matches {len(hits)} lines in {path.name}, expected exactly 1. "
+        "An anchor matching none pins nothing and this test passes vacuously; one "
+        "matching several pins the wrong line. Re-anchor on text unique to the line "
+        f"that {why}."
+    )
+
+    lineno, line = hits[0]
+    assert _ENUMERATION_MARKER in line, (
+        f"{path.relative_to(_PLUGIN_ROOT)}:{lineno} lost its `{_ENUMERATION_MARKER}` "
+        f"marker. This line {why}, so an orchestrator reads it to decide what to run "
+        "and it must be checked against the whole defined set. Restore the marker, or "
+        "delete this entry from _REQUIRED_MARKED_LINES in the same commit and say why "
+        f"the line no longer enumerates. Line: {line.strip()[:120]}"
     )
 
 

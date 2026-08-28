@@ -39,7 +39,7 @@ Do NOT use the marketplace install here. The launchers at the repo root load the
 the working tree, so you run the harness you are editing rather than a cached snapshot:
 
 ```bash
-./cla           # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
+./cla           # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model opus --effort medium
 ```
 
 Use `cla.cmd` on native Windows; both resolve their own path, so any cwd works. For isolated work,
