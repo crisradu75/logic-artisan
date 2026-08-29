@@ -89,13 +89,20 @@ each heading confirmed present, compare the scenario sets before moving on, per
 anything, and it is the only one that sees the window *after* review closes — a Revise-round edit to
 the delta, a hand-resolved conflict in it. Review-time cannot look at either.
 
-**What a `dropped` verdict does here depends on your `openspec` version, and the check earns its
-place under both.** From **1.11.0** the tool itself refuses: `applyDeltaSpec` calls
-`findMissingCurrentScenarios` and throws `"<spec> MODIFIED failed ... current spec contains
-scenario(s) not present in the modified block"`, so `openspec archive` aborts. This check runs
-*before* that, which is the whole value — you get a named scenario and an adjudication instead of a
-failed archive mid-commit. On an **older** version nothing refuses, and this check is the only thing
-between the delta and a silently deleted `SHALL`.
+**On a current `openspec` the tool itself refuses, and this check still earns its place.**
+`buildUpdatedSpec` in `core/specs-apply` calls `findMissingCurrentScenarios` and throws
+`"<spec> MODIFIED failed ... current spec contains scenario(s) not present in the modified block"`,
+so `openspec archive` aborts rather than dropping the scenario. Verified by reading the installed
+package at 1.11.0. **Do not restate a version boundary here.** The check predates 1.11.0 by several
+releases and the exact release it landed in is not pinned in this file — an earlier draft asserted
+"from 1.11.0, and nothing before it refuses", which was simply wrong for the versions in between and
+is the same stale-fact-as-current-fact failure this whole reference exists to catch. Run
+`openspec --version` and read `findMissingCurrentScenarios` in your own install if you need the
+answer for a specific repo.
+
+Where the tool does refuse, this check runs *before* it, which is the value: you get a named scenario
+and an adjudication instead of a failed archive mid-commit. Where it does not, this check is the only
+thing between the delta and a silently deleted `SHALL`.
 
 **The comparison itself never halts, on either version.** Raise a `dropped` verdict as a **Critical
 against the change** and carry it into the run's Issues so the PR shows it. Do not add a halt of your

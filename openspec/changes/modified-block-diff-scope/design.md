@@ -18,25 +18,27 @@ it, and every repo running this workflow authors MODIFIED blocks the same way �
 **The tree as it stands 2026-08-29**, after this change's own edits (measured; commands in
 `tasks.md` §1), and after PRs #149 and #150 landed:
 
-| file:line | what it establishes |
+| file (locate by the quoted text) | what it establishes |
 |---|---|
-| `multi-pr/references/discover-and-gate.md:62` | Every in-scope change carrying a MODIFIED block earns a re-base check against the live spec "as of that moment". A **trigger with no procedure** — the instruction is the word "diff" |
-| `multi-pr/SKILL.md:64` | **The same obligation, hoisted, in the same undefined words** — "earns a re-base check of its delta against the live spec as of that moment". A sixth site, found by review; see the note under this table |
-| `review-change/references/checklist.md:305` | Spec-reviewer dispatch item 5: a MODIFIED entry "must include the full final requirement text plus its scenarios". States a completeness property the reviewer cannot falsify from the delta alone |
-| `multi-spec/references/authoring-brief.md:30` | The author-side rule: read the active spec, copy every scenario. Correct, and it is a rule given to the writer, not a check. **It sits inside a fenced prompt template** (lines 11–38) — see D8 |
-| `spec-to-pr/references/archive-preflight.md:65` | Check (c): every delta MODIFIED **heading** exists verbatim in the active spec. Heading only, and it says so |
-| `openspec/specs/cla-plugin/spec.md:521–531` | PR #150's live-set validation. Line 531 explicitly disclaims this concern: parse integrity after any edit vs. content dropped through a delta |
-| `multi-pr/references/change-loop.md:95` | Repeats that disclaimer at the step 4b site |
+| `multi-pr/references/discover-and-gate.md` | Every in-scope change carrying a MODIFIED block earns a re-base check against the live spec "as of that moment". A **trigger with no procedure** — the instruction is the word "diff" |
+| `multi-pr/SKILL.md` | **The same obligation, hoisted, in the same undefined words** — "earns a re-base check of its delta against the live spec as of that moment". A sixth site, found by review; see the note under this table |
+| `review-change/references/checklist.md` | Spec-reviewer dispatch item 5: a MODIFIED entry "must include the full final requirement text plus its scenarios". States a completeness property the reviewer cannot falsify from the delta alone |
+| `multi-spec/references/authoring-brief.md` | The author-side rule: read the active spec, copy every scenario. Correct, and it is a rule given to the writer, not a check. **It sits inside a fenced prompt template** (lines 11–38) — see D8 |
+| `spec-to-pr/references/archive-preflight.md` | Check (c): every delta MODIFIED **heading** exists verbatim in the active spec. Heading only, and it says so |
+| `openspec/specs/cla-plugin/spec.md` | PR #150's live-set validation. Its closing paragraph explicitly disclaims this concern: parse integrity after any edit vs. content dropped through a delta |
+| `multi-pr/references/change-loop.md` | Repeats that disclaimer at the step 4b site |
 
-**Every line number above was re-measured AFTER this change's own edits landed**, which is the
-part that matters and the part an earlier version got wrong twice. First: the table carried
+**The table above carries no line numbers, deliberately — that is the fix, not an omission.**
+Three review rounds each found a citation here that a later edit had moved, which is two more
+than it should take to notice that refreshing the number resets the clock without removing the
+machine. A citation exists so a reader can FIND something; the quoted text does that and cannot
+go stale. The history, because it is the evidence for the policy: First: the table carried
 2026-08-25 figures asserted under a heading reading "(measured)" — `checklist.md` had since grown
 316 → 424 lines and item 5 moved 223 → 304, `spec.md` 529 → 531, `change-loop.md` 93 → 95. Review
 caught that. Then the refreshed numbers were themselves invalidated by this change's edits to the
 same files, and PR review caught *that* — item 5 moved 304 → 305, the injection rule 212 → 213,
 "Modal case" 179 → 180. **A measurement taken before the last edit to the thing it measures is not
-a measurement**, and this table needed telling twice. Locate by content regardless; `tasks.md` §1
-re-derives these at implementation time, because a sibling change will move them again.
+a measurement**, and this table needed telling twice. `tasks.md` §1 locates every site by content at implementation time.
 
 **`multi-pr/SKILL.md:64` is a sixth site and was missed by the original four-site framing.** It
 hoists the same obligation in the same undefined terms, so after this change the hoisted rule and
@@ -167,9 +169,9 @@ They are not redundant placements of one check; each is the only cover for a dis
 | `multi-pr` re-base check | The **baseline moving**: a sibling, an archived change from a previous chain, a `/cla:lite-pr` landing in between. A correct delta going stale, which neither of the above is looking for | Already in the flow; this change replaces "diff" with the procedure |
 | `multi-spec` authoring rule | The author's own hand, before a delta exists to compare — the only site upstream of the defect rather than downstream of it | A pointer; the rule is already written |
 
-**The small path is not covered by item 5, and this is the batch's honest gap.** `checklist.md:165`
+**The small path is not covered by item 5, and this is the batch's honest gap.** `checklist.md`'s size gate
 sends a small change past the 3-agent dispatch — "Skip the 3-agent dispatch… Go straight to Step 5" —
-and `:179` records "Modal case in this repo: small." So a binding that lives only in Step 4's
+and its own "Modal case in this repo: small." line records the rest. So a binding that lives only in Step 4's
 dispatch item reaches the minority of reviews. The change closes this at the size gate's own small-change
 branch — where that path is defined, and where "the orchestrator IS the reviewer" is already
 stated — with a single sentence rather than a numbered check. **Not at Step 5**, which is
@@ -337,7 +339,7 @@ of the five bindings are not ordinary prose:
   a dispatched authoring agent. Every other path in that template is repo-relative; a
   `${CLAUDE_PLUGIN_ROOT}`-spelled pointer is a form the template has never used.
 
-So D3 forbids restating and `checklist.md:212` forbids pointing, at exactly the two sites where the
+So D3 forbids restating and `checklist.md`'s "Injection is mandatory" rule forbids pointing, at exactly the two sites where the
 reader is an agent rather than a person. Neither the proposal nor this design noticed.
 
 **What settling it requires.** A decision on how a shared reference binds at a dispatch site, with
@@ -454,7 +456,7 @@ dispatch prompt (item 5) and the size gate's small-change branch in Step 3.
 **The second region is not optional, and an earlier draft of this parameter lost it.** P9 read
 "confined to Step 4's spec-reviewer dispatch prompt, item 5", and the proposal's Impact said the
 same — while D4's body and `tasks.md` §3.3b bind the small path as well. An implementer following P9 and
-Impact would have shipped nothing for the small path, which `checklist.md:179` records as the modal
+Impact would have shipped nothing for the small path, which `checklist.md`'s "Modal case in this repo" line records as the modal
 case here and D4 calls "the batch's honest gap": the change's own headline gap would have survived
 its implementation. Neither sibling touches the size gate, so the disjoint-by-region claim still holds.
 

@@ -16,10 +16,10 @@ skills to hold this rule at four sites, and defines the comparison at none of th
 
 | site | what it says today | what is missing |
 |---|---|---|
-| `multi-pr/references/discover-and-gate.md:62–70` | every in-scope change carrying a MODIFIED block earns a re-base check — "diff its delta against the live spec **as of that moment**" | the word *diff*, and nothing else. No rename handling, no report shape, no adjudication rule, no severity |
+| `multi-pr/references/discover-and-gate.md`, the re-base check | every in-scope change carrying a MODIFIED block earns a re-base check — "diff its delta against the live spec **as of that moment**" | the word *diff*, and nothing else. No rename handling, no report shape, no adjudication rule, no severity |
 | `review-change/references/checklist.md`, dispatch item 5 | "Any `## MODIFIED Requirements` entry must include the full final requirement text plus its scenarios, not just the diff" | a delta holding 3 of 5 live scenarios satisfies this sentence *as read*. The omission is invisible without opening the live spec, and nothing instructs the reviewer to |
-| `multi-spec/references/authoring-brief.md:30` | the author-side rule — read the active spec, copy every scenario | the author-side rule only; a rule stated to the writer is not a check |
-| `spec-to-pr/references/archive-preflight.md:65–79` — check (c) | already loops over **every** delta MODIFIED heading and greps the active spec | it compares the **heading**, then stops. Scenario retention is one grep further into a loop that already exists |
+| `multi-spec/references/authoring-brief.md`, the MODIFIED rule | the author-side rule — read the active spec, copy every scenario | the author-side rule only; a rule stated to the writer is not a check |
+| `spec-to-pr/references/archive-preflight.md` — check (c) | already loops over **every** delta MODIFIED heading and greps the active spec | it compares the **heading**, then stops. Scenario retention is one grep further into a loop that already exists |
 
 So the surviving gap is not "nothing covers this". It is that the obligation is stated four times
 and the procedure zero times — and the two design notes #97 paid for (resolve `## RENAMED
@@ -66,17 +66,16 @@ None.
 ## Impact
 
 **Files this change edits** (all portable synced core; one new file, five one-paragraph edits across
-four existing files). **Locate every site by content, not by the line numbers below** — they were
-re-measured 2026-08-29 and had already drifted once from the 2026-08-25 figures this section
-originally carried:
+four existing files). **Each site is named by its content, not by a line number** — three review rounds each caught a
+stale one here, so the numbers are gone rather than refreshed:
 
 - `.claude/plugins/cla/skills/_shared/references/modified-block-retention.md` — **new**
 - `.claude/plugins/cla/skills/review-change/references/checklist.md` — **two** regions: dispatch item
   5 (headed "MODIFIED requirements are complete") and the size gate's small-change branch in Step 3
   (the path that skips the dispatch entirely — **not** Step 5, which is the parallelism analysis). One region only would leave the modal case uncovered
-- `.claude/plugins/cla/skills/spec-to-pr/references/archive-preflight.md` (check (c), line 67 of 96)
-- `.claude/plugins/cla/skills/multi-pr/references/discover-and-gate.md` (re-base check, line 65 of 197)
-- `.claude/plugins/cla/skills/multi-spec/references/authoring-brief.md` (line 30 of 69) — **pastes**
+- `.claude/plugins/cla/skills/spec-to-pr/references/archive-preflight.md` (check (c))
+- `.claude/plugins/cla/skills/multi-pr/references/discover-and-gate.md` (the re-base check)
+- `.claude/plugins/cla/skills/multi-spec/references/authoring-brief.md`, the MODIFIED rule — **pastes**
   the Procedure section rather than pointing, because it sits inside a fenced prompt template handed
   to a dispatched authoring agent; design D8 settles why
 
@@ -89,7 +88,7 @@ a second version.
 
 **A sixth site, found by review and edited:**
 
-- `.claude/plugins/cla/skills/multi-pr/SKILL.md` (line 64 — the hoisted re-base rule). It states the
+- `.claude/plugins/cla/skills/multi-pr/SKILL.md`, the hoisted re-base rule. It states the
   same obligation in the same undefined words; leaving it alone would have had the hoisted rule and
   the reference it points at describe the check differently.
 
