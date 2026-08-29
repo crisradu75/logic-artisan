@@ -304,13 +304,13 @@ everywhere) from *facts* (per-repo, never synced):
   The two scanner families do not have the same reach: the hardcoded-path one
   (`plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py`) covers
   `.md`/`.py`/`.mjs`/`.json`, so `hooks/hooks.json` and a skill's `.mjs` **are** in scope; the
-  project-token one is `.py`/`.md` only. **These shipped files are reached by neither** —
-  the list is the durable form, not a count of it —
-  `.claude-plugin/plugin.json`, `.gitattributes` and the plugin `README.md` (all outside every scan
-  root), plus `hooks/probe-python.sh` and `hooks/git/pre-push`, which sit inside a scan root but
-  carry a suffix (`.sh`) and no suffix respectively that no scanner opens. The shipped-file total
-  moves with the tree and nothing guards the split, so re-derive it rather than quoting one:
-  `git ls-files .claude/plugins/cla | wc -l`. Tracked in issue #178.
+  project-token one is `.py`/`.md` only. **Do not restate the coverage split here.** It used to be
+  written out as a list and a count, both of which went stale while nothing noticed — the defect
+  issue #178 named. `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py` now holds it:
+  every tracked file under the published directory must be opened by one of the three scanners or
+  appear in that guard's `EXEMPT` map with a stated reason, and an exemption whose file has since
+  been deleted or picked up by a scanner fails too. Read `EXEMPT` for the current list; adding an
+  unscanned file is now a decision someone writes down rather than an accident.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not
