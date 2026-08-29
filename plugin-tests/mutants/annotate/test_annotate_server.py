@@ -68,9 +68,9 @@ MUTANTS = [
     ("only /api/annotations consumes its body again, so the 404 path closes on "
      "an unread request and RSTs the client — #187 exactly",
      SERVER,
-     "        raw = self._read_body()",
-     '        raw = (self._read_body()'
-     ' if urlparse(self.path).path == "/api/annotations" else b"")',
+     "        raw, complete = self._read_body()",
+     '        raw, complete = (self._read_body()'
+     ' if urlparse(self.path).path == "/api/annotations" else (b"", True))',
      TESTS),
 
     ("the drain cap drops below a real body, so anything larger is left unread "
@@ -83,14 +83,31 @@ MUTANTS = [
     ("the cap goes entirely, so a declared Content-Length is buffered whole and "
      "the fix for one hole becomes a memory hole",
      SERVER,
-     "        chunks, remaining = [], min(remaining, self.MAX_BODY)",
-     "        chunks, remaining = [], remaining",
+     "            want, out = min(declared, cap), []",
+     "            want, out = declared, []",
      TESTS),
 
-    ("a chunked body is accepted again, so its framing is neither counted nor "
-     "decoded and the leftovers desync the connection",
+    ("chunked framing stops being decoded, so the body reads as empty and its "
+     "leftovers desync the connection",
      SERVER,
-     "        if self._chunked_request():",
-     "        if False and self._chunked_request():",
+     '            if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():',
+     '            if False:',
+     TESTS),
+
+    ("an incomplete read stops closing the connection, so whatever is left in "
+     "the stream is read as the next request on it",
+     SERVER,
+     "        if not complete:",
+     "        if False:",
+     TESTS),
+
+    # Single-line anchor deliberately. A multi-line one needs the separator built
+    # off the file (`_NL`), because a bare \n matches nothing on a CRLF checkout
+    # — the trap that made a sibling batch abort at preflight on any fresh clone.
+    ("a capped read reports itself complete, so the caller never closes and the "
+     "truncated remainder is read as the next request",
+     SERVER,
+     '            return b"".join(out), declared <= cap',
+     '            return b"".join(out), True',
      TESTS),
 ]

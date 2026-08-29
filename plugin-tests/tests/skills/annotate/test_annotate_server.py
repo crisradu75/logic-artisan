@@ -354,44 +354,117 @@ def test_a_kept_alive_connection_is_not_desynced_by_an_unread_body(live):
         conn.close()
 
 
-def test_the_drain_stops_at_the_cap(live):
+def _offline_handler(headers, stream):
+    """A handler with just enough state to drive `_read_body` directly."""
+    h = annotate_server.Handler.__new__(annotate_server.Handler)
+    h.headers = headers
+    h.rfile = stream
+    h.connection = None          # `_read_body` skips the socket timeout
+    return h
+
+
+def test_the_drain_stops_at_the_cap():
     """The cap is BEHAVIOUR, not a constant to assert against itself.
 
-    An earlier version of this test asserted `MAX_BODY == 32 * 1024 * 1024` and
-    nothing else, so `min(remaining, self.MAX_BODY)` was never executed: deleting
-    the `min` reopened the memory hole with the whole suite green, and the batch's
-    cap mutant died on the literal rather than on anything the server does.
-
-    This drives `_read_body` directly with a declared length far above the cap
-    and a reader that would happily supply it, and asserts the read stops.
+    An earlier version asserted `MAX_BODY == 32 * 1024 * 1024` and nothing else,
+    so the capping expression was never executed: deleting it reopened the memory
+    hole with the whole suite green, and the batch's cap mutant died on the
+    literal rather than on anything the server does.
     """
-    handler = annotate_server.Handler.__new__(annotate_server.Handler)
-    handler.headers = {"Content-Length": str(4 * annotate_server.Handler.MAX_BODY)}
-    handler.rfile = io.BytesIO(b"a" * (2 * annotate_server.Handler.MAX_BODY))
+    cap = annotate_server.Handler.MAX_BODY
+    h = _offline_handler({"Content-Length": str(4 * cap)}, io.BytesIO(b"a" * (2 * cap)))
 
-    got = handler._read_body()
+    got, complete = h._read_body()
 
-    assert len(got) == annotate_server.Handler.MAX_BODY
-    assert handler.rfile.tell() == annotate_server.Handler.MAX_BODY, (
-        "the cap must stop the READ, not just truncate what it returns"
+    assert len(got) == cap
+    assert h.rfile.tell() == cap, "the cap must stop the READ, not the return value"
+    assert complete is False, (
+        "a capped read leaves the rest in the stream, so it must report itself "
+        "incomplete and make the caller close"
     )
 
 
-def test_a_chunked_body_is_refused_rather_than_half_read(live):
-    """No Content-Length means nothing to count, and BaseHTTPRequestHandler does
-    not decode chunked framing either — so the body cannot be drained and the
-    request cannot be served. 411 plus a close is the one answer that leaves
-    neither a desync nor a misleading 400 about the JSON."""
+def test_a_malformed_content_length_reports_itself_incomplete():
+    """A length that is not a number leaves a body of unknown size in the stream.
+
+    Measured before this reported itself: a folded duplicate header
+    (`Content-Length: 34, 34`) made the server answer 400 about missing fields
+    for a request whose fields were all present — it never saw the body — and
+    then the next request on the connection came back 501 with the annotation
+    JSON parsed as the HTTP method.
+    """
+    h = _offline_handler({"Content-Length": "34, 34"}, io.BytesIO(b"a" * 34))
+
+    got, complete = h._read_body()
+
+    assert (got, complete) == (b"", False)
+
+
+def test_a_short_body_reports_itself_incomplete():
+    """A client that declares more than it sends leaves the connection in an
+    unknown state, which is the same problem as the cap."""
+    h = _offline_handler({"Content-Length": "100"}, io.BytesIO(b"a" * 10))
+
+    got, complete = h._read_body()
+
+    assert (len(got), complete) == (10, False)
+
+
+def test_an_undrainable_body_closes_the_connection_rather_than_desyncing(live):
+    """The live half of "drained or closed, never neither".
+
+    The three `_read_body` tests above are offline unit tests of the report; this
+    is the one that proves the caller ACTS on it. A malformed `Content-Length`
+    leaves a body of unknown size in the stream, so the only safe reply is a 400
+    plus a close — `http.client` sees `will_close`, and a client that tried to
+    reuse the connection would otherwise read the annotation JSON as the next
+    request line and get a 501.
+    """
+    payload = json.dumps(VALID).encode("utf-8")
     conn = http.client.HTTPConnection("127.0.0.1", live.port, timeout=30)
     try:
-        conn.putrequest("POST", "/api/annotations")
+        conn.putrequest("POST", "/api/annotations", skip_accept_encoding=True)
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", "%d, %d" % (len(payload), len(payload)))
+        conn.endheaders()
+        conn.send(payload)
+        res = conn.getresponse()
+        res.read()
+        assert res.status == 400
+        assert res.will_close, (
+            "a body that could not be drained must close the connection; "
+            "leaving it open desyncs the next request on it"
+        )
+    finally:
+        conn.close()
+
+
+def test_a_chunked_body_is_decoded_and_leaves_the_connection_clean(live):
+    """`BaseHTTPRequestHandler` does not decode chunked framing, so the server
+    does.
+
+    An earlier cut answered 411 and closed instead. That was worse twice over: a
+    411 is a strange reply to a request this server can read perfectly well, and
+    closing on an undrained body just moved #187's own race onto a different
+    reply. The second request on the same connection is the assertion — without
+    the decode, it is parsed from the leftover chunk framing.
+    """
+    payload = json.dumps(VALID).encode("utf-8")
+    conn = http.client.HTTPConnection("127.0.0.1", live.port, timeout=30)
+    try:
+        conn.putrequest("POST", "/api/annotations", skip_accept_encoding=True)
         conn.putheader("Content-Type", "application/json")
         conn.putheader("Transfer-Encoding", "chunked")
         conn.endheaders()
-        conn.send(b"2\r\n{}\r\n0\r\n\r\n")
-        res = conn.getresponse()
-        res.read()
-        assert res.status == 411
+        conn.send(b"%x\r\n%s\r\n0\r\n\r\n" % (len(payload), payload))
+        first = conn.getresponse()
+        first.read()
+        assert first.status == 200
+
+        conn.request("GET", "/api/annotations")
+        second = conn.getresponse()
+        assert second.status == 200
+        assert len(json.loads(second.read())["annotations"]) == 1
     finally:
         conn.close()
 
