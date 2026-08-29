@@ -82,6 +82,33 @@ EXEMPT: dict[str, str] = {
         "would be the path scanner's fifth suffix and the token scanner's third",
 }
 
+# The SECOND split, and the one that decayed first. `EXEMPT` above asks "does
+# ANY scanner open this file"; a file can pass that and still be outside the two
+# TOKEN scanners, which are the ones enforcing the fact/procedure separation.
+# `skills/_shared/README.md` is exactly that shape: the hardcoded-path scanner
+# reaches it, so it is not in `EXEMPT`, while neither token scanner does.
+#
+# That distinction was recorded by hand in CLAUDE.md and in
+# `check_no_project_tokens.py`'s own comments, in both places as a list and a
+# count. Deriving it here is what keeps a later rename from silently falsifying
+# both: move `skills/_shared/README.md` under a `references/` ancestor and the
+# prose scanner starts reaching it, which fails this map rather than nothing.
+#
+# Scoped to `.md`/`.py` because that is the token scanners' whole surface — every
+# other suffix is `EXEMPT`'s business, and demanding a reason here for a `.json`
+# no token scanner was ever meant to open would make this map noise.
+TOKEN_EXEMPT: dict[str, str] = {
+    "README.md":
+        "the plugin's own root README, exempt from every scanner for the reason "
+        "stated in EXEMPT above",
+    "skills/_shared/README.md":
+        "sits directly under a skills subdirectory rather than beneath a "
+        "`references/` ancestor, so the prose scanner's rule misses it, and the "
+        "source scanner takes `.md` only under `agents`/`output-styles`. Reached "
+        "by the hardcoded-path scanner, which is why it is not in EXEMPT",
+}
+TOKEN_SCANNED_SUFFIXES = (".md", ".py")
+
 
 def _load(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -126,13 +153,19 @@ def _shipped() -> set[str]:
     }
 
 
-def _reached() -> set[str]:
-    """Every plugin-relative path at least one of the three scanners opens."""
+def _token_reached() -> set[str]:
+    """Every plugin-relative path one of the two TOKEN scanners opens."""
     reached: set[str] = set()
     for path in _TOKENS._iter_scanned_files(_PLUGIN_ROOT / "skills"):
         reached.add(path.relative_to(_PLUGIN_ROOT).as_posix())
     for path in _TOKENS._iter_scanned_source_files(_PLUGIN_ROOT):
         reached.add(path.relative_to(_PLUGIN_ROOT).as_posix())
+    return reached
+
+
+def _reached() -> set[str]:
+    """Every plugin-relative path at least one of the three scanners opens."""
+    reached = _token_reached()
     for path in _PATHS._scanned_files():
         reached.add(path.relative_to(_PLUGIN_ROOT).as_posix())
     return reached
@@ -191,28 +224,80 @@ def test_every_shipped_file_is_scanned_or_deliberately_exempt():
         pytest.fail("\n\n".join(problems))
 
 
+def test_every_shipped_md_or_py_is_token_scanned_or_deliberately_exempt():
+    """The token scanners' own split, derived rather than written down.
+
+    Same three failure modes as the guard above, over the surface the two token
+    scanners actually cover.
+    """
+    shipped = {
+        name for name in _shipped() if name.endswith(TOKEN_SCANNED_SUFFIXES)
+    }
+    unexplained, vanished, now_covered = split_coverage(
+        shipped, _token_reached(), TOKEN_EXEMPT
+    )
+
+    problems: list[str] = []
+    if unexplained:
+        problems.append(
+            f"{len(unexplained)} shipped .md/.py file(s) that NEITHER token "
+            f"scanner opens and that are not in TOKEN_EXEMPT. A file here is "
+            f"outside the fact/procedure guarantee entirely:\n"
+            + "\n".join(f"    {name}" for name in unexplained)
+        )
+    if vanished:
+        problems.append(
+            f"{len(vanished)} TOKEN_EXEMPT entr(y/ies) naming a file that no "
+            f"longer ships. Delete the line:\n"
+            + "\n".join(f"    {name}" for name in vanished)
+        )
+    if now_covered:
+        problems.append(
+            f"{len(now_covered)} TOKEN_EXEMPT entr(y/ies) that a token scanner "
+            f"now reaches. The exemption's reason is no longer true; delete the "
+            f"line:\n" + "\n".join(f"    {name}" for name in now_covered)
+        )
+    if problems:
+        pytest.fail("\n\n".join(problems))
+
+
 def test_the_coverage_split_is_not_vacuous():
     """`unexplained` is empty when nothing ships, which is what a broken
     `_shipped()` would produce — the same shape as a clean run.
 
-    Floors are pinned NEAR the real counts (103 shipped, 98 reached as of
-    2026-08-29), matching `test_no_hardcoded_plugin_paths.py`'s stated rule: the
-    next deliberate deletion is EXPECTED to trip these and get them lowered with
-    it. A comfortable margin would only buy silence.
+    Floors sit ONE BELOW the real counts, measured 2026-08-29 by
+    `pytest plugin-tests/tests/conformance/test_shipped_files_are_scanned.py`:
+    103 shipped, 98 reached by some scanner, 93 of the 95 shipped `.md`/`.py`
+    reached by a token scanner. That margin is the rule
+    `test_no_hardcoded_plugin_paths.py` states for its own floor, and the first
+    version of this file broke it — floors of 100 and 95 let three files be
+    deleted with nothing noticing, which is the silence the rule exists to deny.
+    The next deliberate deletion is EXPECTED to trip these and get them lowered
+    with it.
     """
     shipped, reached = _shipped(), _reached()
-    assert len(shipped) >= 100, f"shipped set collapsed to {len(shipped)} files"
+    token_shipped = {n for n in shipped if n.endswith(TOKEN_SCANNED_SUFFIXES)}
+    assert len(shipped) >= 102, f"shipped set collapsed to {len(shipped)} files"
     assert (
-        len(shipped & reached) >= 95
+        len(shipped & reached) >= 97
     ), f"scanner coverage collapsed to {len(shipped & reached)} files"
+    assert (
+        len(token_shipped & _token_reached()) >= 92
+    ), "token-scanner coverage collapsed to " \
+       f"{len(token_shipped & _token_reached())} files"
 
 
 def test_every_exemption_carries_a_reason():
     """An exemption with an empty reason is a file removed from the guard's reach
     with nothing written down, which is the accident this guard converts into a
     decision."""
-    blank = sorted(name for name, why in EXEMPT.items() if not why.strip())
-    assert not blank, f"EXEMPT entries with no stated reason: {blank}"
+    blank = sorted(
+        name
+        for mapping in (EXEMPT, TOKEN_EXEMPT)
+        for name, why in mapping.items()
+        if not why.strip()
+    )
+    assert not blank, f"exemptions with no stated reason: {blank}"
 
 
 def test_an_unscanned_new_file_is_reported():
