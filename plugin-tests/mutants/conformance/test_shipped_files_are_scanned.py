@@ -95,6 +95,22 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "the token split narrows back to a .md/.py whitelist, which is the hole "
+        "review round 2 found: a .json the path scanner reaches but no token "
+        "scanner does then satisfies neither map",
+        GUARD,
+        "    shipped = _shipped() - set(EXEMPT)",
+        '    shipped = {n for n in _shipped() if n.endswith((".md", ".py"))}',
+        TARGETS,
+    ),
+    (
+        "the .json carrying _comment prose loses its token-scanner exemption",
+        GUARD,
+        '    "skills/_shared/references/required-permissions.json":',
+        '    "skills/_shared/references/required-permissions-gone.json":',
+        TARGETS,
+    ),
+    (
         "the source token scanner drops output-styles/*.md",
         PLUGIN / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py",
         'md_roots = ("agents", "output-styles")',

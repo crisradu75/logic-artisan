@@ -58,11 +58,24 @@ _PUBLISHED_PREFIX = ".claude/plugins/cla"
 # empty this guard if it grew without one — the same role `_EXEMPT` plays in
 # `tests/consistency/test_guards_have_mutant_batches.py`.
 #
-# None of these is a leak today: the hardcoded-path rule looks for the literal
-# `.claude/plugins/cla`, and the developer-path rule for a `C:\Users\<name>`
-# shape. The absolute paths inside `probe-python.sh` are generic and match
-# neither. That is a fact about today's contents, not a property of the files,
-# which is why they are listed rather than dismissed.
+# FOUR of the five are clean today; the fifth is not, and an earlier version of
+# this comment said all five were. Measured, both halves, rather than reasoned:
+#
+#   $ cd .claude/plugins/cla
+#   $ grep -c '\.claude/plugins/cla' .claude-plugin/plugin.json .gitattributes \
+#         hooks/git/pre-push hooks/probe-python.sh README.md
+#     ...:0  ...:0  ...:0  ...:0  README.md:1        <- README.md:183
+#   $ grep -rn 'C:\\Users\\' <the same five>          <- no match
+#
+# So `README.md` DOES carry the literal the hardcoded-path rule looks for, in
+# the "Layout" code block. Widening that scanner to cover the plugin root — which
+# the previous wording invited as safe — fails immediately. The absolute paths in
+# `probe-python.sh` are generic (`$HOME/AppData/…`, `/usr/local/bin/…`) and match
+# neither rule.
+#
+# This is CLAUDE.md check 3 (search for counterexamples, not just supporting
+# cases) failing inside the one change whose entire thesis is that hand-written
+# claims decay. Kept as the worked example rather than quietly corrected.
 EXEMPT: dict[str, str] = {
     ".claude-plugin/plugin.json":
         "outside every scan root; the manifest is validated by "
@@ -70,9 +83,12 @@ EXEMPT: dict[str, str] = {
     ".gitattributes":
         "outside every scan root; carries line-ending rules, no prose or code",
     "README.md":
-        "the plugin's own root README: its install commands legitimately name "
-        "this repository, which is what makes them copy-pasteable. Scanning it "
-        "would flag the one file whose whole job is to identify the source",
+        "the plugin's own root README, exempt for TWO independent reasons. Its "
+        "install commands legitimately name this repository, which is what makes "
+        "them copy-pasteable — so scanning it for project tokens would flag the "
+        "one file whose whole job is to identify the source. Separately, its "
+        "Layout block spells the literal `.claude/plugins/cla` (line 183), so it "
+        "would fail the hardcoded-path rule as well",
     "hooks/git/pre-push":
         "inside a scan root, but has NO suffix, so every suffix-keyed scanner "
         "skips it. Watched by hand; also covered behaviourally by "
@@ -94,20 +110,48 @@ EXEMPT: dict[str, str] = {
 # both: move `skills/_shared/README.md` under a `references/` ancestor and the
 # prose scanner starts reaching it, which fails this map rather than nothing.
 #
-# Scoped to `.md`/`.py` because that is the token scanners' whole surface — every
-# other suffix is `EXEMPT`'s business, and demanding a reason here for a `.json`
-# no token scanner was ever meant to open would make this map noise.
+# SCOPE: every shipped file that is not already in `EXEMPT`. There is no suffix
+# rule here, and the first version's `.md`/`.py` scoping was a hole rather than a
+# simplification. Its stated justification — "every other suffix is `EXEMPT`'s
+# business" — is false, because `EXEMPT` catches only files NO scanner opens. A
+# file the path scanner reaches but neither token scanner does satisfies neither
+# map's condition and was reported by nothing.
+#
+# Not hypothetical. Measured: four shipped files were in exactly that state —
+# `hooks/hooks.json`, both `required-permissions*.json`, and
+# `mechanical-checks.mjs`. The `.json` pair already carries English prose in its
+# `_comment` keys, which is precisely where a project token leaks; the guard's
+# own failure text calls that state "outside the fact/procedure guarantee
+# entirely" while staying green on it.
+#
+# Dropping the suffix rule makes the whole gap visible and forces a reason per
+# file. It does NOT widen `check_no_project_tokens.py`, which is a behaviour
+# change to a shipped guard and a separate decision.
+# `README.md` is deliberately absent: it is in `EXEMPT`, so it is not a candidate
+# here, and listing it in both maps made this guard's own dead-entry branch fire.
+# The guard caught that on the first run after the scope changed — which is the
+# behaviour, not an inconvenience.
 TOKEN_EXEMPT: dict[str, str] = {
-    "README.md":
-        "the plugin's own root README, exempt from every scanner for the reason "
-        "stated in EXEMPT above",
     "skills/_shared/README.md":
         "sits directly under a skills subdirectory rather than beneath a "
         "`references/` ancestor, so the prose scanner's rule misses it, and the "
         "source scanner takes `.md` only under `agents`/`output-styles`. Reached "
         "by the hardcoded-path scanner, which is why it is not in EXEMPT",
+    "hooks/hooks.json":
+        "the token scanners open `.py` plus `.md` under `agents`/`output-styles`, "
+        "so no `.json` is in scope. Hook wiring is paths and event names; the "
+        "path scanner does cover it",
+    "skills/_shared/references/required-permissions.json":
+        "same `.json` gap. UNLIKE the wiring above this one carries English prose "
+        "in `_comment` keys, so it is the likeliest of the four to leak a token. "
+        "Reviewed by hand until the token scanner grows a `.json` scan",
+    "skills/spec-to-pr/references/required-permissions-narrow.json":
+        "same `.json` gap, same `_comment` prose, same hand review",
+    "skills/project-review/scripts/mechanical-checks.mjs":
+        "the plugin's one Node script. The token scanners take `.py` only, so "
+        "`.mjs` is out of scope for them; the path scanner covers it, and its "
+        "own behaviour is tested by plugin-tests/node/mechanical-checks.test.mjs",
 }
-TOKEN_SCANNED_SUFFIXES = (".md", ".py")
 
 
 def _load(path: Path, name: str):
@@ -224,15 +268,14 @@ def test_every_shipped_file_is_scanned_or_deliberately_exempt():
         pytest.fail("\n\n".join(problems))
 
 
-def test_every_shipped_md_or_py_is_token_scanned_or_deliberately_exempt():
+def test_every_shipped_file_is_token_scanned_or_deliberately_exempt():
     """The token scanners' own split, derived rather than written down.
 
-    Same three failure modes as the guard above, over the surface the two token
-    scanners actually cover.
+    Same three failure modes as the guard above. The candidate set is every
+    shipped file MINUS `EXEMPT` — not a suffix whitelist, which left four files
+    satisfying neither map's condition and reported by nothing.
     """
-    shipped = {
-        name for name in _shipped() if name.endswith(TOKEN_SCANNED_SUFFIXES)
-    }
+    shipped = _shipped() - set(EXEMPT)
     unexplained, vanished, now_covered = split_coverage(
         shipped, _token_reached(), TOKEN_EXEMPT
     )
@@ -240,9 +283,9 @@ def test_every_shipped_md_or_py_is_token_scanned_or_deliberately_exempt():
     problems: list[str] = []
     if unexplained:
         problems.append(
-            f"{len(unexplained)} shipped .md/.py file(s) that NEITHER token "
-            f"scanner opens and that are not in TOKEN_EXEMPT. A file here is "
-            f"outside the fact/procedure guarantee entirely:\n"
+            f"{len(unexplained)} shipped file(s) that NEITHER token scanner "
+            f"opens and that are in neither EXEMPT nor TOKEN_EXEMPT. A file here "
+            f"is outside the fact/procedure guarantee entirely:\n"
             + "\n".join(f"    {name}" for name in unexplained)
         )
     if vanished:
@@ -265,10 +308,16 @@ def test_the_coverage_split_is_not_vacuous():
     """`unexplained` is empty when nothing ships, which is what a broken
     `_shipped()` would produce — the same shape as a clean run.
 
-    Floors sit ONE BELOW the real counts, measured 2026-08-29 by
-    `pytest plugin-tests/tests/conformance/test_shipped_files_are_scanned.py`:
-    103 shipped, 98 reached by some scanner, 93 of the 95 shipped `.md`/`.py`
-    reached by a token scanner. That margin is the rule
+    Floors sit ONE BELOW the real counts. Re-derive them with the command that
+    actually PRINTS them — this module has a `__main__` for exactly that reason,
+    because `pytest <this file>` reports `8 passed` and surfaces a count only on
+    failure, so naming it was a measurement citing a command that produces no
+    measurement::
+
+        $ python plugin-tests/tests/conformance/test_shipped_files_are_scanned.py
+        shipped 103  reached 98  token-candidates 98  token-reached 93
+
+    Measured 2026-08-29. That one-below margin is the rule
     `test_no_hardcoded_plugin_paths.py` states for its own floor, and the first
     version of this file broke it — floors of 100 and 95 let three files be
     deleted with nothing noticing, which is the silence the rule exists to deny.
@@ -276,15 +325,15 @@ def test_the_coverage_split_is_not_vacuous():
     with it.
     """
     shipped, reached = _shipped(), _reached()
-    token_shipped = {n for n in shipped if n.endswith(TOKEN_SCANNED_SUFFIXES)}
+    token_candidates = shipped - set(EXEMPT)
     assert len(shipped) >= 102, f"shipped set collapsed to {len(shipped)} files"
     assert (
         len(shipped & reached) >= 97
     ), f"scanner coverage collapsed to {len(shipped & reached)} files"
     assert (
-        len(token_shipped & _token_reached()) >= 92
+        len(token_candidates & _token_reached()) >= 92
     ), "token-scanner coverage collapsed to " \
-       f"{len(token_shipped & _token_reached())} files"
+       f"{len(token_candidates & _token_reached())} files"
 
 
 def test_every_exemption_carries_a_reason():
@@ -337,3 +386,18 @@ def test_an_exemption_a_scanner_now_reaches_is_reported():
     )
     assert now_covered == ["b.sh"]
     assert (unexplained, vanished) == ([], [])
+
+
+if __name__ == "__main__":
+    # The command the vacuity floors cite. It exists because `pytest <this file>`
+    # prints a pass count and nothing else — a floor whose stated measuring
+    # command emits no measurement cannot be re-derived, which is the decay this
+    # whole guard exists to stop, one level up.
+    _shipped_now, _reached_now = _shipped(), _reached()
+    _candidates = _shipped_now - set(EXEMPT)
+    print(
+        f"shipped {len(_shipped_now)}  "
+        f"reached {len(_shipped_now & _reached_now)}  "
+        f"token-candidates {len(_candidates)}  "
+        f"token-reached {len(_candidates & _token_reached())}"
+    )

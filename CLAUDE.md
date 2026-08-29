@@ -305,7 +305,8 @@ everywhere) from *facts* (per-repo, never synced):
   be written out as a list and a count, and both went stale while nothing noticed — the defect
   issue #178 named. `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py` now derives
   them: `EXEMPT` holds every tracked file under the published directory that NO scanner opens, and
-  `TOKEN_EXEMPT` every shipped `.md`/`.py` the two token scanners miss. Each entry carries a stated
+  `TOKEN_EXEMPT` every remaining shipped file the two TOKEN scanners miss — no suffix rule, because
+  scoping it to `.md`/`.py` left four files satisfying neither map. Each entry carries a stated
   reason, and an exemption whose file has since been deleted or picked up by a scanner fails too.
   Read the two maps for the current lists; adding an unscanned file is now a decision someone writes
   down rather than an accident.
