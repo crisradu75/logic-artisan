@@ -96,14 +96,36 @@ class Handler(SimpleHTTPRequestHandler):
     #     them. `urllib` opens a fresh connection per request and never sees it;
     #     a browser reuses connections and does.
     #
-    # So every POST consumes its body exactly once, up front, before any
-    # branching — rather than each endpoint remembering to. `/api/render` and the
-    # cross-origin refusal are the paths that silently relied on nobody sending
-    # one.
+    # So every ACCEPTED POST consumes its `Content-Length` body exactly once, up
+    # front, before any dispatch — rather than each endpoint remembering to.
+    # `/api/render` and the 404 are the paths that silently relied on nobody
+    # sending one.
+    #
+    # TWO CASES ARE OUTSIDE THAT, deliberately, and the sentence above is scoped
+    # rather than blanket because an earlier version of it was not and was wrong:
+    #
+    #   * A REFUSED cross-origin POST is not drained, because draining it is
+    #     attacker-controlled work: up to `MAX_BODY` buffered plus as much again
+    #     to join it, per connection, on a `ThreadingHTTPServer` with no
+    #     concurrency bound — for a request whose whole point is that it is not
+    #     served. It closes the connection instead, which costs the refused
+    #     client an RST and costs this server nothing.
+    #   * A `Transfer-Encoding: chunked` POST carries no `Content-Length`, so
+    #     there is nothing here to count and the framing would have to be
+    #     decoded. `BaseHTTPRequestHandler` does not decode it either, so such a
+    #     request cannot be SERVED correctly regardless of this drain — it is
+    #     refused with 411 rather than half-read, which is the one answer that
+    #     leaves neither a desync nor a wrong 400.
+    #
+    # A socket timeout bounds the third shape: a client that declares a large
+    # `Content-Length` and dribbles it would otherwise pin a handler thread for
+    # as long as it likes.
     MAX_BODY = 32 * 1024 * 1024
+    timeout = 60
 
     def _read_body(self):
-        """Consume this request's body and return it, capped and in chunks.
+        """Consume this request's `Content-Length` body and return it, capped and
+        in chunks.
 
         The cap bounds the read rather than the request: past it the remainder is
         deliberately left unread, because a body that large is not one this
@@ -112,7 +134,8 @@ class Handler(SimpleHTTPRequestHandler):
         every real request — the socket is left clean.
 
         A short or absent body is normal (a GET-shaped POST, a client that closed
-        early) and reads as empty rather than raising.
+        early) and reads as empty rather than raising. A chunked body is NOT
+        handled here; `_chunked_request` is checked before this is called.
         """
         try:
             remaining = int(self.headers.get("Content-Length") or 0)
@@ -128,6 +151,11 @@ class Handler(SimpleHTTPRequestHandler):
             chunks.append(chunk)
             remaining -= len(chunk)
         return b"".join(chunks)
+
+    def _chunked_request(self):
+        """True when the body is chunked, so its length cannot be counted."""
+        te = (self.headers.get("Transfer-Encoding") or "").lower()
+        return "chunked" in te
 
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
@@ -249,16 +277,24 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json({"ok": True, "summary": summary, "warnings": warn})
 
     def do_POST(self):
-        # BEFORE the origin check and before any dispatch. Every exit below —
-        # the 403, the render path, the 404, and the annotation path itself —
-        # then leaves the socket clean; see `_read_body` for what an unread one
-        # costs. Reading a refused request's body only to discard it is the
-        # price of closing that connection cleanly, and the cap bounds it.
-        raw = self._read_body()
+        # ORDER MATTERS, and the first version of this fix got it backwards.
+        # The guard runs BEFORE the drain, so a refused cross-origin request
+        # never makes this server buffer attacker-chosen bytes; it is answered
+        # and the connection closed, which is what stops the unread body from
+        # desyncing a reused one. Draining first closed the #187 hole by opening
+        # a memory one — see `_read_body`'s comment for both.
         ok, why = self._local_request()
         if not ok:
             print("REFUSED cross-origin request: %s" % why)
+            self.close_connection = True
             return self._json({"error": "refused: %s" % why}, 403)
+        if self._chunked_request():
+            self.close_connection = True
+            return self._json({"error": "chunked bodies are not accepted"}, 411)
+        # After the guard, before any dispatch: every remaining exit — the render
+        # path, the 404, and the annotation path itself — then leaves the socket
+        # clean, rather than each endpoint remembering to read.
+        raw = self._read_body()
         path = urlparse(self.path).path
         if path == "/api/render":
             return self._render()

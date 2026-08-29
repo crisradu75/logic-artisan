@@ -1,8 +1,22 @@
-"""Mutants for the two amendment defects the annotation server carried.
+"""Mutants for the annotation server's defects, across two changes.
 
-Both were latent rather than live: the page had no undo, so nothing ever posted
-an un-delete and nothing ever named an id the corpus did not hold. Adding the
-undo makes both reachable, which is why they are fixed first and proved here.
+FIVE amendment mutants came first. All were latent rather than live: the page had
+no undo, so nothing ever posted an un-delete and nothing ever named an id the
+corpus did not hold. Adding the undo makes them reachable, which is why they were
+fixed first and proved here.
+
+FOUR more cover issue #187 — a reply that closed the connection while the request
+body was still unread, so the OS answered RST instead of FIN — and the two
+behaviours the fix added around it: the drain cap, and the refusal of a chunked
+body whose length cannot be counted.
+
+EVERY MUTANT HERE DIES DETERMINISTICALLY, which took a second pass to arrange.
+The obvious #187 mutant kills only through the RST race, and a batch that
+intermittently reports a survivor is what trains a reader to skip the whole list.
+It is killed instead by the keep-alive desync test, which needs no race: leave a
+body unread on a connection that stays open and the NEXT request on it is parsed
+from those bytes, every time. The `MAX_BODY` mutant likewise used to die on a
+literal assertion rather than on anything the server does.
 
     python3 plugin-tests/mutate.py plugin-tests/mutants/annotate/test_annotate_server.py
 """
@@ -64,5 +78,19 @@ MUTANTS = [
      SERVER,
      "    MAX_BODY = 32 * 1024 * 1024",
      "    MAX_BODY = 1024",
+     TESTS),
+
+    ("the cap goes entirely, so a declared Content-Length is buffered whole and "
+     "the fix for one hole becomes a memory hole",
+     SERVER,
+     "        chunks, remaining = [], min(remaining, self.MAX_BODY)",
+     "        chunks, remaining = [], remaining",
+     TESTS),
+
+    ("a chunked body is accepted again, so its framing is neither counted nor "
+     "decoded and the leftovers desync the connection",
+     SERVER,
+     "        if self._chunked_request():",
+     "        if False and self._chunked_request():",
      TESTS),
 ]

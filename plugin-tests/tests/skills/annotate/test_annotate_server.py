@@ -7,6 +7,7 @@ field present but empty, an amendment naming nothing.
 """
 import hashlib
 import http.client
+import io
 import json
 import os
 import threading
@@ -58,11 +59,22 @@ class Server:
         # and KeyErrors on the static one.
         def headers(h):
             return {k.lower(): v for k, v in h.items()}
+        # `e.read()` is INSIDE the try, not inside an except handler. An
+        # exception raised while handling another is not caught by a sibling
+        # clause of the same try, and `urlopen` raises `HTTPError` as soon as the
+        # status line and headers are parsed — the error body is read lazily.
+        # So reading it from within `except HTTPError:` left the 4xx/5xx branch
+        # unprotected while the success branch was covered, and the 404 is the
+        # exact endpoint #187 failed on. Verified rather than assumed:
+        # `HTTPDefaultErrorHandler.http_error_default` raises with `fp` unread.
+        err = None
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return r.status, r.read(), headers(r.headers)
-        except urllib.error.HTTPError as e:
-            return e.code, e.read(), headers(e.headers)
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return r.status, r.read(), headers(r.headers)
+            except urllib.error.HTTPError as e:
+                err = e
+            return err.code, err.read(), headers(err.headers)
         except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
             # An HTTP status arrives as HTTPError and is a RESULT. Anything else
             # is the transport failing, and used to propagate raw — so the test
@@ -307,10 +319,81 @@ def test_a_refused_request_still_consumes_its_body(live):
         assert live.post("/api/render", raw=big)[0] == 200
 
 
-def test_an_oversized_body_is_bounded_rather_than_buffered(live):
-    """The drain is capped, so the fix cannot be turned into a memory hole by a
-    client that declares a body larger than the server should ever hold."""
-    assert annotate_server.Handler.MAX_BODY == 32 * 1024 * 1024
+def test_a_kept_alive_connection_is_not_desynced_by_an_unread_body(live):
+    """The DETERMINISTIC half of the drain, and the one that needs no race.
+
+    `/api/render` replies through `_json`, which keeps the connection alive. An
+    unread body therefore does not RST anything — it sits in the stream, and the
+    NEXT request on that connection is parsed starting from its bytes. `urllib`
+    opens a fresh connection per request and can never see this; `http.client`
+    reuses one, so it can.
+
+    Without the drain the second request below reads `{"x": "aaa…` as its
+    request line and the assertion fails every time, on every platform. That is
+    what makes this the companion to the probabilistic 8 MiB test rather than a
+    duplicate of it.
+    """
+    conn = http.client.HTTPConnection("127.0.0.1", live.port, timeout=30)
+    try:
+        big = json.dumps({"x": "a" * (1024 * 1024)}).encode("utf-8")
+        conn.request("POST", "/api/render", body=big,
+                     headers={"Content-Type": "application/json"})
+        first = conn.getresponse()
+        first.read()
+        assert first.status == 200
+
+        # Same connection, deliberately. This is the assertion.
+        conn.request("GET", "/api/annotations")
+        second = conn.getresponse()
+        second.read()
+        assert second.status == 200, (
+            "the second request on a reused connection did not get a clean "
+            "response, so the first request's body was left in the stream"
+        )
+    finally:
+        conn.close()
+
+
+def test_the_drain_stops_at_the_cap(live):
+    """The cap is BEHAVIOUR, not a constant to assert against itself.
+
+    An earlier version of this test asserted `MAX_BODY == 32 * 1024 * 1024` and
+    nothing else, so `min(remaining, self.MAX_BODY)` was never executed: deleting
+    the `min` reopened the memory hole with the whole suite green, and the batch's
+    cap mutant died on the literal rather than on anything the server does.
+
+    This drives `_read_body` directly with a declared length far above the cap
+    and a reader that would happily supply it, and asserts the read stops.
+    """
+    handler = annotate_server.Handler.__new__(annotate_server.Handler)
+    handler.headers = {"Content-Length": str(4 * annotate_server.Handler.MAX_BODY)}
+    handler.rfile = io.BytesIO(b"a" * (2 * annotate_server.Handler.MAX_BODY))
+
+    got = handler._read_body()
+
+    assert len(got) == annotate_server.Handler.MAX_BODY
+    assert handler.rfile.tell() == annotate_server.Handler.MAX_BODY, (
+        "the cap must stop the READ, not just truncate what it returns"
+    )
+
+
+def test_a_chunked_body_is_refused_rather_than_half_read(live):
+    """No Content-Length means nothing to count, and BaseHTTPRequestHandler does
+    not decode chunked framing either — so the body cannot be drained and the
+    request cannot be served. 411 plus a close is the one answer that leaves
+    neither a desync nor a misleading 400 about the JSON."""
+    conn = http.client.HTTPConnection("127.0.0.1", live.port, timeout=30)
+    try:
+        conn.putrequest("POST", "/api/annotations")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Transfer-Encoding", "chunked")
+        conn.endheaders()
+        conn.send(b"2\r\n{}\r\n0\r\n\r\n")
+        res = conn.getresponse()
+        res.read()
+        assert res.status == 411
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------- reading
