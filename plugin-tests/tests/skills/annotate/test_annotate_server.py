@@ -410,6 +410,131 @@ def test_a_short_body_reports_itself_incomplete():
     assert (len(got), complete) == (10, False)
 
 
+def _chunked(stream_bytes):
+    return _offline_handler({"Transfer-Encoding": "chunked"}, io.BytesIO(stream_bytes))
+
+
+class _EndlessStream:
+    """A reader that repeats `pattern` forever, and refuses past `limit`.
+
+    A `BytesIO` CANNOT test an unbounded loop: it runs out, the decoder sees an
+    empty read and returns, and a runaway decoder looks exactly like a correct
+    one. Both loop guards were measured to survive their own mutants for that
+    reason — the two rules agree on every finite input.
+
+    Serving forever makes them disagree, and the limit turns a runaway into a
+    failed assertion rather than a hung suite.
+    """
+
+    def __init__(self, pattern, limit=1 << 20):
+        self.pattern, self.limit, self.served, self.buf = pattern, limit, 0, b""
+
+    def _fill(self, n):
+        while len(self.buf) < n:
+            self.served += len(self.pattern)
+            if self.served > self.limit:
+                raise AssertionError(
+                    "the decoder consumed over %d bytes without returning — it "
+                    "is not bounded" % self.limit
+                )
+            self.buf += self.pattern
+
+    def read(self, n):
+        self._fill(n)
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def readline(self, n=-1):
+        limit = 1024 if n is None or n < 0 else n
+        self._fill(limit)
+        cut = self.buf.find(b"\n", 0, limit)
+        end = limit if cut < 0 else cut + 1
+        out, self.buf = self.buf[:end], self.buf[end:]
+        return out
+
+
+def _endless_chunked(pattern):
+    return _offline_handler({"Transfer-Encoding": "chunked"}, _EndlessStream(pattern))
+
+
+def test_a_negative_chunk_size_terminates_the_decode():
+    """`int(b"-1", 16)` is -1 in Python, and -1 walked through every guard the
+    first decoder had: not zero so the trailer branch was skipped, `total + size`
+    DECREASED so the cap never tripped, `while want > 0` consumed nothing, and the
+    loop went round again. Measured at 17.5 MB read against a 64 KiB cap, still
+    spinning — an unbounded loop reachable by a REFUSED cross-origin request,
+    which is strictly worse than the RST the decode was written to avoid.
+
+    Driven from an ENDLESS stream, not a `BytesIO`: a finite one runs out and the
+    unguarded decoder returns too, so the guard and its absence agree on every
+    input a fixed buffer can supply.
+    """
+    got, complete = _endless_chunked(b"-1\r\n\r\n")._read_body()
+
+    assert (got, complete) == (b"", False)
+
+
+def test_endless_trailers_end_the_read_rather_than_the_process():
+    """The trailer loop counted nothing against the cap and had no iteration
+    limit, so a peer sending trailer lines forever kept it running — the socket
+    timeout never fires while data keeps arriving. Measured at 6.5 million lines
+    with no return.
+
+    Endless for the same reason as the test above. The first chunk header ends
+    the body and opens the trailer section, and the trailers then never stop.
+    """
+    handler = _offline_handler(
+        {"Transfer-Encoding": "chunked"},
+        _EndlessStream(b"X-Pad: yyyyyyyyyyyyyyyyyyyy\r\n"),
+    )
+    handler.rfile.buf = b"0\r\n"
+
+    got, complete = handler._read_body()
+
+    # Incomplete, not complete: the budget ran out with bytes still in the stream.
+    assert (got, complete) == (b"", False)
+
+
+def test_a_chunk_size_line_with_no_newline_is_refused():
+    """`readline(64)` returns 64 bytes with no terminator when the line is
+    longer, and the prefix before `;` still parses — so a long chunk extension
+    is read as a size and the rest of the line consumed as body.
+
+    The sizes are chosen so the UNGUARDED decoder succeeds rather than merely
+    failing differently: `0x26` is 38, and exactly 38 padding bytes plus a CRLF
+    remain after `readline(64)` takes its 64. Without the newline check the
+    decode returns `(b"zzz…", True)` — a wrong body, reported clean. Asserting
+    only `complete is False` did not discriminate, because the unguarded path
+    also ended up incomplete on a less carefully built line.
+    """
+    line = b"26;" + b"z" * 97 + b"\r\n"
+    got, complete = _chunked(line + b"0\r\n\r\n")._read_body()
+
+    assert (got, complete) == (b"", False)
+
+
+def test_a_missing_inter_chunk_crlf_is_refused():
+    """Discarding two bytes whatever they are eats the first two characters of
+    the next size line when a peer omits the CRLF, and mis-frames the rest."""
+    got, complete = _chunked(b"5\r\nhello0\r\n\r\n")._read_body()
+
+    assert complete is False
+
+
+def test_a_well_formed_chunked_body_still_decodes():
+    """The non-vacuity partner: five guards that refuse everything would pass
+    every test above and serve nothing.
+
+    Written first with `3\\r\\n you\\r\\n` — a 4-byte chunk declared as 3 — and the
+    decode came back `(b"hello yo", False)`, because the inter-chunk CRLF check
+    landed on `u\\r`. The fixture was wrong rather than the decoder, and the guard
+    added two edits earlier is what said so.
+    """
+    got, complete = _chunked(b"5\r\nhello\r\n4\r\n you\r\n0\r\n\r\n")._read_body()
+
+    assert (got, complete) == (b"hello you", True)
+
+
 def test_an_undrainable_body_closes_the_connection_rather_than_desyncing(live):
     """The live half of "drained or closed, never neither".
 

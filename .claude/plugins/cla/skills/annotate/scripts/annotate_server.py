@@ -176,25 +176,95 @@ class Handler(SimpleHTTPRequestHandler):
             if sock is not None:
                 sock.settimeout(previous)
 
+    # Every read below counts against `cap`, and every framing violation returns
+    # rather than continuing. That is not defensive style — the first version of
+    # this decoder had TWO unbounded loops, both reachable by a REFUSED
+    # cross-origin request, which is strictly worse than the RST it was written
+    # to avoid:
+    #
+    #   * `int(b"-1", 16)` is -1 in Python. A negative size is not 0, so it
+    #     skipped the trailer branch; `total + size > cap` DECREASED the running
+    #     total so the bound never tripped; `while want > 0` never ran so nothing
+    #     was consumed; and the loop went round again. Measured: 17.5 MB consumed
+    #     against a 64 KiB cap, still spinning.
+    #   * The trailer loop counted nothing and had no iteration limit, so a peer
+    #     sending trailer lines forever kept it running — the socket timeout never
+    #     fires while data keeps arriving. Measured: 6.5 million lines, no return.
+    #
+    # A size line must also END in a newline. `readline(64)` returns 64 bytes with
+    # no terminator when the line is longer, and the prefix before `;` still
+    # parses — so a long chunk extension could be read as a size and the rest of
+    # the extension line consumed as body.
+    MAX_TRAILER_BYTES = 8 * 1024
+
+    def _discard_pending(self, limit):
+        """Best-effort: throw away what has ALREADY arrived, and never block.
+
+        For a body whose length cannot be counted — a malformed `Content-Length`,
+        or any reply from a path that never parsed one — there is no number to
+        read up to, so `_read_body`'s bounded read is not available. A blocking
+        read would hang until the timeout on a peer that sends nothing more.
+
+        A brief timeout instead consumes whatever is buffered, which for any
+        realistically-sized body is the whole of it, and gives up rather than
+        waiting. That turns the close from RST into FIN for every real client and
+        costs an unhelpful one a quarter of a second.
+        """
+        sock = getattr(self, "connection", None)
+        if sock is None:
+            return
+        previous = sock.gettimeout()
+        try:
+            sock.settimeout(0.25)
+            while limit > 0:
+                got = self.rfile.read(min(limit, 64 * 1024))
+                if not got:
+                    return
+                limit -= len(got)
+        except OSError:
+            return
+        finally:
+            sock.settimeout(previous)
+
+    def send_error(self, code, message=None, explain=None):
+        """Every error reply sends `Connection: close`, so every error reply is a
+        close on a possibly-unread body — #187's exact shape.
+
+        `do_POST` drains its own body before dispatching, but the base class
+        answers 501 to a `PUT`/`PATCH`/`DELETE` that this server never parses,
+        and that path never reaches `do_POST` at all. Discarding here covers the
+        whole family in one place rather than per method.
+        """
+        self._discard_pending(self.REFUSED_DRAIN)
+        return SimpleHTTPRequestHandler.send_error(self, code, message, explain)
+
     def _read_chunked(self, cap):
         """Decode `Transfer-Encoding: chunked` framing. Same return contract."""
         out, total = [], 0
         while True:
             line = self.rfile.readline(64)
-            if not line:
+            if not line or not line.endswith(b"\n"):
                 return b"".join(out), False
             try:
                 size = int(line.split(b";", 1)[0].strip() or b"0", 16)
             except ValueError:
                 return b"".join(out), False
+            if size < 0:
+                return b"".join(out), False
             if size == 0:
-                # Trailers, then the blank line that ends them. Bounded reads
-                # only: a peer that never sends the blank line is the dribble
-                # case, and the socket timeout above covers it.
-                while True:
-                    trailer = self.rfile.readline(1024)
-                    if not trailer or trailer in (b"\r\n", b"\n"):
+                # Trailers, then the blank line that ends them — bounded by their
+                # own byte budget, so "trailer lines forever" ends the read
+                # instead of the process. Running out of budget is incomplete,
+                # not complete: bytes are still in the stream.
+                budget = self.MAX_TRAILER_BYTES
+                while budget > 0:
+                    trailer = self.rfile.readline(min(budget, 1024))
+                    if not trailer:
+                        return b"".join(out), False
+                    if trailer in (b"\r\n", b"\n"):
                         return b"".join(out), True
+                    budget -= len(trailer)
+                return b"".join(out), False
             if total + size > cap:
                 return b"".join(out), False
             want = size
@@ -205,7 +275,11 @@ class Handler(SimpleHTTPRequestHandler):
                 out.append(chunk)
                 want -= len(chunk)
                 total += len(chunk)
-            self.rfile.read(2)  # the CRLF closing this chunk
+            # The CRLF closing this chunk, VERIFIED. Discarding two bytes
+            # whatever they are eats the first two characters of the next size
+            # line when a peer omits it, and then mis-frames everything after.
+            if self.rfile.read(2) not in (b"\r\n", b"\n\r", b"\n"):
+                return b"".join(out), False
 
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
@@ -356,6 +430,13 @@ class Handler(SimpleHTTPRequestHandler):
         if not complete:
             # Drained or closed, never neither. Whatever is left in the stream
             # would otherwise be read as the next request on this connection.
+            #
+            # And the close itself has to be clean, which the first version of
+            # this branch missed: on the malformed-`Content-Length` path
+            # `_read_body` returns without consuming a single byte, so this was
+            # the one branch where leftover bytes were GUARANTEED, closing on all
+            # of them. That is #187 again, in the code fixing #187.
+            self._discard_pending(self.REFUSED_DRAIN)
             self.close_connection = True
             return self._json({"error": "request body too large or malformed"}, 400)
         path = urlparse(self.path).path

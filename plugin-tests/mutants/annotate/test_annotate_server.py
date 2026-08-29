@@ -27,6 +27,14 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 SERVER = PLUGIN / "skills" / "annotate" / "scripts" / "annotate_server.py"
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_annotate_server.py"]
 
+# Anchors are matched against the target's RAW BYTES, so a multi-line one must
+# spell the separator the way that file actually spells it. A bare `\n` matches
+# on the working copy that just wrote the file and matches nothing once it has
+# been checked out on Windows — a preflight abort of the whole batch, on a clone
+# that changed nothing. Prefer a single-line anchor; use this when the line is
+# not unique on its own.
+_NL = "\r\n" if b"\r\n" in SERVER.read_bytes() else "\n"
+
 MUTANTS = [
     ("an amendment is decided by TRUTH again, so an un-delete reads as a new "
      "annotation and is refused for anchor fields it never carries",
@@ -109,5 +117,53 @@ MUTANTS = [
      SERVER,
      '            return b"".join(out), declared <= cap',
      '            return b"".join(out), True',
+     TESTS),
+
+    # The five below are the chunked decoder's own bounds. Every one of them was
+    # ABSENT in the first cut, and two of those absences were unbounded loops
+    # reachable by a refused cross-origin request.
+    ("a negative chunk size stops being rejected, so it skips the cap check, "
+     "consumes nothing, and the decoder never terminates",
+     SERVER,
+     "            if size < 0:",
+     "            if False:",
+     TESTS),
+
+    # BOTH lines, deliberately. Mutating the loop condition ALONE survives, and
+    # it is not the guard's fault: `readline(min(budget, 1024))` bounds the read
+    # by itself, because budget lands exactly on 0 and `readline(0)` returns b"".
+    # Traced under `while True`: 283 iterations, then an empty read ends it. Two
+    # expressions that agree on every input are one rule written twice, so the
+    # mutant has to remove the rule — which is exactly the shape review measured
+    # at 6.5 million trailer lines with no return.
+    ("the trailer read loses BOTH its bound and its budget, so a peer sending "
+     "trailer lines forever keeps it running while the socket timeout never "
+     "fires — the shape review measured at 6.5M lines",
+     SERVER,
+     "                while budget > 0:" + _NL
+     + "                    trailer = self.rfile.readline(min(budget, 1024))",
+     "                while True:" + _NL
+     + "                    trailer = self.rfile.readline(1024)",
+     TESTS),
+
+    ("a size line no longer has to end in a newline, so an over-long chunk "
+     "extension is read as a size and its remainder as body",
+     SERVER,
+     '            if not line or not line.endswith(b"\\n"):',
+     "            if not line:",
+     TESTS),
+
+    ("the inter-chunk CRLF goes back to being discarded unverified, eating the "
+     "next size line's first two bytes when a peer omits it",
+     SERVER,
+     '            if self.rfile.read(2) not in (b"\\r\\n", b"\\n\\r", b"\\n"):',
+     "            if False:",
+     TESTS),
+
+    ("running out of trailer budget reports COMPLETE, so the caller leaves the "
+     "connection open on a stream that still has bytes in it",
+     SERVER,
+     '                return b"".join(out), False' + _NL + "            if total + size > cap:",
+     '                return b"".join(out), True' + _NL + "            if total + size > cap:",
      TESTS),
 ]
