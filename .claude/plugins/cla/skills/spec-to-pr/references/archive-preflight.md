@@ -62,7 +62,7 @@ grep -n '^### ' openspec/specs/<capability>/spec.md | grep -v '^.*:### Requireme
 
 Each match is a legacy heading — rewrite it to `### Requirement: <Name>` before archiving. This is a hand-edit under `openspec/specs/` — the validate rule in check (a) applies to it too.
 
-## (c) MODIFIED-block heading existence
+## (c) MODIFIED-block heading existence, and scenario retention under it
 
 For every `## MODIFIED Requirements` block in the change's delta
 (`openspec/changes/<name>/specs/<capability>/spec.md`), confirm the `### Requirement: <Name>` heading
@@ -77,6 +77,24 @@ grep -n '^### Requirement: ' openspec/changes/<name>/specs/<capability>/spec.md
 # for each result, confirm an exact-string hit in the active spec
 grep -F '### Requirement: <Name>' openspec/specs/<capability>/spec.md
 ```
+
+**A heading match is not retention.** The loop above has already located the live requirement, which
+is the expensive half; stopping there leaves the scenario set unexamined, and a MODIFIED block
+*replaces* its requirement rather than patching it — so a live scenario absent from the block is
+deleted the moment `openspec archive` runs, with the block reading complete on its own face. So for
+each heading confirmed present, compare the scenario sets before moving on, per
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`.
+
+**Why here as well as at review time.** This is the last point before materialization deletes
+anything, and it is the only one that sees the window *after* review closes — a Revise-round edit to
+the delta, a hand-resolved conflict in it. Review-time cannot look at either.
+
+**This one entry does not block, and it is the only one in this file that does not.** A `dropped`
+verdict is raised as a **Critical against the change** and carried into the run's Issues so the PR
+shows it; the archive proceeds. Halting here would be last-detection as the design, which the
+placement itself rejects — and a scenario renamed in place is indistinguishable from a deleted one,
+so a halt would fire on legitimate renames. The value is that the loss is recorded before it
+happens, not that it is prevented.
 
 ## Retired-path cross-reference cleanup
 
