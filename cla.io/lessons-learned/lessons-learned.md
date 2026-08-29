@@ -6,7 +6,7 @@
 
 ### Session summary
 
-Triaged 10 open issues, picked #184 (`ask-destructive-git` should prompt on a `git checkout <path>` that would discard work) on the grounds that it was the only one with an incurred loss behind it. Ran `/cla:lite-pr`. Shipped PR #186, then reviewed it four times, each round finding roughly five real bypasses, all reproduced against real git. Merged (user-authorised) as `a274027`; branch deleted; `main` fast-forwarded.
+Triaged 10 open issues, picked #184 (`ask-destructive-git` should prompt on a `git checkout <path>` that would discard work) on the grounds that it was the only one with an incurred loss behind it. Ran `/cla:lite-pr`. Shipped PR #186, then reviewed it four times — the first three finding 5, 5 and 4 real bypasses, all reproduced against real git, and the fourth coming back clean of that class. Merged (user-authorised) as `a274027`; branch deleted; `main` fast-forwarded.
 
 The four rounds, in one line each:
 
@@ -15,11 +15,19 @@ The four rounds, in one line each:
 3. **Round 3** — 4 criticals, three again pre-existing: `git reset --h` (abbreviation), `git reset --hard\`+newline and `git push --force\`+newline (terminator), plus an untracked-collision miss on a forced checkout.
 4. **Round 4** — clean of the displacement class, after a cross-product matrix replaced the case list.
 
-**The one fact worth carrying forward:** every round after the first found the *same shape* — a construct handled correctly for one rule and never carried to the others. It was not bad luck. Fixing instances four times did not converge; replacing the case list with an 8 × 8 matrix did.
+**The one fact worth carrying forward:** every round after the first found the *same shape* — a construct handled correctly for one rule and never carried to the others. It was not bad luck. Fixing instances three times did not converge; replacing the case list with a cross product did, and the guard ended up 8 rules × 8 constructs (it was not 8 × 8 during the rounds — the construct set did not exist as a set until the matrix was written).
+
+**Correction, added after this entry was first written.** A review of this very codify run found two of its own claims wrong, and both are recorded here rather than quietly amended. (a) Suggestion 1's premise was false — see below. (b) The claim that three planted displacements were killed "by the matrix, not by a bug-specific test" was inferred from a batch that pointed each mutant at the matrix test and ran only that test, so it could not have observed a hand-written test dying too; `test_branch_delete_fires_on_every_executable_spelling` had covered one of the three since `865d366`. A green targeted run is evidence about the target and nothing else — which is this repo's own rule, missed in the commit that added a section about proving things by planting.
 
 ### Suggestions
 
-**1. Close the heredoc hook's even-run blind spot** — `hooks/warn-heredoc-escape-mangling.py` — **APPLIED**
+**1. Close the heredoc hook's even-run blind spot** — `hooks/warn-heredoc-escape-mangling.py` — **APPLIED, THEN REVERTED ON REVIEW**
+
+> **The premise was false and the change should never have shipped.** A review of the codify PR checked the motivating command instead of trusting the write-up: its heredoc delimiter was QUOTED, so the shell stripped nothing, and evaluating the literal shows the `n` was never eaten — the command was correctly escaped and did what it intended. The hook's silence was right. Worse, the threshold flagged runs of 4, and a run survives exactly k re-parses iff N == 2**k, so 4 is a power of two and therefore the *correct* spelling for a literal two layers down. Measured over 42,730 real Bash commands from the transcripts, the widening fired on 3 commands parity did not and all 3 were correctly escaped: zero true positives. Reverted; the layer arithmetic and the measurement are kept as a docstring note and one test so nobody re-derives it from scratch.
+>
+> **What produced the error:** a command failed, and the failure was attributed to the mechanism the memory entry had primed rather than diagnosed. Both tests written to justify it were synthetic, and both passed — a synthetic case can demonstrate a run that mangles while proving nothing about whether anyone writes it. The repo's own rule (`feedback_verify_heuristics_empirically`) says to check a content-scanning heuristic against real repo files before shipping. It was not run, and the review that ran it settled the question in one measurement.
+
+*Original entry, kept for the record:*
 Line 87 fired only on an odd backslash run. Parity is a two-layer rule (shell → inner language); with three layers (shell → heredoc → a string literal inside it) the author doubles an escape and the run is even while the value still mangles. Predicate is now `run % 2 or run >= 4`; a run of exactly 2 stays silent, since that is the one unambiguously deliberate literal `\n` and it is common in a heredoc writing a regex. Two tests added.
 *Measured: reconstructed this session's failing command and ran it through the hook — SILENT before, flagged after. That command really did mangle and fail two steps later with a confusing regex error.*
 *Routing: re-offense of `feedback_no_heredocs_for_file_content` (memory, rung 2). The rung-3 hook already existed and had a gap, so the escalation was fixing the hook, not restating the memory.*
@@ -35,7 +43,7 @@ Added to `## Words`: jargon from a practice gets defined on first use in the sam
 
 **4. Make `lite-pr` report the fix commit's weight against the reviewed one** — `skills/lite-pr/SKILL.md` — **APPLIED**
 Review phase step 5: state the fix commit's insertions against the reviewed commit's, and say plainly the fixes are unreviewed. A report line, not a new gate — the one-pass default stands.
-*Measured: 590 insertions of fixes against 474 reviewed, unstated, and the user had to ask "didn't we just reviewed 186?" to surface it. Reviewing that commit then found five criticals.*
+*Measured: 590 insertions of fixes (`e57902d`) against 474 reviewed (`0d409fa`), unstated, and the user had to ask whether the fixes had been reviewed to surface it. Reviewing that commit then found five criticals.*
 
 ### Recurring patterns
 

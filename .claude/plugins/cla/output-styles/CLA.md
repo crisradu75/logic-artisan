@@ -131,15 +131,21 @@ A technical term stays as-is — a function name, a config key, a domain term.
 "check" where it names that step.
 
 **Jargon from a practice gets defined on first use, in the same sentence.** A
-term of art carries a precise meaning inside its practice and none outside it —
-mutation testing's "kill" and "survive", a framework's lifecycle names, a
-protocol's verbs. Keeping the term is right; using it bare is not. Either define
-it inline ("killed it — a test failed, which is what you want") or use the plain
-phrasing and give the term once in parentheses. The tell is a reply that needs a
-follow-up question before it is usable: measured here, a report saying "what it
-kills" was answered with "what do you mean by what it kills", which cost a whole
-round trip to say something a five-word clause would have carried. This is the
-same rule as the plain-word table above, applied to terms the table cannot list.
+term of art means something exact inside its practice and nothing outside it.
+Mutation testing's "kill" and "survive" are examples. So are a framework's
+lifecycle names and a protocol's verbs.
+
+Keep the term. Define it in the same breath. Either gloss it inline ("killed it,
+meaning a test failed, which is what you want") or lead with the plain phrasing
+and put the term in parentheses after.
+
+The tell is a reply that needs a follow-up question before it is usable. In the
+source repo a report said "what it kills" and got back "what do you mean by what
+it kills". A five-word gloss would have saved the round trip.
+
+Note the contrast with the rule above. There, a plain word replaces a fancy one.
+Here the term stays, because no plain word carries it — what changes is that it
+arrives with its meaning attached.
 
 ## Grammar
 

@@ -74,20 +74,26 @@ def _eaten_escapes(body: str) -> list[str]:
     genuinely eaten `\\n`, and the lookbehind sees a backslash and stays silent.
     Only an odd run of backslashes actually escapes the character after it.
 
-    PARITY ALONE IS A TWO-LAYER RULE, and a long even run is the three-layer
-    case. "Even means the next character is literal" holds for shell → inner
-    language. It stops holding when the inner language then re-reads the text as
-    a string literal of its own: there, the author has DOUBLED an escape to
-    survive one layer, and the run is even while the value still mangles.
-    Measured — this hook stayed silent on a `python - <<'PY'` whose body carried
-    `\\\\\\\\\\\\n` inside a `'''...'''` literal, and that command really did
-    mangle and fail two steps later, which is the whole failure this hook exists
-    to pre-empt.
+    WHY PARITY IS THE WHOLE RULE, AND WHAT IT DELIBERATELY DOES NOT COVER.
+    Re-parsing a run of N backslashes plus the character as a string literal
+    halves the run each time, so **N survives exactly k re-parses iff N is
+    2**k** — 2 survives one layer, 4 survives two, 8 survives three, and every
+    other even run mangles at some depth (6, for instance, is fine after one
+    re-parse and eaten after two).
 
-    So a run of 4 or more also warns, whatever its parity. Exactly 2 stays
-    silent: that is the one even run that is unambiguously a deliberate literal
-    backslash-n, and it is common in a heredoc that writes a regex — widening to
-    every even run would make this hook noisy on the file it most often guards.
+    So a deeper sandwich — shell, then a heredoc, then a string literal inside
+    it — can mangle on an EVEN run, and parity alone will not see it. That gap
+    is left open on purpose. Widening the predicate to catch it was tried and
+    reverted, and the measurement is the reason: over 42,730 real Bash commands
+    from this machine's transcripts, `run % 2 or run >= 4` fired on 3 commands
+    that parity did not, and all 3 were correctly escaped and did exactly what
+    they intended. Zero true positives. Worse, 4 is a power of two — the
+    CORRECT spelling for a literal two layers down — so the widened rule flagged
+    the very shape a three-layer author is supposed to write.
+
+    Re-derive before trying again, and do it against real commands rather than
+    constructed ones: a synthetic test can demonstrate a run that mangles, and
+    proves nothing about whether anyone writes it.
     """
     found: set[str] = set()
     i = 0
@@ -99,11 +105,11 @@ def _eaten_escapes(body: str) -> list[str]:
         while i < len(body) and body[i] == "\\":
             run += 1
             i += 1
-        if (run % 2 or run >= 4) and i < len(body) and body[i] in _EATEN:
+        if run % 2 and i < len(body) and body[i] in _EATEN:
             found.add("\\" + body[i])
-        # A run of exactly 2 is one `\\` pair — the next char is literal, and
-        # that is the only even run left silent. See the docstring for why 4+
-        # warns despite being even.
+        # An even run is `\\` pairs — the next char is literal, not escaped.
+        # See the docstring for the deeper-sandwich case this deliberately
+        # does not cover, and the measurement behind leaving it uncovered.
     return sorted(found)
 
 

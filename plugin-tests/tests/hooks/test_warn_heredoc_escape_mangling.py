@@ -156,32 +156,37 @@ def test_the_hook_file_exists_and_is_wired_into_the_bash_dispatcher():
 
 
 # --------------------------------------------------------------------------- #
-# Long even runs — the three-layer case parity alone cannot see
+# The deeper sandwich, and why it is deliberately not covered
 # --------------------------------------------------------------------------- #
 
 
-def test_a_long_even_backslash_run_is_flagged():
-    """Parity alone is a TWO-layer rule. When the inner language re-reads the
-    text as a string literal of its own, the author has doubled an escape to
-    survive one layer: the run is even and the value still mangles.
+def test_a_long_even_run_is_left_alone():
+    """A run of 6 mangles under two re-parses, and this hook stays silent on it.
 
-    Measured -- this hook was SILENT on the command below during the session
-    that added this test, and the command really did mangle and fail two steps
-    later with a confusing error, which is the whole failure this hook exists to
-    pre-empt.
+    That is a KNOWN, DELIBERATE gap, pinned here so nobody re-widens the
+    predicate without re-deriving the measurement that closed the question.
+
+    A widening (`run % 2 or run >= 4`) was written, shipped to a PR, and
+    reverted. Measured over 42,730 real Bash commands from this machine's
+    transcripts, it fired on 3 commands parity did not, and all 3 were correctly
+    escaped and did exactly what they intended -- zero true positives. It also
+    flagged runs of 4, which is a power of two and therefore the CORRECT
+    spelling for a literal two layers down.
+
+    The arithmetic worth keeping: re-parsing halves the run, so N survives
+    exactly k re-parses iff N == 2**k. Runs of 2, 4 and 8 are safe at one, two
+    and three layers; 6 is safe at one and eaten at two.
+
+    If you widen this again, measure against real commands first. Both tests
+    that justified the reverted version were synthetic, and a synthetic case can
+    demonstrate a run that mangles while proving nothing about whether anyone
+    writes it.
     """
-    body = "subs = [('''(\"git -C . \\\\\\\\\\\\ncheckout -f\", \"x\")''', 'y')]"
-    cmd = "python - path <<'PYEOF'\n" + body + "\nPYEOF"
-    assert offending_heredocs(cmd), (
-        "a doubled-for-a-nested-literal escape went unflagged"
-    )
-
-
-def test_a_run_of_exactly_two_stays_silent():
-    """The one even run left silent, and the reason the threshold is 4 rather
-    than 'any even run': `\\\\n` is unambiguously a deliberate literal
-    backslash-n, and it is common in a heredoc that writes a regex. Widening to
-    every even run would make this hook noisy on the file it most often guards.
-    """
-    cmd = "cat > re.py <<'PY'\nPATTERN = '\\\\n+'\nPY"
-    assert not offending_heredocs(cmd), "a deliberate literal `\\\\n` was flagged"
+    # 12 source backslashes -> a run of 6 in the command the hook sees. Counted,
+    # not assumed: the assertion below would also pass on a run of 2, and an
+    # off-by-a-layer literal is how the reverted version's own tests came to
+    # exercise 6 while the constant they justified was 4.
+    body = 'x = """a \\\\\\\\\\\\nb"""'
+    cmd = "python - <<'PY'\n" + body + "\nPY"
+    assert body.count("\\") == 6, "this test must exercise a run of 6"
+    assert offending_heredocs(cmd) == []
