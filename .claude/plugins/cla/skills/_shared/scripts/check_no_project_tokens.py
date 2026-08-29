@@ -305,19 +305,18 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # guard refused to run at all (exit 2) in every consuming repo. Pruned to the
 # five roots that actually ship.
 #
-# TWO files are not scanned. Counted, not estimated — every other `.md`/`.py`
-# the marketplace ships falls inside a root below:
+# SOME shipped `.md`/`.py` files fall outside both scanners above. Which ones is
+# NOT written here. It was — as a list and a count, "counted, not estimated" —
+# and the count went stale while nothing noticed, twice, in this comment and in
+# CLAUDE.md. Checking a hand-written list once is not a mechanism; the next
+# rename falsifies it silently, because a file no scanner opens returns exactly
+# what a clean file returns.
 #
-#   - The plugin's own root `README.md`. Its install commands legitimately name
-#     this repository, which is what makes them copy-pasteable. Scanning it would
-#     flag the one file whose whole job is to identify the source.
-#   - `skills/_shared/README.md`. It sits directly under a skills subdirectory
-#     rather than under a `references/` ancestor, so the prose scanner's rule
-#     misses it and the source scanner only takes `.md` under `agents`/
-#     `output-styles`.
-#
-# (`run_tests.py` and `mutate.py` were the third and fourth. The first is
-# deleted and the second moved to the dev tree, so neither ships any more.)
+# The canonical-source repo's `TOKEN_EXEMPT` map, in
+# `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py`, derives the
+# split instead: every shipped `.md`/`.py` must be reached by a scanner above or
+# carry a stated reason there, and an exemption whose file was deleted or has
+# since been picked up fails too. Read that map for the current list.
 #
 # A deliberate path-parsing fixture stays scannable by carrying the
 # `path-fixture-ok` marker on its line, rather than by exempting a whole file.

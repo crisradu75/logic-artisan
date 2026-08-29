@@ -298,19 +298,18 @@ everywhere) from *facts* (per-repo, never synced):
   because the marketplace ships the whole directory. It was eight until the dev tree moved out; the
   three `*-checks/` entries then named directories that no longer exist, and a stale root is worse
   than a missing one, because the guard refuses to run at all rather than quietly scanning less.
-  Two files still fall outside both TOKEN scanners and are watched by hand: the plugin's own
-  `README.md` (its install commands legitimately name this repo) and `skills/_shared/README.md`.
-  It was four — `run_tests.py` and `mutate.py` were the other two, and neither ships any more.
   The two scanner families do not have the same reach: the hardcoded-path one
   (`plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py`) covers
   `.md`/`.py`/`.mjs`/`.json`, so `hooks/hooks.json` and a skill's `.mjs` **are** in scope; the
-  project-token one is `.py`/`.md` only. **These shipped files are reached by neither** —
-  the list is the durable form, not a count of it —
-  `.claude-plugin/plugin.json`, `.gitattributes` and the plugin `README.md` (all outside every scan
-  root), plus `hooks/probe-python.sh` and `hooks/git/pre-push`, which sit inside a scan root but
-  carry a suffix (`.sh`) and no suffix respectively that no scanner opens. The shipped-file total
-  moves with the tree and nothing guards the split, so re-derive it rather than quoting one:
-  `git ls-files .claude/plugins/cla | wc -l`. Tracked in issue #178.
+  project-token one is `.py`/`.md` only. **Do not restate either coverage split here.** Both used to
+  be written out as a list and a count, and both went stale while nothing noticed — the defect
+  issue #178 named. `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py` now derives
+  them: `EXEMPT` holds every tracked file under the published directory that NO scanner opens, and
+  `TOKEN_EXEMPT` every remaining shipped file the two TOKEN scanners miss — no suffix rule, because
+  scoping it to `.md`/`.py` left four files satisfying neither map. Each entry carries a stated
+  reason, and an exemption whose file has since been deleted or picked up by a scanner fails too.
+  Read the two maps for the current lists; adding an unscanned file is now a decision someone writes
+  down rather than an accident.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not
