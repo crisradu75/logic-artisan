@@ -156,6 +156,9 @@ One pass. Then:
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.
 3. Stage the fixed files, commit (`fix: address review findings`), push.
 4. Do NOT re-dispatch the review agents afterward — no re-verification loop (step 2's self-read is deliberately lighter than that).
+5. **Say how big the fix commit is against the reviewed change, and that it is unreviewed.** One line in the final report: the fix commit's insertions versus the reviewed commit's, and the plain statement that nobody has read the fixes. If step 1 committed no fixes, say that instead in one line — the comparison is undefined and inventing a number is worse than omitting it.
+
+   A report line, not a new gate: it re-dispatches nothing and asks nothing. It exists because step 4 is a cost decision rather than a claim the fixes are sound, and a run ending "review complete, fixes applied" reads as though the whole diff was reviewed. It was not — the reviewed artifact is the commit the agents read. The one-pass default still stands; the full triage → fix → re-review loop is `/cla:spec-to-pr`'s Revise phase, and this line is what lets the user opt into a second look without this skill growing one. Worked example, with the run's own numbers: `references/review-fix-weight.md`.
 
 This is a deliberate scope limit: a full triage → fix → re-review loop is `/cla:spec-to-pr`'s Revise phase, and rebuilding it here would reintroduce the cost this skill exists to avoid.
 

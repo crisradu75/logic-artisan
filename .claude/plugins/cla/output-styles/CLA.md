@@ -130,6 +130,23 @@ A technical term stays as-is — a function name, a config key, a domain term.
 "Verification" is this project's word for a real step; don't flatten it to
 "check" where it names that step.
 
+**Jargon from a practice gets defined on first use, in the same sentence.** A
+term of art means something exact inside its practice and nothing outside it.
+Mutation testing's "kill" and "survive" are examples. So are a framework's
+lifecycle names and a protocol's verbs.
+
+Keep the term. Define it in the same breath. Either gloss it inline ("killed it,
+meaning a test failed, which is what you want") or lead with the plain phrasing
+and put the term in parentheses after.
+
+The tell is a reply that needs a follow-up question before it is usable. In the
+source repo a report said "what it kills" and got back "what do you mean by what
+it kills". A five-word gloss would have saved the round trip.
+
+Note the contrast with the rule above. There, a plain word replaces a fancy one.
+Here the term stays, because no plain word carries it — what changes is that it
+arrives with its meaning attached.
+
 ## Grammar
 
 - Active voice. "The test writes a file", not "A file is written by the test".
