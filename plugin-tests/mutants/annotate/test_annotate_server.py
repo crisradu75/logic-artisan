@@ -47,4 +47,22 @@ MUTANTS = [
      "                print(\"REFUSED an amendment: %s\" % e)",
      "                raise",
      TESTS),
+
+    # Issue #187. Both of these restore the shape that made the flake: a reply
+    # that closes the connection while the request body is still unread, so the
+    # OS answers RST instead of FIN and the client's read races it.
+    ("only /api/annotations consumes its body again, so the 404 path closes on "
+     "an unread request and RSTs the client — #187 exactly",
+     SERVER,
+     "        raw = self._read_body()",
+     '        raw = (self._read_body()'
+     ' if urlparse(self.path).path == "/api/annotations" else b"")',
+     TESTS),
+
+    ("the drain cap drops below a real body, so anything larger is left unread "
+     "and the close is unclean again",
+     SERVER,
+     "    MAX_BODY = 32 * 1024 * 1024",
+     "    MAX_BODY = 1024",
+     TESTS),
 ]

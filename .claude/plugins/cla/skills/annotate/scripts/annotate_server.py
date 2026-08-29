@@ -78,6 +78,57 @@ class Handler(SimpleHTTPRequestHandler):
             return False, "Origin %r is not this page" % origin
         return True, ""
 
+    # A body left unread is not free, and it fails in two different ways
+    # depending on how the reply ends. Both were measured against this server,
+    # not reasoned about:
+    #
+    #   * If the reply CLOSES the connection — `send_error` sends
+    #     `Connection: close`, `_json` does not — the socket is closed with the
+    #     unsent request still in its receive buffer, and the OS answers with RST
+    #     instead of FIN. The client's read of an already-written response then
+    #     races that RST, and loses often enough to matter: posting to the 404
+    #     path with an 8 MiB body raised `ConnectionAbortedError` (WinError
+    #     10053) on the client while this server logged its 404 normally. The
+    #     same race with a 2-byte body is what issue #187 saw about once per
+    #     full-suite run and never in isolation.
+    #   * If the reply KEEPS the connection alive, the leftover bytes sit in the
+    #     stream and the NEXT request on that connection is parsed starting from
+    #     them. `urllib` opens a fresh connection per request and never sees it;
+    #     a browser reuses connections and does.
+    #
+    # So every POST consumes its body exactly once, up front, before any
+    # branching — rather than each endpoint remembering to. `/api/render` and the
+    # cross-origin refusal are the paths that silently relied on nobody sending
+    # one.
+    MAX_BODY = 32 * 1024 * 1024
+
+    def _read_body(self):
+        """Consume this request's body and return it, capped and in chunks.
+
+        The cap bounds the read rather than the request: past it the remainder is
+        deliberately left unread, because a body that large is not one this
+        server has any reason to buffer, and an RST to a client that sent 32 MiB
+        to a loopback annotation server is the correct outcome. Under the cap —
+        every real request — the socket is left clean.
+
+        A short or absent body is normal (a GET-shaped POST, a client that closed
+        early) and reads as empty rather than raising.
+        """
+        try:
+            remaining = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return b""
+        if remaining <= 0:
+            return b""
+        chunks, remaining = [], min(remaining, self.MAX_BODY)
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 64 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
         self.send_response(code)
@@ -198,6 +249,12 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json({"ok": True, "summary": summary, "warnings": warn})
 
     def do_POST(self):
+        # BEFORE the origin check and before any dispatch. Every exit below —
+        # the 403, the render path, the 404, and the annotation path itself —
+        # then leaves the socket clean; see `_read_body` for what an unread one
+        # costs. Reading a refused request's body only to discard it is the
+        # price of closing that connection cleanly, and the cap bounds it.
+        raw = self._read_body()
         ok, why = self._local_request()
         if not ok:
             print("REFUSED cross-origin request: %s" % why)
@@ -208,8 +265,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path != "/api/annotations":
             return self.send_error(404)
         try:
-            n = int(self.headers.get("Content-Length") or 0)
-            rec = json.loads(self.rfile.read(n) or b"{}")
+            rec = json.loads(raw or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._json({"error": "bad json"}, 400)
         if not isinstance(rec, dict):

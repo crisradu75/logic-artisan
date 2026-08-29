@@ -6,6 +6,7 @@ show up once a request has actually been parsed — a body that is not JSON, a
 field present but empty, an amendment naming nothing.
 """
 import hashlib
+import http.client
 import json
 import os
 import threading
@@ -62,6 +63,23 @@ class Server:
                 return r.status, r.read(), headers(r.headers)
         except urllib.error.HTTPError as e:
             return e.code, e.read(), headers(e.headers)
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
+            # An HTTP status arrives as HTTPError and is a RESULT. Anything else
+            # is the transport failing, and used to propagate raw — so the test
+            # went red with `ConnectionAbortedError` and no indication of which
+            # request, while the server's own log showed it had answered
+            # normally. That is issue #187's whole shape, and the ten minutes it
+            # costs to work out are what this re-raise removes.
+            #
+            # Deliberately NOT retried or swallowed: a transport error here means
+            # the server closed the connection uncleanly, which is a defect in
+            # the server, not weather. Making it legible is the fix; making it
+            # disappear would hide the next one.
+            raise AssertionError(
+                "transport error talking to %s %s: %s: %s — the server did not "
+                "close this connection cleanly" % (
+                    req.get_method(), req.full_url, type(exc).__name__, exc)
+            ) from exc
 
     def close(self):
         self.srv.shutdown()
@@ -262,6 +280,37 @@ def test_a_body_that_is_not_json_is_refused(live):
 
 def test_an_unknown_endpoint_is_a_404(live):
     assert live.post("/api/anything-else")[0] == 404
+
+
+def test_a_refused_request_still_consumes_its_body(live):
+    """Issue #187. The 404 path used to reply without reading `rfile`, and
+    `send_error` sends `Connection: close` — so the socket closed with the
+    request still in its receive buffer and the OS sent RST instead of FIN. The
+    client's read of an already-written response then raced that RST.
+
+    A 2-byte body loses that race about once per full-suite run, which is why the
+    original report could not be reproduced. A large one loses it often, so this
+    posts 8 MiB: measured on the unfixed server, `ConnectionAbortedError`
+    (WinError 10053) on the client while the server logged its 404.
+
+    HONEST ABOUT WHAT THIS IS. It is a race, so it is a probabilistic test, not a
+    deterministic one — a single unfixed run can pass. The loop is what makes it
+    bite, and `Server._do` now converts the transport error into a named
+    AssertionError rather than letting a bare OSError escape. Both endpoints are
+    exercised because they fail for opposite reasons: `/api/anything-else` closes
+    (RST), `/api/render` stays alive and corrupts the NEXT request on the
+    connection, which only a connection-reusing client would ever see.
+    """
+    big = json.dumps({"x": "a" * (8 * 1024 * 1024)}).encode("utf-8")
+    for _ in range(3):
+        assert live.post("/api/anything-else", raw=big)[0] == 404
+        assert live.post("/api/render", raw=big)[0] == 200
+
+
+def test_an_oversized_body_is_bounded_rather_than_buffered(live):
+    """The drain is capped, so the fix cannot be turned into a memory hole by a
+    client that declares a body larger than the server should ever hold."""
+    assert annotate_server.Handler.MAX_BODY == 32 * 1024 * 1024
 
 
 # ---------------------------------------------------------------- reading
