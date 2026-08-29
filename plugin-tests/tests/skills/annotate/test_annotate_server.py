@@ -6,6 +6,8 @@ show up once a request has actually been parsed — a body that is not JSON, a
 field present but empty, an amendment naming nothing.
 """
 import hashlib
+import http.client
+import io
 import json
 import os
 import threading
@@ -57,11 +59,39 @@ class Server:
         # and KeyErrors on the static one.
         def headers(h):
             return {k.lower(): v for k, v in h.items()}
+        # `e.read()` is INSIDE the try, not inside an except handler. An
+        # exception raised while handling another is not caught by a sibling
+        # clause of the same try, and `urlopen` raises `HTTPError` as soon as the
+        # status line and headers are parsed — the error body is read lazily.
+        # So reading it from within `except HTTPError:` left the 4xx/5xx branch
+        # unprotected while the success branch was covered, and the 404 is the
+        # exact endpoint #187 failed on. Verified rather than assumed:
+        # `HTTPDefaultErrorHandler.http_error_default` raises with `fp` unread.
+        err = None
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return r.status, r.read(), headers(r.headers)
-        except urllib.error.HTTPError as e:
-            return e.code, e.read(), headers(e.headers)
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return r.status, r.read(), headers(r.headers)
+            except urllib.error.HTTPError as e:
+                err = e
+            return err.code, err.read(), headers(err.headers)
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
+            # An HTTP status arrives as HTTPError and is a RESULT. Anything else
+            # is the transport failing, and used to propagate raw — so the test
+            # went red with `ConnectionAbortedError` and no indication of which
+            # request, while the server's own log showed it had answered
+            # normally. That is issue #187's whole shape, and the ten minutes it
+            # costs to work out are what this re-raise removes.
+            #
+            # Deliberately NOT retried or swallowed: a transport error here means
+            # the server closed the connection uncleanly, which is a defect in
+            # the server, not weather. Making it legible is the fix; making it
+            # disappear would hide the next one.
+            raise AssertionError(
+                "transport error talking to %s %s: %s: %s — the server did not "
+                "close this connection cleanly" % (
+                    req.get_method(), req.full_url, type(exc).__name__, exc)
+            ) from exc
 
     def close(self):
         self.srv.shutdown()
@@ -262,6 +292,306 @@ def test_a_body_that_is_not_json_is_refused(live):
 
 def test_an_unknown_endpoint_is_a_404(live):
     assert live.post("/api/anything-else")[0] == 404
+
+
+def test_a_refused_request_still_consumes_its_body(live):
+    """Issue #187. The 404 path used to reply without reading `rfile`, and
+    `send_error` sends `Connection: close` — so the socket closed with the
+    request still in its receive buffer and the OS sent RST instead of FIN. The
+    client's read of an already-written response then raced that RST.
+
+    A 2-byte body loses that race about once per full-suite run, which is why the
+    original report could not be reproduced. A large one loses it often, so this
+    posts 8 MiB: measured on the unfixed server, `ConnectionAbortedError`
+    (WinError 10053) on the client while the server logged its 404.
+
+    HONEST ABOUT WHAT THIS IS. It is a race, so it is a probabilistic test, not a
+    deterministic one — a single unfixed run can pass. The loop is what makes it
+    bite, and `Server._do` now converts the transport error into a named
+    AssertionError rather than letting a bare OSError escape. Both endpoints are
+    exercised because they fail for opposite reasons: `/api/anything-else` closes
+    (RST), `/api/render` stays alive and corrupts the NEXT request on the
+    connection, which only a connection-reusing client would ever see.
+    """
+    big = json.dumps({"x": "a" * (8 * 1024 * 1024)}).encode("utf-8")
+    for _ in range(3):
+        assert live.post("/api/anything-else", raw=big)[0] == 404
+        assert live.post("/api/render", raw=big)[0] == 200
+
+
+def test_a_kept_alive_connection_is_not_desynced_by_an_unread_body(live):
+    """The DETERMINISTIC half of the drain, and the one that needs no race.
+
+    `/api/render` replies through `_json`, which keeps the connection alive. An
+    unread body therefore does not RST anything — it sits in the stream, and the
+    NEXT request on that connection is parsed starting from its bytes. `urllib`
+    opens a fresh connection per request and can never see this; `http.client`
+    reuses one, so it can.
+
+    Without the drain the second request below reads `{"x": "aaa…` as its
+    request line and the assertion fails every time, on every platform. That is
+    what makes this the companion to the probabilistic 8 MiB test rather than a
+    duplicate of it.
+    """
+    conn = http.client.HTTPConnection("127.0.0.1", live.port, timeout=30)
+    try:
+        big = json.dumps({"x": "a" * (1024 * 1024)}).encode("utf-8")
+        conn.request("POST", "/api/render", body=big,
+                     headers={"Content-Type": "application/json"})
+        first = conn.getresponse()
+        first.read()
+        assert first.status == 200
+
+        # Same connection, deliberately. This is the assertion.
+        conn.request("GET", "/api/annotations")
+        second = conn.getresponse()
+        second.read()
+        assert second.status == 200, (
+            "the second request on a reused connection did not get a clean "
+            "response, so the first request's body was left in the stream"
+        )
+    finally:
+        conn.close()
+
+
+def _offline_handler(headers, stream):
+    """A handler with just enough state to drive `_read_body` directly."""
+    h = annotate_server.Handler.__new__(annotate_server.Handler)
+    h.headers = headers
+    h.rfile = stream
+    h.connection = None          # `_read_body` skips the socket timeout
+    return h
+
+
+def test_the_drain_stops_at_the_cap():
+    """The cap is BEHAVIOUR, not a constant to assert against itself.
+
+    An earlier version asserted `MAX_BODY == 32 * 1024 * 1024` and nothing else,
+    so the capping expression was never executed: deleting it reopened the memory
+    hole with the whole suite green, and the batch's cap mutant died on the
+    literal rather than on anything the server does.
+    """
+    cap = annotate_server.Handler.MAX_BODY
+    h = _offline_handler({"Content-Length": str(4 * cap)}, io.BytesIO(b"a" * (2 * cap)))
+
+    got, complete = h._read_body()
+
+    assert len(got) == cap
+    assert h.rfile.tell() == cap, "the cap must stop the READ, not the return value"
+    assert complete is False, (
+        "a capped read leaves the rest in the stream, so it must report itself "
+        "incomplete and make the caller close"
+    )
+
+
+def test_a_malformed_content_length_reports_itself_incomplete():
+    """A length that is not a number leaves a body of unknown size in the stream.
+
+    Measured before this reported itself: a folded duplicate header
+    (`Content-Length: 34, 34`) made the server answer 400 about missing fields
+    for a request whose fields were all present — it never saw the body — and
+    then the next request on the connection came back 501 with the annotation
+    JSON parsed as the HTTP method.
+    """
+    h = _offline_handler({"Content-Length": "34, 34"}, io.BytesIO(b"a" * 34))
+
+    got, complete = h._read_body()
+
+    assert (got, complete) == (b"", False)
+
+
+def test_a_short_body_reports_itself_incomplete():
+    """A client that declares more than it sends leaves the connection in an
+    unknown state, which is the same problem as the cap."""
+    h = _offline_handler({"Content-Length": "100"}, io.BytesIO(b"a" * 10))
+
+    got, complete = h._read_body()
+
+    assert (len(got), complete) == (10, False)
+
+
+def _chunked(stream_bytes):
+    return _offline_handler({"Transfer-Encoding": "chunked"}, io.BytesIO(stream_bytes))
+
+
+class _EndlessStream:
+    """A reader that repeats `pattern` forever, and refuses past `limit`.
+
+    A `BytesIO` CANNOT test an unbounded loop: it runs out, the decoder sees an
+    empty read and returns, and a runaway decoder looks exactly like a correct
+    one. Both loop guards were measured to survive their own mutants for that
+    reason — the two rules agree on every finite input.
+
+    Serving forever makes them disagree, and the limit turns a runaway into a
+    failed assertion rather than a hung suite.
+    """
+
+    def __init__(self, pattern, limit=1 << 20):
+        self.pattern, self.limit, self.served, self.buf = pattern, limit, 0, b""
+
+    def _fill(self, n):
+        while len(self.buf) < n:
+            self.served += len(self.pattern)
+            if self.served > self.limit:
+                raise AssertionError(
+                    "the decoder consumed over %d bytes without returning — it "
+                    "is not bounded" % self.limit
+                )
+            self.buf += self.pattern
+
+    def read(self, n):
+        self._fill(n)
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def readline(self, n=-1):
+        limit = 1024 if n is None or n < 0 else n
+        self._fill(limit)
+        cut = self.buf.find(b"\n", 0, limit)
+        end = limit if cut < 0 else cut + 1
+        out, self.buf = self.buf[:end], self.buf[end:]
+        return out
+
+
+def _endless_chunked(pattern):
+    return _offline_handler({"Transfer-Encoding": "chunked"}, _EndlessStream(pattern))
+
+
+def test_a_negative_chunk_size_terminates_the_decode():
+    """`int(b"-1", 16)` is -1 in Python, and -1 walked through every guard the
+    first decoder had: not zero so the trailer branch was skipped, `total + size`
+    DECREASED so the cap never tripped, `while want > 0` consumed nothing, and the
+    loop went round again. Measured at 17.5 MB read against a 64 KiB cap, still
+    spinning — an unbounded loop reachable by a REFUSED cross-origin request,
+    which is strictly worse than the RST the decode was written to avoid.
+
+    Driven from an ENDLESS stream, not a `BytesIO`: a finite one runs out and the
+    unguarded decoder returns too, so the guard and its absence agree on every
+    input a fixed buffer can supply.
+    """
+    got, complete = _endless_chunked(b"-1\r\n\r\n")._read_body()
+
+    assert (got, complete) == (b"", False)
+
+
+def test_endless_trailers_end_the_read_rather_than_the_process():
+    """The trailer loop counted nothing against the cap and had no iteration
+    limit, so a peer sending trailer lines forever kept it running — the socket
+    timeout never fires while data keeps arriving. Measured at 6.5 million lines
+    with no return.
+
+    Endless for the same reason as the test above. The first chunk header ends
+    the body and opens the trailer section, and the trailers then never stop.
+    """
+    handler = _offline_handler(
+        {"Transfer-Encoding": "chunked"},
+        _EndlessStream(b"X-Pad: yyyyyyyyyyyyyyyyyyyy\r\n"),
+    )
+    handler.rfile.buf = b"0\r\n"
+
+    got, complete = handler._read_body()
+
+    # Incomplete, not complete: the budget ran out with bytes still in the stream.
+    assert (got, complete) == (b"", False)
+
+
+def test_a_chunk_size_line_with_no_newline_is_refused():
+    """`readline(64)` returns 64 bytes with no terminator when the line is
+    longer, and the prefix before `;` still parses — so a long chunk extension
+    is read as a size and the rest of the line consumed as body.
+
+    The sizes are chosen so the UNGUARDED decoder succeeds rather than merely
+    failing differently: `0x26` is 38, and exactly 38 padding bytes plus a CRLF
+    remain after `readline(64)` takes its 64. Without the newline check the
+    decode returns `(b"zzz…", True)` — a wrong body, reported clean. Asserting
+    only `complete is False` did not discriminate, because the unguarded path
+    also ended up incomplete on a less carefully built line.
+    """
+    line = b"26;" + b"z" * 97 + b"\r\n"
+    got, complete = _chunked(line + b"0\r\n\r\n")._read_body()
+
+    assert (got, complete) == (b"", False)
+
+
+def test_a_missing_inter_chunk_crlf_is_refused():
+    """Discarding two bytes whatever they are eats the first two characters of
+    the next size line when a peer omits the CRLF, and mis-frames the rest."""
+    got, complete = _chunked(b"5\r\nhello0\r\n\r\n")._read_body()
+
+    assert complete is False
+
+
+def test_a_well_formed_chunked_body_still_decodes():
+    """The non-vacuity partner: five guards that refuse everything would pass
+    every test above and serve nothing.
+
+    Written first with `3\\r\\n you\\r\\n` — a 4-byte chunk declared as 3 — and the
+    decode came back `(b"hello yo", False)`, because the inter-chunk CRLF check
+    landed on `u\\r`. The fixture was wrong rather than the decoder, and the guard
+    added two edits earlier is what said so.
+    """
+    got, complete = _chunked(b"5\r\nhello\r\n4\r\n you\r\n0\r\n\r\n")._read_body()
+
+    assert (got, complete) == (b"hello you", True)
+
+
+def test_an_undrainable_body_closes_the_connection_rather_than_desyncing(live):
+    """The live half of "drained or closed, never neither".
+
+    The three `_read_body` tests above are offline unit tests of the report; this
+    is the one that proves the caller ACTS on it. A malformed `Content-Length`
+    leaves a body of unknown size in the stream, so the only safe reply is a 400
+    plus a close — `http.client` sees `will_close`, and a client that tried to
+    reuse the connection would otherwise read the annotation JSON as the next
+    request line and get a 501.
+    """
+    payload = json.dumps(VALID).encode("utf-8")
+    conn = http.client.HTTPConnection("127.0.0.1", live.port, timeout=30)
+    try:
+        conn.putrequest("POST", "/api/annotations", skip_accept_encoding=True)
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", "%d, %d" % (len(payload), len(payload)))
+        conn.endheaders()
+        conn.send(payload)
+        res = conn.getresponse()
+        res.read()
+        assert res.status == 400
+        assert res.will_close, (
+            "a body that could not be drained must close the connection; "
+            "leaving it open desyncs the next request on it"
+        )
+    finally:
+        conn.close()
+
+
+def test_a_chunked_body_is_decoded_and_leaves_the_connection_clean(live):
+    """`BaseHTTPRequestHandler` does not decode chunked framing, so the server
+    does.
+
+    An earlier cut answered 411 and closed instead. That was worse twice over: a
+    411 is a strange reply to a request this server can read perfectly well, and
+    closing on an undrained body just moved #187's own race onto a different
+    reply. The second request on the same connection is the assertion — without
+    the decode, it is parsed from the leftover chunk framing.
+    """
+    payload = json.dumps(VALID).encode("utf-8")
+    conn = http.client.HTTPConnection("127.0.0.1", live.port, timeout=30)
+    try:
+        conn.putrequest("POST", "/api/annotations", skip_accept_encoding=True)
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Transfer-Encoding", "chunked")
+        conn.endheaders()
+        conn.send(b"%x\r\n%s\r\n0\r\n\r\n" % (len(payload), payload))
+        first = conn.getresponse()
+        first.read()
+        assert first.status == 200
+
+        conn.request("GET", "/api/annotations")
+        second = conn.getresponse()
+        assert second.status == 200
+        assert len(json.loads(second.read())["annotations"]) == 1
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------- reading

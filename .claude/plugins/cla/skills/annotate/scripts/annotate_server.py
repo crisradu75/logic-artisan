@@ -78,9 +78,219 @@ class Handler(SimpleHTTPRequestHandler):
             return False, "Origin %r is not this page" % origin
         return True, ""
 
+    # A body left unread is not free, and it fails in two different ways
+    # depending on how the reply ends. Both were measured against this server,
+    # not reasoned about:
+    #
+    #   * If the reply CLOSES the connection — `send_error` sends
+    #     `Connection: close`, `_json` does not — the socket is closed with the
+    #     unsent request still in its receive buffer, and the OS answers with RST
+    #     instead of FIN. The client's read of an already-written response then
+    #     races that RST, and loses often enough to matter: posting to the 404
+    #     path with an 8 MiB body raised `ConnectionAbortedError` (WinError
+    #     10053) on the client while this server logged its 404 normally. The
+    #     same race with a 2-byte body is what issue #187 saw about once per
+    #     full-suite run and never in isolation.
+    #   * If the reply KEEPS the connection alive, the leftover bytes sit in the
+    #     stream and the NEXT request on that connection is parsed starting from
+    #     them. `urllib` opens a fresh connection per request and never sees it;
+    #     a browser reuses connections and does.
+    #
+    # So every ACCEPTED POST consumes its `Content-Length` body exactly once, up
+    # front, before any dispatch — rather than each endpoint remembering to.
+    # `/api/render` and the 404 are the paths that silently relied on nobody
+    # sending one.
+    #
+    # A PARTIAL DRAIN IS NOT A DRAIN, which is the correction this design needed.
+    # Stopping at a cap, or bailing on a malformed length, leaves the remainder in
+    # the stream — and if the reply then keeps the connection alive, the next
+    # request on it is parsed from those bytes. Measured: with the cap shrunk and
+    # an over-cap POST to `/api/render`, the following request came back 501,
+    # `Unsupported method ('aaaa…')`. So `_read_body` reports whether it finished,
+    # and every incomplete read closes the connection. "Drained or closed" is the
+    # invariant; neither half alone is one.
+    #
+    # A REFUSED cross-origin POST drains only `REFUSED_DRAIN` before closing.
+    # Draining it in full would be attacker-controlled work — up to `MAX_BODY`
+    # buffered plus as much again to join it, per connection, on a
+    # `ThreadingHTTPServer` with no concurrency bound. Draining NOTHING was the
+    # other error: it re-created #187's own race for the refused client, measured
+    # at 2 of 30 posts of 200 KB raising `ConnectionAbortedError` while this
+    # server logged its 403. A small bounded drain covers every real body and
+    # leaves an attacker exactly one RST.
+    #
+    # CHUNKED IS DECODED HERE rather than refused. An earlier cut answered 411 and
+    # closed, which merely moved the same unread-body race onto a different reply
+    # — and a 411 is a strange answer to a request this server can perfectly well
+    # read. `BaseHTTPRequestHandler` does not decode the framing, so this does:
+    # bounded by the same cap, with the same completeness report.
+    MAX_BODY = 32 * 1024 * 1024
+    REFUSED_DRAIN = 64 * 1024
+    # Bounds a client that declares a body and then dribbles it, WITHOUT being a
+    # connection-wide timeout. `StreamRequestHandler.timeout` was the first
+    # attempt and is wrong here: it also expires idle keep-alive sockets, and
+    # `handle_one_request` logs every expiry through `log_error`. A browser holds
+    # several idle sockets per origin, so a reader who leaves the page open would
+    # print a steady drip of `Request timed out` into the very stderr the skill
+    # tells its agent to watch for `REBUILD FAILED` and `CORPUS UNREADABLE`.
+    BODY_READ_TIMEOUT = 30
+
+    def _read_body(self, limit=None):
+        """Consume this request's body. Returns `(bytes, complete)`.
+
+        `complete` is False when anything is left in the stream — over the cap, a
+        `Content-Length` that is not a number, a client that stopped early, or a
+        malformed chunk header. The caller must then close the connection; see the
+        comment above for what happens when it does not.
+        """
+        cap = self.MAX_BODY if limit is None else limit
+        sock = getattr(self, "connection", None)
+        previous = sock.gettimeout() if sock is not None else None
+        if sock is not None:
+            sock.settimeout(self.BODY_READ_TIMEOUT)
+        try:
+            if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+                return self._read_chunked(cap)
+            try:
+                declared = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                # A body of unknown length is unreadable AND undrainable: there is
+                # no count to consume. Reported incomplete so the caller closes,
+                # rather than silently answering as though the body were empty —
+                # which produced a 400 about missing fields for a request whose
+                # fields were all present, then desynced the connection.
+                return b"", False
+            if declared <= 0:
+                return b"", True
+            want, out = min(declared, cap), []
+            while want > 0:
+                chunk = self.rfile.read(min(want, 64 * 1024))
+                if not chunk:
+                    return b"".join(out), False
+                out.append(chunk)
+                want -= len(chunk)
+            return b"".join(out), declared <= cap
+        except OSError:
+            return b"", False
+        finally:
+            if sock is not None:
+                sock.settimeout(previous)
+
+    # Every read below counts against `cap`, and every framing violation returns
+    # rather than continuing. That is not defensive style — the first version of
+    # this decoder had TWO unbounded loops, both reachable by a REFUSED
+    # cross-origin request, which is strictly worse than the RST it was written
+    # to avoid:
+    #
+    #   * `int(b"-1", 16)` is -1 in Python. A negative size is not 0, so it
+    #     skipped the trailer branch; `total + size > cap` DECREASED the running
+    #     total so the bound never tripped; `while want > 0` never ran so nothing
+    #     was consumed; and the loop went round again. Measured: 17.5 MB consumed
+    #     against a 64 KiB cap, still spinning.
+    #   * The trailer loop counted nothing and had no iteration limit, so a peer
+    #     sending trailer lines forever kept it running — the socket timeout never
+    #     fires while data keeps arriving. Measured: 6.5 million lines, no return.
+    #
+    # A size line must also END in a newline. `readline(64)` returns 64 bytes with
+    # no terminator when the line is longer, and the prefix before `;` still
+    # parses — so a long chunk extension could be read as a size and the rest of
+    # the extension line consumed as body.
+    MAX_TRAILER_BYTES = 8 * 1024
+
+    def _discard_pending(self, limit):
+        """Best-effort: throw away what has ALREADY arrived, and never block.
+
+        For a body whose length cannot be counted — a malformed `Content-Length`,
+        or any reply from a path that never parsed one — there is no number to
+        read up to, so `_read_body`'s bounded read is not available. A blocking
+        read would hang until the timeout on a peer that sends nothing more.
+
+        A brief timeout instead consumes whatever is buffered, which for any
+        realistically-sized body is the whole of it, and gives up rather than
+        waiting. That turns the close from RST into FIN for every real client and
+        costs an unhelpful one a quarter of a second.
+        """
+        sock = getattr(self, "connection", None)
+        if sock is None:
+            return
+        previous = sock.gettimeout()
+        try:
+            sock.settimeout(0.25)
+            while limit > 0:
+                got = self.rfile.read(min(limit, 64 * 1024))
+                if not got:
+                    return
+                limit -= len(got)
+        except OSError:
+            return
+        finally:
+            sock.settimeout(previous)
+
+    def send_error(self, code, message=None, explain=None):
+        """Every error reply sends `Connection: close`, so every error reply is a
+        close on a possibly-unread body — #187's exact shape.
+
+        `do_POST` drains its own body before dispatching, but the base class
+        answers 501 to a `PUT`/`PATCH`/`DELETE` that this server never parses,
+        and that path never reaches `do_POST` at all. Discarding here covers the
+        whole family in one place rather than per method.
+        """
+        self._discard_pending(self.REFUSED_DRAIN)
+        return SimpleHTTPRequestHandler.send_error(self, code, message, explain)
+
+    def _read_chunked(self, cap):
+        """Decode `Transfer-Encoding: chunked` framing. Same return contract."""
+        out, total = [], 0
+        while True:
+            line = self.rfile.readline(64)
+            if not line or not line.endswith(b"\n"):
+                return b"".join(out), False
+            try:
+                size = int(line.split(b";", 1)[0].strip() or b"0", 16)
+            except ValueError:
+                return b"".join(out), False
+            if size < 0:
+                return b"".join(out), False
+            if size == 0:
+                # Trailers, then the blank line that ends them — bounded by their
+                # own byte budget, so "trailer lines forever" ends the read
+                # instead of the process. Running out of budget is incomplete,
+                # not complete: bytes are still in the stream.
+                budget = self.MAX_TRAILER_BYTES
+                while budget > 0:
+                    trailer = self.rfile.readline(min(budget, 1024))
+                    if not trailer:
+                        return b"".join(out), False
+                    if trailer in (b"\r\n", b"\n"):
+                        return b"".join(out), True
+                    budget -= len(trailer)
+                return b"".join(out), False
+            if total + size > cap:
+                return b"".join(out), False
+            want = size
+            while want > 0:
+                chunk = self.rfile.read(min(want, 64 * 1024))
+                if not chunk:
+                    return b"".join(out), False
+                out.append(chunk)
+                want -= len(chunk)
+                total += len(chunk)
+            # The CRLF closing this chunk, VERIFIED. Discarding two bytes
+            # whatever they are eats the first two characters of the next size
+            # line when a peer omits it, and then mis-frames everything after.
+            if self.rfile.read(2) not in (b"\r\n", b"\n\r", b"\n"):
+                return b"".join(out), False
+
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
         self.send_response(code)
+        # `close_connection` governs what THIS server does next; it puts nothing
+        # on the wire. A client reading a Content-Length and no `Connection:
+        # close` is entitled to reuse the socket, and then discovers it shut
+        # under them. Say it out loud, so an intentional close reads as one
+        # rather than as the connection dropping.
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -198,18 +408,44 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json({"ok": True, "summary": summary, "warnings": warn})
 
     def do_POST(self):
+        # ORDER MATTERS, and the first version of this fix got it backwards.
+        # The guard runs BEFORE the drain, so a refused cross-origin request
+        # never makes this server buffer attacker-chosen bytes; it is answered
+        # and the connection closed, which is what stops the unread body from
+        # desyncing a reused one. Draining first closed the #187 hole by opening
+        # a memory one — see `_read_body`'s comment for both.
         ok, why = self._local_request()
         if not ok:
             print("REFUSED cross-origin request: %s" % why)
+            # Bounded drain, then close either way: a real body of any plausible
+            # size is consumed so the close is clean, and anything larger costs
+            # this server 64 KiB and the caller an RST.
+            self._read_body(limit=self.REFUSED_DRAIN)
+            self.close_connection = True
             return self._json({"error": "refused: %s" % why}, 403)
+        # After the guard, before any dispatch: every remaining exit — the render
+        # path, the 404, and the annotation path itself — then leaves the socket
+        # clean, rather than each endpoint remembering to read.
+        raw, complete = self._read_body()
+        if not complete:
+            # Drained or closed, never neither. Whatever is left in the stream
+            # would otherwise be read as the next request on this connection.
+            #
+            # And the close itself has to be clean, which the first version of
+            # this branch missed: on the malformed-`Content-Length` path
+            # `_read_body` returns without consuming a single byte, so this was
+            # the one branch where leftover bytes were GUARANTEED, closing on all
+            # of them. That is #187 again, in the code fixing #187.
+            self._discard_pending(self.REFUSED_DRAIN)
+            self.close_connection = True
+            return self._json({"error": "request body too large or malformed"}, 400)
         path = urlparse(self.path).path
         if path == "/api/render":
             return self._render()
         if path != "/api/annotations":
             return self.send_error(404)
         try:
-            n = int(self.headers.get("Content-Length") or 0)
-            rec = json.loads(self.rfile.read(n) or b"{}")
+            rec = json.loads(raw or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._json({"error": "bad json"}, 400)
         if not isinstance(rec, dict):
