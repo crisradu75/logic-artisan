@@ -89,12 +89,18 @@ each heading confirmed present, compare the scenario sets before moving on, per
 anything, and it is the only one that sees the window *after* review closes — a Revise-round edit to
 the delta, a hand-resolved conflict in it. Review-time cannot look at either.
 
-**This one entry does not block, and it is the only one in this file that does not.** A `dropped`
-verdict is raised as a **Critical against the change** and carried into the run's Issues so the PR
-shows it; the archive proceeds. Halting here would be last-detection as the design, which the
-placement itself rejects — and a scenario renamed in place is indistinguishable from a deleted one,
-so a halt would fire on legitimate renames. The value is that the loss is recorded before it
-happens, not that it is prevented.
+**What a `dropped` verdict does here depends on your `openspec` version, and the check earns its
+place under both.** From **1.11.0** the tool itself refuses: `applyDeltaSpec` calls
+`findMissingCurrentScenarios` and throws `"<spec> MODIFIED failed ... current spec contains
+scenario(s) not present in the modified block"`, so `openspec archive` aborts. This check runs
+*before* that, which is the whole value — you get a named scenario and an adjudication instead of a
+failed archive mid-commit. On an **older** version nothing refuses, and this check is the only thing
+between the delta and a silently deleted `SHALL`.
+
+**The comparison itself never halts, on either version.** Raise a `dropped` verdict as a **Critical
+against the change** and carry it into the run's Issues so the PR shows it. Do not add a halt of your
+own: a scenario renamed in place is indistinguishable from a deleted one, so a halt would fire on
+legitimate renames — which is the complaint against the upstream refusal, not a shape to copy.
 
 ## Retired-path cross-reference cleanup
 

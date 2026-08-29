@@ -51,13 +51,10 @@ file, or an `## ADDED Requirements` heading in the same delta will be counted as
 modified one:
 
 ```
-# the delta's block
-sed -n '/^### Requirement: <Name>$/,/^\(###\|##\) /p' <change>/specs/<capability>/spec.md \
-  | grep -c '^#### Scenario:'
-
-# the live requirement's block
-sed -n '/^### Requirement: <Name>$/,/^\(###\|##\) /p' openspec/specs/<capability>/spec.md \
-  | grep -c '^#### Scenario:'
+# same command, once per side — swap the path
+sed -n '/^### Requirement: <Name>$/,/^\(###\|##\) /p' <spec.md> | grep -c '^#### Scenario:'
+#   delta: <change>/specs/<capability>/spec.md
+#   live:  openspec/specs/<capability>/spec.md
 ```
 
 Swap `-c` for `-n` to get the headings themselves, which is what the `-`/`+` lines report.

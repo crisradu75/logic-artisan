@@ -15,25 +15,28 @@ practice.
 it, and every repo running this workflow authors MODIFIED blocks the same way — so the argument for
 "report upstream and add nothing here" is real and had to be answered rather than assumed away.
 
-**The tree as it stands 2026-08-25** (measured; commands in `tasks.md` §1), after PRs #149 and #150
-landed:
+**The tree as it stands 2026-08-29**, after this change's own edits (measured; commands in
+`tasks.md` §1), and after PRs #149 and #150 landed:
 
 | file:line | what it establishes |
 |---|---|
-| `multi-pr/references/discover-and-gate.md:62–70` | Every in-scope change carrying a MODIFIED block earns a re-base check against the live spec "as of that moment". A **trigger with no procedure** — the instruction is the word "diff" |
+| `multi-pr/references/discover-and-gate.md:62` | Every in-scope change carrying a MODIFIED block earns a re-base check against the live spec "as of that moment". A **trigger with no procedure** — the instruction is the word "diff" |
 | `multi-pr/SKILL.md:64` | **The same obligation, hoisted, in the same undefined words** — "earns a re-base check of its delta against the live spec as of that moment". A sixth site, found by review; see the note under this table |
-| `review-change/references/checklist.md:304` | Spec-reviewer dispatch item 5: a MODIFIED entry "must include the full final requirement text plus its scenarios". States a completeness property the reviewer cannot falsify from the delta alone |
+| `review-change/references/checklist.md:305` | Spec-reviewer dispatch item 5: a MODIFIED entry "must include the full final requirement text plus its scenarios". States a completeness property the reviewer cannot falsify from the delta alone |
 | `multi-spec/references/authoring-brief.md:30` | The author-side rule: read the active spec, copy every scenario. Correct, and it is a rule given to the writer, not a check. **It sits inside a fenced prompt template** (lines 11–38) — see D8 |
-| `spec-to-pr/references/archive-preflight.md:65–79` | Check (c): every delta MODIFIED **heading** exists verbatim in the active spec. Heading only, and it says so |
+| `spec-to-pr/references/archive-preflight.md:65` | Check (c): every delta MODIFIED **heading** exists verbatim in the active spec. Heading only, and it says so |
 | `openspec/specs/cla-plugin/spec.md:521–531` | PR #150's live-set validation. Line 531 explicitly disclaims this concern: parse integrity after any edit vs. content dropped through a delta |
 | `multi-pr/references/change-loop.md:95` | Repeats that disclaimer at the step 4b site |
 
-**Every line number above was re-measured 2026-08-29** and several had drifted from the 2026-08-25
-figures this table originally carried — `checklist.md` had grown 316 → 424 lines and item 5 moved
-223 → 304, `spec.md` 529 → 531, `change-loop.md` 93 → 95. The stale figures were asserted under a
-heading reading "(measured)", which is the failure CLAUDE.md check 3 names: reasoning that ships
-with a measurement's authority. `tasks.md` §1 re-derives them again at implementation time, because
-they will drift again.
+**Every line number above was re-measured AFTER this change's own edits landed**, which is the
+part that matters and the part an earlier version got wrong twice. First: the table carried
+2026-08-25 figures asserted under a heading reading "(measured)" — `checklist.md` had since grown
+316 → 424 lines and item 5 moved 223 → 304, `spec.md` 529 → 531, `change-loop.md` 93 → 95. Review
+caught that. Then the refreshed numbers were themselves invalidated by this change's edits to the
+same files, and PR review caught *that* — item 5 moved 304 → 305, the injection rule 212 → 213,
+"Modal case" 179 → 180. **A measurement taken before the last edit to the thing it measures is not
+a measurement**, and this table needed telling twice. Locate by content regardless; `tasks.md` §1
+re-derives these at implementation time, because a sibling change will move them again.
 
 **`multi-pr/SKILL.md:64` is a sixth site and was missed by the original four-site framing.** It
 hoists the same obligation in the same undefined terms, so after this change the hoisted rule and
@@ -41,7 +44,7 @@ the reference it points at would describe the check differently — the divergen
 prevent, one level up. Whether it gains a pointer is contingent on D8; `tasks.md` carries the task
 to settle it either way.
 
-Two of those are load-bearing for scoping. The requirement at :519 **names this change's problem and
+Two of those are load-bearing for scoping. The PR #150 requirement **names this change's problem and
 excludes itself from it in its own text**, so there is no overlap to argue about — it was settled by
 the author of #150, not by this proposal. And #149 already supplies the chain-path trigger, which
 makes the surviving gap materially smaller than #97 describes.
@@ -80,7 +83,7 @@ upstream.
 
 The plugin does not own the apply step, so it cannot refuse a lossy sync. It *does* own four places
 where it already instructs a skill to perform this comparison, and it defines the comparison in none
-of them. `discover-and-gate.md:66` says "diff its delta against the live spec"; that sentence is the
+of them. `discover-and-gate.md`'s re-base check said "diff its delta against the live spec"; that sentence is the
 entire specification. An undefined diff is precisely what #97's evidence indicts — run without
 rename resolution and without added counts, the only real execution of it produced 2 flags and 2
 false positives.
@@ -143,7 +146,8 @@ this repo produced three wrong copies of one correct rule before.
 
 ### D4 — Five binding sites, deliberately, because they close different windows
 
-**Decision.** Bind at **five** sites: `review-change` dispatch item 5, `review-change` Step 5,
+**Decision.** Bind at **five** sites: `review-change` dispatch item 5, `review-change`'s size gate
+(Step 3, the small-change branch),
 `archive-preflight` check (c), `multi-pr`'s existing re-base check, and `multi-spec`'s
 authoring rule.
 
@@ -158,7 +162,7 @@ They are not redundant placements of one check; each is the only cover for a dis
 | site | window it covers | what it costs |
 |---|---|---|
 | `review-change` item 5 | Authoring error on the **large** path, caught pre-implementation, when the delta is still cheap to fix | One live-spec read per MODIFIED requirement, inside a dispatch already reading the delta |
-| `review-change` Step 5 | The same authoring error on the **small** path, which skips the dispatch entirely and is the modal case here | One live-spec read, inline, on a path already reading the delta |
+| `review-change` size gate (Step 3, small-change branch) | The same authoring error on the **small** path, which skips the dispatch entirely and is the modal case here | One live-spec read, inline, on a path already reading the delta |
 | `archive-preflight` (c) | Everything after review — a Revise-round delta edit, a hand-resolved merge conflict in the delta — and the last moment before materialization deletes anything | One grep per MODIFIED heading, inside a loop that already runs |
 | `multi-pr` re-base check | The **baseline moving**: a sibling, an archived change from a previous chain, a `/cla:lite-pr` landing in between. A correct delta going stale, which neither of the above is looking for | Already in the flow; this change replaces "diff" with the procedure |
 | `multi-spec` authoring rule | The author's own hand, before a delta exists to compare — the only site upstream of the defect rather than downstream of it | A pointer; the rule is already written |
@@ -166,8 +170,12 @@ They are not redundant placements of one check; each is the only cover for a dis
 **The small path is not covered by item 5, and this is the batch's honest gap.** `checklist.md:165`
 sends a small change past the 3-agent dispatch — "Skip the 3-agent dispatch… Go straight to Step 5" —
 and `:179` records "Modal case in this repo: small." So a binding that lives only in Step 4's
-dispatch item reaches the minority of reviews. The change closes this at Step 5, which **both** paths
-reach, with a single sentence rather than a numbered check: a numbered entry would compete for `0l`
+dispatch item reaches the minority of reviews. The change closes this at the size gate's own small-change
+branch — where that path is defined, and where "the orchestrator IS the reviewer" is already
+stated — with a single sentence rather than a numbered check. **Not at Step 5**, which is
+`## Step 5: Analyze task parallelism`: a spec-retention instruction there would sit inside a section
+about dependency lanes, and an earlier draft of this design said Step 5 for exactly that reason —
+nobody had opened the file to see what Step 5 is. A numbered entry would also compete for `0l`
 with the sibling `grounding-contract-claim-shapes`, and D7's reason for adding none still holds.
 `archive-preflight` remains the backstop, but it is deliberately not the answer here — D4 already
 rejects last-detection as the design, and accepting it for the modal path would be that rejection
@@ -290,7 +298,7 @@ denominator rule) follows it and is only ever pointed at.
 
 **A site that hands its text to a dispatched agent pastes the Procedure section. Every other site
 points at the file.** Two sites paste: `checklist.md` item 5 and `authoring-brief.md`'s MODIFIED
-rule. Three point: `checklist.md` Step 5, `archive-preflight` check (c), `multi-pr`'s re-base check.
+rule. Three point: `checklist.md`'s size gate, `archive-preflight` check (c), `multi-pr`'s re-base check.
 
 **Why this and not the three alternatives.** It dissolves the collision below instead of paying for
 one side of it. There is still exactly one statement of the steps — the Procedure section — and a
@@ -371,7 +379,8 @@ apply and that is reported as such, not as a pass.
 
 **P3 — Comparison baseline.** `openspec/specs/<capability>/spec.md` **as it stands in the working
 tree at the moment of the check**, never as the delta was authored and never a git revision. Stated
-explicitly because `discover-and-gate.md:66` already uses this phrasing and the two must not drift.
+explicitly because `discover-and-gate.md`'s re-base check already uses this phrasing and the two must
+not drift.
 
 **P4 — Order of operations, and it is an order.**
 
@@ -440,14 +449,14 @@ exit from any enumeration command is a **failed check, not an empty result** —
 only sibling that touches that file. `fix-brief-binding-defect` was named here too and does not edit
 it at all — measured 2026-08-29 against its archived proposal, which states as much itself. Both are
 archived, so the ordering is satisfied. It touches **two** regions of that file: Step 4's spec-reviewer
-dispatch prompt (item 5) and Step 5.
+dispatch prompt (item 5) and the size gate's small-change branch in Step 3.
 
 **The second region is not optional, and an earlier draft of this parameter lost it.** P9 read
 "confined to Step 4's spec-reviewer dispatch prompt, item 5", and the proposal's Impact said the
-same — while D4's body and `tasks.md` §3.3b bind Step 5 as well. An implementer following P9 and
+same — while D4's body and `tasks.md` §3.3b bind the small path as well. An implementer following P9 and
 Impact would have shipped nothing for the small path, which `checklist.md:179` records as the modal
 case here and D4 calls "the batch's honest gap": the change's own headline gap would have survived
-its implementation. Neither sibling touches Step 5, so the disjoint-by-region claim still holds.
+its implementation. Neither sibling touches the size gate, so the disjoint-by-region claim still holds.
 
 ## Risks / Trade-offs
 
