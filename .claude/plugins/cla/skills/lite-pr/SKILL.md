@@ -124,6 +124,8 @@ Measured-by: <the exact command, runnable as written> — <the claim it produced
 
 The command is a real invocation, not "the test suite" and not an elided one; the point of the trailer is that a reader can re-run it. You wrote the claims, so finding them needs no scanner. A claim you cannot pair with a runnable command has two exits and both are edits: **run the command now, or delete the claim** and restate it as the reasoning it actually is ("expected", "by inspection", "should"). There is no third exit in which the claim ships and the command is owed. A change asserting no measurement carries no trailer — never `Measured-by: none`, which certifies a check nobody ran while reading as evidence that one happened. The same obligation covers any measurement written into the PR body.
 
+**Session-attribution lines go in the same block as the trailers, with no blank line between them.** `Co-Authored-By:` and `Claude-Session:` sit directly under the last `Measured-by:` line, inside one `-m`. Git parses trailers from the last paragraph only, and that paragraph must be `key: value` lines throughout. Anything else in it — a blank line, a line of prose, a bare `Closes #199` — puts every `Measured-by:` line outside the trailer block. Then `git log --pretty='%(trailers:key=Measured-by,valueonly=true,unfold=true)'` returns nothing. The provenance hook records zero for a commit that carries real trailers.
+
 **The trigger is a claim this change asserts, not a check that ran.** The standing pre-ship gates — the test suite, the linters, the conformance scripts every commit runs anyway — are not claims the change puts into the diff or the message, so they earn no trailer. Trailering them turns the block into fixed boilerplate on every commit, and a block that is identical every time stops being read, which costs exactly what this step was added to buy.
 
 Then hand off entirely:
@@ -132,7 +134,7 @@ Then hand off entirely:
 Skill(commit-commands:commit-push-pr)
 ```
 
-No pause before this runs — continuous by design (see Autonomy below). Use `commit-push-pr`'s own branch-naming and commit-message conventions as-is; lite-pr does not add any naming logic on top. The `Measured-by:` trailers are message *content* rather than a naming convention, so they are not an exception to that: hand them to `commit-push-pr` as part of the commit message it writes.
+No pause before this runs — continuous by design (see Autonomy below). Use `commit-push-pr`'s own branch-naming and commit-message conventions as-is; lite-pr does not add any naming logic on top. The `Measured-by:` trailers are message *content* rather than a naming convention, so they are not an exception to that: hand them to `commit-push-pr` as part of the commit message it writes. Hand it the session-attribution lines in that same block too. Git reads trailers from the last paragraph only, and that paragraph must be `key: value` lines throughout. A blank line, or a bare reference line like `Closes #199`, costs every `Measured-by:` line.
 
 ### Review
 

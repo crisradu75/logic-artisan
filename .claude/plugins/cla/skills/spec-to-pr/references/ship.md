@@ -69,10 +69,19 @@ git push -u origin <branch>
 
 ```
 git commit -m "feat: <change-name>" -m "Measured-by: <command> — <claim>
-Measured-by: <command> — <claim>"
+Measured-by: <command> — <claim>
+Co-Authored-By: <name> <<email>>
+Claude-Session: <session URL>"
 ```
 
 One `-m` per trailer would put a blank line between them and break the block into separate paragraphs, so keep them in a single `-m`. Omit the second `-m` entirely when the change asserts no measurement.
+
+**The session-attribution lines belong in that same `-m`, directly under the last `Measured-by:` line.** No blank line between them, as the example shows. Git parses trailers from the last paragraph of the message only.
+
+**That last paragraph must be trailer-shaped lines and nothing else.** Every line in it needs a `key: value` shape. A single line without that shape kills every trailer in the paragraph, wherever it sits. A blank line does the same, by starting a new last paragraph. The common offender is a bare `Closes #199` reference line. Write it as `Closes: #199`, or put it in its own paragraph above the trailers. A commit body goes in its own paragraph above the trailers too.
+
+When the block breaks, `git log --pretty='%(trailers:key=Measured-by,valueonly=true,unfold=true)'` returns nothing. The provenance hook reads through that same parser. It records zero for a commit carrying real trailers.
+
 List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change scoped to one app stages just that app's `src/`; a change touching a shared package plus its consumer stages both. If your change legitimately touches other top-level paths (e.g. a per-app stylesheet, a smoke-test script, a config file, root `TODO.md`, a sub-app's own doc file, or — for a `.claude/`-meta change — the specific harness files it edited **inside this repo** (never a path in the installed plugin tree, which is outside the repo and not stageable at all) — see `cla.io/overlays/spec-to-pr.md` for this repo's worked examples), add each by name on the same `git add` line — never expand to `-A`. No commit-msg file; the change name is enough.
 
 ## 4. Open the PR
