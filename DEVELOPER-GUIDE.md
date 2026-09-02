@@ -12,8 +12,10 @@ CLA is a *process* layer, not product code. Three kinds of pieces, one split tha
 portable:
 
 - **Skills** (`/cla:<name>`) — the workflows. Each one carries a change through a phase of its
-  life: capture → decide → specify → build → review → learn. You invoke them by slash command or
-  by describing what you want in natural language.
+  life: capture → decide → specify → build → review → learn. You invoke them by slash command;
+  all but `multi-lite` and `multi-pr` — which set `disable-model-invocation: true`, being
+  unattended orchestrators that open and merge PRs — can also be triggered by describing what
+  you want in natural language.
 - **Guard hooks** — always-on guardrails wired automatically when the plugin loads. They block,
   ask, or warn on risky tool calls (a push to main, an `rm -rf`, a commit that would collide with
   another session). You don't invoke them; they fire when a convention is about to be broken.

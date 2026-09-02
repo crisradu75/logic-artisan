@@ -3,7 +3,7 @@
 The guard claims that no enumeration of `checklist.md`'s high-yield checks can go
 stale without a test going red.
 
-**Two provenances, and the batch says which is which.** Mutants 1–5 restore an
+**Three provenances, and the batch says which is which.** Mutants 1–5 restore an
 enumeration to the exact defective text the repo actually carried before this
 session, so they measure the guard against history rather than invented shapes.
 Mutants 6–10 are constructed probes for rule 5, whose marker mechanism has no
@@ -11,6 +11,10 @@ defective history yet — it was added in the same change they test. An earlier
 version of this paragraph claimed all of them were historical, which was false the
 moment rule 5's mutants were appended: the checklist never carried `0j–0k` on that
 line, and no prior tree could carry the absence of a marker that did not exist.
+Mutants 11–14 are constructed probes for the discovery mechanism, added in the
+commit that introduced it. This paragraph has now gone stale twice by the same
+route — a mutant appended without re-reading what the paragraph claims about the
+set — which is why the count is in the first sentence where an appender sees it.
 
 Two mutants target the guard's own regexes rather than the prose, because both
 were places its first draft was wrong.
@@ -85,7 +89,7 @@ MUTANTS = [
         # for is skipped with the report identical either way.
         "a skill defines its own check under a label the checklist owns",
         REVIEW_GATE,
-        "**0m — Cross-change cross-reference check",
+        "**B1 — Cross-change cross-reference check",
         "**0j — Cross-change cross-reference check",
         TARGETS,
     ),
@@ -172,7 +176,76 @@ MUTANTS = [
         '(_CHECKLIST, "All checks abov3",',
         TARGETS,
     ),
+    (
+        # Discovery replaced a hand-maintained list of four paths. Break the
+        # marker constant and the scan matches nothing: zero parametrize cases,
+        # which pytest reports as a PASS. Every marked-enumeration test would
+        # vanish silently — the vacuous shape reached through the very mechanism
+        # added to close a gap. Killed by `test_the_discovery_finds_the_marked_files`
+        # among others: 7 failures across 3 test functions, since every marked-line
+        # rule loses its subject too. Naming one killer overstates the exclusivity.
+        "the marker is reworded so discovery enrols nothing",
+        GUARD,
+        '_ENUMERATION_MARKER = "<!-- enumerates-checks -->"',
+        '_ENUMERATION_MARKER = "<!-- enumerates-all-checks -->"',
+        TARGETS,
+    ),
+    (
+        # The exemption turned into a blanket. `fact-gatherer.md` is exempt for a
+        # stated reason; exempting the checklist itself is the same edit one word
+        # wider, and it unwatches the file the whole guard is about.
+        "the unmarked-by-design rule is widened to the checklist",
+        GUARD,
+        '    _PLUGIN_ROOT / "agents" / "fact-gatherer.md":',
+        "    _CHECKLIST:",
+        TARGETS,
+    ),
+    (
+        # The union half. Emptying it was measured to leave 18 tests passing
+        # while `test_advertised_check_count_matches_the_definitions` went fully
+        # vacuous — those two files are its entire population. This is the
+        # "narrowed the guard while appearing to widen it" failure the discovery
+        # commit named and then left unguarded.
+        "the structural entry points are dropped from the watched set",
+        GUARD,
+        #
+        # ANCHOR IS ONE LINE. `mutate.py` matches raw bytes and forbids `\n` in an
+        # anchor: on a CRLF checkout a multi-line anchor matches nothing, preflight
+        # refuses, and one bad anchor aborts the whole run — silently disarming
+        # every mutant here. Dropping ONE entry is enough: the floor is >= 2.
+        '    _PLUGIN_ROOT / "skills" / "spec-to-pr" / "SKILL.md",',
+        "",
+        TARGETS,
+    ),
+    (
+        # The scan root narrowed. Both marked files live under `skills/` today,
+        # so this was measured to leave all 24 tests green while `agents/`,
+        # `output-styles/`, `hooks/` and the plugin root became unscannable.
+        # Only a synthetic tree distinguishes the two roots.
+        "the discovery scan root is narrowed to skills/",
+        GUARD,
+        'for path in root.rglob("*.md")',
+        'for path in (root / "skills").rglob("*.md")',
+        TARGETS,
+    ),
 ]
+
+# DELIBERATELY NOT A MUTANT: widening the unmarked-by-design rule's frontmatter
+# scan to the whole body (`_RANGE.findall(frontmatter)` -> `findall(body)`).
+#
+# It SURVIVES, and it cannot do otherwise. The reason the rule states is that the
+# range sits in `description:` as the agent's own input; the real file satisfies
+# both spellings, so the two expressions agree on every input the live tree
+# supplies. That is `CLAUDE.md`'s named unkillable class, and its rule applies:
+# **where two candidate rules agree on all correct inputs, mutate the INPUT.**
+#
+# Measured, by doing exactly that against an isolated copy: moving the range out
+# of `fact-gatherer.md`'s frontmatter and into its body fails
+# `test_the_unmarked_by_design_rule_is_still_earned` at the frontmatter
+# assertion — 1 failed, 25 passed. So the distinction IS load-bearing against the
+# defect that matters, and only the guard-vs-guard mutant is unkillable. Leaving
+# it installed would report a survivor on every clean run, which trains the next
+# reader to skip the whole list.
 
 # DELIBERATELY NOT A MUTANT: dropping an entry from `_REQUIRED_MARKED_LINES`.
 #
