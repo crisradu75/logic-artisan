@@ -179,7 +179,9 @@ still passed). None was found by reading. Each took ~60 seconds to plant.
 ## How planting goes wrong
 
 Planting a failure only proves something if the plant reaches the value the assertion
-reads. Each of these produced a confident, wrong conclusion in a real run.
+reads — and reaching it is necessary, not sufficient. The first rules below are the ways
+a plant fails to land; the one after them is the way a plant lands, kills, and still
+proves nothing. Each of these produced a confident, wrong conclusion in a real run.
 
 **The plant must land on the tested value, not merely change the file.** Three shapes,
 all of which report "caught" while testing nothing. A plant that is a *superstring* of
@@ -201,8 +203,10 @@ three conditions above establish that the plant reached the value under test. Th
 nothing about whether the assertion it tripped is the behaviour you want. A kill proves
 the suite reacts to that edit; it proves neither the code nor the test correct, and a
 test written from a wrong mental model kills mutants exactly as reliably as a right one.
-So the green result actively reinforces the error — *caught, therefore fine* — which is
-what makes this the trap that survives every check written to catch the others.
+So the green result actively reinforces the error: *caught, therefore fine*. None of the
+conditions above separates this case from a sound one, because it passes every one of
+them — what reaches it is reading the contract the code is supposed to satisfy, which is
+the same move the enumerate-from-the-primary-source rule below asks for.
 
 The remedy is one extra read, at the moment of the kill: state what behaviour the killing
 assertion encodes, and confirm that is the behaviour wanted. Highest risk where the mutant
@@ -214,9 +218,10 @@ to remove.
 Real, in a consuming repo, 2026-08-31: an accessor computed a column offset conditionally,
 a mutant replaced it with the constant, and the mutant was killed by an assertion that two
 derived values were equal. That equality was itself the defect — the two were never meant
-to be equal, and the conditional was what made them so, firing every downstream rule keyed
-on their difference. The constant was the correct behaviour and the plant had found it. It
-was caught later by a reviewer reasoning from the type's stated invariant, not by any gate.
+to be equal, and on the inputs where the conditional applied it made them so, firing every
+downstream rule keyed on their difference. The constant was the correct behaviour and the
+plant had found it. It was caught later by a review agent reasoning from the type's stated
+invariant, not by any gate.
 
 **A plant reported by someone else is a claim, not a result.** When a delegate says it
 mutation-tested its own guard, re-run one of the plants yourself before believing the
@@ -322,8 +327,9 @@ below its population will not fail; an alarm whose precondition sits above the v
 it will really see never runs at all; a case list over N rules × M constructs leaves
 most cells untested while reading as thorough; a gate nobody planted a failure against
 has not been shown to fail; a plant that missed the value under test proves nothing
-while reporting success; and a plant derived from the code cannot reach a case the code
-never considered. All of them are the class a guard asserting over a collection it
+while reporting success; a plant that landed and killed its mutant proves the suite
+reacts and not that the assertion which killed it is the behaviour wanted; and a plant
+derived from the code cannot reach a case the code never considered. All of them are the class a guard asserting over a collection it
 never fills belongs to (the source repo's
 `plugin-tests/tests/conformance/test_guards_are_not_vacuous.py` is the worked
 example; a consuming repo has no such file, which is why it is named as the source
@@ -336,7 +342,7 @@ implementation-detail testing" is a rule, but its failure mode is the opposite o
 the test fails too easily rather than not at all, so it does not belong to the shared
 shape this list is drawn around.)
 
-Note the shape of the last two entries. The earlier ones ask whether a test *can* fail.
+Note the shape of the last three entries. The earlier ones ask whether a test *can* fail.
 Those ask whether the evidence you gathered is about the thing you meant — which is why
 a clean run is evidence about the plants you thought of and nothing else, and why it is
 worth naming what you did not plant rather than letting an all-green report imply a

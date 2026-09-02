@@ -184,13 +184,14 @@ The two-chain floor is the originating decision's and carries its authority; the
    is how a real fix here once traded a silent no-op on the default path for the identical no-op on
    the overlay path. Do each one by hand: edit the code so the defect is back, run the affected
    test, confirm it FAILS, then restore the edit exactly — a test that still passes has not been
-   shown to catch anything, and an unrestored edit ships the defect. **A test that DOES fail is not
-   thereby correct: read the assertion that killed the mutant and confirm it states the behaviour
-   you want.** A test written from a wrong mental model kills mutants exactly as reliably as a right
-   one, and the green result reads as confirmation — worst where the mutant is the *simpler* form of
-   the code, since if the simpler form is right, the test defending the original is defending the
-   bug. Full rule and the case that produced it:
-   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`, "How planting goes wrong". Fix a surviving mutant, or name it in the Handoff report with a reason. A clean
+   shown to catch anything, and an unrestored edit ships the defect. **A test that DOES fail is
+   not thereby correct: read the assertion that killed the mutant and confirm it states the
+   behaviour you want.** A test written from a wrong mental model kills mutants exactly as
+   reliably as a right one, and the green result reads as confirmation. Worst where the mutant
+   is the *simpler* form of the code: if the simpler form is right, the test defending the
+   original is defending the bug. Full rule and the case that produced it:
+   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`, "How planting goes wrong".
+   Fix a surviving mutant, or name it in the Handoff report with a reason. A clean
    run is evidence about the mutants you thought of and nothing else — two commits in this repo each
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.
 3. Stage + commit as `fix: review round <N>`. The fix-round commit subject is structurally meaningful (it drives `probe_state.py`'s round counter and the round-N-on-fix-diff scoping above). Before staging, verify git-state:

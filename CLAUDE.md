@@ -204,9 +204,10 @@ A test written from a wrong mental model kills mutants exactly as reliably as a 
 one, and the green result reads as confirmation. Worst where the mutant is the *simpler*
 form of the code: if the simpler form is correct, the test defending the original is
 defending the defect, and the gate pins it while reporting green. Reported from a
-consuming repo (issue #193), where a conditional column offset survived because the
-assertion killing its constant-form mutant was itself the defect; a reviewer reasoning
-from the type's invariant caught it, no gate did. Full rule:
+consuming repo (issue #193), where a conditional column offset shipped because the
+assertion killing its constant-form mutant was itself the defect. The mutant died; the
+bug reached a PR. A review agent reasoning from the type's invariant caught it, no gate
+did. Full rule:
 `.claude/plugins/cla/skills/_shared/references/test-quality.md`, "How planting goes wrong".
 
 **And a SURVIVOR is not automatically a finding about the code.** Some mutants cannot be
