@@ -164,6 +164,36 @@ def test_it_writes_one_line_for_a_real_commit(tmp_path):
     assert rows[0]["sha"]
 
 
+def test_a_repeated_command_does_not_re_record_the_same_head(tmp_path):
+    """The failed-commit shape: HEAD is real, but this command did not make it.
+
+    A `git commit` with nothing staged exits non-zero and moves nothing, so the
+    hook sees the PREVIOUS commit's HEAD and the reflog's top entry is still
+    that commit — `_head_moved_by_commit` cannot tell the difference. Only the
+    ledger's last row can. Issue #199: `f3735db` was recorded three times,
+    byte-identically, from exactly this.
+    """
+    repo = _repo(tmp_path)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert len(_ledger(repo)) == 1
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert len(_ledger(repo)) == 1
+
+
+def test_it_writes_nothing_when_head_last_moved_by_a_checkout(tmp_path):
+    """The other half: HEAD belongs to work this command had no part in.
+
+    Issue #199's second shape — a merge commit made days earlier on another
+    branch, re-recorded under the branch that had just been checked out. The
+    ledger's last row does not carry that sha, so the dedupe above lets it
+    through; the reflog is what rejects it.
+    """
+    repo = _repo(tmp_path)
+    subprocess.run(["git", "checkout", "-q", "-b", "other"], cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert _ledger(repo) == []
+
+
 def test_it_writes_nothing_for_a_non_commit(tmp_path):
     repo = _repo(tmp_path)
     assert _run(repo, "git status").returncode == 0

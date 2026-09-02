@@ -846,6 +846,8 @@ A skill that owns a commit-creating step SHALL require, at **every** such step r
 
 **Adoption SHALL be recorded rather than asserted.** Nothing gates a single commit, so a trailer that was never written is invisible; the obligation's own effectiveness would otherwise be an unfalsifiable claim, which is the failure this requirement exists to prevent. The plugin's commit-provenance hook SHALL record, per commit, the count of measurement trailers and their values, so the question is answered from a ledger. Under the line ceiling that ledger enforces, the trailer VALUES SHALL be shortened before the record is dropped, and the count SHALL remain exact — a dropped line would remove the commit from the denominator the ledger exists to supply.
 
+**A row SHALL be written only for a commit the recorded command actually made.** Reading HEAD proves a commit exists, never that this command created it, so a hook that records on HEAD alone re-records its predecessor's work every time a commit-shaped command commits nothing. Each such row inflates the denominator the ledger exists to supply, and once written it is indistinguishable from a real one. Two conditions SHALL both hold before a row is written: the last movement of HEAD was a commit, and the sha is not the one the ledger's last row already carries. Neither SHALL be treated as sufficient alone — a commit that stages nothing leaves the first satisfied, and a sha from another branch's older work leaves the second satisfied.
+
 **The trailer token SHALL be distinguishable from narrative prose.** Bare `Measured:` is ordinary narrative text in the shipped tree (`git grep -l "Measured:" -- .claude/plugins/cla | wc -l` — 4 tracked files, none of them a trailer; `grep -rl` answers 5 because it also opens a `__pycache__` `.pyc`), so a bare token would collide both with a drift check over shipped prose and with `git log --grep`. The hyphenated git-trailer form `Measured-by:` is load-bearing rather than cosmetic.
 
 **This obligation is NOT covered by the Completeness-signals requirement above**, whose measurement clause reads in full: *"A task whose text asserts a **measurement** — a confirmed value, a count, a mutation-test result — SHALL record the measured value inline on the ticked line rather than the tick standing as its own evidence, and the post-check SHALL re-measure a small sample rather than trusting the ticks wholesale."* That binds a **task list** to record a **value**; this binds a **commit** to name a **command**. A recorded value is the claim restated in another place — it is exactly what every escape this requirement addresses already had. Only the command lets a reader reproduce it, and the two clauses also bind different artifacts at different moments, so neither subsumes the other.
@@ -897,6 +899,12 @@ A systematic 21-line sample of those 169 (every 8th hit, `| awk 'NR%8==1'`) was 
 - **WHEN** a commit is recorded by the commit-provenance hook
 - **THEN** the record carries the exact count of measurement trailers and their values
 - **AND** an oversize record sheds trailer values rather than being dropped, leaving the count intact
+
+#### Scenario: A command that committed nothing records nothing
+
+- **WHEN** a commit-shaped command runs and creates no commit
+- **THEN** no row is written, whether HEAD was last moved by a checkout, a merge or a pull, or whether the command staged nothing and left HEAD where its predecessor put it
+- **AND** neither the reflog condition nor the ledger-dedupe condition alone is relied on, since each admits a case the other rejects
 
 ### Requirement: Deferred findings are separated by reason
 

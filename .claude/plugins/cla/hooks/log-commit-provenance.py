@@ -117,6 +117,62 @@ def _git(*args: str, cwd: Path) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+# The reasons `git reflog` writes when HEAD moved because a commit was created.
+# Every other movement — `checkout:`, `merge`, `rebase`, `pull --ff-only:`,
+# `reset:` — means the command that just ran committed nothing, so the HEAD this
+# hook is about to read belongs to somebody else's work.
+_COMMIT_REFLOG_REASONS = ("commit:", "commit (initial):", "commit (amend):")
+
+
+def _head_moved_by_commit(cwd: Path) -> bool:
+    """True when the last thing to move HEAD was a commit.
+
+    The hook runs on PostToolUse and its payload carries no pre-command state,
+    so "did HEAD move?" cannot be answered by comparing before against after.
+    The reflog answers the neighbouring question — what moved HEAD last — and
+    that is enough to reject the case this exists for: a commit-shaped command
+    run when the previous HEAD movement was a checkout, a merge, or a pull.
+
+    Not sufficient on its own, deliberately. A `git commit` that stages nothing
+    leaves the reflog untouched, so the top entry is still the PREVIOUS real
+    commit and this returns True. `_already_recorded` is what rejects that one.
+    """
+    reason = _git("reflog", "-1", "--format=%gs", cwd=cwd)
+    if not reason:
+        return False
+    return reason.startswith(_COMMIT_REFLOG_REASONS)
+
+
+def _already_recorded(ledger: Path, sha: str) -> bool:
+    """True when the ledger's last row already carries this sha.
+
+    Two commits can never share a sha, so a match means this row was written
+    already — the shape a failed `git commit` produces when it re-presents the
+    HEAD its predecessor legitimately recorded.
+
+    Reads a tail chunk rather than the file: the ledger grows without bound and
+    a row is capped at `_MAX_LINE_BYTES`, so 4 KiB always contains a whole last
+    line. An unreadable or absent ledger returns False — the hook cannot tell,
+    and `_head_moved_by_commit` has already gated this call, so the failure
+    posture stays "lose a check, never lose a genuine row".
+    """
+    try:
+        with ledger.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 4096))
+            chunk = fh.read()
+    except OSError:
+        return False
+    lines = [line for line in chunk.splitlines() if line.strip()]
+    if not lines:
+        return False
+    try:
+        return json.loads(lines[-1].decode("utf-8")).get("sha") == sha
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, AttributeError):
+        return False
+
+
 def _is_commit_command(command: str) -> bool:
     """True for a real `git commit`, false for anything that merely mentions it.
 
@@ -178,10 +234,16 @@ def main() -> int:
     cwd = Path(payload.get("cwd") or os.getcwd())
 
     # The commit must actually exist — a failed `git commit` (nothing staged, a
-    # rejecting hook) must not be recorded as one.
+    # rejecting hook) must not be recorded as one. Reading HEAD proves only that
+    # a commit exists, never that THIS command made it, so the two checks below
+    # carry that claim instead. Together they are the whole defence against
+    # over-recording, which the docstring above calls worse than not existing.
     head = _git("rev-parse", "--short", "HEAD", cwd=cwd)
     subject = _git("log", "-1", "--pretty=%s", cwd=cwd)
     if not head or subject is None:
+        return 0
+
+    if not _head_moved_by_commit(cwd):
         return 0
 
     root = _git("rev-parse", "--show-toplevel", cwd=cwd)
@@ -191,6 +253,9 @@ def main() -> int:
     if not ledger_dir.is_dir():
         # Never create the tree: a repo that has not run `cla-init` has not opted
         # into per-repo state, and this hook is not the place to decide it should.
+        return 0
+
+    if _already_recorded(ledger_dir / _LEDGER_NAME, head):
         return 0
 
     measured = _measured_by(cwd)
