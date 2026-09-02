@@ -39,35 +39,54 @@ full list of subcommands the CLI actually ships.
 
 ## The software life cycle, phase by phase
 
-CLA's skills map onto the arc of a change. Each shipped skill is invocable as `/cla:<name>` or by
-natural language; `[loop]` marks a self-improvement retro over prior runs of another skill. One
+CLA's skills map onto the arc of a change. Each shipped skill is invocable as `/cla:<name>`, and
+all but the two marked **you only** below can also be triggered by natural language; `[loop]`
+marks a self-improvement retro over prior runs of another skill. One
 skill, `release`, is not shipped — it acts on this repo's own distribution, so it is repo-local
 and invoked bare as `/release`.
 
-| Phase | Skill | What it does |
-|---|---|---|
-| **0. Bootstrap** (per repo, once) | `cla-init` | Scaffold the `cla.io/` tree + empty overlay stubs (structure only, never facts) |
-| | `sync-context` | Populate/reconcile `cla.io/project-facts.md` — the repo's shared facts (members, commands, ports, file maps) |
-| | `save-permissions` | Persist tool permissions granted this session to `.claude/settings.local.json` |
-| **1. Discover & shape** | `feedback` | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
-| | `shape-decision` | Walk a decision option-by-option with pros/cons + a recommended pick |
-| | (`opsx:explore`) | OpenSpec's thinking-partner mode for investigating a problem before committing to a change |
-| **2. Specify & plan** | `multi-spec` | Turn a shaped decisions doc into a batch of full OpenSpec proposals (stops at proposals) |
-| | `review-change` | Pre-implementation review of an OpenSpec change: verify claims, symbols, file/reference reality, size it |
-| **3. Build & ship** | `new-worktree` | Start an isolated git worktree (deps installed, env carried over) for parallel/safe work |
-| | `lite-pr` | Lightweight end-to-end path for a small change: implement + docs + tests + PR + one review round |
-| | `spec-to-pr` | Drive one OpenSpec change end-to-end to an opened, archived PR with review fixes applied |
-| | `multi-lite` | Chain several `lite-pr` runs extracted from one decisions doc, dependency-first |
-| | `multi-pr` | Chain several OpenSpec changes → PRs, merging each before its dependents (or stacking PRs on their parents when merging is unavailable) |
-| **4. Review & assure** | `project-review` | CTO-level review of the whole repo: vision, structure, requirements, architecture, validation |
-| | `annotate` | Render a doc as a page, open it chrome-less, and collect the user's own comments against selected passages — read back and worked through here |
-| | (agents) | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to |
-| **5. Learn & improve** | `codify-learnings` | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
-| | `codify-retro` | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
-| | `spec-to-pr-retro` | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
-| | `report-upstream` | File a defect in CLA's own portable core as an issue against the canonical source |
-| | `checkpoint` | Compact a session into a resumable briefing (`cla.io/checkpoints/`) |
-| **Any phase** (utility) | `right-model` | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
+| Phase | Skill | Invoked by | What it does |
+|---|---|---|---|
+| **0. Bootstrap** (per repo, once) | `cla-init` | you or Claude | Scaffold the `cla.io/` tree + empty overlay stubs (structure only, never facts) |
+| | `sync-context` | you or Claude | Populate/reconcile `cla.io/project-facts.md` — the repo's shared facts (members, commands, ports, file maps) |
+| | `save-permissions` | you or Claude | Persist tool permissions granted this session to `.claude/settings.local.json` |
+| **1. Discover & shape** | `feedback` | you or Claude | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
+| | `shape-decision` | you or Claude | Walk a decision option-by-option with pros/cons + a recommended pick |
+| | (`opsx:explore`) | n/a — vendored | OpenSpec's thinking-partner mode for investigating a problem before committing to a change |
+| **2. Specify & plan** | `multi-spec` | you or Claude | Turn a shaped decisions doc into a batch of full OpenSpec proposals (stops at proposals) |
+| | `review-change` | you or Claude | Pre-implementation review of an OpenSpec change: verify claims, symbols, file/reference reality, size it |
+| **3. Build & ship** | `new-worktree` | you or Claude | Start an isolated git worktree (deps installed, env carried over) for parallel/safe work |
+| | `lite-pr` | you or Claude | Lightweight end-to-end path for a small change: implement + docs + tests + PR + one review round |
+| | `spec-to-pr` | you or Claude | Drive one OpenSpec change end-to-end to an opened, archived PR with review fixes applied |
+| | `multi-lite` | **you only** | Chain several `lite-pr` runs extracted from one decisions doc, dependency-first |
+| | `multi-pr` | **you only** | Chain several OpenSpec changes → PRs, merging each before its dependents (or stacking PRs on their parents when merging is unavailable) |
+| **4. Review & assure** | `project-review` | you or Claude | CTO-level review of the whole repo: vision, structure, requirements, architecture, validation |
+| | `annotate` | you or Claude | Render a doc as a page, open it chrome-less, and collect the user's own comments against selected passages — read back and worked through here |
+| | (agents) | n/a — dispatched | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to |
+| **5. Learn & improve** | `codify-learnings` | you or Claude | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
+| | `codify-retro` | you or Claude | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
+| | `spec-to-pr-retro` | you or Claude | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
+| | `report-upstream` | you or Claude | File a defect in CLA's own portable core as an issue against the canonical source |
+| | `checkpoint` | you or Claude | Compact a session into a resumable briefing (`cla.io/checkpoints/`) |
+| **Any phase** (utility) | `right-model` | you or Claude | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
+
+**"Invoked by" is derived, not curated.** A skill reads **you only** exactly when its
+`SKILL.md` frontmatter sets `disable-model-invocation: true`. Every skill that carries it is an
+unattended orchestrator that opens and merges pull requests, so a description match must
+never start one — only you typing the command. Everything else can be triggered either by
+you or by Claude recognising the task. The two non-skill rows are marked `n/a`: `opsx:explore`
+is OpenSpec's, not CLA's, and the agents are dispatched by other skills rather than invoked.
+
+**One reading was deliberately rejected, and is recorded so it does not arrive again: that this
+column also says something about what a skill may CALL.** It does not. It says how a skill
+*starts*, and CLA's skills compose across it in both directions. `lite-pr` invokes
+`Skill(shape-decision)` when a description is too open-ended to plan from — one `you or Claude`
+row calling another — and the two **you only** rows are the heaviest callers in the tree:
+`multi-lite` drives a full `lite-pr` run per candidate, `multi-pr` a full `spec-to-pr` run per
+change. One distinction is worth stating, because it is easy to misread as a chain: consulting
+another skill's *reference file* is not calling that skill. `spec-to-pr`'s Review reads
+`skills/review-change/references/checklist.md` and executes it inline, and its `SKILL.md` forbids
+`Skill(cla:review-change)` outright — the hop would cost a skill load and buy no capability.
 
 ### Typical flows
 
