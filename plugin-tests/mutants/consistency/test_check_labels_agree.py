@@ -85,7 +85,7 @@ MUTANTS = [
         # for is skipped with the report identical either way.
         "a skill defines its own check under a label the checklist owns",
         REVIEW_GATE,
-        "**0m — Cross-change cross-reference check",
+        "**B1 — Cross-change cross-reference check",
         "**0j — Cross-change cross-reference check",
         TARGETS,
     ),
@@ -170,6 +170,28 @@ MUTANTS = [
         GUARD,
         '(_CHECKLIST, "All checks above",',
         '(_CHECKLIST, "All checks abov3",',
+        TARGETS,
+    ),
+    (
+        # Discovery replaced a hand-maintained list of four paths. Break the
+        # marker constant and the scan matches nothing: zero parametrize cases,
+        # which pytest reports as a PASS. Every marked-enumeration test would
+        # vanish silently — the vacuous shape reached through the very mechanism
+        # added to close a gap. Killed by `test_the_discovery_finds_the_marked_files`.
+        "the marker is reworded so discovery enrols nothing",
+        GUARD,
+        '_ENUMERATION_MARKER = "<!-- enumerates-checks -->"',
+        '_ENUMERATION_MARKER = "<!-- enumerates-all-checks -->"',
+        TARGETS,
+    ),
+    (
+        # The exemption turned into a blanket. `fact-gatherer.md` is exempt for a
+        # stated reason; exempting the checklist itself is the same edit one word
+        # wider, and it unwatches the file the whole guard is about.
+        "the discovery exemption is widened to the checklist",
+        GUARD,
+        '    _PLUGIN_ROOT / "agents" / "fact-gatherer.md":',
+        "    _CHECKLIST:",
         TARGETS,
     ),
 ]

@@ -33,10 +33,17 @@ edits the prose next. Rule 3 is kept rather than replaced — it is a true
 statement about a different thing (residence), and it subtracts delegated labels
 where rule 5 does not.
 
-**What it still does NOT cover.** `_ENUMERATING_FILES` is a hand-maintained list.
-`agents/fact-gatherer.md` names a range in its frontmatter and is deliberately
-unwatched; nothing detects a fifth file appearing. The marker makes that
-findable by grep, but no rule here reads outside the four listed files.
+**How the watched set is decided.** It is DISCOVERED, by scanning the plugin
+tree for the marker, not handed over as a list. The list was four literal paths
+and nothing detected a fifth enumerating file appearing — a file could carry a
+marked enumeration and go unwatched forever, the same silence this guard exists
+to remove one level down. Marking a line now enrols its file.
+
+Two entry points are added on top of discovery because they advertise a check
+count and name ranges without carrying a marker, and one file is exempted with
+its reason: `agents/fact-gatherer.md` names a subset range in frontmatter as the
+agent's own input, not as a run-these instruction. The exemption is itself
+tested, so it cannot outlive the reason for it.
 
 **Measured on `main` when this landed:** the guard caught three live defects that
 predate it — `review-gate.md` told batch orchestrators that `0j` and `0k` do not
@@ -71,16 +78,54 @@ _RANGE = re.compile(r"`?\b(0[a-z])\b`?\s*[–—-]\s*`?\b(0[a-z])\b`?")
 # "the 12 high-yield verification checks"
 _COUNT = re.compile(r"\b(\d+)\s+high-yield(?:\s+verification)?\s+checks\b")
 
-# Files that enumerate the checklist's checks. A file is listed here because it
-# tells a reader which checks to run; a file that merely mentions one is not.
+_ENUMERATION_MARKER = "<!-- enumerates-checks -->"
+
+# Files that enumerate the checklist's checks. A file qualifies because it tells
+# a reader which checks to run; a file that merely mentions one does not.
 _REVIEW_GATE = _PLUGIN_ROOT / "skills" / "multi-spec" / "references" / "review-gate.md"
 
-_ENUMERATING_FILES = [
-    _CHECKLIST,
+# DISCOVERED, not hand-listed. The list used to be four literal paths, and
+# nothing detected a fifth enumerating file appearing — a file could carry a
+# marked enumeration and go unwatched forever, which is the exact silence this
+# guard exists to remove one level down. Discovery keys on the marker below, so
+# marking a line is what enrols its file.
+#
+# Two files are added on top of discovery rather than found by it. Both are
+# entry points that advertise a check COUNT and name ranges WITHOUT carrying a
+# marker, so `test_range_enumerations_name_only_defined_checks` must still reach
+# them; dropping them when discovery replaced the list would have narrowed this
+# guard while appearing to widen it.
+_STRUCTURAL_ENTRY_POINTS = (
     _PLUGIN_ROOT / "skills" / "review-change" / "SKILL.md",
     _PLUGIN_ROOT / "skills" / "spec-to-pr" / "SKILL.md",
-    _REVIEW_GATE,
-]
+)
+
+# Deliberately NOT watched, carried forward with its reason so discovery cannot
+# silently start policing it. `agents/fact-gatherer.md` names `0a`–`0h` in its
+# frontmatter `description:` — a statement of what the agent is handed, not an
+# instruction to an orchestrator about what to run. Enrolling it would demand it
+# name the whole defined set, which would be wrong: the agent really is given a
+# subset. `test_the_discovery_exemption_is_still_earned` fails if the range ever
+# leaves that file, so a stale exemption cannot outlive its reason.
+_DISCOVERY_EXEMPT = {
+    _PLUGIN_ROOT / "agents" / "fact-gatherer.md":
+        "names a subset range in frontmatter as the agent's own input, not as a "
+        "run-these instruction to an orchestrator",
+}
+
+
+def _discovered_enumerating_files() -> list[Path]:
+    """Every plugin file carrying a marked enumeration, minus the exemptions."""
+    return sorted(
+        path
+        for path in _PLUGIN_ROOT.rglob("*.md")
+        if path not in _DISCOVERY_EXEMPT
+        and _ENUMERATION_MARKER in path.read_text(encoding="utf-8")
+    )
+
+
+def _enumerating_files() -> list[Path]:
+    return sorted(set(_discovered_enumerating_files()) | set(_STRUCTURAL_ENTRY_POINTS))
 
 # The checklist delegates a contiguous run of checks to the project overlay
 # instead of defining them itself, on one line that opens with the range. The
@@ -131,7 +176,7 @@ def test_checklist_defines_a_contiguous_run_of_checks() -> None:
     )
 
 
-@pytest.mark.parametrize("path", _ENUMERATING_FILES, ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)))
+@pytest.mark.parametrize("path", _enumerating_files(), ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)))
 def test_range_enumerations_name_only_defined_checks(path: Path) -> None:
     """`0a–0k` in any enumerating file must not reach past what the checklist defines."""
     defined = _defined_labels()
@@ -150,7 +195,7 @@ def test_range_enumerations_name_only_defined_checks(path: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("path", _ENUMERATING_FILES, ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)))
+@pytest.mark.parametrize("path", _enumerating_files(), ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)))
 def test_each_enumerating_line_covers_the_whole_defined_set(path: Path) -> None:
     """A residence claim must account for every check the checklist defines.
 
@@ -217,7 +262,7 @@ def test_a_residence_claim_still_exists_somewhere_to_check() -> None:
     claims_residence = re.compile(r"live[s]? in .?`?checklist\.md`?", re.IGNORECASE)
     hits = [
         f"{path.relative_to(_PLUGIN_ROOT)}:{n}"
-        for path in _ENUMERATING_FILES
+        for path in _enumerating_files()
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
         if claims_residence.search(line)
     ]
@@ -238,7 +283,6 @@ def test_a_residence_claim_still_exists_somewhere_to_check() -> None:
 # every legitimate subset that also opens there (`0a–0h` is the delegable
 # portion, `0a–0e` appears in a comparison). Marking is the only version that
 # distinguishes "enumerates the set" from "mentions a range".
-_ENUMERATION_MARKER = "<!-- enumerates-checks -->"
 
 # The lines that MUST carry the marker, pinned by a stable substring rather than
 # counted.
@@ -263,8 +307,9 @@ _REQUIRED_MARKED_LINES: tuple[tuple[Path, str, str], ...] = (
      "names the checks that exist to refute an asserted premise"),
     (_REVIEW_GATE, "The verification work (checks",
      "the batch gate's own statement of what it batches"),
-    (_REVIEW_GATE, "not `0j`:",
-     "explains the 0m label by naming the set checklist.md owns"),
+    (_REVIEW_GATE, "outside the `0[a-z]` namespace entirely",
+     "explains why the batch-only check sits outside the checklist's namespace, "
+     "by naming the set checklist.md owns"),
 )
 
 
@@ -276,7 +321,7 @@ def _marked_lines(path: Path) -> list[tuple[int, str]]:
     ]
 
 
-@pytest.mark.parametrize("path", _ENUMERATING_FILES, ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)))
+@pytest.mark.parametrize("path", _enumerating_files(), ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)))
 def test_every_marked_enumeration_covers_the_whole_defined_set(path: Path) -> None:
     """A marked line must name every check the checklist defines.
 
@@ -361,7 +406,7 @@ def test_advertised_check_count_matches_the_definitions() -> None:
     """"the N high-yield verification checks" must equal the number defined."""
     defined = _defined_labels()
     wrong = []
-    for path in _ENUMERATING_FILES:
+    for path in _enumerating_files():
         for claimed in _COUNT.findall(path.read_text(encoding="utf-8")):
             if int(claimed) != len(defined):
                 wrong.append(f"{path.relative_to(_PLUGIN_ROOT)} says {claimed}")
@@ -383,7 +428,7 @@ def test_no_file_redefines_a_label_the_checklist_owns() -> None:
     """
     defined = _defined_labels()
     collisions = []
-    for path in _ENUMERATING_FILES:
+    for path in _enumerating_files():
         if path == _CHECKLIST:
             continue
         for label in _DEFINITION.findall(path.read_text(encoding="utf-8")):
@@ -394,3 +439,70 @@ def test_no_file_redefines_a_label_the_checklist_owns() -> None:
         f"these files define a check label {_CHECKLIST.name} already owns: "
         f"{'; '.join(collisions)}. Pick a label outside the checklist's range."
     )
+
+
+def test_the_discovery_finds_the_marked_files() -> None:
+    """Discovery must not be silently empty, or every parametrized test vanishes.
+
+    A `rglob` that matches nothing yields zero parametrize cases, and pytest
+    reports zero cases as a pass. That is the vacuous shape this whole file is
+    about, reached through the mechanism that replaced the hand-maintained list.
+    The floor is the real population — two files carry markers today — rather
+    than a decorative 1: measured with
+    `grep -rl 'enumerates-checks' .claude/plugins/cla/` -> 2.
+    """
+    discovered = _discovered_enumerating_files()
+    assert len(discovered) >= 2, (
+        f"marker discovery found {len(discovered)} file(s), expected at least 2. "
+        f"Either the marker {_ENUMERATION_MARKER!r} was reworded — update it here "
+        f"in the same commit — or the marked enumerations were deleted."
+    )
+    assert _CHECKLIST in discovered and _REVIEW_GATE in discovered, (
+        f"discovery missed a file known to carry markers: {sorted(discovered)}"
+    )
+
+
+def test_a_newly_marked_file_is_watched_without_editing_this_guard(tmp_path) -> None:
+    """The whole point of discovery, shown rather than asserted.
+
+    A fifth enumerating file used to need a hand edit here to be watched, and
+    nothing said so. Feeding the scanner a synthetic tree proves marking alone
+    enrols a file — and keeps proving it after a refactor, which watching one
+    real file appear would not.
+    """
+    (tmp_path / "skills" / "newcomer").mkdir(parents=True)
+    marked = tmp_path / "skills" / "newcomer" / "SKILL.md"
+    marked.write_text(f"Run checks `0a`-`0l`. {_ENUMERATION_MARKER}\n", encoding="utf-8")
+    (tmp_path / "skills" / "newcomer" / "quiet.md").write_text(
+        "Mentions `0a` but claims no enumeration.\n", encoding="utf-8"
+    )
+    found = sorted(
+        p for p in tmp_path.rglob("*.md")
+        if _ENUMERATION_MARKER in p.read_text(encoding="utf-8")
+    )
+    assert found == [marked], (
+        "the marker scan enrolled the wrong file set; an unmarked file that "
+        "merely mentions a label must not be watched."
+    )
+
+
+def test_the_discovery_exemption_is_still_earned() -> None:
+    """A stale exemption is worse than none — it reads as a considered decision.
+
+    Each exempt file must still exhibit the property its reason names. When the
+    range leaves `fact-gatherer.md`, the exemption is obsolete and this fails
+    rather than sitting there justifying nothing.
+    """
+    for path, reason in _DISCOVERY_EXEMPT.items():
+        assert path.exists(), f"exempt file {path} no longer exists: {reason}"
+        body = path.read_text(encoding="utf-8")
+        assert _RANGE.search(body), (
+            f"{path.name} is exempt from marker discovery because it "
+            f"{reason}, but it no longer names a check range at all. The "
+            f"exemption has outlived its reason — delete it."
+        )
+        assert _ENUMERATION_MARKER not in body, (
+            f"{path.name} is exempt from discovery but now carries "
+            f"{_ENUMERATION_MARKER!r}. Marking it is a request to be watched, "
+            f"which the exemption silently refuses. Resolve one or the other."
+        )
