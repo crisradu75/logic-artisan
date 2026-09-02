@@ -69,10 +69,16 @@ git push -u origin <branch>
 
 ```
 git commit -m "feat: <change-name>" -m "Measured-by: <command> — <claim>
-Measured-by: <command> — <claim>"
+Measured-by: <command> — <claim>
+Co-Authored-By: <name> <<email>>
+Claude-Session: <session URL>"
 ```
 
 One `-m` per trailer would put a blank line between them and break the block into separate paragraphs, so keep them in a single `-m`. Omit the second `-m` entirely when the change asserts no measurement.
+
+**The session-attribution lines belong in that same `-m`, directly under the last `Measured-by:` line.** No blank line between them, as the example shows. Git parses trailers from the last paragraph of the message only. Write the attribution as its own paragraph and every `Measured-by:` line falls outside the trailer block: `git log --pretty='%(trailers:key=Measured-by,valueonly=true,unfold=true)'` returns nothing, and the provenance hook reading through that parser records zero for a commit carrying real trailers.
+
+**That last paragraph holds trailers and nothing else.** One line of ordinary prose in it costs the whole block, exactly as a blank line does. A commit that needs a body puts the body in its own paragraph, above the trailers.
 List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change scoped to one app stages just that app's `src/`; a change touching a shared package plus its consumer stages both. If your change legitimately touches other top-level paths (e.g. a per-app stylesheet, a smoke-test script, a config file, root `TODO.md`, a sub-app's own doc file, or — for a `.claude/`-meta change — the specific harness files it edited **inside this repo** (never a path in the installed plugin tree, which is outside the repo and not stageable at all) — see `cla.io/overlays/spec-to-pr.md` for this repo's worked examples), add each by name on the same `git add` line — never expand to `-A`. No commit-msg file; the change name is enough.
 
 ## 4. Open the PR
