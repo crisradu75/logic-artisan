@@ -101,14 +101,28 @@ MUTANTS = [
     (
         # The defect this pair was written against: a THIRD skill forbids model
         # invocation and the table still shows it as model-invocable, telling a
-        # reader Claude may start it on a description match. Planted in the
-        # source rather than the table, because the frontmatter is the authority
-        # and the table is what must follow it. Killed by
+        # reader Claude may start an unattended orchestrator on a description
+        # match. Planted in the source rather than the table, because the
+        # frontmatter is the authority and the table follows it. Killed by
         # `test_the_invocation_column_matches_the_frontmatter`.
         "a third skill forbids model invocation and the table does not follow",
         PLUGIN / "skills" / "multi-spec" / "SKILL.md",
         "argument-hint:",
         "disable-model-invocation: true\nargument-hint:",
+        TARGETS,
+    ),
+    (
+        # The same defect in the spelling the guard's FIRST draft missed. Review
+        # measured five legal YAML spellings of true that the string compare
+        # `line.strip() == "disable-model-invocation: true"` did not match, and
+        # the inline-comment form is the likely one — both existing skills carry
+        # that rationale as a comment already. Without this mutant the batch
+        # reports 11 kills while the guard's headline scenario is unguarded for
+        # every spelling but one.
+        "a third skill declares it with an inline comment, not the bare literal",
+        PLUGIN / "skills" / "multi-spec" / "SKILL.md",
+        "argument-hint:",
+        "disable-model-invocation: true  # merges PRs unattended\nargument-hint:",
         TARGETS,
     ),
     (
@@ -122,27 +136,51 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The accumulator bug this guard actually shipped with, caught by the
-        # test failing on a correct tree: `found` was used as the past-the-
-        # opening-delimiter signal, so the first file to match made every LATER
-        # file break on its own opening `---` and go unread. `multi-pr` vanished
-        # from the derived set while the table was right.
-        # NOTE the shape. An earlier version of this mutant just deleted
-        # `delimiters = 0`, which dies of UnboundLocalError — a CRASH, not a
-        # detection, and so evidence only that the line is syntactically
-        # load-bearing. This one restores the exact accumulator logic the guard
-        # shipped with, so the guard runs clean and returns a WRONG set.
-        "frontmatter delimiters are counted across files instead of per file",
+        # The mark moved OUT of the Invoked by cell and into the description of
+        # the same row. The guard's first draft searched the whole row, so the
+        # column said `you or Claude` while the derived set said user-only and
+        # the two halves agreed. Killed by the cell-value assertion.
+        "the invocation cell contradicts a mark left in the description",
+        PLUGIN / "README.md",
+        "| `multi-lite` | **you only** | Chain several",
+        "| `multi-lite` | you or Claude | **you only** — chain several",
+        TARGETS,
+    ),
+    (
+        # A row loses its Invoked by cell entirely. Both marked sets are
+        # untouched, so the set comparison cannot see it; the table renders
+        # misaligned from that row down. Killed by the cell-count assertion.
+        "an unmarked row loses its invocation cell",
+        PLUGIN / "README.md",
+        "| `lite-pr` | you or Claude | Lightweight",
+        "| `lite-pr` | Lightweight",
+        TARGETS,
+    ),
+    (
+        # A real shipped skill relabelled as one of the non-skill rows. Marks
+        # untouched again; only the legal-value and row-set assertions see it.
+        "a shipped skill is relabelled as a non-skill row",
+        PLUGIN / "README.md",
+        "| `annotate` | you or Claude |",
+        "| `annotate` | n/a — dispatched |",
+        TARGETS,
+    ),
+    (
+        # The accumulator bug this guard actually shipped with, restored.
+        #
+        # ANCHOR IS ONE LINE, deliberately. An earlier form spanned six lines,
+        # and `mutate.py`'s docstring forbids `\n` in an anchor: anchors match
+        # raw bytes, so on a CRLF checkout the anchor matches nothing, preflight
+        # refuses, and — because one bad anchor aborts the whole run — all of
+        # this batch's mutants are silently disarmed on Windows.
+        #
+        # NOTE also the shape. An even earlier form just deleted `delimiters =
+        # 0`, which dies of UnboundLocalError — a CRASH, not a detection, and so
+        # evidence only that the line is syntactically load-bearing.
+        "the frontmatter reader accepts only the bare `true` literal again",
         DEV / "tests" / "consistency" / "test_doc_facts.py",
-        '            if line.rstrip() == "---":\n'
-        "                delimiters += 1\n"
-        "                if delimiters == 2:\n"
-        "                    break\n"
-        "                continue\n"
-        '            if delimiters == 1 and line.strip() == "disable-model-invocation: true":',
-        '            if line.rstrip() == "---" and found:\n'
-        "                break\n"
-        '            if line.strip() == "disable-model-invocation: true":',
+        '    return value.split("#")[0].strip().strip("\\"\'").lower() in _YAML_TRUE',
+        '    return value == "true"',
         TARGETS,
     ),
 ]

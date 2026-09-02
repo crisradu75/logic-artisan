@@ -39,8 +39,9 @@ full list of subcommands the CLI actually ships.
 
 ## The software life cycle, phase by phase
 
-CLA's skills map onto the arc of a change. Each shipped skill is invocable as `/cla:<name>` or by
-natural language; `[loop]` marks a self-improvement retro over prior runs of another skill. One
+CLA's skills map onto the arc of a change. Each shipped skill is invocable as `/cla:<name>`, and
+all but the two marked **you only** below can also be triggered by natural language; `[loop]`
+marks a self-improvement retro over prior runs of another skill. One
 skill, `release`, is not shipped — it acts on this repo's own distribution, so it is repo-local
 and invoked bare as `/release`.
 
@@ -70,7 +71,7 @@ and invoked bare as `/release`.
 | **Any phase** (utility) | `right-model` | you or Claude | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 
 **"Invoked by" is derived, not curated.** A skill reads **you only** exactly when its
-`SKILL.md` frontmatter sets `disable-model-invocation: true`. Both that carry it are
+`SKILL.md` frontmatter sets `disable-model-invocation: true`. Both skills that carry it are
 unattended orchestrators that open and merge pull requests, so a description match must
 never start one — only you typing the command. Everything else can be triggered either by
 you or by Claude recognising the task. The two non-skill rows are marked `n/a`: `opsx:explore`

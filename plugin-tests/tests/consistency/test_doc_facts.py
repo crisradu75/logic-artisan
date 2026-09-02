@@ -7,6 +7,11 @@ the plugin's own `README.md`) and every one of them has been wrong at least once
 the skill count, the pytest-scope count, the count of skills shipping tests, the
 leaf-hook count, and the release version.
 
+A sixth guarded fact is not a number: the plugin README's phase table restates,
+per skill, whether Claude may invoke it — a value that lives in each `SKILL.md`'s
+frontmatter. It rots the same way and is guarded the same way, at the end of this
+file.
+
 They go wrong the same way every time. Someone deletes a skill or adds a scope,
 fixes the number in the file they happened to be editing, and misses the other
 three — and no test anywhere reads a `.md`, so the suite stays green while the
@@ -26,6 +31,7 @@ and train people to "fix" the test by loosening it.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import sys
@@ -518,81 +524,269 @@ def test_the_repo_roots_own_git_does_not_exclude_the_whole_tree(tmp_path, monkey
     )
 
 
-# --- The phase table's "Invoked by" column -----------------------------------
+# --- ground truth: the phase table's "Invoked by" column ---------------------
 #
 # The column restates a fact that lives in each skill's frontmatter, which is
 # this file's whole subject: a derived value copied into prose goes stale when
-# the source changes and nothing reads the prose. The specific rot here is a
-# THIRD skill setting `disable-model-invocation: true` and the table continuing
-# to show it as model-invocable, which would tell a reader Claude may start an
-# unattended orchestrator on a description match.
+# the source changes and nothing reads the prose. The named rot is a THIRD skill
+# setting `disable-model-invocation: true` while the table still shows it as
+# model-invocable, telling a reader Claude may start an unattended orchestrator
+# on a description match.
 #
-# Asserted as a set rather than a count. A count agrees with the table whenever
-# the right NUMBER of rows are marked, including when the marks sit on the wrong
-# two skills — and "two of them are marked" is exactly what a careless edit
-# preserves while moving a mark.
+# **Read the frontmatter with the repo's parser, not a string compare.** The
+# first draft of this guard tested `line.strip() == "disable-model-invocation:
+# true"`, which is one of at least six legal YAML spellings of that fact — and
+# review found it misses `True`, `yes`, `"true"`, a doubled space, and an inline
+# `# comment`. The last is the likely one: BOTH existing skills already carry
+# exactly that rationale as a comment on the preceding lines, so an author
+# shortening it to one line disarms the guard. Worse, it disarms it in the
+# silent direction — if the table is also not updated, both sets stay at two and
+# the guard passes in its own headline scenario.
+#
+# `test_skill_lint.parse_frontmatter` already bounds the block strictly, skips
+# comment lines, and splits on `partition(":")`. It lives in another area
+# directory, so it is loaded by path — the same `importlib` route
+# `test_guards_have_mutant_batches.py` uses. Duplicating it here would give this
+# repo two frontmatter parsers that can disagree, which is the class of defect
+# the whole file exists to catch.
 
 _USER_ONLY_MARK = "**you only**"
 
+# Every value the Invoked by column may hold. Asserted as a closed set so that a
+# DELETED cell, or a real skill relabelled as a non-skill row, is caught — the
+# marked-set comparison below sees neither, because both leave the marks alone.
+_LEGAL_INVOCATION_CELLS = {
+    "you or Claude",
+    _USER_ONLY_MARK,
+    "n/a — vendored",
+    "n/a — dispatched",
+}
 
-def _skills_declaring_user_only() -> set[str]:
-    """Skills whose frontmatter forbids model invocation, from the source."""
-    found = set()
-    for skill_md in (_PLUGIN_ROOT / "skills").glob("*/SKILL.md"):
-        # Delimiters are counted PER FILE. An earlier draft used the accumulator
-        # as the "are we past the opening ---?" signal, so the first file to
-        # match made every later file break on its own opening delimiter and go
-        # unread — `multi-pr` was silently dropped and the table looked wrong.
-        delimiters = 0
-        for line in skill_md.read_text(encoding="utf-8").splitlines():
-            if line.rstrip() == "---":
-                delimiters += 1
-                if delimiters == 2:
-                    break
-                continue
-            if delimiters == 1 and line.strip() == "disable-model-invocation: true":
-                found.add(skill_md.parent.name)
-                break
-    return found
+# YAML's spellings of true. `parse_frontmatter` hands back the raw value with an
+# inline comment still attached, so the comment is stripped before comparison.
+_YAML_TRUE = {"true", "yes", "on"}
+
+_TABLE_HEADER = "| Phase | Skill | Invoked by | What it does |"
 
 
-def _skills_marked_user_only_in_the_table() -> set[str]:
-    """Skills the plugin README's phase table marks as user-invoked only."""
-    marked = set()
-    for line in _DOCS["plugin README.md"].read_text(encoding="utf-8").splitlines():
-        if not line.startswith("|") or _USER_ONLY_MARK not in line:
+def _load_parse_frontmatter():
+    """The repo's one frontmatter parser, loaded from the conformance area.
+
+    Not importable by name: `tests/conformance` is not on `pythonpath` (see
+    `plugin-tests/pyproject.toml`), and relying on pytest's import-mode side
+    effects would make this depend on collection order.
+    """
+    path = Path(__file__).resolve().parents[1] / "conformance" / "test_skill_lint.py"
+    spec = importlib.util.spec_from_file_location("_skill_lint_for_doc_facts", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.parse_frontmatter
+
+
+def _declares_user_only(text: str) -> bool:
+    """True when this SKILL.md's frontmatter forbids model invocation."""
+    mapping, error = _load_parse_frontmatter()(text)
+    if error is not None:
+        # A malformed SKILL.md is `test_skill_lint`'s finding, not this one.
+        # Reporting it here too would give one defect two owners.
+        return False
+    value = mapping.get("disable-model-invocation", "")
+    return value.split("#")[0].strip().strip("\"'").lower() in _YAML_TRUE
+
+
+def skills_declaring_user_only(skills_dir: Path | None = None) -> set[str]:
+    """Skills whose frontmatter forbids model invocation — from the source."""
+    skills_dir = (_PLUGIN_ROOT / "skills") if skills_dir is None else skills_dir
+    return {
+        skill_md.parent.name
+        for skill_md in skills_dir.glob("*/SKILL.md")
+        if _declares_user_only(skill_md.read_text(encoding="utf-8"))
+    }
+
+
+def phase_table_rows(readme: Path | None = None) -> list[list[str]]:
+    """The phase table's body rows, as lists of stripped cells.
+
+    Bounded to the table rather than scanning every `|` line in the file. The
+    README carries a second table (`Dependency | Reached by | How hard`), and a
+    guard reading both would feed its columns into a comparison about skills.
+    """
+    readme = _DOCS["plugin README.md"] if readme is None else readme
+    rows: list[list[str]] = []
+    inside = False
+    for line in readme.read_text(encoding="utf-8").splitlines():
+        if line.strip() == _TABLE_HEADER:
+            inside = True
             continue
-        cells = [c.strip() for c in line.split("|")]
-        # cells[1] is the phase, cells[2] the skill name in backticks.
-        name = cells[2].strip("`() ")
-        if name:
-            marked.add(name)
-    return marked
+        if not inside:
+            continue
+        if not line.startswith("|"):
+            break
+        if set(line.replace("|", "").strip()) <= {"-"}:
+            continue  # the |---|---| separator
+        rows.append([c.strip() for c in line.split("|")[1:-1]])
+    return rows
+
+
+def _row_skill_name(row: list[str]) -> str:
+    """The skill a row names, or '' for the two non-skill rows."""
+    name = row[1].strip("`() ")
+    return "" if name.startswith("opsx:") or name == "agents" else name
+
+
+def skills_marked_user_only_in_the_table(readme: Path | None = None) -> set[str]:
+    """Skills the phase table marks user-invoked only.
+
+    Reads cell 2 — the Invoked by column — rather than searching the whole row.
+    An earlier draft used `mark in line`, which counted a row whose Invoked by
+    cell said `you or Claude` and whose *description* happened to contain the
+    marker: the guard agreed with the frontmatter while the column said the
+    opposite of it.
+    """
+    readme = _DOCS["plugin README.md"] if readme is None else readme
+    return {
+        name
+        for row in phase_table_rows(readme)
+        if len(row) == 4 and row[2] == _USER_ONLY_MARK and (name := _row_skill_name(row))
+    }
 
 
 def test_the_invocation_column_is_not_vacuous() -> None:
-    """Both halves must be non-empty, or agreement proves nothing.
+    """Both halves must be non-empty AND at their real size.
 
-    Two empty sets are equal, so the comparison below passes on a tree where the
-    column was deleted AND every skill dropped the frontmatter key. That is the
-    shape this file exists to catch, applied to its own newest assertion.
+    Two empty sets are equal, so the match test below passes on a tree where the
+    column was deleted and every skill dropped the frontmatter key. The floor is
+    the real population, not a decorative 1: measured with
+    `grep -l '^disable-model-invocation: true' .claude/plugins/cla/skills/*/SKILL.md | wc -l`
+    -> 2 (multi-lite, multi-pr). A floor below its population permits the
+    shrinkage it exists to catch.
     """
-    assert _skills_declaring_user_only(), (
-        "no skill declares `disable-model-invocation: true`. If that is a real "
-        "change, delete the Invoked by column and this pair of tests together."
+    declared = skills_declaring_user_only()
+    marked = skills_marked_user_only_in_the_table()
+    assert len(declared) >= 2, (
+        f"{len(declared)} skill(s) declare `disable-model-invocation: true`; the "
+        f"tree had 2 when this floor was written. A genuine drop to one means "
+        f"deleting a skill — update the floor in that commit, never to go green."
     )
-    assert _skills_marked_user_only_in_the_table(), (
-        f"the plugin README's phase table marks no skill {_USER_ONLY_MARK}. "
-        "Either the column was dropped or its marker was reworded."
+    assert len(marked) >= 2, (
+        f"the phase table marks {len(marked)} skill(s) {_USER_ONLY_MARK}. Either "
+        f"the column was dropped or its marker was reworded."
     )
 
 
 def test_the_invocation_column_matches_the_frontmatter() -> None:
-    declared = _skills_declaring_user_only()
-    marked = _skills_marked_user_only_in_the_table()
+    declared = skills_declaring_user_only()
+    marked = skills_marked_user_only_in_the_table()
     assert marked == declared, (
-        f"the plugin README's phase table marks {sorted(marked)} as user-invoked "
-        f"only, but the frontmatter declares {sorted(declared)}. The frontmatter "
-        f"is the source: a skill sets `disable-model-invocation: true` and the "
-        f"table follows it, never the other way round."
+        f"the phase table marks {sorted(marked)} as user-invoked only, but the "
+        f"frontmatter declares {sorted(declared)}. The frontmatter is the source: "
+        f"a skill sets `disable-model-invocation: true` and the table follows it, "
+        f"never the other way round."
     )
+
+
+def test_every_invocation_cell_holds_a_legal_value() -> None:
+    """Catches a DELETED cell and a mislabelled row, which the set match cannot.
+
+    Dropping the Invoked by cell from an unmarked row, or relabelling a real
+    skill `n/a — dispatched`, leaves both marked sets untouched — so without
+    this the table can misalign or lie about 22 of its 24 rows in silence.
+    """
+    for row in phase_table_rows():
+        assert len(row) == 4, f"phase-table row has {len(row)} cells, expected 4: {row}"
+        assert row[2] in _LEGAL_INVOCATION_CELLS, (
+            f"row {row[1]!r} has Invoked by {row[2]!r}, which is not one of "
+            f"{sorted(_LEGAL_INVOCATION_CELLS)}."
+        )
+        # The value has to agree with WHAT THE ROW IS, or `n/a` becomes a way to
+        # opt a real skill out of the column: relabelling `annotate` as
+        # `n/a — dispatched` kept every marked set identical and survived as a
+        # mutant until this pair was added.
+        names_a_skill = bool(_row_skill_name(row))
+        if names_a_skill:
+            assert not row[2].startswith("n/a"), (
+                f"row {row[1]!r} names a shipped skill but its Invoked by cell "
+                f"is {row[2]!r}. `n/a` is for the two rows that are not CLA "
+                f"skills; a skill has a real invocation model."
+            )
+        else:
+            assert row[2].startswith("n/a"), (
+                f"row {row[1]!r} is not a CLA skill but its Invoked by cell is "
+                f"{row[2]!r}. Its invocation model is not CLA's to state."
+            )
+
+
+def test_the_phase_table_names_every_shipped_skill() -> None:
+    """A skill added with no row, or a row left behind for a deleted skill."""
+    tabled = {n for row in phase_table_rows() if (n := _row_skill_name(row))}
+    on_disk = {p.parent.name for p in (_PLUGIN_ROOT / "skills").glob("*/SKILL.md")}
+    assert tabled == on_disk, (
+        f"the phase table names {sorted(tabled - on_disk)} which ship no SKILL.md, "
+        f"and omits {sorted(on_disk - tabled)} which do."
+    )
+
+
+# The two tests above run against the live tree, where the defect is absent by
+# construction — so neither has been SHOWN able to fire. These feed the helpers
+# a synthetic tree instead, which `test-quality.md` calls the better of the two
+# ways out: a planted failure is evidence at one moment, a test supplying bad
+# state keeps holding after a refactor turns the check into a no-op.
+
+
+def _write_skill(root: Path, name: str, frontmatter: str) -> None:
+    (root / name).mkdir(parents=True)
+    (root / name / "SKILL.md").write_text(
+        f"---\nname: {name}\n{frontmatter}---\n\n# {name}\n", encoding="utf-8"
+    )
+
+
+def test_the_frontmatter_reader_accepts_every_yaml_spelling_of_true(tmp_path) -> None:
+    """The Critical this guard shipped with: one spelling of six was matched."""
+    for i, value in enumerate(
+        ["true", "True", '"true"', "yes", "true  # unattended orchestrator", " true"]
+    ):
+        _write_skill(tmp_path, f"skill{i}", f"disable-model-invocation:{value}\n")
+    _write_skill(tmp_path, "ordinary", "argument-hint: something\n")
+    found = skills_declaring_user_only(tmp_path)
+    assert found == {f"skill{i}" for i in range(6)}, (
+        f"a legal YAML spelling of true went unread: got {sorted(found)}. A skill "
+        f"this misses is one the table is never forced to label."
+    )
+
+
+def test_the_frontmatter_reader_is_not_fooled_by_the_body(tmp_path) -> None:
+    """A `---` rule in the body must not open a second frontmatter block."""
+    (tmp_path / "prose").mkdir(parents=True)
+    (tmp_path / "prose" / "SKILL.md").write_text(
+        "---\nname: prose\n---\n\n# prose\n\n---\n\ndisable-model-invocation: true\n",
+        encoding="utf-8",
+    )
+    assert skills_declaring_user_only(tmp_path) == set()
+
+
+def test_the_table_reader_ignores_a_mark_outside_the_invocation_cell(tmp_path) -> None:
+    """The Important this guard shipped with: `mark in line`, not `in the cell`."""
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        f"{_TABLE_HEADER}\n|---|---|---|---|\n"
+        f"| | `multi-lite` | you or Claude | start it {_USER_ONLY_MARK} |\n",
+        encoding="utf-8",
+    )
+    assert skills_marked_user_only_in_the_table(readme) == set(), (
+        "a marker in the description cell was counted as an invocation mark, so "
+        "the column could say the opposite of the frontmatter and still agree."
+    )
+
+
+def test_the_table_reader_stops_at_the_end_of_the_phase_table(tmp_path) -> None:
+    """A later table's rows must not be read as phase-table rows."""
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        f"{_TABLE_HEADER}\n|---|---|---|---|\n"
+        f"| | `multi-pr` | {_USER_ONLY_MARK} | chains spec-to-pr |\n"
+        "\n## Another section\n\n"
+        f"| Dependency | Reached by | How hard |\n|---|---|---|\n"
+        f"| **OpenSpec** | `spec-to-pr` | {_USER_ONLY_MARK} |\n",
+        encoding="utf-8",
+    )
+    assert skills_marked_user_only_in_the_table(readme) == {"multi-pr"}
