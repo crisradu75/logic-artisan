@@ -1,7 +1,7 @@
 """Every site stating the mutation gate states the SAME mutation gate.
 
 `openspec/specs/cla-plugin/spec.md`, "Review-fix evidence gate", requires that
-every shipped skill stating the gate carry the killed-mutant clause: a kill
+every shipped markdown file stating the gate carry the killed-mutant clause: a kill
 establishes that the suite reacts to that edit, not that the code or the test is
 correct, so the killing assertion has to be read. Without a guard that is an
 obligation asserted in a spec and enforced by nobody.

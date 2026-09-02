@@ -329,9 +329,9 @@ most cells untested while reading as thorough; a gate nobody planted a failure a
 has not been shown to fail; a plant that missed the value under test proves nothing
 while reporting success; a plant that landed and killed its mutant proves the suite
 reacts and not that the assertion which killed it is the behaviour wanted; and a plant
-derived from the code cannot reach a case the code never considered. All of them are the class a guard asserting over a collection it
-never fills belongs to (the source repo's
-`plugin-tests/tests/conformance/test_guards_are_not_vacuous.py` is the worked
+derived from the code cannot reach a case the code never considered. All of them are
+the class a guard asserting over a collection it never fills belongs to (the source
+repo's `plugin-tests/tests/conformance/test_guards_are_not_vacuous.py` is the worked
 example; a consuming repo has no such file, which is why it is named as the source
 repo's rather than as something to go and run).
 

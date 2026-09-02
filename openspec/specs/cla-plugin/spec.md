@@ -606,7 +606,7 @@ A skill that applies fixes for review findings SHALL require, before the commit 
 
 The gate SHALL preserve, in the procedure text, the reasoning that makes it more than ceremony: that a fix for a Critical/Important finding is a change like any other and earns the same evidence the original code needed; that "the reviewer's finding is now handled" is not that evidence; that what is broken MUST be **what the fix touches**, not only what it targets, because correcting one return path routinely breaks another; and that a clean run is evidence about the mutants the author thought of and nothing else. A surviving mutant SHALL be fixed, or named in the skill's terminal report with a reason.
 
-The gate SHALL further state that a **killed** mutant does not discharge it either: the kill establishes that the suite reacts to that edit, not that the code or the test is correct, so the assertion that killed the mutant SHALL be read and confirmed to state the wanted behaviour. Every shipped skill stating this gate SHALL carry that clause — a skill restating the gate without it briefs its reader against a two-outcome contract in which a kill is self-certifying.
+The gate SHALL further state that a **killed** mutant does not discharge it either: the kill establishes that the suite reacts to that edit, not that the code or the test is correct, so the assertion that killed the mutant SHALL be read and confirmed to state the wanted behaviour. Every shipped markdown file stating this gate SHALL carry that clause — a site restating the gate without it briefs its reader against a two-outcome contract in which a kill is self-certifying.
 
 #### Scenario: The gate is stated without a plugin-root runner invocation
 
@@ -634,7 +634,7 @@ The gate SHALL further state that a **killed** mutant does not discharge it eith
 
 #### Scenario: Every site stating the gate states the same contract
 
-- **WHEN** more than one shipped skill states the mutation gate
+- **WHEN** more than one shipped markdown file states the mutation gate
 - **THEN** each site carries the killed-mutant clause rather than only the site that was edited last
 
 ### Requirement: Sequencing edges beyond the source dependency graph
