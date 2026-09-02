@@ -876,7 +876,7 @@ Filed as issue #178; the number was replaced in `CLAUDE.md` with the command tha
 ### The reversal condition for the modified-block retention comparison
 
 `design.md` D2 of `modified-block-diff-scope` chose **prose over a script** for the retention
-comparison: one shared reference defining the procedure, bound at five sites, with no Python. The
+comparison: one shared reference defining the procedure, bound at six sites, with no Python. The
 standing preference in this repo is prose over machinery, and the alternative — porting a working
 ~60-line script from a consuming repo — was rejected on three grounds, the strongest being that a
 delta-format parser shipped from this plugin is the duplication the upstream issue asks to remove.

@@ -93,10 +93,12 @@ the delta, a hand-resolved conflict in it. Review-time cannot look at either.
 `buildUpdatedSpec` in `core/specs-apply` calls `findMissingCurrentScenarios` and throws
 `"<spec> MODIFIED failed ... current spec contains scenario(s) not present in the modified block"`,
 so `openspec archive` aborts rather than dropping the scenario. Verified by reading the installed
-package at 1.11.0. **Do not restate a version boundary here.** The check predates 1.11.0 by several
-releases and the exact release it landed in is not pinned in this file — an earlier draft asserted
-"from 1.11.0, and nothing before it refuses", which was simply wrong for the versions in between and
-is the same stale-fact-as-current-fact failure this whole reference exists to catch. Run
+package. **Do not restate a version boundary here** — not the release the guard landed in, and not
+how far back it goes. An earlier draft asserted "from 1.11.0, and nothing before it refuses", which
+was simply wrong for the versions in between; its replacement then quantified the correction
+("predates 1.11.0 by several releases") with nothing behind the quantifier, which is the same defect
+one size smaller. Both are the stale-fact-as-current-fact failure this whole reference exists to
+catch, and a boundary written here decays the moment upstream cuts a release. Run
 `openspec --version` and read `findMissingCurrentScenarios` in your own install if you need the
 answer for a specific repo.
 

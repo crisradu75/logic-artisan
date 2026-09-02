@@ -2,10 +2,13 @@
 
 `openspec` applies a `## MODIFIED Requirements` block by **replacing** the named requirement in
 `openspec/specs/<capability>/spec.md` with the block's contents. It is not a merge. A scenario
-present on the live requirement and absent from the delta is therefore deleted. `openspec` refuses
-that apply from 1.11.0 — the guard is `findMissingCurrentScenarios`, and since their #1482
+present on the live requirement and absent from the delta is therefore deleted. A current `openspec`
+refuses that apply — the guard is `findMissingCurrentScenarios`, and since their #1482
 `openspec validate` runs the same check — so the loss is caught at apply time by a tool this plugin
-does not own, on a version a consuming repo may not be running. GitHub issue #97 records the failure shipping once in a consuming repo — three live scenarios
+does not own, on a version a consuming repo may not be running. **No version boundary is stated
+anywhere in this change**, deliberately: an earlier draft said "from 1.11.0" at four sites, and a
+bisection of the published tarballs (`tasks.md` §1.7) found the guard already present five releases
+earlier, so the claim was false for every version in between. GitHub issue #97 records the failure shipping once in a consuming repo — three live scenarios
 dropped from one block, caught by hand — and one change in the 2026-08-20 chain carrying **six**
 MODIFIED blocks across six capability specs, which is where hand-diffing stops happening in
 practice.
@@ -15,15 +18,18 @@ practice.
 it, and every repo running this workflow authors MODIFIED blocks the same way — so the argument for
 "report upstream and add nothing here" is real and had to be answered rather than assumed away.
 
-**The tree as it stands 2026-08-29**, after this change's own edits (measured; commands in
-`tasks.md` §1), and after PRs #149 and #150 landed:
+**The tree as this change found it** — *before* its own edits, and after PRs #149 and #150 landed.
+This is the gap being argued about, so the rows describe the pre-change state on purpose; §3 of
+`tasks.md` records what each site says afterwards. Locate each row by its quoted text; the commands
+that found them are in `tasks.md` §1. (An earlier header read "after this change's own edits", which
+contradicted every row under it — the rows were right and the header was wrong.)
 
 | file (locate by the quoted text) | what it establishes |
 |---|---|
 | `multi-pr/references/discover-and-gate.md` | Every in-scope change carrying a MODIFIED block earns a re-base check against the live spec "as of that moment". A **trigger with no procedure** — the instruction is the word "diff" |
 | `multi-pr/SKILL.md` | **The same obligation, hoisted, in the same undefined words** — "earns a re-base check of its delta against the live spec as of that moment". A sixth site, found by review; see the note under this table |
 | `review-change/references/checklist.md` | Spec-reviewer dispatch item 5: a MODIFIED entry "must include the full final requirement text plus its scenarios". States a completeness property the reviewer cannot falsify from the delta alone |
-| `multi-spec/references/authoring-brief.md` | The author-side rule: read the active spec, copy every scenario. Correct, and it is a rule given to the writer, not a check. **It sits inside a fenced prompt template** (lines 11–38) — see D8 |
+| `multi-spec/references/authoring-brief.md` | The author-side rule: read the active spec, copy every scenario. Correct, and it is a rule given to the writer, not a check. **It sits inside the fenced prompt template** that opens with "Follow these steps, mirroring" — see D8 |
 | `spec-to-pr/references/archive-preflight.md` | Check (c): every delta MODIFIED **heading** exists verbatim in the active spec. Heading only, and it says so |
 | `openspec/specs/cla-plugin/spec.md` | PR #150's live-set validation. Its closing paragraph explicitly disclaims this concern: parse integrity after any edit vs. content dropped through a delta |
 | `multi-pr/references/change-loop.md` | Repeats that disclaimer at the step 4b site |
@@ -40,11 +46,19 @@ same files, and PR review caught *that* — item 5 moved 304 → 305, the inject
 "Modal case" 179 → 180. **A measurement taken before the last edit to the thing it measures is not
 a measurement**, and this table needed telling twice. `tasks.md` §1 locates every site by content at implementation time.
 
-**`multi-pr/SKILL.md:64` is a sixth site and was missed by the original four-site framing.** It
-hoists the same obligation in the same undefined terms, so after this change the hoisted rule and
-the reference it points at would describe the check differently — the divergence D3 exists to
-prevent, one level up. Whether it gains a pointer is contingent on D8; `tasks.md` carries the task
-to settle it either way.
+**Third: the table was cleaned and the rest of the file was not.** Round 3 found the identical
+citations still standing outside the table — D8's bullets cited the injection rule "at line 212"
+(now 213) and the `authoring-brief.md` fence as "lines 11–38" when this change's own paste had moved
+its close to 57. Cleaning the table was mistaken for cleaning the document. Every line citation in
+`design.md` and `proposal.md` is now a quoted anchor; `tasks.md` alone keeps numbers, and only
+attached to the command and date that produced them.
+
+**`multi-pr/SKILL.md`'s hoisted "Two chain edges exist" invariant is a sixth site, and was missed by
+the original four-site framing.** It
+hoists the same obligation in the same undefined terms, so leaving it alone would have had the
+hoisted rule and the reference it points at describe the check differently — the divergence D3
+exists to prevent, one level up. **Settled: it takes the pointer** (`tasks.md` §3.10, D8's
+point-don't-paste side, D4's sixth row), which is why D4's count is six and not five.
 
 Two of those are load-bearing for scoping. The PR #150 requirement **names this change's problem and
 excludes itself from it in its own text**, so there is no overlap to argue about — it was settled by
@@ -83,9 +97,10 @@ makes the surviving gap materially smaller than #97 describes.
 **Decision.** Reject "report upstream and add nothing here". Accept that the enforcement half is
 upstream.
 
-The plugin does not own the apply step, so it cannot refuse a lossy sync. It *does* own four places
-where it already instructs a skill to perform this comparison, and it defines the comparison in none
-of them. `discover-and-gate.md`'s re-base check said "diff its delta against the live spec"; that sentence is the
+The plugin does not own the apply step, so it cannot refuse a lossy sync. It *does* own five places
+where it already instructs a skill to perform this comparison — the five files in the table above
+that establish something, as against the two that disclaim it — and it defines the comparison in
+none of them. `discover-and-gate.md`'s re-base check said "diff its delta against the live spec"; that sentence is the
 entire specification. An undefined diff is precisely what #97's evidence indicts — run without
 rename resolution and without added counts, the only real execution of it produced 2 flags and 2
 false positives.
@@ -95,8 +110,9 @@ false positives.
 that cannot be performed correctly reads as coverage. (ii) The upstream fix, if it lands, lands on a
 version of `openspec` a consuming repo may not be running for a long time; the plugin's own
 instructions are what its skills follow today. **That prediction was tested and held.** The
-enforcing check had already landed upstream when this was written — and this repo, along with the
-seven others on the machine, ran between four and eight minor versions behind it until 2026-08-27.
+enforcing check had already landed upstream when this was written — and the global `openspec` binary
+on this machine was still on the last release *before* the guard existed until 2026-08-27
+(`tasks.md` §6.1 measured the binary, §1.7 the release the guard landed in).
 An upstream fix that exists is not an upstream fix that runs. What the landing does cost D1 is the
 never-lands half of this ground: the reason to build the in-scope half is now (i) and (iii), plus
 the version lag, not the possibility that nothing ever ships upstream. (iii) The two design notes are knowledge this repo
@@ -143,23 +159,27 @@ authority". Four skills bind this one: `review-change`, `spec-to-pr`, `multi-pr`
 Rejected: a cross-skill reference living inside one skill's directory makes that skill's ownership
 look like precedence, and `spec-to-pr`'s archive-time use is not a review.
 
-**Alternative considered — restate it at each of the four sites.** Rejected outright; that is how
+**Alternative considered — restate it at each of the binding sites.** Rejected outright; that is how
 this repo produced three wrong copies of one correct rule before.
 
-### D4 — Five binding sites, deliberately, because they close different windows
+### D4 — Six binding sites: five distinct windows, plus the hoisted copy of one
 
-**Decision.** Bind at **five** sites: `review-change` dispatch item 5, `review-change`'s size gate
+**Decision.** Bind at **six** sites: `review-change` dispatch item 5, `review-change`'s size gate
 (Step 3, the small-change branch),
-`archive-preflight` check (c), `multi-pr`'s existing re-base check, and `multi-spec`'s
-authoring rule.
+`archive-preflight` check (c), `multi-pr`'s existing re-base check, `multi-spec`'s
+authoring rule, and `multi-pr/SKILL.md`'s hoisted statement of that same re-base check.
 
 **The count is stated once, here, and every other artifact defers to this sentence.** An earlier
 draft of this section said "Five" in its heading, "three" in this Decision, "Three sites" in the
 Risks header and "Two placements" in the proposal, while `tasks.md` §3 implemented five — five
 statements, no two alike, in a change whose whole subject is a comparison nobody performs
-consistently. Review caught it; the heading's number was the correct one.
+consistently. Review caught it; the heading's number was the correct one. **It then recurred at the
+next value.** Review found the sixth site and task 3.10 bound it in the same commit, while this
+sentence and every downstream restatement of it stayed at five — the same defect, one increment
+later, in the paragraph that records it. The count moves here first and everywhere else after.
 
-They are not redundant placements of one check; each is the only cover for a distinct window:
+The first five are not redundant placements of one check; each is the only cover for a distinct
+window. The sixth is a deliberate duplicate, and its row says so:
 
 | site | window it covers | what it costs |
 |---|---|---|
@@ -168,6 +188,7 @@ They are not redundant placements of one check; each is the only cover for a dis
 | `archive-preflight` (c) | Everything after review — a Revise-round delta edit, a hand-resolved merge conflict in the delta — and the last moment before materialization deletes anything | One grep per MODIFIED heading, inside a loop that already runs |
 | `multi-pr` re-base check | The **baseline moving**: a sibling, an archived change from a previous chain, a `/cla:lite-pr` landing in between. A correct delta going stale, which neither of the above is looking for | Already in the flow; this change replaces "diff" with the procedure |
 | `multi-spec` authoring rule | The author's own hand, before a delta exists to compare — the only site upstream of the defect rather than downstream of it | A pointer; the rule is already written |
+| `multi-pr/SKILL.md` hoisted re-base rule | **No window of its own.** It restates the row above as a load-bearing invariant, to be held when `discover-and-gate.md` is not reloaded. Binding it is the alternative to letting the hoisted rule and the reference it points at describe the same check differently — D3's divergence, one level up | A clause on a sentence that already exists; no extra firing, because it is the same check as the row above |
 
 **The small path is not covered by item 5, and this is the batch's honest gap.** `checklist.md`'s size gate
 sends a small change past the 3-agent dispatch — "Skip the 3-agent dispatch… Go straight to Step 5" —
@@ -236,7 +257,7 @@ refuse on a flag. What changes is only the honesty of the claim — the referenc
 have had a reader dismiss a real signal because the design told them none existed.
 
 **The upstream guard took the opposite decision, and that is now the sharpest argument for this
-one.** `openspec` ≥1.11.0 refuses a MODIFIED block whose scenario set does not cover the live one,
+one.** A current `openspec` refuses a MODIFIED block whose scenario set does not cover the live one,
 which means a scenario renamed in place — the `company-events` case above, the one rename
 resolution provably cannot catch — is not a false positive there but a hard block. Their open issue
 #1697 is exactly that complaint, and the corpus replay in its thread measures the cost: across 75
@@ -300,7 +321,8 @@ denominator rule) follows it and is only ever pointed at.
 
 **A site that hands its text to a dispatched agent pastes the Procedure section. Every other site
 points at the file.** Two sites paste: `checklist.md` item 5 and `authoring-brief.md`'s MODIFIED
-rule. Three point: `checklist.md`'s size gate, `archive-preflight` check (c), `multi-pr`'s re-base check.
+rule. Four point: `checklist.md`'s size gate, `archive-preflight` check (c), `multi-pr`'s re-base
+check, and `multi-pr/SKILL.md`'s hoisted statement of it. Two plus four is D4's six.
 
 **Why this and not the three alternatives.** It dissolves the collision below instead of paying for
 one side of it. There is still exactly one statement of the steps — the Procedure section — and a
@@ -329,13 +351,14 @@ rather than downstream of it.
 
 **The collision this resolves.** D3 rejects restating the procedure at each site — "that is how this
 repo produced three wrong copies of one correct rule before" — so every binding was a pointer. Two
-of the five bindings are not ordinary prose:
+of the six bindings are not ordinary prose:
 
-- `checklist.md` item 5 lives inside the **Agent 3 dispatch prompt**. That same file, at line 212,
-  states the opposing rule in its own words: a dispatched agent "never loads the skill or resolves
-  `cla.io/overlays/review-change.md` itself, so a placeholder left un-filled, or replaced with a
-  bare 'see the overlay' pointer, leaves that agent reviewing blind."
-- `authoring-brief.md:30` lives inside a **fenced prompt template** (lines 11–38) handed verbatim to
+- `checklist.md` item 5 lives inside the **Agent 3 dispatch prompt**. That same file's "Injection is
+  mandatory, not optional" rule states the opposing rule in its own words: a dispatched agent "never
+  loads the skill or resolves `cla.io/overlays/review-change.md` itself, so a placeholder left
+  un-filled, or replaced with a bare 'see the overlay' pointer, leaves that agent reviewing blind."
+- `authoring-brief.md`'s "On a MODIFIED requirement" bullet lives inside the **fenced prompt
+  template** opening "Follow these steps, mirroring", handed verbatim to
   a dispatched authoring agent. Every other path in that template is repo-relative; a
   `${CLAUDE_PLUGIN_ROOT}`-spelled pointer is a form the template has never used.
 
@@ -350,7 +373,7 @@ weight); or dropping the two prompt sites and binding only where a pointer resol
 gives up the large-path review binding the proposal names first).
 
 **Settled 2026-08-29, by the split above.** `tasks.md` §3.1, §3.2 and §3.8 paste the Procedure
-section; §3.3b, §3.4 and §3.6 point at the file.
+section; §3.3b, §3.4, §3.6 and §3.10 point at the file.
 
 ## Pinned implementation parameters
 
@@ -474,12 +497,14 @@ Partially accepted, not solved. What changes is that the obligation now has an e
 and a report shape whose absence is visible in the run notes; what does not change is that a skipped
 step is still invisible. Named here rather than dressed up.
 
-**[Five sites means repeated firings per change in a chain]** → Accepted. The comparison is two greps
-per MODIFIED requirement and it is idempotent; D4's table shows each site is the sole cover for a
-different window. The cost is bounded by MODIFIED-block count, which is 0 for most changes. No
-single change reaches all five: the `multi-spec` site is author-time, `multi-pr`'s is batch-only,
-and the two `review-change` sites are mutually exclusive (a review is small **or** large, never
-both), so a batched change fires at most four and a solo change at most three.
+**[Six sites means repeated firings per change in a chain]** → Accepted. The comparison is two greps
+per MODIFIED requirement and it is idempotent; D4's table shows each of the first five is the sole
+cover for a different window. The cost is bounded by MODIFIED-block count, which is 0 for most
+changes. No single change reaches all six: the sixth is `multi-pr/SKILL.md`'s hoisted statement of
+the `multi-pr` check, not a second run of it; the `multi-spec` site is author-time, `multi-pr`'s is
+batch-only, and the two `review-change` sites are mutually exclusive (a review is small **or**
+large, never both) — so six sites still mean a batched change fires at most four times and a solo
+change at most three.
 
 **[Residual false positives, permanently]** — a scenario renamed in place is indistinguishable from a
 deletion. → Designed in, not mitigated: D5, and P6's `renamed` verdict exists for exactly this. The
