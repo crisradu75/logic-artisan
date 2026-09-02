@@ -59,7 +59,7 @@ Pre-existing failure found, NOT caused by this branch: 9 tests in
 
 ## Candidate B — label-skill-invocation-model (#180)
 
-- Branch `docs/label-skill-invocation-model`, PR #195. 3 files.
+- Branch `docs/label-skill-invocation-model`, commit `0d0f7bf`, PR #195. 3 files.
 - Measurement reproduced before writing: 20 skills with a SKILL.md, 2 set
   `disable-model-invocation: true` (multi-lite, multi-pr). Table is 22 rows — the 2 extra are
   `opsx:explore` (vendored) and `(agents)` (dispatched, not invoked), both marked n/a.
@@ -141,6 +141,9 @@ against an isolated copy, then re-measured after the fix.
 - One mutant deliberately not installed: widening the frontmatter scan to the body survives and
   cannot do otherwise. Mutated the INPUT instead per CLAUDE.md — moving the range out of
   frontmatter fails the rule (1 failed, 25 passed), so the distinction is load-bearing.
+
+Final: 14/14 killed — up from the 12 the reviewed commit ran, with 3 mutants added and the
+exemption mutant renamed as the filter became the `_UNMARKED_BY_DESIGN` rule.
 
 Fix commit `bdeccff`. UNREVIEWED.
 

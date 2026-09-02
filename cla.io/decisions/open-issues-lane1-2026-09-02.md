@@ -24,10 +24,25 @@ grep -rn 'confirm it FAILS' .claude/plugins/cla/skills/spec-to-pr/
       → references/revise.md:186 only — NOT SKILL.md
 grep -n 'mutat' .claude/plugins/cla/skills/spec-to-pr/SKILL.md
       → :269, :271 — the ticked-task/measurement rule, not a mutation gate
+grep -n 'references resolve' plugin-tests/tests/conformance/test_skill_lint.py
+      → :1 — the SKILL.md frontmatter/reference-graph guard is in conformance, not consistency
+grep -n 'revise.md' plugin-tests/tests/consistency/test_measurement_names_its_command.py
+      → :169, inside _FAMILY — so A's edited revise.md is read by name in consistency as well
 
 grep -n '^| ' .claude/plugins/cla/README.md                                → phase table at :47-71, 3 columns
-for d in skills/*/; do grep -m1 '^disable-model-invocation:' $d/SKILL.md; done
-      → 20 skills carry a SKILL.md; exactly 2 set it true (multi-lite, multi-pr)
+ls .claude/plugins/cla/skills/*/SKILL.md | wc -l                          → 20
+grep -l '^disable-model-invocation: true' .claude/plugins/cla/skills/*/SKILL.md
+      → 2 files: multi-lite, multi-pr
+grep -rn '^disable-model-invocation' .claude/plugins/cla/skills/
+      → the same 2 lines and no others, so no third skill sets the key to any value
+grep -n 'SCANNED_ROOTS =' plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
+      → :38 — ("skills", "agents", "output-styles", "hooks", "lib"); the plugin ROOT is not a root
+grep -n '"README.md"' plugin-tests/tests/conformance/test_shipped_files_are_scanned.py
+      → :85, inside EXEMPT — the map of shipped files NO scanner opens
+grep -rn 'README' plugin-tests/tests/conformance/ | grep -v test_shipped_files_are_scanned
+      → no hits: no conformance test other than the exemption map itself opens the plugin README
+grep -n '\.claude/plugins/cla' .claude/plugins/cla/README.md
+      → :183 only — the Layout block, which is why widening the path scanner to the root would fail
 
 grep -on '0[a-z][).]' .claude/plugins/cla/skills/review-change/references/checklist.md | tail
       → checklist defines 0a-0l; :56 is 0l, the highest
@@ -76,8 +91,12 @@ assertion *was* the defect.
 **Out of scope.** Do not restate the SURVIVED-mutant rule; CLAUDE.md and `test-quality.md` already
 cover that direction, and this is the opposite one.
 
-**Acceptance.** `pytest plugin-tests/tests/consistency` green (it reads `SKILL.md` reference
-integrity). No new claim in the added prose asserts a count or a measurement.
+**Acceptance.** `pytest plugin-tests/tests/conformance` green — the `SKILL.md` frontmatter and
+reference-graph guard is `conformance/test_skill_lint.py`, so a `references/` link this edit adds
+or renames that resolves to nothing fails there. Run `plugin-tests/tests/consistency` as well, for
+a different reason: `consistency/test_measurement_names_its_command.py` lists
+`spec-to-pr/references/revise.md` in its `_FAMILY` literal, so one of this candidate's two edited
+files is read there by name. No new claim in the added prose asserts a count or a measurement.
 
 ---
 
@@ -100,8 +119,23 @@ shipped skill is model-invocable.
 does not re-decide it. Do not add the column to CLAUDE.md's own tables.
 
 **Acceptance.** Every row in the table carries the new column. The two `true` skills are the only
-two marked user-invoked. `pytest plugin-tests/tests/conformance` green — the README is watched by
-the hardcoded-path scanner and legitimately names this repo in its install block.
+two marked user-invoked.
+
+**No conformance scanner reads the file this candidate edits, so a green `conformance` run is not
+evidence about the column.** The plugin `README.md` sits at the plugin root, outside all five
+`SCANNED_ROOTS` of `test_no_hardcoded_plugin_paths.py` (`skills`, `agents`, `output-styles`,
+`hooks`, `lib`), and `test_shipped_files_are_scanned.py` lists `README.md` in `EXEMPT` — the map of
+shipped files NO scanner opens — for two stated reasons: its install commands legitimately name
+this repository, and its Layout block spells the literal `.claude/plugins/cla` at `README.md:183`,
+which would fail the hardcoded-path rule outright. That is the same fact the `#190` entry below
+records, reached from the other side.
+
+**So the run must bring the guard with it.** A derived value copied into prose is what
+`consistency/test_doc_facts.py` already exists to bind — it is the guard over the numbers
+`CLAUDE.md`, `DEVELOPER-GUIDE.md` and the plugin `README.md` restate. Acceptance is that the column
+is tied back there, comparing the marked set against the frontmatter set as a SET rather than a
+count: a count agrees whenever the right number of rows are marked, including when the marks sit on
+the wrong skills.
 
 ---
 
