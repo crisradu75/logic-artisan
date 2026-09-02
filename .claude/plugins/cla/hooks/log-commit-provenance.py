@@ -45,6 +45,13 @@ FAILURE POSTURE. Best-effort and silent: any parse failure, missing git, absent
 ledger dir, or non-zero git exit ends in exit 0 with nothing written. A telemetry
 hook must never disrupt a workflow, and a missing line is infinitely preferable
 to a broken commit. The one thing it will not do is write a WRONG line.
+
+That posture has one limit worth naming, because a silent under-count is as
+useless as a silent over-count. The commit checks below must never turn "I
+cannot tell" into "no". A repo whose reflog is disabled or expired answers
+`git reflog` with success and no output, and reading that as a negative would
+drop every genuine row for the life of that repo, with the ledger looking
+exactly like a repo that simply never commits.
 """
 
 from __future__ import annotations
@@ -117,6 +124,92 @@ def _git(*args: str, cwd: Path) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+# The reasons `git reflog` writes when HEAD moved because a commit was created.
+# Every other movement — `checkout:`, `merge`, `rebase`, `pull --ff-only:`,
+# `reset:` — means the command that just ran committed nothing, so the HEAD this
+# hook is about to read belongs to somebody else's work.
+_COMMIT_REFLOG_REASONS = ("commit:", "commit (initial):", "commit (amend):")
+
+
+def _head_moved_by_commit(cwd: Path) -> bool:
+    """True when the last thing to move HEAD was a commit.
+
+    The hook runs on PostToolUse and its payload carries no pre-command state,
+    so "did HEAD move?" cannot be answered by comparing before against after.
+    The reflog answers the neighbouring question — what moved HEAD last — and
+    that is enough to reject the case this exists for: a commit-shaped command
+    run when the previous HEAD movement was a checkout, a merge, or a pull.
+
+    Not sufficient on its own, deliberately. A `git commit` that stages nothing
+    leaves the reflog untouched, so the top entry is still the PREVIOUS real
+    commit and this returns True. `_already_recorded` is what rejects that one.
+
+    "There is no reflog" and "the reflog says this was not a commit" are
+    DIFFERENT claims, and collapsing them drops every genuine row in a repo
+    whose reflog is off. `core.logAllRefUpdates=false`, an expired reflog, and
+    a deleted `.git/logs/HEAD` all leave `rev-parse` and `log -1` working while
+    `git reflog -1` succeeds with empty output — so an empty result means this
+    check cannot be evaluated, and the hook says so by declining to suppress.
+    `_already_recorded` still gates the write; the check degrades rather than
+    silently zeroing the denominator the whole hook exists to supply.
+    """
+    reason = _git("reflog", "-1", "--format=%gs", cwd=cwd)
+    if reason is None:
+        return False  # git itself failed; nothing here is trustworthy
+    if reason == "":
+        return True  # no reflog to read — undecidable, not a negative answer
+    return reason.startswith(_COMMIT_REFLOG_REASONS)
+
+
+def _already_recorded(ledger: Path, sha: str) -> bool:
+    """True when the ledger's last row already carries this sha.
+
+    Two commits can never share a sha, so a match means this row was written
+    already — the shape a failed `git commit` produces when it re-presents the
+    HEAD its predecessor legitimately recorded.
+
+    Reads a tail chunk rather than the file: the ledger grows without bound and
+    a row is capped at `_MAX_LINE_BYTES`, so 4 KiB always contains a whole last
+    line. An unreadable or absent ledger returns False — the hook cannot tell,
+    and `_head_moved_by_commit` has already gated this call, so the failure
+    posture stays "lose a check, never lose a genuine row".
+
+    That OSError branch covers two cases on purpose and must keep doing so. The
+    common one is a ledger that does not exist yet, where permitting the write
+    is the only correct answer — failing closed there would mean no repo ever
+    gets its first row. The rare one is a populated ledger momentarily
+    unreadable, where permitting the write can duplicate a row. Anyone tempted
+    to split them and fail closed on the second reintroduces the first.
+
+    Compared as a prefix in either direction, because `rev-parse --short` has no
+    fixed width: git recomputes the abbreviation from the object count, so the
+    sha stored as `abc1234` can come back as `abc12345` later in the same repo
+    and an equality test would silently stop deduplicating.
+
+    Two processes appending to one ledger can still both write: the read and the
+    append are not atomic across processes. Worktrees each hold their own
+    `cla.io/retro`, so this needs two sessions in one checkout.
+    """
+    try:
+        with ledger.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 4096))
+            chunk = fh.read()
+    except OSError:
+        return False
+    lines = [line for line in chunk.splitlines() if line.strip()]
+    if not lines:
+        return False
+    try:
+        stored = json.loads(lines[-1].decode("utf-8")).get("sha")
+    except (UnicodeDecodeError, ValueError, AttributeError):
+        return False
+    if not isinstance(stored, str) or not stored:
+        return False
+    return stored.startswith(sha) or sha.startswith(stored)
+
+
 def _is_commit_command(command: str) -> bool:
     """True for a real `git commit`, false for anything that merely mentions it.
 
@@ -178,10 +271,16 @@ def main() -> int:
     cwd = Path(payload.get("cwd") or os.getcwd())
 
     # The commit must actually exist — a failed `git commit` (nothing staged, a
-    # rejecting hook) must not be recorded as one.
+    # rejecting hook) must not be recorded as one. Reading HEAD proves only that
+    # a commit exists, never that THIS command made it, so the two checks below
+    # carry that claim instead. Together they are the whole defence against
+    # over-recording, which the docstring above calls worse than not existing.
     head = _git("rev-parse", "--short", "HEAD", cwd=cwd)
     subject = _git("log", "-1", "--pretty=%s", cwd=cwd)
     if not head or subject is None:
+        return 0
+
+    if not _head_moved_by_commit(cwd):
         return 0
 
     root = _git("rev-parse", "--show-toplevel", cwd=cwd)
@@ -191,6 +290,9 @@ def main() -> int:
     if not ledger_dir.is_dir():
         # Never create the tree: a repo that has not run `cla-init` has not opted
         # into per-repo state, and this hook is not the place to decide it should.
+        return 0
+
+    if _already_recorded(ledger_dir / _LEDGER_NAME, head):
         return 0
 
     measured = _measured_by(cwd)
