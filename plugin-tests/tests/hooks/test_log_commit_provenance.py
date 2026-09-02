@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -145,6 +146,19 @@ def _run(repo: Path, command: str, env_extra=None):
     )
 
 
+def _git_out(repo: Path, *args: str) -> str:
+    r = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+    return r.stdout.strip()
+
+
 def _ledger(repo: Path):
     f = repo / "cla.io" / "retro" / "commit-provenance.jsonl"
     if not f.is_file():
@@ -185,13 +199,114 @@ def test_it_writes_nothing_when_head_last_moved_by_a_checkout(tmp_path):
 
     Issue #199's second shape — a merge commit made days earlier on another
     branch, re-recorded under the branch that had just been checked out. The
-    ledger's last row does not carry that sha, so the dedupe above lets it
-    through; the reflog is what rejects it.
+    ledger holds a DIFFERENT sha here on purpose: with an empty ledger the
+    dedupe would pass vacuously and this would not show the two gates acting
+    independently. The dedupe genuinely lets this through; the reflog rejects it.
     """
     repo = _repo(tmp_path)
-    subprocess.run(["git", "checkout", "-q", "-b", "other"], cwd=repo, check=True, capture_output=True)
+    _commit_with(repo, "fix: review round 1", None)
     assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
-    assert _ledger(repo) == []
+    assert len(_ledger(repo)) == 1
+    recorded = _ledger(repo)[0]["sha"]
+
+    subprocess.run(["git", "checkout", "-q", "-b", "other"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "reset", "-q", "--hard", "HEAD~1"], cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    rows = _ledger(repo)
+    assert len(rows) == 1, "HEAD moved by checkout/reset, so nothing new may be recorded"
+    assert rows[0]["sha"] == recorded
+
+
+def test_an_amended_commit_is_recorded_and_not_re_recorded(tmp_path):
+    """`commit (amend):` is an accepted reflog reason and needs its own test.
+
+    Nothing else in this file amends, so without this the entry could be
+    dropped from `_COMMIT_REFLOG_REASONS` and every test would still pass.
+    """
+    repo = _repo(tmp_path)
+    _commit_with(repo, "fix: review round 1", None)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert len(_ledger(repo)) == 1
+
+    subprocess.run(
+        ["git", "commit", "-q", "--amend", "-m", "fix: review round 2"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    assert _run(repo, "git commit --amend -m 'fix: review round 2'").returncode == 0
+    rows = _ledger(repo)
+    assert len(rows) == 2, "an amend is a real commit and earns a row"
+    assert rows[1]["subject"] == "fix: review round 2"
+
+    assert _run(repo, "git commit --amend -m 'fix: review round 2'").returncode == 0
+    assert len(_ledger(repo)) == 2, "the same amended sha is not recorded twice"
+
+
+def test_a_repo_without_a_reflog_still_records_its_commits(tmp_path):
+    """An empty reflog is "cannot tell", never "not a commit".
+
+    `core.logAllRefUpdates=false`, an expired reflog and a deleted
+    `.git/logs/HEAD` all leave `rev-parse` and `log -1` working while
+    `git reflog` succeeds with no output. Reading that as a negative would drop
+    every row for the life of the repo, and the ledger would be indistinguishable
+    from a repo that never commits.
+    """
+    repo = _repo(tmp_path)
+    subprocess.run(
+        ["git", "config", "core.logAllRefUpdates", "false"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    # The whole tree, not just `logs/HEAD`: git falls back to the per-branch log
+    # at `logs/refs/heads/<branch>` and the reflog comes back populated.
+    shutil.rmtree(repo / ".git" / "logs")
+    assert _git_out(repo, "reflog", "-1", "--format=%gs") == ""
+
+    _commit_with(repo, "fix: review round 1", None)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert len(_ledger(repo)) == 1
+
+
+def test_the_dedupe_survives_a_shorter_stored_sha(tmp_path):
+    """`rev-parse --short` has no fixed width, so equality is not enough.
+
+    Git recomputes the abbreviation from the object count, so a sha stored at
+    one width can come back wider in the same repo. An equality test would stop
+    deduplicating at exactly that point, which is the duplicate this fix exists
+    to prevent.
+    """
+    repo = _repo(tmp_path)
+    _commit_with(repo, "fix: review round 1", None)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    ledger = repo / "cla.io" / "retro" / "commit-provenance.jsonl"
+
+    row = _ledger(repo)[0]
+    row["sha"] = row["sha"][:4]
+    ledger.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert len(_ledger(repo)) == 1, "a shorter stored prefix is still the same commit"
+
+
+def test_a_corrupt_last_row_does_not_suppress_the_write(tmp_path):
+    """The dedupe fails OPEN: unreadable means "cannot tell", so the row lands.
+
+    Failing closed here would mean one truncated line silently ends recording
+    for that repo, which is the far worse defect.
+    """
+    repo = _repo(tmp_path)
+    ledger = repo / "cla.io" / "retro" / "commit-provenance.jsonl"
+    ledger.write_text("{not json at all\n", encoding="utf-8")
+
+    _commit_with(repo, "fix: review round 1", None)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    # Counted as raw lines: `_ledger` parses every line and would choke on the
+    # corrupt one this test deliberately planted.
+    lines = ledger.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2, "the corrupt line stays, and the real row lands after it"
+    assert json.loads(lines[1])["subject"] == "fix: review round 1"
 
 
 def test_it_writes_nothing_for_a_non_commit(tmp_path):

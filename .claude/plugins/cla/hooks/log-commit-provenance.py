@@ -45,6 +45,13 @@ FAILURE POSTURE. Best-effort and silent: any parse failure, missing git, absent
 ledger dir, or non-zero git exit ends in exit 0 with nothing written. A telemetry
 hook must never disrupt a workflow, and a missing line is infinitely preferable
 to a broken commit. The one thing it will not do is write a WRONG line.
+
+That posture has one limit worth naming, because a silent under-count is as
+useless as a silent over-count. The commit checks below must never turn "I
+cannot tell" into "no". A repo whose reflog is disabled or expired answers
+`git reflog` with success and no output, and reading that as a negative would
+drop every genuine row for the life of that repo, with the ledger looking
+exactly like a repo that simply never commits.
 """
 
 from __future__ import annotations
@@ -136,10 +143,21 @@ def _head_moved_by_commit(cwd: Path) -> bool:
     Not sufficient on its own, deliberately. A `git commit` that stages nothing
     leaves the reflog untouched, so the top entry is still the PREVIOUS real
     commit and this returns True. `_already_recorded` is what rejects that one.
+
+    "There is no reflog" and "the reflog says this was not a commit" are
+    DIFFERENT claims, and collapsing them drops every genuine row in a repo
+    whose reflog is off. `core.logAllRefUpdates=false`, an expired reflog, and
+    a deleted `.git/logs/HEAD` all leave `rev-parse` and `log -1` working while
+    `git reflog -1` succeeds with empty output — so an empty result means this
+    check cannot be evaluated, and the hook says so by declining to suppress.
+    `_already_recorded` still gates the write; the check degrades rather than
+    silently zeroing the denominator the whole hook exists to supply.
     """
     reason = _git("reflog", "-1", "--format=%gs", cwd=cwd)
-    if not reason:
-        return False
+    if reason is None:
+        return False  # git itself failed; nothing here is trustworthy
+    if reason == "":
+        return True  # no reflog to read — undecidable, not a negative answer
     return reason.startswith(_COMMIT_REFLOG_REASONS)
 
 
@@ -155,6 +173,22 @@ def _already_recorded(ledger: Path, sha: str) -> bool:
     line. An unreadable or absent ledger returns False — the hook cannot tell,
     and `_head_moved_by_commit` has already gated this call, so the failure
     posture stays "lose a check, never lose a genuine row".
+
+    That OSError branch covers two cases on purpose and must keep doing so. The
+    common one is a ledger that does not exist yet, where permitting the write
+    is the only correct answer — failing closed there would mean no repo ever
+    gets its first row. The rare one is a populated ledger momentarily
+    unreadable, where permitting the write can duplicate a row. Anyone tempted
+    to split them and fail closed on the second reintroduces the first.
+
+    Compared as a prefix in either direction, because `rev-parse --short` has no
+    fixed width: git recomputes the abbreviation from the object count, so the
+    sha stored as `abc1234` can come back as `abc12345` later in the same repo
+    and an equality test would silently stop deduplicating.
+
+    Two processes appending to one ledger can still both write: the read and the
+    append are not atomic across processes. Worktrees each hold their own
+    `cla.io/retro`, so this needs two sessions in one checkout.
     """
     try:
         with ledger.open("rb") as fh:
@@ -168,9 +202,12 @@ def _already_recorded(ledger: Path, sha: str) -> bool:
     if not lines:
         return False
     try:
-        return json.loads(lines[-1].decode("utf-8")).get("sha") == sha
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, AttributeError):
+        stored = json.loads(lines[-1].decode("utf-8")).get("sha")
+    except (UnicodeDecodeError, ValueError, AttributeError):
         return False
+    if not isinstance(stored, str) or not stored:
+        return False
+    return stored.startswith(sha) or sha.startswith(stored)
 
 
 def _is_commit_command(command: str) -> bool:
