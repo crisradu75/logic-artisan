@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -134,7 +135,7 @@ def _run(repo: Path, command: str, env_extra=None):
     env.pop("CLAUDE_RETRO_DIR", None)
     payload = json.dumps({"tool_input": {"command": command}, "cwd": str(repo)})
     return subprocess.run(
-        ["python", str(_HOOK)],
+        [sys.executable, str(_HOOK)],
         input=payload,
         text=True,
         capture_output=True,
@@ -188,7 +189,7 @@ def test_it_is_silent_and_exits_zero_outside_a_git_repo(tmp_path):
 
 def test_malformed_stdin_exits_zero(tmp_path):
     r = subprocess.run(
-        ["python", str(_HOOK)],
+        [sys.executable, str(_HOOK)],
         input="not json",
         text=True,
         capture_output=True,
