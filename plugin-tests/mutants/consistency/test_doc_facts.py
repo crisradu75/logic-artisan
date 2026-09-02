@@ -98,6 +98,53 @@ MUTANTS = [
         '_EXCLUDED_DIRS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules", "worktrees"}',
         TARGETS,
     ),
+    (
+        # The defect this pair was written against: a THIRD skill forbids model
+        # invocation and the table still shows it as model-invocable, telling a
+        # reader Claude may start it on a description match. Planted in the
+        # source rather than the table, because the frontmatter is the authority
+        # and the table is what must follow it. Killed by
+        # `test_the_invocation_column_matches_the_frontmatter`.
+        "a third skill forbids model invocation and the table does not follow",
+        PLUGIN / "skills" / "multi-spec" / "SKILL.md",
+        "argument-hint:",
+        "disable-model-invocation: true\nargument-hint:",
+        TARGETS,
+    ),
+    (
+        # The other direction: the table keeps a mark the frontmatter dropped.
+        # A count-based assertion passes this whenever the right NUMBER of rows
+        # carry a mark, which is why the guard compares sets.
+        "the table marks a skill whose frontmatter permits model invocation",
+        PLUGIN / "README.md",
+        "| `spec-to-pr` | you or Claude |",
+        "| `spec-to-pr` | **you only** |",
+        TARGETS,
+    ),
+    (
+        # The accumulator bug this guard actually shipped with, caught by the
+        # test failing on a correct tree: `found` was used as the past-the-
+        # opening-delimiter signal, so the first file to match made every LATER
+        # file break on its own opening `---` and go unread. `multi-pr` vanished
+        # from the derived set while the table was right.
+        # NOTE the shape. An earlier version of this mutant just deleted
+        # `delimiters = 0`, which dies of UnboundLocalError — a CRASH, not a
+        # detection, and so evidence only that the line is syntactically
+        # load-bearing. This one restores the exact accumulator logic the guard
+        # shipped with, so the guard runs clean and returns a WRONG set.
+        "frontmatter delimiters are counted across files instead of per file",
+        DEV / "tests" / "consistency" / "test_doc_facts.py",
+        '            if line.rstrip() == "---":\n'
+        "                delimiters += 1\n"
+        "                if delimiters == 2:\n"
+        "                    break\n"
+        "                continue\n"
+        '            if delimiters == 1 and line.strip() == "disable-model-invocation: true":',
+        '            if line.rstrip() == "---" and found:\n'
+        "                break\n"
+        '            if line.strip() == "disable-model-invocation: true":',
+        TARGETS,
+    ),
 ]
 
 # NOT mutated, and recorded rather than left as a silent gap:

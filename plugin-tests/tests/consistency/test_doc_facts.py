@@ -516,3 +516,83 @@ def test_the_repo_roots_own_git_does_not_exclude_the_whole_tree(tmp_path, monkey
         "the repo root's own .git made it read as a nested checkout, so the "
         "scan excluded the entire tree it was pointed at"
     )
+
+
+# --- The phase table's "Invoked by" column -----------------------------------
+#
+# The column restates a fact that lives in each skill's frontmatter, which is
+# this file's whole subject: a derived value copied into prose goes stale when
+# the source changes and nothing reads the prose. The specific rot here is a
+# THIRD skill setting `disable-model-invocation: true` and the table continuing
+# to show it as model-invocable, which would tell a reader Claude may start an
+# unattended orchestrator on a description match.
+#
+# Asserted as a set rather than a count. A count agrees with the table whenever
+# the right NUMBER of rows are marked, including when the marks sit on the wrong
+# two skills — and "two of them are marked" is exactly what a careless edit
+# preserves while moving a mark.
+
+_USER_ONLY_MARK = "**you only**"
+
+
+def _skills_declaring_user_only() -> set[str]:
+    """Skills whose frontmatter forbids model invocation, from the source."""
+    found = set()
+    for skill_md in (_PLUGIN_ROOT / "skills").glob("*/SKILL.md"):
+        # Delimiters are counted PER FILE. An earlier draft used the accumulator
+        # as the "are we past the opening ---?" signal, so the first file to
+        # match made every later file break on its own opening delimiter and go
+        # unread — `multi-pr` was silently dropped and the table looked wrong.
+        delimiters = 0
+        for line in skill_md.read_text(encoding="utf-8").splitlines():
+            if line.rstrip() == "---":
+                delimiters += 1
+                if delimiters == 2:
+                    break
+                continue
+            if delimiters == 1 and line.strip() == "disable-model-invocation: true":
+                found.add(skill_md.parent.name)
+                break
+    return found
+
+
+def _skills_marked_user_only_in_the_table() -> set[str]:
+    """Skills the plugin README's phase table marks as user-invoked only."""
+    marked = set()
+    for line in _DOCS["plugin README.md"].read_text(encoding="utf-8").splitlines():
+        if not line.startswith("|") or _USER_ONLY_MARK not in line:
+            continue
+        cells = [c.strip() for c in line.split("|")]
+        # cells[1] is the phase, cells[2] the skill name in backticks.
+        name = cells[2].strip("`() ")
+        if name:
+            marked.add(name)
+    return marked
+
+
+def test_the_invocation_column_is_not_vacuous() -> None:
+    """Both halves must be non-empty, or agreement proves nothing.
+
+    Two empty sets are equal, so the comparison below passes on a tree where the
+    column was deleted AND every skill dropped the frontmatter key. That is the
+    shape this file exists to catch, applied to its own newest assertion.
+    """
+    assert _skills_declaring_user_only(), (
+        "no skill declares `disable-model-invocation: true`. If that is a real "
+        "change, delete the Invoked by column and this pair of tests together."
+    )
+    assert _skills_marked_user_only_in_the_table(), (
+        f"the plugin README's phase table marks no skill {_USER_ONLY_MARK}. "
+        "Either the column was dropped or its marker was reworded."
+    )
+
+
+def test_the_invocation_column_matches_the_frontmatter() -> None:
+    declared = _skills_declaring_user_only()
+    marked = _skills_marked_user_only_in_the_table()
+    assert marked == declared, (
+        f"the plugin README's phase table marks {sorted(marked)} as user-invoked "
+        f"only, but the frontmatter declares {sorted(declared)}. The frontmatter "
+        f"is the source: a skill sets `disable-model-invocation: true` and the "
+        f"table follows it, never the other way round."
+    )
