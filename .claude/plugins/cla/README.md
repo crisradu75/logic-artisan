@@ -71,17 +71,22 @@ and invoked bare as `/release`.
 | **Any phase** (utility) | `right-model` | you or Claude | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 
 **"Invoked by" is derived, not curated.** A skill reads **you only** exactly when its
-`SKILL.md` frontmatter sets `disable-model-invocation: true`. Both skills that carry it are
-unattended orchestrators that open and merge pull requests, so a description match must
+`SKILL.md` frontmatter sets `disable-model-invocation: true`. Every skill that carries it is an
+unattended orchestrator that opens and merges pull requests, so a description match must
 never start one — only you typing the command. Everything else can be triggered either by
 you or by Claude recognising the task. The two non-skill rows are marked `n/a`: `opsx:explore`
 is OpenSpec's, not CLA's, and the agents are dispatched by other skills rather than invoked.
 
-**One rule was deliberately rejected with this label, and is recorded so it does not arrive
-again: "user-invoked skills never call each other."** CLA violates it by design. `spec-to-pr`
-chains `review-change`, `multi-lite` and `multi-pr` drive `lite-pr` and `spec-to-pr`, and that
-composition is the architecture rather than an accident. The label above is documentation of
-how a skill starts — it carries no rule about what a skill may call.
+**One reading was deliberately rejected, and is recorded so it does not arrive again: that this
+column also says something about what a skill may CALL.** It does not. It says how a skill
+*starts*, and CLA's skills compose across it in both directions. `lite-pr` invokes
+`Skill(shape-decision)` when a description is too open-ended to plan from — one `you or Claude`
+row calling another — and the two **you only** rows are the heaviest callers in the tree:
+`multi-lite` drives a full `lite-pr` run per candidate, `multi-pr` a full `spec-to-pr` run per
+change. One distinction is worth stating, because it is easy to misread as a chain: consulting
+another skill's *reference file* is not calling that skill. `spec-to-pr`'s Review reads
+`skills/review-change/references/checklist.md` and executes it inline, and its `SKILL.md` forbids
+`Skill(cla:review-change)` outright — the hop would cost a skill load and buy no capability.
 
 ### Typical flows
 

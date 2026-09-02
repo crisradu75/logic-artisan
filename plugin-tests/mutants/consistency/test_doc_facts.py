@@ -183,6 +183,51 @@ MUTANTS = [
         '    return value == "true"',
         TARGETS,
     ),
+    (
+        # `test_the_phase_table_names_every_shipped_skill` was the one new
+        # assertion this batch never reached — and the round-2 argument on this
+        # very PR is that a test never shown able to fail is weak evidence.
+        # Renaming the row's skill breaks the binding in BOTH directions at once
+        # (the table names one that ships no SKILL.md and omits one that does),
+        # which is exactly what that test's failure message reports. Every other
+        # assertion still passes on it: the cell count is 4, `you or Claude` is
+        # legal, and the row still reads as naming a skill, so the kill can only
+        # come from the row-set test.
+        #
+        # Anchor verified to occur exactly once in the file's RAW BYTES, which is
+        # what `mutate.py` matches: `README.md` has no `*.md` entry in
+        # `.gitattributes`, so with `core.autocrlf=true` it checks out CRLF.
+        "the phase table names a skill that ships no SKILL.md",
+        PLUGIN / "README.md",
+        "| `checkpoint` | you or Claude | Compact",
+        "| `checkpint` | you or Claude | Compact",
+        TARGETS,
+    ),
+    (
+        # The same derived fact, in the copy that is not the table. A third skill
+        # setting the frontmatter key reddens the README assertions while
+        # `CLAUDE.md` keeps naming two — the guard's own headline failure mode,
+        # one file over. Planted as a WRONG NAME rather than a third skill,
+        # because the frontmatter mutants above already cover the source side and
+        # this one has to fail on the prose alone.
+        "CLAUDE.md names the wrong skill as user-invoked only",
+        REPO / "CLAUDE.md",
+        "all but `multi-lite` and `multi-pr` — which",
+        "all but `multi-lite` and `checkpoint` — which",
+        TARGETS,
+    ),
+    (
+        # The vacuity direction of the same pair: the qualification is reworded
+        # to name a frontmatter key that does not exist, so no passage mentions
+        # the real one and the doc is back to its blanket "invoke it however you
+        # like" claim. Killed by the `exactly 1 passage` half, which is the half
+        # a wrong-name mutant cannot reach.
+        "DEVELOPER-GUIDE.md loses the qualification entirely",
+        REPO / "DEVELOPER-GUIDE.md",
+        "`disable-model-invocation: true`, being",
+        "`no-auto-invoke: true`, being",
+        TARGETS,
+    ),
 ]
 
 # NOT mutated, and recorded rather than left as a silent gap:

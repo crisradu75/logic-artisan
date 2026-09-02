@@ -393,8 +393,9 @@ matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scrip
 
 Every shipped skill is invocable as `/cla:<name>`, and all but `multi-lite` and `multi-pr` — which
 set `disable-model-invocation: true`, being unattended orchestrators that open and merge PRs — can
-also be triggered by natural language. Claude Code already
-surfaces each one's name and description — so the full phase table lives in
+also be triggered by natural language.
+
+Claude Code already surfaces each one's name and description — so the full phase table lives in
 `.claude/plugins/cla/README.md` rather than being restated here. **One skill is not shipped and
 carries no namespace:** `release` acts on the plugin's own *distribution* — it edits the repo-root
 marketplace catalog and cuts `cla--v<version>` tags — so it is repo-local at

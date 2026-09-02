@@ -7,10 +7,11 @@ the plugin's own `README.md`) and every one of them has been wrong at least once
 the skill count, the pytest-scope count, the count of skills shipping tests, the
 leaf-hook count, and the release version.
 
-A sixth guarded fact is not a number: the plugin README's phase table restates,
-per skill, whether Claude may invoke it — a value that lives in each `SKILL.md`'s
-frontmatter. It rots the same way and is guarded the same way, at the end of this
-file.
+A sixth guarded fact is not a number: whether Claude may invoke a given skill — a
+value that lives in each `SKILL.md`'s frontmatter and is restated in three docs
+at once (the plugin README's phase table per skill, and a sentence naming the
+skills in `CLAUDE.md` and `DEVELOPER-GUIDE.md`). It rots the same way and is
+guarded the same way, at the end of this file.
 
 They go wrong the same way every time. Someone deletes a skill or adds a scope,
 fixes the number in the file they happened to be editing, and misses the other
@@ -690,7 +691,13 @@ def test_every_invocation_cell_holds_a_legal_value() -> None:
 
     Dropping the Invoked by cell from an unmarked row, or relabelling a real
     skill `n/a — dispatched`, leaves both marked sets untouched — so without
-    this the table can misalign or lie about 22 of its 24 rows in silence.
+    this the table can misalign or lie about 20 of its 22 rows in silence.
+
+    Counted with this module's own `phase_table_rows()`: 22 body rows, of which
+    `_row_skill_name` reads 20 as naming a shipped skill and 2 as non-skill
+    rows; the Invoked by column holds 18 `you or Claude`, 2 `**you only**`,
+    1 `n/a — vendored` and 1 `n/a — dispatched`. The set match above pins only
+    the 2 marked cells, which is where the other 20 come from.
     """
     for row in phase_table_rows():
         assert len(row) == 4, f"phase-table row has {len(row)} cells, expected 4: {row}"
@@ -716,10 +723,16 @@ def test_every_invocation_cell_holds_a_legal_value() -> None:
             )
 
 
+def _shipped_skill_names(skills_dir: Path | None = None) -> set[str]:
+    """Every skill that ships a SKILL.md — the population the docs describe."""
+    skills_dir = (_PLUGIN_ROOT / "skills") if skills_dir is None else skills_dir
+    return {p.parent.name for p in skills_dir.glob("*/SKILL.md")}
+
+
 def test_the_phase_table_names_every_shipped_skill() -> None:
     """A skill added with no row, or a row left behind for a deleted skill."""
     tabled = {n for row in phase_table_rows() if (n := _row_skill_name(row))}
-    on_disk = {p.parent.name for p in (_PLUGIN_ROOT / "skills").glob("*/SKILL.md")}
+    on_disk = _shipped_skill_names()
     assert tabled == on_disk, (
         f"the phase table names {sorted(tabled - on_disk)} which ship no SKILL.md, "
         f"and omits {sorted(on_disk - tabled)} which do."
@@ -790,3 +803,85 @@ def test_the_table_reader_stops_at_the_end_of_the_phase_table(tmp_path) -> None:
         encoding="utf-8",
     )
     assert skills_marked_user_only_in_the_table(readme) == {"multi-pr"}
+
+
+# The same derived fact, in the two docs that are not the table.
+#
+# `CLAUDE.md` and `DEVELOPER-GUIDE.md` each qualify their "invocable by natural
+# language" sentence by NAMING the two skills. That is the same copied derived
+# value the assertions above exist for, and without these the guard's own
+# headline failure mode — a third skill sets the key, the copy still names two —
+# stays alive in two files, in the commit that added the guard against it.
+
+_INVOCATION_CLAIM_PHRASE = "disable-model-invocation"
+
+# A block break: a blank line, a list marker, or a heading. Bounding the claim to
+# ONE bullet or ONE paragraph is what makes reading skill names out of it sound —
+# the whole bullet list, or a section, would sweep in names from prose that makes
+# no claim about invocation, and the assertion would fail on unrelated edits.
+_BLOCK_BREAK = re.compile(r"^(?:[-*+] |\d+\. |#)")
+
+
+def _claim_blocks(text: str, phrase: str) -> list[str]:
+    """Every block of `text` that mentions `phrase`, as joined text."""
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or _BLOCK_BREAK.match(stripped):
+            if current:
+                blocks.append(current)
+            current = []
+        if stripped:
+            current.append(line)
+    if current:
+        blocks.append(current)
+    return ["\n".join(b) for b in blocks if phrase in "\n".join(b)]
+
+
+def _skills_named_in(block: str, skills_dir: Path | None = None) -> set[str]:
+    """The shipped skills a block of prose names in backticks."""
+    on_disk = _shipped_skill_names(skills_dir)
+    return {t for t in re.findall(r"`([^`]+)`", block) if t in on_disk}
+
+
+@pytest.mark.parametrize("name", ["CLAUDE.md", "DEVELOPER-GUIDE.md"])
+def test_every_doc_naming_the_user_only_skills_names_the_real_ones(name) -> None:
+    """The third and fourth copies of the fact the phase table restates."""
+    blocks = _claim_blocks(
+        _DOCS[name].read_text(encoding="utf-8"), _INVOCATION_CLAIM_PHRASE
+    )
+    assert len(blocks) == 1, (
+        f"{name} has {len(blocks)} passage(s) mentioning "
+        f"`{_INVOCATION_CLAIM_PHRASE}`, expected exactly 1. Zero means the "
+        f"qualification was dropped and the doc is back to claiming every skill "
+        f"is model-invocable; more than one means two copies that can disagree, "
+        f"and this guard cannot know which one a reader trusts."
+    )
+    named = _skills_named_in(blocks[0])
+    assert named == skills_declaring_user_only(), (
+        f"{name} names {sorted(named)} as the skills Claude may not invoke, but "
+        f"the frontmatter declares {sorted(skills_declaring_user_only())}. The "
+        f"frontmatter is the source; every doc that restates it follows."
+    )
+
+
+def test_the_claim_block_is_bounded_by_its_own_bullet(tmp_path) -> None:
+    """A neighbouring bullet's skill names must not be read into the claim.
+
+    The live docs pass by construction, so this feeds the reader prose whose
+    neighbouring bullet names a skill the claim does not. An unbounded reader
+    returns `annotate` too and the assertion above fails on an edit that is
+    correct — which is how a guard gets loosened rather than fixed.
+    """
+    skills = tmp_path / "skills"
+    for skill in ("multi-lite", "multi-pr", "annotate"):
+        _write_skill(skills, skill, "argument-hint: x\n")
+    doc = (
+        "- **Skills** — all but `multi-lite` and `multi-pr`, which set\n"
+        "  `disable-model-invocation: true`, answer to natural language.\n"
+        "- **Pages** — `annotate` renders one.\n"
+    )
+    blocks = _claim_blocks(doc, _INVOCATION_CLAIM_PHRASE)
+    assert len(blocks) == 1
+    assert _skills_named_in(blocks[0], skills) == {"multi-lite", "multi-pr"}
