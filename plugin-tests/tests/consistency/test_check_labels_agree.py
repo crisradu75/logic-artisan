@@ -100,27 +100,44 @@ _STRUCTURAL_ENTRY_POINTS = (
     _PLUGIN_ROOT / "skills" / "spec-to-pr" / "SKILL.md",
 )
 
-# Deliberately NOT watched, carried forward with its reason so discovery cannot
-# silently start policing it. `agents/fact-gatherer.md` names `0a`–`0h` in its
-# frontmatter `description:` — a statement of what the agent is handed, not an
-# instruction to an orchestrator about what to run. Enrolling it would demand it
-# name the whole defined set, which would be wrong: the agent really is given a
-# subset. `test_the_discovery_exemption_is_still_earned` fails if the range ever
-# leaves that file, so a stale exemption cannot outlive its reason.
-_DISCOVERY_EXEMPT = {
+# Deliberately UNMARKED, carried forward with its reason.
+#
+# `agents/fact-gatherer.md` names `0a`–`0h` in its frontmatter `description:` — a
+# statement of what the agent is handed, not an instruction to an orchestrator
+# about what to run. Marking it would enrol it in discovery and demand it name
+# the whole defined set, which would be wrong: the agent really is given a
+# subset.
+#
+# **This is a rule, not a filter.** The first draft also excluded these paths
+# from the scan, and review measured that clause to be dead code: discovery keys
+# on the marker, an unmarked file is never discovered, and the only state in
+# which the filter removes anything is the exempt file carrying a marker — which
+# `test_the_exemption_is_still_earned` asserts must never hold. A filter whose
+# sole reachable effect is a red test is documentation wearing a mechanism's
+# clothes. The rule is enforced by that test instead, so marking this file fails
+# loudly and says why, rather than being silently honoured or silently ignored.
+_UNMARKED_BY_DESIGN = {
     _PLUGIN_ROOT / "agents" / "fact-gatherer.md":
         "names a subset range in frontmatter as the agent's own input, not as a "
         "run-these instruction to an orchestrator",
 }
 
 
-def _discovered_enumerating_files() -> list[Path]:
-    """Every plugin file carrying a marked enumeration, minus the exemptions."""
+def _discovered_enumerating_files(root: Path | None = None) -> list[Path]:
+    """Every file under `root` carrying a marked enumeration.
+
+    `root` is a parameter so the scanner can be fed a synthetic tree. Without
+    one it could only ever be run against the live tree, where the defects it
+    guards are absent by construction — and a test written against it then
+    re-implements the scan inline and proves nothing about this function. That
+    is what the first draft did: replacing this whole body with a hardcoded
+    two-path list left all 24 tests green.
+    """
+    root = _PLUGIN_ROOT if root is None else root
     return sorted(
         path
-        for path in _PLUGIN_ROOT.rglob("*.md")
-        if path not in _DISCOVERY_EXEMPT
-        and _ENUMERATION_MARKER in path.read_text(encoding="utf-8")
+        for path in root.rglob("*.md")
+        if _ENUMERATION_MARKER in path.read_text(encoding="utf-8")
     )
 
 
@@ -441,15 +458,56 @@ def test_no_file_redefines_a_label_the_checklist_owns() -> None:
     )
 
 
+def test_marking_a_file_is_what_enrols_it(tmp_path) -> None:
+    """Discovery's mechanism, against a synthetic tree — calling production.
+
+    The first draft of this test re-implemented the scan inline and never called
+    `_discovered_enumerating_files`, so replacing that function's whole body with
+    a hardcoded two-path list left every test green. It asserted that `in` works.
+    This one calls the function, so a scanner that stops scanning is caught.
+    """
+    (tmp_path / "skills" / "newcomer").mkdir(parents=True)
+    marked = tmp_path / "skills" / "newcomer" / "SKILL.md"
+    marked.write_text(f"Run checks `0a`-`0l`. {_ENUMERATION_MARKER}\n", encoding="utf-8")
+    (tmp_path / "skills" / "newcomer" / "quiet.md").write_text(
+        "Mentions `0a` but claims no enumeration.\n", encoding="utf-8"
+    )
+    assert _discovered_enumerating_files(tmp_path) == [marked], (
+        "marking a file must enrol it, and an unmarked file that merely mentions "
+        "a label must not be enrolled."
+    )
+
+
+def test_discovery_reaches_outside_the_skills_directory(tmp_path) -> None:
+    """The scan root covers the whole plugin, not just `skills/`.
+
+    Both files that carry markers today live under `skills/`, so narrowing the
+    scan root to `_PLUGIN_ROOT / "skills"` was measured to leave all 24 tests
+    green while making `agents/`, `output-styles/`, `hooks/` and the plugin root
+    unscannable. Only a synthetic tree can distinguish those two scan roots,
+    because the live tree cannot.
+    """
+    for rel in ("agents/helper.md", "output-styles/CLA.md", "top-level.md"):
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"Checks `0a`-`0l`. {_ENUMERATION_MARKER}\n", encoding="utf-8")
+    found = {p.relative_to(tmp_path).as_posix() for p in _discovered_enumerating_files(tmp_path)}
+    assert found == {"agents/helper.md", "output-styles/CLA.md", "top-level.md"}, (
+        f"discovery reached {sorted(found)}; a marked file outside `skills/` was "
+        f"missed, so narrowing the scan root would go unnoticed."
+    )
+
+
 def test_the_discovery_finds_the_marked_files() -> None:
     """Discovery must not be silently empty, or every parametrized test vanishes.
 
     A `rglob` that matches nothing yields zero parametrize cases, and pytest
-    reports zero cases as a pass. That is the vacuous shape this whole file is
-    about, reached through the mechanism that replaced the hand-maintained list.
-    The floor is the real population — two files carry markers today — rather
-    than a decorative 1: measured with
-    `grep -rl 'enumerates-checks' .claude/plugins/cla/` -> 2.
+    reports zero cases as a pass. The floor tracks the real population — two
+    files carry markers today, measured with
+    `grep -rl 'enumerates-checks' .claude/plugins/cla/` -> 2. The identity pin
+    below is strictly stronger; the floor is kept because it is what goes stale
+    visibly when a third marked file lands, whereas the pin would silently keep
+    passing while naming only two.
     """
     discovered = _discovered_enumerating_files()
     assert len(discovered) >= 2, (
@@ -462,47 +520,65 @@ def test_the_discovery_finds_the_marked_files() -> None:
     )
 
 
-def test_a_newly_marked_file_is_watched_without_editing_this_guard(tmp_path) -> None:
-    """The whole point of discovery, shown rather than asserted.
+def test_the_structural_entry_points_are_still_watched() -> None:
+    """The union half, which discovery alone would have dropped.
 
-    A fifth enumerating file used to need a hand edit here to be watched, and
-    nothing said so. Feeding the scanner a synthetic tree proves marking alone
-    enrols a file — and keeps proving it after a refactor, which watching one
-    real file appear would not.
+    These two carry no marker but DO advertise a check count, so they are the
+    entire population of `test_advertised_check_count_matches_the_definitions`.
+    Emptying the tuple was measured to leave 18 tests passing while that rule
+    went fully vacuous — the "narrowed the guard while appearing to widen it"
+    failure, handled in the code and previously unguarded in the tests.
     """
-    (tmp_path / "skills" / "newcomer").mkdir(parents=True)
-    marked = tmp_path / "skills" / "newcomer" / "SKILL.md"
-    marked.write_text(f"Run checks `0a`-`0l`. {_ENUMERATION_MARKER}\n", encoding="utf-8")
-    (tmp_path / "skills" / "newcomer" / "quiet.md").write_text(
-        "Mentions `0a` but claims no enumeration.\n", encoding="utf-8"
+    assert len(_STRUCTURAL_ENTRY_POINTS) >= 2, (
+        f"{len(_STRUCTURAL_ENTRY_POINTS)} structural entry point(s); expected the "
+        f"two that advertise a check count. Dropping one silently shrinks the "
+        f"check-count rule's population toward zero."
     )
-    found = sorted(
-        p for p in tmp_path.rglob("*.md")
-        if _ENUMERATION_MARKER in p.read_text(encoding="utf-8")
-    )
-    assert found == [marked], (
-        "the marker scan enrolled the wrong file set; an unmarked file that "
-        "merely mentions a label must not be watched."
-    )
+    for path in _STRUCTURAL_ENTRY_POINTS:
+        assert path.exists(), f"structural entry point {path} no longer exists"
+        assert _COUNT.search(path.read_text(encoding="utf-8")), (
+            f"{path.name} is listed as a structural entry point because it "
+            f"advertises a check count, but it no longer states one. Either the "
+            f"phrasing changed — update `_COUNT` — or the entry is obsolete."
+        )
+    watched = _enumerating_files()
+    for path in _STRUCTURAL_ENTRY_POINTS:
+        assert path in watched, f"{path.name} is listed but not actually watched"
 
 
-def test_the_discovery_exemption_is_still_earned() -> None:
+def test_the_unmarked_by_design_rule_is_still_earned() -> None:
     """A stale exemption is worse than none — it reads as a considered decision.
 
-    Each exempt file must still exhibit the property its reason names. When the
-    range leaves `fact-gatherer.md`, the exemption is obsolete and this fails
-    rather than sitting there justifying nothing.
+    Checks the property the reason actually names, not a generic one. The reason
+    says the range sits in FRONTMATTER as the agent's own input, and that it is a
+    SUBSET; an earlier draft asserted only that some range existed anywhere in
+    the file, which passes when the range moves into the body as a run-these
+    instruction — the exact case that should revoke the rule.
     """
-    for path, reason in _DISCOVERY_EXEMPT.items():
-        assert path.exists(), f"exempt file {path} no longer exists: {reason}"
+    defined = _defined_labels()
+    for path, reason in _UNMARKED_BY_DESIGN.items():
+        assert path.exists(), f"{path} no longer exists: {reason}"
         body = path.read_text(encoding="utf-8")
-        assert _RANGE.search(body), (
-            f"{path.name} is exempt from marker discovery because it "
-            f"{reason}, but it no longer names a check range at all. The "
-            f"exemption has outlived its reason — delete it."
+
+        frontmatter = body.split("---")[1] if body.startswith("---") else ""
+        ranges = _RANGE.findall(frontmatter)
+        assert ranges, (
+            f"{path.name} is unmarked by design because it {reason}, but its "
+            f"frontmatter no longer names a check range. If the range moved into "
+            f"the body it is being read as an instruction, and the rule is void."
         )
+        for first, last in ranges:
+            named = {lab for lab in defined if first <= lab <= last}
+            assert named and named < defined, (
+                f"{path.name} names `{first}`-`{last}`, which is not a proper "
+                f"subset of the defined set {sorted(defined)}. The rule rests on "
+                f"it being handed a subset; a full or overrunning range means it "
+                f"should be marked and checked like any other enumeration."
+            )
+
         assert _ENUMERATION_MARKER not in body, (
-            f"{path.name} is exempt from discovery but now carries "
+            f"{path.name} is unmarked by design but now carries "
             f"{_ENUMERATION_MARKER!r}. Marking it is a request to be watched, "
-            f"which the exemption silently refuses. Resolve one or the other."
+            f"which this rule refuses. Resolve one or the other — do not leave "
+            f"the marker sitting there doing nothing."
         )
