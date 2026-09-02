@@ -27,7 +27,26 @@ Follow these steps, mirroring `.claude/skills/openspec-propose`'s own artifact-c
 4. Apply these proposal-quality pre-checks as you write (from this repo's own `openspec-propose` skill — they are the three defect classes that most often drove FIX-FIRST review verdicts here):
    - **Pin load-bearing numbers in design.md.** Any threshold, band, cap, weight, tolerance, or split that changes scoring/behavior gets a concrete recommended default in a "Pinned implementation parameters" block — never "set during implementation."
    - **Add a doc-sync task to tasks.md** for any change touching this repo's application source: update every doc this repo's own docs-sweep list names as needing to stay in sync (see `cla.io/project-facts.md` ("Doc-sweep paths (five-path list)") for the exact path list; run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/multi-spec.md` if absent), with a grep-verify for retired symbols/keys/flags.
-   - **On a MODIFIED requirement, carry the FULL final requirement text + ALL its existing scenarios forward** — read the active spec, copy every scenario, then add/adjust. Never write a diff-only MODIFIED block; `openspec` archive-sync REPLACES the whole requirement, so an omitted scenario is silently deleted.
+   - **On a MODIFIED requirement, carry the FULL final requirement text + ALL its existing scenarios forward** — read the active spec, copy every scenario, then add/adjust. Never write a diff-only MODIFIED block; `openspec` archive-sync REPLACES the whole requirement, so an omitted scenario is silently deleted. Check your own block against the live requirement before you finish, by the procedure below. (Canonical copy, for whoever edits this next — not for you to open: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`, `## Procedure`.)
+
+     1. Parse `## RENAMED Requirements` in the **same delta file** and build the FROM->TO map.
+     2. For each `### Requirement: <Name>` under `## MODIFIED Requirements`, resolve `<Name>` through that
+        map to the name it carries **in the live spec**, then locate that requirement there.
+     3. Enumerate `#### Scenario:` headings in the delta's block and in the live requirement's block.
+        Block boundary: from the `### Requirement:` line to the next line beginning `### ` or `## `, or
+        end of file.
+     4. Report one line per compared requirement, including a clean one:
+
+        `<capability>/<requirement name>: live N -> delta M (+K added, -J missing)`
+
+        then, only when `K` or `J` is non-zero, one line per differing scenario, heading verbatim:
+        `  - <live heading absent from the delta>` / `  + <delta heading absent from the live spec>`
+
+     Adjudicate each missing scenario to exactly one of **renamed**, **intentionally removed**, or
+     **dropped**. Only `dropped` is a finding, and it is **Critical** — it deletes a live `SHALL`.
+     `intentionally removed` with no supporting sentence in the change's own artifacts is **Important**.
+     Added-only (`J = 0`) is never a finding. **An unadjudicated flag is treated as `dropped`, not
+     waived.** Nothing here refuses, halts, or edits a change; it flags, and a human adjudicates.
 5. Once every artifact required by `applyRequires` is `done` (re-check via `openspec status --change "<name>" --json`), run `openspec validate <name> --strict`.
 
 **Terminal contract.** End with exactly one of:

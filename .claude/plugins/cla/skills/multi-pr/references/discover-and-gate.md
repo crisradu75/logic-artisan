@@ -63,10 +63,14 @@ errored is not.
 mechanism above is about *when the delta was authored*, and anything that reached
 the live spec afterwards moves the text out from under it — an archived change from
 a previous chain, a `/cla:lite-pr` landed in between, a hand edit. So **every**
-in-scope change carrying a MODIFIED block earns the check: diff its delta against
-the live spec **as of that moment**, not as the delta was authored. In-scope overlap
-does not create the obligation; it raises the priority and names which sibling to
-compare against.
+in-scope change carrying a MODIFIED block earns the check: compare its delta against
+the live spec **as of that moment**, not as the delta was authored, per
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md` — which
+defines what "compare" means here, in what order, and what the report line looks like.
+The word on its own was the entire specification, and an undefined comparison run
+without rename resolution reports every renamed requirement as missing. In-scope
+overlap does not create the obligation; it raises the priority and names which sibling
+to compare against.
 
 A change that only ADDS a brand-new capability is genuinely clean, and that is worth
 recording — on the batch above, changes 5, 6 and 7 each added exactly one new

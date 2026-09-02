@@ -2,9 +2,10 @@
 
 An OpenSpec `## MODIFIED Requirements` block **replaces** the requirement it names rather than
 patching it, so a scenario that exists on the live requirement and is absent from the delta is
-deleted from `openspec/specs/` at sync/archive time. `openspec` ≥1.11.0 refuses such an apply, so
+deleted from `openspec/specs/` at sync/archive time. A current `openspec` refuses such an apply, so
 the loss is now caught — but at apply time, by a tool this plugin does not own, in a version a
-consuming repo may not be running. A repo consuming this plugin shipped exactly that once, dropping
+consuming repo may not be running. No version boundary is stated here; `design.md` Context records
+why, and `tasks.md` §1.7 carries the bisection. A repo consuming this plugin shipped exactly that once, dropping
 three live scenarios from one block, caught by hand.
 
 The decision this change implements (`cla.io/decisions/open-issues-2026-08-24.md`, item **D2**,
@@ -12,16 +13,17 @@ GitHub issue #97) opens with a genuine fork: #97's own proposed fix is a refusal
 `openspec archive`/`sync`, which is `openspec` tooling this plugin does not own, and the stated
 alternative is to report it upstream and add nothing here. **This proposal settles that fork as
 "there is an in-scope half, and it is smaller than #97 implies."** The plugin already tells its
-skills to hold this rule at four sites, and defines the comparison at none of them:
+skills to hold this rule at five sites, and defines the comparison at none of them:
 
 | site | what it says today | what is missing |
 |---|---|---|
-| `multi-pr/references/discover-and-gate.md:62–70` | every in-scope change carrying a MODIFIED block earns a re-base check — "diff its delta against the live spec **as of that moment**" | the word *diff*, and nothing else. No rename handling, no report shape, no adjudication rule, no severity |
-| `review-change/references/checklist.md:223` (dispatch item 5) | "Any `## MODIFIED Requirements` entry must include the full final requirement text plus its scenarios, not just the diff" | a delta holding 3 of 5 live scenarios satisfies this sentence *as read*. The omission is invisible without opening the live spec, and nothing instructs the reviewer to |
-| `multi-spec/references/authoring-brief.md:30` | the author-side rule — read the active spec, copy every scenario | the author-side rule only; a rule stated to the writer is not a check |
-| `spec-to-pr/references/archive-preflight.md:65–79` — check (c) | already loops over **every** delta MODIFIED heading and greps the active spec | it compares the **heading**, then stops. Scenario retention is one grep further into a loop that already exists |
+| `multi-pr/references/discover-and-gate.md`, the re-base check | every in-scope change carrying a MODIFIED block earns a re-base check — "diff its delta against the live spec **as of that moment**" | the word *diff*, and nothing else. No rename handling, no report shape, no adjudication rule, no severity |
+| `review-change/references/checklist.md`, dispatch item 5 | "Any `## MODIFIED Requirements` entry must include the full final requirement text plus its scenarios, not just the diff" | a delta holding 3 of 5 live scenarios satisfies this sentence *as read*. The omission is invisible without opening the live spec, and nothing instructs the reviewer to |
+| `multi-spec/references/authoring-brief.md`, the MODIFIED rule | the author-side rule — read the active spec, copy every scenario | the author-side rule only; a rule stated to the writer is not a check |
+| `spec-to-pr/references/archive-preflight.md` — check (c) | already loops over **every** delta MODIFIED heading and greps the active spec | it compares the **heading**, then stops. Scenario retention is one grep further into a loop that already exists |
+| `multi-pr/SKILL.md`, the hoisted "Two chain edges exist" invariant | the same re-base obligation in the same undefined words, hoisted out of `discover-and-gate.md` so it holds when the reference is not reloaded | the same thing that is missing one level down. Found by review, not by the original framing |
 
-So the surviving gap is not "nothing covers this". It is that the obligation is stated four times
+So the surviving gap is not "nothing covers this". It is that the obligation is stated five times
 and the procedure zero times — and the two design notes #97 paid for (resolve `## RENAMED
 Requirements` first; report ADDED counts alongside missing ones) are exactly what an undefined
 "diff" gets wrong. A comparison run without them produced a **100% false-positive rate** on its only
@@ -37,8 +39,10 @@ real corpus: 2 flags across 2 changes, both benign renames.
   re-base check stops saying "diff" and names the procedure.
 - **Add the trigger where none exists** — a single-change run (`/cla:spec-to-pr` on its own,
   `/cla:lite-pr`, a hand-authored change) never passes through `multi-pr` Phase 1 and so is checked
-  nowhere today. Two placements, deliberately: `review-change`'s spec-reviewer dispatch (item 5
-  becomes falsifiable — compare against the live spec, do not read the delta alone), and
+  nowhere today. Three placements: `review-change`'s spec-reviewer dispatch (item 5 becomes
+  falsifiable — compare against the live spec, do not read the delta alone), `review-change`'s size gate
+  (Step 3, the small-change branch) for the small path, which skips that dispatch and is the modal
+  case here, and
   `archive-preflight.md` check (c) as the last backstop before materialization, folded into the
   MODIFIED-heading loop already there.
 - **Make the adjudication rule explicit and the refusal impossible.** The comparison flags and a
@@ -63,26 +67,61 @@ None.
 
 ## Impact
 
-**Files this change edits** (all portable synced core; one new file, four one-paragraph edits):
+**Files this change edits** (all portable synced core; one new file, six one-paragraph edits across
+five existing files — `design.md` D4 owns that count and this defers to it). **Each site is named by its content, not by a line number** — every review round so far has caught a
+stale one somewhere in this file, so the numbers are gone rather than refreshed:
 
 - `.claude/plugins/cla/skills/_shared/references/modified-block-retention.md` — **new**
-- `.claude/plugins/cla/skills/review-change/references/checklist.md` (dispatch item 5, line 223 of 316)
-- `.claude/plugins/cla/skills/spec-to-pr/references/archive-preflight.md` (check (c), line 65 of 96)
-- `.claude/plugins/cla/skills/multi-pr/references/discover-and-gate.md` (re-base check, line 62 of 197)
-- `.claude/plugins/cla/skills/multi-spec/references/authoring-brief.md` (line 30 of 69 — pointer only)
+- `.claude/plugins/cla/skills/review-change/references/checklist.md` — **two** regions: dispatch item
+  5 (headed "MODIFIED requirements are complete") and the size gate's small-change branch in Step 3
+  (the path that skips the dispatch entirely — **not** Step 5, which is the parallelism analysis). One region only would leave the modal case uncovered
+- `.claude/plugins/cla/skills/spec-to-pr/references/archive-preflight.md` (check (c))
+- `.claude/plugins/cla/skills/multi-pr/references/discover-and-gate.md` (the re-base check)
+- `.claude/plugins/cla/skills/multi-spec/references/authoring-brief.md`, the MODIFIED rule — **pastes**
+  the Procedure section rather than pointing, because it sits inside a fenced prompt template handed
+  to a dispatched authoring agent; design D8 settles why
+- `.claude/plugins/cla/skills/multi-pr/SKILL.md`, the hoisted re-base rule — **the sixth site, found
+  by review rather than by the original framing.** It states the same obligation in the same
+  undefined words; leaving it alone would have had the hoisted rule and the reference it points at
+  describe the check differently
+
+**Two sites paste, four point (design D8).** The `checklist.md` item-5 and `authoring-brief.md`
+edits are both inside dispatched-agent prompts, where this plugin's own rule says a bare pointer
+does not resolve. So the reference is written in two halves — a `## Procedure` section of 25 lines
+or fewer, and the rationale — and those two sites paste the Procedure verbatim while the other four
+point at the file. One statement of the steps still exists; a paste quotes it rather than authoring
+a second version.
+
+**Outside the plugin tree, these also change — required by tasks or by the run, not incidental:**
+
+- `cla.io/lessons-learned/lessons-learned.md` — task 6.3 records D2's reversal condition where a
+  future run will meet it, plus what this change's own dry-run disproved. A decisions doc is
+  superseded and deleted; this condition has to outlive one.
+- `openspec/changes/modified-block-diff-scope/` — this change's own four artifacts: `proposal.md`,
+  `design.md`, `tasks.md`, and the `specs/cla-plugin/spec.md` delta.
+- `cla.io/retro/commit-provenance.jsonl` — the run ledger, appended to per commit.
 
 **Not affected.** No script, no hook, no test, no dev-tree file, no `openspec/specs/` tooling.
 `plugin-tests/` gains nothing; the change is prose in synced core, policed by the existing
 conformance guards.
 
-**Sequencing — one shared file with a sibling.** `grounding-contract-claim-shapes` and
-`fix-brief-binding-defect` both edit `review-change/references/checklist.md`, in §"Grounding
-contract", `0k`/`0l`, the cost-offload paragraph and Step 6. This change edits the **spec-reviewer
-dispatch prompt's item 5** inside Step 4, which neither sibling names, and adds **no numbered
-check** — so it does not compete for `0l`. Disjoint by region, shared by file: this change edits
-last, and its task list verifies both siblings' edits survived.
+**Sequencing — one shared file with ONE sibling.** `grounding-contract-claim-shapes` edits
+`review-change/references/checklist.md`, in §"Grounding contract", `0k`/`0l`, the cost-offload
+paragraph and Step 6. **`fix-brief-binding-defect` does not touch that file at all** — it edits
+`spec-to-pr/references/subagent-brief.md`, and its own proposal says so in as many words ("This
+change makes no `checklist.md` edit at all"). An earlier draft of this paragraph named both, and the
+task list then greped for a sibling edit that was never made — the shape this whole change exists to
+catch, in its own artifacts. Both siblings are now archived, so the ordering question is settled
+either way.
+
+This change edits the **spec-reviewer dispatch prompt's item 5** inside Step 4 and the **size
+gate's small-change branch** in Step 3,
+neither of which `grounding-contract-claim-shapes` names, and adds **no numbered check** — so it
+does not compete for `0l`. Disjoint by region, shared by file: this change edits last, and its task
+list verifies the one real sibling's edits survived.
 
 **Relationship to what already shipped.** PR #150's live-set validation covers *parse integrity
 after any edit*; its own requirement text says so and explicitly disclaims this concern
-(`openspec/specs/cla-plugin/spec.md:529`). PR #149's re-base check supplies the chain-path trigger
+(`openspec/specs/cla-plugin/spec.md`, the paragraph beginning "This requirement is distinct from any
+check comparing a delta's modified-requirement block"; `tasks.md` §1.3 carries the grep). PR #149's re-base check supplies the chain-path trigger
 this change supplies the procedure for. Neither is duplicated here.

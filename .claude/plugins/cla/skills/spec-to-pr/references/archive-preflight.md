@@ -62,7 +62,7 @@ grep -n '^### ' openspec/specs/<capability>/spec.md | grep -v '^.*:### Requireme
 
 Each match is a legacy heading — rewrite it to `### Requirement: <Name>` before archiving. This is a hand-edit under `openspec/specs/` — the validate rule in check (a) applies to it too.
 
-## (c) MODIFIED-block heading existence
+## (c) MODIFIED-block heading existence, and scenario retention under it
 
 For every `## MODIFIED Requirements` block in the change's delta
 (`openspec/changes/<name>/specs/<capability>/spec.md`), confirm the `### Requirement: <Name>` heading
@@ -77,6 +77,39 @@ grep -n '^### Requirement: ' openspec/changes/<name>/specs/<capability>/spec.md
 # for each result, confirm an exact-string hit in the active spec
 grep -F '### Requirement: <Name>' openspec/specs/<capability>/spec.md
 ```
+
+**A heading match is not retention.** The loop above has already located the live requirement, which
+is the expensive half; stopping there leaves the scenario set unexamined, and a MODIFIED block
+*replaces* its requirement rather than patching it — so a live scenario absent from the block is
+deleted the moment `openspec archive` runs, with the block reading complete on its own face. So for
+each heading confirmed present, compare the scenario sets before moving on, per
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`.
+
+**Why here as well as at review time.** This is the last point before materialization deletes
+anything, and it is the only one that sees the window *after* review closes — a Revise-round edit to
+the delta, a hand-resolved conflict in it. Review-time cannot look at either.
+
+**On a current `openspec` the tool itself refuses, and this check still earns its place.**
+`buildUpdatedSpec` in `core/specs-apply` calls `findMissingCurrentScenarios` and throws
+`"<spec> MODIFIED failed ... current spec contains scenario(s) not present in the modified block"`,
+so `openspec archive` aborts rather than dropping the scenario. Verified by reading the installed
+package. **Do not restate a version boundary here** — not the release the guard landed in, and not
+how far back it goes. An earlier draft asserted "from 1.11.0, and nothing before it refuses", which
+was simply wrong for the versions in between; its replacement then quantified the correction
+("predates 1.11.0 by several releases") with nothing behind the quantifier, which is the same defect
+one size smaller. Both are the stale-fact-as-current-fact failure this whole reference exists to
+catch, and a boundary written here decays the moment upstream cuts a release. Run
+`openspec --version` and read `findMissingCurrentScenarios` in your own install if you need the
+answer for a specific repo.
+
+Where the tool does refuse, this check runs *before* it, which is the value: you get a named scenario
+and an adjudication instead of a failed archive mid-commit. Where it does not, this check is the only
+thing between the delta and a silently deleted `SHALL`.
+
+**The comparison itself never halts, on either version.** Raise a `dropped` verdict as a **Critical
+against the change** and carry it into the run's Issues so the PR shows it. Do not add a halt of your
+own: a scenario renamed in place is indistinguishable from a deleted one, so a halt would fire on
+legitimate renames — which is the complaint against the upstream refusal, not a shape to copy.
 
 ## Retired-path cross-reference cleanup
 

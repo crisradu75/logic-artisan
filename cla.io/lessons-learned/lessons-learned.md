@@ -870,3 +870,52 @@ re-derivation mechanism decays into a claim, and this one carried a scanner-cove
 Filed as issue #178; the number was replaced in `CLAUDE.md` with the command that produces it.
 
 ---
+
+## 2026-08-29 — `modified-block-diff-scope`
+
+### The reversal condition for the modified-block retention comparison
+
+`design.md` D2 of `modified-block-diff-scope` chose **prose over a script** for the retention
+comparison: one shared reference defining the procedure, bound at six sites, with no Python. The
+standing preference in this repo is prose over machinery, and the alternative — porting a working
+~60-line script from a consuming repo — was rejected on three grounds, the strongest being that a
+delta-format parser shipped from this plugin is the duplication the upstream issue asks to remove.
+
+**That decision is falsifiable, and this is where the evidence accumulates.** If a later chain
+records the comparison being **skipped, or performed wrongly, at three or more MODIFIED blocks**,
+the prose has failed and a script is the answer. Recorded here rather than in a decisions doc
+because a decisions doc is superseded and deleted, and this condition has to outlive one.
+
+Count against it here, one line per instance, when it happens.
+
+### A dry-run disproved the design's own claim, which is what dry-runs are for
+
+The same change's §5 required executing the procedure by hand before shipping it. Two of its own
+predictions were wrong:
+
+- It expected near-zero flags against a corpus of archived changes, on the reasoning that they
+  compare against a post-archive live spec. **3 of 12 flagged** — later changes had edited the live
+  spec after those were archived, so the archived deltas are stale against it.
+- It predicted a scenario deleted and a scenario renamed in place would be **mechanically
+  identical**, and `design.md` D5 said so in as many words ("byte-identical to any heading
+  comparison"). They are not, once the report states both directions: deleting reported
+  `live 4 -> delta 2 (+0 added, -2 missing)`, renaming reported
+  `live 4 -> delta 3 (+1 added, -2 missing)`. The renamed heading arrives as an addition.
+
+The correction is narrow and worth the precision: the extra `+` is a **hint**, not a distinction — a
+change may legitimately delete one scenario and add an unrelated one and produce the same pair. But
+the design had told readers no signal existed, which would have had them dismiss a real one.
+
+**The transferable part:** a claim of the form "these two cases are indistinguishable" is a claim
+about a mechanism, and it is cheap to falsify by running the mechanism on both. Neither the
+three-agent review nor two rounds of reading caught this; the first execution did.
+
+### A review can be thorough and still miss what running it finds
+
+The same change's review dispatched three agents and returned 3 Criticals and 9 Importants, all
+real. It still missed that the proposal named **two** sibling changes as editing one shared file
+when only one does — the other's own proposal says "This change makes no `checklist.md` edit at
+all". The task list then greped that file for the absent sibling's edit, so a correct tree would
+have reported a dropped sibling edit. Found by executing task 1.5, not by reviewing it.
+
+---

@@ -163,6 +163,7 @@ Count five things from the artifacts:
 **Rule:**
 - **Small change** — `a ≤ 5` AND `b ≤ 20` AND `c = 1` AND `e < 25` **AND NOT the complexity-concentration override below**:
   - Skip the 3-agent dispatch. The orchestrator IS the reviewer — verification checks in Step 2 already produced the findings. Go straight to Step 5.
+  - **If the change carries a `## MODIFIED Requirements` block, run the retention comparison yourself before you do** — `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`. Step 4's item 5 carries it for the large path, and a small change never reaches Step 4; since small is the modal case here, a binding that lives only in the dispatch reaches the minority of reviews. One live-spec read per modified requirement, and it reports on a clean one too.
   - Announce: "Small change (a=.., b=.., c=.., d=..) — analyzing directly without agent dispatch."
 - **Large change** — any of the `a`/`b`/`c`/`e` thresholds exceeded, OR the complexity-concentration override fires:
   - Proceed to Step 4 to dispatch the 3 agents in parallel.
@@ -301,7 +302,28 @@ Both leave a prompt with no placeholder text and no injected content. Only readi
 > 2. Spec testability (every SHALL has at least one WHEN/THEN scenario), conflicts with main specs, codebase pattern adherence (<inject: this repo's own architectural/authorization/i18n/styling/typechecking conventions, from `cla.io/overlays/review-change.md`>).
 > 3. **Symbol-name accuracy** — For every symbol (function, type, interface, exported constant, component) referenced in a scenario, confirm it exists in the affected `src/` with the claimed name and signature. Wrong symbol names are the single most common bug.
 > 4. **Delta section correctness** — Are spec changes labeled `## ADDED Requirements` / `## MODIFIED Requirements` / `## REMOVED Requirements` correctly? An entirely new capability should be `## ADDED`; modifying an existing requirement should be `## MODIFIED` with both the new text and scenarios.
-> 5. **MODIFIED requirements are complete** — Any `## MODIFIED Requirements` entry must include the full final requirement text plus its scenarios, not just the diff.
+> 5. **MODIFIED requirements are complete, AND retain what the live requirement already has.** Any `## MODIFIED Requirements` entry must include the full final requirement text plus its scenarios, not just the diff. That half is author-facing and is not falsifiable from the delta alone — a block carrying 3 of 5 live scenarios satisfies it on its face, because a modified block REPLACES its requirement rather than patching it, so the omission is invisible in the delta. **So compare the block's scenario headings against the live requirement in `openspec/specs/<capability>/spec.md`**, and report the line below per compared requirement. A scenario adjudicated `dropped` is **Critical**: it deletes a live `SHALL` from the specification set, silently, at archive.
+>
+>    The procedure is pasted here rather than cited, because you cannot open a file this prompt only names. Canonical copy — edit it there, not here: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`, `## Procedure`.
+>
+>    1. Parse `## RENAMED Requirements` in the **same delta file** and build the FROM->TO map.
+>    2. For each `### Requirement: <Name>` under `## MODIFIED Requirements`, resolve `<Name>` through that
+>       map to the name it carries **in the live spec**, then locate that requirement there.
+>    3. Enumerate `#### Scenario:` headings in the delta's block and in the live requirement's block.
+>       Block boundary: from the `### Requirement:` line to the next line beginning `### ` or `## `, or
+>       end of file.
+>    4. Report one line per compared requirement, including a clean one:
+>
+>       `<capability>/<requirement name>: live N -> delta M (+K added, -J missing)`
+>
+>       then, only when `K` or `J` is non-zero, one line per differing scenario, heading verbatim:
+>       `  - <live heading absent from the delta>` / `  + <delta heading absent from the live spec>`
+>
+>    Adjudicate each missing scenario to exactly one of **renamed**, **intentionally removed**, or
+>    **dropped**. Only `dropped` is a finding, and it is **Critical** — it deletes a live `SHALL`.
+>    `intentionally removed` with no supporting sentence in the change's own artifacts is **Important**.
+>    Added-only (`J = 0`) is never a finding. **An unadjudicated flag is treated as `dropped`, not
+>    waived.** Nothing here refuses, halts, or edits a change; it flags, and a human adjudicates.
 > 6. **Claim shapes** — walk the artifacts for the claim shapes below and resolve each per its resolution steps, recording the result in the form that shape names. A sentence matching the signature is in scope whether or not it is listed.
 >    <inject: the four claim shapes VERBATIM from §"Grounding contract"'s "#### Claim shapes" subsection — every trigger, every resolution step, every failure mode and every severity floor, and the openness paragraph. Copy them; do not summarise them and do not replace them with a pointer. Per "Injection is mandatory" above, an unfilled placeholder or a bare "see the contract" leaves this agent reviewing blind.>
 >
