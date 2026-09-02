@@ -198,6 +198,17 @@ review found — the mutants covered the branch the author was reasoning about, 
 branch they got wrong. So mutate what the fix *touches*, not what it targets, and treat a
 green run as one input to the ship decision rather than the decision itself.
 
+**And a KILLED mutant is not automatically a pass — read the test that killed it.** The
+kill proves the suite reacts to that edit; it proves neither the code nor the test right.
+A test written from a wrong mental model kills mutants exactly as reliably as a correct
+one, and the green result reads as confirmation. Worst where the mutant is the *simpler*
+form of the code: if the simpler form is correct, the test defending the original is
+defending the defect, and the gate pins it while reporting green. Reported from a
+consuming repo (issue #193), where a conditional column offset survived because the
+assertion killing its constant-form mutant was itself the defect; a reviewer reasoning
+from the type's invariant caught it, no gate did. Full rule:
+`.claude/plugins/cla/skills/_shared/references/test-quality.md`, "How planting goes wrong".
+
 **And a SURVIVOR is not automatically a finding about the code.** Some mutants cannot be
 killed, because the edit is unobservable in a correct tree — a floor constant that only
 binds when something is missing, or two expressions that agree on every input the real

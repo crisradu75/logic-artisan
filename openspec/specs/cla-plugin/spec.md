@@ -606,6 +606,8 @@ A skill that applies fixes for review findings SHALL require, before the commit 
 
 The gate SHALL preserve, in the procedure text, the reasoning that makes it more than ceremony: that a fix for a Critical/Important finding is a change like any other and earns the same evidence the original code needed; that "the reviewer's finding is now handled" is not that evidence; that what is broken MUST be **what the fix touches**, not only what it targets, because correcting one return path routinely breaks another; and that a clean run is evidence about the mutants the author thought of and nothing else. A surviving mutant SHALL be fixed, or named in the skill's terminal report with a reason.
 
+The gate SHALL further state that a **killed** mutant does not discharge it either: the kill establishes that the suite reacts to that edit, not that the code or the test is correct, so the assertion that killed the mutant SHALL be read and confirmed to state the wanted behaviour. Every shipped skill stating this gate SHALL carry that clause — a skill restating the gate without it briefs its reader against a two-outcome contract in which a kill is self-certifying.
+
 #### Scenario: The gate is stated without a plugin-root runner invocation
 
 - **WHEN** a shipped skill's review-fix step states the mutation gate
@@ -623,6 +625,17 @@ The gate SHALL preserve, in the procedure text, the reasoning that makes it more
 - **WHEN** the gate's text is revised
 - **THEN** it still states that the break must cover what the fix touches rather than only what it targets
 - **AND** it still states that a clean run is evidence only about the mutants the author thought of
+
+#### Scenario: A killed mutant does not discharge the gate
+
+- **WHEN** a mutant is killed by an existing test
+- **THEN** the gate requires the killing assertion to be read and confirmed to state the wanted behaviour
+- **AND** the kill alone is not recorded as evidence that the code or the test is correct
+
+#### Scenario: Every site stating the gate states the same contract
+
+- **WHEN** more than one shipped skill states the mutation gate
+- **THEN** each site carries the killed-mutant clause rather than only the site that was edited last
 
 ### Requirement: Sequencing edges beyond the source dependency graph
 
@@ -905,6 +918,8 @@ Where the reference states how a planted failure goes wrong, it SHALL give **che
 
 The reference SHALL state that planting exercises only the implementation that exists, and therefore cannot reach an input the author never enumerated — and SHALL direct that anything parsing an external contract is enumerated from its primary source **before** it is planted against.
 
+**A landed plant that dies.** The conditions above separate a plant that reached the value under test from one that missed. The reference SHALL also carry the case they do not reach, where the plant lands, the mutant dies, and the kill still establishes nothing: a test written from a wrong mental model kills mutants exactly as reliably as a correct one, so the green result reads as confirmation of the error. It SHALL give this trap its own remedy — read the killing assertion and confirm it states the wanted behaviour — rather than folding it into the did-it-land conditions, which every instance of it passes. It SHALL name the shape carrying the highest risk: a mutant that is the **simpler** form of the code, where if the simpler form is correct then the test defending the original is defending the defect.
+
 **Scope boundary.** Guidance about when planting is worth its cost is routing, and SHALL NOT be read as narrowing any other obligation. In particular the **Review-fix evidence gate** stays unconditional: a fix for a review finding earns its evidence regardless of which technique supplies it. A reference stating both SHALL say so explicitly, because the two sit close enough to be read as one.
 
 **Unreachability at the operating point.** The reference SHALL also carry the sibling case, where the enumerated input space is correct and the guard is nonetheless unreachable because the volume it meets in ordinary operation sits outside the range where it acts: a minimum-sample precondition larger than any real batch, a threshold pinned against a backfill-sized sample or against a different statistic than the code measures, or an alarm over an aggregate too coarse to see the sub-population that failed.
@@ -928,6 +943,13 @@ It SHALL state where this sits relative to the planting rules rather than leavin
 - **WHEN** the reference describes a plant that FAILED TO LAND on the value under test
 - **THEN** it names the conditions distinguishing a landed plant from one that missed
 - **AND** a trap of a different shape gives its own remedy rather than being forced into that form
+
+#### Scenario: A plant that lands and kills is still examined
+
+- **WHEN** the reference is read by someone whose plant landed and whose mutant died
+- **THEN** it states that the kill proves the suite reacts to the edit, not that the code or the test is correct
+- **AND** it directs the killing assertion to be read and confirmed to state the wanted behaviour
+- **AND** it names the simpler-form mutant as the highest-risk shape
 
 #### Scenario: A correct guard that cannot fire at its real volume is covered
 

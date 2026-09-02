@@ -196,6 +196,28 @@ confirm it is still well-formed. And read the failure message — it must name t
 you planted. A non-zero exit that names nothing, or a diff touching only a comment,
 means the plant did not land: restore and re-plant rather than recording a kill.
 
+**A landed plant that dies is still not a pass — read the test that killed it.** The
+three conditions above establish that the plant reached the value under test. They say
+nothing about whether the assertion it tripped is the behaviour you want. A kill proves
+the suite reacts to that edit; it proves neither the code nor the test correct, and a
+test written from a wrong mental model kills mutants exactly as reliably as a right one.
+So the green result actively reinforces the error — *caught, therefore fine* — which is
+what makes this the trap that survives every check written to catch the others.
+
+The remedy is one extra read, at the moment of the kill: state what behaviour the killing
+assertion encodes, and confirm that is the behaviour wanted. Highest risk where the mutant
+is the **simpler** form of the code — a conditional replaced by a constant. If the simpler
+form is in fact the correct one, then the conditional is the defect and the test defending
+it is defending the bug, so the gate reports green while pinning the very thing it exists
+to remove.
+
+Real, in a consuming repo, 2026-08-31: an accessor computed a column offset conditionally,
+a mutant replaced it with the constant, and the mutant was killed by an assertion that two
+derived values were equal. That equality was itself the defect — the two were never meant
+to be equal, and the conditional was what made them so, firing every downstream rule keyed
+on their difference. The constant was the correct behaviour and the plant had found it. It
+was caught later by a reviewer reasoning from the type's stated invariant, not by any gate.
+
 **A plant reported by someone else is a claim, not a result.** When a delegate says it
 mutation-tested its own guard, re-run one of the plants yourself before believing the
 guard is sound in both directions. This is the step most worth never skipping, because
