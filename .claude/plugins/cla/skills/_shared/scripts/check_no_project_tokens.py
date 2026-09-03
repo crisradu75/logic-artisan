@@ -30,7 +30,8 @@ violation at a time turns a run into a fix-and-rerun loop:
   (a) the PROSE scan for project tokens over synced-core ``SKILL.md`` and
       ``references/**/*.md``;
   (b) the SOURCE scan for project tokens over the plugin's scanned source roots
-      (``.py`` everywhere, plus ``agents/*.md`` and ``output-styles/*.md``);
+      (``.py`` and ``.json`` everywhere, plus ``agents/*.md`` and
+      ``output-styles/*.md``);
   (c) the hardcoded absolute-DEVELOPER-PATH scan over that same source — a
       different scanner with its own regexes and its own exemption marker, and
       the only one of the four that needs no token list;
@@ -305,18 +306,22 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # guard refused to run at all (exit 2) in every consuming repo. Pruned to the
 # five roots that actually ship.
 #
-# SOME shipped `.md`/`.py` files fall outside both scanners above. Which ones is
-# NOT written here. It was — as a list and a count, "counted, not estimated" —
-# and the count went stale while nothing noticed, twice, in this comment and in
-# CLAUDE.md. Checking a hand-written list once is not a mechanism; the next
-# rename falsifies it silently, because a file no scanner opens returns exactly
-# what a clean file returns.
+# SOME shipped files fall outside both scanners above. Which ones is NOT written
+# here, and neither is the suffix rule that decides it. Both were — as a list and
+# a count, "counted, not estimated" — and both went stale while nothing noticed,
+# in this comment and in the source repo's own CLAUDE.md. Checking a hand-written
+# list once is not a mechanism; the next rename falsifies it silently, because a
+# file no scanner opens returns exactly what a clean file returns. The `.md`/`.py`
+# phrasing this comment used to carry is the worked example: it survived the
+# widening to `.json` and was wrong twice over, since the map it describes has no
+# suffix rule at all.
 #
 # The canonical-source repo's `TOKEN_EXEMPT` map, in
 # `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py`, derives the
-# split instead: every shipped `.md`/`.py` must be reached by a scanner above or
-# carry a stated reason there, and an exemption whose file was deleted or has
-# since been picked up fails too. Read that map for the current list.
+# split instead: every shipped file must be reached by a scanner above or carry a
+# stated reason there, and an exemption whose file was deleted or has since been
+# picked up fails too. Read that map for the current list, and
+# `_iter_scanned_source_files` below for the current suffix rule.
 #
 # A deliberate path-parsing fixture stays scannable by carrying the
 # `path-fixture-ok` marker on its line, rather than by exempting a whole file.
@@ -346,12 +351,34 @@ def _missing_source_roots(plugin_root: Path) -> list[str]:
 def _iter_scanned_source_files(plugin_root: Path):
     """Yield every synced-core SOURCE file the prose scan cannot see.
 
-    `.py` anywhere under the synced roots (including `tests/` and `scripts/`),
-    plus every `.md` under `agents/` or `output-styles/` (agent definitions and
-    output-style files, neither reachable from the prose scan's `skills/` root).
-    Overlays stay exempt by the same convention, and bytecode/cache directories
-    are skipped — a stale `.pyc` still holds the string it was compiled from and
-    would report a leak already fixed in source.
+    `.py` and `.json` anywhere under the synced roots (including `tests/` and
+    `scripts/`), plus every `.md` under `agents/` or `output-styles/` (agent
+    definitions and output-style files, neither reachable from the prose scan's
+    `skills/` root). Overlays stay exempt by the same convention, and
+    bytecode/cache directories are skipped — a stale `.pyc` still holds the
+    string it was compiled from and would report a leak already fixed in source.
+
+    `.json` was added last, and for one file rather than for tidiness.
+    `skills/_shared/references/required-permissions.json` carries English prose
+    in its `_comment` keys and already contained a phrase naming the workflow it
+    serves "in this repo" — prose in synced core is precisely what this guard
+    exists to catch, and no scanner opened it. The suffix reaches three shipped
+    files in total (that one, its `-narrow` sibling under `spec-to-pr`, and
+    `hooks/hooks.json`), identical in every install, so the widening adds no
+    per-repo surface beyond those three. `.claude-plugin/plugin.json` is NOT
+    among them: it sits outside every entry in `SOURCE_SCAN_ROOTS`, and is
+    deliberately left unscanned rather than covered elsewhere. The manifest
+    legitimately names its own source repository — that is what makes the
+    install commands copy-pasteable — so scanning it would flag the one file
+    whose job is to identify the source. Its shape and version ARE validated,
+    by the source repo's marketplace-manifest guard; nothing token-scans it, by
+    design.
+
+    Not widened to `.sh` or to the suffix-less `hooks/git/pre-push`: neither has
+    a demonstrated leak, and a suffix-less file needs a rule that is not keyed on
+    suffix at all. Both are recorded as deliberate exemptions rather than
+    oversights — see the source repo's `EXEMPT` map, which fails on an exemption
+    a scanner has since grown to reach.
     """
     md_roots = ("agents", "output-styles")
     for root_name in SOURCE_SCAN_ROOTS:
@@ -363,7 +390,9 @@ def _iter_scanned_source_files(plugin_root: Path):
                 continue
             if any(part in CACHE_DIRS for part in path.relative_to(root).parts):
                 continue
-            if path.suffix == ".py" or (root_name in md_roots and path.suffix == ".md"):
+            if path.suffix in (".py", ".json") or (
+                root_name in md_roots and path.suffix == ".md"
+            ):
                 yield path
 
 

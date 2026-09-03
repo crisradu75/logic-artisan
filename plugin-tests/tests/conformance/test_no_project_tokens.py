@@ -473,6 +473,76 @@ def test_source_scan_exempts_output_style_frontmatter_but_flags_the_body(tmp_pat
     ]
 
 
+def test_source_scan_covers_json_under_the_scan_roots(tmp_path):
+    # Issue #190. `required-permissions.json` carries English prose in `_comment`
+    # keys and already named the workflow it serves "in this repo" — prose in
+    # synced core, which is exactly what this guard exists to catch, sitting in
+    # the one suffix no scanner opened. Both the prose-bearing shape and the
+    # hook-wiring shape are pinned, because a rule reaching only files under
+    # `references/` would pass the first of these and miss the second.
+    _seed(
+        tmp_path,
+        "skills/_shared/references/required-permissions.json",
+        '{\n  "_comment": "for the funnel-demo workflow",\n  "allow": []\n}\n',
+    )
+    _seed(tmp_path, "hooks/hooks.json", '{\n  "note": "wired for funnel-demo"\n}\n')
+    # The prose scan globs `*.md`, so neither is reachable from it.
+    assert find_violations(tmp_path / "skills", tmp_path, ["funnel-demo"]) == []
+    rels = sorted(h[0] for h in find_source_violations(tmp_path, ["funnel-demo"]))
+    assert rels == [
+        "hooks/hooks.json",
+        "skills/_shared/references/required-permissions.json",
+    ]
+
+
+def test_source_scan_leaves_json_outside_the_scan_roots_alone(tmp_path):
+    # `.claude-plugin/plugin.json` ships, carries a `description`, and is NOT in
+    # scope: the widening added a SUFFIX, not a root. Pinned because "scan .json"
+    # read loosely would sweep the manifest in, and the manifest legitimately
+    # names this repository.
+    #
+    # THE SECOND SEED IS A POSITIVE CONTROL, not decoration. The first version of
+    # this test seeded only the manifest and asserted no violations — and with no
+    # scan root present in `tmp_path` at all, `_iter_scanned_source_files`
+    # `continue`s past all five and yields nothing. Absence asserted over an
+    # empty scan is exactly what a scanner whose body is `return` produces, so
+    # the test passed against the OLD scanner too and could not fail on any edit
+    # to the suffix rule. Three reviewers measured that independently. Seeding a
+    # `.json` inside a root and asserting the result is EXACTLY that file proves
+    # the scan ran and that the manifest was excluded, in one assertion.
+    _seed(tmp_path, ".claude-plugin/plugin.json", '{\n  "name": "funnel-demo"\n}\n')
+    _seed(tmp_path, "hooks/hooks.json", '{\n  "note": "wired for funnel-demo"\n}\n')
+    rels = sorted(h[0] for h in find_source_violations(tmp_path, ["funnel-demo"]))
+    assert rels == ["hooks/hooks.json"]
+
+
+def test_source_scan_reports_a_token_in_a_json_description_key(tmp_path):
+    # Named for what it pins: a `description` key is NOT exempt in a `.json` the
+    # way frontmatter is in an `agents/`/`output-styles/` `.md`. That exemption
+    # exists for a `description:` legitimately naming the host repo so the asset
+    # is selected for it; a `.json` has no such need and must not grow one, since
+    # prose in a `_comment` or `description` key IS the leak that motivated
+    # widening to `.json`.
+    #
+    # It was first called `..._does_not_strip_frontmatter_from_json`, and that
+    # name promised something it cannot deliver. `_body_lines` skips nothing
+    # unless line 1 is exactly `---`, and a JSON document opens with `{` — so
+    # flipping `strip_fm` to `.json` is a NO-OP on this input and the test stays
+    # green. Two reviewers ran both branches on this fixture and got byte-equal
+    # output. The right response is not a `---`-fenced JSON fixture, which is not
+    # realistic input and would be an unkillable mutant by CLAUDE.md's own rule;
+    # it is to name the edit the test can actually catch.
+    _seed(
+        tmp_path,
+        "skills/_shared/references/required-permissions.json",
+        '{\n  "description": "funnel-demo permissions",\n  "allow": []\n}\n',
+    )
+    hits = find_source_violations(tmp_path, ["funnel-demo"])
+    assert [h[0] for h in hits] == [
+        "skills/_shared/references/required-permissions.json"
+    ]
+
+
 def test_source_scan_ignores_bytecode_and_overlays(tmp_path):
     # A stale .pyc still holds the string it was compiled from, so scanning it
     # would report a leak already fixed in source.
@@ -488,6 +558,12 @@ def test_source_scan_of_the_real_plugin_is_non_vacuous():
     scanned = list(_iter_scanned_source_files(_plugin_root()))
     assert len(scanned) > 20, f"expected the real plugin to have source files, got {len(scanned)}"
     assert any(p.suffix == ".py" for p in scanned)
+    # The `.json` half is asserted against the REAL tree, not only a fixture:
+    # the fixture test above proves the rule can fire, while this proves it fires
+    # on the shipped files the widening was for. A rule correct in `tmp_path` and
+    # unreachable in the real plugin — a root pruned, a suffix typo'd — passes
+    # the fixture test and leaves the actual gap open.
+    assert any(p.suffix == ".json" for p in scanned)
 
 
 # --------------------------------------------------------------------------- #
