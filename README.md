@@ -107,9 +107,13 @@ There is **no CI, by design** — the two local runs below are the whole verific
 only gate before a merge:
 
 ```bash
-pytest plugin-tests                                    # every pytest scope (1 today)
+pytest plugin-tests -q -n auto --dist loadfile             # every pytest scope (1 today)
 node --test plugin-tests/node/mechanical-checks.test.mjs   # the one Node suite pytest cannot reach
 ```
+
+`-n auto --dist loadfile` needs `pytest-xdist` (`pip install pytest-xdist`); without it, drop both
+flags and the same run takes about 2.8x as long. `--dist loadfile` is not tuning — see CLAUDE.md,
+"The parallel gate", for why plain `-n auto` is the trap and what makes a parallel run trustworthy.
 
 The plugin's tests deliberately live outside the plugin: `.claude/plugins/cla/` is published whole
 to consuming repos and carries only assets a consumer can use. Run part of the suite with

@@ -48,11 +48,11 @@ MUTANTS = [
         _NL.join(
             [
                 "git status -sb",
-                "pytest plugin-tests",
+                "pytest plugin-tests -q -n auto --dist loadfile",
                 "node --test plugin-tests/node/mechanical-checks.test.mjs",
             ]
         ),
-        _NL.join(["git status -sb", "pytest plugin-tests"]),
+        _NL.join(["git status -sb", "pytest plugin-tests -q -n auto --dist loadfile"]),
         TARGETS,
     ),
     (

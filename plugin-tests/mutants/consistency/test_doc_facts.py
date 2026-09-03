@@ -55,8 +55,12 @@ MUTANTS = [
     (
         "a doc names a plugin path that no longer exists",
         REPO / "DEVELOPER-GUIDE.md",
-        "pytest plugin-tests    # all pytest scopes (1)",
-        "pytest .claude/plugins/cla/gone    # all pytest scopes (1)",
+        # Anchored on the path plus the scope-count phrase the guard parses, so
+        # the mutant still names a dead plugin path. Both halves moved when the
+        # documented gate gained `-n auto --dist loadfile`; keeping the flags out
+        # of the anchor would make it match the fallback line as well as this one.
+        "pytest plugin-tests -q -n auto --dist loadfile    # all pytest scopes (1)",
+        "pytest .claude/plugins/cla/gone -q -n auto --dist loadfile    # all pytest scopes (1)",
         TARGETS,
     ),
     (
