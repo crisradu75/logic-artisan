@@ -150,9 +150,10 @@ TOKEN_EXEMPT: dict[str, str] = {
         "source scanner takes `.md` only under `agents`/`output-styles`. Reached "
         "by the hardcoded-path scanner, which is why it is not in EXEMPT",
     "skills/project-review/scripts/mechanical-checks.mjs":
-        "the plugin's one Node script. The token scanners take `.py` and `.json` "
-        "anywhere under the scan roots plus `.md` under `agents`/`output-styles`, "
-        "so `.mjs` is out of scope for them; the path "
+        "the plugin's one Node script. Neither token scanner opens `.mjs` — the "
+        "prose one takes `SKILL.md`/`references/**/*.md` under `skills/`, and the "
+        "source one takes `.py`/`.json` under the scan roots plus `.md` under "
+        "`agents`/`output-styles` — so it is out of scope for both; the path "
         "scanner covers it, and its own behaviour is tested by "
         "plugin-tests/node/mechanical-checks.test.mjs. Left unscanned "
         "deliberately by issue #190, which widened only the suffix with a "

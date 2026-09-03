@@ -516,18 +516,22 @@ def test_source_scan_leaves_json_outside_the_scan_roots_alone(tmp_path):
     assert rels == ["hooks/hooks.json"]
 
 
-def test_source_scan_does_not_strip_frontmatter_from_json(tmp_path):
-    # `find_source_violations` passes `strip_fm=path.suffix == ".md"`, so a
-    # `.json` is matched in full — deliberately unlike the `agents/` and
-    # `output-styles/` frontmatter exemption, which exists for a `description:`
-    # that legitimately names the host repo so the asset is selected for it.
+def test_source_scan_reports_a_token_in_a_json_description_key(tmp_path):
+    # Named for what it pins: a `description` key is NOT exempt in a `.json` the
+    # way frontmatter is in an `agents/`/`output-styles/` `.md`. That exemption
+    # exists for a `description:` legitimately naming the host repo so the asset
+    # is selected for it; a `.json` has no such need and must not grow one, since
+    # prose in a `_comment` or `description` key IS the leak that motivated
+    # widening to `.json`.
     #
-    # A `.json` has no such exemption and must not grow one: prose in a
-    # `_comment` or `description` key IS the leak that motivated widening to
-    # `.json` in the first place. Without this test, a later "exempt a
-    # description key the way we exempt frontmatter" edit blanks the guard over
-    # precisely the file it was widened for, and every other test here stays
-    # green.
+    # It was first called `..._does_not_strip_frontmatter_from_json`, and that
+    # name promised something it cannot deliver. `_body_lines` skips nothing
+    # unless line 1 is exactly `---`, and a JSON document opens with `{` — so
+    # flipping `strip_fm` to `.json` is a NO-OP on this input and the test stays
+    # green. Two reviewers ran both branches on this fixture and got byte-equal
+    # output. The right response is not a `---`-fenced JSON fixture, which is not
+    # realistic input and would be an unkillable mutant by CLAUDE.md's own rule;
+    # it is to name the edit the test can actually catch.
     _seed(
         tmp_path,
         "skills/_shared/references/required-permissions.json",

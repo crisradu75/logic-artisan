@@ -67,7 +67,14 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the path scanner drops .json, stranding hooks/hooks.json unscanned",
+        # Description corrected: `hooks/hooks.json` is no longer STRANDED by
+        # this edit. Issue #190 widened the token scanner to `.json`, so all
+        # three `.json` files keep a reader and the coverage guard stays green.
+        # What now fires is the count floor alone — 99 - 3 = 96 against `>= 98`
+        # — plus the `REQUIRED_SUFFIXES` assertion. The old wording described
+        # the pre-#190 tree and would have sent a reader looking for a coverage
+        # failure that no longer happens.
+        "the path scanner drops .json; the count floor is what catches it",
         PATH_GUARD,
         'SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")',
         'SCANNED_SUFFIXES = (".md", ".py", ".mjs")',
@@ -125,19 +132,38 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The mutant that isolates the per-suffix assertion in
-        # `test_the_scan_is_not_vacuous`. `.mjs` is ONE file against a floor
-        # margin of one, so dropping it lands the count exactly ON the floor and
-        # clears it — the count cannot discriminate here, and the suffix
-        # assertion is the only thing that can.
+        # Re-breaks a real regression: `mechanical-checks.mjs` loses its only
+        # reader. TWO guards fail on it, and the claim that only one does was
+        # wrong — recorded here because the wrong version shipped first and two
+        # reviewers measured it independently.
         #
-        # Every other suffix contributes enough files to trip the floor first,
-        # which is how the assertion shipped untested: the `.json` mutant above
-        # dies on the floor at 96 < 98 and never reaches line 113. Three
-        # reviewers found that independently. A batch reporting all-killed while
-        # one assertion has never fired is the "read the test that killed it"
-        # rule in CLAUDE.md, one level down: here nothing killed it at all.
-        "the path scanner drops .mjs, which the count floor cannot see",
+        #   * `test_the_scan_is_not_vacuous`'s `REQUIRED_SUFFIXES` assertion,
+        #     with `missing == ['.mjs']`. The count floor does NOT fire: `.mjs`
+        #     is one file against a margin of one, so 99 -> 98 lands exactly ON
+        #     `>= 98` and clears it.
+        #   * `test_every_shipped_file_is_scanned_or_deliberately_exempt`, because
+        #     `mechanical-checks.mjs` sits in `TOKEN_EXEMPT` and NOT in `EXEMPT`
+        #     — the path scanner is its only reader, so dropping the suffix puts
+        #     it in `unexplained`.
+        #
+        # So this mutant does not, on its own, prove the suffix assertion can
+        # fire: revert `REQUIRED_SUFFIXES` to `set(SCANNED_SUFFIXES)` — back to
+        # the tautology the assertion exists to replace — and it still dies, on
+        # the coverage guard. NO single-edit mutant can isolate that assertion
+        # today. Isolating it needs a suffix with exactly one file that some
+        # OTHER scanner also reaches, so the floor and the coverage guard both
+        # stay green; `.mjs` is one file but path-scanner-only, and `.json` is
+        # three files. Neither qualifies, and inventing a file to make one
+        # qualify would be fixture-shaped evidence about nothing.
+        #
+        # The assertion's own firing is therefore established by a read-only
+        # patch instead, cited at its definition in the guard. That is the
+        # honest split: this batch proves the regression is caught, and the
+        # patch proves which assertion catches it. Claiming exclusivity from a
+        # batch that reports only killed/survived over a whole directory is
+        # CLAUDE.md check 3 — reasoning shipped with a measurement's authority.
+        "the path scanner drops .mjs, stranding mechanical-checks.mjs with no "
+        "reader; the count floor cannot see it, two other guards can",
         PATH_GUARD,
         'SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")',
         'SCANNED_SUFFIXES = (".md", ".py", ".json")',

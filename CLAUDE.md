@@ -305,16 +305,18 @@ everywhere) from *facts* (per-repo, never synced):
   and, in this repo, also invoked as a subprocess by a `plugin-tests/tests/conformance/` test — fails
   if a distinctive project token, or a hardcoded absolute developer path, leaks into synced core — one
   scanner covers `SKILL.md`/`references/*.md` prose under `skills/`, a second covers source files
-  under the scan roots — read `_iter_scanned_source_files` for the suffix rule rather than trusting a
-  copy of it here, including the one below (`.md` under `agents`/`output-styles` is frontmatter-exempt
-  the same way `SKILL.md`'s own `description:` is). The source scanner covers **five** roots — the four synced dirs plus `lib/` —
+  under the scan roots (`.md` there is frontmatter-exempt the same way `SKILL.md`'s own
+  `description:` is). The source scanner covers **five** roots — the four synced dirs plus `lib/` —
   because the marketplace ships the whole directory. It was eight until the dev tree moved out; the
   three `*-checks/` entries then named directories that no longer exist, and a stale root is worse
   than a missing one, because the guard refuses to run at all rather than quietly scanning less.
-  The two scanner families do not have the same reach: the hardcoded-path one
-  (`plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py`) covers
-  `.md`/`.py`/`.mjs`/`.json`, so `hooks/hooks.json` and a skill's `.mjs` **are** in scope; the
-  project-token one is `.py`/`.json`/`.md`, so a skill's `.mjs` is **not**. **Do not restate either
+  The two scanner families do not have the same reach — the hardcoded-path one
+  (`test_no_hardcoded_plugin_paths.py`) reaches strictly more file types than the project-token one,
+  which is why a file can be covered by one and not the other. **The suffix lists themselves are
+  NOT written here**: read `SCANNED_SUFFIXES`/`REQUIRED_SUFFIXES` in that guard, and
+  `_iter_scanned_source_files` in the checker. They were spelled out in this paragraph and went stale
+  inside the very change that widened them — twice, once in the widening and once in the fix, each
+  time three lines below a sentence saying not to restate them. **Do not restate either
   coverage split here.** Both used to
   be written out as a list and a count, and both went stale while nothing noticed — the defect
   issue #178 named. `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py` now derives

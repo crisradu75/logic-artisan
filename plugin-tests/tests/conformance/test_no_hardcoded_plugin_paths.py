@@ -52,6 +52,33 @@ SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
 # An expectation read from the thing under test measures nothing. This second
 # list is the independent source, so removing a suffix from `SCANNED_SUFFIXES`
 # now fails loudly here instead of shrinking the scan in silence.
+#
+# THAT THIS ASSERTION FIRES IS ESTABLISHED BY A COMMAND, NOT BY THE BATCH.
+# `plugin-tests/mutants/conformance/test_shipped_files_are_scanned.py` re-breaks
+# the `.mjs` case, but TWO guards fail on it (that batch entry says which), so a
+# kill there does not attribute itself here — the batch reports killed/survived
+# over a whole directory and cannot separate them. No single-edit mutant can:
+# isolating this needs a suffix with exactly one file that another scanner also
+# reaches, and no such suffix exists. So it is measured directly instead::
+#
+#     $ python - <<'PY'
+#     import importlib.util, pathlib
+#     p = pathlib.Path("plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py")
+#     def load():
+#         s = importlib.util.spec_from_file_location("m", p.resolve())
+#         m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
+#     for drop in (".json", ".mjs", ".py", ".md", None):
+#         m = load()
+#         if drop:
+#             m.SCANNED_SUFFIXES = tuple(x for x in m.SCANNED_SUFFIXES if x != drop)
+#         files = list(m._scanned_files())
+#         print(drop, len(files), sorted(m.REQUIRED_SUFFIXES - {f.suffix for f in files}))
+#     PY
+#     .json 96 ['.json']   .mjs 98 ['.mjs']   .py 71 ['.py']   .md 32 ['.md']   None 99 []
+#
+# The `.mjs` row is the load-bearing one: 98 clears the floor, so only this
+# assertion is left. Against the tautological version that column was `[]` in
+# every row — which is what "it could not react" means, measured.
 REQUIRED_SUFFIXES = frozenset({".md", ".py", ".mjs", ".json"})
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
@@ -147,30 +174,61 @@ def test_the_scan_is_not_vacuous():
         f"suffix was dropped from SCANNED_SUFFIXES, or the last file carrying it "
         f"left the tree. Both shrink the scan silently."
     )
+    # The other direction, and it is silent without this line. The assertion
+    # above is `REQUIRED - reached`, so ADDING a suffix to `SCANNED_SUFFIXES`
+    # without adding it to `REQUIRED_SUFFIXES` passes: the new suffix is reached,
+    # nothing is missing, and it carries exactly the protection `.json` had
+    # before `REQUIRED_SUFFIXES` existed — none. Not hypothetical: the `EXEMPT`
+    # entry for `hooks/probe-python.sh` in `test_shipped_files_are_scanned.py`
+    # discusses adding `.sh` as this scanner's fifth suffix, and `probe-python.sh`
+    # is one file against a floor margin of one, so the count could not see it
+    # dropped again either.
+    #
+    # Containment, not equality of the reached set — so this stays independent of
+    # the filesystem and does not re-introduce the tautology.
+    undeclared = sorted(set(SCANNED_SUFFIXES) - REQUIRED_SUFFIXES)
+    assert not undeclared, (
+        f"suffix(es) scanned but not declared required: {undeclared}. Add them to "
+        f"REQUIRED_SUFFIXES, or nothing will notice them being removed again."
+    )
 
 
 def test_the_replacement_is_actually_in_use():
     """Non-vacuity partner with teeth: the guard passing because every reference
-    was DELETED rather than converted would be a silent regression of its own."""
-    used = sum(
-        1
+    was DELETED rather than converted would be a silent regression of its own.
+
+    Counts REFERENCES, not files carrying at least one. The file count is the
+    wrong unit for the sentence above, and by a wide margin: 48 files carry 217
+    occurrences, so a change deleting 169 of them while leaving one per file
+    held the old assertion at 48 and green. It was insensitive to its own named
+    failure by about 4.5x — a floor measuring something adjacent to what its
+    docstring claims, which reads as coverage and is not.
+    """
+    occurrences = sum(
+        p.read_text(encoding="utf-8", errors="replace").count("${CLAUDE_PLUGIN_ROOT}")
         for p in _scanned_files()
-        if "${CLAUDE_PLUGIN_ROOT}" in p.read_text(encoding="utf-8", errors="replace")
     )
-    # Real count 48, from the same printer as the floor above:
+    # Real count 217, from the same printer as the floor above:
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  using-placeholder 48
+    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files
     #
-    # It sat at 34 under a comment claiming 36 — fourteen files of headroom,
-    # found by running that printer for the first time. Same decorative-floor
-    # defect as the scan floor above, in the same function's neighbour, which is
-    # the argument for the printer existing rather than the numbers being
-    # re-derived by hand.
-    assert used >= 47, (
-        f"only {used} synced-core files reference ${{CLAUDE_PLUGIN_ROOT}}; the "
-        "cross-references skills need to invoke their own scripts appear to have "
-        "gone missing rather than been converted"
+    # The file-count version sat at 34 under a comment claiming 36 while the real
+    # figure was 48 — fourteen of headroom, found by running that printer for the
+    # first time. Same decorative-floor defect as the scan floor above, in the
+    # neighbouring function, which is the argument for the printer existing
+    # rather than the numbers being re-derived by hand.
+    #
+    # A one-below margin would be noise here: unlike the scan floor, this count
+    # moves whenever prose is edited, and a doc consolidation legitimately
+    # deletes several references at once. Pinned at 210 — close enough to catch
+    # the wholesale deletion the docstring names, loose enough that ordinary
+    # editing does not red the gate. That is a different rule from the scan
+    # floor's, deliberately, because it counts a different kind of thing.
+    assert occurrences >= 210, (
+        f"only {occurrences} ${{CLAUDE_PLUGIN_ROOT}} reference(s) in synced core; "
+        "the cross-references skills need to invoke their own scripts appear to "
+        "have gone missing rather than been converted"
     )
 
 
@@ -185,13 +243,13 @@ if __name__ == "__main__":
 
     _files = list(_scanned_files())
     _by_suffix = Counter(p.suffix for p in _files)
-    _used = sum(
-        1
-        for p in _files
-        if "${CLAUDE_PLUGIN_ROOT}" in p.read_text(encoding="utf-8", errors="replace")
-    )
+    _texts = [p.read_text(encoding="utf-8", errors="replace") for p in _files]
+    # Both numbers, because both are cited: the floor pins occurrences, and the
+    # file count is what makes the gap between them legible.
+    _refs = sum(t.count("${CLAUDE_PLUGIN_ROOT}") for t in _texts)
+    _carrying = sum(1 for t in _texts if "${CLAUDE_PLUGIN_ROOT}" in t)
     print(
         f"scanned {len(_files)}  "
         + "  ".join(f"{suf} {n}" for suf, n in sorted(_by_suffix.items()))
-        + f"  using-placeholder {_used}"
+        + f"  placeholder-refs {_refs} in {_carrying} files"
     )
