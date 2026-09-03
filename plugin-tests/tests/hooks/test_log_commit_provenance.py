@@ -70,6 +70,52 @@ def test_a_non_commit_is_not_recognised(command):
     assert mod._is_commit_command(command) is False
 
 
+# ---------- one call, several commands (issue #206) ----------
+#
+# Each check in `_is_commit_command` is about ONE command, so a call holding
+# several must be split first. The separator set is the whole subject here: it
+# was `|;&` and did NOT include the newline, so a `git commit` on one line and a
+# `git log` on the next read as a single command and the commit was dropped.
+# Under-recording costs the same denominator as over-recording.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git commit -m 'x'\ngit log -1 --pretty=%s",
+        "git log -1 --pretty=%s\ngit commit -m 'x'",
+        "git commit -m 'x'\r\ngit show HEAD",
+        "git commit -m 'x'\ngit push --dry-run",
+        "git add -- f.txt\ngit commit -m 'x'\ngit rev-list --count HEAD",
+    ],
+)
+def test_a_commit_beside_another_command_is_still_a_commit(command):
+    """The exact shape that dropped this repo's own commits.
+
+    Verifying a commit's trailers right after making it is what
+    `spec-to-pr/references/ship.md` §2b encourages, so this call shape is the
+    one an author following the skills is most likely to write.
+    """
+    assert mod._is_commit_command(command) is True
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git log -1 --pretty=%s\ngit status",
+        "git commit --dry-run\ngit status",
+        "git commit --dry-run\ngit log -1",
+    ],
+)
+def test_splitting_does_not_admit_a_non_commit(command):
+    """Splitting must not turn the exclusions into a way through.
+
+    Each of these has a `--dry-run` or a history read in the SAME segment as the
+    commit-shaped text, so no segment qualifies and the answer stays False.
+    """
+    assert mod._is_commit_command(command) is False
+
+
 # ---------- skill attribution ----------
 
 
@@ -176,6 +222,21 @@ def test_it_writes_one_line_for_a_real_commit(tmp_path):
     assert rows[0]["skill"] == "spec-to-pr"
     assert rows[0]["branch"] == "main"
     assert rows[0]["sha"]
+
+
+def test_a_commit_verified_in_the_same_call_is_recorded(tmp_path):
+    """End to end for issue #206, not just the recogniser.
+
+    The recogniser tests above pin `_is_commit_command`; this one shows a row
+    actually lands, so a later refactor cannot satisfy them while the write path
+    still drops the commit.
+    """
+    repo = _repo(tmp_path)
+    r = _run(repo, "git commit -m 'fix: review round 1'\ngit log -1 --pretty=%s")
+    assert r.returncode == 0, r.stderr
+    rows = _ledger(repo)
+    assert len(rows) == 1
+    assert rows[0]["subject"] == "fix: review round 1"
 
 
 def test_a_repeated_command_does_not_re_record_the_same_head(tmp_path):

@@ -210,23 +210,43 @@ def _already_recorded(ledger: Path, sha: str) -> bool:
     return stored.startswith(sha) or sha.startswith(stored)
 
 
+# A Bash call holds several commands, and every one of these ends one. The
+# NEWLINE is the reason this exists as a constant: the earlier character class
+# `[^|;&]` separated on the three operators and not on line breaks, so both the
+# commit search and the history-reading exclusion ran straight across the lines
+# of a multi-line call. A `git commit` on one line and a `git log` on the next
+# then read as one command, and the commit went unrecorded — GitHub issue #206.
+_SEGMENTS = re.compile(r"[|;&\n\r]+")
+
+
 def _is_commit_command(command: str) -> bool:
     """True for a real `git commit`, false for anything that merely mentions it.
 
     Deliberately narrow. `git log --grep="git commit"`, a `--dry-run`, and any
     prose containing the words must not produce a ledger line; over-recording
     corrupts the very ratio this hook exists to report.
+
+    Judged per segment, and that is the load-bearing part. Every test here is
+    about ONE command, so a call holding several must be split before any of
+    them is applied — otherwise a neighbouring command's `--dry-run` or `git
+    log` suppresses a real commit sitting on another line. Under-recording is
+    the mirror of the failure above and costs the same denominator: a commit
+    with no row is indistinguishable from a commit that never happened.
     """
     # Blank out quoted spans first, the same way the git guard hooks do: without
     # it `echo 'run git commit later'` reads as a commit and writes a spurious
     # line — precisely the over-recording that corrupts this ledger.
     command = strip_quoted_spans(command)
-    if not re.search(GIT_CMD + r"[^|;&]*\bcommit\b", command):
-        return False
-    if "--dry-run" in command:
-        return False
-    # A commit inside a pipeline reading history (`git log … | …`) is not a commit.
-    return not re.search(GIT_CMD + r"[^|;&]*\b(log|show|rev-list)\b", command)
+    for segment in _SEGMENTS.split(command):
+        if not re.search(GIT_CMD + r".*\bcommit\b", segment):
+            continue
+        if "--dry-run" in segment:
+            continue
+        # A commit inside a pipeline reading history (`git log … | …`) is not one.
+        if re.search(GIT_CMD + r".*\b(log|show|rev-list)\b", segment):
+            continue
+        return True
+    return False
 
 
 def _detect_skill(subject: str) -> str | None:
