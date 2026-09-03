@@ -116,8 +116,31 @@ MUTANTS = [
         "the source token scanner drops .json, stranding the two "
         "required-permissions files and hooks/hooks.json unscanned",
         PLUGIN / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py",
-        'if path.suffix in (".py", ".json") or (',
-        'if path.suffix in (".py",) or (',
+        # Anchored on the tuple alone, not the whole `if` line. The line is
+        # wrapped, so including ` or (` bakes the current formatting into the
+        # anchor and a reflow or a fourth suffix breaks it — loudly, at
+        # preflight, but for no reason.
+        '(".py", ".json")',
+        '(".py",)',
+        TARGETS,
+    ),
+    (
+        # The mutant that isolates the per-suffix assertion in
+        # `test_the_scan_is_not_vacuous`. `.mjs` is ONE file against a floor
+        # margin of one, so dropping it lands the count exactly ON the floor and
+        # clears it — the count cannot discriminate here, and the suffix
+        # assertion is the only thing that can.
+        #
+        # Every other suffix contributes enough files to trip the floor first,
+        # which is how the assertion shipped untested: the `.json` mutant above
+        # dies on the floor at 96 < 98 and never reaches line 113. Three
+        # reviewers found that independently. A batch reporting all-killed while
+        # one assertion has never fired is the "read the test that killed it"
+        # rule in CLAUDE.md, one level down: here nothing killed it at all.
+        "the path scanner drops .mjs, which the count floor cannot see",
+        PATH_GUARD,
+        'SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")',
+        'SCANNED_SUFFIXES = (".md", ".py", ".json")',
         TARGETS,
     ),
     (

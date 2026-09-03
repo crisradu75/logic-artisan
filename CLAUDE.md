@@ -304,9 +304,10 @@ everywhere) from *facts* (per-repo, never synced):
   only. A conformance guard — `skills/_shared/scripts/check_no_project_tokens.py`, run as a program
   and, in this repo, also invoked as a subprocess by a `plugin-tests/tests/conformance/` test — fails
   if a distinctive project token, or a hardcoded absolute developer path, leaks into synced core — one
-  scanner covers `SKILL.md`/`references/*.md` prose under `skills/`, a second covers every `.py` file
-  plus `agents/*.md` and `output-styles/*.md` (frontmatter-exempt the same way `SKILL.md`'s own
-  `description:` is). The source scanner covers **five** roots — the four synced dirs plus `lib/` —
+  scanner covers `SKILL.md`/`references/*.md` prose under `skills/`, a second covers source files
+  under the scan roots — read `_iter_scanned_source_files` for the suffix rule rather than trusting a
+  copy of it here, including the one below (`.md` under `agents`/`output-styles` is frontmatter-exempt
+  the same way `SKILL.md`'s own `description:` is). The source scanner covers **five** roots — the four synced dirs plus `lib/` —
   because the marketplace ships the whole directory. It was eight until the dev tree moved out; the
   three `*-checks/` entries then named directories that no longer exist, and a stale root is worse
   than a missing one, because the guard refuses to run at all rather than quietly scanning less.

@@ -151,7 +151,8 @@ TOKEN_EXEMPT: dict[str, str] = {
         "by the hardcoded-path scanner, which is why it is not in EXEMPT",
     "skills/project-review/scripts/mechanical-checks.mjs":
         "the plugin's one Node script. The token scanners take `.py` and `.json` "
-        "under the scan roots, so `.mjs` is out of scope for them; the path "
+        "anywhere under the scan roots plus `.md` under `agents`/`output-styles`, "
+        "so `.mjs` is out of scope for them; the path "
         "scanner covers it, and its own behaviour is tested by "
         "plugin-tests/node/mechanical-checks.test.mjs. Left unscanned "
         "deliberately by issue #190, which widened only the suffix with a "
@@ -320,23 +321,32 @@ def test_the_coverage_split_is_not_vacuous():
     measurement::
 
         $ python plugin-tests/tests/conformance/test_shipped_files_are_scanned.py
-        shipped 103  reached 98  token-candidates 98  token-reached 93
+        shipped 104  reached 99  token-candidates 99  token-reached 97
 
-    Measured 2026-08-29. That one-below margin is the rule
+    That one-below margin is the rule
     `test_no_hardcoded_plugin_paths.py` states for its own floor, and the first
     version of this file broke it — floors of 100 and 95 let three files be
     deleted with nothing noticing, which is the silence the rule exists to deny.
     The next deliberate deletion is EXPECTED to trip these and get them lowered
     with it.
+
+    A floor drifts UPWARD too, and that direction has no failing test to
+    announce it. Widening a scanner raises a real count while every floor stays
+    where it was, so the margin silently grows into the headroom this rule
+    forbids. Issue #190 did exactly that: `token-reached` went 94 -> 97 in one
+    commit and left the token floor five below its population, in the same
+    change that wrote up the identical drift next door. **Re-run the printer and
+    re-pin every floor whenever a scanner's reach changes** — the widening is
+    the signal, since nothing else will be.
     """
     shipped, reached = _shipped(), _reached()
     token_candidates = shipped - set(EXEMPT)
-    assert len(shipped) >= 102, f"shipped set collapsed to {len(shipped)} files"
+    assert len(shipped) >= 103, f"shipped set collapsed to {len(shipped)} files"
     assert (
-        len(shipped & reached) >= 97
+        len(shipped & reached) >= 98
     ), f"scanner coverage collapsed to {len(shipped & reached)} files"
     assert (
-        len(token_candidates & _token_reached()) >= 92
+        len(token_candidates & _token_reached()) >= 96
     ), "token-scanner coverage collapsed to " \
        f"{len(token_candidates & _token_reached())} files"
 

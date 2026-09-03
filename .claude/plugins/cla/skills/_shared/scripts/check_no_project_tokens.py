@@ -306,18 +306,22 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # guard refused to run at all (exit 2) in every consuming repo. Pruned to the
 # five roots that actually ship.
 #
-# SOME shipped `.md`/`.py` files fall outside both scanners above. Which ones is
-# NOT written here. It was — as a list and a count, "counted, not estimated" —
-# and the count went stale while nothing noticed, twice, in this comment and in
-# CLAUDE.md. Checking a hand-written list once is not a mechanism; the next
-# rename falsifies it silently, because a file no scanner opens returns exactly
-# what a clean file returns.
+# SOME shipped files fall outside both scanners above. Which ones is NOT written
+# here, and neither is the suffix rule that decides it. Both were — as a list and
+# a count, "counted, not estimated" — and both went stale while nothing noticed,
+# in this comment and in the source repo's own CLAUDE.md. Checking a hand-written
+# list once is not a mechanism; the next rename falsifies it silently, because a
+# file no scanner opens returns exactly what a clean file returns. The `.md`/`.py`
+# phrasing this comment used to carry is the worked example: it survived the
+# widening to `.json` and was wrong twice over, since the map it describes has no
+# suffix rule at all.
 #
 # The canonical-source repo's `TOKEN_EXEMPT` map, in
 # `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py`, derives the
-# split instead: every shipped `.md`/`.py` must be reached by a scanner above or
-# carry a stated reason there, and an exemption whose file was deleted or has
-# since been picked up fails too. Read that map for the current list.
+# split instead: every shipped file must be reached by a scanner above or carry a
+# stated reason there, and an exemption whose file was deleted or has since been
+# picked up fails too. Read that map for the current list, and
+# `_iter_scanned_source_files` below for the current suffix rule.
 #
 # A deliberate path-parsing fixture stays scannable by carrying the
 # `path-fixture-ok` marker on its line, rather than by exempting a whole file.
@@ -363,7 +367,12 @@ def _iter_scanned_source_files(plugin_root: Path):
     `hooks/hooks.json`), identical in every install, so the widening adds no
     per-repo surface beyond those three. `.claude-plugin/plugin.json` is NOT
     among them: it sits outside every entry in `SOURCE_SCAN_ROOTS`, and is
-    covered instead by the marketplace-manifest guard in the source repo.
+    deliberately left unscanned rather than covered elsewhere. The manifest
+    legitimately names its own source repository — that is what makes the
+    install commands copy-pasteable — so scanning it would flag the one file
+    whose job is to identify the source. Its shape and version ARE validated,
+    by the source repo's marketplace-manifest guard; nothing token-scans it, by
+    design.
 
     Not widened to `.sh` or to the suffix-less `hooks/git/pre-push`: neither has
     a demonstrated leak, and a suffix-less file needs a rule that is not keyed on

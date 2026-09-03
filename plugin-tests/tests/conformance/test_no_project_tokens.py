@@ -499,10 +499,44 @@ def test_source_scan_leaves_json_outside_the_scan_roots_alone(tmp_path):
     # `.claude-plugin/plugin.json` ships, carries a `description`, and is NOT in
     # scope: the widening added a SUFFIX, not a root. Pinned because "scan .json"
     # read loosely would sweep the manifest in, and the manifest legitimately
-    # names this repository — it is validated by the marketplace-manifest guard
-    # instead. A version keyed on suffix alone passes every other test here.
+    # names this repository.
+    #
+    # THE SECOND SEED IS A POSITIVE CONTROL, not decoration. The first version of
+    # this test seeded only the manifest and asserted no violations — and with no
+    # scan root present in `tmp_path` at all, `_iter_scanned_source_files`
+    # `continue`s past all five and yields nothing. Absence asserted over an
+    # empty scan is exactly what a scanner whose body is `return` produces, so
+    # the test passed against the OLD scanner too and could not fail on any edit
+    # to the suffix rule. Three reviewers measured that independently. Seeding a
+    # `.json` inside a root and asserting the result is EXACTLY that file proves
+    # the scan ran and that the manifest was excluded, in one assertion.
     _seed(tmp_path, ".claude-plugin/plugin.json", '{\n  "name": "funnel-demo"\n}\n')
-    assert find_source_violations(tmp_path, ["funnel-demo"]) == []
+    _seed(tmp_path, "hooks/hooks.json", '{\n  "note": "wired for funnel-demo"\n}\n')
+    rels = sorted(h[0] for h in find_source_violations(tmp_path, ["funnel-demo"]))
+    assert rels == ["hooks/hooks.json"]
+
+
+def test_source_scan_does_not_strip_frontmatter_from_json(tmp_path):
+    # `find_source_violations` passes `strip_fm=path.suffix == ".md"`, so a
+    # `.json` is matched in full — deliberately unlike the `agents/` and
+    # `output-styles/` frontmatter exemption, which exists for a `description:`
+    # that legitimately names the host repo so the asset is selected for it.
+    #
+    # A `.json` has no such exemption and must not grow one: prose in a
+    # `_comment` or `description` key IS the leak that motivated widening to
+    # `.json` in the first place. Without this test, a later "exempt a
+    # description key the way we exempt frontmatter" edit blanks the guard over
+    # precisely the file it was widened for, and every other test here stays
+    # green.
+    _seed(
+        tmp_path,
+        "skills/_shared/references/required-permissions.json",
+        '{\n  "description": "funnel-demo permissions",\n  "allow": []\n}\n',
+    )
+    hits = find_source_violations(tmp_path, ["funnel-demo"])
+    assert [h[0] for h in hits] == [
+        "skills/_shared/references/required-permissions.json"
+    ]
 
 
 def test_source_scan_ignores_bytecode_and_overlays(tmp_path):

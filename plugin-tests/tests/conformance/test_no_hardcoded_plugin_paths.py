@@ -38,6 +38,22 @@ BAD = ".claude/plugins/cla"
 SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")
 SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
 
+# What the scanner is REQUIRED to reach, written down independently of the
+# constant above rather than derived from it. The duplication is the point.
+#
+# `test_the_scan_is_not_vacuous` first compared `SCANNED_SUFFIXES` against the
+# suffixes actually reached — and that comparison is a tautology, because
+# `_scanned_files` filters on `SCANNED_SUFFIXES` itself. Delete a suffix and it
+# leaves the declaration and the file set in the same edit, so the difference
+# stays empty and the assertion passes. It could not react to the one edit it
+# was added to catch. Three reviewers found it independently; one patched the
+# constant in a throwaway interpreter and measured the assertion still green.
+#
+# An expectation read from the thing under test measures nothing. This second
+# list is the independent source, so removing a suffix from `SCANNED_SUFFIXES`
+# now fails loudly here instead of shrinking the scan in silence.
+REQUIRED_SUFFIXES = frozenset({".md", ".py", ".mjs", ".json"})
+
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
 
@@ -83,7 +99,12 @@ def test_the_scan_is_not_vacuous():
     """A guard that scans nothing passes forever, and two guards in this repo
     already did once."""
     files = list(_scanned_files())
-    # Re-measured: the real count is 99. Pinned near it, not
+    # Re-measured with this file's own `__main__`, which is why it has one::
+    #
+    #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
+    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  using-placeholder 48
+    #
+    # The real count is 99. Pinned near it, not
     # comfortably below it, matching the rule `test_subprocess_encoding.py`
     # states for its own floor: move it to the new real count when something is
     # deliberately added or deleted, never to a number chosen to be safe from
@@ -95,23 +116,37 @@ def test_the_scan_is_not_vacuous():
     #
     # It had drifted to a floor of 95 against a comment claiming 96, while the
     # real count had risen to 99 — four files of headroom, which is precisely
-    # the decorative floor the rule above forbids. That gap had already cost
-    # something measurable: with `.json` at 3 files, dropping it from
-    # `SCANNED_SUFFIXES` left 96 and cleared the floor, so the suffix assertion
-    # below is what now discriminates rather than the count.
+    # the decorative floor the rule above forbids.
     assert len(files) >= 98, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
-    # Every declared suffix is actually represented. The floor above cannot do
-    # this job: a suffix contributing fewer files than the floor's margin can be
-    # dropped entirely without moving the count below it, and `.json` was in
-    # exactly that state. `hooks/hooks.json` was covered here and nowhere else
-    # until issue #190 widened the token scanner to `.json`; once a second
-    # scanner reached it, the coverage guard stopped noticing this scanner
-    # losing it, and only this assertion does.
-    missing = sorted(set(SCANNED_SUFFIXES) - {p.suffix for p in files})
-    assert not missing, f"declared suffix(es) reaching no file: {missing}"
+    # Every REQUIRED suffix is actually reached. Two directions, one assertion,
+    # and `REQUIRED_SUFFIXES` above explains why the expectation is a separate
+    # list rather than `SCANNED_SUFFIXES` itself.
+    #
+    # Direction one: a suffix removed from `SCANNED_SUFFIXES`. This is why the
+    # floor cannot be the whole defence — a suffix contributing fewer files than
+    # the floor's margin drops out without moving the count below it. `.mjs` is
+    # one file against a margin of one, so dropping it lands exactly ON the
+    # floor and passes it. `hooks/hooks.json` is the sharper case: it was
+    # covered here and nowhere else until issue #190 widened the token scanner
+    # to `.json`, and once a second scanner reached it, the coverage guard in
+    # `test_shipped_files_are_scanned.py` stopped noticing THIS scanner losing
+    # it. Today the floor happens to catch a `.json` drop (99 - 3 = 96 < 98),
+    # but that is arithmetic, not a guarantee: the comment above prescribes
+    # lowering the floor on a deliberate deletion, and a floor lowered to 96
+    # hands the `.json` narrowing a green run. This assertion does not move.
+    #
+    # Direction two: the last file of a declared suffix leaving the TREE, which
+    # is a real loss the floor's margin can also absorb.
+    reached = {p.suffix for p in files}
+    missing = sorted(REQUIRED_SUFFIXES - reached)
+    assert not missing, (
+        f"suffix(es) this scanner must reach but does not: {missing}. Either a "
+        f"suffix was dropped from SCANNED_SUFFIXES, or the last file carrying it "
+        f"left the tree. Both shrink the scan silently."
+    )
 
 
 def test_the_replacement_is_actually_in_use():
@@ -122,8 +157,41 @@ def test_the_replacement_is_actually_in_use():
         for p in _scanned_files()
         if "${CLAUDE_PLUGIN_ROOT}" in p.read_text(encoding="utf-8", errors="replace")
     )
-    assert used >= 34, (  # real count 36
+    # Real count 48, from the same printer as the floor above:
+    #
+    #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
+    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  using-placeholder 48
+    #
+    # It sat at 34 under a comment claiming 36 — fourteen files of headroom,
+    # found by running that printer for the first time. Same decorative-floor
+    # defect as the scan floor above, in the same function's neighbour, which is
+    # the argument for the printer existing rather than the numbers being
+    # re-derived by hand.
+    assert used >= 47, (
         f"only {used} synced-core files reference ${{CLAUDE_PLUGIN_ROOT}}; the "
         "cross-references skills need to invoke their own scripts appear to have "
         "gone missing rather than been converted"
+    )
+
+
+if __name__ == "__main__":
+    # The command this file's floors cite. It exists for the same reason the
+    # sibling guard's does: `pytest <this file>` prints a pass count and nothing
+    # else, so a floor whose stated measuring command emits no measurement
+    # cannot be re-derived — and this file is the worked example of that decay,
+    # having sat at a floor of 95 under a comment claiming 96 while the real
+    # count had risen to 99.
+    from collections import Counter
+
+    _files = list(_scanned_files())
+    _by_suffix = Counter(p.suffix for p in _files)
+    _used = sum(
+        1
+        for p in _files
+        if "${CLAUDE_PLUGIN_ROOT}" in p.read_text(encoding="utf-8", errors="replace")
+    )
+    print(
+        f"scanned {len(_files)}  "
+        + "  ".join(f"{suf} {n}" for suf, n in sorted(_by_suffix.items()))
+        + f"  using-placeholder {_used}"
     )

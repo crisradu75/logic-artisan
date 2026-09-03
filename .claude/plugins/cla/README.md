@@ -141,8 +141,10 @@ CLA is portable because it separates *procedure* (generic, synced everywhere) fr
   **conformance guard** — `skills/_shared/scripts/check_no_project_tokens.py`, run as a program
   (exit 0 clean / 1 violations / 2 could-not-run) — fails if a distinctive project token, or a
   hardcoded absolute developer path, leaks into synced core: one scanner covers `SKILL.md`/reference
-  prose under `skills/`, a second covers every `.py` file plus `agents/*.md` and `output-styles/*.md`,
-  across five roots — `skills/`, `agents/`, `hooks/`, `output-styles/`, `lib/`.
+  prose under `skills/`, a second covers source files across five roots — `skills/`, `agents/`,
+  `hooks/`, `output-styles/`, `lib/`. For which file types the second one opens, read
+  `_iter_scanned_source_files` in the checker itself: this file is exempt from every scanner, so a
+  suffix list copied here goes stale with nothing to catch it, and one did.
   It is a program rather than a test precisely so it runs here — an installed plugin is a read-only
   cache with no pytest gate over it, so a guard filed as a test module would be unreachable.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` beside them: the repo's own
