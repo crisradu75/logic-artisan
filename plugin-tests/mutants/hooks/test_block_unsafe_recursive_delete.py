@@ -154,7 +154,54 @@ MUTANTS.append((
     "the target's own link-ness is never checked, so rm -rf of a junction "
     "recurses through it and deletes the far side",
     HOOK,
-    "            if _is_link_like(unresolved):",
-    "            if False and _is_link_like(unresolved):",
+    "            if _target_is_link(unresolved):",
+    "            if False and _target_is_link(unresolved):",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The trailing-separator strip. Without it `os.path.islink('link/')` is
+    # False on POSIX -- and `rm -rf link/` is the spelling that actually reaches
+    # through there, while bare `rm -rf link` merely unlinks. The first version
+    # of this fix omitted the strip and therefore blocked the safe spelling and
+    # allowed the destructive one. Windows hides the bug (os.stat reads the
+    # reparse point through a trailing separator), which is why it took a run
+    # under WSL to find, and why the killing test is parametrized over spellings.
+    "the trailing-separator strip is dropped, so rm -rf <link>/ stops being "
+    "recognised as targeting the link",
+    HOOK,
+    '    while len(probe) > 3 and probe[-1] in "/\\\\":',
+    '    while False and len(probe) > 3 and probe[-1] in "/\\\\":',
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The must-resolve-to-a-directory requirement. Without it a dangling link
+    # and a link to a FILE both block, and neither can produce the incident --
+    # a dangling link points at nothing and a file link has no far side to
+    # recurse into. On a guard that BLOCKS and ships to four repos those are
+    # real false positives: `rm -rf ~/.config/nvim` on a dotfiles symlink, and
+    # `rm -rf node_modules/<pkg>` in a workspace.
+    "the directory requirement is dropped, so a dangling or file-targeted link "
+    "blocks too",
+    HOOK,
+    "    return os.path.isdir(probe)",
+    "    return True",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # ValueError in the swallow tuple. `os.stat` raises it for an embedded null,
+    # and the command arrives as JSON on stdin so a null is trivially reachable.
+    # `os.path.islink` catches it internally, which is why this only became live
+    # when the caller started passing an unresolved path straight in -- an
+    # unconditional BLOCK on a worktree delete became an uncaught raise, which
+    # the dispatcher fails open into an `ask`. Nobody is at the prompt in an
+    # unattended run.
+    "ValueError stops being swallowed, so an embedded null in the path crashes "
+    "the hook instead of blocking",
+    HOOK,
+    "    except (OSError, ValueError, AttributeError) as exc:",
+    "    except (OSError, AttributeError) as exc:",
     TARGETS,
 ))

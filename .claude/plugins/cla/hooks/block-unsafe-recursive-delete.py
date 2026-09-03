@@ -52,7 +52,7 @@ Escape hatch: set `ALLOW_UNSAFE_RM=1` for a deliberate exception.
 
 Exit codes:
   0 - allow (no destructive-delete pattern detected, no candidate path trips
-      either trigger, or any parse/FS error -- fail-open, a guard must never
+      any trigger, or any parse/FS error -- fail-open, a guard must never
       break normal work)
   2 - block with stderr explaining which trigger fired and how to proceed
 """
@@ -225,9 +225,72 @@ def _is_link_like(path: str) -> bool:
         return False
     try:
         attrs = os.stat(path, follow_symlinks=False).st_file_attributes
-    except (OSError, AttributeError):
+    # ValueError is NOT defensive padding. `os.stat` raises it for an embedded
+    # null (`stat: embedded null character in path`), and the command text is
+    # JSON on stdin, so a null is trivially reachable. `os.path.islink` above
+    # catches it internally, which is why this only became live when the caller
+    # started passing an unresolved path straight in — a hard BLOCK on a
+    # `.claude/worktrees/` delete became an uncaught raise, which the dispatcher
+    # fails open into an `ask`. In an unattended run there is nobody at the
+    # prompt. Measured against the previous commit: exit 2 became exit 1.
+    except (OSError, ValueError, AttributeError) as exc:
+        # Say so — but ONLY where the answer is genuinely undetermined. "Not a
+        # link" and "could not tell" are the same return value, and this is now
+        # the guard's FIRST gate, so an unreadable probe on a real junction
+        # allows the delete and looks exactly like an approval.
+        # `dispatch-bash-pretooluse.py` makes that argument for a guard that
+        # could not RUN; this is the same problem one level in.
+        #
+        # A path that does not exist is NOT undetermined — it is a determinate
+        # "not a link", and it is the ordinary case: `_tokenize_variants` runs
+        # both posix and non-posix and feeds every candidate here, so a Windows
+        # path mangled by the posix variant reaches this line on every single
+        # run. Printing there floods stderr on the allow path and broke
+        # `test_allows_a_clean_recursive_delete`, which rightly asserts stderr
+        # is empty. `lexists` is the discriminator: it does not follow the link,
+        # so a dangling link still counts as present.
+        if os.path.lexists(path):
+            print(
+                f"[block-unsafe-recursive-delete] could not determine link-ness of "
+                f"{path!r} ({type(exc).__name__}: {exc}) -- treating as not a link",
+                file=sys.stderr,
+            )
         return False
     return bool(attrs & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _target_is_link(unresolved: str) -> bool:
+    """Whether the delete TARGET is itself a link we must not recurse through.
+
+    Two things this gets right that a bare `_is_link_like(unresolved)` does not.
+
+    TRAILING SEPARATORS. POSIX `lstat` resolves through a trailing slash, so
+    `os.path.islink('link/')` is False while `os.path.islink('link')` is True —
+    and `rm -rf link/` is the spelling that actually reaches through on POSIX.
+    Measured on GNU coreutils: `rm -rf link` unlinks the link and the far side
+    survives, while `rm -rf link/` leaves the link and DELETES the far side's
+    contents. So the unstripped check blocked the safe spelling and allowed the
+    destructive one — a precise inversion, on the platform this fix could not
+    execute on. Stripped by hand rather than with `os.path.normpath`, which also
+    collapses `..` and would rewrite `link/..` into the parent, losing the very
+    thing being asked about. Windows is unaffected either way: `os.stat` reads
+    the reparse point through a trailing separator.
+
+    IT MUST RESOLVE TO A DIRECTORY. A dangling link points at nothing and a link
+    to a FILE has no far side to recurse into, so neither can produce the
+    incident — and blocking them is a pure false positive on a shipped guard.
+    `rm -rf ~/.config/nvim` where that is a dotfiles symlink, and
+    `rm -rf node_modules/<pkg>` in a workspace, are ordinary commands.
+    `os.path.isdir` follows the link, which is exactly the discrimination wanted.
+    """
+    probe = unresolved
+    if probe.endswith(("/.", "\\.")):
+        probe = probe[:-2] or probe
+    while len(probe) > 3 and probe[-1] in "/\\":
+        probe = probe[:-1]
+    if not (_is_link_like(unresolved) or _is_link_like(probe)):
+        return False
+    return os.path.isdir(probe)
 
 
 def _contains_symlink(resolved: Path) -> bool:
@@ -289,7 +352,6 @@ def main() -> int:
     for raw_target in _extract_target_paths(command):
         try:
             unresolved = raw_target if os.path.isabs(raw_target) else os.path.join(cwd, raw_target)
-            resolved = Path(unresolved).resolve()
 
             # CHECK THE TARGET'S OWN LINK-NESS BEFORE `resolve()` DESTROYS THE
             # EVIDENCE. `Path.resolve()` follows the reparse point, so by the
@@ -324,21 +386,42 @@ def main() -> int:
             # symlink on purpose; `ALLOW_UNSAFE_RM=1` is the exit. Verified by
             # execution on Windows with a real junction only — the POSIX branch
             # is reasoned, not run.
-            if _is_link_like(unresolved):
+            if _target_is_link(unresolved):
+                points_at = Path(unresolved).resolve()
+                # Only name the far side when it IS somewhere else. For a
+                # self-referential link `resolve()` returns the path unchanged,
+                # and printing "deletes what it points at -- here, <the same
+                # path>" reads as a bug in the message.
+                destination = (
+                    f" -- here, '{points_at}' --" if points_at != Path(unresolved) else ""
+                )
+                # The recursing-through behaviour is REAL on Windows/git-bash and
+                # is the incident. On POSIX it depends on the spelling: bare
+                # `rm -rf link` unlinks the link, while `rm -rf link/` reaches
+                # through. The message must not assert the Windows behaviour as
+                # universal — on POSIX that tells a developer their safe command
+                # caused the data loss and prescribes what they just typed.
+                recursion = (
+                    "`rm -rf` on it recurses THROUGH the link and deletes what it points at"
+                    if sys.platform == "win32"
+                    else "a recursive delete can reach THROUGH the link and delete what it "
+                         "points at (a trailing slash, `rm -rf <link>/`, does exactly that here)"
+                )
                 print(
                     f"blocked: recursive+force delete targets '{unresolved}', which is itself a "
-                    "symlink or directory junction. `rm -rf` on it recurses THROUGH the link and "
-                    "deletes what it points at -- here, "
-                    f"'{resolved}' -- rather than removing the link. Unlink it instead with a "
-                    "plain, non-recursive rm/Remove-Item on just that entry (or `git worktree "
-                    "remove` if it is a worktree). This is the shape that destroyed unrelated "
-                    "primary-clone files on 2026-07-19 (see memory "
+                    f"symlink or directory junction. {recursion}{destination} rather than "
+                    "removing the link. Remove the link itself instead, with a plain "
+                    "non-recursive rm/Remove-Item on just that entry (or `git worktree remove` if "
+                    "it is a worktree). This is the shape that destroyed unrelated primary-clone "
+                    "files in the incident this hook exists for (see memory "
                     "'feedback-worktree-rmrf-junction-risk'). Override for a deliberate exception "
                     "by setting ALLOW_UNSAFE_RM=1 in the environment. "
                     "(hook: block-unsafe-recursive-delete.py)",
                     file=sys.stderr,
                 )
                 return 2
+
+            resolved = Path(unresolved).resolve()
 
             if _is_worktree_path(resolved):
                 print(
