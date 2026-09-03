@@ -70,6 +70,70 @@ def test_a_non_commit_is_not_recognised(command):
     assert mod._is_commit_command(command) is False
 
 
+# ---------- one call, several commands (issue #206) ----------
+#
+# Each check in `_is_commit_command` is about ONE command, so a call holding
+# several must be split first. The separator set is the whole subject here: it
+# was `|;&` and did NOT include the newline, so a `git commit` on one line and a
+# `git log` on the next read as a single command and the commit was dropped.
+# Under-recording costs the same denominator as over-recording.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git commit -m 'x'\ngit log -1 --pretty=%s",
+        "git log -1 --pretty=%s\ngit commit -m 'x'",
+        "git commit -m 'x'\r\ngit show HEAD",
+        "git commit -m 'x'\ngit push --dry-run",
+        "git add -- f.txt\ngit commit -m 'x'\ngit rev-list --count HEAD",
+        # `&&` is the commonest multi-command idiom and had no case at all.
+        "git commit -m 'x' && git log -1",
+        # A backslash before a line break is a line CONTINUATION, so these two
+        # physical lines are one command. Splitting there loses the commit.
+        "git \\\n  commit -m 'x'",
+        # The quoted body is blanked before the split, so its newline is not a
+        # separator. This repo's own commit messages are multi-line.
+        "git commit -m 'line one\nline two'",
+    ],
+)
+def test_a_commit_beside_another_command_is_still_a_commit(command):
+    """The exact shape that dropped this repo's own commits.
+
+    Verifying a commit's trailers right after making it is what
+    `spec-to-pr/references/ship.md` §2b encourages, so this call shape is the
+    one an author following the skills is most likely to write.
+    """
+    assert mod._is_commit_command(command) is True
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Prose, not a command. `strip_quoted_spans` does not blank heredoc
+        # bodies, so this line reaches the loop as its own segment; only the
+        # leads-with-git test rejects it. Before the split it was suppressed by
+        # accident, because the `git log` line matched the whole-string
+        # exclusion.
+        "cat <<'EOF'\nReminder: run git commit once tests pass\nSee git log for context\nEOF",
+        # A dry run in the same segment as the commit text.
+        "git commit --dry-run\ngit status",
+        # A history read in the same segment as the word commit — here it is
+        # part of a filename. This is the exclusion's own branch, which no
+        # earlier case reached: the two before it exit on `--dry-run` first.
+        "git status\ngit show HEAD -- cla.io/retro/commit-provenance.jsonl",
+    ],
+)
+def test_splitting_does_not_admit_a_non_commit(command):
+    """Splitting must not turn the exclusions into a way through.
+
+    Each case fails a DIFFERENT test in the loop — leads-with-git, `--dry-run`,
+    then the history read. Three cases exiting by the same branch would look
+    like coverage while proving one thing.
+    """
+    assert mod._is_commit_command(command) is False
+
+
 # ---------- skill attribution ----------
 
 
@@ -176,6 +240,21 @@ def test_it_writes_one_line_for_a_real_commit(tmp_path):
     assert rows[0]["skill"] == "spec-to-pr"
     assert rows[0]["branch"] == "main"
     assert rows[0]["sha"]
+
+
+def test_a_commit_verified_in_the_same_call_is_recorded(tmp_path):
+    """End to end for issue #206, not just the recogniser.
+
+    The recogniser tests above pin `_is_commit_command`; this one shows a row
+    actually lands, so a later refactor cannot satisfy them while the write path
+    still drops the commit.
+    """
+    repo = _repo(tmp_path)
+    r = _run(repo, "git commit -m 'fix: review round 1'\ngit log -1 --pretty=%s")
+    assert r.returncode == 0, r.stderr
+    rows = _ledger(repo)
+    assert len(rows) == 1
+    assert rows[0]["subject"] == "fix: review round 1"
 
 
 def test_a_repeated_command_does_not_re_record_the_same_head(tmp_path):
