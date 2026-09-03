@@ -217,6 +217,33 @@ def test_escape_hatch_allows_worktree_delete(tmp_path):
     assert r.returncode == 0
 
 
+def test_an_override_of_anything_but_1_does_not_disarm_the_guard(tmp_path):
+    """The hatch's VALUE semantics, which nothing here pinned.
+
+    `ALLOW_UNSAFE_RM=0` reads as "off" and must not disarm a guard over recursive
+    deletion. A hook treating any non-empty value as "on" does the opposite of
+    what the variable says, on the one guard where being wrong destroys work.
+
+    Written because the batch's hatch mutant (`== "1"` -> `is not None`) was
+    dying for the wrong reason: its only killer was
+    `test_blocks_worktree_path_delete`, which fails merely because the `_run`
+    helper sets `ALLOW_UNSAFE_RM` to the empty string for every subprocess. That
+    assertion states "a worktree delete is blocked", not "a non-1 value keeps the
+    guard armed" — so changing `_run` to unset the variable instead, a perfectly
+    reasonable cleanup, would have left the mutant alive with no test lost.
+    `test_pre_push.py` pins the same property directly; this is its counterpart.
+    """
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
+    for value in ("0", "true", "yes", " 1"):
+        r = _run(
+            {"tool_input": {"command": f"rm -rf {target}"}},
+            cwd=tmp_path,
+            env_extra={"ALLOW_UNSAFE_RM": value},
+        )
+        assert r.returncode == 2, f"ALLOW_UNSAFE_RM={value!r} must not disarm the guard"
+
+
 def test_malformed_stdin_does_not_block(tmp_path):
     r = subprocess.run(
         [sys.executable, str(_HOOK)],

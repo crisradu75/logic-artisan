@@ -502,10 +502,81 @@ def test_an_oversize_record_sheds_values_but_never_the_count(tmp_path):
     assert len(rows) == 1, "the line must still be written, not dropped"
     row = rows[-1]
     assert row["measured_by_count"] == 12, "the count is exact regardless of shedding"
-    assert len(row["measured_by"]) < 12, "values must have been shed to fit"
+    # `_MAX_TRAILERS` capped the list at 10 BEFORE the shedding loop was reached.
+    # The literal, not `mod._MAX_TRAILERS`: asserting against the constant under
+    # test means a cap change from 10 to 3 leaves this green with 3 values from a
+    # 12-trailer fixture. The original `< 12` was worse still — satisfied by the
+    # cap alone, so it held whether the loop ran or not, and it would also have
+    # passed at 0, 5 or 11.
+    assert len(row["measured_by"]) == 10, "the list is capped at _MAX_TRAILERS (10)"
     assert all(len(v) <= mod._MAX_TRAILER_CHARS for v in row["measured_by"])
     line_bytes = len(json.dumps(row, ensure_ascii=False).encode("utf-8")) + 1
     assert line_bytes <= mod._MAX_LINE_BYTES
+    # This ASCII fixture stays under the ceiling — measured at 1801 bytes — so it
+    # exercises the CAP and not the shedding loop. That is a property of this
+    # fixture, NOT a claim that the loop is unreachable: an earlier version of
+    # this file said so and was wrong.
+    # `test_an_oversize_record_sheds_through_the_real_hook` below reaches the loop
+    # with a non-ASCII subject.
+    assert line_bytes < mod._MAX_LINE_BYTES, (
+        "this fixture is meant to sit under the ceiling so it isolates the cap; "
+        "if it ever crosses, it has stopped being the cap-only case and the "
+        "shedding test below is no longer the only thing covering the loop"
+    )
+
+
+def test_an_oversize_record_sheds_through_the_real_hook(tmp_path):
+    """The shedding loop, driven through the hook rather than reasoned about.
+
+    This test replaces one asserting the loop was UNREACHABLE. That claim was
+    wrong, and the way it was wrong is the point: it came from measuring one
+    fixture at 1801 bytes against a 2048 ceiling and generalising, then looking
+    only for what supported the conclusion (branch-name length limits) instead of
+    what refutes it. Two reviewers ran the loop.
+
+    THE LEVER IS A NON-ASCII SUBJECT, and it is a byte/character confusion.
+    `subject[:120]` slices CHARACTERS; `json.dumps(..., ensure_ascii=False)`
+    writes UTF-8 BYTES. A CJK subject is 3 bytes per character, so a 120-char
+    subject contributes 360 bytes where the arithmetic assumed 120. Measured
+    through the real hook: 1980 bytes, shed from 10 values to 9.
+
+    Chosen over the other reachability routes deliberately. A long branch name
+    also works, but its limit is a filesystem artefact — `MAX_PATH` on Windows,
+    255 bytes per component on POSIX — so a branch-length fixture passes here and
+    means something different in a consuming repo. This one is arithmetic, so it
+    holds everywhere.
+
+    Two dead ends, recorded so nobody repeats them. Monkeypatching
+    `_MAX_LINE_BYTES` does nothing: the hook runs as a separate process and reads
+    the shipped constant, so a patched ceiling returns an unpatched row. And
+    `..._terminates_on_a_record_that_can_never_fit` below re-implements the loop
+    in its own body rather than calling the hook, so it proves the algorithm
+    terminates and nothing at all about this hook.
+    """
+    repo = _repo(tmp_path)
+    # 120 CJK characters — exactly the subject cap in CHARACTERS, 360 in bytes.
+    trailers = "\n".join(
+        f"Measured-by: {'c' * 300} — claim {i}" for i in range(12)
+    )
+    _commit_with(repo, "改" * 120, trailers)
+    assert _run(repo, "git commit -m 'x'").returncode == 0
+    rows = _ledger(repo)
+    assert len(rows) == 1, "the line must still be written, not dropped"
+    row = rows[-1]
+
+    assert len(row["measured_by"]) < mod._MAX_TRAILERS, (
+        "the loop must have shed BEYOND the _MAX_TRAILERS cap — that is what "
+        "distinguishes this test from the cap-only one above"
+    )
+    line_bytes = len(json.dumps(row, ensure_ascii=False).encode("utf-8")) + 1
+    assert line_bytes <= mod._MAX_LINE_BYTES, "it must have shed until the record fit"
+    # The invariant the loop exists to preserve, and the one the restored mutant
+    # breaks: shedding costs DETAIL, never the adoption number. A row whose count
+    # tracked its shortened list would understate every measurement in the retro
+    # aggregate, silently, while still looking like a well-formed row.
+    assert row["measured_by_count"] == 12, (
+        "the count is exact AFTER real shedding, not merely after the cap"
+    )
 
 
 def test_the_shedding_loop_terminates_on_a_record_that_can_never_fit(monkeypatch):
