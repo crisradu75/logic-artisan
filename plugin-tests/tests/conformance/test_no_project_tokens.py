@@ -473,6 +473,38 @@ def test_source_scan_exempts_output_style_frontmatter_but_flags_the_body(tmp_pat
     ]
 
 
+def test_source_scan_covers_json_under_the_scan_roots(tmp_path):
+    # Issue #190. `required-permissions.json` carries English prose in `_comment`
+    # keys and already named the workflow it serves "in this repo" — prose in
+    # synced core, which is exactly what this guard exists to catch, sitting in
+    # the one suffix no scanner opened. Both the prose-bearing shape and the
+    # hook-wiring shape are pinned, because a rule reaching only files under
+    # `references/` would pass the first of these and miss the second.
+    _seed(
+        tmp_path,
+        "skills/_shared/references/required-permissions.json",
+        '{\n  "_comment": "for the funnel-demo workflow",\n  "allow": []\n}\n',
+    )
+    _seed(tmp_path, "hooks/hooks.json", '{\n  "note": "wired for funnel-demo"\n}\n')
+    # The prose scan globs `*.md`, so neither is reachable from it.
+    assert find_violations(tmp_path / "skills", tmp_path, ["funnel-demo"]) == []
+    rels = sorted(h[0] for h in find_source_violations(tmp_path, ["funnel-demo"]))
+    assert rels == [
+        "hooks/hooks.json",
+        "skills/_shared/references/required-permissions.json",
+    ]
+
+
+def test_source_scan_leaves_json_outside_the_scan_roots_alone(tmp_path):
+    # `.claude-plugin/plugin.json` ships, carries a `description`, and is NOT in
+    # scope: the widening added a SUFFIX, not a root. Pinned because "scan .json"
+    # read loosely would sweep the manifest in, and the manifest legitimately
+    # names this repository — it is validated by the marketplace-manifest guard
+    # instead. A version keyed on suffix alone passes every other test here.
+    _seed(tmp_path, ".claude-plugin/plugin.json", '{\n  "name": "funnel-demo"\n}\n')
+    assert find_source_violations(tmp_path, ["funnel-demo"]) == []
+
+
 def test_source_scan_ignores_bytecode_and_overlays(tmp_path):
     # A stale .pyc still holds the string it was compiled from, so scanning it
     # would report a leak already fixed in source.
@@ -488,6 +520,12 @@ def test_source_scan_of_the_real_plugin_is_non_vacuous():
     scanned = list(_iter_scanned_source_files(_plugin_root()))
     assert len(scanned) > 20, f"expected the real plugin to have source files, got {len(scanned)}"
     assert any(p.suffix == ".py" for p in scanned)
+    # The `.json` half is asserted against the REAL tree, not only a fixture:
+    # the fixture test above proves the rule can fire, while this proves it fires
+    # on the shipped files the widening was for. A rule correct in `tmp_path` and
+    # unreachable in the real plugin — a root pruned, a suffix typo'd — passes
+    # the fixture test and leaves the actual gap open.
+    assert any(p.suffix == ".json" for p in scanned)
 
 
 # --------------------------------------------------------------------------- #

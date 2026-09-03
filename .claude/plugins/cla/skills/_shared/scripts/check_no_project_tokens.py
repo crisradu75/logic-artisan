@@ -30,7 +30,8 @@ violation at a time turns a run into a fix-and-rerun loop:
   (a) the PROSE scan for project tokens over synced-core ``SKILL.md`` and
       ``references/**/*.md``;
   (b) the SOURCE scan for project tokens over the plugin's scanned source roots
-      (``.py`` everywhere, plus ``agents/*.md`` and ``output-styles/*.md``);
+      (``.py`` and ``.json`` everywhere, plus ``agents/*.md`` and
+      ``output-styles/*.md``);
   (c) the hardcoded absolute-DEVELOPER-PATH scan over that same source — a
       different scanner with its own regexes and its own exemption marker, and
       the only one of the four that needs no token list;
@@ -346,12 +347,29 @@ def _missing_source_roots(plugin_root: Path) -> list[str]:
 def _iter_scanned_source_files(plugin_root: Path):
     """Yield every synced-core SOURCE file the prose scan cannot see.
 
-    `.py` anywhere under the synced roots (including `tests/` and `scripts/`),
-    plus every `.md` under `agents/` or `output-styles/` (agent definitions and
-    output-style files, neither reachable from the prose scan's `skills/` root).
-    Overlays stay exempt by the same convention, and bytecode/cache directories
-    are skipped — a stale `.pyc` still holds the string it was compiled from and
-    would report a leak already fixed in source.
+    `.py` and `.json` anywhere under the synced roots (including `tests/` and
+    `scripts/`), plus every `.md` under `agents/` or `output-styles/` (agent
+    definitions and output-style files, neither reachable from the prose scan's
+    `skills/` root). Overlays stay exempt by the same convention, and
+    bytecode/cache directories are skipped — a stale `.pyc` still holds the
+    string it was compiled from and would report a leak already fixed in source.
+
+    `.json` was added last, and for one file rather than for tidiness.
+    `skills/_shared/references/required-permissions.json` carries English prose
+    in its `_comment` keys and already contained a phrase naming the workflow it
+    serves "in this repo" — prose in synced core is precisely what this guard
+    exists to catch, and no scanner opened it. The suffix reaches three shipped
+    files in total (that one, its `-narrow` sibling under `spec-to-pr`, and
+    `hooks/hooks.json`), identical in every install, so the widening adds no
+    per-repo surface beyond those three. `.claude-plugin/plugin.json` is NOT
+    among them: it sits outside every entry in `SOURCE_SCAN_ROOTS`, and is
+    covered instead by the marketplace-manifest guard in the source repo.
+
+    Not widened to `.sh` or to the suffix-less `hooks/git/pre-push`: neither has
+    a demonstrated leak, and a suffix-less file needs a rule that is not keyed on
+    suffix at all. Both are recorded as deliberate exemptions rather than
+    oversights — see the source repo's `EXEMPT` map, which fails on an exemption
+    a scanner has since grown to reach.
     """
     md_roots = ("agents", "output-styles")
     for root_name in SOURCE_SCAN_ROOTS:
@@ -363,7 +381,9 @@ def _iter_scanned_source_files(plugin_root: Path):
                 continue
             if any(part in CACHE_DIRS for part in path.relative_to(root).parts):
                 continue
-            if path.suffix == ".py" or (root_name in md_roots and path.suffix == ".md"):
+            if path.suffix in (".py", ".json") or (
+                root_name in md_roots and path.suffix == ".md"
+            ):
                 yield path
 
 

@@ -92,10 +92,15 @@ EXEMPT: dict[str, str] = {
     "hooks/git/pre-push":
         "inside a scan root, but has NO suffix, so every suffix-keyed scanner "
         "skips it. Watched by hand; also covered behaviourally by "
-        "tests/consistency/test_pre_push_is_installed.py",
+        "tests/consistency/test_pre_push_is_installed.py. Issue #190 decided to "
+        "keep it exempt: reaching it needs a rule not keyed on suffix at all, "
+        "and it has no demonstrated leak to justify one",
     "hooks/probe-python.sh":
         "inside a scan root, but `.sh` is a suffix no scanner opens. Adding it "
-        "would be the path scanner's fifth suffix and the token scanner's third",
+        "would be the path scanner's fifth suffix and the token scanner's "
+        "fourth (`.py`, `.json`, `.md`). Issue #190 decided against it: the "
+        "absolute paths it does carry are generic ($HOME/..., /usr/local/...) "
+        "and match neither the hardcoded-path rule nor the developer-path one",
 }
 
 # The SECOND split, and the one that decayed first. `EXEMPT` above asks "does
@@ -125,8 +130,15 @@ EXEMPT: dict[str, str] = {
 # entirely" while staying green on it.
 #
 # Dropping the suffix rule makes the whole gap visible and forces a reason per
-# file. It does NOT widen `check_no_project_tokens.py`, which is a behaviour
-# change to a shipped guard and a separate decision.
+# file. It did NOT widen `check_no_project_tokens.py` — a behaviour change to a
+# shipped guard, and a separate decision, which issue #190 then took. That
+# decision widened the token scanners to `.json` and left `.sh`, the suffix-less
+# `hooks/git/pre-push`, and `.mjs` exempt-with-a-reason, on the grounds that only
+# the `.json` pair had a real leak surface. The three `.json` entries that used
+# to sit below were deleted by that change; this guard's `now_covered` branch is
+# what named them, which is the mechanism working rather than a courtesy.
+# `.claude-plugin/plugin.json` was not affected: it is outside every scan root
+# and stays in `EXEMPT`.
 # `README.md` is deliberately absent: it is in `EXEMPT`, so it is not a candidate
 # here, and listing it in both maps made this guard's own dead-entry branch fire.
 # The guard caught that on the first run after the scope changed — which is the
@@ -137,20 +149,13 @@ TOKEN_EXEMPT: dict[str, str] = {
         "`references/` ancestor, so the prose scanner's rule misses it, and the "
         "source scanner takes `.md` only under `agents`/`output-styles`. Reached "
         "by the hardcoded-path scanner, which is why it is not in EXEMPT",
-    "hooks/hooks.json":
-        "the token scanners open `.py` plus `.md` under `agents`/`output-styles`, "
-        "so no `.json` is in scope. Hook wiring is paths and event names; the "
-        "path scanner does cover it",
-    "skills/_shared/references/required-permissions.json":
-        "same `.json` gap. UNLIKE the wiring above this one carries English prose "
-        "in `_comment` keys, so it is the likeliest of the four to leak a token. "
-        "Reviewed by hand until the token scanner grows a `.json` scan",
-    "skills/spec-to-pr/references/required-permissions-narrow.json":
-        "same `.json` gap, same `_comment` prose, same hand review",
     "skills/project-review/scripts/mechanical-checks.mjs":
-        "the plugin's one Node script. The token scanners take `.py` only, so "
-        "`.mjs` is out of scope for them; the path scanner covers it, and its "
-        "own behaviour is tested by plugin-tests/node/mechanical-checks.test.mjs",
+        "the plugin's one Node script. The token scanners take `.py` and `.json` "
+        "under the scan roots, so `.mjs` is out of scope for them; the path "
+        "scanner covers it, and its own behaviour is tested by "
+        "plugin-tests/node/mechanical-checks.test.mjs. Left unscanned "
+        "deliberately by issue #190, which widened only the suffix with a "
+        "demonstrated leak surface",
 }
 
 

@@ -104,10 +104,20 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the .json carrying _comment prose loses its token-scanner exemption",
-        GUARD,
-        '    "skills/_shared/references/required-permissions.json":',
-        '    "skills/_shared/references/required-permissions-gone.json":',
+        # Replaces "the .json carrying _comment prose loses its token-scanner
+        # exemption", whose anchor was that file's TOKEN_EXEMPT line — deleted by
+        # issue #190 when the token scanner grew a `.json` scan and the exemption
+        # stopped being true. It was in any case the same assertion as "an
+        # exemption outlives the file it names" above, on a different entry.
+        #
+        # This is the mutant the widening earns: revert the suffix and the three
+        # shipped `.json` files fall outside every token scanner with nothing in
+        # TOKEN_EXEMPT to explain them, which is the `unexplained` branch.
+        "the source token scanner drops .json, stranding the two "
+        "required-permissions files and hooks/hooks.json unscanned",
+        PLUGIN / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py",
+        'if path.suffix in (".py", ".json") or (',
+        'if path.suffix in (".py",) or (',
         TARGETS,
     ),
     (

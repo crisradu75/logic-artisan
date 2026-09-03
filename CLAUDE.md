@@ -313,7 +313,8 @@ everywhere) from *facts* (per-repo, never synced):
   The two scanner families do not have the same reach: the hardcoded-path one
   (`plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py`) covers
   `.md`/`.py`/`.mjs`/`.json`, so `hooks/hooks.json` and a skill's `.mjs` **are** in scope; the
-  project-token one is `.py`/`.md` only. **Do not restate either coverage split here.** Both used to
+  project-token one is `.py`/`.json`/`.md`, so a skill's `.mjs` is **not**. **Do not restate either
+  coverage split here.** Both used to
   be written out as a list and a count, and both went stale while nothing noticed — the defect
   issue #178 named. `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py` now derives
   them: `EXEMPT` holds every tracked file under the published directory that NO scanner opens, and

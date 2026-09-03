@@ -83,20 +83,35 @@ def test_the_scan_is_not_vacuous():
     """A guard that scans nothing passes forever, and two guards in this repo
     already did once."""
     files = list(_scanned_files())
-    # Re-measured: the real count is 96 (was 99 before this repo's dev tree
-    # moved out of the plugin and took 3 scanned files with it). Pinned near
-    # it, not comfortably below it, matching the rule `test_subprocess_encoding.py`
-    # states for its own floor: lower it to the new real count when something
-    # is deliberately deleted, never to a number chosen to be safe from future
-    # deletions. That leaves a margin of exactly one, which is the philosophy
-    # working as intended rather than a defect to pad out: the next deliberate
-    # deletion is EXPECTED to trip this floor and get it lowered along with it,
-    # so a false sense of headroom is exactly what "pinned near it" is for this
-    # guard to not have.
-    assert len(files) >= 95, f"scan set collapsed to {len(files)} files"
+    # Re-measured: the real count is 99. Pinned near it, not
+    # comfortably below it, matching the rule `test_subprocess_encoding.py`
+    # states for its own floor: move it to the new real count when something is
+    # deliberately added or deleted, never to a number chosen to be safe from
+    # future deletions. That leaves a margin of exactly one, which is the
+    # philosophy working as intended rather than a defect to pad out: the next
+    # deliberate deletion is EXPECTED to trip this floor and get it lowered
+    # along with it, so a false sense of headroom is exactly what "pinned near
+    # it" is for this guard to not have.
+    #
+    # It had drifted to a floor of 95 against a comment claiming 96, while the
+    # real count had risen to 99 — four files of headroom, which is precisely
+    # the decorative floor the rule above forbids. That gap had already cost
+    # something measurable: with `.json` at 3 files, dropping it from
+    # `SCANNED_SUFFIXES` left 96 and cleared the floor, so the suffix assertion
+    # below is what now discriminates rather than the count.
+    assert len(files) >= 98, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
+    # Every declared suffix is actually represented. The floor above cannot do
+    # this job: a suffix contributing fewer files than the floor's margin can be
+    # dropped entirely without moving the count below it, and `.json` was in
+    # exactly that state. `hooks/hooks.json` was covered here and nowhere else
+    # until issue #190 widened the token scanner to `.json`; once a second
+    # scanner reached it, the coverage guard stopped noticing this scanner
+    # losing it, and only this assertion does.
+    missing = sorted(set(SCANNED_SUFFIXES) - {p.suffix for p in files})
+    assert not missing, f"declared suffix(es) reaching no file: {missing}"
 
 
 def test_the_replacement_is_actually_in_use():
