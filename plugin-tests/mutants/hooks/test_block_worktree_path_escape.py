@@ -32,6 +32,22 @@ synced core and only work on the machine that wrote it.
 No anchor here spans a line break, so none of them need the CRLF-safe `_NL`
 join `test_shipped_files_are_scanned.py` uses — every `old` below is verified
 unique with `grep -c` against the raw file before being trusted here.
+
+COUNT NOTE: 7 MUTANTS ARE NOT 7 INDEPENDENT PIECES OF EVIDENCE. Review measured
+that mutants 2 (worktree detection) and 5 (in-worktree containment) have
+IDENTICAL kill sets — the same three tests, and no assertion in the guard
+distinguishes them. Both are kept because each re-breaks a real regression and a
+reader looking for one would not find it under the other's name, but the honest
+reading of a clean run is 6 distinct capabilities, not 7. Separating them needs a
+test that reaches the second containment check with a target inside the primary
+clone but outside worktree logic, which the sibling-worktree fixture shape
+currently prevents.
+
+PLATFORM NOTE, because a skip reads as a SURVIVED verdict. The inode-identity
+mutant's only killer goes through `make_dir_alias`, which calls `pytest.skip`
+when neither a symlink nor an NTFS junction can be created. On such a machine
+the test skips, pytest exits 0, and that mutant reports SURVIVED with no
+explanation -- a report about the machine, not about the batch.
 """
 
 from pathlib import Path

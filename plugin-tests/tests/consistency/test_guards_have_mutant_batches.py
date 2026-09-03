@@ -106,17 +106,23 @@ _EXEMPT = {
 # tree and committed nowhere, so it existed nowhere.
 #
 # `hooks` HAS SINCE BEEN ADOPTED, which is what this mechanism was built for and
-# its first actual use (issue #207). Six guards got a batch in that commit —
-# every one whose failure lets a destructive or prohibited action through: the
-# three blocks, `ask_destructive_git`, `pre_push`, and `log_commit_provenance`.
-# The other seven are listed below. The `git branch -D` batch exists again.
+# its first actual use (issue #207). Six guards got a batch in that commit; the
+# other seven are listed below. The `git branch -D` batch exists again.
 #
 # The line was drawn on SEVERITY rather than on count. What matters is what gets
 # through when a guard is vacuous: a broken block or ask lets a destructive git
 # operation, an unsafe recursive delete, a cross-worktree write, or a push to the
-# default branch proceed. A broken warn prints nothing — and warn output never
-# reaches a transcript, so a warn's batch is the only evidence it fires at all.
-# That is an argument for covering the warns eventually, not ahead of the blocks.
+# default branch proceed. That covers five of the six — the three blocks,
+# `ask_destructive_git`, and `pre_push`.
+#
+# `log_commit_provenance` is the EXCEPTION and does not fit the scale at all: its
+# own docstring says it never blocks, never warns, and prints nothing on the
+# happy path. It earned a batch for a different reason — PR #204 added two gates
+# to it that were verified by hand and by nothing else.
+#
+# A broken warn prints nothing, and warn output never reaches a transcript, so a
+# warn's batch is the only evidence it fires at all. That is an argument for
+# covering the warns eventually, not ahead of the blocks.
 #
 # Why PER-FILE and not per-area. The first design here was per-area — an area
 # mapped to the set of guards adopted so far, and any guard not in that set was
@@ -170,9 +176,11 @@ _PENDING_ADOPTION: dict[str, str] = {
         "its wiring, and its output never reaches a transcript — a batch is the "
         "only evidence it fires at all",
     "tests/hooks/test_warn_stray_scratch_artifact.py":
-        "adoption debt: warn-severity. Its own test fixtures carry the token the "
-        "project-token scanner looks for, so it is the one warn whose fixtures a "
-        "mutant could plausibly disturb",
+        "adoption debt: warn-severity. Its subject is a filename SHAPE — a "
+        "mangled scratchpad path collapsed into one long separator-free name — "
+        "so a batch has to mutate the shape predicate, and getting a mutant that "
+        "is neither trivially killed nor a false positive on real filenames is "
+        "the work here",
     "tests/hooks/test_warn_stacked_pr_merge.py":
         "adoption debt: warn-severity. Guards a merge ordering whose failure "
         "closed a dependent PR once (recorded in the codify-learnings overlay), "

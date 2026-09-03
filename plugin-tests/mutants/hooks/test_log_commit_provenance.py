@@ -106,11 +106,37 @@ MUTANTS = [
     # not help — the hook runs as a separate process and reads the shipped
     # constant.
     #
-    # An unkillable mutant is worse than a missing one: a survivor nobody can act
-    # on trains the next reader to skip the whole list. Same disposition as the
-    # `_MIN_MARKED_LINES` floor constant CLAUDE.md records. The gap it found is
-    # kept as `test_the_shedding_loop_is_unreachable_under_the_current_caps`,
-    # which fails if the caps ever rise far enough to make the loop live.
+    # THAT REASONING WAS WRONG AND THE MUTANT IS RESTORED BELOW. The conclusion
+    # came from ONE fixture at 1801 bytes plus a search for branch-name limits —
+    # a search for what SUPPORTS "unreachable" rather than what refutes it. Two
+    # reviewers ran the loop.
+    #
+    # The lever is a byte/character confusion, and nothing above considered it:
+    # `subject[:120]` slices CHARACTERS while `json.dumps(ensure_ascii=False)`
+    # writes UTF-8 BYTES, so a 120-character CJK subject contributes 360 bytes,
+    # not 120. Measured through the real hook: 1980 bytes, shed 10 values to 9.
+    # A long branch name reaches it too, but its limit is a filesystem artefact
+    # (MAX_PATH here, 255 bytes per component on POSIX), so a branch-length
+    # fixture would mean something different in a consuming repo.
+    #
+    # Kept as a record because the wrong call is the instructive part: an
+    # unkillable mutant really should be dropped, and "it survived" is not by
+    # itself evidence that it is unkillable.
+    (
+        # Row shape under the size ceiling: the ceiling costs DETAIL, never the
+        # adoption number. `measured_by_count` must stay exact after
+        # `measured_by` is shortened, or every measurement in the retro aggregate
+        # silently understates while the row still looks well-formed.
+        # Killed by `test_an_oversize_record_sheds_through_the_real_hook`, which
+        # exists because of this entry.
+        "the trailer-shedding loop rewrites measured_by_count to match the "
+        "shortened list instead of leaving the exact count alone",
+        HOOK,
+        'record["measured_by"] = record["measured_by"][:-1]',
+        'record["measured_by"] = record["measured_by"][:-1]; '
+        'record["measured_by_count"] = len(record["measured_by"])',
+        TARGETS,
+    ),
     (
         # Negative case: a command that must NEVER produce a row. Disabling the
         # --dry-run exclusion makes `git commit --dry-run` (which commits

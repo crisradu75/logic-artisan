@@ -69,9 +69,13 @@ MUTANTS = []
 # THE mutant `_PENDING_ADOPTION` says was lost. Cutting only this fast path
 # still leaves every DECOMPOSED spelling (-d -f, -df, --delete --force, ...)
 # caught by the deleting/forcing fallback beneath it -- which is exactly why
-# this regression is easy to miss in review: eight of the nine positive rows
-# in `test_force_branch_delete_shapes_prompt` keep passing, and only the
-# first, most common row -- bare `-D` -- goes silent.
+# this regression is easy to miss in review: the decomposed rows keep passing
+# and only the bare-`-D` spellings go silent, so the guard still looks alive.
+# No row count is given here on purpose. An earlier version of this comment said
+# "eight of the nine positive rows", which described a file state that had
+# already moved on -- the parametrize list has grown since. A count copied into
+# a comment beside the thing it counts is the staleness this repo keeps paying
+# for; read `test_force_branch_delete_shapes_prompt` for the current rows.
 _l1 = _line('if "D" in clusters:')
 MUTANTS.append((
     "git branch -D bare-flag shortcut stops being recognised as a force-delete "
@@ -177,4 +181,30 @@ MUTANTS.append((
     "--force-with-lease and --force-if-includes start prompting, punishing "
     "the safer, guarded push form",
     HOOK, _l2[_i8:_i8 + len(_m8)], '--force" + r"|', TARGETS,
+))
+
+# --- 9. `_holds_work` stops failing CLOSED when the probe cannot run ---------
+# The highest-value capability this batch originally missed, named by review.
+#
+# The whole working-tree-discard layer -- `git checkout <path>`, `git restore`,
+# `git switch -f`, `git clean -fdx`, the commands this hook sees most often --
+# is a CONDITIONAL probe rather than shape-matching: it asks git what would be
+# lost, and only prompts if something would. `_holds_work`'s `if lines is None:
+# return True` is the arm that decides what to do when the probe itself could
+# not run, and the module docstring calls the alternative the worst outcome this
+# layer has -- a guard that allows because it failed to look is indistinguishable
+# from one that looked and approved.
+#
+# Mutating the CALL rather than the `return True`, because `return True` occurs
+# four times in this file and `_line` would refuse it. `or False` turns a None
+# into the "probe ran, found nothing" value, so the single-path branch below
+# returns False and the prompt never fires -- fail-open, from one token.
+#
+# Killed by `test_a_wedged_git_prompts_rather_than_going_silent`, which stubs
+# `_run_git` to return None and asserts a payload is still produced.
+_l9 = _line("lines = _status_lines(cwd, paths, ignored)")
+MUTANTS.append((
+    "a wedged git makes the discard layer fail OPEN: the probe returning None "
+    "is read as 'nothing would be lost' instead of 'ask'",
+    HOOK, _l9, _l9 + " or False", TARGETS,
 ))

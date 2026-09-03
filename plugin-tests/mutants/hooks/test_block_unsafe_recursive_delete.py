@@ -23,6 +23,12 @@ about the hook's behaviour rather than about the guard's own wording.
 
 Paths resolve from this file's own location: a batch with an absolute
 developer path works on one machine and leaks it into synced core.
+
+PLATFORM NOTE, because a skip reads as a SURVIVED verdict. The symlink/junction
+mutant's killer goes through `make_dir_alias`, which calls `pytest.skip` when
+neither alias kind can be created. The batch is robust to WHICH kind the
+machine permits, but not to a machine permitting NEITHER -- there it reports
+SURVIVED, which is a fact about the machine rather than the mutant.
 """
 
 from pathlib import Path

@@ -19,6 +19,20 @@ elsewhere in this repo. Every anchor below is confined to a single line, so the
 line-ending question never bites regardless.
 
 Paths resolve from this file's own location, never an absolute developer path.
+
+COUNT NOTE: 7 MUTANTS ARE NOT 7 INDEPENDENT PIECES OF EVIDENCE. Review measured
+that mutant 3 (refspec field scramble) dies on the same single assertion as
+mutant 2 (drop `main` from the case arm), because scrambling the fields breaks
+main and master together — its effect is the union of 1 and 2, and nothing in the
+guard separates "field order wrong" from "both branch names dropped". Mutants 1,
+5 and 6 (master-only, catch-all, substring) ARE distinguishable. Read a clean run
+as 6 distinct capabilities.
+
+PLATFORM NOTE, because a skip reads as a SURVIVED verdict. This guard carries
+`pytestmark = pytest.mark.skipif(_SH is None, ...)`: with no POSIX `sh` on PATH
+the whole module skips, pytest exits 0, and `mutate.py` reports every mutant
+here as SURVIVED. That is a report about the machine, not about the batch --
+check for an `s` in the pytest line before treating a survivor as a finding.
 """
 
 from pathlib import Path
