@@ -363,13 +363,16 @@ Contributing to the harness rather than using it? The extra rules:
 - **Run the whole verification story locally — there is no CI, by design:**
 
   ```bash
-  pytest plugin-tests    # all pytest scopes (1) — the whole suite, one command
+  pytest plugin-tests -q -n auto --dist loadfile    # all pytest scopes (1) — the whole suite
   node --test plugin-tests/node/mechanical-checks.test.mjs
   ```
 
   Both green is the only gate before a PR — and they ARE two commands: `pytest` does not reach the
   Node suite. Watch the skip count — a skipped guard has not run (one pre-push permission-bit test
-  always skips on Windows).
+  always skips on Windows), and the skip count is also how you check a parallel run against a
+  serial one. `-n auto --dist loadfile` needs `pytest-xdist`; drop both flags without it. Use
+  `--dist loadfile` rather than plain `-n auto`, and run `mutate.py` serially — CLAUDE.md's "The
+  parallel gate" section has the measurements and the reasons.
 
 - **The plugin's tests do not live in the plugin.** `.claude/plugins/cla/` is published whole to
   consuming repos and carries only assets a consumer can use, so every test, mutation batch, the

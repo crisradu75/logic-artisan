@@ -61,17 +61,56 @@ you realise mid-flight that the work wants isolation. No penalty for deciding la
 Run the full test suite:
 
 ```bash
-pytest plugin-tests              # the whole suite: one scope, one command
-pytest plugin-tests -q           # extra args go straight to pytest
-pytest plugin-tests -k branch    # filter by name
+pytest plugin-tests -q -n auto --dist loadfile   # the gate
+pytest plugin-tests                              # serial — the fallback, see below
+pytest plugin-tests -k branch                    # filter by name
 ```
 
 Run part of it (e.g. while iterating on one skill):
 
 ```bash
-pytest plugin-tests/tests/hooks
+pytest plugin-tests/tests/hooks -n auto --dist loadfile
 pytest plugin-tests/tests/skills/<name>
 ```
+
+### The parallel gate, and the three things that make it safe
+
+**Measured on this repo:** serial 203.9s, `-n auto --dist loadfile` 74.1s (2.8x), plain
+`-n auto` 56.5s — all three reporting 1576 passed, 14 skipped.
+
+**`--dist loadfile` is load-bearing, not tuning, and plain `-n auto` is the trap.**
+`loadfile` pins every test in a file to one worker. Without it a module's tests are
+split across workers, and `tests/skills/annotate/test_page_in_a_browser.py` has
+module-scoped fixtures that own a **loopback server port and a Chromium process** —
+two workers building those race for the port. That suite skips wherever Playwright
+is absent, which is exactly why a green plain `-n auto` here is not evidence: it
+means those tests did not run. The peer repo `claude-plugins` hit the same class of
+failure from a different cause and recorded the rule as "the full-suite pass is luck
+about which worker gets which file, not evidence of safety". Eighteen seconds is the
+whole price of not finding out the hard way.
+
+**A parallel run is trusted only when its pass AND skip counts match a serial run of
+the same tree.** Skip counts matter here specifically: `tests/consistency/` and
+`tests/launcher/` skip their whole scope conditionally, and the annotate browser
+suite skips without Playwright — so a dropped scope shows up as a skip-count change
+and nowhere else. Re-check whenever the invocation's scope changes. The check is
+necessary, not sufficient: it catches gross divergence, not a test passing for the
+wrong reason.
+
+**`pytest-xdist` is the one test-only dependency.** Everything else here is
+stdlib-plus-pytest, and the shipped scripts stay stdlib-only — this does not reach a
+consuming repo. Without it installed, the serial forms above still work and nothing
+else changes:
+
+```bash
+pip install pytest-xdist
+```
+
+**`mutate.py` stays serial, deliberately.** It shells out as `pytest -q -x <targets>`
+and reads the exit code to decide killed vs survived — a judgement its own docstring
+says every check exists to protect. This is why `-n auto` is NOT in an `addopts` key:
+`addopts` applies to every invocation, so putting it there would silently change how
+the mutation runner executes. Keep speed flags on the command line.
 
 **The plugin's tests do not live in the plugin.** `.claude/plugins/cla/` is published whole to
 consuming repos and carries only assets a consumer can use, so every test, every mutation batch,
@@ -114,7 +153,10 @@ guard were deleted with the runner that read them. `plugin-tests/tests/launcher/
 repo-root `cla`/`cla.cmd` launchers, which live outside the plugin tree entirely (`claw`/`claw.cmd`
 were deleted alongside the worktree-isolation guard, the hook they existed to dodge).
 
-All scripts are stdlib-only Python (no third-party deps beyond pytest itself).
+All scripts are stdlib-only Python. The only third-party pieces are in the dev tree and never
+ship: `pytest` itself, `pytest-xdist` for the parallel gate (see "The parallel gate" above), and
+the opt-in Playwright exception below. A shipped script importing anything outside the stdlib is
+a defect — a consuming repo installs the plugin, not a requirements file.
 
 **One optional exception, and it is opt-in by construction.**
 `plugin-tests/tests/skills/annotate/test_page_in_a_browser.py` drives the
@@ -239,10 +281,10 @@ and paying them anyway is not caution, it is waste with the shape of rigour. The
 
 | | run |
 |---|---|
-| Editing one skill or area | `pytest plugin-tests/tests/<area>`, **once** |
+| Editing one skill or area | `pytest plugin-tests/tests/<area> -n auto --dist loadfile`, **once** |
 | Fixing a defect a review found | that area, plus a mutation batch over what the fix touches |
 | Adding a new script, skill, or hook | the five checks above, in full |
-| Before opening a PR | `pytest plugin-tests` and `node --test plugin-tests/node/mechanical-checks.test.mjs`, each once |
+| Before opening a PR | `pytest plugin-tests -q -n auto --dist loadfile` and `node --test plugin-tests/node/mechanical-checks.test.mjs`, each once |
 
 **A green run does not get more true by being repeated.** Re-running a suite to see whether
 a failure recurs is the one case that justifies it — and then the finding is the flake, so
@@ -254,7 +296,7 @@ used is gone; the lesson is about the count, not the command.)
 
 The one Node script in the plugin, `project-review/scripts/mechanical-checks.mjs`, has a
 `node --test` suite, which lives in the dev tree with every other test. It is not a pytest scope
-and **nothing runs it for you** — `pytest plugin-tests` does not reach it, so it is a second
+and **nothing runs it for you** — the pytest gate does not reach it, so it is a second
 command you run deliberately:
 
 ```bash
@@ -264,8 +306,9 @@ node --test plugin-tests/node/mechanical-checks.test.mjs
 ### No CI — verification is local, by design
 
 This repo runs **no GitHub Actions and no CI of any kind**, deliberately. Two local commands are
-the whole verification story: `pytest plugin-tests` for the suite, and `node --test` for the one
-Node suite it does not reach. Run both once before opening a PR. **They are the shipping gate, not
+the whole verification story: `pytest plugin-tests -q -n auto --dist loadfile` for the suite, and
+`node --test` for the one Node suite it does not reach. Run both once before opening a PR. **They
+are the shipping gate, not
 the edit loop** — while iterating, run the one area you are changing; see the table above.
 
 Do not add a workflow. If a change seems to need one, raise it rather than adding it.

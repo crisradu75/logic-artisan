@@ -31,18 +31,22 @@ prefer the one whose slug matches this repo's path (`C--code-logic-artisan`).
 Verification path for this repo — a change is not "done" until the suite passes:
 
 ```bash
-pytest plugin-tests                      # the whole suite: one scope, one command
-pytest plugin-tests/tests/hooks          # one area, while iterating
+pytest plugin-tests -q -n auto --dist loadfile   # the whole suite: the gate
+pytest plugin-tests/tests/hooks -n auto --dist loadfile   # one area, while iterating
 pytest plugin-tests -k <name>            # one subject, across areas
 node --test plugin-tests/node/mechanical-checks.test.mjs
 ```
+
+`-n auto --dist loadfile` needs `pytest-xdist` and takes the suite from ~204s to ~74s.
+Use `--dist loadfile`, never plain `-n auto`, and keep the flags off `addopts` so
+`mutate.py` stays serial — CLAUDE.md's "The parallel gate" has the reasons.
 
 The plugin's own tests do NOT live in the plugin. `.claude/plugins/cla/` ships to
 consuming repos and carries only assets a consumer can use, so every test, mutation
 batch and pytest config lives in this repo's own `plugin-tests/` tree instead.
 
-There is no CI — the local commands above are the whole verification story. Run
-`pytest plugin-tests` plus the Node suite before calling a change done.
+There is no CI — the local commands above are the whole verification story. Run the
+pytest gate plus the Node suite before calling a change done.
 
 The suite reports skips — a skipped guard has not run, and several guards are
 dormant without an overlay file, so treat a skip line as a finding rather than noise.
