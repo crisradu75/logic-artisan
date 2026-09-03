@@ -137,3 +137,24 @@ MUTANTS = [
         TARGETS,
     ),
 ]
+
+MUTANTS.append((
+    # The check issue #215 added, and the one the guard was missing entirely.
+    # `Path.resolve()` follows a reparse point, so the target's own link-ness has
+    # to be read BEFORE resolution or it is gone. Disabling this line restores
+    # the defect exactly: `rm -rf <a junction>` allowed, `rm -rf <its parent>`
+    # blocked -- the guard blocking the distant shape and permitting the near
+    # one, which is the shape that deletes the far side of the link.
+    #
+    # This entry is the reason the sibling mutant on `_contains_symlink`'s old
+    # guard clause was NOT written. That clause was dead and encoded the opposite
+    # intent, so a mutant for it was unkillable and a test for it would have
+    # pinned the defect. It was deleted rather than covered; this is what covers
+    # the behaviour instead.
+    "the target's own link-ness is never checked, so rm -rf of a junction "
+    "recurses through it and deletes the far side",
+    HOOK,
+    "            if _is_link_like(unresolved):",
+    "            if False and _is_link_like(unresolved):",
+    TARGETS,
+))

@@ -217,6 +217,54 @@ def test_escape_hatch_allows_worktree_delete(tmp_path):
     assert r.returncode == 0
 
 
+def test_blocks_a_delete_whose_target_is_itself_a_junction(tmp_path):
+    """The shape the hook was written for, and the one it used to allow.
+
+    `rm` from git-bash/MSYS recurses THROUGH a directory junction as though it
+    were an ordinary directory, so `rm -rf <the junction>` deletes the real
+    contents on the far side rather than removing the link. The guard resolved
+    the target before looking at it, and `Path.resolve()` follows the reparse
+    point — so by the time anything checked, the junction was gone from the path
+    and what remained named the destination.
+
+    Measured before the fix: this exact command exited 0. `rm -rf` on the
+    junction's PARENT exited 2, because `_contains_symlink` walks inside the
+    resolved directory and finds the link there. The guard blocked the distant
+    shape and allowed the near one.
+    """
+    real = tmp_path / "real_payload"
+    real.mkdir()
+    (real / "work.txt").write_text("irreplaceable\n", encoding="utf-8")
+    holder = tmp_path / "holder"
+    holder.mkdir()
+    link = holder / "alias"
+    make_dir_alias(link, real)
+
+    r = _run({"tool_input": {"command": f"rm -rf {link}"}}, cwd=tmp_path)
+    assert r.returncode == 2, "deleting the junction itself must be blocked"
+    assert "itself a symlink or directory junction" in r.stderr, (
+        "the message must name the target-is-a-link case, not the contains-a-link "
+        "one — they have different remedies"
+    )
+    assert real.joinpath("work.txt").exists(), "the fixture's real payload is untouched"
+
+
+def test_an_ordinary_scoped_delete_is_still_allowed(tmp_path):
+    """The negative case, and it is load-bearing rather than ceremonial.
+
+    This hook SHIPS to every consuming repo and blocks. A false positive here
+    stops legitimate work in four repos at once, and the fix above added a check
+    that runs before every other one — so an over-broad version of it would be
+    invisible to every existing block-case test while breaking ordinary deletes.
+    """
+    target = tmp_path / "build"
+    (target / "nested").mkdir(parents=True)
+    (target / "nested" / "artifact.txt").write_text("x\n", encoding="utf-8")
+
+    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
+    assert r.returncode == 0, f"an ordinary scoped delete must pass: {r.stderr}"
+
+
 def test_an_override_of_anything_but_1_does_not_disarm_the_guard(tmp_path):
     """The hatch's VALUE semantics, which nothing here pinned.
 

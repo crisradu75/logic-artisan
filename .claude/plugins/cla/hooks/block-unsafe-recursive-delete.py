@@ -17,8 +17,16 @@ target files in the primary clone. Everything lost was untracked, so git had
 no history to recover from -- permanent data loss. See memory
 'feedback-worktree-rmrf-junction-risk' for the full incident.
 
-Two independent triggers, either one blocks
+Three independent triggers, any one blocks
 ---------------------------------------------
+0. **The target IS itself a symlink or junction.** Checked against the
+   UNRESOLVED path, and first, because `Path.resolve()` follows the reparse
+   point — after it, nothing downstream can tell the target was reached through
+   a link. This trigger was missing until issue #215: `rm -rf <the junction>`
+   was ALLOWED while `rm -rf <its parent>` was blocked, so the guard caught the
+   distant shape and permitted the near one, which is the shape that deletes the
+   far side.
+
 1. **Worktree path, unconditionally.** The target resolves to a path under
    `.claude/worktrees/<name>` (anywhere in the path, any separator style).
    Tearing down a worktree must go through `git worktree remove`; if that
@@ -223,7 +231,22 @@ def _is_link_like(path: str) -> bool:
 
 
 def _contains_symlink(resolved: Path) -> bool:
-    if not resolved.is_dir() or _is_link_like(str(resolved)):
+    """Whether anything INSIDE `resolved` is a link. The target's own link-ness
+    is `main`'s business, checked there against the UNRESOLVED path.
+
+    This used to read `if not resolved.is_dir() or _is_link_like(str(resolved))`.
+    That second half was dead and wrong in the same breath. Dead, because the one
+    call site always passes a `.resolve()`d path and `resolve()` has already
+    followed the reparse point — nothing could reach it with a True result, and a
+    dangling link short-circuits on `is_dir()` first. Wrong, because what it
+    encoded was "the target is itself a link, so allow it", which is precisely
+    the case that deletes the far side of a junction.
+
+    Worth stating plainly, because the shape recurs: a test written to cover that
+    clause as it stood would have pinned the defect and reported green. The fix
+    was to delete it, not to test it.
+    """
+    if not resolved.is_dir():
         return False
     start = time.monotonic()
     scanned = 0
@@ -265,9 +288,57 @@ def main() -> int:
 
     for raw_target in _extract_target_paths(command):
         try:
-            resolved = Path(
-                raw_target if os.path.isabs(raw_target) else os.path.join(cwd, raw_target)
-            ).resolve()
+            unresolved = raw_target if os.path.isabs(raw_target) else os.path.join(cwd, raw_target)
+            resolved = Path(unresolved).resolve()
+
+            # CHECK THE TARGET'S OWN LINK-NESS BEFORE `resolve()` DESTROYS THE
+            # EVIDENCE. `Path.resolve()` follows the reparse point, so by the
+            # line below `resolved` names the directory on the OTHER SIDE of a
+            # junction and nothing downstream can tell it was reached through
+            # one. `_contains_symlink` then walks INSIDE that directory, which
+            # is why the containing-directory case was caught and this one was
+            # not.
+            #
+            # Measured before the fix: `rm -rf <the junction itself>` exited 0
+            # while `rm -rf <its parent>` exited 2 — the guard blocked the
+            # distant shape and allowed the near one. This is the shape closest
+            # to the incident this whole hook exists for: `rm` from git-bash/MSYS
+            # recurses THROUGH a junction as though it were an ordinary
+            # directory, so the allowed command deletes the real contents on the
+            # far side. The module docstring dates it.
+            #
+            # PLATFORM NOTE, and it is the half that could not be executed here.
+            # The check itself is platform-independent: `_is_link_like` starts
+            # with `os.path.islink`, which is true of a POSIX symlink as much as
+            # of a Windows junction. What DIFFERS is the danger it guards. On
+            # Windows, `rm` from git-bash recurses THROUGH a junction — that is
+            # the incident. On POSIX, `rm -rf <a symlink>` unlinks the symlink
+            # and leaves its target alone, so blocking there is conservative
+            # rather than necessary.
+            #
+            # Blocking on both anyway, deliberately: `rm -rf` on a symlink is an
+            # odd way to spell `rm <symlink>`, the remedy the message gives is
+            # correct on either platform, and the trailing-slash spellings
+            # (`rm -rf link/`) DO reach through on POSIX. The cost is a possible
+            # false positive on a POSIX-only workflow that recursively deletes a
+            # symlink on purpose; `ALLOW_UNSAFE_RM=1` is the exit. Verified by
+            # execution on Windows with a real junction only — the POSIX branch
+            # is reasoned, not run.
+            if _is_link_like(unresolved):
+                print(
+                    f"blocked: recursive+force delete targets '{unresolved}', which is itself a "
+                    "symlink or directory junction. `rm -rf` on it recurses THROUGH the link and "
+                    "deletes what it points at -- here, "
+                    f"'{resolved}' -- rather than removing the link. Unlink it instead with a "
+                    "plain, non-recursive rm/Remove-Item on just that entry (or `git worktree "
+                    "remove` if it is a worktree). This is the shape that destroyed unrelated "
+                    "primary-clone files on 2026-07-19 (see memory "
+                    "'feedback-worktree-rmrf-junction-risk'). Override for a deliberate exception "
+                    "by setting ALLOW_UNSAFE_RM=1 in the environment. "
+                    "(hook: block-unsafe-recursive-delete.py)",
+                    file=sys.stderr,
+                )
+                return 2
 
             if _is_worktree_path(resolved):
                 print(
