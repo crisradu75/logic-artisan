@@ -103,7 +103,20 @@ _EXEMPT = {
 # response was to write no batch, so the check discouraged exactly the behaviour
 # it exists to encourage. It already cost one: the batch proving
 # `ask-destructive-git`'s `git branch -D` detection was run from outside the repo
-# tree and committed nowhere, so it now exists nowhere.
+# tree and committed nowhere, so it existed nowhere.
+#
+# `hooks` HAS SINCE BEEN ADOPTED, which is what this mechanism was built for and
+# its first actual use (issue #207). Six guards got a batch in that commit —
+# every one whose failure lets a destructive or prohibited action through: the
+# three blocks, `ask_destructive_git`, `pre_push`, and `log_commit_provenance`.
+# The other seven are listed below. The `git branch -D` batch exists again.
+#
+# The line was drawn on SEVERITY rather than on count. What matters is what gets
+# through when a guard is vacuous: a broken block or ask lets a destructive git
+# operation, an unsafe recursive delete, a cross-worktree write, or a push to the
+# default branch proceed. A broken warn prints nothing — and warn output never
+# reaches a transcript, so a warn's batch is the only evidence it fires at all.
+# That is an argument for covering the warns eventually, not ahead of the blocks.
 #
 # Why PER-FILE and not per-area. The first design here was per-area — an area
 # mapped to the set of guards adopted so far, and any guard not in that set was
@@ -147,6 +160,39 @@ _PENDING_ADOPTION: dict[str, str] = {
         "mutate the detector rather than a constant",
     "tests/skills/annotate/test_review_findings.py":
         "adoption debt: untouched by the margin change",
+
+    # `hooks`, adopted by issue #207. Six guards got a batch in that commit; these
+    # are the seven that did not, each a warn or a dispatch-layer guard rather
+    # than one that stops a destructive action. Ordered by what a batch would buy.
+    "tests/hooks/test_warn_wholesale_rewrite.py":
+        "adoption debt: highest-value of the seven. It is wired DIRECTLY on "
+        "PostToolUse rather than through a dispatcher, so nothing else exercises "
+        "its wiring, and its output never reaches a transcript — a batch is the "
+        "only evidence it fires at all",
+    "tests/hooks/test_warn_stray_scratch_artifact.py":
+        "adoption debt: warn-severity. Its own test fixtures carry the token the "
+        "project-token scanner looks for, so it is the one warn whose fixtures a "
+        "mutant could plausibly disturb",
+    "tests/hooks/test_warn_stacked_pr_merge.py":
+        "adoption debt: warn-severity. Guards a merge ordering whose failure "
+        "closed a dependent PR once (recorded in the codify-learnings overlay), "
+        "so the warn matters even though it blocks nothing",
+    "tests/hooks/test_warn_heredoc_escape_mangling.py":
+        "adoption debt: warn-severity, and it fired correctly twice during the "
+        "session that adopted this area — evidence it works, but not a batch",
+    "tests/hooks/test_dispatch.py":
+        "adoption debt: the dispatcher, not a guard. A mutant here breaks every "
+        "leaf hook at once, so the batch wants designing around what a leaf's own "
+        "batch does NOT already cover rather than duplicating it",
+    "tests/hooks/test_dispatch_lib.py":
+        "adoption debt: shared helpers behind both dispatchers. Same caveat as "
+        "test_dispatch.py — a mutant here is caught by whichever leaf batch "
+        "happens to exercise the helper, which makes attribution the hard part",
+    "tests/hooks/test_hooks_wiring.py":
+        "adoption debt: asserts hooks.json matches the leaf hooks and that the "
+        "timeout budget fits. Its own docstring records what it does NOT verify "
+        "(that a HOOK_WORST_CASE_SECONDS entry matches that hook's real cost), so "
+        "a batch should pin the gap rather than imply it is closed",
 }
 
 # Re-derive on the commit that adopts an area, then only lower it. This is the
@@ -156,7 +202,20 @@ _PENDING_ADOPTION: dict[str, str] = {
 # Raised 0 -> 3 in the commit that adopts `annotate` as a mutants area, which is
 # the one direction this number is allowed to move and only there. Three of the
 # area's six guards got a batch in that commit; these are the other three.
-_PENDING_ADOPTION_CEILING = 3
+#
+# Raised 3 -> 10 in the commit that adopts `hooks` (issue #207): six of its
+# thirteen guards got a batch, seven did not.
+#
+# THE BOUND IS GLOBAL, NOT PER AREA. `_PENDING_ADOPTION` is one flat map and the
+# assertion below reads `len()` of the whole thing, so the ceiling is 3 annotate
+# + 7 hooks = 10, not 7. The decisions doc behind #207 said 3 -> 7, reasoning as
+# though each area carried its own bound; it does not. Recorded because that doc
+# is what a later reader reaches for first, and the code is the authority.
+#
+# Ten is a large standing debt, deliberately. It is bounded and visible, which is
+# the whole trade this mechanism makes against the alternative that produced it:
+# thirteen batches in one commit, which nobody wrote, so the area had none at all.
+_PENDING_ADOPTION_CEILING = 10
 
 
 def test_adoption_debt_only_shrinks():

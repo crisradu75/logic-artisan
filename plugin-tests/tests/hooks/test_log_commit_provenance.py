@@ -502,10 +502,56 @@ def test_an_oversize_record_sheds_values_but_never_the_count(tmp_path):
     assert len(rows) == 1, "the line must still be written, not dropped"
     row = rows[-1]
     assert row["measured_by_count"] == 12, "the count is exact regardless of shedding"
-    assert len(row["measured_by"]) < 12, "values must have been shed to fit"
+    # `_MAX_TRAILERS` capped the list at 10 BEFORE the shedding loop was reached.
+    # Asserted against that constant rather than against 12: `< 12` was the
+    # original, and it is satisfied by the cap alone, so it held whether the loop
+    # ran or not.
+    assert len(row["measured_by"]) == mod._MAX_TRAILERS, "the list is capped at _MAX_TRAILERS"
     assert all(len(v) <= mod._MAX_TRAILER_CHARS for v in row["measured_by"])
     line_bytes = len(json.dumps(row, ensure_ascii=False).encode("utf-8")) + 1
     assert line_bytes <= mod._MAX_LINE_BYTES
+    # This fixture does NOT reach the shedding loop, and saying so is the point.
+    # Measured: 1801 bytes against a 2048 ceiling. The loop is reachable in
+    # production only in a narrow corner — every field at its cap plus a very
+    # long branch name reaches 2197 — so a fixture built from realistic trailers
+    # cannot get there. `..._sheds_when_the_line_would_not_fit` below is what
+    # actually exercises it.
+    assert line_bytes < mod._MAX_LINE_BYTES, (
+        "this fixture is under the ceiling, so it exercises the CAP, not the "
+        "shedding loop; if this ever fails, the two tests have merged and the "
+        "one below is no longer the only thing covering the loop"
+    )
+
+
+def test_the_shedding_loop_is_unreachable_under_the_current_caps(tmp_path):
+    """Records WHY no test drives the shedding loop through the real hook, so the
+    next reader does not spend the round trip this one cost.
+
+    The loop below `_line()` cannot execute in production as the constants stand.
+    Every contributing field is capped — `subject[:120]`, `_MAX_TRAILERS` = 10
+    values of `_MAX_TRAILER_CHARS` = 160 — and the only unbounded one is the
+    branch name. Measured: a realistic record is 1801 bytes against a 2048
+    ceiling, and reaching 2048 needs roughly 250 characters of branch, which git
+    refuses to create here (single-segment past ~100 chars, and a 264-char
+    multi-segment ref, both rejected).
+
+    Two dead ends worth not repeating. Monkeypatching `_MAX_LINE_BYTES` does
+    nothing: the hook runs as a separate process, so the subprocess reads the
+    shipped constant and returns an unpatched 1801-byte row. And
+    `..._terminates_on_a_record_that_can_never_fit` below re-implements the loop
+    in its own body rather than calling the hook, so it proves the algorithm
+    terminates and nothing about the hook.
+
+    The loop is therefore defence against a future cap change rather than live
+    code, which is a legitimate thing to keep — but it is NOT covered, and the
+    batch entry that would have covered it was dropped as unkillable rather than
+    left as a survivor nobody can act on. If the caps ever rise, delete this test
+    and write the real one.
+    """
+    assert mod._MAX_TRAILERS * mod._MAX_TRAILER_CHARS + 120 < mod._MAX_LINE_BYTES, (
+        "the caps no longer keep a record under the ceiling on their own, so the "
+        "shedding loop may now be reachable — write the real test and delete this"
+    )
 
 
 def test_the_shedding_loop_terminates_on_a_record_that_can_never_fit(monkeypatch):
