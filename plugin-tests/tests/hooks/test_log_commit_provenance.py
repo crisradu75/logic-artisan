@@ -87,6 +87,14 @@ def test_a_non_commit_is_not_recognised(command):
         "git commit -m 'x'\r\ngit show HEAD",
         "git commit -m 'x'\ngit push --dry-run",
         "git add -- f.txt\ngit commit -m 'x'\ngit rev-list --count HEAD",
+        # `&&` is the commonest multi-command idiom and had no case at all.
+        "git commit -m 'x' && git log -1",
+        # A backslash before a line break is a line CONTINUATION, so these two
+        # physical lines are one command. Splitting there loses the commit.
+        "git \\\n  commit -m 'x'",
+        # The quoted body is blanked before the split, so its newline is not a
+        # separator. This repo's own commit messages are multi-line.
+        "git commit -m 'line one\nline two'",
     ],
 )
 def test_a_commit_beside_another_command_is_still_a_commit(command):
@@ -102,16 +110,26 @@ def test_a_commit_beside_another_command_is_still_a_commit(command):
 @pytest.mark.parametrize(
     "command",
     [
-        "git log -1 --pretty=%s\ngit status",
+        # Prose, not a command. `strip_quoted_spans` does not blank heredoc
+        # bodies, so this line reaches the loop as its own segment; only the
+        # leads-with-git test rejects it. Before the split it was suppressed by
+        # accident, because the `git log` line matched the whole-string
+        # exclusion.
+        "cat <<'EOF'\nReminder: run git commit once tests pass\nSee git log for context\nEOF",
+        # A dry run in the same segment as the commit text.
         "git commit --dry-run\ngit status",
-        "git commit --dry-run\ngit log -1",
+        # A history read in the same segment as the word commit — here it is
+        # part of a filename. This is the exclusion's own branch, which no
+        # earlier case reached: the two before it exit on `--dry-run` first.
+        "git status\ngit show HEAD -- cla.io/retro/commit-provenance.jsonl",
     ],
 )
 def test_splitting_does_not_admit_a_non_commit(command):
     """Splitting must not turn the exclusions into a way through.
 
-    Each of these has a `--dry-run` or a history read in the SAME segment as the
-    commit-shaped text, so no segment qualifies and the answer stays False.
+    Each case fails a DIFFERENT test in the loop — leads-with-git, `--dry-run`,
+    then the history read. Three cases exiting by the same branch would look
+    like coverage while proving one thing.
     """
     assert mod._is_commit_command(command) is False
 

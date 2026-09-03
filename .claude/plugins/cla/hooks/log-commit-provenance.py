@@ -218,6 +218,20 @@ def _already_recorded(ledger: Path, sha: str) -> bool:
 # then read as one command, and the commit went unrecorded — GitHub issue #206.
 _SEGMENTS = re.compile(r"[|;&\n\r]+")
 
+# A backslash before a line break is the shell's line continuation: the two
+# physical lines are ONE command, and splitting there loses the commit. Joined
+# before segmenting, after quoted spans are blanked so a backslash inside a
+# quoted message cannot reach this.
+_LINE_CONTINUATION = re.compile(r"\\[ \t]*\r?\n")
+
+# A command begins with its program, optionally behind environment assignments
+# (`GIT_AUTHOR_DATE=… git commit …`). Requiring that is what keeps PROSE out:
+# `strip_quoted_spans` deliberately does not blank heredoc bodies, so a line of
+# English mentioning git commit reaches this loop as its own segment. Before the
+# split it was suppressed only by accident, because an unrelated `git log` on
+# another line matched the whole-string exclusion.
+_LEADS_WITH_GIT = re.compile(r"^\s*(?:[A-Za-z_]\w*=\S*\s+)*" + GIT_CMD + r"\b")
+
 
 def _is_commit_command(command: str) -> bool:
     """True for a real `git commit`, false for anything that merely mentions it.
@@ -236,8 +250,10 @@ def _is_commit_command(command: str) -> bool:
     # Blank out quoted spans first, the same way the git guard hooks do: without
     # it `echo 'run git commit later'` reads as a commit and writes a spurious
     # line — precisely the over-recording that corrupts this ledger.
-    command = strip_quoted_spans(command)
+    command = _LINE_CONTINUATION.sub(" ", strip_quoted_spans(command))
     for segment in _SEGMENTS.split(command):
+        if not _LEADS_WITH_GIT.match(segment):
+            continue
         if not re.search(GIT_CMD + r".*\bcommit\b", segment):
             continue
         if "--dry-run" in segment:
