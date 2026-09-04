@@ -99,14 +99,53 @@ _MAX_SCAN_SECONDS = 4.0
 
 # What to do when the far side of a link cannot be read at all. `True` blocks.
 #
-# Named rather than written inline for two reasons. It is a POLICY — the same
-# "an undetermined probe must not read as an approval" position the dispatcher
-# takes for a guard that could not run — and stating it as a name says so where
-# a bare `return True` in an except block does not. And it is the only way to
-# anchor a mutant on it: `return True` occurs four times in this file, so a
-# single-line anchor on the literal is ambiguous and `mutate.py` refuses it,
-# while a multi-line anchor cannot match on this CRLF checkout.
+# Named rather than written inline because it is a POLICY — the same "an
+# undetermined probe must not read as an approval" position the dispatcher takes
+# for a guard that could not run — and a name says so where a bare `return True`
+# in an except block does not. It is also a convenient single-line mutation
+# anchor, though not the only one — and not the best one: `_MISSING_TARGET_ERRORS`
+# below is the sharper target, since adding `OSError` to it undoes this policy
+# entirely. Both are mutated.
+#
+# An earlier version of this comment claimed `return True` "occurs four times in
+# this file" and that naming the constant was "the only way to anchor a mutant on
+# it". Both were false, and the first was reachable only by counting the
+# comment's own two lines — which is verbatim the defect CLAUDE.md records, where
+# a comment's own text contained the token it declared absent.
 _UNDETERMINED_FAR_SIDE_BLOCKS = True
+
+# Returned by `_is_link_like` when a path could not be read at all. Distinct
+# from False, which means "read it, not a link" -- conflating the two is what
+# let an unreadable junction through.
+_LINK_UNDETERMINED = object()
+
+# The errors that mean "there is genuinely nothing at this path" -- as opposed
+# to "I could not read it". The distinction is the whole of this hook's
+# fail-closed policy, and adding OSError to this tuple would undo it silently,
+# which is why it is named and mutated rather than spelled inline twice.
+_MISSING_TARGET_ERRORS = (FileNotFoundError, NotADirectoryError)
+
+# The errors that mean "I could not read this path at all". ValueError is not
+# padding: os.lstat raises it for an embedded null, and the command arrives as
+# JSON on stdin, so a null is trivially reachable. Named because both probes
+# use it and because dropping a member from it is one edit that silently
+# converts an undetermined answer back into an approval.
+_UNREADABLE_ERRORS = (OSError, ValueError)
+
+
+class _Blocked(Exception):
+    """A decided block, carrying its message, raised so the PRINT happens
+    outside `main`'s `except OSError` swallow.
+
+    The three block sites used to `print(...)` and `return 2` inside that
+    swallow. A `BrokenPipeError` writing to stderr is an `OSError`, so it skipped
+    the `return 2`, continued the loop, and fell through to `return 0` — a
+    decided BLOCK becoming a clean ALLOW. Measured by injection: with the first
+    gate having already judged the target dangerous, `main()` returned 0. A
+    CLOSED stderr raises `ValueError` instead, which was not caught at all, so
+    the two adjacent stderr failures produced a silent allow and a prompt, and
+    neither was the block that had been computed.
+    """
 
 
 _SHORT_FLAG_CHARS = set("rRfFidvIu")
@@ -221,47 +260,52 @@ def _is_worktree_path(resolved: Path) -> bool:
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
-def _is_link_like(path: str) -> bool:
-    """True for a real symlink OR (Windows only) an NTFS junction/mount point.
+def _is_link_like(path: str):
+    """Three states, not two: True / False / `_LINK_UNDETERMINED`.
 
-    `os.path.islink()` alone only recognizes the symlink reparse tag -- an
-    NTFS directory junction (created via `mklink /J`, needs no elevated
-    privileges, and the most likely real mechanism behind the 2026-07-19
-    incident this hook exists to prevent) uses a DIFFERENT reparse tag and is
-    silently invisible to it. `st_file_attributes`'s reparse-point bit catches
-    both.
+    True for a real symlink OR (Windows) an NTFS junction. `os.path.islink`
+    alone only recognizes the symlink reparse tag -- a junction (`mklink /J`,
+    no elevated privileges, and the likely mechanism behind the incident this
+    hook exists to prevent) uses a DIFFERENT tag and is invisible to it.
+    `st_file_attributes`'s reparse-point bit catches both.
+
+    WHY THREE STATES. This returned a plain bool, swallowing every probe error
+    into False -- so "this is not a link" and "I could not read this path" were
+    the same answer on the guard's FIRST gate, and the second one silently
+    ALLOWED. Measured on both platforms, against a junction and a symlink whose
+    parent denies traverse: `_far_side_is_a_directory` answers True (block) for
+    exactly that input and is never asked, because this function has already
+    returned False and `_target_is_link` short-circuited. The hook exits 0 with
+    empty stderr, which is byte-identical to having examined the command and
+    approved it.
+
+    A previous round tried to fix that one gate too far downstream, and left a
+    comment claiming the conservative gate below handled it. It cannot: it sits
+    downstream of this swallow. The undetermined state has to exist HERE, where
+    the ambiguity arises.
+
+    ONE `os.lstat` RATHER THAN `islink` THEN `stat`. `os.path.islink` swallows
+    EACCES into False before the platform check is even reached, so the POSIX
+    arm had the same hole and no amount of Windows-side care would close it.
+    `os.lstat` raises instead, and carries `st_file_attributes` on Windows, so
+    both platforms are answered from one call and one exception set.
     """
-    if os.path.islink(path):
+    try:
+        st = os.lstat(path)
+    except _MISSING_TARGET_ERRORS:
+        # Determinate: nothing is there, so it is not a link. This is the
+        # ordinary case -- `_tokenize_variants` double-parses every command and
+        # feeds a mangled candidate here on every run.
+        return False
+    except _UNREADABLE_ERRORS:
+        # ValueError is not padding: `os.lstat` raises it for an embedded null,
+        # and the command arrives as JSON on stdin.
+        return _LINK_UNDETERMINED
+    if stat.S_ISLNK(st.st_mode):
         return True
     if sys.platform != "win32":
         return False
-    try:
-        attrs = os.stat(path, follow_symlinks=False).st_file_attributes
-    # ValueError is NOT defensive padding. `os.stat` raises it for an embedded
-    # null (`stat: embedded null character in path`), and the command text is
-    # JSON on stdin, so a null is trivially reachable. `os.path.islink` above
-    # catches it internally, which is why this only became live when the caller
-    # started passing an unresolved path straight in — a hard BLOCK on a
-    # `.claude/worktrees/` delete became an uncaught raise, which the dispatcher
-    # fails open into an `ask`. In an unattended run there is nobody at the
-    # prompt. Measured against the previous commit: exit 2 became exit 1.
-    except (OSError, ValueError, AttributeError):
-        # NO DIAGNOSTIC HERE, AND THE REASON IS WORTH KEEPING. A previous version
-        # printed "could not determine link-ness" gated on `os.path.lexists`, to
-        # stop "not a link" and "could not tell" being the same silent answer.
-        # It could never fire: `lexists` IS the same lstat query that just
-        # raised, so every input making `os.stat(..., follow_symlinks=False)`
-        # raise also makes `lexists` False. Measured over 12 shapes — embedded
-        # null, over-MAX_PATH, invalid characters, wildcards, mangled
-        # drive-relative paths — not one printed. Ungated, it floods the ordinary
-        # allow path instead, because `_tokenize_variants` double-parses and
-        # feeds a mangled candidate here on every run.
-        #
-        # The concern was real; the answer is at the `_far_side_is_a_directory`
-        # gate below, which BLOCKS on an unreadable far side rather than
-        # reporting on it. A guard that acts conservatively needs no diagnostic.
-        return False
-    return bool(attrs & _FILE_ATTRIBUTE_REPARSE_POINT)
+    return bool(getattr(st, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def _target_is_link(unresolved: str) -> bool:
@@ -296,20 +340,41 @@ def _target_is_link(unresolved: str) -> bool:
     handled.
     """
     probe = unresolved
-    if probe.endswith(("/.", "\\.")):
-        probe = probe[:-2] or probe
+    # ONE loop over both rules, alternating until neither applies. They used to
+    # run in sequence — the `/.` strip once, then the separator loop — so any
+    # spelling with a separator AFTER the dot escaped: `link/.` was recognised
+    # and `link/./` was not, which is the inconsistency the `/.` rule exists to
+    # remove. Measured on POSIX: `link/.` blocked, `link/./` allowed, `link/./.`
+    # allowed. No data is at risk in those cases (`rm` refuses any `.` component,
+    # measured), but a rule that fires on one spelling and not its neighbour is
+    # worse than no rule — it reads as coverage.
+    #
     # Terminate on the ROOT rather than on a length. `len(probe) > 3` was
     # `len("C:\\")` — Windows-shaped, and POSIX's root is one character, so it
     # refused to strip `/a/` and left `/a//` carrying a separator. A symlink at
     # a short absolute path spelled `rm -rf /a/` then went unrecognised, which
     # is precisely the spelling this function exists for. `dirname` of a root is
     # itself, on every platform and for UNC paths, so this needs no magic number.
-    while probe[-1:] in ("/", "\\") and os.path.dirname(probe) != probe:
-        stripped = probe[:-1]
-        if not stripped or stripped == os.path.dirname(stripped):
+    while True:
+        if probe[-1:] in ("/", "\\") and os.path.dirname(probe) != probe:
+            stripped = probe[:-1]
+            if not stripped or stripped == os.path.dirname(stripped):
+                break
+            probe = stripped
+        elif probe.endswith(("/.", "\\.")) and len(probe) > 2:
+            probe = probe[:-2]
+        else:
             break
-        probe = stripped
-    if not (_is_link_like(unresolved) or _is_link_like(probe)):
+    verdicts = (_is_link_like(unresolved), _is_link_like(probe))
+    if _LINK_UNDETERMINED in verdicts:
+        # The path could not be read, so whether it is a link is unknown. This
+        # is the gate the policy has to sit at: an unreadable junction is
+        # indistinguishable from an ordinary directory here, and treating the
+        # two alike is what let `rm -rf` through a link whose parent denied
+        # traverse. Deciding it downstream cannot work — every downstream gate
+        # is reached only by returning False from this one.
+        return _UNDETERMINED_FAR_SIDE_BLOCKS
+    if not any(verdicts):
         return False
     return _far_side_is_a_directory(probe)
 
@@ -334,11 +399,11 @@ def _far_side_is_a_directory(probe: str) -> bool:
     """
     try:
         return stat.S_ISDIR(os.stat(probe).st_mode)
-    except (FileNotFoundError, NotADirectoryError):
+    except _MISSING_TARGET_ERRORS:
         # The link points at nothing. A dangling link cannot destroy a far side
         # that does not exist, so this is a real allow rather than an unknown.
         return False
-    except (OSError, ValueError):
+    except _UNREADABLE_ERRORS:
         return _UNDETERMINED_FAR_SIDE_BLOCKS
 
 
@@ -366,7 +431,16 @@ def _contains_symlink(resolved: Path) -> bool:
         for dirpath, dirnames, filenames in os.walk(resolved, followlinks=False):
             for name in (*dirnames, *filenames):
                 scanned += 1
-                if _is_link_like(os.path.join(dirpath, name)):
+                # `is True`, deliberately, and NOT a truthiness test — the
+                # sentinel is truthy, so a bare `if` would silently start
+                # blocking here on any unreadable entry. That is the right
+                # policy for the ONE target path, where the cost of being
+                # conservative is one command; it is the wrong one for a walk
+                # over up to `_MAX_SCAN_ENTRIES` entries, where a single
+                # transient read error would block a legitimate delete of a
+                # large tree. The walk already fails open when its budget runs
+                # out, for the same reason.
+                if _is_link_like(os.path.join(dirpath, name)) is True:
                     return True
                 if scanned >= _MAX_SCAN_ENTRIES or (time.monotonic() - start) >= _MAX_SCAN_SECONDS:
                     return False  # inconclusive -- fail open rather than stall the hook
@@ -464,7 +538,7 @@ def main() -> int:
                     else "a recursive delete can reach THROUGH the link and delete what it "
                          "points at (a trailing slash, `rm -rf <link>/`, does exactly that here)"
                 )
-                print(
+                raise _Blocked(
                     f"blocked: recursive+force delete targets '{unresolved}', which is itself a "
                     f"symlink or directory junction. {recursion}{destination} rather than "
                     "removing the link. Remove the link itself instead, with a plain "
@@ -474,14 +548,12 @@ def main() -> int:
                     "'feedback-worktree-rmrf-junction-risk'). Override for a deliberate exception "
                     "by setting ALLOW_UNSAFE_RM=1 in the environment. "
                     "(hook: block-unsafe-recursive-delete.py)",
-                    file=sys.stderr,
                 )
-                return 2
 
             resolved = Path(unresolved).resolve()
 
             if _is_worktree_path(resolved):
-                print(
+                raise _Blocked(
                     f"blocked: recursive+force delete targets a path under .claude/worktrees/ "
                     f"('{resolved}'). Never raw-delete a worktree directory -- use "
                     "`git worktree remove <path>` instead. If that fails (e.g. \"Directory not "
@@ -493,12 +565,10 @@ def main() -> int:
                     "raw recursive delete can recurse through them and destroy real files "
                     "elsewhere in the repo. Override for a deliberate exception by setting "
                     "ALLOW_UNSAFE_RM=1 in the environment. (hook: block-unsafe-recursive-delete.py)",
-                    file=sys.stderr,
                 )
-                return 2
 
             if _contains_symlink(resolved):
-                print(
+                raise _Blocked(
                     f"blocked: recursive+force delete targets '{resolved}', which contains a "
                     "symlink or directory junction. Recursing through it can delete whatever it "
                     "points at instead of (or in addition to) this tree -- this is exactly how "
@@ -508,11 +578,27 @@ def main() -> int:
                     "only its non-linked subdirectories individually, or ask before proceeding. "
                     "Override for a deliberate exception by setting ALLOW_UNSAFE_RM=1 in the "
                     "environment. (hook: block-unsafe-recursive-delete.py)",
-                    file=sys.stderr,
                 )
-                return 2
+        except _Blocked as blocked:
+            # OUTSIDE the OSError swallow below, which is the whole point: a
+            # failure writing this message can no longer erase the decision that
+            # produced it. If the write itself raises, that propagates out of
+            # `main` and the dispatcher escalates to a prompt — never a silent
+            # allow.
+            print(blocked.args[0], file=sys.stderr)
+            return 2
         except OSError:
-            continue  # this one candidate couldn't be resolved -- still check the rest
+            # ONLY the filesystem probing above is inside this swallow. Every
+            # `print(...)` + `return 2` was once inside it too, and that is a
+            # decided BLOCK sitting under `except OSError: continue` — a
+            # `BrokenPipeError` writing the message (an OSError) skipped the
+            # `return 2`, continued the loop, and fell through to `return 0`.
+            # Measured by injection: with gate 0 having already decided the
+            # target was dangerous, `main()` returned 0. A closed stderr raises
+            # `ValueError` instead, which is not caught, so the two adjacent
+            # stderr failures gave a silent allow and a prompt — neither of them
+            # the block that had been computed.
+            continue  # this one candidate couldn't be probed -- still check the rest
     return 0
 
 

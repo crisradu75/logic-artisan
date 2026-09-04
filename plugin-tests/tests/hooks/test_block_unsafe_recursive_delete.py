@@ -359,7 +359,14 @@ def test_a_link_to_a_file_is_not_blocked(tmp_path):
     assert r.returncode == 0, f"a link to a FILE has no far side to recurse into: {r.stderr}"
 
 
-@pytest.mark.parametrize("spelling", ["{p}/", "{p}//", "{p}/.", "{p}\\"])
+@pytest.mark.parametrize("spelling", [
+    "{p}/", "{p}//", "{p}/.", "{p}\\",
+    # Added after review: the `/.` rule and the separator rule used to run
+    # in SEQUENCE, so a separator AFTER the dot escaped both -- `link/.`
+    # was recognised and `link/./` was not. These three fail against that
+    # ordering and pass against the folded loop.
+    "{p}/./", "{p}/./.", "{p}//.",
+])
 def test_the_trailing_separator_strip_is_what_sees_through_a_slash(tmp_path, spelling, monkeypatch):
     """The strip, isolated — and it can only be tested this way.
 
@@ -405,6 +412,36 @@ def test_the_trailing_separator_strip_is_what_sees_through_a_slash(tmp_path, spe
     # `test_a_target_reached_through_a_link_is_still_allowed`, in the other
     # direction entirely.
     assert not hook._target_is_link(str(holder))
+
+
+def test_a_path_whose_own_lstat_fails_blocks_rather_than_allowing(tmp_path, monkeypatch):
+    """The Critical from round three: an UNREADABLE LINK, not an unreadable far
+    side.
+
+    `_is_link_like` used to swallow every probe error into False, so a link whose
+    own `lstat` fails scored as "not a link" and `_target_is_link` returned False
+    before the conservative far-side gate was ever reached. Measured on both
+    platforms against a real junction and a real symlink whose parent denies
+    traverse: rc=0, empty stderr — byte-identical to the guard having examined
+    the command and approved it. The previous round installed the right policy
+    one gate too far downstream to enforce itself.
+
+    THE TARGET IS DELIBERATELY A PATH THAT DOES NOT EXIST. That makes the test
+    discriminate between two different regressions rather than one. With the
+    sentinel collapsed back to False, `any(verdicts)` is False and the function
+    returns False. With the sentinel produced but its routing branch removed, the
+    sentinel is TRUTHY, so control falls through to `_far_side_is_a_directory`,
+    which answers False for a missing path — also a fail. Only routing the
+    undetermined verdict to the block policy returns True.
+    """
+    def deny(path, *a, **kw):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(hook.os, "lstat", deny)
+    assert hook._target_is_link(str(tmp_path / "gone")) is True, (
+        "a path whose link-ness cannot be determined must BLOCK; returning False "
+        "here is the exit-0-with-empty-stderr that reads as an approval"
+    )
 
 
 def test_an_unreadable_far_side_blocks_rather_than_allowing(tmp_path, monkeypatch):

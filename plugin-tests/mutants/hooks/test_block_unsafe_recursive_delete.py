@@ -74,8 +74,8 @@ MUTANTS = [
         # test_blocks_directory_containing_a_symlink.
         "symlink/junction detection inside the delete target is disabled",
         HOOK,
-        "if _is_link_like(os.path.join(dirpath, name)):",
-        "if False and _is_link_like(os.path.join(dirpath, name)):",
+        "if _is_link_like(os.path.join(dirpath, name)) is True:",
+        "if False and _is_link_like(os.path.join(dirpath, name)) is True:",
         TARGETS,
     ),
     (
@@ -181,8 +181,8 @@ MUTANTS.append((
     "the trailing-separator strip is dropped, so rm -rf <link>/ stops being "
     "recognised as targeting the link",
     HOOK,
-    '    while probe[-1:] in ("/", "\\\\") and os.path.dirname(probe) != probe:',
-    '    while False and probe[-1:] in ("/", "\\\\") and os.path.dirname(probe) != probe:',
+    '        if probe[-1:] in ("/", "\\\\") and os.path.dirname(probe) != probe:',
+    '        if False and probe[-1:] in ("/", "\\\\") and os.path.dirname(probe) != probe:',
     TARGETS,
 ))
 
@@ -212,8 +212,8 @@ MUTANTS.append((
     "ValueError stops being swallowed, so an embedded null in the path crashes "
     "the hook instead of blocking",
     HOOK,
-    "    except (OSError, ValueError, AttributeError):",
-    "    except (OSError, AttributeError):",
+    "_UNREADABLE_ERRORS = (OSError, ValueError)",
+    "_UNREADABLE_ERRORS = (OSError,)",
     TARGETS,
 ))
 
@@ -232,8 +232,8 @@ MUTANTS.append((
     "the trailing /. strip is dropped, so rm -rf <link>/. stops being "
     "recognised as targeting the link",
     HOOK,
-    '    if probe.endswith(("/.", "\\\\.")):',
-    '    if False and probe.endswith(("/.", "\\\\.")):',
+    '        elif probe.endswith(("/.", "\\\\.")) and len(probe) > 2:',
+    '        elif False and probe.endswith(("/.", "\\\\.")) and len(probe) > 2:',
     TARGETS,
 ))
 
@@ -253,5 +253,44 @@ MUTANTS.append((
     HOOK,
     "_UNDETERMINED_FAR_SIDE_BLOCKS = True",
     "_UNDETERMINED_FAR_SIDE_BLOCKS = False",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The tri-state itself: collapse "could not read this path" back into
+    # "not a link". That is the Critical round three found -- the conservative
+    # policy existed but sat DOWNSTREAM of this swallow, so it could never fire
+    # for the case it was written for. Measured on both platforms against a link
+    # whose parent denies traverse: rc=0, empty stderr, byte-identical to an
+    # examined approval.
+    "an unreadable path is scored as 'not a link' instead of undetermined, so "
+    "the conservative policy never runs",
+    HOOK,
+    "        return _LINK_UNDETERMINED",
+    "        return False",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The routing half. Even with the sentinel produced, dropping the branch
+    # that acts on it puts the behaviour back: `any(verdicts)` is True for a
+    # truthy sentinel, so it would fall through to `_far_side_is_a_directory`
+    # on a path it could not read -- a different wrong answer, not the same one.
+    "the undetermined verdict stops being routed to the block policy",
+    HOOK,
+    "    if _LINK_UNDETERMINED in verdicts:",
+    "    if False and _LINK_UNDETERMINED in verdicts:",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The error split inside `_far_side_is_a_directory`. Adding OSError here
+    # sends every read failure down the allow arm and undoes the whole policy --
+    # the single most likely future regression, and a better anchor than the
+    # policy constant (round three's review made exactly this point).
+    "an unreadable far side joins the missing-target arm and is allowed",
+    HOOK,
+    "_MISSING_TARGET_ERRORS = (FileNotFoundError, NotADirectoryError)",
+    "_MISSING_TARGET_ERRORS = (FileNotFoundError, NotADirectoryError, OSError)",
     TARGETS,
 ))
