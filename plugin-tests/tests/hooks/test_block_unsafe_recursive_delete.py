@@ -260,6 +260,12 @@ def test_blocks_the_junction_target_however_the_path_is_spelled(tmp_path, suffix
     GNU coreutils, `rm -rf link` unlinks the link and the far side survives,
     while `rm -rf link/` leaves the link and DELETES the far side's contents.
 
+    Measured with GNU coreutils 9.7: `link` leaves the far side INTACT, `link/`
+    and `link//` DESTROY it, and `link/.` is refused by rm itself ("refusing to
+    remove '.' or '..' directory"). So only two of these four spellings are
+    actually destructive — the `/.` cases are blocked conservatively, not
+    because they would delete anything.
+
     The first version of this fix tested the unstripped path, so on POSIX it
     blocked the safe spelling and allowed the destructive one — a precise
     inversion, found by a reviewer who ran it under WSL. Windows was never
@@ -278,7 +284,6 @@ def test_blocks_the_junction_target_however_the_path_is_spelled(tmp_path, suffix
 
     r = _run({"tool_input": {"command": f'rm -rf "{link}{suffix}"'}}, cwd=tmp_path)
     assert r.returncode == 2, f"spelling {suffix!r} must still be blocked: {r.stderr}"
-    assert real.joinpath("work.txt").exists()
 
 
 def test_a_link_that_is_not_a_directory_is_not_blocked(tmp_path):
@@ -321,13 +326,35 @@ def test_a_link_that_is_not_a_directory_is_not_blocked(tmp_path):
     # side to recurse into. Skipped rather than faked where symlink creation is
     # not permitted — `mklink /J` is directories-only, so there is no junction
     # equivalent of this shape.
+
+def test_a_link_to_a_file_is_not_blocked(tmp_path):
+    """The other half of the directory requirement, in its OWN test.
+
+    It was a second half of the dangling-link test, after a bare `return` when
+    symlink creation is not permitted — so on a default non-admin Windows
+    account (`WinError 1314`) it never executed while the test reported PASSED,
+    contributing to a "43 passed, 0 skipped" claim in which this case, the one
+    the change headlines, had never run anywhere. A `pytest.skip` in the same
+    place would have been visible but would also have discarded the dangling
+    half's result, since a skip aborts the whole test. Two tests, two honest
+    verdicts.
+
+    The two halves also pin DIFFERENT things: the dangling one fails the
+    directory check because the target is MISSING, this one because it is a
+    FILE. An `os.stat`-based check that only tested existence would pass the
+    first and fail this one.
+    """
     real_file = tmp_path / "real.txt"
     real_file.write_text("x\n", encoding="utf-8")
+    holder = tmp_path / "holder"
+    holder.mkdir()
     file_link = holder / "filelink"
     try:
         file_link.symlink_to(real_file)
-    except (OSError, NotImplementedError, AttributeError):
-        return
+    except (OSError, NotImplementedError, AttributeError) as exc:
+        pytest.skip(f"file symlink creation not permitted here: {exc}")
+
+    assert hook._is_link_like(str(file_link)), "the fixture must actually be a link"
     r = _run({"tool_input": {"command": f'rm -rf "{file_link}"'}}, cwd=tmp_path)
     assert r.returncode == 0, f"a link to a FILE has no far side to recurse into: {r.stderr}"
 
@@ -369,9 +396,56 @@ def test_the_trailing_separator_strip_is_what_sees_through_a_slash(tmp_path, spe
         f"{spelled!r} must still be recognised as targeting the link; without the "
         "trailing-separator strip this is the destructive POSIX spelling going silent"
     )
-    # The control: a genuinely different path must NOT be recognised, so the
-    # assertion above cannot pass by the stub or the strip being over-broad.
+    # A weak control, and worth labelling as such rather than over-claiming. It
+    # feeds a DIFFERENT input, so it catches a stub that answers True for
+    # everything -- and nothing else. A reviewer replayed candidate wrong strips
+    # against these assertions: front-stripping and off-by-one are caught, but
+    # `os.path.dirname` (the textbook over-broad strip) passes this control
+    # cleanly. What catches `dirname` is
+    # `test_a_target_reached_through_a_link_is_still_allowed`, in the other
+    # direction entirely.
     assert not hook._target_is_link(str(holder))
+
+
+def test_an_unreadable_far_side_blocks_rather_than_allowing(tmp_path, monkeypatch):
+    """"Could not tell" must not become "allow" — the policy, pinned.
+
+    `os.path.isdir` was the first spelling of this check and it swallows every
+    error into False, so "the far side is a file" and "the far side could not be
+    read" became the same answer, and the second one silently ALLOWED. A
+    reviewer measured the consequence: a symlink to a directory under a mode-000
+    parent was BLOCKED before the directory check existed and ALLOWED after it —
+    a coverage regression introduced by the check meant to REDUCE false
+    positives. A junction into a clone whose far side cannot be stat'd is
+    exactly the shape this hook exists for.
+
+    Stubbing `os.stat` rather than chmod-ing a real directory: an unreadable
+    directory is trivial to make on POSIX and awkward on Windows (it needs
+    `icacls` and an ACL that the test then has to unwind), so a real fixture
+    would run on one platform and skip on the other — and this policy is
+    platform-independent. The stub raises exactly what an unreadable parent
+    raises.
+    """
+    def deny(path, *a, **kw):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(hook.os, "stat", deny)
+    assert hook._far_side_is_a_directory(str(tmp_path)) is True, (
+        "an unreadable far side must be treated as a directory and BLOCK; "
+        "returning False here is the regression that allows the delete"
+    )
+
+    # The control: a MISSING target is a determinate answer, not an undetermined
+    # one, and must still allow — a dangling link cannot destroy what is not
+    # there. Without this, `return True` unconditionally would pass the
+    # assertion above.
+    def missing(path, *a, **kw):
+        raise FileNotFoundError(2, "No such file or directory", str(path))
+
+    monkeypatch.setattr(hook.os, "stat", missing)
+    assert hook._far_side_is_a_directory(str(tmp_path)) is False, (
+        "a missing target is a real allow, not an unknown"
+    )
 
 
 def test_an_embedded_null_in_the_path_does_not_crash_the_hook(tmp_path):

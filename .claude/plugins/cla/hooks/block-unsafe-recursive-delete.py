@@ -63,6 +63,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import sys
 import time
 from pathlib import Path
@@ -95,6 +96,17 @@ _PS_PATH_PARAMS = {"-path", "-literalpath"}
 
 _MAX_SCAN_ENTRIES = 5000
 _MAX_SCAN_SECONDS = 4.0
+
+# What to do when the far side of a link cannot be read at all. `True` blocks.
+#
+# Named rather than written inline for two reasons. It is a POLICY — the same
+# "an undetermined probe must not read as an approval" position the dispatcher
+# takes for a guard that could not run — and stating it as a name says so where
+# a bare `return True` in an except block does not. And it is the only way to
+# anchor a mutant on it: `return True` occurs four times in this file, so a
+# single-line anchor on the literal is ambiguous and `mutate.py` refuses it,
+# while a multi-line anchor cannot match on this CRLF checkout.
+_UNDETERMINED_FAR_SIDE_BLOCKS = True
 
 
 _SHORT_FLAG_CHARS = set("rRfFidvIu")
@@ -233,28 +245,21 @@ def _is_link_like(path: str) -> bool:
     # `.claude/worktrees/` delete became an uncaught raise, which the dispatcher
     # fails open into an `ask`. In an unattended run there is nobody at the
     # prompt. Measured against the previous commit: exit 2 became exit 1.
-    except (OSError, ValueError, AttributeError) as exc:
-        # Say so — but ONLY where the answer is genuinely undetermined. "Not a
-        # link" and "could not tell" are the same return value, and this is now
-        # the guard's FIRST gate, so an unreadable probe on a real junction
-        # allows the delete and looks exactly like an approval.
-        # `dispatch-bash-pretooluse.py` makes that argument for a guard that
-        # could not RUN; this is the same problem one level in.
+    except (OSError, ValueError, AttributeError):
+        # NO DIAGNOSTIC HERE, AND THE REASON IS WORTH KEEPING. A previous version
+        # printed "could not determine link-ness" gated on `os.path.lexists`, to
+        # stop "not a link" and "could not tell" being the same silent answer.
+        # It could never fire: `lexists` IS the same lstat query that just
+        # raised, so every input making `os.stat(..., follow_symlinks=False)`
+        # raise also makes `lexists` False. Measured over 12 shapes — embedded
+        # null, over-MAX_PATH, invalid characters, wildcards, mangled
+        # drive-relative paths — not one printed. Ungated, it floods the ordinary
+        # allow path instead, because `_tokenize_variants` double-parses and
+        # feeds a mangled candidate here on every run.
         #
-        # A path that does not exist is NOT undetermined — it is a determinate
-        # "not a link", and it is the ordinary case: `_tokenize_variants` runs
-        # both posix and non-posix and feeds every candidate here, so a Windows
-        # path mangled by the posix variant reaches this line on every single
-        # run. Printing there floods stderr on the allow path and broke
-        # `test_allows_a_clean_recursive_delete`, which rightly asserts stderr
-        # is empty. `lexists` is the discriminator: it does not follow the link,
-        # so a dangling link still counts as present.
-        if os.path.lexists(path):
-            print(
-                f"[block-unsafe-recursive-delete] could not determine link-ness of "
-                f"{path!r} ({type(exc).__name__}: {exc}) -- treating as not a link",
-                file=sys.stderr,
-            )
+        # The concern was real; the answer is at the `_far_side_is_a_directory`
+        # gate below, which BLOCKS on an unreadable far side rather than
+        # reporting on it. A guard that acts conservatively needs no diagnostic.
         return False
     return bool(attrs & _FILE_ATTRIBUTE_REPARSE_POINT)
 
@@ -278,19 +283,63 @@ def _target_is_link(unresolved: str) -> bool:
 
     IT MUST RESOLVE TO A DIRECTORY. A dangling link points at nothing and a link
     to a FILE has no far side to recurse into, so neither can produce the
-    incident — and blocking them is a pure false positive on a shipped guard.
-    `rm -rf ~/.config/nvim` where that is a dotfiles symlink, and
-    `rm -rf node_modules/<pkg>` in a workspace, are ordinary commands.
-    `os.path.isdir` follows the link, which is exactly the discrimination wanted.
+    incident, and blocking them is a pure false positive on a guard that ships
+    and blocks.
+
+    THAT IS ALL IT BUYS, AND AN EARLIER VERSION OF THIS COMMENT CLAIMED MORE. It
+    offered `rm -rf ~/.config/nvim` on a dotfiles symlink and
+    `rm -rf node_modules/<pkg>` in a workspace as the false positives being
+    fixed. Both are symlinks to DIRECTORIES, so both still block, before and
+    after — measured against both commits. Those are real false positives and
+    this check does not address them; if they matter, they need their own
+    decision, not a sentence in a docstring that reads as though they were
+    handled.
     """
     probe = unresolved
     if probe.endswith(("/.", "\\.")):
         probe = probe[:-2] or probe
-    while len(probe) > 3 and probe[-1] in "/\\":
-        probe = probe[:-1]
+    # Terminate on the ROOT rather than on a length. `len(probe) > 3` was
+    # `len("C:\\")` — Windows-shaped, and POSIX's root is one character, so it
+    # refused to strip `/a/` and left `/a//` carrying a separator. A symlink at
+    # a short absolute path spelled `rm -rf /a/` then went unrecognised, which
+    # is precisely the spelling this function exists for. `dirname` of a root is
+    # itself, on every platform and for UNC paths, so this needs no magic number.
+    while probe[-1:] in ("/", "\\") and os.path.dirname(probe) != probe:
+        stripped = probe[:-1]
+        if not stripped or stripped == os.path.dirname(stripped):
+            break
+        probe = stripped
     if not (_is_link_like(unresolved) or _is_link_like(probe)):
         return False
-    return os.path.isdir(probe)
+    return _far_side_is_a_directory(probe)
+
+
+def _far_side_is_a_directory(probe: str) -> bool:
+    """Whether the link's target is a directory — and BLOCK when that cannot be
+    determined, rather than allowing.
+
+    `os.path.isdir` was the first spelling of this and it is wrong here for one
+    reason: it swallows every error and returns False, so "the far side is a
+    file" and "the far side could not be read" become the same answer, and the
+    second one silently ALLOWS. Measured: a symlink to a directory under a
+    mode-000 parent was blocked before this check existed and allowed after it —
+    a coverage regression introduced by the check meant to reduce false
+    positives. A junction into a clone whose far side cannot be stat'd is
+    exactly the shape the hook exists for.
+
+    That is the same argument `_is_link_like`'s own swallow makes one gate up,
+    and it applies identically here. Only a genuinely MISSING target is treated
+    as "nothing to recurse into"; anything else unreadable is treated as a
+    directory and blocks.
+    """
+    try:
+        return stat.S_ISDIR(os.stat(probe).st_mode)
+    except (FileNotFoundError, NotADirectoryError):
+        # The link points at nothing. A dangling link cannot destroy a far side
+        # that does not exist, so this is a real allow rather than an unknown.
+        return False
+    except (OSError, ValueError):
+        return _UNDETERMINED_FAR_SIDE_BLOCKS
 
 
 def _contains_symlink(resolved: Path) -> bool:
@@ -383,9 +432,17 @@ def main() -> int:
             # correct on either platform, and the trailing-slash spellings
             # (`rm -rf link/`) DO reach through on POSIX. The cost is a possible
             # false positive on a POSIX-only workflow that recursively deletes a
-            # symlink on purpose; `ALLOW_UNSAFE_RM=1` is the exit. Verified by
-            # execution on Windows with a real junction only — the POSIX branch
-            # is reasoned, not run.
+            # symlink on purpose; `ALLOW_UNSAFE_RM=1` is the exit.
+            #
+            # BOTH BRANCHES ARE NOW EXECUTED. This comment previously ended
+            # "the POSIX branch is reasoned, not run", and that disclosure is
+            # what got the branch run — it was wrong in a way only execution
+            # found. Leaving it in place afterwards would re-arm the same trap
+            # pointing the other way: a reader would either distrust a measured
+            # branch, or notice it contradicts the coreutils measurement above
+            # and trust neither. Windows: real `mklink /J` junctions, eight
+            # spellings. POSIX: GNU coreutils 9.7 under WSL, correlating what
+            # `rm` does to the far side with what this hook says about it.
             if _target_is_link(unresolved):
                 points_at = Path(unresolved).resolve()
                 # Only name the far side when it IS somewhere else. For a

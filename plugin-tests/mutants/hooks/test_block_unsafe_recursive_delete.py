@@ -10,9 +10,9 @@ most expensive kind: it reads green while the thing that stops the next
 incident quietly does nothing.
 
 Each entry re-breaks one real, distinct capability of the hook rather than a
-variation on the same line: the two independent trigger conditions (a
-worktree path anywhere in the target, and a symlink/junction found inside
-it), the AND-of-two-flags logic that decides a delete is both recursive and
+variation on the same line: the three independent trigger conditions (a link
+AS the target, a worktree path anywhere in it, and a symlink/junction found
+inside it), the AND-of-two-flags logic that decides a delete is both recursive and
 forced (bash and PowerShell are separate code paths, so both get their own
 mutant), the heredoc-stripping that keeps prose from being misread as a real
 invocation, the escape-hatch env var's exact-match semantics, and a
@@ -24,11 +24,22 @@ about the hook's behaviour rather than about the guard's own wording.
 Paths resolve from this file's own location: a batch with an absolute
 developer path works on one machine and leaks it into synced core.
 
-PLATFORM NOTE, because a skip reads as a SURVIVED verdict. The symlink/junction
-mutant's killer goes through `make_dir_alias`, which calls `pytest.skip` when
-neither alias kind can be created. The batch is robust to WHICH kind the
-machine permits, but not to a machine permitting NEITHER -- there it reports
-SURVIVED, which is a fact about the machine rather than the mutant.
+PLATFORM NOTE, because a skip reads as a SURVIVED verdict. Three entries here
+are platform-conditional, and a reader who does not know that will read a
+survivor as a finding about the code:
+
+  * The symlink/junction mutant's killer goes through `make_dir_alias`, which
+    calls `pytest.skip` when neither alias kind can be created. The batch is
+    robust to WHICH kind the machine permits, but not to a machine permitting
+    NEITHER -- there it reports SURVIVED, a fact about the machine.
+  * The ValueError-swallow mutant is killable on WINDOWS ONLY, by construction:
+    `_is_link_like` returns at `sys.platform != "win32"` before it ever reaches
+    the `os.stat` that raises, so on POSIX the edit is unobservable.
+  * The trailing-separator mutant is the mirror image -- on Windows the strip is
+    a NO-OP (`os.stat` reads a reparse point straight through a trailing
+    separator), so no junction fixture can kill it there. It dies on the
+    monkeypatched unit test, which stubs POSIX's slash-sensitive contract; on
+    POSIX the end-to-end parametrize kills it too.
 """
 
 from pathlib import Path
@@ -170,8 +181,8 @@ MUTANTS.append((
     "the trailing-separator strip is dropped, so rm -rf <link>/ stops being "
     "recognised as targeting the link",
     HOOK,
-    '    while len(probe) > 3 and probe[-1] in "/\\\\":',
-    '    while False and len(probe) > 3 and probe[-1] in "/\\\\":',
+    '    while probe[-1:] in ("/", "\\\\") and os.path.dirname(probe) != probe:',
+    '    while False and probe[-1:] in ("/", "\\\\") and os.path.dirname(probe) != probe:',
     TARGETS,
 ))
 
@@ -185,7 +196,7 @@ MUTANTS.append((
     "the directory requirement is dropped, so a dangling or file-targeted link "
     "blocks too",
     HOOK,
-    "    return os.path.isdir(probe)",
+    "    return _far_side_is_a_directory(probe)",
     "    return True",
     TARGETS,
 ))
@@ -201,7 +212,46 @@ MUTANTS.append((
     "ValueError stops being swallowed, so an embedded null in the path crashes "
     "the hook instead of blocking",
     HOOK,
-    "    except (OSError, ValueError, AttributeError) as exc:",
-    "    except (OSError, AttributeError) as exc:",
+    "    except (OSError, ValueError, AttributeError):",
+    "    except (OSError, AttributeError):",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The `/.` strip branch had no mutant of its own -- the only thing
+    # exercising it was one parameter of the monkeypatched test, so deleting the
+    # branch would have been caught by a single parametrize cell and by nothing
+    # else. CLAUDE.md check 4: the fix's own line earns evidence.
+    #
+    # Worth knowing what this spelling IS and is not. Measured with GNU
+    # coreutils 9.7: `rm -rf link/.` is REFUSED by rm itself ("refusing to
+    # remove '.' or '..' directory"), so it destroys nothing. Blocking it is
+    # conservative, not necessary -- unlike `link/`, which does delete the far
+    # side. The branch earns its place by keeping the two spellings consistent,
+    # not by closing a hole.
+    "the trailing /. strip is dropped, so rm -rf <link>/. stops being "
+    "recognised as targeting the link",
+    HOOK,
+    '    if probe.endswith(("/.", "\\\\.")):',
+    '    if False and probe.endswith(("/.", "\\\\.")):',
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The conservative default on an unreadable far side. `os.path.isdir` was
+    # the first spelling and it swallows every error into False, so "the far
+    # side is a file" and "the far side could not be read" became the same
+    # answer -- and the second silently ALLOWED. Measured by a reviewer: a
+    # symlink to a directory under a mode-000 parent was BLOCKED before the
+    # directory check existed and ALLOWED after it, a coverage regression
+    # introduced by the check meant to reduce false positives.
+    #
+    # A junction into a clone whose far side cannot be stat'd is exactly the
+    # shape this hook exists for, so an unreadable target must block.
+    "an unreadable far side is treated as 'not a directory' and allowed, "
+    "instead of blocking on an undetermined answer",
+    HOOK,
+    "_UNDETERMINED_FAR_SIDE_BLOCKS = True",
+    "_UNDETERMINED_FAR_SIDE_BLOCKS = False",
     TARGETS,
 ))
