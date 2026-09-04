@@ -52,13 +52,20 @@ Escape hatch: set `ALLOW_UNSAFE_RM=1` for a deliberate exception.
 
 Exit codes:
   0 - allow (no destructive-delete pattern detected, no candidate path trips
-      any trigger, or any parse/FS error -- fail-open, a guard must never
-      break normal work)
-  2 - block with stderr explaining which trigger fired and how to proceed
+      any trigger, or a PARSE error -- fail-open, a guard must never break
+      normal work)
+  2 - block with stderr explaining which trigger fired and how to proceed,
+      INCLUDING the case where a candidate path could not be read at all.
+      That last one is deliberate and is not fail-open: an unreadable probe
+      and an approved one are indistinguishable from outside, so an
+      undetermined answer blocks and says so in its own words. A string that
+      cannot NAME a file (a glob, a redirection token) is not undetermined --
+      it is a determinate not-a-link, and allows.
 """
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -109,9 +116,14 @@ _MAX_SCAN_SECONDS = 4.0
 #
 # An earlier version of this comment claimed `return True` "occurs four times in
 # this file" and that naming the constant was "the only way to anchor a mutant on
-# it". Both were false, and the first was reachable only by counting the
-# comment's own two lines — which is verbatim the defect CLAUDE.md records, where
-# a comment's own text contained the token it declared absent.
+# it". Both were false: the count was reachable only by counting a mention inside
+# the comment itself, which is verbatim the defect CLAUDE.md records, where a
+# comment's own text contained the token it declared absent.
+#
+# The first correction of that miscount ALSO miscounted — it said "the comment's
+# own two lines", and three statements plus two comment lines is five, not four.
+# Recorded because a paragraph about arithmetic hygiene getting the arithmetic
+# wrong twice is the argument for citing a command rather than a number.
 _UNDETERMINED_FAR_SIDE_BLOCKS = True
 
 # Returned by `_is_link_like` when a path could not be read at all. Distinct
@@ -127,10 +139,26 @@ _MISSING_TARGET_ERRORS = (FileNotFoundError, NotADirectoryError)
 
 # The errors that mean "I could not read this path at all". ValueError is not
 # padding: os.lstat raises it for an embedded null, and the command arrives as
-# JSON on stdin, so a null is trivially reachable. Named because both probes
-# use it and because dropping a member from it is one edit that silently
-# converts an undetermined answer back into an approval.
+# JSON on stdin, so a null is trivially reachable. Used by
+# `_far_side_is_a_directory`, where the path has ALREADY been confirmed
+# link-like, so any read failure there is a genuine unknown.
+#
+# `_is_link_like` deliberately does NOT use this tuple — see `_UNNAMEABLE_ERRNOS`.
 _UNREADABLE_ERRORS = (OSError, ValueError)
+
+# The errno values that mean "this string cannot name a file", as distinct from
+# "I could not read the file it names". EINVAL is what Windows raises for a path
+# containing `*`, `?`, `<` or `>`; ENAMETOOLONG is the over-long case on both
+# platforms.
+#
+# This distinction only binds in `_is_link_like`, which sees RAW candidate
+# tokens straight off the command line — globs, redirection operators, anything
+# the tokenizer could not resolve. Treating those as undetermined blocked
+# `rm -rf dist/*`. `_far_side_is_a_directory` must NOT copy it: by the time it
+# runs, the path has been confirmed link-like, so it IS a real filename and a
+# read failure there really is an unknown. Same words, opposite correct answer,
+# which is why the two probes have different tuples rather than a shared one.
+_UNNAMEABLE_ERRNOS = frozenset({errno.EINVAL, errno.ENAMETOOLONG})
 
 
 class _Blocked(Exception):
@@ -288,7 +316,22 @@ def _is_link_like(path: str):
     EACCES into False before the platform check is even reached, so the POSIX
     arm had the same hole and no amount of Windows-side care would close it.
     `os.lstat` raises instead, and carries `st_file_attributes` on Windows, so
-    both platforms are answered from one call and one exception set.
+    both platforms are answered from one call.
+
+    THREE OUTCOMES NEED THREE ERROR CLASSES, NOT TWO. The first version of this
+    split them as "missing" versus "everything else is undetermined", and on
+    Windows that second class is dominated by ordinary commands rather than by
+    unreadable links: `os.lstat` on `dist\\*` raises `OSError(EINVAL)`, because
+    `*` cannot name an NTFS file. Measured: `rm -rf dist/*`,
+    `rm -rf node_modules/*`, `rm -rf build/*.log` and
+    `Remove-Item -Recurse -Force .\\dist\\*` all began to BLOCK — 7 of 16
+    everyday commands — with a message asserting the target was a junction. This
+    hook ships to every consuming repo, and the launcher runs
+    `--permission-mode auto` where the hooks ARE the safety layer, so that made
+    `rm -rf dist/*` unrunnable.
+
+    A string that CANNOT NAME A FILE is a determinate "not a link", not an
+    unknown. Only a read failure on a path that could be named is undetermined.
     """
     try:
         st = os.lstat(path)
@@ -297,9 +340,22 @@ def _is_link_like(path: str):
         # ordinary case -- `_tokenize_variants` double-parses every command and
         # feeds a mangled candidate here on every run.
         return False
-    except _UNREADABLE_ERRORS:
-        # ValueError is not padding: `os.lstat` raises it for an embedded null,
-        # and the command arrives as JSON on stdin.
+    except OSError as exc:
+        if exc.errno in _UNNAMEABLE_ERRNOS:
+            # A glob, a redirection token, an over-long path: not a filename at
+            # all, so it is determinately not a link. Blocking here is a pure
+            # false positive on a guard that blocks.
+            return False
+        return _LINK_UNDETERMINED
+    except ValueError:  # an embedded null in the path
+        # The command arrives as JSON on stdin, so a null is reachable, and it
+        # IS a genuine unknown -- the string names something the filesystem
+        # refuses to discuss rather than something absent.
+        #
+        # The trailing comment is load-bearing, not decoration: `_tokenize_variants`
+        # has its own `except ValueError:` at a deeper indent, and `mutate.py`
+        # matches anchors as SUBSTRINGS, so the four-space form is contained in
+        # the eight-space one and a mutant on it is refused as ambiguous.
         return _LINK_UNDETERMINED
     if stat.S_ISLNK(st.st_mode):
         return True
@@ -367,13 +423,16 @@ def _target_is_link(unresolved: str) -> bool:
             break
     verdicts = (_is_link_like(unresolved), _is_link_like(probe))
     if _LINK_UNDETERMINED in verdicts:
-        # The path could not be read, so whether it is a link is unknown. This
-        # is the gate the policy has to sit at: an unreadable junction is
-        # indistinguishable from an ordinary directory here, and treating the
-        # two alike is what let `rm -rf` through a link whose parent denied
-        # traverse. Deciding it downstream cannot work — every downstream gate
-        # is reached only by returning False from this one.
-        return _UNDETERMINED_FAR_SIDE_BLOCKS
+        # Propagate the sentinel rather than collapsing it to True, so `main`
+        # can say WHICH thing it found. Returning True here made an unreadable
+        # path share the confirmed-link message, asserting something the code
+        # never determined.
+        #
+        # An earlier comment here said "every downstream gate is reached only by
+        # returning False from this one". That was true before the sentinel
+        # existed and false after it: `_far_side_is_a_directory` is downstream and
+        # is reached only when this returns a decided TRUE.
+        return _LINK_UNDETERMINED if _UNDETERMINED_FAR_SIDE_BLOCKS else False
     if not any(verdicts):
         return False
     return _far_side_is_a_directory(probe)
@@ -493,9 +552,11 @@ def main() -> int:
             # far side. The module docstring dates it.
             #
             # PLATFORM NOTE, and it is the half that could not be executed here.
-            # The check itself is platform-independent: `_is_link_like` starts
-            # with `os.path.islink`, which is true of a POSIX symlink as much as
-            # of a Windows junction. What DIFFERS is the danger it guards. On
+            # The check itself is platform-independent: `_is_link_like` reads one
+            # `os.lstat`, whose symlink bit is true of a POSIX symlink and whose
+            # reparse bit is true of a Windows junction. (It used to start with
+            # `os.path.islink`; that call is gone, and this sentence described it
+            # for one commit after it went.) What DIFFERS is the danger it guards. On
             # Windows, `rm` from git-bash recurses THROUGH a junction — that is
             # the incident. On POSIX, `rm -rf <a symlink>` unlinks the symlink
             # and leaves its target alone, so blocking there is conservative
@@ -517,8 +578,37 @@ def main() -> int:
             # and trust neither. Windows: real `mklink /J` junctions, eight
             # spellings. POSIX: GNU coreutils 9.7 under WSL, correlating what
             # `rm` does to the far side with what this hook says about it.
-            if _target_is_link(unresolved):
-                points_at = Path(unresolved).resolve()
+            verdict = _target_is_link(unresolved)
+            if verdict is _LINK_UNDETERMINED:
+                # ITS OWN MESSAGE. The confirmed-link text was reused here, so a
+                # path the hook could not READ was told it "is itself a symlink
+                # or directory junction" and to "remove the link itself
+                # instead" — an assertion the code had not made and advice that
+                # cannot be followed. A correct fail-closed policy explained
+                # wrongly is how a real block gets dismissed as a known-bogus
+                # one, which costs exactly what the policy buys.
+                raise _Blocked(
+                    f"blocked: recursive+force delete targets '{unresolved}', which this guard "
+                    "could not examine -- reading it failed, so whether it is a symlink or "
+                    "directory junction is UNKNOWN. Blocking rather than allowing, because an "
+                    "unreadable probe and an approved one are indistinguishable from the "
+                    "outside. Check the path exists and is readable, or override for a "
+                    "deliberate exception by setting ALLOW_UNSAFE_RM=1 in the environment. "
+                    "(hook: block-unsafe-recursive-delete.py)"
+                )
+            if verdict:
+                # Computed INSIDE its own try, not on the way to the raise. The
+                # decision was already hoisted out of the `except OSError`
+                # swallow, but this line was left in front of it — and it is the
+                # line that touches the filesystem. `Path.resolve()` raises
+                # `ValueError` on an embedded null, which neither handler
+                # catches, so a DECIDED block became an uncaught raise: the
+                # dispatcher then told the user "this guard could not run",
+                # which is the opposite of what happened.
+                try:
+                    points_at = Path(unresolved).resolve()
+                except (OSError, ValueError):
+                    points_at = Path(unresolved)
                 # Only name the far side when it IS somewhere else. For a
                 # self-referential link `resolve()` returns the path unchanged,
                 # and printing "deletes what it points at -- here, <the same

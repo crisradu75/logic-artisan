@@ -9,6 +9,7 @@ escape-hatch cases.
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -363,8 +364,11 @@ def test_a_link_to_a_file_is_not_blocked(tmp_path):
     "{p}/", "{p}//", "{p}/.", "{p}\\",
     # Added after review: the `/.` rule and the separator rule used to run
     # in SEQUENCE, so a separator AFTER the dot escaped both -- `link/.`
-    # was recognised and `link/./` was not. These three fail against that
-    # ordering and pass against the folded loop.
+    # was recognised and `link/./` was not. TWO of these three discriminate
+    # the fold: `{p}/./` and `{p}/./.` fail against the old ordering.
+    # `{p}//.` passed under it as well (the `/.` strip left `P/`, and the
+    # separator loop then ran and stripped it) and is kept as a plain
+    # regression cell, not as evidence for the folding.
     "{p}/./", "{p}/./.", "{p}//.",
 ])
 def test_the_trailing_separator_strip_is_what_sees_through_a_slash(tmp_path, spelling, monkeypatch):
@@ -426,21 +430,33 @@ def test_a_path_whose_own_lstat_fails_blocks_rather_than_allowing(tmp_path, monk
     the command and approved it. The previous round installed the right policy
     one gate too far downstream to enforce itself.
 
-    THE TARGET IS DELIBERATELY A PATH THAT DOES NOT EXIST. That makes the test
-    discriminate between two different regressions rather than one. With the
-    sentinel collapsed back to False, `any(verdicts)` is False and the function
-    returns False. With the sentinel produced but its routing branch removed, the
-    sentinel is TRUTHY, so control falls through to `_far_side_is_a_directory`,
-    which answers False for a missing path — also a fail. Only routing the
-    undetermined verdict to the block policy returns True.
+    BOTH PROBES ARE DENIED, and the assertion is on IDENTITY with the sentinel.
+    An earlier version stubbed only `os.lstat` and asserted `is True`, which
+    reviewers showed encoded a filesystem state that cannot exist — `lstat`
+    failing with EACCES while `stat` answers ENOENT for the same path. Real
+    filesystems answer both calls the same way. Under a consistent stub that
+    version's routing mutant SURVIVED, because a truthy sentinel falls through to
+    `_far_side_is_a_directory`, which reaches the same verdict by another route.
+
+    Asserting identity fixes that without the impossible fixture: with the
+    routing branch removed the fall-through returns `_UNDETERMINED_FAR_SIDE_BLOCKS`,
+    which is `True` and is NOT the sentinel, so the assertion still fails. With
+    the sentinel collapsed to False it returns False. Only routing the
+    undetermined verdict returns the sentinel itself.
+
+    The identity also matters to `main`: the sentinel is what selects the
+    "could not examine this path" message over the "this is a junction" one, and
+    those assert different things.
     """
     def deny(path, *a, **kw):
         raise PermissionError(13, "Permission denied", str(path))
 
     monkeypatch.setattr(hook.os, "lstat", deny)
-    assert hook._target_is_link(str(tmp_path / "gone")) is True, (
-        "a path whose link-ness cannot be determined must BLOCK; returning False "
-        "here is the exit-0-with-empty-stderr that reads as an approval"
+    monkeypatch.setattr(hook.os, "stat", deny)
+    assert hook._target_is_link(str(tmp_path / "gone")) is hook._LINK_UNDETERMINED, (
+        "a path whose link-ness cannot be determined must return the sentinel, so "
+        "it BLOCKS and says so honestly; False here is the exit-0-with-empty-stderr "
+        "that reads as an approval, and True claims a junction nobody confirmed"
     )
 
 
@@ -483,6 +499,91 @@ def test_an_unreadable_far_side_blocks_rather_than_allowing(tmp_path, monkeypatc
     assert hook._far_side_is_a_directory(str(tmp_path)) is False, (
         "a missing target is a real allow, not an unknown"
     )
+
+
+@pytest.mark.parametrize("target", ["dist/*", "node_modules/*", "build/*.log", "a?b", "out 2>&1"])
+def test_a_glob_or_redirection_token_is_not_treated_as_undetermined(tmp_path, target):
+    """The regression the tri-state introduced, and the reason it needs three
+    error classes rather than two.
+
+    On Windows `os.lstat` raises `OSError(EINVAL)` for a path containing `*`,
+    `?`, `<` or `>`, because those cannot name an NTFS file. The first tri-state
+    split routed every non-ENOENT `OSError` to "undetermined", so 7 of 16
+    everyday commands began to BLOCK — `rm -rf dist/*` among them — with a
+    message asserting the target was a junction. This hook ships to four repos
+    and the launcher runs `--permission-mode auto`, where the hooks are the
+    safety layer, so that made `rm -rf dist/*` unrunnable.
+
+    A string that cannot NAME a file is a determinate "not a link". Only a read
+    failure on a nameable path is an unknown.
+    """
+    (tmp_path / "dist").mkdir()
+    r = _run({"tool_input": {"command": f"rm -rf {tmp_path / target}"}}, cwd=tmp_path)
+    assert r.returncode == 0, f"an ordinary command must not block: {r.stderr[:300]}"
+
+
+def test_an_unreadable_target_says_it_could_not_examine_the_path(tmp_path, monkeypatch):
+    """The block message must not assert what the code did not determine.
+
+    The undetermined branch reused the confirmed-link text, so a path the hook
+    could not READ was told it "is itself a symlink or directory junction" and
+    to "remove the link itself instead" — an assertion never made and advice that
+    cannot be followed. A correct fail-closed policy explained wrongly is how a
+    real block gets dismissed as a known-bogus one, which costs exactly what the
+    policy buys.
+    """
+    real = tmp_path / "real"
+    real.mkdir()
+    holder = tmp_path / "holder"
+    holder.mkdir()
+    link = holder / "alias"
+    make_dir_alias(link, real)
+
+    confirmed = _run({"tool_input": {"command": f'rm -rf "{link}"'}}, cwd=tmp_path)
+    assert confirmed.returncode == 2
+    assert "is itself a symlink or directory junction" in confirmed.stderr
+
+    def deny(path, *a, **kw):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(hook.os, "lstat", deny)
+    monkeypatch.setattr(hook.os, "stat", deny)
+    verdict = hook._target_is_link(str(link))
+    assert verdict is hook._LINK_UNDETERMINED, (
+        "an unreadable path must be distinguishable from a confirmed link, or the "
+        "two cannot carry different messages"
+    )
+
+
+def test_a_decided_block_survives_a_failed_write_to_stderr(tmp_path, monkeypatch, capsys):
+    """The `_Blocked` refactor, pinned — it had no test.
+
+    All three block sites once sat inside `except OSError: continue`, so a
+    `BrokenPipeError` writing the message skipped the `return 2`, continued the
+    loop, and fell through to `return 0`: a decided BLOCK became a clean ALLOW.
+    The commit that fixed it measured the defect by injection and pinned it with
+    nothing, so re-nesting the prints passed the whole suite.
+
+    Drives `main()` in-process because the failure is in the write itself, which
+    a subprocess harness cannot inject.
+    """
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
+    payload = json.dumps({"tool_input": {"command": f"rm -rf {target}"}, "cwd": str(tmp_path)})
+
+    class _BrokenStderr:
+        def write(self, *_a, **_kw):
+            raise BrokenPipeError(32, "Broken pipe")
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(hook.sys, "stdin", io.StringIO(payload))
+    monkeypatch.setattr(hook.sys, "stderr", _BrokenStderr())
+    monkeypatch.delenv("ALLOW_UNSAFE_RM", raising=False)
+
+    with pytest.raises(BrokenPipeError):
+        hook.main()
 
 
 def test_an_embedded_null_in_the_path_does_not_crash_the_hook(tmp_path):

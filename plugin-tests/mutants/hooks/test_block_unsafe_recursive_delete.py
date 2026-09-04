@@ -32,9 +32,12 @@ survivor as a finding about the code:
     calls `pytest.skip` when neither alias kind can be created. The batch is
     robust to WHICH kind the machine permits, but not to a machine permitting
     NEITHER -- there it reports SURVIVED, a fact about the machine.
-  * The ValueError-swallow mutant is killable on WINDOWS ONLY, by construction:
-    `_is_link_like` returns at `sys.platform != "win32"` before it ever reaches
-    the `os.stat` that raises, so on POSIX the edit is unobservable.
+  * The ValueError-swallow mutant WAS Windows-only, when `_is_link_like` began
+    with `os.path.islink` and returned at the `sys.platform` check before the
+    `os.stat` that raises. That is no longer true: `os.lstat` is now the first
+    statement and the platform check is downstream of it, so the raise is
+    reachable on both platforms and the mutant dies on both. Left in this list
+    as a record of a note that outlived its reason.
   * The trailing-separator mutant is the mirror image -- on Windows the strip is
     a NO-OP (`os.stat` reads a reparse point straight through a trailing
     separator), so no junction fixture can kill it there. It dies on the
@@ -165,8 +168,8 @@ MUTANTS.append((
     "the target's own link-ness is never checked, so rm -rf of a junction "
     "recurses through it and deletes the far side",
     HOOK,
-    "            if _target_is_link(unresolved):",
-    "            if False and _target_is_link(unresolved):",
+    "            verdict = _target_is_link(unresolved)",
+    "            verdict = False and _target_is_link(unresolved)",
     TARGETS,
 ))
 
@@ -212,8 +215,8 @@ MUTANTS.append((
     "ValueError stops being swallowed, so an embedded null in the path crashes "
     "the hook instead of blocking",
     HOOK,
-    "_UNREADABLE_ERRORS = (OSError, ValueError)",
-    "_UNREADABLE_ERRORS = (OSError,)",
+    "    except ValueError:  # an embedded null in the path",
+    "    except ZeroDivisionError:  # an embedded null in the path",
     TARGETS,
 ))
 
@@ -266,8 +269,8 @@ MUTANTS.append((
     "an unreadable path is scored as 'not a link' instead of undetermined, so "
     "the conservative policy never runs",
     HOOK,
-    "        return _LINK_UNDETERMINED",
-    "        return False",
+    "        if exc.errno in _UNNAMEABLE_ERRNOS:",
+    "        if True:",
     TARGETS,
 ))
 
@@ -292,5 +295,21 @@ MUTANTS.append((
     HOOK,
     "_MISSING_TARGET_ERRORS = (FileNotFoundError, NotADirectoryError)",
     "_MISSING_TARGET_ERRORS = (FileNotFoundError, NotADirectoryError, OSError)",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The other direction of the same line, and the regression that made it
+    # necessary. Treating an UNNAMEABLE string as undetermined blocked
+    # `rm -rf dist/*` on Windows -- `os.lstat` raises OSError(EINVAL) for a `*`,
+    # because it cannot name an NTFS file. 7 of 16 everyday commands began to
+    # block, with a message asserting the target was a junction. This hook ships
+    # to four repos under `--permission-mode auto`, where the hooks are the
+    # safety layer.
+    "an unnameable string (a glob, a redirection token) is treated as "
+    "undetermined and blocks, instead of as a determinate not-a-link",
+    HOOK,
+    "        if exc.errno in _UNNAMEABLE_ERRNOS:",
+    "        if False:",
     TARGETS,
 ))
