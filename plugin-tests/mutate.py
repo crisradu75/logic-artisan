@@ -333,14 +333,26 @@ def run_pytest(targets: list[Path]) -> tuple[int, str]:
     confidence that was never earned, while a false INCONCLUSIVE looks exactly
     like a tool being careful.
     """
-    env = dict(os.environ)
-    # `PYTEST_ADDOPTS` is inherited and applied BEFORE the flags above, so a
-    # `-n auto` sitting there would silently parallelize a run CLAUDE.md keeps
-    # serial on purpose — and nothing in the output would say so. Same class as
-    # the colour bug: an environment variable quietly changing what this tool
-    # measures. Dropped rather than overridden, so the run is reproducible.
-    if env.pop("PYTEST_ADDOPTS", None):
-        print("mutate: ignoring PYTEST_ADDOPTS for this run (kept serial)",
+    # ALLOWLIST, not a denylist, and the difference is the whole point. Several
+    # inherited variables change what this tool measures, and each was found one at
+    # a time: FORCE_COLOR broke the kill detector's line anchor; PYTEST_ADDOPTS can
+    # inject `-n auto` into a run CLAUDE.md keeps serial on purpose; PYTHONOPTIMIZE
+    # strips `assert` from every module pytest does not rewrite — which is every
+    # shipped script under test — and so flips kills and survivors outright; and
+    # PYTHONWARNINGS=error makes pytest exit 3 with no count line, reproducing the
+    # precise false-INCONCLUSIVE the `--color=no` fix was written for.
+    #
+    # A denylist grows one entry per incident and is wrong until the next one is
+    # found. That is the same shape as the warn-without-tallying paths this tool's
+    # own subjects were just fixed for, so it gets the same treatment: name what the
+    # child needs and drop everything else.
+    _KEEP = ("PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR",
+             "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL",
+             "PYTHONHOME", "VIRTUAL_ENV")
+    env = {k: v for k, v in os.environ.items() if k in _KEEP}
+    dropped = len(os.environ) - len(env)
+    if dropped:
+        print(f"mutate: pinned environment — dropped {dropped} inherited variable(s)",
               file=sys.stderr)
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-x", "--color=no",

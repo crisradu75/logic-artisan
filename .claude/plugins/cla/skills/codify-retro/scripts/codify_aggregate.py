@@ -370,10 +370,21 @@ def aggregate(records: list[dict]) -> dict:
         elif ts is not None:
             print(f"aggregate: record {ri}: `ts`={ts!r} not a string — excluded from window",
                   file=sys.stderr)
+            # Tallied here rather than via `drifted_fields`, because this loop runs
+            # AFTER the record loop closed and that set is gone. The sibling tallies
+            # `ts` inside its record loop; the two shapes differ, the output must not.
+            shape_drift["ts"] += 1
+            shape_drift_records += 1
     return {
         "runs_analyzed": len(records),
-        "window": {"first_ts": timestamps[0] if timestamps else None,
-                   "last_ts":  timestamps[-1] if timestamps else None},
+        # SORTED, for the same reason `spec_to_pr_aggregate.py` sorts: records
+        # arrive concatenated in `--log` argument order, so first-and-last of the
+        # concatenation gave a window that ended before it started whenever a newer
+        # ledger was listed first. The sibling fix landed here late — this file was
+        # not the one being looked at when the defect was found, and the fleet
+        # recipe this same change documents is what makes the bad order reachable.
+        "window": {"first_ts": min(timestamps) if timestamps else None,
+                   "last_ts":  max(timestamps) if timestamps else None},
         "suggestions": {
             "proposed": proposed,
             "applied": sugg.get("applied", 0),
@@ -415,8 +426,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Aggregate /codify-learnings run records.")
     parser.add_argument("--log", type=Path, nargs="+", default=None, metavar="PATH",
                         help="One or more runs JSONL paths (default: this project's log). "
-                             "Several paths aggregate across repos — the repo where this "
-                             "loop is designed usually holds the thinnest sample of them all.")
+                             "Several paths aggregate across repos, which matters "
+                             "because any single repo's sample is thin enough to mislead.")
     parser.add_argument("--limit", type=int, default=10,
                         help="Analyze the last N records PER LEDGER (default 10, 0 = all).")
     args = parser.parse_args()
@@ -458,7 +469,13 @@ def main() -> int:
                         "records": len(recs), "skipped": sk})
 
     result = aggregate(records)
-    if len(ledgers) > 1:
+    # `"maintenance" in result` is load-bearing, not defensive noise. `aggregate()`
+    # returns a THREE-KEY skeleton when no record survived, and this block consumed
+    # a key that skeleton does not carry — so a fleet run whose every path was
+    # mistyped crashed with KeyError instead of reporting the empty result. That is
+    # exactly the case the `ledgers` array was added to make visible, and the same
+    # change extended the empty return with the drift keys while missing this one.
+    if len(ledgers) > 1 and "maintenance" in result:
         # These describe ONE repo's files — the size of its failure-modes
         # checklist, the length of its live log, the size of its last report.
         # Concatenated across repos, `_latest` becomes "whichever ledger was

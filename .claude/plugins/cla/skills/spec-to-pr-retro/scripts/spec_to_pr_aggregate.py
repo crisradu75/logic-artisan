@@ -396,6 +396,11 @@ def aggregate(records: list[dict]) -> dict:
             if phase_key in cap_total and "rounds_used" in phase:
                 used = _coerce_int(phase["rounds_used"], "rounds_used", f"record {ri} phase {name}")
                 cap = _coerce_int(phase.get("rounds_cap"), "rounds_cap", f"record {ri} phase {name}")
+                if cap is None and phase.get("rounds_cap") is not None:
+                    # A cap that will not coerce makes the phase uncountable as a
+                    # HIT while still counting toward the total, so it depresses the
+                    # exhaustion rate rather than merely thinning it.
+                    drifted_fields.add("rounds_cap")
                 if used is None:
                     # Skipping the record here shrinks the DENOMINATOR of the
                     # cap-exhaustion rule the retro acts on, so the sample it
@@ -411,6 +416,11 @@ def aggregate(records: list[dict]) -> dict:
                         cap_hit[phase_key] += 1
             if name == "Review":
                 size_gate = phase.get("size_gate")
+                if size_gate is not None and not isinstance(size_gate, str):
+                    print(f"aggregate: record {ri}: Review `size_gate` is "
+                          f"{type(size_gate).__name__}, expected string — skipping",
+                          file=sys.stderr)
+                    drifted_fields.add("review_size_gate")
                 if isinstance(size_gate, str):
                     if size_gate in VALID_SIZE_GATES:
                         review_size_gate[size_gate] += 1
@@ -419,6 +429,11 @@ def aggregate(records: list[dict]) -> dict:
                         print(f"aggregate: record {ri}: Review `size_gate`={size_gate!r} "
                               f"not in {sorted(VALID_SIZE_GATES)}", file=sys.stderr)
                 verdict = phase.get("verdict")
+                if verdict is not None and not isinstance(verdict, str):
+                    print(f"aggregate: record {ri}: Review `verdict` is "
+                          f"{type(verdict).__name__}, expected string — skipping",
+                          file=sys.stderr)
+                    drifted_fields.add("review_verdicts")
                 if isinstance(verdict, str):
                     if verdict in VALID_VERDICTS:
                         review_verdicts[verdict] += 1
@@ -650,8 +665,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", type=Path, nargs="+", default=None, metavar="PATH",
                         help="One or more runs JSONL paths (default: this project's log). "
-                             "Several paths aggregate across repos — the repo where this "
-                             "loop is designed usually holds the thinnest sample of them all.")
+                             "Several paths aggregate across repos, which matters "
+                             "because any single repo's sample is thin enough to mislead.")
     parser.add_argument("--limit", type=int, default=10,
                         help="Analyze the last N records PER LEDGER (default 10, 0 = all).")
     args = parser.parse_args()
