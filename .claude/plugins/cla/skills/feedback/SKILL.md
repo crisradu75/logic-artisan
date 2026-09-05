@@ -2,7 +2,7 @@
 name: feedback
 description: "Interactive feedback capture: takes the user's notes one at a time until done, asking a clarifying question only when a note is genuinely ambiguous. Does a light READ-ONLY repo grounding pass per note (relevant file/component and a probable root cause where clear, labeled a hypothesis — never editing code). Consolidates into a dated doc under cla.io/feedback/, grouped by area/screen with severity tags; merges near-duplicates only after user confirmation. Output is triage, not decisions — hands off to /cla:shape-decision. Triggers on /cla:feedback or natural language like 'capture my feedback notes', 'take these notes one at a time', 'consolidate my app feedback into a doc'."
 argument-hint: "[optional first note | (empty = start interactive capture)]"
-allowed-tools: Read, Grep, Glob, Write, AskUserQuestion
+allowed-tools: Read, Grep, Glob, Write, AskUserQuestion, Bash
 ---
 
 # /cla:feedback — capture feedback notes → one consolidated, grounded triage doc
@@ -54,6 +54,41 @@ Rewrite the deliverable **in place** — the "Raw captured notes" section is con
 - **Point at the next step explicitly:** the consolidated doc is triage, not decisions — the intended bridge is `/cla:shape-decision` (per entry or per theme), which decides the fix approach; its output then feeds `/cla:multi-lite` (small changes) or `/cla:multi-spec` (OpenSpec-worthy ones). Note that because `/cla:multi-lite` accepts any decision-shaped doc, an already-unambiguous consolidated feedback doc *can* be run through it directly — but routing real decisions through `/cla:shape-decision` first is the sound default.
 - Remind the user that `notes.md` was only read, not modified — clearing the ingested bullets from it is their call.
 - **Committing the deliverable is the user's call too.** The during-loop incremental write (Phase 0 step 3) protects against a crash *within the session*, but the file stays uncommitted — and the very incident this durability design guards against (`feedback-worktree-rmrf-junction-risk`) destroys *uncommitted* files. State that the dated doc is written but uncommitted, and leave committing/pushing it to the user (same non-ownership posture applied to `notes.md`); this skill's `allowed-tools` deliberately excludes `Bash`, so it cannot run git itself.
+
+## Log the run (counts-only ledger)
+
+Always done, at the end of Phase 3. One counts-only JSON line:
+
+```bash
+echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py feedback-runs.jsonl
+```
+
+```json
+{
+  "ts": "<ISO-8601>",
+  "notes": N,
+  "consolidated": N,
+  "areas": N,
+  "merges": N,
+  "clarifications_asked": N
+}
+```
+
+**This does not weaken the no-commit posture stated above.** `Bash` is in this skill's
+tools so it can run the ledger writer, and for nothing else — it still does not run git,
+still does not commit the deliverable, and still leaves `notes.md` untouched. The
+exclusion existed to keep this skill from owning the user's git state, and it still does.
+
+`notes` against `consolidated` is the pair worth reading: a consolidation ratio that
+drifts toward 1:1 means the merge step is not earning its place.
+
+Read it back with the generic summariser:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --fleet --ledger feedback-runs.jsonl
+```
+
+Best-effort: a failed write is noted and the run continues.
 
 ## What this skill deliberately does not do
 

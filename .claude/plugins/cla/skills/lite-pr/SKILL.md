@@ -173,6 +173,43 @@ This is a deliberate scope limit: a full triage → fix → re-review loop is `/
 
 Suggestion-level findings: mention them in the final report; no fix applied automatically.
 
+## Step 7 — Log the run (counts-only ledger)
+
+Always done, after the final report. Append one counts-only JSON line so this skill's
+runs can be reviewed in aggregate — it is the most-used skill in the fleet and, until
+this step existed, the only one of the frequently-used set with no run data at all.
+
+```bash
+echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py lite-pr-runs.jsonl
+```
+
+```json
+{
+  "ts": "<ISO-8601>",
+  "mode": "explore|plan|direct",
+  "phases": {"implement": "ok|warn|skip", "test": "ok|warn|skip",
+             "ship": "ok|warn|skip", "review": "ok|warn|skip"},
+  "test_halted": true|false,
+  "findings": {"critical": N, "important": N, "suggestion": N},
+  "fixes_committed": true|false,
+  "pr_opened": true|false
+}
+```
+
+`test_halted` is the one field worth getting exactly right: the Test-phase stop is this
+skill's ONLY gate, so how often it fires is the whole question of whether the gate is
+placed well. `false` means the phase ran and did not halt; omit the field rather than
+writing `false` if Test never ran.
+
+Read it back with the generic summariser — this skill has no bespoke retro, deliberately:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --fleet --ledger lite-pr-runs.jsonl
+```
+
+Best-effort: if `log_run.py` exits non-zero, note it and continue. A missing ledger line
+never blocks a run.
+
 ## Autonomy
 
 Continuous — no "confirm to proceed?" prompts between phases, matching `/cla:spec-to-pr`'s default. Plan does not gate on approval (no `EnterPlanMode`/`ExitPlanMode`) — the plan is posted, then every phase runs straight through: Plan → Implement → Test → Ship → Review. The only stop point in the entire flow is the Test-phase halt on an unresolved failure (see Test above). A user-driven interrupt (Ctrl-C, an explicit "stop"/"wait" message) still halts — that's a hard interrupt, not a model-side pause.

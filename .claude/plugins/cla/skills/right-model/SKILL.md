@@ -2,7 +2,7 @@
 name: right-model
 description: "Given a description of a task, recommend the cheapest model + reasoning-effort combination that can plausibly do it well, then offer to start the task with those settings. Optimizes for token/cost budget, not raw capability. Triggers on /cla:right-model or natural language like 'right-model', 'what model should I use for this', 'pick the right model and effort', 'is this a Sonnet or Opus task', 'am I overspending on this task'."
 argument-hint: "[task description]"
-allowed-tools: Read, Agent, AskUserQuestion
+allowed-tools: Read, Agent, AskUserQuestion, Bash
 ---
 
 # Right-model: cost-aware model + effort picker

@@ -2,7 +2,7 @@
 name: shape-decision
 description: "Shape a decision by walking through choices one at a time with pros/cons and a recommended pick. Triggers on /cla:shape-decision or natural language like 'help me decide between X and Y', 'shape this decision', 'walk me through the options'."
 argument-hint: "[topic]"
-allowed-tools: Read, Grep, Glob, Write, Edit
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
 **Topic:** $ARGUMENTS
@@ -76,3 +76,37 @@ Keep the file lean enough to resume cold in a future session — do NOT include 
 - Each question asked, the chosen option, and its one-line rationale
 - The final Decision Summary table
 - A short closing note on why the decision matters and what the natural next step is (e.g. "feeds into `/cla:spec-to-pr` or `/cla:lite-pr` for change X", or resolves a postponed item in this repo's own deferred-items tracker — see `cla.io/overlays/shape-decision.md`)
+
+## Log the run (counts-only ledger)
+
+Always done, after the decision is persisted (or declined). One counts-only JSON line:
+
+```bash
+echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py shape-decision-runs.jsonl
+```
+
+```json
+{
+  "ts": "<ISO-8601>",
+  "topic_slug": "<the kebab-case slug, or omit if nothing was persisted>",
+  "questions": N,
+  "options_total": N,
+  "took_recommendation": N,
+  "persisted": true|false
+}
+```
+
+**`took_recommendation` against `questions` is the field this ledger exists for.** This
+skill names a recommended option on every question, and if the recommendation is taken
+every single time, that is either a skill with excellent judgement or a user waving it
+through — and the counts cannot tell you which, but they can tell you it is happening.
+The same shape as `codify-learnings`' apply gate, which ran at 219 applied of 219
+proposed before anybody counted.
+
+Read it back with the generic summariser:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --fleet --ledger shape-decision-runs.jsonl
+```
+
+Best-effort: a failed write is noted and the run continues.
