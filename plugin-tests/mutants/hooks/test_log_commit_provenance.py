@@ -103,8 +103,33 @@ MUTANTS = [
         "the continuation fold is dropped, so a wrapped Measured-by value is "
         "read back as fragments instead of the one value it is",
         HOOK,
-        "        elif values and line[:1].isspace() and line.strip():",
+        "        elif folding and line[:1].isspace() and line.strip():",
         "        elif False:",
+        TARGETS,
+    ),
+    (
+        # The ADJACENCY half of the fold, which the function first shipped
+        # without. `folding` is what stops `values[-1]` staying the fold target
+        # for the rest of the message; without it any indented line below — a
+        # code block, a quoted diff — was welded onto the last measurement across
+        # blank lines and unrelated paragraphs. Measured when found: 5 of 56
+        # commits carrying a trailer had a value corrupted this way.
+        "the continuation fold loses its adjacency condition, so any indented "
+        "line anywhere below is welded onto the last measurement",
+        HOOK,
+        "        elif folding and line[:1].isspace() and line.strip():",
+        "        elif values and line[:1].isspace() and line.strip():",
+        TARGETS,
+    ),
+    (
+        # A valueless `Measured-by:` must start no fold. Folding onto it rescued
+        # it from the empty-string filter and recorded a fabricated measurement
+        # for a commit that asserted none.
+        "an empty Measured-by value still opens a fold, so a later indented line "
+        "resurrects it into a fabricated measurement",
+        HOOK,
+        "            folding = bool(value)",
+        "            folding = True",
         TARGETS,
     ),
     # DROPPED, not forgotten: "the trailer-shedding loop rewrites

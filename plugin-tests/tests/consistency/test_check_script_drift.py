@@ -33,7 +33,11 @@ def test_the_ledger_resolver_group_still_covers_the_writer_and_both_readers():
     start), so pin all three by name.
     """
     groups = {g["name"]: g for g in csd.SIBLING_GROUPS}
-    resolver = next((g for name, g in groups.items() if "resolver" in name), None)
+    # Named exactly, not matched on a substring: a second group with "resolver"
+    # in its name now exists (the fleet repo-list one), and `next` over a dict
+    # would have silently picked whichever came first.
+    resolver = next((g for name, g in groups.items()
+                     if name.startswith("retro ledger dir resolver")), None)
     assert resolver is not None, (
         f"no ledger-dir resolver group left in SIBLING_GROUPS: {sorted(groups)}"
     )
@@ -41,7 +45,11 @@ def test_the_ledger_resolver_group_still_covers_the_writer_and_both_readers():
         "lib/log_run.py",
         "skills/codify-retro/scripts/codify_aggregate.py",
         "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",
-    }, f"the writer/reader trio changed: {resolver['files']}"
+        # A THIRD reader of the same dir. It was added outside this group and the
+        # group's own name still said "both readers" — a reader nothing compared
+        # against the writer is the exact silence this group exists for.
+        "lib/ledger_summary.py",
+    }, f"the writer/reader set changed: {resolver['files']}"
     assert "_runs_dir" in resolver["functions"], (
         "the dir resolver itself must be compared, not only `_git_toplevel`"
     )
@@ -81,8 +89,9 @@ def test_the_group_set_itself_has_not_shrunk():
     """
     names = {g["name"] for g in csd.SIBLING_GROUPS}
     expected = {
-        "retro ledger dir resolver (writer + both readers)",
+        "retro ledger dir resolver (writer + every reader)",
         "retro aggregator record loading",
+        "fleet repo-list resolver (both aggregators + the summariser)",
         "make_dir_alias test helper",
     }
     assert names == expected, (

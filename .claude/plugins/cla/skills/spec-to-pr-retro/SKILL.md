@@ -30,7 +30,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
 Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrapper), or `10` if `$ARGUMENTS` is empty. Substitute the literal number before invoking — the script does not expand shell variables.
 
 
-**Reading more than one repo's ledger.** `--log` takes several paths, and the records aggregate together:
+**Reading more than one repo's ledger.** `--log` takes several paths, and the records aggregate together.
 
 Prefer `--fleet`, which resolves the paths from `cla.io/fleet.local.md` — one repo root per `- ` bullet, curated per machine, never synced. The same file serves this loop and `codify-retro`:
 
@@ -45,7 +45,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
   --log <repo-a>/cla.io/retro/spec-to-pr-runs.jsonl <repo-b>/cla.io/retro/spec-to-pr-runs.jsonl
 ```
 
-Worth doing whenever one repo's ledger is thin, which is the usual case — a five-record sample put one round-cap exhaustion rate at 4 of 5 where 156 records put it at 6 of 129. Three things change in fleet mode, and each is visible in the output rather than assumed: `--limit` applies PER LEDGER, so `runs_analyzed` can reach N x ledgers; `ledgers` carries per-path provenance, and a path that did not resolve shows `found: false` with `records: 0` — check it before trusting the sample size; and `log_path` is omitted, since no single path describes the result.
+Worth doing whenever one repo's ledger is thin, which is the usual case — this repo's 8 spec-to-pr records put one round-cap exhaustion rate at 4 of 5 where the fleet's 156 put it at 6 of 129. ("A five-record sample" stood here and in the sibling retro: it conflated the metric's denominator, 5, with the ledger's size, 8.) Three things change in fleet mode, and each is visible in the output rather than assumed: `--limit` applies PER LEDGER, so `runs_analyzed` can reach N x ledgers; `ledgers` carries per-path provenance, and a path that did not resolve shows `found: false` with `records: 0` — check it before trusting the sample size; and `log_path` is omitted, since no single path describes the result.
 
 Output is a single JSON object on stdout — phase outcomes, warn reasons, cap exhaustion rates, mean rounds used, per-agent finding rates, ask choice distribution, version-bump miss count, deferred-to-TODO totals.
 

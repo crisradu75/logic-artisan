@@ -53,13 +53,17 @@ SIBLING_GROUPS = [
     # each end `_default_log_path` by appending their own ledger filename to
     # `_runs_dir()`, which is why only the dir resolver is compared here.
     {
-        "name": "retro ledger dir resolver (writer + both readers)",
+        "name": "retro ledger dir resolver (writer + every reader)",
         "root": PLUGIN_ROOT,
         "functions": ("_git_toplevel", "_runs_dir"),
         "files": (
             "lib/log_run.py",
             "skills/codify-retro/scripts/codify_aggregate.py",
             "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",
+            # A THIRD reader of the same directory. This group's whole argument is
+            # that two identically-wrong readers report a cold start indistinguishable
+            # from no runs; a reader outside the group can be wrong on its own.
+            "lib/ledger_summary.py",
         ),
     },
     {
@@ -72,15 +76,30 @@ SIBLING_GROUPS = [
         # catch exactly this.
         "name": "retro aggregator record loading",
         "root": PLUGIN_ROOT,
-        # `_fleet_roots` joins them for the same reason, before it has a chance to
-        # diverge: it decides which repos a fleet run reads, so two copies that
-        # disagree would silently give the two loops different fleets from one
-        # `fleet.local.md`, and each would look internally consistent.
-        "functions": ("_load_records", "_coerce_int", "_load_ledgers", "_window",
-                      "_fleet_roots"),
+        # `_fleet_roots` is NOT here — it has a third copy these files do not
+        # share, so it gets its own group below.
+        "functions": ("_load_records", "_coerce_int", "_load_ledgers", "_window"),
         "files": (
             "skills/codify-retro/scripts/codify_aggregate.py",
             "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",
+        ),
+    },
+    {
+        # `_fleet_roots` has its OWN group because it has a third copy the group
+        # above does not: `lib/ledger_summary.py` reads the same
+        # `fleet.local.md` and defines the same function, while sharing none of
+        # that group's other four. Pinning it there covered two of three copies
+        # and read as complete — a fix landing in the two aggregators and not in
+        # the summariser would leave the guard green while the two tools resolved
+        # DIFFERENT fleets from one file, each looking internally consistent.
+        # That is the exact divergence the group above says it exists to stop.
+        "name": "fleet repo-list resolver (both aggregators + the summariser)",
+        "root": PLUGIN_ROOT,
+        "functions": ("_fleet_roots",),
+        "files": (
+            "skills/codify-retro/scripts/codify_aggregate.py",
+            "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",
+            "lib/ledger_summary.py",
         ),
     },
     {

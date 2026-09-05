@@ -13,9 +13,11 @@ one independently. Living at the plugin root instead of under
 `skills/<name>/scripts/` sidesteps that entirely: nothing imports it, the
 skills invoke it as a program.
 
-Three of those five ledgers had no reader at all (`multi-pr`, `multi-spec`,
-`multi-lite`) and were deleted rather than migrated. Only `spec-to-pr-runs` and
-`codify-runs` are consumed, by their respective retro skills. No record count is
+Three of those five per-skill WRITERS were deleted rather than migrated
+(`multi-pr`, `multi-spec`, `multi-lite`); the ledger FILES they left behind still
+exist across the fleet. Every ledger now has a reader: `spec-to-pr-runs` and
+`codify-runs` by their own retro skills, and any other by `lib/ledger_summary.py`,
+which derives a summary from the records rather than being written per ledger. No record count is
 quoted here on purpose: it goes stale on the next append, and a stale number in a
 docstring reads as fact.
 

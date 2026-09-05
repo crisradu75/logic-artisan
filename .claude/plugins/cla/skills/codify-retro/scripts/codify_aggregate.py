@@ -114,7 +114,8 @@ Output schema (all counts over the analyzed window):
       "skipped_records": int,                      # malformed JSONL lines
       "commit_provenance": {                       # ONLY when --provenance is given
         "commits": int, "measured": int, "unmeasured": int,
-        "no_trailer_field": int, "measurement_rate": float|None,
+        "no_trailer_field": int, "coerced_fields": int,
+        "measurement_rate": float|None,
         "by_skill": {<skill or "none">: int},
         "skipped_records": int, "ledgers": [...],
       },
@@ -444,7 +445,7 @@ def aggregate_provenance(records: list[dict]) -> dict:
     charge the rule for commits made before it was recorded — a rate that falls
     the further back you look, purely from schema history.
     """
-    measured = unmeasured = no_field = 0
+    measured = unmeasured = no_field = coerced = 0
     by_skill: Counter = Counter()
     for ri, rec in enumerate(records):
         raw = rec.get("measured_by_count")
@@ -453,7 +454,12 @@ def aggregate_provenance(records: list[dict]) -> dict:
         else:
             n = _coerce_int(raw, "measured_by_count", f"provenance record {ri}")
             if n is None:
-                no_field += 1
+                # NOT `no_trailer_field`. That bucket means "this row predates the
+                # field", and both the schema and SKILL.md tell the reader so. A
+                # present-but-wrong-typed value is producer drift, and filing it
+                # under schema history made it invisible — against this module's
+                # own rule that a bad record is warned about AND tallied.
+                coerced += 1
             elif n > 0:
                 measured += 1
             else:
@@ -466,6 +472,7 @@ def aggregate_provenance(records: list[dict]) -> dict:
         "measured": measured,
         "unmeasured": unmeasured,
         "no_trailer_field": no_field,
+        "coerced_fields": coerced,
         # None, not 0.0, on an empty sample — same reason as `prevention_rate`.
         "measurement_rate": round(measured / scored, 2) if scored else None,
         "by_skill": dict(by_skill.most_common()),
@@ -815,9 +822,18 @@ def main() -> int:
     if args.provenance is not None:
         prov_paths = list(args.provenance)
         if not prov_paths:
-            prov_paths = ([r / "cla.io" / "retro" / _PROVENANCE_LEDGER
-                           for r in fleet_roots] if fleet_roots is not None
-                          else [_runs_dir() / _PROVENANCE_LEDGER])
+            # Wrapped like every other `_runs_dir()` call site. Bare, it raised an
+            # uncaught traceback on a relative CLAUDE_RETRO_DIR or an unresolvable
+            # repo root — and reachable exactly when `--log` was given, which
+            # suppresses the earlier call that would otherwise have caught it. The
+            # whole `result` is already built by then and was lost with it.
+            try:
+                prov_paths = ([r / "cla.io" / "retro" / _PROVENANCE_LEDGER
+                               for r in fleet_roots] if fleet_roots is not None
+                              else [_runs_dir() / _PROVENANCE_LEDGER])
+            except (ValueError, RuntimeError) as e:
+                print(f"aggregate: {e}", file=sys.stderr)
+                return 1
         # limit=0 deliberately: `--limit` slices run ledgers, and adoption of a
         # commit-message rule is a property of the whole history. Slicing it to the
         # last N would report a rate for a window the caller chose for a different

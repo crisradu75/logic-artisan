@@ -64,7 +64,7 @@ Name every **re-offense** explicitly in the log's "Recurring patterns" section, 
 `prevented` / `re-offended` / `n-a` to Step 7 as the `effectiveness` field. Every other
 field on the run record counts what this run *wrote*; these count whether what earlier
 runs wrote actually *held*. Discarding them is what let the loop report a perfect
-`apply_rate` for years while re-offenses stayed flat — a score for output, with nothing
+`apply_rate` for the whole life of the ledger while re-offenses stayed flat — a score for output, with nothing
 measuring outcome.
 
 Count what you actually classified, and do not pad. If you skimmed rather than
@@ -129,7 +129,7 @@ N suggestions + M memory candidates proposed.
 Which should I apply? ("1,3" = apply those / n = none / s = step through one at a time)
 ```
 
-**Why there is no default here, so nobody restores one.** Measured 2026-09-05 across six repos, with `codify_aggregate.py --limit 0 --log <each repo's codify-runs.jsonl>`: **219 suggestions proposed, 219 applied, 0 ever rejected**, over 52 runs. A gate that has never once said no is not a gate. It was reached at the end of long sessions with "apply all" one keypress away, and the cheapest action was always yes — so `apply_rate: 1.0` measured the prompt's shape, not the suggestions' quality. Making the user name indices costs one line of typing and is the entire fix.
+**Why there is no default here, so nobody restores one.** Measured 2026-09-05 with `codify_aggregate.py --limit 0 --fleet` over seven listed repo roots, five of which held records: **219 suggestions proposed, 219 applied, 0 ever rejected**, over 52 runs. A gate that has never once said no is not a gate. It was reached at the end of long sessions with "apply all" one keypress away, and the cheapest action was always yes — so `apply_rate: 1.0` measured the prompt's shape, not the suggestions' quality. Making the user name indices costs one line of typing and is the entire fix.
 
 **Rejection is an ordinary outcome, not a failure of the run.** Say so when you show the report, and never argue a rejected item back onto the list.
 

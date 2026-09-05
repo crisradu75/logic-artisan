@@ -308,11 +308,28 @@ def _measured_by(cwd: Path) -> list[str]:
     if not raw:
         return []
     values: list[str] = []
+    # ADJACENCY is the whole of the continuation rule, and leaving it out is a
+    # defect this function shipped with. Without it, `values[-1]` stayed the fold
+    # target for the rest of the message, so ANY indented line below — a code
+    # block, a quoted diff, an example — was welded onto the last measurement,
+    # across blank lines and unrelated paragraphs. Measured on this repo: 5 of 56
+    # commits carrying a trailer had a value corrupted that way, one by 1296
+    # characters. `unfold=true`, which this replaced, folds only the line that
+    # immediately continues the trailer.
+    folding = False
     for line in raw.splitlines():
         if line.startswith(f"{_TRAILER_KEY}:"):
-            values.append(line[len(_TRAILER_KEY) + 1:].strip())
-        elif values and line[:1].isspace() and line.strip():
+            value = line[len(_TRAILER_KEY) + 1:].strip()
+            values.append(value)
+            # A valueless `Measured-by:` starts nothing. Folding onto it
+            # resurrected it from the empty-string filter below and recorded a
+            # fabricated measurement for a commit that asserted none — inflating
+            # the exact numerator `measurement_rate` is built on.
+            folding = bool(value)
+        elif folding and line[:1].isspace() and line.strip():
             values[-1] = f"{values[-1]} {line.strip()}"
+        else:
+            folding = False
     return [v for v in values if v]
 
 

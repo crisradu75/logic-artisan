@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -748,16 +749,53 @@ def test_measurement_rate_is_none_not_zero_when_nothing_is_scorable(
 def test_a_malformed_trailer_count_is_not_scored_as_unmeasured(
         tmp_path: Path) -> None:
     """A bad value is unknown, not a zero — scoring it as unmeasured would
-    invent a failure out of a type error."""
+    invent a failure out of a type error.
+
+    And it lands in `coerced_fields`, NOT `no_trailer_field`. That bucket means
+    "this row predates the field", which both the schema and SKILL.md tell the
+    reader; filing producer drift under schema history made it invisible.
+    """
     prov = tmp_path / "prov.jsonl"
     _write_log(prov, [{"sha": "a", "measured_by_count": "three"},
                       {"sha": "b", "measured_by_count": 2}])
     out, err = _run_prov([prov])
     block = out["commit_provenance"]
     assert block["unmeasured"] == 0
-    assert block["no_trailer_field"] == 1
+    assert block["coerced_fields"] == 1
+    assert block["no_trailer_field"] == 0, (
+        "a malformed value is producer drift, not a row that predates the field"
+    )
     assert block["measurement_rate"] == 1.0
     assert "measured_by_count='three' not int" in err
+
+
+def test_a_row_predating_the_field_stays_out_of_coerced_fields(
+        tmp_path: Path) -> None:
+    """Non-vacuity partner for the split above: the two buckets must not collapse
+    back into one from the other direction either."""
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": "old"}, {"sha": "b", "measured_by_count": 1}])
+    block = _run_prov([prov])[0]["commit_provenance"]
+    assert block["no_trailer_field"] == 1
+    assert block["coerced_fields"] == 0
+
+
+def test_a_bare_provenance_with_a_bad_retro_dir_refuses_instead_of_crashing(
+        tmp_path: Path, monkeypatch) -> None:
+    """`--log` suppresses the earlier `_default_log_path()` call, so this is the
+    one path where an unguarded `_runs_dir()` reached the top level — an uncaught
+    traceback that also lost the whole already-computed aggregate."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"ts": "2026-09-06"}])
+    env = dict(os.environ, CLAUDE_RETRO_DIR="relative/not/absolute")
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", "0", "--log", str(log),
+         "--provenance"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env, check=False)
+    assert r.returncode == 1
+    assert "must be an absolute path" in r.stderr
+    assert "Traceback" not in r.stderr
 
 
 def test_provenance_reads_several_repos_and_names_a_missing_one(

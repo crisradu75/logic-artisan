@@ -76,7 +76,7 @@ pytest plugin-tests/tests/skills/<name>
 ### The parallel gate, and the three things that make it safe
 
 **Measured on this repo 2026-09-05:** serial 296.6s and `-n auto --dist loadfile` 149.6s
-(2.0x), both reporting 1665 passed, 15 skipped. Plain `-n auto` ran 84.9s and 100.9s on
+(2.0x). The pass count moved several times inside the branch that measured it and is deliberately not repeated here — run the command; `--collect-only -q` gives the total without executing anything. Plain `-n auto` ran 84.9s and 100.9s on
 two consecutive invocations of the same tree — and **the first of those failed 3 tests
 the other two forms passed**, all in `tests/hooks/test_hooks_wiring.py`
 (`test_wiring_refuses_when_the_probe_is_unusable`, the `truncated` cases). The second
@@ -159,7 +159,8 @@ subdirectory names, so the batches are never collected as tests and each guard m
 a one-step name substitution.
 
 **`lib/` is the odd one out in the plugin**: not a skill (no `SKILL.md`) and not a guard hook. It
-holds `log_run.py`, the one ledger writer every retro-logging skill invokes as a program.
+holds `log_run.py`, the one ledger writer every retro-logging skill invokes as a program,
+and `ledger_summary.py`, the generic reader those skills point at for reading one back.
 
 Of the four portable guards that police the fact/procedure split, **two reach consuming repos and
 two do not, and the difference is where they live.** No project token in synced core
@@ -414,6 +415,7 @@ The published plugin — everything here ships to a consuming repo:
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   hooks/                       guard hooks + hooks.json wiring
   lib/log_run.py               the one ledger writer, invoked as a program
+  lib/ledger_summary.py        the generic ledger reader, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill)
   skills/<name>/
@@ -455,8 +457,8 @@ matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scrip
 |---|---|
 | `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
 | `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses a path-shaped ledger argument. |
-| `lib/ledger_summary.py` | Reads ANY ledger by deriving the shape from the records — a bool becomes a true/false split, a number min/mean/max, a string a frequency table. Exists because five ledgers had no reader and bespoke aggregators for each was a plan nobody was going to execute. |
-| `plugin-tests/scripts/check_script_drift.py` *(dev tree)* | Compares the ledger-dir resolver across the writer and both readers. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
+| `lib/ledger_summary.py` | Reads ANY ledger by deriving the shape from the records rather than being configured with it — see `summarise_field` for which types report what, and do not restate the branch list here; it was restated once and dropped two branches immediately. Exists because five ledgers had no reader and bespoke aggregators for each was a plan nobody was going to execute. |
+| `plugin-tests/scripts/check_script_drift.py` *(dev tree)* | Compares the ledger-dir resolver across the writer and every reader of it, and the fleet repo-list resolver across its three copies. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
 | `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
 | `codify-retro/scripts/codify_aggregate.py`, `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over JSONL run records, including malformed-shape and producer-drift buckets a reader would gloss. `--log` takes several paths, so one run can aggregate the fleet's ledgers rather than this repo's alone — which matters because any single repo's sample is thin enough to mislead: this repo's 8 spec-to-pr records put round-cap exhaustion at 4 of 5, the fleet's 156 put it at 6 of 129. |

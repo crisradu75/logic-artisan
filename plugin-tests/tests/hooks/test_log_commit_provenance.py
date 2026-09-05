@@ -685,3 +685,56 @@ def test_a_wrapped_value_still_folds_when_attribution_follows(tmp_path):
     row = _ledger(repo)[-1]
     assert row["measured_by_count"] == 1
     assert "7280 added lines" in row["measured_by"][0]
+
+
+def test_an_indented_line_far_below_is_not_folded_into_a_measurement(tmp_path):
+    """The continuation fold must require ADJACENCY, which it first shipped without.
+
+    Without it `values[-1]` stayed the fold target for the rest of the message, so
+    any indented line below — a code block, a quoted diff, an example — was welded
+    onto the last measurement across blank lines and unrelated paragraphs.
+    Measured on this repo when found: 5 of 56 commits carrying a trailer had a
+    value corrupted this way, one by 1296 characters.
+    """
+    repo = _repo(tmp_path)
+    _commit_with(repo, "docs: seed", None)
+    (repo / "f.txt").write_text("body\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "docs: with a code block",
+         "-m", "Measured-by: pytest -q — 20 passed",
+         "-m", "Some unrelated paragraph.",
+         "-m", "    an indented code block\n    a second indented line",
+         "-m", "Co-Authored-By: Someone <x@example.com>"],
+        cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'docs: with a code block'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 1
+    assert row["measured_by"] == ["pytest -q — 20 passed"], (
+        "an indented line separated from the trailer by a blank line and a "
+        "paragraph was folded into the measurement"
+    )
+
+
+def test_a_valueless_trailer_is_not_resurrected_by_a_later_indented_line(tmp_path):
+    """`Measured-by:` with nothing after it asserts no measurement. Folding onto
+    it rescued it from the empty-string filter and recorded a fabricated one,
+    inflating the exact numerator `measurement_rate` is built on."""
+    repo = _repo(tmp_path)
+    _commit_with(repo, "docs: seed two", None)
+    (repo / "f.txt").write_text("body2\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    # ONE `-m` for both lines. Separate `-m` blocks are joined by a BLANK line,
+    # which ends the fold on its own and made an earlier version of this test
+    # vacuous — it passed with the defect present. A mutation run caught that:
+    # `folding = True` on the empty value survived, because the message shape
+    # never reached the branch it breaks.
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "docs: empty trailer",
+         "-m", "Measured-by:\n    ls -la",
+         "-m", "Co-Authored-By: Someone <x@example.com>"],
+        cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'docs: empty trailer'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 0
+    assert row["measured_by"] == []

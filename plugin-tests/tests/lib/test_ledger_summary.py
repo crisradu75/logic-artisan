@@ -182,3 +182,14 @@ def test_fields_are_ordered_by_how_many_records_carry_them(tmp_path: Path) -> No
     log = tmp_path / "l.jsonl"
     _write(log, [{"common": 1}, {"common": 1}, {"common": 1, "rare": 1}])
     assert list(_run("--log", str(log))[1]["fields"])[0] == "common"
+
+
+def test_the_empty_result_still_carries_window(tmp_path: Path) -> None:
+    """A key on every populated result and absent from the empty one makes a
+    consumer's `.get(...)` read a value where it should read "nothing measured" —
+    the skeleton bug `codify_aggregate` records about its own empty return."""
+    log = tmp_path / "l.jsonl"
+    log.write_text("", encoding="utf-8")
+    out = _run("--log", str(log))[1]
+    assert out["records"] == 0
+    assert out["window"] == {"first_ts": None, "last_ts": None}

@@ -201,7 +201,12 @@ def summarise_field(values: list) -> dict:
 
 def summarise(records: list[dict]) -> dict:
     if not records:
-        return {"records": 0, "fields": {}}
+        # `window` is emitted here too, for the reason `codify_aggregate.aggregate`
+        # records about its own skeleton: a key present on every populated result
+        # and absent on the empty one makes a consumer's `.get(...)` read a clean
+        # value where it should read "nothing was measured".
+        return {"records": 0, "window": {"first_ts": None, "last_ts": None},
+                "fields": {}}
     columns: dict[str, list] = defaultdict(list)
     for rec in records:
         for key, value in _flatten(rec).items():

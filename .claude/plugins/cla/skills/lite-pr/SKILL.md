@@ -176,8 +176,11 @@ Suggestion-level findings: mention them in the final report; no fix applied auto
 ## Step 7 — Log the run (counts-only ledger)
 
 Always done, after the final report. Append one counts-only JSON line so this skill's
-runs can be reviewed in aggregate — it is the most-used skill in the fleet and, until
-this step existed, the only one of the frequently-used set with no run data at all.
+runs can be reviewed in aggregate. It was one of three frequently-used skills keeping no
+run data at all; the others are `shape-decision` and `feedback`, given a ledger in the
+same change. No claim is made here about which skill runs most — the only per-skill count
+that exists is the provenance ledger's `by_skill`, and it attributes most commits to no
+skill at all.
 
 ```bash
 echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py lite-pr-runs.jsonl
@@ -186,7 +189,7 @@ echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py lite-pr-runs
 ```json
 {
   "ts": "<ISO-8601>",
-  "mode": "explore|plan|direct",
+  "mode": "inferred-from-conversation|description|asked",
   "phases": {"implement": "ok|warn|skip", "test": "ok|warn|skip",
              "ship": "ok|warn|skip", "review": "ok|warn|skip"},
   "test_halted": true|false,
