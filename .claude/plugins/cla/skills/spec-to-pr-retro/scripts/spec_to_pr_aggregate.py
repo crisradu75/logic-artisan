@@ -557,8 +557,19 @@ def aggregate(records: list[dict]) -> dict:
                 else:
                     _tally_agents(agents, revise_agent_dispatches, revise_agent_unknown,
                                   "Revise", ri)
-            if name == "Ship" and phase.get("version_bumped") is False:
-                version_bump_misses += 1
+            if name == "Ship":
+                # `is False` is the right test — a MISS is the thing counted, so
+                # absent must not count. But on its own it made a non-conforming
+                # value indistinguishable from an honest `true`: a producer writing
+                # `"no"` or `0` reported as "the bump happened", which is the
+                # direction that hides a defect rather than inventing one.
+                vb_raw = phase.get("version_bumped")
+                if vb_raw is False:
+                    version_bump_misses += 1
+                elif vb_raw is not None and not isinstance(vb_raw, bool):
+                    print(f"aggregate: record {ri} Ship: `version_bumped`="
+                          f"{vb_raw!r} not a bool — not counted", file=sys.stderr)
+                    drifted_fields.add("version_bumped")
         # Guard the CONTAINER, not just its elements. The element guard below has
         # always been here; without this one a record carrying a count where the
         # list belongs (`"asks": 2`) raised TypeError and took the whole run down —
@@ -661,6 +672,16 @@ def aggregate(records: list[dict]) -> dict:
                         seen.add(agent)
                         found = _coerce_int(v.get("found", 0), "found", f"record {ri} {agent}")
                         phantom = _coerce_int(v.get("phantom", 0), "phantom", f"record {ri} {agent}")
+                        # A coercion failure returns None, and `or 0` then folded it
+                        # into the sum as a real zero — warned on stderr, tallied
+                        # nowhere. The run below still counts, so the agent's yield
+                        # was divided by a denominator that included a record
+                        # contributing no numerator: a phantom RATE that drifts
+                        # toward zero for a type error. Absent is still a legitimate
+                        # 0 (`v.get(..., 0)`); only a present-but-malformed value
+                        # reaches None here.
+                        if found is None or phantom is None:
+                            drifted_fields.add("revise_findings_by_tier")
                         # Counts, never negative — clamp a stray sign so a bad
                         # value can't drag an agent's cumulative yield below its
                         # true total.

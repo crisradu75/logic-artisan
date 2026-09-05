@@ -923,3 +923,47 @@ def test_mixed_agent_keys_reach_the_drift_tally(tmp_path: Path) -> None:
     out, _ = _run(log)
     assert out["revise_findings"]["code-reviewer"]["found"] == 2
     assert out["shape_drift_fields"] == {"revise_findings_by_tier": 1}
+
+
+def test_a_non_bool_version_bumped_is_warned_and_tallied(tmp_path: Path) -> None:
+    """`"no"` used to read as "the bump happened" — the direction that HIDES a
+    defect rather than inventing one."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Ship", "version_bumped": "no"}]}])
+    out, err = _run(log)
+    assert out["version_bump_misses"] == 0
+    assert out["shape_drift_fields"].get("version_bumped") == 1
+    assert "`version_bumped`='no' not a bool" in err
+
+
+def test_an_honest_version_bumped_bool_is_not_drift(tmp_path: Path) -> None:
+    """Non-vacuity partner: `false` still counts as a miss, `true` is not drift."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Ship", "version_bumped": False}]},
+                     {"phases": [{"name": "Ship", "version_bumped": True}]}])
+    out, _ = _run(log)
+    assert out["version_bump_misses"] == 1
+    assert "version_bumped" not in out["shape_drift_fields"]
+
+
+def test_a_malformed_found_count_reaches_the_drift_tally(tmp_path: Path) -> None:
+    """The run still counts, so without this the agent's phantom RATE drifts
+    toward zero for what is only a type error."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"routing": {"revise_findings_by_tier": {
+        "code-reviewer": {"found": "lots", "phantom": 1}}}}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"].get("revise_findings_by_tier") == 1
+    assert "found='lots' not int" in err
+
+
+def test_an_absent_found_count_is_a_legitimate_zero_not_drift(
+        tmp_path: Path) -> None:
+    """Non-vacuity partner: the field defaults to 0 when absent, and 0 is data.
+    Only a PRESENT-but-malformed value coerces to None and counts as drift."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"routing": {"revise_findings_by_tier": {
+        "code-reviewer": {"phantom": 0}}}}])
+    out, _ = _run(log)
+    assert "revise_findings_by_tier" not in out["shape_drift_fields"]
+    assert out["revise_findings"]["code-reviewer"]["found"] == 0

@@ -807,3 +807,44 @@ def test_a_non_string_skill_is_bucketed_as_none_not_crashed(tmp_path: Path) -> N
                       {"sha": "b", "skill": None, "measured_by_count": 1}])
     out, _ = _run_prov([prov])
     assert out["commit_provenance"]["by_skill"] == {"none": 2}
+
+
+# --- booleans read with `is True` must not swallow a non-conforming value ---
+# All three of these were warned about nowhere and tallied nowhere: a producer
+# writing "yes" instead of true read as an honest false, and the gated heuristics
+# above ran on a thinner sample than `runs_analyzed` announced.
+
+
+def test_a_non_bool_trimmed_is_warned_and_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"maintenance": {"trimmed": "yes"}}])
+    out, err = _run(log)
+    assert out["maintenance"]["trim_runs"] == 0        # still not counted
+    assert out["shape_drift_fields"] == {"maintenance": 1}
+    assert "`maintenance.trimmed`='yes' not a bool" in err
+
+
+def test_an_honest_false_trimmed_is_not_drift(tmp_path: Path) -> None:
+    """Non-vacuity partner: only a NON-BOOL is drift. `false` is data."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"maintenance": {"trimmed": False}}, {"maintenance": {}}])
+    out, _ = _run(log)
+    assert out["maintenance"]["trim_runs"] == 0
+    assert out["shape_drift_fields"] == {}
+
+
+def test_a_non_bool_process_issue_is_warned_and_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"process_issue": 1}])
+    out, err = _run(log)
+    assert out["process_issue_runs"] == 0
+    assert out["shape_drift_fields"] == {"process_issue": 1}
+    assert "`process_issue`=1 not a bool" in err
+
+
+def test_an_honest_false_process_issue_is_not_drift(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"process_issue": False}, {}])
+    out, _ = _run(log)
+    assert out["process_issue_runs"] == 0
+    assert out["shape_drift_fields"] == {}

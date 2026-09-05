@@ -524,14 +524,32 @@ def aggregate(records: list[dict]) -> dict:
                     live_log_latest = lle_i
                 else:
                     coerced_fields += 1
-            if maint.get("trimmed") is True:
+            # `is True` is the right test — but on its own it made a
+            # non-conforming value indistinguishable from an honest `false`, with
+            # no warning and no tally. A producer writing `"yes"` or `1` reported
+            # as "no trim happened", and the trim heuristic then read a rate over
+            # a sample it never announced was thinner.
+            trimmed_raw = maint.get("trimmed")
+            if trimmed_raw is True:
                 trim_runs += 1
+            elif trimmed_raw is not None and not isinstance(trimmed_raw, bool):
+                print(f"aggregate: record {ri}: `maintenance.trimmed`="
+                      f"{trimmed_raw!r} not a bool — not counted", file=sys.stderr)
+                drifted_fields.add("maintenance")
         elif maint is not None:
             print(f"aggregate: record {ri}: `maintenance` is {type(maint).__name__}, "
                   f"expected object — skipping", file=sys.stderr)
             drifted_fields.add("maintenance")
-        if rec.get("process_issue") is True:
+        # Same shape as `maintenance.trimmed` above, and it matters more here:
+        # `process_issue_runs / runs_analyzed` is a gated heuristic, so a silently
+        # uncounted record moves a ratio the retro acts on.
+        pi_raw = rec.get("process_issue")
+        if pi_raw is True:
             process_issue_runs += 1
+        elif pi_raw is not None and not isinstance(pi_raw, bool):
+            print(f"aggregate: record {ri}: `process_issue`={pi_raw!r} not a bool "
+                  f"— not counted", file=sys.stderr)
+            drifted_fields.add("process_issue")
 
         if "output_chars" in rec:
             oc = _coerce_int(rec["output_chars"], "output_chars", f"record {ri}")
