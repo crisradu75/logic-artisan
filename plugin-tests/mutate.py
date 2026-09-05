@@ -88,6 +88,7 @@ catch the mutation — one pytest runs per mutant.
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -332,10 +333,20 @@ def run_pytest(targets: list[Path]) -> tuple[int, str]:
     confidence that was never earned, while a false INCONCLUSIVE looks exactly
     like a tool being careful.
     """
+    env = dict(os.environ)
+    # `PYTEST_ADDOPTS` is inherited and applied BEFORE the flags above, so a
+    # `-n auto` sitting there would silently parallelize a run CLAUDE.md keeps
+    # serial on purpose — and nothing in the output would say so. Same class as
+    # the colour bug: an environment variable quietly changing what this tool
+    # measures. Dropped rather than overridden, so the run is reproducible.
+    if env.pop("PYTEST_ADDOPTS", None):
+        print("mutate: ignoring PYTEST_ADDOPTS for this run (kept serial)",
+              file=sys.stderr)
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-x", "--color=no",
          *[str(t) for t in targets]],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env,
     )
     return proc.returncode, proc.stdout + proc.stderr
 

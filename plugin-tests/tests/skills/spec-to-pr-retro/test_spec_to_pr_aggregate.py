@@ -266,6 +266,12 @@ def test_missing_phases_key_warns(tmp_path: Path) -> None:
     assert "missing or non-list `phases`" in stderr
     assert out["runs_analyzed"] == 1
     assert out["phase_outcomes"] == {}
+    # The bare-missing-key variant reaches the same branch as the wrong-type one,
+    # so it must reach the same tally. Asserted here rather than only in the
+    # wrong-type test: a refactor that split the two would otherwise stop counting
+    # this case with nothing in the suite noticing.
+    assert out["shape_drift_fields"] == {"phases": 1}
+    assert out["shape_drift_records"] == 1
 
 
 def test_report_chars_mean_per_phase(tmp_path: Path) -> None:
@@ -355,7 +361,7 @@ def test_type_confused_agents_warns(tmp_path: Path) -> None:
                      "agents": "code-reviewer"}]},   # string, not list
     ])
     out, stderr = _run(log)
-    assert "Revise `agents` not list" in stderr
+    assert "Revise `agents` is str, expected list" in stderr
     assert out["revise_agents"] == {}
 
 
@@ -420,7 +426,7 @@ def test_review_agents_type_confusion_warns(tmp_path: Path) -> None:
                      "size_gate": "large", "agents": "design"}]},
     ])
     out, stderr = _run(log)
-    assert "Review `agents` not list" in stderr
+    assert "Review `agents` is str, expected list" in stderr
     assert out["review_agents"] == {}
 
 
@@ -624,10 +630,16 @@ def test_one_record_drifting_twice_counts_once_as_a_record(tmp_path: Path) -> No
     assert out["shape_drift_records"] == 1
 
 
-def test_shape_drift_counter_is_not_vacuous(tmp_path: Path) -> None:
-    # The counter must be able to read zero for a real reason. Without this, a
-    # counter that never incremented at all would satisfy every test above that
-    # asserts a non-zero value only on drifted input.
+def test_clean_records_are_not_flagged_as_drift(tmp_path: Path) -> None:
+    """Well-formed input must read zero — the false-POSITIVE direction.
+
+    Not a non-vacuity guard, despite an earlier name that said so: a review agent
+    patched an `aggregate()` that kept both fields and never incremented them, and
+    this test passed against it while every sibling `..._is_tallied` test failed.
+    Those siblings are what make the counter non-vacuous. This one makes zero
+    meaningful, which is the other half and is worth its own test — a counter that
+    fires on clean records would make the alarm useless in the opposite way.
+    """
     log = tmp_path / "runs.jsonl"
     _write_log(log, [
         {"phases": [{"name": "Test", "status": "ok"}], "asks": [{"header": "h", "choice": "c"}]},
@@ -679,3 +691,90 @@ def test_limit_applies_per_ledger(tmp_path: Path) -> None:
     _write_log(b, [{"phases": []} for _ in range(5)])
     out, _ = _run_multi([a, b], limit=2)
     assert out["runs_analyzed"] == 4, "limit is the last N from EACH ledger, not overall"
+
+
+def test_skipped_records_sum_across_ledgers(tmp_path: Path) -> None:
+    # `main()` accumulates `skipped` across the loop; nothing exercised that sum.
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    a.write_text(json.dumps({"phases": []}) + "\n{ broken\n", encoding="utf-8")
+    b.write_text(json.dumps({"phases": []}) + "\nalso broken\n", encoding="utf-8")
+    out, _ = _run_multi([a, b])
+    assert out["runs_analyzed"] == 2
+    assert out["skipped_records"] == 2, "one malformed line from each ledger"
+
+
+def test_ledgers_names_a_path_that_did_not_resolve(tmp_path: Path) -> None:
+    # The whole point of reading several ledgers is sample size, so a path that
+    # contributed nothing must be visible on stdout, not only on stderr.
+    good, missing = tmp_path / "a.jsonl", tmp_path / "nope.jsonl"
+    _write_log(good, [{"phases": []}, {"phases": []}])
+    out, _ = _run_multi([good, missing])
+    assert out["runs_analyzed"] == 2
+    assert out["ledgers"] == [
+        {"path": str(good), "found": True, "records": 2, "skipped": 0},
+        {"path": str(missing), "found": False, "records": 0, "skipped": 0},
+    ]
+
+
+def test_the_same_ledger_twice_is_not_double_counted(tmp_path: Path) -> None:
+    # A fleet invocation is assembled from a repo list, often by glob or brace
+    # expansion, so a repeated path is a real shape rather than a typo alone.
+    log = tmp_path / "a.jsonl"
+    _write_log(log, [{"phases": []}, {"phases": []}])
+    out, err = _run_multi([log, log])
+    assert out["runs_analyzed"] == 2, "the duplicate must not double the sample"
+    assert len(out["ledgers"]) == 1
+    assert "given more than once" in err
+
+
+def test_window_is_chronological_regardless_of_argument_order(tmp_path: Path) -> None:
+    # Records arrive concatenated in argument order. Taking the first and last of
+    # that concatenation produced a window that ended before it started.
+    old, new = tmp_path / "old.jsonl", tmp_path / "new.jsonl"
+    _write_log(old, [{"ts": "2020-01-01T00:00:00Z", "phases": []}])
+    _write_log(new, [{"ts": "2026-09-01T00:00:00Z", "phases": []}])
+    for order in ([new, old], [old, new]):
+        out, _ = _run_multi(order)
+        assert out["window"] == {"first_ts": "2020-01-01T00:00:00Z",
+                                 "last_ts": "2026-09-01T00:00:00Z"}, f"order {order}"
+
+
+def test_absent_asks_is_not_counted_as_drift(tmp_path: Path) -> None:
+    # An optional field that is absent, or explicitly null, is not drift.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": []}, {"phases": [], "asks": None}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {}
+    assert out["shape_drift_records"] == 0
+
+
+def test_unhashable_ask_keys_do_not_abort_the_run(tmp_path: Path) -> None:
+    # The container guard fixed one level; the KEYS drawn out of it are a second
+    # surface, and a list-valued header took the whole aggregate down.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "asks": [{"header": ["h"], "choice": "c"}]},
+                     {"phases": [], "asks": [{"header": "ok", "choice": "c"}]}])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 2
+    assert out["asks"] == [{"header": "ok", "choices": {"c": 1}}]
+    assert out["shape_drift_fields"] == {"asks": 1}
+
+
+def test_unhashable_phase_name_does_not_abort_the_run(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": {"a": 1}, "status": "ok"}]},
+                     {"phases": [{"name": "Test", "status": "ok"}]}])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 2
+    assert out["phase_outcomes"] == {"Test": {"ok": 1}}
+    assert out["shape_drift_fields"] == {"phases": 1}
+
+
+def test_unhashable_size_gate_does_not_abort_the_run(tmp_path: Path) -> None:
+    # The pair-check tested `size_gate in VALID_SIZE_GATES` on the RAW value,
+    # outside the isinstance guard above it.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Review", "status": "ok",
+                                  "size_gate": {"a": 1}, "agents": []}]}])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 1

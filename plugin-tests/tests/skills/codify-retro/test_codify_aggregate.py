@@ -143,7 +143,12 @@ def test_non_dict_count_block_warned(tmp_path: Path) -> None:
     _write_log(log, [{"suggestions": [1, 2]}])
     out, err = _run(log)
     assert out["suggestions"]["proposed"] == 0
-    assert "not an object" in err
+    assert "`suggestions` is list, expected object" in err
+    # Dropping the whole block loses both halves of apply_rate while
+    # `runs_analyzed` still counts the record, so it is drift, not a coerced count.
+    assert out["shape_drift_fields"] == {"suggestions": 1}
+    assert out["shape_drift_records"] == 1
+    assert out["coerced_fields"] == 0, "a dropped container is not a coerced field"
 
 
 def test_non_string_lesson_and_escalated_to_warned(tmp_path: Path) -> None:
@@ -339,11 +344,16 @@ def test_one_record_drifting_twice_counts_once_as_a_record(tmp_path: Path) -> No
     assert out["shape_drift_records"] == 1
 
 
-def test_shape_drift_counter_is_not_vacuous(tmp_path: Path) -> None:
-    # The counter must be able to read zero for a real reason, not because it
-    # never increments. Measured on the real fleet, codify's drift IS zero
-    # across all 52 records in five repos — so without this test the whole
-    # feature could be a no-op and every other assertion here would still pass.
+def test_clean_records_are_not_flagged_as_drift(tmp_path: Path) -> None:
+    """Well-formed input must read zero — the false-POSITIVE direction.
+
+    Not a non-vacuity guard, despite an earlier name that said so: a review agent
+    patched an `aggregate()` that kept both fields and never incremented them, and
+    this test passed against it while every sibling `..._is_tallied` test failed.
+    Those siblings are what make the counter non-vacuous. This one makes zero
+    meaningful, which is the other half and is worth its own test — a counter that
+    fires on clean records would make the alarm useless in the opposite way.
+    """
     log = tmp_path / "runs.jsonl"
     _write_log(log, [
         {"re_offenses": [{"lesson": "x", "escalated_to": "hook"}],
@@ -386,3 +396,71 @@ def test_multiple_logs_omit_log_path_rather_than_naming_one(tmp_path: Path) -> N
     out, _ = _run_multi([a, b])
     assert "log_path" not in out
     assert out["log_paths"] == [str(a), str(b)]
+
+
+def test_limit_applies_per_ledger(tmp_path: Path) -> None:
+    # The contract is identical to spec-to-pr's and was untested here.
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"process_issue": False} for _ in range(5)])
+    _write_log(b, [{"process_issue": False} for _ in range(5)])
+    out, _ = _run_multi([a, b], limit=2)
+    assert out["runs_analyzed"] == 4, "limit is the last N from EACH ledger, not overall"
+
+
+def test_skipped_records_sum_across_ledgers(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    a.write_text(json.dumps({"process_issue": False}) + "\n{ broken\n", encoding="utf-8")
+    b.write_text(json.dumps({"process_issue": False}) + "\nalso broken\n", encoding="utf-8")
+    out, _ = _run_multi([a, b])
+    assert out["runs_analyzed"] == 2
+    assert out["skipped_records"] == 2
+
+
+def test_ledgers_names_a_path_that_did_not_resolve(tmp_path: Path) -> None:
+    good, missing = tmp_path / "a.jsonl", tmp_path / "nope.jsonl"
+    _write_log(good, [{"process_issue": False}])
+    out, _ = _run_multi([good, missing])
+    assert out["ledgers"] == [
+        {"path": str(good), "found": True, "records": 1, "skipped": 0},
+        {"path": str(missing), "found": False, "records": 0, "skipped": 0},
+    ]
+
+
+def test_per_repo_fields_are_suppressed_in_fleet_mode(tmp_path: Path) -> None:
+    # These describe ONE repo's own files. Pooled across repos, `_latest` means
+    # "whichever ledger was listed last" and `_trend` interleaves unrelated repos —
+    # and this loop's SKILL.md gates directly on them.
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"maintenance": {"failure_modes_bullets": 40, "live_log_entries": 9},
+                    "output_chars": 5000}])
+    _write_log(b, [{"maintenance": {"failure_modes_bullets": 3, "live_log_entries": 1},
+                    "output_chars": 100}])
+    single, _ = _run(a)
+    assert single["maintenance"]["failure_modes_bullets_latest"] == 40
+    assert "per_repo_fields_suppressed" not in single
+
+    fleet, _ = _run_multi([a, b])
+    assert fleet["runs_analyzed"] == 2
+    assert fleet["per_repo_fields_suppressed"] is True
+    assert fleet["maintenance"]["failure_modes_bullets_latest"] is None
+    assert fleet["maintenance"]["failure_modes_bullets_trend"] == []
+    assert fleet["maintenance"]["live_log_entries_latest"] is None
+    assert fleet["output_chars"] == {"latest": None, "trend": [], "mean": 0.0}
+
+
+def test_explicit_null_optional_container_is_not_drift(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"re_offenses": None, "rejected_lessons": None, "maintenance": None}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {}
+    assert out["shape_drift_records"] == 0
+
+
+def test_entry_level_drift_reaches_the_tally(tmp_path: Path) -> None:
+    # Entry-level drift used to warn and be counted nowhere.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"re_offenses": [{"lesson": None, "escalated_to": "hook"}]},
+                     {"rejected_lessons": [7]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"re_offenses": 1, "rejected_lessons": 1}
+    assert out["shape_drift_records"] == 2
