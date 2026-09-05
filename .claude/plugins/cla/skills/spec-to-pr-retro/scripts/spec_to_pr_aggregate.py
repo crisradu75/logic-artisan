@@ -588,6 +588,16 @@ def aggregate(records: list[dict]) -> dict:
                                       "verified_claims_count", f"record {ri} Review")
                     if vcc is not None:
                         review_verified_claims.append(vcc)
+                    else:
+                        # The fourth of the silently-dropped fields, and the one
+                        # where the loss is hardest to see: `review_verified_claims`
+                        # reports `n`, and this schema's OWN guidance is to
+                        # "disqualify the mean when `n` is small relative to
+                        # runs_analyzed". A malformed value shrank `n` with nothing
+                        # said, so a thinned sample was indistinguishable from
+                        # records that never carried the field — and the reader was
+                        # being told to judge the mean on exactly that number.
+                        drifted_fields.add("review_verified_claims")
                 agents = phase.get("agents", [])
                 if not isinstance(agents, list):
                     print(f"aggregate: record {ri}: Review `agents` is "

@@ -1054,3 +1054,30 @@ def test_fleet_and_log_are_mutually_exclusive(tmp_path: Path) -> None:
     r = _run_fleet(_fleet_file(tmp_path, [root]), extra=["--log", str(log)])
     assert r.returncode == 1
     assert "mutually exclusive" in r.stderr
+
+
+def test_a_malformed_verified_claims_count_reaches_the_drift_tally(
+        tmp_path: Path) -> None:
+    """The hardest loss to see: `review_verified_claims.n` is the very number the
+    schema tells the reader to judge the mean by, and a malformed value shrank it
+    with nothing said."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Review", "verified_claims_count": "twelve"}]},
+        {"phases": [{"name": "Review", "verified_claims_count": 8}]},
+    ])
+    out, err = _run(log)
+    assert out["review_verified_claims"] == {"mean": 8, "n": 1}
+    assert out["shape_drift_fields"].get("review_verified_claims") == 1
+    assert "verified_claims_count='twelve' not int" in err
+
+
+def test_an_absent_verified_claims_count_is_not_drift(tmp_path: Path) -> None:
+    """Non-vacuity partner: most records never carry the field, and a low `n` from
+    genuine absence must stay distinguishable from one caused by bad values."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Review"}]},
+                     {"phases": [{"name": "Review", "verified_claims_count": 4}]}])
+    out, _ = _run(log)
+    assert out["review_verified_claims"] == {"mean": 4, "n": 1}
+    assert "review_verified_claims" not in out["shape_drift_fields"]
