@@ -243,6 +243,21 @@ REVISE_AGENT_NAMES = {
 # compared post-`_normalize_agent`, so the severity key `phantom_rejected` is
 # stored here in its normalized `phantom-rejected` form (either spelling from a
 # producer matches after normalization); none collides with an agent name.
+# Agent-name spellings that appear in ALREADY-WRITTEN history and name no agent
+# this plugin ships today. Deliberately NOT drift: a drift count names a producer
+# edit to make, and these records are immutable — there is no edit. Counting them
+# as drift pinned `shape_drift_records` permanently above zero (measured at 4 of
+# this repo's 8 records, 25% of the live window), which is the standing alarm
+# nobody reads — the exact failure the drift counter was added to end.
+#
+# Counted separately so they stay visible. Measured across the fleet's 156
+# records: each of these appears exactly once, and no other unrecognized key
+# exists (command in the commit trailer).
+RETIRED_AGENT_KEYS = {
+    "skill-doc-reviewer", "skill-reviewer",
+    "general-purpose-residue", "code-reviewer-round2",
+}
+
 LEGACY_TIER_KEYS = {
     "opus", "sonnet", "haiku",                                 # model-tier shape
     "critical", "important", "suggestion", "phantom-rejected",  # severity shape
@@ -402,6 +417,7 @@ def aggregate(records: list[dict]) -> dict:
     revise_findings_records = 0
     revise_findings_legacy_records = 0
     revise_findings_malformed_records = 0
+    retired_agent_keys: Counter[str] = Counter()
     # Container-shape drift, tallied rather than only warned about. `codify_aggregate.py`'s
     # module docstring already states the rule this restores — bad records are skipped with
     # a stderr warning AND tallied, so the consumer sees the noise floor in structured
@@ -458,7 +474,11 @@ def aggregate(records: list[dict]) -> dict:
             if phase_key in cap_total and "rounds_used" in phase:
                 used = _coerce_int(phase["rounds_used"], "rounds_used", f"record {ri} phase {name}")
                 cap = _coerce_int(phase.get("rounds_cap"), "rounds_cap", f"record {ri} phase {name}")
-                if cap is None and phase.get("rounds_cap") is not None:
+                # ABSENT counts too. `run-log-schema.md` writes `rounds_cap`
+                # into the shape for all three capped phases, and either way the
+                # phase joins `cap_total` while `cap_hit` can never fire — it
+                # depresses the exhaustion rate rather than merely thinning it.
+                if cap is None:
                     # A cap that will not coerce makes the phase uncountable as a
                     # HIT while still counting toward the total, so it depresses the
                     # exhaustion rate rather than merely thinning it.
@@ -597,6 +617,10 @@ def aggregate(records: list[dict]) -> dict:
         if isinstance(routing, dict) and "revise_findings_by_tier" in routing:
             rfbt = routing["revise_findings_by_tier"]
             if not isinstance(rfbt, dict):
+                # Reached `revise_findings_malformed_records` but not the drift
+                # tally, while a dict carrying ONE bad key reached both — the more
+                # severe shape escaping the milder one's counter.
+                drifted_fields.add("revise_findings_by_tier")
                 print(f"aggregate: record {ri}: revise_findings_by_tier is "
                       f"{type(rfbt).__name__}, expected dict — counted malformed",
                       file=sys.stderr)
@@ -644,6 +668,9 @@ def aggregate(records: list[dict]) -> dict:
                         revise_findings[agent]["phantom"] += max(0, phantom or 0)
                         revise_findings[agent]["runs"] += 1
                         matched = True
+                    elif agent in RETIRED_AGENT_KEYS:
+                        # Historical, not drift — see RETIRED_AGENT_KEYS above.
+                        retired_agent_keys[agent] += 1
                     elif agent not in LEGACY_TIER_KEYS:
                         had_drift = True  # not an agent, not a known legacy key
                         # The path the REAL ledger trips — records 0 and 2 of this
@@ -706,6 +733,9 @@ def aggregate(records: list[dict]) -> dict:
         "revise_findings_records": revise_findings_records,
         "revise_findings_legacy_records": revise_findings_legacy_records,
         "revise_findings_malformed_records": revise_findings_malformed_records,
+        # Keys naming an agent this plugin no longer ships, found in immutable
+        # history. Visible, but NOT counted as drift: no producer edit exists.
+        "retired_agent_keys": dict(retired_agent_keys),
         # Which container fields drifted, and how many records drifted at all. Read
         # these BEFORE any metric below: a non-zero `shape_drift_records` means
         # `runs_analyzed` overstates the sample every phase-derived metric ran on.

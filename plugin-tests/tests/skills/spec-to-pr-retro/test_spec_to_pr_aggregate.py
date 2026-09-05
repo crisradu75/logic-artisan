@@ -870,6 +870,46 @@ def test_non_string_size_gate_and_verdict_are_tallied(tmp_path: Path) -> None:
     assert "`verdict` is int" in err
 
 
+def test_a_retired_agent_name_is_history_not_drift(tmp_path: Path) -> None:
+    """Drift names a producer edit. These records are immutable, so there is none.
+
+    Counting them as drift pinned `shape_drift_records` permanently above zero —
+    measured at 4 of this repo's 8 records — which is the standing alarm nobody
+    reads, and the exact failure the counter was added to end.
+    """
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok",
+                                  "agents": ["code-reviewer"]}],
+                      "routing": {"revise_findings_by_tier": {
+                          "code_reviewer": {"found": 2, "phantom": 0},
+                          "skill-doc-reviewer": {"found": 1, "phantom": 0}}}}])
+    out, _ = _run(log)
+    assert out["retired_agent_keys"] == {"skill-doc-reviewer": 1}
+    assert out["shape_drift_fields"] == {}, "history is not drift"
+    assert out["shape_drift_records"] == 0
+    assert out["revise_findings"]["code-reviewer"]["found"] == 2
+
+
+def test_non_dict_findings_by_tier_reaches_the_drift_tally(tmp_path: Path) -> None:
+    # The MORE severe shape escaped the tally while a dict with one bad key
+    # reached it.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "routing": {"revise_findings_by_tier": ["x"]}}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"revise_findings_by_tier": 1}
+    assert out["revise_findings_malformed_records"] == 1
+
+
+def test_absent_rounds_cap_is_tallied(tmp_path: Path) -> None:
+    # Absence does the identical harm as an uncoercible value: the phase joins
+    # cap_total and can never be a hit, depressing the exhaustion rate.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok", "rounds_used": 2}]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"rounds_cap": 1}
+    assert out["cap_exhaustion"]["revise"] == {"hit": 0, "total": 1}
+
+
 def test_mixed_agent_keys_reach_the_drift_tally(tmp_path: Path) -> None:
     # A record mixing a valid agent with a bad key took the "matched" branch and
     # was counted as a CLEAN per-agent record. This is the shape that fires on
