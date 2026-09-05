@@ -164,6 +164,55 @@ def _runs_dir() -> Path:
     return root / "cla.io" / "retro"
 
 
+# The fleet list lives beside the other `*.local.md` overlays in the repo's
+# own tree, never in the plugin: which repos exist is a fact about the
+# machine, and the plugin ships procedure.
+_FLEET_FILE = "fleet.local.md"
+
+
+def _fleet_roots(path: Path) -> list[Path]:
+    """Repo roots listed in the fleet file, one per `- ` bullet.
+
+    Reading a fleet aggregate meant typing every repo's ledger path by hand, every
+    time. Nothing saved the list, so the cross-repo view existed only when someone
+    remembered all of them and spelled each one correctly — and a path that
+    resolves to nothing contributes silently, which is exactly the sample-size
+    error the fleet mode exists to fix.
+
+    Format and location follow `cla.io/project-tokens.local.md`, the closest
+    precedent: a `*.local.md` file in the repo's own tree, one item per `- `
+    bullet, inline `#` comments and surrounding backticks stripped. It holds repo
+    ROOTS rather than ledger paths, so one file serves both aggregators and both
+    of this one's ledger kinds — each caller appends the ledger name it already
+    knows.
+
+    Raises rather than returning empty on a missing or contentless file: a fleet
+    run that silently analysed nothing would print `runs_analyzed: 0`, which both
+    retro skills instruct the reader to interpret as a cold start.
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"no fleet file at {path}. Create it with one repo root per `- ` "
+            f"bullet, e.g. `- /path/to/another-repo`, or pass explicit paths "
+            f"instead of --fleet"
+        )
+    roots: list[Path] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line.startswith("- "):
+            continue
+        item = line[2:].split("#", 1)[0].strip().strip("`").strip()
+        if item:
+            roots.append(Path(item))
+    if not roots:
+        raise ValueError(
+            f"{path} lists no repo roots — expected one per `- ` bullet. "
+            f"Refusing rather than analysing nothing and reporting it as a cold "
+            f"start"
+        )
+    return roots
+
+
 def _default_log_path() -> Path:
     """This loop's ledger inside the dir the writer resolves.
 
@@ -177,17 +226,28 @@ def _default_log_path() -> Path:
 
 
 def _load_records(log_path: Path, limit: int,
-                  explicit: bool = False) -> tuple[list[dict], int]:
+                  source: str = "default") -> tuple[list[dict], int]:
     if not log_path.exists():
         # Distinguish a genuine cold start from a misconfigured path: name where
         # we looked so a wrong CLAUDE_RETRO_DIR / repo root is not mistaken for
         # "no runs yet". The retro still reports runs_analyzed:0 either way.
-        # Name the provenance correctly. An explicit `--log` path that does not
-        # exist is a typo in the argument, not a misconfigured repo root, and
-        # telling the caller to check CLAUDE_RETRO_DIR sends them to the wrong file.
-        if explicit:
+        #
+        # THREE provenances, because each sends the reader somewhere different and
+        # naming the wrong one wastes the trip. `log` is a typo in an argument the
+        # caller typed. `fleet` is a root listed in the fleet file — usually not an
+        # error at all, just a repo that has not run the loop yet, and the reader
+        # should be told that before being sent to hunt. `default` is a
+        # misconfigured CLAUDE_RETRO_DIR or repo root. This was a bool, and every
+        # fleet-resolved path reported as `log`: "check the path", for a path the
+        # caller never wrote.
+        if source == "log":
             print(f"aggregate: no ledger at {log_path} (given explicitly via --log); "
                   f"contributing 0 runs. Check the path.", file=sys.stderr)
+        elif source == "fleet":
+            print(f"aggregate: no ledger at {log_path} (a root listed in the fleet "
+                  f"file); contributing 0 runs. Expected if that repo has not run the "
+                  f"loop yet — the `ledgers` array reports it as found:false either "
+                  f"way.", file=sys.stderr)
         else:
             src = "CLAUDE_RETRO_DIR" if os.environ.get("CLAUDE_RETRO_DIR", "").strip() \
                 else "repo cla.io/retro"
@@ -348,7 +408,7 @@ def _window(timestamps: list[str]) -> dict:
 
 
 def _load_ledgers(log_paths: list[Path], limit: int,
-                  explicit: bool) -> tuple[list[dict], int, list[dict]]:
+                  source: str) -> tuple[list[dict], int, list[dict]]:
     """Read every named ledger into one record list, with per-ledger provenance.
 
     Deduplicates by resolved path: a fleet invocation is assembled by a model from
@@ -377,7 +437,7 @@ def _load_ledgers(log_paths: list[Path], limit: int,
             continue
         seen.add(key)
         existed = p.exists()
-        recs, sk = _load_records(p, limit, explicit=explicit)
+        recs, sk = _load_records(p, limit, source=source)
         records.extend(recs)
         skipped += sk
         ledgers.append({"path": str(p), "found": existed,
@@ -787,16 +847,42 @@ def main() -> int:
                              "because any single repo's sample is thin enough to mislead.")
     parser.add_argument("--limit", type=int, default=10,
                         help="Analyze the last N records PER LEDGER (default 10, 0 = all).")
+    parser.add_argument("--fleet", nargs="?", const="", default=None, metavar="PATH",
+                        help="Read every repo root listed in the fleet file (default: "
+                             "this repo's cla.io/fleet.local.md) and analyze each "
+                             "one's ledger. Saves retyping every path, which is what "
+                             "made the cross-repo view depend on remembering all of "
+                             "them. Mutually exclusive with an explicit --log.")
     args = parser.parse_args()
 
+    if args.fleet is not None and args.log:
+        print("aggregate: --fleet and --log are mutually exclusive; --fleet resolves "
+              "the paths for you", file=sys.stderr)
+        return 1
+    fleet_roots: list[Path] | None = None
+    if args.fleet is not None:
+        try:
+            fleet_path = Path(args.fleet) if args.fleet else _runs_dir().parent / _FLEET_FILE
+            fleet_roots = _fleet_roots(fleet_path)
+        except (ValueError, RuntimeError, FileNotFoundError, OSError) as e:
+            print(f"aggregate: {e}", file=sys.stderr)
+            return 1
+
+
     try:
-        log_paths = args.log or [_default_log_path()]
+        if fleet_roots is not None:
+            name = _default_log_path().name
+            log_paths = [r / "cla.io" / "retro" / name for r in fleet_roots]
+        else:
+            log_paths = args.log or [_default_log_path()]
     except (ValueError, RuntimeError) as e:
         print(f"aggregate: {e}", file=sys.stderr)
         return 1
 
-    records, skipped, ledgers = _load_ledgers(log_paths, args.limit,
-                                              explicit=args.log is not None)
+    records, skipped, ledgers = _load_ledgers(
+        log_paths, args.limit,
+        source="fleet" if fleet_roots is not None else
+        ("log" if args.log else "default"))
 
     result = aggregate(records)
     result["skipped_records"] = skipped

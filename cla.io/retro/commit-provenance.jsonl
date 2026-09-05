@@ -177,3 +177,4 @@
 {"ts":"2026-09-05T21:59:21+03:00","sha":"8ba1734","subject":"feat: give the commit-provenance ledger a reader, and delete two dead heuristics","branch":"fix/probe-cache-interpreter","skill":null,"measured_by_count":0,"measured_by":[]}
 {"ts":"2026-09-05T22:28:20+03:00","sha":"eb0f38d","subject":"fix: stop the hook tests writing the developer's real interpreter cache","branch":"fix/probe-cache-interpreter","skill":null,"measured_by_count":0,"measured_by":[]}
 {"ts":"2026-09-05T22:43:41+03:00","sha":"2717c8b","subject":"fix: tally the four values the aggregators were dropping silently","branch":"fix/probe-cache-interpreter","skill":null,"measured_by_count":0,"measured_by":[]}
+{"ts": "2026-09-05T22:47:41+03:00", "sha": "6db90c5", "subject": "chore: recover the two provenance rows still held only in a stash", "branch": "fix/probe-cache-interpreter", "skill": null, "measured_by_count": 0, "measured_by": []}

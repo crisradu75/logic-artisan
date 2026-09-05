@@ -32,6 +32,14 @@ Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrappe
 
 **Reading more than one repo's ledger.** `--log` takes several paths, and the records aggregate together:
 
+Prefer `--fleet`, which resolves the paths from `cla.io/fleet.local.md` — one repo root per `- ` bullet, curated per machine, never synced. The same file serves this loop and `codify-retro`:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit 0 --fleet
+```
+
+`--log` still takes explicit paths, and the two are mutually exclusive — both resolve the same argument, so accepting both would make precedence a guess the caller cannot see. A missing fleet file, or one with no bullets, refuses rather than analysing nothing: `runs_analyzed: 0` is what this skill tells you to read as a cold start.
+
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit 0 \
   --log <repo-a>/cla.io/retro/spec-to-pr-runs.jsonl <repo-b>/cla.io/retro/spec-to-pr-runs.jsonl

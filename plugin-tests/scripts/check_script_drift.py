@@ -72,7 +72,12 @@ SIBLING_GROUPS = [
         # catch exactly this.
         "name": "retro aggregator record loading",
         "root": PLUGIN_ROOT,
-        "functions": ("_load_records", "_coerce_int", "_load_ledgers", "_window"),
+        # `_fleet_roots` joins them for the same reason, before it has a chance to
+        # diverge: it decides which repos a fleet run reads, so two copies that
+        # disagree would silently give the two loops different fleets from one
+        # `fleet.local.md`, and each would look internally consistent.
+        "functions": ("_load_records", "_coerce_int", "_load_ledgers", "_window",
+                      "_fleet_roots"),
         "files": (
             "skills/codify-retro/scripts/codify_aggregate.py",
             "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",

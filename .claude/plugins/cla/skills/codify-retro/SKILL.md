@@ -33,12 +33,20 @@ Where `<N>` is the value from `$ARGUMENTS`, or `10` if empty. Substitute the lit
 invoking — the script does not expand shell variables.
 
 
-**Reading more than one repo's ledger.** `--log` takes several paths, and the records aggregate together:
+**Reading more than one repo's ledger.** Prefer `--fleet`, which resolves the paths from `cla.io/fleet.local.md` — one repo root per `- ` bullet, curated per machine, never synced:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit 0 --fleet
+```
+
+`--log` still takes several explicit paths, and the two are mutually exclusive — both resolve the same argument, so accepting both would make precedence a guess the caller cannot see:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit 0 \
   --log <repo-a>/cla.io/retro/codify-runs.jsonl <repo-b>/cla.io/retro/codify-runs.jsonl
 ```
+
+**Why the file exists rather than just typing the paths.** The multi-path form came first, and the list lived nowhere — so the cross-repo view existed only when someone remembered every repo and spelled each one right. A path that resolves to nothing contributes silently, which is the same sample-size error fleet mode exists to remove. If `--fleet` reports a missing file or one with no bullets, it refuses rather than analysing nothing: `runs_analyzed: 0` is what this skill tells you to read as a cold start.
 
 Worth doing whenever one repo's ledger is thin, which is the usual case — a five-record sample put one round-cap exhaustion rate at 4 of 5 where 156 records put it at 6 of 129. Three things change in fleet mode, and each is visible in the output rather than assumed: `--limit` applies PER LEDGER, so `runs_analyzed` can reach N x ledgers; `ledgers` carries per-path provenance, and a path that did not resolve shows `found: false` with `records: 0` — check it before trusting the sample size; and `log_path` is omitted, since no single path describes the result.
 
@@ -54,6 +62,12 @@ distribution, repeatedly-rejected lessons, failure-modes bullet trend, codify-pr
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit 0 \
   --provenance <repo-a>/cla.io/retro/commit-provenance.jsonl <repo-b>/cla.io/retro/commit-provenance.jsonl
+```
+
+Given **bare**, it resolves for you: with `--fleet`, every listed repo's provenance ledger; without it, this repo's.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit 0 --fleet --provenance
 ```
 
 That ledger is written automatically by a guard hook on every commit, at no cost in anyone's attention, and until this flag existed nothing read it. It is independent of `--log` — pass either, or both — and it is never sliced by `--limit`, because adoption of a commit-message rule is a property of the whole history rather than of the last N runs.

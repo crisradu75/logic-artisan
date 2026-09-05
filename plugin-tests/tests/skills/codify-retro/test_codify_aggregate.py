@@ -848,3 +848,109 @@ def test_an_honest_false_process_issue_is_not_drift(tmp_path: Path) -> None:
     out, _ = _run(log)
     assert out["process_issue_runs"] == 0
     assert out["shape_drift_fields"] == {}
+
+
+# --- --fleet: the repo list that used to live only in someone's memory --------
+
+
+def _fleet_file(tmp_path: Path, roots: list[Path], extra: str = "") -> Path:
+    f = tmp_path / "fleet.local.md"
+    body = "# fleet\n\n" + extra + "".join(f"- {r}\n" for r in roots)
+    f.write_text(body, encoding="utf-8")
+    return f
+
+
+def _run_fleet(fleet: Path, limit: int = 0, extra: list[str] | None = None):
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", str(limit), "--fleet", str(fleet),
+         *(extra or [])],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+    return r
+
+
+def test_fleet_reads_every_listed_root(tmp_path: Path) -> None:
+    roots = []
+    for name in ("repo-a", "repo-b"):
+        root = tmp_path / name
+        _write_log(root / "cla.io" / "retro" / 'codify-runs.jsonl', [{"ts": "2026-09-05"}])
+        roots.append(root)
+    r = _run_fleet(_fleet_file(tmp_path, roots))
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["runs_analyzed"] == 2
+    assert len(out["ledgers"]) == 2
+    assert all(row["found"] for row in out["ledgers"])
+
+
+def test_a_listed_root_with_no_ledger_is_reported_not_hidden(tmp_path: Path) -> None:
+    """A repo that has not run the loop is expected, and must stay VISIBLE —
+    that `found: false` row is what stops a 1-repo result reading as a 2-repo one."""
+    root = tmp_path / "has-data"
+    _write_log(root / "cla.io" / "retro" / 'codify-runs.jsonl', [{"ts": "2026-09-05"}])
+    r = _run_fleet(_fleet_file(tmp_path, [root, tmp_path / "empty-repo"]))
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert [row["found"] for row in out["ledgers"]] == [True, False]
+    # And the message must name the FLEET, not an argument the caller never typed.
+    assert "a root listed in the fleet file" in r.stderr
+    assert "given explicitly via --log" not in r.stderr
+
+
+def test_comments_and_backticks_are_stripped_from_a_root(tmp_path: Path) -> None:
+    root = tmp_path / "repo-a"
+    _write_log(root / "cla.io" / "retro" / 'codify-runs.jsonl', [{"ts": "2026-09-05"}])
+    f = tmp_path / "fleet.local.md"
+    f.write_text(f"# fleet\n\n- `{root}`   # trailing note\n"
+                 "not a bullet, ignored\n", encoding="utf-8")
+    r = _run_fleet(f)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["runs_analyzed"] == 1
+    assert len(out["ledgers"]) == 1
+
+
+def test_a_missing_fleet_file_refuses_rather_than_analysing_nothing(
+        tmp_path: Path) -> None:
+    """`runs_analyzed: 0` is what both retro skills teach the reader to treat as a
+    cold start, so a typo'd fleet path must not produce it."""
+    r = _run_fleet(tmp_path / "nope.md")
+    assert r.returncode == 1
+    assert "no fleet file at" in r.stderr
+
+
+def test_a_fleet_file_with_no_bullets_refuses(tmp_path: Path) -> None:
+    f = tmp_path / "fleet.local.md"
+    f.write_text("# fleet\n\nprose only, nobody wrote a bullet\n", encoding="utf-8")
+    r = _run_fleet(f)
+    assert r.returncode == 1
+    assert "lists no repo roots" in r.stderr
+
+
+def test_fleet_and_log_are_mutually_exclusive(tmp_path: Path) -> None:
+    """Both resolve the same argument; accepting both would make precedence a
+    guess the caller cannot see."""
+    root = tmp_path / "repo-a"
+    log = root / "cla.io" / "retro" / 'codify-runs.jsonl'
+    _write_log(log, [{"ts": "2026-09-05"}])
+    r = _run_fleet(_fleet_file(tmp_path, [root]), extra=["--log", str(log)])
+    assert r.returncode == 1
+    assert "mutually exclusive" in r.stderr
+
+
+def test_a_bare_provenance_flag_resolves_across_the_fleet(tmp_path: Path) -> None:
+    """`--provenance` with no paths means "resolve it for me" — and an EMPTY list
+    must not read as "flag absent", which plain truthiness would do."""
+    roots = []
+    for name, count in (("repo-a", 2), ("repo-b", 0)):
+        root = tmp_path / name
+        _write_log(root / "cla.io" / "retro" / 'codify-runs.jsonl', [{"ts": "2026-09-05"}])
+        _write_log(root / "cla.io" / "retro" / "commit-provenance.jsonl",
+                   [{"sha": f"{name}1", "measured_by_count": count}])
+        roots.append(root)
+    r = _run_fleet(_fleet_file(tmp_path, roots), extra=["--provenance"])
+    assert r.returncode == 0, r.stderr
+    block = json.loads(r.stdout)["commit_provenance"]
+    assert block["commits"] == 2
+    assert block["measured"] == 1
+    assert block["unmeasured"] == 1
+    assert block["measurement_rate"] == 0.5
