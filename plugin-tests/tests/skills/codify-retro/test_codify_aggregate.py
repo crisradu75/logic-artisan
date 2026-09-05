@@ -673,3 +673,137 @@ def test_a_fleet_of_missing_ledgers_still_reports_no_effectiveness(
     out, _ = _run_multi([tmp_path / "nope-a.jsonl", tmp_path / "nope-b.jsonl"])
     assert out["runs_analyzed"] == 0
     assert out.get("effectiveness", {}).get("prevention_rate") is None
+
+
+# --- commit-provenance: the hook-collected adoption number ------------------
+# 266 rows had accumulated across four repos with NO reader. The hook's own
+# comment says a rule "has no adoption number until something counts it" and
+# that it "leaves adjudication to the retro" — this is that reader.
+
+
+def _run_prov(provs: list[Path], logs: list[Path] | None = None) -> tuple[dict, str]:
+    cmd = [sys.executable, str(SCRIPT), "--limit", "0"]
+    if logs:
+        cmd += ["--log", *[str(p) for p in logs]]
+    cmd += ["--provenance", *[str(p) for p in provs]]
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", check=False)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout), r.stderr
+
+
+def test_provenance_block_is_absent_unless_asked_for(tmp_path: Path) -> None:
+    """Existing consumers must not grow a key they never requested."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"ts": "2026-09-05"}])
+    out, _ = _run(log)
+    assert "commit_provenance" not in out
+
+
+def test_measurement_rate_counts_commits_carrying_a_trailer(tmp_path: Path) -> None:
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [
+        {"sha": "a", "skill": None, "measured_by_count": 3},
+        {"sha": "b", "skill": "spec-to-pr", "measured_by_count": 0},
+        {"sha": "c", "skill": None, "measured_by_count": 1},
+        {"sha": "d", "skill": "lite-pr", "measured_by_count": 0},
+    ])
+    out, _ = _run_prov([prov])
+    block = out["commit_provenance"]
+    assert block["commits"] == 4
+    assert block["measured"] == 2
+    assert block["unmeasured"] == 2
+    assert block["measurement_rate"] == 0.5
+    assert block["by_skill"] == {"none": 2, "spec-to-pr": 1, "lite-pr": 1}
+
+
+def test_rows_predating_the_trailer_field_stay_out_of_the_denominator(
+        tmp_path: Path) -> None:
+    """Charging the rule for commits made before it was recorded would make the
+    rate fall the further back you look — schema history read as behaviour."""
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [
+        {"sha": "old1"},                        # predates measured_by_count
+        {"sha": "old2"},
+        {"sha": "new1", "measured_by_count": 2},
+        {"sha": "new2", "measured_by_count": 0},
+    ])
+    out, _ = _run_prov([prov])
+    block = out["commit_provenance"]
+    assert block["no_trailer_field"] == 2
+    assert block["commits"] == 4
+    # 1 of the 2 SCORED rows, not 1 of 4.
+    assert block["measurement_rate"] == 0.5
+
+
+def test_measurement_rate_is_none_not_zero_when_nothing_is_scorable(
+        tmp_path: Path) -> None:
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": "old1"}, {"sha": "old2"}])
+    out, _ = _run_prov([prov])
+    assert out["commit_provenance"]["measurement_rate"] is None
+    assert out["commit_provenance"]["no_trailer_field"] == 2
+
+
+def test_a_malformed_trailer_count_is_not_scored_as_unmeasured(
+        tmp_path: Path) -> None:
+    """A bad value is unknown, not a zero — scoring it as unmeasured would
+    invent a failure out of a type error."""
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": "a", "measured_by_count": "three"},
+                      {"sha": "b", "measured_by_count": 2}])
+    out, err = _run_prov([prov])
+    block = out["commit_provenance"]
+    assert block["unmeasured"] == 0
+    assert block["no_trailer_field"] == 1
+    assert block["measurement_rate"] == 1.0
+    assert "measured_by_count='three' not int" in err
+
+
+def test_provenance_reads_several_repos_and_names_a_missing_one(
+        tmp_path: Path) -> None:
+    a = tmp_path / "a.jsonl"
+    _write_log(a, [{"sha": "a", "measured_by_count": 1}])
+    missing = tmp_path / "gone.jsonl"
+    out, _ = _run_prov([a, missing])
+    block = out["commit_provenance"]
+    assert block["commits"] == 1
+    found = {row["path"]: row["found"] for row in block["ledgers"]}
+    assert found[str(a)] is True
+    assert found[str(missing)] is False
+
+
+def test_provenance_is_not_sliced_by_limit(tmp_path: Path) -> None:
+    """Adoption is a property of the whole history, not of the last N runs.
+
+    `--limit` exists for the run ledgers; letting it cut this one would report a
+    rate over a window the caller chose for a different file entirely.
+    """
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": str(i), "measured_by_count": 1} for i in range(25)])
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", "3", "--provenance", str(prov)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        check=False)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["commit_provenance"]["commits"] == 25
+
+
+def test_provenance_and_run_ledgers_are_independent(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    prov = tmp_path / "prov.jsonl"
+    _write_log(log, [{"ts": "2026-09-05",
+                      "suggestions": {"proposed": 2, "applied": 1, "rejected": 1}}])
+    _write_log(prov, [{"sha": "a", "measured_by_count": 1}])
+    out, _ = _run_prov([prov], logs=[log])
+    assert out["runs_analyzed"] == 1
+    assert out["suggestions"]["proposed"] == 2
+    assert out["commit_provenance"]["commits"] == 1
+
+
+def test_a_non_string_skill_is_bucketed_as_none_not_crashed(tmp_path: Path) -> None:
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": "a", "skill": 7, "measured_by_count": 1},
+                      {"sha": "b", "skill": None, "measured_by_count": 1}])
+    out, _ = _run_prov([prov])
+    assert out["commit_provenance"]["by_skill"] == {"none": 2}

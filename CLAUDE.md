@@ -75,8 +75,26 @@ pytest plugin-tests/tests/skills/<name>
 
 ### The parallel gate, and the three things that make it safe
 
-**Measured on this repo:** serial 203.9s, `-n auto --dist loadfile` 74.1s (2.8x), plain
-`-n auto` 56.5s — all three reporting 1576 passed, 14 skipped.
+**Measured on this repo 2026-09-05:** serial 296.6s and `-n auto --dist loadfile` 149.6s
+(2.0x), both reporting 1665 passed, 15 skipped. Plain `-n auto` ran 84.9s and 100.9s on
+two consecutive invocations of the same tree — and **the first of those failed 3 tests
+the other two forms passed**, all in `tests/hooks/test_hooks_wiring.py`
+(`test_wiring_refuses_when_the_probe_is_unusable`, the `truncated` cases). The second
+invocation was green. So the trap below is not a hypothetical any more; it is the most
+recent measurement, and the failure did not reproduce on demand, which is the whole
+problem with it.
+
+The mechanism is not fully established, and is recorded as the leading candidate rather
+than a conclusion: those tests build their environment with `_inherited_env`, which
+copies the real `HOME`, so the probe resolves its cache to the **developer's own**
+`~/.cache/cla/pyexe` and writes it. Measured — deleting that file and running
+`pytest plugin-tests/tests/hooks/test_hooks_wiring.py` recreates it. One shared mutable
+file, several xdist workers. `--dist loadfile` keeps that file's tests on one worker,
+which is consistent with only plain `-n auto` failing. Not yet fixed; the two tests that
+exercise the cache deliberately already isolate it under `tmp_path`.
+
+**Numbers here go stale, and this paragraph has been stale before.** Re-measure rather
+than quoting it; the counts above move with every test added.
 
 **`--dist loadfile` is load-bearing, not tuning, and plain `-n auto` is the trap.**
 `loadfile` pins every test in a file to one worker. Without it a module's tests are
@@ -86,8 +104,10 @@ two workers building those race for the port. That suite skips wherever Playwrig
 is absent, which is exactly why a green plain `-n auto` here is not evidence: it
 means those tests did not run. The peer repo `claude-plugins` hit the same class of
 failure from a different cause and recorded the rule as "the full-suite pass is luck
-about which worker gets which file, not evidence of safety". Eighteen seconds is the
-whole price of not finding out the hard way.
+about which worker gets which file, not evidence of safety". The premium over plain
+`-n auto` was 18s when first measured and about 50-65s on 2026-09-05; either way it is
+the whole price of not finding out the hard way, and the run above is what finding out
+looks like.
 
 **A parallel run is trusted only when its pass AND skip counts match a serial run of
 the same tree.** Skip counts matter here specifically: `tests/consistency/` and

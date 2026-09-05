@@ -49,6 +49,15 @@ The effectiveness and rung heuristics do not, and here is the argument rather th
 Output is a single JSON object on stdout — the prevention rate, suggestion apply-rate, re-offending lessons, escalation-rung
 distribution, repeatedly-rejected lessons, failure-modes bullet trend, codify-process-issue rate.
 
+**Reading the commit-provenance ledger.** `--provenance` takes one or more `cla.io/retro/commit-provenance.jsonl` paths and adds a `commit_provenance` block:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit 0 \
+  --provenance <repo-a>/cla.io/retro/commit-provenance.jsonl <repo-b>/cla.io/retro/commit-provenance.jsonl
+```
+
+That ledger is written automatically by a guard hook on every commit, at no cost in anyone's attention, and until this flag existed nothing read it. It is independent of `--log` — pass either, or both — and it is never sliced by `--limit`, because adoption of a commit-message rule is a property of the whole history rather than of the last N runs.
+
 ### 2. Identify the load-bearing patterns
 
 Don't list every metric. Pick the 2-4 patterns that would actually change the loop. Heuristics:
@@ -56,6 +65,7 @@ Don't list every metric. Pick the 2-4 patterns that would actually change the lo
 **Effectiveness heuristics (the whole point):**
 - **Read `effectiveness.records` first.** It is how many runs carried a Step 2.5 tally at all. If it is `0`, the loop is not yet reporting outcomes and every rate below is unmeasured — say so plainly rather than reading `prevention_rate: null` as bad news. If it is well under `runs_analyzed`, the rate is drawn from that subset, not the window.
 - `effectiveness.prevention_rate` is the share of rules that were actually exercised and **held** — the loop's one outcome measure. Below `0.5` over a window with `records ≥ 5` → escalations are not sticking; the lessons are landing on rungs too weak to change behaviour. Falling across two windows is the same signal, earlier. Rising while `suggestions.proposed` stays flat is the loop working.
+- **`commit_provenance.measurement_rate`** (only present when you pass `--provenance`) is the same effectiveness question asked of a rule the loop already escalated — "name the command behind a measurement claim" — but counted by a hook rather than self-reported, which is what makes it worth reading beside `prevention_rate`. Below `0.5` → the rule is stated in `CLAUDE.md` and a consistency guard and is still not reaching commits; that is a routing problem, not a reminder problem. Read `no_trailer_field` next to it: those rows predate the trailer and are excluded from the denominator on purpose. `by_skill` shows which skill drove each commit, so a rate that is poor only where `skill` is `none` means the orchestrated paths are fine and hand-driven commits are the gap.
 - **`apply_rate` is not an effectiveness signal, and reading it as one is the failure this metric exists to correct.** It says the user agreed, not that the writing worked. Measured 2026-09-05 with `codify_aggregate.py --limit 0 --log <each repo's codify-runs.jsonl>` over six repos: 219 proposed, 219 applied, 0 rejected — a perfect score that measured nothing. Quote `prevention_rate` where you would once have quoted `apply_rate`.
 - A lesson in `re_offenses` with `count ≥ 2` → the artifact it was escalated to is **too weak**; the escalation isn't working. Bump it UP the ladder (memory → hook/script). This is the single most important signal — a re-offense means the prior fix failed.
 - A lesson in `rejected_lessons` with `count ≥ 2` → stop proposing it; **retire** it from `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` (the SKILL.md's Step 6 already says to flag these — verify it's actually happening).
@@ -75,7 +85,7 @@ Don't list every metric. Pick the 2-4 patterns that would actually change the lo
 - `skipped_records > 0` → producer is writing malformed JSONL lines; the rest of the analysis runs on a shrunken sample. Fix the log record shape first.
 - `coerced_fields > 0` → some count fields were present but the wrong type (string/bool where an int was expected) and were dropped from the sums; the rates above are computed over a thinned sample. Check the producer's Step 7 serialization.
 - `escalation_rungs_unknown` non-empty → the producer emitted `escalated_to` values outside the rung whitelist; the distribution above excludes them.
-- `shape_drift_records > 0` → some records lost a field the metrics are computed from, so `runs_analyzed` overstates the sample those metrics actually ran on. `shape_drift_fields` names which field drifted and how often. The name is the AGGREGATOR's, not always the producer's: `effectiveness`, `phases` and `asks` are ledger keys you can grep for, while `warn_reasons`, `review_agents`, `revise_agents`, `review_size_gate` and `review_verdicts` name what the metric lost — the producer writes those as `reason`, `agents`, `size_gate` and `verdict` INSIDE a `phases` entry. Read the stderr line beside the count for the record index and the actual key. Read this before any ratio below: a rate over a thinned sample reads exactly like a rate over a whole one.
+- `shape_drift_records > 0` → some records lost a field the metrics are computed from, so `runs_analyzed` overstates the sample those metrics actually ran on. `shape_drift_fields` names which field drifted and how often. **This aggregator can only ever report seven of them** — `suggestions`, `memory`, `effectiveness`, `re_offenses`, `rejected_lessons`, `maintenance` and `ts` — and each is a real key you can grep for in `codify-runs.jsonl`. (This sentence used to list `phases`, `asks`, `warn_reasons`, `review_agents`, `revise_agents`, `review_size_gate` and `review_verdicts`, copied from the spec-to-pr retro. None of them is a codify field, and `codify_aggregate.py` cannot emit one — a reader who went looking for them found nothing and had no way to tell whether that meant clean or broken.) Read the stderr line beside the count for the record index. Read this before any ratio below: a rate over a thinned sample reads exactly like a rate over a whole one.
 
 Single-digit counts in a category mean "interesting anecdote, not a pattern" — call them out as such, don't propose changes.
 

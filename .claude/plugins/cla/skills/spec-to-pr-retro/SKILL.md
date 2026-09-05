@@ -62,7 +62,15 @@ Don't list every metric. Pick the 2-4 patterns that would actually change orches
 - **Non-bug-hunter phantom rate ≥ 0.4 over ≥5 dispatches** (`revise_findings.<agent>.phantom / .found` for `comment-analyzer` / `pr-test-analyzer` / `type-design-analyzer` / `plugin-dev:skill-reviewer`) → that agent is spending triage cost on wrong findings at its current tier. Propose either **demoting it one tier** in `model-routing.md`'s Revise table (if it isn't already at haiku) OR **tightening its trigger** (the yield lever above) — pick demotion when its `found` yield is otherwise healthy, trigger-tightening when yield is also low.
 - **Bug-hunter phantom rate ≥ 0.3 over ≥5 dispatches** (`code-reviewer` / `silent-failure-hunter`) → these are **never demoted** (phantom-finding economics), so this instead flags an *accuracy* problem: propose a manual spot-check of 2 recent runs and, if confirmed, a prompt/diff-slice tightening — NOT a model change. A rising bug-hunter phantom rate is the standing check on the never-demote bet (see `model-routing.md` rationale); surface it explicitly rather than letting it hide.
 - **`escalate_up_fired: true` on ≥50% of sub-Opus runs** (of runs where it *could* fire — the denominator is runs that reached the FIX-FIRST/RETHINK boundary, not `runs_analyzed`) → borderline verdicts are common enough on this project that the escalate-up dispatch is effectively always-on when sub-Opus. Propose either making the Design-Reviewer `opus` dispatch the default for large changes regardless of session model, or noting that this project's runs should just launch at Opus (the escalate-up cost is being paid every run anyway).
-- **A tier is never exercised** (`routing.models.opus == 0` across the window while large-change reviews ran, or `haiku == 0` while `comment-analyzer` dispatched) → the producer may not be routing per the table (models emitted don't match the table's tiers). Cross-check against `routing_models_unknown`; if that's clean, the routing rule itself is being skipped — restate it in the hoisted SKILL.md rule.
+<!-- A fourth routing heuristic, "a tier is never exercised", was DELETED here on
+2026-09-05. It read `routing.models.opus`, `routing.models.haiku` and
+`routing_models_unknown` — and `spec_to_pr_aggregate.py` emits none of the three.
+Measured: `grep -c routing_models_unknown` over that script returns 0, and the
+`--limit 0` output has no `routing` key at all. So the rule could never fire, and
+its instruction to "cross-check against `routing_models_unknown`" sent the reader
+to a field that does not exist, where finding nothing is indistinguishable from
+finding it clean. Do not restore it as prose: it needs the aggregator to emit a
+per-tier model count first, and that is a change to the script, not to this file. -->
 
 (Effort itself is only dialable on the Revise round-1 `Workflow` fan-out — see `model-routing.md`'s mechanism table — so an "effort too low" pattern can only be acted on there; everywhere else the lever is the *model* tier or the session model, not effort.)
 
