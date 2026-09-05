@@ -84,14 +84,18 @@ invocation was green. So the trap below is not a hypothetical any more; it is th
 recent measurement, and the failure did not reproduce on demand, which is the whole
 problem with it.
 
-The mechanism is not fully established, and is recorded as the leading candidate rather
-than a conclusion: those tests build their environment with `_inherited_env`, which
-copies the real `HOME`, so the probe resolves its cache to the **developer's own**
-`~/.cache/cla/pyexe` and writes it. Measured — deleting that file and running
-`pytest plugin-tests/tests/hooks/test_hooks_wiring.py` recreates it. One shared mutable
-file, several xdist workers. `--dist loadfile` keeps that file's tests on one worker,
-which is consistent with only plain `-n auto` failing. Not yet fixed; the two tests that
-exercise the cache deliberately already isolate it under `tmp_path`.
+The mechanism was never proven, but the shared state it named was real and is now gone.
+Those tests built their environment with `_inherited_env`, which copies the real `HOME`,
+so the probe resolved its cache to the **developer's own** `~/.cache/cla/pyexe` and wrote
+it — one shared mutable file, several xdist workers, and `--dist loadfile` keeps that
+file's tests on one worker, which fits only plain `-n auto` failing. An autouse fixture in
+`plugin-tests/tests/hooks/conftest.py` now relocates it per test via `CLA_PROBE_CACHE`.
+
+**State this carefully.** The failure never reproduced on demand, so no run count proves
+it fixed, and none is offered as if it did. What is measured is narrower and is the
+reason the change is worth having anyway: deleting `~/.cache/cla/pyexe` and running the
+full suite used to recreate it and now does not. A test suite writing a developer's home
+directory was a defect on its own terms, whatever it did to the scheduler.
 
 **Numbers here go stale, and this paragraph has been stale before.** Re-measure rather
 than quoting it; the counts above move with every test added.

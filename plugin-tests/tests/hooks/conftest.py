@@ -46,3 +46,41 @@ def _neutralise_escape_hatches(monkeypatch: pytest.MonkeyPatch) -> None:
     test added later would inherit the vacuity without anyone opting in."""
     for name in _ESCAPE_HATCHES:
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_the_probe_cache(monkeypatch: pytest.MonkeyPatch,
+                             tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Keep the interpreter probe's cache out of the developer's real HOME.
+
+    `probe-python.sh` resolves its cache to `${CLA_PROBE_CACHE:-$HOME/.cache/cla/pyexe}`,
+    and `test_hooks_wiring.py`'s `_inherited_env` builds environments from
+    `dict(os.environ)` — so every test using it pointed the probe at the REAL
+    `~/.cache/cla/pyexe` and, on a miss, wrote it.
+
+    Measured: `rm -f ~/.cache/cla/pyexe && pytest plugin-tests/tests/hooks/test_hooks_wiring.py`
+    recreates the file. Two costs, and the second is the one that bit. Writing a
+    developer's home directory from a test suite is wrong on its own. Worse, it
+    is ONE shared mutable file with several xdist workers reading and rewriting
+    it, and on 2026-09-05 a plain `-n auto` run failed 3 of that file's tests
+    which serial and `--dist loadfile` both passed, then went green on the next
+    invocation. `loadfile` keeps the file's tests on one worker, which fits.
+    Recorded as the leading candidate rather than a proven cause — the failure
+    did not reproduce on demand, which is exactly why the shared state goes
+    rather than being reasoned about further.
+
+    Autouse for the same reason as the fixture above: the dependency is invisible
+    at the call site. A test added later that shells out to the probe inherits
+    isolation without knowing it needed to ask.
+
+    `tmp_path_factory` rather than `tmp_path` so this composes with tests that
+    take `tmp_path` themselves and build their own trees under it — the cache
+    must not appear inside a directory a test is about to assert the contents of.
+
+    OPTING OUT: the two tests that exercise the cache deliberately want the
+    HOME-derived path. They pass `CLA_PROBE_CACHE=""` in their own env, which the
+    probe's `:-` expansion treats as unset, restoring the fallback. Empty is the
+    opt-out; unset here would mean the real HOME.
+    """
+    cache = tmp_path_factory.mktemp("probe-cache") / "pyexe"
+    monkeypatch.setenv("CLA_PROBE_CACHE", str(cache).replace("\\", "/"))

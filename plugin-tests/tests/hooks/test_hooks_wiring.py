@@ -825,7 +825,10 @@ def test_a_warm_cache_does_not_survive_a_poisoned_path(tmp_path):
     # between them. Without this the cache misses on the search-list component
     # instead, and the test passes with PATH absent from the key — measured: the
     # mutant `[ -n "$_c_path" ]` survived the whole suite until this line existed.
-    warm = _inherited_env(HOME=home_sh, CLA_PY_SEARCH="")
+    # CLA_PROBE_CACHE="" opts out of the conftest's autouse relocation: the
+    # probe's `:-` expansion treats empty as unset, so the cache resolves under
+    # the HOME below — which is this test's whole subject.
+    warm = _inherited_env(HOME=home_sh, CLA_PY_SEARCH="", CLA_PROBE_CACHE="")
     r1 = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
                  capture_output=True, text=True, encoding="utf-8", errors="replace", env=warm)
     assert r1.returncode == 0, f"could not warm the cache: {r1.stderr}"
@@ -843,6 +846,9 @@ def test_a_warm_cache_does_not_survive_a_poisoned_path(tmp_path):
         "CLA_PY_SEARCH": "",
         "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
         "HOME": home_sh,  # the cache IS readable here — that is the point
+        # Built from scratch, so it never carried the autouse relocation; set
+        # explicitly anyway so the opt-out is visible in both halves of the test.
+        "CLA_PROBE_CACHE": "",
     }
     r2 = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
                  capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
@@ -864,7 +870,9 @@ def test_the_cache_actually_skips_the_version_check_when_warm(tmp_path):
     """
     home = tmp_path / "home"
     home.mkdir()
-    env = _inherited_env(HOME=str(home).replace("\\", "/"))
+    # Same opt-out as the test above — this one asserts the cache file appears
+    # under HOME and is reused, so it must be the HOME-derived path.
+    env = _inherited_env(HOME=str(home).replace("\\", "/"), CLA_PROBE_CACHE="")
     cache = home / ".cache" / "cla" / "pyexe"
 
     r1 = _sp.run([_BASH, "-c", _probe_prefix()], capture_output=True, text=True,
@@ -1261,3 +1269,57 @@ def test_a_crlf_probe_never_yields_a_broken_interpreter(shell, tmp_path):
         )
     else:
         assert "ALIVE" not in r.stdout, r.stdout
+
+
+def test_the_probe_cache_is_relocated_away_from_the_real_home():
+    """The autouse isolation fixture must actually be in force.
+
+    Without it, every test here that builds an environment with `_inherited_env`
+    points `probe-python.sh` at the developer's own `~/.cache/cla/pyexe` and
+    writes it — one shared mutable file across xdist workers. That was measured,
+    not supposed: deleting the file and running this module recreated it.
+
+    Pinned as a test rather than left to the fixture, because a fixture that
+    stops working is invisible. Everything downstream keeps passing; it just
+    starts passing against the real home again.
+    """
+    import os
+    relocated = os.environ.get("CLA_PROBE_CACHE")
+    assert relocated, (
+        "CLA_PROBE_CACHE is unset, so the probe resolves its cache under the real "
+        "HOME — the autouse fixture in conftest.py is not in force"
+    )
+    real = (Path.home() / ".cache" / "cla" / "pyexe").resolve()
+    assert Path(relocated).resolve() != real, relocated
+
+
+def test_the_relocation_actually_reaches_the_probe_environment():
+    """Non-vacuity partner: relocating the variable is useless if the helper that
+    builds test environments does not carry it.
+
+    `_inherited_env` copies `os.environ`, so this holds today — and would stop
+    holding the moment it switched to an allowlist, silently, with the test above
+    still green.
+    """
+    env = _inherited_env()
+    assert env.get("CLA_PROBE_CACHE"), (
+        "_inherited_env dropped CLA_PROBE_CACHE, so the isolation never reaches "
+        "the shell the probe runs in"
+    )
+    real = str((Path.home() / ".cache" / "cla").resolve())
+    assert real not in env["CLA_PROBE_CACHE"]
+
+
+def test_an_empty_relocation_is_the_documented_opt_out():
+    """`CLA_PROBE_CACHE=""` must fall back to HOME, not to a literal empty path.
+
+    Two tests in this file rely on it to exercise the real cache mechanism. If
+    the probe ever used `${CLA_PROBE_CACHE-...}` instead of `${CLA_PROBE_CACHE:-...}`,
+    empty would stop meaning "unset", those two would silently stop testing the
+    cache, and nothing else would notice.
+    """
+    src = _probe_source()
+    assert "${CLA_PROBE_CACHE:-" in src, (
+        "the probe no longer treats an empty CLA_PROBE_CACHE as unset; the "
+        "opt-out used by the two cache tests is broken"
+    )
