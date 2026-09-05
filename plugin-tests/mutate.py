@@ -315,9 +315,26 @@ def run_pytest(targets: list[Path]) -> tuple[int, str]:
     applies either way — an earlier version set a derived cwd and justified it
     with a mechanism that measurement did not support, while breaking relative
     targets.
+
+    `--color=no` is load-bearing, not cosmetic. The verdict is decided by matching
+    `_RAN_RE` against this output, and that pattern is anchored to the start of a
+    line. pytest colours its output whenever `FORCE_COLOR` or `PY_COLORS` is set
+    in the environment — regardless of the pipe not being a terminal — and the
+    escape sequence then sits between the line start and the digit, so the
+    anchor in `_RAN_RE` cannot match. Every real kill was reported as
+    `INCONCLUSIVE (nothing collected)` and the whole tool exited 1, on any machine
+    with that variable set. Measured 2026-09-05 in a sandbox scope whose single
+    test genuinely failed under the mutant: with no flag `_RAN_RE` did not match;
+    with `--color=no` it did.
+
+    This is the false-INCONCLUSIVE half of the failure mode this file's own header
+    describes, and it is the more expensive half to notice: a false kill announces
+    confidence that was never earned, while a false INCONCLUSIVE looks exactly
+    like a tool being careful.
     """
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-x", *[str(t) for t in targets]],
+        [sys.executable, "-m", "pytest", "-q", "-x", "--color=no",
+         *[str(t) for t in targets]],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     return proc.returncode, proc.stdout + proc.stderr

@@ -223,9 +223,19 @@ def aggregate(records: list[dict]) -> dict:
     trim_runs = 0
     process_issue_runs = 0
     coerced_fields = 0
+    # Container-shape drift. `coerced_fields` covers a present-but-wrong-typed COUNT
+    # and `skipped_records` covers a whole unparseable line, but a list field arriving
+    # as something else fell between them — warned about on stderr and tallied nowhere,
+    # against this module's own docstring rule that a bad record is skipped with a
+    # warning AND tallied.
+    shape_drift: Counter[str] = Counter()
+    shape_drift_records = 0
     output_chars_trend: list[int] = []
 
     for ri, rec in enumerate(records):
+        # Fields whose container shape drifted in THIS record; a set, so one record
+        # drifting twice still counts once toward `shape_drift_records`.
+        drifted_fields: set[str] = set()
         coerced_fields += _sum_counts(rec, "suggestions",
                                       ("proposed", "applied", "rejected"), ri, sugg)
         coerced_fields += _sum_counts(rec, "memory", ("proposed", "applied"), ri, mem)
@@ -234,6 +244,8 @@ def aggregate(records: list[dict]) -> dict:
         if re_offs is not None and not isinstance(re_offs, list):
             print(f"aggregate: record {ri}: `re_offenses` is {type(re_offs).__name__}, "
                   f"expected list — skipping", file=sys.stderr)
+            shape_drift["re_offenses"] += 1
+            drifted_fields.add("re_offenses")
             re_offs = []
         for item in re_offs or []:
             if not isinstance(item, dict):
@@ -262,6 +274,8 @@ def aggregate(records: list[dict]) -> dict:
         if rej is not None and not isinstance(rej, list):
             print(f"aggregate: record {ri}: `rejected_lessons` is {type(rej).__name__}, "
                   f"expected list — skipping", file=sys.stderr)
+            shape_drift["rejected_lessons"] += 1
+            drifted_fields.add("rejected_lessons")
             rej = []
         for lesson in rej or []:
             if isinstance(lesson, str):
@@ -292,6 +306,8 @@ def aggregate(records: list[dict]) -> dict:
         elif maint is not None:
             print(f"aggregate: record {ri}: `maintenance` is {type(maint).__name__}, "
                   f"expected object — skipping", file=sys.stderr)
+            shape_drift["maintenance"] += 1
+            drifted_fields.add("maintenance")
         if rec.get("process_issue") is True:
             process_issue_runs += 1
 
@@ -305,6 +321,9 @@ def aggregate(records: list[dict]) -> dict:
                 output_chars_trend.append(oc)
             else:
                 coerced_fields += 1
+
+        if drifted_fields:
+            shape_drift_records += 1
 
     proposed = sugg.get("proposed", 0)
     mem_proposed = mem.get("proposed", 0)
@@ -349,26 +368,46 @@ def aggregate(records: list[dict]) -> dict:
             "mean": round(statistics.mean(output_chars_trend), 1) if output_chars_trend else 0.0,
         },
         "coerced_fields": coerced_fields,
+        # Which container fields drifted, and how many records drifted at all. Read
+        # these BEFORE the metrics above: a non-zero `shape_drift_records` means some
+        # metric ran on fewer records than `runs_analyzed` reports.
+        "shape_drift_fields": dict(shape_drift),
+        "shape_drift_records": shape_drift_records,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Aggregate /codify-learnings run records.")
-    parser.add_argument("--log", type=Path, default=None,
-                        help="Path to runs JSONL (default: project's log).")
+    parser.add_argument("--log", type=Path, nargs="+", default=None, metavar="PATH",
+                        help="One or more runs JSONL paths (default: this project's log). "
+                             "Several paths aggregate across repos — the repo where this "
+                             "loop is designed usually holds the thinnest sample of them all.")
     parser.add_argument("--limit", type=int, default=10,
-                        help="Analyze the last N records (default 10, 0 = all).")
+                        help="Analyze the last N records PER LEDGER (default 10, 0 = all).")
     args = parser.parse_args()
 
     try:
-        log_path = args.log or _default_log_path()
+        log_paths = args.log or [_default_log_path()]
     except (ValueError, RuntimeError) as e:
         print(f"aggregate: {e}", file=sys.stderr)
         return 1
-    records, skipped = _load_records(log_path, args.limit)
+
+    records: list[dict] = []
+    skipped = 0
+    for p in log_paths:
+        recs, sk = _load_records(p, args.limit)
+        records.extend(recs)
+        skipped += sk
+
     result = aggregate(records)
     result["skipped_records"] = skipped
-    result["log_path"] = str(log_path)
+    # `log_path` stays a bare string in the single-ledger case, which is every
+    # caller that exists today. A multi-ledger run OMITS it rather than naming
+    # one of several: a consumer still reading it then fails loudly instead of
+    # attributing a fleet-wide aggregate to one repo.
+    if len(log_paths) == 1:
+        result["log_path"] = str(log_paths[0])
+    result["log_paths"] = [str(p) for p in log_paths]
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

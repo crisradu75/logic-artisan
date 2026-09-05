@@ -84,11 +84,12 @@ def _batch(root: Path, entries: str, header: str = "") -> Path:
     return path
 
 
-def _run(batch: Path, *, python: str | None = None) -> subprocess.CompletedProcess:
+def _run(batch: Path, *, python: str | None = None,
+         env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [python or sys.executable, str(_MUTATE), str(batch)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        cwd=str(batch.parent),
+        cwd=str(batch.parent), env=env,
     )
 
 
@@ -104,6 +105,28 @@ def test_a_real_mutation_caught_by_a_real_test_is_killed(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "killed" in result.stdout
     assert "All 1 mutant(s) killed." in result.stdout
+
+
+def test_a_kill_is_still_a_kill_when_pytest_colours_its_output(tmp_path):
+    """The control above only exercises this by accident of the environment.
+
+    `FORCE_COLOR` makes pytest emit ANSI escapes even into a captured pipe. The
+    escape then sits between the line start and the count, and `_RAN_RE` is
+    anchored to the line start — so a mutant a test genuinely caught was reported
+    `INCONCLUSIVE (nothing collected)` and the tool exited 1. Every batch on such
+    a machine proved nothing while looking careful about it.
+
+    So this sets the variable itself rather than trusting the ambient one: on a
+    machine without it the control passes whether or not the bug is present.
+    """
+    source, tests = _make_scope(tmp_path)
+    batch = _batch(tmp_path, f"(\"flip the verdict\", Path(r\"{source}\"), \"'ON'\", "
+                             f"\"'OFF'\", [Path(r\"{tests}\")]),")
+    result = _run(batch, env={**os.environ, "FORCE_COLOR": "1", "PY_COLORS": "1"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All 1 mutant(s) killed." in result.stdout
+    assert "INCONCLUSIVE" not in result.stdout, \
+        "a real kill was misread as inconclusive because the output was coloured"
 
 
 def test_a_mutation_no_test_covers_is_reported_as_a_survivor(tmp_path):

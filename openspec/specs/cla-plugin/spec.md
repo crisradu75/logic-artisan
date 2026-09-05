@@ -97,6 +97,47 @@ The reason is a **forward** one and SHALL NOT be recorded as a present import co
 - **AND** the **test file** for each aggregator is named distinctly too — no two test files anywhere in the plugin share the basename `test_aggregate.py`, so a single consolidated pytest rootdir can collect both
 - **AND** every skill instruction, test, and cross-file path list that names an aggregator names the distinct one — including each test file's own `SCRIPT` path constant, the module docstrings that open `"""Tests for aggregate.py …"""`, and the `consistency-checks` path lists
 
+### Requirement: A retro aggregator survives a malformed record and counts what it skipped
+
+A retro aggregator SHALL treat a malformed record as one lost record, never as a lost run. Its input is a ledger every producer writes as prose instructing a model, so a record of an unexpected shape is the expected case rather than the exceptional one; an aggregator that aborts on one hands the whole repository's retrospective to whichever record is worst. Measured before this requirement existed: a single record carrying a count where a list belonged aborted the aggregate for a repository holding 26 runs, and that repository was one of only two with retros in its history.
+
+**Every drift class an aggregator warns about SHALL also be tallied into its structured output.** The two are not alternatives. A warning is written to a stream nobody reads after the fact, while the JSON is what the retro reasons from — so a class that only warns is invisible at exactly the moment it matters, and the metric it degraded reads identically to one computed over every record. This is not a new rule: `codify_aggregate.py`'s module docstring already states it, and this requirement makes it binding on both aggregators rather than on whichever one happened to be written more carefully.
+
+**A count that skipped records SHALL be discoverable beside the count of records read.** `runs_analyzed` reporting N while a phase metric ran on fewer than N is not a defect in the metric; it becomes one only when nothing in the output says so. Measured: 20 records across three repositories were dropped from every phase-derived metric while the reported sample size stayed whole.
+
+**An aggregator SHALL be able to read more than one ledger in a single run, and SHALL NOT attribute a multi-ledger result to a single ledger's path.** A retrospective's conclusions are bounded by its sample, and the repository where a loop is designed is routinely the one with the fewest runs of it — measured here at 8 records against a fleet of 156, where the local sample put round-cap exhaustion at 4 of 5 and the fleet put it at 6 of 129. Naming one path for a result drawn from several is worse than naming none, because it reads as provenance.
+
+#### Scenario: One malformed record does not abort the aggregate
+
+- **WHEN** a ledger holds a record whose field carries a different container type than the aggregator expects
+- **THEN** the aggregator skips that field, analyzes every other record, and exits successfully
+- **AND** it does not abort, and does not return an empty result for the whole ledger
+
+#### Scenario: A skipped record is counted, not only warned about
+
+- **WHEN** an aggregator skips a field because its container shape drifted
+- **THEN** the drift is tallied into the structured output, naming the field
+- **AND** the tally is not satisfied by a message on the diagnostic stream alone
+
+#### Scenario: A degraded sample is visible beside the reported one
+
+- **WHEN** some records are dropped from a metric while the reported record count includes them
+- **THEN** the output carries a count of the records that drifted, so a reader can tell a whole sample from a partial one
+- **AND** a clean ledger reports zero there rather than omitting the field, so zero is a measurement rather than an absence
+
+#### Scenario: Several ledgers aggregate into one result
+
+- **WHEN** an aggregator is given more than one ledger path in a single run
+- **THEN** it analyzes the records of all of them together
+- **AND** the output names every path it read
+- **AND** it does not report a single-ledger provenance field for a result drawn from several
+
+#### Scenario: The single-ledger contract is unchanged
+
+- **WHEN** an aggregator is given one ledger path, or none at all
+- **THEN** it resolves and reports that one path exactly as it did before multi-ledger reading existed
+- **AND** a caller written against the single-ledger output continues to work unmodified
+
 ### Requirement: Project-specific overlay convention
 
 Project-specific content (repo-tuned review checks, monorepo-shaped agent prompts, repo paths) SHALL be contained in **repo-neutral overlay files** under `cla.io/overlays/`: one `<skill>.md` per consuming skill, plus any `*.local.md` siblings for a narrower per-repo setting. They live in the repo, NOT inside the plugin, for two reasons: a marketplace-installed plugin tree is a read-only cache a destination repo cannot write to, and every reader treats a missing overlay as the ordinary un-configured state, so an overlay the reader cannot reach degrades silently to a default rather than erroring. A generic skill body SHALL remain repo-agnostic and reference its overlay by the fixed repo-neutral path `cla.io/overlays/<skill>.md`. Each destination repo fills in its own overlay content behind that fixed path.

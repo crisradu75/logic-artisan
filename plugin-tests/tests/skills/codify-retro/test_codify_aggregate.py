@@ -284,3 +284,105 @@ def test_default_log_path_default_is_claude_retro(monkeypatch) -> None:
     assert p.name == "codify-runs.jsonl"
     assert p.parent.name == "retro"
     assert p.parent.parent.name == "cla.io"
+
+
+# --- Container-shape drift: warned about, and now tallied --------------------
+#
+# This module's own docstring already states the rule: a bad record is skipped
+# with a stderr warning AND tallied, so the consumer sees the noise floor in
+# structured output. `coerced_fields` covers a wrong-typed COUNT and
+# `skipped_records` a whole unparseable line; a list or object field arriving as
+# something else fell between them and was tallied nowhere.
+
+
+def _run_multi(logs: list[Path], limit: int = 10) -> tuple[dict, str]:
+    """`_run`, but for the multi-ledger form of --log."""
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", str(limit), "--log", *[str(p) for p in logs]],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout), r.stderr
+
+
+def test_non_list_re_offenses_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"re_offenses": 3}, {"re_offenses": []}])
+    out, err = _run(log)
+    assert out["runs_analyzed"] == 2, "the good record must still be analyzed"
+    assert out["shape_drift_fields"] == {"re_offenses": 1}
+    assert out["shape_drift_records"] == 1
+    assert "`re_offenses` is int" in err
+
+
+def test_non_list_rejected_lessons_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"rejected_lessons": "none"}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"rejected_lessons": 1}
+    assert "`rejected_lessons` is str" in err
+
+
+def test_non_dict_maintenance_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"maintenance": 51}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"maintenance": 1}
+    assert "`maintenance` is int" in err
+
+
+def test_one_record_drifting_twice_counts_once_as_a_record(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"re_offenses": 3, "rejected_lessons": "none"}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"re_offenses": 1, "rejected_lessons": 1}
+    assert out["shape_drift_records"] == 1
+
+
+def test_shape_drift_counter_is_not_vacuous(tmp_path: Path) -> None:
+    # The counter must be able to read zero for a real reason, not because it
+    # never increments. Measured on the real fleet, codify's drift IS zero
+    # across all 52 records in five repos — so without this test the whole
+    # feature could be a no-op and every other assertion here would still pass.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"re_offenses": [{"lesson": "x", "escalated_to": "hook"}],
+         "rejected_lessons": ["y"],
+         "maintenance": {"failure_modes_bullets": 51, "trimmed": False}},
+    ])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {}
+    assert out["shape_drift_records"] == 0
+    assert out["re_offenses"] == [{"lesson": "x", "count": 1}]
+    assert out["rejected_lessons"] == [{"lesson": "y", "count": 1}]
+
+
+# --- Multi-ledger --log ------------------------------------------------------
+
+
+def test_multiple_logs_aggregate_into_one_result(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"suggestions": {"proposed": 2, "applied": 2, "rejected": 0}}])
+    _write_log(b, [{"suggestions": {"proposed": 3, "applied": 1, "rejected": 2}}])
+    out, _ = _run_multi([a, b])
+    assert out["runs_analyzed"] == 2
+    assert out["suggestions"]["proposed"] == 5
+    assert out["suggestions"]["rejected"] == 2
+    assert out["log_paths"] == [str(a), str(b)]
+
+
+def test_single_log_still_reports_log_path_as_a_string(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"process_issue": False}])
+    out, _ = _run(log)
+    assert out["log_path"] == str(log)
+    assert out["log_paths"] == [str(log)]
+
+
+def test_multiple_logs_omit_log_path_rather_than_naming_one(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"process_issue": False}])
+    _write_log(b, [{"process_issue": False}])
+    out, _ = _run_multi([a, b])
+    assert "log_path" not in out
+    assert out["log_paths"] == [str(a), str(b)]

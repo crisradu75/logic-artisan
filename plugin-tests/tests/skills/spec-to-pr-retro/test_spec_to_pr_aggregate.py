@@ -558,3 +558,124 @@ def test_default_log_path_default_is_claude_retro(monkeypatch) -> None:
     assert p.name == "spec-to-pr-runs.jsonl"
     assert p.parent.name == "retro"
     assert p.parent.parent.name == "cla.io"
+
+
+# --- Container-shape drift: survive the record, and count it -----------------
+#
+# The crash these cover was real, not hypothetical: one record in a consuming
+# repo carried `"asks": 2` — a count where the list belongs — and the aggregator
+# died with `TypeError: 'int' object is not iterable`, exit 1, zero bytes of
+# output. That repo's retro could not be run at all.
+
+
+def _run_multi(logs: list[Path], limit: int = 10) -> tuple[dict, str]:
+    """`_run`, but for the multi-ledger form of --log."""
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", str(limit), "--log", *[str(p) for p in logs]],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout), r.stderr
+
+
+def test_non_list_asks_does_not_abort_the_run(tmp_path: Path) -> None:
+    # The regression. `_run` asserts exit 0, so a re-broken guard fails here on
+    # the return code before any tally assertion is reached.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Test", "status": "ok"}], "asks": 2},
+        {"phases": [{"name": "Test", "status": "ok"}]},
+    ])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 2, "the good record must still be analyzed"
+    assert out["phase_outcomes"]["Test"] == {"ok": 2}
+
+
+def test_non_list_asks_is_tallied_and_named(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "asks": 2}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"asks": 1}
+    assert out["shape_drift_records"] == 1
+    assert "`asks` is int" in err, "the diagnostic must name the field and the type it got"
+
+
+def test_non_list_phases_is_tallied(tmp_path: Path) -> None:
+    # Warned about since forever, counted nowhere — so a metric computed over a
+    # subset of `runs_analyzed` read identically to one computed over all of it.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": {"test": "ok"}},          # the dict dialect
+        {"phases": [{"name": "Test", "status": "ok"}]},
+    ])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 2
+    assert out["shape_drift_fields"] == {"phases": 1}
+    assert out["shape_drift_records"] == 1
+
+
+def test_one_record_drifting_twice_counts_once_as_a_record(tmp_path: Path) -> None:
+    # Both fields appear in the per-field tally; the record count stays 1. This
+    # is the real shape of interoga-ro record 23, which drifts in both.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": {"test": "ok"}, "asks": 2}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"phases": 1, "asks": 1}
+    assert out["shape_drift_records"] == 1
+
+
+def test_shape_drift_counter_is_not_vacuous(tmp_path: Path) -> None:
+    # The counter must be able to read zero for a real reason. Without this, a
+    # counter that never incremented at all would satisfy every test above that
+    # asserts a non-zero value only on drifted input.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Test", "status": "ok"}], "asks": [{"header": "h", "choice": "c"}]},
+        {"phases": [{"name": "Ship", "status": "ok"}]},
+    ])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {}
+    assert out["shape_drift_records"] == 0
+    assert out["asks"] == [{"header": "h", "choices": {"c": 1}}]
+
+
+# --- Multi-ledger --log ------------------------------------------------------
+
+
+def test_multiple_logs_aggregate_into_one_result(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"phases": [{"name": "Test", "status": "ok"}]}])
+    _write_log(b, [{"phases": [{"name": "Test", "status": "warn", "reason": "x"}]},
+                   {"phases": [{"name": "Test", "status": "ok"}]}])
+    out, _ = _run_multi([a, b])
+    assert out["runs_analyzed"] == 3
+    assert out["phase_outcomes"]["Test"] == {"ok": 2, "warn": 1}
+    assert out["log_paths"] == [str(a), str(b)]
+
+
+def test_single_log_still_reports_log_path_as_a_string(tmp_path: Path) -> None:
+    # The pre-existing contract. Every caller today passes one ledger.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": []}])
+    out, _ = _run(log)
+    assert out["log_path"] == str(log)
+    assert out["log_paths"] == [str(log)]
+
+
+def test_multiple_logs_omit_log_path_rather_than_naming_one(tmp_path: Path) -> None:
+    # Naming one of several would attribute a fleet-wide aggregate to one repo.
+    # Omitting it makes a stale consumer fail loudly instead of quietly wrong.
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"phases": []}])
+    _write_log(b, [{"phases": []}])
+    out, _ = _run_multi([a, b])
+    assert "log_path" not in out
+    assert out["log_paths"] == [str(a), str(b)]
+
+
+def test_limit_applies_per_ledger(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"phases": []} for _ in range(5)])
+    _write_log(b, [{"phases": []} for _ in range(5)])
+    out, _ = _run_multi([a, b], limit=2)
+    assert out["runs_analyzed"] == 4, "limit is the last N from EACH ledger, not overall"
