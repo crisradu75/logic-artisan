@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -498,3 +499,496 @@ def test_entry_level_drift_reaches_the_tally(tmp_path: Path) -> None:
     out, _ = _run(log)
     assert out["shape_drift_fields"] == {"re_offenses": 1, "rejected_lessons": 1}
     assert out["shape_drift_records"] == 2
+
+
+# --- effectiveness: the outcome metric (Step 2.5's tally) -------------------
+# Every other block in this aggregate counts what a run WROTE. These count
+# whether what earlier runs wrote actually HELD, which is the only question the
+# loop exists to answer and the one it went years without asking.
+
+
+def test_effectiveness_pools_and_computes_prevention_rate(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"effectiveness": {"prevented": 6, "re_offended": 2, "not_exercised": 40}},
+        {"effectiveness": {"prevented": 2, "re_offended": 2, "not_exercised": 41}},
+    ])
+    out, _ = _run(log)
+    # 8 held of 12 exercised.
+    assert out["effectiveness"]["prevented"] == 8
+    assert out["effectiveness"]["re_offended"] == 4
+    assert out["effectiveness"]["prevention_rate"] == 0.67
+    assert out["effectiveness"]["records"] == 2
+
+
+def test_not_exercised_is_out_of_the_denominator(tmp_path: Path) -> None:
+    """A rule the session never came near is evidence of nothing.
+
+    Counting it would let the rate climb by merely growing the checklist —
+    rewarding the exact bloat Step 2.6 exists to fight. Same exercised counts,
+    wildly different `not_exercised`, and the rate must not move.
+    """
+    lean = tmp_path / "lean.jsonl"
+    bloated = tmp_path / "bloated.jsonl"
+    _write_log(lean, [{"effectiveness": {"prevented": 1, "re_offended": 1,
+                                         "not_exercised": 0}}])
+    _write_log(bloated, [{"effectiveness": {"prevented": 1, "re_offended": 1,
+                                            "not_exercised": 500}}])
+    lean_out, _ = _run(lean)
+    bloated_out, _ = _run(bloated)
+    assert lean_out["effectiveness"]["prevention_rate"] == 0.5
+    assert bloated_out["effectiveness"]["prevention_rate"] == 0.5
+    assert bloated_out["effectiveness"]["not_exercised"] == 500
+
+
+def test_prevention_rate_is_none_not_zero_when_nothing_was_exercised(
+        tmp_path: Path) -> None:
+    """Diverges from `apply_rate`'s 0.0 on purpose — do not "fix" it to match.
+
+    Low means BAD for this rate, so a 0.0 placeholder is an empty sample wearing
+    a failing grade, and the SKILL.md heuristic gating on `< 0.5` would fire on a
+    window that measured nothing at all.
+    """
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": {"prevented": 0, "re_offended": 0,
+                                        "not_exercised": 12}}])
+    out, _ = _run(log)
+    assert out["effectiveness"]["prevention_rate"] is None
+    # The sibling rate on the same record set still uses 0.0 — the divergence is
+    # between the two fields, and that is the point.
+    assert out["suggestions"]["apply_rate"] == 0.0
+
+
+def test_a_ledger_with_no_effectiveness_field_reports_zero_records(
+        tmp_path: Path) -> None:
+    """The whole existing corpus looks like this — the field is optional-additive."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"ts": "2026-06-24",
+                      "suggestions": {"proposed": 4, "applied": 4, "rejected": 0}}])
+    out, _ = _run(log)
+    assert out["effectiveness"]["records"] == 0
+    assert out["effectiveness"]["prevention_rate"] is None
+    assert out["shape_drift_fields"] == {}
+
+
+def test_records_counts_only_the_runs_that_carried_a_tally(tmp_path: Path) -> None:
+    """A rate drawn from 1 of 3 runs must not read as one drawn from 3."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"effectiveness": {"prevented": 3, "re_offended": 1, "not_exercised": 9}},
+        {},
+        {"suggestions": {"proposed": 2, "applied": 1, "rejected": 1}},
+    ])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 3
+    assert out["effectiveness"]["records"] == 1
+
+
+def test_a_record_whose_every_count_is_malformed_is_not_counted_as_a_record(
+        tmp_path: Path) -> None:
+    """`_sum_counts` reports coercions, not usability — hence the separate probe."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": {"prevented": "six", "re_offended": None,
+                                        "not_exercised": True}}])
+    out, err = _run(log)
+    assert out["effectiveness"]["records"] == 0
+    assert out["effectiveness"]["prevention_rate"] is None
+    assert out["coerced_fields"] >= 1
+    assert "prevented='six' not int" in err
+
+
+def test_a_partly_malformed_block_still_counts_and_warns_once(tmp_path: Path) -> None:
+    """One usable count makes the record a contributor; the bad one is warned ONCE.
+
+    The probe runs over the same block the sum then walks, so using the coercing
+    form for both would report a single bad value twice and overstate the noise
+    floor a reader is told to check first.
+    """
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": {"prevented": 5, "re_offended": "two",
+                                        "not_exercised": 3}}])
+    out, err = _run(log)
+    assert out["effectiveness"]["records"] == 1
+    assert out["effectiveness"]["prevented"] == 5
+    assert out["effectiveness"]["re_offended"] == 0
+    assert out["effectiveness"]["prevention_rate"] == 1.0
+    assert err.count("re_offended='two' not int") == 1
+
+
+def test_bool_counts_are_rejected_like_every_other_count(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": {"prevented": True, "re_offended": 1,
+                                        "not_exercised": 0}}])
+    out, err = _run(log)
+    assert out["effectiveness"]["prevented"] == 0
+    assert "is bool, expected int" in err
+
+
+def test_non_dict_effectiveness_is_shape_drift(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": "n/a"}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"effectiveness": 1}
+    assert out["shape_drift_records"] == 1
+    assert out["effectiveness"]["records"] == 0
+    assert "`effectiveness` is str" in err
+
+
+def test_explicit_null_effectiveness_is_not_drift(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": None}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {}
+    assert out["effectiveness"]["records"] == 0
+
+
+def test_effectiveness_is_pooled_across_repos_not_suppressed(tmp_path: Path) -> None:
+    """Deliberately NOT in the per-repo suppression list beside `output_chars`.
+
+    Those fields measure ONE repo's files, which do not add up. These count
+    events — a rule was exercised and held, or failed — and events do.
+    """
+    a = tmp_path / "a.jsonl"
+    b = tmp_path / "b.jsonl"
+    _write_log(a, [{"effectiveness": {"prevented": 3, "re_offended": 1,
+                                      "not_exercised": 5}, "output_chars": 1000}])
+    _write_log(b, [{"effectiveness": {"prevented": 1, "re_offended": 3,
+                                      "not_exercised": 5}, "output_chars": 2000}])
+    out, _ = _run_multi([a, b])
+    assert out["per_repo_fields_suppressed"] is True
+    assert out["output_chars"]["latest"] is None       # per-repo → suppressed
+    assert out["effectiveness"]["prevented"] == 4      # events → pooled
+    assert out["effectiveness"]["re_offended"] == 4
+    assert out["effectiveness"]["prevention_rate"] == 0.5
+    assert out["effectiveness"]["records"] == 2
+
+
+def test_a_fleet_of_missing_ledgers_still_reports_no_effectiveness(
+        tmp_path: Path) -> None:
+    """The empty-record skeleton omits `effectiveness` entirely.
+
+    Safe only because a consumer's `.get(...)` then yields None — the same value
+    the populated path uses for "not measured" — rather than a 0.0 that reads as
+    a failing grade. Pinning it so the skeleton is not "helpfully" filled with zeros.
+    """
+    out, _ = _run_multi([tmp_path / "nope-a.jsonl", tmp_path / "nope-b.jsonl"])
+    assert out["runs_analyzed"] == 0
+    assert out.get("effectiveness", {}).get("prevention_rate") is None
+
+
+# --- commit-provenance: the hook-collected adoption number ------------------
+# 266 rows had accumulated across four repos with NO reader. The hook's own
+# comment says a rule "has no adoption number until something counts it" and
+# that it "leaves adjudication to the retro" — this is that reader.
+
+
+def _run_prov(provs: list[Path], logs: list[Path] | None = None) -> tuple[dict, str]:
+    cmd = [sys.executable, str(SCRIPT), "--limit", "0"]
+    if logs:
+        cmd += ["--log", *[str(p) for p in logs]]
+    cmd += ["--provenance", *[str(p) for p in provs]]
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", check=False)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout), r.stderr
+
+
+def test_provenance_block_is_absent_unless_asked_for(tmp_path: Path) -> None:
+    """Existing consumers must not grow a key they never requested."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"ts": "2026-09-05"}])
+    out, _ = _run(log)
+    assert "commit_provenance" not in out
+
+
+def test_measurement_rate_counts_commits_carrying_a_trailer(tmp_path: Path) -> None:
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [
+        {"sha": "a", "skill": None, "measured_by_count": 3},
+        {"sha": "b", "skill": "spec-to-pr", "measured_by_count": 0},
+        {"sha": "c", "skill": None, "measured_by_count": 1},
+        {"sha": "d", "skill": "lite-pr", "measured_by_count": 0},
+    ])
+    out, _ = _run_prov([prov])
+    block = out["commit_provenance"]
+    assert block["commits"] == 4
+    assert block["measured"] == 2
+    assert block["unmeasured"] == 2
+    assert block["measurement_rate"] == 0.5
+    assert block["by_skill"] == {"none": 2, "spec-to-pr": 1, "lite-pr": 1}
+
+
+def test_rows_predating_the_trailer_field_stay_out_of_the_denominator(
+        tmp_path: Path) -> None:
+    """Charging the rule for commits made before it was recorded would make the
+    rate fall the further back you look — schema history read as behaviour."""
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [
+        {"sha": "old1"},                        # predates measured_by_count
+        {"sha": "old2"},
+        {"sha": "new1", "measured_by_count": 2},
+        {"sha": "new2", "measured_by_count": 0},
+    ])
+    out, _ = _run_prov([prov])
+    block = out["commit_provenance"]
+    assert block["no_trailer_field"] == 2
+    assert block["commits"] == 4
+    # 1 of the 2 SCORED rows, not 1 of 4.
+    assert block["measurement_rate"] == 0.5
+
+
+def test_measurement_rate_is_none_not_zero_when_nothing_is_scorable(
+        tmp_path: Path) -> None:
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": "old1"}, {"sha": "old2"}])
+    out, _ = _run_prov([prov])
+    assert out["commit_provenance"]["measurement_rate"] is None
+    assert out["commit_provenance"]["no_trailer_field"] == 2
+
+
+def test_a_malformed_trailer_count_is_not_scored_as_unmeasured(
+        tmp_path: Path) -> None:
+    """A bad value is unknown, not a zero — scoring it as unmeasured would
+    invent a failure out of a type error.
+
+    And it lands in `coerced_fields`, NOT `no_trailer_field`. That bucket means
+    "this row predates the field", which both the schema and SKILL.md tell the
+    reader; filing producer drift under schema history made it invisible.
+    """
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": "a", "measured_by_count": "three"},
+                      {"sha": "b", "measured_by_count": 2}])
+    out, err = _run_prov([prov])
+    block = out["commit_provenance"]
+    assert block["unmeasured"] == 0
+    assert block["coerced_fields"] == 1
+    assert block["no_trailer_field"] == 0, (
+        "a malformed value is producer drift, not a row that predates the field"
+    )
+    assert block["measurement_rate"] == 1.0
+    assert "measured_by_count='three' not int" in err
+
+
+def test_a_row_predating_the_field_stays_out_of_coerced_fields(
+        tmp_path: Path) -> None:
+    """Non-vacuity partner for the split above: the two buckets must not collapse
+    back into one from the other direction either."""
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": "old"}, {"sha": "b", "measured_by_count": 1}])
+    block = _run_prov([prov])[0]["commit_provenance"]
+    assert block["no_trailer_field"] == 1
+    assert block["coerced_fields"] == 0
+
+
+def test_a_bare_provenance_with_a_bad_retro_dir_refuses_instead_of_crashing(
+        tmp_path: Path, monkeypatch) -> None:
+    """`--log` suppresses the earlier `_default_log_path()` call, so this is the
+    one path where an unguarded `_runs_dir()` reached the top level — an uncaught
+    traceback that also lost the whole already-computed aggregate."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"ts": "2026-09-06"}])
+    env = dict(os.environ, CLAUDE_RETRO_DIR="relative/not/absolute")
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", "0", "--log", str(log),
+         "--provenance"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env, check=False)
+    assert r.returncode == 1
+    assert "must be an absolute path" in r.stderr
+    assert "Traceback" not in r.stderr
+
+
+def test_provenance_reads_several_repos_and_names_a_missing_one(
+        tmp_path: Path) -> None:
+    a = tmp_path / "a.jsonl"
+    _write_log(a, [{"sha": "a", "measured_by_count": 1}])
+    missing = tmp_path / "gone.jsonl"
+    out, _ = _run_prov([a, missing])
+    block = out["commit_provenance"]
+    assert block["commits"] == 1
+    found = {row["path"]: row["found"] for row in block["ledgers"]}
+    assert found[str(a)] is True
+    assert found[str(missing)] is False
+
+
+def test_provenance_is_not_sliced_by_limit(tmp_path: Path) -> None:
+    """Adoption is a property of the whole history, not of the last N runs.
+
+    `--limit` exists for the run ledgers; letting it cut this one would report a
+    rate over a window the caller chose for a different file entirely.
+    """
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": str(i), "measured_by_count": 1} for i in range(25)])
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", "3", "--provenance", str(prov)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        check=False)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["commit_provenance"]["commits"] == 25
+
+
+def test_provenance_and_run_ledgers_are_independent(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    prov = tmp_path / "prov.jsonl"
+    _write_log(log, [{"ts": "2026-09-05",
+                      "suggestions": {"proposed": 2, "applied": 1, "rejected": 1}}])
+    _write_log(prov, [{"sha": "a", "measured_by_count": 1}])
+    out, _ = _run_prov([prov], logs=[log])
+    assert out["runs_analyzed"] == 1
+    assert out["suggestions"]["proposed"] == 2
+    assert out["commit_provenance"]["commits"] == 1
+
+
+def test_a_non_string_skill_is_bucketed_as_none_not_crashed(tmp_path: Path) -> None:
+    prov = tmp_path / "prov.jsonl"
+    _write_log(prov, [{"sha": "a", "skill": 7, "measured_by_count": 1},
+                      {"sha": "b", "skill": None, "measured_by_count": 1}])
+    out, _ = _run_prov([prov])
+    assert out["commit_provenance"]["by_skill"] == {"none": 2}
+
+
+# --- booleans read with `is True` must not swallow a non-conforming value ---
+# All three of these were warned about nowhere and tallied nowhere: a producer
+# writing "yes" instead of true read as an honest false, and the gated heuristics
+# above ran on a thinner sample than `runs_analyzed` announced.
+
+
+def test_a_non_bool_trimmed_is_warned_and_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"maintenance": {"trimmed": "yes"}}])
+    out, err = _run(log)
+    assert out["maintenance"]["trim_runs"] == 0        # still not counted
+    assert out["shape_drift_fields"] == {"maintenance": 1}
+    assert "`maintenance.trimmed`='yes' not a bool" in err
+
+
+def test_an_honest_false_trimmed_is_not_drift(tmp_path: Path) -> None:
+    """Non-vacuity partner: only a NON-BOOL is drift. `false` is data."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"maintenance": {"trimmed": False}}, {"maintenance": {}}])
+    out, _ = _run(log)
+    assert out["maintenance"]["trim_runs"] == 0
+    assert out["shape_drift_fields"] == {}
+
+
+def test_a_non_bool_process_issue_is_warned_and_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"process_issue": 1}])
+    out, err = _run(log)
+    assert out["process_issue_runs"] == 0
+    assert out["shape_drift_fields"] == {"process_issue": 1}
+    assert "`process_issue`=1 not a bool" in err
+
+
+def test_an_honest_false_process_issue_is_not_drift(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"process_issue": False}, {}])
+    out, _ = _run(log)
+    assert out["process_issue_runs"] == 0
+    assert out["shape_drift_fields"] == {}
+
+
+# --- --fleet: the repo list that used to live only in someone's memory --------
+
+
+def _fleet_file(tmp_path: Path, roots: list[Path], extra: str = "") -> Path:
+    f = tmp_path / "fleet.local.md"
+    body = "# fleet\n\n" + extra + "".join(f"- {r}\n" for r in roots)
+    f.write_text(body, encoding="utf-8")
+    return f
+
+
+def _run_fleet(fleet: Path, limit: int = 0, extra: list[str] | None = None):
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", str(limit), "--fleet", str(fleet),
+         *(extra or [])],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+    return r
+
+
+def test_fleet_reads_every_listed_root(tmp_path: Path) -> None:
+    roots = []
+    for name in ("repo-a", "repo-b"):
+        root = tmp_path / name
+        _write_log(root / "cla.io" / "retro" / 'codify-runs.jsonl', [{"ts": "2026-09-05"}])
+        roots.append(root)
+    r = _run_fleet(_fleet_file(tmp_path, roots))
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["runs_analyzed"] == 2
+    assert len(out["ledgers"]) == 2
+    assert all(row["found"] for row in out["ledgers"])
+
+
+def test_a_listed_root_with_no_ledger_is_reported_not_hidden(tmp_path: Path) -> None:
+    """A repo that has not run the loop is expected, and must stay VISIBLE —
+    that `found: false` row is what stops a 1-repo result reading as a 2-repo one."""
+    root = tmp_path / "has-data"
+    _write_log(root / "cla.io" / "retro" / 'codify-runs.jsonl', [{"ts": "2026-09-05"}])
+    r = _run_fleet(_fleet_file(tmp_path, [root, tmp_path / "empty-repo"]))
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert [row["found"] for row in out["ledgers"]] == [True, False]
+    # And the message must name the FLEET, not an argument the caller never typed.
+    assert "a root listed in the fleet file" in r.stderr
+    assert "given explicitly via --log" not in r.stderr
+
+
+def test_comments_and_backticks_are_stripped_from_a_root(tmp_path: Path) -> None:
+    root = tmp_path / "repo-a"
+    _write_log(root / "cla.io" / "retro" / 'codify-runs.jsonl', [{"ts": "2026-09-05"}])
+    f = tmp_path / "fleet.local.md"
+    f.write_text(f"# fleet\n\n- `{root}`   # trailing note\n"
+                 "not a bullet, ignored\n", encoding="utf-8")
+    r = _run_fleet(f)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["runs_analyzed"] == 1
+    assert len(out["ledgers"]) == 1
+
+
+def test_a_missing_fleet_file_refuses_rather_than_analysing_nothing(
+        tmp_path: Path) -> None:
+    """`runs_analyzed: 0` is what both retro skills teach the reader to treat as a
+    cold start, so a typo'd fleet path must not produce it."""
+    r = _run_fleet(tmp_path / "nope.md")
+    assert r.returncode == 1
+    assert "no fleet file at" in r.stderr
+
+
+def test_a_fleet_file_with_no_bullets_refuses(tmp_path: Path) -> None:
+    f = tmp_path / "fleet.local.md"
+    f.write_text("# fleet\n\nprose only, nobody wrote a bullet\n", encoding="utf-8")
+    r = _run_fleet(f)
+    assert r.returncode == 1
+    assert "lists no repo roots" in r.stderr
+
+
+def test_fleet_and_log_are_mutually_exclusive(tmp_path: Path) -> None:
+    """Both resolve the same argument; accepting both would make precedence a
+    guess the caller cannot see."""
+    root = tmp_path / "repo-a"
+    log = root / "cla.io" / "retro" / 'codify-runs.jsonl'
+    _write_log(log, [{"ts": "2026-09-05"}])
+    r = _run_fleet(_fleet_file(tmp_path, [root]), extra=["--log", str(log)])
+    assert r.returncode == 1
+    assert "mutually exclusive" in r.stderr
+
+
+def test_a_bare_provenance_flag_resolves_across_the_fleet(tmp_path: Path) -> None:
+    """`--provenance` with no paths means "resolve it for me" — and an EMPTY list
+    must not read as "flag absent", which plain truthiness would do."""
+    roots = []
+    for name, count in (("repo-a", 2), ("repo-b", 0)):
+        root = tmp_path / name
+        _write_log(root / "cla.io" / "retro" / 'codify-runs.jsonl', [{"ts": "2026-09-05"}])
+        _write_log(root / "cla.io" / "retro" / "commit-provenance.jsonl",
+                   [{"sha": f"{name}1", "measured_by_count": count}])
+        roots.append(root)
+    r = _run_fleet(_fleet_file(tmp_path, roots), extra=["--provenance"])
+    assert r.returncode == 0, r.stderr
+    block = json.loads(r.stdout)["commit_provenance"]
+    assert block["commits"] == 2
+    assert block["measured"] == 1
+    assert block["unmeasured"] == 1
+    assert block["measurement_rate"] == 0.5

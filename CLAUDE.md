@@ -75,8 +75,30 @@ pytest plugin-tests/tests/skills/<name>
 
 ### The parallel gate, and the three things that make it safe
 
-**Measured on this repo:** serial 203.9s, `-n auto --dist loadfile` 74.1s (2.8x), plain
-`-n auto` 56.5s — all three reporting 1576 passed, 14 skipped.
+**Measured on this repo 2026-09-05:** serial 296.6s and `-n auto --dist loadfile` 149.6s
+(2.0x). The pass count moved several times inside the branch that measured it and is deliberately not repeated here — run the command; `--collect-only -q` gives the total without executing anything. Plain `-n auto` ran 84.9s and 100.9s on
+two consecutive invocations of the same tree — and **the first of those failed 3 tests
+the other two forms passed**, all in `tests/hooks/test_hooks_wiring.py`
+(`test_wiring_refuses_when_the_probe_is_unusable`, the `truncated` cases). The second
+invocation was green. So the trap below is not a hypothetical any more; it is the most
+recent measurement, and the failure did not reproduce on demand, which is the whole
+problem with it.
+
+The mechanism was never proven, but the shared state it named was real and is now gone.
+Those tests built their environment with `_inherited_env`, which copies the real `HOME`,
+so the probe resolved its cache to the **developer's own** `~/.cache/cla/pyexe` and wrote
+it — one shared mutable file, several xdist workers, and `--dist loadfile` keeps that
+file's tests on one worker, which fits only plain `-n auto` failing. An autouse fixture in
+`plugin-tests/tests/hooks/conftest.py` now relocates it per test via `CLA_PROBE_CACHE`.
+
+**State this carefully.** The failure never reproduced on demand, so no run count proves
+it fixed, and none is offered as if it did. What is measured is narrower and is the
+reason the change is worth having anyway: deleting `~/.cache/cla/pyexe` and running the
+full suite used to recreate it and now does not. A test suite writing a developer's home
+directory was a defect on its own terms, whatever it did to the scheduler.
+
+**Numbers here go stale, and this paragraph has been stale before.** Re-measure rather
+than quoting it; the counts above move with every test added.
 
 **`--dist loadfile` is load-bearing, not tuning, and plain `-n auto` is the trap.**
 `loadfile` pins every test in a file to one worker. Without it a module's tests are
@@ -86,8 +108,10 @@ two workers building those race for the port. That suite skips wherever Playwrig
 is absent, which is exactly why a green plain `-n auto` here is not evidence: it
 means those tests did not run. The peer repo `claude-plugins` hit the same class of
 failure from a different cause and recorded the rule as "the full-suite pass is luck
-about which worker gets which file, not evidence of safety". Eighteen seconds is the
-whole price of not finding out the hard way.
+about which worker gets which file, not evidence of safety". The premium over plain
+`-n auto` was 18s when first measured and about 50-65s on 2026-09-05; either way it is
+the whole price of not finding out the hard way, and the run above is what finding out
+looks like.
 
 **A parallel run is trusted only when its pass AND skip counts match a serial run of
 the same tree.** Skip counts matter here specifically: `tests/consistency/` and
@@ -135,7 +159,8 @@ subdirectory names, so the batches are never collected as tests and each guard m
 a one-step name substitution.
 
 **`lib/` is the odd one out in the plugin**: not a skill (no `SKILL.md`) and not a guard hook. It
-holds `log_run.py`, the one ledger writer every retro-logging skill invokes as a program.
+holds `log_run.py`, the one ledger writer every retro-logging skill invokes as a program,
+and `ledger_summary.py`, the generic reader those skills point at for reading one back.
 
 Of the four portable guards that police the fact/procedure split, **two reach consuming repos and
 two do not, and the difference is where they live.** No project token in synced core
@@ -390,6 +415,7 @@ The published plugin — everything here ships to a consuming repo:
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   hooks/                       guard hooks + hooks.json wiring
   lib/log_run.py               the one ledger writer, invoked as a program
+  lib/ledger_summary.py        the generic ledger reader, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill)
   skills/<name>/
@@ -431,7 +457,8 @@ matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scrip
 |---|---|
 | `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
 | `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses a path-shaped ledger argument. |
-| `plugin-tests/scripts/check_script_drift.py` *(dev tree)* | Compares the ledger-dir resolver across the writer and both readers. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
+| `lib/ledger_summary.py` | Reads ANY ledger by deriving the shape from the records rather than being configured with it — see `summarise_field` for which types report what, and do not restate the branch list here; it was restated once and dropped two branches immediately. Exists because five ledgers had no reader and bespoke aggregators for each was a plan nobody was going to execute. |
+| `plugin-tests/scripts/check_script_drift.py` *(dev tree)* | Compares the ledger-dir resolver across the writer and every reader of it, and the fleet repo-list resolver across its three copies. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
 | `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
 | `codify-retro/scripts/codify_aggregate.py`, `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over JSONL run records, including malformed-shape and producer-drift buckets a reader would gloss. `--log` takes several paths, so one run can aggregate the fleet's ledgers rather than this repo's alone — which matters because any single repo's sample is thin enough to mislead: this repo's 8 spec-to-pr records put round-cap exhaustion at 4 of 5, the fleet's 156 put it at 6 of 129. |

@@ -340,7 +340,22 @@ def run_pytest(targets: list[Path]) -> tuple[int, str]:
     # strips `assert` from every module pytest does not rewrite — which is every
     # shipped script under test — and so flips kills and survivors outright; and
     # PYTHONWARNINGS=error makes pytest exit 3 with no count line, reproducing the
-    # precise false-INCONCLUSIVE the `--color=no` fix was written for.
+    # precise false-INCONCLUSIVE the `--color=no` fix was written for. Measured
+    # 2026-09-05, having shipped unmeasured beside three measured siblings: running
+    # this function's own subprocess call over `plugin-tests/tests/lib` with
+    # PYTHONWARNINGS=error added to the pinned env gives rc=3 and a last line of
+    # `INTERNALERROR> ...`, against rc=0 and `20 passed` without it.
+    #
+    # NOT kept, and now tested rather than assumed: PYTHONUTF8 and PYTHONIOENCODING.
+    # The concern was that dropping them leaves the child on the platform default
+    # encoding. Measured the same way over `plugin-tests/tests/skills/codify-retro`
+    # — 70 non-ASCII lines between its test module and the script it drives —
+    # with each of PYTHONUTF8=1, PYTHONUTF8=0, PYTHONIOENCODING=cp1252 and
+    # PYTHONIOENCODING=utf-8: all four match the baseline exit code and count line.
+    # They stay out because the allowlist's rule is to name what the child NEEDS,
+    # and the scripts under test pin their own streams to UTF-8 rather than relying
+    # on the ambient locale. One platform, so re-measure before trusting it on
+    # another.
     #
     # A denylist grows one entry per incident and is wrong until the next one is
     # found. That is the same shape as the warn-without-tallying paths this tool's

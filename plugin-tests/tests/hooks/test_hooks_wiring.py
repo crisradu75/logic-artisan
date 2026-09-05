@@ -803,6 +803,95 @@ def _inherited_env(**overrides) -> dict:
 
 
 @pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_a_warm_cache_does_not_survive_a_poisoned_path(tmp_path):
+    """The interpreter cache keys on PATH, and this is what proves it.
+
+    Every other poisoned-PATH test in this file builds its env from scratch and
+    omits HOME, so the cache file resolves under an empty prefix, is unreadable,
+    and never participates. They therefore pass whether or not PATH is in the
+    key — a vacuous pass on the one property that keeps the cache from handing a
+    poisoned run an interpreter found under a different PATH.
+
+    So this one gives the probe a REAL, writable HOME: it warms the cache under
+    a good PATH, confirms the file exists, then poisons PATH with the same stub
+    the sibling test uses and requires the same refusal. Remove PATH from the key
+    in `probe-python.sh` and this is the only test in the suite that goes red.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    home_sh = str(home).replace("\\", "/")
+
+    # CLA_PY_SEARCH is set EMPTY on both runs so PATH is the only difference
+    # between them. Without this the cache misses on the search-list component
+    # instead, and the test passes with PATH absent from the key — measured: the
+    # mutant `[ -n "$_c_path" ]` survived the whole suite until this line existed.
+    # CLA_PROBE_CACHE="" opts out of the conftest's autouse relocation: the
+    # probe's `:-` expansion treats empty as unset, so the cache resolves under
+    # the HOME below — which is this test's whole subject.
+    warm = _inherited_env(HOME=home_sh, CLA_PY_SEARCH="", CLA_PROBE_CACHE="")
+    r1 = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=warm)
+    assert r1.returncode == 0, f"could not warm the cache: {r1.stderr}"
+    cache = home / ".cache" / "cla" / "pyexe"
+    assert cache.exists(), "the probe wrote no cache, so this test proves nothing"
+
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir()
+    stub = stub_dir / "python3"
+    stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+
+    env = {
+        "PATH": str(stub_dir),
+        "CLA_PY_SEARCH": "",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+        "HOME": home_sh,  # the cache IS readable here — that is the point
+        # Built from scratch, so it never carried the autouse relocation; set
+        # explicitly anyway so the opt-out is visible in both halves of the test.
+        "CLA_PROBE_CACHE": "",
+    }
+    r2 = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r2.returncode == 1, (
+        "a cache built under a different PATH was reused under a poisoned one — "
+        "the probe handed out an interpreter it did not find"
+    )
+    assert "SELECTED:" not in r2.stdout or "SELECTED:\n" in r2.stdout
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_the_cache_actually_skips_the_version_check_when_warm(tmp_path):
+    """Non-vacuity partner: the cache must be reachable at all.
+
+    Without this, the test above passes trivially on a probe whose cache never
+    works — refusing under a poisoned PATH for the ordinary reason rather than
+    because the key held. Asserts a second run reuses the file rather than
+    rewriting it, which is the observable difference between a hit and a miss.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    # Same opt-out as the test above — this one asserts the cache file appears
+    # under HOME and is reused, so it must be the HOME-derived path.
+    env = _inherited_env(HOME=str(home).replace("\\", "/"), CLA_PROBE_CACHE="")
+    cache = home / ".cache" / "cla" / "pyexe"
+
+    r1 = _sp.run([_BASH, "-c", _probe_prefix()], capture_output=True, text=True,
+                 encoding="utf-8", errors="replace", env=env)
+    assert r1.returncode == 0, r1.stderr
+    assert cache.exists()
+    first = cache.stat().st_mtime_ns
+    marker = cache.read_text(encoding="utf-8")
+
+    r2 = _sp.run([_BASH, "-c", _probe_prefix()], capture_output=True, text=True,
+                 encoding="utf-8", errors="replace", env=env)
+    assert r2.returncode == 0, r2.stderr
+    assert cache.read_text(encoding="utf-8") == marker, "the warm run rewrote the cache"
+    assert cache.stat().st_mtime_ns == first, (
+        "the warm run rewrote the cache, so it missed rather than hit"
+    )
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
 def test_probe_still_selects_a_working_interpreter():
     """Non-vacuity partner: the two tests above pass trivially if the probe
     rejects everything.
@@ -1180,3 +1269,57 @@ def test_a_crlf_probe_never_yields_a_broken_interpreter(shell, tmp_path):
         )
     else:
         assert "ALIVE" not in r.stdout, r.stdout
+
+
+def test_the_probe_cache_is_relocated_away_from_the_real_home():
+    """The autouse isolation fixture must actually be in force.
+
+    Without it, every test here that builds an environment with `_inherited_env`
+    points `probe-python.sh` at the developer's own `~/.cache/cla/pyexe` and
+    writes it — one shared mutable file across xdist workers. That was measured,
+    not supposed: deleting the file and running this module recreated it.
+
+    Pinned as a test rather than left to the fixture, because a fixture that
+    stops working is invisible. Everything downstream keeps passing; it just
+    starts passing against the real home again.
+    """
+    import os
+    relocated = os.environ.get("CLA_PROBE_CACHE")
+    assert relocated, (
+        "CLA_PROBE_CACHE is unset, so the probe resolves its cache under the real "
+        "HOME — the autouse fixture in conftest.py is not in force"
+    )
+    real = (Path.home() / ".cache" / "cla" / "pyexe").resolve()
+    assert Path(relocated).resolve() != real, relocated
+
+
+def test_the_relocation_actually_reaches_the_probe_environment():
+    """Non-vacuity partner: relocating the variable is useless if the helper that
+    builds test environments does not carry it.
+
+    `_inherited_env` copies `os.environ`, so this holds today — and would stop
+    holding the moment it switched to an allowlist, silently, with the test above
+    still green.
+    """
+    env = _inherited_env()
+    assert env.get("CLA_PROBE_CACHE"), (
+        "_inherited_env dropped CLA_PROBE_CACHE, so the isolation never reaches "
+        "the shell the probe runs in"
+    )
+    real = str((Path.home() / ".cache" / "cla").resolve())
+    assert real not in env["CLA_PROBE_CACHE"]
+
+
+def test_an_empty_relocation_is_the_documented_opt_out():
+    """`CLA_PROBE_CACHE=""` must fall back to HOME, not to a literal empty path.
+
+    Two tests in this file rely on it to exercise the real cache mechanism. If
+    the probe ever used `${CLA_PROBE_CACHE-...}` instead of `${CLA_PROBE_CACHE:-...}`,
+    empty would stop meaning "unset", those two would silently stop testing the
+    cache, and nothing else would notice.
+    """
+    src = _probe_source()
+    assert "${CLA_PROBE_CACHE:-" in src, (
+        "the probe no longer treats an empty CLA_PROBE_CACHE as unset; the "
+        "opt-out used by the two cache tests is broken"
+    )

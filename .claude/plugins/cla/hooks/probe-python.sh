@@ -73,6 +73,57 @@
 
 PYEXE=
 
+# --- 0. the cache -----------------------------------------------------------
+# WHY THIS EXISTS. Stages 1-3 below decide which interpreter to use by RUNNING
+# candidates, and that is the whole point — `command -v` cannot tell a real
+# Python from the WindowsApps stub. But the answer is stable for the life of a
+# machine, and this probe is sourced by EVERY PreToolUse and PostToolUse wiring,
+# so the cost is paid per tool call forever.
+#
+# On a machine where process creation is expensive this dominates everything.
+# Reproduce with `for i in $(seq 10); do time python -c pass; done` and compare
+# against `time cmd //c exit`: where the second is already ~1.7s, a bare Python
+# start measured 1456ms median and the PreToolUse:Bash hook 2710ms — two
+# interpreter starts, one here to version-check and one for the dispatcher.
+# Caching removes the first. Aggregate the hook's own figure from the
+# `durationMs` on `hook_*` attachment lines in `~/.claude/projects/*/*.jsonl`.
+#
+# WHAT THE KEY COVERS, and why each part is in it. A cache hit skips the version
+# assertion, so it must miss whenever the answer could differ:
+#   - PATH, because stage 2 resolves candidate NAMES against it. This is the
+#     load-bearing one: the probe's own tests poison PATH and require refusal,
+#     and a cache keyed without PATH would hand them a good interpreter found
+#     under a different one. That is the same class of silent wrong-answer the
+#     probe exists to prevent, so it would be a poor trade for latency.
+#   - CLA_PYTHON, so an override that changed is re-validated rather than
+#     overruled by a stale entry — stage 1 refuses on a bad override precisely so
+#     a typo is visible, and a cache must not hide it.
+#   - CLA_PY_SEARCH, distinguishing UNSET from SET-BUT-EMPTY, because stage 3
+#     reads it with `+set` and empty means "skip stage 3 entirely".
+#
+# WHAT IT DOES NOT COVER, stated rather than discovered later: an interpreter
+# REPLACED IN PLACE by something else at the same path is trusted on `-x` alone
+# until PATH or an override changes. That is the one guarantee weakened here.
+# Every other staleness — uninstalled, moved, PATH reordered — either fails `-x`
+# or misses the key.
+#
+# The read uses shell builtins only: four `read`s and string compares, no
+# process spawned on the hit path, which is the entire point. HOME is used
+# rather than a shared temp dir so another local user cannot plant an entry.
+# CLA_PROBE_NO_CACHE=1 disables it; CLA_PROBE_CACHE relocates it.
+_cla_cache=${CLA_PROBE_CACHE:-"${HOME:-}/.cache/cla/pyexe"}
+_cla_key="${CLA_PY_SEARCH+set}:${CLA_PY_SEARCH:-}"
+_cla_hit=
+if [ -z "${CLA_PROBE_NO_CACHE:-}" ] && [ -r "$_cla_cache" ]; then
+  _c_path= _c_exe= _c_over= _c_search=
+  { read -r _c_path; read -r _c_exe; read -r _c_over; read -r _c_search; } < "$_cla_cache" 2>/dev/null
+  if [ "$_c_path" = "$PATH" ] && [ "$_c_over" = "${CLA_PYTHON:-}" ] \
+     && [ "$_c_search" = "$_cla_key" ] && [ -x "$_c_exe" ]; then
+    PYEXE=$_c_exe
+    _cla_hit=1
+  fi
+fi
+
 # True iff $1 names a real Python >= 3.8.
 #
 # The version comes back on STDOUT rather than as an exit code: a bare
@@ -102,7 +153,7 @@ _cla_py_ok() {
 # for BECAUSE the automatic stages already picked wrong, so silently overruling
 # it hands every hook the interpreter they were trying to replace, with no signal
 # that their override was discarded. A typo must be visible.
-if [ -n "${CLA_PYTHON:-}" ]; then
+if [ -z "$PYEXE" ] && [ -n "${CLA_PYTHON:-}" ]; then
   _p=$(command -v "$CLA_PYTHON" 2>/dev/null) || _p=
   if [ -n "$_p" ] && _cla_py_ok "$_p"; then
     PYEXE=$_p
@@ -195,4 +246,20 @@ fi
 if [ -z "$PYEXE" ] || [ ! -x "$PYEXE" ]; then
   echo "cla: no working python 3.8+ found (tried CLA_PYTHON, python3, py, python, and the usual install paths) — guard hooks are NOT running. Set CLA_PYTHON to your interpreter." >&2
   exit 1
+fi
+
+# --- store the answer -------------------------------------------------------
+# Only on a MISS: a hit already read this file, and rewriting it every tool call
+# would trade the spawn this cache removes for an I/O the hit path avoids.
+#
+# Written only once the refusal check above has passed, so the file can never
+# hold a path that failed the version assertion — which is what lets the hit
+# path trust `-x` alone. Every failure here is deliberately silent and
+# non-fatal: an unwritable HOME costs the cache, never the probe, and the next
+# invocation simply probes again. `mkdir` is the one spawn on this path and it
+# runs once per machine.
+if [ -z "$_cla_hit" ] && [ -z "${CLA_PROBE_NO_CACHE:-}" ] && [ -n "${HOME:-}${CLA_PROBE_CACHE:-}" ]; then
+  ( mkdir -p "${_cla_cache%/*}" 2>/dev/null &&
+    printf '%s\n%s\n%s\n%s\n' "$PATH" "$PYEXE" "${CLA_PYTHON:-}" "$_cla_key" \
+      > "$_cla_cache" 2>/dev/null ) || :
 fi

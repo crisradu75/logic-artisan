@@ -592,3 +592,149 @@ def test_the_shedding_loop_terminates_on_a_record_that_can_never_fit(monkeypatch
         record["measured_by"] = record["measured_by"][:-1]
     assert record["measured_by"] == []
     assert record["measured_by_count"] == 3
+
+
+def test_measurements_still_count_when_attribution_follows_them(tmp_path):
+    """THE defect this scan replaced git's trailer parser for.
+
+    Git recognises only the LAST contiguous `Key: value` block as trailers. Every
+    commit here ends with `Co-Authored-By` / `Claude-Session`, so the moment a
+    blank line separates the measurements from those — the natural way to write a
+    long message — git saw the attribution block and nothing else.
+
+    Measured when found: 35 of 184 ledger rows undercounted their own commit, and
+    the adoption rate the ledger reported was 0.38 where the messages gave 0.61.
+    Every test above passes with the bug present, because none of them appended an
+    attribution block.
+    """
+    repo = _repo(tmp_path)
+    _commit_with(
+        repo,
+        "feat: real shape",
+        "Measured-by: pytest -q — 1718 passed\n"
+        "Measured-by: node --test x.mjs — 70 pass",
+    )
+    # A SECOND block, after a blank line — what git treats as the trailers.
+    subprocess.run(
+        ["git", "commit", "-q", "--amend", "-m", "feat: real shape",
+         "-m", "Measured-by: pytest -q — 1718 passed\n"
+               "Measured-by: node --test x.mjs — 70 pass",
+         "-m", "Co-Authored-By: Someone <x@example.com>\n"
+               "Claude-Session: https://example.com/s"],
+        cwd=repo, check=True, capture_output=True)
+    (repo / "f.txt").write_text("again\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "feat: real shape 2",
+         "-m", "Measured-by: pytest -q — 1718 passed\n"
+               "Measured-by: node --test x.mjs — 70 pass",
+         "-m", "Co-Authored-By: Someone <x@example.com>\n"
+               "Claude-Session: https://example.com/s"],
+        cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'feat: real shape 2'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 2, (
+        "the measurements were separated from the attribution block by a blank "
+        "line, which is what git's trailer parser could not see"
+    )
+    assert row["measured_by"] == [
+        "pytest -q — 1718 passed",
+        "node --test x.mjs — 70 pass",
+    ]
+
+
+def test_attribution_lines_are_never_counted_as_measurements(tmp_path):
+    """Non-vacuity partner: scanning the whole message must not sweep up every
+    `Key: value` line it finds. Only `Measured-by:` counts."""
+    repo = _repo(tmp_path)
+    _commit_with(repo, "chore: attribution only", None)
+    subprocess.run(
+        ["git", "commit", "-q", "--amend", "-m", "chore: attribution only",
+         "-m", "Co-Authored-By: Someone <x@example.com>\n"
+               "Claude-Session: https://example.com/s\n"
+               "Signed-off-by: Someone <x@example.com>"],
+        cwd=repo, check=True, capture_output=True)
+    (repo / "f.txt").write_text("more\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "chore: attribution only 2",
+         "-m", "Co-Authored-By: Someone <x@example.com>\n"
+               "Claude-Session: https://example.com/s"],
+        cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'chore: attribution only 2'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 0
+    assert row["measured_by"] == []
+
+
+def test_a_wrapped_value_still_folds_when_attribution_follows(tmp_path):
+    """The continuation rule has to survive the new scan, not just the old
+    `unfold=true` — a wrapped command recorded as fragments inflates the very
+    count this field exists to report."""
+    repo = _repo(tmp_path)
+    _commit_with(repo, "feat: wrapped again", None)
+    (repo / "f.txt").write_text("w\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "feat: wrapped again 2",
+         "-m", "Measured-by: git log -8 -p --format= --unified=0\n"
+               "  | grep -cE '^[+]' — 7280 added lines",
+         "-m", "Co-Authored-By: Someone <x@example.com>"],
+        cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'feat: wrapped again 2'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 1
+    assert "7280 added lines" in row["measured_by"][0]
+
+
+def test_an_indented_line_far_below_is_not_folded_into_a_measurement(tmp_path):
+    """The continuation fold must require ADJACENCY, which it first shipped without.
+
+    Without it `values[-1]` stayed the fold target for the rest of the message, so
+    any indented line below — a code block, a quoted diff, an example — was welded
+    onto the last measurement across blank lines and unrelated paragraphs.
+    Measured on this repo when found: 5 of 56 commits carrying a trailer had a
+    value corrupted this way, one by 1296 characters.
+    """
+    repo = _repo(tmp_path)
+    _commit_with(repo, "docs: seed", None)
+    (repo / "f.txt").write_text("body\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "docs: with a code block",
+         "-m", "Measured-by: pytest -q — 20 passed",
+         "-m", "Some unrelated paragraph.",
+         "-m", "    an indented code block\n    a second indented line",
+         "-m", "Co-Authored-By: Someone <x@example.com>"],
+        cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'docs: with a code block'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 1
+    assert row["measured_by"] == ["pytest -q — 20 passed"], (
+        "an indented line separated from the trailer by a blank line and a "
+        "paragraph was folded into the measurement"
+    )
+
+
+def test_a_valueless_trailer_is_not_resurrected_by_a_later_indented_line(tmp_path):
+    """`Measured-by:` with nothing after it asserts no measurement. Folding onto
+    it rescued it from the empty-string filter and recorded a fabricated one,
+    inflating the exact numerator `measurement_rate` is built on."""
+    repo = _repo(tmp_path)
+    _commit_with(repo, "docs: seed two", None)
+    (repo / "f.txt").write_text("body2\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    # ONE `-m` for both lines. Separate `-m` blocks are joined by a BLANK line,
+    # which ends the fold on its own and made an earlier version of this test
+    # vacuous — it passed with the defect present. A mutation run caught that:
+    # `folding = True` on the empty value survived, because the message shape
+    # never reached the branch it breaks.
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "docs: empty trailer",
+         "-m", "Measured-by:\n    ls -la",
+         "-m", "Co-Authored-By: Someone <x@example.com>"],
+        cwd=repo, check=True, capture_output=True)
+    assert _run(repo, "git commit -m 'docs: empty trailer'").returncode == 0
+    row = _ledger(repo)[-1]
+    assert row["measured_by_count"] == 0
+    assert row["measured_by"] == []

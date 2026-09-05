@@ -83,15 +83,53 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # `Measured-by:` trailer parsing. `unfold=true` joins a trailer that
-        # git wrapped across lines back into the one value it is; dropping it
-        # makes a single wrapped claim come back as two separate lines, which
-        # both mis-reports the value and inflates measured_by_count.
-        "the Measured-by trailer format drops unfold=true, so a wrapped "
-        "trailer is read back as two fragments instead of the one value it is",
+        # THE defect this scan replaced git's trailer parser for. Git recognises
+        # only the LAST contiguous `Key: value` block as trailers, and every
+        # commit here ends with attribution lines — so a blank line between the
+        # measurements and those hid the measurements entirely. Measured when
+        # found: 35 of 184 rows in this repo undercounted their own commit, and
+        # the fleet's ledger said 0.26 adoption where the messages said 0.58.
+        "the Measured-by scan reverts to git's trailer parser, which sees only "
+        "the last Key: value block and so misses measurements written above the "
+        "attribution lines",
         HOOK,
-        'f"--pretty=%(trailers:key={_TRAILER_KEY},valueonly=true,unfold=true)",',
-        'f"--pretty=%(trailers:key={_TRAILER_KEY},valueonly=true)",',
+        '        if line.startswith(f"{_TRAILER_KEY}:"):',
+        '        if False:',
+        TARGETS,
+    ),
+    (
+        # The continuation rule, carried over from `unfold=true`. A wrapped
+        # command read as fragments inflates the very count the field reports.
+        "the continuation fold is dropped, so a wrapped Measured-by value is "
+        "read back as fragments instead of the one value it is",
+        HOOK,
+        "        elif folding and line[:1].isspace() and line.strip():",
+        "        elif False:",
+        TARGETS,
+    ),
+    (
+        # The ADJACENCY half of the fold, which the function first shipped
+        # without. `folding` is what stops `values[-1]` staying the fold target
+        # for the rest of the message; without it any indented line below — a
+        # code block, a quoted diff — was welded onto the last measurement across
+        # blank lines and unrelated paragraphs. Measured when found: 5 of 56
+        # commits carrying a trailer had a value corrupted this way.
+        "the continuation fold loses its adjacency condition, so any indented "
+        "line anywhere below is welded onto the last measurement",
+        HOOK,
+        "        elif folding and line[:1].isspace() and line.strip():",
+        "        elif values and line[:1].isspace() and line.strip():",
+        TARGETS,
+    ),
+    (
+        # A valueless `Measured-by:` must start no fold. Folding onto it rescued
+        # it from the empty-string filter and recorded a fabricated measurement
+        # for a commit that asserted none.
+        "an empty Measured-by value still opens a fold, so a later indented line "
+        "resurrects it into a fabricated measurement",
+        HOOK,
+        "            folding = bool(value)",
+        "            folding = True",
         TARGETS,
     ),
     # DROPPED, not forgotten: "the trailer-shedding loop rewrites

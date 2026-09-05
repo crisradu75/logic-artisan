@@ -23,6 +23,8 @@ Input record schema (counts-only; see lib/log_run.py):
       "scope": str,                   # plugin name or "repo-wide"
       "suggestions": {"proposed": int, "applied": int, "rejected": int},
       "memory":      {"proposed": int, "applied": int},
+      "effectiveness": {"prevented": int, "re_offended": int,
+                        "not_exercised": int},   # optional — Step 2.5's tally
       "re_offenses": [ {"lesson": str, "failing_artifact": str,
                         "escalated_to": str} ],     # escalated_to in RUNGS below
       "rejected_lessons": [str, ...],               # lessons rejected THIS run
@@ -41,6 +43,35 @@ Output schema (all counts over the analyzed window):
       "suggestions": {"proposed": int, "applied": int, "rejected": int,
                       "apply_rate": float},        # applied / proposed
       "memory": {"proposed": int, "applied": int, "apply_rate": float},
+      "effectiveness": {"prevented": int, "re_offended": int,
+                        "not_exercised": int, "prevention_rate": float|None,
+                        "records": int},
+        # THE OUTCOME METRIC. Every other block here counts what the loop WROTE;
+        # this one counts whether what it wrote HELD. `prevention_rate` is
+        # prevented / (prevented + re_offended) — the share of artifacts that were
+        # actually exercised and did their job.
+        #
+        # `not_exercised` is deliberately OUT of the denominator. An artifact the
+        # session never came near is evidence of nothing, and counting it would let
+        # the rate climb by growing the checklist — rewarding exactly the bloat
+        # Step 2.6 exists to fight.
+        #
+        # `None`, not 0.0, when nothing was exercised, and this diverges from
+        # `apply_rate` above ON PURPOSE — do not "fix" it to match. Low means bad
+        # for this rate, so a 0.0 placeholder is an empty sample wearing a failing
+        # grade, and the SKILL.md heuristic gating on `< 0.5` would fire on a window
+        # that measured nothing at all.
+        #
+        # `records` is how many records carried a usable `effectiveness` block, so a
+        # rate drawn from 2 of 30 runs cannot be read as one drawn from 30.
+        #
+        # POOLED IN FLEET MODE, unlike the per-repo fields below, and here is the
+        # argument rather than an assertion: these count EVENTS (a rule was
+        # exercised and held, or failed), not the size of one repo's files, so
+        # adding them across repos is meaningful where adding file sizes is not.
+        # The weighting is real and must be read with it — a repo contributing 21
+        # runs dominates one contributing 5. So this answers "across the fleet's
+        # sessions", NEVER "in a typical repo". For the latter, run one ledger.
       "re_offenses": [{"lesson": str, "count": int}],   # count>1 = escalation not working
       "escalation_rungs": {<rung>: int},           # whitelisted RUNGS
       "escalation_rungs_unknown": {<str>: int},    # producer drift
@@ -80,7 +111,20 @@ Output schema (all counts over the analyzed window):
         # per-ledger provenance. A path that did not resolve shows found:false
         # with records:0, so a fleet aggregate drawn from four repos cannot be
         # mistaken for one drawn from five.
-      "skipped_records": int                       # malformed JSONL lines
+      "skipped_records": int,                      # malformed JSONL lines
+      "commit_provenance": {                       # ONLY when --provenance is given
+        "commits": int, "measured": int, "unmeasured": int,
+        "no_trailer_field": int, "coerced_fields": int,
+        "measurement_rate": float|None,
+        "by_skill": {<skill or "none">: int},
+        "skipped_records": int, "ledgers": [...],
+      },
+        # Adoption of the `Measured-by:` rule, counted by a hook rather than
+        # self-reported. Read `no_trailer_field` beside the rate: those rows
+        # predate the field and are OUT of its denominator, because charging the
+        # rule for commits made before it was recorded would make the rate fall
+        # the further back you look. See `aggregate_provenance` for why this
+        # lives in the codify loop.
     }
 
 Bad records (non-dict, malformed JSON line, wrong field types) are skipped with
@@ -106,6 +150,24 @@ from pathlib import Path
 
 # Escalation-ladder rungs, weakest → strongest (see codify-learnings/SKILL.md).
 RUNGS = {"checklist", "memory", "claude_md", "skill_md", "hook", "script"}
+
+# Step 2.5's three buckets, in the order the skill classifies them. Named once so
+# the probe and the sum cannot come to disagree about which fields make a block
+# usable — they answered that question separately, and a field added to one and
+# not the other would go uncounted while the rate still printed.
+_EFFECTIVENESS_FIELDS = ("prevented", "re_offended", "not_exercised")
+
+
+def _usable_int(value: object) -> bool:
+    """Whether `_coerce_int` would accept this value, WITHOUT emitting its warning.
+
+    Deliberately not a call to `_coerce_int`: the probe runs before the sum over the
+    same block, so reusing the coercing form would warn twice about one bad value.
+    `_coerce_int` is pinned across both aggregators by `check_script_drift.py` and
+    cannot grow a quiet mode, so the acceptance rule is mirrored here instead —
+    `bool` rejected explicitly, because in Python it is an `int`.
+    """
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _git_toplevel() -> Path | None:
@@ -146,6 +208,60 @@ def _runs_dir() -> Path:
     return root / "cla.io" / "retro"
 
 
+# The fleet list lives beside the other `*.local.md` overlays in the repo's
+# own tree, never in the plugin: which repos exist is a fact about the
+# machine, and the plugin ships procedure.
+_FLEET_FILE = "fleet.local.md"
+
+# The hook's ledger, named here rather than in `_default_log_path` — that function
+# is parsed by `test_ledger_names_agree.py`, which requires EXACTLY ONE `.jsonl`
+# literal inside it and would fail on a second.
+_PROVENANCE_LEDGER = "commit-provenance.jsonl"
+
+
+def _fleet_roots(path: Path) -> list[Path]:
+    """Repo roots listed in the fleet file, one per `- ` bullet.
+
+    Reading a fleet aggregate meant typing every repo's ledger path by hand, every
+    time. Nothing saved the list, so the cross-repo view existed only when someone
+    remembered all of them and spelled each one correctly — and a path that
+    resolves to nothing contributes silently, which is exactly the sample-size
+    error the fleet mode exists to fix.
+
+    Format and location follow `cla.io/project-tokens.local.md`, the closest
+    precedent: a `*.local.md` file in the repo's own tree, one item per `- `
+    bullet, inline `#` comments and surrounding backticks stripped. It holds repo
+    ROOTS rather than ledger paths, so one file serves both aggregators and both
+    of this one's ledger kinds — each caller appends the ledger name it already
+    knows.
+
+    Raises rather than returning empty on a missing or contentless file: a fleet
+    run that silently analysed nothing would print `runs_analyzed: 0`, which both
+    retro skills instruct the reader to interpret as a cold start.
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"no fleet file at {path}. Create it with one repo root per `- ` "
+            f"bullet, e.g. `- /path/to/another-repo`, or pass explicit paths "
+            f"instead of --fleet"
+        )
+    roots: list[Path] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line.startswith("- "):
+            continue
+        item = line[2:].split("#", 1)[0].strip().strip("`").strip()
+        if item:
+            roots.append(Path(item))
+    if not roots:
+        raise ValueError(
+            f"{path} lists no repo roots — expected one per `- ` bullet. "
+            f"Refusing rather than analysing nothing and reporting it as a cold "
+            f"start"
+        )
+    return roots
+
+
 def _default_log_path() -> Path:
     """This loop's ledger inside the dir the writer resolves.
 
@@ -159,17 +275,28 @@ def _default_log_path() -> Path:
 
 
 def _load_records(log_path: Path, limit: int,
-                  explicit: bool = False) -> tuple[list[dict], int]:
+                  source: str = "default") -> tuple[list[dict], int]:
     if not log_path.exists():
         # Distinguish a genuine cold start from a misconfigured path: name where
         # we looked so a wrong CLAUDE_RETRO_DIR / repo root is not mistaken for
         # "no runs yet". The retro still reports runs_analyzed:0 either way.
-        # Name the provenance correctly. An explicit `--log` path that does not
-        # exist is a typo in the argument, not a misconfigured repo root, and
-        # telling the caller to check CLAUDE_RETRO_DIR sends them to the wrong file.
-        if explicit:
+        #
+        # THREE provenances, because each sends the reader somewhere different and
+        # naming the wrong one wastes the trip. `log` is a typo in an argument the
+        # caller typed. `fleet` is a root listed in the fleet file — usually not an
+        # error at all, just a repo that has not run the loop yet, and the reader
+        # should be told that before being sent to hunt. `default` is a
+        # misconfigured CLAUDE_RETRO_DIR or repo root. This was a bool, and every
+        # fleet-resolved path reported as `log`: "check the path", for a path the
+        # caller never wrote.
+        if source == "log":
             print(f"aggregate: no ledger at {log_path} (given explicitly via --log); "
                   f"contributing 0 runs. Check the path.", file=sys.stderr)
+        elif source == "fleet":
+            print(f"aggregate: no ledger at {log_path} (a root listed in the fleet "
+                  f"file); contributing 0 runs. Expected if that repo has not run the "
+                  f"loop yet — the `ledgers` array reports it as found:false either "
+                  f"way.", file=sys.stderr)
         else:
             src = "CLAUDE_RETRO_DIR" if os.environ.get("CLAUDE_RETRO_DIR", "").strip() \
                 else "repo cla.io/retro"
@@ -260,7 +387,7 @@ def _window(timestamps: list[str]) -> dict:
 
 
 def _load_ledgers(log_paths: list[Path], limit: int,
-                  explicit: bool) -> tuple[list[dict], int, list[dict]]:
+                  source: str) -> tuple[list[dict], int, list[dict]]:
     """Read every named ledger into one record list, with per-ledger provenance.
 
     Deduplicates by resolved path: a fleet invocation is assembled by a model from
@@ -289,12 +416,68 @@ def _load_ledgers(log_paths: list[Path], limit: int,
             continue
         seen.add(key)
         existed = p.exists()
-        recs, sk = _load_records(p, limit, explicit=explicit)
+        recs, sk = _load_records(p, limit, source=source)
         records.extend(recs)
         skipped += sk
         ledgers.append({"path": str(p), "found": existed,
                         "records": len(recs), "skipped": sk})
     return records, skipped, ledgers
+
+def aggregate_provenance(records: list[dict]) -> dict:
+    """Adoption numbers for the `Measured-by:` rule, from the commit-provenance hook.
+
+    Why this reader exists at all. `hooks/log-commit-provenance.py` writes one row
+    per commit and its own comment says why: "a rule stated in a skill has no
+    adoption number until something counts it ... whether the rule is being
+    followed is answerable only from a ledger", and it "leaves adjudication to the
+    retro". No retro read it. The rows accumulated at zero cost in attention and
+    answered nothing, which by this repo's rule makes a ledger exhaust.
+
+    It belongs to THIS loop rather than a new one because the question it answers
+    is the effectiveness question: the measurement-naming rule is one of the
+    lessons the loop escalated (to CLAUDE.md and a consistency guard), and whether
+    commits honour it is exactly "did that lesson hold?". The difference from the
+    `effectiveness` block above is what makes it worth having — that one is a model
+    grading its own session, this one is a hook counting commits.
+
+    `no_trailer_field` is kept OUT of the rate's denominator and reported beside
+    it. Those rows predate the field, and folding them into `unmeasured` would
+    charge the rule for commits made before it was recorded — a rate that falls
+    the further back you look, purely from schema history.
+    """
+    measured = unmeasured = no_field = coerced = 0
+    by_skill: Counter = Counter()
+    for ri, rec in enumerate(records):
+        raw = rec.get("measured_by_count")
+        if raw is None:
+            no_field += 1
+        else:
+            n = _coerce_int(raw, "measured_by_count", f"provenance record {ri}")
+            if n is None:
+                # NOT `no_trailer_field`. That bucket means "this row predates the
+                # field", and both the schema and SKILL.md tell the reader so. A
+                # present-but-wrong-typed value is producer drift, and filing it
+                # under schema history made it invisible — against this module's
+                # own rule that a bad record is warned about AND tallied.
+                coerced += 1
+            elif n > 0:
+                measured += 1
+            else:
+                unmeasured += 1
+        skill = rec.get("skill")
+        by_skill[skill if isinstance(skill, str) else "none"] += 1
+    scored = measured + unmeasured
+    return {
+        "commits": len(records),
+        "measured": measured,
+        "unmeasured": unmeasured,
+        "no_trailer_field": no_field,
+        "coerced_fields": coerced,
+        # None, not 0.0, on an empty sample — same reason as `prevention_rate`.
+        "measurement_rate": round(measured / scored, 2) if scored else None,
+        "by_skill": dict(by_skill.most_common()),
+    }
+
 
 def aggregate(records: list[dict]) -> dict:
     if not records:
@@ -305,6 +488,10 @@ def aggregate(records: list[dict]) -> dict:
 
     sugg: Counter = Counter()
     mem: Counter = Counter()
+    eff: Counter = Counter()
+    # How many records carried a usable `effectiveness` block. Without it a rate
+    # drawn from 2 records reads identically to one drawn from 30.
+    eff_records = 0
     re_offenses: Counter = Counter()
     escalation_rungs: Counter = Counter()
     escalation_unknown: Counter = Counter()
@@ -333,6 +520,18 @@ def aggregate(records: list[dict]) -> dict:
                                       drifted_fields)
         coerced_fields += _sum_counts(rec, "memory", ("proposed", "applied"), ri, mem,
                                       drifted_fields)
+        # Probed BEFORE summing, and with `_usable_int` rather than `_coerce_int`:
+        # `_sum_counts` reports how many fields COERCED AWAY, not whether the block
+        # contributed anything, and calling the coercing form here would warn about
+        # the same bad value twice. A record whose every count is malformed must not
+        # inflate `records` into claiming a sample it did not contribute to.
+        eff_block = rec.get("effectiveness")
+        if isinstance(eff_block, dict) and any(
+            _usable_int(eff_block.get(f)) for f in _EFFECTIVENESS_FIELDS
+        ):
+            eff_records += 1
+        coerced_fields += _sum_counts(rec, "effectiveness", _EFFECTIVENESS_FIELDS,
+                                      ri, eff, drifted_fields)
 
         re_offs = rec.get("re_offenses")
         if re_offs is not None and not isinstance(re_offs, list):
@@ -397,14 +596,32 @@ def aggregate(records: list[dict]) -> dict:
                     live_log_latest = lle_i
                 else:
                     coerced_fields += 1
-            if maint.get("trimmed") is True:
+            # `is True` is the right test — but on its own it made a
+            # non-conforming value indistinguishable from an honest `false`, with
+            # no warning and no tally. A producer writing `"yes"` or `1` reported
+            # as "no trim happened", and the trim heuristic then read a rate over
+            # a sample it never announced was thinner.
+            trimmed_raw = maint.get("trimmed")
+            if trimmed_raw is True:
                 trim_runs += 1
+            elif trimmed_raw is not None and not isinstance(trimmed_raw, bool):
+                print(f"aggregate: record {ri}: `maintenance.trimmed`="
+                      f"{trimmed_raw!r} not a bool — not counted", file=sys.stderr)
+                drifted_fields.add("maintenance")
         elif maint is not None:
             print(f"aggregate: record {ri}: `maintenance` is {type(maint).__name__}, "
                   f"expected object — skipping", file=sys.stderr)
             drifted_fields.add("maintenance")
-        if rec.get("process_issue") is True:
+        # Same shape as `maintenance.trimmed` above, and it matters more here:
+        # `process_issue_runs / runs_analyzed` is a gated heuristic, so a silently
+        # uncounted record moves a ratio the retro acts on.
+        pi_raw = rec.get("process_issue")
+        if pi_raw is True:
             process_issue_runs += 1
+        elif pi_raw is not None and not isinstance(pi_raw, bool):
+            print(f"aggregate: record {ri}: `process_issue`={pi_raw!r} not a bool "
+                  f"— not counted", file=sys.stderr)
+            drifted_fields.add("process_issue")
 
         if "output_chars" in rec:
             oc = _coerce_int(rec["output_chars"], "output_chars", f"record {ri}")
@@ -439,6 +656,12 @@ def aggregate(records: list[dict]) -> dict:
 
     proposed = sugg.get("proposed", 0)
     mem_proposed = mem.get("proposed", 0)
+    # Exercised = held + failed. `not_exercised` stays out: a rule the session never
+    # came near says nothing about whether the rule works, and letting it into the
+    # denominator would raise the rate for merely owning a longer checklist.
+    prevented = eff.get("prevented", 0)
+    re_offended = eff.get("re_offended", 0)
+    exercised = prevented + re_offended
     timestamps: list[str] = []
     for ri, rec in enumerate(records):
         ts = rec.get("ts")
@@ -460,6 +683,16 @@ def aggregate(records: list[dict]) -> dict:
             "proposed": mem_proposed,
             "applied": mem.get("applied", 0),
             "apply_rate": round(mem.get("applied", 0) / mem_proposed, 2) if mem_proposed else 0.0,
+        },
+        "effectiveness": {
+            "prevented": prevented,
+            "re_offended": re_offended,
+            "not_exercised": eff.get("not_exercised", 0),
+            # None, not 0.0, on an empty sample — see the output schema above. Low
+            # means bad here, so 0.0 would report "every rule failed" for a window
+            # in which nothing was measured at all.
+            "prevention_rate": round(prevented / exercised, 2) if exercised else None,
+            "records": eff_records,
         },
         "re_offenses": [{"lesson": name, "count": c} for name, c in re_offenses.most_common()],
         "escalation_rungs": dict(escalation_rungs),
@@ -495,16 +728,52 @@ def main() -> int:
                              "because any single repo's sample is thin enough to mislead.")
     parser.add_argument("--limit", type=int, default=10,
                         help="Analyze the last N records PER LEDGER (default 10, 0 = all).")
+    parser.add_argument("--fleet", nargs="?", const="", default=None, metavar="PATH",
+                        help="Read every repo root listed in the fleet file (default: "
+                             "this repo's cla.io/fleet.local.md) and analyze each "
+                             "one's ledger. Saves retyping every path, which is what "
+                             "made the cross-repo view depend on remembering all of "
+                             "them. Mutually exclusive with an explicit --log.")
+    # nargs="*" rather than "+" so the flag can be given bare: with --fleet it
+    # then means "every listed repo's provenance ledger", and without it "this
+    # repo's". Widening from "+" keeps every explicit-path invocation working.
+    parser.add_argument("--provenance", type=Path, nargs="*", default=None, metavar="PATH",
+                        help="One or more commit-provenance JSONL paths. Adds a "
+                             "`commit_provenance` block reporting how many commits "
+                             "carried a `Measured-by:` trailer — the adoption number "
+                             "for that rule, which nothing else counts. Independent of "
+                             "--log and never sliced by --limit: adoption is a property "
+                             "of the whole history, not of the last N commits.")
     args = parser.parse_args()
 
+    if args.fleet is not None and args.log:
+        print("aggregate: --fleet and --log are mutually exclusive; --fleet resolves "
+              "the paths for you", file=sys.stderr)
+        return 1
+    fleet_roots: list[Path] | None = None
+    if args.fleet is not None:
+        try:
+            fleet_path = Path(args.fleet) if args.fleet else _runs_dir().parent / _FLEET_FILE
+            fleet_roots = _fleet_roots(fleet_path)
+        except (ValueError, RuntimeError, FileNotFoundError, OSError) as e:
+            print(f"aggregate: {e}", file=sys.stderr)
+            return 1
+
+
     try:
-        log_paths = args.log or [_default_log_path()]
+        if fleet_roots is not None:
+            name = _default_log_path().name
+            log_paths = [r / "cla.io" / "retro" / name for r in fleet_roots]
+        else:
+            log_paths = args.log or [_default_log_path()]
     except (ValueError, RuntimeError) as e:
         print(f"aggregate: {e}", file=sys.stderr)
         return 1
 
-    records, skipped, ledgers = _load_ledgers(log_paths, args.limit,
-                                              explicit=args.log is not None)
+    records, skipped, ledgers = _load_ledgers(
+        log_paths, args.limit,
+        source="fleet" if fleet_roots is not None else
+        ("log" if args.log else "default"))
 
     result = aggregate(records)
     # `"maintenance" in result` is load-bearing, not defensive noise. `aggregate()`
@@ -526,6 +795,13 @@ def main() -> int:
         result["maintenance"]["failure_modes_bullets_trend"] = []
         result["maintenance"]["live_log_entries_latest"] = None
         result["output_chars"] = {"latest": None, "trend": [], "mean": 0.0}
+        # `effectiveness` is deliberately NOT suppressed here, and this note exists so
+        # nobody adds it for symmetry. The fields above measure ONE repo's files, which
+        # do not add up across repos. `effectiveness` counts events — a rule was
+        # exercised and held, or failed — and events do add up. What a reader must
+        # carry instead is the weighting: the pooled rate is dominated by whichever
+        # repo contributed the most runs, so it describes the fleet's sessions and not
+        # a typical repo.
         result["per_repo_fields_suppressed"] = True
     result["skipped_records"] = skipped
     # `log_path` stays a bare string in the single-ledger case, which is every
@@ -540,6 +816,36 @@ def main() -> int:
         result["log_path"] = ledgers[0]["path"]
     result["log_paths"] = [entry["path"] for entry in ledgers]
     result["ledgers"] = ledgers
+
+    # `is not None`, not truthiness: a bare `--provenance` parses to an EMPTY list,
+    # which is the "resolve it for me" form and must not read as "flag absent".
+    if args.provenance is not None:
+        prov_paths = list(args.provenance)
+        if not prov_paths:
+            # Wrapped like every other `_runs_dir()` call site. Bare, it raised an
+            # uncaught traceback on a relative CLAUDE_RETRO_DIR or an unresolvable
+            # repo root — and reachable exactly when `--log` was given, which
+            # suppresses the earlier call that would otherwise have caught it. The
+            # whole `result` is already built by then and was lost with it.
+            try:
+                prov_paths = ([r / "cla.io" / "retro" / _PROVENANCE_LEDGER
+                               for r in fleet_roots] if fleet_roots is not None
+                              else [_runs_dir() / _PROVENANCE_LEDGER])
+            except (ValueError, RuntimeError) as e:
+                print(f"aggregate: {e}", file=sys.stderr)
+                return 1
+        # limit=0 deliberately: `--limit` slices run ledgers, and adoption of a
+        # commit-message rule is a property of the whole history. Slicing it to the
+        # last N would report a rate for a window the caller chose for a different
+        # ledger entirely.
+        prov_records, prov_skipped, prov_ledgers = _load_ledgers(
+            prov_paths, 0,
+            source="log" if args.provenance else
+            ("fleet" if fleet_roots is not None else "default"))
+        block = aggregate_provenance(prov_records)
+        block["skipped_records"] = prov_skipped
+        block["ledgers"] = prov_ledgers
+        result["commit_provenance"] = block
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
