@@ -426,6 +426,40 @@ def test_ledgers_names_a_path_that_did_not_resolve(tmp_path: Path) -> None:
     ]
 
 
+def test_a_record_drifting_in_the_ts_loop_and_the_record_loop_counts_once(
+        tmp_path: Path) -> None:
+    """`shape_drift_records` must never exceed `runs_analyzed`.
+
+    `ts` was validated in a SECOND loop that ran after the record loop closed, so
+    it did a bare `shape_drift_records += 1` outside the per-record set. A record
+    drifting in both places was counted twice, and a per-record counter larger than
+    the record count contradicts the sentence both SKILL.md files use to explain
+    the field — that it counts records whose metrics ran on less than they claim.
+    """
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"ts": 123, "re_offenses": "not-a-list"}])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 1
+    assert out["shape_drift_records"] == 1, "one record, counted once"
+    assert out["shape_drift_fields"] == {"re_offenses": 1, "ts": 1}
+    assert out["shape_drift_records"] <= out["runs_analyzed"], \
+        "a per-record counter can never exceed the record count"
+
+
+def test_a_fleet_where_every_ledger_is_missing_does_not_crash(tmp_path: Path) -> None:
+    """The suppression block consumed a key the empty-records return does not carry.
+
+    `aggregate([])` returns a three-key skeleton with no `maintenance`, so a fleet
+    run whose every path was mistyped died with `KeyError: 'maintenance'` and
+    printed no JSON at all — in the one aggregator hardened to survive a malformed
+    record, on the exact case the `ledgers` array exists to make visible.
+    """
+    out, _ = _run_multi([tmp_path / "nope-a.jsonl", tmp_path / "nope-b.jsonl"])
+    assert out["runs_analyzed"] == 0
+    assert [entry["found"] for entry in out["ledgers"]] == [False, False]
+    assert out["shape_drift_records"] == 0
+
+
 def test_per_repo_fields_are_suppressed_in_fleet_mode(tmp_path: Path) -> None:
     # These describe ONE repo's own files. Pooled across repos, `_latest` means
     # "whichever ledger was listed last" and `_trend` interleaves unrelated repos —

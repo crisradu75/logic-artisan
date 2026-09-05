@@ -716,6 +716,22 @@ def test_ledgers_names_a_path_that_did_not_resolve(tmp_path: Path) -> None:
     ]
 
 
+def test_a_deduped_repeat_is_reported_as_the_single_ledger_it_is(tmp_path: Path) -> None:
+    """`log_path` must follow what was READ, not what was asked for.
+
+    The two diverged the moment dedupe arrived: the branch tested the raw argparse
+    list while the output was derived from the deduped one, so `--log a a` read
+    exactly one ledger, listed one path, and still omitted `log_path` — the
+    documented "this is a fleet result, do not attribute it to one repo" signal.
+    """
+    log = tmp_path / "a.jsonl"
+    _write_log(log, [{"phases": []}])
+    out, _ = _run_multi([log, log])
+    assert len(out["ledgers"]) == 1
+    assert out["log_paths"] == [str(log)]
+    assert out["log_path"] == str(log), "one ledger read must report as a single-ledger run"
+
+
 def test_the_same_ledger_twice_is_not_double_counted(tmp_path: Path) -> None:
     # A fleet invocation is assembled from a repo list, often by glob or brace
     # expansion, so a repeated path is a real shape rather than a typo alone.

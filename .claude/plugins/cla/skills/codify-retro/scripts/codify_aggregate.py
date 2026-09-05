@@ -69,7 +69,13 @@ Output schema (all counts over the analyzed window):
         # BEFORE any metric below — non-zero means some metric ran on fewer
         # records than `runs_analyzed` reports.
       "shape_drift_records": int,                    # records with any such drift
-      "log_paths": [str, ...],                       # every ledger given
+      "log_path": str,                               # single-ledger runs ONLY —
+        # omitted when several ledgers were read, so a fleet result cannot be
+        # attributed to one repo. Keys off what was READ, after dedupe.
+      "per_repo_fields_suppressed": true,           # fleet runs only —
+        # the per-repo maintenance/output_chars fields above describe ONE
+        # repo's files and are nulled rather than pooled.
+      "log_paths": [str, ...],                       # every ledger read (deduped)
       "ledgers": [{"path": str, "found": bool, "records": int, "skipped": int}],
         # per-ledger provenance. A path that did not resolve shows found:false
         # with records:0, so a fleet aggregate drawn from four repos cannot be
@@ -411,6 +417,18 @@ def aggregate(records: list[dict]) -> dict:
             else:
                 coerced_fields += 1
 
+        # `ts` is validated HERE, inside the record loop, so it joins the same
+        # per-record set as every other field. Tallying it in the later timestamps
+        # loop instead double-counted a record that drifted in both places, and
+        # `shape_drift_records` could then exceed `runs_analyzed` — a per-record
+        # counter larger than the record count, which makes the field unreadable
+        # against the very sentence both SKILL.md files use to explain it.
+        ts_value = rec.get("ts")
+        if ts_value is not None and not isinstance(ts_value, str):
+            print(f"aggregate: record {ri}: `ts`={ts_value!r} not a string — excluded "
+                  f"from window", file=sys.stderr)
+            drifted_fields.add("ts")
+
         if drifted_fields:
             shape_drift_records += 1
             # Derived from the per-record set rather than incremented at each call
@@ -426,14 +444,9 @@ def aggregate(records: list[dict]) -> dict:
         ts = rec.get("ts")
         if isinstance(ts, str):
             timestamps.append(ts)
-        elif ts is not None:
-            print(f"aggregate: record {ri}: `ts`={ts!r} not a string — excluded from window",
-                  file=sys.stderr)
-            # Tallied here rather than via `drifted_fields`, because this loop runs
-            # AFTER the record loop closed and that set is gone. The sibling tallies
-            # `ts` inside its record loop; the two shapes differ, the output must not.
-            shape_drift["ts"] += 1
-            shape_drift_records += 1
+        # No warning or tally here — a non-string `ts` is reported by the record
+        # loop above, which is where the per-record drift set lives. This loop only
+        # collects, so it cannot double-count what that one already counted.
     return {
         "runs_analyzed": len(records),
         "window": _window(timestamps),
@@ -519,8 +532,12 @@ def main() -> int:
     # caller that exists today. A multi-ledger run OMITS it rather than naming
     # one of several: a consumer still reading it then fails loudly instead of
     # attributing a fleet-wide aggregate to one repo.
-    if len(log_paths) == 1:
-        result["log_path"] = str(log_paths[0])
+    # Branch on what was actually READ, not on what was asked for. These two
+    # disagree after a dedupe: `--log a a` left `log_paths` at length 2 and omitted
+    # `log_path` — the documented "this is a fleet result" signal — for a run that
+    # read exactly one ledger, while `log_paths` in the output correctly showed one.
+    if len(ledgers) == 1:
+        result["log_path"] = ledgers[0]["path"]
     result["log_paths"] = [entry["path"] for entry in ledgers]
     result["ledgers"] = ledgers
     print(json.dumps(result, indent=2, ensure_ascii=False))

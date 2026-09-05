@@ -97,7 +97,10 @@ Schema of the output (all counts are over the analyzed window):
         # BEFORE any metric below — non-zero means some metric ran on fewer
         # records than `runs_analyzed` reports.
       "shape_drift_records": int,                    # records with any such drift
-      "log_paths": [str, ...],                       # every ledger given
+      "log_path": str,                               # single-ledger runs ONLY —
+        # omitted when several ledgers were read, so a fleet result cannot be
+        # attributed to one repo. Keys off what was READ, after dedupe.
+      "log_paths": [str, ...],                       # every ledger read (deduped)
       "ledgers": [{"path": str, "found": bool, "records": int, "skipped": int}],
         # per-ledger provenance. A path that did not resolve shows found:false
         # with records:0, so a fleet aggregate drawn from four repos cannot be
@@ -673,14 +676,8 @@ def aggregate(records: list[dict]) -> dict:
             for field in drifted_fields:
                 shape_drift[field] += 1
 
-    # SORTED, because records arrive concatenated in `--log` argument order. Taking
-    # the first and last of that concatenation produced a window that ended BEFORE
-    # it started whenever a newer ledger was listed first — printed with exit 0.
-    # The sort is lexical: these are ISO-8601 strings and the corpus mixes `Z` with
-    # explicit offsets, so two instants on the same day recorded in different zones
-    # can order wrongly. That is a bounded inaccuracy inside a day; argument order
-    # was unbounded and could invert the whole window.
-    timestamps = sorted(r.get("ts") for r in records if isinstance(r.get("ts"), str))
+    # Collect only; `_window` owns the ordering and explains why.
+    timestamps = [r.get("ts") for r in records if isinstance(r.get("ts"), str)]
     return {
         "runs_analyzed": len(records),
         "window": _window(timestamps),
@@ -756,8 +753,12 @@ def main() -> int:
     # caller that exists today. A multi-ledger run OMITS it rather than naming
     # one of several: a consumer still reading it then fails loudly instead of
     # attributing a fleet-wide aggregate to one repo.
-    if len(log_paths) == 1:
-        result["log_path"] = str(log_paths[0])
+    # Branch on what was actually READ, not on what was asked for. These two
+    # disagree after a dedupe: `--log a a` left `log_paths` at length 2 and omitted
+    # `log_path` — the documented "this is a fleet result" signal — for a run that
+    # read exactly one ledger, while `log_paths` in the output correctly showed one.
+    if len(ledgers) == 1:
+        result["log_path"] = ledgers[0]["path"]
     result["log_paths"] = [entry["path"] for entry in ledgers]
     result["ledgers"] = ledgers
     print(json.dumps(result, indent=2, ensure_ascii=False))
