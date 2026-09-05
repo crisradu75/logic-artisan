@@ -498,3 +498,178 @@ def test_entry_level_drift_reaches_the_tally(tmp_path: Path) -> None:
     out, _ = _run(log)
     assert out["shape_drift_fields"] == {"re_offenses": 1, "rejected_lessons": 1}
     assert out["shape_drift_records"] == 2
+
+
+# --- effectiveness: the outcome metric (Step 2.5's tally) -------------------
+# Every other block in this aggregate counts what a run WROTE. These count
+# whether what earlier runs wrote actually HELD, which is the only question the
+# loop exists to answer and the one it went years without asking.
+
+
+def test_effectiveness_pools_and_computes_prevention_rate(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"effectiveness": {"prevented": 6, "re_offended": 2, "not_exercised": 40}},
+        {"effectiveness": {"prevented": 2, "re_offended": 2, "not_exercised": 41}},
+    ])
+    out, _ = _run(log)
+    # 8 held of 12 exercised.
+    assert out["effectiveness"]["prevented"] == 8
+    assert out["effectiveness"]["re_offended"] == 4
+    assert out["effectiveness"]["prevention_rate"] == 0.67
+    assert out["effectiveness"]["records"] == 2
+
+
+def test_not_exercised_is_out_of_the_denominator(tmp_path: Path) -> None:
+    """A rule the session never came near is evidence of nothing.
+
+    Counting it would let the rate climb by merely growing the checklist —
+    rewarding the exact bloat Step 2.6 exists to fight. Same exercised counts,
+    wildly different `not_exercised`, and the rate must not move.
+    """
+    lean = tmp_path / "lean.jsonl"
+    bloated = tmp_path / "bloated.jsonl"
+    _write_log(lean, [{"effectiveness": {"prevented": 1, "re_offended": 1,
+                                         "not_exercised": 0}}])
+    _write_log(bloated, [{"effectiveness": {"prevented": 1, "re_offended": 1,
+                                            "not_exercised": 500}}])
+    lean_out, _ = _run(lean)
+    bloated_out, _ = _run(bloated)
+    assert lean_out["effectiveness"]["prevention_rate"] == 0.5
+    assert bloated_out["effectiveness"]["prevention_rate"] == 0.5
+    assert bloated_out["effectiveness"]["not_exercised"] == 500
+
+
+def test_prevention_rate_is_none_not_zero_when_nothing_was_exercised(
+        tmp_path: Path) -> None:
+    """Diverges from `apply_rate`'s 0.0 on purpose — do not "fix" it to match.
+
+    Low means BAD for this rate, so a 0.0 placeholder is an empty sample wearing
+    a failing grade, and the SKILL.md heuristic gating on `< 0.5` would fire on a
+    window that measured nothing at all.
+    """
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": {"prevented": 0, "re_offended": 0,
+                                        "not_exercised": 12}}])
+    out, _ = _run(log)
+    assert out["effectiveness"]["prevention_rate"] is None
+    # The sibling rate on the same record set still uses 0.0 — the divergence is
+    # between the two fields, and that is the point.
+    assert out["suggestions"]["apply_rate"] == 0.0
+
+
+def test_a_ledger_with_no_effectiveness_field_reports_zero_records(
+        tmp_path: Path) -> None:
+    """The whole existing corpus looks like this — the field is optional-additive."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"ts": "2026-06-24",
+                      "suggestions": {"proposed": 4, "applied": 4, "rejected": 0}}])
+    out, _ = _run(log)
+    assert out["effectiveness"]["records"] == 0
+    assert out["effectiveness"]["prevention_rate"] is None
+    assert out["shape_drift_fields"] == {}
+
+
+def test_records_counts_only_the_runs_that_carried_a_tally(tmp_path: Path) -> None:
+    """A rate drawn from 1 of 3 runs must not read as one drawn from 3."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"effectiveness": {"prevented": 3, "re_offended": 1, "not_exercised": 9}},
+        {},
+        {"suggestions": {"proposed": 2, "applied": 1, "rejected": 1}},
+    ])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 3
+    assert out["effectiveness"]["records"] == 1
+
+
+def test_a_record_whose_every_count_is_malformed_is_not_counted_as_a_record(
+        tmp_path: Path) -> None:
+    """`_sum_counts` reports coercions, not usability — hence the separate probe."""
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": {"prevented": "six", "re_offended": None,
+                                        "not_exercised": True}}])
+    out, err = _run(log)
+    assert out["effectiveness"]["records"] == 0
+    assert out["effectiveness"]["prevention_rate"] is None
+    assert out["coerced_fields"] >= 1
+    assert "prevented='six' not int" in err
+
+
+def test_a_partly_malformed_block_still_counts_and_warns_once(tmp_path: Path) -> None:
+    """One usable count makes the record a contributor; the bad one is warned ONCE.
+
+    The probe runs over the same block the sum then walks, so using the coercing
+    form for both would report a single bad value twice and overstate the noise
+    floor a reader is told to check first.
+    """
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": {"prevented": 5, "re_offended": "two",
+                                        "not_exercised": 3}}])
+    out, err = _run(log)
+    assert out["effectiveness"]["records"] == 1
+    assert out["effectiveness"]["prevented"] == 5
+    assert out["effectiveness"]["re_offended"] == 0
+    assert out["effectiveness"]["prevention_rate"] == 1.0
+    assert err.count("re_offended='two' not int") == 1
+
+
+def test_bool_counts_are_rejected_like_every_other_count(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": {"prevented": True, "re_offended": 1,
+                                        "not_exercised": 0}}])
+    out, err = _run(log)
+    assert out["effectiveness"]["prevented"] == 0
+    assert "is bool, expected int" in err
+
+
+def test_non_dict_effectiveness_is_shape_drift(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": "n/a"}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"effectiveness": 1}
+    assert out["shape_drift_records"] == 1
+    assert out["effectiveness"]["records"] == 0
+    assert "`effectiveness` is str" in err
+
+
+def test_explicit_null_effectiveness_is_not_drift(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"effectiveness": None}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {}
+    assert out["effectiveness"]["records"] == 0
+
+
+def test_effectiveness_is_pooled_across_repos_not_suppressed(tmp_path: Path) -> None:
+    """Deliberately NOT in the per-repo suppression list beside `output_chars`.
+
+    Those fields measure ONE repo's files, which do not add up. These count
+    events — a rule was exercised and held, or failed — and events do.
+    """
+    a = tmp_path / "a.jsonl"
+    b = tmp_path / "b.jsonl"
+    _write_log(a, [{"effectiveness": {"prevented": 3, "re_offended": 1,
+                                      "not_exercised": 5}, "output_chars": 1000}])
+    _write_log(b, [{"effectiveness": {"prevented": 1, "re_offended": 3,
+                                      "not_exercised": 5}, "output_chars": 2000}])
+    out, _ = _run_multi([a, b])
+    assert out["per_repo_fields_suppressed"] is True
+    assert out["output_chars"]["latest"] is None       # per-repo → suppressed
+    assert out["effectiveness"]["prevented"] == 4      # events → pooled
+    assert out["effectiveness"]["re_offended"] == 4
+    assert out["effectiveness"]["prevention_rate"] == 0.5
+    assert out["effectiveness"]["records"] == 2
+
+
+def test_a_fleet_of_missing_ledgers_still_reports_no_effectiveness(
+        tmp_path: Path) -> None:
+    """The empty-record skeleton omits `effectiveness` entirely.
+
+    Safe only because a consumer's `.get(...)` then yields None — the same value
+    the populated path uses for "not measured" — rather than a 0.0 that reads as
+    a failing grade. Pinning it so the skeleton is not "helpfully" filled with zeros.
+    """
+    out, _ = _run_multi([tmp_path / "nope-a.jsonl", tmp_path / "nope-b.jsonl"])
+    assert out["runs_analyzed"] == 0
+    assert out.get("effectiveness", {}).get("prevention_rate") is None

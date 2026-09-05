@@ -60,6 +60,17 @@ For each `failure-modes.md` bullet and each memory-index entry, classify how it 
 
 Name every **re-offense** explicitly in the log's "Recurring patterns" section, with the artifact that failed to prevent it and the rung it is being escalated to.
 
+**Keep the three counts — they are this loop's only outcome measure.** Carry
+`prevented` / `re-offended` / `n-a` to Step 7 as the `effectiveness` field. Every other
+field on the run record counts what this run *wrote*; these count whether what earlier
+runs wrote actually *held*. Discarding them is what let the loop report a perfect
+`apply_rate` for years while re-offenses stayed flat — a score for output, with nothing
+measuring outcome.
+
+Count what you actually classified, and do not pad. If you skimmed rather than
+classified, say so and omit the field: a fabricated denominator is worse than a missing
+one, because it reads downstream as a measurement.
+
 ## Step 2.6 — Maintenance pass (retire-on-escalation, then size-triggered)
 
 **Retire-on-escalation runs EVERY time, not only when a size threshold trips.** For each lesson this run escalates *off* the checklist (Step 2.5 produced a re-offense routed to memory / `CLAUDE.md` / `SKILL.md` / a hook / a script), name the `failure-modes.md` bullet it supersedes and decide, in one line each:
@@ -97,6 +108,7 @@ The distinction is not cosmetic, but be precise about the cost. `cla.io/overlays
 
 **Read `references/step3-template.md` first** — the exact markdown shape to reproduce. Correctness-gating rules (hold these even if the reference isn't reloaded):
 
+- **At most 3 suggestions, and each one must cite a concrete failure from THIS session** — a user correction, a reverted edit, a denied tool, an abandoned approach, a wasted turn. Quote it. A candidate that cannot cite one is not proposed at all; it is not deferred, not softened, not folded into another item. Rank the qualifying candidates by payoff and **drop everything past the third** — the cap is a forcing function on ranking, not a quota to fill, and a run with one real lesson proposes one. Nothing is lost by dropping: a lesson that matters recurs, and the next session that hits it raises it again with two occurrences of evidence instead of one. Memory candidates are separate and not counted against this cap.
 - **Number every suggestion sequentially**, ordered by payoff (most valuable first), across the whole list — memory candidates included, no category sections — so Step 4 can reference them by index (e.g. "y 1,3,5").
 - Every suggestion is **routed** (targets an artifact satisfying the routing rule above — a re-offense targets one rung higher than the artifact that just failed) and leads with a **plain-language benefit** — what this concretely saves next time — not a `[cost: ...]` tag (found confusing in practice; priority order plus a stated benefit carries the same signal without the jargon).
 - **Skills: SKILL.md-only edits — no script edits.**
@@ -110,23 +122,27 @@ The loop must be able to improve *itself* between runs, not only the artifacts i
 
 ## Step 4 — Interactive apply
 
-Show the full report. Then prompt for the apply mode, presenting "apply all" as the default:
+Show the full report. Then prompt — with **no default, and "apply all" not offered as a single keystroke**:
 
 ```
 N suggestions + M memory candidates proposed.
-Apply? (Y = apply all [default] / n = reject all / s = step through individually / "y 1,3,5" = apply specific items by index)
+Which should I apply? ("1,3" = apply those / n = none / s = step through one at a time)
 ```
 
-- `Y` (or empty/`yes`/`all`) → apply every suggestion in order; mark each **APPLIED**.
+**Why there is no default here, so nobody restores one.** Measured 2026-09-05 across six repos, with `codify_aggregate.py --limit 0 --log <each repo's codify-runs.jsonl>`: **219 suggestions proposed, 219 applied, 0 ever rejected**, over 52 runs. A gate that has never once said no is not a gate. It was reached at the end of long sessions with "apply all" one keypress away, and the cheapest action was always yes — so `apply_rate: 1.0` measured the prompt's shape, not the suggestions' quality. Making the user name indices costs one line of typing and is the entire fix.
+
+**Rejection is an ordinary outcome, not a failure of the run.** Say so when you show the report, and never argue a rejected item back onto the list.
+
+- An **index list** (`1,3` or `y 1,3`) → apply those, mark the rest **REJECTED**.
 - `n` (or `none`/`reject`) → mark every suggestion **REJECTED**, write nothing.
+- **Empty input is not consent** — re-prompt once, then treat a second empty answer as `n`. Do not read silence as approval.
 - `s` (or `step`/`one`) → fall back to one-at-a-time:
   ```
-  [3/12] {this repo's own load-bearing-convention example — see cla.io/overlays/codify-learnings.md} (CLAUDE.md)
+  [2/3] {this repo's own load-bearing-convention example — see cla.io/overlays/codify-learnings.md} (CLAUDE.md)
     Benefit: today's session needed this and didn't have it.
   Apply? (y/n/edit)
   ```
   - `y` → apply, mark **APPLIED**. `n` → mark **REJECTED**. `edit` → ask for revised wording, apply.
-- `y 1,3,5` (indices) → apply only the listed suggestions, mark the rest **REJECTED**.
 
 (Use the tools you actually need — Edit for in-place edits, Write for new files, Bash for memory writes.)
 
@@ -147,6 +163,7 @@ If Step 2.6 triggered a `lessons-learned.md` trim, move the oldest entries to `c
 One paragraph:
 - N suggestions proposed, X applied, Y rejected
 - M memory candidates proposed, X applied
+- The Step 2.5 tally: P prevented, R re-offended, U not exercised. State it even when it is dull — this is the only line in the summary that reports an *outcome* rather than an output, and the loop spent years without one.
 - Any lesson rejected ≥2 times in the prior log → flag for removal from `references/failure-modes.md`
 - Any lesson that **re-offended** this session (Step 2.5) → confirm it was escalated up a rung, not merely re-stated; name the new rung
 - Suggested next step if appropriate (e.g. "consider `/commit-commands:commit` for the applied edits")

@@ -23,6 +23,8 @@ Input record schema (counts-only; see lib/log_run.py):
       "scope": str,                   # plugin name or "repo-wide"
       "suggestions": {"proposed": int, "applied": int, "rejected": int},
       "memory":      {"proposed": int, "applied": int},
+      "effectiveness": {"prevented": int, "re_offended": int,
+                        "not_exercised": int},   # optional — Step 2.5's tally
       "re_offenses": [ {"lesson": str, "failing_artifact": str,
                         "escalated_to": str} ],     # escalated_to in RUNGS below
       "rejected_lessons": [str, ...],               # lessons rejected THIS run
@@ -41,6 +43,35 @@ Output schema (all counts over the analyzed window):
       "suggestions": {"proposed": int, "applied": int, "rejected": int,
                       "apply_rate": float},        # applied / proposed
       "memory": {"proposed": int, "applied": int, "apply_rate": float},
+      "effectiveness": {"prevented": int, "re_offended": int,
+                        "not_exercised": int, "prevention_rate": float|None,
+                        "records": int},
+        # THE OUTCOME METRIC. Every other block here counts what the loop WROTE;
+        # this one counts whether what it wrote HELD. `prevention_rate` is
+        # prevented / (prevented + re_offended) — the share of artifacts that were
+        # actually exercised and did their job.
+        #
+        # `not_exercised` is deliberately OUT of the denominator. An artifact the
+        # session never came near is evidence of nothing, and counting it would let
+        # the rate climb by growing the checklist — rewarding exactly the bloat
+        # Step 2.6 exists to fight.
+        #
+        # `None`, not 0.0, when nothing was exercised, and this diverges from
+        # `apply_rate` above ON PURPOSE — do not "fix" it to match. Low means bad
+        # for this rate, so a 0.0 placeholder is an empty sample wearing a failing
+        # grade, and the SKILL.md heuristic gating on `< 0.5` would fire on a window
+        # that measured nothing at all.
+        #
+        # `records` is how many records carried a usable `effectiveness` block, so a
+        # rate drawn from 2 of 30 runs cannot be read as one drawn from 30.
+        #
+        # POOLED IN FLEET MODE, unlike the per-repo fields below, and here is the
+        # argument rather than an assertion: these count EVENTS (a rule was
+        # exercised and held, or failed), not the size of one repo's files, so
+        # adding them across repos is meaningful where adding file sizes is not.
+        # The weighting is real and must be read with it — a repo contributing 21
+        # runs dominates one contributing 5. So this answers "across the fleet's
+        # sessions", NEVER "in a typical repo". For the latter, run one ledger.
       "re_offenses": [{"lesson": str, "count": int}],   # count>1 = escalation not working
       "escalation_rungs": {<rung>: int},           # whitelisted RUNGS
       "escalation_rungs_unknown": {<str>: int},    # producer drift
@@ -106,6 +137,24 @@ from pathlib import Path
 
 # Escalation-ladder rungs, weakest → strongest (see codify-learnings/SKILL.md).
 RUNGS = {"checklist", "memory", "claude_md", "skill_md", "hook", "script"}
+
+# Step 2.5's three buckets, in the order the skill classifies them. Named once so
+# the probe and the sum cannot come to disagree about which fields make a block
+# usable — they answered that question separately, and a field added to one and
+# not the other would go uncounted while the rate still printed.
+_EFFECTIVENESS_FIELDS = ("prevented", "re_offended", "not_exercised")
+
+
+def _usable_int(value: object) -> bool:
+    """Whether `_coerce_int` would accept this value, WITHOUT emitting its warning.
+
+    Deliberately not a call to `_coerce_int`: the probe runs before the sum over the
+    same block, so reusing the coercing form would warn twice about one bad value.
+    `_coerce_int` is pinned across both aggregators by `check_script_drift.py` and
+    cannot grow a quiet mode, so the acceptance rule is mirrored here instead —
+    `bool` rejected explicitly, because in Python it is an `int`.
+    """
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _git_toplevel() -> Path | None:
@@ -305,6 +354,10 @@ def aggregate(records: list[dict]) -> dict:
 
     sugg: Counter = Counter()
     mem: Counter = Counter()
+    eff: Counter = Counter()
+    # How many records carried a usable `effectiveness` block. Without it a rate
+    # drawn from 2 records reads identically to one drawn from 30.
+    eff_records = 0
     re_offenses: Counter = Counter()
     escalation_rungs: Counter = Counter()
     escalation_unknown: Counter = Counter()
@@ -333,6 +386,18 @@ def aggregate(records: list[dict]) -> dict:
                                       drifted_fields)
         coerced_fields += _sum_counts(rec, "memory", ("proposed", "applied"), ri, mem,
                                       drifted_fields)
+        # Probed BEFORE summing, and with `_usable_int` rather than `_coerce_int`:
+        # `_sum_counts` reports how many fields COERCED AWAY, not whether the block
+        # contributed anything, and calling the coercing form here would warn about
+        # the same bad value twice. A record whose every count is malformed must not
+        # inflate `records` into claiming a sample it did not contribute to.
+        eff_block = rec.get("effectiveness")
+        if isinstance(eff_block, dict) and any(
+            _usable_int(eff_block.get(f)) for f in _EFFECTIVENESS_FIELDS
+        ):
+            eff_records += 1
+        coerced_fields += _sum_counts(rec, "effectiveness", _EFFECTIVENESS_FIELDS,
+                                      ri, eff, drifted_fields)
 
         re_offs = rec.get("re_offenses")
         if re_offs is not None and not isinstance(re_offs, list):
@@ -439,6 +504,12 @@ def aggregate(records: list[dict]) -> dict:
 
     proposed = sugg.get("proposed", 0)
     mem_proposed = mem.get("proposed", 0)
+    # Exercised = held + failed. `not_exercised` stays out: a rule the session never
+    # came near says nothing about whether the rule works, and letting it into the
+    # denominator would raise the rate for merely owning a longer checklist.
+    prevented = eff.get("prevented", 0)
+    re_offended = eff.get("re_offended", 0)
+    exercised = prevented + re_offended
     timestamps: list[str] = []
     for ri, rec in enumerate(records):
         ts = rec.get("ts")
@@ -460,6 +531,16 @@ def aggregate(records: list[dict]) -> dict:
             "proposed": mem_proposed,
             "applied": mem.get("applied", 0),
             "apply_rate": round(mem.get("applied", 0) / mem_proposed, 2) if mem_proposed else 0.0,
+        },
+        "effectiveness": {
+            "prevented": prevented,
+            "re_offended": re_offended,
+            "not_exercised": eff.get("not_exercised", 0),
+            # None, not 0.0, on an empty sample — see the output schema above. Low
+            # means bad here, so 0.0 would report "every rule failed" for a window
+            # in which nothing was measured at all.
+            "prevention_rate": round(prevented / exercised, 2) if exercised else None,
+            "records": eff_records,
         },
         "re_offenses": [{"lesson": name, "count": c} for name, c in re_offenses.most_common()],
         "escalation_rungs": dict(escalation_rungs),
@@ -526,6 +607,13 @@ def main() -> int:
         result["maintenance"]["failure_modes_bullets_trend"] = []
         result["maintenance"]["live_log_entries_latest"] = None
         result["output_chars"] = {"latest": None, "trend": [], "mean": 0.0}
+        # `effectiveness` is deliberately NOT suppressed here, and this note exists so
+        # nobody adds it for symmetry. The fields above measure ONE repo's files, which
+        # do not add up across repos. `effectiveness` counts events — a rule was
+        # exercised and held, or failed — and events do add up. What a reader must
+        # carry instead is the weighting: the pooled rate is dominated by whichever
+        # repo contributed the most runs, so it describes the fleet's sessions and not
+        # a typical repo.
         result["per_repo_fields_suppressed"] = True
     result["skipped_records"] = skipped
     # `log_path` stays a bare string in the single-ledger case, which is every

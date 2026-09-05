@@ -24,6 +24,7 @@ Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB):
   "scope": "<'repo-wide' or an optional subsystem scope note>",
   "suggestions": {"proposed": N, "applied": N, "rejected": N},
   "memory": {"proposed": N, "applied": N},
+  "effectiveness": {"prevented": N, "re_offended": N, "not_exercised": N},
   "re_offenses": [
     {"lesson": "<short slug>", "failing_artifact": "<artifact that failed to prevent it>",
      "escalated_to": "checklist|memory|claude_md|skill_md|hook|script"}
@@ -35,6 +36,14 @@ Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB):
 }
 ```
 
+- `effectiveness` is the **Step 2.5 tally** — the three buckets that step already
+  produces, one count each, over every `failure-modes.md` bullet and memory entry it
+  classified. It is the loop's only outcome measure: every other field counts what this
+  run WROTE, and these count whether what earlier runs wrote actually held.
+  `re_offended` MUST equal `len(re_offenses)` — the same events, once as a count and
+  once in detail. Omit the whole field only if Step 2.5 genuinely classified nothing;
+  do NOT write zeros to fill it, because a zero denominator and a real one are read
+  differently downstream.
 - `escalated_to` MUST be one of the six escalation-ladder rungs (the aggregator buckets anything else under `escalation_rungs_unknown`).
 - `rejected_lessons` lists the slugs of any suggestions marked REJECTED this run — `/cla:codify-retro` flags a slug rejected ≥2× for retirement.
 - `process_issue` is `true` when the Step 3.5 self-check found a codify-process problem (mis-routing, weak effectiveness check, workflow snag), else `false`.
