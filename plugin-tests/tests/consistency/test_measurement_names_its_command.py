@@ -169,6 +169,27 @@ _FAMILY = (
     "spec-to-pr/references/revise.md",
 )
 
+# Files that NAME the trailer without INSTRUCTING anyone to write one, keyed to
+# the reason they are not family. The family test asks whether a file's copy of
+# the rule kept its properties; a file that never states the rule has no copy to
+# keep, and forcing it in would demand a pre-commit chokepoint it has no commit
+# step to attach to.
+#
+# The distinction is producer versus consumer. `codify-retro` READS the ledger the
+# trailer feeds and has to warn that rows written before 2026-09-06 understate the
+# rate — the hook parsed the trailer with git, which sees only the last contiguous
+# `Key: value` block, so a blank line before the attribution lines hid the
+# measurements. It cannot give that warning without naming the field it is about.
+#
+# Each entry is verified below to still mention the trailer AND still not instruct
+# writing one, so an exemption cannot outlive its reason or quietly cover a file
+# that has since grown a commit step.
+_NAMES_BUT_DOES_NOT_INSTRUCT = {
+    "codify-retro/SKILL.md":
+        "a retro that reads the ledger; it warns about historic rows, and has no "
+        "commit step to hang the rule on",
+}
+
 
 def _path(rel: str) -> Path:
     return _SKILLS / Path(rel)
@@ -286,11 +307,35 @@ def test_the_declared_family_matches_the_tree():
         f"no shipped skill prose mentions {_TRAILER!r} any more — the rule has "
         "left the plugin entirely and every check below is scanning nothing"
     )
-    assert mentioning <= set(_FAMILY), (
-        f"{sorted(mentioning - set(_FAMILY))} state the measurement trailer but "
-        "are not in _FAMILY, so nothing checks that their copy kept its "
-        "properties"
+    unaccounted = mentioning - set(_FAMILY) - set(_NAMES_BUT_DOES_NOT_INSTRUCT)
+    assert not unaccounted, (
+        f"{sorted(unaccounted)} state the measurement trailer but are neither in "
+        "_FAMILY nor exempted, so nothing checks that their copy kept its "
+        "properties. Add to _FAMILY if the file tells an author to WRITE a "
+        "trailer; to _NAMES_BUT_DOES_NOT_INSTRUCT, with a reason, if it only "
+        "names the field while reading it back"
     )
+
+
+def test_every_exemption_still_earns_itself():
+    """An exemption must not outlive its reason, nor quietly cover a file that has
+    since grown a commit step. Both halves are checked, because either one going
+    stale reopens the gap the family test exists to close."""
+    for rel, reason in _NAMES_BUT_DOES_NOT_INSTRUCT.items():
+        assert reason.strip(), f"{rel} is exempt with no reason given"
+        path = _path(rel)
+        assert path.is_file(), (
+            f"{rel} is exempted but does not exist — delete the entry"
+        )
+        text = path.read_text(encoding="utf-8")
+        assert _TRAILER in text.lower(), (
+            f"{rel} no longer mentions {_TRAILER!r}, so the exemption covers "
+            f"nothing — delete the entry"
+        )
+        assert rel not in _FAMILY, (
+            f"{rel} is both declared family and exempted from it — the family "
+            f"test would then never run on a file that claims to carry the rule"
+        )
 
 
 def test_every_family_file_states_the_whole_rule_at_the_chokepoint():

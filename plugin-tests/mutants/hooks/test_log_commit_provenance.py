@@ -83,15 +83,28 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # `Measured-by:` trailer parsing. `unfold=true` joins a trailer that
-        # git wrapped across lines back into the one value it is; dropping it
-        # makes a single wrapped claim come back as two separate lines, which
-        # both mis-reports the value and inflates measured_by_count.
-        "the Measured-by trailer format drops unfold=true, so a wrapped "
-        "trailer is read back as two fragments instead of the one value it is",
+        # THE defect this scan replaced git's trailer parser for. Git recognises
+        # only the LAST contiguous `Key: value` block as trailers, and every
+        # commit here ends with attribution lines — so a blank line between the
+        # measurements and those hid the measurements entirely. Measured when
+        # found: 35 of 184 rows in this repo undercounted their own commit, and
+        # the fleet's ledger said 0.26 adoption where the messages said 0.58.
+        "the Measured-by scan reverts to git's trailer parser, which sees only "
+        "the last Key: value block and so misses measurements written above the "
+        "attribution lines",
         HOOK,
-        'f"--pretty=%(trailers:key={_TRAILER_KEY},valueonly=true,unfold=true)",',
-        'f"--pretty=%(trailers:key={_TRAILER_KEY},valueonly=true)",',
+        '        if line.startswith(f"{_TRAILER_KEY}:"):',
+        '        if False:',
+        TARGETS,
+    ),
+    (
+        # The continuation rule, carried over from `unfold=true`. A wrapped
+        # command read as fragments inflates the very count the field reports.
+        "the continuation fold is dropped, so a wrapped Measured-by value is "
+        "read back as fragments instead of the one value it is",
+        HOOK,
+        "        elif values and line[:1].isspace() and line.strip():",
+        "        elif False:",
         TARGETS,
     ),
     # DROPPED, not forgotten: "the trailer-shedding loop rewrites

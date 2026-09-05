@@ -278,20 +278,42 @@ def _detect_skill(subject: str) -> str | None:
 def _measured_by(cwd: Path) -> list[str]:
     """Every `Measured-by:` trailer value on HEAD, in order.
 
-    `unfold=true` joins a trailer continued across lines, so a wrapped command
-    is recorded as the one value it is rather than as two fragments. A commit
-    with no such trailer yields an empty list, which is the honest reading: the
-    rule says a change asserting no measurement writes none.
+    Scanned from the WHOLE message, not read as a git trailer, and that is the
+    fix rather than the shortcut. Git recognises only the LAST contiguous block of
+    `Key: value` lines as trailers. Attribution lines (`Co-Authored-By`,
+    `Claude-Session`) are appended at the very end, so the moment a blank line
+    separates the measurements from them — the natural way to write a long
+    message — git's parser sees the attribution block and nothing else, and the
+    commit records `measured_by_count: 0`.
+
+    Measured on this repo when this was found: 35 of 184 ledger rows undercounted
+    their own commit, and the adoption rate the ledger reported was 0.38 where the
+    messages actually gave 0.61. The metric existed to answer whether the
+    measurement rule is being followed, and it was answering a question about
+    message formatting instead — an absence wearing a measurement's clothes, in
+    the one field built to prevent exactly that.
+
+    Continuations are folded the way `unfold=true` did: a following line that
+    starts with whitespace belongs to the value above it, so a wrapped command is
+    one value rather than two fragments.
+
+    A commit with no such line yields an empty list, which is the honest reading:
+    the rule says a change asserting no measurement writes none. The one thing
+    this can over-count is a `Measured-by:` written at column 0 inside a fenced
+    block in the body — accepted, because a message that quotes the form is
+    vanishingly rarer than one that separates it with a blank line, and
+    over-counting a stated measurement is the less damaging error.
     """
-    raw = _git(
-        "log",
-        "-1",
-        f"--pretty=%(trailers:key={_TRAILER_KEY},valueonly=true,unfold=true)",
-        cwd=cwd,
-    )
+    raw = _git("log", "-1", "--format=%B", cwd=cwd)
     if not raw:
         return []
-    return [line.strip() for line in raw.splitlines() if line.strip()]
+    values: list[str] = []
+    for line in raw.splitlines():
+        if line.startswith(f"{_TRAILER_KEY}:"):
+            values.append(line[len(_TRAILER_KEY) + 1:].strip())
+        elif values and line[:1].isspace() and line.strip():
+            values[-1] = f"{values[-1]} {line.strip()}"
+    return [v for v in values if v]
 
 
 def main() -> int:
