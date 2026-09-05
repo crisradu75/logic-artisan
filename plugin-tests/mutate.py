@@ -88,6 +88,7 @@ catch the mutation — one pytest runs per mutant.
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -315,10 +316,49 @@ def run_pytest(targets: list[Path]) -> tuple[int, str]:
     applies either way — an earlier version set a derived cwd and justified it
     with a mechanism that measurement did not support, while breaking relative
     targets.
+
+    `--color=no` is load-bearing, not cosmetic. The verdict is decided by matching
+    `_RAN_RE` against this output, and that pattern is anchored to the start of a
+    line. pytest colours its output whenever `FORCE_COLOR` or `PY_COLORS` is set
+    in the environment — regardless of the pipe not being a terminal — and the
+    escape sequence then sits between the line start and the digit, so the
+    anchor in `_RAN_RE` cannot match. Every real kill was reported as
+    `INCONCLUSIVE (nothing collected)` and the whole tool exited 1, on any machine
+    with that variable set. Measured 2026-09-05 in a sandbox scope whose single
+    test genuinely failed under the mutant: with no flag `_RAN_RE` did not match;
+    with `--color=no` it did.
+
+    This is the false-INCONCLUSIVE half of the failure mode this file's own header
+    describes, and it is the more expensive half to notice: a false kill announces
+    confidence that was never earned, while a false INCONCLUSIVE looks exactly
+    like a tool being careful.
     """
+    # ALLOWLIST, not a denylist, and the difference is the whole point. Several
+    # inherited variables change what this tool measures, and each was found one at
+    # a time: FORCE_COLOR broke the kill detector's line anchor; PYTEST_ADDOPTS can
+    # inject `-n auto` into a run CLAUDE.md keeps serial on purpose; PYTHONOPTIMIZE
+    # strips `assert` from every module pytest does not rewrite — which is every
+    # shipped script under test — and so flips kills and survivors outright; and
+    # PYTHONWARNINGS=error makes pytest exit 3 with no count line, reproducing the
+    # precise false-INCONCLUSIVE the `--color=no` fix was written for.
+    #
+    # A denylist grows one entry per incident and is wrong until the next one is
+    # found. That is the same shape as the warn-without-tallying paths this tool's
+    # own subjects were just fixed for, so it gets the same treatment: name what the
+    # child needs and drop everything else.
+    _KEEP = ("PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR",
+             "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL",
+             "PYTHONHOME", "VIRTUAL_ENV")
+    env = {k: v for k, v in os.environ.items() if k in _KEEP}
+    dropped = len(os.environ) - len(env)
+    if dropped:
+        print(f"mutate: pinned environment — dropped {dropped} inherited variable(s)",
+              file=sys.stderr)
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-x", *[str(t) for t in targets]],
+        [sys.executable, "-m", "pytest", "-q", "-x", "--color=no",
+         *[str(t) for t in targets]],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=env,
     )
     return proc.returncode, proc.stdout + proc.stderr
 

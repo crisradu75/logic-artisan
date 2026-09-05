@@ -1,8 +1,9 @@
 """Aggregate /spec-to-pr run records into actionable metrics.
 
 Reads the in-repo runs JSONL (<repo-root>/cla.io/retro/spec-to-pr-runs.jsonl
-by default — overridable with the CLAUDE_RETRO_DIR env var, or a full path via
---log <path>), considers the last --limit records (default 10), and emits a
+by default — overridable with the CLAUDE_RETRO_DIR env var, or one or more
+full paths via --log <path> [<path> ...]), considers the last --limit records PER
+LEDGER (default 10), and emits a
 single JSON object on stdout with deterministic aggregates. Conversation Claude
 then reads this output and proposes specific improvements to spec-to-pr.
 
@@ -91,6 +92,19 @@ Schema of the output (all counts are over the analyzed window):
         # values present but wrong-typed (non-int, bool) this window — surfaced
         # here (not just stderr) so a piped consumer sees the noise floor; a
         # non-zero count is current-producer drift, not benign legacy history.
+      "shape_drift_fields": {<field>: int},          # container-shape drift by
+        # field: a value whose TYPE cost the metrics a field they read. Read this
+        # BEFORE any metric below — non-zero means some metric ran on fewer
+        # records than `runs_analyzed` reports.
+      "shape_drift_records": int,                    # records with any such drift
+      "log_path": str,                               # single-ledger runs ONLY —
+        # omitted when several ledgers were read, so a fleet result cannot be
+        # attributed to one repo. Keys off what was READ, after dedupe.
+      "log_paths": [str, ...],                       # every ledger read (deduped)
+      "ledgers": [{"path": str, "found": bool, "records": int, "skipped": int}],
+        # per-ledger provenance. A path that did not resolve shows found:false
+        # with records:0, so a fleet aggregate drawn from four repos cannot be
+        # mistaken for one drawn from five.
       "skipped_records": int                                   # malformed lines
     }
 
@@ -162,16 +176,24 @@ def _default_log_path() -> Path:
     return _runs_dir() / "spec-to-pr-runs.jsonl"
 
 
-def _load_records(log_path: Path, limit: int) -> tuple[list[dict], int]:
+def _load_records(log_path: Path, limit: int,
+                  explicit: bool = False) -> tuple[list[dict], int]:
     if not log_path.exists():
         # Distinguish a genuine cold start from a misconfigured path: name where
         # we looked so a wrong CLAUDE_RETRO_DIR / repo root is not mistaken for
         # "no runs yet". The retro still reports runs_analyzed:0 either way.
-        src = "CLAUDE_RETRO_DIR" if os.environ.get("CLAUDE_RETRO_DIR", "").strip() \
-            else "repo cla.io/retro"
-        print(f"aggregate: no ledger at {log_path} (resolved via {src}); reporting 0 "
-              f"runs. If you expected runs, check CLAUDE_RETRO_DIR / the repo root.",
-              file=sys.stderr)
+        # Name the provenance correctly. An explicit `--log` path that does not
+        # exist is a typo in the argument, not a misconfigured repo root, and
+        # telling the caller to check CLAUDE_RETRO_DIR sends them to the wrong file.
+        if explicit:
+            print(f"aggregate: no ledger at {log_path} (given explicitly via --log); "
+                  f"contributing 0 runs. Check the path.", file=sys.stderr)
+        else:
+            src = "CLAUDE_RETRO_DIR" if os.environ.get("CLAUDE_RETRO_DIR", "").strip() \
+                else "repo cla.io/retro"
+            print(f"aggregate: no ledger at {log_path} (resolved via {src}); reporting 0 "
+                  f"runs. If you expected runs, check CLAUDE_RETRO_DIR / the repo root.",
+                  file=sys.stderr)
         return [], 0
     records: list[dict] = []
     skipped = 0
@@ -221,6 +243,21 @@ REVISE_AGENT_NAMES = {
 # compared post-`_normalize_agent`, so the severity key `phantom_rejected` is
 # stored here in its normalized `phantom-rejected` form (either spelling from a
 # producer matches after normalization); none collides with an agent name.
+# Agent-name spellings that appear in ALREADY-WRITTEN history and name no agent
+# this plugin ships today. Deliberately NOT drift: a drift count names a producer
+# edit to make, and these records are immutable — there is no edit. Counting them
+# as drift pinned `shape_drift_records` permanently above zero (measured at 4 of
+# this repo's 8 records, 25% of the live window), which is the standing alarm
+# nobody reads — the exact failure the drift counter was added to end.
+#
+# Counted separately so they stay visible. Measured across the fleet's 156
+# records: each of these appears exactly once, and no other unrecognized key
+# exists (command in the commit trailer).
+RETIRED_AGENT_KEYS = {
+    "skill-doc-reviewer", "skill-reviewer",
+    "general-purpose-residue", "code-reviewer-round2",
+}
+
 LEGACY_TIER_KEYS = {
     "opus", "sonnet", "haiku",                                 # model-tier shape
     "critical", "important", "suggestion", "phantom-rejected",  # severity shape
@@ -254,6 +291,29 @@ def _tally_agents(agents: list, target_counter: Counter, unknown_counter: Counte
               f"{duplicates!r} — counted once each", file=sys.stderr)
 
 
+def _str_key(value: object, field: str, context: str) -> str | None:
+    """Return value if it can key a Counter that is later serialized, else None.
+
+    Two distinct failures, both reached from parsed JSON and neither caught by a
+    container guard:
+
+    A dict or list raises `TypeError: unhashable type` on the `+= 1` and aborts
+    the whole run — the same class as the crash the `asks` container guard fixes,
+    one level further in. A container guard checks the container; every key drawn
+    out of it is a second, separate surface.
+
+    A non-string scalar collides with its own string form at serialization: a
+    phase named `1` and one named `"1"` are different Counter keys, and
+    `json.dumps` stringifies both and keeps only the last. The count is wrong and
+    nothing says so, which is worse than the crash.
+    """
+    if isinstance(value, str):
+        return value
+    print(f"aggregate: {context}: `{field}` is {type(value).__name__}, expected string "
+          f"— skipping", file=sys.stderr)
+    return None
+
+
 def _coerce_int(value: object, field: str, context: str) -> int | None:
     """Return value as int, or None with a stderr warning if it isn't numeric."""
     if isinstance(value, bool):  # bool is int in Python; reject explicitly
@@ -265,9 +325,72 @@ def _coerce_int(value: object, field: str, context: str) -> int | None:
     return None
 
 
+
+def _window(timestamps: list[str]) -> dict:
+    """The analyzed window's ends, chronologically rather than as collected.
+
+    Records arrive concatenated in `--log` argument order, so taking the first and
+    last of that concatenation produced a window that ENDED BEFORE IT STARTED
+    whenever a newer ledger was listed first — printed with exit 0.
+
+    The sort is lexical. These are ISO-8601 strings and the corpus mixes `Z` with
+    explicit offsets, so two instants on the same day in different zones can order
+    wrongly; that is bounded inside a day, where argument order was unbounded.
+
+    Pinned across both aggregators by `check_script_drift.py`, and the reason it is
+    pinned is this function's own history: the sort landed in one sibling, the
+    other kept inverting, and nothing caught it but a reviewer.
+    """
+    if not timestamps:
+        return {"first_ts": None, "last_ts": None}
+    ordered = sorted(timestamps)
+    return {"first_ts": ordered[0], "last_ts": ordered[-1]}
+
+
+def _load_ledgers(log_paths: list[Path], limit: int,
+                  explicit: bool) -> tuple[list[dict], int, list[dict]]:
+    """Read every named ledger into one record list, with per-ledger provenance.
+
+    Deduplicates by resolved path: a fleet invocation is assembled by a model from
+    a repo list, often via a glob or brace expansion, so the same ledger arriving
+    twice is a real shape — and it silently doubled every count.
+
+    Returns the provenance rows as well as the records, because the whole reason
+    to read several ledgers is sample size: a mistyped path contributed nothing
+    while still being echoed back, so a four-repo aggregate could claim five on the
+    one stream nothing reads after the fact.
+
+    Pinned across both aggregators by `check_script_drift.py`.
+    """
+    records: list[dict] = []
+    skipped = 0
+    ledgers: list[dict] = []
+    seen: set[Path] = set()
+    for p in log_paths:
+        try:
+            key = p.resolve()
+        except OSError:
+            key = p
+        if key in seen:
+            print(f"aggregate: {p} given more than once — ignoring the duplicate",
+                  file=sys.stderr)
+            continue
+        seen.add(key)
+        existed = p.exists()
+        recs, sk = _load_records(p, limit, explicit=explicit)
+        records.extend(recs)
+        skipped += sk
+        ledgers.append({"path": str(p), "found": existed,
+                        "records": len(recs), "skipped": sk})
+    return records, skipped, ledgers
+
 def aggregate(records: list[dict]) -> dict:
     if not records:
-        return {"runs_analyzed": 0}
+        # The drift fields are emitted here too. Omitting them made a consumer's
+        # `.get("shape_drift_records", 0)` read a clean zero on a ledger that was
+        # missing or empty — an absence wearing a measurement's clothes, which is
+        # the exact thing this pair of fields exists to prevent elsewhere.
+        return {"runs_analyzed": 0, "shape_drift_fields": {}, "shape_drift_records": 0}
 
     phase_outcomes: dict[str, Counter] = defaultdict(Counter)
     warn_reasons: Counter = Counter()
@@ -294,21 +417,49 @@ def aggregate(records: list[dict]) -> dict:
     revise_findings_records = 0
     revise_findings_legacy_records = 0
     revise_findings_malformed_records = 0
+    retired_agent_keys: Counter[str] = Counter()
+    # Container-shape drift, tallied rather than only warned about. `codify_aggregate.py`'s
+    # module docstring already states the rule this restores — bad records are skipped with
+    # a stderr warning AND tallied, so the consumer sees the noise floor in structured
+    # output. Without the tally a metric silently computed over a subset of
+    # `runs_analyzed` reports identically to one computed over all of it.
+    shape_drift: Counter[str] = Counter()
+    shape_drift_records = 0
 
     for ri, rec in enumerate(records):
+        # Fields whose container shape drifted in THIS record. A set, so a record
+        # drifting in two fields still counts once toward `shape_drift_records`
+        # while both fields appear in the per-field tally.
+        drifted_fields: set[str] = set()
+
         phases = rec.get("phases")
         if not isinstance(phases, list):
+            # ABSENT counts as drift here, unlike `codify_aggregate.py`'s optional
+            # containers. The two scripts differ because their fields do: `phases`
+            # is required of every spec-to-pr record, so a record without one has
+            # lost the data every phase metric is computed from, while an absent
+            # `re_offenses` just means a run found none. Making the two "consistent"
+            # would silence a real signal to make two counters look alike.
             print(f"aggregate: record {ri}: missing or non-list `phases`", file=sys.stderr)
+            drifted_fields.add("phases")
             phases = []
         for phase in phases:
             if not isinstance(phase, dict):
                 print(f"aggregate: record {ri}: non-dict phase entry, skipping", file=sys.stderr)
+                drifted_fields.add("phases")
                 continue
-            name = phase.get("name", "?")
-            status = phase.get("status", "?")
+            name = _str_key(phase.get("name", "?"), "phase name", f"record {ri}")
+            status = _str_key(phase.get("status", "?"), "phase status", f"record {ri}")
+            if name is None or status is None:
+                drifted_fields.add("phases")
+                continue
             phase_outcomes[name][status] += 1
             if status in ("warn", "fail") and phase.get("reason"):
-                warn_reasons[phase["reason"]] += 1
+                reason = _str_key(phase["reason"], "reason", f"record {ri} phase {name}")
+                if reason is None:
+                    drifted_fields.add("warn_reasons")
+                else:
+                    warn_reasons[reason] += 1
             if "report_chars" in phase:
                 rc = _coerce_int(phase["report_chars"], "report_chars", f"record {ri} phase {name}")
                 if rc is not None:
@@ -323,7 +474,21 @@ def aggregate(records: list[dict]) -> dict:
             if phase_key in cap_total and "rounds_used" in phase:
                 used = _coerce_int(phase["rounds_used"], "rounds_used", f"record {ri} phase {name}")
                 cap = _coerce_int(phase.get("rounds_cap"), "rounds_cap", f"record {ri} phase {name}")
-                if used is not None:
+                # ABSENT counts too. `run-log-schema.md` writes `rounds_cap`
+                # into the shape for all three capped phases, and either way the
+                # phase joins `cap_total` while `cap_hit` can never fire — it
+                # depresses the exhaustion rate rather than merely thinning it.
+                if cap is None:
+                    # A cap that will not coerce makes the phase uncountable as a
+                    # HIT while still counting toward the total, so it depresses the
+                    # exhaustion rate rather than merely thinning it.
+                    drifted_fields.add("rounds_cap")
+                if used is None:
+                    # Skipping the record here shrinks the DENOMINATOR of the
+                    # cap-exhaustion rule the retro acts on, so the sample it
+                    # reasons about is smaller than `runs_analyzed` claims.
+                    drifted_fields.add("rounds_used")
+                else:
                     cap_total[phase_key] += 1
                     rounds_used[phase_key].append(used)
                     # cap==1 reached is trivially true for a single-pass phase (e.g. Review,
@@ -333,6 +498,11 @@ def aggregate(records: list[dict]) -> dict:
                         cap_hit[phase_key] += 1
             if name == "Review":
                 size_gate = phase.get("size_gate")
+                if size_gate is not None and not isinstance(size_gate, str):
+                    print(f"aggregate: record {ri}: Review `size_gate` is "
+                          f"{type(size_gate).__name__}, expected string — skipping",
+                          file=sys.stderr)
+                    drifted_fields.add("review_size_gate")
                 if isinstance(size_gate, str):
                     if size_gate in VALID_SIZE_GATES:
                         review_size_gate[size_gate] += 1
@@ -341,6 +511,11 @@ def aggregate(records: list[dict]) -> dict:
                         print(f"aggregate: record {ri}: Review `size_gate`={size_gate!r} "
                               f"not in {sorted(VALID_SIZE_GATES)}", file=sys.stderr)
                 verdict = phase.get("verdict")
+                if verdict is not None and not isinstance(verdict, str):
+                    print(f"aggregate: record {ri}: Review `verdict` is "
+                          f"{type(verdict).__name__}, expected string — skipping",
+                          file=sys.stderr)
+                    drifted_fields.add("review_verdicts")
                 if isinstance(verdict, str):
                     if verdict in VALID_VERDICTS:
                         review_verdicts[verdict] += 1
@@ -355,14 +530,19 @@ def aggregate(records: list[dict]) -> dict:
                         review_verified_claims.append(vcc)
                 agents = phase.get("agents", [])
                 if not isinstance(agents, list):
-                    print(f"aggregate: record {ri}: Review `agents` not list, skipping",
-                          file=sys.stderr)
+                    print(f"aggregate: record {ri}: Review `agents` is "
+                          f"{type(agents).__name__}, expected list — skipping", file=sys.stderr)
+                    drifted_fields.add("review_agents")
                     agents = []
                 else:
                     _tally_agents(agents, review_agent_dispatches, review_agent_unknown,
                                   "Review", ri)
                 # Pair-check: small mode should have no agents; large mode requires them.
-                if size_gate in VALID_SIZE_GATES:
+                # `size_gate` is tested for membership here, which is a SEPARATE surface
+                # from the `isinstance` guard above — that one returns before this line
+                # only when it matches, so an unhashable `size_gate` reached the `in`
+                # test and raised, aborting the run.
+                if isinstance(size_gate, str) and size_gate in VALID_SIZE_GATES:
                     has_agents = bool([a for a in agents if isinstance(a, str)])
                     if (size_gate == "large") != has_agents:
                         review_gate_pair_mismatches += 1
@@ -371,20 +551,45 @@ def aggregate(records: list[dict]) -> dict:
             if name == "Revise":
                 agents = phase.get("agents", [])
                 if not isinstance(agents, list):
-                    print(f"aggregate: record {ri}: Revise `agents` not list, skipping",
-                          file=sys.stderr)
+                    print(f"aggregate: record {ri}: Revise `agents` is "
+                          f"{type(agents).__name__}, expected list — skipping", file=sys.stderr)
+                    drifted_fields.add("revise_agents")
                 else:
                     _tally_agents(agents, revise_agent_dispatches, revise_agent_unknown,
                                   "Revise", ri)
             if name == "Ship" and phase.get("version_bumped") is False:
                 version_bump_misses += 1
-        for ai, ask in enumerate(rec.get("asks", []) or []):
-            if isinstance(ask, dict):
-                asks[ask.get("header", "?")][ask.get("choice", "?")] += 1
-            else:
+        # Guard the CONTAINER, not just its elements. The element guard below has
+        # always been here; without this one a record carrying a count where the
+        # list belongs (`"asks": 2`) raised TypeError and took the whole run down —
+        # one record aborting the aggregate for an entire repo.
+        raw_asks = rec.get("asks")
+        if raw_asks is not None and not isinstance(raw_asks, list):
+            print(f"aggregate: record {ri}: `asks` is {type(raw_asks).__name__}, "
+                  f"expected list — skipping", file=sys.stderr)
+            drifted_fields.add("asks")
+            raw_asks = []
+        for ai, ask in enumerate(raw_asks or []):
+            if not isinstance(ask, dict):
                 print(f"aggregate: record {ri}: ask {ai} not a dict, skipping", file=sys.stderr)
+                drifted_fields.add("asks")
+                continue
+            header = _str_key(ask.get("header", "?"), "ask header", f"record {ri} ask {ai}")
+            choice = _str_key(ask.get("choice", "?"), "ask choice", f"record {ri} ask {ai}")
+            if header is None or choice is None:
+                drifted_fields.add("asks")
+                continue
+            asks[header][choice] += 1
         deferred = _coerce_int(rec.get("deferred_to_todo", 0), "deferred_to_todo", f"record {ri}")
+        if deferred is None:
+            drifted_fields.add("deferred_to_todo")
         deferred_total += deferred or 0
+
+        ts_value = rec.get("ts")
+        if ts_value is not None and not isinstance(ts_value, str):
+            print(f"aggregate: record {ri}: `ts` is {type(ts_value).__name__}, "
+                  f"expected string — dropped from the window", file=sys.stderr)
+            drifted_fields.add("ts")
 
         # Per-agent Revise finding yield (routing.revise_findings_by_tier). The
         # field has THREE shapes across history — pinned per-agent
@@ -402,9 +607,20 @@ def aggregate(records: list[dict]) -> dict:
         # one legitimate "no data" case: Revise logged no findings block, count
         # nothing.
         routing = rec.get("routing")
+        if routing is not None and not isinstance(routing, dict):
+            # Previously discarded in silence: the `isinstance` test simply failed
+            # and the whole per-agent yield block was skipped, shrinking the
+            # denominator of the trigger-narrowing rule with nothing said.
+            print(f"aggregate: record {ri}: `routing` is {type(routing).__name__}, "
+                  f"expected object — skipping", file=sys.stderr)
+            drifted_fields.add("routing")
         if isinstance(routing, dict) and "revise_findings_by_tier" in routing:
             rfbt = routing["revise_findings_by_tier"]
             if not isinstance(rfbt, dict):
+                # Reached `revise_findings_malformed_records` but not the drift
+                # tally, while a dict carrying ONE bad key reached both — the more
+                # severe shape escaping the milder one's counter.
+                drifted_fields.add("revise_findings_by_tier")
                 print(f"aggregate: record {ri}: revise_findings_by_tier is "
                       f"{type(rfbt).__name__}, expected dict — counted malformed",
                       file=sys.stderr)
@@ -423,6 +639,7 @@ def aggregate(records: list[dict]) -> dict:
                         print(f"aggregate: record {ri}: revise_findings_by_tier "
                               f"key {k!r} not a string — ignored", file=sys.stderr)
                         had_drift = True
+                        drifted_fields.add("revise_findings_by_tier")
                         continue
                     agent = _normalize_agent(k)
                     if agent in REVISE_AGENT_NAMES:
@@ -431,10 +648,15 @@ def aggregate(records: list[dict]) -> dict:
                                   f"{type(v).__name__}, expected dict — ignored",
                                   file=sys.stderr)
                             had_drift = True
+                            drifted_fields.add("revise_findings_by_tier")
                             continue
                         if agent in seen:
                             print(f"aggregate: record {ri}: agent {agent!r} keyed twice "
                                   f"(spelling drift) — counted once", file=sys.stderr)
+                            # Set no `had_drift`: the record is still usable and the
+                            # dedupe is deliberate. But the SECOND value is dropped,
+                            # so the yield it carried is lost and that is drift.
+                            drifted_fields.add("revise_findings_by_tier")
                             continue
                         seen.add(agent)
                         found = _coerce_int(v.get("found", 0), "found", f"record {ri} {agent}")
@@ -446,8 +668,17 @@ def aggregate(records: list[dict]) -> dict:
                         revise_findings[agent]["phantom"] += max(0, phantom or 0)
                         revise_findings[agent]["runs"] += 1
                         matched = True
+                    elif agent in RETIRED_AGENT_KEYS:
+                        # Historical, not drift — see RETIRED_AGENT_KEYS above.
+                        retired_agent_keys[agent] += 1
                     elif agent not in LEGACY_TIER_KEYS:
                         had_drift = True  # not an agent, not a known legacy key
+                        # The path the REAL ledger trips — records 0 and 2 of this
+                        # repo's own log. Mixed with a valid agent it took the
+                        # `matched` branch and was recorded as a clean per-agent
+                        # record, so the drift the stderr line named reached no
+                        # counter at all.
+                        drifted_fields.add("revise_findings_by_tier")
                 if matched:
                     if had_drift:
                         print(f"aggregate: record {ri}: revise_findings_by_tier mixes "
@@ -462,11 +693,21 @@ def aggregate(records: list[dict]) -> dict:
                 else:
                     revise_findings_legacy_records += 1
 
+        if drifted_fields:
+            shape_drift_records += 1
+            # Derived from the per-record set rather than incremented at each call
+            # site. One `add` per drift makes the per-field tally and the per-record
+            # count structurally unable to disagree, and a field drifting twice
+            # within one record counts once — neither of which a reader should have
+            # to verify by hand across a dozen sites.
+            for field in drifted_fields:
+                shape_drift[field] += 1
+
+    # Collect only; `_window` owns the ordering and explains why.
     timestamps = [r.get("ts") for r in records if isinstance(r.get("ts"), str)]
     return {
         "runs_analyzed": len(records),
-        "window": {"first_ts": timestamps[0] if timestamps else None,
-                   "last_ts":  timestamps[-1] if timestamps else None},
+        "window": _window(timestamps),
         "phase_outcomes": {name: dict(counter) for name, counter in phase_outcomes.items()},
         "warn_reasons": [{"reason": r, "count": c} for r, c in warn_reasons.most_common(10)],
         "cap_exhaustion": {k: {"hit": cap_hit[k], "total": cap_total[k]} for k in cap_hit},
@@ -492,6 +733,14 @@ def aggregate(records: list[dict]) -> dict:
         "revise_findings_records": revise_findings_records,
         "revise_findings_legacy_records": revise_findings_legacy_records,
         "revise_findings_malformed_records": revise_findings_malformed_records,
+        # Keys naming an agent this plugin no longer ships, found in immutable
+        # history. Visible, but NOT counted as drift: no producer edit exists.
+        "retired_agent_keys": dict(retired_agent_keys),
+        # Which container fields drifted, and how many records drifted at all. Read
+        # these BEFORE any metric below: a non-zero `shape_drift_records` means
+        # `runs_analyzed` overstates the sample every phase-derived metric ran on.
+        "shape_drift_fields": dict(shape_drift),
+        "shape_drift_records": shape_drift_records,
         "asks": [{"header": h, "choices": dict(c)} for h, c in asks.items()],
         "version_bump_misses": version_bump_misses,
         "deferred_to_todo_total": deferred_total,
@@ -511,21 +760,37 @@ def main() -> int:
     except (AttributeError, ValueError):
         pass
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--log", type=Path, default=None,
-                        help="Path to runs JSONL (default: project's log).")
+    parser.add_argument("--log", type=Path, nargs="+", default=None, metavar="PATH",
+                        help="One or more runs JSONL paths (default: this project's log). "
+                             "Several paths aggregate across repos, which matters "
+                             "because any single repo's sample is thin enough to mislead.")
     parser.add_argument("--limit", type=int, default=10,
-                        help="Analyze the last N records (default 10, 0 = all).")
+                        help="Analyze the last N records PER LEDGER (default 10, 0 = all).")
     args = parser.parse_args()
 
     try:
-        log_path = args.log or _default_log_path()
+        log_paths = args.log or [_default_log_path()]
     except (ValueError, RuntimeError) as e:
         print(f"aggregate: {e}", file=sys.stderr)
         return 1
-    records, skipped = _load_records(log_path, args.limit)
+
+    records, skipped, ledgers = _load_ledgers(log_paths, args.limit,
+                                              explicit=args.log is not None)
+
     result = aggregate(records)
     result["skipped_records"] = skipped
-    result["log_path"] = str(log_path)
+    # `log_path` stays a bare string in the single-ledger case, which is every
+    # caller that exists today. A multi-ledger run OMITS it rather than naming
+    # one of several: a consumer still reading it then fails loudly instead of
+    # attributing a fleet-wide aggregate to one repo.
+    # Branch on what was actually READ, not on what was asked for. These two
+    # disagree after a dedupe: `--log a a` left `log_paths` at length 2 and omitted
+    # `log_path` — the documented "this is a fleet result" signal — for a run that
+    # read exactly one ledger, while `log_paths` in the output correctly showed one.
+    if len(ledgers) == 1:
+        result["log_path"] = ledgers[0]["path"]
+    result["log_paths"] = [entry["path"] for entry in ledgers]
+    result["ledgers"] = ledgers
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

@@ -1,8 +1,9 @@
 """Aggregate /codify-learnings run records into actionable metrics.
 
 Reads the in-repo runs JSONL (<repo-root>/cla.io/retro/codify-runs.jsonl by
-default — overridable with the CLAUDE_RETRO_DIR env var, or a full path via
---log <path>), considers the last --limit records (default 10), and emits a
+default — overridable with the CLAUDE_RETRO_DIR env var, or one or more
+full paths via --log <path> [<path> ...]), considers the last --limit records PER
+LEDGER (default 10), and emits a
 single JSON object on stdout with deterministic aggregates. Conversation Claude
 then reads this output and proposes specific improvements to the
 codify-learnings loop itself.
@@ -63,6 +64,22 @@ Output schema (all counts over the analyzed window):
       "coerced_fields": int,                        # present-but-malformed count
         # fields (e.g. a string/bool where an int was expected) dropped from the
         # sums; non-zero means the rates above are computed over a thinned sample.
+      "shape_drift_fields": {<field>: int},          # container-shape drift by
+        # field: a value whose TYPE cost the metrics a field they read. Read this
+        # BEFORE any metric below — non-zero means some metric ran on fewer
+        # records than `runs_analyzed` reports.
+      "shape_drift_records": int,                    # records with any such drift
+      "log_path": str,                               # single-ledger runs ONLY —
+        # omitted when several ledgers were read, so a fleet result cannot be
+        # attributed to one repo. Keys off what was READ, after dedupe.
+      "per_repo_fields_suppressed": true,           # fleet runs only —
+        # the per-repo maintenance/output_chars fields above describe ONE
+        # repo's files and are nulled rather than pooled.
+      "log_paths": [str, ...],                       # every ledger read (deduped)
+      "ledgers": [{"path": str, "found": bool, "records": int, "skipped": int}],
+        # per-ledger provenance. A path that did not resolve shows found:false
+        # with records:0, so a fleet aggregate drawn from four repos cannot be
+        # mistaken for one drawn from five.
       "skipped_records": int                       # malformed JSONL lines
     }
 
@@ -141,16 +158,24 @@ def _default_log_path() -> Path:
     return _runs_dir() / "codify-runs.jsonl"
 
 
-def _load_records(log_path: Path, limit: int) -> tuple[list[dict], int]:
+def _load_records(log_path: Path, limit: int,
+                  explicit: bool = False) -> tuple[list[dict], int]:
     if not log_path.exists():
         # Distinguish a genuine cold start from a misconfigured path: name where
         # we looked so a wrong CLAUDE_RETRO_DIR / repo root is not mistaken for
         # "no runs yet". The retro still reports runs_analyzed:0 either way.
-        src = "CLAUDE_RETRO_DIR" if os.environ.get("CLAUDE_RETRO_DIR", "").strip() \
-            else "repo cla.io/retro"
-        print(f"aggregate: no ledger at {log_path} (resolved via {src}); reporting 0 "
-              f"runs. If you expected runs, check CLAUDE_RETRO_DIR / the repo root.",
-              file=sys.stderr)
+        # Name the provenance correctly. An explicit `--log` path that does not
+        # exist is a typo in the argument, not a misconfigured repo root, and
+        # telling the caller to check CLAUDE_RETRO_DIR sends them to the wrong file.
+        if explicit:
+            print(f"aggregate: no ledger at {log_path} (given explicitly via --log); "
+                  f"contributing 0 runs. Check the path.", file=sys.stderr)
+        else:
+            src = "CLAUDE_RETRO_DIR" if os.environ.get("CLAUDE_RETRO_DIR", "").strip() \
+                else "repo cla.io/retro"
+            print(f"aggregate: no ledger at {log_path} (resolved via {src}); reporting 0 "
+                  f"runs. If you expected runs, check CLAUDE_RETRO_DIR / the repo root.",
+                  file=sys.stderr)
         return [], 0
     records: list[dict] = []
     skipped = 0
@@ -186,7 +211,7 @@ def _coerce_int(value: object, field: str, context: str) -> int | None:
 
 
 def _sum_counts(rec: dict, key: str, fields: tuple[str, ...], ri: int,
-                acc: Counter) -> int:
+                acc: Counter, drifted: set[str]) -> int:
     """Add the record's counts into `acc`. Returns the number of present-but-
     malformed fields coerced away, so the caller can surface the noise floor in
     structured output (`coerced_fields`), not just on stderr."""
@@ -194,7 +219,12 @@ def _sum_counts(rec: dict, key: str, fields: tuple[str, ...], ri: int,
     if block is None:
         return 0
     if not isinstance(block, dict):
-        print(f"aggregate: record {ri}: `{key}` not an object, skipping", file=sys.stderr)
+        print(f"aggregate: record {ri}: `{key}` is {type(block).__name__}, expected "
+              f"object — skipping", file=sys.stderr)
+        # Container-shape drift, not a coerced count: it drops the whole block,
+        # so `apply_rate` loses both numerator and denominator while
+        # `runs_analyzed` still counts the record as read.
+        drifted.add(key)
         return 0
     coerced = 0
     for f in fields:
@@ -207,9 +237,71 @@ def _sum_counts(rec: dict, key: str, fields: tuple[str, ...], ri: int,
     return coerced
 
 
+
+def _window(timestamps: list[str]) -> dict:
+    """The analyzed window's ends, chronologically rather than as collected.
+
+    Records arrive concatenated in `--log` argument order, so taking the first and
+    last of that concatenation produced a window that ENDED BEFORE IT STARTED
+    whenever a newer ledger was listed first — printed with exit 0.
+
+    The sort is lexical. These are ISO-8601 strings and the corpus mixes `Z` with
+    explicit offsets, so two instants on the same day in different zones can order
+    wrongly; that is bounded inside a day, where argument order was unbounded.
+
+    Pinned across both aggregators by `check_script_drift.py`, and the reason it is
+    pinned is this function's own history: the sort landed in one sibling, the
+    other kept inverting, and nothing caught it but a reviewer.
+    """
+    if not timestamps:
+        return {"first_ts": None, "last_ts": None}
+    ordered = sorted(timestamps)
+    return {"first_ts": ordered[0], "last_ts": ordered[-1]}
+
+
+def _load_ledgers(log_paths: list[Path], limit: int,
+                  explicit: bool) -> tuple[list[dict], int, list[dict]]:
+    """Read every named ledger into one record list, with per-ledger provenance.
+
+    Deduplicates by resolved path: a fleet invocation is assembled by a model from
+    a repo list, often via a glob or brace expansion, so the same ledger arriving
+    twice is a real shape — and it silently doubled every count.
+
+    Returns the provenance rows as well as the records, because the whole reason
+    to read several ledgers is sample size: a mistyped path contributed nothing
+    while still being echoed back, so a four-repo aggregate could claim five on the
+    one stream nothing reads after the fact.
+
+    Pinned across both aggregators by `check_script_drift.py`.
+    """
+    records: list[dict] = []
+    skipped = 0
+    ledgers: list[dict] = []
+    seen: set[Path] = set()
+    for p in log_paths:
+        try:
+            key = p.resolve()
+        except OSError:
+            key = p
+        if key in seen:
+            print(f"aggregate: {p} given more than once — ignoring the duplicate",
+                  file=sys.stderr)
+            continue
+        seen.add(key)
+        existed = p.exists()
+        recs, sk = _load_records(p, limit, explicit=explicit)
+        records.extend(recs)
+        skipped += sk
+        ledgers.append({"path": str(p), "found": existed,
+                        "records": len(recs), "skipped": sk})
+    return records, skipped, ledgers
+
 def aggregate(records: list[dict]) -> dict:
     if not records:
-        return {"runs_analyzed": 0}
+        # Emitted here too: omitting them made a consumer's
+        # `.get("shape_drift_records", 0)` read a clean zero on a missing or empty
+        # ledger — an absence wearing a measurement's clothes.
+        return {"runs_analyzed": 0, "shape_drift_fields": {}, "shape_drift_records": 0}
 
     sugg: Counter = Counter()
     mem: Counter = Counter()
@@ -223,22 +315,36 @@ def aggregate(records: list[dict]) -> dict:
     trim_runs = 0
     process_issue_runs = 0
     coerced_fields = 0
+    # Container-shape drift. `coerced_fields` covers a present-but-wrong-typed COUNT
+    # and `skipped_records` covers a whole unparseable line, but a list field arriving
+    # as something else fell between them — warned about on stderr and tallied nowhere,
+    # against this module's own docstring rule that a bad record is skipped with a
+    # warning AND tallied.
+    shape_drift: Counter[str] = Counter()
+    shape_drift_records = 0
     output_chars_trend: list[int] = []
 
     for ri, rec in enumerate(records):
+        # Fields whose container shape drifted in THIS record; a set, so one record
+        # drifting twice still counts once toward `shape_drift_records`.
+        drifted_fields: set[str] = set()
         coerced_fields += _sum_counts(rec, "suggestions",
-                                      ("proposed", "applied", "rejected"), ri, sugg)
-        coerced_fields += _sum_counts(rec, "memory", ("proposed", "applied"), ri, mem)
+                                      ("proposed", "applied", "rejected"), ri, sugg,
+                                      drifted_fields)
+        coerced_fields += _sum_counts(rec, "memory", ("proposed", "applied"), ri, mem,
+                                      drifted_fields)
 
         re_offs = rec.get("re_offenses")
         if re_offs is not None and not isinstance(re_offs, list):
             print(f"aggregate: record {ri}: `re_offenses` is {type(re_offs).__name__}, "
                   f"expected list — skipping", file=sys.stderr)
+            drifted_fields.add("re_offenses")
             re_offs = []
         for item in re_offs or []:
             if not isinstance(item, dict):
                 print(f"aggregate: record {ri}: re_offense entry not a dict, skipping",
                       file=sys.stderr)
+                drifted_fields.add("re_offenses")
                 continue
             lesson = item.get("lesson")
             if isinstance(lesson, str):
@@ -246,6 +352,7 @@ def aggregate(records: list[dict]) -> dict:
             else:
                 print(f"aggregate: record {ri}: re_offense `lesson`={lesson!r} not a "
                       f"string, skipping", file=sys.stderr)
+                drifted_fields.add("re_offenses")
             rung = item.get("escalated_to")
             if isinstance(rung, str):
                 if rung in RUNGS:
@@ -257,11 +364,13 @@ def aggregate(records: list[dict]) -> dict:
             else:
                 print(f"aggregate: record {ri}: re_offense `escalated_to`={rung!r} not a "
                       f"string, skipping", file=sys.stderr)
+                drifted_fields.add("re_offenses")
 
         rej = rec.get("rejected_lessons")
         if rej is not None and not isinstance(rej, list):
             print(f"aggregate: record {ri}: `rejected_lessons` is {type(rej).__name__}, "
                   f"expected list — skipping", file=sys.stderr)
+            drifted_fields.add("rejected_lessons")
             rej = []
         for lesson in rej or []:
             if isinstance(lesson, str):
@@ -269,6 +378,7 @@ def aggregate(records: list[dict]) -> dict:
             else:
                 print(f"aggregate: record {ri}: rejected_lessons entry {lesson!r} not a "
                       f"string, skipping", file=sys.stderr)
+                drifted_fields.add("rejected_lessons")
 
         maint = rec.get("maintenance")
         if isinstance(maint, dict):
@@ -292,6 +402,7 @@ def aggregate(records: list[dict]) -> dict:
         elif maint is not None:
             print(f"aggregate: record {ri}: `maintenance` is {type(maint).__name__}, "
                   f"expected object — skipping", file=sys.stderr)
+            drifted_fields.add("maintenance")
         if rec.get("process_issue") is True:
             process_issue_runs += 1
 
@@ -306,6 +417,26 @@ def aggregate(records: list[dict]) -> dict:
             else:
                 coerced_fields += 1
 
+        # `ts` is validated HERE, inside the record loop, so it joins the same
+        # per-record set as every other field. Tallying it in the later timestamps
+        # loop instead double-counted a record that drifted in both places, and
+        # `shape_drift_records` could then exceed `runs_analyzed` — a per-record
+        # counter larger than the record count, which makes the field unreadable
+        # against the very sentence both SKILL.md files use to explain it.
+        ts_value = rec.get("ts")
+        if ts_value is not None and not isinstance(ts_value, str):
+            print(f"aggregate: record {ri}: `ts`={ts_value!r} not a string — excluded "
+                  f"from window", file=sys.stderr)
+            drifted_fields.add("ts")
+
+        if drifted_fields:
+            shape_drift_records += 1
+            # Derived from the per-record set rather than incremented at each call
+            # site, so the per-field tally and the per-record count cannot disagree
+            # and a field drifting twice in one record counts once.
+            for field in drifted_fields:
+                shape_drift[field] += 1
+
     proposed = sugg.get("proposed", 0)
     mem_proposed = mem.get("proposed", 0)
     timestamps: list[str] = []
@@ -313,13 +444,12 @@ def aggregate(records: list[dict]) -> dict:
         ts = rec.get("ts")
         if isinstance(ts, str):
             timestamps.append(ts)
-        elif ts is not None:
-            print(f"aggregate: record {ri}: `ts`={ts!r} not a string — excluded from window",
-                  file=sys.stderr)
+        # No warning or tally here — a non-string `ts` is reported by the record
+        # loop above, which is where the per-record drift set lives. This loop only
+        # collects, so it cannot double-count what that one already counted.
     return {
         "runs_analyzed": len(records),
-        "window": {"first_ts": timestamps[0] if timestamps else None,
-                   "last_ts":  timestamps[-1] if timestamps else None},
+        "window": _window(timestamps),
         "suggestions": {
             "proposed": proposed,
             "applied": sugg.get("applied", 0),
@@ -349,26 +479,67 @@ def aggregate(records: list[dict]) -> dict:
             "mean": round(statistics.mean(output_chars_trend), 1) if output_chars_trend else 0.0,
         },
         "coerced_fields": coerced_fields,
+        # Which container fields drifted, and how many records drifted at all. Read
+        # these BEFORE the metrics above: a non-zero `shape_drift_records` means some
+        # metric ran on fewer records than `runs_analyzed` reports.
+        "shape_drift_fields": dict(shape_drift),
+        "shape_drift_records": shape_drift_records,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Aggregate /codify-learnings run records.")
-    parser.add_argument("--log", type=Path, default=None,
-                        help="Path to runs JSONL (default: project's log).")
+    parser.add_argument("--log", type=Path, nargs="+", default=None, metavar="PATH",
+                        help="One or more runs JSONL paths (default: this project's log). "
+                             "Several paths aggregate across repos, which matters "
+                             "because any single repo's sample is thin enough to mislead.")
     parser.add_argument("--limit", type=int, default=10,
-                        help="Analyze the last N records (default 10, 0 = all).")
+                        help="Analyze the last N records PER LEDGER (default 10, 0 = all).")
     args = parser.parse_args()
 
     try:
-        log_path = args.log or _default_log_path()
+        log_paths = args.log or [_default_log_path()]
     except (ValueError, RuntimeError) as e:
         print(f"aggregate: {e}", file=sys.stderr)
         return 1
-    records, skipped = _load_records(log_path, args.limit)
+
+    records, skipped, ledgers = _load_ledgers(log_paths, args.limit,
+                                              explicit=args.log is not None)
+
     result = aggregate(records)
+    # `"maintenance" in result` is load-bearing, not defensive noise. `aggregate()`
+    # returns a THREE-KEY skeleton when no record survived, and this block consumed
+    # a key that skeleton does not carry — so a fleet run whose every path was
+    # mistyped crashed with KeyError instead of reporting the empty result. That is
+    # exactly the case the `ledgers` array was added to make visible, and the same
+    # change extended the empty return with the drift keys while missing this one.
+    if len(ledgers) > 1 and "maintenance" in result:
+        # These describe ONE repo's files — the size of its failure-modes
+        # checklist, the length of its live log, the size of its last report.
+        # Concatenated across repos, `_latest` becomes "whichever ledger was
+        # listed last" and `_trend` interleaves unrelated repos into one
+        # sequence. `codify-retro/SKILL.md` gates directly on these, so a
+        # fleet run would otherwise produce a confident checklist-bloat verdict
+        # from an arbitrary repo's numbers. Suppressed rather than reordered:
+        # no ordering makes one series out of several repos' file sizes.
+        result["maintenance"]["failure_modes_bullets_latest"] = None
+        result["maintenance"]["failure_modes_bullets_trend"] = []
+        result["maintenance"]["live_log_entries_latest"] = None
+        result["output_chars"] = {"latest": None, "trend": [], "mean": 0.0}
+        result["per_repo_fields_suppressed"] = True
     result["skipped_records"] = skipped
-    result["log_path"] = str(log_path)
+    # `log_path` stays a bare string in the single-ledger case, which is every
+    # caller that exists today. A multi-ledger run OMITS it rather than naming
+    # one of several: a consumer still reading it then fails loudly instead of
+    # attributing a fleet-wide aggregate to one repo.
+    # Branch on what was actually READ, not on what was asked for. These two
+    # disagree after a dedupe: `--log a a` left `log_paths` at length 2 and omitted
+    # `log_path` — the documented "this is a fleet result" signal — for a run that
+    # read exactly one ledger, while `log_paths` in the output correctly showed one.
+    if len(ledgers) == 1:
+        result["log_path"] = ledgers[0]["path"]
+    result["log_paths"] = [entry["path"] for entry in ledgers]
+    result["ledgers"] = ledgers
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

@@ -32,6 +32,18 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --
 Where `<N>` is the value from `$ARGUMENTS`, or `10` if empty. Substitute the literal number before
 invoking — the script does not expand shell variables.
 
+
+**Reading more than one repo's ledger.** `--log` takes several paths, and the records aggregate together:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit 0 \
+  --log <repo-a>/cla.io/retro/codify-runs.jsonl <repo-b>/cla.io/retro/codify-runs.jsonl
+```
+
+Worth doing whenever one repo's ledger is thin, which is the usual case — a five-record sample put one round-cap exhaustion rate at 4 of 5 where 156 records put it at 6 of 129. Three things change in fleet mode, and each is visible in the output rather than assumed: `--limit` applies PER LEDGER, so `runs_analyzed` can reach N x ledgers; `ledgers` carries per-path provenance, and a path that did not resolve shows `found: false` with `records: 0` — check it before trusting the sample size; and `log_path` is omitted, since no single path describes the result.
+
+One caveat specific to this loop: the per-repo maintenance fields — `failure_modes_bullets_latest`, its trend, `live_log_entries_latest`, and `output_chars` — describe ONE repo's own files, so they are suppressed in fleet mode and the output carries `per_repo_fields_suppressed: true`. The loop-hygiene heuristics below need a single-ledger run; the effectiveness and rung heuristics do not.
+
 Output is a single JSON object on stdout — suggestion apply-rate, re-offending lessons, escalation-rung
 distribution, repeatedly-rejected lessons, failure-modes bullet trend, codify-process-issue rate.
 
@@ -57,6 +69,7 @@ Don't list every metric. Pick the 2-4 patterns that would actually change the lo
 - `skipped_records > 0` → producer is writing malformed JSONL lines; the rest of the analysis runs on a shrunken sample. Fix the log record shape first.
 - `coerced_fields > 0` → some count fields were present but the wrong type (string/bool where an int was expected) and were dropped from the sums; the rates above are computed over a thinned sample. Check the producer's Step 7 serialization.
 - `escalation_rungs_unknown` non-empty → the producer emitted `escalated_to` values outside the rung whitelist; the distribution above excludes them.
+- `shape_drift_records > 0` → some records lost a field the metrics are computed from, so `runs_analyzed` overstates the sample those metrics actually ran on. `shape_drift_fields` names which field drifted and how often. The name is the AGGREGATOR's, not always the producer's: `phases` and `asks` are ledger keys you can grep for, while `warn_reasons`, `review_agents`, `revise_agents`, `review_size_gate` and `review_verdicts` name what the metric lost — the producer writes those as `reason`, `agents`, `size_gate` and `verdict` INSIDE a `phases` entry. Read the stderr line beside the count for the record index and the actual key. Read this before any ratio below: a rate over a thinned sample reads exactly like a rate over a whole one.
 
 Single-digit counts in a category mean "interesting anecdote, not a pattern" — call them out as such, don't propose changes.
 

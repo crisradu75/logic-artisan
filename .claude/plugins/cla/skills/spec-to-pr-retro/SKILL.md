@@ -29,9 +29,19 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
 
 Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrapper), or `10` if `$ARGUMENTS` is empty. Substitute the literal number before invoking — the script does not expand shell variables.
 
+
+**Reading more than one repo's ledger.** `--log` takes several paths, and the records aggregate together:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit 0 \
+  --log <repo-a>/cla.io/retro/spec-to-pr-runs.jsonl <repo-b>/cla.io/retro/spec-to-pr-runs.jsonl
+```
+
+Worth doing whenever one repo's ledger is thin, which is the usual case — a five-record sample put one round-cap exhaustion rate at 4 of 5 where 156 records put it at 6 of 129. Three things change in fleet mode, and each is visible in the output rather than assumed: `--limit` applies PER LEDGER, so `runs_analyzed` can reach N x ledgers; `ledgers` carries per-path provenance, and a path that did not resolve shows `found: false` with `records: 0` — check it before trusting the sample size; and `log_path` is omitted, since no single path describes the result.
+
 Output is a single JSON object on stdout — phase outcomes, warn reasons, cap exhaustion rates, mean rounds used, per-agent finding rates, ask choice distribution, version-bump miss count, deferred-to-TODO totals.
 
-If `runs_analyzed: 0`, the log doesn't exist yet — say so, stop. The user needs to run `/cla:spec-to-pr` a few times first.
+If `runs_analyzed: 0` on a SINGLE-ledger run, the log doesn't exist yet — say so, stop. The user needs to run `/cla:spec-to-pr` a few times first. On a multi-ledger run this conclusion does not follow: read `ledgers` instead, where a path that did not resolve shows `found: false`, and say which ledger was missing rather than reporting a cold start.
 
 ### 2. Identify the load-bearing patterns
 
@@ -64,6 +74,7 @@ Don't list every metric. Pick the 2-4 patterns that would actually change orches
 
 **Schema-integrity heuristics (act before trusting the others):**
 - `skipped_records > 0` → producer is writing malformed JSONL; the rest of the analysis runs on a shrunken sample.
+- `shape_drift_records > 0` → some records lost a field the metrics are computed from, so `runs_analyzed` overstates the sample those metrics actually ran on. `shape_drift_fields` names which field drifted and how often. The name is the AGGREGATOR's, not always the producer's: `phases` and `asks` are ledger keys you can grep for, while `warn_reasons`, `review_agents`, `revise_agents`, `review_size_gate` and `review_verdicts` name what the metric lost — the producer writes those as `reason`, `agents`, `size_gate` and `verdict` INSIDE a `phases` entry. Read the stderr line beside the count for the record index and the actual key. Read this before any ratio below: a rate over a thinned sample reads exactly like a rate over a whole one.
 - `review_size_gate_unknown` / `review_verdicts_unknown` non-empty → producer is emitting values outside the whitelist; rates above are computed against the whitelisted subset only.
 - `review_gate_pair_mismatches > 0` → producer is emitting size_gate/agents inconsistently; agent dispatch counts may be miscounted on the affected runs.
 - `review_agents_unknown_types` / `revise_agents_unknown_types` non-empty → producer is putting non-strings in the `agents` list.

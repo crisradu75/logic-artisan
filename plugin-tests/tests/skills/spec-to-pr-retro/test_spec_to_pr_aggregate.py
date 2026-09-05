@@ -266,6 +266,12 @@ def test_missing_phases_key_warns(tmp_path: Path) -> None:
     assert "missing or non-list `phases`" in stderr
     assert out["runs_analyzed"] == 1
     assert out["phase_outcomes"] == {}
+    # The bare-missing-key variant reaches the same branch as the wrong-type one,
+    # so it must reach the same tally. Asserted here rather than only in the
+    # wrong-type test: a refactor that split the two would otherwise stop counting
+    # this case with nothing in the suite noticing.
+    assert out["shape_drift_fields"] == {"phases": 1}
+    assert out["shape_drift_records"] == 1
 
 
 def test_report_chars_mean_per_phase(tmp_path: Path) -> None:
@@ -355,7 +361,7 @@ def test_type_confused_agents_warns(tmp_path: Path) -> None:
                      "agents": "code-reviewer"}]},   # string, not list
     ])
     out, stderr = _run(log)
-    assert "Revise `agents` not list" in stderr
+    assert "Revise `agents` is str, expected list" in stderr
     assert out["revise_agents"] == {}
 
 
@@ -420,7 +426,7 @@ def test_review_agents_type_confusion_warns(tmp_path: Path) -> None:
                      "size_gate": "large", "agents": "design"}]},
     ])
     out, stderr = _run(log)
-    assert "Review `agents` not list" in stderr
+    assert "Review `agents` is str, expected list" in stderr
     assert out["review_agents"] == {}
 
 
@@ -558,3 +564,362 @@ def test_default_log_path_default_is_claude_retro(monkeypatch) -> None:
     assert p.name == "spec-to-pr-runs.jsonl"
     assert p.parent.name == "retro"
     assert p.parent.parent.name == "cla.io"
+
+
+# --- Container-shape drift: survive the record, and count it -----------------
+#
+# The crash these cover was real, not hypothetical: one record in a consuming
+# repo carried `"asks": 2` — a count where the list belongs — and the aggregator
+# died with `TypeError: 'int' object is not iterable`, exit 1, zero bytes of
+# output. That repo's retro could not be run at all.
+
+
+def _run_multi(logs: list[Path], limit: int = 10) -> tuple[dict, str]:
+    """`_run`, but for the multi-ledger form of --log."""
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "--limit", str(limit), "--log", *[str(p) for p in logs]],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout), r.stderr
+
+
+def test_non_list_asks_does_not_abort_the_run(tmp_path: Path) -> None:
+    # The regression. `_run` asserts exit 0, so a re-broken guard fails here on
+    # the return code before any tally assertion is reached.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Test", "status": "ok"}], "asks": 2},
+        {"phases": [{"name": "Test", "status": "ok"}]},
+    ])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 2, "the good record must still be analyzed"
+    assert out["phase_outcomes"]["Test"] == {"ok": 2}
+
+
+def test_non_list_asks_is_tallied_and_named(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "asks": 2}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"asks": 1}
+    assert out["shape_drift_records"] == 1
+    assert "`asks` is int" in err, "the diagnostic must name the field and the type it got"
+
+
+def test_non_list_phases_is_tallied(tmp_path: Path) -> None:
+    # Warned about since forever, counted nowhere — so a metric computed over a
+    # subset of `runs_analyzed` read identically to one computed over all of it.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": {"test": "ok"}},          # the dict dialect
+        {"phases": [{"name": "Test", "status": "ok"}]},
+    ])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 2
+    assert out["shape_drift_fields"] == {"phases": 1}
+    assert out["shape_drift_records"] == 1
+
+
+def test_one_record_drifting_twice_counts_once_as_a_record(tmp_path: Path) -> None:
+    # Both fields appear in the per-field tally; the record count stays 1. This
+    # is the real shape of interoga-ro record 23, which drifts in both.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": {"test": "ok"}, "asks": 2}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"phases": 1, "asks": 1}
+    assert out["shape_drift_records"] == 1
+
+
+def test_clean_records_are_not_flagged_as_drift(tmp_path: Path) -> None:
+    """Well-formed input must read zero — the false-POSITIVE direction.
+
+    Not a non-vacuity guard, despite an earlier name that said so: a review agent
+    patched an `aggregate()` that kept both fields and never incremented them, and
+    this test passed against it while every sibling `..._is_tallied` test failed.
+    Those siblings are what make the counter non-vacuous. This one makes zero
+    meaningful, which is the other half and is worth its own test — a counter that
+    fires on clean records would make the alarm useless in the opposite way.
+    """
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Test", "status": "ok"}], "asks": [{"header": "h", "choice": "c"}]},
+        {"phases": [{"name": "Ship", "status": "ok"}]},
+    ])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {}
+    assert out["shape_drift_records"] == 0
+    assert out["asks"] == [{"header": "h", "choices": {"c": 1}}]
+
+
+# --- Multi-ledger --log ------------------------------------------------------
+
+
+def test_multiple_logs_aggregate_into_one_result(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"phases": [{"name": "Test", "status": "ok"}]}])
+    _write_log(b, [{"phases": [{"name": "Test", "status": "warn", "reason": "x"}]},
+                   {"phases": [{"name": "Test", "status": "ok"}]}])
+    out, _ = _run_multi([a, b])
+    assert out["runs_analyzed"] == 3
+    assert out["phase_outcomes"]["Test"] == {"ok": 2, "warn": 1}
+    assert out["log_paths"] == [str(a), str(b)]
+
+
+def test_single_log_still_reports_log_path_as_a_string(tmp_path: Path) -> None:
+    # The pre-existing contract. Every caller today passes one ledger.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": []}])
+    out, _ = _run(log)
+    assert out["log_path"] == str(log)
+    assert out["log_paths"] == [str(log)]
+
+
+def test_multiple_logs_omit_log_path_rather_than_naming_one(tmp_path: Path) -> None:
+    # Naming one of several would attribute a fleet-wide aggregate to one repo.
+    # Omitting it makes a stale consumer fail loudly instead of quietly wrong.
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"phases": []}])
+    _write_log(b, [{"phases": []}])
+    out, _ = _run_multi([a, b])
+    assert "log_path" not in out
+    assert out["log_paths"] == [str(a), str(b)]
+
+
+def test_limit_applies_per_ledger(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    _write_log(a, [{"phases": []} for _ in range(5)])
+    _write_log(b, [{"phases": []} for _ in range(5)])
+    out, _ = _run_multi([a, b], limit=2)
+    assert out["runs_analyzed"] == 4, "limit is the last N from EACH ledger, not overall"
+
+
+def test_skipped_records_sum_across_ledgers(tmp_path: Path) -> None:
+    # `main()` accumulates `skipped` across the loop; nothing exercised that sum.
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    a.write_text(json.dumps({"phases": []}) + "\n{ broken\n", encoding="utf-8")
+    b.write_text(json.dumps({"phases": []}) + "\nalso broken\n", encoding="utf-8")
+    out, _ = _run_multi([a, b])
+    assert out["runs_analyzed"] == 2
+    assert out["skipped_records"] == 2, "one malformed line from each ledger"
+
+
+def test_ledgers_names_a_path_that_did_not_resolve(tmp_path: Path) -> None:
+    # The whole point of reading several ledgers is sample size, so a path that
+    # contributed nothing must be visible on stdout, not only on stderr.
+    good, missing = tmp_path / "a.jsonl", tmp_path / "nope.jsonl"
+    _write_log(good, [{"phases": []}, {"phases": []}])
+    out, _ = _run_multi([good, missing])
+    assert out["runs_analyzed"] == 2
+    assert out["ledgers"] == [
+        {"path": str(good), "found": True, "records": 2, "skipped": 0},
+        {"path": str(missing), "found": False, "records": 0, "skipped": 0},
+    ]
+
+
+def test_a_deduped_repeat_is_reported_as_the_single_ledger_it_is(tmp_path: Path) -> None:
+    """`log_path` must follow what was READ, not what was asked for.
+
+    The two diverged the moment dedupe arrived: the branch tested the raw argparse
+    list while the output was derived from the deduped one, so `--log a a` read
+    exactly one ledger, listed one path, and still omitted `log_path` — the
+    documented "this is a fleet result, do not attribute it to one repo" signal.
+    """
+    log = tmp_path / "a.jsonl"
+    _write_log(log, [{"phases": []}])
+    out, _ = _run_multi([log, log])
+    assert len(out["ledgers"]) == 1
+    assert out["log_paths"] == [str(log)]
+    assert out["log_path"] == str(log), "one ledger read must report as a single-ledger run"
+
+
+def test_the_same_ledger_twice_is_not_double_counted(tmp_path: Path) -> None:
+    # A fleet invocation is assembled from a repo list, often by glob or brace
+    # expansion, so a repeated path is a real shape rather than a typo alone.
+    log = tmp_path / "a.jsonl"
+    _write_log(log, [{"phases": []}, {"phases": []}])
+    out, err = _run_multi([log, log])
+    assert out["runs_analyzed"] == 2, "the duplicate must not double the sample"
+    assert len(out["ledgers"]) == 1
+    assert "given more than once" in err
+
+
+def test_window_is_chronological_regardless_of_argument_order(tmp_path: Path) -> None:
+    # Records arrive concatenated in argument order. Taking the first and last of
+    # that concatenation produced a window that ended before it started.
+    old, new = tmp_path / "old.jsonl", tmp_path / "new.jsonl"
+    _write_log(old, [{"ts": "2020-01-01T00:00:00Z", "phases": []}])
+    _write_log(new, [{"ts": "2026-09-01T00:00:00Z", "phases": []}])
+    for order in ([new, old], [old, new]):
+        out, _ = _run_multi(order)
+        assert out["window"] == {"first_ts": "2020-01-01T00:00:00Z",
+                                 "last_ts": "2026-09-01T00:00:00Z"}, f"order {order}"
+
+
+def test_absent_asks_is_not_counted_as_drift(tmp_path: Path) -> None:
+    # An optional field that is absent, or explicitly null, is not drift.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": []}, {"phases": [], "asks": None}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {}
+    assert out["shape_drift_records"] == 0
+
+
+def test_unhashable_ask_keys_do_not_abort_the_run(tmp_path: Path) -> None:
+    # The container guard fixed one level; the KEYS drawn out of it are a second
+    # surface, and a list-valued header took the whole aggregate down.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "asks": [{"header": ["h"], "choice": "c"}]},
+                     {"phases": [], "asks": [{"header": "ok", "choice": "c"}]}])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 2
+    assert out["asks"] == [{"header": "ok", "choices": {"c": 1}}]
+    assert out["shape_drift_fields"] == {"asks": 1}
+
+
+def test_unhashable_phase_name_does_not_abort_the_run(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": {"a": 1}, "status": "ok"}]},
+                     {"phases": [{"name": "Test", "status": "ok"}]}])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 2
+    assert out["phase_outcomes"] == {"Test": {"ok": 1}}
+    assert out["shape_drift_fields"] == {"phases": 1}
+
+
+def test_unhashable_size_gate_does_not_abort_the_run(tmp_path: Path) -> None:
+    # The pair-check tested `size_gate in VALID_SIZE_GATES` on the RAW value,
+    # outside the isinstance guard above it.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Review", "status": "ok",
+                                  "size_gate": {"a": 1}, "agents": []}]}])
+    out, _ = _run(log)
+    assert out["runs_analyzed"] == 1
+
+
+# --- Drift branches the second review found untested ------------------------
+#
+# "Deleting any single one of these `.add(...)` calls survives the entire suite."
+# Each test below deletes exactly that possibility for one branch.
+
+
+def test_non_dict_routing_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "routing": "n/a"}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"routing": 1}
+    assert "`routing` is str" in err
+
+
+def test_non_int_deferred_to_todo_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "deferred_to_todo": "three"}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"deferred_to_todo": 1}
+
+
+def test_non_string_ts_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "ts": 123}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"ts": 1}
+    assert out["window"] == {"first_ts": None, "last_ts": None}
+
+
+def test_non_string_warn_reason_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Test", "status": "warn", "reason": ["x"]}]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"warn_reasons": 1}
+    assert out["warn_reasons"] == []
+    assert out["phase_outcomes"]["Test"] == {"warn": 1}, "the phase still counts"
+
+
+def test_non_list_review_agents_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Review", "status": "ok", "agents": "design"}]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"review_agents": 1}
+
+
+def test_non_list_revise_agents_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok", "agents": "code-reviewer"}]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"revise_agents": 1}
+
+
+def test_uncoercible_rounds_used_and_cap_are_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Revise", "status": "ok", "rounds_used": "two", "rounds_cap": 2}]},
+        {"phases": [{"name": "Revise", "status": "ok", "rounds_used": 2, "rounds_cap": "two"}]},
+    ])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"rounds_used": 1, "rounds_cap": 1}
+
+
+def test_non_string_size_gate_and_verdict_are_tallied(tmp_path: Path) -> None:
+    # These were dropped in COMPLETE silence before: no warning, no unknown
+    # bucket, no tally, while runs_analyzed counted the record.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Review", "status": "ok",
+                                  "size_gate": 1, "verdict": 7, "agents": []}]}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"review_size_gate": 1, "review_verdicts": 1}
+    assert "`size_gate` is int" in err
+    assert "`verdict` is int" in err
+
+
+def test_a_retired_agent_name_is_history_not_drift(tmp_path: Path) -> None:
+    """Drift names a producer edit. These records are immutable, so there is none.
+
+    Counting them as drift pinned `shape_drift_records` permanently above zero —
+    measured at 4 of this repo's 8 records — which is the standing alarm nobody
+    reads, and the exact failure the counter was added to end.
+    """
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok",
+                                  "agents": ["code-reviewer"]}],
+                      "routing": {"revise_findings_by_tier": {
+                          "code_reviewer": {"found": 2, "phantom": 0},
+                          "skill-doc-reviewer": {"found": 1, "phantom": 0}}}}])
+    out, _ = _run(log)
+    assert out["retired_agent_keys"] == {"skill-doc-reviewer": 1}
+    assert out["shape_drift_fields"] == {}, "history is not drift"
+    assert out["shape_drift_records"] == 0
+    assert out["revise_findings"]["code-reviewer"]["found"] == 2
+
+
+def test_non_dict_findings_by_tier_reaches_the_drift_tally(tmp_path: Path) -> None:
+    # The MORE severe shape escaped the tally while a dict with one bad key
+    # reached it.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "routing": {"revise_findings_by_tier": ["x"]}}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"revise_findings_by_tier": 1}
+    assert out["revise_findings_malformed_records"] == 1
+
+
+def test_absent_rounds_cap_is_tallied(tmp_path: Path) -> None:
+    # Absence does the identical harm as an uncoercible value: the phase joins
+    # cap_total and can never be a hit, depressing the exhaustion rate.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok", "rounds_used": 2}]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"rounds_cap": 1}
+    assert out["cap_exhaustion"]["revise"] == {"hit": 0, "total": 1}
+
+
+def test_mixed_agent_keys_reach_the_drift_tally(tmp_path: Path) -> None:
+    # A record mixing a valid agent with a bad key took the "matched" branch and
+    # was counted as a CLEAN per-agent record. This is the shape that fires on
+    # records 0 and 2 of the real ledger.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok",
+                                  "agents": ["code-reviewer"]}],
+                      "routing": {"revise_findings_by_tier": {
+                          "code_reviewer": {"found": 2, "phantom": 0},
+                          "not_an_agent": {"found": 1}}}}])
+    out, _ = _run(log)
+    assert out["revise_findings"]["code-reviewer"]["found"] == 2
+    assert out["shape_drift_fields"] == {"revise_findings_by_tier": 1}

@@ -84,11 +84,12 @@ def _batch(root: Path, entries: str, header: str = "") -> Path:
     return path
 
 
-def _run(batch: Path, *, python: str | None = None) -> subprocess.CompletedProcess:
+def _run(batch: Path, *, python: str | None = None,
+         env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [python or sys.executable, str(_MUTATE), str(batch)],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        cwd=str(batch.parent),
+        cwd=str(batch.parent), env=env,
     )
 
 
@@ -104,6 +105,54 @@ def test_a_real_mutation_caught_by_a_real_test_is_killed(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "killed" in result.stdout
     assert "All 1 mutant(s) killed." in result.stdout
+
+
+def test_the_child_environment_is_pinned_to_an_allowlist(tmp_path):
+    """An unlisted inherited variable must not reach the pytest child.
+
+    Each variable that changes what this tool measures was found one at a time —
+    FORCE_COLOR broke the kill detector, PYTEST_ADDOPTS can inject `-n auto` into a
+    run kept serial on purpose, PYTHONOPTIMIZE strips the `assert` statements the
+    verdict depends on. The allowlist replaced a denylist that was wrong until the
+    next incident; this test is what stops it silently reverting to one.
+    """
+    source, tests = _make_scope(tmp_path)
+    # The scope's own test asserts the sentinel is ABSENT, so it passes only when
+    # the allowlist actually dropped it — and the mutant then flips that to a kill.
+    (tests / "test_env.py").write_text(
+        "import os\n\n\ndef test_sentinel_did_not_reach_the_child():\n"
+        "    assert os.environ.get('CLA_SENTINEL') is None\n",
+        encoding="utf-8",
+    )
+    batch = _batch(tmp_path, f"(\"flip the verdict\", Path(r\"{source}\"), \"'ON'\", "
+                             f"\"'OFF'\", [Path(r\"{tests}\")]),")
+    result = _run(batch, env={**os.environ, "CLA_SENTINEL": "leaked",
+                              "PYTHONOPTIMIZE": "1"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All 1 mutant(s) killed." in result.stdout
+    assert "pinned environment" in result.stderr
+
+
+def test_a_kill_is_still_a_kill_when_pytest_colours_its_output(tmp_path):
+    """The control above only exercises this by accident of the environment.
+
+    `FORCE_COLOR` makes pytest emit ANSI escapes even into a captured pipe. The
+    escape then sits between the line start and the count, and `_RAN_RE` is
+    anchored to the line start — so a mutant a test genuinely caught was reported
+    `INCONCLUSIVE (nothing collected)` and the tool exited 1. Every batch on such
+    a machine proved nothing while looking careful about it.
+
+    So this sets the variable itself rather than trusting the ambient one: on a
+    machine without it the control passes whether or not the bug is present.
+    """
+    source, tests = _make_scope(tmp_path)
+    batch = _batch(tmp_path, f"(\"flip the verdict\", Path(r\"{source}\"), \"'ON'\", "
+                             f"\"'OFF'\", [Path(r\"{tests}\")]),")
+    result = _run(batch, env={**os.environ, "FORCE_COLOR": "1", "PY_COLORS": "1"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All 1 mutant(s) killed." in result.stdout
+    assert "INCONCLUSIVE" not in result.stdout, \
+        "a real kill was misread as inconclusive because the output was coloured"
 
 
 def test_a_mutation_no_test_covers_is_reported_as_a_survivor(tmp_path):
