@@ -803,6 +803,87 @@ def _inherited_env(**overrides) -> dict:
 
 
 @pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_a_warm_cache_does_not_survive_a_poisoned_path(tmp_path):
+    """The interpreter cache keys on PATH, and this is what proves it.
+
+    Every other poisoned-PATH test in this file builds its env from scratch and
+    omits HOME, so the cache file resolves under an empty prefix, is unreadable,
+    and never participates. They therefore pass whether or not PATH is in the
+    key — a vacuous pass on the one property that keeps the cache from handing a
+    poisoned run an interpreter found under a different PATH.
+
+    So this one gives the probe a REAL, writable HOME: it warms the cache under
+    a good PATH, confirms the file exists, then poisons PATH with the same stub
+    the sibling test uses and requires the same refusal. Remove PATH from the key
+    in `probe-python.sh` and this is the only test in the suite that goes red.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    home_sh = str(home).replace("\\", "/")
+
+    # CLA_PY_SEARCH is set EMPTY on both runs so PATH is the only difference
+    # between them. Without this the cache misses on the search-list component
+    # instead, and the test passes with PATH absent from the key — measured: the
+    # mutant `[ -n "$_c_path" ]` survived the whole suite until this line existed.
+    warm = _inherited_env(HOME=home_sh, CLA_PY_SEARCH="")
+    r1 = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=warm)
+    assert r1.returncode == 0, f"could not warm the cache: {r1.stderr}"
+    cache = home / ".cache" / "cla" / "pyexe"
+    assert cache.exists(), "the probe wrote no cache, so this test proves nothing"
+
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir()
+    stub = stub_dir / "python3"
+    stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+
+    env = {
+        "PATH": str(stub_dir),
+        "CLA_PY_SEARCH": "",
+        "CLAUDE_PLUGIN_ROOT": _PLUGIN_ROOT_SH,
+        "HOME": home_sh,  # the cache IS readable here — that is the point
+    }
+    r2 = _sp.run([_BASH, "-c", _probe_prefix() + '; echo "SELECTED:$PYEXE"'],
+                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+    assert r2.returncode == 1, (
+        "a cache built under a different PATH was reused under a poisoned one — "
+        "the probe handed out an interpreter it did not find"
+    )
+    assert "SELECTED:" not in r2.stdout or "SELECTED:\n" in r2.stdout
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
+def test_the_cache_actually_skips_the_version_check_when_warm(tmp_path):
+    """Non-vacuity partner: the cache must be reachable at all.
+
+    Without this, the test above passes trivially on a probe whose cache never
+    works — refusing under a poisoned PATH for the ordinary reason rather than
+    because the key held. Asserts a second run reuses the file rather than
+    rewriting it, which is the observable difference between a hit and a miss.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    env = _inherited_env(HOME=str(home).replace("\\", "/"))
+    cache = home / ".cache" / "cla" / "pyexe"
+
+    r1 = _sp.run([_BASH, "-c", _probe_prefix()], capture_output=True, text=True,
+                 encoding="utf-8", errors="replace", env=env)
+    assert r1.returncode == 0, r1.stderr
+    assert cache.exists()
+    first = cache.stat().st_mtime_ns
+    marker = cache.read_text(encoding="utf-8")
+
+    r2 = _sp.run([_BASH, "-c", _probe_prefix()], capture_output=True, text=True,
+                 encoding="utf-8", errors="replace", env=env)
+    assert r2.returncode == 0, r2.stderr
+    assert cache.read_text(encoding="utf-8") == marker, "the warm run rewrote the cache"
+    assert cache.stat().st_mtime_ns == first, (
+        "the warm run rewrote the cache, so it missed rather than hit"
+    )
+
+
+@pytest.mark.skipif(_BASH is None, reason="no POSIX shell available")
 def test_probe_still_selects_a_working_interpreter():
     """Non-vacuity partner: the two tests above pass trivially if the probe
     rejects everything.
