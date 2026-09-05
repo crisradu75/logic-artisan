@@ -296,3 +296,19 @@ def test_every_missing_file_is_reported_not_just_the_first(tmp_path: Path):
     }
     problems = csd.check_group(group, tmp_path)
     assert len([p for p in problems if "file not found" in p]) == 2
+
+
+def test_the_two_diverged_helpers_stay_registered() -> None:
+    """`_load_ledgers` and `_window` are pinned because they ALREADY diverged.
+
+    Both were copied verbatim into the two aggregators and then fixed in only one
+    — the window kept inverting in codify after spec-to-pr learned to sort, and a
+    reviewer caught it rather than the gate. Dropping either name from the group
+    would restore exactly that hole while every other test stayed green.
+    """
+    import check_script_drift
+
+    group = next(g for g in check_script_drift.SIBLING_GROUPS
+                 if g["name"] == "retro aggregator record loading")
+    assert "_load_ledgers" in group["functions"]
+    assert "_window" in group["functions"]

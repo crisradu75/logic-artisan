@@ -778,3 +778,92 @@ def test_unhashable_size_gate_does_not_abort_the_run(tmp_path: Path) -> None:
                                   "size_gate": {"a": 1}, "agents": []}]}])
     out, _ = _run(log)
     assert out["runs_analyzed"] == 1
+
+
+# --- Drift branches the second review found untested ------------------------
+#
+# "Deleting any single one of these `.add(...)` calls survives the entire suite."
+# Each test below deletes exactly that possibility for one branch.
+
+
+def test_non_dict_routing_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "routing": "n/a"}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"routing": 1}
+    assert "`routing` is str" in err
+
+
+def test_non_int_deferred_to_todo_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "deferred_to_todo": "three"}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"deferred_to_todo": 1}
+
+
+def test_non_string_ts_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [], "ts": 123}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"ts": 1}
+    assert out["window"] == {"first_ts": None, "last_ts": None}
+
+
+def test_non_string_warn_reason_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Test", "status": "warn", "reason": ["x"]}]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"warn_reasons": 1}
+    assert out["warn_reasons"] == []
+    assert out["phase_outcomes"]["Test"] == {"warn": 1}, "the phase still counts"
+
+
+def test_non_list_review_agents_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Review", "status": "ok", "agents": "design"}]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"review_agents": 1}
+
+
+def test_non_list_revise_agents_is_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok", "agents": "code-reviewer"}]}])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"revise_agents": 1}
+
+
+def test_uncoercible_rounds_used_and_cap_are_tallied(tmp_path: Path) -> None:
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Revise", "status": "ok", "rounds_used": "two", "rounds_cap": 2}]},
+        {"phases": [{"name": "Revise", "status": "ok", "rounds_used": 2, "rounds_cap": "two"}]},
+    ])
+    out, _ = _run(log)
+    assert out["shape_drift_fields"] == {"rounds_used": 1, "rounds_cap": 1}
+
+
+def test_non_string_size_gate_and_verdict_are_tallied(tmp_path: Path) -> None:
+    # These were dropped in COMPLETE silence before: no warning, no unknown
+    # bucket, no tally, while runs_analyzed counted the record.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Review", "status": "ok",
+                                  "size_gate": 1, "verdict": 7, "agents": []}]}])
+    out, err = _run(log)
+    assert out["shape_drift_fields"] == {"review_size_gate": 1, "review_verdicts": 1}
+    assert "`size_gate` is int" in err
+    assert "`verdict` is int" in err
+
+
+def test_mixed_agent_keys_reach_the_drift_tally(tmp_path: Path) -> None:
+    # A record mixing a valid agent with a bad key took the "matched" branch and
+    # was counted as a CLEAN per-agent record. This is the shape that fires on
+    # records 0 and 2 of the real ledger.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok",
+                                  "agents": ["code-reviewer"]}],
+                      "routing": {"revise_findings_by_tier": {
+                          "code_reviewer": {"found": 2, "phantom": 0},
+                          "not_an_agent": {"found": 1}}}}])
+    out, _ = _run(log)
+    assert out["revise_findings"]["code-reviewer"]["found"] == 2
+    assert out["shape_drift_fields"] == {"revise_findings_by_tier": 1}

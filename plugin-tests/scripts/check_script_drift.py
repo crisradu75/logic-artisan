@@ -63,9 +63,16 @@ SIBLING_GROUPS = [
         ),
     },
     {
+        # `_load_ledgers` and `_window` are here because they are the two blocks
+        # that ACTUALLY diverged. Both were copied verbatim into the two
+        # aggregators and then fixed in only one: the window kept inverting in
+        # codify after spec-to-pr learned to sort, and nothing flagged it but a
+        # reviewer. Pinning only `_load_records`/`_coerce_int` left the newest
+        # duplication — the fleet ledger loop — outside the one mechanism built to
+        # catch exactly this.
         "name": "retro aggregator record loading",
         "root": PLUGIN_ROOT,
-        "functions": ("_load_records", "_coerce_int"),
+        "functions": ("_load_records", "_coerce_int", "_load_ledgers", "_window"),
         "files": (
             "skills/codify-retro/scripts/codify_aggregate.py",
             "skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py",

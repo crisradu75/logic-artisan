@@ -307,6 +307,65 @@ def _coerce_int(value: object, field: str, context: str) -> int | None:
     return None
 
 
+
+def _window(timestamps: list[str]) -> dict:
+    """The analyzed window's ends, chronologically rather than as collected.
+
+    Records arrive concatenated in `--log` argument order, so taking the first and
+    last of that concatenation produced a window that ENDED BEFORE IT STARTED
+    whenever a newer ledger was listed first — printed with exit 0.
+
+    The sort is lexical. These are ISO-8601 strings and the corpus mixes `Z` with
+    explicit offsets, so two instants on the same day in different zones can order
+    wrongly; that is bounded inside a day, where argument order was unbounded.
+
+    Pinned across both aggregators by `check_script_drift.py`, and the reason it is
+    pinned is this function's own history: the sort landed in one sibling, the
+    other kept inverting, and nothing caught it but a reviewer.
+    """
+    if not timestamps:
+        return {"first_ts": None, "last_ts": None}
+    ordered = sorted(timestamps)
+    return {"first_ts": ordered[0], "last_ts": ordered[-1]}
+
+
+def _load_ledgers(log_paths: list[Path], limit: int,
+                  explicit: bool) -> tuple[list[dict], int, list[dict]]:
+    """Read every named ledger into one record list, with per-ledger provenance.
+
+    Deduplicates by resolved path: a fleet invocation is assembled by a model from
+    a repo list, often via a glob or brace expansion, so the same ledger arriving
+    twice is a real shape — and it silently doubled every count.
+
+    Returns the provenance rows as well as the records, because the whole reason
+    to read several ledgers is sample size: a mistyped path contributed nothing
+    while still being echoed back, so a four-repo aggregate could claim five on the
+    one stream nothing reads after the fact.
+
+    Pinned across both aggregators by `check_script_drift.py`.
+    """
+    records: list[dict] = []
+    skipped = 0
+    ledgers: list[dict] = []
+    seen: set[Path] = set()
+    for p in log_paths:
+        try:
+            key = p.resolve()
+        except OSError:
+            key = p
+        if key in seen:
+            print(f"aggregate: {p} given more than once — ignoring the duplicate",
+                  file=sys.stderr)
+            continue
+        seen.add(key)
+        existed = p.exists()
+        recs, sk = _load_records(p, limit, explicit=explicit)
+        records.extend(recs)
+        skipped += sk
+        ledgers.append({"path": str(p), "found": existed,
+                        "records": len(recs), "skipped": sk})
+    return records, skipped, ledgers
+
 def aggregate(records: list[dict]) -> dict:
     if not records:
         # The drift fields are emitted here too. Omitting them made a consumer's
@@ -553,6 +612,7 @@ def aggregate(records: list[dict]) -> dict:
                         print(f"aggregate: record {ri}: revise_findings_by_tier "
                               f"key {k!r} not a string — ignored", file=sys.stderr)
                         had_drift = True
+                        drifted_fields.add("revise_findings_by_tier")
                         continue
                     agent = _normalize_agent(k)
                     if agent in REVISE_AGENT_NAMES:
@@ -561,10 +621,15 @@ def aggregate(records: list[dict]) -> dict:
                                   f"{type(v).__name__}, expected dict — ignored",
                                   file=sys.stderr)
                             had_drift = True
+                            drifted_fields.add("revise_findings_by_tier")
                             continue
                         if agent in seen:
                             print(f"aggregate: record {ri}: agent {agent!r} keyed twice "
                                   f"(spelling drift) — counted once", file=sys.stderr)
+                            # Set no `had_drift`: the record is still usable and the
+                            # dedupe is deliberate. But the SECOND value is dropped,
+                            # so the yield it carried is lost and that is drift.
+                            drifted_fields.add("revise_findings_by_tier")
                             continue
                         seen.add(agent)
                         found = _coerce_int(v.get("found", 0), "found", f"record {ri} {agent}")
@@ -578,6 +643,12 @@ def aggregate(records: list[dict]) -> dict:
                         matched = True
                     elif agent not in LEGACY_TIER_KEYS:
                         had_drift = True  # not an agent, not a known legacy key
+                        # The path the REAL ledger trips — records 0 and 2 of this
+                        # repo's own log. Mixed with a valid agent it took the
+                        # `matched` branch and was recorded as a clean per-agent
+                        # record, so the drift the stderr line named reached no
+                        # counter at all.
+                        drifted_fields.add("revise_findings_by_tier")
                 if matched:
                     if had_drift:
                         print(f"aggregate: record {ri}: revise_findings_by_tier mixes "
@@ -612,8 +683,7 @@ def aggregate(records: list[dict]) -> dict:
     timestamps = sorted(r.get("ts") for r in records if isinstance(r.get("ts"), str))
     return {
         "runs_analyzed": len(records),
-        "window": {"first_ts": timestamps[0] if timestamps else None,
-                   "last_ts":  timestamps[-1] if timestamps else None},
+        "window": _window(timestamps),
         "phase_outcomes": {name: dict(counter) for name, counter in phase_outcomes.items()},
         "warn_reasons": [{"reason": r, "count": c} for r, c in warn_reasons.most_common(10)],
         "cap_exhaustion": {k: {"hit": cap_hit[k], "total": cap_total[k]} for k in cap_hit},
@@ -677,35 +747,8 @@ def main() -> int:
         print(f"aggregate: {e}", file=sys.stderr)
         return 1
 
-    records: list[dict] = []
-    skipped = 0
-    ledgers: list[dict] = []
-    seen: set[Path] = set()
-    explicit = args.log is not None
-    for p in log_paths:
-        # Deduplicate by resolved path. A fleet invocation is assembled by a model
-        # from a repo list, often with a glob or brace expansion, so the same
-        # ledger arriving twice is a real shape — and it silently doubled every
-        # count while reporting the path twice.
-        try:
-            key = p.resolve()
-        except OSError:
-            key = p
-        if key in seen:
-            print(f"aggregate: {p} given more than once — ignoring the duplicate",
-                  file=sys.stderr)
-            continue
-        seen.add(key)
-        existed = p.exists()
-        recs, sk = _load_records(p, args.limit, explicit=explicit)
-        records.extend(recs)
-        skipped += sk
-        # Per-ledger provenance on STDOUT. The whole point of reading several
-        # ledgers is sample size, and a mistyped path contributed nothing while
-        # still being echoed in `log_paths` — a four-repo aggregate claiming five,
-        # discoverable only on a stream nothing reads after the fact.
-        ledgers.append({"path": str(p), "found": existed,
-                        "records": len(recs), "skipped": sk})
+    records, skipped, ledgers = _load_ledgers(log_paths, args.limit,
+                                              explicit=args.log is not None)
 
     result = aggregate(records)
     result["skipped_records"] = skipped
@@ -715,7 +758,7 @@ def main() -> int:
     # attributing a fleet-wide aggregate to one repo.
     if len(log_paths) == 1:
         result["log_path"] = str(log_paths[0])
-    result["log_paths"] = [str(p) for p in log_paths]
+    result["log_paths"] = [entry["path"] for entry in ledgers]
     result["ledgers"] = ledgers
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
