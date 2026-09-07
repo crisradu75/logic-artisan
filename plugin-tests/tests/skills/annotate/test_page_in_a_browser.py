@@ -661,3 +661,180 @@ def test_a_margin_note_stands_beside_its_block_after_scrolling(hpage):
     assert abs(got["note"] - got["mark"]) < 60, (
         "the note is %.0fpx from its mark after scrolling" %
         abs(got["note"] - got["mark"]))
+
+
+# A document whose own sizing is viewport-relative. The frame's height IS this
+# document's viewport, so sizing the frame to its content feeds straight back
+# into the measurement — which is why it gets a fixture of its own.
+VIEWPORT_SIZED = """<!doctype html><meta charset="utf-8">
+<title>Viewport sized</title>
+<style>body{margin:0;font:16px system-ui}</style>
+<h2>First</h2><section style="height:100vh">One screen.</section>
+<h2>Second</h2><section style="height:100vh">Another screen.</section>
+"""
+
+
+@pytest.fixture(scope="module")
+def served_vh(tmp_path_factory):
+    root = tmp_path_factory.mktemp("browser-vh")
+    (root / ".git").mkdir()
+    doc = root / "vh.html"
+    doc.write_text(VIEWPORT_SIZED, encoding="utf-8")
+    pages = tmp_path_factory.mktemp("pages-vh")
+    page = pages / "vh-page.html"
+    render_html.build(str(doc), str(root), str(page))
+
+    corpus = store.path_for(str(doc), str(root))
+    os.makedirs(os.path.dirname(corpus), exist_ok=True)
+    open(corpus, "w", encoding="utf-8").close()
+    _root, _doc, _page = str(root), str(doc), str(page)
+    _key = store.doc_key(_doc, _root)
+
+    class VhHandler(annotate_server.Handler):
+        out_path = str(corpus)
+        doc_path = _doc
+        doc_key = _key
+        root = _root
+        page_path = _page
+        is_change = False
+        kind = "html"
+
+    srv = ThreadingHTTPServer(
+        ("127.0.0.1", 0), partial(VhHandler, directory=str(pages)))
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    yield "http://127.0.0.1:%d/vh-page.html" % srv.server_address[1]
+    srv.shutdown()
+    srv.server_close()
+    thread.join(timeout=10)
+
+
+def test_a_viewport_sized_document_does_not_grow_the_frame_without_bound(browser,
+                                                                        served_vh):
+    """Sizing the frame to its content is a feedback loop when the document's own
+    sizing is viewport-relative: the frame IS that document's viewport, so each
+    fit makes `100vh` taller and the next fit taller again.
+
+    Measured before the guard existed: 33,554,432px — the browser's maximum
+    element height — within a second. It did not hang, which is worse. It
+    saturated, and a saturated frame looks like a rendered page.
+    """
+    p = browser.new_page(viewport={"width": 1280, "height": 800})
+    errors = []
+    p.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        p.goto(served_vh)
+        p.wait_for_function(
+            "() => { const f = document.getElementById('cla-frame');"
+            " return f && f.contentDocument"
+            " && f.contentDocument.querySelectorAll('[data-blk]').length > 0; }")
+        p.wait_for_timeout(1500)
+        h = p.evaluate(
+            "() => document.getElementById('cla-frame').getBoundingClientRect().height")
+        assert h < 20000, "the frame ran away to %.0fpx" % h
+        # And it is still usable: the document scrolls somewhere.
+        scrolls = p.evaluate("""() => {
+          const F = document.getElementById('cla-frame');
+          const D = F.contentDocument;
+          return D.documentElement.scrollHeight > D.documentElement.clientHeight
+              || document.documentElement.scrollHeight > window.innerHeight;
+        }""")
+        assert scrolls, "neither surface can scroll; the document is unreachable"
+        assert errors == [], "the page threw: %s" % errors
+    finally:
+        p.close()
+
+
+def test_an_ordinary_document_still_gets_a_content_sized_frame(hpage):
+    """The non-vacuity partner. A guard that pinned every frame to the viewport
+    would pass the test above and quietly give up the outer-page scrolling the
+    margin arithmetic was built on."""
+    got = hpage.evaluate("""() => {
+      const F = document.getElementById('cla-frame');
+      return {styleH: F.style.height,
+              inner: F.contentDocument.documentElement.scrollHeight,
+              boxH: Math.round(F.getBoundingClientRect().height)};
+    }""")
+    assert got["styleH"] != "100vh", "an ordinary document was pinned to the viewport"
+    assert abs(got["boxH"] - got["inner"]) < 4, got
+
+
+def test_a_pinned_frame_relays_out_the_margin_as_it_scrolls(browser, served_vh):
+    """A pinned frame scrolls itself, so a note's own line moves under it while
+    the outer page does not move at all. Without a listener on the frame's
+    scroll, every note stays where the first layout put it — beside a different
+    sentence, with its tie still drawn solid, which is this page's promise that
+    the note is level with its own line."""
+    p = browser.new_page(viewport={"width": 1440, "height": 900})
+    try:
+        p.goto(served_vh)
+        p.wait_for_function(
+            "() => { const f = document.getElementById('cla-frame');"
+            " return f && f.contentDocument"
+            " && f.contentDocument.querySelectorAll('[data-blk]').length > 0; }")
+        p.wait_for_timeout(1500)
+        pinned = p.evaluate(
+            "() => document.getElementById('cla-frame').style.height === '100vh'")
+        assert pinned, "this fixture is meant to pin the frame; it did not"
+
+        painted = p.evaluate("""() => {
+          const D = document.getElementById('cla-frame').contentDocument;
+          const e = [...D.querySelectorAll('[data-blk]')]
+            .find(x => x.textContent.includes('One screen'));
+          if (!e) return null;
+          const full = blockText(e), needle = 'One screen';
+          const off = full.indexOf(needle);
+          CMT.list = [{id: 'v1', blk: e.dataset.blk, text: needle, off: off,
+                       before: full.slice(Math.max(0, off - 60), off),
+                       after: full.slice(off + needle.length,
+                                         off + needle.length + 60),
+                       sec: '', line: 1, note: 'a note',
+                       at: '2026-09-07T10:00:00'}];
+          render();
+          return {marks: D.querySelectorAll('mark.cmt-hl').length,
+                  lost: !!CMT.list[0].lost};
+        }""")
+        assert painted and not painted["lost"] and painted["marks"] == 1, painted
+        p.wait_for_timeout(500)
+        # Scroll the FRAME, not the page.
+        p.evaluate("() => document.getElementById('cla-frame')"
+                   ".contentWindow.scrollTo(0, 700)")
+        p.wait_for_timeout(700)
+        got = p.evaluate("""() => {
+          const note = document.querySelector('#gutter .mnote');
+          const F = document.getElementById('cla-frame');
+          const mark = F.contentDocument.querySelector('mark.cmt-hl');
+          if (!note || !mark) return null;
+          return {note: note.getBoundingClientRect().top,
+                  mark: mark.getBoundingClientRect().top
+                      + F.getBoundingClientRect().top};
+        }""")
+        assert got, "nothing was painted"
+        assert abs(got["note"] - got["mark"]) < 80, (
+            "the note is %.0fpx from its mark after the frame scrolled"
+            % abs(got["note"] - got["mark"]))
+    finally:
+        p.close()
+
+
+def test_the_rail_says_so_when_its_section_is_gone(hpage):
+    """The defensive path. A rail entry whose section is no longer in the
+    document must not fall through to a fragment the shell cannot resolve —
+    that is a dead click with nothing said, which is indistinguishable from a
+    page that is simply not responding."""
+    hpage.evaluate("""() => {
+      const D = document.getElementById('cla-frame').contentDocument;
+      D.querySelectorAll('[data-sec-id]').forEach(e => e.removeAttribute('data-sec-id'));
+    }""")
+    before = hpage.evaluate("window.scrollY")
+    hpage.evaluate("() => document.querySelectorAll('.rail-item')[1].click()")
+    hpage.wait_for_timeout(400)
+    state = hpage.evaluate("""() => {
+      const w = document.getElementById('frame-warn');
+      return {hidden: w.hidden, text: (w.textContent || '').slice(0, 60),
+              hash: location.hash, scrollY: window.scrollY};
+    }""")
+    assert not state["hidden"], "the rail failed silently"
+    assert "no longer in the document" in state["text"], state
+    assert state["hash"] == "", "the click fell through to a fragment"
+    assert state["scrollY"] == before

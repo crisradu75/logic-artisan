@@ -100,7 +100,37 @@ MUTANTS = [
     ("the frame is left at its default height, so it scrolls itself and the "
      "margin arithmetic loses the offset it depends on",
      DOC,
-     "    if (h) FRAME.style.height = h + 'px';",
-     "    if (false) FRAME.style.height = h + 'px';",
+     "    lastH = h;\n    FRAME.style.height = h + 'px';",
+     "    lastH = h;",
+     TESTS),
+
+    # ---- Revise round 1: the runaway frame and its neighbours ----
+
+    ("the frame stops detecting that it is growing itself, so a viewport-sized "
+     "document inflates the frame to the browser's maximum element height",
+     DOC,
+     "    if (fits > 6 || (lastH && h > lastH + 4 && fits > 2)) {",
+     "    if (false) {",
+     TESTS),
+
+    ("every frame is pinned to the viewport, giving up the outer-page scrolling "
+     "the margin arithmetic was built on",
+     DOC,
+     "    if (fits > 6 || (lastH && h > lastH + 4 && fits > 2)) {",
+     "    if (true) {",
+     TESTS),
+
+    ("a pinned frame stops re-laying-out the margin as it scrolls, so every "
+     "note drifts away from its own line",
+     DOC,
+     "      CWIN.addEventListener('scroll', syncMargin);",
+     "      /* nothing */",
+     TESTS),
+
+    ("the rail stops preventing default on a miss, so a click navigates nowhere "
+     "and says nothing",
+     DOC,
+     "    e.preventDefault();\n    const sec = a.dataset.goSec;",
+     "    const sec = a.dataset.goSec;",
      TESTS),
 ]

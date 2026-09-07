@@ -957,12 +957,36 @@ function warnIfUnserved() {
     el.hidden = false;
   }
   FRAME.hidden = true;
+  /* The unframed path always reaches render(), so the opener shows the count and
+     any fatal. Returning early here skipped that, and a `file:` page could not
+     even report that the server was unreachable. */
+  try { render(); } catch (e) {}
   return true;
+}
+
+/* One place for a message the reader can actually see. The frame path has
+   several ways to end up with a document and no layer, and every one of them
+   looks identical to "this document has no annotations yet". */
+function note(msg) {
+  const el = document.getElementById('frame-warn');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
 }
 
 function onContentReady(fn) {
   if (!FRAME) { fn(); return; }
   if (warnIfUnserved()) return;
+  /* A frame whose `load` never fires — a 404, a blocked request, a stall —
+     leaves the layer unwired forever with nothing said anywhere. There is no
+     event for "this is not going to load", so the only way to report it is to
+     stop waiting. */
+  const waited = setTimeout(() => {
+    note('the document did not load, so nothing on this page can be annotated.'
+       + ' Check the server is still running and rebuild.');
+  }, 10000);
+  const done = fn;
+  fn = () => { clearTimeout(waited); done(); };
   const go = () => {
     CDOC = FRAME.contentDocument;
     CWIN = FRAME.contentWindow;
@@ -1077,10 +1101,13 @@ function wireRail() {
        the collision and the fragment would land somewhere arbitrary — so the
        slug names nothing inside the frame. `data-sec-id` is ours and is on the
        heading that opens each section. */
+    /* preventDefault FIRST. The shell holds no element with the fragment's id,
+       so falling through on a miss navigates nowhere and looks like a dead
+       click with nothing said. */
+    e.preventDefault();
     const sec = a.dataset.goSec;
     const h = sec ? CDOC.querySelector('[data-sec-id="' + CSS.escape(sec) + '"]') : null;
-    if (!h) return;
-    e.preventDefault();
+    if (!h) { note('that section is no longer in the document; rebuild the page.'); return; }
     h.scrollIntoView({block: 'center', behavior: 'smooth'});
   }));
 }
@@ -2189,13 +2216,50 @@ function wireContent() {
      they were. Content height is not stable at first layout: the motivating
      document pulls three font families over the network and its text reflows
      when they land, so this is re-measured rather than measured. */
+  /* Sizing the frame to its content is a FEEDBACK LOOP for a document whose
+     own sizing is viewport-relative: the frame's height IS that document's
+     viewport, so `100vh` grows with the frame, `scrollHeight` grows with it,
+     and the next fit is taller again. Measured on a `100vh` fixture before this
+     guard existed: the frame reached 33,554,432px — the browser's maximum
+     element height — in under a second, and the document was unreadable. It
+     did not hang, which is worse: it saturated and looked like a rendered page.
+
+     Two exits. A document that settles keeps the content-sized frame and the
+     outer page scrolls, which is what the margin arithmetic and the rail were
+     built on. A document that does NOT settle is pinned to the viewport and
+     scrolls itself; `contentRect` already handles that, because a rect taken
+     inside the frame is relative to the frame's viewport and so already carries
+     its internal scroll. What it costs is that the margin has to be re-laid-out
+     on the frame's own scroll, which is the listener below. */
+  let lastH = 0, fits = 0, framePins = false;
   const fit = () => {
+    if (framePins) return;
     const h = CDOC.documentElement.scrollHeight;
-    if (h) FRAME.style.height = h + 'px';
+    if (!h) {
+      /* Zero is a transient layout, not a size. Skipping it silently would
+         leave the frame at the browser's default ~150px looking like a
+         document with nothing in it. */
+      if (fits > 2) note('the document reported no height; the frame may be clipped');
+      return;
+    }
+    fits += 1;
+    if (fits > 6 || (lastH && h > lastH + 4 && fits > 2)) {
+      framePins = true;
+      FRAME.style.height = '100vh';
+      CWIN.addEventListener('scroll', syncMargin);
+      syncMargin();
+      return;
+    }
+    if (Math.abs(h - lastH) < 2) { syncMargin(); return; }
+    lastH = h;
+    FRAME.style.height = h + 'px';
     syncMargin();
   };
   fit();
   if (CWIN.ResizeObserver) new CWIN.ResizeObserver(fit).observe(CDOC.documentElement);
+  /* `document.fonts.ready` does not reject per spec, so this catch is a safety
+     net rather than a swallowed error. Said out loud so a future reader does not
+     read it as one. */
   if (CDOC.fonts && CDOC.fonts.ready) CDOC.fonts.ready.then(fit).catch(() => {});
   window.addEventListener('resize', fit);
 }
@@ -2428,7 +2492,7 @@ def build(doc_path, root=None, out=None):
     # precisely what makes it dangerous in a repo with no CI.
     with open(doc_path, "r", encoding="utf-8") as fh:
         text = fh.read()
-    is_text = os.path.splitext(doc_path)[1].lower() not in (".md", ".markdown", ".mdown")
+    is_text = os.path.splitext(doc_path)[1].lower() not in MARKDOWN_SUFFIXES
     body, ctx = render_document(text, os.path.dirname(doc_path), plain_text=is_text)
     key = store.doc_key(doc_path, root)
     title = ctx.title or os.path.basename(doc_path)

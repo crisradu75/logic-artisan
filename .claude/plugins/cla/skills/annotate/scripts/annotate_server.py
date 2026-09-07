@@ -381,8 +381,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"ok": True, "summary": summary, "warnings": warn})
             if self.kind == "html":
                 import render_html
-                out, ctx, words = render_html.build(
-                    self.doc_path, self.root, self.page_path)
+                try:
+                    out, ctx, words = render_html.build(
+                        self.doc_path, self.root, self.page_path)
+                except render_html.Refused as e:
+                    # The CLI reports this cleanly; without the same branch here
+                    # the identical failure reaches the browser as a traceback,
+                    # so the same defect is actionable from one entry point and
+                    # unreadable from the other.
+                    print("REFUSED: %s" % e)
+                    return self._json({"error": "refused: %s" % e}, 500)
             else:
                 out, ctx, words = render_doc.build(
                     self.doc_path, self.root, self.page_path)
@@ -401,8 +409,15 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"error": str(e)}, 500)
         summary = "%d blocks, %s words" % (len(ctx.blocks), format(words, ",d"))
         print("rebuilt   %s  ->  %s" % (summary, out))
+        # The renderer's own warnings — a relative asset, a token in the author's
+        # stylesheet, a passage that belongs to no block. The CLI prints these;
+        # this branch discarded them, so a document opened through the server was
+        # never told what the same document told the command line.
+        renderer_warnings = list(getattr(ctx, "warnings", []))
+        for w in renderer_warnings:
+            print("warning   %s" % w)
         checked, lost, problems, fatal = render_doc.check_anchors(ctx, self.out_path)
-        warn = []
+        warn = list(renderer_warnings)
         if fatal:
             warn.append("CORPUS UNREADABLE: %s" % fatal)
         if lost:
