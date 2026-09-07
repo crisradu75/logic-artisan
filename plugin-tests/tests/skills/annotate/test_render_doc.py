@@ -567,13 +567,32 @@ def media_block(css, query):
     raise AssertionError("unclosed @media block for %s" % query)
 
 
+# An id the script looks up that is DELIBERATELY absent on this page. The
+# frame exists only when the document being annotated is HTML; on a Markdown
+# page the lookup returns null and every content-side call falls back to this
+# document, which is the whole design. Exempted by name, with the reason, rather
+# than by loosening the check — the guard's value is that everything else must
+# be present.
+# Both belong to the frame-hosting body variant: the frame itself, and the
+# notice shown when the page was opened from disk instead of served.
+OPTIONAL_IDS = {"cla-frame", "frame-warn"}
+
+
 def test_every_id_the_script_reaches_for_is_on_the_page(doc_page):
     ids = set(re.findall(r'\bid="([^"]+)"', doc_page))
     want = set(re.findall(r"getElementById\('([^']+)'\)", doc_page))
     want |= set(re.findall(r"querySelector(?:All)?\('#([A-Za-z0-9_-]+)", doc_page))
     # A check that reaches for nothing would pass over any page at all.
     assert len(want) > 10, "the script reaches for no ids; this check is vacuous"
-    assert sorted(want - ids) == []
+    assert sorted(want - ids - OPTIONAL_IDS) == []
+
+
+def test_an_optional_id_is_absent_for_the_reason_claimed(doc_page):
+    """The exemption above is only honest while the id really is absent here.
+    If the frame ever appears on a Markdown page, the exemption is hiding a
+    missing element rather than describing an optional one."""
+    for oid in OPTIONAL_IDS:
+        assert 'id="%s"' % oid not in doc_page
 
 
 def test_every_data_attribute_the_script_reads_back_is_one_it_writes(doc_page, change_page):
@@ -733,9 +752,15 @@ def test_every_flow_changing_control_routes_through_syncmargin(doc_page):
     # `.*?` this matched any later `syncMargin` ANYWHERE in the file — it passes
     # today only because the resize handler happens to be the file's last
     # mention of the name, and goes vacuous the moment anything is added below.
-    resize = re.search(r"addEventListener\('resize',[^\n]*", script)
-    assert resize and "syncMargin" in resize.group(0), \
-        "the resize listener does not re-lay-out the margin"
+    # Every resize listener, not the first. A second one was added for the
+    # scroll-spy band and sits ABOVE this one in the file, so matching only the
+    # first started reading the wrong statement — the vacuity this check's own
+    # comment predicted, arriving from above instead of below. The property is
+    # unchanged: SOME resize listener must re-lay-out the margin.
+    resizes = re.findall(r"addEventListener\('resize',[^\n]*", script)
+    assert resizes, "no resize listener at all; this check is vacuous"
+    assert any("syncMargin" in r for r in resizes), \
+        "no resize listener re-lays-out the margin: %r" % (resizes,)
     setcmt = script[script.index("function setCmt("):]
     body = setcmt[:setcmt.index("\n}")]
     # The whole statement, not the substring. `if (false) syncMargin();` still

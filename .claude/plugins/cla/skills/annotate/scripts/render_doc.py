@@ -675,6 +675,12 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 .sec{scroll-margin-top:4rem}
 
 .page{background:var(--paper);min-height:100vh;padding:0 1.5rem 10rem}
+/* No height here on purpose: the script sets it from the frame's own
+   content, so the outer page scrolls and the margin keeps its arithmetic. */
+#cla-frame{display:block;width:100%;border:0;background:var(--paper)}
+.frame-warn{margin:2rem 0;padding:.8rem 1rem;border:1px solid var(--mark);
+ border-radius:3px;background:var(--mark-wash);color:var(--mark);
+ font-size:.92rem;line-height:1.5}
 .col{max-width:44rem;margin:0 auto;padding-top:2.4rem}
 h1,h2,h3,h4,h5,h6{font-weight:600;line-height:1.25;text-wrap:balance;scroll-margin-top:4rem}
 h1{font-size:2rem;margin:0 0 1.4rem;letter-spacing:-.012em}
@@ -908,6 +914,74 @@ body.cmt .scrim{opacity:1;pointer-events:auto}
 
 JS = r"""
 const DOC = __DOC__;
+
+/* ---- the content root ----
+   The document being annotated is either this page's own body (Markdown and
+   plain text) or a frame holding the author's own HTML, whose CSS must not
+   reach this page's and whose page's CSS must not reach it. Every content-side
+   call goes through CDOC/CWIN so the two are one code path; unframed they ARE
+   `document`/`window`, and that identity is the whole safety argument for
+   touching a path that already worked.
+
+   They are `let` because a frame's document does not exist yet when this runs.
+   Nothing content-side may run before onContentReady's callback. */
+const FRAME = document.getElementById('cla-frame');
+let CDOC = document, CWIN = window;
+
+/* A fresh frame's contentDocument is `about:blank`, and about:blank is already
+   `readyState === 'complete'` — so the obvious readiness test passes against an
+   empty document and every lookup after it returns null. Measured: the frame
+   reported height 150 and getElementById returned null for content plainly in
+   the file. The href check is what distinguishes the placeholder from the real
+   document. */
+function contentReady() {
+  if (!FRAME) return true;
+  const d = FRAME.contentDocument;
+  return !!(d && d.body && d.readyState === 'complete'
+            && d.location && d.location.href !== 'about:blank');
+}
+
+/* Same-origin is a SERVING property, not a structural one. Opened straight off
+   disk both documents get opaque origins, `contentDocument` throws, and the page
+   renders with no annotation layer — silently, looking merely empty. Detected
+   rather than prevented: nothing stops a reader opening the path the renderer
+   prints. Gated on the framed path, because a Markdown page over `file:` has no
+   frame, needs no origin, and has always worked. */
+function warnIfUnserved() {
+  if (!FRAME || location.protocol !== 'file:') return false;
+  const el = document.getElementById('frame-warn');
+  if (el) {
+    el.textContent = 'This page has to be served to be read: an HTML document is'
+      + ' shown in a frame, and a page opened from disk cannot reach into it.'
+      + ' Run the annotate server on this document and open the URL it prints.';
+    el.hidden = false;
+  }
+  FRAME.hidden = true;
+  return true;
+}
+
+function onContentReady(fn) {
+  if (!FRAME) { fn(); return; }
+  if (warnIfUnserved()) return;
+  const go = () => {
+    CDOC = FRAME.contentDocument;
+    CWIN = FRAME.contentWindow;
+    fn();
+  };
+  if (contentReady()) go();
+  else FRAME.addEventListener('load', go, {once: true});
+}
+
+/* Bind a listener on the shell AND on the content, which are the same object
+   unframed. `addEventListener` de-duplicates only an identical
+   (type, callback, capture) triple, so the handler must be ONE named function
+   passed to both — an inline arrow at each call site creates two closures and
+   fires twice. The guard makes that independent of how it is called. */
+function onBoth(type, handler, opts) {
+  document.addEventListener(type, handler, opts);
+  if (CDOC !== document) CDOC.addEventListener(type, handler, opts);
+}
+
 const CMT = {list:[], problems:[], err:null, fatal:null, readonly:false, pending:null, el:{
   btn:  document.getElementById('sel-btn'),
   pop:  document.getElementById('cmt-pop'),
@@ -949,23 +1023,67 @@ const CMT = {list:[], problems:[], err:null, fatal:null, readonly:false, pending
 const RAIL = new Map(
   [...document.querySelectorAll('.rail-item')].map(a => [a.dataset.goSec, a]));
 
-(function () {
+/* The band the scroll-spy lights within. Percentages resolve against the ROOT's
+   height, and inside a frame sized to its own content that root is the whole
+   document — measured at 7584px against an 800px viewport, a band roughly nine
+   times too tall, which lights several entries at once on a dense document. So
+   the framed path states the same intent in pixels off the outer viewport. */
+function railBand() {
+  if (!FRAME) return '-12% 0px -70% 0px';
+  const h = window.innerHeight;
+  return '-' + Math.round(h * 0.12) + 'px 0px -' + Math.round(h * 0.70) + 'px 0px';
+}
+
+function wireRail() {
   if (!RAIL.size) return;
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(e => {
-      if (!e.isIntersecting) return;
-      const a = RAIL.get(e.target.dataset.secId);
-      if (!a) return;
-      RAIL.forEach(x => x.classList.remove('on'));
-      a.classList.add('on');
-    });
-  }, {rootMargin: '-12% 0px -70% 0px'});
-  document.querySelectorAll('.sec').forEach(s => io.observe(s));
-  RAIL.forEach(a => a.addEventListener('click', () => {
+  /* Constructed in the CONTENT's window, not the shell's. An observer built
+     here with a null root, observing headings inside the frame, reported 0 of
+     12 — no callbacks at all, at rest or after scrolling. Swapping only the
+     selector would have shipped a rail that never lights. */
+  const Obs = CWIN.IntersectionObserver;
+  let io = null;
+  const wire = () => {
+    if (io) io.disconnect();
+    io = new Obs(entries => {
+      entries.forEach(e => {
+        if (!e.isIntersecting) return;
+        const a = RAIL.get(e.target.dataset.secId);
+        if (!a) return;
+        RAIL.forEach(x => x.classList.remove('on'));
+        a.classList.add('on');
+      });
+    }, {rootMargin: railBand()});
+    /* `[data-sec-id]` rather than `.sec`: the HTML path injects no wrappers, and
+       the Markdown path's wrapper already carries the attribute, so the two
+       converge instead of needing a rule each. */
+    CDOC.querySelectorAll('[data-sec-id]').forEach(s => io.observe(s));
+  };
+  wire();
+  if (FRAME) window.addEventListener('resize', wire);
+  RAIL.forEach(a => a.addEventListener('click', e => {
     RAIL.forEach(x => x.classList.remove('on'));
     a.classList.add('on');
+    /* Only the framed path intercepts. Unframed, `rail()` emits a plain anchor
+       with no listener and the browser's own fragment navigation runs: it moves
+       the page AND pushes a history entry, so Back returns to where the reader
+       was. Calling preventDefault() on both paths would take that entry away on
+       the Markdown path too, where nothing was wrong — and this design's first
+       goal is that the Markdown path is provably unchanged. Framed, the shell
+       holds no element with the target id, so the fragment goes nowhere and the
+       scroll has to be done here. */
+    if (!FRAME) return;
+    /* By section id, not by the href's slug. The instrumentation adds no `id`
+       to the author's headings — it may not, since an author's own id would win
+       the collision and the fragment would land somewhere arbitrary — so the
+       slug names nothing inside the frame. `data-sec-id` is ours and is on the
+       heading that opens each section. */
+    const sec = a.dataset.goSec;
+    const h = sec ? CDOC.querySelector('[data-sec-id="' + CSS.escape(sec) + '"]') : null;
+    if (!h) return;
+    e.preventDefault();
+    h.scrollIntoView({block: 'center', behavior: 'smooth'});
   }));
-})();
+}
 
 /* How many open annotations sit in each section. Derived from where the markers
    actually landed rather than from the stored section name: a heading that has
@@ -976,10 +1094,14 @@ function paintRailCounts() {
   const tally = new Map();
   openOnes().forEach(c => {
     if (!c.blk || c.lost) return;
-    const el = document.querySelector('[data-blk="' + CSS.escape(c.blk) + '"]');
-    const sec = el && el.closest('.sec');
-    if (!sec) return;
-    const id = sec.dataset.secId;
+    const el = CDOC.querySelector('[data-blk="' + CSS.escape(c.blk) + '"]');
+    if (!el) return;
+    /* The block's own id first, its nearest labelled ancestor second. The
+       HTML path injects no wrapper to close over, so `closest('.sec')`
+       returned null for every block and every badge read zero. */
+    const holder = el.dataset.secId ? el : el.closest('[data-sec-id]');
+    if (!holder) return;
+    const id = holder.dataset.secId;
     tally.set(id, (tally.get(id) || 0) + 1);
   });
   RAIL.forEach((a, id) => {
@@ -1027,7 +1149,7 @@ function openList(id) {
    of several files the tab has to change first, so a multi-file page replaces
    this one function rather than carrying its own copy of the anchor layer. */
 window.focusBlock = function (blk) {
-  const h = blk ? document.querySelector('[data-blk="' + CSS.escape(blk) + '"]') : null;
+  const h = blk ? CDOC.querySelector('[data-blk="' + CSS.escape(blk) + '"]') : null;
   if (!h) return false;
   setCmt(false);
   h.scrollIntoView({block: 'center', behavior: 'smooth'});
@@ -1051,13 +1173,36 @@ function blockText(el) {
    what counts as text, or a second annotation in an already-marked block lands
    one character out and reports itself lost. */
 function textNodes(host) {
-  const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, {
+  const w = CDOC.createTreeWalker(host, NodeFilter.SHOW_TEXT, {
     acceptNode: n => n.parentElement && n.parentElement.closest(NON_SOURCE)
       ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
   });
   const out = []; let n;
   while ((n = w.nextNode())) out.push(n);
   return out;
+}
+
+/* An element's or range's rect in OUTER VIEWPORT coordinates.
+
+   The coordinate space is the whole point of stating this precisely. A raw
+   `getBoundingClientRect()` is viewport-relative, so a helper returning "page
+   coordinates when framed, the raw rect when not" would be returning two
+   different spaces that differ by the scroll offset — an error that grows as
+   you scroll, which is the `top:-135.78px` defect class this page already paid
+   for. Both branches return viewport coordinates; callers keep their own
+   `+ window.scrollY` term, which is already right against the outer viewport.
+
+   It takes an element OR a range, because the selection-button site measures a
+   Range and has no element at all. Measured across the boundary: an inner rect
+   of 5688 plus a frame offset of -5304 gives 384, the element's true position
+   in the outer viewport. */
+function contentRect(target) {
+  const r = target.getBoundingClientRect();
+  if (!FRAME) return r;
+  const f = FRAME.getBoundingClientRect();
+  return {top: r.top + f.top, bottom: r.bottom + f.top,
+          left: r.left + f.left, right: r.right + f.left,
+          width: r.width, height: r.height};
 }
 
 /* Locate a painted selection in the source text of its block. What the browser
@@ -1106,7 +1251,7 @@ function findLoose(full, text) {
 }
 
 function captureSelection() {
-  const sel = window.getSelection();
+  const sel = CWIN.getSelection();
   if (!sel || sel.isCollapsed) return null;
   if (sel.toString().trim().length < 2) return null;
   const rng = sel.getRangeAt(0);
@@ -1127,7 +1272,7 @@ function captureSelection() {
   const clip = rng.cloneRange();
   if (!host.contains(rng.startContainer)) clip.setStart(host, 0);
   if (!host.contains(rng.endContainer)) clip.setEnd(host, host.childNodes.length);
-  const box = document.createElement('div');
+  const box = CDOC.createElement('div');
   box.appendChild(clip.cloneContents());
   box.querySelectorAll(NON_SOURCE).forEach(x => x.remove());
   let text = box.textContent.trim();
@@ -1161,7 +1306,9 @@ function captureSelection() {
   };
 }
 
-document.addEventListener('mouseup', e => {
+/* Named and passed to both, so the de-dup rule applies and the unframed
+   path registers one listener rather than two closures. */
+function onMouseUp(e) {
   if (e.target.closest('#cmt-pop') || e.target.closest('#sel-btn')
       || e.target.closest('.drawer')) return;
   /* While the popup is open it is QUOTING the pending passage. Letting a new
@@ -1172,12 +1319,12 @@ document.addEventListener('mouseup', e => {
   const cap = captureSelection();
   const b = CMT.el.btn;
   if (!cap) { b.hidden = true; return; }
-  const r = window.getSelection().getRangeAt(0).getBoundingClientRect();
+  const r = contentRect(CWIN.getSelection().getRangeAt(0));
   b.style.left = (window.scrollX + r.left) + 'px';
   b.style.top  = (window.scrollY + r.bottom + 8) + 'px';
   b.hidden = false;
   CMT.pending = cap;
-});
+}
 
 CMT.el.btn.addEventListener('mousedown', e => {
   e.preventDefault();
@@ -1205,13 +1352,13 @@ document.getElementById('cmt-cancel').onclick = closePop;
    Cancelling changes nothing. The textarea is re-rendered from `c.note` on every
    render and `c.note` is only ever written by editNote(), so dropping out of edit
    mode restores the stored wording by construction rather than by an undo. */
-document.addEventListener('keydown', e => {
+function onKeyDown(e) {
   if (e.key !== 'Escape') return;
   const editing = CMT.list.find(c => c.editing);
   if (editing) { editing.editing = false; render(); return; }
   if (!CMT.el.pop.hidden) return closePop();
   if (document.body.classList.contains('cmt')) setCmt(false);
-});
+}
 
 async function submit() {
   const cap = CMT.pending, note = CMT.el.text.value.trim();
@@ -1380,6 +1527,7 @@ async function editNote(id, note) {
    inline the renderer emits — em, strong, code, del and a — and compares href so
    that two different links are never welded into one. */
 function mergeSplitInline(root) {
+  if (!root) return;
   root.querySelectorAll('em, strong, code, del, a').forEach(el => {
     let next = el.nextSibling;
     while (next && next.nodeType === 1 && next.tagName === el.tagName
@@ -1395,12 +1543,16 @@ function mergeSplitInline(root) {
 }
 
 function clearMarks() {
-  document.querySelectorAll('.cmt-sup').forEach(s => s.remove());
-  document.querySelectorAll('mark.cmt-hl').forEach(m => {
+  CDOC.querySelectorAll('.cmt-sup').forEach(s => s.remove());
+  CDOC.querySelectorAll('mark.cmt-hl').forEach(m => {
     const p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m);
     p.removeChild(m); p.normalize();
   });
-  mergeSplitInline(document.getElementById('doc'));
+  /* The content root as an ELEMENT, not a shared id. `id="doc"` is emitted
+     only by the Markdown body variant, and the HTML path may not have an
+     element added to it — so this threw on the first repaint and took the
+     annotation layer with it. */
+  mergeSplitInline(CDOC.body || CDOC.getElementById('doc'));
 }
 
 /* A resolved annotation is deliberately not painted: its text has gone from the
@@ -1421,10 +1573,10 @@ function needleOf(c) {
    when exactly one block matches. An ambiguous match is left lost, which is the
    honest answer. */
 function hostFor(c) {
-  const byId = c.blk ? document.querySelector('[data-blk="' + CSS.escape(c.blk) + '"]') : null;
+  const byId = c.blk ? CDOC.querySelector('[data-blk="' + CSS.escape(c.blk) + '"]') : null;
   if (byId && blockText(byId).indexOf(c.text) >= 0) return byId;
   const n = needleOf(c), full = n.lead + c.text + n.tail;
-  const hits = [...document.querySelectorAll('[data-blk]')]
+  const hits = [...CDOC.querySelectorAll('[data-blk]')]
     .filter(el => blockText(el).indexOf(full) >= 0);
   if (hits.length === 1) { c.blk = hits[0].dataset.blk; c.line = Number(hits[0].dataset.line) || c.line; return hits[0]; }
   if (hits.length > 1) return null;
@@ -1627,7 +1779,7 @@ function layoutMargin() {
     /* Anchored to the marked block, then pushed clear of the note above it. A
        pushed note switches to a dashed rule: it is no longer level with its own
        line and should not say that it is. */
-    let top = c.mark.getBoundingClientRect().top + window.scrollY - top0 - 6;
+    let top = contentRect(c.mark).top + window.scrollY - top0 - 6;
     if (top < floor + 8) { top = floor + 8; el.classList.add('stacked'); }
     el.style.top = top + 'px';
     floor = top + el.offsetHeight;
@@ -2022,6 +2174,32 @@ addEventListener('beforeunload', e => {
 /* Three states, and they must never print the same thing: reachable and empty,
    unreachable, and unreadable. A bare catch here would paint "No annotations
    yet." over a corpus that exists and cannot be parsed. */
+/* Everything content-side is wired HERE, from one place, rather than as a run
+   of top-level statements. Unframed this runs immediately and the order is what
+   it always was; framed it runs once the author's document exists, because
+   until then there is nothing to query, observe or listen to. */
+function wireContent() {
+  onBoth('mouseup', onMouseUp);
+  onBoth('keydown', onKeyDown);
+  wireRail();
+  if (!FRAME) return;
+
+  /* Size the frame to its content so the OUTER page scrolls and there is no
+     inner scrollbar — that is what keeps the margin arithmetic and the rail as
+     they were. Content height is not stable at first layout: the motivating
+     document pulls three font families over the network and its text reflows
+     when they land, so this is re-measured rather than measured. */
+  const fit = () => {
+    const h = CDOC.documentElement.scrollHeight;
+    if (h) FRAME.style.height = h + 'px';
+    syncMargin();
+  };
+  fit();
+  if (CWIN.ResizeObserver) new CWIN.ResizeObserver(fit).observe(CDOC.documentElement);
+  if (CDOC.fonts && CDOC.fonts.ready) CDOC.fonts.ready.then(fit).catch(() => {});
+  window.addEventListener('resize', fit);
+}
+
 (async function load() {
   try {
     const r = await fetch('/api/annotations');
@@ -2050,7 +2228,7 @@ addEventListener('beforeunload', e => {
               + (e.message || e) + ')';
     CMT.readonly = true;
   }
-  render();
+  onContentReady(() => { wireContent(); render(); });
 })();
 """
 
@@ -2076,8 +2254,23 @@ SHELL_MARKUP = ('<main class="page"><div class="wrap">'
                 '<div class="gutter" id="gutter" aria-label="Annotations in the margin"></div>'
                 '</div></main>')
 
+# The same reading grid, with the author's own document in a frame instead of
+# markup this script generated. The frame carries no height here: the script
+# sets it from the content so the OUTER page scrolls and there is no inner
+# scrollbar, which is what keeps the margin arithmetic and the rail as they are.
+# The notice is the `file:` case — a page opened straight off disk gives both
+# documents opaque origins, so `contentDocument` throws and the layer would
+# simply not appear. It is hidden unless that happens.
+FRAME_MARKUP = ('<main class="page"><div class="wrap">'
+                '<div class="col" id="doc">'
+                '<p class="frame-warn" id="frame-warn" hidden></p>'
+                '<iframe id="cla-frame" title="__TITLE__" src="__SRC__"></iframe>'
+                '</div>'
+                '<div class="gutter" id="gutter" aria-label="Annotations in the margin"></div>'
+                '</div></main>')
 
-def page(title, doc_key, body_html, blocks, words, sections=()):
+
+def page(title, doc_key, body_html, blocks, words, sections=(), frame_src=None):
     favicon = "data:image/svg+xml;base64," + base64.b64encode(
         FAVICON_SVG.encode("utf-8")).decode("ascii")
     js = (JS.replace("__DOC__", json.dumps(doc_key))
@@ -2117,7 +2310,9 @@ def page(title, doc_key, body_html, blocks, words, sections=()):
         # for its own tabbed shell, so SHELL_MARKUP below is the one copy of the
         # string and both sides read it from there.
         '<div class="shell">' + nav
-        + SHELL_MARKUP.replace("__BODY__", body_html)
+        + (FRAME_MARKUP.replace("__SRC__", esc(frame_src))
+                       .replace("__TITLE__", esc(title))
+           if frame_src else SHELL_MARKUP.replace("__BODY__", body_html))
         + '</div>\n'
         '<div class="sel-btn" id="sel-btn" hidden><span>+</span> annotate</div>\n'
         '<div class="cmt-pop" id="cmt-pop" hidden>'
@@ -2194,6 +2389,23 @@ def check_anchors(ctx, corpus_path):
 # ---------------------------------------------------------------- main
 
 
+HTML_SUFFIXES = (".html", ".htm")
+MARKDOWN_SUFFIXES = (".md", ".markdown", ".mdown")
+
+
+def target_kind(path):
+    """Which renderer a path belongs to: "html" or "doc".
+
+    One rule, read by this module's own CLI and by the server. Scoping it to the
+    server alone would leave two documented commands producing different pages
+    for one file — `render_doc.py foo.html` still emitting escaped markup while
+    the server emitted the frame — and SKILL.md documents the CLI as step one.
+    A change is resolved by the caller before this is asked, because a bare
+    change id is neither a file nor a suffix.
+    """
+    return "html" if os.path.splitext(path)[1].lower() in HTML_SUFFIXES else "doc"
+
+
 def page_dir(root):
     """Where rendered pages go: a temp directory keyed to the repo.
 
@@ -2230,7 +2442,8 @@ def build(doc_path, root=None, out=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("document", help="the .md or .txt file to render")
+    ap.add_argument("document",
+                    help="the .md, .txt, .html or .htm file to render")
     ap.add_argument("--out", help="where to write the page (default: a temp directory)")
     ap.add_argument("--root", help="repo root (default: resolved from git)")
     a = ap.parse_args(argv)
@@ -2239,6 +2452,32 @@ def main(argv=None):
         print("no such document: %s" % a.document)
         return 1
     root = a.root or store.repo_root(a.document)
+    if target_kind(a.document) == "html":
+        # Imported HERE, not at module level. `render_html` needs `page()` from
+        # this module, so a top-level import either way closes a cycle and fails
+        # while the first module is still initialising. Nothing is needed from
+        # it at import time, so a call-site import is not a workaround — it
+        # matches when the dependency actually exists.
+        import render_html
+        try:
+            out, ctx, words = render_html.build(a.document, root, a.out)
+        except render_html.Refused as e:
+            print("REFUSED: %s" % e)
+            return 1
+        print("built     %d blocks, %s words  ->  %s"
+              % (len(ctx.blocks), format(words, ",d"), out))
+        for w in getattr(ctx, "warnings", []):
+            print("warning   %s" % w)
+        checked, lost, problems, fatal = check_anchors(
+            ctx, store.path_for(a.document, root))
+        if fatal:
+            print("CORPUS UNREADABLE: %s" % fatal)
+            return 1
+        if checked:
+            print("anchors   %d open, %d could not be read back" % (checked, len(lost)))
+            if lost:
+                print("          ANCHOR LOST: %s" % ", ".join(lost[:10]))
+        return 0
     try:
         out, ctx, words = build(a.document, root, a.out)
     except UnicodeDecodeError as e:

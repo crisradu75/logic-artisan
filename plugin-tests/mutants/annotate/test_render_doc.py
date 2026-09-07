@@ -33,14 +33,14 @@ MUTANTS = [
 
     ("opening the drawer stops re-laying-out the margin",
      DOC,
-     "  syncMargin();",
-     "  /* nothing */",
+     "     that can never fire. */\n  syncMargin();",
+     "     that can never fire. */\n  /* nothing */",
      TESTS),
 
     ("opening the drawer re-lays-out the margin only in a branch that never runs",
      DOC,
-     "  syncMargin();",
-     "  if (false) syncMargin();",
+     "     that can never fire. */\n  syncMargin();",
+     "     that can never fire. */\n  if (false) syncMargin();",
      TESTS),
 
     ("a resize stops re-laying-out the margin",

@@ -55,6 +55,7 @@ class Handler(SimpleHTTPRequestHandler):
     root = None
     page_path = None
     is_change = False    # a whole OpenSpec change rather than one file
+    kind = "doc"         # "doc" or "html", for a single-file target
 
     def log_message(self, fmt, *a):
         sys.stderr.write("  %s\n" % (fmt % a))
@@ -378,7 +379,13 @@ class Handler(SimpleHTTPRequestHandler):
                 for w in warn:
                     print("          %s" % w)
                 return self._json({"ok": True, "summary": summary, "warnings": warn})
-            out, ctx, words = render_doc.build(self.doc_path, self.root, self.page_path)
+            if self.kind == "html":
+                import render_html
+                out, ctx, words = render_html.build(
+                    self.doc_path, self.root, self.page_path)
+            else:
+                out, ctx, words = render_doc.build(
+                    self.doc_path, self.root, self.page_path)
         except OSError as e:
             # The type is half the diagnosis: FileNotFoundError, PermissionError
             # and IsADirectoryError all read identically as a bare str(e).
@@ -635,10 +642,12 @@ def main(argv=None):
     # document" for a change that plainly exists.
     root = os.path.abspath(a.root) if a.root else store.repo_root(a.document)
     change_dir = openspec_change.find_change(a.document, root)
+    kind = "doc"
     if change_dir:
         doc, is_change = change_dir, True
     elif os.path.isfile(a.document):
         doc, is_change = os.path.abspath(a.document), False
+        kind = render_doc.target_kind(doc)
     else:
         print("no such document or change: %s" % a.document)
         return 1
@@ -653,8 +662,9 @@ def main(argv=None):
 
     if not os.path.exists(page):
         print("no page at %s" % page)
-        print("build it first:  python3 %s %s"
-              % ("render_change.py" if is_change else "render_doc.py", a.document))
+        builder = ("render_change.py" if is_change
+                   else "render_html.py" if kind == "html" else "render_doc.py")
+        print("build it first:  python3 %s %s" % (builder, a.document))
         return 1
 
     serve_dir = os.path.dirname(page)
@@ -665,6 +675,7 @@ def main(argv=None):
     Handler.root = root
     Handler.page_path = page
     Handler.is_change = is_change
+    Handler.kind = kind
     url = "http://127.0.0.1:%d/%s" % (a.port, os.path.basename(page))
 
     # Bound to the loopback address and nowhere else. It has no authentication

@@ -33,6 +33,7 @@ source belongs in `test_render_doc.py`, which is cheaper and always runs.
 import json
 import os
 import threading
+import time
 from functools import partial
 from http.server import ThreadingHTTPServer
 
@@ -287,3 +288,314 @@ def test_a_failed_undo_neither_duplicates_the_record_nor_lies_about_the_file(pag
     assert "could not be confirmed" in state["strip"]
     # And the alarm reaches the one surface that is always visible.
     assert state["opener"], "a failed undo left no mark on the opener"
+
+
+# ======================================================================
+# The HTML path: the author's own document in a frame.
+#
+# Every check below needs a browser by construction. The frame boundary is
+# invisible to a string grep: whether the layer can reach across it, whether the
+# author's CSS and the shell's stayed on their own sides, and whether a rect
+# taken in one viewport means anything in the other are all questions about a
+# running page.
+# ======================================================================
+
+import render_html                                              # noqa: E402
+
+
+# Defines the three names the shell also uses — `.wrap`, `.bar` and
+# `:root[data-theme="dark"]` — because those are the measured collisions the
+# frame exists to prevent, and a fixture without them would prove nothing.
+DESIGNED = """<!doctype html><meta charset="utf-8">
+<title>A designed document</title>
+<style>
+  :root { --ink:#123456 }
+  :root[data-theme="dark"] { --ink:#eeeeee }
+  .wrap { max-width:62rem; margin:0 auto }
+  .bar  { height:.7rem; background:#cc0000 }
+  section { margin-top:3.5rem }
+  body { margin:0; font:16px system-ui; color:var(--ink) }
+</style>
+<div class="wrap">
+  <header class="masthead"><p class="kicker">Kicker text</p></header>
+  <h2>First section</h2>
+  <p>The opening paragraph of the first section, long enough that a selection
+  inside it has real context on either side of the selected words.</p>
+  <div class="wf-row"><span class="lbl">Row label</span><div class="bar" style="width:40%"></div><span class="amt">&minus;0,99</span></div>
+  <p style="height:900px">Filler that makes the document taller than one screen.</p>
+  <h2>Second section</h2>
+  <p>The second section's paragraph.</p>
+  <p style="height:900px">More filler.</p>
+  <h2>Third section</h2>
+  <p>The third section's paragraph.</p>
+</div>
+"""
+
+
+@pytest.fixture(scope="module")
+def served_html(tmp_path_factory):
+    """The real HTML renderer and the real server, on an ephemeral port."""
+    root = tmp_path_factory.mktemp("browser-html")
+    (root / ".git").mkdir()
+    doc = root / "designed.html"
+    doc.write_text(DESIGNED, encoding="utf-8")
+    pages = tmp_path_factory.mktemp("pages-html")
+    page = pages / "designed-page.html"
+    _out, ctx, _w = render_html.build(str(doc), str(root), str(page))
+
+    # An EMPTY corpus. `_seed` is written against the Markdown fixture's own
+    # blocks and needles; none of the checks below need a pre-existing
+    # annotation, and they wait on the frame's blocks rather than on a note.
+    corpus = store.path_for(str(doc), str(root))
+    os.makedirs(os.path.dirname(corpus), exist_ok=True)
+    open(corpus, "w", encoding="utf-8").close()
+
+    # Its OWN Handler subclass. The server carries its per-target state as
+    # CLASS attributes, and this module now runs two servers at once — setting
+    # them on the shared class let whichever fixture built last redirect the
+    # other's requests, which showed up as the Markdown page waiting forever for
+    # a note that had been seeded into a different corpus.
+    # Bound out here: inside a class body, `root = str(root)` makes `root` local
+    # to that body, so the right-hand side raises NameError before it is read.
+    _root, _doc, _page = str(root), str(doc), str(page)
+    _key = store.doc_key(_doc, _root)
+
+    class HtmlHandler(annotate_server.Handler):
+        out_path = str(corpus)
+        doc_path = _doc
+        doc_key = _key
+        root = _root
+        page_path = _page
+        is_change = False
+        kind = "html"
+
+        def do_GET(self):
+            # Hold the frame back so the shell's script runs while
+            # `contentDocument` is still `about:blank`. Without this the frame
+            # wins the race on every local run, the placeholder is never seen,
+            # and the readiness guard cannot be shown to do anything — a guard
+            # whose absence changes no test is one nobody can defend keeping.
+            if self.path.endswith(".frame.html"):
+                time.sleep(0.35)
+            return annotate_server.Handler.do_GET(self)
+
+    srv = ThreadingHTTPServer(
+        ("127.0.0.1", 0), partial(HtmlHandler, directory=str(pages)))
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    yield "http://127.0.0.1:%d/designed-page.html" % srv.server_address[1]
+    srv.shutdown()
+    srv.server_close()
+    thread.join(timeout=10)
+
+
+@pytest.fixture
+def hpage(browser, served_html):
+    p = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    p.on("pageerror", lambda e: errors.append(str(e)))
+    p.goto(served_html)
+    p.wait_for_function(
+        "() => { const f = document.getElementById('cla-frame');"
+        " return f && f.contentDocument"
+        " && f.contentDocument.querySelectorAll('[data-blk]').length > 0; }")
+    p.wait_for_timeout(300)
+    yield p
+    assert errors == [], "the page threw: %s" % errors
+    p.close()
+
+
+def test_the_layer_bound_to_the_real_document_not_the_placeholder(hpage):
+    """A fresh frame's contentDocument is `about:blank`, which is already
+    `readyState === 'complete'`. Without the href check the layer initialises
+    against that placeholder and never rebinds — and the frame still loads its
+    real document afterwards, so every check that looks at the DOCUMENT rather
+    than at the LAYER still passes. This one looks at the layer."""
+    assert hpage.evaluate(
+        "() => CDOC === document.getElementById('cla-frame').contentDocument"), \
+        "the content root is not the frame's real document"
+
+
+def test_the_layer_reaches_across_the_frame_boundary(hpage):
+    """Nothing else in the suite can tell whether CDOC resolved. If it did not,
+    every content-side call silently finds nothing and the page looks merely
+    empty."""
+    n = hpage.evaluate(
+        "() => document.getElementById('cla-frame')"
+        ".contentDocument.querySelectorAll('[data-blk]').length")
+    assert n > 5, "the shell cannot see the frame's blocks"
+
+
+def test_the_authors_css_and_the_shells_keep_their_own_values(hpage):
+    """The three measured collisions. `.wrap`, `.bar` and the theme attribute are
+    each the obvious name for what they do, on both sides — which is why the
+    isolation had to be structural rather than a naming convention."""
+    got = hpage.evaluate("""() => {
+      const D = document.getElementById('cla-frame').contentDocument;
+      const shellBar = document.querySelector('.bar');
+      return {
+        authorBar: getComputedStyle(D.querySelector('.bar')).height,
+        authorWrap: getComputedStyle(D.querySelector('.wrap')).maxWidth,
+        shellBar: shellBar ? getComputedStyle(shellBar).height : null,
+      };
+    }""")
+    # 0.7rem at the frame's own 16px root.
+    assert got["authorBar"].startswith("11."), got
+    assert got["authorWrap"] == "992px", got          # 62rem
+    # The shell's top bar is its own height, not the author's chart-bar rule.
+    assert not got["shellBar"].startswith("11."), got
+
+
+def test_the_marker_stylesheet_reached_the_frame(hpage):
+    """The shell's stylesheet does not cross the boundary, and the markers are
+    painted INTO the frame — so without this they render unstyled: present,
+    functional and invisible."""
+    assert hpage.evaluate(
+        "() => !!document.getElementById('cla-frame').contentDocument"
+        ".querySelector('style[data-cla-marks]')")
+
+
+def test_a_selection_inside_the_frame_anchors_to_its_block(hpage):
+    """The capture path end to end across the boundary: the selection is made in
+    the frame's own window, and the block, offset and context all have to come
+    back right."""
+    cap = hpage.evaluate("""() => {
+      const D = document.getElementById('cla-frame').contentDocument;
+      const ps = [...D.querySelectorAll('[data-blk]')];
+      const p = ps.find(e => e.textContent.includes('opening paragraph'));
+      const r = D.createRange();
+      const t = [...p.childNodes].find(n => n.nodeType === 3);
+      r.setStart(t, 4); r.setEnd(t, 20);
+      const s = D.defaultView.getSelection();
+      s.removeAllRanges(); s.addRange(r);
+      return {blk: p.dataset.blk, line: p.dataset.line};
+    }""")
+    # A synthetic mouseup ON THE FRAME'S DOCUMENT. A real mouse.down() there
+    # collapses the selection this test just made, and a click on the shell
+    # would not exercise the cross-boundary binding at all — measured, an event
+    # inside the frame reaches the shell's document 0 times.
+    hpage.evaluate("() => { const D = document.getElementById('cla-frame')"
+                   ".contentDocument;"
+                   " D.body.dispatchEvent(new D.defaultView.MouseEvent("
+                   "'mouseup', {bubbles: true})); }")
+    hpage.wait_for_timeout(300)
+    pending = hpage.evaluate("() => CMT.pending && {blk: CMT.pending.blk,"
+                             " text: CMT.pending.text, off: CMT.pending.off,"
+                             " line: CMT.pending.line}")
+    assert pending, "no selection was captured across the frame boundary"
+    assert pending["blk"] == cap["blk"]
+    assert pending["off"] == 4
+    assert str(pending["line"]) == cap["line"], \
+        "the recorded line must be the SOURCE line, which is where an edit lands"
+
+
+def test_the_annotate_button_lands_beside_the_selection(hpage):
+    """The rect that positions it is measured in the FRAME's viewport and used in
+    the SHELL's. If the frame offset is dropped the button appears somewhere
+    unrelated — and it still appears, so nothing reports it."""
+    box = hpage.evaluate("""() => {
+      const D = document.getElementById('cla-frame').contentDocument;
+      const p = [...D.querySelectorAll('[data-blk]')]
+        .find(e => e.textContent.includes('opening paragraph'));
+      const r = D.createRange(); r.selectNodeContents(p);
+      const s = D.defaultView.getSelection();
+      s.removeAllRanges(); s.addRange(r);
+      return null;
+    }""")
+    # A synthetic mouseup ON THE FRAME'S DOCUMENT. A real mouse.down() there
+    # collapses the selection this test just made, and a click on the shell
+    # would not exercise the cross-boundary binding at all — measured, an event
+    # inside the frame reaches the shell's document 0 times.
+    hpage.evaluate("() => { const D = document.getElementById('cla-frame')"
+                   ".contentDocument;"
+                   " D.body.dispatchEvent(new D.defaultView.MouseEvent("
+                   "'mouseup', {bubbles: true})); }")
+    hpage.wait_for_timeout(300)
+    got = hpage.evaluate("""() => {
+      const b = document.getElementById('sel-btn');
+      if (b.hidden) return null;
+      const F = document.getElementById('cla-frame');
+      const D = F.contentDocument;
+      const p = [...D.querySelectorAll('[data-blk]')]
+        .find(e => e.textContent.includes('opening paragraph'));
+      const want = p.getBoundingClientRect().top + F.getBoundingClientRect().top
+                 + window.scrollY;
+      return {btnTop: parseFloat(b.style.top), want: want};
+    }""")
+    assert got, "the annotate button did not appear"
+    # Below the passage, and near it — not off in the shell's own coordinates.
+    assert got["want"] - 40 < got["btnTop"] < got["want"] + 400, got
+
+
+def test_a_rail_click_scrolls_the_outer_page_to_that_section(hpage):
+    """Measured first as an open question: `scrollIntoView` inside a
+    content-sized frame does move the outer page. This is the assertion that
+    keeps it true."""
+    before = hpage.evaluate("window.scrollY")
+    hpage.evaluate("() => document.querySelectorAll('.rail-item')[2].click()")
+    hpage.wait_for_timeout(900)
+    after = hpage.evaluate("window.scrollY")
+    assert after > before + 100, "the rail did not move the page (%s -> %s)" % (
+        before, after)
+
+
+def test_the_frame_is_sized_to_its_content_so_the_outer_page_scrolls(hpage):
+    """The premise the whole geometry rests on. An inner scrollbar would put a
+    second scroll offset into every margin calculation."""
+    got = hpage.evaluate("""() => {
+      const F = document.getElementById('cla-frame');
+      const D = F.contentDocument;
+      return {frame: Math.round(F.getBoundingClientRect().height),
+              inner: D.documentElement.scrollHeight,
+              innerScrollable: D.documentElement.scrollHeight
+                             > D.documentElement.clientHeight,
+              outerScrollable: document.documentElement.scrollHeight
+                             > window.innerHeight};
+    }""")
+    assert abs(got["frame"] - got["inner"]) < 4, got
+    assert not got["innerScrollable"], "the frame scrolls itself; it must not"
+    assert got["outerScrollable"], "the outer page must be what scrolls"
+
+
+def test_the_scroll_spy_lights_one_rail_entry_not_all_of_them(hpage):
+    """A shell-side observer sees nothing across the boundary, and one built in
+    the frame with a percentage band computes it against the whole document
+    rather than the viewport. Either way the rail is wrong, and neither has a
+    string to grep for."""
+    hpage.evaluate("window.scrollTo(0, 1200)")
+    hpage.wait_for_timeout(700)
+    lit = hpage.evaluate(
+        "() => [...document.querySelectorAll('.rail-item.on')].length")
+    assert lit == 1, "%d rail entries are lit" % lit
+
+
+def test_one_mouseup_captures_one_selection(hpage):
+    """The handler binds on the shell AND the content. Unframed those are one
+    document, so a second closure would fire twice — silently, because neither
+    handler is meaningfully non-idempotent."""
+    n = hpage.evaluate("""() => {
+      let n = 0;
+      const count = () => { n++; };
+      document.addEventListener('mouseup', count);
+      const F = document.getElementById('cla-frame');
+      F.contentDocument.addEventListener('mouseup', count);
+      document.body.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+      document.removeEventListener('mouseup', count);
+      F.contentDocument.removeEventListener('mouseup', count);
+      return n;
+    }""")
+    assert n == 1, "a shell mouseup reached the handler %d times" % n
+
+
+def test_the_markdown_rail_still_navigates_natively(page):
+    """The regression the framed-path gating exists to prevent. Unframed, a rail
+    click is native fragment navigation: it moves the page AND pushes a history
+    entry, so Back returns the reader to where they were. An unconditional
+    preventDefault would have taken that away on a path where nothing was
+    wrong."""
+    before = page.evaluate("history.length")
+    page.evaluate("() => document.querySelectorAll('.rail-item')[1].click()")
+    page.wait_for_timeout(400)
+    after = page.evaluate("history.length")
+    assert page.evaluate("location.hash"), "the rail did not set a fragment"
+    assert after > before, "the rail click pushed no history entry"

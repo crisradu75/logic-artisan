@@ -113,9 +113,11 @@ The `href` stays on the element on both paths, so it keeps its link semantics fo
 
 A document's OWN internal `#fragment` links need nothing: inside the frame they resolve within the frame, which is where their targets are.
 
-**The scroll-spy observer cannot be built in the outer window at all, and a selector swap does not save it.** An `IntersectionObserver` constructed in the SHELL, with a null root, observing headings inside the frame, reported **0 of 12** — not a wrong entry, no callbacks whatever, at rest and after scrolling. An earlier draft of this decision assumed the observer would keep working once its selector moved off `.sec`; it would have shipped a rail that never lights.
+**The scroll-spy observer is constructed in the FRAME's window** — `new CWIN.IntersectionObserver(…)` — observing the frame's own headings.
 
-**The observer is constructed in the FRAME's window** — `new CWIN.IntersectionObserver(…)` — observing the frame's own headings. Measured in both frame-sizing modes: it lit exactly one heading, the correct one.
+**The reason is ordering, not capability, and an earlier draft of this decision had it wrong.** That draft claimed a shell-side observer "reports 0 of 12, no callbacks whatever". The 0 was real and the conclusion was not: the measurement built the observer while the frame was still at its default height, so every target below the fold sat outside the frame's box and genuinely did not intersect. Re-measured with the frame sized to its content FIRST, a shell-side observer and a frame-side one both lit the same single correct heading. The two are equivalent once sizing has happened.
+
+So the frame-side observer is kept for a narrower reason: it does not depend on having been constructed after the resize. `wireRail()` runs before the frame is fitted, and an observer that is only correct in one order is one refactor away from being wrong. It is stated here because a mutant swapping `CWIN.IntersectionObserver` for the shell's cannot be killed — the two agree on every input a correct tree reaches — and an unkillable mutant left in a batch trains the next reader to skip the list.
 
 **Its `rootMargin` must be given in pixels, not percentages.** The band is currently `-12% 0px -70% 0px`, and percentages resolve against the ROOT's height. Inside a frame sized to its content that root is the whole document — 7584 px in the measurement, against an 800 px viewport — so the band came out roughly nine times too tall. It happened to admit one heading on that fixture and would admit several on a denser document. On the HTML path the insets are computed from the OUTER viewport height and reapplied on resize, which reproduces what the percentages mean on the Markdown path rather than what they resolve to here.
 

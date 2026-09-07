@@ -377,6 +377,7 @@ class Ctx(object):
         self.blocks = {}
         self.sections = []
         self.title = ""
+        self.warnings = []
         self._slugs = {}
 
     def unique_slug(self, title):
@@ -503,6 +504,56 @@ def read(path):
     arrives mangled — silently, while POSIX is fine throughout."""
     with io.open(path, "r", encoding="utf-8") as fh:
         return fh.read()
+
+
+def frame_name(page_path):
+    """The instrumented document sits beside its shell, named after it.
+
+    Two files rather than one because the author's CSS and the shell's must not
+    reach each other — which is the whole reason for the frame — and a frame
+    needs a document to point at.
+    """
+    base = os.path.basename(page_path)
+    stem = base[:-len(".html")] if base.endswith(".html") else base
+    return stem + ".frame.html"
+
+
+def build(doc_path, root=None, out=None):
+    """Render one HTML document. Returns (out_path, ctx, words).
+
+    The same 3-tuple as `render_doc.build()`, with a `ctx` that `check_anchors`
+    accepts — both callers unpack it and both then call `check_anchors`, so the
+    two renderers have to agree about the shape rather than each caller learning
+    which one it is talking to.
+    """
+    import annotations_store as store
+    import render_doc
+
+    root = root or store.repo_root(doc_path)
+    doc_path = os.path.abspath(doc_path)
+    src = read(doc_path)
+    instrumented, ctx, warnings = instrument(src)
+
+    out = out or os.path.join(render_doc.page_dir(root),
+                              store.page_name(doc_path, root))
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+
+    frame = frame_name(out)
+    # `newline=""` so the instrumented copy keeps the author's own line endings.
+    # Rewriting them would break the byte-for-byte property the strip test holds,
+    # and would do it only on Windows.
+    with io.open(os.path.join(os.path.dirname(os.path.abspath(out)), frame),
+                 "w", encoding="utf-8", newline="") as fh:
+        fh.write(instrumented)
+
+    key = store.doc_key(doc_path, root)
+    title = ctx.title or os.path.basename(doc_path)
+    words = sum(len(t.split()) for t in ctx.blocks.values())
+    with io.open(out, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(render_doc.page(title, key, "", len(ctx.blocks), words,
+                                 ctx.sections, frame_src=frame))
+    ctx.warnings = warnings
+    return out, ctx, words
 
 
 def main(argv=None):

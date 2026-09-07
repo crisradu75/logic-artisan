@@ -320,12 +320,16 @@ def test_the_real_designed_document_instruments_and_strips_back():
     src = RH.read(BRIEFING)
     out, ctx, warnings = RH.instrument(src)
     assert RH.strip(out) == src
-    # The design's original 319/4,251 came from a throwaway probe whose text
-    # accumulation interleaved approximately. These are the corrected figures,
-    # and this test is the command that produces them — which is the whole
-    # reason the design was told to stop quoting the probe.
-    assert len(ctx.blocks) == 340
-    assert sum(len(t.split()) for t in ctx.blocks.values()) == 4468
+
+    # PROPERTIES, not counts. An earlier version asserted an exact block and
+    # word count here and went red the moment the peer document was edited —
+    # 65,007 bytes became 71,925 and 340 blocks became 357, with nothing wrong
+    # in this repo at all. A figure measured against a file that lives outside
+    # version control has an expiry, and pinning one turns someone else's edit
+    # into a failure of ours. The exact counts are asserted against the
+    # checked-in fixture, which cannot move underneath them.
+    assert len(ctx.blocks) > 100, "a real designed document yields many blocks"
+    assert sum(len(t.split()) for t in ctx.blocks.values()) > 1000
     assert not [w for w in warnings if "not self-contained" in w], \
         "the motivating document is self-contained"
 
