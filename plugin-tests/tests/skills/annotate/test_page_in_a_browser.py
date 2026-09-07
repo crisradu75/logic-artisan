@@ -838,3 +838,41 @@ def test_the_rail_says_so_when_its_section_is_gone(hpage):
     assert "no longer in the document" in state["text"], state
     assert state["hash"] == "", "the click fell through to a fragment"
     assert state["scrollY"] == before
+
+
+def test_showing_the_banner_relays_out_the_margin(hpage):
+    """The banner sits above the frame, so showing it moves the frame down and
+    every margin note with it. Found by asking whether the frame-height fix left
+    the same defect — a measurement written back into what it measures — anywhere
+    else: this is the same class, one layer up."""
+    painted = hpage.evaluate("""() => {
+      const D = document.getElementById('cla-frame').contentDocument;
+      const e = [...D.querySelectorAll('[data-blk]')]
+        .find(x => x.textContent.includes('opening paragraph'));
+      const full = blockText(e), needle = 'opening paragraph';
+      const off = full.indexOf(needle);
+      CMT.list = [{id: 'n1', blk: e.dataset.blk, text: needle, off: off,
+                   before: full.slice(Math.max(0, off - 60), off),
+                   after: full.slice(off + needle.length, off + needle.length + 60),
+                   sec: '', line: 1, note: 'a note', at: '2026-09-07T10:00:00'}];
+      render();
+      return !CMT.list[0].lost;
+    }""")
+    assert painted, "the fixture annotation did not anchor"
+    hpage.wait_for_timeout(400)
+    hpage.evaluate("() => note('a message that moves the frame down')")
+    hpage.wait_for_timeout(500)
+    got = hpage.evaluate("""() => {
+      const note = document.querySelector('#gutter .mnote');
+      const F = document.getElementById('cla-frame');
+      const mark = F.contentDocument.querySelector('mark.cmt-hl');
+      if (!note || !mark) return null;
+      return {note: note.getBoundingClientRect().top,
+              mark: mark.getBoundingClientRect().top
+                  + F.getBoundingClientRect().top,
+              bannerShown: !document.getElementById('frame-warn').hidden};
+    }""")
+    assert got and got["bannerShown"], got
+    assert abs(got["note"] - got["mark"]) < 60, (
+        "the note is %.0fpx from its mark after the banner appeared"
+        % abs(got["note"] - got["mark"]))

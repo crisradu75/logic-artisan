@@ -133,4 +133,11 @@ MUTANTS = [
      "    e.preventDefault();\n    const sec = a.dataset.goSec;",
      "    const sec = a.dataset.goSec;",
      TESTS),
+
+    ("showing the banner stops re-laying-out the margin, so every note is off "
+     "by the banner's height and its tie still says it is level",
+     DOC,
+     "  try { syncMargin(); } catch (e) {}",
+     "  /* nothing */",
+     TESTS),
 ]

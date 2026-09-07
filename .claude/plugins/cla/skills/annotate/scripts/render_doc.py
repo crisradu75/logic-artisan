@@ -970,8 +970,15 @@ function warnIfUnserved() {
 function note(msg) {
   const el = document.getElementById('frame-warn');
   if (!el) return;
+  if (!el.hidden && el.textContent === msg) return;
   el.textContent = msg;
   el.hidden = false;
+  /* The banner sits ABOVE the frame, so showing it pushes the frame down and
+     every margin note is off by its height until something re-lays them out.
+     `syncMargin` is this page's one entry point for "the geometry moved", and a
+     banner appearing is exactly that. Guarded because `note()` can fire before
+     the layer is wired, which is the case it was written for. */
+  try { syncMargin(); } catch (e) {}
 }
 
 function onContentReady(fn) {
