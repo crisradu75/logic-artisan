@@ -760,3 +760,92 @@ def test_a_lone_opaque_element_is_the_block_rather_than_its_container():
 def test_a_lone_opaque_element_with_no_text_is_not_a_block():
     """The non-vacuity partner: an empty figure is not a passage."""
     assert tree_blocks("<div><svg><rect/></svg></div>") == []
+
+
+# --- anchors, and where an edit has to land ---------------------------------
+
+
+def _corpus_record(ctx, blk, needle):
+    text = ctx.blocks[blk]
+    off = text.index(needle)
+    return {"id": "a1", "doc": "d", "blk": blk, "sec": "", "line": 1, "off": off,
+            "text": needle, "before": text[max(0, off - 60):off],
+            "after": text[off + len(needle):off + len(needle) + 60],
+            "note": "n", "at": "2026-09-07T10:00:00"}
+
+
+def test_an_annotation_on_an_html_block_is_found_again_after_a_rebuild(tmp_path):
+    """`check_anchors` has to accept the HTML renderer's ctx and find its text.
+    A lost anchor means the document moved; reporting one against a document
+    that did not move is the failure this covers."""
+    import json
+    import render_doc
+
+    doc = tmp_path / "d.html"
+    doc.write_text("<h2>Title</h2><p>A paragraph worth arguing with.</p>",
+                   encoding="utf-8")
+    _out, ctx, _w = RH.instrument(doc.read_text(encoding="utf-8"))
+    blk = [k for k, v in ctx.blocks.items() if "arguing" in v][0]
+
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(
+        json.dumps(_corpus_record(ctx, blk, "worth arguing")) + "\n",
+        encoding="utf-8")
+
+    checked, lost, problems, fatal = render_doc.check_anchors(ctx, str(corpus))
+    assert fatal is None and problems == []
+    assert checked == 1
+    assert lost == [], "an unchanged document reported a lost anchor"
+
+
+def test_an_annotation_is_reported_lost_when_its_passage_is_edited_out(tmp_path):
+    """The non-vacuity partner. A check that never reports a loss would pass the
+    test above on any document at all."""
+    import json
+    import render_doc
+
+    before = "<h2>Title</h2><p>A paragraph worth arguing with.</p>"
+    _o, ctx_before, _w = RH.instrument(before)
+    blk = [k for k, v in ctx_before.blocks.items() if "arguing" in v][0]
+    corpus = tmp_path / "corpus.jsonl"
+    corpus.write_text(
+        json.dumps(_corpus_record(ctx_before, blk, "worth arguing")) + "\n",
+        encoding="utf-8")
+
+    after = "<h2>Title</h2><p>A paragraph that no longer says it.</p>"
+    _o, ctx_after, _w = RH.instrument(after)
+    checked, lost, problems, fatal = render_doc.check_anchors(ctx_after, str(corpus))
+    assert checked == 1
+    assert lost == ["a1"], "the passage is gone and nothing reported it"
+
+
+def test_the_recorded_line_is_the_source_line_an_edit_would_land_on():
+    """`line` is not for scrolling — the page can already reach the block it
+    painted. It is for the session that reads the annotations back and has to
+    edit the FILE."""
+    src = ("line one\n"
+           "line two\n"
+           "<h2>A heading</h2>\n"
+           "<p>The paragraph to annotate.</p>\n")
+    out, ctx, _w = RH.instrument(src)
+    para = [m for m in re.finditer(r'<p data-blk="(b\d+)" data-line="(\d+)"', out)]
+    assert para, "the paragraph was not instrumented"
+    blk, line = para[0].group(1), int(para[0].group(2))
+    assert "paragraph to annotate" in ctx.blocks[blk]
+    # The same line `grep -n` would report for that passage.
+    assert src.split("\n")[line - 1].startswith("<p>The paragraph")
+
+
+def test_the_server_takes_the_document_from_its_own_argument_not_the_request():
+    """The rebuild endpoint writes a file. A path taken off the wire would let a
+    page choose what it renders — and the html branch must not be the one that
+    reintroduces that."""
+    import inspect
+
+    import annotate_server
+    src = inspect.getsource(annotate_server.Handler._render)
+    assert "self.doc_path" in src
+    for taken_from_the_wire in ("self.path", "urlparse", "body", "payload"):
+        assert taken_from_the_wire not in src.split("def _render")[1], \
+            "_render reads %r; the document must come from the server's own" \
+            " argument" % taken_from_the_wire

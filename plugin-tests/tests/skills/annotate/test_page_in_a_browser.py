@@ -599,3 +599,65 @@ def test_the_markdown_rail_still_navigates_natively(page):
     after = page.evaluate("history.length")
     assert page.evaluate("location.hash"), "the rail did not set a fragment"
     assert after > before, "the rail click pushed no history entry"
+
+
+def test_the_python_block_text_equals_what_the_browser_reports(hpage):
+    """Both halves of the anchoring machinery rest on this, and neither can
+    detect its failure: the page captures a selection as an offset into the
+    block's text, and the renderer later looks for the recorded passage in the
+    text it computed. When the two disagree the check reports an annotation lost
+    against a document that never changed."""
+    import render_html
+
+    doc = hpage.evaluate(
+        "() => document.getElementById('cla-frame').contentDocument.location.href")
+    assert doc
+    # What the renderer recorded, recomputed from the same source.
+    _o, ctx, _w = render_html.instrument(DESIGNED)
+    live = hpage.evaluate("""() => {
+      const D = document.getElementById('cla-frame').contentDocument;
+      const out = {};
+      D.querySelectorAll('[data-blk]').forEach(e => { out[e.dataset.blk] = blockText(e); });
+      return out;
+    }""")
+    assert live, "the page reported no blocks"
+    for blk, text in ctx.blocks.items():
+        assert blk in live, "block %s is on no element" % blk
+        assert live[blk] == text, (
+            "block %s: python %r != browser %r" % (blk, text, live[blk]))
+
+
+def test_a_margin_note_stands_beside_its_block_after_scrolling(hpage):
+    """The coordinate-space error is invisible at scroll position zero: a rect
+    taken in the frame's viewport and used in the shell's differs by exactly the
+    scroll offset, so the note is right until you move and then drifts."""
+    blk = hpage.evaluate("""() => {
+      const D = document.getElementById('cla-frame').contentDocument;
+      const e = [...D.querySelectorAll('[data-blk]')]
+        .find(x => x.textContent.includes("second section's"));
+      return e && e.dataset.blk;
+    }""")
+    assert blk, "no block to annotate"
+    hpage.evaluate("""(blk) => {
+      CMT.list = [{id: 'x1', blk: blk, text: "second section's",
+                   note: 'a note', at: '2026-09-07T10:00:00'}];
+      render();
+    }""", blk)
+    hpage.evaluate("window.scrollTo(0, 1400)")
+    hpage.wait_for_timeout(600)
+    hpage.evaluate("() => syncMargin()")
+    hpage.wait_for_timeout(400)
+    got = hpage.evaluate("""() => {
+      const note = document.querySelector('#gutter .mnote');
+      if (!note) return null;
+      const F = document.getElementById('cla-frame');
+      const D = F.contentDocument;
+      const mark = D.querySelector('mark.cmt-hl');
+      if (!mark) return {noMark: true};
+      return {note: note.getBoundingClientRect().top,
+              mark: mark.getBoundingClientRect().top + F.getBoundingClientRect().top};
+    }""")
+    assert got and not got.get("noMark"), "nothing was painted into the frame"
+    assert abs(got["note"] - got["mark"]) < 60, (
+        "the note is %.0fpx from its mark after scrolling" %
+        abs(got["note"] - got["mark"]))
