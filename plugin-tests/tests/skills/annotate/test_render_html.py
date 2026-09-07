@@ -16,10 +16,19 @@ import pytest
 import render_html as RH
 
 
-# The motivating document lives in a peer repo and carries real financial
-# figures, so it is never copied into this repo. It is referenced by path and
-# skipped when absent — no test depends on it, and no run leaks it.
-BRIEFING = r"C:\Code\interoga-ro\docs\business\briefing-partener-2026-09-07.html"
+# A real designed document, committed as a fixture. It began as a reference to a
+# peer repo's copy and was skipped when absent, which meant the only checks
+# against real authored HTML ran on one machine — and it went red once when
+# somebody edited that copy, which is not a defect in this repo.
+#
+# Committed, it is the opposite: fixed bytes, so exact counts mean something, and
+# every machine runs the same checks. It lives under `docs/` rather than beside
+# these tests because it is also the document `annotate` is demonstrated on, and
+# outside `.claude/plugins/cla/` because everything under there ships to
+# consuming repos and this does not need to.
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(HERE))))
+BRIEFING = os.path.join(HERE, "fixtures", "briefing-partener-2026-09-07.html")
 
 
 def has_briefing():
@@ -315,33 +324,37 @@ def test_every_block_carries_its_section_id():
 # --------------------------------------------------------------- the real file
 
 
-@pytest.mark.skipif(not has_briefing(), reason="peer-repo document not present")
+def test_the_fixture_is_present():
+    """It is committed, so absent is a failure rather than a skip. Every other
+    check against real authored HTML rests on it, and a suite that skips them
+    silently reports the same green as one that ran them."""
+    assert has_briefing(), "the sample document is missing from %s" % BRIEFING
+    assert os.path.getsize(BRIEFING) > 50000, "the fixture looks truncated"
+
+
 def test_the_real_designed_document_instruments_and_strips_back():
     src = RH.read(BRIEFING)
     out, ctx, warnings = RH.instrument(src)
     assert RH.strip(out) == src
 
-    # PROPERTIES, not counts. An earlier version asserted an exact block and
-    # word count here and went red the moment the peer document was edited —
-    # 65,007 bytes became 71,925 and 340 blocks became 357, with nothing wrong
-    # in this repo at all. A figure measured against a file that lives outside
-    # version control has an expiry, and pinning one turns someone else's edit
-    # into a failure of ours. The exact counts are asserted against the
-    # checked-in fixture, which cannot move underneath them.
-    assert len(ctx.blocks) > 100, "a real designed document yields many blocks"
-    assert sum(len(t.split()) for t in ctx.blocks.values()) > 1000
-    assert not [w for w in warnings if "not self-contained" in w], \
-        "the motivating document is self-contained"
+    # Exact counts, because the fixture is version-controlled now. They were
+    # properties for a while: the file lived in a peer repo, someone edited it
+    # mid-run, and 340 blocks became 357 with nothing wrong here. A figure
+    # measured against a file outside version control has an expiry. This one
+    # does not, so it is pinned — and a change to any of these three numbers is
+    # now a real change in the block rule, which is what an assertion is for.
+    assert len(ctx.blocks) == 362
+    assert sum(len(t.split()) for t in ctx.blocks.values()) == 6345
+    assert len(ctx.sections) == 22
+    assert warnings == [], "the fixture is self-contained and fully annotatable"
 
 
-@pytest.mark.skipif(not has_briefing(), reason="peer-repo document not present")
 def test_the_real_documents_waterfall_rows_are_blocks():
     rows = [n for n in tree_blocks(RH.read(BRIEFING))
             if "wf-row" in (n.attrs.get("class") or "")]
     assert len(rows) == 10, "two waterfalls, five rows each"
 
 
-@pytest.mark.skipif(not has_briefing(), reason="peer-repo document not present")
 def test_the_real_documents_blocks_do_not_nest():
     nodes = tree_blocks(RH.read(BRIEFING))
     ids = {id(n) for n in nodes}
@@ -355,24 +368,32 @@ def test_the_real_documents_blocks_do_not_nest():
 # --------------------------------------------------------------- fixture hygiene
 
 
-def test_no_checked_in_fixture_carries_the_peer_documents_content():
-    """The motivating briefing is a peer repo's document with real financial
-    figures. It is referenced by path and never vendored.
+def test_the_fixture_has_exactly_one_copy_in_the_repo():
+    """One canonical copy, so an assertion about its contents means something.
 
-    The tokens are assembled from halves rather than written out. A guard whose
-    own source contains the strings it declares absent fails against itself —
-    this repo has shipped that exact defect before, in a comment that named the
-    token it said was missing.
+    This replaces a guard that forbade committing the document at all. That guard
+    was built on a wrong premise — the file was thought to be confidential, and
+    it is not — and a check whose stated reason is false is worse than no check,
+    because the next reader either believes it or deletes it without knowing what
+    it was for.
+
+    What survives is the part that is still true: two copies drift, and a test
+    pinning exact counts against one of them then passes while the document
+    anyone actually reads has moved.
     """
-    tokens = ["Comision" + " card", "Infrastructur\u0103" + " GCP", "39" + ",32"]
-    here = os.path.dirname(os.path.abspath(__file__))
-    for name in sorted(os.listdir(here)):
-        if not name.endswith((".py", ".html")):
-            continue
-        with io.open(os.path.join(here, name), encoding="utf-8") as fh:
-            body = fh.read()
-        for token in tokens:
-            assert token not in body, "%s carries peer-repo content" % name
+    root = REPO_ROOT
+    skip = {".git", "node_modules", "__pycache__", ".pytest_cache"}
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        for name in filenames:
+            if name == os.path.basename(BRIEFING):
+                found.append(os.path.join(dirpath, name))
+    assert found, "the fixture is missing entirely"
+    assert len(found) == 1, "the fixture has %d copies, which will drift: %s" % (
+        len(found), found)
+    assert os.path.samefile(found[0], BRIEFING), \
+        "the one copy is not where the tests look: %s" % found[0]
 
 
 # ======================================================================

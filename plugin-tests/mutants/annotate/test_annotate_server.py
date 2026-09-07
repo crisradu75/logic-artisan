@@ -37,6 +37,20 @@ TESTS = [DEV / "tests" / "skills" / "annotate" / "test_annotate_server.py"]
 # not unique on its own.
 _NL = "\r\n" if b"\r\n" in SERVER.read_bytes() else "\n"
 
+# `core.autocrlf` is on in this clone, so a target file may be CRLF on disk while
+# these anchors are written with LF. A multi-line anchor then matches nothing and
+# mutate.py aborts the WHOLE batch at preflight — every mutant here stops
+# checking anything, for a reason unrelated to any of them. Read the separator
+# off the file rather than assuming it.
+def _nl(path):
+    return "\r\n" if b"\r\n" in path.read_bytes() else "\n"
+
+
+def _a(text, path=None):
+    """An anchor carrying the target file's own line separator."""
+    return text.replace("\n", _nl(path if path is not None else DOC))
+
+
 MUTANTS = [
     ("an amendment is decided by TRUTH again, so an un-delete reads as a new "
      "annotation and is refused for anchor fields it never carries",
@@ -151,14 +165,14 @@ MUTANTS = [
     ("a size line no longer has to end in a newline, so an over-long chunk "
      "extension is read as a size and its remainder as body",
      SERVER,
-     '            if not line or not line.endswith(b"\\n"):',
+     _a('            if not line or not line.endswith(b"\\n"):'),
      "            if not line:",
      TESTS),
 
     ("the inter-chunk CRLF goes back to being discarded unverified, eating the "
      "next size line's first two bytes when a peer omits it",
      SERVER,
-     '            if self.rfile.read(2) not in (b"\\r\\n", b"\\n\\r", b"\\n"):',
+     _a('            if self.rfile.read(2) not in (b"\\r\\n", b"\\n\\r", b"\\n"):'),
      "            if False:",
      TESTS),
 

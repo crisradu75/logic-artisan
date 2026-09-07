@@ -17,13 +17,26 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 DOC = PLUGIN / "skills" / "annotate" / "scripts" / "render_html.py"
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_render_html.py"]
 
+# `core.autocrlf` is on in this clone, so DOC may be CRLF on disk while these
+# anchors are written with LF. A multi-line anchor then matches nothing and
+# mutate.py aborts the whole batch at preflight — every mutant in the file stops
+# checking anything, for a reason unrelated to any of them. Read the separator
+# off the file instead of assuming it.
+_NL = "\r\n" if b"\r\n" in DOC.read_bytes() else "\n"
+
+
+def _a(text):
+    """An anchor with this file's own line separator."""
+    return text.replace("\n", _NL)
+
+
 MUTANTS = [
     # ---- the block rule's disqualification condition ----
     ("the recursion reports 'I am a block' rather than 'my subtree holds one', "
      "so every ancestor re-qualifies and the blocks nest",
      DOC,
-     "        return True\n    if node.tag not in INLINE and node.parent is not None and has_text(node):",
-     "        return False\n    if node.tag not in INLINE and node.parent is not None and has_text(node):",
+     _a("        return True\n    if node.tag not in INLINE and node.parent is not None and has_text(node):"),
+     _a("        return False\n    if node.tag not in INLINE and node.parent is not None and has_text(node):"),
      TESTS),
 
     ("candidacy stops requiring text, so an empty layout div becomes a block "
@@ -42,8 +55,8 @@ MUTANTS = [
     # ---- opaque vs excluded ----
     ("an opaque subtree is descended into, so a figure becomes its own labels",
      DOC,
-     "    if node.tag in OPAQUE:\n        if has_text(node):\n            out.append(node)\n            return True\n        return False",
-     "    if node.tag in OPAQUE:\n        return False",
+     _a("    if node.tag in OPAQUE:\n        if has_text(node):\n            out.append(node)\n            return True\n        return False"),
+     _a("    if node.tag in OPAQUE:\n        return False"),
      TESTS),
 
     ("math/canvas/object go back to being excluded outright, losing content "
@@ -56,8 +69,8 @@ MUTANTS = [
     ("the excluded set is matched by prefix, so <header> is swallowed by the "
      "`head` entry and the masthead disappears",
      DOC,
-     "    if node.tag in EXCLUDED:\n        return False",
-     "    if any(node.tag.startswith(x) for x in EXCLUDED):\n        return False",
+     _a("    if node.tag in EXCLUDED:\n        return False"),
+     _a("    if any(node.tag.startswith(x) for x in EXCLUDED):\n        return False"),
      TESTS),
 
     ("a document's own stylesheet becomes the largest block on the page",
@@ -69,7 +82,7 @@ MUTANTS = [
     # ---- void elements ----
     ("a void element opens a scope, so everything after a <br> nests inside it",
      DOC,
-     "        if tag not in VOID:\n            self.cur = n",
+     _a("        if tag not in VOID:\n            self.cur = n"),
      "        self.cur = n",
      TESTS),
 
@@ -83,7 +96,7 @@ MUTANTS = [
 
     ("an excluded subtree contributes its text to the enclosing block",
      DOC,
-     "            if k.tag not in EXCLUDED:\n                out.append(text_of(k))",
+     _a("            if k.tag not in EXCLUDED:\n                out.append(text_of(k))"),
      "            out.append(text_of(k))",
      TESTS),
 
@@ -128,14 +141,14 @@ MUTANTS = [
     ("the marker stylesheet is prepended rather than appended, shifting every "
      "data-line the instrumentation just recorded",
      DOC,
-     '    out = out + "\\n" + MARK_OPEN + MARKER_CSS + MARK_CLOSE + "\\n"',
-     '    out = MARK_OPEN + MARKER_CSS + MARK_CLOSE + "\\n" + out',
+     _a('    out = out + "\\n" + MARK_OPEN + MARKER_CSS + MARK_CLOSE + "\\n"'),
+     _a('    out = MARK_OPEN + MARKER_CSS + MARK_CLOSE + "\\n" + out'),
      TESTS),
 
     ("strip() stops removing the stylesheet, so the round-trip property is "
      "asserted against a document that still carries it",
      DOC,
-     "    if instrumented.endswith(tail):\n        instrumented = instrumented[:-len(tail)]",
+     _a("    if instrumented.endswith(tail):\n        instrumented = instrumented[:-len(tail)]"),
      "    pass",
      TESTS),
 
@@ -158,14 +171,14 @@ MUTANTS = [
     ("the collision scan stops recursing, so a data-blk nested inside a "
      "<section> is never seen and the document instruments with wrong anchors",
      DOC,
-     "                found.append((k.tag, token, k.line))\n        attribute_collisions(k, found)",
+     _a("                found.append((k.tag, token, k.line))\n        attribute_collisions(k, found)"),
      "                found.append((k.tag, token, k.line))",
      TESTS),
 
     ("the relative-asset scan stops recursing, so an <img> inside a <figure> "
      "never reports the document as not self-contained",
      DOC,
-     "            found.append((k.tag, attr, v))\n        relative_refs(k, found)",
+     _a("            found.append((k.tag, attr, v))\n        relative_refs(k, found)"),
      "            found.append((k.tag, attr, v))",
      TESTS),
 
@@ -199,8 +212,8 @@ MUTANTS = [
     ("promoted inlines are emitted after their siblings instead of in document "
      "order, so the block numbering stops following reading order",
      DOC,
-     "        for k in node.kids:\n            if isinstance(k, Node):\n                got = sub.get(id(k))\n                if got:\n                    out.extend(got)",
-     "        for k in node.kids:\n            if isinstance(k, Node):\n                got = sub.get(id(k))\n                if got:\n                    out[:0] = got",
+     _a("        for k in node.kids:\n            if isinstance(k, Node):\n                got = sub.get(id(k))\n                if got:\n                    out.extend(got)"),
+     _a("        for k in node.kids:\n            if isinstance(k, Node):\n                got = sub.get(id(k))\n                if got:\n                    out[:0] = got"),
      TESTS),
 
     ("a document with nothing annotatable reports success",
@@ -212,14 +225,14 @@ MUTANTS = [
     ("the reversibility property goes back to being the CLI's problem, so a "
      "library caller gets no guarantee at all",
      DOC,
-     "    if strip(out) != src:\n        raise Refused(",
-     "    if False:\n        raise Refused(",
+     _a("    if strip(out) != src:\n        raise Refused("),
+     _a("    if False:\n        raise Refused("),
      TESTS),
 
     ("an unclosed <p> nests instead of closing, so the outer paragraph's own "
      "text belongs to no block",
      DOC,
-     "    def handle_starttag(self, tag, attrs):\n        self._implicit_close(tag)",
+     _a("    def handle_starttag(self, tag, attrs):\n        self._implicit_close(tag)"),
      "    def handle_starttag(self, tag, attrs):",
      TESTS),
 
@@ -232,13 +245,13 @@ MUTANTS = [
 
     ("a block-level element stops closing an open paragraph",
      DOC,
-     "        if tag in CLOSES_P:\n            closes = closes | {\"p\"}",
-     "        if False:\n            closes = closes | {\"p\"}",
+     _a("        if tag in CLOSES_P:\n            closes = closes | {\"p\"}"),
+     _a("        if False:\n            closes = closes | {\"p\"}"),
      TESTS),
 
     ("an empty src goes back to being indistinguishable from no src",
      DOC,
-     '                if attr == "src":\n                    found.append((k.tag, attr, ""))',
+     _a('                if attr == "src":\n                    found.append((k.tag, attr, ""))'),
      "                pass",
      TESTS),
 

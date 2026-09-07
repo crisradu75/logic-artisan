@@ -13,6 +13,20 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 DOC = PLUGIN / "skills" / "annotate" / "scripts" / "render_doc.py"
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_page_in_a_browser.py"]
 
+# `core.autocrlf` is on in this clone, so a target file may be CRLF on disk while
+# these anchors are written with LF. A multi-line anchor then matches nothing and
+# mutate.py aborts the WHOLE batch at preflight — every mutant here stops
+# checking anything, for a reason unrelated to any of them. Read the separator
+# off the file rather than assuming it.
+def _nl(path):
+    return "\r\n" if b"\r\n" in path.read_bytes() else "\n"
+
+
+def _a(text, path=None):
+    """An anchor carrying the target file's own line separator."""
+    return text.replace("\n", _nl(path if path is not None else DOC))
+
+
 MUTANTS = [
     ("the stacking push goes, so two notes on one block are drawn on top of "
      "each other and one cannot be read at all",
@@ -86,7 +100,7 @@ MUTANTS = [
     ("the rail intercept stops being gated on the framed path, taking the "
      "history entry away from the Markdown rail too",
      DOC,
-     "    if (!FRAME) return;\n    /* By section id, not by the href's slug.",
+     _a("    if (!FRAME) return;\n    /* By section id, not by the href's slug."),
      "    /* By section id, not by the href's slug.",
      TESTS),
 
@@ -100,7 +114,7 @@ MUTANTS = [
     ("the frame is left at its default height, so it scrolls itself and the "
      "margin arithmetic loses the offset it depends on",
      DOC,
-     "    lastH = h;\n    FRAME.style.height = h + 'px';",
+     _a("    lastH = h;\n    FRAME.style.height = h + 'px';"),
      "    lastH = h;",
      TESTS),
 
@@ -130,7 +144,7 @@ MUTANTS = [
     ("the rail stops preventing default on a miss, so a click navigates nowhere "
      "and says nothing",
      DOC,
-     "    e.preventDefault();\n    const sec = a.dataset.goSec;",
+     _a("    e.preventDefault();\n    const sec = a.dataset.goSec;"),
      "    const sec = a.dataset.goSec;",
      TESTS),
 
@@ -166,7 +180,7 @@ MUTANTS = [
     ("the banner stops being shown at all, so every condition it reports is "
      "silent again",
      DOC,
-     "  el.textContent = msg;\n  el.hidden = false;",
-     "  el.textContent = msg;\n  el.hidden = true;",
+     _a("  el.textContent = msg;\n  el.hidden = false;"),
+     _a("  el.textContent = msg;\n  el.hidden = true;"),
      TESTS),
 ]

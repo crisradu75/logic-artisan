@@ -15,6 +15,20 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 DOC = PLUGIN / "skills" / "annotate" / "scripts" / "render_doc.py"
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_render_doc.py"]
 
+# `core.autocrlf` is on in this clone, so a target file may be CRLF on disk while
+# these anchors are written with LF. A multi-line anchor then matches nothing and
+# mutate.py aborts the WHOLE batch at preflight — every mutant here stops
+# checking anything, for a reason unrelated to any of them. Read the separator
+# off the file rather than assuming it.
+def _nl(path):
+    return "\r\n" if b"\r\n" in path.read_bytes() else "\n"
+
+
+def _a(text, path=None):
+    """An anchor carrying the target file's own line separator."""
+    return text.replace("\n", _nl(path if path is not None else DOC))
+
+
 MUTANTS = [
     # ---- the margin ----
     ("the margin note is anchored to a mark that is merely CONNECTED, so a block "
@@ -33,14 +47,14 @@ MUTANTS = [
 
     ("opening the drawer stops re-laying-out the margin",
      DOC,
-     "     that can never fire. */\n  syncMargin();",
-     "     that can never fire. */\n  /* nothing */",
+     _a("     that can never fire. */\n  syncMargin();"),
+     _a("     that can never fire. */\n  /* nothing */"),
      TESTS),
 
     ("opening the drawer re-lays-out the margin only in a branch that never runs",
      DOC,
-     "     that can never fire. */\n  syncMargin();",
-     "     that can never fire. */\n  if (false) syncMargin();",
+     _a("     that can never fire. */\n  syncMargin();"),
+     _a("     that can never fire. */\n  if (false) syncMargin();"),
      TESTS),
 
     ("a resize stops re-laying-out the margin",
