@@ -849,3 +849,34 @@ def test_the_server_takes_the_document_from_its_own_argument_not_the_request():
         assert taken_from_the_wire not in src.split("def _render")[1], \
             "_render reads %r; the document must come from the server's own" \
             " argument" % taken_from_the_wire
+
+
+def test_rendering_an_html_document_never_writes_to_it(tmp_path):
+    """The skill's single most safety-critical claim, and it named only the
+    Markdown renderer as its evidence. For an HTML target the read happens here,
+    so the guarantee needs its own hash across a full build-and-rebuild cycle."""
+    import hashlib
+
+    import render_html
+
+    (tmp_path / ".git").mkdir()
+    doc = tmp_path / "d.html"
+    doc.write_text(DESIGNED_SAMPLE, encoding="utf-8")
+    before = hashlib.sha256(doc.read_bytes()).hexdigest()
+
+    pages = tmp_path / "pages"
+    pages.mkdir()
+    out = pages / "p.html"
+    render_html.build(str(doc), str(tmp_path), str(out))
+    assert hashlib.sha256(doc.read_bytes()).hexdigest() == before
+    # And again: a rebuild is the case where a renderer that opened the source
+    # for writing would show up.
+    render_html.build(str(doc), str(tmp_path), str(out))
+    assert hashlib.sha256(doc.read_bytes()).hexdigest() == before
+
+
+DESIGNED_SAMPLE = """<!doctype html><meta charset="utf-8">
+<title>Sample</title>
+<style>.wrap{max-width:62rem}</style>
+<div class="wrap"><h2>Heading</h2><p>A paragraph.</p></div>
+"""

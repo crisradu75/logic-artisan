@@ -1,0 +1,686 @@
+<!-- Briefing pentru partenerul de business — 7 septembrie 2026.
+     Documentul de referință este acesta; versiunea în engleză a fost înlocuită, nu duplicată,
+     tocmai ca să nu repetăm capcana celor două rollup-uri din docs/research/ (vezi CLAUDE.md).
+     Cifrele de infrastructură vin din docs/prod/gsp-deploy.md §7, verificate în Cloud Billing
+     Catalog API. Pozițiile juridice sunt cercetare proprie, nu opinie de avocat. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Briefing partener — drumul spre producție</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --ground:#F6F7F5; --surface:#FFFFFF; --ink:#16191A; --ink-soft:#3D4544;
+    --muted:#6B7472; --rule:#D8DCD8; --accent:#1F5661; --accent-soft:#E3ECEC;
+    --risk:#A33A2A; --risk-soft:#F6E7E3; --caution:#8A5A12; --caution-soft:#F7EEDD; --good:#2F6B45;
+    --measure:68ch;
+    --step--1:0.815rem; --step-0:1rem; --step-1:1.25rem; --step-2:1.6rem; --step-3:2.1rem; --step-4:2.9rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:#101413; --surface:#171C1B; --ink:#E9EBE8; --ink-soft:#C2C8C5;
+      --muted:#8E9793; --rule:#2C3432; --accent:#6FB3BE; --accent-soft:#1B2C2F;
+      --risk:#E08C7C; --risk-soft:#2E1D19; --caution:#D9A455; --caution-soft:#2C2418; --good:#7FBE97;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#101413; --surface:#171C1B; --ink:#E9EBE8; --ink-soft:#C2C8C5;
+    --muted:#8E9793; --rule:#2C3432; --accent:#6FB3BE; --accent-soft:#1B2C2F;
+    --risk:#E08C7C; --risk-soft:#2E1D19; --caution:#D9A455; --caution-soft:#2C2418; --good:#7FBE97;
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  body {
+    background:var(--ground); color:var(--ink); margin:0;
+    font-family:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+    font-size:var(--step-0); line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:62rem; margin:0 auto; padding:3rem 1.5rem 6rem; }
+  .masthead { border-bottom:2px solid var(--ink); padding-bottom:1.25rem; margin-bottom:2.5rem; }
+  .kicker { font-family:"IBM Plex Mono",monospace; font-size:var(--step--1); letter-spacing:.14em;
+            text-transform:uppercase; color:var(--accent); margin:0 0 .75rem; }
+  h1 { font-family:Newsreader,Georgia,serif; font-size:var(--step-4); line-height:1.08; font-weight:500;
+       margin:0 0 .6rem; text-wrap:balance; letter-spacing:-.015em; }
+  .standfirst { font-family:Newsreader,Georgia,serif; font-size:var(--step-1); color:var(--ink-soft);
+                max-width:var(--measure); margin:0; line-height:1.5; }
+  .meta { display:flex; flex-wrap:wrap; gap:.5rem 1.75rem; margin-top:1.5rem;
+          font-family:"IBM Plex Mono",monospace; font-size:var(--step--1); color:var(--muted); }
+  .meta b { color:var(--ink-soft); font-weight:500; }
+  section { margin-top:3.5rem; }
+  .sec-head { display:flex; gap:1rem; align-items:baseline; border-bottom:1px solid var(--rule);
+              padding-bottom:.6rem; margin-bottom:1.5rem; }
+  .sec-num { font-family:"IBM Plex Mono",monospace; font-size:var(--step--1); font-weight:600;
+             color:var(--accent); letter-spacing:.08em; flex:none; padding-top:.35rem; }
+  h2 { font-family:Newsreader,Georgia,serif; font-size:var(--step-3); font-weight:500; margin:0;
+       line-height:1.15; letter-spacing:-.01em; text-wrap:balance; }
+  h3 { font-size:var(--step-0); font-weight:600; margin:2rem 0 .65rem; }
+  p { max-width:var(--measure); margin:0 0 1rem; }
+  p.lead { color:var(--ink-soft); }
+  ul { max-width:var(--measure); margin:0 0 1rem; padding-left:1.15rem; }
+  li { margin-bottom:.4rem; }
+  strong { font-weight:600; }
+  em.term { font-style:normal; font-family:"IBM Plex Mono",monospace; font-size:.92em; color:var(--ink-soft); }
+  .waterfall { display:flex; flex-direction:column; gap:2px; margin:1.5rem 0; }
+  .wf-row { display:grid; grid-template-columns:15rem 1fr 7rem; gap:1rem; align-items:center;
+            padding:.55rem .85rem; background:var(--surface); border-left:3px solid transparent; }
+  .wf-row .lbl { font-size:var(--step--1); }
+  .wf-row .amt { font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+                 text-align:right; font-size:var(--step--1); font-weight:500; }
+  .bar { height:.7rem; border-radius:1px; }
+  .wf-row.is-in { border-left-color:var(--accent); } .wf-row.is-in .bar { background:var(--accent); }
+  .wf-row.is-out { border-left-color:var(--risk); } .wf-row.is-out .bar { background:var(--risk); opacity:.75; }
+  .wf-row.is-net { background:var(--accent-soft); border-left-color:var(--accent); border-top:1px solid var(--rule); }
+  .wf-row.is-net .lbl,.wf-row.is-net .amt { font-weight:600; }
+  .wf-row.is-net .bar { background:var(--good); }
+  .wf-row.is-net.is-negative { background:var(--risk-soft); border-left-color:var(--risk); }
+  .wf-row.is-net.is-negative .bar { background:var(--risk); }
+  .tw { overflow-x:auto; margin:1.25rem 0; }
+  table { border-collapse:collapse; width:100%; font-size:var(--step--1); }
+  th,td { text-align:left; padding:.5rem .9rem .5rem 0; border-bottom:1px solid var(--rule); vertical-align:top; }
+  th { font-family:"IBM Plex Mono",monospace; font-weight:500; font-size:.75rem; letter-spacing:.08em;
+       text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--ink-soft); }
+  td.num,th.num { text-align:right; font-family:"IBM Plex Mono",monospace;
+                  font-variant-numeric:tabular-nums; white-space:nowrap; }
+  tr.total td { border-top:1px solid var(--ink-soft); border-bottom:none; font-weight:600; }
+  .ask { background:var(--surface); border-left:3px solid var(--accent); padding:1rem 1.15rem;
+         margin:1.5rem 0; max-width:var(--measure); }
+  .ask .ask-lbl { font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.12em;
+                  text-transform:uppercase; color:var(--accent); display:block; margin-bottom:.45rem; }
+  .ask p:last-child,.ask ul:last-child { margin-bottom:0; }
+  .flag { border-left:3px solid var(--risk); background:var(--risk-soft); padding:1rem 1.15rem;
+          margin:1.5rem 0; max-width:var(--measure); }
+  .flag.caution { border-left-color:var(--caution); background:var(--caution-soft); }
+  .flag .flag-lbl { font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.12em;
+                    text-transform:uppercase; color:var(--risk); display:block; margin-bottom:.45rem; font-weight:600; }
+  .flag.caution .flag-lbl { color:var(--caution); }
+  .flag p:last-child,.flag ul:last-child { margin-bottom:0; }
+  .note { font-size:var(--step--1); color:var(--muted); max-width:var(--measure); }
+  .split { display:grid; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); gap:1px;
+           background:var(--rule); border:1px solid var(--rule); margin:1.5rem 0; }
+  .split > div { background:var(--surface); padding:1.1rem 1.15rem; }
+  .split .cap { font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.1em;
+                text-transform:uppercase; color:var(--muted); margin:0 0 .5rem; }
+  .split .fig { font-family:"IBM Plex Mono",monospace; font-size:var(--step-2); font-weight:500;
+                font-variant-numeric:tabular-nums; margin:0 0 .35rem; }
+  .split .sub { font-size:var(--step--1); color:var(--ink-soft); margin:0; max-width:none; }
+  .decide { display:flex; flex-wrap:wrap; gap:.5rem 1.5rem; align-items:baseline;
+            border-top:1px solid var(--rule); margin-top:1.75rem; padding-top:.75rem;
+            font-family:"IBM Plex Mono",monospace; font-size:var(--step--1); color:var(--muted); }
+  .decide b { color:var(--ink); font-weight:500; }
+  .verdict { font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.1em;
+             text-transform:uppercase; padding:.15rem .5rem; border:1px solid currentColor; }
+  .v-block { color:var(--risk); } .v-check { color:var(--caution); } .v-ok { color:var(--good); }
+  footer { margin-top:4rem; padding-top:1.25rem; border-top:1px solid var(--rule); }
+  footer p { font-size:var(--step--1); color:var(--muted); }
+
+  .figs { display:flex; flex-direction:column; gap:1.75rem; margin:1.75rem 0; }
+  figure { margin:0; background:var(--surface); border:1px solid var(--rule); padding:1rem 1rem .75rem; }
+  figure svg { display:block; width:100%; height:auto; color:var(--ink); }
+  figcaption { font-size:var(--step-0); max-width:var(--measure); color:var(--muted); margin-top:.75rem; line-height:1.45; }
+  figcaption b { color:var(--ink-soft); font-weight:600; }
+  .paid { color:var(--risk); }
+  @media (max-width:640px) { .wf-row { grid-template-columns:1fr 5.5rem; } .wf-row .bar { display:none; } }
+  @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="kicker">Briefing partener · Interoga &amp; Prospecta</p>
+    <h1>Cât costă, cât aduce și ce ne mai desparte de lansare</h1>
+    <p class="standfirst">Separăm datele despre asociați de raportul de bază: 49 lei pentru raportul despre firmă, 30 de lei plus TVA doar dacă vrei și asociații. Această singură decizie aduce contribuția de la ~9 lei pe raport la ~39 — cu mențiunea, detaliată în secțiunea 05, că cei 39 sunt un plafon, nu o medie, până când oprim comanda certificatului plătit și pe traseul administratorilor. Mai jos: ce înseamnă asta în cifre și ce ne mai stă în cale — în principal înființarea firmei și contul cu care extragem datele.</p>
+    <div class="meta">
+      <span><b>Întocmit</b> 7 septembrie 2026</span>
+      <span><b>Ipoteză de volum</b> 10.000 rapoarte + 500 lead-uri / lună</span>
+      <span><b>Curs</b> ~4,6 lei / USD</span>
+    </div>
+  </header>
+
+  <!-- 01 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>Decizia: vindem asociații separat</h2></div>
+
+    <p class="lead">Până acum un raport la <em class="term">49 lei</em> includea tot, iar noi cumpăram un certificat ONRC de 30 de lei pentru fiecare vânzare — indiferent dacă pe client îl interesau asociații sau nu. <strong>Îl separăm.</strong></p>
+
+    <div class="split">
+      <div>
+        <p class="cap">Raport de bază</p>
+        <p class="fig">49 lei</p>
+        <p class="sub">Identitate, situație fiscală, dosare în instanță, insolvență, situații financiare, administratori. Tot ce obținem gratuit sau aproape gratuit.</p>
+      </div>
+      <div>
+        <p class="cap">Asociați — opțional</p>
+        <p class="fig">30 + TVA</p>
+        <p class="sub">36,30 lei la plată. Asociații și procentele deținute, din certificatul ONRC pe care îl comandăm per firmă.</p>
+      </div>
+      <div>
+        <p class="cap">Contribuție per raport de bază</p>
+        <p class="fig">39,21</p>
+        <p class="sub">Era 9,21 cât timp certificatul era inclus în fiecare vânzare. <strong>De patru ori mai bine.</strong></p>
+      </div>
+    </div>
+
+    <h3>De ce raportul de bază devine dintr-odată o afacere bună</h3>
+    <p>Administratorii vin deja gratuit dintr-un registru bulk lunar. Identitatea, situația fiscală, dosarele în instanță, insolvența și situațiile financiare sunt toate surse publice gratuite sau aproape gratuite. <strong>Asociații erau singurul câmp scump din tot raportul</strong> — iar acum plătesc pentru el doar cei care îl vor.</p>
+
+    <p class="note">Toată aritmetica de mai jos rulează pe <strong>1,24% + 0,30 lei + TVA</strong>, adică pe capătul de jos al benzii publicate de Netopia Payments. Este o ipoteză optimistă asumată, nu un tarif semnat.</p>
+
+    <div class="waterfall">
+      <div class="wf-row is-in"><span class="lbl">Raport de bază</span><div class="bar" style="width:100%"></div><span class="amt">49,00</span></div>
+      <div class="wf-row is-out"><span class="lbl">TVA 21%</span><div class="bar" style="width:17.3%"></div><span class="amt">&minus;8,50</span></div>
+      <div class="wf-row is-out"><span class="lbl">Comision card</span><div class="bar" style="width:2.2%"></div><span class="amt">&minus;1,10</span></div>
+      <div class="wf-row is-out"><span class="lbl">Infrastructură GCP</span><div class="bar" style="width:0.4%"></div><span class="amt">&minus;0,19</span></div>
+      <div class="wf-row is-net"><span class="lbl">Contribuție</span><div class="bar" style="width:80%"></div><span class="amt">39,21</span></div>
+    </div>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Ce se schimbă la celălalt capăt al benzii</span>
+      <p>La capătul de sus — <strong>1,4% + 0,60 lei + TVA</strong> — comisionul pe cei 49 de lei devine <strong>1,56</strong>, contribuția pe raportul de bază scade la <strong>38,75</strong>, iar pragul de rentabilitate al suplimentului urcă la <strong>37,06 la plată</strong>: adică <strong>la 37 de lei la plată am ieși pe minus cu 0,05</strong>. Concluzia mare nu se clatină — <strong>multiplul rămâne 4,2×–4,4× pe toată banda</strong> — dar prețul suplimentului da: 37 de lei la plată trece la capătul de jos al benzii și nu trece la cel de sus. Este o decizie care depinde de tariful negociat, nu o marjă câștigată.</p>
+    </div>
+
+    <h3>Suplimentul e vândut la cost, în mod deliberat</h3>
+    <p>Dacă cerem <strong>30 de lei plus TVA — 36,30 la plată</strong> — ne rămân exact cei 30 pe care îi plătim la ONRC. Nu câștigăm nimic din certificat, iar singurul lucru pe care îl pierdem este partea de comision de card — despre care imediat mai jos. E poziția corectă pentru o refacturare la cost, în care clientul plătește tariful registrului, nu un adaos peste el. Suplimentul se bifează la checkout și se încasează <strong>în aceeași tranzacție cu raportul de bază</strong> — un singur total de 85,30 lei, același raport cu mai multe date.</p>
+
+    <div class="waterfall">
+      <div class="wf-row is-in"><span class="lbl">Supliment încasat</span><div class="bar" style="width:100%"></div><span class="amt">36,30</span></div>
+      <div class="wf-row is-out"><span class="lbl">TVA 21%</span><div class="bar" style="width:17.3%"></div><span class="amt">&minus;6,30</span></div>
+      <div class="wf-row is-out"><span class="lbl">Certificat ONRC</span><div class="bar" style="width:82.6%"></div><span class="amt">&minus;30,00</span></div>
+      <div class="wf-row is-out"><span class="lbl">Comision card <span class="note">(incremental)</span></span><div class="bar" style="width:1.5%"></div><span class="amt">&minus;0,54</span></div>
+      <div class="wf-row is-net is-negative"><span class="lbl">Net pe supliment</span><div class="bar" style="width:1.5%"></div><span class="amt">&minus;0,54</span></div>
+    </div>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Două lucruri de lămurit cu contabilul</span>
+      <p><strong>Comisionul de card nu este acoperit integral.</strong> Suplimentul se încasează în aceeași tranzacție cu raportul de bază, deci din tariful de <strong>1,24% + 0,30 lei + TVA</strong> partea fixă e deja plătită de raport și incremental rămâne doar procentul: comisionul pe totalul de 85,30 este <strong>1,64 lei</strong>, față de <strong>1,10</strong> pe raportul singur — adică <strong>0,54 lei în plus</strong>. La 36,30 rămânem deci în minus cu 0,54 pe supliment: circa <strong>1.634 lei pe lună</strong> la o rată de atașare de 30%. <strong>Pragul de rentabilitate este 36,97 la plată; la 37 de lei la plată rămâne o marjă de +0,02</strong> — atât de subțire încât la capătul de sus al benzii Netopia dispare cu totul.</p>
+      <p class="note"><strong>O precizare de bază de calcul, ca să nu comparăm două lucruri scrise diferit.</strong> Prețul pe care îl recomandăm este scris <em>fără</em> TVA — <strong>30 + TVA, adică 36,30 la plată</strong>. Alternativa discutată aici este scrisă <em>cu</em> TVA inclus — <strong>37 la plată, adică ~30,58 fără TVA</strong>. Toate pragurile de rentabilitate din document — 36,97 și 37,06 — sunt sume <strong>la plată, cu TVA inclus</strong>. Citite ca „37 + TVA”, întreg raționamentul se inversează.</p>
+      <p><strong>Tariful ONRC conține el însuși TVA deductibil?</strong> Dacă da și îl putem deduce după înregistrare, costul nostru real este 24,79 și suplimentul aduce 4,66 lei profit. Dacă e o taxă publică în afara sferei TVA, rămâne aritmetica de mai sus. O singură întrebare, dar decide dacă linia asta face bani sau iese pe zero. <strong>Aceeași întrebare se pune și pentru TVA-ul de pe comisionul de card</strong>, pe care aritmetica de mai sus îl tratează integral drept cost (cei 1,10 lei sunt 0,9076 comision plus 0,19 TVA): secțiunea 07 spune că modelul descrie regimul de <em>după</em> înregistrarea în scopuri de TVA, regim în care și TVA-ul de pe un comision de procesator ar fi în principiu deductibil. Dacă este, contribuția crește și pragul de rentabilitate scade — deci cele două linii merită lămurite împreună, la aceeași discuție.</p>
+    </div>
+
+    <h3>Cât valorează, în funcție de câți îl cumpără</h3>
+    <p>Ideea este să cumpărăm certificatul doar când îl cere cineva, deci <strong>rata de atașare</strong> determină cheltuiala cu certificatele. <strong>Azi încă nu se întâmplă așa</strong> — job-ul de certificat rulează la fiecare raport, iar condiționarea lui este muncă de dezvoltare nedemarată (secțiunea 05 explică de ce). Și nu este doar dezvoltare: <strong>trei specificații în vigoare cer ca toate cele șapte module ale unui raport să fie scrise împreună</strong>, iar o vânzare doar de bază nu le satisface limpede — reconcilierea e urmărită ca <strong>issue #322</strong> și e detaliată în secțiunea 08. Cifrele de mai jos descriu deci sistemul după separare, la 10.000 de rapoarte de bază pe lună:</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Scenariu</th><th class="num">Certificate cumpărate</th><th class="num">Contribuție lunară</th><th class="num">Față de azi</th></tr></thead>
+        <tbody>
+          <tr><td>Inclus în preț, ca azi — plătesc toți</td><td class="num">10.000</td><td class="num">92.077</td><td class="num">&mdash;</td></tr>
+          <tr><td>Separat, 20% iau suplimentul</td><td class="num">2.000</td><td class="num">390.987</td><td class="num">4,2&times;</td></tr>
+          <tr><td>Separat, 30%</td><td class="num">3.000</td><td class="num">390.443</td><td class="num">4,2&times;</td></tr>
+          <tr><td>Separat, 50%</td><td class="num">5.000</td><td class="num">389.353</td><td class="num">4,2&times;</td></tr>
+          <tr class="total"><td>Separat, îl iau toți</td><td class="num">10.000</td><td class="num">386.630</td><td class="num">4,2&times;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Rata de atașare aproape nu contează, și tocmai ăsta e argumentul.</strong> Fiecare rând e de aproximativ patru ori mai bun decât modelul actual, pentru că avantajul nu vine din vânzarea suplimentelor — vine din faptul că <strong>cei 49 de lei de bază nu mai subvenționează un certificat pe care majoritatea clienților nu l-au cerut.</strong> Fie că îl ia unul din cinci, fie că îl iau toți, ajungem în același loc, mult mai bun.</p>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Expunerea competitivă, spusă direct</span>
+      <p>Verifi.ro vinde la <strong>49 lei cu tot cu asociați</strong> — preț verificat live pe 30 iulie 2026 și care merită reconfirmat înainte de ședință. Separat, cei 49 ai noștri oferă mai puțin decât ai lor, iar ca să egalăm oferta ajungem la <strong>85,30</strong>. Exact de asta am revenit anterior asupra deciziei de a scoate complet modulul de asociați — nu voiam să avem același preț cu o ofertă mai slabă.</p>
+      <p>Între timp s-au schimbat două lucruri. Știm acum că asociații reprezentau <strong>96% din cât ne costa efectiv un raport</strong> — 30 de lei din 31,29 — și știm că <strong>nu există sursă mai ieftină</strong>: registrul bulk gratuit conține doar reprezentanții legali, nu și asociații, iar certificatul InfoCert la 30 de lei rămâne singurul drum care funcționează pentru structura de deținere. Alegerea nu este deci „inclus sau separat, la același cost”, ci <strong>o marjă de ~39 de lei pe majoritatea vânzărilor față de una de ~9 lei</strong>.</p>
+      <p class="note">O clarificare care se cere făcută, pentru că se confundă des: <strong>registrul beneficiarilor reali nu este o alternativă</strong>, și nu pentru că ar fi închis. După hotărârea CJUE din noiembrie 2022, accesul public a fost <em>restricționat</em>, nu desființat — se cere dovedirea unui interes legitim pentru fiecare cerere, înregistrare pe portalul ONRC și plata unei taxe, ceea ce oricum nu se împacă cu un produs automat per CUI. Dar chiar și deschis, nu ne-ar fi ajutat: <strong>beneficiarul real nu este același câmp cu asociatul</strong> — el numește persoana fizică ultimă aflată peste un prag de control, care coincide cu asociații înregistrați doar când deținerea nu trece printr-o altă firmă.</p>
+      <p><strong>Merită aflat cum face verifi.ro.</strong> Dacă și ei cumpără certificate la 30 de lei și vând la 49, lucrează pe ~9 lei pe raport, exact cum lucram noi. Dacă nu, au un contract de licențiere pe care ar trebui să-l înțelegem.</p>
+    </div>
+
+    <div class="ask">
+      <span class="ask-lbl">Decizii pe masă</span>
+      <ul>
+        <li><strong>Cât cerem pe supliment.</strong> La 30 + TVA — 36,30 la plată — ieșim în minus cu 0,54, pentru că partea de comision nu e acoperită. Pragul de rentabilitate este 36,97 la plată la tariful pe care rulează modelul (capătul de jos al benzii Netopia) și 37,06 la plată la capătul de sus: <strong>37 de lei la plată, cu TVA inclus, trece la un capăt și nu trece la celălalt</strong>, cu +0,02, respectiv −0,05. Atenție la bază: cei 30 sunt scriși fără TVA (36,30 la plată), cei 37 cu TVA inclus (~30,58 fără TVA). Nu propun o cifră până nu știm tariful negociat — dar merită decis dacă acceptăm pierderea mică de dragul mesajului „exact tariful registrului, fără adaos” sau o acoperim prin preț.</li>
+        <li><strong>Întrebăm contabilul dacă tariful ONRC are TVA deductibil.</strong> Este diferența dintre a pierde 0,54 și a câștiga 4,66 pe supliment. Aceeași întrebare pentru TVA-ul de pe comisionul de card, tratat azi integral drept cost — de lămurit la aceeași discuție.</li>
+        <li><strong>Cum îl prezentăm — stabilit.</strong> O bifă la checkout, în aceeași tranzacție cu raportul de bază: clientul optează înainte de plată, totalul devine 85,30 și primește același raport, cu mai multe date. Nu o ofertă ulterioară livrării — de aceea comisionul fix de 0,30 lei se plătește o singură dată, iar suplimentul costă incremental doar procentul.</li>
+      </ul>
+    </div>
+
+    <div class="decide"><span><b>Decid</b> amândoi</span><span><b>Blochează</b> construcția checkout-ului și dosarul de comerciant</span><span class="verdict v-check">Decis; preț de confirmat</span></div>
+  </section>
+
+  <!-- 02 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>Infrastructura: Interoga, Prospecta și baza comună</h2></div>
+
+    <p class="lead">Verificată linie cu linie în Cloud Billing Catalog API de la Google, nu estimată dintr-un calculator. Total la volum complet: <strong>~411 USD/lună (~1.890 lei)</strong>.</p>
+
+    <p>Împărțirea corectă nu e un procent. Aproape totul e comun, deci întrebarea utilă este <em>ce am înceta efectiv să plătim dacă am renunța la un produs?</em></p>
+
+    <div class="split">
+      <div>
+        <p class="cap">Doar Interoga</p>
+        <p class="fig">52 $</p>
+        <p class="sub">Procesul cu browser care comandă certificatele ONRC — singura sursă care are nevoie de un browser adevărat. Chromium, 2 vCPU / 4 GiB.</p>
+      </div>
+      <div>
+        <p class="cap">Doar Prospecta</p>
+        <p class="fig">38 $</p>
+        <p class="sub">Banda de ingestie permanent pornită, care construiește fluxul de evenimente, plus calculul per lead. Raportul Interoga nu îl citește niciodată. <em>În modelul de producție</em> — azi, pe mediul de demonstrație, producătorii sunt opriți, deci linia nu se plătește încă (vezi schema a doua din secțiunea 06).</p>
+      </div>
+      <div>
+        <p class="cap">Bază comună</p>
+        <p class="fig">321 $</p>
+        <p class="sub">Baza de date (~221 $), mediul de test (~35 $), edge, web, logging, chei. Costul de a exista ca business — nu se mișcă aproape deloc dacă dispare oricare produs.</p>
+      </div>
+    </div>
+
+    <p><strong>Niciun produs nu e scump; baza este.</strong> Renunțarea la Prospecta economisește ~38 $/lună. Renunțarea la Interoga, ~52 $. Ambele sunt mici față de cei 321 $ pe care îi plătim oricum — ceea ce înseamnă că al doilea produs este aproape gratuit de operat, iar decizia de a-l păstra ține de cât vinde, nu de cât costă.</p>
+
+    <p class="note">Două precizări despre împărțirea de mai sus. Cei ~52 $ ai Interoga sunt dimensionați pe <em>o comandă de certificat la fiecare raport</em>, adică exact ce face sistemul azi; după condiționarea din secțiunea 01 linia scade proporțional cu rata de atașare — la 30% ajunge pe la ~16 $. Și tot în baza comună stă workerul de rapoarte (~17 $), care în realitate dispare odată cu Interoga: l-am lăsat acolo pentru că planul de deployment refuză deliberat să facă această împărțire, numind-o „o alegere de alocare fără un răspuns corect”. Cu el mutat, împărțirea ar fi mai degrabă ~70 $ Interoga față de ~303 $ bază comună. Concluzia nu se schimbă în niciunul din cazuri.</p>
+
+<h3>Mediul de test &#8212; singura linie care depinde de noi, nu de tarife</h3>
+    <p>&#206;n cele ~1.890 lei de mai sus intr&#259; &#537;i un <strong>mediu de test separat, ~35 $ pe lun&#259;</strong>. Exist&#259; ca s&#259; putem &#238;ncerca migr&#259;rile de baz&#259; de date &#238;nainte s&#259; ating&#259; produc&#539;ia &#8212; iar &#238;n acest proiect asta nu e teoretic: o migrare gre&#537;it&#259; a &#539;inut mediul de dezvoltare rupt nou&#259; ore, cu toate verific&#259;rile automate pe verde.</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Stare</th><th class="num">USD / lun&#259;</th><th>Ce ruleaz&#259;</th></tr></thead>
+        <tbody>
+          <tr><td>Pornit</td><td class="num">~92</td><td>Baz&#259; de date, serviciul web, banda de ingestie &#8212; aceea&#537;i form&#259; ca produc&#539;ia, la scar&#259; mic&#259;</td></tr>
+          <tr><td>Oprit</td><td class="num">~11</td><td>Doar discul &#537;i IP-ul rezervat. <strong>Nu se pierde nimic</strong> &#8212; baza &#238;&#537;i p&#259;streaz&#259; datele</td></tr>
+          <tr class="total"><td>&#206;n buget, la ~30% utilizare</td><td class="num">~35</td><td>Presupunerea noastr&#259; despre c&#226;t de des &#238;l pornim</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Cei 35 $ sunt o presupunere despre disciplin&#259;, nu un tarif</span>
+      <p>Toate celelalte linii din model sunt fie tarife publicate, fie cresc cu volumul. Aceasta cre&#537;te cu <strong>c&#226;t de des uit&#259;m s&#259;-l oprim</strong>. Dac&#259; r&#259;m&#226;ne pornit permanent, costul devine <strong>~92 $ &#238;n loc de ~35 &#8212; adic&#259; +57 $ pe lun&#259;</strong>, iar totalul de la 10.000 de rapoarte urc&#259; de la ~411 la ~468 $.</p>
+      <p>Pornirea și oprirea sunt câte o singură comandă, iar mecanismul echivalent rulează deja pe mediul de demonstrație — acolo l-am folosit de două ori pe 6 septembrie, între ~205,82 $ pornit și ~10,87 $ oprit. Mediul de test din tabelul de mai sus face parte din modelul de producție și încă nu există ca proiect. Nimic nu îl oprește automat, deci va fi tot o obișnuință de întreținut, nu o garanție.</p>
+    </div>
+
+    <div class="ask">
+      <span class="ask-lbl">De confirmat</span>
+      <p>Accept&#259;m ~35 $ cu disciplina de a-l opri, sau bugetăm direct ~92 $ &#537;i &#238;l l&#259;s&#259;m pornit? Diferen&#539;a este de ~684 $ pe an &#8212; mic&#259; fa&#539;&#259; de restul, dar merit&#259; s&#259; fie o alegere, nu o surpriz&#259; la prima factur&#259;.</p>
+    </div>
+
+    <h3>Ce plătim pe drum</h3>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Etapă</th><th class="num">USD / lună</th><th class="num">Lei / lună</th><th>Ce se schimbă</th></tr></thead>
+        <tbody>
+          <tr><td>Înainte de lansare (live, neindexat, fără trafic)</td><td class="num">~303</td><td class="num">~1.395</td><td>Baza de date de la bun început; aproape fără calcul</td></tr>
+          <tr><td>Lansare publică (edge, WAF, CDN)</td><td class="num">~333</td><td class="num">~1.530</td><td>+29 $ pentru edge</td></tr>
+          <tr><td>La 10.000 rapoarte/lună</td><td class="num">~411</td><td class="num">~1.890</td><td>Calculul crește cu volumul</td></tr>
+          <tr><td>Când corpusul depășește 8 GB RAM (~anul 1)</td><td class="num">~493</td><td class="num">~2.270</td><td>Salt de memorie la baza de date, din creștere</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Nu există salt de cost la lansare.</strong> Luăm redundanța și recuperarea punctuală (PITR) de la început, în loc să facem upgrade când apar primii bani. Ne costă ~114 $/lună în plus în perioada fără venituri și elimină un salt de ~293 $ care altfel ar fi căzut exact în cel mai prost moment.</p>
+
+    <p class="note">Patru intrări sunt estimări, nu tarife verificate: volumul de log-uri (poate varia cu 30 $ în ambele sensuri), cifra pentru jurnalele de recuperare, tariful per job al planificatorului și cât de des rulăm efectiv mediul de test. Restul vine din tarifele publicate.</p>
+
+    <div class="decide"><span><b>Responsabil</b> tehnic</span><span><b>Stare</b> cifre verificate, o alegere rămasă</span><span class="verdict v-check">De decis: ~35 $ sau ~92 $</span></div>
+  </section>
+
+  <!-- 03 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>Comisioanele de card — de cinci până la opt ori factura de infrastructură</h2></div>
+
+    <p class="lead">Linia de cost pe care o uită toată lumea. Per raport pare mică; față de infrastructură este de cinci până la opt ori mai mare. Tarifele de mai jos sunt cele publicate de procesatori, culese în cercetarea noastră de go-to-market — niciunul nu este negociat și niciunul nu este semnat.</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Procesator</th><th>Tarif</th><th class="num">La 49 lei</th><th class="num">% din preț</th><th class="num">La 10.000/lună</th></tr></thead>
+        <tbody>
+          <tr><td>Netopia Payments <span class="note">(fost mobilPay) — capătul de jos al benzii</span></td><td>1,24% + 0,30 lei + TVA</td><td class="num">1,10</td><td class="num">2,2%</td><td class="num">~10.980</td></tr>
+          <tr><td>Netopia Payments <span class="note">— capătul de sus al benzii</span></td><td>1,4% + 0,60 lei + TVA</td><td class="num">1,56</td><td class="num">3,2%</td><td class="num">~15.560</td></tr>
+          <tr><td>EuPlătesc <span class="note">(standard)</span></td><td>~1,2–1,5% + 0,50–0,60 lei</td><td class="num">1,09–1,34</td><td class="num">2,2–2,7%</td><td class="num">~10.880–13.350</td></tr>
+          <tr><td>PayU România</td><td>0,99% + 0,30 lei / tranzacție, <strong>plus 48 lei o singură dată și 25 lei/lună taxă de platformă</strong> (din 2025)</td><td class="num">0,79</td><td class="num">1,6%</td><td class="num">~7.880</td></tr>
+          <tr><td>Stripe <span class="note">(carduri UE)</span></td><td>~1,5% + 0,25 € pe carduri de consumator; ~2,5%+ pe carduri de business</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note">Cifrele pe raport sunt calculate din tarifele publicate, la un preț de 49 lei. Stripe rămâne necompletat pe toate cele trei coloane calculate, pentru că partea fixă este în euro și nu am fixat un curs — nu-l estimăm aici tocmai pentru că versiunea anterioară a acestui tabel conținea două tarife care nu existau nicăieri. De reținut totuși, ca să nu se citească greșit rândul gol: la 49 de lei Stripe este cel mai <em>scump</em> rând din tabel, nu cel mai ieftin. Doar Netopia poartă „+ TVA” în sursa noastră; pentru celelalte am aplicat tariful ca atare, așa cum e publicat.</p>
+
+    <p>O precizare înainte de cifre: <strong>celulele din tabel urmează fiecare baza publicată de procesatorul respectiv</strong> — doar Netopia poartă „+ TVA” în sursa noastră, restul sunt ca atare, așa cum le publică ei (nota de mai sus spune același lucru). Comparația de mai jos le aduce pe toate pe <strong>aceeași bază, cu TVA inclus</strong>, altfel s-ar scădea sume calculate diferit.</p>
+
+    <p>Ca ordin de mărime: toată factura noastră de cloud la volum complet este <strong>~1.890 lei pe lună</strong>, iar comisioanele de card la 10.000 de rapoarte sunt, pe bază comparabilă, între <strong>~9.530</strong> și <strong>~15.560 lei</strong> — adică de <strong>5,0 până la 8,2 ori</strong> mai mult, la orice tarif din tabel. Cel mai ieftin rând rămâne PayU, care pe bază cu TVA inclus ajunge la ~9.530 lei pe lună. Între cel mai ieftin și cel mai scump rând sunt <strong>~6.030 lei pe lună</strong>, ceea ce face din alegerea procesatorului o decizie de <strong>~72.000 lei pe an</strong>. <strong>Este a doua cea mai mare cheltuială a afacerii, după certificatele ONRC</strong> — și singura pe care o putem negocia.</p>
+
+    <p>Cercetarea noastră de go-to-market recomandă <strong>Netopia sau EuPlătesc</strong> pentru plata cu cardul fără cont: sunt construite pentru comercianți români, decontează în lei și cer doar un SRL obișnuit. PayU are cea mai rapidă înrolare automată, dar adaugă 25 de lei pe lună indiferent de volum. Stripe are cel mai bun flux de checkout pentru un client la prima achiziție de 49 de lei, însă rămâne o întrebare deschisă dacă un SRL românesc poate deconta direct prin el — cercetarea o marchează drept neconfirmată până la o înrolare de probă. 3DS/SCA este obligatoriu pe astfel de tranzacții, iar livrarea raportului se face doar după 3DS reușit, ca să limităm expunerea la contestații pe un produs digital livrat instant.</p>
+
+    <div class="ask">
+      <span class="ask-lbl">Întrebarea pentru noi doi</span>
+      <p>Negociem înainte de a semna? <strong>Tarifele din tabel sunt benzi publicate, nu tarife negociate</strong> — cercetarea noastră de go-to-market spune exact asta și pune cererea unor cotații scrise de la Netopia și EuPlătesc printre lucrurile rămase de făcut. Nu știm de la ce volum se îmbunătățesc și cu cât: sursele spun doar „mai mic la volum”, fără niciun prag. Ce știm este că volumul nostru la 10.000 de rapoarte pe lună este cu mult peste al unui comerciant la lansare, ceea ce e chiar argumentul cu care se cere o cotație. Banda publicată a Netopia are un capăt de jos și unul de sus, iar diferența dintre ele nu este cosmetică: <strong>ea decide dacă suplimentul de asociați la 37 de lei la plată iese pe plus sau pe minus</strong> (secțiunea 01). Merită cerut un tarif scris înainte de a fixa prețul.</p>
+    </div>
+
+    <div class="decide"><span><b>Responsabil</b> business</span><span><b>Blochează</b> dosarul de comerciant</span><span class="verdict v-check">De decis</span></div>
+  </section>
+
+  <!-- 04 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>Domeniul</h2></div>
+
+    <p class="lead">Cea mai mică linie din document și una dintre cele mai urgente.</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Element</th><th class="num">Cost</th><th>Observație</th></tr></thead>
+        <tbody>
+          <tr><td><em class="term">interoga.ro</em> — tarif de registru (ROTLD)</td><td class="num">12 € + TVA / an</td><td>Se plătește în lei la cursul BNR</td></tr>
+          <tr><td>Printr-un partener acreditat</td><td class="num">9–12 € / an</td><td>Sub tariful de registru doar la capătul de jos al benzii; la 12 € este exact cât registrul</td></tr>
+          <tr class="total"><td>Anual, cu tot cu taxe</td><td class="num">~15 €</td><td>Neglijabil față de restul. Nu convertim în lei aici: cursul din antet este pentru dolar, nu pentru euro</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note"><strong>Singurele cifre neverificate din tot documentul.</strong> Tariful de registru, banda partenerilor și totalul de mai sus sunt din memorie: în întreaga documentație a proiectului nu există nicio sursă consemnată pentru ele — spre deosebire de fiecare altă cifră de aici, care are un document în spate. <strong>De confirmat direct pe rotld.ro înainte de ședință</strong>, împreună cu cursul euro la zi dacă vrem echivalentul în lei.</p>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Îl înregistrăm acum, nu la lansare</span>
+      <p>Costul e nesemnificativ; <strong>termenul nu este</strong>. Planul de deployment scoate înregistrarea domeniului din secvența tehnică tocmai pentru că are o latență externă pe care nu o putem comprima — iar adresa canonică a site-ului este <strong>compilată în build</strong>, deci alegerea târzie a domeniului înseamnă o reconstrucție, nu o simplă modificare DNS.</p>
+      <p>Ar trebui să luăm acum și <em class="term">prospecta.ro</em> dacă intenționăm să folosim numele, plus eventuale înregistrări defensive. La ordinul a ~15 € bucata pe an, nu este o chestiune de buget.</p>
+    </div>
+
+    <div class="decide"><span><b>Responsabil</b> business</span><span><b>Termen</b> acum — nimic nu depinde de amânare</span><span class="verdict v-check">De acționat</span></div>
+  </section>
+
+  <!-- 05 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><h2>Contul cu care extragem datele</h2></div>
+
+    <p class="lead">Punctul de pe ordinea de zi care merită cel mai mult timp în ședință și cel la care pot să dau cel mai puțin un răspuns clar.</p>
+
+    <h3>Ce conține un raport și de unde vine fiecare câmp</h3>
+    <p>Șapte module, afișate pe opt rânduri pentru că <em class="term">shareholders_directors</em> se alimentează din două surse diferite. <strong>Cinci din șapte nu au nevoie de niciun cont</strong> — citesc endpoint-uri publice sau fișiere bulk gratuite. Doar două ating ONRC și doar unul costă bani.</p>
+
+    <p class="note">Tabelul descrie ce <em>poate</em> livra fiecare modul, nu ce e pornit implicit. Două steaguri de configurare — cel pentru portalul instanțelor și cel pentru ONRC — sunt pe <em class="term">false</em> din fabrică. Regula „nu vindem un raport dacă niciunul dintre ele nu e pornit” <strong>există scrisă în cod, ca verificare</strong>, dar nu e încă legată de un flux de plată, pentru că <strong>nu există niciun flux de plată în cod</strong> (secțiunea 07): singurul loc care o apelează azi este generarea gratuită, de test. Iar un al treilea parametru — <em class="term">REPORT_REQUIRE_FRESH_SIGNAL</em>, pornit din fabrică — o poate anula cu totul: pus pe <em class="term">false</em>, celelalte două steaguri nu mai contează. Nu e o limitare de sursă, e o setare de mediu: la lansare le pornim pe amândouă.</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Modul</th><th>Sursă</th><th>Cont</th><th>Ce extragem</th><th class="num">Cost</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Identitate</strong></td><td><em class="term">data.gov.ro</em> — trei fișiere bulk lunare: OD_FIRME, OD_CAEN_AUTORIZAT, OD_STARE_FIRMA</td><td>Niciunul — date deschise</td><td><em>Încărcăm în index:</em> denumire, CUI, sediu și număr de înregistrare din OD_FIRME, plus codurile CAEN și starea firmei din celelalte două fișiere, prin joburi separate. <em>Afișăm în raport:</em> denumirea, CUI-ul, sediul și starea ONRC. Forma juridică nu vine de aici — o citim de la ANAF, în modulul fiscal</td><td class="num">gratuit</td></tr>
+          <tr><td><strong>Fiscal</strong></td><td><em class="term">webservicesp.anaf.ro</em> v9/tva și <em class="term">anaf.ro/restante</em></td><td>Niciunul — API public; pagina de datorii are CAPTCHA</td><td>Înregistrare în scopuri de TVA, marcaj de contribuabil inactiv, datorii fiscale restante</td><td class="num">gratuit</td></tr>
+          <tr><td><strong>Litigii</strong></td><td><em class="term">portalquery.just.ro</em> — portalul instanțelor</td><td>Niciunul — serviciu web public</td><td>Dosare în care apare firma, stadiu, părți, termene</td><td class="num">gratuit</td></tr>
+          <tr><td><strong>Insolvență</strong></td><td><em class="term">myportal.onrc.ro</em> — BPI</td><td><strong>Cont ONRC</strong> — nivel gratuit, dar autentificarea e obligatorie</td><td>Existența unei proceduri de insolvență, stadiul, numărul de buletin, datele dosarului, practicianul</td><td class="num">gratuit</td></tr>
+          <tr><td><strong>Situații financiare</strong></td><td><em class="term">webservicesp.anaf.ro/bilant</em></td><td>Niciunul — API public</td><td>Indicatori de bilanț și cont de profit și pierdere pe ani, ceruți live per firmă și an</td><td class="num">gratuit</td></tr>
+          <tr><td><strong>Administratori</strong> <span class="note">(jumătate din modul)</span></td><td><em class="term">data.gov.ro</em> — OD_REPREZENTANTI_LEGALI, bulk</td><td>Niciunul — date deschise</td><td>Reprezentanți legali și administratori pentru 2,6 mil. firme</td><td class="num">gratuit*</td></tr>
+          <tr><td><strong>Asociați</strong> <span class="note">(suplimentul plătit)</span></td><td><em class="term">myportal.onrc.ro</em> — certificat InfoCert, comandat per firmă</td><td><strong>Cont ONRC</strong> — și el plătește tariful</td><td>Asociați și procente de deținere. Vine ca PDF pe care îl prelucrăm, nu ca flux de date</td><td class="num">30 lei</td></tr>
+          <tr><td><strong>VIES</strong></td><td><em class="term">ec.europa.eu</em> — verificare cod TVA în UE</td><td>Niciunul — serviciu public european</td><td>Valabilitatea codului de TVA intracomunitar</td><td class="num">gratuit</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Asteriscul de la administratori — și de ce 39,21 este un plafon</span>
+      <p>Administratorii vin de regulă gratuit din registrul bulk, dar <strong>se recurge la certificatul plătit ori de câte ori registrul nu are rând</strong> pentru firma respectivă — iar în prezent job-ul de certificat rulează la <em>fiecare</em> raport, indiferent de acoperire.</p>
+      <p>Prin urmare o vânzare doar de bază, pentru o firmă lipsă din registrul bulk, ne costă tot 30 de lei <strong>dacă nu blocăm și această cale în spatele suplimentului</strong>. Blocarea face parte din dezvoltare, nu e ceva de la sine înțeles. Până atunci, <strong>39,21 este cazul cel mai bun, nu media</strong>, iar mărimea diferenței depinde de cât de des ratează registrul bulk — număr pe care nu l-am măsurat.</p>
+    </div>
+
+    <h3>Ce facem, de fapt, azi</h3>
+    <p>Ne autentificăm în sistemul de single sign-on al ONRC cu un cont creat prin înregistrare obișnuită, apoi apelăm două endpoint-uri autentificate: registrul de insolvență, pentru existența și detaliile dosarului, și fluxul InfoCert, pentru comanda certificatelor de asociați și administratori, la 30 de lei bucata. Interogările ANAF de datorii și TVA sunt endpoint-uri publice, una dintre ele protejată de un CAPTCHA pe care îl rezolvăm local prin OCR.</p>
+
+    <div class="flag">
+      <span class="flag-lbl">Expunerea, spusă pe șleau</span>
+      <p>În documentația noastră tehnică apare ca <em class="term">cont de serviciu dedicat</em>. <strong>ONRC nu emite conturi de serviciu.</strong> Înregistrarea creează un cont al unei persoane fizice. Așadar un produs comercial extrage date de registru contra cost, la scară, pe credențialele unei persoane — iar acea persoană poartă tot ce impun condițiile contului.</p>
+      <p>Decurg trei lucruri și niciunul nu e rezolvat:</p>
+      <ul>
+        <li><strong>Condițiile de utilizare.</strong> Produsele plătite ONRC au o clauză de utilizare unică și interdicție de reproducere. Dacă și căutarea gratuită pe care ne bazăm are aceeași clauză a fost marcat drept neconfirmat în propria noastră cercetare și nu s-a verificat niciodată.</li>
+        <li><strong>Cine răspunde.</strong> Astăzi, o persoană fizică, nu o firmă. Nu există încă un SRL căruia contul să îi aparțină.</li>
+        <li><strong>Revânzarea.</strong> Cercetarea nu a găsit niciun impediment legal la revânzarea datelor de registru, dar a găsit că cel puțin un agregator comercial interzice revânzarea prin condițiile sale. Noi extragem direct, ceea ce ocolește exact acea clauză și ridică alta — dacă suntem „reutilizatori” în sensul Legii 179/2022 și ce condiții ne revin.</li>
+      </ul>
+    </div>
+
+    <p>Partea liniștitoare: cercetarea nu a găsit <strong>nicio dovadă a existenței unei licențe formale de revânzător ONRC</strong> ca statut de acces. Există un tarif pe care oricum îl plătim per certificat și un cadru de reutilizare. Toți concurenții — termene.ro, RisCo, KeysFin — operează legal pe aceleași surse publice, deci este, evident, o problemă rezolvabilă, nu un business interzis.</p>
+
+    <h3>Toate credențialele pe care le deținem</h3>
+    <p>Ai întrebat dacă mai sunt implicate și alte conturi personale. <strong>Unul singur atinge datele clienților</strong> — dar încă două poartă aceeași expunere de persoană fizică pe partea de infrastructură și țin de aceeași discuție despre ce trece în SRL.</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Cont</th><th>La ce servește</th><th>În produs?</th><th>Expunere</th></tr></thead>
+        <tbody>
+          <tr><td><strong>ONRC</strong> <span class="note">SSO / InfoCert</span></td><td>Interogări de insolvență și certificatele plătite de asociați</td><td><strong>Da</strong></td><td>Cont de persoană fizică, date de registru contra cost, la scară. Problema de mai sus.</td></tr>
+          <tr><td><strong>Termene</strong> <span class="note">API comercial</span></td><td>Instrument intern de evaluare a API-ului lor față de al nostru</td><td><strong>Nu</strong> — în spatele unui flag, <em class="term">noindex</em>, niciodată într-un raport</td><td>Scăzută azi. Ar deveni o chestiune de revânzare în clipa în care ar alimenta un raport livrat clientului.</td></tr>
+          <tr><td><strong>Google Gemini</strong> <span class="note">cheie API</span></td><td>Configurată; nereferențiată de niciun cod din produs</td><td><strong>Nu</strong></td><td>Niciuna. Merită eliminată dacă nu o folosim.</td></tr>
+          <tr><td><strong>ANAF</strong></td><td>Datorii fiscale și stare TVA</td><td>Da</td><td><strong>Nu există niciun cont.</strong> Endpoint-uri publice. Vezi nota despre CAPTCHA mai jos.</td></tr>
+          <tr><td><strong>Google Cloud</strong> <span class="note">proiect + facturare</span></td><td>Rulează tot. Poartă cheltuielile lunare reale</td><td>Infrastructură, nu date</td><td><strong>Aceeași expunere, de fapt:</strong> un cont Google personal cu o relație de facturare care ar trebui să fie a SRL-ului.</td></tr>
+          <tr><td><strong>Dropbox</strong></td><td>Ține setul de date sursă și copiile de siguranță ale bazei</td><td>Infrastructură, nu date</td><td>Singurul motiv pentru care baza de date a fost recuperabilă de ambele ori când s-a pierdut. Tot cont personal.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Ce nu rezolvă faptul că ANAF nu cere cont</span>
+      <p>Endpoint-ul de datorii este protejat prin CAPTCHA, iar <strong>noi îl rezolvăm automat, local, prin OCR</strong>. Nu există cont, deci nu se încalcă termenii vreunui cont — dar ocolirea automată a unui mecanism de control al accesului este o problemă în sine, independentă de faptul că datele din spate sunt publice. Intră pe lista avocatului.</p>
+    </div>
+
+    <div class="ask">
+      <span class="ask-lbl">Ce aș pune în fața unui avocat, în ordinea asta</span>
+      <ul>
+        <li>Poate o firmă să opereze pe un cont ONRC înregistrat pe persoană fizică, sau contul trebuie refăcut pe numele SRL-ului?</li>
+        <li>Căutarea gratuită în BPI are aceeași clauză de utilizare unică și interdicție de reproducere ca produsele plătite?</li>
+        <li>În baza Legii 179/2022, extragerea directă ne face „reutilizatori” și ce condiții sau tarif atrage asta?</li>
+        <li>Comanda automată a certificatelor InfoCert încalcă vreo condiție de utilizare, dat fiind că plătim tariful publicat pentru fiecare?</li>
+        <li>Aceeași întrebare pentru ANAF: accesul programatic la endpoint-urile publice, inclusiv rezolvarea CAPTCHA, se încadrează în termenii lor?</li>
+      </ul>
+    </div>
+
+    <div class="decide"><span><b>Responsabil</b> avocat, apoi amândoi</span><span><b>Blochează</b> afișarea publică a unui preț</span><span class="verdict v-block">Nerezolvat</span></div>
+  </section>
+
+  <!-- 06 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">06</span><h2>Cum circul&#259; datele</h2></div>
+
+    <p class="lead">Dou&#259; trasee care nu se ating. Raportul Interoga nu cite&#537;te niciodat&#259; <em class="term">company_events</em>, iar banda de ingestie a Prospecta nu are acces la datele de raport &mdash; separarea este impus&#259; prin roluri de baz&#259; de date, nu doar prin conven&#539;ie. De asta al doilea produs cost&#259; ~38 $ pe lun&#259; de operat.</p>
+
+    <div class="figs">
+      <figure>
+        <svg viewBox="0 0 1000 430" role="img" aria-label="Fluxul de date pentru raportul Interoga: surse publice și ONRC, extrase printr-un job zilnic pe registrul bulk, prin apeluri live per CUI și printr-un job plătit după randare; stocate în baza de date și asamblate în șapte module.">
+        <defs><marker id="a1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="currentColor"/></marker></defs>
+          <text x="12" y="20" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">SURSE</text>
+          <text x="262" y="20" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">EXTRAGERE</text>
+          <text x="528" y="20" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">STOCARE</text>
+          <text x="774" y="20" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">ASAMBLARE</text>
+          <g opacity=".9"><rect x="12" y="32" width="212" height="64" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="118.0" y="60" text-anchor="middle" font-size="14" fill="currentColor">data.gov.ro &#8212; OD_FIRME</text>
+            <text x="118.0" y="78" text-anchor="middle" font-size="12" fill="currentColor">4 &#215; CSV, lunar</text>
+          </g>
+          <g opacity=".9"><rect x="12" y="116" width="212" height="64" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="118.0" y="144" text-anchor="middle" font-size="14" fill="currentColor">ANAF &#183; VIES &#183; instan&#539;e</text>
+            <text x="118.0" y="162" text-anchor="middle" font-size="12" fill="currentColor">JSON, SOAP, HTML+CAPTCHA</text>
+          </g>
+          <g class="paid"><rect x="12" y="200" width="212" height="64" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="118.0" y="228" text-anchor="middle" font-size="14" fill="currentColor">ONRC &#8212; myportal.onrc.ro</text>
+            <text x="118.0" y="246" text-anchor="middle" font-size="12" fill="currentColor">JSON + PDF, autentificat</text>
+          </g>
+          <g opacity=".9"><rect x="262" y="32" width="232" height="64" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="378.0" y="60" text-anchor="middle" font-size="14" fill="currentColor">job programat zilnic</text>
+            <text x="378.0" y="78" text-anchor="middle" font-size="12" fill="currentColor">search:company-index-load</text>
+          </g>
+          <g opacity=".9"><rect x="262" y="116" width="232" height="64" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="378.0" y="144" text-anchor="middle" font-size="14" fill="currentColor">apel live la cerere</text>
+            <text x="378.0" y="162" text-anchor="middle" font-size="12" fill="currentColor">per CUI, cu limitare de ritm</text>
+          </g>
+          <g class="paid"><rect x="262" y="200" width="232" height="64" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="378.0" y="228" text-anchor="middle" font-size="14" fill="currentColor">job dup&#259; randare &#8212; 30 lei</text>
+            <text x="378.0" y="246" text-anchor="middle" font-size="12" fill="currentColor">report:shareholders-resolve</text>
+          </g>
+          <g opacity=".9"><rect x="528" y="32" width="208" height="92" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="632.0" y="65" text-anchor="middle" font-size="14" fill="currentColor">companies + 3 tabele</text>
+            <text x="632.0" y="83" text-anchor="middle" font-size="12" fill="currentColor">3,9 mil. firme</text>
+            <text x="632.0" y="101" text-anchor="middle" font-size="12" fill="currentColor">re&#238;nlocuite, nu acumulate</text>
+          </g>
+          <g opacity=".9"><rect x="528" y="172" width="208" height="92" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="632.0" y="205" text-anchor="middle" font-size="14" fill="currentColor">source_cache</text>
+            <text x="632.0" y="223" text-anchor="middle" font-size="12" fill="currentColor">TTL per surs&#259;</text>
+            <text x="632.0" y="241" text-anchor="middle" font-size="12" fill="currentColor">ONRC: 30 de zile</text>
+          </g>
+          <g opacity=".9"><rect x="774" y="32" width="214" height="92" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="881.0" y="65" text-anchor="middle" font-size="14" fill="currentColor">report:generate</text>
+            <text x="881.0" y="83" text-anchor="middle" font-size="12" fill="currentColor">7 module &#238;ntr-o singur&#259;</text>
+            <text x="881.0" y="101" text-anchor="middle" font-size="12" fill="currentColor">tranzac&#539;ie</text>
+          </g>
+          <g opacity=".9"><rect x="774" y="158" width="214" height="76" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="881.0" y="192" text-anchor="middle" font-size="13" fill="currentColor">report_module_snapshots</text>
+            <text x="881.0" y="210" text-anchor="middle" font-size="12" fill="currentColor">7 r&#226;nduri, instantaneu</text>
+          </g>
+          <g opacity=".9"><rect x="774" y="268" width="214" height="52" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="881.0" y="299" text-anchor="middle" font-size="14" fill="currentColor">RAPORTUL LIVRAT</text>
+          </g>
+          <line x1="224" y1="64" x2="258" y2="64" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <text x="241" y="57" text-anchor="middle" font-size="12" fill="currentColor" opacity=".7">zilnic</text>
+          <line x1="224" y1="148" x2="258" y2="148" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <line class="paid" x1="224" y1="232" x2="258" y2="232" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <line x1="494" y1="64" x2="524" y2="72" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <line x1="494" y1="148" x2="524" y2="205" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <line class="paid" x1="494" y1="232" x2="524" y2="222" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <line x1="736" y1="78" x2="770" y2="70" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <line x1="736" y1="218" x2="770" y2="92" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <line x1="881.0" y1="124" x2="881.0" y2="154" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <line x1="881.0" y1="234" x2="881.0" y2="264" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+          <text x="12" y="350" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">ÎN PRODUCȚIE SE SCHIMBĂ</text>
+          <g opacity=".9"><rect x="12" y="360" width="976" height="56" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" rx="3"/>
+            <text x="500.0" y="384" text-anchor="middle" font-size="13" fill="currentColor">cozile in-process devin Cloud Tasks, c&#226;te una per surs&#259;</text>
+            <text x="500.0" y="402" text-anchor="middle" font-size="12" fill="currentColor">acela&#537;i traseu al datelor, alt mecanism de a&#537;teptare</text>
+          </g>
+        </svg>
+        <figcaption><b>Interoga &mdash; raportul.</b> Trei mecanisme diferite de extragere ajung în aceeași bază de date: un <b>job zilnic pe un fișier care se schimbă lunar</b> pentru registrul bulk — rulează în fiecare noapte, dar de cele mai multe ori constată că fișierul nu s-a schimbat și nu face nimic —, apeluri live per CUI la momentul cererii, și un job de după randare pentru singura sursă plătită. <span class="paid">Roșu = traseul care costă 30 de lei</span> &mdash; azi rulează la fiecare raport, iar separarea din secțiunea 01 înseamnă exact condiționarea lui. Punctat = ce se schimbă în producție.</figcaption>
+      </figure>
+      <figure>
+        <svg viewBox="0 0 1000 430" role="img" aria-label="Fluxul de date pentru Prospecta: patru producători programați în banda de ingestie scriu evenimente per firmă, din care se potrivesc lead-uri. Raportul Interoga nu citește niciodată aceste date.">
+        <defs><marker id="a2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="currentColor"/></marker></defs>
+          <text x="12" y="20" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">SURSE</text>
+          <text x="262" y="20" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">EXTRAGERE</text>
+          <text x="528" y="20" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">STOCARE</text>
+          <text x="774" y="20" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">ASAMBLARE</text>
+          <g opacity=".9"><rect x="12" y="32" width="212" height="52" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="118.0" y="54" text-anchor="middle" font-size="13.5" fill="currentColor">SICAP &#8212; e-licitatie.ro</text>
+            <text x="118.0" y="72" text-anchor="middle" font-size="12" fill="currentColor">JSON public, zilnic</text>
+          </g>
+          <g opacity=".9"><rect x="12" y="96" width="212" height="52" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="118.0" y="118" text-anchor="middle" font-size="13.5" fill="currentColor">Monitorul Oficial IV</text>
+            <text x="118.0" y="136" text-anchor="middle" font-size="12" fill="currentColor">PDF, fereastr&#259; de ~10 zile</text>
+          </g>
+          <g opacity=".9"><rect x="12" y="160" width="212" height="52" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="118.0" y="182" text-anchor="middle" font-size="13.5" fill="currentColor">MIPE &#8212; mfe.gov.ro</text>
+            <text x="118.0" y="200" text-anchor="middle" font-size="12" fill="currentColor">JSON, 31 MB</text>
+          </g>
+          <g opacity=".9"><rect x="12" y="224" width="212" height="52" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="118.0" y="246" text-anchor="middle" font-size="13.5" fill="currentColor">bilan&#539;uri bulk</text>
+            <text x="118.0" y="264" text-anchor="middle" font-size="12" fill="currentColor">CSV, data.gov.ro</text>
+          </g>
+          <g opacity=".9"><rect x="262" y="96" width="232" height="116" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="378.0" y="132" text-anchor="middle" font-size="14" fill="currentColor">banda de ingestie</text>
+            <text x="378.0" y="150" text-anchor="middle" font-size="12" fill="currentColor">4 produc&#259;tori programa&#539;i</text>
+            <text x="378.0" y="168" text-anchor="middle" font-size="12" fill="currentColor">proces separat, rol Postgres</text>
+            <text x="378.0" y="186" text-anchor="middle" font-size="12" fill="currentColor">propriu, izolat de raport</text>
+          </g>
+          <g opacity=".9"><rect x="528" y="32" width="208" height="92" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="632.0" y="65" text-anchor="middle" font-size="14" fill="currentColor">company_events</text>
+            <text x="632.0" y="83" text-anchor="middle" font-size="12" fill="currentColor">&#537;irul de evenimente</text>
+            <text x="632.0" y="101" text-anchor="middle" font-size="12" fill="currentColor">date personale eliminate</text>
+          </g>
+          <g opacity=".9"><rect x="528" y="172" width="208" height="92" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="632.0" y="205" text-anchor="middle" font-size="13" fill="currentColor">gazette_* &#183; eu_funding_*</text>
+            <text x="632.0" y="223" text-anchor="middle" font-size="12" fill="currentColor">financial_statement_filings</text>
+            <text x="632.0" y="241" text-anchor="middle" font-size="12" fill="currentColor">~1,8 mil. depuneri</text>
+          </g>
+          <g opacity=".9"><rect x="774" y="32" width="214" height="92" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="881.0" y="65" text-anchor="middle" font-size="14" fill="currentColor">potrivire ICP</text>
+            <text x="881.0" y="83" text-anchor="middle" font-size="12" fill="currentColor">profil de client ideal</text>
+            <text x="881.0" y="101" text-anchor="middle" font-size="12" fill="currentColor">eveniment, sector, perioad&#259;</text>
+          </g>
+          <g opacity=".9"><rect x="774" y="158" width="214" height="76" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="881.0" y="192" text-anchor="middle" font-size="13" fill="currentColor">verificare &#537;i livrare</text>
+            <text x="881.0" y="210" text-anchor="middle" font-size="12" fill="currentColor">autorizare-apoi-captare</text>
+          </g>
+          <g opacity=".9"><rect x="774" y="268" width="214" height="52" fill="none" stroke="currentColor" stroke-width="1.2" rx="3"/>
+            <text x="881.0" y="299" text-anchor="middle" font-size="14" fill="currentColor">LEAD-URILE LIVRATE</text>
+          </g>
+          <line x1="224" y1="58" x2="258" y2="154" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="224" y1="122" x2="258" y2="154" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="224" y1="186" x2="258" y2="154" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="224" y1="250" x2="258" y2="154" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="494" y1="130" x2="524" y2="72" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="494" y1="178" x2="524" y2="205" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="736" y1="78" x2="770" y2="70" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="736" y1="218" x2="770" y2="92" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="881.0" y1="124" x2="881.0" y2="154" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <line x1="881.0" y1="234" x2="881.0" y2="264" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+          <text x="12" y="350" font-size="12" letter-spacing="1.4" fill="currentColor" opacity=".55">ÎN PRODUCȚIE SE SCHIMBĂ</text>
+          <g opacity=".9"><rect x="12" y="360" width="976" height="56" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" rx="3"/>
+            <text x="500.0" y="392" text-anchor="middle" font-size="13" fill="currentColor">banda de ingestie devine un worker pool separat</text>
+          </g>
+        </svg>
+        <figcaption><b>Prospecta &mdash; evenimentele.</b> Nimic live: patru produc&#259;tori programa&#539;i adun&#259; evenimente per firm&#259;, din care se potrivesc lead-uri. Fereastra de ~10 zile a Monitorului Oficial &#238;nseamn&#259; c&#259; istoricul nu poate fi recuperat &mdash; se acumuleaz&#259; doar din ziua &#238;n care pornim captura. Punctat = ce se schimb&#259; &#238;n produc&#539;ie. <b>Schema descrie modelul de producție, nu ce rulează chiar acum:</b> pe mediul de demonstrație cei patru producători sunt opriți astăzi (<em class="term">INGESTION_ENABLED=false</em>), deci cei ~38 $ pe lună din secțiunea 02 sunt un cost al stării de producție, nu o factură pe care o plătim deja.</figcaption>
+      </figure>
+    </div>
+
+    <h3>Ce merit&#259; re&#539;inut din cele dou&#259; scheme</h3>
+    <ul>
+      <li><strong>Doar o singur&#259; s&#259;geat&#259; cost&#259; bani.</strong> Tot restul &mdash; registrul bulk, ANAF, VIES, instan&#539;ele, SICAP, Monitorul Oficial, MIPE &mdash; sunt surse publice gratuite. Certificatul ONRC este singura excep&#539;ie &#537;i singurul lucru pe care &#238;l vindem separat.</li>
+      <li><strong>Datele de raport nu se re&#238;mprosp&#259;teaz&#259; la citire.</strong> Odat&#259; generat, raportul este un instantaneu: deschiderea lui de zece ori nu apeleaz&#259; nicio surs&#259; extern&#259; &#537;i nu cost&#259; nimic. Regula este verificat&#259; automat, nu doar documentat&#259;.</li>
+      <li><strong>Registrul bulk se înlocuiește, nu se acumulează.</strong> Job-ul rulează zilnic, dar fișierul sursă se republică lunar, așa că majoritatea rulărilor nu fac nimic; iar când fișierul chiar s-a schimbat, rularea <b>înlocuiește</b> datele. Nu construim în timp un istoric de persoane și firme pe care nu l-am cerut.</li>
+      <li><strong>Datele personale sunt eliminate la parsare</strong>, nu ulterior: textul din Monitorul Oficial con&#539;ine CNP-uri &#537;i serii de buletin, iar acestea nu ajung niciodat&#259; &#238;n baza de date.</li>
+    </ul>
+
+    <div class="decide"><span><b>Responsabil</b> tehnic</span><span><b>Stare</b> descrie sistemul de azi</span><span class="verdict v-ok">Informativ</span></div>
+  </section>
+
+  <!-- 07 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">07</span><h2>Juridic și conformitate, înainte de a putea încasa</h2></div>
+
+    <p class="lead">Planul de deployment tratează deja patru dintre acestea ca elemente cu latență externă, care trebuie pornite imediat, pentru că sunt ceasuri pe care nu le controlăm.</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Element</th><th>De ce blochează</th><th>Stare</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Înființarea SRL-ului</strong></td><td>Contul de comerciant, proprietarul de drept al contului ONRC și fiecare pagină legală numesc o firmă care încă nu există</td><td>Neîncepută</td></tr>
+          <tr><td><strong>Dosarul de comerciant</strong></td><td>Fără el nu există plată cu cardul; are nevoie întâi de SRL și de un domeniu real</td><td>Blocat de SRL</td></tr>
+          <tr><td><strong>Revizuirea juridică</strong></td><td>Termeni, notă de informare și întrebările de mai sus despre surse</td><td>Neîncepută</td></tr>
+          <tr><td><strong>Termeni și politică de confidențialitate</strong></td><td>Șase câmpuri de identitate a operatorului sunt goale în cod, deci paginile legale returnează 404 prin construcție</td><td>Blocate de SRL</td></tr>
+          <tr><td><strong>Linkurile ANPC / SAL și SOL</strong></td><td>Cerință legală (Ordinul 449/2022), nu opțiune estetică</td><td>Blocate de SRL</td></tr>
+          <tr><td><strong>GDPR: LIA, DPIA, evidențe art. 30</strong></td><td>Publicăm date despre administratori și părți în dosare, persoane identificate</td><td>Neînceput</td></tr>
+          <tr><td><strong>DPO externalizat</strong></td><td>Cercetarea noastră consideră declanșarea aproape certă, dat fiind volumul de date personale</td><td>Neînceput</td></tr>
+          <tr><td><strong>Renunțarea la dreptul de retragere la checkout</strong></td><td>OUG 34/2014 — conținutul digital livrat instant cere un pas explicit de renunțare</td><td>Neconstruită</td></tr>
+          <tr><td><strong>Înregistrarea în scopuri de TVA</strong></td><td>Obligatorie în 10 zile de la depășirea plafonului de 395.000 lei</td><td>Neîncepută</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Pragul de TVA, pe care nimeni nu l-a pus în calcul</span>
+      <p>Planul de deployment presupune că suntem <strong>neplătitori de TVA la lansare</strong>, ceea ce e adevărat — plafonul de înregistrare este de <strong>395.000 lei cifră de afaceri anuală</strong>. Dar 10.000 de rapoarte pe lună înseamnă <strong>5,88 milioane lei pe an</strong>. Depășim plafonul în <strong>prima lună la ritm normal</strong> și ne înregistrăm în 10 zile.</p>
+      <p>Toate cifrele de contribuție din acest document sunt deja calculate <strong>cu TVA inclus</strong>, deci nu ne așteaptă nicio surpriză — dar merită știut că trecerea pragului nu e un risc de evitat, ci consecința succesului.</p>
+      <p><strong>Un singur avertisment de citire.</strong> Modelul din secțiunea 01 descrie regimul stabil, cel de <em>după</em> înregistrarea în scopuri de TVA. În luna de dinaintea ei nu avem TVA de virat, deci contribuția reală pe raportul de bază este mai mare decât 39,21. Nu construim aici un al doilea model pentru câteva săptămâni de tranziție — doar spunem limpede că 39,21 este cifra de regim, nu cifra lunii de lansare.</p>
+    </div>
+
+    <div class="flag caution">
+      <span class="flag-lbl">Decis: nu mergem public înainte de a fi conformi</span>
+      <p>Planul de deployment prevedea, din august, ca site-ul să devină <strong>accesibil public la faza 2</strong> — moment în care ar fi afișat un <strong>preț de 49 de lei fără termeni, fără politică de confidențialitate și fără pagină ANPC</strong>. Codul ascunde acele linkuri în loc să afișeze unele stricate, deci nimic nu ar fi părut în neregulă.</p>
+      <p><strong>Nimeni nu a acceptat vreodată asta.</strong> Documentul o lăsase explicit nedecisă și cerea ca o persoană anume să răspundă înainte de faza 2. Răspunsul, dat pe 7 septembrie 2026: <strong>site-ul nu devine public înainte de a fi complet conform.</strong> Poarta este conformitatea, nu o fază de inginerie.</p>
+      <p>Consecința practică, care merită spusă limpede: <strong>momentul lansării publice este acum determinat de SRL, de revizuirea juridică și de paginile legale</strong>, nu de ritmul dezvoltării. Fazele 3–5 pot continua cu site-ul inaccesibil. Este exact motivul pentru care înființarea firmei este cel mai lung termen din tabelul de mai sus.</p>
+    </div>
+
+    <div class="decide"><span><b>Responsabil</b> business, împreună cu avocatul</span><span><b>Cel mai lung termen</b> SRL → cont de comerciant</span><span class="verdict v-block">De pornit acum</span></div>
+  </section>
+
+  <!-- 08 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">08</span><h2>Patru lucruri care nu erau pe ordinea de zi și ar trebui să fie</h2></div>
+
+    <h3>Cât ne costă separarea în dezvoltare</h3>
+    <p>Sistemul de rapoarte are deja o stare pentru „acest modul nu a fost inclus”, dar <strong>niciun cod nu o produce în prezent</strong> — slotul a fost prevăzut, randarea nu a fost construită. Separarea produsului înseamnă modificări la checkout, un al doilea element vandabil, condiționarea modulului și decizia despre cum arată secțiunea de asociați pentru cine nu a cumpărat-o. Este muncă de dezvoltare, nu o modificare de configurare, și ar trebui estimată înainte să promitem un termen.</p>
+
+    <p>Mai este un obstacol, de altă natură: <strong>trei specificații în vigoare cer ca toate cele șapte module ale unui raport să fie scrise împreună, într-o singură tranzacție</strong>, ca cititorul să nu vadă niciodată un raport asamblat dintr-o parte din module. O vânzare doar de bază, fără partea de asociați, nu satisface limpede această cerință — iar starea „neinclus”, cea care ar trebui să explice cititorului absența, este rezervată în cod fără să existe vreun traseu care s-o producă. Reconcilierea celor două nu e o corectură de text, ci ea însăși o modificare de specificație, urmărită ca <strong>issue #322</strong>. Trebuie rezolvată înainte să putem vinde raportul de bază separat.</p>
+
+    <h3>Prospecta nu are niciun preț</h3>
+    <p>Se vinde per lead livrat și are propriul cost per lead — o interogare de insolvență și una de datorii cu CAPTCHA pentru fiecare. Are nevoie și de <strong>autorizare-apoi-captare</strong>, nu de o simplă debitare, pentru că facturăm lead-urile abia după livrare. Este o integrare de plată diferită de cea a Interoga, iar produsul și integrarea nu au fost estimate de nimeni.</p>
+
+    <h3>Nimic nu ne spune când suntem picați</h3>
+    <p>Nu există alertare și nimic nu urmărește rata de erori. Orice detectare pornește azi de la un om care observă. Este suportabil înainte de venituri și nu este suportabil după ce cineva a plătit 49 de lei pentru un raport care a eșuat.</p>
+
+    <h3>Nu am demonstrat niciodată că putem restaura baza de date</h3>
+    <p>Avem copii de siguranță, iar o restaurare reală într-o bază de date temporară a confirmat că ele conțin tot corpusul — 3,9 milioane de firme, numărate. Ce <strong>nu</strong> am făcut niciodată este restaurarea <em>în baza de date din cloud</em>, adică exact drumul pe care l-ar lua o recuperare reală. Ne-am asumat pe 6 septembrie un obiectiv de recuperare de patru ore; până când exercițiul nu rulează, cifra este o speranță. Costă o după-amiază și câțiva euro de infrastructură temporară.</p>
+
+    <div class="decide"><span><b>Responsabil</b> amândoi</span><span class="verdict v-check">De adăugat pe ordinea de zi</span></div>
+  </section>
+
+  <footer>
+    <p><strong>De unde vin cifrele.</strong> Infrastructura este verificată în Cloud Billing Catalog API de la Google pentru <em class="term">europe-west1</em> și consemnată în planul de deployment cu identificatori de tarif. Comisioanele de card și tariful de domeniu sunt tarife publice la data de septembrie 2026 și trebuie confirmate în scris înainte de semnare. Cota și plafonul de TVA sunt cele în vigoare în 2026. Pozițiile juridice sunt cercetarea noastră, nu opinia unui avocat — fiecare dintre ele are nevoie de un avocat înainte să încasăm de la cineva.</p>
+  </footer>
+
+</div>

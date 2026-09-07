@@ -140,4 +140,33 @@ MUTANTS = [
      "  try { syncMargin(); } catch (e) {}",
      "  /* nothing */",
      TESTS),
+
+    # ---- paths that had no mutant until the coverage review ----
+
+    ("a page opened from disk renders an empty frame instead of saying it has "
+     "to be served",
+     DOC,
+     "  if (!FRAME || location.protocol !== 'file:') return false;",
+     "  if (true) return false;",
+     TESTS),
+
+    ("the unusable frame is left showing under file:, so the notice sits above "
+     "a blank rectangle",
+     DOC,
+     "  FRAME.hidden = true;",
+     "  FRAME.hidden = false;",
+     TESTS),
+
+    ("an identical message re-lays out the margin every time it is repeated",
+     DOC,
+     "  if (!el.hidden && el.textContent === msg) return;",
+     "  if (false) return;",
+     TESTS),
+
+    ("the banner stops being shown at all, so every condition it reports is "
+     "silent again",
+     DOC,
+     "  el.textContent = msg;\n  el.hidden = false;",
+     "  el.textContent = msg;\n  el.hidden = true;",
+     TESTS),
 ]

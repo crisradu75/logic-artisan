@@ -675,8 +675,9 @@ body{margin:0;background:var(--ground);color:var(--ink);font-size:17px;line-heig
 .sec{scroll-margin-top:4rem}
 
 .page{background:var(--paper);min-height:100vh;padding:0 1.5rem 10rem}
-/* No height here on purpose: the script sets it from the frame's own
-   content, so the outer page scrolls and the margin keeps its arithmetic. */
+/* No height here on purpose. `fit()` in the JS owns the frame's height and
+   carries the reasoning; this is the one place that defers to it rather than
+   restating it. */
 #cla-frame{display:block;width:100%;border:0;background:var(--paper)}
 .frame-warn{margin:2rem 0;padding:.8rem 1rem;border:1px solid var(--mark);
  border-radius:3px;background:var(--mark-wash);color:var(--mark);
@@ -930,9 +931,9 @@ let CDOC = document, CWIN = window;
 
 /* A fresh frame's contentDocument is `about:blank`, and about:blank is already
    `readyState === 'complete'` — so the obvious readiness test passes against an
-   empty document and every lookup after it returns null. Measured: the frame
-   reported height 150 and getElementById returned null for content plainly in
-   the file. The href check is what distinguishes the placeholder from the real
+   empty document and every lookup after it returns null. The symptom is a frame
+   left at its unstyled default height and lookups that find nothing for content
+   plainly in the file. The href check is what distinguishes the placeholder from the real
    document. */
 function contentReady() {
   if (!FRAME) return true;
@@ -942,8 +943,10 @@ function contentReady() {
 }
 
 /* Same-origin is a SERVING property, not a structural one. Opened straight off
-   disk both documents get opaque origins, `contentDocument` throws, and the page
-   renders with no annotation layer — silently, looking merely empty. Detected
+   disk Chromium gives both documents opaque origins, `contentDocument` throws,
+   and the page renders with no annotation layer — silently, looking merely
+   empty. Engines differ here (Firefox treats `file:` documents as same-origin),
+   which is itself a reason to detect the condition rather than reason about it. Detected
    rather than prevented: nothing stops a reader opening the path the renderer
    prints. Gated on the framed path, because a Markdown page over `file:` has no
    frame, needs no origin, and has always worked. */
@@ -1056,9 +1059,10 @@ const RAIL = new Map(
 
 /* The band the scroll-spy lights within. Percentages resolve against the ROOT's
    height, and inside a frame sized to its own content that root is the whole
-   document — measured at 7584px against an 800px viewport, a band roughly nine
-   times too tall, which lights several entries at once on a dense document. So
-   the framed path states the same intent in pixels off the outer viewport. */
+   document rather than the visible viewport. On a document several screens
+   tall that makes the band several times too tall, and it lights several
+   entries at once. So the framed path states the same intent in pixels off the
+   outer viewport, where the percentages meant what they say. */
 function railBand() {
   if (!FRAME) return '-12% 0px -70% 0px';
   const h = window.innerHeight;
@@ -1067,10 +1071,18 @@ function railBand() {
 
 function wireRail() {
   if (!RAIL.size) return;
-  /* Constructed in the CONTENT's window, not the shell's. An observer built
-     here with a null root, observing headings inside the frame, reported 0 of
-     12 — no callbacks at all, at rest or after scrolling. Swapping only the
-     selector would have shipped a rail that never lights. */
+  /* Constructed in the CONTENT's window, not the shell's — for ORDERING, not
+     capability. A shell-side observer works too, once the frame has been sized
+     to its content; measured both ways, each lit the same single correct
+     heading. But `wireRail()` runs BEFORE the frame is fitted, and an observer
+     that is only correct in one order is one refactor away from being wrong.
+
+     An earlier comment here claimed a shell-side observer "reported 0 of 12".
+     That measurement was real and the conclusion was not: it was taken with the
+     frame still at its default height, so every target below the fold was
+     outside the frame's box and genuinely did not intersect. Recorded because
+     the wrong version was fixed in the design doc and left standing here, which
+     is how one corrected fact becomes two contradictory comments. */
   const Obs = CWIN.IntersectionObserver;
   let io = null;
   const wire = () => {
@@ -1227,9 +1239,9 @@ function textNodes(host) {
    `+ window.scrollY` term, which is already right against the outer viewport.
 
    It takes an element OR a range, because the selection-button site measures a
-   Range and has no element at all. Measured across the boundary: an inner rect
-   of 5688 plus a frame offset of -5304 gives 384, the element's true position
-   in the outer viewport. */
+   Range and has no element at all. The arithmetic, by way of example: an inner
+   rect of 5688 with the frame's own top at -5304 puts the element at 384 in the
+   outer viewport. */
 function contentRect(target) {
   const r = target.getBoundingClientRect();
   if (!FRAME) return r;
@@ -2226,10 +2238,13 @@ function wireContent() {
   /* Sizing the frame to its content is a FEEDBACK LOOP for a document whose
      own sizing is viewport-relative: the frame's height IS that document's
      viewport, so `100vh` grows with the frame, `scrollHeight` grows with it,
-     and the next fit is taller again. Measured on a `100vh` fixture before this
-     guard existed: the frame reached 33,554,432px — the browser's maximum
-     element height — in under a second, and the document was unreadable. It
-     did not hang, which is worse: it saturated and looked like a rendered page.
+     and the next fit is taller again. Before this guard a `100vh` fixture drove
+     the frame to the browser's maximum element height in under a second, and the
+     document was unreadable. It did not hang, which is worse: it saturated and
+     looked like a rendered page. The state is not reproducible now — this guard
+     is what prevents it — so what stands in for the measurement is the test that
+     fails if the guard goes:
+     `pytest plugin-tests/tests/skills/annotate/test_page_in_a_browser.py -k viewport_sized`.
 
      Two exits. A document that settles keeps the content-sized frame and the
      outer page scrolls, which is what the margin arithmetic and the rail were
@@ -2238,6 +2253,16 @@ function wireContent() {
      inside the frame is relative to the frame's viewport and so already carries
      its internal scroll. What it costs is that the margin has to be re-laid-out
      on the frame's own scroll, which is the listener below. */
+  /* The thresholds describe what a normal settle looks like: an ordinary
+     document fits once, and again when its webfonts land — so two or three
+     calls, with the height either unchanged or growing once. More than six
+     calls, or a height that keeps growing after the third, is not a document
+     settling. They are tunable; nothing depends on the exact values. */
+  /* The thresholds describe what a normal settle looks like: an ordinary
+     document fits once, and again when its webfonts land — so two or three
+     calls, with the height either unchanged or growing once. More than six
+     calls, or a height that keeps growing after the third, is not a document
+     settling. They are tunable; nothing depends on the exact values. */
   let lastH = 0, fits = 0, framePins = false;
   const fit = () => {
     if (framePins) return;

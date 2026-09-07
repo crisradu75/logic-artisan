@@ -1,7 +1,7 @@
 ---
 name: annotate
 description: "Put a Markdown, plain-text or HTML document — or a whole OpenSpec change — in front of the user to be read and marked up. Renders it as an HTML page, opens it in a chrome-less browser window, and serves it locally so any passage can be selected and commented on, each comment paired with the passage it is about and appended to a file this session reads back and works through. A change opens as one page with its proposal, design, tasks and spec deltas in tabs, the passages that answer each other shown side by side, and a derived coverage view of what nothing implements. Never writes to what is being annotated. Triggers on /cla:annotate or natural language like 'let me annotate this', 'open this doc so I can comment on it', 'let me review change X as a block', 'I want to mark up the spec', 'read my annotations', 'work through my comments on X'. Not for reviewing a change against this repo's standards; that is review-change."
-argument-hint: "<path to a .md, .txt or .html file, or an OpenSpec change id>"
+argument-hint: "<path to a .md, .txt, .html or .htm file, or an OpenSpec change id>"
 allowed-tools: Bash, Read, Grep, Glob, Edit
 ---
 
@@ -17,7 +17,8 @@ four lines.
 
 **This skill runs its scripts and interprets what comes back. It does not
 reimplement them.** [scripts/render_doc.py](scripts/render_doc.py) builds a
-document's page, [scripts/render_change.py](scripts/render_change.py) builds a
+Markdown or plain-text document's page,
+[scripts/render_html.py](scripts/render_html.py) instruments an HTML one, [scripts/render_change.py](scripts/render_change.py) builds a
 whole change's, and [scripts/annotate_server.py](scripts/annotate_server.py)
 serves either and records annotations. **The corpus's format — the kinds of line and the merge
 rule — is [scripts/annotations_store.py](scripts/annotations_store.py) and is
@@ -69,8 +70,9 @@ knowing before you pass one through, because each is a state the reader cannot s
   the URL it prints.
 - **A document already using `data-blk`, `data-line` or `data-sec` is refused.** A
   repeated attribute resolves to the author's value, so every annotation in that
-  element would anchor to whatever it named, invisibly. Report the refusal; do not
-  work around it.
+  element would anchor to whatever it named, invisibly. Report the refusal, and say
+  what would clear it: those three names are the skill's own, so the document has to
+  stop using them before it can be annotated. Do not work around it.
 - **A document with relative asset references warns and still renders.** Its images
   or stylesheets will not resolve from the page directory. The reader can see that
   for themselves, which is why this warns rather than refusing.
@@ -234,7 +236,7 @@ and keeps the window.
   is open the file is the reader's fixed reference; changing it moves the text
   out from under the next selection and silently orphans anchors written minutes
   earlier. Edits happen in §4, after the reading pass, and are named before they
-  are made. `render_doc.py` opens the document read-only and
+  are made. `render_doc.py` and `render_html.py` open the document read-only and
   `annotate_server.py` never opens it for writing at all; **that is the
   guarantee, and it is pinned by a test that hashes the file across a full
   annotate-and-rebuild cycle** — not a habit to be re-argued per change.

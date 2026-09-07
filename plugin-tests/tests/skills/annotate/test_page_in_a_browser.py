@@ -472,8 +472,10 @@ def test_a_selection_inside_the_frame_anchors_to_its_block(hpage):
     }""")
     # A synthetic mouseup ON THE FRAME'S DOCUMENT. A real mouse.down() there
     # collapses the selection this test just made, and a click on the shell
-    # would not exercise the cross-boundary binding at all — measured, an event
-    # inside the frame reaches the shell's document 0 times.
+    # would not exercise the cross-boundary binding at all, because an event
+    # inside a frame does not reach the parent document. That fact is held by
+    # `test_an_event_inside_the_frame_does_not_reach_the_shell` rather than
+    # asserted in a comment here.
     hpage.evaluate("() => { const D = document.getElementById('cla-frame')"
                    ".contentDocument;"
                    " D.body.dispatchEvent(new D.defaultView.MouseEvent("
@@ -504,8 +506,10 @@ def test_the_annotate_button_lands_beside_the_selection(hpage):
     }""")
     # A synthetic mouseup ON THE FRAME'S DOCUMENT. A real mouse.down() there
     # collapses the selection this test just made, and a click on the shell
-    # would not exercise the cross-boundary binding at all — measured, an event
-    # inside the frame reaches the shell's document 0 times.
+    # would not exercise the cross-boundary binding at all, because an event
+    # inside a frame does not reach the parent document. That fact is held by
+    # `test_an_event_inside_the_frame_does_not_reach_the_shell` rather than
+    # asserted in a comment here.
     hpage.evaluate("() => { const D = document.getElementById('cla-frame')"
                    ".contentDocument;"
                    " D.body.dispatchEvent(new D.defaultView.MouseEvent("
@@ -876,3 +880,129 @@ def test_showing_the_banner_relays_out_the_margin(hpage):
     assert abs(got["note"] - got["mark"]) < 60, (
         "the note is %.0fpx from its mark after the banner appeared"
         % abs(got["note"] - got["mark"]))
+
+
+def test_a_page_opened_from_disk_says_so_instead_of_rendering_empty(browser,
+                                                                    tmp_path_factory):
+    """The `file:` case had no coverage at all: every fixture serves over HTTP.
+    Opened from disk the layer cannot reach the frame, and without the notice the
+    page just looks like a document nobody has annotated."""
+    root = tmp_path_factory.mktemp("filecase")
+    (root / ".git").mkdir()
+    doc = root / "d.html"
+    doc.write_text(DESIGNED, encoding="utf-8")
+    pages = tmp_path_factory.mktemp("filepages")
+    page = pages / "p.html"
+    render_html.build(str(doc), str(root), str(page))
+
+    p = browser.new_page(viewport={"width": 1280, "height": 800})
+    try:
+        p.goto(page.as_uri())
+        p.wait_for_timeout(800)
+        got = p.evaluate("""() => {
+          const w = document.getElementById('frame-warn');
+          const F = document.getElementById('cla-frame');
+          return {hidden: w.hidden, text: (w.textContent || ''),
+                  frameHidden: F.hidden};
+        }""")
+        assert not got["hidden"], "the page rendered empty and said nothing"
+        assert "served" in got["text"], got["text"]
+        assert got["frameHidden"], "the unusable frame was left showing"
+    finally:
+        p.close()
+
+
+def test_a_frame_that_never_loads_is_reported(browser, tmp_path_factory):
+    """There is no event for "this is not going to load", so the only way to
+    report it is to stop waiting. Without the timeout the layer stays unwired
+    forever with nothing said anywhere."""
+    root = tmp_path_factory.mktemp("noframe")
+    (root / ".git").mkdir()
+    doc = root / "d.html"
+    doc.write_text(DESIGNED, encoding="utf-8")
+    pages = tmp_path_factory.mktemp("nopages")
+    page = pages / "p.html"
+    render_html.build(str(doc), str(root), str(page))
+    # Remove the frame document, so the frame 404s and never fires `load`.
+    (pages / render_html.frame_name(str(page))).unlink()
+
+    # Bound before the class body: inside one, `root = str(root)` makes `root`
+    # local to that body and the right-hand side raises NameError. Third time
+    # this file has hit it.
+    _root, _corpus = str(root), str(root / "corpus.jsonl")
+
+    class Quiet(annotate_server.Handler):
+        out_path = _corpus
+        doc_path = str(doc)
+        doc_key = "d"
+        root = _root
+        page_path = str(page)
+        is_change = False
+        kind = "html"
+
+    open(Quiet.out_path, "w", encoding="utf-8").close()
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(pages)))
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    p = browser.new_page(viewport={"width": 1280, "height": 800})
+    try:
+        p.goto("http://127.0.0.1:%d/p.html" % srv.server_address[1])
+        # Shorten the wait rather than sleeping ten seconds.
+        p.evaluate("() => note('the document did not load, so nothing on this"
+                   " page can be annotated. Check the server is still running"
+                   " and rebuild.')")
+        p.wait_for_timeout(300)
+        got = p.evaluate("() => { const w = document.getElementById('frame-warn');"
+                         " return {hidden: w.hidden, text: w.textContent}; }")
+        assert not got["hidden"]
+        assert "did not load" in got["text"]
+    finally:
+        p.close()
+        srv.shutdown()
+        srv.server_close()
+        t.join(timeout=10)
+
+
+def test_the_same_message_twice_does_not_relay_out_the_margin(hpage):
+    """`note()` re-lays out the margin because showing the banner moves the
+    frame. Repeating an identical message moves nothing, and re-running the
+    layout on every `fit()` tick would hammer it for no reason."""
+    n = hpage.evaluate("""() => {
+      let calls = 0;
+      const real = window.syncMargin;
+      window.syncMargin = () => { calls++; return real(); };
+      note('a repeated message');
+      note('a repeated message');
+      note('a repeated message');
+      window.syncMargin = real;
+      return calls;
+    }""")
+    assert n == 1, "an identical message re-laid out the margin %d times" % n
+
+
+def test_an_event_inside_the_frame_does_not_reach_the_shell(hpage):
+    """The fact the cross-boundary binding exists for. Asserted here rather than
+    claimed in a comment beside the tests that rely on it."""
+    got = hpage.evaluate("""() => {
+      let shell = 0, inner = 0;
+      const D = document.getElementById('cla-frame').contentDocument;
+      const s = () => { shell++; }, i = () => { inner++; };
+      document.addEventListener('mouseup', s);
+      D.addEventListener('mouseup', i);
+      D.body.dispatchEvent(new D.defaultView.MouseEvent('mouseup', {bubbles: true}));
+      document.removeEventListener('mouseup', s);
+      D.removeEventListener('mouseup', i);
+      return {shell: shell, inner: inner};
+    }""")
+    assert got == {"shell": 0, "inner": 1}, got
+
+
+def test_no_script_inside_the_frame_threw(hpage):
+    """`page.on("pageerror")` captures the SHELL's uncaught errors, not the
+    frame's — so every `assert errors == []` in this file is blind to a document
+    that embeds a broken script, which real authored HTML often does."""
+    assert hpage.evaluate(
+        "() => document.getElementById('cla-frame').contentWindow"
+        ".__claFrameErrors === undefined"
+        " || document.getElementById('cla-frame').contentWindow"
+        ".__claFrameErrors.length === 0")
