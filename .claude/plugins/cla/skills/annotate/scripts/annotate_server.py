@@ -55,6 +55,7 @@ class Handler(SimpleHTTPRequestHandler):
     root = None
     page_path = None
     is_change = False    # a whole OpenSpec change rather than one file
+    kind = "doc"         # "doc" or "html", for a single-file target
 
     def log_message(self, fmt, *a):
         sys.stderr.write("  %s\n" % (fmt % a))
@@ -378,7 +379,21 @@ class Handler(SimpleHTTPRequestHandler):
                 for w in warn:
                     print("          %s" % w)
                 return self._json({"ok": True, "summary": summary, "warnings": warn})
-            out, ctx, words = render_doc.build(self.doc_path, self.root, self.page_path)
+            if self.kind == "html":
+                import render_html
+                try:
+                    out, ctx, words = render_html.build(
+                        self.doc_path, self.root, self.page_path)
+                except render_html.Refused as e:
+                    # The CLI reports this cleanly; without the same branch here
+                    # the identical failure reaches the browser as a traceback,
+                    # so the same defect is actionable from one entry point and
+                    # unreadable from the other.
+                    print("REFUSED: %s" % e)
+                    return self._json({"error": "refused: %s" % e}, 500)
+            else:
+                out, ctx, words = render_doc.build(
+                    self.doc_path, self.root, self.page_path)
         except OSError as e:
             # The type is half the diagnosis: FileNotFoundError, PermissionError
             # and IsADirectoryError all read identically as a bare str(e).
@@ -394,8 +409,15 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"error": str(e)}, 500)
         summary = "%d blocks, %s words" % (len(ctx.blocks), format(words, ",d"))
         print("rebuilt   %s  ->  %s" % (summary, out))
+        # The renderer's own warnings — a relative asset, a token in the author's
+        # stylesheet, a passage that belongs to no block. The CLI prints these;
+        # this branch discarded them, so a document opened through the server was
+        # never told what the same document told the command line.
+        renderer_warnings = list(getattr(ctx, "warnings", []))
+        for w in renderer_warnings:
+            print("warning   %s" % w)
         checked, lost, problems, fatal = render_doc.check_anchors(ctx, self.out_path)
-        warn = []
+        warn = list(renderer_warnings)
         if fatal:
             warn.append("CORPUS UNREADABLE: %s" % fatal)
         if lost:
@@ -635,10 +657,12 @@ def main(argv=None):
     # document" for a change that plainly exists.
     root = os.path.abspath(a.root) if a.root else store.repo_root(a.document)
     change_dir = openspec_change.find_change(a.document, root)
+    kind = "doc"
     if change_dir:
         doc, is_change = change_dir, True
     elif os.path.isfile(a.document):
         doc, is_change = os.path.abspath(a.document), False
+        kind = render_doc.target_kind(doc)
     else:
         print("no such document or change: %s" % a.document)
         return 1
@@ -653,8 +677,9 @@ def main(argv=None):
 
     if not os.path.exists(page):
         print("no page at %s" % page)
-        print("build it first:  python3 %s %s"
-              % ("render_change.py" if is_change else "render_doc.py", a.document))
+        builder = ("render_change.py" if is_change
+                   else "render_html.py" if kind == "html" else "render_doc.py")
+        print("build it first:  python3 %s %s" % (builder, a.document))
         return 1
 
     serve_dir = os.path.dirname(page)
@@ -665,6 +690,7 @@ def main(argv=None):
     Handler.root = root
     Handler.page_path = page
     Handler.is_change = is_change
+    Handler.kind = kind
     url = "http://127.0.0.1:%d/%s" % (a.port, os.path.basename(page))
 
     # Bound to the loopback address and nowhere else. It has no authentication

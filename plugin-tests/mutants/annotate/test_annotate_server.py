@@ -25,6 +25,8 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]                 # <repo>/plugin-tests
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 SERVER = PLUGIN / "skills" / "annotate" / "scripts" / "annotate_server.py"
+SRV = PLUGIN / "skills" / "annotate" / "scripts" / "annotate_server.py"
+DOC = PLUGIN / "skills" / "annotate" / "scripts" / "render_doc.py"
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_annotate_server.py"]
 
 # Anchors are matched against the target's RAW BYTES, so a multi-line one must
@@ -165,5 +167,34 @@ MUTANTS = [
      SERVER,
      '                return b"".join(out), False' + _NL + "            if total + size > cap:",
      '                return b"".join(out), True' + _NL + "            if total + size > cap:",
+     TESTS),
+
+    # ---- the html dispatch, added when a coverage review found this seam
+    # exercised by nothing at all ----
+
+    ("the extension rule stops recognising .htm, so half the html suffixes "
+     "render as escaped markup",
+     DOC,
+     'HTML_SUFFIXES = (".html", ".htm")',
+     'HTML_SUFFIXES = (".html",)',
+     TESTS),
+
+    ("the extension match stops folding case, so an uppercase .HTML file "
+     "renders as plain text",
+     DOC,
+     'return "html" if os.path.splitext(path)[1].lower() in HTML_SUFFIXES else "doc"',
+     'return "html" if os.path.splitext(path)[1] in HTML_SUFFIXES else "doc"',
+     TESTS),
+
+    ("a refusal reaches the browser as an exception instead of a message",
+     SRV,
+     "                except render_html.Refused as e:",
+     "                except NotImplementedError as e:",
+     TESTS),
+
+    ("the renderer's warnings go back to being discarded by the server",
+     SRV,
+     "        warn = list(renderer_warnings)",
+     "        warn = []",
      TESTS),
 ]

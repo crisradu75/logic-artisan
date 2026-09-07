@@ -713,3 +713,104 @@ def test_an_amendment_against_a_conflicted_corpus_is_a_409_not_a_500(live):
     assert code == 409, "an amendment against a conflicted corpus must not 500"
     assert j["unreadable"] is True
     assert "conflict" in j["error"]
+
+
+# --- the html target: dispatch, refusal, and where the path comes from -----
+# Found wholly untested by review: the browser suite sets `Handler.kind`
+# directly, so `target_kind()` and the `main()` branching that calls it were
+# exercised by nothing at all.
+
+
+@pytest.mark.parametrize("name,want", [
+    ("doc.md", "doc"),
+    ("doc.markdown", "doc"),
+    ("page.html", "html"),
+    ("page.htm", "html"),
+    ("PAGE.HTML", "html"),
+    ("notes.txt", "doc"),
+    ("archive.tar.gz", "doc"),
+    ("no-extension", "doc"),
+])
+def test_target_kind_routes_by_extension(name, want):
+    assert render_doc.target_kind(name) == want
+
+
+def test_the_server_asks_for_the_extension_rule_rather_than_repeating_it():
+    """One rule, read by the CLI and by the server. Two copies is how
+    `render_doc.py foo.html` and the server come to disagree about what a file
+    renders as.
+
+    An earlier version of this test asserted the server's source contains no
+    ".html" at all, which is not the property: it legitimately builds a page
+    FILENAME ending ".html" for a change. A test that cannot tell a routing
+    decision from a filename fails on correct code, which is worse than not
+    checking.
+    """
+    import inspect
+
+    assert inspect.getsource(render_doc).count("HTML_SUFFIXES = ") == 1
+    server_src = inspect.getsource(annotate_server)
+    assert "render_doc.target_kind(" in server_src, \
+        "the server does not ask for the rule"
+    assert "HTML_SUFFIXES" not in server_src, \
+        "the server keeps its own copy of the suffix list"
+    assert '.htm"' not in server_src and ".htm'" not in server_src, \
+        "the server tests an html suffix itself instead of asking"
+
+
+def test_a_refused_document_is_reported_rather_than_thrown(tmp_path, monkeypatch):
+    """The CLI prints a clean REFUSED. Without the same branch here the identical
+    failure reaches the browser as a traceback, so one entry point is actionable
+    and the other is not."""
+    import render_html
+
+    doc = tmp_path / "clash.html"
+    doc.write_text('<p data-blk="mine">text</p>', encoding="utf-8")
+
+    sent = {}
+
+    class Fake(object):
+        is_change = False
+        kind = "html"
+        doc_path = str(doc)
+        root = str(tmp_path)
+        page_path = str(tmp_path / "page.html")
+        out_path = str(tmp_path / "corpus.jsonl")
+
+        def _json(self, obj, code=200):
+            sent["obj"], sent["code"] = obj, code
+            return obj
+
+    with pytest.raises(render_html.Refused):
+        render_html.build(str(doc), str(tmp_path), str(tmp_path / "page.html"))
+
+    out = annotate_server.Handler._render(Fake())
+    assert sent["code"] == 500
+    assert "refused" in sent["obj"]["error"]
+    assert "data-blk" in sent["obj"]["error"]
+    assert out is sent["obj"]
+
+
+def test_the_renderers_warnings_reach_the_page_not_just_the_console(tmp_path):
+    """`ctx.warnings` were printed by the CLI and discarded by the server, so a
+    document opened through the server was never told what the same document
+    told the command line."""
+    doc = tmp_path / "rel.html"
+    doc.write_text('<p>text</p><img src="pic.png">', encoding="utf-8")
+    sent = {}
+
+    class Fake(object):
+        is_change = False
+        kind = "html"
+        doc_path = str(doc)
+        root = str(tmp_path)
+        page_path = str(tmp_path / "page.html")
+        out_path = str(tmp_path / "corpus.jsonl")
+
+        def _json(self, obj, code=200):
+            sent["obj"] = obj
+            return obj
+
+    annotate_server.Handler._render(Fake())
+    warnings = sent["obj"].get("warnings", [])
+    assert any("not self-contained" in w for w in warnings), warnings
