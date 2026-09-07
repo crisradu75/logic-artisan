@@ -71,9 +71,9 @@ It also bounds the damage from malformed markup. `HTMLParser` is lenient and wil
 
 ### 3. A block is the innermost element holding text with no block beneath it
 
-**Measured on the motivating document: 319 blocks, 0 nested, 4,369 words.** The command is `pytest plugin-tests/tests/skills/annotate/test_render_html.py -k the_real_designed_document`, which asserts those figures and skips where the peer repo is absent.
+**Measured on the motivating document: 340 blocks, 0 nested, 4,468 words, 0 unannotatable.** The command is `pytest plugin-tests/tests/skills/annotate/test_render_html.py -k the_real_designed_document`, which asserts those figures and skips where the peer repo is absent.
 
-The block count is what a throwaway design probe found. **The word count is not: the probe said 4,251.** Its own docstring admitted its text accumulation interleaved element and text children approximately, and the shipped implementation walks them in document order, so the corrected figure is higher. Recorded rather than quietly replaced, because the probe was cited here as a measurement while being reproducible by nothing — which is how a figure that was never checked acquires a measurement's authority. The test above is now the only thing this figure rests on.
+**Neither number is what the design probe said, and the history is kept because it is the argument for not trusting an uncommitted probe.** The probe reported 319 blocks and 4,251 words. The word count was wrong because its own docstring admitted it interleaved element and text children approximately. The BLOCK count was wrong for a reason no reading would have found: 21 passages sat beside a block and belonged to none — including 13 callout and section labels, the headings a reader is most likely to argue with. Both were found by review, not by the probe, and the test above is now the only thing this figure rests on.
 
 The formulation matters and the obvious phrasing is wrong. "Innermost non-inline element with no non-inline descendant" fails on this markup:
 

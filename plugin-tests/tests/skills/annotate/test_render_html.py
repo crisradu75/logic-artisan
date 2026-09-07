@@ -324,8 +324,8 @@ def test_the_real_designed_document_instruments_and_strips_back():
     # accumulation interleaved approximately. These are the corrected figures,
     # and this test is the command that produces them — which is the whole
     # reason the design was told to stop quoting the probe.
-    assert len(ctx.blocks) == 319
-    assert sum(len(t.split()) for t in ctx.blocks.values()) == 4369
+    assert len(ctx.blocks) == 340
+    assert sum(len(t.split()) for t in ctx.blocks.values()) == 4468
     assert not [w for w in warnings if "not self-contained" in w], \
         "the motivating document is self-contained"
 
@@ -671,3 +671,88 @@ def test_use_utf8_stdout_survives_a_stream_without_reconfigure():
         RH.use_utf8_stdout()
     finally:
         sys.stdout, sys.stderr = real_out, real_err
+
+
+# --- PR review round 2 ------------------------------------------------
+# The round-1 fix reported bare text beside a block. Round 2's question — does
+# this fix leave the same defect somewhere else? — found that text wrapped in an
+# INLINE element was still lost, and unreported. On the motivating document that
+# was 21 passages, 13 of them callout and section labels.
+
+
+def test_an_inline_element_beside_a_block_becomes_a_block():
+    _, ctx, _ = RH.instrument("<div><span>label</span><p>body</p></div>")
+    assert list(ctx.blocks.values()) == ["label", "body"]
+
+
+def test_a_promoted_inline_keeps_document_order():
+    """The blocks are numbered in reading order, so an inline promoted after its
+    siblings were collected would number out of sequence."""
+    _, ctx, _ = RH.instrument("<div><p>first</p><span>second</span><p>third</p></div>")
+    assert list(ctx.blocks.values()) == ["first", "second", "third"]
+
+
+def test_a_promoted_inline_is_not_split_into_its_own_inline_children():
+    _, ctx, _ = RH.instrument("<div><span>a <b>bold</b> c</span><p>body</p></div>")
+    assert list(ctx.blocks.values()) == ["a bold c", "body"]
+
+
+def test_an_inline_inside_a_block_is_still_not_a_block():
+    """The rule barring inline elements exists to stop a paragraph being split
+    into its own <strong> runs. Promotion must not reintroduce that."""
+    _, ctx, _ = RH.instrument("<p>a <strong>bold</strong> c</p>")
+    assert list(ctx.blocks.values()) == ["a bold c"]
+
+
+def test_promoted_inlines_do_not_nest_with_their_siblings():
+    nodes = tree_blocks("<div><span>label</span><p>body</p></div>")
+    ids = {id(n) for n in nodes}
+    for n in nodes:
+        p = n.parent
+        while p is not None:
+            assert id(p) not in ids
+            p = p.parent
+
+
+def test_bare_text_beside_a_block_is_still_reported_as_unannotatable():
+    """Promotion cannot help here: bare text has no element to anchor to, and
+    the instrumentation may not introduce a wrapper."""
+    _, ctx, warnings = RH.instrument("<div>bare<p>body</p></div>")
+    assert list(ctx.blocks.values()) == ["body"]
+    assert any("cannot be annotated" in w for w in warnings)
+
+
+def test_an_excluded_element_beside_a_block_is_not_promoted():
+    _, ctx, _ = RH.instrument("<div><style>.x{}</style><p>body</p></div>")
+    assert list(ctx.blocks.values()) == ["body"]
+
+
+def test_an_empty_inline_beside_a_block_is_not_promoted():
+    _, ctx, warnings = RH.instrument("<div><span></span><p>body</p></div>")
+    assert list(ctx.blocks.values()) == ["body"]
+    assert not [w for w in warnings if "cannot be annotated" in w]
+
+
+@pytest.mark.skipif(not has_briefing(), reason="peer-repo document not present")
+def test_the_real_document_has_nothing_unannotatable():
+    """Before this fix it had 21 such passages, silently. The count is the point:
+    a warning that can never fire is not evidence."""
+    _, _, warnings = RH.instrument(RH.read(BRIEFING))
+    assert not [w for w in warnings if "cannot be annotated" in w]
+
+
+def test_a_lone_opaque_element_is_the_block_rather_than_its_container():
+    """The discriminating case for the opaque rule, found by a surviving mutant.
+
+    Where the figure has a block sibling, the round-2 promotion path would carry
+    it even if the opaque branch were removed — so a fixture with siblings
+    cannot tell the two apart. Alone, it can: with the opaque branch gone the
+    CONTAINER becomes the block and the anchor lands on the wrong element.
+    """
+    nodes = tree_blocks("<div><svg><text>Alpha</text></svg></div>")
+    assert [n.tag for n in nodes] == ["svg"]
+
+
+def test_a_lone_opaque_element_with_no_text_is_not_a_block():
+    """The non-vacuity partner: an empty figure is not a passage."""
+    assert tree_blocks("<div><svg><rect/></svg></div>") == []

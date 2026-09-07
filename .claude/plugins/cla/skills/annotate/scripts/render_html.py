@@ -287,15 +287,41 @@ def find_blocks(node, out, stranded=None):
             out.append(node)
             return True
         return False
+    # Each child's blocks are collected separately so they can be emitted in
+    # document order alongside the inline siblings promoted below.
     found = False
+    sub = {}
     for k in _elements(node):
-        if find_blocks(k, out, stranded):
+        got = []
+        if find_blocks(k, got, stranded):
             found = True
+        sub[id(k)] = got
     if found:
-        if stranded is not None:
-            for k in node.kids:
-                if not isinstance(k, Node) and k.strip():
-                    stranded.append((node.tag, node.line, " ".join(k.split())))
+        for k in node.kids:
+            if isinstance(k, Node):
+                got = sub.get(id(k))
+                if got:
+                    out.extend(got)
+                elif k.tag not in EXCLUDED and has_text(k):
+                    # An inline element sitting beside a block. It cannot be a
+                    # block under the general rule — that rule exists to stop a
+                    # paragraph being split into its own <strong> runs — but
+                    # that case never arises here, because such a <strong> is
+                    # INSIDE a block rather than beside one. This one has an
+                    # element to anchor to and standalone meaning, so refusing
+                    # it only makes it unannotatable.
+                    #
+                    # Measured on the motivating document: this promotes 21
+                    # passages, of which 13 are the callout and section labels
+                    # (`<span class="flag-lbl">`, `<span class="ask-lbl">`) that
+                    # a reader is most likely to want to argue with.
+                    out.append(k)
+            elif k.strip() and stranded is not None:
+                # Bare text with no element of its own. Nothing can be spliced
+                # onto it and the instrumentation may not introduce a wrapper,
+                # so this is the one genuinely unannotatable case — reported
+                # rather than dropped.
+                stranded.append((node.tag, node.line, " ".join(k.split())))
         return True
     if node.tag not in INLINE and node.parent is not None and has_text(node):
         out.append(node)

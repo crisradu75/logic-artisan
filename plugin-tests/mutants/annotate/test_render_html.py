@@ -22,8 +22,8 @@ MUTANTS = [
     ("the recursion reports 'I am a block' rather than 'my subtree holds one', "
      "so every ancestor re-qualifies and the blocks nest",
      DOC,
-     "                    stranded.append((node.tag, node.line, \" \".join(k.split())))\n        return True",
-     "                    stranded.append((node.tag, node.line, \" \".join(k.split())))\n        return False",
+     "        return True\n    if node.tag not in INLINE and node.parent is not None and has_text(node):",
+     "        return False\n    if node.tag not in INLINE and node.parent is not None and has_text(node):",
      TESTS),
 
     ("candidacy stops requiring text, so an empty layout div becomes a block "
@@ -169,10 +169,38 @@ MUTANTS = [
      "            found.append((k.tag, attr, v))",
      TESTS),
 
-    ("text sitting beside a block goes back to being dropped silently",
+    ("bare text sitting beside a block goes back to being dropped silently",
      DOC,
-     "        if stranded is not None:",
-     "        if False:",
+     "            elif k.strip() and stranded is not None:",
+     "            elif False:",
+     TESTS),
+
+    ("an inline element beside a block is no longer promoted, so a callout "
+     "label becomes unannotatable with nothing reporting it",
+     DOC,
+     "                elif k.tag not in EXCLUDED and has_text(k):",
+     "                elif False:",
+     TESTS),
+
+    ("an EXCLUDED element beside a block is promoted, so a stylesheet becomes "
+     "an annotatable passage",
+     DOC,
+     "                elif k.tag not in EXCLUDED and has_text(k):",
+     "                elif has_text(k):",
+     TESTS),
+
+    ("an empty inline beside a block is promoted, so a layout span becomes a "
+     "block with no text in it",
+     DOC,
+     "                elif k.tag not in EXCLUDED and has_text(k):",
+     "                elif k.tag not in EXCLUDED:",
+     TESTS),
+
+    ("promoted inlines are emitted after their siblings instead of in document "
+     "order, so the block numbering stops following reading order",
+     DOC,
+     "        for k in node.kids:\n            if isinstance(k, Node):\n                got = sub.get(id(k))\n                if got:\n                    out.extend(got)",
+     "        for k in node.kids:\n            if isinstance(k, Node):\n                got = sub.get(id(k))\n                if got:\n                    out[:0] = got",
      TESTS),
 
     ("a document with nothing annotatable reports success",
