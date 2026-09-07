@@ -52,6 +52,35 @@ VOID = frozenset("""
 
 HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 
+# `HTMLParser` does not implement HTML's implicit end tags, so `<p>one<p>two</p>`
+# arrives NESTED here while a browser makes the two paragraphs siblings. Left
+# alone the tree disagrees with the page it is instrumenting, and the outer
+# element's own text ("one") belongs to no block at all — silently unannotatable
+# in a tool whose whole purpose is that every passage can be annotated.
+#
+# A start tag listed here closes an open element of any tag in its set.
+IMPLICIT_CLOSE = {
+    "p": {"p"},
+    "li": {"li"},
+    "tr": {"tr", "td", "th"},
+    "td": {"td", "th"},
+    "th": {"td", "th"},
+    "dt": {"dt", "dd"},
+    "dd": {"dt", "dd"},
+    "option": {"option"},
+    "thead": {"tr", "td", "th"},
+    "tbody": {"tr", "td", "th"},
+    "tfoot": {"tr", "td", "th"},
+}
+
+# Flow content that also closes an open <p>, as a browser does. Not exhaustive
+# and does not need to be: an omission leaves the pre-existing nesting, which is
+# the behaviour before this map existed.
+CLOSES_P = frozenset("""
+    address article aside blockquote details div dl fieldset figcaption figure
+    footer form h1 h2 h3 h4 h5 h6 header hr main nav ol pre section table ul
+""".split())
+
 # The attributes this module adds. Also the collision set: an author already
 # using one of these is refused, because a repeated attribute resolves to THEIR
 # value and every later lookup silently anchors to whatever it named.
@@ -153,7 +182,24 @@ class _Tree(HTMLParser):
         self.cur.kids.append(n)
         return n
 
+    def _implicit_close(self, tag):
+        """Close what this start tag implicitly ends, before opening it."""
+        closes = IMPLICIT_CLOSE.get(tag, frozenset())
+        if tag in CLOSES_P:
+            closes = closes | {"p"}
+        if not closes:
+            return
+        # Only unwind through elements that can be implicitly closed. Stopping
+        # at anything else keeps a `<p>` inside a `<div>` inside a `<p>` from
+        # closing the outer paragraph, which is not what a browser does.
+        n = self.cur
+        while n is not self.root and n.tag in closes:
+            n = n.parent
+        if n is not self.cur:
+            self.cur = n
+
     def handle_starttag(self, tag, attrs):
+        self._implicit_close(tag)
         n = self._open(tag, attrs)
         if tag not in VOID:
             self.cur = n
@@ -214,7 +260,7 @@ def text_of(node):
     return "".join(out)
 
 
-def find_blocks(node, out):
+def find_blocks(node, out, stranded=None):
     """Collect blocks in document order. Returns whether this subtree contains
     one.
 
@@ -225,6 +271,14 @@ def find_blocks(node, out):
     too. Blocks must be disjoint: the anchor check, the word count and the
     "which block did this selection start in" lookup all assume a passage
     belongs to exactly one.
+
+    `stranded` collects text that belongs to NO block: an element's own direct
+    text sitting beside a child that is itself a block, as in
+    `<div>before<p>inside</p>after</div>`. Marking the parent would nest two
+    blocks; there is no element to mark instead, because the instrumentation is
+    additive and may not introduce one. So the text is genuinely unannotatable,
+    and the only honest thing to do is say so — dropping it silently is the
+    failure this whole module is built to avoid.
     """
     if node.tag in EXCLUDED:
         return False
@@ -235,9 +289,13 @@ def find_blocks(node, out):
         return False
     found = False
     for k in _elements(node):
-        if find_blocks(k, out):
+        if find_blocks(k, out, stranded):
             found = True
     if found:
+        if stranded is not None:
+            for k in node.kids:
+                if not isinstance(k, Node) and k.strip():
+                    stranded.append((node.tag, node.line, " ".join(k.split())))
         return True
     if node.tag not in INLINE and node.parent is not None and has_text(node):
         out.append(node)
@@ -256,11 +314,18 @@ def relative_refs(node, found=None):
     found = [] if found is None else found
     for k in _elements(node):
         for attr in ("src", "href"):
-            val = k.attrs.get(attr)
-            if not val:
+            if attr not in k.attrs:
                 continue
-            v = val.strip()
-            if not v or v.startswith(_NOT_RELATIVE) or _SCHEME.match(v):
+            v = (k.attrs.get(attr) or "").strip()
+            if not v:
+                # An empty `href` is a legitimate same-page link. An empty `src`
+                # is an authoring defect that resolves to the document itself,
+                # so it is reported rather than passed over as "nothing here" —
+                # the two were treated identically until a review separated them.
+                if attr == "src":
+                    found.append((k.tag, attr, ""))
+                continue
+            if v.startswith(_NOT_RELATIVE) or _SCHEME.match(v):
                 continue
             found.append((k.tag, attr, v))
         relative_refs(k, found)
@@ -326,7 +391,22 @@ def instrument(src):
             "(%s%s)" % (len(rel), shown, ", ..." if len(rel) > 5 else ""))
 
     blocks = []
-    find_blocks(tree.root, blocks)
+    stranded = []
+    find_blocks(tree.root, blocks, stranded)
+    if stranded:
+        tag, line, sample = stranded[0]
+        warnings.append(
+            "%d passage(s) sit beside a block and cannot be annotated; the "
+            "first is in <%s> at line %d: %r" % (len(stranded), tag, line,
+                                                 sample[:60]))
+    if not blocks:
+        # Zero blocks is a rendering nobody can use, and it reads as success in
+        # every count the caller has. The two named refusals are loud; this one
+        # was silent until a review asked what a document with no annotatable
+        # text does.
+        warnings.append(
+            "no annotatable text found; the page will render with nothing to "
+            "select")
 
     ctx = Ctx()
     section_title, section_id = "", ""
@@ -361,6 +441,19 @@ def instrument(src):
 
     # Appended at the very END so it shifts no data-line already recorded.
     out = out + "\n" + MARK_OPEN + MARKER_CSS + MARK_CLOSE + "\n"
+
+    # The property this module exists to hold, checked HERE rather than in the
+    # CLI. `strip()` is a regex over the finished text, so a document containing
+    # a literal run of these attributes as ordinary prose — documentation about
+    # this very tool, say — would have it removed and would not round-trip. That
+    # is rare and it is caught, which is the point: a caller that reaches this
+    # module as a library gets the same guarantee as one that reaches it through
+    # `main()`, instead of the guarantee living in whichever wrapper remembered.
+    if strip(out) != src:
+        raise Refused(
+            "the instrumented copy does not strip back to the source, so the "
+            "document cannot be shown unchanged; this happens when the source "
+            "itself contains a literal run of the attributes this module adds")
     return out, ctx, warnings
 
 

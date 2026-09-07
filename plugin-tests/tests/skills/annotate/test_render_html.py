@@ -9,6 +9,7 @@ anything ELSE, which is the failure a reader could never see.
 import io
 import os
 import re
+import sys
 
 import pytest
 
@@ -368,3 +369,305 @@ def test_no_checked_in_fixture_carries_the_peer_documents_content():
             body = fh.read()
         for token in tokens:
             assert token not in body, "%s carries peer-repo content" % name
+
+
+# ======================================================================
+# PR review round 1. Each block below closes a gap a reviewer named, and
+# the header says which, so a later reader can tell a deliberate case
+# from an incidental one.
+# ======================================================================
+
+
+# --- text that belongs to no block -----------------------------------
+# Found by the correctness reviewer: `find_blocks` returned as soon as a child
+# subtree held a block, without ever looking at the node's OWN direct text.
+
+
+def test_text_beside_a_block_is_reported_rather_than_dropped():
+    """`<div>before<p>x</p>after</div>` is legal, common, and has nowhere to put
+    an anchor: marking the div would nest two blocks, and the instrumentation
+    may not introduce an element. So the text is genuinely unannotatable — and
+    saying so is the only honest option."""
+    _, ctx, warnings = RH.instrument("<div>before<p>inside</p>after</div>")
+    assert list(ctx.blocks.values()) == ["inside"]
+    assert any("cannot be annotated" in w for w in warnings)
+    assert any("before" in w or "after" in w for w in warnings)
+
+
+def test_stranded_text_counts_every_occurrence():
+    src = "<div>a<p>x</p>b</div><div>c<p>y</p>d</div>"
+    _, _, warnings = RH.instrument(src)
+    stranded = [w for w in warnings if "cannot be annotated" in w]
+    assert stranded and "4 passage(s)" in stranded[0]
+
+
+def test_a_clean_document_reports_no_stranded_text():
+    """The non-vacuity partner: a warning that fires on everything is a warning
+    nobody reads."""
+    _, _, warnings = RH.instrument(SHAPES)
+    assert not [w for w in warnings if "cannot be annotated" in w]
+
+
+# --- implicit end tags ------------------------------------------------
+# HTMLParser does not implement them, so an unclosed <p> nested rather than
+# closing and the outer paragraph's text belonged to no block.
+
+
+def test_an_unclosed_paragraph_closes_implicitly_as_a_browser_would():
+    _, ctx, _ = RH.instrument("<p>one<p>two</p>")
+    assert list(ctx.blocks.values()) == ["one", "two"]
+
+
+def test_an_unclosed_list_item_closes_implicitly():
+    _, ctx, _ = RH.instrument("<ul><li>one<li>two</ul>")
+    assert list(ctx.blocks.values()) == ["one", "two"]
+
+
+def test_an_unclosed_table_cell_closes_implicitly():
+    _, ctx, _ = RH.instrument("<table><tr><td>a<td>b</tr></table>")
+    assert list(ctx.blocks.values()) == ["a", "b"]
+
+
+def test_a_block_element_closes_an_open_paragraph():
+    _, ctx, _ = RH.instrument("<p>para<div>block</div>")
+    assert list(ctx.blocks.values()) == ["para", "block"]
+
+
+def test_a_paragraph_inside_a_div_inside_a_paragraph_does_not_close_the_outer():
+    """Unwinding stops at anything not implicitly closable, or a nested
+    paragraph would close an outer one a browser keeps open."""
+    _, ctx, _ = RH.instrument("<p>outer<div><p>inner</p></div></p>")
+    assert "inner" in list(ctx.blocks.values())
+
+
+# --- the recursion, which no test reached -----------------------------
+# Found by the test reviewer: every collision and relative reference sat on a
+# direct child of the root, so deleting the recursive call passed the suite.
+
+
+def test_a_collision_nested_deep_in_the_document_is_still_refused():
+    with pytest.raises(RH.Refused):
+        RH.instrument('<div><section><article>'
+                      '<p data-blk="mine">text</p>'
+                      '</article></section></div>')
+
+
+def test_a_relative_reference_nested_deep_in_the_document_still_warns():
+    _, _, warnings = RH.instrument('<div><section><figure>'
+                                   '<img src="deep.png"><figcaption>c</figcaption>'
+                                   '</figure></section></div>')
+    assert any("not self-contained" in w for w in warnings)
+
+
+def test_the_reported_collision_names_the_element_that_carries_it():
+    """With more than one collision the message must identify a real one, not
+    whichever the traversal happened to reach."""
+    with pytest.raises(RH.Refused) as e:
+        RH.instrument('<div><p data-line="x">a</p><span data-sec="y">b</span></div>')
+    msg = str(e.value)
+    assert ("data-line" in msg and "<p>" in msg) or \
+           ("data-sec" in msg and "<span>" in msg)
+
+
+# --- the zero-block case ----------------------------------------------
+
+
+def test_a_document_with_no_annotatable_text_warns():
+    """It reads as success in every count the caller has: zero blocks, zero
+    words, no error."""
+    _, ctx, warnings = RH.instrument("<div></div><br><img src='https://x/y.png'>")
+    assert ctx.blocks == {}
+    assert any("no annotatable text" in w for w in warnings)
+
+
+def test_a_document_with_text_does_not_warn_about_having_none():
+    _, _, warnings = RH.instrument("<p>words</p>")
+    assert not [w for w in warnings if "no annotatable text" in w]
+
+
+# --- reversibility is enforced in the library, not only the CLI --------
+
+
+def test_instrument_refuses_a_document_it_cannot_strip_back():
+    """`strip()` is a regex over the finished text, so a document that already
+    contains the exact run of attributes this module emits does not round-trip.
+    The realistic source is documentation about this very tool. The check lives
+    in `instrument()` so a library caller gets it too, rather than in whichever
+    wrapper remembered."""
+    doc_about_this_tool = (
+        '<pre><code>&lt;p data-blk="b1" data-line="3" data-sec="I" '
+        'data-sec-id="s1"&gt;</code></pre>')
+    with pytest.raises(RH.Refused) as e:
+        RH.instrument(doc_about_this_tool)
+    assert "strip back" in str(e.value)
+
+
+def test_a_near_miss_of_the_attribute_run_still_round_trips():
+    """The non-vacuity partner. The guard must fire on the real collision and
+    NOT on text that merely mentions the attribute names — otherwise it would
+    refuse this project's own documentation and get switched off."""
+    mentions = '<p>The attributes are data-blk, data-line and data-sec.</p>'
+    out, _, _ = RH.instrument(mentions)
+    assert RH.strip(out) == mentions
+
+
+# --- empty src vs empty href ------------------------------------------
+
+
+def test_an_empty_src_is_reported():
+    _, _, warnings = RH.instrument('<p>t</p><img src="">')
+    assert any("not self-contained" in w for w in warnings)
+
+
+def test_an_empty_href_is_not_reported():
+    """A same-page link is legitimate; an empty src resolves to the document
+    itself and is an authoring defect. They were treated identically."""
+    _, _, warnings = RH.instrument('<p>t</p><a href="">x</a>')
+    assert not [w for w in warnings if "not self-contained" in w]
+
+
+def test_the_relative_warning_truncates_a_long_list():
+    src = "<p>t</p>" + "".join('<img src="p%d.png">' % i for i in range(9))
+    _, _, warnings = RH.instrument(src)
+    w = [x for x in warnings if "not self-contained" in x][0]
+    assert "9 relative reference(s)" in w
+    assert w.endswith("...)")
+
+
+# --- the script half of the text-collision scan -----------------------
+
+
+def test_the_same_token_in_script_text_warns():
+    """Only the <style> half of `self.cur.tag in ("style", "script")` was
+    covered."""
+    _, _, warnings = RH.instrument(
+        '<script>var x = "data-sec-id";</script><p>t</p>')
+    assert any("data-sec-id" in w for w in warnings)
+
+
+# --- malformed markup -------------------------------------------------
+
+
+def test_a_stray_close_tag_is_ignored_without_corrupting_the_tree():
+    _, ctx, _ = RH.instrument("<div><p>one</p></span><p>two</p></div>")
+    assert list(ctx.blocks.values()) == ["one", "two"]
+
+
+def test_overlapping_tags_do_not_lose_a_block():
+    _, ctx, _ = RH.instrument("<div><b><i>text</b></i></div>")
+    assert "text" in "".join(ctx.blocks.values())
+
+
+def test_an_unclosed_wrapper_at_end_of_document_still_yields_its_blocks():
+    _, ctx, _ = RH.instrument("<div><p>one</p><p>two</p>")
+    assert list(ctx.blocks.values()) == ["one", "two"]
+
+
+@pytest.mark.parametrize("markup", [
+    "<p class=unquoted>text</p>",
+    "<p class='single'>text</p>",
+    '<p class="double">text</p>',
+    "<p  class = 'spaced' >text</p>",
+])
+def test_attribute_quoting_styles_all_round_trip(markup):
+    """Real authored HTML is not uniformly double-quoted, and the splice edits
+    the source rather than re-serialising it — so quoting must survive."""
+    out, ctx, _ = RH.instrument(markup)
+    assert RH.strip(out) == markup
+    assert list(ctx.blocks.values()) == ["text"]
+
+
+def test_a_self_closing_non_void_tag_round_trips():
+    src = '<div><p>text</p><span/></div>'
+    out, _, _ = RH.instrument(src)
+    assert RH.strip(out) == src
+
+
+def test_deeply_nested_blocks_are_found_at_depth():
+    src = "<div>" * 12 + "<p>deep</p>" + "</div>" * 12
+    _, ctx, _ = RH.instrument(src)
+    assert list(ctx.blocks.values()) == ["deep"]
+
+
+def test_a_real_head_element_is_excluded():
+    """SHAPES puts <title>/<meta>/<style> at the top level, so the `head` entry
+    was never tested against an actual <head>."""
+    src = "<html><head><title>T</title></head><body><p>body text</p></body></html>"
+    _, ctx, _ = RH.instrument(src)
+    assert list(ctx.blocks.values()) == ["body text"]
+
+
+# --- sections, the parts nothing asserted -----------------------------
+
+
+def test_content_before_the_first_heading_carries_an_empty_section():
+    """A very common real shape: an intro paragraph before the first heading."""
+    out, ctx, _ = RH.instrument("<p>intro</p><h2>First</h2><p>body</p>")
+    assert 'data-sec="" data-sec-id=""' in out
+    assert ctx.sections[0]["title"] == "First"
+
+
+def test_a_headings_own_words_count_towards_its_section():
+    _, ctx, _ = RH.instrument("<h2>Two words</h2><p>three more words here</p>")
+    assert ctx.sections[0]["words"] == 2 + 4
+
+
+def test_a_heading_with_no_sluggable_characters_still_gets_a_slug():
+    ctx = blocks_of("<h2>!!!</h2><p>a</p><h2>???</h2><p>b</p>")
+    slugs = [s["slug"] for s in ctx.sections]
+    assert all(slugs) and len(set(slugs)) == 2
+
+
+# --- the CLI ----------------------------------------------------------
+
+
+def test_main_reports_a_missing_document(capsys):
+    assert RH.main(["no-such-file.html"]) == 1
+    assert "no such document" in capsys.readouterr().out
+
+
+def test_main_reports_a_refusal(tmp_path, capsys):
+    p = tmp_path / "x.html"
+    p.write_text('<p data-blk="mine">text</p>', encoding="utf-8")
+    assert RH.main([str(p)]) == 1
+    assert "REFUSED" in capsys.readouterr().out
+
+
+def test_main_reports_invalid_utf8(tmp_path, capsys):
+    """The encoding guard the module's docstring calls dangerous in a repo with
+    no CI, because it fails on Windows and nowhere else."""
+    p = tmp_path / "x.html"
+    p.write_bytes(b"<p>caf\xe9</p>")
+    assert RH.main([str(p)]) == 1
+    assert "not valid UTF-8" in capsys.readouterr().out
+
+
+def test_main_writes_the_instrumented_copy(tmp_path, capsys):
+    src = tmp_path / "x.html"
+    src.write_text("<p>text</p>", encoding="utf-8")
+    out = tmp_path / "out.html"
+    assert RH.main([str(src), "--out", str(out)]) == 0
+    written = out.read_text(encoding="utf-8")
+    assert "data-blk=" in written
+    assert RH.strip(written) == "<p>text</p>"
+
+
+def test_main_prints_warnings(tmp_path, capsys):
+    p = tmp_path / "x.html"
+    p.write_text('<p>t</p><img src="pic.png">', encoding="utf-8")
+    assert RH.main([str(p)]) == 0
+    assert "not self-contained" in capsys.readouterr().out
+
+
+def test_use_utf8_stdout_survives_a_stream_without_reconfigure():
+    """It no-ops when `reconfigure` is absent. Exercised so the no-op is a
+    decision rather than an untested branch."""
+    class Bare(object):
+        pass
+
+    real_out, real_err = sys.stdout, sys.stderr
+    try:
+        sys.stdout, sys.stderr = Bare(), Bare()
+        RH.use_utf8_stdout()
+    finally:
+        sys.stdout, sys.stderr = real_out, real_err

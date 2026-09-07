@@ -22,8 +22,8 @@ MUTANTS = [
     ("the recursion reports 'I am a block' rather than 'my subtree holds one', "
      "so every ancestor re-qualifies and the blocks nest",
      DOC,
-     "    if found:\n        return True",
-     "    if found:\n        return False",
+     "                    stranded.append((node.tag, node.line, \" \".join(k.split())))\n        return True",
+     "                    stranded.append((node.tag, node.line, \" \".join(k.split())))\n        return False",
      TESTS),
 
     ("candidacy stops requiring text, so an empty layout div becomes a block "
@@ -113,8 +113,8 @@ MUTANTS = [
     ("a scheme no longer counts as absolute, so every https:// reference "
      "reports as relative",
      DOC,
-     "        if not v or v.startswith(_NOT_RELATIVE) or _SCHEME.match(v):",
-     "        if not v or v.startswith(_NOT_RELATIVE):",
+     "            if v.startswith(_NOT_RELATIVE) or _SCHEME.match(v):",
+     "            if v.startswith(_NOT_RELATIVE):",
      TESTS),
 
     # ---- the splice and the reversibility property ----
@@ -151,5 +151,73 @@ MUTANTS = [
      DOC,
      "        if node.tag in HEADINGS:",
      "        if False:",
+     TESTS),
+
+    # ---- PR review round 1 ----
+
+    ("the collision scan stops recursing, so a data-blk nested inside a "
+     "<section> is never seen and the document instruments with wrong anchors",
+     DOC,
+     "                found.append((k.tag, token, k.line))\n        attribute_collisions(k, found)",
+     "                found.append((k.tag, token, k.line))",
+     TESTS),
+
+    ("the relative-asset scan stops recursing, so an <img> inside a <figure> "
+     "never reports the document as not self-contained",
+     DOC,
+     "            found.append((k.tag, attr, v))\n        relative_refs(k, found)",
+     "            found.append((k.tag, attr, v))",
+     TESTS),
+
+    ("text sitting beside a block goes back to being dropped silently",
+     DOC,
+     "        if stranded is not None:",
+     "        if False:",
+     TESTS),
+
+    ("a document with nothing annotatable reports success",
+     DOC,
+     "    if not blocks:",
+     "    if False:",
+     TESTS),
+
+    ("the reversibility property goes back to being the CLI's problem, so a "
+     "library caller gets no guarantee at all",
+     DOC,
+     "    if strip(out) != src:\n        raise Refused(",
+     "    if False:\n        raise Refused(",
+     TESTS),
+
+    ("an unclosed <p> nests instead of closing, so the outer paragraph's own "
+     "text belongs to no block",
+     DOC,
+     "    def handle_starttag(self, tag, attrs):\n        self._implicit_close(tag)",
+     "    def handle_starttag(self, tag, attrs):",
+     TESTS),
+
+    ("implicit closing unwinds past elements that cannot be implicitly closed, "
+     "so a <p> inside a <div> inside a <p> closes the outer paragraph",
+     DOC,
+     "        while n is not self.root and n.tag in closes:",
+     "        while n is not self.root and n.tag not in EXCLUDED:",
+     TESTS),
+
+    ("a block-level element stops closing an open paragraph",
+     DOC,
+     "        if tag in CLOSES_P:\n            closes = closes | {\"p\"}",
+     "        if False:\n            closes = closes | {\"p\"}",
+     TESTS),
+
+    ("an empty src goes back to being indistinguishable from no src",
+     DOC,
+     '                if attr == "src":\n                    found.append((k.tag, attr, ""))',
+     "                pass",
+     TESTS),
+
+    ("the text-collision scan only looks at <style>, so the same token in a "
+     "<script> goes unreported",
+     DOC,
+     '        if self.cur.tag in ("style", "script"):',
+     '        if self.cur.tag in ("style",):',
      TESTS),
 ]
