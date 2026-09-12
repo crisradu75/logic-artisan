@@ -289,6 +289,90 @@ def test_there_is_no_escape_hatch(tmp_path):
     )
 
 
+def test_the_remedy_follows_the_callers_tool_not_the_platform(tmp_path):
+    """A git-bash caller must be told `rm`, not `Remove-Item`. Issue #236.
+
+    `sys.platform` is `win32` for this hook process whichever tool invoked it,
+    and `hooks.json` routes BOTH its `Bash` and `PowerShell` matchers to the
+    dispatcher that runs this hook. Branching the remedy on the platform
+    therefore handed a git-bash caller who typed `rm -rf <link>` a
+    `Remove-Item` command their shell does not have, and never named `rm
+    <link>`, which works.
+
+    Measured 2026-09-12 against a real `mklink /J` junction with a canary on
+    the far side -- git-bash, GNU coreutils 8.32 on MINGW64_NT-10.0-26100,
+    `sh .../bash_remedies.sh`:
+
+        rm <j>              rc=0   link REMOVED       far side intact
+        rmdir <j>           rc=1   link still there   far side intact
+        cmd /c rmdir <j>    rc=0   link REMOVED       far side intact
+
+    This asserts the ROUTING -- that each tool gets the text measured for its
+    shell. `test_the_block_message_names_a_remedy_that_works` pins what those
+    texts say. Both are needed: routing the right tool to wrong text, or the
+    right text to the wrong tool, each leaves a caller stuck.
+    """
+    real = tmp_path / "real-content"
+    real.mkdir()
+    target = tmp_path / "the-link"
+    make_dir_alias(target, real)
+    command = f"rm -rf {target}"
+
+    bash = _run({"tool_name": "Bash", "tool_input": {"command": command}}, cwd=tmp_path)
+    assert bash.returncode == 2, bash.stderr
+    assert "rm <link>" in bash.stderr, (
+        f"the Bash tool must be told the remedy its shell has: {bash.stderr}"
+    )
+    assert "Remove-Item" not in bash.stderr, (
+        "a git-bash caller must not be prescribed a PowerShell cmdlet"
+    )
+
+    ps = _run({"tool_name": "PowerShell", "tool_input": {"command": command}}, cwd=tmp_path)
+    assert ps.returncode == 2, ps.stderr
+    assert "Remove-Item -Recurse <link>" in ps.stderr, (
+        f"the PowerShell tool must be told the unforced -Recurse form: {ps.stderr}"
+    )
+    assert "cmd /c rmdir <link>" in ps.stderr, "name the fallback that always works"
+
+    # The two tools must genuinely differ, on one tree, from one command. A
+    # change collapsing both arms to the same text would satisfy every
+    # assertion above on Windows, where the fallback already yields the
+    # PowerShell wording.
+    assert bash.stderr != ps.stderr, (
+        "the remedy must depend on the tool; identical text means it does not"
+    )
+
+
+def test_an_unknown_tool_falls_back_to_the_platform_remedy(tmp_path):
+    """Absent or unrecognised `tool_name` reproduces the pre-#236 behaviour.
+
+    Older payload shapes, this file's own other tests, and any future tool land
+    here. The fallback must NOT be `rm`: `rm` is an alias for `Remove-Item` in
+    PowerShell -- `(Get-Alias rm).Definition` prints `Remove-Item` in 5.1 and
+    in pwsh 7 -- so a blind `rm <link>` is the bare `Remove-Item` that fails
+    under `-NonInteractive` 5.1. Falling back to the platform reproduces
+    behaviour that was never a dead end, because it names `cmd /c rmdir`.
+    """
+    real = tmp_path / "real-content"
+    real.mkdir()
+    target = tmp_path / "the-link"
+    make_dir_alias(target, real)
+    command = f"rm -rf {target}"
+
+    absent = _run({"tool_input": {"command": command}}, cwd=tmp_path)
+    unknown = _run(
+        {"tool_name": "SomeFutureTool", "tool_input": {"command": command}}, cwd=tmp_path
+    )
+    for label, r in (("absent", absent), ("unknown", unknown)):
+        assert r.returncode == 2, f"{label}: {r.stderr}"
+
+    expected = "Remove-Item -Recurse <link>" if sys.platform == "win32" else "rm <link>"
+    for label, r in (("absent", absent), ("unknown", unknown)):
+        assert expected in r.stderr, (
+            f"{label} tool_name must fall back to this platform's remedy: {r.stderr}"
+        )
+
+
 def test_the_block_message_names_a_remedy_that_works(tmp_path):
     """With no escape hatch, a wrong remedy leaves the caller with nowhere to go.
 
@@ -314,6 +398,12 @@ def test_the_block_message_names_a_remedy_that_works(tmp_path):
     junction and a real shell, which is how the defect was found in the first
     place. Anyone editing the remedy re-measures it; this only stops the
     measured answer from silently disappearing.
+
+    IT REACHES THE TEXT THROUGH THE FALLBACK. The payload below carries no
+    `tool_name`, so `_remedy` takes its `sys.platform` branch (issue #236).
+    That is deliberate -- it keeps this test about WHAT the remedy says, and
+    leaves WHICH tool gets which text to
+    `test_the_remedy_follows_the_callers_tool_not_the_platform`.
     """
     real = tmp_path / "real-content"
     real.mkdir()
