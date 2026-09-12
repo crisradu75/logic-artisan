@@ -84,9 +84,6 @@ _EXEMPT = {
     "tests/consistency/test_ledger_names_agree.py": "grandfathered",
     "tests/consistency/test_marketplace_manifest.py": "grandfathered",
     "tests/consistency/test_pre_push_is_installed.py": "grandfathered",
-    "tests/consistency/test_subprocess_encoding.py": "grandfathered",
-    "tests/consistency/test_token_list_is_curated_here.py": "grandfathered",
-    "tests/consistency/test_mutate.py": "grandfathered",
 }
 
 
@@ -331,7 +328,14 @@ def test_the_grandfather_list_only_shrinks():
     # at its original 12 while the real count fell to 8, it silently permitted
     # four new exemptions — a bound far above its population is the same
     # decorative-floor defect `test-quality.md` describes, applied to a ceiling.
-    assert grandfathered <= 7, (
+    #
+    # 7 -> 4 with the batches for `test_subprocess_encoding.py`,
+    # `test_token_list_is_curated_here.py` and `test_mutate.py` (issue #176).
+    # `test_mutate.py` came off the list rather than being reclassified as a
+    # meta-guard: its batch mutates `mutate.py` and observes the result through
+    # a subprocess run against a sandbox scope, so the observation is external
+    # and the pairing is not circular. Its batch header records the probe.
+    assert grandfathered <= 4, (
         f"{grandfathered} grandfathered guards; the bound is the real count at "
         "the last deletion and is only allowed to shrink. A NEW guard needs a "
         "mutant batch, not an exemption — and deleting an entry means lowering "
