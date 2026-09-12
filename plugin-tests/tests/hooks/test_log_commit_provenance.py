@@ -63,6 +63,12 @@ def test_a_real_commit_is_recognised(command):
         "echo 'run git commit later'",
         "git rev-list --all",
         "git status",
+        # The post-commit push/verify traffic issue #219 reports rows piling up
+        # behind. `git status` was the only member of that family here, and it
+        # is the one a recogniser is least likely to get wrong.
+        "git push origin main",
+        "git branch -a",
+        "gh pr view 1 --json state",
     ],
 )
 def test_a_non_commit_is_not_recognised(command):
@@ -271,6 +277,80 @@ def test_a_repeated_command_does_not_re_record_the_same_head(tmp_path):
     assert len(_ledger(repo)) == 1
     assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
     assert len(_ledger(repo)) == 1
+
+
+def test_read_only_git_calls_after_a_commit_add_no_further_rows(tmp_path):
+    """Issue #219's own repro, which no existing test walks end to end.
+
+    The reported shape is not a repeated COMMIT -- it is one commit followed by
+    the ordinary read-only traffic a push/verify sequence makes: `git status`,
+    `git log`, `git branch -a`, `gh pr view`. Three rows landed for one commit.
+
+    WHAT THIS DOES AND DOES NOT PIN, because the first version of this docstring
+    got it wrong and the test still passed. Measured by mutation: neutering the
+    `_already_recorded` gate in `main()` leaves this test GREEN. It has to —
+    none of these commands is commit-shaped, so `_is_commit_command` rejects
+    them and `main()` returns before the dedupe is ever consulted. The dedupe is
+    not under test here; the recogniser is, end to end and against a populated
+    ledger.
+
+    It earns its place on the traffic it names rather than on the gate: `git
+    push`, `git branch -a` and `gh pr view` appear in no other test in this
+    file, and they are exactly what the reported sequence was making when the
+    rows piled up. A recogniser that admitted any of them would over-record,
+    which this hook's own docstring calls worse than not existing.
+    """
+    repo = _repo(tmp_path)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert len(_ledger(repo)) == 1
+    recorded = _ledger(repo)[0]
+
+    for command in (
+        "git status",
+        "git log -1 --pretty=%s",
+        "git branch -a",
+        "git push origin main",
+        "gh pr view 1 --json state",
+    ):
+        assert _run(repo, command).returncode == 0, command
+        rows = _ledger(repo)
+        assert len(rows) == 1, f"{command!r} appended a row for a commit it did not make"
+        assert rows[0] == recorded, f"{command!r} rewrote the recorded row"
+
+
+def test_two_distinct_commits_each_earn_a_row(tmp_path):
+    """The invariant no test in this file states by name: two commits, two rows.
+
+    Every other multi-row test reaches two rows through an AMEND, which keeps
+    one logical commit. The over-correction worth guarding is a dedupe that
+    suppresses on any prior row rather than on a MATCHING sha: it deduplicates
+    perfectly and drops the second commit of every pair.
+
+    Stated honestly, because a redundant test that reads as unique coverage is
+    its own defect: mutating the dedupe to `return True` is killed by the amend
+    test too, so this adds no detection the suite lacked. It is kept for the
+    invariant it names, not for a mutant only it catches.
+    """
+    repo = _repo(tmp_path)
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    first = _ledger(repo)
+    assert len(first) == 1
+
+    # `_run` only feeds the hook a PostToolUse payload -- it does not run the
+    # command. The real second commit has to be made first, the way
+    # `test_an_amended_commit_is_recorded_and_not_re_recorded` does, or HEAD
+    # never moves and the dedupe suppresses for the right reason.
+    (repo / "f.txt").write_text("second\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "commit", "-q", "-a", "-m", "fix: review round 2"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    assert _run(repo, "git commit -m 'fix: review round 2'").returncode == 0
+
+    rows = _ledger(repo)
+    assert len(rows) == 2, "a second, genuinely different commit must earn its own row"
+    assert rows[0]["sha"] != rows[1]["sha"]
+    assert rows[1]["subject"] == "fix: review round 2"
 
 
 def test_it_writes_nothing_when_head_last_moved_by_a_checkout(tmp_path):
