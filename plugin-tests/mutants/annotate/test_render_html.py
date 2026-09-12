@@ -30,6 +30,19 @@ def _a(text):
     return text.replace("\n", _NL)
 
 
+# The last batch of mutants below targets the TEST file rather than `DOC`, so it
+# needs that file's separator, which is read separately. Deriving it from `DOC`
+# would be the CRLF trap one step sideways: the two files are independently
+# normalised, and an anchor built with the wrong one matches nothing.
+TEST_FILE = TESTS[0]
+_NL_TEST = "\r\n" if b"\r\n" in TEST_FILE.read_bytes() else "\n"
+
+
+def _t(text):
+    """An anchor with the TEST file's own line separator."""
+    return text.replace("\n", _NL_TEST)
+
+
 MUTANTS = [
     # ---- the block rule's disqualification condition ----
     ("the recursion reports 'I am a block' rather than 'my subtree holds one', "
@@ -260,5 +273,50 @@ MUTANTS = [
      DOC,
      '        if self.cur.tag in ("style", "script"):',
      '        if self.cur.tag in ("style",):',
+     TESTS),
+
+    # ---- the fixture-copy walk (issue #235) ----
+    #
+    # These mutate the TEST FILE, not `DOC`, because the subject is the walk that
+    # lives there. That is deliberate and it is why the synthetic-tree tests
+    # exist: mutating this walk is UNOBSERVABLE against the real tree, which has
+    # no nested checkout when the suite runs from inside a worktree and no
+    # duplicate fixture when it runs from the primary one. CLAUDE.md's rule for
+    # that case is to mutate the input rather than the guard; here the input is
+    # the tree each of those tests builds.
+    ("the walk stops skipping nested checkouts, so every worktree under "
+     ".claude/worktrees/ contributes a copy -- issue #235 itself",
+     TEST_FILE,
+     _t("            if d not in _CACHE_DIRS\n"
+        "            and not _is_nested_checkout(os.path.join(dirpath, d))"),
+     "            if d not in _CACHE_DIRS",
+     TESTS),
+
+    ("the structural check degrades to the literal name `worktrees`, which is "
+     "the fix NOT taken: a worktree at wt/ or .worktrees/ is counted again",
+     TEST_FILE,
+     "            and not _is_nested_checkout(os.path.join(dirpath, d))",
+     '            and d != "worktrees"',
+     TESTS),
+
+    ("a nested checkout is recognised only by a .git DIRECTORY, so a git "
+     "worktree -- whose .git is a FILE -- is walked into",
+     TEST_FILE,
+     '    return os.path.exists(os.path.join(directory, ".git"))',
+     '    return os.path.isdir(os.path.join(directory, ".git"))',
+     TESTS),
+
+    ("the checkout test reads the directory being walked rather than each child, "
+     "so the repo's own .git prunes the entire tree and the count becomes 0",
+     TEST_FILE,
+     "            and not _is_nested_checkout(os.path.join(dirpath, d))",
+     "            and not _is_nested_checkout(dirpath)",
+     TESTS),
+
+    ("the generated-cache names stop being pruned, so a copy inside "
+     "__pycache__ or node_modules counts as a second copy",
+     TEST_FILE,
+     "            if d not in _CACHE_DIRS",
+     "            if True",
      TESTS),
 ]
