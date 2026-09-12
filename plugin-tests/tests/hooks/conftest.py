@@ -32,7 +32,6 @@ import pytest
 _ESCAPE_HATCHES = (
     "ALLOW_DESTRUCTIVE_GIT",       # ask-destructive-git.py:253
     "ALLOW_PR_MERGE",              # ask-destructive-git.py:315
-    "ALLOW_UNSAFE_RM",             # block-unsafe-recursive-delete.py:244
     "ALLOW_WORKTREE_PATH_ESCAPE",  # block-worktree-path-escape.py:149
 )
 # Not listed: CLAUDE_PROJECT_DIR (warn-wholesale-rewrite.py:210). It is

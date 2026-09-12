@@ -1,9 +1,13 @@
 """Tests for the block-unsafe-recursive-delete PreToolUse hook.
 
 Unit-tests the pure detection/path logic, and end-to-end-tests `main()` via
-subprocess for the three trigger conditions (a link AS the target, a worktree
-path, and a directory containing a symlink/junction) plus the allow and
-escape-hatch cases.
+subprocess for the ONE trigger condition -- the delete target is itself a
+symlink or junction -- plus the allow cases.
+
+Two triggers and an escape hatch were removed. Their tests did not simply go
+with them: the two removed triggers are pinned here as ALLOWs, and the absent
+hatch is pinned as a BLOCK, so re-adding any of the three is a visible
+decision rather than a quiet one. See the hook's module docstring for why.
 """
 
 from __future__ import annotations
@@ -89,27 +93,9 @@ def test_detects_posix_escaped_space_path():
     assert "/Users/me/My Docs" in paths
 
 
-def test_worktree_path_detected_regardless_of_separator():
-    assert hook._is_worktree_path(Path("C:/Code/some-repo/.claude/worktrees/some-change"))  # path-fixture-ok
-    assert hook._is_worktree_path(Path(r"C:\Code\some-repo\.claude\worktrees\some-change"))  # path-fixture-ok
-
-
-def test_non_worktree_path_not_flagged(tmp_path):
-    assert not hook._is_worktree_path(tmp_path / "openspec" / "changes" / "x")
-
-
 # --------------------------------------------------------------------------- #
 # End-to-end via subprocess
 # --------------------------------------------------------------------------- #
-
-def test_blocks_worktree_path_delete(tmp_path):
-    target = tmp_path / ".claude" / "worktrees" / "some-change"
-    target.mkdir(parents=True)
-    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
-    assert r.returncode == 2
-    assert "block-unsafe-recursive-delete.py" in r.stderr
-    assert "worktrees" in r.stderr
-
 
 def make_dir_alias(link: Path, real: Path) -> None:
     """Create `link` -> `real` as a real symlink where permitted, falling back
@@ -139,7 +125,18 @@ def make_dir_alias(link: Path, real: Path) -> None:
         pytest.skip("directory alias created but does not resolve")
 
 
-def test_blocks_directory_containing_a_symlink(tmp_path):
+def test_a_directory_merely_CONTAINING_a_link_is_allowed(tmp_path):
+    """The removed trigger 2, pinned as an ALLOW so the removal is deliberate.
+
+    This used to block. The walk that found the link cost a scan budget, a
+    fail-open exhaustion path, and a bind-mount blind spot (#221), and the
+    guard's measured firing record did not support that surface. It is gone,
+    and this test exists so re-adding it is a visible decision rather than a
+    quiet one.
+
+    The link's own far side is NOT protected by this hook any more. That is the
+    accepted cost of the narrowing, stated here rather than left implicit.
+    """
     target = tmp_path / "some-dir"
     target.mkdir()
     real = tmp_path / "real-content"
@@ -148,8 +145,42 @@ def test_blocks_directory_containing_a_symlink(tmp_path):
     make_dir_alias(target / "linked", real)
 
     r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
-    assert r.returncode == 2
-    assert "block-unsafe-recursive-delete.py" in r.stderr
+    assert r.returncode == 0, r.stderr
+
+
+def test_a_worktree_path_is_not_blocked_for_being_one(tmp_path):
+    """The removed trigger 1, pinned as an ALLOW for the same reason.
+
+    A path under `.claude/worktrees/` used to block unconditionally. That rule
+    read the RESOLVED path, so aliasing the worktrees directory bypassed it
+    anyway (#218), and its block message recommended `git worktree remove`,
+    which cannot clear an orphaned worktree — leaving no sanctioned path at
+    all (#220). Removing the trigger retires both.
+    """
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
+    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+
+
+def test_a_worktree_path_that_IS_a_link_still_blocks(tmp_path):
+    """The half of the worktree case that must survive the narrowing.
+
+    Removing trigger 1 must not remove coverage of the incident shape merely
+    because the target happens to sit under `.claude/worktrees/`. The one
+    trigger left is keyed on the target's own link-ness, which is orthogonal to
+    where it lives — and this is the exact 2026-07-19 arrangement: a junction
+    inside a worktree, pointing back into the primary clone.
+    """
+    real = tmp_path / "primary-clone-content"
+    real.mkdir()
+    (real / "important.txt").write_text("do not delete me", encoding="utf-8")
+    target = tmp_path / ".claude" / "worktrees" / "linked-change"
+    target.parent.mkdir(parents=True)
+    make_dir_alias(target, real)
+
+    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
+    assert r.returncode == 2, r.stderr
     assert "symlink" in r.stderr or "junction" in r.stderr
 
 
@@ -164,13 +195,18 @@ def test_allows_a_clean_recursive_delete(tmp_path):
 
 def test_second_target_still_checked_after_an_earlier_allowed_one(tmp_path):
     # A command with two separate rm -rf invocations: the first targets an
-    # ordinary directory (allowed), the second a worktree path (blocked).
+    # ordinary directory (allowed), the second a link (blocked).
     # Guards that resolving/checking the first candidate can't short-circuit
     # the loop before the second, genuinely dangerous one is ever reached.
+    #
+    # The second target was a worktree path while that trigger existed; a link
+    # is the shape the one remaining trigger fires on.
     ordinary = tmp_path / "build-output"
     ordinary.mkdir()
-    target = tmp_path / ".claude" / "worktrees" / "some-change"
-    target.mkdir(parents=True)
+    real = tmp_path / "real-content"
+    real.mkdir()
+    target = tmp_path / "the-link"
+    make_dir_alias(target, real)
     command = f"rm -rf {ordinary} && rm -rf {target}"
     r = _run({"tool_input": {"command": command}}, cwd=tmp_path)
     assert r.returncode == 2
@@ -208,15 +244,109 @@ def test_allows_non_destructive_command(tmp_path):
     assert r.stderr.strip() == ""
 
 
-def test_escape_hatch_allows_worktree_delete(tmp_path):
-    target = tmp_path / ".claude" / "worktrees" / "some-change"
-    target.mkdir(parents=True)
+def test_there_is_no_escape_hatch(tmp_path):
+    """`ALLOW_UNSAFE_RM` is gone, and nothing may resurrect it accidentally.
+
+    The hatch was removed with the two broad triggers. It was unreachable in
+    the position callers naturally used — a hook runs as its own process before
+    the command's shell exists, so an inline `VAR=1 cmd` prefix never reached
+    `os.environ` — and the attempt to make that spelling work opened five new
+    destructive-allow paths, two critical (PR #231, closed).
+
+    No hatch is needed now, PROVIDED the block message names a remedy that runs
+    on the caller's platform. That proviso is load-bearing and was wrong in the
+    first version of this change: "a plain non-recursive rm/Remove-Item" is
+    correct for `rm` and fails under Windows PowerShell 5.1, where a bare
+    `Remove-Item <junction>` prompts and the `-NonInteractive` PowerShell tool
+    removes nothing. With no override, a caller who follows a broken remedy has
+    nowhere to go -- which is issue #220's pathology.
+    `test_the_block_message_names_a_remedy_that_works` is the counterpart that
+    pins the remedy; this one pins only the hatch's absence, because an env-read
+    hatch is exactly the kind of thing that gets added back "for convenience".
+
+    Both the environment form and the inline-prefix form are checked.
+    """
+    real = tmp_path / "real-content"
+    real.mkdir()
+    target = tmp_path / "the-link"
+    make_dir_alias(target, real)
+
     r = _run(
         {"tool_input": {"command": f"rm -rf {target}"}},
         cwd=tmp_path,
         env_extra={"ALLOW_UNSAFE_RM": "1"},
     )
-    assert r.returncode == 0
+    assert r.returncode == 2, "an exported ALLOW_UNSAFE_RM must no longer disarm the guard"
+
+    r = _run(
+        {"tool_input": {"command": f"ALLOW_UNSAFE_RM=1 rm -rf {target}"}},
+        cwd=tmp_path,
+    )
+    assert r.returncode == 2, "an inline ALLOW_UNSAFE_RM prefix must not disarm the guard"
+
+    assert "ALLOW_UNSAFE_RM" not in r.stderr, (
+        "the block message must not advertise a hatch that no longer exists"
+    )
+
+
+def test_the_block_message_names_a_remedy_that_works(tmp_path):
+    """With no escape hatch, a wrong remedy leaves the caller with nowhere to go.
+
+    That is not hypothetical. The first version of this shrink prescribed "a
+    plain non-recursive rm/Remove-Item on just that entry" for both platforms.
+    Measured `-NonInteractive` against a real junction:
+
+        remedy                      WinPS 5.1   pwsh 7
+        Remove-Item <j>             FAILS       works
+        Remove-Item -Force <j>      FAILS       works
+        Remove-Item -Recurse <j>    works       works
+        cmd /c rmdir <j>            works       works
+
+    `hooks.json` wires the `-NonInteractive` PowerShell tool to this hook's
+    dispatcher, so the failing rows are a live path, and a blocked caller
+    following the message got "Windows PowerShell is in NonInteractive mode"
+    instead of a way forward -- issue #220's pathology, reintroduced by the
+    change whose own body claimed to retire it.
+
+    WHAT THIS TEST CAN AND CANNOT DO. It pins that the message names the
+    remedy known to work on this platform, so deleting or rewording it goes
+    red. It CANNOT prove a future wording actually runs -- that needs a real
+    junction and a real shell, which is how the defect was found in the first
+    place. Anyone editing the remedy re-measures it; this only stops the
+    measured answer from silently disappearing.
+    """
+    real = tmp_path / "real-content"
+    real.mkdir()
+    target = tmp_path / "the-link"
+    make_dir_alias(target, real)
+
+    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
+    assert r.returncode == 2, r.stderr
+
+    if sys.platform == "win32":
+        # `-Recurse` WITHOUT `-Force`. Not a contradiction with the trigger:
+        # the guard fires on recursive+FORCED, and the unforced form is what
+        # drops a junction without prompting.
+        assert "Remove-Item -Recurse <link>" in r.stderr, (
+            "the PowerShell remedy must be the unforced -Recurse form, which is "
+            f"the only Remove-Item spelling that works under 5.1: {r.stderr}"
+        )
+        # The remedy must not acquire `-Force`, which reintroduces the prompt.
+        # Checked as the forced COMMAND rather than by looking for the token
+        # near the remedy: the message says "WITHOUT -Force" on purpose, and an
+        # earlier version of this assertion failed on that explanation.
+        assert "Remove-Item -Recurse -Force <link>" not in r.stderr, (
+            "the prescribed remedy must not be the forced form"
+        )
+        assert "cmd /c rmdir <link>" in r.stderr, "name the fallback that always works"
+    else:
+        assert "rm <link>" in r.stderr, (
+            f"the POSIX remedy must name the plain non-recursive rm: {r.stderr}"
+        )
+
+    # Neither platform may be told to use a bare non-recursive Remove-Item,
+    # which is the wording that failed.
+    assert "non-recursive rm/Remove-Item" not in r.stderr
 
 
 def test_blocks_a_delete_whose_target_is_itself_a_junction(tmp_path):
@@ -558,7 +688,7 @@ def test_an_unreadable_target_says_it_could_not_examine_the_path(tmp_path, monke
 def test_a_decided_block_survives_a_failed_write_to_stderr(tmp_path, monkeypatch, capsys):
     """The `_Blocked` refactor, pinned — it had no test.
 
-    All three block sites once sat inside `except OSError: continue`, so a
+    The block sites once sat inside `except OSError: continue`, so a
     `BrokenPipeError` writing the message skipped the `return 2`, continued the
     loop, and fell through to `return 0`: a decided BLOCK became a clean ALLOW.
     The commit that fixed it measured the defect by injection and pinned it with
@@ -566,9 +696,14 @@ def test_a_decided_block_survives_a_failed_write_to_stderr(tmp_path, monkeypatch
 
     Drives `main()` in-process because the failure is in the write itself, which
     a subprocess harness cannot inject.
+
+    Uses a link as the fixture because that is the only shape that blocks now;
+    it was a worktree path while that trigger existed.
     """
-    target = tmp_path / ".claude" / "worktrees" / "some-change"
-    target.mkdir(parents=True)
+    real = tmp_path / "real-content"
+    real.mkdir()
+    target = tmp_path / "the-link"
+    make_dir_alias(target, real)
     payload = json.dumps({"tool_input": {"command": f"rm -rf {target}"}, "cwd": str(tmp_path)})
 
     class _BrokenStderr:
@@ -638,33 +773,6 @@ def test_a_target_reached_through_a_link_is_still_allowed(tmp_path):
     assert r.returncode == 0, (
         f"the target is behind the link, not the link itself: {r.stderr}"
     )
-
-
-def test_an_override_of_anything_but_1_does_not_disarm_the_guard(tmp_path):
-    """The hatch's VALUE semantics, which nothing here pinned.
-
-    `ALLOW_UNSAFE_RM=0` reads as "off" and must not disarm a guard over recursive
-    deletion. A hook treating any non-empty value as "on" does the opposite of
-    what the variable says, on the one guard where being wrong destroys work.
-
-    Written because the batch's hatch mutant (`== "1"` -> `is not None`) was
-    dying for the wrong reason: its only killer was
-    `test_blocks_worktree_path_delete`, which fails merely because the `_run`
-    helper sets `ALLOW_UNSAFE_RM` to the empty string for every subprocess. That
-    assertion states "a worktree delete is blocked", not "a non-1 value keeps the
-    guard armed" — so changing `_run` to unset the variable instead, a perfectly
-    reasonable cleanup, would have left the mutant alive with no test lost.
-    `test_pre_push.py` pins the same property directly; this is its counterpart.
-    """
-    target = tmp_path / ".claude" / "worktrees" / "some-change"
-    target.mkdir(parents=True)
-    for value in ("0", "true", "yes", " 1"):
-        r = _run(
-            {"tool_input": {"command": f"rm -rf {target}"}},
-            cwd=tmp_path,
-            env_extra={"ALLOW_UNSAFE_RM": value},
-        )
-        assert r.returncode == 2, f"ALLOW_UNSAFE_RM={value!r} must not disarm the guard"
 
 
 def test_malformed_stdin_does_not_block(tmp_path):

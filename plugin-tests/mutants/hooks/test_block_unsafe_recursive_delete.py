@@ -10,13 +10,20 @@ most expensive kind: it reads green while the thing that stops the next
 incident quietly does nothing.
 
 Each entry re-breaks one real, distinct capability of the hook rather than a
-variation on the same line: the three independent trigger conditions (a link
-AS the target, a worktree path anywhere in it, and a symlink/junction found
-inside it), the AND-of-two-flags logic that decides a delete is both recursive and
-forced (bash and PowerShell are separate code paths, so both get their own
-mutant), the heredoc-stripping that keeps prose from being misread as a real
-invocation, the escape-hatch env var's exact-match semantics, and a
-false-positive/over-broad match that would block ordinary, legitimate work.
+variation on the same line: the ONE trigger condition (the delete target is
+itself a link), the AND-of-two-flags logic that decides a delete is both
+recursive and forced (bash and PowerShell are separate code paths, so both get
+their own mutant), and the heredoc-stripping that keeps prose from being
+misread as a real invocation.
+
+FOUR ENTRIES WERE REMOVED WITH THE CODE THEY ANCHORED ON. The hook used to
+carry two more triggers (a worktree-path rule, and a bounded walk looking for
+a link inside the target) and an `ALLOW_UNSAFE_RM` escape hatch; all three are
+gone, so their mutants could no longer find their anchors. They were deleted
+rather than retargeted -- a mutant whose anchor is absent is refused by the
+runner, and a batch carrying refusals trains the next reader to skip the list.
+The removed behaviour is pinned in the test file instead, as explicit ALLOWs,
+so re-adding it is a visible decision.
 
 Mutations target the HOOK SOURCE, not the guard, so each kill is evidence
 about the hook's behaviour rather than about the guard's own wording.
@@ -24,11 +31,11 @@ about the hook's behaviour rather than about the guard's own wording.
 Paths resolve from this file's own location: a batch with an absolute
 developer path works on one machine and leaks it into synced core.
 
-PLATFORM NOTE, because a skip reads as a SURVIVED verdict. Three entries here
-are platform-conditional, and a reader who does not know that will read a
+PLATFORM NOTE, because a skip reads as a SURVIVED verdict. Entries here are
+platform-conditional, and a reader who does not know that will read a
 survivor as a finding about the code:
 
-  * The symlink/junction mutant's killer goes through `make_dir_alias`, which
+  * Every killer that needs a real link goes through `make_dir_alias`, which
     calls `pytest.skip` when neither alias kind can be created. The batch is
     robust to WHICH kind the machine permits, but not to a machine permitting
     NEITHER -- there it reports SURVIVED, a fact about the machine.
@@ -53,34 +60,6 @@ HOOK = PLUGIN / "hooks" / "block-unsafe-recursive-delete.py"
 TARGETS = [DEV / "tests" / "hooks" / "test_block_unsafe_recursive_delete.py"]
 
 MUTANTS = [
-    (
-        # Trigger 1 (worktree path): the docstring's own claim is "anywhere in
-        # the path, any separator style". Narrowing the scan to only the first
-        # segment pair breaks that -- a worktree path buried under a tmp_path
-        # prefix (which is exactly what every test fixture produces) would no
-        # longer be recognized at all. Caught by
-        # test_worktree_path_detected_regardless_of_separator and by the
-        # end-to-end test_blocks_worktree_path_delete.
-        "worktree-path detection stops scanning past the first path segment",
-        HOOK,
-        "for i in range(len(segments) - 1):",
-        "for i in [0]:",
-        TARGETS,
-    ),
-    (
-        # Trigger 2 (symlink/junction inside target): disables the one call
-        # that actually flags a link found during the walk, independent of
-        # whether the test environment can create a real symlink or has to
-        # fall back to an NTFS junction -- both paths funnel through this same
-        # call, so the mutant's killability does not depend on which alias
-        # kind the test machine happens to permit. Caught by
-        # test_blocks_directory_containing_a_symlink.
-        "symlink/junction detection inside the delete target is disabled",
-        HOOK,
-        "if _is_link_like(os.path.join(dirpath, name)) is True:",
-        "if False and _is_link_like(os.path.join(dirpath, name)) is True:",
-        TARGETS,
-    ),
     (
         # Flag parsing (bash): the hook must require BOTH recursive and
         # force, not either alone -- `rm -r` (no force) and `rm -f` (no
@@ -119,35 +98,6 @@ MUTANTS = [
         HOOK,
         'return _HEREDOC_BODY.sub("HEREDOC", command)',
         "return command",
-        TARGETS,
-    ),
-    (
-        # Escape hatch: must require the env var to be exactly "1", not
-        # merely present. Every test that goes through the `_run` helper sets
-        # `ALLOW_UNSAFE_RM=""` in the subprocess environment (to guarantee the
-        # hatch is closed by default) -- loosening the check to "present at
-        # all" makes that empty string count as an opt-out, silently
-        # disarming the hook for every blocking test. Caught by
-        # test_blocks_worktree_path_delete and the other end-to-end block
-        # assertions.
-        "escape hatch fires on ALLOW_UNSAFE_RM merely being set, not set to 1",
-        HOOK,
-        'if os.environ.get("ALLOW_UNSAFE_RM") == "1":',
-        'if os.environ.get("ALLOW_UNSAFE_RM") is not None:',
-        TARGETS,
-    ),
-    (
-        # Negative case: a genuinely scoped, ordinary recursive delete (no
-        # worktree path, no symlink) must NOT be blocked. Turning the
-        # worktree-path condition into a tautology makes _is_worktree_path
-        # true for essentially any multi-segment path, over-blocking
-        # legitimate work. Caught by test_allows_a_clean_recursive_delete
-        # (expects returncode 0, would get 2) and by
-        # test_non_worktree_path_not_flagged.
-        "worktree-path match becomes a tautology, blocking ordinary deletes too",
-        HOOK,
-        'segments[i] == ".claude" and segments[i + 1] == "worktrees"',
-        "segments[i] == segments[i]",
         TARGETS,
     ),
 ]
@@ -311,5 +261,39 @@ MUTANTS.append((
     HOOK,
     "        if exc.errno in _UNNAMEABLE_ERRNOS:",
     "        if False:",
+    TARGETS,
+))
+
+# --------------------------------------------------------------------------- #
+# The remedy the block message prescribes. With no escape hatch, a wrong remedy
+# leaves a blocked caller with nowhere to go -- issue #220's pathology, which
+# the first version of this shrink reintroduced.
+# --------------------------------------------------------------------------- #
+
+MUTANTS.append((
+    # The exact defect a review found. Measured `-NonInteractive` against a real
+    # junction, a bare `Remove-Item <junction>` FAILS under Windows PowerShell
+    # 5.1 -- it prompts, and the PowerShell tool `hooks.json` wires to this
+    # dispatcher runs non-interactive, so it removes nothing and reports
+    # "Windows PowerShell is in NonInteractive mode".
+    #
+    # Restoring that wording is the most likely future regression here, because
+    # it reads as the tidier, more symmetric sentence.
+    "the Windows remedy reverts to a bare non-recursive Remove-Item, which "
+    "fails under PowerShell 5.1 and leaves the caller with no way forward",
+    HOOK,
+    '"Remove the link itself instead: `Remove-Item -Recurse <link>` (WITHOUT "',
+    '"Remove the link itself instead, with a plain non-recursive rm/Remove-Item "',
+    TARGETS,
+))
+
+MUTANTS.append((
+    # Drops the fallback that works on both PowerShell editions, leaving only
+    # the counter-intuitive `-Recurse`-without-`-Force` form -- exactly the case
+    # where a reader wants a second option they can trust.
+    "the cmd /c rmdir fallback is dropped from the Windows remedy",
+    HOOK,
+    '"removes a junction without prompting), or `cmd /c rmdir <link>`. Both "',
+    '"removes a junction without prompting). Both "',
     TARGETS,
 ))

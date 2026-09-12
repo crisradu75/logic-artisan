@@ -103,7 +103,7 @@ process layer, installed by other repos from the GitHub marketplace.
 No servers, ports, or env files. Behaviour-affecting env vars are the hooks' own escape
 hatches: `ALLOW_PUSH_TO_MAIN`, `ALLOW_SHARED_CLONE_MUTATION`, `ALLOW_WORKTREE_PATH_ESCAPE`,
 `ALLOW_DESTRUCTIVE_GIT`, `ALLOW_GIT_IDENTITY_MISMATCH`, `ALLOW_DATED_PROSE`,
-`ALLOW_UNSAFE_RM`, `CLA_EXPECTED_GIT_EMAIL`. This list drifts as hooks are added — the
+`CLA_EXPECTED_GIT_EMAIL`. This list drifts as hooks are added — the
 authoritative enumeration is the hook sources themselves:
 
 ```bash
