@@ -248,6 +248,19 @@ def test_the_alternate_spellings_are_not_an_escape_hatch(source):
     # A non-subprocess callee that happens to take `text=`.
     "widget.Label(master, text=True)",
     "parser.add_argument('--x', text=True)",
+    # The next two pin `_is_spawn`'s CONJUNCTS, one each. Every other case here
+    # is rejected by the first condition that looks at it, so neither half was
+    # independently defended and dropping either one survived the whole suite
+    # (issue #246). Each of these satisfies one half and fails the other, so the
+    # checker only stays quiet while both are present.
+    #
+    # A spawner NAME on a non-spawn module — pins `func.value.id in
+    # _SPAWN_MODULES`. Without it, `run` alone is enough and this is flagged.
+    "asyncio.run(coro, text=True)",
+    # A non-spawner ATTRIBUTE on a spawn module — pins `func.attr in _SPAWNERS`.
+    # Without it, `subprocess.<anything>` is enough and this is flagged. Not a
+    # contrived shape: constructing a CompletedProcess is what a test fake does.
+    "subprocess.CompletedProcess(args, 0, text=True)",
     # Correctly pinned, in every spelling.
     "subprocess.run(cmd, text=True, encoding='utf-8', errors='replace')",
     "subprocess.run(cmd, universal_newlines=True, encoding='utf-8', errors='replace')",
