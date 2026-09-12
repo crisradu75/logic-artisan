@@ -55,6 +55,19 @@ produce a number nobody would read. Gating on the ledger DIRECTORY charged that
 cost against consent given for the other two ledgers, which live in the same
 directory and cost nothing like as much.
 
+AN EXISTING LEDGER STAYS ON, and "default off" applies to repos that do not have
+one yet. This matters because the previous version CREATED the file: it opened
+`"ab"` unconditionally once the directory existed, so any repo that made one
+commit with the directory present now has a ledger and is opted in by this rule.
+Measured against a repo scaffolded the way `cla-init` leaves one — the other two
+ledgers present, no provenance file:
+
+    old hook -> rc 0, ledger created: True,  rows written: 1
+    new hook -> rc 0, ledger created: False, rows written: 0
+
+Staying on is the deliberate choice: an upgrade that silently stopped recording
+would be a surprise in the other direction. **To opt out, delete the file.**
+
 FAILURE POSTURE. Best-effort and silent: any parse failure, missing git, absent
 ledger, or non-zero git exit ends in exit 0 with nothing written. A telemetry
 hook must never disrupt a workflow, and a missing line is infinitely preferable
@@ -62,18 +75,40 @@ to a broken commit. The one thing it will not do is write a WRONG line.
 
 A ROW IS BORN UNCOMMITTED, and in a linked worktree that is a leak this hook
 cannot close. The row describing commit N cannot be inside commit N, so it waits
-in the working tree for a later commit to sweep it up — which means the LAST row
-of any worktree's life is still uncommitted when the worktree is removed, and
-`git worktree remove --force` discards it with no warning. Measured 2026-09-12:
-nine rows orphaned across five separate rescues in one session, every one
+in the working tree for a later commit to STAGE the ledger — and this repo's own
+Ship rule says never to. `spec-to-pr/references/ship.md` requires path-scoped
+staging and "never expand to `-A`", so the ledger is never among the staged
+paths and NO row is swept up. Measured, three commits with a hook drive between
+each:
+
+    explicit paths (ship.md's rule)  ->  3 of 3 rows left uncommitted
+    git add -A                       ->  1 of 3 rows left uncommitted
+
+So `git worktree remove --force` discards every row that worktree wrote, not
+just its last. Measured 2026-09-12: nine rows orphaned across five separate
+rescues in one session — three from one worktree, two from another — every one
 recovered by somebody noticing rather than by anything checking.
+
+An earlier draft of this paragraph said only the LAST row orphans and called it
+a bounded one-row-per-session leak. That is true only under `git add -A`, which
+the Ship rule forbids, and it understated the problem in the direction that
+makes it look smaller — while being offered as input to the #239 decision.
 
 Stated here rather than fixed here because every candidate fix is a decision
 this hook does not own. Writing to the primary clone's ledger instead would
 dirty a working tree the committer is not in; writing outside git contradicts
 `lib/log_run.py`'s stated choice of an in-repo, git-synced ledger over a
 machine-local one; and dropping the rows that carry no `Measured-by:` would
-delete the denominator the hook exists to supply. Tracked as issue #239.
+delete the denominator the hook exists to supply.
+
+Draining on teardown is the candidate the corrected number argues FOR, and it is
+the one to weigh first: recovering every row a worktree wrote is worth more than
+recovering its last. Its weakness is coverage rather than principle —
+`manual_worktree.py` already refuses to remove a worktree holding uncommitted
+work, and `git worktree remove --force` bypasses that refusal — which is an
+argument that the refusal is incomplete, not that draining is wrong.
+
+Tracked as issue #239.
 
 That posture has one limit worth naming, because a silent under-count is as
 useless as a silent over-count. The commit checks below must never turn "I
