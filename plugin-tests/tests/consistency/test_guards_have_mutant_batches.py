@@ -75,15 +75,13 @@ _EXEMPT = {
     "tests/conformance/test_guards_are_not_vacuous.py":
         "meta-guard: carries seeded-input tests of its own checker instead",
 
-    # GRANDFATHERED, not excused. These guards predate the convention and have
-    # never had a mutant written for them, so nobody has shown they can fail.
-    # They are listed individually — rather than the rule being softened to
-    # "new files only" — so the debt is countable and shrinks visibly. Delete a
-    # line here the moment its batch lands. Tracked in issue #176.
-    "tests/conformance/test_no_hardcoded_plugin_paths.py": "grandfathered",
-    "tests/consistency/test_ledger_names_agree.py": "grandfathered",
-    "tests/consistency/test_marketplace_manifest.py": "grandfathered",
-    "tests/consistency/test_pre_push_is_installed.py": "grandfathered",
+    # GRANDFATHERED: NONE LEFT. All seven guards that predated the convention
+    # now ship a batch (issue #176, groups A and B), so the debt this section
+    # counted is paid and the bound below is 0. The heading stays, empty, so the
+    # next reader sees that "grandfathered" is a closed category rather than an
+    # available one — `test_the_grandfather_list_only_shrinks` now reads
+    # `<= 0`, which turns the ratchet into "no grandfathered exemption may ever
+    # be added again". A new guard needs a batch, not a line here.
 }
 
 
@@ -335,7 +333,17 @@ def test_the_grandfather_list_only_shrinks():
     # meta-guard: its batch mutates `mutate.py` and observes the result through
     # a subprocess run against a sandbox scope, so the observation is external
     # and the pairing is not circular. Its batch header records the probe.
-    assert grandfathered <= 4, (
+    #
+    # 4 -> 0 with the batches for `test_no_hardcoded_plugin_paths.py`,
+    # `test_ledger_names_agree.py`, `test_marketplace_manifest.py` and
+    # `test_pre_push_is_installed.py` (issue #176, group A). The debt is paid.
+    #
+    # ZERO IS A MEANINGFUL BOUND, NOT A DEGENERATE ONE. `0 <= 0` passes; a
+    # single new entry makes it `1 <= 0` and fails. So the ratchet's meaning
+    # changes at this point from "the list only shrinks" to "no grandfathered
+    # exemption may ever be added again", which is the end state this mechanism
+    # was aiming at rather than an accident of arithmetic.
+    assert grandfathered <= 0, (
         f"{grandfathered} grandfathered guards; the bound is the real count at "
         "the last deletion and is only allowed to shrink. A NEW guard needs a "
         "mutant batch, not an exemption — and deleting an entry means lowering "
