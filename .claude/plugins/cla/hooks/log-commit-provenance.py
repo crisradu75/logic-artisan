@@ -41,10 +41,39 @@ invisible without a ledger; this is the column that makes "is the rule actually
 being followed?" a countable question rather than an unfalsifiable one. Same
 posture as `skill`: recorded, never adjudicated here.
 
+OFF UNLESS ASKED FOR. The ledger FILE's existence is the opt-in, and this hook
+never creates it:
+
+    touch cla.io/retro/commit-provenance.jsonl   # on
+    rm    cla.io/retro/commit-provenance.jsonl   # off
+
+Default off is deliberate (issue #219). This is telemetry whose only value is
+realised by running a retro command, so a repo that never runs one was paying a
+recurring cost — including a mid-merge `git checkout` abort, because this is the
+only ledger written by a hook rather than by a skill at a controlled moment — to
+produce a number nobody would read. Gating on the ledger DIRECTORY charged that
+cost against consent given for the other two ledgers, which live in the same
+directory and cost nothing like as much.
+
 FAILURE POSTURE. Best-effort and silent: any parse failure, missing git, absent
-ledger dir, or non-zero git exit ends in exit 0 with nothing written. A telemetry
+ledger, or non-zero git exit ends in exit 0 with nothing written. A telemetry
 hook must never disrupt a workflow, and a missing line is infinitely preferable
 to a broken commit. The one thing it will not do is write a WRONG line.
+
+A ROW IS BORN UNCOMMITTED, and in a linked worktree that is a leak this hook
+cannot close. The row describing commit N cannot be inside commit N, so it waits
+in the working tree for a later commit to sweep it up — which means the LAST row
+of any worktree's life is still uncommitted when the worktree is removed, and
+`git worktree remove --force` discards it with no warning. Measured 2026-09-12:
+nine rows orphaned across five separate rescues in one session, every one
+recovered by somebody noticing rather than by anything checking.
+
+Stated here rather than fixed here because every candidate fix is a decision
+this hook does not own. Writing to the primary clone's ledger instead would
+dirty a working tree the committer is not in; writing outside git contradicts
+`lib/log_run.py`'s stated choice of an in-repo, git-synced ledger over a
+machine-local one; and dropping the rows that carry no `Measured-by:` would
+delete the denominator the hook exists to supply. Tracked as issue #239.
 
 That posture has one limit worth naming, because a silent under-count is as
 useless as a silent over-count. The commit checks below must never turn "I
@@ -174,12 +203,20 @@ def _already_recorded(ledger: Path, sha: str) -> bool:
     and `_head_moved_by_commit` has already gated this call, so the failure
     posture stays "lose a check, never lose a genuine row".
 
-    That OSError branch covers two cases on purpose and must keep doing so. The
-    common one is a ledger that does not exist yet, where permitting the write
-    is the only correct answer — failing closed there would mean no repo ever
-    gets its first row. The rare one is a populated ledger momentarily
-    unreadable, where permitting the write can duplicate a row. Anyone tempted
-    to split them and fail closed on the second reintroduces the first.
+    That OSError branch covers two cases on purpose and must keep doing so. One
+    is a ledger that does not exist yet, where permitting the write is the only
+    correct answer — failing closed there would mean no repo ever gets its first
+    row. The other is a populated ledger momentarily unreadable, where
+    permitting the write can duplicate a row. Anyone tempted to split them and
+    fail closed on the second reintroduces the first.
+
+    That first case is no longer reachable from `main()` — the ledger file's
+    existence is now the opt-in, so by the time the write path runs the file is
+    there. It is stated rather than deleted because this function's contract is
+    not "whatever main() happens to need": it is still the right answer for a
+    caller that passes a path to a ledger that has yet to be created, and the
+    reasoning above is what stops someone re-deriving the wrong fix later.
+    `main()` does not use this wrapper any more; see `_already_recorded_fh`.
 
     Compared as a prefix in either direction, because `rev-parse --short` has no
     fixed width: git recomputes the abbreviation from the object count, so the
@@ -192,12 +229,27 @@ def _already_recorded(ledger: Path, sha: str) -> bool:
     """
     try:
         with ledger.open("rb") as fh:
-            fh.seek(0, os.SEEK_END)
-            size = fh.tell()
-            fh.seek(max(0, size - 4096))
-            chunk = fh.read()
+            return _already_recorded_fh(fh, sha)
     except OSError:
         return False
+
+
+def _already_recorded_fh(fh, sha: str) -> bool:
+    """`_already_recorded`'s body, against a handle the caller already holds.
+
+    Split out so `main()` can read the tail and append through ONE handle, with
+    nothing between the two. The path-taking wrapper above keeps its own
+    contract — including swallowing OSError — because it is the form the unit
+    tests exercise and the form that reads correctly standalone.
+
+    Raises rather than swallows: the caller here is inside the append's own
+    `try`, and a read failure there must take the same exit as a write failure
+    rather than being silently read as "not recorded" and appending anyway.
+    """
+    fh.seek(0, os.SEEK_END)
+    size = fh.tell()
+    fh.seek(max(0, size - 4096))
+    chunk = fh.read()
     lines = [line for line in chunk.splitlines() if line.strip()]
     if not lines:
         return False
@@ -362,12 +414,29 @@ def main() -> int:
     if not root:
         return 0
     ledger_dir = Path(os.environ.get("CLAUDE_RETRO_DIR") or (Path(root) / "cla.io" / "retro"))
-    if not ledger_dir.is_dir():
-        # Never create the tree: a repo that has not run `cla-init` has not opted
-        # into per-repo state, and this hook is not the place to decide it should.
-        return 0
+    ledger = ledger_dir / _LEDGER_NAME
 
-    if _already_recorded(ledger_dir / _LEDGER_NAME, head):
+    # OPT-IN, DEFAULT OFF: the ledger FILE's existence is the consent, and this
+    # hook never creates it. `touch cla.io/retro/commit-provenance.jsonl` turns
+    # it on; deleting the file turns it off.
+    #
+    # This used to gate on the ledger DIRECTORY, which is the wrong granularity
+    # and was reported as such (issue #219). The other two ledgers are written
+    # once per skill run, by the skill, at a controlled moment. This one is
+    # written by a PostToolUse hook on every commit, so it is the only one that
+    # can land mid-merge and abort a `git checkout` — and a repo that wanted
+    # `spec-to-pr-runs.jsonl` had to have `cla.io/retro/`, and therefore got this
+    # one too, whether or not it would ever run `codify-retro`. One ledger's cost
+    # profile was charged against another ledger's consent.
+    #
+    # Why file-presence rather than an env flag or a config key: it reuses the
+    # convention the directory check already established, at the granularity the
+    # report asked for, and it adds no file, no key, and no format. The state IS
+    # the file, so "is this on?" is answered by `ls` rather than by knowing where
+    # to look. `CLAUDE_RETRO_DIR` was the other candidate and is the wrong lever
+    # — it says WHERE a ledger lives, not WHETHER this one is wanted, and
+    # overloading it would conflate the two for all three ledgers at once.
+    if not ledger.is_file():
         return 0
 
     measured = _measured_by(cwd)
@@ -394,8 +463,24 @@ def main() -> int:
     if len(line.encode("utf-8")) > _MAX_LINE_BYTES:
         return 0
 
+    # THE DEDUPE READ AND THE APPEND SHARE ONE HANDLE, and the order matters more
+    # than the handle does. This check used to sit before `_measured_by`, which
+    # put THREE git subprocess calls between deciding "not yet recorded" and
+    # acting on it — `log -1 --format=%B`, `log -1 --pretty=%cI`, and
+    # `rev-parse --abbrev-ref`. Another process committing in that window wrote a
+    # row this one had already decided was absent, and both rows landed.
+    #
+    # Narrowed, NOT closed. Two processes can still both read a tail that lacks
+    # the sha and then both append; nothing here takes a lock, and the remaining
+    # window is the handful of instructions between the read and the write rather
+    # than three process spawns. A lock would close it and is not worth its price
+    # here: it is platform-divergent code in a repo with no CI to exercise both
+    # branches, guarding a duplicate row that costs one over-count in a
+    # denominator. See `_already_recorded`'s last paragraph, which still stands.
     try:
-        with (ledger_dir / _LEDGER_NAME).open("ab") as fh:
+        with ledger.open("a+b") as fh:
+            if _already_recorded_fh(fh, head):
+                return 0
             fh.write(line.encode("utf-8"))
     except OSError:
         return 0
