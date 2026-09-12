@@ -493,6 +493,76 @@ def _far_side_is_a_directory(probe: str) -> bool:
         return _UNDETERMINED_FAR_SIDE_BLOCKS
 
 
+# The two `tool_name` values `hooks.json` routes to this hook's dispatcher.
+# Spelled exactly as its matchers spell them.
+_BASH_TOOL = "Bash"
+_POWERSHELL_TOOL = "PowerShell"
+
+# One remedy per shell, named once. Both were measured -- see `_remedy`.
+_RM_REMEDY = ("Remove the link itself instead, with a plain non-recursive `rm "
+              "<link>` on just that entry.")
+_PS_REMEDY = ("Remove the link itself instead: `Remove-Item -Recurse <link>` (WITHOUT "
+              "-Force -- that is this guard's trigger, and the unforced form is what "
+              "removes a junction without prompting), or `cmd /c rmdir <link>`. Both "
+              "leave the far side untouched.")
+
+
+def _remedy(tool_name: object) -> str:
+    """The "remove the link instead" text, chosen by the CALLER'S SHELL.
+
+    WHY NOT `sys.platform`. That is this hook process's platform, which is
+    `win32` whichever tool invoked it, and `hooks.json` wires the dispatcher to
+    BOTH the `Bash` and `PowerShell` matchers. So a git-bash caller who typed
+    `rm -rf <link>` was handed `Remove-Item -Recurse <link>` -- a command their
+    shell does not have -- and was never told about `rm <link>`, which works.
+    Issue #236. `cmd /c rmdir` was named alongside and does run from git-bash,
+    so it was a wrong FIRST suggestion rather than a dead end, but the first
+    suggestion is the one a reader tries.
+
+    Measured 2026-09-12, `-NonInteractive`, real `mklink /J` junction, canary on
+    the far side. git-bash (`sh .../bash_remedies.sh`, GNU coreutils 8.32 on
+    MINGW64_NT-10.0-26100), PowerShell both editions
+    (`pwsh|powershell -NonInteractive -NoProfile -File .../ps_remedies.ps1`):
+
+        remedy                      git-bash   WinPS 5.1   pwsh 7
+        rm <j>                      works      --          --
+        rmdir <j>                   FAILS      --          --
+        Remove-Item <j>             --         FAILS       works
+        Remove-Item -Force <j>      --         FAILS       works
+        Remove-Item -Recurse <j>    --         works       works
+        cmd /c rmdir <j>            works      works       works
+
+    The far side survived every row. Removing a link is not recursing through
+    it. The two `FAILS` under 5.1 are the `-NonInteractive` prompt.
+
+    So the remedy follows the TOOL, not the platform, and one text serves each
+    tool on every platform it runs on: `rm <link>` is right for the Bash tool on
+    Windows and on POSIX alike, and `Remove-Item -Recurse` is right for the
+    PowerShell tool in both editions.
+
+    THE FALLBACK STAYS ON `sys.platform`, DELIBERATELY. An absent or unrecognised
+    `tool_name` -- an older payload shape, this hook's own older tests, a future
+    tool -- must not default to `rm`, because **`rm` is an alias for
+    `Remove-Item` in PowerShell** (`(Get-Alias rm).Definition` prints
+    `Remove-Item` in both editions), so a blind `rm <link>` is the bare
+    `Remove-Item` that fails under 5.1. Falling back to the platform reproduces
+    the pre-#236 behaviour exactly, and that behaviour was never a dead end --
+    it named `cmd /c rmdir`, which works from every shell here. A wrong guess
+    therefore costs the reader one extra remedy to read, not a way forward.
+
+    STILL ONE REMEDY PER CALLER, NOT A MENU. The previous version of this note
+    argued against listing both "because a message offering a menu is one the
+    reader has to test". That argument is unchanged and is now better served:
+    knowing the shell means naming the command that runs in it, rather than
+    hedging across two.
+    """
+    if tool_name == _BASH_TOOL:
+        return _RM_REMEDY
+    if tool_name == _POWERSHELL_TOOL:
+        return _PS_REMEDY
+    return _PS_REMEDY if sys.platform == "win32" else _RM_REMEDY
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -502,6 +572,13 @@ def main() -> int:
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
     if not isinstance(command, str) or not command.strip():
         return 0
+
+    # Which tool the caller used, and therefore which SHELL the remedy has to
+    # name. Read the same way `warn-wholesale-rewrite.py` reads it. Never
+    # narrowed to a string here: `_remedy` compares against the two values
+    # `hooks.json` routes, and anything else -- absent, a future tool, a
+    # non-string -- falls through to its platform fallback on purpose.
+    tool_name = payload.get("tool_name") if isinstance(payload, dict) else None
 
     # Resolve a relative delete target against the SESSION's directory, not this
     # hook process's. The two differ whenever the session is in a linked
@@ -607,46 +684,12 @@ def main() -> int:
                     "spelling unlinks the link instead, and this guard blocks both rather than "
                     "relying on which one you typed)"
                 )
-                # THE REMEDY IS PLATFORM-SPECIFIC, AND GETTING IT WRONG HERE IS
-                # THE WHOLE COST OF HAVING NO ESCAPE HATCH. This message once
-                # prescribed "a plain non-recursive rm/Remove-Item". The `rm`
-                # half is right. The `Remove-Item` half is WRONG on Windows
-                # PowerShell 5.1: a bare `Remove-Item <junction>` prompts, and
-                # Claude Code's PowerShell tool runs `-NonInteractive`, so it
-                # dies with "Windows PowerShell is in NonInteractive mode" and
-                # removes nothing. `hooks.json` wires that tool to this
-                # dispatcher, so it is a live path, and a blocked caller
-                # following this text got an error instead of a way forward --
-                # the same pathology as issue #220, reintroduced by the change
-                # that claimed to retire it.
-                #
-                # Measured, `-NonInteractive`, against a real junction:
-                #
-                #   remedy                      WinPS 5.1   pwsh 7
-                #   Remove-Item <j>             FAILS       works
-                #   Remove-Item -Force <j>      FAILS       works
-                #   Remove-Item -Recurse <j>    works       works
-                #   cmd /c rmdir <j>            works       works
-                #
-                # The far side survived in every one of those, including the
-                # `-Recurse` forms -- removing the link is not recursing through
-                # it. So `-Recurse` WITHOUT `-Force` is the remedy, on a hook
-                # whose trigger is `-Recurse` WITH `-Force`. That reads like a
-                # contradiction and is not: this guard fires on the recursive
-                # FORCED delete, and the unforced one is what PowerShell needs
-                # to drop a junction without prompting.
-                #
-                # Named per-platform rather than listing both, because a message
-                # offering a menu is one the reader has to test.
-                remedy = (
-                    "Remove the link itself instead: `Remove-Item -Recurse <link>` (WITHOUT "
-                    "-Force -- that is this guard's trigger, and the unforced form is what "
-                    "removes a junction without prompting), or `cmd /c rmdir <link>`. Both "
-                    "leave the far side untouched."
-                    if sys.platform == "win32"
-                    else "Remove the link itself instead, with a plain non-recursive `rm "
-                         "<link>` on just that entry."
-                )
+                # GETTING THE REMEDY WRONG HERE IS THE WHOLE COST OF HAVING NO
+                # ESCAPE HATCH -- a blocked caller has only what this sentence
+                # tells them. It is chosen by the caller's SHELL, not by this
+                # process's platform; `_remedy` carries the measurements and the
+                # reason the fallback is what it is.
+                remedy = _remedy(tool_name)
                 raise _Blocked(
                     f"blocked: recursive+force delete targets '{unresolved}', which is itself a "
                     f"symlink or directory junction. {recursion}{destination} rather than "

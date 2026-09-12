@@ -297,3 +297,69 @@ MUTANTS.append((
     '"removes a junction without prompting). Both "',
     TARGETS,
 ))
+
+# ---------------------------------------------------------------------------
+# Issue #236: the remedy is chosen by the caller's TOOL, not by this process's
+# platform. The four below break that routing in the four places it can break.
+# They are about WHICH text a caller gets; the two above are about WHAT each
+# text says. Both halves are needed -- right text to the wrong shell, or the
+# right shell given wrong text, each leaves a blocked caller stuck, and with no
+# escape hatch that sentence is all they have.
+#
+# ONE MUTANT IS DELIBERATELY ABSENT. Renaming `_POWERSHELL_TOOL`'s value so a
+# PowerShell payload stops matching is UNKILLABLE on Windows: the payload then
+# falls through to the `sys.platform` fallback, which yields the same
+# PowerShell text, so no correct-tree input can tell the two apart. That is the
+# "two candidate rules agree on every real input" case -- the mutant is left
+# out rather than shipped as a permanent survivor.
+# ---------------------------------------------------------------------------
+
+MUTANTS.append((
+    # The defect itself, restored at its root: stop reading `tool_name` and
+    # every caller falls back to the platform, which is `win32` whichever tool
+    # invoked the hook. That is exactly the pre-#236 behaviour -- a git-bash
+    # caller told to run `Remove-Item`.
+    "tool_name is never read, so every caller falls back to the platform remedy",
+    HOOK,
+    '    tool_name = payload.get("tool_name") if isinstance(payload, dict) else None',
+    "    tool_name = None",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The Bash arm stops matching, so a `Bash` payload falls to the platform
+    # fallback and a git-bash caller is handed a PowerShell cmdlet again. The
+    # narrow version of the mutant above.
+    "the Bash arm tests the wrong constant, so git-bash callers get the "
+    "PowerShell remedy",
+    HOOK,
+    "    if tool_name == _BASH_TOOL:",
+    "    if tool_name == _POWERSHELL_TOOL:",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The PowerShell arm hands back the Bash text. Worse than it looks: `rm` is
+    # an alias for `Remove-Item` in PowerShell, so "use `rm <link>`" is the bare
+    # `Remove-Item` that prompts and dies under `-NonInteractive` 5.1. Killed
+    # only because the routing test names the tool explicitly -- the fallback
+    # would otherwise mask it on Windows.
+    "the PowerShell arm returns the Bash remedy, which aliases to the bare "
+    "Remove-Item that fails under 5.1",
+    HOOK,
+    "        return _PS_REMEDY",
+    "        return _RM_REMEDY",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The fallback inverts. An absent or unrecognised `tool_name` on Windows
+    # then yields `rm <link>` -- which, if the caller really was in PowerShell,
+    # is the bare `Remove-Item` that fails. The fallback's whole job is to be
+    # no worse than the pre-#236 behaviour, and inverting it makes it worse.
+    "the platform fallback picks the opposite shell's remedy",
+    HOOK,
+    '    return _PS_REMEDY if sys.platform == "win32" else _RM_REMEDY',
+    '    return _RM_REMEDY if sys.platform == "win32" else _PS_REMEDY',
+    TARGETS,
+))
