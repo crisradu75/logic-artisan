@@ -200,4 +200,33 @@ MUTANTS = [
         "return stored == sha",
         TARGETS,
     ),
+    (
+        # Issue #219, and the gap this batch had: the dedupe's BODY was mutated
+        # but its CALL SITE never was. Neutering the call reproduces the field
+        # report exactly -- one commit, then the ordinary read-only traffic of
+        # a push/verify sequence, and a row re-appended for each. The
+        # `stored == sha` body mutant above cannot reach this: it only fires
+        # once the gate is consulted at all.
+        "the dedupe gate stops being consulted in main(), so every "
+        "commit-shaped call re-appends a row for whatever HEAD already names",
+        HOOK,
+        "if _already_recorded(ledger_dir / _LEDGER_NAME, head):",
+        "if False and _already_recorded(ledger_dir / _LEDGER_NAME, head):",
+        TARGETS,
+    ),
+    (
+        # The OTHER direction, and the one a fix for #219 is most likely to
+        # reach for: suppress whenever the ledger already holds a row, rather
+        # than whenever it holds THIS sha. It deduplicates perfectly and drops
+        # the second commit of every pair -- a suppression bug wearing a
+        # working deduplicator's face, which is the shape CLAUDE.md warns a
+        # green mutation run will not see.
+        "the dedupe suppresses on the mere presence of a previous row instead "
+        "of on a matching sha, so only the first commit in any repo is ever "
+        "recorded",
+        HOOK,
+        "return stored.startswith(sha) or sha.startswith(stored)",
+        "return True",
+        TARGETS,
+    ),
 ]
