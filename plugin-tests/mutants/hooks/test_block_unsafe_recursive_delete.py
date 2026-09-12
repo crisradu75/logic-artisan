@@ -52,6 +52,11 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 HOOK = PLUGIN / "hooks" / "block-unsafe-recursive-delete.py"
 TARGETS = [DEV / "tests" / "hooks" / "test_block_unsafe_recursive_delete.py"]
 
+# Line separator as the HOOK is actually checked out, for the one anchor below
+# that has to span two lines. Hardcoding "\n" makes that anchor silently
+# unmatchable on a CRLF checkout.
+_NL = "\r\n" if b"\r\n" in HOOK.read_bytes() else "\n"
+
 MUTANTS = [
     (
         # Trigger 1 (worktree path): the docstring's own claim is "anywhere in
@@ -311,5 +316,89 @@ MUTANTS.append((
     HOOK,
     "        if exc.errno in _UNNAMEABLE_ERRNOS:",
     "        if False:",
+    TARGETS,
+))
+
+
+# --------------------------------------------------------------------------- #
+# Issue #220: the escape hatch the block message invites, and the orphaned
+# worktree `git worktree remove` cannot clear.
+#
+# Both fixes are about a message that told the caller to do something that did
+# not work. That makes them unusually easy to "fix" vacuously -- the wording
+# changes, a grep-for-the-new-string test goes green, and neither the override
+# nor the branch that selects the message is actually exercised. These five
+# mutants break the MECHANISM rather than the wording.
+# --------------------------------------------------------------------------- #
+
+MUTANTS.append((
+    # The anchor is what separates an assignment from a mention. Without it the
+    # regex matches `ALLOW_UNSAFE_RM=1` anywhere in the command text -- including
+    # a trailing `# ALLOW_UNSAFE_RM=1 ` comment, which a shell treats as data and
+    # which would then silently disarm the whole guard. That is strictly worse
+    # than the bug being fixed: the old defect made the override inert, this one
+    # makes it accidental.
+    "the inline-override regex loses its start-of-segment anchor, so a mere "
+    "mention of ALLOW_UNSAFE_RM=1 disarms the guard",
+    HOOK,
+    '_ALLOW_UNSAFE_RM_PREFIX = re.compile(r"(?:^|[&|;]\\s*)ALLOW_UNSAFE_RM=1[ \\t]")',
+    '_ALLOW_UNSAFE_RM_PREFIX = re.compile(r"ALLOW_UNSAFE_RM=1[ \\t]")',
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The quoted-span strip is the second half of the same property, and it is
+    # the half a reader would delete as redundant -- the anchor "already"
+    # handles it. It does not: a `;` INSIDE a quoted string satisfies the
+    # anchor's separator alternative, so `echo 'x; ALLOW_UNSAFE_RM=1 y'` reads
+    # as a genuine assignment after a separator. Same class as
+    # `_strip_non_command_text` for heredocs, one layer up.
+    "the inline-override scan drops strip_quoted_spans, so an assignment "
+    "quoted as data disarms the guard",
+    HOOK,
+    "if _ALLOW_UNSAFE_RM_PREFIX.search(_strip_quoted_spans(command)):",
+    "if _ALLOW_UNSAFE_RM_PREFIX.search(command):",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # `is False` vs truthiness, and the three-state policy this whole file is
+    # built on. `_is_registered_worktree` returns None for "could not ask", and
+    # `not None` is True -- so the falsy spelling promotes every unanswerable
+    # lookup into an assertion that git does NOT list the worktree, and tells
+    # the caller `git worktree remove` is guaranteed to fail when nobody
+    # checked. This is the exact conflation `_LINK_UNDETERMINED` exists to
+    # prevent one layer down, and the falsy form is the SIMPLER-looking code,
+    # which is what makes it the likely regression.
+    "an unanswerable worktree-registry lookup is read as 'not registered', "
+    "so undetermined takes the orphaned branch",
+    HOOK,
+    "if _is_registered_worktree(cwd, str(resolved), unresolved) is False:",
+    "if not _is_registered_worktree(cwd, str(resolved), unresolved):",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The other direction: the orphaned branch never fires, so the hook is back
+    # to prescribing `git worktree remove` for a directory git does not list --
+    # the dead end issue #220 reported, where the block, the recommendation and
+    # the override left no sanctioned path at all.
+    "the orphaned-worktree branch never fires, restoring the dead end",
+    HOOK,
+    "if _is_registered_worktree(cwd, str(resolved), unresolved) is False:",
+    "if False:",
+    TARGETS,
+))
+
+MUTANTS.append((
+    # The undetermined return itself, at its source rather than at its call
+    # site. A `git` that is missing, times out, or errors must not answer the
+    # registry question. Collapsing this to False is the same defect as the
+    # truthiness mutant above, but planted where a reader tidying up a
+    # `bool | None` signature would plant it.
+    "a failed git invocation reports 'not registered' rather than undetermined",
+    HOOK,
+    "    if r is None or r.returncode != 0:" + _NL + "        return None",
+    "    if r is None or r.returncode != 0:" + _NL + "        return False",
     TARGETS,
 ))

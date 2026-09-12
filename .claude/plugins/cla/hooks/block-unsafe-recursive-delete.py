@@ -48,7 +48,13 @@ sufficiently adversarial command (piped input, a variable holding the path,
 process substitution) can still slip past -- this is a backstop, not a
 sandbox.
 
-Escape hatch: set `ALLOW_UNSAFE_RM=1` for a deliberate exception.
+Escape hatch: `ALLOW_UNSAFE_RM=1`, either exported into the hook process's own
+environment or written as an inline prefix on the command itself
+(`ALLOW_UNSAFE_RM=1 rm -rf <path>`). BOTH are needed. The hook runs as a
+separate process before the command's shell exists, so an inline prefix never
+reaches `os.environ` — yet the inline spelling is the one a caller naturally
+types at the point of failure, and for one release it was silently inert.
+See `_ALLOW_UNSAFE_RM_PREFIX`.
 
 Exit codes:
   0 - allow (no destructive-delete pattern detected, no candidate path trips
@@ -74,6 +80,18 @@ import stat
 import sys
 import time
 from pathlib import Path
+
+# Why this bootstrap is needed: neither the dispatcher's in-process load nor
+# pytest puts the hooks dir at sys.path[0] for this file, so the
+# `_dispatch_lib` import below is made explicit rather than left to depend on
+# how the process happened to start. Copied from `ask-destructive-git.py`,
+# which needs it for the same reason.
+_HOOKS_DIR = str(Path(__file__).resolve().parent)
+if _HOOKS_DIR not in sys.path:
+    sys.path.insert(0, _HOOKS_DIR)
+
+from _dispatch_lib import run_git as _run_git  # noqa: E402
+from _dispatch_lib import strip_quoted_spans as _strip_quoted_spans  # noqa: E402
 
 # A heredoc body (`<<'EOF' ... EOF`, the convention this repo's own
 # commit-message commands use) -- see `_strip_non_command_text` below.
@@ -176,6 +194,24 @@ class _Blocked(Exception):
     """
 
 
+# An inline `ALLOW_UNSAFE_RM=1` env-assignment prefix, at the start of the whole
+# command or of a segment after a shell separator.
+#
+# WHY BOTH THIS AND THE `os.environ` READ. The hook runs as a separate process
+# BEFORE the command's shell exists, so an inline prefix never reaches the
+# hook's own environment. `main()` read only `os.environ`, while the block
+# message told the caller to set `ALLOW_UNSAFE_RM=1` — which reads at the point
+# of failure as something they can type. Measured: `rm -rf <path>` and
+# `ALLOW_UNSAFE_RM=1 rm -rf <path>` returned the identical block. The env read
+# stays, so a genuinely exported variable still works; this closes the spelling
+# the message actually invites. Same shape as `_ALLOW_MERGE_PREFIX` in
+# `ask-destructive-git.py`, and it is scanned through `strip_quoted_spans` for
+# the same reason: a mention inside a quoted string is not an assignment.
+#
+# Anchored so it cannot be satisfied by the string appearing mid-command — it
+# has to sit where a shell would actually treat it as an assignment.
+_ALLOW_UNSAFE_RM_PREFIX = re.compile(r"(?:^|[&|;]\s*)ALLOW_UNSAFE_RM=1[ \t]")
+
 _SHORT_FLAG_CHARS = set("rRfFidvIu")
 
 
@@ -272,6 +308,47 @@ def _extract_target_paths(command: str) -> list[str]:
                     seen.add(p)
                     targets.append(p)
     return targets
+
+
+def _is_registered_worktree(cwd: str, *candidates: str) -> bool | None:
+    """Is any of `candidates` a worktree git currently knows about?
+
+    Three states, and the third is the point: True / False / None for "could not
+    ask". A `git` that is missing, times out, or errors must NOT be read as
+    "not registered" -- that would turn every unanswerable lookup into the
+    orphaned-worktree message, which tells the caller `git worktree remove` is
+    guaranteed to fail when in fact nobody checked.
+
+    WHY THIS EXISTS. The worktree block recommends `git worktree remove <path>`.
+    For a worktree whose `.git` file is already gone, git does not list it and
+    that command fails with "is not a working tree" -- and that is precisely the
+    state in which a directory is left needing manual deletion. So the message
+    sent the caller into a command that could not work, having just blocked the
+    only other tool. Measured in a consuming repo; see issue #220.
+
+    Several candidate spellings are accepted because the caller holds both the
+    resolved and unresolved path and `git worktree list` prints neither
+    reliably: it reports the path as recorded, which may differ from either by
+    case or by a followed reparse point. Comparing every spelling under
+    `os.path.normcase`/`normpath` is the conservative direction -- a false
+    "registered" only means the caller gets the original message, which is the
+    status quo.
+    """
+    r = _run_git(cwd, ["worktree", "list", "--porcelain"])
+    if r is None or r.returncode != 0:
+        return None
+    listed = {
+        os.path.normcase(os.path.normpath(line[len("worktree ") :].strip()))
+        for line in r.stdout.splitlines()
+        if line.startswith("worktree ")
+    }
+    if not listed:
+        # `--porcelain` always prints at least the primary checkout when the
+        # command succeeds, so an empty set means the output shape was not what
+        # this parse assumes. Undetermined, not "nothing registered".
+        return None
+    wanted = {os.path.normcase(os.path.normpath(c)) for c in candidates if c}
+    return bool(listed & wanted)
 
 
 def _is_worktree_path(resolved: Path) -> bool:
@@ -520,6 +597,12 @@ def main() -> int:
     if not isinstance(command, str) or not command.strip():
         return 0
 
+    # Read AFTER the command is in hand, because that is the only place an
+    # inline prefix can be seen -- see `_ALLOW_UNSAFE_RM_PREFIX` for why the
+    # `os.environ` check above is not enough on its own.
+    if _ALLOW_UNSAFE_RM_PREFIX.search(_strip_quoted_spans(command)):
+        return 0
+
     # Resolve a relative delete target against the SESSION's directory, not this
     # hook process's. The two differ whenever the session is in a linked
     # worktree — which is precisely the situation this hook guards, so getting
@@ -593,7 +676,7 @@ def main() -> int:
                     "directory junction is UNKNOWN. Blocking rather than allowing, because an "
                     "unreadable probe and an approved one are indistinguishable from the "
                     "outside. Check the path exists and is readable, or override for a "
-                    "deliberate exception by setting ALLOW_UNSAFE_RM=1 in the environment. "
+                    "deliberate exception by prefixing the command with `ALLOW_UNSAFE_RM=1 `. "
                     "(hook: block-unsafe-recursive-delete.py)"
                 )
             if verdict:
@@ -636,13 +719,36 @@ def main() -> int:
                     "it is a worktree). This is the shape that destroyed unrelated primary-clone "
                     "files in the incident this hook exists for (see memory "
                     "'feedback-worktree-rmrf-junction-risk'). Override for a deliberate exception "
-                    "by setting ALLOW_UNSAFE_RM=1 in the environment. "
+                    "by prefixing the command with `ALLOW_UNSAFE_RM=1 ` (or exporting it). "
                     "(hook: block-unsafe-recursive-delete.py)",
                 )
 
             resolved = Path(unresolved).resolve()
 
             if _is_worktree_path(resolved):
+                # ORPHANED CASE FIRST. When git does not list the target, `git
+                # worktree remove` cannot work on it, so recommending it sends
+                # the caller into a guaranteed "is not a working tree" error
+                # with the raw delete already blocked -- no sanctioned path at
+                # all. `None` (could not ask) falls through to the original
+                # advice deliberately: an unanswered lookup must not promote
+                # itself into an assertion about git's registry.
+                if _is_registered_worktree(cwd, str(resolved), unresolved) is False:
+                    raise _Blocked(
+                        f"blocked: recursive+force delete targets a path under "
+                        f"'.claude/worktrees/' ('{resolved}') that git does NOT list as a "
+                        "worktree -- it is orphaned, so `git worktree remove` would fail with "
+                        "\"is not a working tree\". Do this instead: run `git worktree prune` "
+                        "first, which clears a stale registry entry and may be all that is "
+                        "needed. If the directory is still there afterwards, it has to be "
+                        "removed by hand -- but a worktree can contain junctions/symlinks "
+                        "pointing back into the primary clone, and a raw recursive delete "
+                        "recurses through them and destroys real files elsewhere (see memory "
+                        "'feedback-worktree-rmrf-junction-risk'). So CHECK FOR REPARSE POINTS "
+                        "FIRST, then re-run this command with an inline `ALLOW_UNSAFE_RM=1 ` "
+                        "prefix to proceed deliberately. "
+                        "(hook: block-unsafe-recursive-delete.py)",
+                    )
                 raise _Blocked(
                     f"blocked: recursive+force delete targets a path under .claude/worktrees/ "
                     f"('{resolved}'). Never raw-delete a worktree directory -- use "
@@ -653,8 +759,9 @@ def main() -> int:
                     "'feedback-worktree-rmrf-junction-risk' for why: a worktree can contain "
                     "directory junctions/symlinks pointing back into the primary clone, and a "
                     "raw recursive delete can recurse through them and destroy real files "
-                    "elsewhere in the repo. Override for a deliberate exception by setting "
-                    "ALLOW_UNSAFE_RM=1 in the environment. (hook: block-unsafe-recursive-delete.py)",
+                    "elsewhere in the repo. Override for a deliberate exception by prefixing "
+                    "the command with `ALLOW_UNSAFE_RM=1 `. "
+                    "(hook: block-unsafe-recursive-delete.py)",
                 )
 
             if _contains_symlink(resolved):
@@ -666,8 +773,8 @@ def main() -> int:
                     "'feedback-worktree-rmrf-junction-risk'). Unlink the symlink/junction itself "
                     "first (a plain, non-recursive rm/Remove-Item on just that entry), or delete "
                     "only its non-linked subdirectories individually, or ask before proceeding. "
-                    "Override for a deliberate exception by setting ALLOW_UNSAFE_RM=1 in the "
-                    "environment. (hook: block-unsafe-recursive-delete.py)",
+                    "Override for a deliberate exception by prefixing the command with "
+                    "`ALLOW_UNSAFE_RM=1 `. (hook: block-unsafe-recursive-delete.py)",
                 )
         except _Blocked as blocked:
             # OUTSIDE the OSError swallow below, which is the whole point: a

@@ -673,3 +673,154 @@ def test_malformed_stdin_does_not_block(tmp_path):
         input="not json", capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(tmp_path),
     )
     assert r.returncode == 0
+
+
+# --------------------------------------------------------------------------- #
+# The escape hatch the block message actually invites (issue #220)
+# --------------------------------------------------------------------------- #
+
+def test_an_inline_allow_prefix_disarms_the_guard(tmp_path):
+    """The spelling a caller types at the point of failure, and it was inert.
+
+    The hook runs as its own process BEFORE the command's shell exists, so an
+    inline env-assignment prefix never reaches `os.environ`. `main()` read only
+    `os.environ`, while the block message told the caller to set
+    `ALLOW_UNSAFE_RM=1` -- so `rm -rf <path>` and `ALLOW_UNSAFE_RM=1 rm -rf
+    <path>` returned the identical block and the documented exit did nothing.
+    """
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
+    r = _run(
+        {"tool_input": {"command": f"ALLOW_UNSAFE_RM=1 rm -rf {target}"}},
+        cwd=tmp_path,
+    )
+    assert r.returncode == 0, r.stderr
+
+
+def test_an_inline_allow_prefix_works_after_a_shell_separator(tmp_path):
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
+    r = _run(
+        {"tool_input": {"command": f"echo hi && ALLOW_UNSAFE_RM=1 rm -rf {target}"}},
+        cwd=tmp_path,
+    )
+    assert r.returncode == 0, r.stderr
+
+
+@pytest.mark.parametrize("command", [
+    'echo "run this: ALLOW_UNSAFE_RM=1 rm -rf x" ; rm -rf {t}',
+    "echo 'x; ALLOW_UNSAFE_RM=1 y' ; rm -rf {t}",
+    "rm -rf {t} # ALLOW_UNSAFE_RM=1 ",
+])
+def test_the_allow_prefix_is_not_satisfied_by_a_mention(tmp_path, command):
+    """A quoted or trailing mention is not an assignment a shell would honour.
+
+    Without the quoted-span strip, the second case matches: the `;` inside the
+    string looks like a separator to the anchor. The guard would then be
+    disarmed by text the shell treats as data.
+    """
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
+    r = _run({"tool_input": {"command": command.format(t=target)}}, cwd=tmp_path)
+    assert r.returncode == 2, f"a mention must not disarm the guard: {command!r}"
+
+
+def test_an_inline_prefix_of_anything_but_1_does_not_disarm_the_guard(tmp_path):
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
+    for value in ("0", "true", "11"):
+        r = _run(
+            {"tool_input": {"command": f"ALLOW_UNSAFE_RM={value} rm -rf {target}"}},
+            cwd=tmp_path,
+        )
+        assert r.returncode == 2, f"inline ALLOW_UNSAFE_RM={value!r} must not disarm"
+
+
+# --------------------------------------------------------------------------- #
+# The orphaned worktree: the state `git worktree remove` cannot clear (#220)
+# --------------------------------------------------------------------------- #
+
+def _init_repo(root: Path) -> None:
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "t@example.com"],
+        ["config", "user.name", "t"],
+    ):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+    (root / "seed.txt").write_text("seed", encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "seed"], check=True, capture_output=True
+    )
+
+
+def test_an_orphaned_worktree_is_not_sent_into_git_worktree_remove(tmp_path):
+    """The dead end #220 measured, and the reason it is a dead end.
+
+    A directory under `.claude/worktrees/` with no `.git` file is not in git's
+    registry, so `git worktree remove` fails with "is not a working tree" --
+    and that is exactly the state in which a directory is left needing manual
+    deletion. The hook blocked the raw delete, recommended that command, and
+    named an override that did nothing, leaving no sanctioned path at all.
+    """
+    _init_repo(tmp_path)
+    target = tmp_path / ".claude" / "worktrees" / "orphan"
+    target.mkdir(parents=True)
+
+    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
+
+    assert r.returncode == 2
+    assert "git worktree prune" in r.stderr
+    assert "ALLOW_UNSAFE_RM=1" in r.stderr
+    # The message may NAME `git worktree remove` -- explaining why it cannot
+    # work here is the point. What it must not do is PRESCRIBE it, which is the
+    # phrase the original message uses.
+    assert "use `git worktree remove <path>` instead" not in r.stderr
+    assert "would fail" in r.stderr
+
+
+def test_a_registered_worktree_still_gets_the_git_worktree_remove_advice(tmp_path):
+    """The counterpart, and the one that keeps the fix from being a blanket swap.
+
+    Where git DOES list the worktree, `git worktree remove` is the right tool
+    and the original message is correct. Only the orphaned state changes.
+    """
+    _init_repo(tmp_path)
+    target = tmp_path / ".claude" / "worktrees" / "live"
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "worktree", "add", "-q", str(target), "-b", "wt"],
+        check=True, capture_output=True,
+    )
+
+    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
+
+    assert r.returncode == 2
+    # The PRESCRIPTIVE phrase, not the bare substring. Both messages mention
+    # `git worktree remove` -- the orphan one only to say it would fail -- so
+    # asserting the substring alone passes on either branch and distinguishes
+    # nothing.
+    assert "use `git worktree remove <path>` instead" in r.stderr
+    assert "does NOT list" not in r.stderr
+    assert "git worktree prune" not in r.stderr
+
+
+def test_an_unanswerable_registry_lookup_keeps_the_original_advice(tmp_path):
+    """Undetermined is not "not registered" -- the same policy as `_is_link_like`.
+
+    `tmp_path` is not a git repository, so the lookup errors. Reading that as
+    "git does not list it" would assert `git worktree remove` is guaranteed to
+    fail when nobody actually checked.
+    """
+    target = tmp_path / ".claude" / "worktrees" / "some-change"
+    target.mkdir(parents=True)
+
+    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
+
+    assert r.returncode == 2
+    assert "use `git worktree remove <path>` instead" in r.stderr
+    assert "does NOT list" not in r.stderr
+    assert "git worktree prune" not in r.stderr
+
+
+def test_registry_lookup_reports_undetermined_rather_than_false(tmp_path):
+    assert hook._is_registered_worktree(str(tmp_path), str(tmp_path / "x")) is None
