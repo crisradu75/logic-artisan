@@ -193,7 +193,12 @@ def _repo(tmp_path: Path) -> Path:
     (tmp_path / "f.txt").write_text("x\n", encoding="utf-8")
     git("add", "f.txt")
     git("commit", "-q", "-m", "fix: review round 1")
-    (tmp_path / "cla.io" / "retro").mkdir(parents=True)
+    retro = tmp_path / "cla.io" / "retro"
+    retro.mkdir(parents=True)
+    # OPT IN. The ledger file's existence is the consent (issue #219), so a
+    # fixture that only made the directory would exercise the off path and every
+    # positive assertion below would pass for the wrong reason.
+    (retro / "commit-provenance.jsonl").touch()
     return tmp_path
 
 
@@ -478,14 +483,74 @@ def test_it_writes_nothing_when_the_retro_dir_does_not_exist(tmp_path):
     """A repo that never ran `cla-init` has not opted into per-repo state; the
     hook must not create the tree to satisfy itself."""
     repo = _repo(tmp_path)
+    (repo / "cla.io" / "retro" / "commit-provenance.jsonl").unlink()
     (repo / "cla.io" / "retro").rmdir()
     assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
     assert not (repo / "cla.io" / "retro").exists()
 
 
+def test_the_ledger_is_off_until_its_file_exists(tmp_path):
+    """Default OFF, per issue #219: the directory is not consent for THIS ledger.
+
+    The directory is shared with `spec-to-pr-runs.jsonl` and `codify-runs.jsonl`,
+    which are written once per skill run by the skill itself. This one is written
+    by a hook on every commit and is the only one that can land mid-merge and
+    abort a `git checkout`, so a repo that wanted either of the others used to
+    get this one's cost along with them.
+    """
+    repo = _repo(tmp_path)
+    (repo / "cla.io" / "retro" / "commit-provenance.jsonl").unlink()
+
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+
+    assert not (repo / "cla.io" / "retro" / "commit-provenance.jsonl").exists(), \
+        "the hook must never create the ledger it was not asked for"
+    # The directory survives -- only this ledger is off, not the tree.
+    assert (repo / "cla.io" / "retro").is_dir()
+
+
+def test_touching_the_ledger_file_is_the_opt_in(tmp_path):
+    """The other half of the switch, so neither direction passes vacuously.
+
+    Without this, `test_the_ledger_is_off_until_its_file_exists` is satisfied by
+    a hook that never writes at all.
+    """
+    repo = _repo(tmp_path)
+    ledger = repo / "cla.io" / "retro" / "commit-provenance.jsonl"
+    ledger.unlink()
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert _ledger(repo) == []
+
+    ledger.touch()
+    _git_out(repo, "commit", "-q", "--allow-empty", "-m", "fix: review round 2")
+    assert _run(repo, "git commit -m 'fix: review round 2'").returncode == 0
+
+    rows = _ledger(repo)
+    assert len(rows) == 1, rows
+    assert rows[0]["subject"] == "fix: review round 2"
+
+
+def test_an_empty_ledger_file_takes_its_first_row(tmp_path):
+    """A zero-byte file is the opt-in state, so the first append must work.
+
+    `_already_recorded_fh` reads a tail that is empty here; reading that as
+    "something is already recorded" would mean an opted-in repo never gets a
+    single row.
+    """
+    repo = _repo(tmp_path)
+    ledger = repo / "cla.io" / "retro" / "commit-provenance.jsonl"
+    assert ledger.stat().st_size == 0
+    assert _run(repo, "git commit -m 'fix: review round 1'").returncode == 0
+    assert len(_ledger(repo)) == 1
+
+
 def test_it_is_silent_and_exits_zero_outside_a_git_repo(tmp_path):
     """Best-effort: a telemetry hook must never disrupt a workflow."""
-    (tmp_path / "cla.io" / "retro").mkdir(parents=True)
+    retro = tmp_path / "cla.io" / "retro"
+    retro.mkdir(parents=True)
+    # Opted in, so the silence below is attributable to "not a git repo" rather
+    # than to the ledger switch being off.
+    (retro / "commit-provenance.jsonl").touch()
     r = _run(tmp_path, "git commit -m 'x'")
     assert r.returncode == 0
     assert _ledger(tmp_path) == []
@@ -818,3 +883,71 @@ def test_a_valueless_trailer_is_not_resurrected_by_a_later_indented_line(tmp_pat
     row = _ledger(repo)[-1]
     assert row["measured_by_count"] == 0
     assert row["measured_by"] == []
+
+
+# ---------- the dedupe read and the append share one handle (#219) ----------
+
+
+def test_the_dedupe_reads_the_ledger_as_it_is_at_write_time(tmp_path):
+    """The property the one-handle order buys, stated as behaviour.
+
+    The check used to run before `_measured_by`, putting three git subprocess
+    calls between "not yet recorded" and acting on it. A row appended by another
+    process inside that window was invisible, and both rows landed.
+
+    This pins the narrower claim the fix actually supports: a read through the
+    handle the append will use sees whatever is on disk NOW, including a row
+    written after the handle was opened. It does not claim the race is closed --
+    nothing here takes a lock, and two processes can still both read a tail
+    lacking the sha before either writes.
+    """
+    ledger = tmp_path / "commit-provenance.jsonl"
+    ledger.write_text('{"sha": "aaaa111"}\n', encoding="utf-8")
+
+    with ledger.open("a+b") as fh:
+        assert not mod._already_recorded_fh(fh, "bbbb222")
+        # Another process commits and records, after our handle was opened.
+        with ledger.open("ab") as other:
+            other.write(b'{"sha": "bbbb222"}\n')
+        assert mod._already_recorded_fh(fh, "bbbb222"), \
+            "the check must read current state, not a snapshot from open time"
+
+
+def test_the_handle_form_and_the_path_form_agree(tmp_path):
+    """Splitting the body must not let the two forms drift.
+
+    `main()` uses the handle form; the unit tests and any standalone caller use
+    the path form. A divergence would be silent -- the hook would dedupe on one
+    rule while every test asserted the other.
+    """
+    ledger = tmp_path / "commit-provenance.jsonl"
+    for content, sha, expected in [
+        ("", "abc1234", False),                                  # empty: opted in, no rows yet
+        ('{"sha": "abc1234"}\n', "abc1234", True),               # exact
+        ('{"sha": "abc1234"}\n', "abc12345", True),              # stored is a prefix
+        ('{"sha": "abc12345"}\n', "abc1234", True),              # sha is a prefix
+        ('{"sha": "abc1234"}\n', "def5678", False),              # different commit
+        ('not json\n', "abc1234", False),                        # corrupt last row
+        ('{"sha": "abc1234"}\n{"sha": "def5678"}\n', "abc1234", False),  # not the LAST row
+    ]:
+        ledger.write_text(content, encoding="utf-8")
+        via_path = mod._already_recorded(ledger, sha)
+        with ledger.open("rb") as fh:
+            via_handle = mod._already_recorded_fh(fh, sha)
+        assert via_path == via_handle == expected, (content, sha, via_path, via_handle)
+
+
+def test_an_unreadable_ledger_at_write_time_writes_nothing(tmp_path):
+    """The handle form raises where the path form swallows, and that is the point.
+
+    Inside `main()` the read shares the append's `try`, so a read failure takes
+    the same exit as a write failure. Swallowing it there would read as "not
+    recorded" and append anyway -- turning an unreadable ledger into a duplicate
+    rather than into silence.
+    """
+    class _Boom:
+        def seek(self, *a):
+            raise OSError("unreadable")
+
+    with pytest.raises(OSError):
+        mod._already_recorded_fh(_Boom(), "abc1234")

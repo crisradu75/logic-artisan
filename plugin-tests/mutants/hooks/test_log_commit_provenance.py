@@ -210,8 +210,35 @@ MUTANTS = [
         "the dedupe gate stops being consulted in main(), so every "
         "commit-shaped call re-appends a row for whatever HEAD already names",
         HOOK,
-        "if _already_recorded(ledger_dir / _LEDGER_NAME, head):",
-        "if False and _already_recorded(ledger_dir / _LEDGER_NAME, head):",
+        "            if _already_recorded_fh(fh, head):",
+        "            if False and _already_recorded_fh(fh, head):",
+        TARGETS,
+    ),
+    (
+        # Issue #219's other half: the opt-in. Reverting the gate to the LEDGER
+        # DIRECTORY is the defect as reported -- a repo that wanted
+        # `spec-to-pr-runs.jsonl` had to have `cla.io/retro/`, and therefore got
+        # this hook's cost too. Not a neutering mutant: this is the previous
+        # implementation, which passed every test in this file before the fixture
+        # started opting in, so it is exactly the "simpler form that is wrong"
+        # CLAUDE.md warns a green run will not see.
+        "the opt-in reverts to directory granularity, so any repo with a "
+        "cla.io/retro/ gets this ledger whether or not it asked for this one",
+        HOOK,
+        "    if not ledger.is_file():",
+        "    if not ledger.parent.is_dir():",
+        TARGETS,
+    ),
+    (
+        # The other direction, and the one a careless fix reaches for: gate on
+        # nothing at all. The hook then CREATES the ledger in a repo that never
+        # opted in, which is the behaviour the directory check was originally
+        # written to prevent and which `a+b` would now do silently.
+        "the opt-in stops being consulted, so the hook creates the ledger in a "
+        "repo that never asked for it",
+        HOOK,
+        "    if not ledger.is_file():",
+        "    if False and not ledger.is_file():",
         TARGETS,
     ),
     (
