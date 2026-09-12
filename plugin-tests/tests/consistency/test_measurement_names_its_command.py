@@ -60,7 +60,7 @@ a reviewer can falsify later. The adoption question — whether trailers are
 actually being written — is answered by the ledger column in
 `hooks/log-commit-provenance.py`, not here.
 
-So the three constants below are properties of the rule's WORDING. Each is a
+So the constants below are properties of the rule's WORDING. Each is a
 clause a rewrite could drop while leaving something that still reads like the
 rule:
 
@@ -71,6 +71,20 @@ rule:
 - `_NO_NULL` — that a change asserting nothing writes no trailer, rather than a
   `Measured-by: none` line. A null certification is the ceremony failure this
   whole design is aimed at: it reads as evidence that a check happened.
+- `_SAME_TREE` — that a pair asserting SAMENESS comes from one tree. A
+  before/after delta is deliberately NOT caught: it is two trees by
+  construction. Per-trailer verifiability does not reach the claim a pair
+  makes: both commands can be real, both numbers true, and the sameness
+  between them measured on nothing. Added for issue #208, whose example pairs
+  4906 and 4894 from different trees and asserts "same pass/skip counts",
+  citing a third run that appears nowhere.
+
+The first three are `_MARKERS`, and the window below proves they are stated
+TOGETHER as one rule. `_SAME_TREE` is checked on its own instead, by
+`test_every_family_file_states_the_comparison_clause`: it has to be PRESENT,
+which is a different property, and it was briefly a fourth marker — that took
+window slack from 356 to 164 characters and pinned it no harder. Adjacency is a
+budget; presence is not.
 
 Two design decisions, each forced by something measured rather than assumed:
 
@@ -157,6 +171,7 @@ _FORMAT = (
 )
 _TWO_EXITS = "run the command now, or delete the claim"
 _NO_NULL = "never `measured-by: none`"
+_SAME_TREE = "must come from one tree"
 _MARKERS = (_FORMAT, _TWO_EXITS, _NO_NULL)
 
 _MAX_WINDOW = 1000
@@ -298,6 +313,15 @@ def test_the_declared_family_matches_the_tree():
     assert len(_MARKERS) == 3 and all(_MARKERS), (
         f"_MARKERS must hold three non-empty phrases, got {_MARKERS!r}"
     )
+    # Pinned to its exact value, for the same reason `_TRAILER` is pinned above.
+    # The presence check this feeds is a substring test over prose that talks
+    # about trees constantly, so a weakened phrase — "tree", "same" — would be
+    # satisfied by text that states no such rule, and the check would pass
+    # vacuously while the clause was gone.
+    assert _SAME_TREE == "must come from one tree", (
+        f"_SAME_TREE is pinned to its exact phrase; got {_SAME_TREE!r}. Weakening "
+        "it makes `test_every_family_file_states_the_comparison_clause` vacuous"
+    )
     assert _MAX_WINDOW > 0 and _TRAILER and _CHOKEPOINT
     assert _TRAILER != "measured:", (
         "the token must stay hyphenated: bare `Measured:` is already ordinary "
@@ -371,6 +395,41 @@ def test_every_family_file_states_the_whole_rule_at_the_chokepoint():
     # has no break — so it passes with _FAMILY emptied, having read no file.
     assert seen == set(_FAMILY) and len(seen) >= 4, (
         f"checked {sorted(seen)}; expected all {len(_FAMILY)} declared files"
+    )
+
+
+def test_every_family_file_states_the_comparison_clause():
+    """Issue #208: per-trailer verifiability does not reach the claim a PAIR makes.
+
+    Two trailers can each name a real command and hold a true number while the
+    pair asserts a third thing — that conditions matched — with nothing behind
+    it. The issue's worked example pairs 4906 and 4894 from different trees,
+    asserts "same pass/skip counts", and cites a comparison run that appears
+    nowhere.
+
+    Checked here rather than as a fourth `_MARKERS` entry. The window proves the
+    core clauses are stated TOGETHER; this clause has to be PRESENT, which is a
+    different property — and marking it charged the adjacency budget, taking
+    window slack from 356 to 164 characters without pinning it any harder.
+
+    What it does NOT forbid is a before/after delta, which is two trees by
+    construction and is the normal way to state a speedup or a count change. The
+    clause is about a pair asserting SAMENESS, so the assertion below is the
+    sameness phrase, not the word "comparison".
+    """
+    missing = [
+        rel for rel in _FAMILY
+        if _SAME_TREE not in _path(rel).read_text(encoding="utf-8").lower()
+    ]
+    assert not missing, (
+        f"{missing} state the measurement rule without the comparison clause "
+        f"({_SAME_TREE!r}). A pair of numbers asserting sameness across two trees "
+        "is the shape issue #208 reports: every trailer individually verifiable, "
+        "and the claim between them measured on nothing."
+    )
+    assert len(_FAMILY) >= 4, (
+        f"_FAMILY holds {len(_FAMILY)} files; the loop above checks nothing it "
+        "does not declare, so the floor travels with it"
     )
 
 
