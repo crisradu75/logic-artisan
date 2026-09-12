@@ -14,7 +14,7 @@
         "source": "git-subdir",
         "url": "https://github.com/crisradu75/logic-artisan",
         "path": ".claude/plugins/cla",
-        "ref": "cla--v1.0.1"
+        "ref": "cla--v1.1.0"
       }
     }
   ]
