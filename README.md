@@ -82,7 +82,7 @@ plugin-tests/                  the plugin's tests — one pytest scope, NOT publ
 .claude/plugins/cla/           everything below here IS published, and nothing else is
   .claude-plugin/plugin.json   manifest
   README.md                    the harness's scope + capabilities, by life-cycle phase
-  skills/                      20 workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
+  skills/                      21 workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
   skills/_shared/              references + scripts that several skills share (not a skill)
   agents/                      helper agents (doc-sweeper, fact-gatherer)
   hooks/                       always-on guard hooks (blocks, asks, warns) + dispatchers

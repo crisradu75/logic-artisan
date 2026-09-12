@@ -298,13 +298,16 @@ ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the c
 The discipline throughout: log every run now, build the analyzer only once the ledger justifies it
 (several `*-retro` skills are deliberately not built yet — see issue #174).
 
-Two utilities worth knowing at any phase:
+Three utilities worth knowing at any phase:
 
 - **`right-model`** — describe a task, get the cheapest model + effort combo that can plausibly do
   it well, and optionally start it with those settings. Bias is downward; it escalates only on a
   concrete signal.
 - **`save-permissions`** — persist tool permissions granted this session to
   `.claude/settings.local.json`, so the next session doesn't re-prompt.
+- **`diagnose`** — find a failure's cause rather than guessing at fixes: build a deterministic
+  pass/fail loop, rank falsifiable hypotheses before touching anything, write the regression test
+  before the fix. Both Test phases escalate to it after two rounds spent on one stated cause.
 
 ## 10. Adopting CLA in another repo
 
@@ -488,6 +491,7 @@ discovery for every consumer.
 | Run a batch of spec'd changes unattended | `multi-pr` |
 | Work in parallel without collisions | `/cla:new-worktree`, at any point in a session |
 | Pick the cheapest adequate model for a task | `right-model` |
+| Stop guessing at a stubborn failure | `diagnose` |
 | Stop re-approving the same permissions | `save-permissions` |
 | Get a whole-repo health review | `project-review` |
 | Capture this session's lessons | `codify-learnings` |

@@ -20,7 +20,7 @@ MUTANTS = [
     (
         "README understates the skill count",
         REPO / "README.md",
-        "20 workflow skills",
+        "21 workflow skills",
         "18 workflow skills",
         TARGETS,
     ),

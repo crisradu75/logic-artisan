@@ -105,14 +105,31 @@ Measured, first marker to last, and from the nearest preceding pre-commit check:
 
     file                             span   gap   marker_occ
     lite-pr/SKILL.md                  644  1430    1, 1, 1
-    spec-to-pr/SKILL.md               487   418    1, 1, 1
-    spec-to-pr/references/ship.md     644  1952    1, 1, 1
+    spec-to-pr/SKILL.md               487   760    1, 1, 1
+    spec-to-pr/references/ship.md     644  2538    1, 1, 1
     spec-to-pr/references/revise.md   626   466    1, 1, 1
 
 Command: `_best_window` and `_occurrences` below, over the four files `_FAMILY`
-declares. The window cap is set to 1000, clearing the widest real span (644)
-with ~55% headroom; the chokepoint-gap bound is set to 2600, clearing the widest
-real gap (1952) with ~33%. Both literals live once, at their assignments below.
+declares — and `test_the_measured_table_above_is_still_the_real_one` re-derives
+every cell on each run, so this table cannot go stale without failing. The window
+cap is 1000, clearing the widest real span (644) by 356 characters; the
+chokepoint-gap bound is 2600, clearing the widest real gap (2538) by **62
+characters**. Both literals live once, at their assignments below.
+
+THAT GAP HEADROOM IS 2.4%, AND IT IS THE NUMBER TO READ BEFORE EDITING. One
+added sentence at `ship.md` §2a's pre-commit stop will breach it. That is not a
+reason to raise the bound — the bound is what makes the rule part of the stop
+rather than advice filed near it. It is a reason to put new text at that stop
+somewhere other than between `git_state.py` and the measurement rule, or to
+trim while adding.
+
+This table was stale once, which is why the test now derives it. The `[DEBUG-`
+scan added to `ship.md` §2a moved two rows (`spec-to-pr/SKILL.md` 418→760,
+`ship.md` 1952→2538) and the docstring still claimed the old figures and ~33%
+headroom. Nothing failed: the guard checks the tree against its bounds, never
+its own prose against the tree. A docstring stating a measurement is a fact with
+no guard — the same defect this whole file exists to prevent in the plugin,
+reproduced inside the file that prevents it.
 
 Every looping test carries its own floor, in the same function. A floor in a
 separate test function is coupled to nothing: a `-k`, a skip, or a collection
@@ -125,6 +142,7 @@ produced it".
 from __future__ import annotations
 
 import itertools
+import re
 import sys
 from pathlib import Path
 
@@ -405,6 +423,85 @@ def test_the_guard_notices_when_its_own_state_is_gutted(
     assert _surviving(_CONTENT_CHECKS) < len(_CONTENT_CHECKS), (
         f"every check still passed with {name} — the guard is vacuous under this "
         "tampering"
+    )
+
+
+def _measured_row(rel: str) -> tuple[int, int, tuple[int, ...]]:
+    """`(span, gap, marker_occurrences)` for one family file, derived the same
+    way `_why_not` derives them — lower-cased text, and the gap measured from the
+    nearest PRECEDING chokepoint rather than the first one in the file."""
+    low = _path(rel).read_text(encoding="utf-8").lower()
+    span, start = _best_window(low)
+    preceding = [i for i in _occurrences(low, _CHOKEPOINT.lower()) if i < start]
+    gap = start - max(preceding)
+    return span, gap, tuple(len(_occurrences(low, m)) for m in _MARKERS)
+
+
+def test_the_measured_table_above_is_still_the_real_one():
+    """This module's docstring states a span/gap per family file. Re-derive every
+    cell and fail when one has moved.
+
+    WHY THIS EXISTS. The table was stale for exactly one change: adding the
+    `[DEBUG-` scan to `ship.md` §2a moved two gaps (418→760 and 1952→2538) and
+    the docstring kept claiming the old pair plus ~33% headroom, while real
+    headroom had fallen to 62 characters. Every test here passed throughout,
+    because they all check the TREE against the bounds and none checks the
+    PROSE against the tree.
+
+    That is this file's own subject turned inward: a measurement written down
+    without the command that reproduces it is a fact with no guard. The fix is
+    the one the plugin is held to — derive it, or do not state it.
+
+    The docstring stays rather than being deleted in favour of a bare command,
+    because the gap figure is what a future editor needs BEFORE deciding where
+    to put a new sentence, and a number nobody can see until they run something
+    is a number nobody reads.
+    """
+    rows = re.findall(
+        r"^\s{4}(\S+)\s+(\d+)\s+(\d+)\s+([\d, ]+)$", __doc__, re.M
+    )
+    assert len(rows) == len(_FAMILY), (
+        f"the docstring table has {len(rows)} rows for {len(_FAMILY)} family "
+        "files — a row was added, dropped, or reformatted out of this parse"
+    )
+
+    drifted = []
+    for rel, span_s, gap_s, occ_s in rows:
+        assert rel in _FAMILY, f"docstring table names {rel!r}, which is not family"
+        span, gap, occ = _measured_row(rel)
+        claimed_occ = tuple(int(n) for n in occ_s.replace(" ", "").split(","))
+        if (span, gap, occ) != (int(span_s), int(gap_s), claimed_occ):
+            drifted.append(
+                f"  {rel}: docstring says span={span_s} gap={gap_s} "
+                f"occ={claimed_occ}; measured span={span} gap={gap} occ={occ}"
+            )
+    assert not drifted, (
+        "this module's docstring table no longer matches the tree:\n"
+        + "\n".join(drifted)
+        + "\n\nUpdate the table AND the headroom sentence below it."
+    )
+
+
+def test_the_stated_gap_headroom_is_the_real_one():
+    """The docstring's headroom figure, checked the same way as the table.
+
+    Separate from the table test on purpose: the headroom sentence is the part
+    an editor actually acts on, and it is stated in two places (characters and a
+    percentage). A reader who trusts a stale "~33%" adds a paragraph that a
+    correct "2.4%" would have stopped.
+    """
+    widest = max(_measured_row(rel)[1] for rel in _FAMILY)
+    slack = _MAX_CHOKEPOINT_GAP - widest
+    assert f"widest real gap ({widest})" in __doc__, (
+        f"the docstring no longer states the widest real gap as {widest}"
+    )
+    assert f"by **{slack}\ncharacters**" in __doc__ or f"by **{slack} characters**" in __doc__, (
+        f"the docstring no longer states the gap slack as {slack} characters"
+    )
+    pct = f"{slack / widest * 100:.1f}%"
+    assert pct in __doc__, (
+        f"the docstring no longer states the gap headroom as {pct} "
+        f"(slack {slack} over widest gap {widest})"
     )
 
 

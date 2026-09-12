@@ -69,6 +69,7 @@ and invoked bare as `/release`.
 | | `report-upstream` | you or Claude | File a defect in CLA's own portable core as an issue against the canonical source |
 | | `checkpoint` | you or Claude | Compact a session into a resumable briefing (`cla.io/checkpoints/`) |
 | **Any phase** (utility) | `right-model` | you or Claude | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
+| | `diagnose` | you or Claude | Find a failure's cause instead of guessing: deterministic loop, ranked falsifiable hypotheses, regression test before the fix. Escalated from either Test phase after two rounds on one cause |
 
 **"Invoked by" is derived, not curated.** A skill reads **you only** exactly when its
 `SKILL.md` frontmatter sets `disable-model-invocation: true`. Every skill that carries it is an
