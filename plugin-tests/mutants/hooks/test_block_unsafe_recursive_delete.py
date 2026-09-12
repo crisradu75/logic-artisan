@@ -263,3 +263,37 @@ MUTANTS.append((
     "        if False:",
     TARGETS,
 ))
+
+# --------------------------------------------------------------------------- #
+# The remedy the block message prescribes. With no escape hatch, a wrong remedy
+# leaves a blocked caller with nowhere to go -- issue #220's pathology, which
+# the first version of this shrink reintroduced.
+# --------------------------------------------------------------------------- #
+
+MUTANTS.append((
+    # The exact defect a review found. Measured `-NonInteractive` against a real
+    # junction, a bare `Remove-Item <junction>` FAILS under Windows PowerShell
+    # 5.1 -- it prompts, and the PowerShell tool `hooks.json` wires to this
+    # dispatcher runs non-interactive, so it removes nothing and reports
+    # "Windows PowerShell is in NonInteractive mode".
+    #
+    # Restoring that wording is the most likely future regression here, because
+    # it reads as the tidier, more symmetric sentence.
+    "the Windows remedy reverts to a bare non-recursive Remove-Item, which "
+    "fails under PowerShell 5.1 and leaves the caller with no way forward",
+    HOOK,
+    '"Remove the link itself instead: `Remove-Item -Recurse <link>` (WITHOUT "',
+    '"Remove the link itself instead, with a plain non-recursive rm/Remove-Item "',
+    TARGETS,
+))
+
+MUTANTS.append((
+    # Drops the fallback that works on both PowerShell editions, leaving only
+    # the counter-intuitive `-Recurse`-without-`-Force` form -- exactly the case
+    # where a reader wants a second option they can trust.
+    "the cmd /c rmdir fallback is dropped from the Windows remedy",
+    HOOK,
+    '"removes a junction without prompting), or `cmd /c rmdir <link>`. Both "',
+    '"removes a junction without prompting). Both "',
+    TARGETS,
+))

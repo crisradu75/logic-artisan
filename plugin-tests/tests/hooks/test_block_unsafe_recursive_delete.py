@@ -253,10 +253,16 @@ def test_there_is_no_escape_hatch(tmp_path):
     `os.environ` — and the attempt to make that spelling work opened five new
     destructive-allow paths, two critical (PR #231, closed).
 
-    No hatch is needed now. The one trigger left fires only on a link, and its
-    message gives a remedy that always works: a plain non-recursive delete of
-    just that entry. This test pins the absence, because an env-read hatch is
-    exactly the kind of thing that gets added back "for convenience".
+    No hatch is needed now, PROVIDED the block message names a remedy that runs
+    on the caller's platform. That proviso is load-bearing and was wrong in the
+    first version of this change: "a plain non-recursive rm/Remove-Item" is
+    correct for `rm` and fails under Windows PowerShell 5.1, where a bare
+    `Remove-Item <junction>` prompts and the `-NonInteractive` PowerShell tool
+    removes nothing. With no override, a caller who follows a broken remedy has
+    nowhere to go -- which is issue #220's pathology.
+    `test_the_block_message_names_a_remedy_that_works` is the counterpart that
+    pins the remedy; this one pins only the hatch's absence, because an env-read
+    hatch is exactly the kind of thing that gets added back "for convenience".
 
     Both the environment form and the inline-prefix form are checked.
     """
@@ -281,6 +287,66 @@ def test_there_is_no_escape_hatch(tmp_path):
     assert "ALLOW_UNSAFE_RM" not in r.stderr, (
         "the block message must not advertise a hatch that no longer exists"
     )
+
+
+def test_the_block_message_names_a_remedy_that_works(tmp_path):
+    """With no escape hatch, a wrong remedy leaves the caller with nowhere to go.
+
+    That is not hypothetical. The first version of this shrink prescribed "a
+    plain non-recursive rm/Remove-Item on just that entry" for both platforms.
+    Measured `-NonInteractive` against a real junction:
+
+        remedy                      WinPS 5.1   pwsh 7
+        Remove-Item <j>             FAILS       works
+        Remove-Item -Force <j>      FAILS       works
+        Remove-Item -Recurse <j>    works       works
+        cmd /c rmdir <j>            works       works
+
+    `hooks.json` wires the `-NonInteractive` PowerShell tool to this hook's
+    dispatcher, so the failing rows are a live path, and a blocked caller
+    following the message got "Windows PowerShell is in NonInteractive mode"
+    instead of a way forward -- issue #220's pathology, reintroduced by the
+    change whose own body claimed to retire it.
+
+    WHAT THIS TEST CAN AND CANNOT DO. It pins that the message names the
+    remedy known to work on this platform, so deleting or rewording it goes
+    red. It CANNOT prove a future wording actually runs -- that needs a real
+    junction and a real shell, which is how the defect was found in the first
+    place. Anyone editing the remedy re-measures it; this only stops the
+    measured answer from silently disappearing.
+    """
+    real = tmp_path / "real-content"
+    real.mkdir()
+    target = tmp_path / "the-link"
+    make_dir_alias(target, real)
+
+    r = _run({"tool_input": {"command": f"rm -rf {target}"}}, cwd=tmp_path)
+    assert r.returncode == 2, r.stderr
+
+    if sys.platform == "win32":
+        # `-Recurse` WITHOUT `-Force`. Not a contradiction with the trigger:
+        # the guard fires on recursive+FORCED, and the unforced form is what
+        # drops a junction without prompting.
+        assert "Remove-Item -Recurse <link>" in r.stderr, (
+            "the PowerShell remedy must be the unforced -Recurse form, which is "
+            f"the only Remove-Item spelling that works under 5.1: {r.stderr}"
+        )
+        # The remedy must not acquire `-Force`, which reintroduces the prompt.
+        # Checked as the forced COMMAND rather than by looking for the token
+        # near the remedy: the message says "WITHOUT -Force" on purpose, and an
+        # earlier version of this assertion failed on that explanation.
+        assert "Remove-Item -Recurse -Force <link>" not in r.stderr, (
+            "the prescribed remedy must not be the forced form"
+        )
+        assert "cmd /c rmdir <link>" in r.stderr, "name the fallback that always works"
+    else:
+        assert "rm <link>" in r.stderr, (
+            f"the POSIX remedy must name the plain non-recursive rm: {r.stderr}"
+        )
+
+    # Neither platform may be told to use a bare non-recursive Remove-Item,
+    # which is the wording that failed.
+    assert "non-recursive rm/Remove-Item" not in r.stderr
 
 
 def test_blocks_a_delete_whose_target_is_itself_a_junction(tmp_path):

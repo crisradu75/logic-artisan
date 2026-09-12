@@ -46,15 +46,41 @@ across every session transcript, counted 2026-09-12 by real absolute path,
 were 86 in this repo -- which builds and tests the hook, so dominated by its
 own test runs -- and 2 in the one consuming repo.
 
+AND THE REMOVED WALK WAS GUARDING A SHAPE `rm` DOES NOT FOLLOW. Measured on
+GNU coreutils 9.7 and on real NTFS junctions: `rm -rf <a directory containing
+a junction>` leaves the far side intact, with or without a trailing slash.
+Only the link AS the target destroys anything, and only then via the trailing
+slash. So trigger 2 cost a scan budget, a fail-open exhaustion path and a
+bind-mount blind spot to defend against something that did not reproduce as
+destructive, while the trigger kept here defends the one shape that does.
+
+That measurement does not reconcile with the 2026-07-19 incident, and this
+docstring does not pretend it does. `rm` from git-bash/MSYS is a different
+binary from coreutils 9.7 and is the likely explanation; it was not
+re-measured, and the question is left open rather than settled in either
+direction.
+
 So this file now does one thing, on the shape the incident actually had.
 A narrow guard that is right is worth more than a broad one that is not.
 
-There is no escape hatch, and none is needed: the remedy the block message
-gives -- a plain, non-recursive `rm`/`Remove-Item` on just that entry -- is
-correct on both platforms and always available. `git worktree remove` is no
-longer recommended by any message here, which also retires the orphaned-worktree
-dead end of issue #220: this hook no longer fires on a worktree path merely for
-being one.
+There is no escape hatch. What replaces it is a block message that names a
+remedy which actually runs on the platform the caller is on -- and that is a
+sharper requirement than it sounds, because with no override a wrong remedy
+leaves the caller with nowhere to go.
+
+The first version of this shrink got it wrong in exactly that way. It
+prescribed "a plain non-recursive rm/Remove-Item", which is right for `rm` and
+wrong for Windows PowerShell 5.1, where a bare `Remove-Item <junction>` prompts
+and the `-NonInteractive` PowerShell tool therefore fails with "Windows
+PowerShell is in NonInteractive mode" having removed nothing. See the `remedy`
+branch in `main` for the measured table and for why `-Recurse` WITHOUT `-Force`
+is the PowerShell answer. Anyone editing that message must re-measure it;
+`test_the_block_message_names_a_remedy_that_works` pins the requirement but
+cannot prove a new wording runs.
+
+`git worktree remove` is no longer recommended by any message here, which also
+retires the orphaned-worktree dead end of issue #220: this hook no longer fires
+on a worktree path merely for being one.
 
 Detection is best-effort, matching this repo's other Bash-command hooks
 (block-cd-in-bash.py, block-worktree-path-escape.py): the command is split on
@@ -120,6 +146,16 @@ def _strip_non_command_text(command: str) -> str:
 # cannot match anything it is handed -- coverage removed silently rather than
 # deliberately. Unwiring the matcher instead was not an option either: it
 # carries six leaf hooks, and only this one was under review.
+#
+# SAID PLAINLY, BECAUSE "KEPT" OVERSTATES IT: the PowerShell detector misses
+# most spellings PowerShell actually binds. `_is_powershell_recursive_force`
+# uses `re.fullmatch` on the canonical parameter names, and PowerShell binds
+# any unambiguous prefix -- `-Rec -For`, `-r -Force` and friends all ALLOW.
+# Measured against a real junction, and pre-existing rather than introduced
+# here (#221 lists the family). A prefix match would close it. It is left
+# alone because this change only narrows, and widening a detector is the kind
+# of edit that earned this hook two bad reviews; keeping the arm is a decision
+# not to remove coverage, not a claim that the coverage is good.
 _RM_ALIASES = {"rm", "remove-item", "ri", "del", "erase", "rd", "rmdir"}
 _PS_PATH_PARAMS = {"-path", "-literalpath"}
 
@@ -550,23 +586,71 @@ def main() -> int:
                 destination = (
                     f" -- here, '{points_at}' --" if points_at != Path(unresolved) else ""
                 )
-                # The recursing-through behaviour is REAL on Windows/git-bash and
-                # is the incident. On POSIX it depends on the spelling: bare
-                # `rm -rf link` unlinks the link, while `rm -rf link/` reaches
-                # through. The message must not assert the Windows behaviour as
-                # universal — on POSIX that tells a developer their safe command
-                # caused the data loss and prescribes what they just typed.
+                # THE TRAILING SLASH IS THE DISCRIMINATOR, NOT THE PLATFORM.
+                # This branched on `sys.platform` and asserted that Windows
+                # recurses through unconditionally while POSIX only does so with
+                # a trailing slash. Measured on GNU coreutils 9.7 and on real
+                # NTFS junctions, the two behave the same way: `rm -rf <link>`
+                # unlinks the link and the far side survives; `rm -rf <link>/`
+                # destroys the far side. So the spelling decides it on both.
+                #
+                # UNRESOLVED, and stated rather than papered over: that does not
+                # reconcile with the 2026-07-19 incident, which did happen. `rm`
+                # from git-bash/MSYS is not the same binary as coreutils 9.7 and
+                # is the likely explanation, but it was not re-measured here.
+                # The hook blocks both spellings either way, so the ambiguity
+                # costs nothing operationally -- it only means the message must
+                # not tell a developer which of their two spellings was safe.
                 recursion = (
-                    "`rm -rf` on it recurses THROUGH the link and deletes what it points at"
+                    "A recursive delete can reach THROUGH the link and delete what it points at "
+                    "(a trailing slash -- `rm -rf <link>/` -- does exactly that; the bare "
+                    "spelling unlinks the link instead, and this guard blocks both rather than "
+                    "relying on which one you typed)"
+                )
+                # THE REMEDY IS PLATFORM-SPECIFIC, AND GETTING IT WRONG HERE IS
+                # THE WHOLE COST OF HAVING NO ESCAPE HATCH. This message once
+                # prescribed "a plain non-recursive rm/Remove-Item". The `rm`
+                # half is right. The `Remove-Item` half is WRONG on Windows
+                # PowerShell 5.1: a bare `Remove-Item <junction>` prompts, and
+                # Claude Code's PowerShell tool runs `-NonInteractive`, so it
+                # dies with "Windows PowerShell is in NonInteractive mode" and
+                # removes nothing. `hooks.json` wires that tool to this
+                # dispatcher, so it is a live path, and a blocked caller
+                # following this text got an error instead of a way forward --
+                # the same pathology as issue #220, reintroduced by the change
+                # that claimed to retire it.
+                #
+                # Measured, `-NonInteractive`, against a real junction:
+                #
+                #   remedy                      WinPS 5.1   pwsh 7
+                #   Remove-Item <j>             FAILS       works
+                #   Remove-Item -Force <j>      FAILS       works
+                #   Remove-Item -Recurse <j>    works       works
+                #   cmd /c rmdir <j>            works       works
+                #
+                # The far side survived in every one of those, including the
+                # `-Recurse` forms -- removing the link is not recursing through
+                # it. So `-Recurse` WITHOUT `-Force` is the remedy, on a hook
+                # whose trigger is `-Recurse` WITH `-Force`. That reads like a
+                # contradiction and is not: this guard fires on the recursive
+                # FORCED delete, and the unforced one is what PowerShell needs
+                # to drop a junction without prompting.
+                #
+                # Named per-platform rather than listing both, because a message
+                # offering a menu is one the reader has to test.
+                remedy = (
+                    "Remove the link itself instead: `Remove-Item -Recurse <link>` (WITHOUT "
+                    "-Force -- that is this guard's trigger, and the unforced form is what "
+                    "removes a junction without prompting), or `cmd /c rmdir <link>`. Both "
+                    "leave the far side untouched."
                     if sys.platform == "win32"
-                    else "a recursive delete can reach THROUGH the link and delete what it "
-                         "points at (a trailing slash, `rm -rf <link>/`, does exactly that here)"
+                    else "Remove the link itself instead, with a plain non-recursive `rm "
+                         "<link>` on just that entry."
                 )
                 raise _Blocked(
                     f"blocked: recursive+force delete targets '{unresolved}', which is itself a "
                     f"symlink or directory junction. {recursion}{destination} rather than "
-                    "removing the link. Remove the link itself instead, with a plain "
-                    "non-recursive rm/Remove-Item on just that entry. This is the shape that "
+                    f"removing the link. {remedy} This is the shape that "
                     "destroyed unrelated primary-clone files in the incident this hook exists "
                     "for (see memory 'feedback-worktree-rmrf-junction-risk'). "
                     "(hook: block-unsafe-recursive-delete.py)",
