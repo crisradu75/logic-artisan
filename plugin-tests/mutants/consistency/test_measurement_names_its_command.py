@@ -115,6 +115,29 @@ MUTANTS = [
         "_MAX_CHOKEPOINT_GAP = 1000000",
         TARGETS,
     ),
+    (
+        # Issue #208's clause, asset side. The softening below is the shape a
+        # real rewrite takes: it still mentions one tree, so a grep for
+        # "one tree" would pass, but the obligation has become a preference and
+        # the pair can ship measured on two trees again.
+        "lite-pr's comparison clause softens into a preference",
+        SKILLS / "lite-pr" / "SKILL.md",
+        "must come from one tree",
+        "should ideally be from one tree",
+        TARGETS,
+    ),
+    (
+        # ...and guard side, aimed at the way this particular check goes
+        # vacuous. `_SAME_TREE` feeds a substring test over prose that discusses
+        # trees constantly, so weakening the phrase does not fail — it passes
+        # against text stating no such rule. That is why the constant is pinned
+        # to its exact value rather than merely asserted non-empty.
+        "the comparison clause's phrase weakens until any prose satisfies it",
+        GUARD,
+        '_SAME_TREE = "must come from one tree"',
+        '_SAME_TREE = "tree"',
+        TARGETS,
+    ),
 ]
 
 # One property is NOT mutated, deliberately, so that "the batch is all-green"

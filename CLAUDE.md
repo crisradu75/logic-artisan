@@ -231,6 +231,18 @@ each one comes from a real escape:
    command that produced it, in the same commit. If you cannot name one, you did not
    measure it: delete the claim or go run it. Reasoning that feels like measurement is the
    most expensive thing in this repo, because it ships with a measurement's authority.
+   **And a measurement is evidence about the tree and conditions it ran on, nothing else.**
+   A pair asserting sameness — "unchanged", "same counts", "no regression" — must come
+   from one tree, and say so; measured on two it asserts a third claim, that conditions
+   matched, with no command behind it. A before/after delta is the exception, not a
+   violation: "faster", "up exactly N" are two trees by construction, so name both.
+   Re-asserting an earlier number as current is the same defect with one run missing, and
+   a number true under one platform, shell or edition is not true generally until someone
+   runs the others. Measured 2026-09-12, three times in one session:
+   a firing count restated as 84 that re-ran at 86 (test runs had moved it); a gap table that
+   went stale inside the change that invalidated it, claiming 33% headroom where 2.4%
+   remained; and a `Remove-Item` failure measured on Windows PowerShell 5.1 and reported as
+   universal, where the tool actually runs pwsh 7.6.6 and the command works.
    Recorded in `cla.io/lessons-learned/lessons-learned.md` (2026-08-14): review caught six
    such claims in one session, and in one of them the comment's own text contained the
    token it declared absent. Two more were invented blockers — "widening the scan roots
