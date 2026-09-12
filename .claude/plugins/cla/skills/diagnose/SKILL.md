@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: "Find the cause of a failure instead of guessing at fixes. Builds a deterministic pass/fail loop first, reproduces the reported bug, ranks falsifiable hypotheses before touching anything, instruments one variable at a time with tagged [DEBUG-xxxx] logs, writes the regression test before the fix at a genuinely correct seam, then cleans up and states the confirmed cause in the commit message. Escalated from a Test phase when two rounds spend themselves on the same stated cause with the gate still red. Triggers on /cla:diagnose or natural language like 'diagnose this', 'why is this test failing', 'I keep guessing at this bug', 'find the root cause', 'this failure makes no sense', 'I have tried three fixes and it is still red'."
+description: "Find the cause of a failure instead of guessing at fixes. Builds a deterministic pass/fail loop first, reproduces the reported bug, ranks falsifiable hypotheses before touching anything, instruments one variable at a time with tagged [DEBUG-xxxx] logs, writes the regression test before the fix at a genuinely correct seam, then cleans up and states the confirmed cause in the commit message. Reached either way: a user invokes it directly, or a Test phase escalates to it after two rounds spend themselves on the same stated cause with the gate still red. Triggers on /cla:diagnose or natural language like 'diagnose this', 'why is this test failing', 'I keep guessing at this bug', 'find the root cause', 'this failure makes no sense', 'I have tried three fixes and it is still red'."
 argument-hint: "[what is failing | (empty — infer from the conversation)]"
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash, AskUserQuestion, Agent
 ---
@@ -20,18 +20,33 @@ nothing downstream catches it.
 `Edit` and `Bash` are in `allowed-tools` deliberately. They are what `feedback`
 withholds, and this is the skill that job hands off to.
 
-## Mode: standalone or escalated
+## Mode: attended or unattended
 
 Detect which, first, because the hypothesis gate below branches on it.
 
-- **Standalone** — invoked by the user directly (`/cla:diagnose`, or natural
-  language). An invoker is present.
-- **Escalated** — reached from a running `lite-pr` or `spec-to-pr` Test phase,
-  after two rounds spent on the same stated cause with the gate still red.
+**The discriminator is whether an invoker is present to answer, not which skill
+called.** Caller identity is the wrong test: `lite-pr` reaches this skill both
+ways — a user who just accepted its offer is present, and the same `lite-pr`
+driven by `multi-lite` has nobody behind it.
 
-**An escalation inherits the parent run's autonomy contract.** It does not stop
-to ask. Invoker presence is the honest signal, and a mid-run halt to ask a
-question nobody is there to answer is how an unattended run dies at 3am.
+Decide it with these three, in order. The first that applies settles it:
+
+1. **The caller declared the mode.** `spec-to-pr`'s Test phase states it runs
+   this skill in unattended mode; take a caller at its word. → **unattended**
+2. **A user answered something to get here.** They typed `/cla:diagnose`, asked
+   in natural language, or accepted an offer from a Test phase. An answer is
+   proof of presence. → **attended**
+3. **Neither.** Assume nobody is there. → **unattended**
+
+Rule 3 is the safe default and points the way it does deliberately. Guessing
+*attended* wrongly stops an unattended run dead on a question nobody will
+answer. Guessing *unattended* wrongly costs one prune — the hypotheses still get
+ranked, written down, and reported, so the user sees the reasoning either way
+and can redirect it.
+
+**An unattended run inherits the parent's autonomy contract.** It does not stop
+to ask, and a mid-run halt for a question nobody is there to answer is how an
+unattended chain dies at 3am.
 
 The discipline is identical in both modes: hypotheses ranked, falsifiable, and
 written down before anything is touched. Only who prunes them changes.
@@ -81,9 +96,9 @@ interesting; it is the one that costs least to eliminate.
 
 **The gate is mode-aware:**
 
-- **Standalone** — show the ranked list and let the user prune it, via
+- **Attended** — show the ranked list and let the user prune it, via
   `AskUserQuestion`. They often know something that kills three of them at once.
-- **Escalated** — proceed on the top hypothesis without asking. Write the full
+- **Unattended** — proceed on the top hypothesis without asking. Write the full
   ranked list into the report regardless, so the reasoning survives the run.
 
 **Done when:** the list exists in writing, each entry names its falsifier, and
