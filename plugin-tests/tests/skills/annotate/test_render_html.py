@@ -368,6 +368,65 @@ def test_the_real_documents_blocks_do_not_nest():
 # --------------------------------------------------------------- fixture hygiene
 
 
+# Generated caches, excluded by NAME. `.git` is here so the repo's own is pruned
+# without a special case: the walk below starts AT the root, so the first
+# `dirnames` it prunes are the root's children and the root itself is never a
+# candidate for the structural check.
+_CACHE_DIRS = {".git", ".pytest_cache", ".venv", "__pycache__", "node_modules"}
+
+
+def _is_nested_checkout(directory):
+    """True for a second checkout inside the repo — a worktree or a submodule.
+
+    Both carry their own `.git` entry: a FILE for a worktree, a directory for a
+    clone. A worktree's is a file, which is why `_CACHE_DIRS` alone never sees
+    it — `os.walk` reports it under `filenames`, not `dirnames`, so the worktree
+    directory is walked into like any other.
+    """
+    return os.path.exists(os.path.join(directory, ".git"))
+
+
+def _copies_under(root, name):
+    """Every file called `name` under `root`, skipping caches and other checkouts.
+
+    WHY THIS IS STRUCTURAL AND NOT A NAME. The first version of this walk pruned
+    four cache names and nothing else, so it descended into every worktree under
+    `.claude/worktrees/` and counted one fixture copy per worktree — issue #235.
+    This repo's `new-worktree` skill and the Agent tool's worktree isolation both
+    put a checkout there, so the walk broke whenever anyone worked the way the
+    repo tells them to.
+
+    Adding `worktrees` to the name list is the fix NOT taken, and the reasoning
+    is already written down one directory over, in `tests/consistency/
+    test_doc_facts.py` (see `_is_nested_checkout` and the comment above it).
+    `manual_worktree.py` exposes `--worktree-dir`, so the default placement is an
+    input rather than a law: a worktree at `.worktrees/`, at `wt/`, or reached
+    through a directory junction is still a second checkout and would still be
+    counted. It is also too broad the other way, hiding any directory that merely
+    happens to be named `worktrees`. A nested `.git` entry is structural, so it
+    holds for every placement.
+
+    WHY IT READS NAMES AND NEVER AN ABSOLUTE PATH'S PARTS. `_excluded` in that
+    same file carries the other half of this trap: testing the excluded names
+    against the parts of a whole filesystem path means a repo checked out below a
+    directory that happens to be called `node_modules` excludes its own entire
+    tree, and the count silently becomes 0. This walk is immune by construction
+    rather than by care — it only ever inspects one directory NAME at a time,
+    descending from `root`, so no component above `root` is ever examined.
+    """
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in _CACHE_DIRS
+            and not _is_nested_checkout(os.path.join(dirpath, d))
+        ]
+        found.extend(
+            os.path.join(dirpath, f) for f in filenames if f == name
+        )
+    return found
+
+
 def test_the_fixture_has_exactly_one_copy_in_the_repo():
     """One canonical copy, so an assertion about its contents means something.
 
@@ -380,20 +439,98 @@ def test_the_fixture_has_exactly_one_copy_in_the_repo():
     What survives is the part that is still true: two copies drift, and a test
     pinning exact counts against one of them then passes while the document
     anyone actually reads has moved.
+
+    The walk is `_copies_under`, whose docstring carries the worktree story. Note
+    this test alone cannot prove that part: run from inside a worktree, `REPO_ROOT`
+    is the worktree's own root and there is no nested checkout to skip, so it
+    passes either way. The two tests below build the discriminating tree instead.
     """
-    root = REPO_ROOT
-    skip = {".git", "node_modules", "__pycache__", ".pytest_cache"}
-    found = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in skip]
-        for name in filenames:
-            if name == os.path.basename(BRIEFING):
-                found.append(os.path.join(dirpath, name))
+    found = _copies_under(REPO_ROOT, os.path.basename(BRIEFING))
     assert found, "the fixture is missing entirely"
     assert len(found) == 1, "the fixture has %d copies, which will drift: %s" % (
         len(found), found)
     assert os.path.samefile(found[0], BRIEFING), \
         "the one copy is not where the tests look: %s" % found[0]
+
+
+def _plant(root, *parts):
+    """Create a file at `root/*parts`, making its directories."""
+    path = os.path.join(root, *parts)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("x")
+    return path
+
+
+def test_a_nested_checkout_is_not_a_second_copy(tmp_path):
+    """The #235 shape, built rather than waited for.
+
+    A worktree under `.claude/worktrees/` holds its own copy of every tracked
+    file, including this fixture. Counting those is what turned a correct tree
+    into `the fixture has 6 copies`. The `.git` planted here is a FILE, which is
+    what a real worktree has and what makes the name-based prune miss it.
+    """
+    root = str(tmp_path)
+    real = _plant(root, "plugin-tests", "tests", "fixtures", "doc.html")
+    _plant(root, ".claude", "worktrees", "agent-1", ".git")
+    _plant(root, ".claude", "worktrees", "agent-1",
+           "plugin-tests", "tests", "fixtures", "doc.html")
+
+    assert _copies_under(root, "doc.html") == [real]
+
+
+def test_a_worktree_placed_anywhere_is_still_skipped(tmp_path):
+    """Not just the default placement — that is the whole point of going structural.
+
+    `manual_worktree.py --worktree-dir` means `.claude/worktrees/` is a default,
+    not a law. A name-based skip passes the test above and fails this one, which
+    is exactly the discrimination the name-based fix lacks.
+    """
+    root = str(tmp_path)
+    real = _plant(root, "plugin-tests", "tests", "fixtures", "doc.html")
+    for where in (("wt", "one"), (".worktrees", "two"), ("sibling-checkout",)):
+        _plant(root, *where, ".git")
+        _plant(root, *where, "plugin-tests", "tests", "fixtures", "doc.html")
+
+    assert _copies_under(root, "doc.html") == [real]
+
+
+def test_an_ordinary_directory_named_worktrees_is_still_searched(tmp_path):
+    """The other direction, and the reason a name is too broad as well as too narrow.
+
+    A directory called `worktrees` that is NOT a checkout holds real repo content,
+    and a genuine duplicate inside it must still be reported — otherwise the fix
+    for a false failure buys a false PASS, which is the worse trade.
+    """
+    root = str(tmp_path)
+    real = _plant(root, "plugin-tests", "tests", "fixtures", "doc.html")
+    stray = _plant(root, "docs", "worktrees", "doc.html")
+
+    assert sorted(_copies_under(root, "doc.html")) == sorted([real, stray])
+
+
+def test_a_cache_directory_is_still_pruned_by_name(tmp_path):
+    """The original four names still do their job; nothing was traded away."""
+    root = str(tmp_path)
+    real = _plant(root, "plugin-tests", "tests", "fixtures", "doc.html")
+    for cache in ("__pycache__", "node_modules", ".pytest_cache", ".venv"):
+        _plant(root, cache, "doc.html")
+
+    assert _copies_under(root, "doc.html") == [real]
+
+
+def test_the_repo_root_is_not_mistaken_for_a_nested_checkout(tmp_path):
+    """The root's own `.git` must not prune the entire tree.
+
+    Pruning starts at the root's CHILDREN, so the root is never a candidate — but
+    a rewrite that checked `dirpath` instead of each child would take the count to
+    0 and report "the fixture is missing entirely" on a correct tree.
+    """
+    root = str(tmp_path)
+    real = _plant(root, "plugin-tests", "tests", "fixtures", "doc.html")
+    os.makedirs(os.path.join(root, ".git", "objects"))
+
+    assert _copies_under(root, "doc.html") == [real]
 
 
 # ======================================================================
