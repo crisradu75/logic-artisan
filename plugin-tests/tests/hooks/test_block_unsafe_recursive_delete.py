@@ -334,10 +334,22 @@ def test_the_remedy_follows_the_callers_tool_not_the_platform(tmp_path):
     )
     assert "cmd /c rmdir <link>" in ps.stderr, "name the fallback that always works"
 
-    # The two tools must genuinely differ, on one tree, from one command. A
-    # change collapsing both arms to the same text would satisfy every
-    # assertion above on Windows, where the fallback already yields the
-    # PowerShell wording.
+    # A redundant belt, kept deliberately -- the assertions above are the brace.
+    #
+    # This comment used to claim a collapse of both arms "would satisfy every
+    # assertion above". That was reasoned, not run, and it is wrong. Measured by
+    # collapsing `_remedy` each way against this test (`collapse.py`: patch the
+    # hook, run this node, restore and verify sha256):
+    #
+    #   both arms -> _PS_REMEDY   caught by "rm <link>" in bash.stderr
+    #   both arms -> _RM_REMEDY   caught by "Remove-Item -Recurse <link>" in ps.stderr
+    #
+    # Neither reaches this line, and the Bash arm's "Remove-Item" not-in check
+    # catches the first collapse independently too. So this assertion has not
+    # been shown to catch anything the others miss. It stays because a second
+    # belt costs one line and the mutants it would catch are the ones nobody
+    # thought of -- but the next reader should know it is redundant defence
+    # rather than delete the assertions above believing this one covers them.
     assert bash.stderr != ps.stderr, (
         "the remedy must depend on the tool; identical text means it does not"
     )
