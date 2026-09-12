@@ -82,7 +82,25 @@ One `-m` per trailer would put a blank line between them and break the block int
 
 **That last paragraph must be trailer-shaped lines and nothing else.** Every line in it needs a `key: value` shape. A single line without that shape kills every trailer in the paragraph, wherever it sits. A blank line does the same, by starting a new last paragraph. The common offender is a bare `Closes #199` reference line. Write it as `Closes: #199`, or put it in its own paragraph above the trailers. A commit body goes in its own paragraph above the trailers too.
 
-When the block breaks, `git log --pretty='%(trailers:key=Measured-by,valueonly=true,unfold=true)'` returns nothing. The provenance hook reads through that same parser. It records zero for a commit carrying real trailers.
+**Check that it parsed, before you push.** Two commands, and they must agree:
+
+```
+git log -1 --format=%B | grep -c '^Measured-by:'
+git log -1 --format='%(trailers:key=Measured-by,valueonly=true,unfold=true)' | grep -c .
+```
+
+The first counts what you wrote, the second what git's parser sees. Equal passes — including `0` and `0`, a change that asserts no measurement. Different means the block is split: `git commit --amend` and fix it before pushing.
+
+A bare parse is not enough on its own, which is why this is a comparison. `%(trailers:...)` returning nothing looks identical for a broken block and for a commit that correctly carries no trailer, and the rule above explicitly allows the second.
+
+**Nothing else will tell you.** Measured on a controlled pair — three `Measured-by:` lines, once well-formed and once with a blank line before the attribution lines:
+
+| | written | `%(trailers:…)` | `--grep '^Measured-by:'` | hook records |
+|---|---|---|---|---|
+| well-formed | 3 | 3 | finds it | 3 |
+| blank line before attribution | 3 | **0** | finds it | 3 |
+
+So `git log --grep` still finds a broken block, and so does the provenance hook — it scans the whole message rather than git's parser, and that is deliberate. This broke once at fleet scale before the hook was changed: the ledger read 59 of 228 measurements where the commit messages held 133, and one repo logged 0.0 against a real 0.67. The hook was made immune; the block itself still breaks, and now nothing reports it.
 
 List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change scoped to one app stages just that app's `src/`; a change touching a shared package plus its consumer stages both. If your change legitimately touches other top-level paths (e.g. a per-app stylesheet, a smoke-test script, a config file, root `TODO.md`, a sub-app's own doc file, or — for a `.claude/`-meta change — the specific harness files it edited **inside this repo** (never a path in the installed plugin tree, which is outside the repo and not stageable at all) — see `cla.io/overlays/spec-to-pr.md` for this repo's worked examples), add each by name on the same `git add` line — never expand to `-A`. No commit-msg file; the change name is enough.
 
