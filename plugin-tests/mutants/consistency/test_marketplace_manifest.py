@@ -24,6 +24,23 @@ disabled. Mutant 2 therefore breaks agreement between the two files, not
 reachability of the tag; nothing here would catch `cla--v9.9.9` in both files at
 once.
 
+**NO ANCHOR HERE SPELLS THE CURRENT VERSION, and that is not a style choice.**
+Anchoring on the literal `1.0.1` meant every release broke this batch in
+preflight — and `mutate.py` aborts the WHOLE batch on one bad anchor, so a stale
+anchor here silently disarmed the other three mutants too. Measured live while
+cutting 1.1.0: the three-file bump is correct, the shipped-tree check passes, and
+`test_every_batch_is_loadable_and_declares_real_targets` goes red in the middle of
+the release procedure, after the bump and before the tag.
+
+The fix is the one `mutants/consistency/test_doc_facts.py` already settled after
+the identical failure while cutting 1.0.0: **anchor on the version-independent
+prefix and inject a digit.** `"ref": "cla--v` → `"ref": "cla--v9` drifts the ref
+from `plugin.json` whatever the current version is, and the anchor cannot go
+stale because it contains no version to go stale. Reading the version out of the
+JSON at batch-evaluation time would also work, but it is a second mechanism for a
+problem this repo has already solved once — and the prefix form needs no file
+read at all.
+
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_marketplace_manifest.py
 """
 
@@ -43,14 +60,20 @@ TARGETS = [GUARD]
 
 MUTANTS = [
     (
-        # THE RELEASE DEFECT, catalog side: the plugin is bumped and the catalog
-        # is not. A consumer then installs the tag named here while the plugin
-        # inside it reports a different version, and has no way to tell which is
-        # true.
-        "the catalog publishes a ref for a version the plugin no longer claims",
+        # THE RELEASE DEFECT, catalog side: the catalog names a tag whose version
+        # the plugin does not claim. A consumer then installs the tag named here
+        # while the plugin inside it reports a different version, and has no way
+        # to tell which is true.
+        #
+        # The injected digit lands INSIDE the version rather than before the tag
+        # name, so the mutant stays faithful to what it is named for: a ref for
+        # the wrong version, not a ref that is nonsense. It keeps the `cla--v`
+        # tag shape, which is the one thing here that would break on a plugin
+        # RENAME rather than a release — far rarer, and preflight says so loudly.
+        "the catalog publishes a ref for a version the plugin does not claim",
         MANIFEST,
-        '"ref": "cla--v1.0.1"',
-        '"ref": "cla--v1.0.0"',
+        '"ref": "cla--v',
+        '"ref": "cla--v9',
         TARGETS,
     ),
     (
@@ -58,10 +81,16 @@ MUTANTS = [
         # catalog is not. Kept as its own mutant because mutant 1 alone cannot
         # show the comparison reads `plugin.json` at all — it would die exactly
         # the same way against a hardcoded expected string.
+        #
+        # The digit goes after the opening quote, so the version stays
+        # digit-leading and `test_the_plugin_manifest_is_loadable_and_versioned`
+        # keeps passing. That matters: this mutant should die for the reason it
+        # is named for — the two files disagreeing — and not because it also
+        # happened to produce an unusable version string.
         "the plugin version moves without the catalog ref following it",
         PLUGIN_JSON,
-        '"version": "1.0.1"',
-        '"version": "1.0.2"',
+        '"version": "',
+        '"version": "9',
         TARGETS,
     ),
     (
@@ -80,10 +109,13 @@ MUTANTS = [
         # the opposite of the exact-tag pinning the whole distribution model rests
         # on. Spelled as a rename rather than a deletion so the JSON stays valid
         # and the failure is the guard's, not the parser's.
+        # Only the KEY matters here, so the anchor stops at the opening quote and
+        # never touches the version at all — the most version-agnostic of the
+        # three, and the one whose intent is unchanged by that.
         "the catalog entry loses its ref and tracks the default branch",
         MANIFEST,
-        '"ref": "cla--v1.0.1"',
-        '"unused_ref": "cla--v1.0.1"',
+        '"ref": "',
+        '"unused_ref": "',
         TARGETS,
     ),
     (
