@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _HOOKS_DIR = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks"
 _BASH_DISPATCH = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
 _EDIT_WRITE_DISPATCH = _HOOKS_DIR / "dispatch-edit-write-pretooluse.py"
@@ -53,6 +55,39 @@ def _git(cwd, *args):
     subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
+def _unsafe_delete_target(tmp_path: Path) -> Path:
+    """A path whose `rm -rf` `block-unsafe-recursive-delete` refuses.
+
+    That is a LINK to a directory. These dispatcher tests used a path under
+    `.claude/worktrees/` while the hook carried a worktree-path trigger; that
+    trigger was removed, and the tests went red because they assert on the
+    dispatcher's routing, not on which shape the leaf hook happens to block.
+
+    The alias is a real symlink where permitted and an NTFS junction otherwise,
+    matching `test_block_unsafe_recursive_delete.make_dir_alias`. It is
+    duplicated rather than imported because that module executes the hook at
+    import time, which these tests must not depend on.
+    """
+    real = tmp_path / "far-side"
+    real.mkdir()
+    (real / "canary.txt").write_text("x", encoding="utf-8")
+    link = tmp_path / "the-link"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+        return link
+    except (OSError, NotImplementedError, AttributeError):
+        pass
+    if os.name != "nt":
+        pytest.skip("symlink creation not permitted, and junctions are Windows-only")
+    r = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(real)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if r.returncode != 0 or not link.exists():
+        pytest.skip(f"neither symlink nor junction creation permitted here: {r.stderr}")
+    return link
+
+
 def _hooks_copy(tmp_path: Path) -> Path:
     """Copy every hook script (dispatchers + _dispatch_lib + siblings) into a
     scratch directory so a test can corrupt one file's copy without touching
@@ -74,9 +109,8 @@ def test_bash_dispatch_blocks_cd(tmp_path):
     assert "block-cd-in-bash.py" in r.stderr
 
 
-def test_bash_dispatch_blocks_unsafe_worktree_delete(tmp_path):
-    target = tmp_path / ".claude" / "worktrees" / "some-change"
-    target.mkdir(parents=True)
+def test_bash_dispatch_blocks_an_unsafe_recursive_delete(tmp_path):
+    target = _unsafe_delete_target(tmp_path)
     r = _run(_BASH_DISPATCH, {"tool_input": {"command": f"rm -rf {target}"}, "cwd": str(tmp_path)})
     assert r.returncode == 2
     assert "block-unsafe-recursive-delete.py" in r.stderr
@@ -95,8 +129,7 @@ def test_bash_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     hooks_dir = _hooks_copy(tmp_path)
     (hooks_dir / "block-cd-in-bash.py").write_text("this is ) not ( valid python !!!", encoding="utf-8")
 
-    target = tmp_path / ".claude" / "worktrees" / "some-change"
-    target.mkdir(parents=True)
+    target = _unsafe_delete_target(tmp_path)
     r = subprocess.run(
         [sys.executable, str(hooks_dir / "dispatch-bash-pretooluse.py")],
         input=json.dumps({"tool_input": {"command": f"rm -rf {target}"}, "cwd": str(tmp_path)}),
@@ -377,13 +410,12 @@ def test_bash_dispatch_reemits_an_ask_escalation(tmp_path):
 
 
 def test_bash_dispatch_lets_a_block_outrank_an_ask(tmp_path):
-    # A force-push (ask, position 2) chained with an unsafe worktree delete
+    # A force-push (ask, position 2) chained with an unsafe recursive delete
     # (block, position 3): the ask is raised FIRST and must still lose. Deny >
     # ask, so the call is refused outright and no permission prompt is offered
     # as an alternative. Ordering matters here — a block that merely
     # short-circuits before the ask would pass this vacuously.
-    target = tmp_path / ".claude" / "worktrees" / "some-change"
-    target.mkdir(parents=True)
+    target = _unsafe_delete_target(tmp_path)
     r = _run(
         _BASH_DISPATCH,
         {"tool_input": {"command": f"git push --force origin main && rm -rf {target}"},

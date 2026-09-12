@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: block an unsafe recursive+force delete (Bash `rm -rf` /
-PowerShell `Remove-Item -Recurse -Force`) before it runs.
+"""PreToolUse hook: block a recursive+force delete (Bash `rm -rf` / PowerShell
+`Remove-Item -Recurse -Force`) whose TARGET is itself a symlink or junction.
 
 Why this exists
 ----------------
@@ -17,47 +17,63 @@ target files in the primary clone. Everything lost was untracked, so git had
 no history to recover from -- permanent data loss. See memory
 'feedback-worktree-rmrf-junction-risk' for the full incident.
 
-Three independent triggers, any one blocks
----------------------------------------------
-0. **The target IS itself a symlink or junction.** Checked against the
-   UNRESOLVED path, and first, because `Path.resolve()` follows the reparse
-   point — after it, nothing downstream can tell the target was reached through
-   a link. This trigger was missing until issue #215: `rm -rf <the junction>`
-   was ALLOWED while `rm -rf <its parent>` was blocked, so the guard caught the
-   distant shape and permitted the near one, which is the shape that deletes the
-   far side.
+ONE trigger, and why it is one
+------------------------------
+**The target IS itself a symlink or junction**, checked against the
+UNRESOLVED path -- `Path.resolve()` follows the reparse point, and after it
+nothing downstream can tell the target was reached through a link.
 
-1. **Worktree path, unconditionally.** The target resolves to a path under
-   `.claude/worktrees/<name>` (anywhere in the path, any separator style).
-   Tearing down a worktree must go through `git worktree remove`; if that
-   fails, the fix is to diagnose what's actually locking the directory (a
-   stray process holding a handle inside `node_modules` is the common case),
-   not to bypass git's own removal logic with a raw filesystem delete.
-2. **Symlink/junction found inside the target.** The target exists as a
-   directory and a bounded walk finds a symlink or NTFS junction among its
-   entries (at any depth within the scan budget). A recursive delete over a
-   tree containing a link risks deleting whatever that link points at instead
-   of (or in addition to) the tree itself.
+This hook used to carry two more triggers (a worktree-path rule, and a
+bounded walk looking for a link INSIDE the target) plus an `ALLOW_UNSAFE_RM`
+escape hatch. All three are gone, deliberately, and the reasoning is worth
+keeping because it applies to the next guard as much as to this one.
+
+Two reviews executed the shipped hook across roughly 140 command spellings on
+real POSIX symlinks and real NTFS junctions. They found about twenty shapes
+that exited 0 and destroyed the far side -- unexpanded `~` and `$HOME`, globs
+and braces, a shell metacharacter inside a link's own name, `bash -c`, a bind
+mount, PowerShell parameter abbreviation, and a scan budget that failed open
+on a large tree (issues #218 and #221, closed with their findings intact).
+A later attempt to repair the escape hatch (PR #231, closed) added five NEW
+destructive-allow paths of its own, two of them critical -- including one
+where a PowerShell user following the block message's own advice disarmed the
+guard AND executed the delete.
+
+Both of those arrived with a green test suite and a clean mutation run. The
+surface was the defect, not any single patch of it: three triggers and an
+override are more behaviour than this guard's evidence supports. Block events
+across every session transcript, counted 2026-09-12 by real absolute path,
+were 86 in this repo -- which builds and tests the hook, so dominated by its
+own test runs -- and 2 in the one consuming repo.
+
+So this file now does one thing, on the shape the incident actually had.
+A narrow guard that is right is worth more than a broad one that is not.
+
+There is no escape hatch, and none is needed: the remedy the block message
+gives -- a plain, non-recursive `rm`/`Remove-Item` on just that entry -- is
+correct on both platforms and always available. `git worktree remove` is no
+longer recommended by any message here, which also retires the orphaned-worktree
+dead end of issue #220: this hook no longer fires on a worktree path merely for
+being one.
 
 Detection is best-effort, matching this repo's other Bash-command hooks
 (block-cd-in-bash.py, block-worktree-path-escape.py): the command is split on
 shell metacharacters into segments, each segment is checked for an `rm`
 (recursive+force) or `Remove-Item`-family (with -Recurse and -Force)
-invocation, and non-flag tokens are taken as candidate target paths. A
-sufficiently adversarial command (piped input, a variable holding the path,
-process substitution) can still slip past -- this is a backstop, not a
-sandbox.
-
-Escape hatch: set `ALLOW_UNSAFE_RM=1` for a deliberate exception.
+invocation, and non-flag tokens are taken as candidate target paths. Many
+command spellings still slip past -- a variable holding the path, process
+substitution, `bash -c`, an unexpanded `~` or glob, a metacharacter inside a
+filename. This is a backstop against one known accident, not a sandbox, and
+the issues above enumerate the gaps for anyone who needs them.
 
 Exit codes:
-  0 - allow (no destructive-delete pattern detected, no candidate path trips
-      any trigger, or a PARSE error -- fail-open, a guard must never break
-      normal work)
-  2 - block with stderr explaining which trigger fired and how to proceed,
+  0 - allow (no destructive-delete pattern detected, no candidate path is a
+      link, or a PARSE error -- fail-open, a guard must never break normal
+      work)
+  2 - block with stderr explaining what was found and how to proceed,
       INCLUDING the case where a candidate path could not be read at all.
       That last one is deliberate and is not fail-open: an unreadable probe
-      and an approved one are indistinguishable from outside, so an
+      and an approved one are indistinguishable from the outside, so an
       undetermined answer blocks and says so in its own words. A string that
       cannot NAME a file (a glob, a redirection token) is not undetermined --
       it is a determinate not-a-link, and allows.
@@ -72,7 +88,6 @@ import re
 import shlex
 import stat
 import sys
-import time
 from pathlib import Path
 
 # A heredoc body (`<<'EOF' ... EOF`, the convention this repo's own
@@ -98,11 +113,15 @@ def _strip_non_command_text(command: str) -> str:
     """
     return _HEREDOC_BODY.sub("HEREDOC", command)
 
+
+# The PowerShell spellings stay. `hooks/hooks.json` wires a PowerShell matcher
+# to `dispatch-bash-pretooluse.py`, so this hook is live on PowerShell commands.
+# Dropping the PowerShell arm would leave that wiring running a detector that
+# cannot match anything it is handed -- coverage removed silently rather than
+# deliberately. Unwiring the matcher instead was not an option either: it
+# carries six leaf hooks, and only this one was under review.
 _RM_ALIASES = {"rm", "remove-item", "ri", "del", "erase", "rd", "rmdir"}
 _PS_PATH_PARAMS = {"-path", "-literalpath"}
-
-_MAX_SCAN_ENTRIES = 5000
-_MAX_SCAN_SECONDS = 4.0
 
 # What to do when the far side of a link cannot be read at all. `True` blocks.
 #
@@ -113,17 +132,6 @@ _MAX_SCAN_SECONDS = 4.0
 # anchor, though not the only one — and not the best one: `_MISSING_TARGET_ERRORS`
 # below is the sharper target, since adding `OSError` to it undoes this policy
 # entirely. Both are mutated.
-#
-# An earlier version of this comment claimed `return True` "occurs four times in
-# this file" and that naming the constant was "the only way to anchor a mutant on
-# it". Both were false: the count was reachable only by counting a mention inside
-# the comment itself, which is verbatim the defect CLAUDE.md records, where a
-# comment's own text contained the token it declared absent.
-#
-# The first correction of that miscount ALSO miscounted — it said "the comment's
-# own two lines", and three statements plus two comment lines is five, not four.
-# Recorded because a paragraph about arithmetic hygiene getting the arithmetic
-# wrong twice is the argument for citing a command rather than a number.
 _UNDETERMINED_FAR_SIDE_BLOCKS = True
 
 # Returned by `_is_link_like` when a path could not be read at all. Distinct
@@ -165,14 +173,14 @@ class _Blocked(Exception):
     """A decided block, carrying its message, raised so the PRINT happens
     outside `main`'s `except OSError` swallow.
 
-    The three block sites used to `print(...)` and `return 2` inside that
-    swallow. A `BrokenPipeError` writing to stderr is an `OSError`, so it skipped
-    the `return 2`, continued the loop, and fell through to `return 0` — a
-    decided BLOCK becoming a clean ALLOW. Measured by injection: with the first
-    gate having already judged the target dangerous, `main()` returned 0. A
-    CLOSED stderr raises `ValueError` instead, which was not caught at all, so
-    the two adjacent stderr failures produced a silent allow and a prompt, and
-    neither was the block that had been computed.
+    The block site used to `print(...)` and `return 2` inside that swallow. A
+    `BrokenPipeError` writing to stderr is an `OSError`, so it skipped the
+    `return 2`, continued the loop, and fell through to `return 0` — a decided
+    BLOCK becoming a clean ALLOW. Measured by injection: with the gate having
+    already judged the target dangerous, `main()` returned 0. A CLOSED stderr
+    raises `ValueError` instead, which was not caught at all, so the two
+    adjacent stderr failures produced a silent allow and a prompt, and neither
+    was the block that had been computed.
     """
 
 
@@ -274,17 +282,6 @@ def _extract_target_paths(command: str) -> list[str]:
     return targets
 
 
-def _is_worktree_path(resolved: Path) -> bool:
-    # Normalize BOTH separators before splitting: a Windows-style path (backslashes)
-    # must still be detected when this hook runs on POSIX, where pathlib treats "\"
-    # as an ordinary character and would collapse the whole path into one segment.
-    segments = [s for s in str(resolved).replace("\\", "/").lower().split("/") if s]
-    for i in range(len(segments) - 1):
-        if segments[i] == ".claude" and segments[i + 1] == "worktrees":
-            return True
-    return False
-
-
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
@@ -299,18 +296,12 @@ def _is_link_like(path: str):
 
     WHY THREE STATES. This returned a plain bool, swallowing every probe error
     into False -- so "this is not a link" and "I could not read this path" were
-    the same answer on the guard's FIRST gate, and the second one silently
-    ALLOWED. Measured on both platforms, against a junction and a symlink whose
-    parent denies traverse: `_far_side_is_a_directory` answers True (block) for
-    exactly that input and is never asked, because this function has already
-    returned False and `_target_is_link` short-circuited. The hook exits 0 with
-    empty stderr, which is byte-identical to having examined the command and
-    approved it.
-
-    A previous round tried to fix that one gate too far downstream, and left a
-    comment claiming the conservative gate below handled it. It cannot: it sits
-    downstream of this swallow. The undetermined state has to exist HERE, where
-    the ambiguity arises.
+    the same answer, and the hook silently ALLOWED. Measured on both platforms,
+    against a junction and a symlink whose parent denies traverse:
+    `_far_side_is_a_directory` answers True (block) for exactly that input and
+    is never asked, because this function has already returned False and
+    `_target_is_link` short-circuited. The hook exits 0 with empty stderr,
+    which is byte-identical to having examined the command and approved it.
 
     ONE `os.lstat` RATHER THAN `islink` THEN `stat`. `os.path.islink` swallows
     EACCES into False before the platform check is even reached, so the POSIX
@@ -466,51 +457,7 @@ def _far_side_is_a_directory(probe: str) -> bool:
         return _UNDETERMINED_FAR_SIDE_BLOCKS
 
 
-def _contains_symlink(resolved: Path) -> bool:
-    """Whether anything INSIDE `resolved` is a link. The target's own link-ness
-    is `main`'s business, checked there against the UNRESOLVED path.
-
-    This used to read `if not resolved.is_dir() or _is_link_like(str(resolved))`.
-    That second half was dead and wrong in the same breath. Dead, because the one
-    call site always passes a `.resolve()`d path and `resolve()` has already
-    followed the reparse point — nothing could reach it with a True result, and a
-    dangling link short-circuits on `is_dir()` first. Wrong, because what it
-    encoded was "the target is itself a link, so allow it", which is precisely
-    the case that deletes the far side of a junction.
-
-    Worth stating plainly, because the shape recurs: a test written to cover that
-    clause as it stood would have pinned the defect and reported green. The fix
-    was to delete it, not to test it.
-    """
-    if not resolved.is_dir():
-        return False
-    start = time.monotonic()
-    scanned = 0
-    try:
-        for dirpath, dirnames, filenames in os.walk(resolved, followlinks=False):
-            for name in (*dirnames, *filenames):
-                scanned += 1
-                # `is True`, deliberately, and NOT a truthiness test — the
-                # sentinel is truthy, so a bare `if` would silently start
-                # blocking here on any unreadable entry. That is the right
-                # policy for the ONE target path, where the cost of being
-                # conservative is one command; it is the wrong one for a walk
-                # over up to `_MAX_SCAN_ENTRIES` entries, where a single
-                # transient read error would block a legitimate delete of a
-                # large tree. The walk already fails open when its budget runs
-                # out, for the same reason.
-                if _is_link_like(os.path.join(dirpath, name)) is True:
-                    return True
-                if scanned >= _MAX_SCAN_ENTRIES or (time.monotonic() - start) >= _MAX_SCAN_SECONDS:
-                    return False  # inconclusive -- fail open rather than stall the hook
-    except OSError:
-        return False
-    return False
-
-
 def main() -> int:
-    if os.environ.get("ALLOW_UNSAFE_RM") == "1":
-        return 0
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
@@ -522,11 +469,10 @@ def main() -> int:
 
     # Resolve a relative delete target against the SESSION's directory, not this
     # hook process's. The two differ whenever the session is in a linked
-    # worktree — which is precisely the situation this hook guards, so getting
-    # it from the process was wrong in exactly the case that matters: a relative
-    # `rm -rf` would resolve against the wrong tree and miss the worktree check.
-    # Falls back to the process cwd when the payload omits it (older payload
-    # shapes, and the hook's own tests, which set the process cwd instead).
+    # worktree, where a relative `rm -rf` would otherwise resolve against the
+    # wrong tree and probe the wrong path. Falls back to the process cwd when
+    # the payload omits it (older payload shapes, and the hook's own tests,
+    # which set the process cwd instead).
     cwd = payload.get("cwd") if isinstance(payload, dict) else None
     if not isinstance(cwd, str) or not cwd:
         cwd = os.getcwd()
@@ -535,49 +481,38 @@ def main() -> int:
         try:
             unresolved = raw_target if os.path.isabs(raw_target) else os.path.join(cwd, raw_target)
 
-            # CHECK THE TARGET'S OWN LINK-NESS BEFORE `resolve()` DESTROYS THE
-            # EVIDENCE. `Path.resolve()` follows the reparse point, so by the
-            # line below `resolved` names the directory on the OTHER SIDE of a
-            # junction and nothing downstream can tell it was reached through
-            # one. `_contains_symlink` then walks INSIDE that directory, which
-            # is why the containing-directory case was caught and this one was
-            # not.
+            # CHECK THE TARGET'S OWN LINK-NESS AGAINST THE UNRESOLVED PATH.
+            # `Path.resolve()` would follow the reparse point, and after it
+            # nothing can tell the target was reached through one.
             #
-            # Measured before the fix: `rm -rf <the junction itself>` exited 0
-            # while `rm -rf <its parent>` exited 2 — the guard blocked the
-            # distant shape and allowed the near one. This is the shape closest
-            # to the incident this whole hook exists for: `rm` from git-bash/MSYS
-            # recurses THROUGH a junction as though it were an ordinary
-            # directory, so the allowed command deletes the real contents on the
-            # far side. The module docstring dates it.
+            # Measured before this trigger existed: `rm -rf <the junction
+            # itself>` exited 0 while `rm -rf <its parent>` exited 2 — the guard
+            # blocked the distant shape and allowed the near one. This is the
+            # shape closest to the incident this whole hook exists for: `rm`
+            # from git-bash/MSYS recurses THROUGH a junction as though it were
+            # an ordinary directory, so the allowed command deletes the real
+            # contents on the far side.
             #
-            # PLATFORM NOTE, and it is the half that could not be executed here.
-            # The check itself is platform-independent: `_is_link_like` reads one
-            # `os.lstat`, whose symlink bit is true of a POSIX symlink and whose
-            # reparse bit is true of a Windows junction. (It used to start with
-            # `os.path.islink`; that call is gone, and this sentence described it
-            # for one commit after it went.) What DIFFERS is the danger it guards. On
-            # Windows, `rm` from git-bash recurses THROUGH a junction — that is
-            # the incident. On POSIX, `rm -rf <a symlink>` unlinks the symlink
-            # and leaves its target alone, so blocking there is conservative
-            # rather than necessary.
+            # PLATFORM NOTE. The check itself is platform-independent:
+            # `_is_link_like` reads one `os.lstat`, whose symlink bit is true of
+            # a POSIX symlink and whose reparse bit is true of a Windows
+            # junction. What DIFFERS is the danger it guards. On Windows, `rm`
+            # from git-bash recurses THROUGH a junction — that is the incident.
+            # On POSIX, `rm -rf <a symlink>` unlinks the symlink and leaves its
+            # target alone, so blocking there is conservative rather than
+            # necessary.
             #
             # Blocking on both anyway, deliberately: `rm -rf` on a symlink is an
             # odd way to spell `rm <symlink>`, the remedy the message gives is
             # correct on either platform, and the trailing-slash spellings
-            # (`rm -rf link/`) DO reach through on POSIX. The cost is a possible
-            # false positive on a POSIX-only workflow that recursively deletes a
-            # symlink on purpose; `ALLOW_UNSAFE_RM=1` is the exit.
+            # (`rm -rf link/`) DO reach through on POSIX.
             #
-            # BOTH BRANCHES ARE NOW EXECUTED. This comment previously ended
-            # "the POSIX branch is reasoned, not run", and that disclosure is
-            # what got the branch run — it was wrong in a way only execution
-            # found. Leaving it in place afterwards would re-arm the same trap
-            # pointing the other way: a reader would either distrust a measured
-            # branch, or notice it contradicts the coreutils measurement above
-            # and trust neither. Windows: real `mklink /J` junctions, eight
-            # spellings. POSIX: GNU coreutils 9.7 under WSL, correlating what
-            # `rm` does to the far side with what this hook says about it.
+            # BOTH BRANCHES ARE EXECUTED. This comment previously ended "the
+            # POSIX branch is reasoned, not run", and that disclosure is what got
+            # the branch run — it was wrong in a way only execution found.
+            # Windows: real `mklink /J` junctions, eight spellings. POSIX: GNU
+            # coreutils 9.7 under WSL, correlating what `rm` does to the far side
+            # with what this hook says about it.
             verdict = _target_is_link(unresolved)
             if verdict is _LINK_UNDETERMINED:
                 # ITS OWN MESSAGE. The confirmed-link text was reused here, so a
@@ -592,8 +527,7 @@ def main() -> int:
                     "could not examine -- reading it failed, so whether it is a symlink or "
                     "directory junction is UNKNOWN. Blocking rather than allowing, because an "
                     "unreadable probe and an approved one are indistinguishable from the "
-                    "outside. Check the path exists and is readable, or override for a "
-                    "deliberate exception by setting ALLOW_UNSAFE_RM=1 in the environment. "
+                    "outside. Check the path exists and is readable, then retry. "
                     "(hook: block-unsafe-recursive-delete.py)"
                 )
             if verdict:
@@ -632,42 +566,10 @@ def main() -> int:
                     f"blocked: recursive+force delete targets '{unresolved}', which is itself a "
                     f"symlink or directory junction. {recursion}{destination} rather than "
                     "removing the link. Remove the link itself instead, with a plain "
-                    "non-recursive rm/Remove-Item on just that entry (or `git worktree remove` if "
-                    "it is a worktree). This is the shape that destroyed unrelated primary-clone "
-                    "files in the incident this hook exists for (see memory "
-                    "'feedback-worktree-rmrf-junction-risk'). Override for a deliberate exception "
-                    "by setting ALLOW_UNSAFE_RM=1 in the environment. "
+                    "non-recursive rm/Remove-Item on just that entry. This is the shape that "
+                    "destroyed unrelated primary-clone files in the incident this hook exists "
+                    "for (see memory 'feedback-worktree-rmrf-junction-risk'). "
                     "(hook: block-unsafe-recursive-delete.py)",
-                )
-
-            resolved = Path(unresolved).resolve()
-
-            if _is_worktree_path(resolved):
-                raise _Blocked(
-                    f"blocked: recursive+force delete targets a path under .claude/worktrees/ "
-                    f"('{resolved}'). Never raw-delete a worktree directory -- use "
-                    "`git worktree remove <path>` instead. If that fails (e.g. \"Directory not "
-                    "empty\"), diagnose what's actually locking it (commonly a stray process "
-                    "holding a handle inside node_modules) and clear that, then retry `git "
-                    "worktree remove` -- do not bypass it with a raw rm/Remove-Item. See memory "
-                    "'feedback-worktree-rmrf-junction-risk' for why: a worktree can contain "
-                    "directory junctions/symlinks pointing back into the primary clone, and a "
-                    "raw recursive delete can recurse through them and destroy real files "
-                    "elsewhere in the repo. Override for a deliberate exception by setting "
-                    "ALLOW_UNSAFE_RM=1 in the environment. (hook: block-unsafe-recursive-delete.py)",
-                )
-
-            if _contains_symlink(resolved):
-                raise _Blocked(
-                    f"blocked: recursive+force delete targets '{resolved}', which contains a "
-                    "symlink or directory junction. Recursing through it can delete whatever it "
-                    "points at instead of (or in addition to) this tree -- this is exactly how "
-                    "unrelated primary-clone files were destroyed on 2026-07-19 (see memory "
-                    "'feedback-worktree-rmrf-junction-risk'). Unlink the symlink/junction itself "
-                    "first (a plain, non-recursive rm/Remove-Item on just that entry), or delete "
-                    "only its non-linked subdirectories individually, or ask before proceeding. "
-                    "Override for a deliberate exception by setting ALLOW_UNSAFE_RM=1 in the "
-                    "environment. (hook: block-unsafe-recursive-delete.py)",
                 )
         except _Blocked as blocked:
             # OUTSIDE the OSError swallow below, which is the whole point: a
@@ -683,7 +585,7 @@ def main() -> int:
             # decided BLOCK sitting under `except OSError: continue` — a
             # `BrokenPipeError` writing the message (an OSError) skipped the
             # `return 2`, continued the loop, and fell through to `return 0`.
-            # Measured by injection: with gate 0 having already decided the
+            # Measured by injection: with the gate having already decided the
             # target was dangerous, `main()` returned 0. A closed stderr raises
             # `ValueError` instead, which is not caught, so the two adjacent
             # stderr failures gave a silent allow and a prompt — neither of them
