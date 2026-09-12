@@ -64,8 +64,22 @@ KEEP `\\n` OUT OF AN ANCHOR. Anchors are matched against the file's raw bytes
 (see WHY IT WRITES BYTES above), so on a CRLF checkout — every file in this repo
 except the `eol=lf` launchers — a `\\n` in `old` matches nothing and the mutant is
 refused as "anchor not found" even though the line is plainly there. Anchor
-within a single line, or spell the separator `\\r\\n` and accept that the batch
-then only runs on one platform.
+within a single line, or derive the separator from the file's own bytes
+(`_NL = b"\\r\\n" if b"\\r\\n" in path.read_bytes() else b"\\n"`) so the batch runs on
+either platform — spelling it `\\r\\n` outright works here and pins the batch to
+Windows.
+
+AND THE SAME TRAP IS WORSE OUTSIDE THIS TOOL. Here a bad anchor is REFUSED, loudly,
+before anything is touched — that preflight is the only reason the mistake is
+survivable. An ad-hoc perturbation script (verifying a new guard by hand, say) has
+no preflight: the replace silently does nothing, the test then passes against an
+unmodified file, and the run reports SURVIVED. That is a false negative wearing the
+costume of a real finding, and it fails in the direction that reads as good news —
+"the guard has a hole" rather than "my script did nothing". Measured twice
+independently during the review of PR #233, once by the author and once by the
+reviewer, whose first run reported a row-deletion case as SURVIVED for exactly this
+reason. Derive the newline in those scripts too, or assert the perturbed bytes
+actually differ from the original before running anything.
 
 VERDICTS. `killed` (pytest exit 1 — a test actually failed), `SURVIVED` (exit 0 —
 no test noticed), `INCONCLUSIVE` (any other exit — the run proves nothing, and
