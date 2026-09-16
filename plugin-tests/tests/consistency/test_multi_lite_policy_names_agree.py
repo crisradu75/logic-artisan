@@ -189,6 +189,18 @@ def test_every_merge_requires_a_clean_tree():
     assert "do not merge" in clean
 
 
+def test_a_shared_state_candidate_stopped_before_step_8_still_quarantines_every_later_one():
+    """Steps 2 and 7 stop a candidate before step 8's merge. Unless they run 8a's
+    changed-files check themselves, a shared-state PR with an unresolved finding
+    or a moved head quarantines only its dependents, while the environment has
+    already moved for every later branch."""
+    loop = _read(_REFS / "candidate-loop.md")
+    definition = _line(loop, "**\"Must merge before a later one\" has one meaning")
+    assert "Steps 2 and 7" in definition and "changed-files check itself" in definition
+    unresolved = _line(_section(loop, *_STEP_7), "**Still unresolved after the round")
+    assert "every later candidate for a shared-state edge" in unresolved
+
+
 def test_merging_stopped_overrides_only_a_yes():
     """After a host refusal no merge is attempted, but a candidate the policy
     would never merge keeps its plain `open` instead of a refusal reason."""

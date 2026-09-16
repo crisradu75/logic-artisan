@@ -137,6 +137,22 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "step 7's unresolved branch quarantines only dependents, even for a "
+        "shared-state PR",
+        LOOP,
+        "quarantine as defined at the top of step 8: its downstream subtree for a `depends_on` edge, every later candidate for a shared-state edge.",
+        "quarantine its downstream subtree (`blocked-by-upstream-failure`).",
+        TARGETS,
+    ),
+    (
+        "steps 2 and 7 no longer run the changed-files check before stopping a "
+        "candidate",
+        LOOP,
+        "**Steps 2 and 7 can stop a candidate before step 8 runs, so each runs 8a's changed-files check itself first**",
+        "**Step 8 runs 8a's check when it reaches a candidate**",
+        TARGETS,
+    ),
+    (
         "GUARD: the policy scanner stops recognising two-segment names",
         GUARD,
         '_POLICY_SHAPED = re.compile(r"(?<![A-Za-z0-9-])merge-[a-z]+(?:-[a-z]+)+")',
