@@ -319,6 +319,28 @@ _LINE_CONTINUATION = re.compile(r"\\[ \t]*\r?\n")
 # another line matched the whole-string exclusion.
 _LEADS_WITH_GIT = re.compile(r"^\s*(?:[A-Za-z_]\w*=\S*\s+)*" + GIT_CMD + r"\b")
 
+# `commit` must be git's SUBCOMMAND, reached only across git's own global options.
+# The earlier test was `git.*\bcommit\b`, and `\b` treats a hyphen or a dot as a
+# boundary, so any git command whose ARGUMENTS held the word read as a commit:
+# `git add cla.io/retro/commit-provenance.jsonl` — the command that stages this
+# very ledger — and `git diff -- src/commit.py` both matched. The reflog gate and
+# the last-row dedupe usually hid it, until a `git stash push --
+# cla.io/retro/commit-provenance.jsonl` removed the last row: the dedupe then had
+# nothing to match, and the hook wrote a second row for a commit it had recorded.
+#
+# The options are the ones that may precede a subcommand (`git --help`): a flag
+# taking a separate value (`-C <path>`, `-c <name>=<value>`, and the long forms
+# that accept `--opt <value>`), or a self-contained flag. `(?![\w-])` keeps
+# `commit-tree` and `commit-graph` out.
+_GIT_GLOBAL_OPTION = (
+    r"(?:-[Cc]\s+\S+"
+    r"|--(?:git-dir|work-tree|namespace|exec-path|super-prefix|config-env)(?:=\S+|\s+\S+)"
+    r"|--?[A-Za-z][\w-]*(?:=\S+)?)"
+)
+_COMMIT_SUBCOMMAND = re.compile(
+    r"^\s*(?:[A-Za-z_]\w*=\S*\s+)*" + GIT_CMD + r"(?:\s+" + _GIT_GLOBAL_OPTION + r")*\s+commit(?![\w-])"
+)
+
 
 def _is_commit_command(command: str) -> bool:
     """True for a real `git commit`, false for anything that merely mentions it.
@@ -341,13 +363,14 @@ def _is_commit_command(command: str) -> bool:
     for segment in _SEGMENTS.split(command):
         if not _LEADS_WITH_GIT.match(segment):
             continue
-        if not re.search(GIT_CMD + r".*\bcommit\b", segment):
+        if not _COMMIT_SUBCOMMAND.match(segment):
             continue
         if "--dry-run" in segment:
             continue
-        # A commit inside a pipeline reading history (`git log … | …`) is not one.
-        if re.search(GIT_CMD + r".*\b(log|show|rev-list)\b", segment):
-            continue
+        # No separate history-command exclusion: `git log`, `git show` and
+        # `git rev-list` name a different subcommand, so the match above already
+        # rejects them. The exclusion that used to sit here searched the whole
+        # segment, which dropped a real `git commit -F show.txt`.
         return True
     return False
 

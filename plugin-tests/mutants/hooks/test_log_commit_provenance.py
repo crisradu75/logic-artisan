@@ -256,4 +256,39 @@ MUTANTS = [
         "return True",
         TARGETS,
     ),
+    (
+        # The defect this classifier replaced: `commit` found anywhere in the
+        # segment. `git add cla.io/retro/commit-provenance.jsonl` then reads as
+        # a commit, and a stashed ledger lets the duplicate row through.
+        "the classifier matches `commit` anywhere in the segment, not as the "
+        "subcommand",
+        HOOK,
+        "        if not _COMMIT_SUBCOMMAND.match(segment):",
+        '        if not re.search(GIT_CMD + r".*\\bcommit\\b", segment):',
+        TARGETS,
+    ),
+    (
+        "the subcommand match admits `commit-tree` and `commit-graph`",
+        HOOK,
+        'r")*\\s+commit(?![\\w-])"',
+        'r")*\\s+commit\\b"',
+        TARGETS,
+    ),
+    (
+        "global options are no longer allowed before the subcommand, so "
+        "`git -C <path> commit` goes unrecorded",
+        HOOK,
+        'GIT_CMD + r"(?:\\s+" + _GIT_GLOBAL_OPTION + r")*\\s+commit',
+        'GIT_CMD + r"\\s+commit',
+        TARGETS,
+    ),
+    (
+        "the whole-segment history exclusion returns and drops "
+        "`git commit -F show.txt`",
+        HOOK,
+        "        if \"--dry-run\" in segment:\n            continue\n",
+        "        if \"--dry-run\" in segment:\n            continue\n"
+        "        if re.search(GIT_CMD + r\".*\\b(log|show|rev-list)\\b\", segment):\n            continue\n",
+        TARGETS,
+    ),
 ]

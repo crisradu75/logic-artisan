@@ -92,6 +92,41 @@ def test_the_skill_names_every_file_its_own_procedure_bumps():
         )
 
 
+_PROVENANCE_LEDGER = "cla.io/retro/commit-provenance.jsonl"
+
+
+def _step_1_status_commands(body: str) -> list[str]:
+    """Every `git status --porcelain` line in Step 1's command block."""
+    step_1 = body.split("## Step 1", 1)[1].split("## Step 2", 1)[0]
+    block = re.search(r"```bash\n(.*?)```", step_1, re.S)
+    assert block, "release/SKILL.md Step 1 no longer opens with a bash command block"
+    return [
+        line.strip() for line in block.group(1).splitlines()
+        if line.strip().startswith("git status --porcelain")
+    ]
+
+
+def test_the_clean_tree_check_exempts_only_the_provenance_ledger():
+    """The provenance hook writes a row after every commit, so its ledger is never
+    clean while it is on (#239), and a clean-tree check that includes it can never
+    pass. The exemption must stay exactly that one file: widening it to
+    `cla.io/retro/` would hide the run ledgers a skill writes and should commit,
+    and a second exclusion would let any uncommitted edit ride into a tag."""
+    commands = _step_1_status_commands(_SKILL_MD.read_text(encoding="utf-8"))
+    assert len(commands) == 1, f"expected one porcelain check in Step 1, found {commands}"
+    excluded = re.findall(r"':\(exclude\)([^']+)'", commands[0])
+    assert excluded == [_PROVENANCE_LEDGER], (
+        f"Step 1's clean-tree check excludes {excluded}; it must exclude exactly "
+        f"{_PROVENANCE_LEDGER!r} and nothing else"
+    )
+
+
+def test_the_ledger_exemption_parser_is_not_vacuous():
+    body = "## Step 1\n```bash\ngit status --porcelain -- . ':(exclude)a' ':(exclude)b'\n```\n## Step 2\n"
+    command = _step_1_status_commands(body)[0]
+    assert re.findall(r"':\(exclude\)([^']+)'", command) == ["a", "b"]
+
+
 def test_the_skill_states_the_never_move_invariant():
     """The one rule whose violation cannot be undone. If it is ever edited out of
     the skill, the skill has stopped being safe to run."""

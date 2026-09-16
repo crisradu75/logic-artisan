@@ -48,6 +48,16 @@ mod = _load()
         "git -C /some/path commit -m 'x'",
         "git.exe commit -m 'x'",
         "GIT commit -m 'x'",
+        # Global options before the subcommand, including quoted values.
+        'git -C "/some path" commit -m "fix: x"',
+        "git -c user.name='a b' commit --amend --no-edit",
+        "git --no-pager commit -m x",
+        "git --git-dir=/x/.git --work-tree /x commit -q",
+        "GIT_AUTHOR_DATE=now git commit -q -F msg.txt",
+        # A message file named after a history command is still a commit; the
+        # old whole-segment `log|show|rev-list` exclusion dropped these.
+        "git commit -F show.txt",
+        "git commit -F log",
     ],
 )
 def test_a_real_commit_is_recognised(command):
@@ -69,6 +79,16 @@ def test_a_real_commit_is_recognised(command):
         "git push origin main",
         "git branch -a",
         "gh pr view 1 --json state",
+        # "commit" inside an ARGUMENT, not as the subcommand. The first is the
+        # command that stages this hook's own ledger, and a stash of that path
+        # is what produced a duplicate row once the dedupe's last row was gone.
+        "git add cla.io/retro/commit-provenance.jsonl",
+        'git stash push -q -m "x" -- cla.io/retro/commit-provenance.jsonl',
+        "git diff -- src/commit.py",
+        "git checkout -- src/commit.py",
+        "git commit-tree HEAD^{tree} -m x",
+        "git log --oneline commit",
+        "gh pr merge 1 --merge --match-head-commit abc123",
     ],
 )
 def test_a_non_commit_is_not_recognised(command):
