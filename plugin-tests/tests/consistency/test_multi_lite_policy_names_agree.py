@@ -164,11 +164,29 @@ def test_resume_never_merges_a_moved_head():
     step_2 = _section(_read(_REFS / "candidate-loop.md"), *_STEP_2)
     moved = _line(step_2, "differs from `headRefOid`")
     assert "Do not merge" in moved
-    assert "step 7" not in moved and "step 8" not in moved
+    # Citing step 8 for a definition is fine; sending the row there is not.
+    assert "re-enter" not in moved.lower() and "go to step" not in moved.lower()
     assert "`review: clean`" not in moved
     reentry = [step_2.find("re-enter step 7"), step_2.find("re-enter step 8")]
     assert -1 not in reentry, "step 2 lost a re-entry arm; re-check this test's premise"
     assert step_2.find(moved) < min(reentry)
+
+
+def test_the_enforcement_round_proves_a_commit_exists():
+    """HEAD equal to the remote proves nothing when no commit was made: both still
+    sit at the old head, and the gate would pass on the uncommitted fix."""
+    step_7 = _section(_read(_REFS / "candidate-loop.md"), *_STEP_7)
+    moved = _line(step_7, "must differ from the row's current `head_sha`")
+    assert "no commit was made" in moved
+    assert "`git status --porcelain" in step_7
+    assert "`fix not committed`" in step_7
+
+
+def test_every_merge_requires_a_clean_tree():
+    step_8b = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8B)
+    clean = _line(step_8b, "`uncommitted changes`")
+    assert "`git status --porcelain" in clean
+    assert "do not merge" in clean
 
 
 def test_merging_stopped_overrides_only_a_yes():
@@ -219,7 +237,11 @@ def test_a_merge_is_confirmed_by_state_not_exit_code():
     step_8c = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8C)
     assert "exit code of 0 does not prove a merge" in step_8c
     confirm = _line(step_8c, "`state` must be `MERGED`")
-    assert "`merge not confirmed" in confirm
+    assert "Otherwise" in confirm
+    assert "`merge not confirmed (state <state>)`" in step_8c
+    # A queued or auto-merge PR is not merged now, so it must not count as merged.
+    queued = _line(step_8c, "`queued: merges later outside this run`")
+    assert "not merged now" in queued
 
 
 def test_an_ordinary_gh_error_does_not_stop_merging_for_the_run():

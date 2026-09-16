@@ -69,7 +69,7 @@ MUTANTS = [
     (
         "a resume adopts a moved head and merges it",
         LOOP,
-        "the PR now holds commits nobody in this run tested or reviewed. Do not merge.",
+        "the PR may hold commits nobody in this run tested or reviewed. Do not merge.",
         "the PR holds new commits. Re-enter step 8, which runs the full gate on them.",
         TARGETS,
     ),
@@ -97,8 +97,8 @@ MUTANTS = [
     (
         "a zero exit code is trusted as a merge",
         LOOP,
-        "`state` must be `MERGED`. Anything else → a failed 8b check with the reason `merge not confirmed (state <state>)`.",
-        "Read `mergeCommit` for the ledger; the exit code already confirmed the merge.",
+        "`state` must be `MERGED`. Otherwise:",
+        "The exit code already confirmed the merge; read `mergeCommit` for the ledger. If it is empty:",
         TARGETS,
     ),
     (
@@ -113,6 +113,27 @@ MUTANTS = [
         LOOP,
         "**Then, only for a yes: the ledger header records `merging stopped`** → the host already refused a merge this session, so do not attempt one.",
         "**The ledger header records `merging stopped`** → the host already refused a merge this session.",
+        TARGETS,
+    ),
+    (
+        "the enforcement round trusts HEAD == remote without proving a commit exists",
+        LOOP,
+        "     - `git rev-parse HEAD` must differ from the row's current `head_sha`. The same value means no commit was made (a hook rejected it, or nothing was staged).\n",
+        "",
+        TARGETS,
+    ),
+    (
+        "8b stops requiring a clean tree before the gate",
+        LOOP,
+        " Then `git status --porcelain -- . ':(exclude)cla.io/retro'` must be empty. Anything listed would be tested by the gate below without being part of the merge, so do not merge; the reason is `uncommitted changes`.",
+        "",
+        TARGETS,
+    ),
+    (
+        "a queued or auto-merge PR is recorded as merged",
+        LOOP,
+        "It is not merged now, so a candidate that must merge before a later one is still `failed-merge` and quarantined.",
+        "Treat it as merged: write `status: merged` and continue.",
         TARGETS,
     ),
     (
