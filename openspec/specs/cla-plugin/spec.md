@@ -745,6 +745,61 @@ The skill SHALL additionally compute and name which capabilities are touched by 
 - **THEN** the shared-state determination is still made per change, from artifacts
 - **AND** it appears with its derivation in that mode's required output
 
+### Requirement: A small-change chain merges only what it tested and reviewed, under a policy confirmed per run
+
+A skill that chains single small-change runs into a batch and may merge their pull requests SHALL merge only under a merge policy the user confirmed for that run, and SHALL offer a policy that merges every clean candidate as the chain goes as well as one that merges only what a later candidate needs. A chain that merges only dependencies leaves every independent pull request open, each tested against the base it branched from and never against the others; merging each clean candidate as it passes makes every later candidate branch from, and test against, a base that already holds the earlier merges.
+
+**The policy SHALL be confirmed at the run's single gate, and a mode that pre-answers that gate SHALL NOT widen merging on its own.** Where the invocation pre-confirms the plan without naming a policy, the narrower policy applies. A pre-confirmed plan is not an authorization to merge more than the invocation asked for.
+
+**"Clean" SHALL mean more than a review verdict.** Before any merge, under either policy, the skill SHALL establish each of:
+
+- no Critical or Important review finding is unresolved, where a finding counts as settled only when a change addressing it exists and its fix has been shown to work, and findings are counted from the reviewers' own reports rather than from a summary that need not list them;
+- the pull request's head is the commit the run recorded, and the local checkout is exactly that commit with no uncommitted changes;
+- the repository's full test gate is green on that commit, and a gate with no test commands to run blocks the merge rather than passing;
+- the host reports no conflicts, no failing or still-pending checks, and no protection blocking the merge.
+
+**A merge SHALL be confirmed by the host reporting it merged, not by the command's exit status.** A pull request that was only queued, or set to merge automatically later, SHALL be reported as such and SHALL NOT count as merged for a candidate that depends on it.
+
+**A resume SHALL NOT merge a head the run did not test and review, and SHALL NOT infer a candidate clean.** Commits pushed to a candidate's branch after the run recorded its head leave that pull request open for the user, whoever pushed them. A candidate whose findings were not recorded before the interruption resumes as unresolved.
+
+**A merge failure SHALL NOT halt the chain, except where it breaks every later candidate.** A candidate that cannot merge is left open with its reason, and anything that depends on it is skipped. A host that refuses the merge command itself SHALL stop further merging for the rest of the run rather than being retried under another spelling. A candidate whose changes move shared environment state and cannot merge SHALL cause every later candidate to be skipped, per "Sequencing edges beyond the source dependency graph", and SHALL be reported first.
+
+#### Scenario: The wider policy merges every clean candidate in order
+
+- **WHEN** the user confirms the merge-each-clean policy and three independent candidates pass every pre-merge check
+- **THEN** each merges as soon as it passes
+- **AND** each later candidate branches from a base that holds the earlier merges
+
+#### Scenario: A pre-confirmed run without a named policy merges only dependencies
+
+- **WHEN** the invocation pre-confirms the plan and names no merge policy
+- **THEN** only candidates a later candidate needs merged are merged
+- **AND** the report states which policy applied and why
+
+#### Scenario: A green review with an untested fix does not merge
+
+- **WHEN** a candidate's review fixes were committed after its test phase, or an uncommitted fix sits in the working tree
+- **THEN** the full test gate runs on the recorded head with a clean tree before any merge
+- **AND** a red gate or a dirty tree leaves the pull request open with its reason
+
+#### Scenario: A queued merge is not a merge
+
+- **WHEN** the merge command exits successfully but the host reports the pull request still open, queued or set to merge automatically
+- **THEN** the candidate is not recorded as merged
+- **AND** a candidate depending on it is skipped
+
+#### Scenario: A resume leaves pushed commits for the user
+
+- **WHEN** a run resumes and a candidate's pull request head differs from the head the run recorded
+- **THEN** that pull request is left open with a reason naming the moved head
+- **AND** it is not re-reviewed, re-tested and merged by the resumed run
+
+#### Scenario: Lost findings never resume as clean
+
+- **WHEN** a run resumes a candidate whose review findings were not recorded before the interruption
+- **THEN** the candidate is treated as carrying an unresolved finding
+- **AND** it is not merged
+
 ### Requirement: Cross-change obligation carry
 
 A skill that drives a SEQUENCE of changes SHALL treat an obligation one change creates for a later one as chain state that is both **recorded** and **delivered**, and SHALL NOT discharge it by recording alone. An obligation here is an addition a change's own review or fix round makes — a stored field, column, response key, or required behaviour — that the change itself does not consume, whose sole justification is that a named later change reads it. Such an obligation is invisible to every check scoped to a single change: the downstream change's artifacts stay internally consistent while never mentioning it.
