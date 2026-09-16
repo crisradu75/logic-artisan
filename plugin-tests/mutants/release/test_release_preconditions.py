@@ -92,15 +92,31 @@ MUTANTS = [
         "the clean-tree exemption widens from the provenance ledger to all of "
         "cla.io/retro",
         SKILL,
-        "git status --porcelain -- . ':(exclude)cla.io/retro/commit-provenance.jsonl'",
-        "git status --porcelain -- . ':(exclude)cla.io/retro'",
+        "git status --porcelain -- :/ ':(exclude)cla.io/retro/commit-provenance.jsonl'",
+        "git status --porcelain -- :/ ':(exclude)cla.io/retro'",
         TARGETS,
     ),
     (
         "a second exclusion lets another uncommitted file into the release",
         SKILL,
-        "git status --porcelain -- . ':(exclude)cla.io/retro/commit-provenance.jsonl'",
-        "git status --porcelain -- . ':(exclude)cla.io/retro/commit-provenance.jsonl' ':(exclude)CLAUDE.md'",
+        "git status --porcelain -- :/ ':(exclude)cla.io/retro/commit-provenance.jsonl'",
+        "git status --porcelain -- :/ ':(exclude)cla.io/retro/commit-provenance.jsonl' ':(exclude)CLAUDE.md'",
+        TARGETS,
+    ),
+    (
+        "the pathspec reverts to `.`, so the clean-tree check covers only the "
+        "current directory",
+        SKILL,
+        "git status --porcelain -- :/ ':(exclude)",
+        "git status --porcelain -- . ':(exclude)",
+        TARGETS,
+    ),
+    (
+        "Step 1 stops checking for unmerged files, so a conflicted ledger "
+        "hides behind the exclusion",
+        SKILL,
+        "git ls-files --unmerged\n",
+        "",
         TARGETS,
     ),
 ]

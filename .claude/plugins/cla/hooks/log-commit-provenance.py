@@ -332,10 +332,18 @@ _LEADS_WITH_GIT = re.compile(r"^\s*(?:[A-Za-z_]\w*=\S*\s+)*" + GIT_CMD + r"\b")
 # taking a separate value (`-C <path>`, `-c <name>=<value>`, and the long forms
 # that accept `--opt <value>`), or a self-contained flag. `(?![\w-])` keeps
 # `commit-tree` and `commit-graph` out.
+#
+# A separate value never starts with `-`. Without that, `--git-dir --git-dir …`
+# can be split two ways at every word, and a non-matching line of such options
+# backtracks exponentially — about 1.6x per word, minutes at forty. A value may
+# be a command substitution or carry escaped spaces, because
+# `git -C $(git rev-parse --show-toplevel) commit` and `git -C my\ dir commit`
+# are real commits the earlier whole-segment search recorded.
+_GIT_OPTION_VALUE = r"(?!-)(?:\$\([^)]*\)|(?:\\\s|\S)+)"
 _GIT_GLOBAL_OPTION = (
-    r"(?:-[Cc]\s+\S+"
-    r"|--(?:git-dir|work-tree|namespace|exec-path|super-prefix|config-env)(?:=\S+|\s+\S+)"
-    r"|--?[A-Za-z][\w-]*(?:=\S+)?)"
+    r"(?:-[Cc]\s+" + _GIT_OPTION_VALUE
+    + r"|--(?:git-dir|work-tree|namespace|exec-path|super-prefix|config-env)(?:=\S+|\s+" + _GIT_OPTION_VALUE + r")"
+    + r"|--?[A-Za-z][\w-]*(?:=\S+)?)"
 )
 _COMMIT_SUBCOMMAND = re.compile(
     r"^\s*(?:[A-Za-z_]\w*=\S*\s+)*" + GIT_CMD + r"(?:\s+" + _GIT_GLOBAL_OPTION + r")*\s+commit(?![\w-])"

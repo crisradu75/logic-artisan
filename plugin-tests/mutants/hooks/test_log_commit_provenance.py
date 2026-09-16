@@ -291,4 +291,28 @@ MUTANTS = [
         "        if re.search(GIT_CMD + r\".*\\b(log|show|rev-list)\\b\", segment):\n            continue\n",
         TARGETS,
     ),
+    (
+        "an option value may start with `-`, so a run of value-taking options "
+        "backtracks exponentially",
+        HOOK,
+        '_GIT_OPTION_VALUE = r"(?!-)(?:',
+        '_GIT_OPTION_VALUE = r"(?:',
+        TARGETS,
+    ),
+    (
+        "a value can no longer be a command substitution, so "
+        "`git -C $(git rev-parse --show-toplevel) commit` goes unrecorded",
+        HOOK,
+        '(?:\\$\\([^)]*\\)|(?:\\\\\\s|\\S)+)',
+        '(?:(?:\\\\\\s|\\S)+)',
+        TARGETS,
+    ),
+    (
+        "a value can no longer carry an escaped space, so "
+        "`git -C my\\ dir commit` goes unrecorded",
+        HOOK,
+        '|(?:\\\\\\s|\\S)+)',
+        '|\\S+)',
+        TARGETS,
+    ),
 ]

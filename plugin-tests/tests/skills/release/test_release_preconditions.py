@@ -119,6 +119,24 @@ def test_the_clean_tree_check_exempts_only_the_provenance_ledger():
         f"Step 1's clean-tree check excludes {excluded}; it must exclude exactly "
         f"{_PROVENANCE_LEDGER!r} and nothing else"
     )
+    # A pathspec is needed to carry the exclusion, and `.` would narrow the
+    # whole check to the current directory. `:/` is the repository root.
+    assert " -- :/ " in commands[0], (
+        f"Step 1's clean-tree check {commands[0]!r} no longer scopes itself to the "
+        "whole repo with `:/`"
+    )
+
+
+def test_the_exemption_cannot_hide_a_conflicted_ledger():
+    """Excluding the ledger from the porcelain check also hides an unresolved
+    merge conflict in it, so Step 1 must check for unmerged paths separately."""
+    body = _SKILL_MD.read_text(encoding="utf-8")
+    step_1 = body.split("## Step 1", 1)[1].split("## Step 2", 1)[0]
+    block = re.search(r"```bash\n(.*?)```", step_1, re.S).group(1)
+    assert "git ls-files --unmerged" in block.splitlines(), (
+        "Step 1 no longer runs `git ls-files --unmerged`; a conflicted provenance "
+        "ledger would pass the clean-tree check unseen"
+    )
 
 
 def test_the_ledger_exemption_parser_is_not_vacuous():
