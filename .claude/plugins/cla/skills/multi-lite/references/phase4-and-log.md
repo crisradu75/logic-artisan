@@ -13,13 +13,13 @@ only those two have a retro skill that consumes them.
 After every candidate has been run, merged or left open per the confirmed policy, quarantined, or skipped, summarize in this order:
 
 - **Merge policy**: `merge-each-clean` or `merge-dependencies-only`, and whether it was confirmed at the gate or applied by the explicit-autonomy override. If merging stopped because the host refused a merge, say so here and name the candidate it happened on.
-- **Shipped & merged**: id + PR number + merged commit. Under `merge-each-clean` this is every clean candidate; under `merge-dependencies-only` it is the dependencies merged to unblock their dependents.
-- **Shipped & left open**: id + PR URL + the reason, taken from the candidate's ledger `status`. Under `merge-dependencies-only` a plain `open` means an independent awaiting the user's merge. Every other reason is something the user must act on before the PR can merge: `unresolved <severity> finding`, `conflicts`, `head moved`, `mergeability unknown`, `merge refused`, `merge refused earlier in the run`. List those first.
-- **Failed**: id + the specific failing check (Test-phase halt), the `failed-review` finding, or the `failed-merge` reason.
+- **Shipped & merged**: id + PR number + the ledger's `merge_commit`. Under `merge-each-clean` this is every candidate that passed step 8. Under `merge-dependencies-only` it is every candidate that needed merging before a later one. Flag any that merged because step 8a found shared-state paths Phase 1a did not predict, and list the paths.
+- **Shipped & left open**: id + PR URL + the reason, taken from the candidate's ledger `status`. Under `merge-dependencies-only` a plain `open` means an independent awaiting the user's merge. Every other reason is something the user must act on before the PR can merge. List those first. Step 7 and step 8 can write: `unresolved <severity> finding`, `push not verified`, `findings lost on resume`, `head moved`, `full gate red: <check>`, `conflicts`, `checks not green`, `blocked by branch protection`, `draft`, `mergeability unknown`, `merge not confirmed (state <state>)`, `merge error: <message>`, `merge refused`, `merge refused earlier in the run`.
+- **Failed**: id + the specific failing check (Test-phase halt), the `failed-review` finding, the `failed-merge` reason, or `failed — PR closed without merging`.
 - **Blocked by an upstream failure**: id + which failed upstream candidate blocked it.
 - **Review fix rounds run**: which candidates needed a Phase 3 step 7 enforcement round, and whether it resolved the findings.
 - **Out of scope**: the non-lite items skipped in Phase 1a, with their suggested route (`/cla:spec-to-pr` / `/cla:multi-spec`).
-- **Next steps**: for each PR left open, the one action it needs (resolve the finding, resolve the conflict, or merge it). Point at re-running `/cla:multi-lite` after fixing a failed candidate — including a `failed-merge` one — to pick up its blocked-downstream subtree.
+- **Next steps**: for each PR left open, the one action it needs (push a fix for the finding, resolve the conflict, or merge it). Then point at re-running `/cla:multi-lite`. A re-run checks a pushed fix against the recorded findings, runs the full gate on the new head, merges what passes under the confirmed policy, and picks up the blocked-downstream subtree.
 
 ## Commit the run-notes file (best-effort)
 

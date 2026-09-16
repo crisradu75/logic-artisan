@@ -204,11 +204,13 @@ Force-push and `reset --hard` still prompt. No PR is ever merged without you hav
 a chainer.
 
 `multi-lite` asks for its merge policy at the plan gate. **`merge-each-clean`** (recommended)
-merges every candidate as soon as it is clean. Clean means tests passed, no Critical/Important
-finding is unresolved, the PR has no conflicts, and its head is the commit that was tested. A
-9-candidate run then ends with open PRs only for the candidates that could not merge, each with
-its reason. **`merge-dependencies-only`** merges just what a later candidate builds on and leaves
-the rest open for you. An autonomous invocation gets `merge-dependencies-only` unless it names
+merges every candidate whose review left no Critical/Important finding unresolved. Before each
+merge it checks the PR again: the full test gate is green on the exact head being merged, the head
+has not moved, and GitHub reports no conflicts or failing checks. A 9-candidate run then ends with
+open PRs only for the candidates that could not merge, each with its reason.
+**`merge-dependencies-only`** merges only what must land before a later candidate: one another
+candidate builds on, or one whose changed files move shared environment state (a migration, seed
+data, provisioning). It leaves the rest open for you. An autonomous invocation gets `merge-dependencies-only` unless it names
 the wider policy.
 
 Some host runtimes refuse `gh pr merge` outright, regardless of allowlist. For that case (or by
