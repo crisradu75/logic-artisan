@@ -10,22 +10,23 @@ only those two have a retro skill that consumes them.
 
 ## Phase 4 — Final summary
 
-After every candidate has been run, merged-if-a-dependency, quarantined, or skipped, summarize in this order:
+After every candidate has been run, merged or left open per the confirmed policy, quarantined, or skipped, summarize in this order:
 
-- **Shipped & merged** (dependencies that were merged to unblock dependents): id + PR number + merged commit.
-- **Shipped & left open** (independents awaiting the user's merge): id + PR URL. Flag any that carry an `open — unresolved <severity> finding` note from Phase 3 step 7.
-- **Failed**: id + the specific failing check (Test-phase halt) or `failed-review` finding.
+- **Merge policy**: `merge-each-clean` or `merge-dependencies-only`, and whether it was confirmed at the gate or applied by the explicit-autonomy override. If merging stopped because the host refused a merge, say so here and name the candidate it happened on.
+- **Shipped & merged**: id + PR number + merged commit. Under `merge-each-clean` this is every clean candidate; under `merge-dependencies-only` it is the dependencies merged to unblock their dependents.
+- **Shipped & left open**: id + PR URL + the reason, taken from the candidate's ledger `status`. Under `merge-dependencies-only` a plain `open` means an independent awaiting the user's merge. Every other reason is something the user must act on before the PR can merge: `unresolved <severity> finding`, `conflicts`, `head moved`, `mergeability unknown`, `merge refused`, `merge refused earlier in the run`. List those first.
+- **Failed**: id + the specific failing check (Test-phase halt), the `failed-review` finding, or the `failed-merge` reason.
 - **Blocked by an upstream failure**: id + which failed upstream candidate blocked it.
 - **Review fix rounds run**: which candidates needed a Phase 3 step 7 enforcement round, and whether it resolved the findings.
 - **Out of scope**: the non-lite items skipped in Phase 1a, with their suggested route (`/cla:spec-to-pr` / `/cla:multi-spec`).
-- **Next steps**: point at merging the open PRs, and at re-running `/cla:multi-lite` after fixing a failed candidate to pick up its blocked-downstream subtree.
+- **Next steps**: for each PR left open, the one action it needs (resolve the finding, resolve the conflict, or merge it). Point at re-running `/cla:multi-lite` after fixing a failed candidate — including a `failed-merge` one — to pick up its blocked-downstream subtree.
 
 ## Commit the run-notes file (best-effort)
 
 The per-run notes file (`cla.io/retro/multi-lite-run-notes-<date>.md`, created in
 Phase 1) is the resume artifact — commit it so a later session and another
-machine can read it back. Because `multi-lite` leaves independents' PRs open,
-Phase 3 normally ends with HEAD on some candidate's feature branch, so **return
+machine can read it back. Whenever the last candidate's PR was left open, under either policy,
+Phase 3 ends with HEAD on that candidate's feature branch, so **return
 to `<base-branch>` first, unconditionally, whatever branch HEAD is on**:
 
 ```

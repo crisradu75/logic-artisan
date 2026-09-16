@@ -203,6 +203,14 @@ is a merge, through the `ask-destructive-git` guard: `ALLOW_PR_MERGE=1 gh pr mer
 Force-push and `reset --hard` still prompt. No PR is ever merged without you having chosen to run
 a chainer.
 
+`multi-lite` asks for its merge policy at the plan gate. **`merge-each-clean`** (recommended)
+merges every candidate as soon as it is clean. Clean means tests passed, no Critical/Important
+finding is unresolved, the PR has no conflicts, and its head is the commit that was tested. A
+9-candidate run then ends with open PRs only for the candidates that could not merge, each with
+its reason. **`merge-dependencies-only`** merges just what a later candidate builds on and leaves
+the rest open for you. An autonomous invocation gets `merge-dependencies-only` unless it names
+the wider policy.
+
 Some host runtimes refuse `gh pr merge` outright, regardless of allowlist. For that case (or by
 choice, when you want the whole chain reviewable before anything lands) `multi-pr` has a
 **stacked** policy: no merges at all — each dependent branches off its parent's feature branch via
