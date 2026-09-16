@@ -52,15 +52,16 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 GUARD = DEV / "tests" / "consistency" / "test_mutation_gate_sites_agree.py"
 LITE_PR = PLUGIN / "skills" / "lite-pr" / "SKILL.md"
 REVISE = PLUGIN / "skills" / "spec-to-pr" / "references" / "revise.md"
+MULTI_LITE_LOOP = PLUGIN / "skills" / "multi-lite" / "references" / "candidate-loop.md"
 
 # Scoped to the ONE guard file: a target red for any other reason reports every
 # mutant "killed" and proves nothing.
 TARGETS = [GUARD]
 
-# Both sites state the gate in one paragraph whose middle line carries the whole
-# instruction, so the clause can be removed without an anchor that crosses a line
-# ending. Verified to occur exactly once in each of the two targets and nowhere
-# else in the shipped tree.
+# Every site states the clause on one line, so it can be removed without an anchor
+# that crosses a line ending. Occurs exactly once in each of the three sites
+# (lite-pr, revise.md, multi-lite's candidate-loop.md) and nowhere else in the
+# shipped tree: `grep -rn "<this phrase>" .claude/plugins/cla` lists those three.
 _CLAUSE_LINE = "read the assertion that killed the mutant and confirm it states the"
 _CLAUSE_DROPPED = "confirm the test states the"
 
@@ -79,6 +80,15 @@ MUTANTS = [
         # see "Provenance" above on what the pair shows that either alone cannot.
         "the revise.md site states the gate without the killed-mutant clause",
         REVISE,
+        _CLAUSE_LINE,
+        _CLAUSE_DROPPED,
+        TARGETS,
+    ),
+    (
+        # The third site, added by multi-lite's step 7 enforcement round. It
+        # shipped once without the clause, and this guard caught it.
+        "the multi-lite site states the gate without the killed-mutant clause",
+        MULTI_LITE_LOOP,
         _CLAUSE_LINE,
         _CLAUSE_DROPPED,
         TARGETS,
