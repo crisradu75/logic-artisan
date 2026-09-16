@@ -6,7 +6,7 @@ establishes that the suite reacts to that edit, not that the code or the test is
 correct, so the killing assertion has to be read. Without a guard that is an
 obligation asserted in a spec and enforced by nobody.
 
-**This is not a hypothetical drift.** The gate text lives in two shipped skills,
+**This is not a hypothetical drift.** The gate text lived in two shipped skills,
 `lite-pr/SKILL.md` and `spec-to-pr/references/revise.md`, and before the commit
 that added the clause those two blocks were byte-identical except for one word
 (`final report` vs `Handoff report`). Issue #193 named only one of them. A rule
@@ -25,7 +25,9 @@ to catch.
 
 The discovery set is derived, not hardcoded: a THIRD site stating the gate is
 demanded the moment it appears, rather than being silently unpoliced the way a
-hand-maintained file list would leave it.
+hand-maintained file list would leave it. That happened: `multi-lite`'s step 7
+enforcement round added a third site without the clause, and this guard was
+the only check that noticed.
 """
 
 from __future__ import annotations
@@ -46,11 +48,12 @@ _GATE_ANCHOR = "confirm it FAILS"
 # assertion that killed one.
 _REQUIRED_CLAUSE = "read the assertion that killed the mutant"
 
-# Both sites carried the gate when this guard was written. The floor tracks the
+# Two sites carried the gate when this guard was written; multi-lite's step 7
+# enforcement round (candidate-loop.md) became the third. The floor tracks the
 # real population rather than sitting decoratively below it: a site DISAPPEARING
 # is as much a defect as a site drifting, and a floor of 0 or 1 would pass on a
 # tree where the gate had been deleted outright.
-_KNOWN_SITE_COUNT = 2
+_KNOWN_SITE_COUNT = 3
 
 
 def _gate_sites() -> list[Path]:
