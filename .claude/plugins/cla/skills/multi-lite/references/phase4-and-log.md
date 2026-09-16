@@ -10,22 +10,24 @@ only those two have a retro skill that consumes them.
 
 ## Phase 4 — Final summary
 
-After every candidate has been run, merged-if-a-dependency, quarantined, or skipped, summarize in this order:
+After every candidate has been run, merged or left open per the confirmed policy, quarantined, or skipped, summarize in this order:
 
-- **Shipped & merged** (dependencies that were merged to unblock dependents): id + PR number + merged commit.
-- **Shipped & left open** (independents awaiting the user's merge): id + PR URL. Flag any that carry an `open — unresolved <severity> finding` note from Phase 3 step 7.
-- **Failed**: id + the specific failing check (Test-phase halt) or `failed-review` finding.
+- **Merge policy**: `merge-each-clean` or `merge-dependencies-only`, and whether it was confirmed at the gate or applied by the explicit-autonomy override. If merging stopped because the host refused a merge, say so here and name the candidate it happened on.
+- **Shipped & merged**: id + PR number + the ledger's `merge_commit`. Under `merge-each-clean` this is every candidate that passed step 8. Under `merge-dependencies-only` it is every candidate that needed merging before a later one. Flag any that merged because step 8a found shared-state paths Phase 1a did not predict, and list the paths. Also flag any merged with `gate skipped: no source-affecting paths`, `behind base: merged tree not tested`, or `base not updated`.
+- **Shared-state changes not merged** (only when present, and before every other section below): id + reason. Say that every later candidate was quarantined because the shared environment no longer matches the base.
+- **Shipped & left open**: id + PR URL + the reason, taken from the candidate's ledger `status`. Under `merge-dependencies-only` a plain `open` means an independent awaiting the user's merge. Every other reason is something the user must act on before the PR can merge. List those first. Steps 2, 7 and 8 can write: `unresolved <severity> finding`, `fix not committed`, `push not verified`, `enforcement fix unverified`, `findings lost on resume`, `deferred findings not determinable`, `head moved`, `head moved since review`, `head unverifiable (ledger lost)`, `local head mismatch`, `uncommitted changes`, `full gate red: <failing check>`, `full gate unavailable`, `checks still pending`, `checks not green`, `checks not readable`, `conflicts`, `blocked by branch protection`, `draft`, `mergeability unknown`, `shared-state check failed`, `shared-state change not merged`, `queued: merges later outside this run`, `merge not confirmed (state <state>)`, `merge error: <first line of the error>`, `merge refused`, `merge refused earlier in the run`. A `queued` PR needs no action: say it will merge on its own once GitHub's queue or auto-merge runs.
+- **Failed**: id + the specific failing check (Test-phase halt), the `failed-review` reason, the `failed-merge` reason, `failed — PR closed without merging`, or `failed — recorded PR not found`.
 - **Blocked by an upstream failure**: id + which failed upstream candidate blocked it.
 - **Review fix rounds run**: which candidates needed a Phase 3 step 7 enforcement round, and whether it resolved the findings.
 - **Out of scope**: the non-lite items skipped in Phase 1a, with their suggested route (`/cla:spec-to-pr` / `/cla:multi-spec`).
-- **Next steps**: point at merging the open PRs, and at re-running `/cla:multi-lite` after fixing a failed candidate to pick up its blocked-downstream subtree.
+- **Next steps**: for each PR left open, the one action it needs. A PR whose problem the user fixes by pushing commits (a finding, a conflict, a red gate) is theirs to review and merge by hand afterwards: a re-run never merges commits it did not test and review, and leaves that PR open as `head moved since review`. Point at re-running `/cla:multi-lite` for what a re-run does handle: finishing candidates an interruption left undecided, retrying merges that failed for a passing reason (pending checks, a host refusal in an earlier session), and picking up a blocked-downstream subtree once its upstream has merged.
 
 ## Commit the run-notes file (best-effort)
 
-The per-run notes file (`cla.io/retro/multi-lite-run-notes-<date>.md`, created in
-Phase 1) is the resume artifact — commit it so a later session and another
-machine can read it back. Because `multi-lite` leaves independents' PRs open,
-Phase 3 normally ends with HEAD on some candidate's feature branch, so **return
+The per-run notes file (`cla.io/retro/multi-lite-run-notes-<date>.md`, created or
+reused in Phase 2) is the resume artifact — commit it so a later session and another
+machine can read it back. Whenever the last candidate's PR was left open, under either policy,
+Phase 3 ends with HEAD on that candidate's feature branch, so **return
 to `<base-branch>` first, unconditionally, whatever branch HEAD is on**:
 
 ```
