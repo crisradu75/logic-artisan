@@ -102,8 +102,12 @@ def _section(text: str, start: str, end: str) -> str:
     also appear in steps 6, 7 and 8, so deleting step 2's resume arms would leave
     a whole-file check green.
     """
-    assert text.count(start) == 1, f"marker {start!r} not found exactly once"
-    assert text.count(end) == 1, f"marker {end!r} not found exactly once"
+    for marker in (start, end):
+        n = text.count(marker)
+        assert n == 1, (
+            f"section marker {marker!r} found {n} times; expected exactly once"
+            + (" (deleted or reworded?)" if n == 0 else " (quoted elsewhere?)")
+        )
     body = text.split(start, 1)[1].split(end, 1)[0]
     assert body.strip(), f"empty section between {start!r} and {end!r}"
     return body
@@ -112,7 +116,16 @@ def _section(text: str, start: str, end: str) -> str:
 _STEP_2 = ("2. **Resume check", "3. **Ensure the right base.**")
 _STEP_3 = ("3. **Ensure the right base.**", "4. **Run `/cla:lite-pr`")
 _STEP_8A = ("**8a. Should this candidate merge?**", "**8b. Pre-merge checks")
+_STEP_7 = ("7. **Enforce `/cla:lite-pr`'s deferred review findings", "8. **Merge per the confirmed policy")
 _STEP_8B = ("**8b. Pre-merge checks", "**8c. Merge, then confirm it landed.**")
+_STEP_8C = ("**8c. Merge, then confirm it landed.**", "Move to the next candidate")
+
+
+def _line(section: str, marker: str) -> str:
+    """The one line in a section carrying `marker`, as a named failure if absent."""
+    lines = [line for line in section.splitlines() if marker in line]
+    assert len(lines) == 1, f"expected one line containing {marker!r}, found {len(lines)}"
+    return lines[0]
 
 
 def test_resume_reads_only_columns_the_ledger_declares():
@@ -134,23 +147,38 @@ def test_resume_without_recorded_findings_is_never_clean():
     """`/cla:lite-pr` keeps deferred findings only in context. A resumed step 7
     that found none recorded would otherwise match "`deferred` is `0`" by
     default and merge a PR whose Critical finding nobody enforced."""
+    loop = _read(_REFS / "candidate-loop.md")
+    for arm in (
+        _line(_section(loop, *_STEP_2), "`deferred` empty"),
+        _line(_section(loop, *_STEP_7), "`deferred` is empty"),
+    ):
+        assert "`review: unresolved`" in arm
+        assert "`review: clean`" not in arm
+
+
+def test_resume_never_merges_a_moved_head():
+    """Commits pushed after `head_sha` was recorded were not tested or reviewed by
+    the run. The moved-head arm must stop the row, and must come before every arm
+    that re-enters step 7 or step 8 — otherwise a first-match reading sends a
+    lost-findings or clean row onward with someone else's commits."""
     step_2 = _section(_read(_REFS / "candidate-loop.md"), *_STEP_2)
-    arm = next(
-        (line for line in step_2.splitlines() if "`deferred` empty" in line), None
-    )
-    assert arm is not None, "step 2 has no arm for a row with no recorded findings"
-    assert "`review: unresolved`" in arm
-    assert "`review: clean`" not in arm
+    moved = _line(step_2, "differs from `headRefOid`")
+    assert "Do not merge" in moved
+    assert "step 7" not in moved and "step 8" not in moved
+    assert "`review: clean`" not in moved
+    reentry = [step_2.find("re-enter step 7"), step_2.find("re-enter step 8")]
+    assert -1 not in reentry, "step 2 lost a re-entry arm; re-check this test's premise"
+    assert step_2.find(moved) < min(reentry)
 
 
-def test_step_8a_checks_merging_stopped_before_either_policy_says_yes():
-    """A first-match reading must never reach a policy's "yes" after a host refusal."""
+def test_merging_stopped_overrides_only_a_yes():
+    """After a host refusal no merge is attempted, but a candidate the policy
+    would never merge keeps its plain `open` instead of a refusal reason."""
     step_8a = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8A)
-    stopped = step_8a.find("`merging stopped`")
-    each = step_8a.find("**`merge-each-clean`**")
-    deps = step_8a.find("**`merge-dependencies-only`**")
-    assert -1 not in (stopped, each, deps)
-    assert stopped < each < deps
+    stopped = _line(step_8a, "`merging stopped`")
+    assert "only for a yes" in stopped
+    assert "do not attempt" in stopped
+    assert step_8a.find(stopped) > step_8a.find("**`merge-dependencies-only`**")
 
 
 def test_step_8a_does_not_swap_what_the_two_policies_merge():
@@ -168,9 +196,38 @@ def test_step_8a_does_not_swap_what_the_two_policies_merge():
 
 def test_every_merge_runs_the_full_gate_first():
     """`/cla:lite-pr` commits its review fixes after its own Test phase, so the
-    full gate at 8b is the only full run a merged head gets."""
+    full gate at 8b is the only full run a merged head gets — and a gate with
+    nothing to run is not a pass."""
     step_8b = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8B)
     assert "full Test gate" in step_8b
+    unavailable = _line(step_8b, "`full gate unavailable`")
+    assert "do not merge" in unavailable
+
+
+def test_only_mergeable_states_proceed():
+    step_8b = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8B)
+    # Only the states listed before the arrow proceed; the explanation after it
+    # legitimately names `BLOCKED`.
+    proceeding = _line(step_8b, "→ proceed").split("→", 1)[0]
+    assert "`CLEAN`" in proceeding
+    for refused in ("DIRTY", "UNSTABLE", "BLOCKED", "DRAFT", "UNKNOWN"):
+        assert f"`{refused}`" not in proceeding, f"`{refused}` would proceed to a merge"
+        assert f"`{refused}` →" in step_8b, f"8b has no arm refusing `{refused}`"
+
+
+def test_a_merge_is_confirmed_by_state_not_exit_code():
+    step_8c = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8C)
+    assert "exit code of 0 does not prove a merge" in step_8c
+    confirm = _line(step_8c, "`state` must be `MERGED`")
+    assert "`merge not confirmed" in confirm
+
+
+def test_an_ordinary_gh_error_does_not_stop_merging_for_the_run():
+    step_8c = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8C)
+    catch_all = _line(step_8c, "**Any other error from `gh`**")
+    assert "does **not** set `merging stopped`" in catch_all
+    host = _line(step_8c, "**The host runtime refused")
+    assert "merging stopped" in host
 
 
 def test_the_ledger_row_parser_is_not_vacuous():

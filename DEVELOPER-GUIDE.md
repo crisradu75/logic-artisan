@@ -206,7 +206,9 @@ a chainer.
 `multi-lite` asks for its merge policy at the plan gate. **`merge-each-clean`** (recommended)
 merges every candidate whose review left no Critical/Important finding unresolved. Before each
 merge it checks the PR again: the full test gate is green on the exact head being merged, the head
-has not moved, and GitHub reports no conflicts or failing checks. A 9-candidate run then ends with
+has not moved, and GitHub reports no conflicts or failing checks. A re-run after an interruption
+finishes what the run left undecided, but never merges commits pushed after review — those PRs
+stay open for you. A 9-candidate run then ends with
 open PRs only for the candidates that could not merge, each with its reason.
 **`merge-dependencies-only`** merges only what must land before a later candidate: one another
 candidate builds on, or one whose changed files move shared environment state (a migration, seed
