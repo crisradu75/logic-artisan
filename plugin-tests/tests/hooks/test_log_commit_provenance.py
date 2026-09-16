@@ -48,6 +48,20 @@ mod = _load()
         "git -C /some/path commit -m 'x'",
         "git.exe commit -m 'x'",
         "GIT commit -m 'x'",
+        # Global options before the subcommand, including quoted values.
+        'git -C "/some path" commit -m "fix: x"',
+        "git -c user.name='a b' commit --amend --no-edit",
+        "git --no-pager commit -m x",
+        "git --git-dir=/x/.git --work-tree /x commit -q",
+        "GIT_AUTHOR_DATE=now git commit -q -F msg.txt",
+        # Values the earlier whole-segment search recorded and a plain `\S+`
+        # value would split in two.
+        "git -C $(git rev-parse --show-toplevel) commit -m x",
+        "git -C my\\ dir commit -m x",
+        # A message file named after a history command is still a commit; the
+        # old whole-segment `log|show|rev-list` exclusion dropped these.
+        "git commit -F show.txt",
+        "git commit -F log",
     ],
 )
 def test_a_real_commit_is_recognised(command):
@@ -69,11 +83,35 @@ def test_a_real_commit_is_recognised(command):
         "git push origin main",
         "git branch -a",
         "gh pr view 1 --json state",
+        # "commit" inside an ARGUMENT, not as the subcommand. The first is the
+        # command that stages this hook's own ledger, and a stash of that path
+        # is what produced a duplicate row once the dedupe's last row was gone.
+        "git add cla.io/retro/commit-provenance.jsonl",
+        'git stash push -q -m "x" -- cla.io/retro/commit-provenance.jsonl',
+        "git diff -- src/commit.py",
+        "git checkout -- src/commit.py",
+        "git commit-tree HEAD^{tree} -m x",
+        "git log --oneline commit",
+        "gh pr merge 1 --merge --match-head-commit abc123",
     ],
 )
 def test_a_non_commit_is_not_recognised(command):
     """Over-recording corrupts the ratio this hook exists to report."""
     assert mod._is_commit_command(command) is False
+
+
+def test_a_long_run_of_value_taking_options_does_not_backtrack():
+    """Each option that takes a separate value could, without a no-leading-dash
+    rule, also read the NEXT option as its value, so a non-matching run of them
+    backtracks exponentially. This runs in a PostToolUse hook, where a stall
+    holds up the session. Measured before the rule: ~0.15s at 26 repeats,
+    growing ~1.6x per word."""
+    import time
+
+    command = "git " + "--git-dir " * 34 + "status"
+    started = time.monotonic()
+    assert mod._is_commit_command(command) is False
+    assert time.monotonic() - started < 1.0
 
 
 # ---------- one call, several commands (issue #206) ----------
@@ -125,8 +163,10 @@ def test_a_commit_beside_another_command_is_still_a_commit(command):
         # A dry run in the same segment as the commit text.
         "git commit --dry-run\ngit status",
         # A history read in the same segment as the word commit — here it is
-        # part of a filename. This is the exclusion's own branch, which no
-        # earlier case reached: the two before it exit on `--dry-run` first.
+        # part of a filename. The subcommand match rejects it: `show`, not
+        # `commit`, is the subcommand. (A separate history-command exclusion
+        # used to catch this, and was removed because it also dropped real
+        # commits like `git commit -F show.txt`.)
         "git status\ngit show HEAD -- cla.io/retro/commit-provenance.jsonl",
     ],
 )
@@ -134,7 +174,7 @@ def test_splitting_does_not_admit_a_non_commit(command):
     """Splitting must not turn the exclusions into a way through.
 
     Each case fails a DIFFERENT test in the loop — leads-with-git, `--dry-run`,
-    then the history read. Three cases exiting by the same branch would look
+    then the subcommand match. Three cases exiting by the same branch would look
     like coverage while proving one thing.
     """
     assert mod._is_commit_command(command) is False

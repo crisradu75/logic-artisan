@@ -36,7 +36,8 @@ part of the release.
 
 ```bash
 git rev-parse --abbrev-ref HEAD
-git status --porcelain
+git status --porcelain -- :/ ':(exclude)cla.io/retro/commit-provenance.jsonl'
+git ls-files --unmerged
 git fetch origin
 git status -sb
 pytest plugin-tests -q -n auto --dist loadfile
@@ -47,7 +48,8 @@ python3 .claude/skills/release/scripts/check_shipped_tree.py
 | Precondition | Why it is not negotiable |
 |---|---|
 | On the repo's default branch | A tag cut from a feature branch pins commits that may never merge. |
-| Working tree clean | An uncommitted edit is either in the release or it isn't; a dirty tree means nobody knows which. |
+| Working tree clean, except the provenance ledger | An uncommitted edit is either in the release or it isn't; a dirty tree means nobody knows which. **One file is excluded, and only one:** `cla.io/retro/commit-provenance.jsonl`. The `log-commit-provenance` hook appends a row after every commit, and a row can never be inside the commit it describes, so while that ledger is on the file is never clean, including right after this release's own commit (issue #239). It is also never in a release: the tag ships `.claude/plugins/cla/` and the ledger sits outside it. Excluding the whole `cla.io/retro/` directory would hide the run ledgers, which a skill writes at a controlled moment and which should be committed. `:/` makes the check cover the whole repo from any directory; `.` covers only the current one. |
+| No unmerged files (`git ls-files --unmerged` prints nothing) | The exclusion above hides the ledger's status, including a half-resolved merge conflict in it. A file with conflict markers is never a state to tag from. |
 | Up to date with `origin` | Tagging a stale local branch publishes a tree that is not what `main` holds. |
 | `pytest plugin-tests -q -n auto --dist loadfile` fully green | There is no CI. This run, plus the Node run below, is the whole gate that exists. |
 | `node --test plugin-tests/node/mechanical-checks.test.mjs` fully green | the pytest gate does not reach it — `norecursedirs` excludes `node` — so a broken `mechanical-checks.mjs`, a SHIPPED file, ships behind an all-green pytest run without this line. Not hypothetical: commit `ee3e359` on `extract-dev-tree-from-plugin` fixed this suite failing with `ERR_MODULE_NOT_FOUND` while pytest stayed green throughout. |
@@ -127,6 +129,38 @@ git checkout <default-branch> && git pull --ff-only
 
 Pass `--body`: without it `gh pr create` opens an interactive editor, which in a
 non-interactive session is a hang two steps before an irreversible action.
+
+**If `git checkout` or `git pull` refuses because of `cla.io/retro/commit-provenance.jsonl`**,
+the incoming commits touched the ledger that step 1 let stay dirty. Move only that file
+aside, keep a copy of it, and never `git stash pop` it back. Both sides appended rows to
+the end of the same file, so a pop conflicts almost every time. Then the file sits
+half-resolved behind step 1's exclusion, and during a stash pop `--theirs` means the
+stash, not upstream, which is easy to get backwards:
+
+```bash
+git stash push -- cla.io/retro/commit-provenance.jsonl
+git checkout <default-branch>
+git pull --ff-only
+git show 'stash@{0}:cla.io/retro/commit-provenance.jsonl' > /tmp/stashed-provenance.jsonl
+git stash drop
+```
+
+Then add back only the rows upstream lacks, matched by `sha`. The ledger is an
+append-only log, not code. Never merge it by comparing whole lines: upstream may have
+rewritten rows, and a line-level union re-adds every one it removed.
+
+```bash
+python3 - <<'PY'
+import json
+path = "cla.io/retro/commit-provenance.jsonl"
+have = {json.loads(l)["sha"] for l in open(path) if l.strip()}
+with open(path, "a") as out:
+    for line in open("/tmp/stashed-provenance.jsonl"):
+        if line.strip() and json.loads(line)["sha"] not in have:
+            have.add(json.loads(line)["sha"])
+            out.write(line if line.endswith("\n") else line + "\n")
+PY
+```
 
 **Why a PR and not `git push`.** `hooks/git/pre-push` refuses a direct push to the default
 branch. The hook's message names an `ALLOW_PUSH_TO_MAIN=1` override, and it is not the

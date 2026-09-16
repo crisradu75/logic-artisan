@@ -92,6 +92,59 @@ def test_the_skill_names_every_file_its_own_procedure_bumps():
         )
 
 
+_PROVENANCE_LEDGER = "cla.io/retro/commit-provenance.jsonl"
+
+
+def _step_1_status_commands(body: str) -> list[str]:
+    """Every `git status --porcelain` line in Step 1's command block."""
+    step_1 = body.split("## Step 1", 1)[1].split("## Step 2", 1)[0]
+    block = re.search(r"```bash\n(.*?)```", step_1, re.S)
+    assert block, "release/SKILL.md Step 1 no longer opens with a bash command block"
+    return [
+        line.strip() for line in block.group(1).splitlines()
+        if line.strip().startswith("git status --porcelain")
+    ]
+
+
+def test_the_clean_tree_check_exempts_only_the_provenance_ledger():
+    """The provenance hook writes a row after every commit, so its ledger is never
+    clean while it is on (#239), and a clean-tree check that includes it can never
+    pass. The exemption must stay exactly that one file: widening it to
+    `cla.io/retro/` would hide the run ledgers a skill writes and should commit,
+    and a second exclusion would let any uncommitted edit ride into a tag."""
+    commands = _step_1_status_commands(_SKILL_MD.read_text(encoding="utf-8"))
+    assert len(commands) == 1, f"expected one porcelain check in Step 1, found {commands}"
+    excluded = re.findall(r"':\(exclude\)([^']+)'", commands[0])
+    assert excluded == [_PROVENANCE_LEDGER], (
+        f"Step 1's clean-tree check excludes {excluded}; it must exclude exactly "
+        f"{_PROVENANCE_LEDGER!r} and nothing else"
+    )
+    # A pathspec is needed to carry the exclusion, and `.` would narrow the
+    # whole check to the current directory. `:/` is the repository root.
+    assert " -- :/ " in commands[0], (
+        f"Step 1's clean-tree check {commands[0]!r} no longer scopes itself to the "
+        "whole repo with `:/`"
+    )
+
+
+def test_the_exemption_cannot_hide_a_conflicted_ledger():
+    """Excluding the ledger from the porcelain check also hides an unresolved
+    merge conflict in it, so Step 1 must check for unmerged paths separately."""
+    body = _SKILL_MD.read_text(encoding="utf-8")
+    step_1 = body.split("## Step 1", 1)[1].split("## Step 2", 1)[0]
+    block = re.search(r"```bash\n(.*?)```", step_1, re.S).group(1)
+    assert "git ls-files --unmerged" in block.splitlines(), (
+        "Step 1 no longer runs `git ls-files --unmerged`; a conflicted provenance "
+        "ledger would pass the clean-tree check unseen"
+    )
+
+
+def test_the_ledger_exemption_parser_is_not_vacuous():
+    body = "## Step 1\n```bash\ngit status --porcelain -- . ':(exclude)a' ':(exclude)b'\n```\n## Step 2\n"
+    command = _step_1_status_commands(body)[0]
+    assert re.findall(r"':\(exclude\)([^']+)'", command) == ["a", "b"]
+
+
 def test_the_skill_states_the_never_move_invariant():
     """The one rule whose violation cannot be undone. If it is ever edited out of
     the skill, the skill has stopped being safe to run."""
