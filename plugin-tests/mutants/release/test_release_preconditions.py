@@ -115,7 +115,7 @@ MUTANTS = [
         "Step 1 stops checking for unmerged files, so a conflicted ledger "
         "hides behind the exclusion",
         SKILL,
-        "git ls-files --unmerged\n",
+        "git ls-files --unmerged" + _NL,
         "",
         TARGETS,
     ),

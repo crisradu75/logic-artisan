@@ -39,6 +39,16 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 HOOK = PLUGIN / "hooks" / "log-commit-provenance.py"
 TARGETS = [DEV / "tests" / "hooks" / "test_log_commit_provenance.py"]
 
+
+def _nl(text: str, path: Path = HOOK) -> str:
+    """Re-spell `\\n` as the target file's own line ending.
+
+    `mutate.py` matches raw text, so a bare `\\n` in an anchor matches NOTHING on
+    a CRLF checkout — and a batch with one unresolvable anchor aborts in preflight
+    and runs no mutant at all, silently. This is derived from the file's bytes
+    rather than spelled, which is the shape `mutants/annotate/` already uses."""
+    return text.replace("\n", "\r\n" if b"\r\n" in path.read_bytes() else "\n")
+
 MUTANTS = [
     (
         # Gate from 05355ff (#204): a provenance row must land only when THIS
@@ -286,9 +296,9 @@ MUTANTS = [
         "the whole-segment history exclusion returns and drops "
         "`git commit -F show.txt`",
         HOOK,
-        "        if \"--dry-run\" in segment:\n            continue\n",
-        "        if \"--dry-run\" in segment:\n            continue\n"
-        "        if re.search(GIT_CMD + r\".*\\b(log|show|rev-list)\\b\", segment):\n            continue\n",
+        _nl("        if \"--dry-run\" in segment:\n            continue\n"),
+        _nl("        if \"--dry-run\" in segment:\n            continue\n"
+            "        if re.search(GIT_CMD + r\".*\\b(log|show|rev-list)\\b\", segment):\n            continue\n"),
         TARGETS,
     ),
     (
