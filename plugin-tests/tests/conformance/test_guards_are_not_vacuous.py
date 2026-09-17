@@ -77,6 +77,13 @@ _COLLECTION_NAMES = frozenset(
         "absent", "blank", "cached", "collisions", "drifted", "empty",
         "failures", "gaps", "overruns", "thin", "unaccounted", "undeclared",
         "undocumented", "unknown", "unpoliced", "unresolved", "vacuous", "wrong",
+        # Added when discovery stopped being the two-directory literal and
+        # started covering all of `tests/`. These nine are the names the OTHER
+        # ten directories use — a second nine-name blind spot that existed for
+        # exactly as long as the directory list was hand-written, which is the
+        # argument for deriving it.
+        "enforcing", "lost", "reanchored", "remote", "small", "stale",
+        "unimported", "unrunnable", "warnings",
     }
 )
 
@@ -92,30 +99,111 @@ _COLLECTION_NAMES = frozenset(
 # accident the test below converts into a failure.
 _NOT_A_FINDING_COLLECTION: dict[str, str] = {}
 
-# The dev-tree directories whose tests are guards over the repo itself. A
-# skill's own unit tests are ordinary tests and are not held to this shape.
-# These were the two `*-checks` scopes before the dev tree moved out of the
-# plugin; the guards themselves did not change, only where they live.
-_GUARD_TEST_DIRS = ("tests/conformance", "tests/consistency")
+# DERIVED, not declared. This was the two-tuple
+# `("tests/conformance", "tests/consistency")` — the two `*-checks` scopes that
+# predated the dev-tree move — and it reached 22 of the tree's 54 test files.
+# The shape it excluded was never argued for, only inherited: a `problems` list
+# nothing fills is exactly as vacuous in `tests/hooks/` or
+# `tests/skills/annotate/` as it is here, and the two directories it named were
+# the two that happened to exist when the line was written.
+#
+# THE FLOORS WERE DECORATIVE UNDER IT, measured with the declared pair patched
+# down to one directory at a time::
+#
+#     $ python - <<'PY'
+#     import ast, sys
+#     sys.path.insert(0, "plugin-tests/tests/conformance")
+#     import test_guards_are_not_vacuous as G
+#     from pathlib import Path
+#     for d in ("tests/conformance", "tests/consistency"):
+#         files = sorted((G._DEV_TREE / d).glob("test_*.py"))
+#         n = sum(len(G._empty_asserted_names(fn))
+#                 for p in files
+#                 for fn in ast.walk(ast.parse(p.read_text(encoding="utf-8")))
+#                 if isinstance(fn, ast.FunctionDef) and fn.name.startswith("test_"))
+#         print(d, len(files), "files", n, "empty-assertions")
+#     PY
+#     tests/conformance   6 files 11 empty-assertions
+#     tests/consistency  16 files 28 empty-assertions
+#
+# Dropping EITHER declared directory left the survivor clearing both `>= 6`
+# files and `>= 5` assertions — so half the population could vanish with the
+# guard green. That is the decorative floor the sibling
+# `test_guards_have_mutant_batches.py` records re-deriving four times before it
+# gave up on a global count.
+#
+# Same derivation as that sibling's `_guard_areas()`: read the filesystem so a
+# directory added later is DISCOVERED rather than requiring someone to remember
+# a list edit. `rglob` rather than `glob`, because `tests/skills/<name>/` is one
+# segment deeper — the same nesting `_area_test_dir` was fixed to stop assuming.
+_TESTS_ROOT = _DEV_TREE / "tests"
+
+# What discovery is REQUIRED to reach, written down independently of the
+# derivation rather than read back out of it — the duplication is the point, and
+# the reasoning is `REQUIRED_SUFFIXES`' in `test_no_hardcoded_plugin_paths.py`:
+# an expectation read from the thing under test measures nothing. Deriving the
+# directory list from `tests/` means comparing it against `tests/` is a
+# tautology, so the floor has to be an independent statement. These four span
+# the three nesting depths discovery has to handle plus the two original guard
+# scopes; losing one is a deliberate deletion someone argues for, not a green run.
+_REQUIRED_TEST_DIRS = frozenset(
+    {"tests/conformance", "tests/consistency", "tests/hooks", "tests/skills/annotate"}
+)
 
 
 def _guard_test_files():
-    out = []
-    for rel in _GUARD_TEST_DIRS:
-        out.extend(sorted((_DEV_TREE / rel).glob("test_*.py")))
-    return out
+    return sorted(_TESTS_ROOT.rglob("test_*.py"))
+
+
+def _discovered_dirs() -> set[str]:
+    return {
+        p.parent.relative_to(_DEV_TREE).as_posix() for p in _guard_test_files()
+    }
+
+
+def _bound_names(target: ast.expr):
+    """Every `Name` this assignment target binds, unwrapping tuple/list unpacking
+    and starred targets.
+
+    `isinstance(t, ast.Name)` alone missed `checked, lost, problems, fatal =
+    check_anchors(...)` entirely — the target is a `Tuple`, so no name in it was
+    ever seen as rebound and all four read as never fed. That is a FALSE
+    POSITIVE, the expensive direction for this checker: it accuses a guard that
+    is fine, and an accusation nobody can act on is how a report gets ignored."""
+    for sub in ast.walk(target):
+        if isinstance(sub, ast.Name):
+            yield sub.id
 
 
 def _feeds(node: ast.AST, name: str) -> bool:
     """True if `name` is ever grown inside `node` — appended to, extended,
-    augmented, or rebound to something other than an empty literal."""
+    augmented, rebound to something other than an empty literal, or handed to a
+    call that could fill it."""
     for sub in ast.walk(node):
-        # name.append(...) / name.extend(...) / name.update(...)
-        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
-            tgt = sub.func.value
-            if isinstance(tgt, ast.Name) and tgt.id == name:
-                if sub.func.attr in {"append", "extend", "update", "add"}:
+        if isinstance(sub, ast.Call):
+            # name.append(...) / name.extend(...) / name.update(...)
+            if isinstance(sub.func, ast.Attribute):
+                tgt = sub.func.value
+                if isinstance(tgt, ast.Name) and tgt.id == name:
+                    if sub.func.attr in {"append", "extend", "update", "add"}:
+                        return True
+            # f(..., name, ...) / f(..., problems=name) — the OUT-PARAMETER
+            # shape, and the second false positive widening discovery exposed:
+            # `store.read_all(path, problems=problems)` fills the list inside
+            # the callee, which no amount of looking at this function can see.
+            #
+            # This is deliberately loose. A name merely READ by a call —
+            # `print(problems)` — also reads as fed, so the checker gives up a
+            # little strictness to stop accusing correct guards. That trade is
+            # the module docstring's stated posture: it decides whether an
+            # assertion is REACHABLE, never whether it is meaningful, and a
+            # missed vacuous assertion stays mutation's job.
+            for arg in [*sub.args, *(k.value for k in sub.keywords)]:
+                if isinstance(arg, ast.Name) and arg.id == name:
                     return True
+                if isinstance(arg, ast.Starred) and isinstance(arg.value, ast.Name):
+                    if arg.value.id == name:
+                        return True
         # name += ...
         if isinstance(sub, ast.AugAssign):
             if isinstance(sub.target, ast.Name) and sub.target.id == name:
@@ -123,12 +211,14 @@ def _feeds(node: ast.AST, name: str) -> bool:
         # name = <anything that is not an empty literal>
         if isinstance(sub, ast.Assign):
             for t in sub.targets:
-                if isinstance(t, ast.Name) and t.id == name:
+                if name in _bound_names(t):
                     v = sub.value
                     empty_literal = (
                         isinstance(v, (ast.List, ast.Set, ast.Dict)) and not getattr(v, "elts", getattr(v, "keys", []))
                     )
-                    if not empty_literal:
+                    # A tuple target never binds an empty literal to one of its
+                    # names, so unpacking always counts as feeding.
+                    if not isinstance(t, ast.Name) or not empty_literal:
                         return True
     return False
 
@@ -266,19 +356,55 @@ def test_an_undeclared_name_is_reported():
 
 
 def test_the_scan_is_not_vacuous():
-    """This guard is itself the shape it polices, so it needs its own floor."""
+    """This guard is itself the shape it polices, so it needs its own floor.
+
+    Re-measured with this file's own `__main__`, which is why it has one::
+
+        $ python plugin-tests/tests/conformance/test_guards_are_not_vacuous.py
+        files 54  dirs 12  empty-assertions 65
+
+    Both floors sit ONE BELOW the real count, the rule
+    `test_no_hardcoded_plugin_paths.py` states for its own scan floor: move them
+    to the new real count when something is deliberately added or deleted, never
+    to a number chosen to be safe from future deletions. The next deliberate
+    deletion is EXPECTED to trip them and get them lowered along with it.
+
+    They were `>= 6` files and `>= 5` assertions against a real 22 and 39 — so
+    dropping either of the two declared directories left the survivor clearing
+    both, which is the measurement in the comment on `_TESTS_ROOT`."""
     files = _guard_test_files()
-    assert len(files) >= 6, f"guard-test discovery collapsed to {len(files)} files"
+    assert len(files) >= 53, f"guard-test discovery collapsed to {len(files)} files"
     total_asserts = 0
     for path in files:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for fn in ast.walk(tree):
             if isinstance(fn, ast.FunctionDef) and fn.name.startswith("test_"):
                 total_asserts += len(_empty_asserted_names(fn))
-    assert total_asserts >= 5, (
+    assert total_asserts >= 64, (
         f"only {total_asserts} empty-collection assertions found across "
         f"{len(files)} guard files; the AST shapes this recognises have "
         "probably stopped matching how the guards are written"
+    )
+
+
+def test_discovery_still_reaches_every_required_directory():
+    """A count cannot see a DIRECTORY dropping out — the failure the two-tuple
+    made invisible, and the one a derived list re-opens from the other end.
+
+    `rglob` over a directory that has been moved or renamed is empty rather than
+    an error, so a whole area can stop contributing while the floor above absorbs
+    it: `tests/skills/annotate/` is 8 of 54 files against a margin of one, and
+    `tests/conformance/` is 6. Stated as an independent list for the reason
+    `_REQUIRED_TEST_DIRS` gives — comparing the derivation against the filesystem
+    it was derived from is a tautology."""
+    found = _discovered_dirs()
+    assert found, "discovery found no test directories at all"
+    lost = sorted(_REQUIRED_TEST_DIRS - found)
+    assert not lost, (
+        f"directory(ies) discovery no longer reaches: {lost}. Either they were "
+        "renamed or moved, or the rglob stopped descending. Removing one is a "
+        "deliberate change: delete it from _REQUIRED_TEST_DIRS in the same "
+        "commit, with a reason."
     )
 
 
@@ -331,3 +457,62 @@ def test_it_flags_the_equals_empty_list_spelling(tmp_path):
         "def test_x():\n    missing = []\n    assert missing == []\n",
     )
     assert [n for _, _, n in find_vacuous_asserts([p])] == ["missing"]
+
+
+def test_it_accepts_a_name_bound_by_tuple_unpacking(tmp_path):
+    """One of the two false positives widening discovery exposed. Real shape,
+    from `tests/skills/annotate/test_render_doc.py`: `check_anchors` returns four
+    values and `lost` is one of them, so nothing in the function assigns `lost`
+    a `Name` target and the old `_feeds` called it never fed."""
+    p = _seed(
+        tmp_path,
+        "def test_x():\n"
+        "    checked, lost, problems, fatal = check_anchors(ctx, corpus)\n"
+        "    assert lost == []\n",
+    )
+    assert find_vacuous_asserts([p]) == []
+
+
+def test_it_accepts_a_collection_filled_by_the_callee(tmp_path):
+    """The other one. Real shape, from
+    `tests/skills/annotate/test_review_findings.py`: an empty list handed to a
+    reader as an out-parameter, filled inside it."""
+    p = _seed(
+        tmp_path,
+        "def test_x():\n"
+        "    problems = []\n"
+        "    rows = store.read_all(path, problems=problems)\n"
+        "    assert problems == []\n",
+    )
+    assert find_vacuous_asserts([p]) == []
+
+
+def test_it_still_flags_the_list_the_two_fixes_must_not_excuse(tmp_path):
+    """Non-vacuity partner for the pair above: both widenings make `_feeds` say
+    "fed" more often, so each one buys a false negative if it reaches too far.
+    A list that is only ever COMPARED — never passed anywhere, never unpacked
+    into — must still be reported."""
+    p = _seed(
+        tmp_path,
+        "def test_x():\n"
+        "    problems = []\n"
+        "    other = [1, 2]\n"
+        "    assert len(other) == 2\n"
+        "    assert not problems\n",
+    )
+    assert [n for _, _, n in find_vacuous_asserts([p])] == ["problems"]
+
+
+if __name__ == "__main__":
+    # The command this file's floors cite. `pytest <this file>` prints a pass
+    # count and nothing else, so a floor whose stated measuring command emits no
+    # measurement cannot be re-derived — the decay this whole module exists to
+    # stop, one level up. Same reason the two sibling conformance guards have one.
+    _files = _guard_test_files()
+    _n = sum(
+        len(_empty_asserted_names(fn))
+        for _p in _files
+        for fn in ast.walk(ast.parse(_p.read_text(encoding="utf-8")))
+        if isinstance(fn, ast.FunctionDef) and fn.name.startswith("test_")
+    )
+    print(f"files {len(_files)}  dirs {len(_discovered_dirs())}  empty-assertions {_n}")
