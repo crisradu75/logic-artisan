@@ -215,3 +215,4 @@
 {"ts": "2026-09-18T00:27:46+03:00", "sha": "78da70d", "subject": "fix: derive guard areas from tests/, not from mutants/", "branch": "fix/derive-guard-areas-from-tests", "skill": null, "measured_by_count": 0, "measured_by": []}
 {"ts": "2026-09-18T00:38:45+03:00", "sha": "a7f1e7b", "subject": "fix: the out-parameter rule immunised the guards it was meant to police", "branch": "fix/derive-guard-coverage-lists", "skill": null, "measured_by_count": 0, "measured_by": []}
 {"ts": "2026-09-18T00:39:07+03:00", "sha": "85a2c10", "subject": "fix: widen the ledger-dir detection, and name the divergence the exemption hides", "branch": "fix/derive-guard-coverage-lists", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-09-18T00:51:32+03:00", "sha": "7e87663", "subject": "fix: declare `orphans`, caught by the derived check on the merge", "branch": "fix/derive-guard-areas-from-tests", "skill": null, "measured_by_count": 0, "measured_by": []}
