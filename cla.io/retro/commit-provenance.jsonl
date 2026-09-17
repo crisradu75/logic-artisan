@@ -210,3 +210,4 @@
 {"ts": "2026-09-17T23:47:52+03:00", "sha": "45e4b76", "subject": "fix: derive who belongs in the ledger-dir drift group (issue #249)", "branch": "fix/derive-guard-coverage-lists", "skill": null, "measured_by_count": 0, "measured_by": []}
 {"ts": "2026-09-17T23:50:04+03:00", "sha": "1b91a2a", "subject": "fix: make each of `_is_spawn`'s four conditions decide a case (issue #246)", "branch": "fix/derive-guard-coverage-lists", "skill": null, "measured_by_count": 0, "measured_by": []}
 {"ts": "2026-09-17T23:55:47+03:00", "sha": "e1c860c", "subject": "fix: pin the scan's root axis, and re-derive five drifted floors (issue #246)", "branch": "fix/derive-guard-coverage-lists", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-09-18T00:01:42+03:00", "sha": "a738f5f", "subject": "chore: record commit provenance rows from this branch", "branch": "fix/derive-guard-coverage-lists", "skill": null, "measured_by_count": 0, "measured_by": []}
