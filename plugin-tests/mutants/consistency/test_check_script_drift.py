@@ -43,6 +43,16 @@ empty and disable a `SIBLING_GROUPS` group; both SURVIVED until
 `test_the_group_set_itself_has_not_shrunk` were added, because only the resolver
 group had ever been pinned by name.
 
+**Constructed probes for the DERIVED membership check.** Mutants 8, 9 and 10,
+added with the fix for issue #249. They have no historical instance either, and
+they are a different KIND from everything above: mutants 1-7 edit the script and
+ask whether the comparison still works, these edit the guard and ask whether the
+group's declared file list is everything. Five shipped `.py` files read
+`CLAUDE_RETRO_DIR` and the group named four; the fifth,
+`hooks/log-commit-provenance.py`, is exempted with its reason rather than
+compared, because its cwd contract, its silent-failure posture and its 3s budget
+are incompatible with the other four's.
+
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_check_script_drift.py
 """
 
@@ -51,6 +61,7 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]
 
 SCRIPT = DEV / "scripts" / "check_script_drift.py"
+PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 
 # Scoped to the ONE guard file. Pointing at `tests/consistency/` as a whole would
 # report every mutant "killed" the moment anything else in that directory went
@@ -170,6 +181,48 @@ MUTANTS = [
         SCRIPT,
         '        "name": "retro aggregator record loading",',
         '        "name": "retro aggregator record loading (disabled)",',
+        GUARD,
+    ),
+
+    # ---- 8-10: the DERIVED membership check (issue #249) ----
+    #
+    # Everything above mutates the script. These three mutate the guard, because
+    # the membership check lives there: it asks whether the group's declared file
+    # list is EVERYTHING, which is a question about the plugin tree rather than
+    # about `check_script_drift.py`'s comparison.
+    #
+    # Mutant 8 is the INPUT-side one, and it is the only one that establishes the
+    # scan actually opens a file it does not already know about. `hooks/` holds
+    # the one exempt resolver and no group member, so a scan that had quietly
+    # stopped descending there would keep mutants 9 and 10 killed and this one
+    # green. The plant is a comment — no behaviour changes, because the check is
+    # a text scan and that is exactly the property being pinned.
+    (
+        "a sixth file starts resolving the retro ledger dir and nothing notices",
+        PLUGIN / "hooks" / "_dispatch_lib.py",
+        "import contextlib",
+        'import contextlib  # os.environ.get("CLAUDE_RETRO_DIR")',
+        GUARD,
+    ),
+    (
+        # The exemption map stops excusing the hook. It must FAIL, which is what
+        # proves the derived scan reaches `hooks/log-commit-provenance.py` at all
+        # — the whole finding issue #249 recorded.
+        "the ledger-dir exemption map is emptied, so the hook stops being accounted for",
+        GUARD[0],
+        '    "hooks/log-commit-provenance.py":',
+        '    "hooks/log-commit-provenance-DISABLED.py":',
+        GUARD,
+    ),
+    (
+        # The marker weakened to something no file carries. Without the
+        # `assert found` non-vacuity line the set is empty, nothing is ever
+        # unregistered, and the check passes forever having read nothing — the
+        # exact shape `test_guards_are_not_vacuous.py` exists for, one level up.
+        "the resolver marker matches nothing, so the membership check scans an empty set",
+        GUARD[0],
+        '_LEDGER_DIR_MARKER = \'environ.get("CLAUDE_RETRO_DIR"\'',
+        '_LEDGER_DIR_MARKER = \'environ.get("CLAUDE_RETRO_DIR_NO_SUCH_VAR"\'',
         GUARD,
     ),
 ]

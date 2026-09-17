@@ -102,6 +102,141 @@ def test_the_group_set_itself_has_not_shrunk():
     )
 
 
+# ---------------------------------------------------------------- issue #249
+#
+# The group's MEMBERSHIP, derived rather than declared. Everything above pins
+# what the declared file set IS; nothing asked whether it is everything.
+#
+# `check_script_drift.py`'s own docstring says the group covers "the ledger
+# WRITER and the two READERS of what it writes", and a fifth file resolves the
+# same directory and is not in it: `hooks/log-commit-provenance.py` does it
+# inline in `main()`, `rev-parse --show-toplevel` plus `CLAUDE_RETRO_DIR`, rather
+# than through `_git_toplevel`/`_runs_dir`. A hand-written file list cannot
+# notice a sixth arriving the same way, and the failure is the one this whole
+# script exists for: the hook writing to a directory the readers do not read is
+# silent, and reads as a cold start.
+_LEDGER_DIR_MARKER = 'environ.get("CLAUDE_RETRO_DIR"'
+
+# Files that resolve the retro ledger dir and are deliberately NOT compared
+# against the group, keyed to the reason. Verified below to still exist, still
+# resolve the dir, and still not be group members.
+_LEDGER_DIR_EXEMPT = {
+    "hooks/log-commit-provenance.py":
+        "a PostToolUse hook, not a ledger tool. Three properties of its contract "
+        "are incompatible with the group's, so making it comparable would change "
+        "the other four rather than the hook: it must run git in the PAYLOAD's "
+        "cwd (`_git_toplevel` takes no cwd and resolves the process's own), it "
+        "must stay SILENT on every failure (`_runs_dir` raises, which the hook "
+        "may never do), and it runs on a 3s budget against the tools' 10s. It is "
+        "also deliberately dependency-light — it imports nothing from lib/. "
+        "Registered here so a SIXTH resolver cannot arrive unnoticed, which is "
+        "the direction the declared file list could not see.",
+}
+
+
+def ledger_dir_resolvers(plugin_root: Path, marker: str) -> set[str]:
+    """Every shipped `.py` that reads the ledger-dir override, plugin-relative.
+
+    Both inputs are parameters so a planted tree can drive this, the rule the
+    sibling guards state for a helper a test asserts over."""
+    return {
+        p.relative_to(plugin_root).as_posix()
+        for p in sorted(plugin_root.rglob("*.py"))
+        if "__pycache__" not in p.parts
+        and marker in p.read_text(encoding="utf-8", errors="replace")
+    }
+
+
+def unregistered_resolvers(found, members, exempt) -> list[str]:
+    """Resolvers accounted for by neither the group nor the exemption map."""
+    return sorted(set(found) - set(members) - set(exempt))
+
+
+def _resolver_group() -> dict:
+    return next(
+        g for g in csd.SIBLING_GROUPS
+        if g["name"].startswith("retro ledger dir resolver")
+    )
+
+
+def test_every_ledger_dir_resolver_is_accounted_for():
+    """The direction the declared file list cannot close (issue #249).
+
+    Measured — five files in the shipped tree read `CLAUDE_RETRO_DIR`, and the
+    group named four::
+
+        $ grep -rln 'environ.get("CLAUDE_RETRO_DIR"' .claude/plugins/cla --include=*.py
+        .claude/plugins/cla/hooks/log-commit-provenance.py
+        .claude/plugins/cla/lib/ledger_summary.py
+        .claude/plugins/cla/lib/log_run.py
+        .claude/plugins/cla/skills/codify-retro/scripts/codify_aggregate.py
+        .claude/plugins/cla/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py
+    """
+    found = ledger_dir_resolvers(csd.PLUGIN_ROOT, _LEDGER_DIR_MARKER)
+    assert found, (
+        f"no shipped .py reads {_LEDGER_DIR_MARKER!r} any more — either the "
+        "override was renamed or the ledger tools have left the plugin. Either "
+        "way this check and the group it polices are scanning nothing."
+    )
+    unregistered = unregistered_resolvers(
+        found, _resolver_group()["files"], _LEDGER_DIR_EXEMPT
+    )
+    assert not unregistered, (
+        f"{unregistered} resolve the retro ledger directory but are neither "
+        "compared by the ledger-dir group nor exempted from it, so nothing "
+        "checks that they agree with the writer. A reader that disagrees finds "
+        "no records and reports a cold start. Add it to the group's `files` if "
+        "it resolves the dir the same way; to _LEDGER_DIR_EXEMPT, with a reason, "
+        "if its cwd or failure contract makes it incomparable."
+    )
+
+
+def test_every_ledger_dir_exemption_still_earns_itself():
+    """An exemption must not outlive its reason, nor cover a file that has since
+    joined the group — either way the entry stops being a record of a decision
+    and becomes a pressure valve."""
+    found = ledger_dir_resolvers(csd.PLUGIN_ROOT, _LEDGER_DIR_MARKER)
+    members = set(_resolver_group()["files"])
+    for rel, reason in _LEDGER_DIR_EXEMPT.items():
+        assert reason.strip(), f"{rel} is exempt with no reason given"
+        assert (csd.PLUGIN_ROOT / rel).is_file(), (
+            f"{rel} is exempted but does not exist — delete the entry"
+        )
+        assert rel in found, (
+            f"{rel} no longer resolves the ledger dir, so the exemption covers "
+            "nothing — delete the entry"
+        )
+        assert rel not in members, (
+            f"{rel} is both a group member and exempted from the group; the "
+            "exemption would then excuse a file that is already compared"
+        )
+
+
+def test_an_unregistered_resolver_is_reported():
+    """The planted half — the real tree is clean by construction, so without this
+    nothing shows the two maps can be told apart."""
+    assert unregistered_resolvers(
+        {"lib/log_run.py", "hooks/new-writer.py"}, ("lib/log_run.py",), {}
+    ) == ["hooks/new-writer.py"]
+    assert unregistered_resolvers(
+        {"lib/log_run.py", "hooks/new-writer.py"},
+        ("lib/log_run.py",),
+        {"hooks/new-writer.py": "a stated reason"},
+    ) == []
+
+
+def test_the_resolver_marker_still_discriminates(tmp_path: Path):
+    """`ledger_dir_resolvers` is a substring scan, so a marker weakened to
+    something every file contains would report the whole tree and a marker
+    weakened to nothing would report none — both read as "no unregistered
+    resolvers". Pinned against a planted tree rather than the real one."""
+    (tmp_path / "a.py").write_text(
+        'import os\nos.environ.get("CLAUDE_RETRO_DIR")\n', encoding="utf-8"
+    )
+    (tmp_path / "b.py").write_text("x = 1\n", encoding="utf-8")
+    assert ledger_dir_resolvers(tmp_path, _LEDGER_DIR_MARKER) == {"a.py"}
+
+
 def _write(path: Path, source: str) -> None:
     path.write_text(textwrap.dedent(source), encoding="utf-8")
 
