@@ -33,9 +33,64 @@ _DEV_TREE = Path(__file__).resolve().parents[2]
 
 # Names that, by this repo's own convention, hold "things that went wrong".
 # An empty-assert over one of these is the plugin's standard guard shape.
+#
+# THIS LIST WAS EIGHT NAMES AND REACHED THREE OF THEM. Measured before the
+# widening, over the two guard directories as they stood::
+#
+#     $ python - <<'PY'
+#     import ast, sys
+#     sys.path.insert(0, "plugin-tests/tests/conformance")
+#     import test_guards_are_not_vacuous as G
+#     names = {}
+#     for p in G._guard_test_files():
+#         for fn in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
+#             if isinstance(fn, ast.FunctionDef) and fn.name.startswith("test_"):
+#                 for n in G._empty_asserted_names(fn):
+#                     names.setdefault(n, []).append(p.name)
+#     print(len(names), sum(map(len, names.values())))
+#     print("uncovered:", sorted(set(names) - G._COLLECTION_NAMES))
+#     print("dead:", sorted(G._COLLECTION_NAMES - set(names)))
+#     PY
+#     21 39
+#     uncovered: ['absent', 'blank', 'cached', 'collisions', 'drifted', 'empty',
+#      'failures', 'gaps', 'overruns', 'thin', 'unaccounted', 'undeclared',
+#      'undocumented', 'unknown', 'unpoliced', 'unresolved', 'vacuous', 'wrong']
+#     dead: ['bad', 'errors', 'leaks', 'stray', 'violations']
+#
+# Nineteen of thirty-nine empty-assertions were invisible to this guard, and the
+# guard reported nothing about the ones it was not looking at — the exact failure
+# it exists to catch, in itself. `test_the_declared_names_match_the_tree` below
+# closes the direction a hand-written list cannot close on its own.
+#
+# THE FIVE DEAD NAMES STAY. A declared name matching nothing today costs nothing:
+# it cannot make any assertion pass vacuously, because the filter only ever
+# ADDS names to the policed set. Deleting `violations` or `errors` because no
+# guard currently spells it that way would re-open the blind spot for the next
+# guard that does.
 _COLLECTION_NAMES = frozenset(
-    {"problems", "offenders", "violations", "missing", "stray", "leaks", "errors", "bad"}
+    {
+        # Declared before the measurement above; the last five match nothing in
+        # the tree today.
+        "problems", "offenders", "missing",
+        "violations", "stray", "leaks", "errors", "bad",
+        # Added by the measurement above: every name the guards actually use.
+        "absent", "blank", "cached", "collisions", "drifted", "empty",
+        "failures", "gaps", "overruns", "thin", "unaccounted", "undeclared",
+        "undocumented", "unknown", "unpoliced", "unresolved", "vacuous", "wrong",
+    }
 )
+
+# Names a guard asserts empty that are NOT a findings collection, keyed to the
+# reason they are not. The map is the documented escape hatch for the one case
+# `_COLLECTION_NAMES` cannot absorb: an `assert not x` where `x` is a scalar or a
+# loop variable rather than a list of problems, which this checker's `_feeds`
+# heuristic could misread.
+#
+# It is EMPTY today, and an empty map is the honest state rather than a missing
+# mechanism — every empty-asserted name in the tree is a findings collection.
+# An entry here is a decision someone writes down; a name in neither map is the
+# accident the test below converts into a failure.
+_NOT_A_FINDING_COLLECTION: dict[str, str] = {}
 
 # The dev-tree directories whose tests are guards over the repo itself. A
 # skill's own unit tests are ordinary tests and are not held to this shape.
@@ -126,6 +181,88 @@ def test_no_guard_asserts_over_a_collection_it_never_fills():
         "guard(s) asserting over a collection they never fill — these pass "
         "forever and check nothing:\n" + detail
     )
+
+
+def _empty_asserted_names_in(paths) -> dict[str, list[str]]:
+    """`{name: [where it is asserted empty]}` across `paths`.
+
+    A parameter rather than a read of `_guard_test_files()` so a planted set can
+    redden the test below — the rule `_stale_pending_entries` states in the
+    sibling guard, and for the reason stated there."""
+    out: dict[str, list[str]] = {}
+    for path in paths:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (OSError, SyntaxError):
+            continue
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef) or not fn.name.startswith("test_"):
+                continue
+            for name in _empty_asserted_names(fn):
+                out.setdefault(name, []).append(f"{path.name}::{fn.name}")
+    return out
+
+
+def undeclared_names(asserted, declared, exempt) -> list[str]:
+    """Names asserted empty that no map accounts for.
+
+    All three inputs are parameters, so both the real-tree call and a planted one
+    go through the same code."""
+    return sorted(set(asserted) - set(declared) - set(exempt))
+
+
+def test_the_declared_names_match_the_tree():
+    """The direction a hand-written list cannot close on its own.
+
+    `find_vacuous_asserts` only ever looks at names in `_COLLECTION_NAMES`, so a
+    guard that collects its findings into a name nobody declared is not
+    ASSERTED-ABOUT — it is INVISIBLE, and this file reports success either way.
+    That is the same "still reports success, stopped looking" shape the whole
+    module exists to catch, reached through the constant rather than the code.
+
+    Measured at the widening: the list declared 8 names, matched 3, and left 19
+    of the 39 empty-assertions in scope unreachable. The command is in the
+    comment on `_COLLECTION_NAMES` above."""
+    asserted = _empty_asserted_names_in(_guard_test_files())
+    assert asserted, (
+        "no guard asserts a collection empty any more — either the AST shapes "
+        "this file recognises have stopped matching how guards are written, or "
+        "discovery has collapsed. Either way nothing below is checking anything."
+    )
+    unaccounted = undeclared_names(asserted, _COLLECTION_NAMES, _NOT_A_FINDING_COLLECTION)
+    detail = "\n".join(f"  {n} — {', '.join(asserted[n])}" for n in unaccounted)
+    assert not unaccounted, (
+        "name(s) asserted empty in a guard that are in neither _COLLECTION_NAMES "
+        "nor _NOT_A_FINDING_COLLECTION, so nothing checks whether anything ever "
+        "fills them:\n" + detail + "\n\nAdd it to _COLLECTION_NAMES if it holds "
+        "findings; to _NOT_A_FINDING_COLLECTION, with a reason, if it does not."
+    )
+
+
+def test_every_exemption_still_earns_itself():
+    """An exemption must not outlive its reason. A name nothing asserts empty any
+    more is an entry excusing nothing, and an entry nobody can see excusing
+    nothing is how the map becomes the pressure valve instead of the record."""
+    asserted = _empty_asserted_names_in(_guard_test_files())
+    for name, reason in _NOT_A_FINDING_COLLECTION.items():
+        assert reason.strip(), f"{name} is exempt with no reason given"
+        assert name in asserted, (
+            f"{name!r} is exempted but no guard asserts it empty — delete the entry"
+        )
+        assert name not in _COLLECTION_NAMES, (
+            f"{name!r} is both declared a findings collection and exempted from "
+            "being one; the exemption would then never be reached"
+        )
+
+
+def test_an_undeclared_name_is_reported():
+    """The planted half. `_NOT_A_FINDING_COLLECTION` is empty on the real tree, so
+    without this nothing shows the check can distinguish its two maps at all."""
+    assert undeclared_names({"problems": [], "surprise": []}, {"problems"}, {}) == [
+        "surprise"
+    ]
+    assert undeclared_names({"problems": [], "surprise": []}, {"problems"},
+                            {"surprise": "a stated reason"}) == []
 
 
 def test_the_scan_is_not_vacuous():
