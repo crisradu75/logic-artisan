@@ -322,7 +322,7 @@ def test_the_coverage_split_is_not_vacuous():
     measurement::
 
         $ python plugin-tests/tests/conformance/test_shipped_files_are_scanned.py
-        shipped 104  reached 99  token-candidates 99  token-reached 97
+        shipped 108  reached 103  token-candidates 103  token-reached 101
 
     That one-below margin is the rule
     `test_no_hardcoded_plugin_paths.py` states for its own floor, and the first
@@ -342,12 +342,12 @@ def test_the_coverage_split_is_not_vacuous():
     """
     shipped, reached = _shipped(), _reached()
     token_candidates = shipped - set(EXEMPT)
-    assert len(shipped) >= 103, f"shipped set collapsed to {len(shipped)} files"
+    assert len(shipped) >= 107, f"shipped set collapsed to {len(shipped)} files"
     assert (
-        len(shipped & reached) >= 98
+        len(shipped & reached) >= 102
     ), f"scanner coverage collapsed to {len(shipped & reached)} files"
     assert (
-        len(token_candidates & _token_reached()) >= 96
+        len(token_candidates & _token_reached()) >= 100
     ), "token-scanner coverage collapsed to " \
        f"{len(token_candidates & _token_reached())} files"
 

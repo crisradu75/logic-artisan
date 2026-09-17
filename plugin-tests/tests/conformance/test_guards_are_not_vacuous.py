@@ -84,6 +84,11 @@ _COLLECTION_NAMES = frozenset(
         # argument for deriving it.
         "enforcing", "lost", "reanchored", "remote", "small", "stale",
         "unimported", "unrunnable", "warnings",
+        # `unregistered` arrived with the ledger-dir membership check in
+        # `test_check_script_drift.py`, and the test below caught it on the next
+        # run of this area — the first live firing of the derived direction, on
+        # a name written three commits after it.
+        "unregistered",
     }
 )
 
@@ -361,7 +366,7 @@ def test_the_scan_is_not_vacuous():
     Re-measured with this file's own `__main__`, which is why it has one::
 
         $ python plugin-tests/tests/conformance/test_guards_are_not_vacuous.py
-        files 54  dirs 12  empty-assertions 65
+        files 54  dirs 12  empty-assertions 68
 
     Both floors sit ONE BELOW the real count, the rule
     `test_no_hardcoded_plugin_paths.py` states for its own scan floor: move them
@@ -380,7 +385,7 @@ def test_the_scan_is_not_vacuous():
         for fn in ast.walk(tree):
             if isinstance(fn, ast.FunctionDef) and fn.name.startswith("test_"):
                 total_asserts += len(_empty_asserted_names(fn))
-    assert total_asserts >= 64, (
+    assert total_asserts >= 67, (
         f"only {total_asserts} empty-collection assertions found across "
         f"{len(files)} guard files; the AST shapes this recognises have "
         "probably stopped matching how the guards are written"

@@ -74,17 +74,44 @@ SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
 #         files = list(m._scanned_files())
 #         print(drop, len(files), sorted(m.REQUIRED_SUFFIXES - {f.suffix for f in files}))
 #     PY
-#     .json 96 ['.json']   .mjs 98 ['.mjs']   .py 71 ['.py']   .md 32 ['.md']   None 99 []
+#     .json 100 ['.json']  .mjs 102 ['.mjs']  .py 73 ['.py']   .md 34 ['.md']  None 103 []
 #
-# The `.mjs` row is the load-bearing one: 98 clears the floor, so only this
+# The `.mjs` row is the load-bearing one: 102 clears the floor, so only this
 # assertion is left. Against the tautological version that column was `[]` in
 # every row — which is what "it could not react" means, measured.
 REQUIRED_SUFFIXES = frozenset({".md", ".py", ".mjs", ".json"})
 
+# The same independent-list argument, for the OTHER axis of the scan. Five roots
+# are declared above and only `agents/` was ever asserted, so dropping
+# `output-styles` or `lib` left the run green — measured, and recorded as a
+# standing weakness in this guard's mutant batch:
+#
+#     drop `output-styles`  102 files, floor >= 98, every required suffix reached
+#     drop `lib`            101 files, floor >= 98, every required suffix reached
+#
+# Neither root holds the last file of any required suffix and neither is large
+# enough for the count to notice, so both the floor and the suffix comparison
+# pass while a fifth of the declared root list has stopped being opened.
+#
+# WHY THIS IS A SEPARATE LIST AND NOT A PER-ROOT NON-EMPTINESS CHECK. "every
+# entry of SCANNED_ROOTS contributes at least one file" is derived from
+# `SCANNED_ROOTS` itself, so deleting an entry removes it from BOTH sides of the
+# comparison in one edit and the assertion stays green — the exact tautology
+# `REQUIRED_SUFFIXES` above was added to replace, three reviewers deep. This list
+# is the independent source: removing a root from the scan now fails here.
+REQUIRED_ROOTS = frozenset({"skills", "agents", "output-styles", "hooks", "lib"})
+
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
 
-def _scanned_files():
+def _scanned_files_by_root():
+    """`(root_name, path)` per scanned file — the root identity `_scanned_files`
+    throws away at the yield.
+
+    Kept as the primitive rather than as a change to `_scanned_files`'s return
+    shape: `test_shipped_files_are_scanned.py` calls that function directly and
+    its own docstring says so, so widening it here would be the cross-directory
+    caller break CLAUDE.md's fifth check is about."""
     for root_name in SCANNED_ROOTS:
         root = _PLUGIN_ROOT / root_name
         if not root.is_dir():
@@ -95,7 +122,12 @@ def _scanned_files():
             parts = path.relative_to(_PLUGIN_ROOT).parts
             if "__pycache__" in parts or ".pytest_cache" in parts:
                 continue
-            yield path
+            yield root_name, path
+
+
+def _scanned_files():
+    for _root, path in _scanned_files_by_root():
+        yield path
 
 
 def _offenders():
@@ -129,9 +161,9 @@ def test_the_scan_is_not_vacuous():
     # Re-measured with this file's own `__main__`, which is why it has one::
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  using-placeholder 48
+    #     scanned 103  .json 3  .md 69  .mjs 1  .py 30  placeholder-refs 235 in 51 files
     #
-    # The real count is 99. Pinned near it, not
+    # The real count is 103. Pinned near it, not
     # comfortably below it, matching the rule `test_subprocess_encoding.py`
     # states for its own floor: move it to the new real count when something is
     # deliberately added or deleted, never to a number chosen to be safe from
@@ -144,7 +176,7 @@ def test_the_scan_is_not_vacuous():
     # It had drifted to a floor of 95 against a comment claiming 96, while the
     # real count had risen to 99 — four files of headroom, which is precisely
     # the decorative floor the rule above forbids.
-    assert len(files) >= 98, f"scan set collapsed to {len(files)} files"
+    assert len(files) >= 102, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
@@ -160,10 +192,14 @@ def test_the_scan_is_not_vacuous():
     # covered here and nowhere else until issue #190 widened the token scanner
     # to `.json`, and once a second scanner reached it, the coverage guard in
     # `test_shipped_files_are_scanned.py` stopped noticing THIS scanner losing
-    # it. Today the floor happens to catch a `.json` drop (99 - 3 = 96 < 98),
+    # it. Today the floor happens to catch a `.json` drop (103 - 3 = 100 < 102),
     # but that is arithmetic, not a guarantee: the comment above prescribes
     # lowering the floor on a deliberate deletion, and a floor lowered to 96
-    # hands the `.json` narrowing a green run. This assertion does not move.
+    # hands the `.json` narrowing a green run. And this is not hypothetical:
+    # the parenthetical was left unre-run through a widening and INVERTED —
+    # it read `99 - 3 = 96 < 98` while the real drop left 100 against a floor
+    # of 98, i.e. the arithmetic it cited had stopped holding and the suffix
+    # assertion was carrying the case alone. This assertion does not move.
     #
     # Direction two: the last file of a declared suffix leaving the TREE, which
     # is a real loss the floor's margin can also absorb.
@@ -193,14 +229,42 @@ def test_the_scan_is_not_vacuous():
     )
 
 
+def test_every_required_root_is_actually_reached():
+    """The other axis, and the one that had a single assertion for five roots.
+
+    `agents/` was pinned by name and the other four were not, so dropping
+    `output-styles` (1 file) or `lib` (2 files) left 102 or 101 files against a
+    floor of `>= 102`... which is only true since the floor moved. It used to be
+    `>= 98`, and both drops passed every assertion in this file. Same two
+    directions as the suffix pair directly above, for the same reasons."""
+    by_root: dict[str, int] = {}
+    for root_name, _path in _scanned_files_by_root():
+        by_root[root_name] = by_root.get(root_name, 0) + 1
+    absent = sorted(REQUIRED_ROOTS - set(by_root))
+    assert not absent, (
+        f"root(s) this scanner must reach but does not: {absent}. Either a root "
+        f"was dropped from SCANNED_ROOTS, or the directory left the plugin, or "
+        f"it holds no file of any scanned suffix. All three shrink the scan "
+        f"silently — per-root counts: {dict(sorted(by_root.items()))}"
+    )
+    # And the direction the line above cannot see, exactly as `undeclared` is for
+    # suffixes: a root ADDED to the scan without being declared required carries
+    # no protection at all against being removed again.
+    undeclared = sorted(set(SCANNED_ROOTS) - REQUIRED_ROOTS)
+    assert not undeclared, (
+        f"root(s) scanned but not declared required: {undeclared}. Add them to "
+        f"REQUIRED_ROOTS, or nothing will notice them being removed again."
+    )
+
+
 def test_the_replacement_is_actually_in_use():
     """Non-vacuity partner with teeth: the guard passing because every reference
     was DELETED rather than converted would be a silent regression of its own.
 
     Counts REFERENCES, not files carrying at least one. The file count is the
-    wrong unit for the sentence above, and by a wide margin: 48 files carry 217
-    occurrences, so a change deleting 169 of them while leaving one per file
-    held the old assertion at 48 and green. It was insensitive to its own named
+    wrong unit for the sentence above, and by a wide margin: 51 files carry 235
+    occurrences, so a change deleting 184 of them while leaving one per file
+    held the old assertion at 51 and green. It was insensitive to its own named
     failure by about 4.5x — a floor measuring something adjacent to what its
     docstring claims, which reads as coverage and is not.
     """
@@ -208,10 +272,10 @@ def test_the_replacement_is_actually_in_use():
         p.read_text(encoding="utf-8", errors="replace").count("${CLAUDE_PLUGIN_ROOT}")
         for p in _scanned_files()
     )
-    # Real count 217, from the same printer as the floor above:
+    # Real count 235, from the same printer as the floor above:
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files
+    #     scanned 103  .json 3  .md 69  .mjs 1  .py 30  placeholder-refs 235 in 51 files
     #
     # The file-count version sat at 34 under a comment claiming 36 while the real
     # figure was 48 — fourteen of headroom, found by running that printer for the
