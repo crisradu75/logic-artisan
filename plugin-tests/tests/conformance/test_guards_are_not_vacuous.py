@@ -180,10 +180,38 @@ def _bound_names(target: ast.expr):
             yield sub.id
 
 
+def _calls_inside_assertions(node: ast.AST) -> set[int]:
+    """`id()` of every Call that lives inside an `assert` — its test OR its
+    message.
+
+    THE ASSERTION CANNOT BE ITS OWN EVIDENCE. `assert not problems, "\\n".join(
+    problems)` is the standard guard shape in this repo, and the message passes
+    the collection to `join`. A call-argument rule that walks the whole function
+    sees that and says "fed" — so deleting the `.append` that actually fills the
+    list leaves the guard silent, which is the precise defect this module
+    exists to report.
+
+    Measured when this was found: 29 of the 68 policed empty-assertions were
+    immunised by their own assertion alone, including every one in
+    `test_skill_lint`, `test_check_labels_agree`, `test_guards_have_mutant_
+    batches`, `test_hooks_wiring` and `test_subprocess_encoding`."""
+    out: set[int] = set()
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Assert):
+            for part in (sub.test, sub.msg):
+                if part is None:
+                    continue
+                for inner in ast.walk(part):
+                    if isinstance(inner, ast.Call):
+                        out.add(id(inner))
+    return out
+
+
 def _feeds(node: ast.AST, name: str) -> bool:
     """True if `name` is ever grown inside `node` — appended to, extended,
     augmented, rebound to something other than an empty literal, or handed to a
-    call that could fill it."""
+    call as the KEYWORD argument a callee fills."""
+    in_assert = _calls_inside_assertions(node)
     for sub in ast.walk(node):
         if isinstance(sub, ast.Call):
             # name.append(...) / name.extend(...) / name.update(...)
@@ -192,23 +220,33 @@ def _feeds(node: ast.AST, name: str) -> bool:
                 if isinstance(tgt, ast.Name) and tgt.id == name:
                     if sub.func.attr in {"append", "extend", "update", "add"}:
                         return True
-            # f(..., name, ...) / f(..., problems=name) — the OUT-PARAMETER
-            # shape, and the second false positive widening discovery exposed:
-            # `store.read_all(path, problems=problems)` fills the list inside
-            # the callee, which no amount of looking at this function can see.
+            # `store.read_all(path, problems=problems)` — the OUT-PARAMETER
+            # shape, where the callee fills the list and no amount of looking at
+            # this function can see it.
             #
-            # This is deliberately loose. A name merely READ by a call —
-            # `print(problems)` — also reads as fed, so the checker gives up a
-            # little strictness to stop accusing correct guards. That trade is
-            # the module docstring's stated posture: it decides whether an
-            # assertion is REACHABLE, never whether it is meaningful, and a
-            # missed vacuous assertion stays mutation's job.
-            for arg in [*sub.args, *(k.value for k in sub.keywords)]:
-                if isinstance(arg, ast.Name) and arg.id == name:
-                    return True
-                if isinstance(arg, ast.Starred) and isinstance(arg.value, ast.Name):
-                    if arg.value.id == name:
+            # KEYWORD ARGUMENTS ONLY, and that narrowness is the whole fix. The
+            # first version of this rule accepted a POSITIONAL argument too,
+            # which swept up every read of the collection — `len(problems)`,
+            # `print(problems)`, `"\n".join(problems)` — and immunised 29 of 68
+            # policed assertions against the very defect they are checked for.
+            # An out-parameter in this tree is passed by keyword; a read is
+            # passed positionally. That is not a law of Python, so the trade is
+            # stated rather than assumed: a positional out-parameter would be a
+            # false positive again, and a false positive is the direction this
+            # checker can afford, because it accuses a guard someone then reads.
+            # A false NEGATIVE is the direction it cannot, because nothing reads
+            # a guard that reports nothing.
+            #
+            # Calls inside the assertion itself are skipped even when they are
+            # keyword calls — see `_calls_inside_assertions`.
+            if id(sub) not in in_assert:
+                for kw in sub.keywords:
+                    v = kw.value
+                    if isinstance(v, ast.Name) and v.id == name:
                         return True
+                    if isinstance(v, ast.Starred) and isinstance(v.value, ast.Name):
+                        if v.value.id == name:
+                            return True
         # name += ...
         if isinstance(sub, ast.AugAssign):
             if isinstance(sub.target, ast.Name) and sub.target.id == name:
@@ -504,6 +542,101 @@ def test_it_still_flags_the_list_the_two_fixes_must_not_excuse(tmp_path):
         "    other = [1, 2]\n"
         "    assert len(other) == 2\n"
         "    assert not problems\n",
+    )
+    assert [n for _, _, n in find_vacuous_asserts([p])] == ["problems"]
+
+
+def test_the_assert_message_is_not_evidence_that_anything_fills_the_list(tmp_path):
+    """THE REGRESSION DIRECTION, pinned — and the shape the first version of the
+    partner above was too weak to catch.
+
+    That test uses a message-less `assert not problems`, so it never exercised
+    the out-parameter rule at all. The repo's STANDARD guard shape carries a
+    message built from the collection:
+
+        assert not problems, "these went wrong:\\n" + "\\n".join(problems)
+
+    A call-argument rule that walks the whole function sees `join(problems)` and
+    says "fed". Measured: that immunised 29 of the 68 policed empty-assertions
+    against the exact defect this module reports, including every one in
+    `test_skill_lint` and `test_check_labels_agree`.
+
+    Both directions are seeded here, because only the pair distinguishes a fix
+    from a rule that has stopped firing altogether."""
+    broken = _seed(
+        tmp_path,
+        "def test_x():\n"
+        "    problems = []\n"
+        "    for f in files:\n"
+        "        pass\n"
+        "    assert not problems, 'these went wrong:' + '\\n'.join(problems)\n",
+    )
+    assert [n for _, _, n in find_vacuous_asserts([broken])] == ["problems"], (
+        "a guard whose `.append` was deleted must still be reported — the "
+        "assertion's own message is not evidence that anything fills the list"
+    )
+
+    fixed = tmp_path / "test_fixed.py"
+    fixed.write_text(
+        "def test_x():\n"
+        "    problems = []\n"
+        "    for f in files:\n"
+        "        problems.append(f)\n"
+        "    assert not problems, 'these went wrong:' + '\\n'.join(problems)\n",
+        encoding="utf-8",
+    )
+    assert find_vacuous_asserts([fixed]) == [], (
+        "and the same guard with its append intact must stay unreported"
+    )
+
+
+def test_a_keyword_call_in_the_assert_message_is_not_evidence_either(tmp_path):
+    """The case that makes `_calls_inside_assertions` load-bearing rather than
+    defensive.
+
+    With the out-parameter rule keyword-only, the common message shape —
+    `"\\n".join(problems)` — is POSITIONAL and is rejected by that narrowness
+    alone, so the assertion-skip decides nothing and a mutant removing it
+    SURVIVED. Measured, in this file's own batch.
+
+    A message built by a KEYWORD call is the input that discriminates, and it is
+    an ordinary thing to write:
+
+        assert not problems, _render(rows=problems)
+
+    Without the skip, that call immunises the collection exactly the way the
+    positional case used to. This is the repo's rule for the case where two
+    candidate rules agree on every input the tests supply: mutate the INPUT, not
+    the guard."""
+    p = _seed(
+        tmp_path,
+        "def test_x():\n"
+        "    problems = []\n"
+        "    for f in files:\n"
+        "        pass\n"
+        "    assert not problems, _render(rows=problems)\n",
+    )
+    assert [n for _, _, n in find_vacuous_asserts([p])] == ["problems"], (
+        "a keyword call inside the assertion's own message is still the "
+        "assertion talking about itself, not evidence that anything fills it"
+    )
+
+
+def test_a_read_of_the_collection_is_not_evidence_either(tmp_path):
+    """The other half of the same overreach, outside an assertion.
+
+    `len(problems)`, `print(problems)` and `detail = "\\n".join(problems)` are
+    reads. Treating a positional argument as feeding made every one of them
+    immunise the collection, which is why the rule is keyword-only."""
+    p = _seed(
+        tmp_path,
+        "def test_x():\n"
+        "    problems = []\n"
+        "    print(problems)\n"
+        "    detail = '\\n'.join(problems)\n"
+        "    if len(problems) > 0:\n"
+        "        pass\n"
+        "    assert not problems, detail\n",
     )
     assert [n for _, _, n in find_vacuous_asserts([p])] == ["problems"]
 

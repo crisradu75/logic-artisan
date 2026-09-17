@@ -219,10 +219,24 @@ MUTANTS = [
         # `assert found` non-vacuity line the set is empty, nothing is ever
         # unregistered, and the check passes forever having read nothing — the
         # exact shape `test_guards_are_not_vacuous.py` exists for, one level up.
-        "the resolver marker matches nothing, so the membership check scans an empty set",
+        "the override pattern matches nothing, so the membership check falls back "
+        "to the path pattern alone and a resolver using only the override goes unseen",
         GUARD[0],
-        '_LEDGER_DIR_MARKER = \'environ.get("CLAUDE_RETRO_DIR"\'',
-        '_LEDGER_DIR_MARKER = \'environ.get("CLAUDE_RETRO_DIR_NO_SUCH_VAR"\'',
+        '    re.compile(r"CLAUDE_RETRO_DIR"),',
+        '    re.compile(r"CLAUDE_RETRO_DIR_NO_SUCH_VAR"),',
+        GUARD,
+    ),
+    (
+        # The OTHER pattern, and the one the single-literal first cut did not
+        # have at all. A file that builds `cla.io/retro` by hand and never
+        # mentions the override is the likeliest sixth resolver — it is what
+        # someone writes who does not know the override exists — and before this
+        # pattern existed it was invisible to the whole check.
+        "the no-override path pattern stops matching, so a file that hardcodes "
+        "the ledger dir and never names the override goes unseen",
+        GUARD[0],
+        '    re.compile(r"""cla\\.io[/\\\\]retro|["\']cla\\.io["\']\\s*[/,]\\s*["\']retro["\']"""),',
+        '    re.compile(r"cla\\.io[/\\\\]no-such-directory"),',
         GUARD,
     ),
 ]
