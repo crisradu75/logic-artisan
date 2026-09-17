@@ -90,11 +90,32 @@ def _batch_areas() -> tuple[str, ...]:
 # Guard files exempt from needing a batch, each for a stated reason. Keep this
 # list short and justified — it is the pressure valve that could quietly empty
 # this test if it grew without argument.
-_EXEMPT = {
-    # THIS file is the meta-guard; a mutant batch for it would assert that the
-    # pairing checker checks pairing, which is circular.
-    "tests/consistency/test_guards_have_mutant_batches.py":
-        "meta-guard: mutating it only tests itself",
+_EXEMPT: dict[str, str] = {
+    # EMPTY, AND THAT IS THE END STATE THIS MECHANISM WAS AIMING AT. Both
+    # entries that used to sit here were "meta-guard: mutating it only tests
+    # itself", and in both cases the reasoning was wrong the same way.
+    #
+    # THIS file was the last one out. The circularity argument applies to
+    # exactly one of its tests — `test_every_guard_file_has_a_mutant_batch_
+    # beside_its_scope`, which would indeed be asserting that the pairing
+    # checker checks pairing. It does NOT apply to the helpers, which are the
+    # part that actually broke: `_area_test_dir`, `_guard_areas` and
+    # `_batch_areas` are all driven by planted `tmp_path` trees through a
+    # monkeypatched `_DEV_TREE`, so a mutant edits the helper and the killing
+    # assertion comes from an observation of a fixture, not of itself. That is
+    # the same argument that took `test_mutate.py` and then
+    # `test_guards_are_not_vacuous.py` off this list.
+    #
+    # What the exemption cost, measured: `_area_test_dir` short-circuited on
+    # `tests/<area>` before reaching its ambiguity check, so a collision between
+    # a top-level `tests/<X>` and a nested `tests/skills/<X>` resolved silently
+    # to the top-level one — and every guard in the nested directory dropped out
+    # of `_guard_files()` with `_guards_missing_a_batch()` empty and the whole
+    # file green. A guard could ship with no batch, checked by the file whose
+    # entire job is to notice that.
+    #
+    # An entry added here from now on is a guard nobody has proven, with no
+    # remaining precedent to lean on.
 
     # `tests/conformance/test_guards_are_not_vacuous.py` USED TO BE EXEMPT HERE,
     # on the reasoning that it "carries seeded-input tests of its own checker
@@ -418,11 +439,27 @@ def _area_test_dir(area: str) -> Path | None:
     directory returns empty SILENTLY — so the area looked policed, the file
     count was byte-identical to the old hardcoded pair, and nothing said so.
     Generalising only the batch->guard direction fixed the half that does not
-    catch a guard shipped without a batch."""
+    catch a guard shipped without a batch.
+
+    NO `tests/<area>` SHORT-CIRCUIT, and its removal is the point of this
+    revision. The function used to return `root / area` immediately when that
+    directory existed, which BYPASSED the ambiguity arm below — so a collision
+    between a top-level `tests/<X>` and a nested `tests/skills/<X>` resolved
+    silently to the top-level one instead of refusing.
+
+    Reproduced by planting `tests/skills/lib/test_collide.py` against the real
+    tree: `"lib" in _guard_areas()` was True, `_area_test_dir("lib")` returned
+    `tests/lib`, `unresolved` was empty, the collided file was ABSENT from
+    `_guard_files()`, and `_guards_missing_a_batch()` was empty. A guard shipped
+    with no batch and every assertion in this file stayed green —
+    `_areas_discovering_nothing` missed it for the same reason.
+
+    That is the silent-drop class this whole file exists for, one level down from
+    where it was last fixed. `rglob` runs unconditionally now and matches the
+    depth-1 directory too, so the single-match case is unchanged and the
+    collision returns None.
+    """
     root = _DEV_TREE / "tests"
-    direct = root / area
-    if direct.is_dir():
-        return direct
     nested = sorted(p for p in root.rglob(area) if p.is_dir())
     if len(nested) == 1:
         return nested[0]
@@ -436,14 +473,22 @@ def test_every_derived_area_resolves_to_a_tests_directory():
     arbitrarily.
 
     NOW MOSTLY A TAUTOLOGY, AND KEPT ANYWAY FOR THE HALF THAT IS NOT. Areas are
-    derived from `tests/`, so every area has a tests directory by construction —
-    that half can no longer fail. What CAN still fail is `_area_test_dir`'s
-    AMBIGUITY arm: it returns None when `rglob` matches the area name in more
-    than one place, which happens the moment two skills' test directories share a
-    leaf name. That is a real and silent collapse — the area resolves to nothing
-    and reads as clean — and it is not covered anywhere else, so the assertion
-    stays. Its message is corrected: these areas hold GUARDS, which is what they
-    are derived from now."""
+    derived from `tests/`, so every area has SOME tests directory by
+    construction — that half can no longer fail. What CAN still fail is
+    `_area_test_dir`'s AMBIGUITY arm: it returns None when `rglob` matches the
+    area name in more than one place, which happens the moment two test
+    directories share a leaf name.
+
+    AN EARLIER VERSION OF THIS DOCSTRING CLAIMED THAT ARM PROTECTED HERE WHEN IT
+    DID NOT, which is worth recording because the claim read exactly like
+    coverage. `_area_test_dir` short-circuited on `tests/<area>` before reaching
+    the ambiguity check, so the one collision that actually occurs — a top-level
+    `tests/<X>` against a nested `tests/skills/<X>` — resolved silently to the
+    top-level directory. Measured by planting `tests/skills/lib/test_collide.py`:
+    `unresolved` was empty, the collided guard was absent from `_guard_files()`,
+    and `_guards_missing_a_batch()` was empty, so a guard shipped with no batch
+    behind a fully green run. The short-circuit is gone; the planted test below
+    pins it, and a mutant re-breaks it."""
     unresolved = [a for a in _guard_areas() if _area_test_dir(a) is None]
     assert not unresolved, (
         f"area(s) {unresolved} name more than one directory under tests/, so "
@@ -808,6 +853,46 @@ def test_a_directory_with_no_batches_is_still_an_area(tmp_path, monkeypatch):
     ], missing
 
 
+def test_a_leaf_name_collision_refuses_to_resolve(tmp_path, monkeypatch):
+    """The silent drop that a `tests/<area>` short-circuit reintroduced one level
+    down from where this class was last fixed.
+
+    Areas are LEAF NAMES, so `tests/lib` and `tests/skills/lib` are the same
+    area. Resolving that to the top-level directory is not merely arbitrary — it
+    drops every guard in the nested one from `_guard_files()`, which means
+    `_guards_missing_a_batch()` never sees them and a guard ships with no batch
+    behind a green run.
+
+    Both directions are asserted: the collision refuses, and the ordinary
+    single-match case still resolves. Without the second half a `return None`
+    that never resolves anything would pass the first."""
+    root = tmp_path / "tests"
+    (root / "lib").mkdir(parents=True)
+    (root / "lib" / "test_top.py").write_text("def test_a(): pass\n", encoding="utf-8")
+    (root / "skills" / "solo").mkdir(parents=True)
+    (root / "skills" / "solo" / "test_solo.py").write_text(
+        "def test_b(): pass\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(sys.modules[__name__], "_DEV_TREE", tmp_path)
+
+    # Single match, at either depth: resolves.
+    assert _area_test_dir("lib") == root / "lib"
+    assert _area_test_dir("solo") == root / "skills" / "solo"
+
+    # Now collide the top-level name with a nested one.
+    (root / "skills" / "lib").mkdir(parents=True)
+    (root / "skills" / "lib" / "test_collide.py").write_text(
+        "def test_c(): pass\n", encoding="utf-8"
+    )
+    assert _area_test_dir("lib") is None, (
+        "a leaf-name collision must refuse to pick; resolving it to the "
+        "top-level directory silently drops every guard in the nested one"
+    )
+    # And the refusal is what the two collapse checks report on.
+    assert "lib" in [a for a in _guard_areas() if _area_test_dir(a) is None]
+    assert "lib" in _areas_discovering_nothing(_guard_areas())
+
+
 def test_the_batch_area_filter_still_rejects_the_dunder_shape(tmp_path, monkeypatch):
     """The half of the old area filter that survives, now on `_batch_areas`.
 
@@ -1017,7 +1102,11 @@ def test_the_scan_is_not_vacuous():
     )
     assert files, "guard discovery found no files in any area"
     areas = _guard_areas()
-    assert areas, "no area directories found under mutants/ at all"
+    # Message repointed with the derivation. `areas` is `_guard_areas()`, which
+    # now reads `tests/`, so sending the reader to `mutants/` would have them
+    # looking at the wrong tree entirely — the sibling message two lines up was
+    # updated and this one was missed.
+    assert areas, "no directory under tests/ holds a test file at all"
     batches = [
         b
         for area in areas
