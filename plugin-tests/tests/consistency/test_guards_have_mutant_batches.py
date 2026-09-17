@@ -68,12 +68,31 @@ def _guard_areas() -> tuple[str, ...]:
 # list short and justified — it is the pressure valve that could quietly empty
 # this test if it grew without argument.
 _EXEMPT = {
-    # This file and its sibling ARE the meta-guards; a mutant batch for them
-    # would assert that the pairing checker checks pairing, which is circular.
+    # THIS file is the meta-guard; a mutant batch for it would assert that the
+    # pairing checker checks pairing, which is circular.
     "tests/consistency/test_guards_have_mutant_batches.py":
         "meta-guard: mutating it only tests itself",
-    "tests/conformance/test_guards_are_not_vacuous.py":
-        "meta-guard: carries seeded-input tests of its own checker instead",
+
+    # `tests/conformance/test_guards_are_not_vacuous.py` USED TO BE EXEMPT HERE,
+    # on the reasoning that it "carries seeded-input tests of its own checker
+    # instead". That reasoning was wrong on its own terms and it cost something.
+    #
+    # It was never circular. Its checker — `_feeds`, `_empty_asserted_names` —
+    # lives INSIDE the guard file, so a mutant edits the checker and the killing
+    # assertion comes from that same file's seeded inputs. That is precisely the
+    # shape `mutants/consistency/test_subprocess_encoding.py` already has, and
+    # the same argument that took `test_mutate.py` off this list: the observation
+    # is external to the thing observed.
+    #
+    # What the exemption cost: a widening to `_feeds` treated a collection passed
+    # to ANY call as "fed", including inside the assertion's own failure message
+    # — so `assert not problems, "\n".join(problems)`, the standard guard shape
+    # in this repo, could never be reported again. 29 of 68 policed assertions
+    # were immunised, and no mutant existed to notice, because the file that
+    # polices vacuousness was itself the one thing nothing mutated.
+    #
+    # It now has a batch. A guard whose subject is "guards that stopped checking"
+    # is the last file that should be trusted on its own say-so.
 
     # GRANDFATHERED: NONE LEFT. All seven guards that predated the convention
     # now ship a batch (issue #176, groups A and B), so the debt this section
