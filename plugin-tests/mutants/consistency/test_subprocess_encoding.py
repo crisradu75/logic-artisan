@@ -12,23 +12,23 @@ proven by a surviving mutation".
 
 **Provenance, stated because it decides what a kill means here.** Mutants 1-3
 re-break defects the line-based version actually shipped, as recorded in the
-guard's module docstring. Mutants 4-6 are constructed probes for decisions the AST
+guard's module docstring. Mutants 4-9 are constructed probes for decisions the AST
 version added — `encoding=` alone as a text-mode trigger, the narrowing in
 `_is_spawn`, and the three-root scan. None of the second group is historical, and
 saying so matters: a batch claiming history it does not have is the defect
 `test_check_labels_agree.py`'s header records going stale twice.
 
-**What this batch does NOT prove.** Mutants 1-5 are killed by seeded-input tests —
+**What this batch does NOT prove.** Every mutant but 6 is killed by seeded-input tests —
 `ast.parse` of a snippet — not by the sweep over real files. They show the
 checker's DECISIONS are pinned; they say nothing about whether the sweep reaches
 any particular file. Mutant 6 is the only one that exercises that half, via the
 named anchors in `test_the_scan_reaches_the_places_the_first_version_missed`.
 
-**A REAL GAP, found by this batch and deliberately left as a finding rather than
-fixed here.** `_is_spawn` is a four-way conjunction, and the cry-wolf corpus pins
-only the conjunction as a whole — NEITHER narrowing condition is pinned on its
-own. Measured by simulating each candidate against
-`test_the_checker_does_not_cry_wolf`'s seven cases:
+**A REAL GAP, found by this batch, reported rather than fixed at the time, and
+NOW CLOSED (issue #246).** `_is_spawn` is a four-way conjunction, and the
+cry-wolf corpus pinned only the conjunction as a whole — NEITHER narrowing
+condition was pinned on its own. Measured by simulating each candidate against
+`test_the_checker_does_not_cry_wolf`'s seven cases as they then stood:
 
     drop `func.attr in _SPAWNERS`          SURVIVES
     drop `func.value.id in _SPAWN_MODULES` SURVIVES   (run as a real mutant too)
@@ -38,12 +38,16 @@ own. Measured by simulating each candidate against
 The cause is that every negative case in that corpus is rejected by an EARLIER
 condition: `open(...)` is an `ast.Name` not an `ast.Attribute`, and
 `path.read_text` / `widget.Label` / `parser.add_argument` all fail `attr in
-_SPAWNERS`. No case is a spawner NAME on a non-subprocess module, so the module
-check never executes. One line closes it — a cry-wolf case like
-`asyncio.run(coro, text=True)` or `runner.run(cmd, text=True)` — but adding a test
-to the guard is a change to the guard, which is the user's call and not this
-batch's. Mutant 5 below pins the conjunction; the individual conditions stay
-unpinned until that case is added.
+_SPAWNERS`. No case was a spawner NAME on a non-subprocess module, so the module
+check never executed.
+
+Three cases now close it, one per condition, each rejected by that condition
+ALONE: `asyncio.run(coro, text=True)` (cond 4), `subprocess.list2cmdline(cmd,
+text=True)` (cond 2) and `os.path.run(cmd, text=True)` (cond 3, which is a crash
+guard rather than a narrowing — without it `func.value.id` raises
+AttributeError). Mutant 5 still pins the conjunction as a whole; mutants 7-9
+below pin each condition separately, and 7 and 8 are the two that used to
+survive.
 
 **Anchors are single-line except mutant 5.** Every file here is CRLF, so a bare
 `\\n` in an anchor matches nothing — see `mutate.py`'s docstring. Mutant 5 needs to
@@ -118,6 +122,47 @@ MUTANTS = [
         GUARD,
         "        if not root.is_dir():",
         "        if not root.is_dir() or root != _PLUGIN_ROOT:",
+        TARGET,
+    ),
+
+    # ---- 7-9: the conjunction, one condition at a time ----
+    #
+    # THE GAP IN THE HEADER ABOVE IS NOW CLOSED, and these are the mutants that
+    # say so. Three cases were added to `test_the_checker_does_not_cry_wolf`,
+    # each rejected by exactly ONE condition, so each condition now decides a
+    # case on its own rather than being shadowed by an earlier one.
+    (
+        # Condition 4. `asyncio.run(coro, text=True)` is an Attribute call whose
+        # attr IS a spawner and whose value IS a Name — only the module check
+        # rejects it. This mutant SURVIVED before that case existed.
+        "_is_spawn stops checking the MODULE, so any object with a .run/.Popen "
+        "method is treated as subprocess",
+        GUARD,
+        "        and func.value.id in _SPAWN_MODULES",
+        "        and True",
+        TARGET,
+    ),
+    (
+        # Condition 2, the other half of the same conjunction, and the other
+        # measured survivor. `subprocess.list2cmdline(cmd, text=True)` is on the
+        # spawn module and is not a spawner, so only the callee check rejects it.
+        "_is_spawn stops checking the CALLEE, so any subprocess attribute call "
+        "is treated as a spawn",
+        GUARD,
+        "        and func.attr in _SPAWNERS",
+        "        and True",
+        TARGET,
+    ),
+    (
+        # Condition 3, which is not a narrowing at all but a CRASH guard:
+        # `os.path.run(...)` has an Attribute where `func.value.id` expects a
+        # Name, so removing this line makes `_is_spawn` raise AttributeError on
+        # a shape that occurs in ordinary code.
+        "_is_spawn stops requiring the module to be a bare name, so a dotted "
+        "callee raises AttributeError instead of being rejected",
+        GUARD,
+        "        and isinstance(func.value, ast.Name)" + _NL,
+        "",
         TARGET,
     ),
 ]
