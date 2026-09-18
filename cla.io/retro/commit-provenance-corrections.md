@@ -87,11 +87,19 @@ broke a cap outright — the worst, `a55f4d9`, held 20 values in a 3484-byte lin
 (terminator included) where the writer emits 10 in 1657 — and 49 values across
 the set were longer than 160 characters, the longest 397.
 
-That mattered beyond tidiness. `_already_recorded_fh` seeks to the last 4096
-bytes and parses `lines[-1]` alone, justified by "a row is capped at
-`_MAX_LINE_BYTES`, so 4 KiB always contains a whole last line". An oversize row
-at the TAIL breaks that: `json.loads` fails, the dedupe reads "not recorded", and
-the next commit is appended twice. The bad rows sat mid-file, so nothing broke.
+That matters beyond tidiness, but by less than the first version of this
+record claimed, and the difference is worth stating precisely because the wrong
+version was repeated. `_already_recorded_fh` seeks to the last 4096 bytes and
+parses `lines[-1]` alone, justified by "a row is capped at `_MAX_LINE_BYTES`, so
+4 KiB always contains a whole last line". What breaks that is a row past the
+**4096-byte window**, at the tail: `json.loads` fails, the dedupe reads "not
+recorded", and the next commit is appended twice. A row past the **2048-byte
+cap** but under the window still parses.
+
+So none of the bad rows could have broken the dedupe even at the tail — the worst
+was 3484 bytes. The cap is the margin that keeps the window's assumption out of
+reach, and violating it is a real defect in those terms; it is not the failure
+itself.
 
 The correction drives the writer instead of imitating it: `main()` is run once
 per target sha against a scratch ledger, with `_git` substituted to answer for
@@ -100,10 +108,18 @@ read back out of the row `main()` itself produced. `measured_by_count` is exact
 and uncapped in the writer too, so it did not move.
 
 `plugin-tests/tests/consistency/test_provenance_rows_fit_the_writer_caps.py`
-now guards the file against exactly this: every row must be one the writer could
-emit, and the dedupe window must still clear a maximal row. The full suite was
-green while the oversize rows sat in the file, because every test that knew about
-the caps drove the writer, and the writer was never the thing that was wrong.
+now guards the file against exactly this: no row exceeds any of the three caps,
+and the dedupe window still clears a maximal row. It deliberately does NOT claim
+every row is one today's writer could emit. 161 of its rows use compact JSON
+separators an earlier version of the hook wrote and this one does not — count
+them with `grep -c '{"ts":"'` against `grep -c '{"ts": "'`, since the total moves
+with every commit and a ratio would not keep. That is also why a corrected row
+can measure 1635 bytes on disk while the writer's own serialisation of the same
+record measures 1657.
+
+The full suite was green while the oversize rows sat in the file, because every
+test that knew about the caps drove the writer, and the writer was never the
+thing that was wrong.
 
 ### What was verified
 
@@ -112,8 +128,10 @@ the caps drove the writer, and the writer was never the thing that was wrong.
 - Line by line against `git show fa9e072:…`: on the 22 changed rows the key order
   is unchanged and every field other than `measured_by`/`measured_by_count` is
   byte-identical; no other row differs.
-- No row in the file exceeds any of the three caps; the longest is 1635 bytes
-  against a 2048 ceiling and a 4096 dedupe window.
+- No row in the file exceeds any of the three caps. Byte counts here include
+  the line terminator, normalised to the `\n` the writer budgets against, so
+  they are comparable with `_MAX_LINE_BYTES`; a CRLF checkout adds one byte per
+  row on disk.
 - The one duplicate sha (`22c3d48`, recorded once per branch) predates this and
   was not introduced by it.
 

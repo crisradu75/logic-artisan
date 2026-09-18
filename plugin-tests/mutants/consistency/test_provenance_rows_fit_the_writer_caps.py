@@ -1,35 +1,38 @@
 """Mutation batch for test_provenance_rows_fit_the_writer_caps.py.
 
-The guard claims no row in the provenance ledger can violate the three caps
-`main()` applies before writing — and that the dedupe's tail window still clears
-a maximal row — without a test going red.
+The guard claims no row in the provenance ledger exceeds a cap the writer
+enforces, and that the dedupe's tail window still clears a maximal row.
 
-**Six mutants, and the split follows CLAUDE.md's rule about unkillable mutants.**
-Three mutate the INPUT (the ledger), two mutate the HOOK's constants, one mutates
-the guard.
+**NO MUTANT HERE TOUCHES THE LEDGER, and that is a deliberate correction.** An
+earlier version of this batch mutated `cla.io/retro/commit-provenance.jsonl` to
+plant cap violations, which is the textbook answer when a guard's two candidate
+rules agree on every correct input. It is the wrong answer when the input is a
+LIVE file the harness writes to: `log-commit-provenance.py` appends a row on
+every commit, and `mutate.py` snapshots the file, runs six pytest rounds, then
+restores the snapshot — so a commit landing mid-run has its row erased, and the
+post-restore integrity check compares against that same snapshot and reports
+success. The batch would print "All 6 killed" while destroying exactly the data
+the change it guards exists to repair.
 
-Why the cap checks are mutated from the INPUT side. Breaking the guard's own
-comparison — `> mod._MAX_TRAILERS` to `>= 0`, say — cannot be killed: in a
-correct tree no row violates any cap, so a comparison that is right and one that
-is merely satisfied produce the identical empty `offenders` list. That is the
-named unkillable class, and its rule is to mutate the input instead. Each of
-mutants 1-3 plants exactly ONE violation and leaves the other two caps satisfied,
-so a kill attributes to the branch it is aimed at rather than to "something in
-that function".
+The guard was restructured instead. `_cap_violations` takes rows as an argument,
+so `test_each_cap_is_actually_checked` feeds it synthetic rows that violate one
+cap each. That makes the comparisons genuinely killable from the GUARD side —
+mutants 1-3 — with nothing on disk mutated. The general form: when mutating the
+input is unsafe, give the checker a seam and mutate through it.
 
-Mutants 4-5 are the two halves of the same ratio, from opposite sides. The
-window test compares a literal inside `_already_recorded_fh` against
-`_MAX_LINE_BYTES`, and it reads BOTH live. A batch that moved only one of them
-would leave the other a number the guard could have hardcoded.
+**Six mutants.** Three break a cap comparison, two break the two halves of the
+dedupe ratio, one breaks the non-vacuity partner.
 
-Mutant 6 is the non-vacuity partner. Every other assertion here iterates the
-ledger, so a `_rows()` that yields nothing turns the whole module green while
-checking nothing — the exact shape `test_the_ledger_is_there_and_has_rows_to_check`
-exists to catch, and the only one of the six aimed at the guard's own plumbing.
+Mutants 4-5 move `_MAX_LINE_BYTES` and the window literal past each other in
+opposite directions, and both must genuinely break the dedupe rather than merely
+trip a stricter-than-necessary assertion: the guard's bound is
+`window >= _MAX_LINE_BYTES`, because the last line is whole whenever the window
+holds one maximal row. So mutant 4 raises the cap ABOVE the 4096 window rather
+than to a value inside it, and mutant 5 drops the window BELOW the 2048 cap. A
+`_MAX_LINE_BYTES` of 4096 would be legitimate and is deliberately not a mutant.
 
-EVERY MUTANT IS SCOPED TO ONE TEST. Mutant 3 also reds
-`test_the_longest_row_on_disk_is_reported_against_both_bounds`, and a kill that
-could have come from either proves neither.
+EVERY MUTANT IS SCOPED TO ONE TEST, so a kill attributes to the branch it aims at
+rather than to "something in this file".
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_provenance_rows_fit_the_writer_caps.py
 """
@@ -41,96 +44,79 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 
 GUARD = DEV / "tests" / "consistency" / "test_provenance_rows_fit_the_writer_caps.py"
 HOOK = PLUGIN / "hooks" / "log-commit-provenance.py"
-LEDGER = DEV.parent / "cla.io" / "retro" / "commit-provenance.jsonl"
 
-_CAPS = [f"{GUARD}::test_no_row_exceeds_the_caps_the_writer_enforces"]
-_WINDOW = [f"{GUARD}::test_the_dedupe_window_still_clears_a_maximal_row"]
+_CAPS = [f"{GUARD}::test_each_cap_is_actually_checked"]
+_WINDOW = [f"{GUARD}::test_the_dedupe_window_clears_a_maximal_row"]
 _VACUITY = [f"{GUARD}::test_the_ledger_is_there_and_has_rows_to_check"]
-
-# One real row, by its `measured_by` field, which is unique in the file. Short
-# and ASCII, so each mutant below changes exactly the property it names.
-_ROW = (
-    ', "measured_by": ["pytest plugin-tests/tests/conformance -q -n auto '
-    '--dist loadfile -> 145 passed"]}'
-)
-
-
-def _field(values: list[str]) -> str:
-    import json
-    return ', "measured_by": ' + json.dumps(values, ensure_ascii=False) + "}"
-
 
 MUTANTS = [
     (
-        # ELEVEN VALUES. `_MAX_TRAILERS` is 10, so the writer could not have
-        # produced this row however long the commit message was. Values are one
-        # character each: the char cap and the byte cap stay satisfied, so only
-        # the count branch can fire.
-        "a ledger row carries more trailer values than _MAX_TRAILERS allows",
-        LEDGER,
-        _ROW,
-        _field([chr(ord("a") + i) for i in range(11)]),
+        # THE VALUE-COUNT BRANCH STOPS DISCRIMINATING. `> maxt` to `> maxt * 2`
+        # rather than to something obviously dead, because a doubled bound is
+        # what a careless "the cap moved" edit looks like and still passes every
+        # real row.
+        "the value-count check accepts twice _MAX_TRAILERS",
+        GUARD,
+        "        if len(values) > maxt:",
+        "        if len(values) > maxt * 2:",
         _CAPS,
     ),
     (
-        # ONE VALUE OF 161 CHARACTERS, one past `_MAX_TRAILER_CHARS`. This is the
-        # hand-edit defect in its smallest form: the raw extraction stored
-        # without `[v[:_MAX_TRAILER_CHARS] for v in ...]`. One value, and 161
-        # ASCII bytes is nowhere near the line ceiling, so only the char branch
-        # can fire.
-        "a ledger row carries a trailer value past _MAX_TRAILER_CHARS",
-        LEDGER,
-        _ROW,
-        _field(["x" * 161]),
+        # THE PER-VALUE BRANCH. This is the backfill's actual defect: the raw
+        # extraction stored without `[v[:_MAX_TRAILER_CHARS] for v in ...]` left
+        # 49 values past the cap, the longest 397 — comfortably inside a doubled
+        # bound, so this mutant is the real escape rather than a synthetic one.
+        "the per-value check accepts twice _MAX_TRAILER_CHARS",
+        GUARD,
+        "        long = [v for v in values if len(v) > maxc]",
+        "        long = [v for v in values if len(v) > maxc * 2]",
         _CAPS,
     ),
     (
-        # A LINE PAST `_MAX_LINE_BYTES` WITH BOTH OTHER CAPS RESPECTED — four
-        # values, each exactly 160 CHARACTERS, each 480 BYTES because an em dash
-        # is three. This is precisely what the shedding loop exists for, so a row
-        # like this is one that skipped it, and it is the only one of the three
-        # that can break the dedupe: past 4096 bytes at the tail,
-        # `_already_recorded_fh` fails to parse the last line, reads "not
-        # recorded", and the hook appends a duplicate.
-        "a ledger row exceeds _MAX_LINE_BYTES although every value is within its own cap",
-        LEDGER,
-        _ROW,
-        _field(["—" * 160] * 4),
+        # THE LINE-LENGTH BRANCH. Note what this one is and is not: exceeding
+        # `_MAX_LINE_BYTES` means the row skipped the shedding loop, which is a
+        # cap violation. It does NOT by itself break the dedupe — that needs a
+        # row past the 4096 WINDOW, at the end of the file. The cap is the margin
+        # that keeps the window's assumption out of reach, and this branch
+        # defends the margin.
+        "the line-length check accepts twice _MAX_LINE_BYTES",
+        GUARD,
+        "        if nbytes > maxb:",
+        "        if nbytes > maxb * 2:",
         _CAPS,
     ),
     (
-        # THE RATIO FROM THE ROW SIDE. A doubled `_MAX_LINE_BYTES` makes a
-        # maximal row exactly the size of the dedupe's whole read window, so the
-        # partial line above it can no longer be skipped past — the margin the
-        # `_already_recorded_fh` docstring claims is gone. No row on disk moves,
-        # so the caps test stays green and only the window test can fire.
-        "_MAX_LINE_BYTES grows until a maximal row fills the dedupe window",
+        # THE RATIO FROM THE ROW SIDE, and it must clear the WINDOW to be a real
+        # defect. At 8192 a maximal row cannot fit in the 4096 tail at all, so
+        # `lines[-1]` is a truncated row, `json.loads` fails, the dedupe reads
+        # "not recorded" and the next commit is appended twice.
+        "_MAX_LINE_BYTES grows past the dedupe window entirely",
         HOOK,
         "_MAX_LINE_BYTES = 2048",
-        "_MAX_LINE_BYTES = 4096",
+        "_MAX_LINE_BYTES = 8192",
         _WINDOW,
     ),
     (
-        # THE SAME RATIO FROM THE WINDOW SIDE, and the reason both are here: the
-        # guard extracts this literal by AST from `_already_recorded_fh` alone.
-        # Mutating only the constant would leave a guard that could have
-        # hardcoded 4096 and still passed.
-        "the dedupe tail shrinks to the size of a single maximal row",
+        # THE SAME RATIO FROM THE WINDOW SIDE, below the cap this time, and the
+        # reason both are here: the guard reads BOTH numbers live — one as a
+        # module constant, one by AST out of `_already_recorded_fh` alone. A
+        # batch moving only one would leave the other a value the guard could
+        # have hardcoded and nobody would know.
+        "the dedupe tail shrinks below a maximal row",
         HOOK,
         "fh.seek(max(0, size - 4096))",
-        "fh.seek(max(0, size - 2048))",
+        "fh.seek(max(0, size - 1024))",
         _WINDOW,
     ),
     (
-        # NON-VACUITY. `_rows()` feeds every other assertion in the file, so a
-        # filter that admits nothing leaves them all iterating an empty list and
-        # passing. This is the one mutant aimed at the guard rather than at its
-        # subject, and it is killable exactly because the non-vacuity test does
-        # not iterate — it asserts the population is there.
+        # NON-VACUITY. `_rows()` feeds the real-file cap check, so a reader that
+        # yields nothing leaves it iterating an empty list and passing. This is
+        # killable precisely because the non-vacuity test does not iterate — it
+        # asserts the population is there.
         "the guard's row reader silently yields nothing",
         GUARD,
-        "        if line.strip():",
-        "        if line.strip() and False:",
+        "        if not body.strip():",
+        "        if True:",
         _VACUITY,
     ),
 ]

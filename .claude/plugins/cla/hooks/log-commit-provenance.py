@@ -420,10 +420,18 @@ def _measured_by(cwd: Path) -> list[str]:
     function's return. What a row holds is not what this returns: `main()` caps
     the list at `_MAX_TRAILERS`, truncates each value to `_MAX_TRAILER_CHARS`,
     and then sheds values until the line fits `_MAX_LINE_BYTES`. Skipping that
-    writes a row no version of this hook could have produced, and one of those
-    caps is load-bearing beyond tidiness: `_already_recorded_fh` reads a fixed
-    tail and parses only the last line, so an oversize row at the END of the file
-    defeats the dedupe and the next commit is recorded twice.
+    writes a row this hook could not have written.
+
+    `_MAX_LINE_BYTES` is the one with a consequence past tidiness, and the
+    consequence is a margin rather than a cliff. `_already_recorded_fh` reads a
+    fixed tail and parses only the last line, so it is a row longer than THAT
+    WINDOW, at the END of the file, that leaves the last line truncated, the
+    dedupe reading "not recorded", and the next commit appended twice. The cap
+    sits at half the window, so a row merely past the cap still parses; what the
+    cap buys is that the window's assumption cannot be reached by ordinary
+    drift. State it that way round — an earlier draft here said a row past the
+    CAP defeats the dedupe, which overstates the failure by the factor between
+    the two numbers.
 
     Record the correction beside the ledger, in the repo's own `cla.io/retro/`.
     A row that no writer could have produced is otherwise indistinguishable from
