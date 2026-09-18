@@ -54,8 +54,20 @@ clean run and means nothing by it. Mutants 2-4, 8 and 9 exist because of that, a
 the rule they encode is worth more than they are: re-break the defect in the
 form it actually took, not in the form convenient to the implementation.
 
+**Attribution is precise, and that was measured rather than assumed.** `TARGETS`
+is the whole guard FILE, so every mutant runs all of its tests — which would be a
+problem if a mutant failed several of them, because the kill would no longer show
+which assertion did the work, and these comments' claims ("killed only by the
+per-document floor", "by the staleness assertion") would be unbacked. Each of the
+12 fails EXACTLY ONE test, so the file-level target costs nothing here and
+`mutate.py`'s `path::test_name` node-id form (see its TARGETS docstring) is not
+needed. That is a property of today's tests, not a structural guarantee: if a
+mutant ever starts failing two, narrow ITS target rather than reading the kill as
+proof about a particular assertion. Re-derive it — apply each mutant and record
+the failing ids — rather than trusting this paragraph.
+
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_docs_name_shipped_paths.py
--> all 10 killed.
+-> all 12 killed.
 """
 
 from pathlib import Path
