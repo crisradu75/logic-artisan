@@ -58,24 +58,37 @@ _PUBLISHED_PREFIX = ".claude/plugins/cla"
 # empty this guard if it grew without one — the same role `_EXEMPT` plays in
 # `tests/consistency/test_guards_have_mutant_batches.py`.
 #
-# FOUR of the five are clean today; the fifth is not, and an earlier version of
-# this comment said all five were. Measured, both halves, rather than reasoned:
+# THREE of the four are clean today; the fourth is not, and an earlier version
+# of this comment said they all were. Re-measured from the repo root, both
+# halves rather than reasoned:
 #
-#   $ cd .claude/plugins/cla
-#   $ grep -c '\.claude/plugins/cla' .claude-plugin/plugin.json .gitattributes \
-#         hooks/git/pre-push hooks/probe-python.sh README.md
-#     ...:0  ...:0  ...:0  ...:0  README.md:1        <- README.md:183
-#   $ grep -rn 'C:\\Users\\' <the same five>          <- no match
+#   $ grep -c '\.claude/plugins/cla' \
+#         .claude/plugins/cla/.claude-plugin/plugin.json \
+#         .claude/plugins/cla/.gitattributes \
+#         .claude/plugins/cla/hooks/git/pre-push \
+#         .claude/plugins/cla/README.md
+#     ...:0  ...:0  ...:0  README.md:2       <- README.md:218 and :241
+#   $ grep -rn 'C:\\\\Users' <the same four>  <- no match (rc=1)
 #
-# So `README.md` DOES carry the literal the hardcoded-path rule looks for, in
-# the "Layout" code block. Widening that scanner to cover the plugin root — which
-# the previous wording invited as safe — fails immediately. The absolute paths in
-# `probe-python.sh` are generic (`$HOME/AppData/…`, `/usr/local/bin/…`) and match
-# neither rule.
+# So `README.md` DOES carry the literal the hardcoded-path rule looks for.
+# Widening that scanner to cover the plugin root — which an older wording invited
+# as safe — fails immediately.
 #
-# This is CLAUDE.md check 3 (search for counterexamples, not just supporting
-# cases) failing inside the one change whose entire thesis is that hand-written
-# claims decay. Kept as the worked example rather than quietly corrected.
+# THE LIST WAS FIVE UNTIL ISSUE #254. `hooks/probe-python.sh` left it when the
+# token scanner grew a `.sh` suffix, which it grew because that script became the
+# declared home of the wiring rationale the plugin loader had rejected out of
+# `hooks.json`. The entry's stated reason was "no demonstrated leak"; moving ~37
+# lines of hand-written English in would have made that reason false while the
+# line still read true, which is the exact decay this guard exists to catch. Its
+# absolute paths were and are generic (`$HOME/AppData/…`, `/usr/local/bin/…`) and
+# match neither path rule — the scanner run above is what says so now, rather
+# than this comment.
+#
+# The stale-count defect is CLAUDE.md check 3 (search for counterexamples, not
+# just supporting cases) failing inside the one change whose entire thesis is
+# that hand-written claims decay. Kept as the worked example rather than quietly
+# corrected — and note that the `README.md:1 / line 183` measurement it carried
+# had itself gone stale by the time #254 re-ran it.
 EXEMPT: dict[str, str] = {
     ".claude-plugin/plugin.json":
         "outside every scan root; the manifest is validated by "
@@ -86,21 +99,16 @@ EXEMPT: dict[str, str] = {
         "the plugin's own root README, exempt for TWO independent reasons. Its "
         "install commands legitimately name this repository, which is what makes "
         "them copy-pasteable — so scanning it for project tokens would flag the "
-        "one file whose whole job is to identify the source. Separately, its "
-        "Layout block spells the literal `.claude/plugins/cla` (line 183), so it "
-        "would fail the hardcoded-path rule as well",
+        "one file whose whole job is to identify the source. Separately, it "
+        "spells the literal `.claude/plugins/cla` twice — once in prose about "
+        "`--plugin-dir` and once in the Layout block — so it would fail the "
+        "hardcoded-path rule as well",
     "hooks/git/pre-push":
         "inside a scan root, but has NO suffix, so every suffix-keyed scanner "
         "skips it. Watched by hand; also covered behaviourally by "
         "tests/consistency/test_pre_push_is_installed.py. Issue #190 decided to "
         "keep it exempt: reaching it needs a rule not keyed on suffix at all, "
         "and it has no demonstrated leak to justify one",
-    "hooks/probe-python.sh":
-        "inside a scan root, but `.sh` is a suffix no scanner opens. Adding it "
-        "would be the path scanner's fifth suffix and the token scanner's "
-        "fourth (`.py`, `.json`, `.md`). Issue #190 decided against it: the "
-        "absolute paths it does carry are generic ($HOME/..., /usr/local/...) "
-        "and match neither the hardcoded-path rule nor the developer-path one",
 }
 
 # The SECOND split, and the one that decayed first. `EXEMPT` above asks "does
@@ -152,8 +160,8 @@ TOKEN_EXEMPT: dict[str, str] = {
     "skills/project-review/scripts/mechanical-checks.mjs":
         "the plugin's one Node script. Neither token scanner opens `.mjs` — the "
         "prose one takes `SKILL.md`/`references/**/*.md` under `skills/`, and the "
-        "source one takes `.py`/`.json` under the scan roots plus `.md` under "
-        "`agents`/`output-styles` — so it is out of scope for both; the path "
+        "source one takes `.py`/`.json`/`.sh` under the scan roots plus `.md` "
+        "under `agents`/`output-styles` — so it is out of scope for both; the path "
         "scanner covers it, and its own behaviour is tested by "
         "plugin-tests/node/mechanical-checks.test.mjs. Left unscanned "
         "deliberately by issue #190, which widened only the suffix with a "
@@ -322,7 +330,7 @@ def test_the_coverage_split_is_not_vacuous():
     measurement::
 
         $ python plugin-tests/tests/conformance/test_shipped_files_are_scanned.py
-        shipped 108  reached 103  token-candidates 103  token-reached 101
+        shipped 108  reached 104  token-candidates 104  token-reached 102
 
     That one-below margin is the rule
     `test_no_hardcoded_plugin_paths.py` states for its own floor, and the first
@@ -338,16 +346,20 @@ def test_the_coverage_split_is_not_vacuous():
     commit and left the token floor five below its population, in the same
     change that wrote up the identical drift next door. **Re-run the printer and
     re-pin every floor whenever a scanner's reach changes** — the widening is
-    the signal, since nothing else will be.
+    the signal, since nothing else will be. Issue #254 widened the source token
+    scanner to `.sh`, which moved `reached` 103 -> 104 and `token-reached`
+    101 -> 102 (one file, `hooks/probe-python.sh`, which also left `EXEMPT` and
+    so raised `token-candidates` 103 -> 104); both floors moved with it, in this
+    commit, which is what that rule asks for rather than what it reports.
     """
     shipped, reached = _shipped(), _reached()
     token_candidates = shipped - set(EXEMPT)
     assert len(shipped) >= 107, f"shipped set collapsed to {len(shipped)} files"
     assert (
-        len(shipped & reached) >= 102
+        len(shipped & reached) >= 103
     ), f"scanner coverage collapsed to {len(shipped & reached)} files"
     assert (
-        len(token_candidates & _token_reached()) >= 100
+        len(token_candidates & _token_reached()) >= 101
     ), "token-scanner coverage collapsed to " \
        f"{len(token_candidates & _token_reached())} files"
 

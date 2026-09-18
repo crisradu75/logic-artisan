@@ -79,6 +79,64 @@ def test_hooks_json_is_valid_json_with_expected_shape():
             )
 
 
+# The keys Claude Code's plugin loader recognises at the top level of a
+# `hooks.json`. HAND-WRITTEN, and deliberately so: this is an EXTERNAL contract
+# owned by the loader, and nothing in this repo derives it. The house preference
+# for a derived check has no source to derive from here — the only honest
+# alternatives are this list or no check, and no check is what shipped the defect
+# below.
+#
+# `description` is the documented escape hatch for exactly the prose that used to
+# be here: every `hooks.json` in the official plugin catalog carries `description`
+# + `hooks` and nothing else.
+_LOADER_TOP_LEVEL_KEYS = frozenset({"description", "hooks"})
+
+
+def test_hooks_json_declares_only_loader_recognised_keys():
+    """An unrecognised top-level key is a warning on EVERY session start, in
+    EVERY consuming repo, that no consumer can fix.
+
+    Issue #254. `hooks.json` carried a ~37-line `_comment` array holding the
+    wiring's rationale. The loader ignores what it does not recognise and says
+    so — `cla: hooks.json: unknown key "_comment" ignored` — so the guards all
+    loaded and the only cost was noise, on the hottest possible path, in an
+    install cache that is read-only. Nothing pinned the key set, so nothing
+    objected for three releases.
+
+    The rationale now lives in `hooks/probe-python.sh`'s header, which the token
+    scanner was widened to reach in the same change, with a one-line
+    `description` here pointing at it.
+
+    This asserts EQUALITY, not containment. Containment would catch `_comment`
+    coming back and miss `hooks` going away — and a `hooks.json` with no `hooks`
+    key loads without error and fires nothing, which is the failure this whole
+    module exists for.
+    """
+    keys = set(_load_hooks_json())
+    assert keys == set(_LOADER_TOP_LEVEL_KEYS), (
+        f"hooks.json's top-level keys are {sorted(keys)}, not "
+        f"{sorted(_LOADER_TOP_LEVEL_KEYS)}. The loader warns once per session in "
+        "every repo running this plugin for a key it does not recognise, and "
+        "drops the rationale a `_comment`-style key was carrying. Prose belongs "
+        "in hooks/probe-python.sh; a pointer belongs in `description`."
+    )
+
+
+def test_the_hooks_json_description_points_at_the_probe():
+    """A `description` that does not name the file holding the rationale is a
+    pointer to nowhere — which is what the `_comment` array was replaced with, so
+    it has to actually point."""
+    description = _load_hooks_json().get("description", "")
+    assert isinstance(description, str) and description.strip(), (
+        "hooks.json has no `description`; the loader accepts one and it is the "
+        "only place left to say what the wiring does"
+    )
+    assert "probe-python.sh" in description, (
+        "hooks.json's `description` must name hooks/probe-python.sh, which is "
+        f"where the wiring's rationale lives: {description!r}"
+    )
+
+
 def test_every_plugin_root_command_reference_resolves():
     """Every ${CLAUDE_PLUGIN_ROOT}/... path named in hooks.json exists on disk."""
     refs = [

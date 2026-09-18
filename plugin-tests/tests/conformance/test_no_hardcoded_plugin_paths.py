@@ -229,11 +229,13 @@ def test_the_scan_is_not_vacuous():
     # above is `REQUIRED - reached`, so ADDING a suffix to `SCANNED_SUFFIXES`
     # without adding it to `REQUIRED_SUFFIXES` passes: the new suffix is reached,
     # nothing is missing, and it carries exactly the protection `.json` had
-    # before `REQUIRED_SUFFIXES` existed — none. Not hypothetical: the `EXEMPT`
-    # entry for `hooks/probe-python.sh` in `test_shipped_files_are_scanned.py`
-    # discusses adding `.sh` as this scanner's fifth suffix, and `probe-python.sh`
-    # is one file against a floor margin of one, so the count could not see it
-    # dropped again either.
+    # before `REQUIRED_SUFFIXES` existed — none. Not hypothetical, and `.sh` is
+    # the live candidate: issue #254 added it to the TOKEN scanner (see
+    # `_iter_scanned_source_files`) and deliberately did NOT add it here, because
+    # the one shipped `.sh` carries no install path and the case for this scanner
+    # was never made. Should it ever be added, it is one file against a floor
+    # margin of one — so the count could not see it dropped again, and only this
+    # assertion plus a `REQUIRED_SUFFIXES` entry would.
     #
     # Containment, not equality of the reached set — so this stays independent of
     # the filesystem and does not re-introduce the tautology.

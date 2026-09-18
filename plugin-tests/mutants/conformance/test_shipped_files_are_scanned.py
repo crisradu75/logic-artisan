@@ -125,10 +125,26 @@ MUTANTS = [
         PLUGIN / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py",
         # Anchored on the tuple alone, not the whole `if` line. The line is
         # wrapped, so including ` or (` bakes the current formatting into the
-        # anchor and a reflow or a fourth suffix breaks it — loudly, at
-        # preflight, but for no reason.
+        # anchor and a reflow or a fifth suffix breaks it — loudly, at
+        # preflight, but for no reason. (The anchor moved once already, when
+        # issue #254 made the tuple three-long; that is the preflight working.)
+        '(".py", ".json", ".sh")',
+        '(".py", ".sh")',
+        TARGETS,
+    ),
+    (
+        # The mutant issue #254's widening earns, and the mirror of the one
+        # above. Revert `.sh` and `hooks/probe-python.sh` has no reader at all:
+        # the path scanner does not take `.sh` either, and the file left `EXEMPT`
+        # in that same change precisely because a scanner had grown to reach it.
+        # So it lands in `unexplained` in BOTH coverage guards — which is what
+        # makes the widening load-bearing rather than decorative, and what stops
+        # the wiring rationale now living in that file from sitting unscanned.
+        "the source token scanner drops .sh, leaving hooks/probe-python.sh — the "
+        "declared home of the hooks.json wiring rationale — with no reader",
+        PLUGIN / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py",
+        '(".py", ".json", ".sh")',
         '(".py", ".json")',
-        '(".py",)',
         TARGETS,
     ),
     (

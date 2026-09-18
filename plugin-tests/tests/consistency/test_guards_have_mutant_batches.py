@@ -254,11 +254,13 @@ _PENDING_ADOPTION: dict[str, str] = {
         "adoption debt: shared helpers behind both dispatchers. Same caveat as "
         "test_dispatch.py — a mutant here is caught by whichever leaf batch "
         "happens to exercise the helper, which makes attribution the hard part",
-    "tests/hooks/test_hooks_wiring.py":
-        "adoption debt: asserts hooks.json matches the leaf hooks and that the "
-        "timeout budget fits. Its own docstring records what it does NOT verify "
-        "(that a HOOK_WORST_CASE_SECONDS entry matches that hook's real cost), so "
-        "a batch should pin the gap rather than imply it is closed",
+    # `tests/hooks/test_hooks_wiring.py` LEFT THIS MAP in the commit that fixed
+    # issue #254, which added a guard to it (hooks.json's top-level key set) and
+    # therefore owed it a batch. The entry's own wording asked that the batch
+    # "pin the gap rather than imply it is closed" — the gap being that nothing
+    # can check a HOOK_WORST_CASE_SECONDS entry against a hook's real cost — and
+    # `mutants/hooks/test_hooks_wiring.py` says so in its docstring rather than
+    # leaving the file's departure from this list to read as completion.
 }
 
 # Re-derive on the commit that adopts an area, then only lower it. This is the
@@ -295,7 +297,14 @@ _PENDING_ADOPTION: dict[str, str] = {
 # derivation first would have forced exactly the ceiling raise that the batches
 # made unnecessary, and a raised ceiling is far harder to walk back than an
 # unraised one — nothing ever fails because a ceiling is too high.
-_PENDING_ADOPTION_CEILING = 10
+#
+# Lowered 10 -> 9 by issue #254, which wrote the batch for
+# `tests/hooks/test_hooks_wiring.py` because it added a guard to that file. This
+# is the ordinary downward move: `test_adoption_debt_only_shrinks` compares the
+# map's length against this number, so a ceiling left at 10 would let the next
+# debt entry in for free — which is the headroom the rule two paragraphs up
+# forbids for the same reason the coverage floors next door forbid it.
+_PENDING_ADOPTION_CEILING = 9
 
 
 def test_adoption_debt_only_shrinks():
