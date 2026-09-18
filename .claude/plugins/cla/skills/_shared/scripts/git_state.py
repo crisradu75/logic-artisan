@@ -14,6 +14,14 @@ files staged and concluded the tree was clean. For dirty-tree state, call
 `git status --porcelain` separately; the two checks answer different questions
 and both are load-bearing at a commit boundary.
 
+It is also TRUE ON A BRANCH MISMATCH (exit 3), for the same reason. Being on the
+wrong branch is not an in-progress operation, and the field answers one question
+only. It reported False there until this was fixed — the `clean` conflation
+again, pointing the other way. Read the EXIT CODE for the verdict; the field is a
+detail of one specific check, not a summary of the run. The only path on which it
+is False without an operation being mid-flight is exit 1, where nothing could be
+determined at all and fail-closed is the whole point.
+
 Failure mode: a parallel Claude session has an in-progress `git cherry-pick`
 on another branch. Mid-run, the working tree switches to that branch
 externally; an Archive-phase `git add -A` then sweeps untracked files from that
@@ -159,7 +167,23 @@ def main() -> int:
         return 2
 
     if args.expect_branch is not None and branch != args.expect_branch:
-        out["no_in_progress_op"] = False
+        # `no_in_progress_op` is NOT overwritten here, and that is the fix this
+        # branch exists for. Reaching this line means `in_progress is None` — no
+        # cherry-pick, merge, rebase, revert or bisect is mid-flight — so forcing
+        # the field to False reported an operation that does not exist.
+        #
+        # It is the same conflation that made this field's old name a defect,
+        # pointing the other way. `clean` was renamed to `no_in_progress_op`
+        # because a run read `{"clean": true}` with 47 files staged and concluded
+        # the tree was clean; folding branch state into it here made the field
+        # answer a second question again. The module docstring says it "means
+        # exactly what it says", and now it does on every path.
+        #
+        # THE BRANCH MISMATCH IS NOT LOST: it is carried by exit code 3, by
+        # `current_branch` and `expected_branch` in this same payload, and by the
+        # stderr line below — three independent signals, none of which needed
+        # this field's help. The orchestrator contract every caller follows is
+        # "any non-zero exit halts", so no caller has to read the field to see it.
         print(json.dumps(out))
         print(
             f"git-state: on branch {branch!r}, expected {args.expect_branch!r}",
