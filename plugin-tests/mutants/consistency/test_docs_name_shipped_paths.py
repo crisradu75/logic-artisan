@@ -8,15 +8,18 @@ set against the shipped tree and passes — which is the same silent-clean-repor
 shape as the defect it exists for (issue #264: a consumer gate that resolved
 nothing and passed).
 
-**Ten mutants, in the order they run.** 1-4 reproduce the original defect in
+**Twelve mutants, in the order they run.** 1-4 reproduce the original defect in
 every spelling it really has: prefixed in the shipped README's invocation block,
 **bare in a guarded doc's prose** — the spelling it actually shipped in — and in
 each of the two published-tree diagrams. 5-6 kill the two halves of the
-extraction. 7 and 10 attack the two narrowing rules, which fail in the opposite
+extraction. 7 and 12 attack the two narrowing rules, which fail in the opposite
 direction: a guard that reports paths nobody claimed is a guard someone loosens
 until it checks nothing. 8 is a retired single-segment entry named with a prefix,
 the case a stripped-token separator test silently dropped. 9 removes the
 tag-derived retired-name set, without which the bare spelling is invisible.
+10 makes one document's diagram stop parsing — the silent-drop shape a combined
+floor could not see. 11 collapses the tag-less branch of the stale-exemption
+message, whose remedy is the opposite of the ordinary one.
 
 **Two edits are deliberately NOT in this list, because neither can be killed in
 a correct tree** — see root CLAUDE.md, "a SURVIVOR is not automatically a
@@ -27,7 +30,14 @@ finding about the code":
     which is where it discriminates.
   * *Zeroing the non-vacuity floors.* The floors bind only when an extraction
     has already broken, so removing them changes nothing on a clean tree. What
-    they are worth is shown instead by 5-6, which are killed BY them.
+    they are worth is shown instead by 5-6 and 10, which are killed BY them.
+  * *Merging the fenced blocks back into one stream* (review finding 4). The
+    parser would then inherit "inside the published tree" across a fence
+    boundary — but no document today has an indented-two-spaces block after a
+    diagram, so the edit is unobservable here. That is precisely why the reset
+    has a unit test on synthetic input
+    (`test_a_fenced_block_boundary_resets_the_diagram_parser`) rather than a
+    mutant: a latent defect with no failing input cannot be mutated into one.
 
 **What this batch already found.** Its first run killed 4 of 7 and both
 survivors were real: reading only inline backticks missed the README's fenced
@@ -195,6 +205,34 @@ MUTANTS = [
         GUARD,
         "        for name in top | _retired_top_level_names()",
         "        for name in top",
+        TARGETS,
+    ),
+    (
+        # REVIEW FINDING 3, the silent-drop shape. Indent the root README's
+        # `.claude/plugins/cla/` marker line and its whole diagram stops parsing:
+        # the parser never enters the published half, so that document
+        # contributes zero entries. Under the old single combined floor it simply
+        # DISAPPEARED from the sum and the other two diagrams carried the total
+        # past it — a guarded document going unguarded with the suite green.
+        # Killed only by `_DIAGRAM_FLOORS` being a per-document map whose keys
+        # must all be present.
+        "the root README's tree diagram stops parsing and vanishes from the check",
+        ROOT_README,
+        ".claude/plugins/cla/           everything below here IS published, and nothing else is",
+        "  .claude/plugins/cla/         everything below here IS published, and nothing else is",
+        TARGETS,
+    ),
+    (
+        # REVIEW FINDING 2. Collapse the tag-less branch of the stale-exemption
+        # message, so a checkout with no release tags is told to "drop the
+        # exemption" — deleting correct work to silence a problem that is really
+        # `git fetch --tags`. The condition is reachable (shallow clone,
+        # --no-tags, fresh fork) and the two remedies are opposites, which is why
+        # the branch is asserted directly rather than trusted to be read.
+        "a tag-less checkout is told to delete exemptions that are correct",
+        GUARD,
+        "    if not retired:",
+        "    if False:",
         TARGETS,
     ),
     (
