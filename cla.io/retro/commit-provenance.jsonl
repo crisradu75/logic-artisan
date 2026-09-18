@@ -220,3 +220,4 @@
 {"ts": "2026-09-18T01:28:00+03:00", "sha": "26ea105", "subject": "fix: the area resolver short-circuited past its own ambiguity check", "branch": "fix/derive-guard-areas-from-tests", "skill": null, "measured_by_count": 0, "measured_by": []}
 {"ts": "2026-09-18T09:39:07+03:00", "sha": "c81cdd4", "subject": "fix: no_in_progress_op reported an operation that was not mid-flight", "branch": "fix/no-in-progress-op-field-meaning", "skill": null, "measured_by_count": 0, "measured_by": []}
 {"ts": "2026-09-18T10:20:59+03:00", "sha": "84a846c", "subject": "test: pin the recorded counts, so the floors' records stop decaying silently", "branch": "fix/pin-the-recorded-counts", "skill": null, "measured_by_count": 0, "measured_by": []}
+{"ts": "2026-09-18T18:09:07+03:00", "sha": "ea2101f", "subject": "fix: restore mutant attribution the new recorded-counts test destroyed", "branch": "fix/pin-the-recorded-counts", "skill": null, "measured_by_count": 0, "measured_by": []}

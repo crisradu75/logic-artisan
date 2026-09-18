@@ -277,17 +277,25 @@ def test_the_replacement_is_actually_in_use():
     was DELETED rather than converted would be a silent regression of its own.
 
     Counts REFERENCES, not files carrying at least one. The file count is the
-    wrong unit for the sentence above, and by a wide margin: 51 files carry 235
-    occurrences, so a change deleting 184 of them while leaving one per file
-    held the old assertion at 51 and green. It was insensitive to its own named
-    failure by about 4.5x — a floor measuring something adjacent to what its
-    docstring claims, which reads as coverage and is not.
+    wrong unit for the sentence above, and by a wide margin: there are several
+    times more references than carrying files (the printer line quoted below
+    reports both). So a change deleting all but one reference per file would
+    hold a file-count assertion green while the great majority of references
+    vanished — a floor measuring something adjacent to what its docstring
+    claims, which reads as coverage and is not.
+
+    THE RATIO IS THE ARGUMENT, so the figures are not restated here. They live
+    in the quoted printer line, which `test_the_recorded_counts_are_the_real_
+    ones` checks against the tree; prose restating them is a second copy that
+    nothing pins, and this exact pair has already drifted once.
     """
     occurrences = sum(
         p.read_text(encoding="utf-8", errors="replace").count("${CLAUDE_PLUGIN_ROOT}")
         for p in _scanned_files()
     )
-    # Real count 235, from the same printer as the floor above:
+    # The real count comes from the same printer as the floor above, and is
+    # QUOTED rather than restated — a number written out in prose beside this
+    # line would be a second copy that `_PRINTER_LINE` cannot see:
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
     #     scanned 103  .json 3  .md 69  .mjs 1  .py 30  placeholder-refs 235 in 51 files
@@ -310,7 +318,8 @@ def test_the_replacement_is_actually_in_use():
     # reader will see them side by side. When issue #246 re-derived the scan
     # floor from 98 to 102, this one stayed: its gap to the real count is the
     # rule rather than drift. Only the RECORD beside it was stale — it read 217
-    # against a real 235 — and that is the half now pinned by
+    # against a count that had long since moved past it — and that is the half
+    # now pinned by
     # `test_the_recorded_counts_are_the_real_ones`. A stale record here misleads
     # whoever next decides whether 210 is still the right bound, which is the
     # only thing about this floor that was ever wrong.
@@ -405,6 +414,29 @@ def test_the_recorded_counts_are_the_real_ones():
         f"this guard off silently."
     )
     live = _live_printer_numbers()
+    # THE PRINTER MUST ACCOUNT FOR EVERY FILE IT COUNTED. `_live_printer_numbers`
+    # names its four suffix keys by hand, where the `__main__` it replaced derived
+    # them from `sorted(by_suffix.items())` — so a FIFTH scanned suffix would be
+    # counted in `scanned` and reported nowhere.
+    #
+    # Measured by adding `.sh` to SCANNED_SUFFIXES: the line becomes
+    # `scanned 104  .json 3  .md 69  .mjs 1  .py 30 …`, whose suffix fields still
+    # sum to 103. This test would go red on the moved total, someone would paste
+    # the new line, and it would go green again with the `.sh` count never
+    # recorded and never pinned — the silent narrowing `REQUIRED_SUFFIXES` exists
+    # to prevent, reintroduced on the printer axis by the test meant to stop
+    # records decaying.
+    #
+    # One assertion closes it, and it is a real check rather than a restatement:
+    # both sides come from the same scan, but only the left is enumerated by hand.
+    counted = live["json"] + live["md"] + live["mjs"] + live["py"]
+    assert counted == live["scanned"], (
+        f"the printer counted {live['scanned']} files but reports only {counted} "
+        f"across its named suffixes — {live['scanned'] - counted} file(s) are "
+        "scanned and shown nowhere. SCANNED_SUFFIXES has almost certainly grown: "
+        "add the new suffix to `_live_printer_numbers`, `_printer_line` and "
+        "`_PRINTER_LINE` together, then re-paste the quoted lines."
+    )
     stale = []
     for match in quoted:
         recorded = {k: int(v) for k, v in match.groupdict().items()}
