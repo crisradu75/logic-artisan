@@ -97,9 +97,18 @@ recorded", and the next commit is appended twice. A row past the **2048-byte
 cap** but under the window still parses.
 
 So none of the bad rows could have broken the dedupe even at the tail — the worst
-was 3484 bytes. The cap is the margin that keeps the window's assumption out of
-reach, and violating it is a real defect in those terms; it is not the failure
-itself.
+was 3484 bytes. Violating the cap is a real defect on its own terms; it is not
+that failure.
+
+The relationship that actually has to hold is narrower than "the cap is half the
+window", which is an observation about today's values rather than a contract.
+What is required is that the window hold ONE maximal row **as stored on disk**:
+`_MAX_LINE_BYTES` budgets one terminator byte and a CRLF checkout stores two, so
+the window must be at least `_MAX_LINE_BYTES + 1`. This repo is
+`core.autocrlf=true` with no `.gitattributes` rule for `.jsonl`, so a fresh
+Windows clone is exactly that case, and a window merely EQUAL to the cap would
+double-record on it. That byte is what
+`test_the_window_check_accounts_for_a_crlf_checkout` exists to hold.
 
 The correction drives the writer instead of imitating it: `main()` is run once
 per target sha against a scratch ledger, with `_git` substituted to answer for

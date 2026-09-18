@@ -423,15 +423,22 @@ def _measured_by(cwd: Path) -> list[str]:
     writes a row this hook could not have written.
 
     `_MAX_LINE_BYTES` is the one with a consequence past tidiness, and the
-    consequence is a margin rather than a cliff. `_already_recorded_fh` reads a
-    fixed tail and parses only the last line, so it is a row longer than THAT
-    WINDOW, at the END of the file, that leaves the last line truncated, the
-    dedupe reading "not recorded", and the next commit appended twice. The cap
-    sits at half the window, so a row merely past the cap still parses; what the
-    cap buys is that the window's assumption cannot be reached by ordinary
-    drift. State it that way round — an earlier draft here said a row past the
-    CAP defeats the dedupe, which overstates the failure by the factor between
-    the two numbers.
+    consequence belongs to the WINDOW rather than to the cap.
+    `_already_recorded_fh` reads a fixed tail and parses only the last line, so
+    what truncates that line is a row longer than the window, at the end of the
+    file — and then `json.loads` fails, the dedupe reads "not recorded", and a
+    re-presented HEAD is appended twice. A row past the CAP but inside the window
+    still parses. An earlier draft here said otherwise, overstating the failure
+    by the factor between the two numbers.
+
+    The relationship that has to hold is one row, not two, and it is about bytes
+    ON DISK rather than the bytes the cap counts: `_MAX_LINE_BYTES` budgets
+    `json.dumps(record) + "\n"`, one terminator byte, while a CRLF checkout
+    stores two. So the window must be at least `_MAX_LINE_BYTES + 1` for a
+    maximal row to survive a Windows clone. Today's values clear that by a wide
+    margin, and the margin is an observation rather than a contract — nothing
+    depends on the cap being half the window, and stating it as a guarantee
+    would invite a guard that reds on a legitimate change.
 
     Record the correction beside the ledger, in the repo's own `cla.io/retro/`.
     A row that no writer could have produced is otherwise indistinguishable from
