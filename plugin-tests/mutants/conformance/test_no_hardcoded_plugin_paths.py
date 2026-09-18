@@ -5,8 +5,8 @@ The guard claims that no file in synced core can carry the literal install path
 because here that path resolves, and fatal in every repo that installs the plugin
 from a marketplace.
 
-**Six mutants, and the split between them is the point.** Two mutate the INPUT
-(mutants 1–2) and four mutate the guard (3–6).
+**Nine mutants, and the split between them is the point.** Two mutate the INPUT
+(mutants 1–2) and seven mutate the guard (3–9).
 
 **Why two of them mutate the input rather than the guard.** The obvious mutant —
 break `BAD` so it matches nothing — cannot be killed. In a correct tree there are
@@ -23,14 +23,14 @@ invocation, and reverting its `${CLAUDE_PLUGIN_ROOT}` to the hardcoded path is o
 of the 92 occurrences across 31 files the guard's docstring says were found
 immediately before the first consuming-repo test.
 
-**A weakness this batch does NOT paper over.** `SCANNED_ROOTS` has five entries
-and only `agents/` is pinned by an assertion. Dropping `lib` or `output-styles`
-from that tuple leaves 101 or 102 files against a floor of `>= 98`, every required
-suffix still reached, and the run green — measured, see the report on issue #176.
-No mutant here asserts otherwise: mutants 1–2 prove those roots are scanned TODAY,
-which is a different claim from "a narrowing of the root list would be caught".
-Only `hooks` (14 files) is large enough for the floor to notice, and that is
-mutant 5.
+**THE ROOT-LIST WEAKNESS THIS BATCH USED TO REPORT IS NOW CLOSED (issue #246).**
+`SCANNED_ROOTS` had five entries and only `agents/` was pinned by an assertion.
+Dropping `lib` or `output-styles` left 101 or 102 files against a floor of
+`>= 98`, every required suffix still reached, and the run green — so both sat in
+the DELIBERATELY-NOT-A-MUTANT block below as known survivors. `REQUIRED_ROOTS`
+and `test_every_required_root_is_actually_reached` are the fix, and mutants 7–8
+are the two former survivors promoted to real mutants. Only `hooks` (14 files)
+was ever large enough for the floor to notice, and that is mutant 5.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/conformance/test_no_hardcoded_plugin_paths.py
 """
@@ -129,6 +129,50 @@ MUTANTS = [
         '        (1 if "${CLAUDE_PLUGIN_ROOT}" in p.read_text(encoding="utf-8", errors="replace") else 0)',
         TARGETS,
     ),
+
+    # ---- 7-8: the two former survivors, promoted (issue #246) ----
+    #
+    # These are the exact edits the block at the bottom of this file used to
+    # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
+    # not, and mutant 7 is the one that proves it. Measured against the re-pinned
+    # floor of `>= 102`:
+    #
+    #     drop `output-styles`  102 files  clears the floor exactly
+    #     drop `lib`            101 files  fails the floor by one
+    #
+    # So mutant 7 is killed by `REQUIRED_ROOTS` alone, and mutant 8 currently
+    # dies twice over. That asymmetry is an accident of today's file counts and
+    # the argument for the separate list: the floor's stated rule is to be
+    # lowered on every deliberate deletion, and one lowering puts mutant 8 back
+    # where mutant 7 is, while `REQUIRED_ROOTS` keeps failing either way.
+    (
+        "the one-file root is dropped from the scan, which no count can see",
+        GUARD,
+        'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
+        'SCANNED_ROOTS = ("skills", "agents", "hooks", "lib")',
+        TARGETS,
+    ),
+    (
+        "the two-file root is dropped from the scan, taking lib/log_run.py and "
+        "lib/ledger_summary.py out of it",
+        GUARD,
+        'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
+        'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks")',
+        TARGETS,
+    ),
+    (
+        # And the direction `REQUIRED_ROOTS` shares with `REQUIRED_SUFFIXES`: a
+        # root ADDED to the scan without being declared required carries no
+        # protection against being removed again. Spelled as a narrowing of
+        # REQUIRED rather than a widening of SCANNED, for the reason mutant 4
+        # gives — the two are the same edit from either end, and this one needs
+        # no directory to exist.
+        "a scanned root stops being declared required, so its removal would go unnoticed",
+        GUARD,
+        'REQUIRED_ROOTS = frozenset({"skills", "agents", "output-styles", "hooks", "lib"})',
+        'REQUIRED_ROOTS = frozenset({"skills", "agents", "hooks", "lib"})',
+        TARGETS,
+    ),
 ]
 
 # DELIBERATELY NOT A MUTANT: breaking `BAD` so it matches nothing.
@@ -139,13 +183,13 @@ MUTANTS = [
 # Mutants 1-2 are the input-side answer prescribed for that class: plant the
 # literal and confirm the guard fires.
 #
-# DELIBERATELY NOT A MUTANT: dropping `lib` or `output-styles` from SCANNED_ROOTS.
+# NO LONGER A SURVIVOR: dropping `lib` or `output-styles` from SCANNED_ROOTS.
 #
-# Both survive. `lib` is 2 files and `output-styles` is 1, against a floor of
-# `>= 98` with a real count of 103, and neither root holds the last file of any
-# REQUIRED suffix. This is a real gap in the guard rather than an artifact of the
-# batch, so it is reported rather than hidden behind a mutant that would sit in
-# the survivor column forever.
+# Both DID survive, and the reason was arithmetic rather than anything about the
+# guard's intent: `lib` is 2 files and `output-styles` is 1, against a floor that
+# was `>= 98` with a real count of 103, and neither root holds the last file of
+# any REQUIRED suffix. `REQUIRED_ROOTS` closes it on the axis the floor cannot,
+# and the two edits are now mutants 7 and 8 rather than a paragraph.
 #
 # TWO STALE MEASUREMENTS IN THE GUARD, found while writing this batch and left
 # alone because correcting a guard is a different change from proving one. They

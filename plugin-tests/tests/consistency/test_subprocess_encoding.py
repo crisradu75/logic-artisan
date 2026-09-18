@@ -75,6 +75,17 @@ _EXCLUDE_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "node_modules
 # unqualified "any call with encoding=" would flag every `open(p,
 # encoding="utf-8")` in the plugin, and a guard that cries wolf gets deleted.
 _SPAWNERS = {"run", "Popen", "call", "check_call", "check_output"}
+# `sp` MATCHES NOTHING IN THIS TREE AND STAYS. Measured::
+#
+#     $ grep -rn "import subprocess as" --include=*.py .
+#     ./plugin-tests/tests/hooks/test_hooks_wiring.py:661:import subprocess as _sp
+#
+# One alias, and it is `_sp`. A dead entry here is not the dead-exemption defect
+# the guards next door police, because the direction is opposite: this set only
+# ever WIDENS what counts as a spawner, so an alias nobody uses cannot make the
+# guard pass on something it should catch. Deleting it would narrow the guard for
+# the next file that spells the import `as sp`, which is the commoner spelling of
+# the two. It is kept for reach, not for coverage.
 _SPAWN_MODULES = {"subprocess", "_sp", "sp"}
 
 
@@ -248,6 +259,25 @@ def test_the_alternate_spellings_are_not_an_escape_hatch(source):
     # A non-subprocess callee that happens to take `text=`.
     "widget.Label(master, text=True)",
     "parser.add_argument('--x', text=True)",
+    # ---- the three cases that make `_is_spawn`'s conjunction decidable ----
+    #
+    # Every case ABOVE is rejected by the FIRST or SECOND condition, so the
+    # module check never executed and neither narrowing half was pinned on its
+    # own. Measured in `mutants/consistency/test_subprocess_encoding.py`'s
+    # header: dropping `func.attr in _SPAWNERS` SURVIVED, dropping
+    # `func.value.id in _SPAWN_MODULES` SURVIVED, dropping BOTH was killed — a
+    # conjunction no test can distinguish from either of its halves.
+    #
+    # Each of these three is rejected by exactly ONE condition, named beside it,
+    # so each condition now decides a case by itself.
+    "asyncio.run(coro, text=True)",            # only cond 4: a spawner NAME on a
+                                               # module that is not a spawner
+    "subprocess.list2cmdline(cmd, text=True)", # only cond 2: the spawn module,
+                                               # a callee that is not a spawner
+    "os.path.run(cmd, text=True)",             # only cond 3: `func.value` is an
+                                               # Attribute, not a Name — and
+                                               # cond 4 would raise
+                                               # AttributeError without it
     # Correctly pinned, in every spelling.
     "subprocess.run(cmd, text=True, encoding='utf-8', errors='replace')",
     "subprocess.run(cmd, universal_newlines=True, encoding='utf-8', errors='replace')",

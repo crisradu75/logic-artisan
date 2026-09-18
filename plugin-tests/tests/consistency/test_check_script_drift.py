@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import textwrap
 from pathlib import Path
 
@@ -100,6 +101,190 @@ def test_the_group_set_itself_has_not_shrunk():
         "here in the same commit. Removing one needs a reason, because each group "
         "exists for a divergence that was silent when it happened."
     )
+
+
+# ---------------------------------------------------------------- issue #249
+#
+# The group's MEMBERSHIP, derived rather than declared. Everything above pins
+# what the declared file set IS; nothing asked whether it is everything.
+#
+# `check_script_drift.py`'s own docstring says the group covers "the ledger
+# WRITER and the two READERS of what it writes", and a fifth file resolves the
+# same directory and is not in it: `hooks/log-commit-provenance.py` does it
+# inline in `main()`, `rev-parse --show-toplevel` plus `CLAUDE_RETRO_DIR`, rather
+# than through `_git_toplevel`/`_runs_dir`. A hand-written file list cannot
+# notice a sixth arriving the same way, and the failure is the one this whole
+# script exists for: the hook writing to a directory the readers do not read is
+# silent, and reads as a cold start.
+# TWO PATTERNS, NOT ONE LITERAL. The first cut was the single substring
+# `environ.get("CLAUDE_RETRO_DIR"`, which is narrower than the exemption below
+# claims: `os.getenv("CLAUDE_RETRO_DIR")`, a single-quoted spelling, and — the
+# one that matters — a file that hardcodes `cla.io/retro` with NO override at
+# all were each invisible to it. The no-override spelling is the likeliest drift
+# this group exists for, since it is what someone writes who does not know the
+# override exists.
+#
+# Measured: on the tree as it stands all three rules find the same five files,
+# so this widening changes no verdict today. It is here for the sixth.
+_LEDGER_DIR_PATTERNS = (
+    # Any reference to the override, however it is spelled or quoted.
+    re.compile(r"CLAUDE_RETRO_DIR"),
+    # The dir built literally, joined or segment-by-segment.
+    re.compile(r"""cla\.io[/\\]retro|["']cla\.io["']\s*[/,]\s*["']retro["']"""),
+)
+
+# Files that resolve the retro ledger dir and are deliberately NOT compared
+# against the group, keyed to the reason. Verified below to still exist, still
+# resolve the dir, and still not be group members.
+_LEDGER_DIR_EXEMPT = {
+    "hooks/log-commit-provenance.py":
+        "a PostToolUse hook, not a ledger tool. Three properties of its contract "
+        "are incompatible with the group's, so making it comparable would change "
+        "the other four rather than the hook: it must run git in the PAYLOAD's "
+        "cwd (`_git_toplevel` takes no cwd and resolves the process's own), it "
+        "must stay SILENT on every failure (`_runs_dir` raises, which the hook "
+        "may never do), and it runs on a 3s budget against the tools' 10s. It is "
+        "also deliberately dependency-light — it imports nothing from lib/. "
+        "Registered here so a SIXTH resolver cannot arrive unnoticed, which is "
+        "the direction the declared file list could not see. "
+        "AND ONE DIVERGENCE THIS EXEMPTION PERMANENTLY UNCHECKS, named rather "
+        "than left for someone to rediscover: the two parse the override "
+        "differently. `log_run._runs_dir` treats a whitespace-only value as "
+        "unset and RAISES on a non-absolute one; the hook does neither — "
+        "`Path(os.environ.get(...) or <default>)` takes any non-empty string "
+        "as-is. So with CLAUDE_RETRO_DIR=retro the writer and both aggregators "
+        "raise while the hook silently appends to a relative path resolved "
+        "against the payload cwd — records written where no reader looks, "
+        "which is exactly the cold-start-that-is-not this group exists to "
+        "prevent. Closing it means giving the hook the absolute-path rule "
+        "without the raise, which is a change to the hook, not to this map.",
+}
+
+
+def ledger_dir_resolvers(plugin_root: Path, patterns) -> set[str]:
+    """Every shipped `.py` that resolves the retro ledger dir, plugin-relative.
+
+    Both inputs are parameters so a planted tree can drive this, the rule the
+    sibling guards state for a helper a test asserts over.
+
+    SCOPED TO `.py`, and that is a real limit rather than an oversight: every
+    shipped file that could resolve this directory today is Python. A `.sh` hook
+    doing it would be invisible here, and the limit is stated so the exemption
+    below is not read as broader than the check that backs it."""
+    return {
+        p.relative_to(plugin_root).as_posix()
+        for p in sorted(plugin_root.rglob("*.py"))
+        if "__pycache__" not in p.parts
+        and any(
+            pat.search(p.read_text(encoding="utf-8", errors="replace"))
+            for pat in patterns
+        )
+    }
+
+
+def unregistered_resolvers(found, members, exempt) -> list[str]:
+    """Resolvers accounted for by neither the group nor the exemption map."""
+    return sorted(set(found) - set(members) - set(exempt))
+
+
+def _resolver_group() -> dict:
+    return next(
+        g for g in csd.SIBLING_GROUPS
+        if g["name"].startswith("retro ledger dir resolver")
+    )
+
+
+def test_every_ledger_dir_resolver_is_accounted_for():
+    """The direction the declared file list cannot close (issue #249).
+
+    Measured — five files in the shipped tree read `CLAUDE_RETRO_DIR`, and the
+    group named four::
+
+        $ grep -rln 'environ.get("CLAUDE_RETRO_DIR"' .claude/plugins/cla --include=*.py
+        .claude/plugins/cla/hooks/log-commit-provenance.py
+        .claude/plugins/cla/lib/ledger_summary.py
+        .claude/plugins/cla/lib/log_run.py
+        .claude/plugins/cla/skills/codify-retro/scripts/codify_aggregate.py
+        .claude/plugins/cla/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py
+    """
+    found = ledger_dir_resolvers(csd.PLUGIN_ROOT, _LEDGER_DIR_PATTERNS)
+    assert found, (
+        "no shipped .py resolves the retro ledger dir any more — either the "
+        "override was renamed or the ledger tools have left the plugin. Either "
+        "way this check and the group it polices are scanning nothing."
+    )
+    unregistered = unregistered_resolvers(
+        found, _resolver_group()["files"], _LEDGER_DIR_EXEMPT
+    )
+    assert not unregistered, (
+        f"{unregistered} resolve the retro ledger directory but are neither "
+        "compared by the ledger-dir group nor exempted from it, so nothing "
+        "checks that they agree with the writer. A reader that disagrees finds "
+        "no records and reports a cold start. Add it to the group's `files` if "
+        "it resolves the dir the same way; to _LEDGER_DIR_EXEMPT, with a reason, "
+        "if its cwd or failure contract makes it incomparable."
+    )
+
+
+def test_every_ledger_dir_exemption_still_earns_itself():
+    """An exemption must not outlive its reason, nor cover a file that has since
+    joined the group — either way the entry stops being a record of a decision
+    and becomes a pressure valve."""
+    found = ledger_dir_resolvers(csd.PLUGIN_ROOT, _LEDGER_DIR_PATTERNS)
+    members = set(_resolver_group()["files"])
+    for rel, reason in _LEDGER_DIR_EXEMPT.items():
+        assert reason.strip(), f"{rel} is exempt with no reason given"
+        assert (csd.PLUGIN_ROOT / rel).is_file(), (
+            f"{rel} is exempted but does not exist — delete the entry"
+        )
+        assert rel in found, (
+            f"{rel} no longer resolves the ledger dir, so the exemption covers "
+            "nothing — delete the entry"
+        )
+        assert rel not in members, (
+            f"{rel} is both a group member and exempted from the group; the "
+            "exemption would then excuse a file that is already compared"
+        )
+
+
+def test_an_unregistered_resolver_is_reported():
+    """The planted half — the real tree is clean by construction, so without this
+    nothing shows the two maps can be told apart."""
+    assert unregistered_resolvers(
+        {"lib/log_run.py", "hooks/new-writer.py"}, ("lib/log_run.py",), {}
+    ) == ["hooks/new-writer.py"]
+    assert unregistered_resolvers(
+        {"lib/log_run.py", "hooks/new-writer.py"},
+        ("lib/log_run.py",),
+        {"hooks/new-writer.py": "a stated reason"},
+    ) == []
+
+
+def test_the_resolver_marker_still_discriminates(tmp_path: Path):
+    """`ledger_dir_resolvers` is a substring scan, so a marker weakened to
+    something every file contains would report the whole tree and a marker
+    weakened to nothing would report none — both read as "no unregistered
+    resolvers". Pinned against a planted tree rather than the real one."""
+    (tmp_path / "a.py").write_text(
+        'import os\nos.environ.get("CLAUDE_RETRO_DIR")\n', encoding="utf-8"
+    )
+    (tmp_path / "b.py").write_text("x = 1\n", encoding="utf-8")
+    assert ledger_dir_resolvers(tmp_path, _LEDGER_DIR_PATTERNS) == {"a.py"}
+    # The no-override spelling the single-literal rule could not see: no
+    # `CLAUDE_RETRO_DIR` anywhere in the file, just the directory built by
+    # hand. This is the shape someone writes who does not know the override
+    # exists, and it is the likeliest sixth resolver.
+    (tmp_path / "c.py").write_text(
+        'LEDGER = root / "cla.io" / "retro" / "runs.jsonl"\n', encoding="utf-8"
+    )
+    assert ledger_dir_resolvers(tmp_path, _LEDGER_DIR_PATTERNS) == {"a.py", "c.py"}
+    # And the spellings of the override itself that the literal missed.
+    (tmp_path / "d.py").write_text(
+        "import os\nos.getenv('CLAUDE_RETRO_DIR')\n", encoding="utf-8"
+    )
+    assert ledger_dir_resolvers(tmp_path, _LEDGER_DIR_PATTERNS) == {
+        "a.py", "c.py", "d.py"
+    }
 
 
 def _write(path: Path, source: str) -> None:

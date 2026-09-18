@@ -70,7 +70,7 @@ MUTANTS = [
         # Description corrected: `hooks/hooks.json` is no longer STRANDED by
         # this edit. Issue #190 widened the token scanner to `.json`, so all
         # three `.json` files keep a reader and the coverage guard stays green.
-        # What now fires is the count floor alone — 99 - 3 = 96 against `>= 98`
+        # What now fires is the count floor alone — 103 - 3 = 100 against `>= 102`
         # — plus the `REQUIRED_SUFFIXES` assertion. The old wording described
         # the pre-#190 tree and would have sent a reader looking for a coverage
         # failure that no longer happens.
@@ -139,8 +139,8 @@ MUTANTS = [
         #
         #   * `test_the_scan_is_not_vacuous`'s `REQUIRED_SUFFIXES` assertion,
         #     with `missing == ['.mjs']`. The count floor does NOT fire: `.mjs`
-        #     is one file against a margin of one, so 99 -> 98 lands exactly ON
-        #     `>= 98` and clears it.
+        #     is one file against a margin of one, so 103 -> 102 lands exactly ON
+        #     `>= 102` and clears it.
         #   * `test_every_shipped_file_is_scanned_or_deliberately_exempt`, because
         #     `mechanical-checks.mjs` sits in `TOKEN_EXEMPT` and NOT in `EXEMPT`
         #     — the path scanner is its only reader, so dropping the suffix puts

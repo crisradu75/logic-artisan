@@ -19,6 +19,16 @@ REFS = PLUGIN / "skills" / "multi-lite" / "references"
 LOOP = REFS / "candidate-loop.md"
 GUARD = DEV / "tests" / "consistency" / "test_multi_lite_policy_names_agree.py"
 
+
+def _nl(text: str, path: Path = LOOP) -> str:
+    """Re-spell `\\n` as the target file's own line ending.
+
+    `mutate.py` matches raw text, so a bare `\\n` in an anchor matches NOTHING on
+    a CRLF checkout — and a batch with one unresolvable anchor aborts in preflight
+    and runs no mutant at all, silently. This is derived from the file's bytes
+    rather than spelled, which is the shape `mutants/annotate/` already uses."""
+    return text.replace("\n", "\r\n" if b"\r\n" in path.read_bytes() else "\n")
+
 # Scoped to the one guard, never the whole area: a batch pointed at an area
 # reports every mutant killed the moment anything else there is red.
 TARGETS = [GUARD]
@@ -118,7 +128,7 @@ MUTANTS = [
     (
         "the enforcement round trusts HEAD == remote without proving a commit exists",
         LOOP,
-        "     - `git rev-parse HEAD` must differ from the row's current `head_sha`. The same value means no commit was made (a hook rejected it, or nothing was staged).\n",
+        _nl("     - `git rev-parse HEAD` must differ from the row's current `head_sha`. The same value means no commit was made (a hook rejected it, or nothing was staged).\n"),
         "",
         TARGETS,
     ),
