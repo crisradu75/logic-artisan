@@ -250,6 +250,26 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        # The THIRD shape, which the first version of `_developer_path_kinds`
+        # omitted entirely — it implemented two of the shipped checker's three
+        # kinds and called itself a copy of them. Review found it; nothing here
+        # could have, because the control only exercised the two that existed.
+        # One mutant per kind now, so dropping any one of them fails.
+        "the separator-stripped shape stops being detected — the kind the "
+        "checker's own comment says a real developer username survived on",
+        GUARD,
+        "    mangled = _TOKENS.MANGLED_WIN_PATH.search(text)",
+        "    mangled = None",
+        TARGETS,
+    ),
+    (
+        "the home-directory shape stops being detected",
+        GUARD,
+        "    home = _TOKENS.HOME_ABS_PATH.search(text)",
+        "    home = None",
+        TARGETS,
+    ),
+    (
         "the dead-exemption branch stops reporting",
         GUARD,
         "vanished = sorted(name for name in exempt if name not in shipped)",

@@ -394,6 +394,22 @@ def _developer_path_kinds(text: str) -> list[str]:
     Calls the checker's own regexes rather than restating them, the same
     discipline `_token_reached` follows — a second copy here would drift from the
     scanner and the drift would be invisible.
+
+    ALL THREE KINDS, and that sentence is load-bearing rather than descriptive.
+    The first version of this function implemented two and omitted
+    `MANGLED_WIN_PATH`, which made it a PARTIAL copy — exactly the drift the
+    paragraph above says it exists to avoid, in the function that says it.
+    Measured on `# see C:UsersaliceAppDataLocal for the cache`: the two
+    implemented patterns both return None and the omitted one matches, with a
+    non-placeholder user. A separator-stripped path in an exempt file — which is
+    to say a file NO scanner opens — was therefore reported clean, and the
+    checker's own comment names that shape as how a real developer username
+    survived a previous sweep.
+
+    Kept in `find_absolute_path_leaks`'s order and with its kind names, and each
+    shape tested INDEPENDENTLY rather than as an `elif` chain, for the reason
+    that function records: chaining let a line carrying a placeholder Windows
+    path skip the home-path check entirely.
     """
     kinds: list[str] = []
     win = _TOKENS.WIN_ABS_PATH.search(text)
@@ -402,6 +418,9 @@ def _developer_path_kinds(text: str) -> list[str]:
     home = _TOKENS.HOME_ABS_PATH.search(text)
     if home and home.group(1).lower() not in _TOKENS.PLACEHOLDER_USERS:
         kinds.append("home-directory-path")
+    mangled = _TOKENS.MANGLED_WIN_PATH.search(text)
+    if mangled and not _TOKENS._starts_with_placeholder_user(mangled.group(1)):
+        kinds.append("mangled-windows-path")
     return kinds
 
 
@@ -417,12 +436,29 @@ def test_the_detector_used_below_actually_detects():
     a path is what surfaced that. The lesson is not "count backslashes more
     carefully"; it is that a negative result needs a positive control in the same
     run.
+
+    ONE ASSERTION PER KIND, not one for the set. A control that exercises only
+    the shapes already implemented cannot surface a MISSING shape — which is
+    precisely what happened: the two-assertion version of this test passed while
+    `_developer_path_kinds` silently omitted `MANGLED_WIN_PATH`, so the third
+    class of leak went unreported in every exempt file. A control is only as wide
+    as the thing it is written against, so it is written against the shipped
+    checker's kind list instead.
     """
     win = r"prefix C:\Users\anna\foo suffix"  # path-fixture-ok
     assert _developer_path_kinds(win) == ["windows-drive-path"]
     assert _developer_path_kinds("see /home/anna/thing for it") == [
         "home-directory-path"
     ]
+    # Separator-stripped — the shape a mangled scratchpad path collapses into,
+    # and the one the two implemented patterns both miss.
+    assert _developer_path_kinds(  # path-fixture-ok
+        "# see C:UsersannaAppDataLocal for the cache"
+    ) == ["mangled-windows-path"]
+    # And the placeholder exemptions still hold, so the control does not pass by
+    # reporting everything.
+    assert _developer_path_kinds("see /home/me/thing") == []
+    assert _developer_path_kinds(r"C:\Users\<name>\foo") == []
 
 
 def test_the_unscanned_exemptions_carry_no_developer_path():
