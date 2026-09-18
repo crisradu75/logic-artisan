@@ -411,6 +411,40 @@ def _measured_by(cwd: Path) -> list[str]:
     message formatting instead — an absence wearing a measurement's clothes, in
     the one field built to prevent exactly that.
 
+    THE FIX DID NOT REACH THE ROWS ALREADY WRITTEN. A ledger carrying rows from
+    before it holds zeros its own commit messages refute, and no later run
+    corrects them — so a rate read off an old ledger is a statement about when
+    the rows were written as much as about the rule.
+
+    IF A REPO CORRECTS ITS OWN ROWS, apply `main()`'s shaping, not this
+    function's return. What a row holds is not what this returns: `main()` caps
+    the list at `_MAX_TRAILERS`, truncates each value to `_MAX_TRAILER_CHARS`,
+    and then sheds values until the line fits `_MAX_LINE_BYTES`. Skipping that
+    writes a row this hook could not have written.
+
+    `_MAX_LINE_BYTES` is the one with a consequence past tidiness, and the
+    consequence belongs to the WINDOW rather than to the cap.
+    `_already_recorded_fh` reads a fixed tail and parses only the last line, so
+    what truncates that line is a row longer than the window, at the end of the
+    file — and then `json.loads` fails, the dedupe reads "not recorded", and a
+    re-presented HEAD is appended twice. A row past the CAP but inside the window
+    still parses. An earlier draft here said otherwise, overstating the failure
+    by the factor between the two numbers.
+
+    The relationship that has to hold is one row, not two, and it is about bytes
+    ON DISK rather than the bytes the cap counts: `_MAX_LINE_BYTES` budgets
+    `json.dumps(record) + "\n"`, one terminator byte, while a CRLF checkout
+    stores two. So the window must be at least `_MAX_LINE_BYTES + 1` for a
+    maximal row to survive a Windows clone. Today's values clear that by a wide
+    margin, and the margin is an observation rather than a contract — nothing
+    depends on the cap being half the window, and stating it as a guarantee
+    would invite a guard that reds on a legitimate change.
+
+    Record the correction beside the ledger, in the repo's own `cla.io/retro/`.
+    A row that no writer could have produced is otherwise indistinguishable from
+    one that was written that way, and the ledger is append-only by convention —
+    a reader has no reason to suspect an edit unless one is written down.
+
     Continuations are folded the way `unfold=true` did: a following line that
     starts with whitespace belongs to the value above it, so a wrapped command is
     one value rather than two fragments.
