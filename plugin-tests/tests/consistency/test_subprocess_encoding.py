@@ -259,7 +259,7 @@ def test_the_alternate_spellings_are_not_an_escape_hatch(source):
     # A non-subprocess callee that happens to take `text=`.
     "widget.Label(master, text=True)",
     "parser.add_argument('--x', text=True)",
-    # ---- the three cases that make `_is_spawn`'s conjunction decidable ----
+    # ---- the cases that make `_is_spawn`'s conjunction decidable ----
     #
     # Every case ABOVE is rejected by the FIRST or SECOND condition, so the
     # module check never executed and neither narrowing half was pinned on its
@@ -268,12 +268,23 @@ def test_the_alternate_spellings_are_not_an_escape_hatch(source):
     # `func.value.id in _SPAWN_MODULES` SURVIVED, dropping BOTH was killed — a
     # conjunction no test can distinguish from either of its halves.
     #
-    # Each of these three is rejected by exactly ONE condition, named beside it,
-    # so each condition now decides a case by itself.
+    # THREE of the four below are rejected by exactly ONE condition, named
+    # beside each, so every condition now decides a case by itself. The fourth
+    # (`CompletedProcess`) duplicates condition 2's coverage on purpose and
+    # says so at its own line — count four entries and three roles.
     "asyncio.run(coro, text=True)",            # only cond 4: a spawner NAME on a
                                                # module that is not a spawner
     "subprocess.list2cmdline(cmd, text=True)", # only cond 2: the spawn module,
                                                # a callee that is not a spawner
+    # Also only cond 2, and it adds NO coverage the line above does not already
+    # give — it is here as the REALISTIC witness. `subprocess.list2cmdline(...,
+    # text=True)` is something nobody writes; constructing a `CompletedProcess`
+    # is what this repo's own test fakes actually do
+    # (`tests/skills/spec-to-pr/test_probe_state.py` builds two at module level).
+    # A corpus whose negatives are all invented invites the reader to assume the
+    # rule is about invented shapes. It earns no mutant of its own, for the same
+    # reason: the coverage is already pinned.
+    "subprocess.CompletedProcess(args, 0, text=True)",
     "os.path.run(cmd, text=True)",             # only cond 3: `func.value` is an
                                                # Attribute, not a Name — and
                                                # cond 4 would raise

@@ -5,8 +5,12 @@ The guard claims that no file in synced core can carry the literal install path
 because here that path resolves, and fatal in every repo that installs the plugin
 from a marketplace.
 
-**Nine mutants, and the split between them is the point.** Two mutate the INPUT
-(mutants 1–2) and seven mutate the guard (3–9).
+**Ten mutants, and the split between them is the point.** THREE mutate the INPUT
+(mutants 1–2 and 10) and seven mutate the guard (3–9).
+
+Mutant 10 is the input-side one for a different guard in the same file:
+`test_the_recorded_counts_are_the_real_ones` reads this file's own comments, so
+the recorded measurements ARE its input.
 
 **Why two of them mutate the input rather than the guard.** The obvious mutant —
 break `BAD` so it matches nothing — cannot be killed. In a correct tree there are
@@ -48,6 +52,38 @@ OUTPUT_STYLE = PLUGIN / "output-styles" / "CLA.md"
 # mutant "killed" and proves nothing.
 TARGETS = [GUARD]
 
+# THREE MUTANTS ARE SCOPED FINER STILL, to a single test each, and the reason is
+# the same argument one level down.
+#
+# `test_the_recorded_counts_are_the_real_ones` reads the printer's quoted output,
+# so it fails on ANY mutant that moves a counted number — which is most of the
+# interesting ones here. Measured, applying each mutant to a scratch copy and
+# recording which tests go red:
+#
+#     mutant 3 (.mjs dropped)          scan_is_not_vacuous + recorded_counts
+#     mutant 7 (output-styles dropped) required_root_is_reached + recorded_counts
+#     mutant 8 (lib dropped)           required_root_is_reached + recorded_counts
+#                                      + scan_is_not_vacuous
+#
+# A kill against the whole file therefore stopped saying WHICH assertion did the
+# work — and for mutants 3 and 7 that assertion was the entire evidence that
+# `REQUIRED_SUFFIXES` and `REQUIRED_ROOTS` have teeth. This is exactly the
+# non-attributing kill the guard's own comment refuses to accept from the
+# neighbouring batch, reintroduced here by a test added in the same PR.
+#
+# `mutate.py` takes a `::`-qualified node id, so the fix is to name the test each
+# mutant is meant to prove. The kill then attributes again, and the comments
+# below are true as written rather than true-as-of-when-they-were-written.
+_SCAN_VACUITY = [f"{GUARD}::test_the_scan_is_not_vacuous"]
+_ROOTS_REACHED = [f"{GUARD}::test_every_required_root_is_actually_reached"]
+
+# Derived, not spelled. Only the recorded-count mutant spans lines, and it must:
+# the printer's output is quoted TWICE in the guard, so the line alone is an
+# ambiguous anchor and `mutate.py` refuses it. The surrounding prose is what
+# makes it unique — and a bare `\n` there would match nothing on this CRLF
+# checkout, aborting the whole batch in preflight.
+_NL = "\r\n" if b"\r\n" in GUARD.read_bytes() else "\n"
+
 MUTANTS = [
     (
         # THE HISTORICAL DEFECT, VERBATIM. `lib/log_run.py` documents how to
@@ -75,15 +111,22 @@ MUTANTS = [
     (
         # The near-miss the guard's own comment works through: `.mjs` is ONE
         # file, so dropping it lands on the floor rather than under it (103 - 1
-        # = 102, floor >= 98) and the count cannot see it. Only the
-        # REQUIRED_SUFFIXES comparison catches this, which is the whole reason
-        # that second list exists as an independent source rather than being
-        # derived from SCANNED_SUFFIXES.
+        # = 102, floor >= 102) and the count cannot see it. Within
+        # `test_the_scan_is_not_vacuous` the REQUIRED_SUFFIXES comparison is
+        # therefore the ONLY assertion that can catch it, which is the whole
+        # reason that second list exists as an independent source rather than
+        # being derived from SCANNED_SUFFIXES.
+        #
+        # SCOPED TO THAT ONE TEST. Against the whole file this mutant also
+        # fails `test_the_recorded_counts_are_the_real_ones` (scanned 102
+        # against a recorded 103), and a kill that could have come from either
+        # proves neither. The claim above is only true of a run scoped this
+        # way, and it used to be written as though it were true of the batch.
         "a declared suffix is dropped from the scan without moving the file count below its floor",
         GUARD,
         'SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")',
         'SCANNED_SUFFIXES = (".md", ".py", ".json")',
-        TARGETS,
+        _SCAN_VACUITY,
     ),
     (
         # The opposite direction, and the one the `missing` assertion cannot
@@ -101,9 +144,14 @@ MUTANTS = [
     ),
     (
         # The root list narrowed. `hooks/` is 14 of 103 files, so this one IS
-        # visible to the floor (89 < 98) — unlike `lib` and `output-styles`,
-        # which are not, and which mutants 1-2 cover a different way. The
-        # docstring says why that asymmetry is left standing rather than hidden.
+        # visible to the floor (89 < 102) — unlike `lib` and `output-styles`,
+        # which are not, and which mutants 1-2 cover a different way.
+        #
+        # THE ASYMMETRY IS NO LONGER LEFT STANDING. This comment used to end
+        # `the docstring says why that asymmetry is left standing rather than
+        # hidden`, which stopped being true when `REQUIRED_ROOTS` closed it on
+        # the axis the count cannot see. `lib` and `output-styles` are mutants
+        # 7 and 8 now, and both die.
         "a scan root is dropped, taking every hook file out of the scan",
         GUARD,
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
@@ -113,10 +161,14 @@ MUTANTS = [
     (
         # RE-BREAKS A DEFECT THAT SHIPPED. `test_the_replacement_is_actually_in_
         # use` counted FILES carrying at least one reference, not references, and
-        # its own docstring records the measurement: 50 files carry 234
+        # its own docstring records the measurement: 51 files carry 235
         # occurrences, so a change deleting most of them while leaving one per
         # file held the old assertion green. This restores the file-count form;
-        # 50 is far below the floor of 210, so it dies loudly.
+        # 51 is far below the floor of 210, so it dies loudly.
+        #
+        # (This pair read 50/234 until a cross-branch comparison caught it —
+        # the same drift the rest of this block is about, in the sentence that
+        # quotes the guard's own record.)
         #
         # ANCHOR IS ONE LINE. `mutate.py` matches raw bytes and forbids `\n` in
         # an anchor — on a CRLF checkout a multi-line anchor matches nothing,
@@ -134,23 +186,32 @@ MUTANTS = [
     #
     # These are the exact edits the block at the bottom of this file used to
     # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
-    # not, and mutant 7 is the one that proves it. Measured against the re-pinned
+    # not, and mutant 7 is the one that shows it. Measured against the re-pinned
     # floor of `>= 102`:
     #
     #     drop `output-styles`  102 files  clears the floor exactly
     #     drop `lib`            101 files  fails the floor by one
     #
-    # So mutant 7 is killed by `REQUIRED_ROOTS` alone, and mutant 8 currently
-    # dies twice over. That asymmetry is an accident of today's file counts and
-    # the argument for the separate list: the floor's stated rule is to be
-    # lowered on every deliberate deletion, and one lowering puts mutant 8 back
-    # where mutant 7 is, while `REQUIRED_ROOTS` keeps failing either way.
+    # That asymmetry is an accident of today's file counts and is the argument
+    # for the separate list: the floor's stated rule is to be lowered on every
+    # deliberate deletion, and one lowering puts `lib` where `output-styles`
+    # already is, while `REQUIRED_ROOTS` keeps failing either way.
+    #
+    # BOTH ARE SCOPED TO `test_every_required_root_is_actually_reached`, so each
+    # kill attributes to `REQUIRED_ROOTS` and to nothing else. This paragraph
+    # used to end "mutant 7 is killed by REQUIRED_ROOTS alone, and mutant 8
+    # currently dies twice over" — measured against the whole file that is now
+    # false in both halves: 7 dies twice (the root check and the recorded
+    # counts) and 8 dies three times (those two plus the floor). The asymmetry
+    # above is still real and still the argument; it is just no longer
+    # something the batch DEMONSTRATES, so it is stated as a measurement rather
+    # than implied by a kill.
     (
         "the one-file root is dropped from the scan, which no count can see",
         GUARD,
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
         'SCANNED_ROOTS = ("skills", "agents", "hooks", "lib")',
-        TARGETS,
+        _ROOTS_REACHED,
     ),
     (
         "the two-file root is dropped from the scan, taking lib/log_run.py and "
@@ -158,7 +219,7 @@ MUTANTS = [
         GUARD,
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks")',
-        TARGETS,
+        _ROOTS_REACHED,
     ),
     (
         # And the direction `REQUIRED_ROOTS` shares with `REQUIRED_SUFFIXES`: a
@@ -171,6 +232,31 @@ MUTANTS = [
         GUARD,
         'REQUIRED_ROOTS = frozenset({"skills", "agents", "output-styles", "hooks", "lib"})',
         'REQUIRED_ROOTS = frozenset({"skills", "agents", "hooks", "lib"})',
+        TARGETS,
+    ),
+    (
+        # MUTATE THE INPUT, NOT THE GUARD. `test_the_recorded_counts_are_the_real_
+        # ones` reads this file's own comments, so the PROSE is its input. A
+        # recorded count that no longer matches the tree is exactly the decay it
+        # exists to catch, and this repo has shipped that decay twice —
+        # 95/96/99, then 98/99/103 — both times found by someone running the
+        # printer for an unrelated reason rather than by a check.
+        #
+        # Reverting one quoted line to the pre-#246 figures is the historical
+        # defect verbatim, the same way mutant 1 is for the hardcoded path. It is
+        # the only mutant here that proves the RECORD is pinned rather than the
+        # bound: every other one moves code, and the floors are deliberately
+        # hand-pinned because a floor that re-derives itself asserts nothing.
+        "a recorded measurement in the guard's own comments goes stale again",
+        GUARD,
+        "    #     scanned 103  .json 3  .md 69  .mjs 1  .py 30  placeholder-refs 235 in 51 files"
+        + _NL
+        + "    #" + _NL
+        + "    # The real count is 103. Pinned near it, not",
+        "    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files"
+        + _NL
+        + "    #" + _NL
+        + "    # The real count is 99. Pinned near it, not",
         TARGETS,
     ),
 ]
@@ -191,34 +277,41 @@ MUTANTS = [
 # any REQUIRED suffix. `REQUIRED_ROOTS` closes it on the axis the floor cannot,
 # and the two edits are now mutants 7 and 8 rather than a paragraph.
 #
-# TWO STALE MEASUREMENTS IN THE GUARD, found while writing this batch and left
-# alone because correcting a guard is a different change from proving one. They
-# are NOT the same defect as each other, and an earlier version of this note
-# conflated them:
+# THE THREE FINDINGS THIS BLOCK USED TO REPORT ARE ALL FIXED, and the block is
+# rewritten rather than deleted because what it got wrong is worth keeping.
 #
-#   * `test_the_scan_is_not_vacuous`'s floor is genuine drift. It asserts
-#     `>= 98` under a comment citing a real count of 99, and the real count is
-#     now 103. That file's own rule is that the floor sits NEAR its population —
-#     its comment calls a four-file margin "precisely the decorative floor the
-#     rule above forbids" — and the margin is five.
-#   * `test_the_replacement_is_actually_in_use`'s floor is NOT drift. `>= 210`
-#     against a real 234 is deliberate, and the same file says so at length: a
-#     one-below margin would be noise for a count that moves whenever prose is
-#     edited, so it is "a different rule from the scan floor's, deliberately".
-#     What is stale there is only the RECORDED count in the comment — 217, now
-#     234 — which is a stale measurement, not a decorative floor.
+# It reported two stale measurements and one false parenthetical in the guard,
+# "left alone because correcting a guard is a different change from proving
+# one". All three were corrected in the commit that re-pinned the floors. THE
+# BLOCK ITSELF WAS NOT UPDATED WITH THEM, so a note whose whole subject is
+# stale records sat here carrying stale records of its own — for three commits,
+# until a comparison against another branch noticed.
 #
-# AND ONE PARENTHETICAL IS NOW FALSE, downstream of the first. The guard says
-# "Today the floor happens to catch a `.json` drop (99 - 3 = 96 < 98)". Re-run
-# with the guard's own recorded experiment, it does not:
+# Where each one landed, re-derived rather than remembered:
 #
-#     drop  files  >=98?  missing-required
-#    .json    100   True  ['.json']
-#     .mjs    102   True  ['.mjs']
-#      .py     73  False  ['.py']
-#      .md     34  False  ['.md']
-#     None    103   True  []
+#   * the scan floor's drift is fixed: `>= 102` against a real 103, a margin of
+#     one, which is what that file's own rule asks for.
+#   * `>= 210` was examined and deliberately NOT moved — its gap is the rule,
+#     not drift. Only its recorded count was stale (217 against a real 235) and
+#     that is now corrected.
+#   * the `.json` parenthetical is true again, because the floor moved under
+#     it. Re-run with the guard's own recorded experiment against `>= 102`:
 #
-# `REQUIRED_SUFFIXES` still catches a `.json` drop, so nothing escapes — which
-# is precisely the argument that list was added to make, now demonstrated by the
-# floor failing to do the job the parenthetical credits it with.
+#     drop  files  >=102?  missing-required
+#    .json    100   False  ['.json']
+#     .mjs    102    True  ['.mjs']
+#      .py     73   False  ['.py']
+#      .md     34   False  ['.md']
+#     None    103    True  []
+#
+# The `.mjs` row is still the load-bearing one: it clears the floor exactly, so
+# `REQUIRED_SUFFIXES` is the only thing that catches it. That is the argument
+# the second list was added to make, and it does not depend on where the floor
+# happens to sit.
+#
+# THE RECORDS ABOVE ARE NOW CHECKED, not trusted. The guard carries
+# `test_the_recorded_counts_are_the_real_ones`, which re-runs its printer and
+# compares every quoted line against the tree. This block's numbers are still
+# hand-written and still not covered by it — a batch is not a test — so they
+# remain the kind of thing that decays. Re-derive them rather than trusting
+# them; the commands are in the guard.
