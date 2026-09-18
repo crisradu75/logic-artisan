@@ -8,12 +8,15 @@ set against the shipped tree and passes — which is the same silent-clean-repor
 shape as the defect it exists for (issue #264: a consumer gate that resolved
 nothing and passed).
 
-**Six mutants.** 1-2 reproduce the original defect in its two real spellings —
-the retired `conformance-checks/tests` path reintroduced into the shipped plugin
-README's invocation block, and into the layout block a reader consults to learn
-what a release holds. 3-4 kill the two halves of the extraction. 5-6 attack the
-two narrowing rules, which fail in the opposite direction: a guard that reports
-paths nobody claimed is a guard someone loosens until it checks nothing.
+**Ten mutants, in the order they run.** 1-4 reproduce the original defect in
+every spelling it really has: prefixed in the shipped README's invocation block,
+**bare in a guarded doc's prose** — the spelling it actually shipped in — and in
+each of the two published-tree diagrams. 5-6 kill the two halves of the
+extraction. 7 and 10 attack the two narrowing rules, which fail in the opposite
+direction: a guard that reports paths nobody claimed is a guard someone loosens
+until it checks nothing. 8 is a retired single-segment entry named with a prefix,
+the case a stripped-token separator test silently dropped. 9 removes the
+tag-derived retired-name set, without which the bare spelling is invisible.
 
 **Two edits are deliberately NOT in this list, because neither can be killed in
 a correct tree** — see root CLAUDE.md, "a SURVIVOR is not automatically a
@@ -24,16 +27,25 @@ finding about the code":
     which is where it discriminates.
   * *Zeroing the non-vacuity floors.* The floors bind only when an extraction
     has already broken, so removing them changes nothing on a clean tree. What
-    they are worth is shown instead by 3-4, which are killed BY them.
+    they are worth is shown instead by 5-6, which are killed BY them.
 
 **What this batch already found.** Its first run killed 4 of 7 and both
 survivors were real: reading only inline backticks missed the README's fenced
-invocation block entirely (mutant 1), and a single combined path floor was too
-coarse to notice the explicit-prefix half of the extraction dying, because the
-bare half alone cleared it (mutant 3). Both are fixed in the guard; the
-one-floor-per-channel split exists because of this run.
+invocation block entirely, and a single combined path floor was too coarse to
+notice the explicit-prefix half of the extraction dying, because the bare half
+alone cleared it. Both are fixed; the one-floor-per-channel split exists because
+of that run.
+
+**What the batch did NOT find, and a review did.** Every mutant in that first
+version wrote the retired path with a `<plugin>/` prefix — a spelling the guard
+handled — while the defect shipped BARE, which the guard could not see at all.
+A batch that only exercises the spellings the code already handles reports a
+clean run and means nothing by it. Mutants 2-4, 8 and 9 exist because of that, and
+the rule they encode is worth more than they are: re-break the defect in the
+form it actually took, not in the form convenient to the implementation.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_docs_name_shipped_paths.py
+-> all 10 killed.
 """
 
 from pathlib import Path
@@ -43,6 +55,8 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 
 GUARD = DEV / "tests" / "consistency" / "test_docs_name_shipped_paths.py"
 PLUGIN_README = PLUGIN / "README.md"
+ROOT_README = DEV.parent / "README.md"
+CLAUDE_MD = DEV.parent / "CLAUDE.md"
 
 # Scoped to the ONE guard file: a target red for any other reason reports every
 # mutant "killed" and proves nothing.
@@ -62,13 +76,42 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The same defect in its other real home — the Layout block, which is the
-        # one place a reader looks to find out what the published tree contains.
-        # This is the spelling that actually shipped at cla--v0.9.3 and outlived
-        # the directory. It is a separate mutant because a separate test covers
-        # it: the layout block is parsed, not regex-scanned, so mutant 1 says
-        # nothing about whether that parse still works.
-        "the README's layout block lists a directory the release does not contain",
+        # THE DEFECT IN THE SPELLING IT ACTUALLY SHIPPED IN — bare, no prefix.
+        # Mutant 1 uses `<plugin>/`, and a review found that spelling flatters the
+        # guard: at cla--v0.10.0 three of the four guarded docs wrote
+        # `conformance-checks/` BARE (CLAUDE.md:74, DEVELOPER-GUIDE.md:315, plugin
+        # README.md:135) and only files this guard does not cover used the
+        # prefixed form. The first version of the guard derived its bare prefixes
+        # from the CURRENTLY shipped tree, so it could not see this at all and
+        # stayed green. Killed now only by the tag-derived retired-name set, which
+        # is the whole reason that set exists.
+        "a guarded doc names the retired scope bare, as the shipped defect did",
+        CLAUDE_MD,
+        "**Deferred work lives in GitHub issues**",
+        "Wire `conformance-checks/tests` into your gate.\n\n**Deferred work lives in GitHub issues**",
+        TARGETS,
+    ),
+    (
+        # The same defect in the tree diagram — the one place a reader looks to
+        # find out what the published tree contains. This is the spelling that
+        # actually shipped, and it lived in TWO diagrams: the root README:57 and
+        # the plugin README:165 at cla--v0.10.0. The mutant targets the ROOT
+        # README specifically, because the first version of this guard read only
+        # the plugin README's block and a review verified a retired entry could be
+        # inserted here with both tests still green.
+        "the root README's published-tree diagram lists a directory that does not ship",
+        ROOT_README,
+        "  output-styles/               the project's writing convention",
+        "  conformance-checks/          portable guards for the fact/procedure split\n  output-styles/               the project's writing convention",
+        TARGETS,
+    ),
+    (
+        # The plugin README's own diagram, which is the block a CONSUMER reads.
+        # Separate from the mutant above because the parser finds each diagram by
+        # locating the `.claude/plugins/cla/` line inside a fenced block, and the
+        # two documents place that line differently — at column 0 alone in one,
+        # and part-way down a larger repo-root tree in the other.
+        "the shipped README's diagram lists a directory that does not ship",
         PLUGIN_README,
         "  output-styles/               the project's writing convention",
         "  conformance-checks/          portable guards\n  output-styles/               the project's writing convention",
@@ -93,8 +136,8 @@ MUTANTS = [
         # drops them, and again nothing fails on the comparison.
         "no bare top-level prefix is accepted, so most references are never read",
         GUARD,
-        "    return frozenset(name for name in top if not (_REPO_ROOT / name).exists())",
-        "    return frozenset()",
+        "        for name in top | _retired_top_level_names()\n        if not (_REPO_ROOT / name).exists()\n    )",
+        "        for name in ()\n    )",
         TARGETS,
     ),
     (
@@ -107,8 +150,38 @@ MUTANTS = [
         # failure direction that gets a guard loosened until it checks nothing.
         "a shipped top-level name that also exists at the repo root is read as plugin-relative",
         GUARD,
-        "    return frozenset(name for name in top if not (_REPO_ROOT / name).exists())",
-        "    return frozenset(top)",
+        "        for name in top | _retired_top_level_names()\n        if not (_REPO_ROOT / name).exists()\n    )",
+        "        for name in top | _retired_top_level_names()\n    )",
+        TARGETS,
+    ),
+    (
+        # FINDING 3's defect direction: a RETIRED TOP-LEVEL FILE named with an
+        # explicit prefix. `<plugin>/mutate.py` has no separator left once the
+        # prefix is stripped, so the first version of `_classify` returned None
+        # for it — and the two runners and the three `*-checks/` scopes are all
+        # single-segment entries that 0.x guidance names. Killed only because the
+        # separator test now runs against the token as written when a plugin
+        # prefix is present.
+        "a retired single-segment entry is named with an explicit plugin prefix",
+        PLUGIN_README,
+        "python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py",
+        "python3 <plugin>/mutate.py",
+        TARGETS,
+    ),
+    (
+        # The retired half of `_bare_prefixes` — the fix for finding 1. Removing
+        # it makes a bare `conformance-checks/tests` unrecognisable again, which
+        # is precisely the state the guard shipped in and a review caught.
+        #
+        # It dies through the `_RETIREMENT_NOTES` staleness assertion rather than
+        # through a violation, and that is the point worth seeing: the migration
+        # notes this change added are themselves bare retired references, so the
+        # exemptions covering them go unclaimed the moment the bare channel stops
+        # seeing that class. The notes are the guard's own live fixture.
+        "the retired-name half of the bare prefix set is dropped",
+        GUARD,
+        "        for name in top | _retired_top_level_names()",
+        "        for name in top",
         TARGETS,
     ),
     (
@@ -118,8 +191,8 @@ MUTANTS = [
         # the mutant above, and the same consequence if it were left in.
         "an ellipsis placeholder is treated as a literal path",
         GUARD,
-        'if "/" not in stripped or "..." in stripped:',
-        'if "/" not in stripped:',
+        '    if "..." in stripped or "*" in stripped:',
+        '    if "*" in stripped:',
         TARGETS,
     ),
 ]

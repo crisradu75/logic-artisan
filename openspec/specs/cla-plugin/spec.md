@@ -1108,10 +1108,21 @@ carries no test tree, SHALL give the shipped conformance checkers as the program
 owns when they run** — nothing in the plugin schedules them beyond `/cla:sync-context`'s single
 post-write invocation of the staleness checker. Where an earlier release DID ship such a tree, the
 documentation SHALL name the retired path and the replacement, so a repo carrying the old wiring can
-find the fix without reading the source repo's history. **No document in the canonical repo SHALL
-name a plugin-relative path the published tree does not contain**, and that SHALL be enforced
-mechanically rather than by review, deriving the published tree from the tracked files under the
-plugin directory rather than from a maintained list.
+find the fix without reading the source repo's history. Where two shipped checkers differ in what
+they take as their subject, the documentation SHALL say which one reads the consuming repo and which
+reads the plugin, rather than describing them as one kind of thing — a checker recommended for a
+consumer's gate whose subject is the read-only plugin cache passes without asserting anything about
+that repo, which is the same silent pass in a new place.
+
+**The canonical repo's own consumer-facing documents SHALL be checked against the published tree
+mechanically**, rather than by review. The enforced set is a named list of documents, not the repo
+at large, and the check SHALL derive the published tree from the tracked files under the plugin
+directory, and the set of *retired* top-level entries from the published release tags — both derived
+rather than maintained by hand, because a removed directory leaves the current tree by definition
+and a reference to it is exactly what goes unnoticed. Naming a retired path is legitimate in a
+**migration note**, whose purpose is to tell a repo what to stop pointing at; such a naming SHALL be
+recorded as an explicit, reasoned exemption that fails once the document stops carrying it, not
+tolerated by a rule that cannot see it.
 
 **Source-repo-only marking is by construction, not by declaration.** Because the dev tree is never
 published, every asset in it is source-repo-only inherently. The plugin SHALL NOT carry per-directory
@@ -1156,10 +1167,18 @@ because both mislead about what the consumer received, and neither is visible fr
 
 #### Scenario: Consumer-facing guidance names no plugin path that does not ship
 
-- **WHEN** this repo's consumer-facing documentation is checked against the tracked files under the plugin directory
-- **THEN** every plugin-relative path it names resolves in that published tree, and the check fails naming the document and the token when one does not
-- **AND** the documentation states that the release carries no test tree, gives the shipped conformance checkers as programs with their exit statuses, and says the consuming repo owns when they run
-- **AND** where an earlier release shipped a test tree a consuming repo was told to wire in, the documentation names that retired path and the replacement to run instead
+- **WHEN** the named set of consumer-facing documents is checked against the tracked files under the plugin directory
+- **THEN** every plugin-relative path they name resolves in that published tree, and the check fails naming the document and the token when one does not
+- **AND** a path written without a plugin prefix is still recognised when its first segment names a top-level entry that a published release tag carried and the current tree does not, so the removal of a whole directory is caught and not only drift beneath one that remains
+- **AND** a published-tree diagram in any of those documents lists no entry absent from that tree
+- **AND** a retired path named in a migration note passes only via a recorded exemption, which itself fails once the document stops naming it
+
+#### Scenario: The documentation distinguishes the two checkers' subjects
+
+- **WHEN** the documentation presents the shipped conformance checkers to a consuming repo
+- **THEN** it states that the release carries no test tree, gives each checker's invocation and the meaning of each exit status, and says the consuming repo owns when they run
+- **AND** it identifies which checker reads the consuming repo and which reads the plugin tree, and does not recommend wiring the latter into that repo's gate as though it checked that repo
+- **AND** where an earlier release shipped a test tree a consuming repo was told to wire in, it names that retired path and the replacement to run instead
 
 #### Scenario: The dev tree is one scope with a bare gate
 

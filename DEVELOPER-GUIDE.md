@@ -366,24 +366,31 @@ Then fill in the per-skill `cla.io/overlays/<skill>.md` overlays as the skills p
 facts. Pick up newer releases with `/plugin marketplace update`; your overlays and `cla.io/` are
 untouched by an install, because they live in the repo rather than the plugin directory.
 
-**Optionally, wire the two conformance programs into the destination repo's own gate.** The plugin
-ships no test tree — the installed tree is a read-only cache with no pytest gate over it, so a guard
-filed as a test module would be unreachable there — so both guards ship as stdlib-Python programs
+**Optionally, wire the staleness checker into the destination repo's own gate.** The plugin ships no
+test tree — the installed tree is a read-only cache with no pytest gate over it, so a guard filed as
+a test module would be unreachable there — so the conformance guards ship as stdlib-Python programs
 you invoke, each taking an optional `--repo-root` and reporting `0` clean / `1` violations named /
 `2` could-not-run:
 
 ```bash
-python3 <plugin>/skills/_shared/scripts/check_no_project_tokens.py
 python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py
 ```
 
-`check_fact_paths.py` is the one that guards the destination repo's own content — every
-repo-relative path named in `cla.io/project-facts.md` or an overlay must still resolve.
-`/cla:sync-context` runs it once after it writes, and nothing else schedules it: **the consuming
-repo owns when it runs.** A repo whose gate still wires the plugin's `0.x`-era
-`conformance-checks/tests` directory should delete that wiring and run these instead — that
-directory has not shipped since `1.0.0`, and a gate pointing at it either fails on a missing path or
-passes while checking nothing.
+That is the one whose subject is the destination repo: every repo-relative path named in
+`cla.io/project-facts.md` or an overlay must still resolve. `/cla:sync-context` runs it once after
+it writes, and nothing else schedules it — **the consuming repo owns when it runs.**
+
+Its sibling, `<plugin>/skills/_shared/scripts/check_no_project_tokens.py`, is **not** a check over
+the destination repo and should not be wired in as one: it scans the *plugin* tree for leaked tokens
+and developer paths, using that repo's `cla.io/project-tokens.local.md` only as the vocabulary to
+scan with. Against a marketplace install it therefore scans a read-only cache that is clean by
+construction. It belongs in the authoring checklist, where the plugin tree is editable, not in a
+consuming repo's gate.
+
+A repo whose gate still wires the plugin's `0.x`-era `conformance-checks/tests` directory should
+delete that wiring — that directory has not shipped since `1.0.0`, and a gate pointing at it either
+fails on a missing path or passes while checking nothing. `check_fact_paths.py` is what replaces the
+half of it that was about the consuming repo.
 
 Improvement flows one way, and deliberately so: a skill improved while working in a consuming repo
 is reported back with `/cla:report-upstream` (which files an issue against this repo) and returns

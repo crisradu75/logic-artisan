@@ -202,10 +202,24 @@ python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py
 Each takes one optional flag, `--repo-root <path>` (default: the repo the process is in, resolved
 via git), and reports through its exit code — **`0`** clean, **`1`** violations with every offending
 file, line and path named, **`2`** could-not-run, which is never a pass. Stdlib Python only; nothing
-to install. `check_fact_paths.py` is the one that guards your `cla.io/` content: every repo-relative
-path named in `cla.io/project-facts.md` or in a `cla.io/overlays/<skill>.md` must still resolve on
-disk. `/cla:sync-context` runs it once after it writes; **beyond that, you own when it runs** — put
-it in your own gate, your pre-commit, or run it by hand. Nothing in the plugin schedules it.
+to install.
+
+**They do not have the same subject, and only one of them is worth putting in your gate.**
+
+- **`check_fact_paths.py` reads YOUR repo.** Every repo-relative path named in
+  `cla.io/project-facts.md` or in a `cla.io/overlays/<skill>.md` must still resolve on disk. This is
+  the one that guards your `cla.io/` content, and the one worth wiring in. `/cla:sync-context` runs
+  it once after it writes; **beyond that, you own when it runs** — your gate, your pre-commit, or by
+  hand. Nothing in the plugin schedules it.
+- **`check_no_project_tokens.py` reads the PLUGIN**, not your repo. It scans the plugin tree for
+  leaked project tokens and hardcoded developer paths; `--repo-root` only tells it where to find
+  your `cla.io/project-tokens.local.md` token list, which is the vocabulary it scans *with*. Under a
+  marketplace install the tree it scans is the read-only version-keyed cache, which is clean by
+  construction — so **wiring this one into a repo gate buys you a check that passes without saying
+  anything about your repo.** It earns its place when you are *authoring* a skill against a plugin
+  tree you can edit, which is what the authoring checklist uses it for. In a consuming repo that
+  only installs the plugin, run it if you want to confirm a release is clean against your own token
+  list; do not mistake it for a check over your own files.
 
 > **Coming from a `0.x` release?** Every release up to and including `cla--v0.10.0` shipped the
 > plugin's own pytest tree, and the guidance of that era told you to wire its
@@ -213,8 +227,10 @@ it in your own gate, your pre-commit, or run it by hand. Nothing in the plugin s
 > tree, under any name** — it moved to the source repo's own
 > development tree when the shipped plugin was reduced to assets you can actually invoke. A gate
 > still pointing at it either fails on a missing directory or, worse, passes while checking nothing.
-> Delete that wiring and run the two programs above instead: they are the shipped form of the same
-> two guards, and they take your repo, not the plugin's, as their subject.
+> Delete that wiring. What it was guarding about YOUR repo — dead paths in `cla.io/` — is now
+> `check_fact_paths.py` above, which is the replacement to wire in; the token scan that scope also
+> carried is `check_no_project_tokens.py`, whose subject is the plugin rather than your repo, so
+> read the split above before deciding whether it belongs in your gate at all.
 
 ## Layout
 
