@@ -428,7 +428,7 @@ def _measured_by(cwd: Path) -> list[str]:
     `measurement_rate` carries a 0.5 escalation that reads a lower rate as a
     routing problem rather than a reminder problem, and the stale rows sat
     across it. Before and after, both from
-    `python .claude/plugins/cla/skills/codify-retro/scripts/codify_aggregate.py
+    `python ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py
     --provenance cla.io/retro/commit-provenance.jsonl`:
 
         before -> measured 89, unmeasured 101, measurement_rate 0.47
