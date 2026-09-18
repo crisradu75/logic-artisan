@@ -411,6 +411,39 @@ def _measured_by(cwd: Path) -> list[str]:
     message formatting instead — an absence wearing a measurement's clothes, in
     the one field built to prevent exactly that.
 
+    THE ROWS THAT OLD PARSER WROTE WERE CORRECTED IN PLACE, in the canonical
+    source repo, on 2026-09-18. A row older than the fix therefore no longer
+    shows what the hook recorded at the time, which is the one place in this
+    ledger where that is true — it is append-only by convention and this is the
+    deliberate exception. 22 of 238 rows read `measured_by_count: 0` where this
+    function, replayed over the same commit's `%B`, returns a non-zero count;
+    every one of them predates the fix (latest such row 2026-09-05T23:58, fix
+    committed 2026-09-06T01:21). They were rewritten to what this function
+    returns — by importing this module and substituting `_git` with one yielding
+    the target sha's message, so the values are this extraction and not a copy
+    of it — with every other field on those lines left byte-identical and no
+    other line touched.
+
+    Why it was worth rewriting history in a ledger. `codify-retro`'s
+    `measurement_rate` carries a 0.5 escalation that reads a lower rate as a
+    routing problem rather than a reminder problem, and the stale rows sat
+    across it. Before and after, both from
+    `python .claude/plugins/cla/skills/codify-retro/scripts/codify_aggregate.py
+    --provenance cla.io/retro/commit-provenance.jsonl`:
+
+        before -> measured 89, unmeasured 101, measurement_rate 0.47
+        after  -> measured 111, unmeasured 79, measurement_rate 0.58
+
+    So the next retro would have diagnosed a routing problem the commit messages
+    themselves refute. Two rows were deliberately left alone, and both are worth
+    knowing about before re-deriving this. One AFTER the fix carries a
+    `Verification:` trailer instead of `Measured-by:`: the hook read that
+    correctly and the message is what was non-standard, so backfilling it would
+    invent a reading. One BEFORE the fix recorded 6 where the whole-message scan
+    finds 43 — the same artefact, but it lands in the `measured` bucket either
+    way, so correcting it moves no reported number and is somebody's decision
+    rather than this correction's.
+
     Continuations are folded the way `unfold=true` did: a following line that
     starts with whitespace belongs to the value above it, so a wrapped command is
     one value rather than two fragments.
