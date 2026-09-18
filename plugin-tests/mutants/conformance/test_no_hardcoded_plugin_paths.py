@@ -52,6 +52,31 @@ OUTPUT_STYLE = PLUGIN / "output-styles" / "CLA.md"
 # mutant "killed" and proves nothing.
 TARGETS = [GUARD]
 
+# THREE MUTANTS ARE SCOPED FINER STILL, to a single test each, and the reason is
+# the same argument one level down.
+#
+# `test_the_recorded_counts_are_the_real_ones` reads the printer's quoted output,
+# so it fails on ANY mutant that moves a counted number — which is most of the
+# interesting ones here. Measured, applying each mutant to a scratch copy and
+# recording which tests go red:
+#
+#     mutant 3 (.mjs dropped)          scan_is_not_vacuous + recorded_counts
+#     mutant 7 (output-styles dropped) required_root_is_reached + recorded_counts
+#     mutant 8 (lib dropped)           required_root_is_reached + recorded_counts
+#                                      + scan_is_not_vacuous
+#
+# A kill against the whole file therefore stopped saying WHICH assertion did the
+# work — and for mutants 3 and 7 that assertion was the entire evidence that
+# `REQUIRED_SUFFIXES` and `REQUIRED_ROOTS` have teeth. This is exactly the
+# non-attributing kill the guard's own comment refuses to accept from the
+# neighbouring batch, reintroduced here by a test added in the same PR.
+#
+# `mutate.py` takes a `::`-qualified node id, so the fix is to name the test each
+# mutant is meant to prove. The kill then attributes again, and the comments
+# below are true as written rather than true-as-of-when-they-were-written.
+_SCAN_VACUITY = [f"{GUARD}::test_the_scan_is_not_vacuous"]
+_ROOTS_REACHED = [f"{GUARD}::test_every_required_root_is_actually_reached"]
+
 # Derived, not spelled. Only the recorded-count mutant spans lines, and it must:
 # the printer's output is quoted TWICE in the guard, so the line alone is an
 # ambiguous anchor and `mutate.py` refuses it. The surrounding prose is what
@@ -86,15 +111,22 @@ MUTANTS = [
     (
         # The near-miss the guard's own comment works through: `.mjs` is ONE
         # file, so dropping it lands on the floor rather than under it (103 - 1
-        # = 102, floor >= 102) and the count cannot see it. Only the
-        # REQUIRED_SUFFIXES comparison catches this, which is the whole reason
-        # that second list exists as an independent source rather than being
-        # derived from SCANNED_SUFFIXES.
+        # = 102, floor >= 102) and the count cannot see it. Within
+        # `test_the_scan_is_not_vacuous` the REQUIRED_SUFFIXES comparison is
+        # therefore the ONLY assertion that can catch it, which is the whole
+        # reason that second list exists as an independent source rather than
+        # being derived from SCANNED_SUFFIXES.
+        #
+        # SCOPED TO THAT ONE TEST. Against the whole file this mutant also
+        # fails `test_the_recorded_counts_are_the_real_ones` (scanned 102
+        # against a recorded 103), and a kill that could have come from either
+        # proves neither. The claim above is only true of a run scoped this
+        # way, and it used to be written as though it were true of the batch.
         "a declared suffix is dropped from the scan without moving the file count below its floor",
         GUARD,
         'SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")',
         'SCANNED_SUFFIXES = (".md", ".py", ".json")',
-        TARGETS,
+        _SCAN_VACUITY,
     ),
     (
         # The opposite direction, and the one the `missing` assertion cannot
@@ -154,23 +186,32 @@ MUTANTS = [
     #
     # These are the exact edits the block at the bottom of this file used to
     # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
-    # not, and mutant 7 is the one that proves it. Measured against the re-pinned
+    # not, and mutant 7 is the one that shows it. Measured against the re-pinned
     # floor of `>= 102`:
     #
     #     drop `output-styles`  102 files  clears the floor exactly
     #     drop `lib`            101 files  fails the floor by one
     #
-    # So mutant 7 is killed by `REQUIRED_ROOTS` alone, and mutant 8 currently
-    # dies twice over. That asymmetry is an accident of today's file counts and
-    # the argument for the separate list: the floor's stated rule is to be
-    # lowered on every deliberate deletion, and one lowering puts mutant 8 back
-    # where mutant 7 is, while `REQUIRED_ROOTS` keeps failing either way.
+    # That asymmetry is an accident of today's file counts and is the argument
+    # for the separate list: the floor's stated rule is to be lowered on every
+    # deliberate deletion, and one lowering puts `lib` where `output-styles`
+    # already is, while `REQUIRED_ROOTS` keeps failing either way.
+    #
+    # BOTH ARE SCOPED TO `test_every_required_root_is_actually_reached`, so each
+    # kill attributes to `REQUIRED_ROOTS` and to nothing else. This paragraph
+    # used to end "mutant 7 is killed by REQUIRED_ROOTS alone, and mutant 8
+    # currently dies twice over" — measured against the whole file that is now
+    # false in both halves: 7 dies twice (the root check and the recorded
+    # counts) and 8 dies three times (those two plus the floor). The asymmetry
+    # above is still real and still the argument; it is just no longer
+    # something the batch DEMONSTRATES, so it is stated as a measurement rather
+    # than implied by a kill.
     (
         "the one-file root is dropped from the scan, which no count can see",
         GUARD,
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
         'SCANNED_ROOTS = ("skills", "agents", "hooks", "lib")',
-        TARGETS,
+        _ROOTS_REACHED,
     ),
     (
         "the two-file root is dropped from the scan, taking lib/log_run.py and "
@@ -178,7 +219,7 @@ MUTANTS = [
         GUARD,
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks")',
-        TARGETS,
+        _ROOTS_REACHED,
     ),
     (
         # And the direction `REQUIRED_ROOTS` shares with `REQUIRED_SUFFIXES`: a
