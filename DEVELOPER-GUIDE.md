@@ -380,12 +380,15 @@ That is the one whose subject is the destination repo: every repo-relative path 
 `cla.io/project-facts.md` or an overlay must still resolve. `/cla:sync-context` runs it once after
 it writes, and nothing else schedules it — **the consuming repo owns when it runs.**
 
-Its sibling, `<plugin>/skills/_shared/scripts/check_no_project_tokens.py`, is **not** a check over
-the destination repo and should not be wired in as one: it scans the *plugin* tree for leaked tokens
-and developer paths, using that repo's `cla.io/project-tokens.local.md` only as the vocabulary to
-scan with. Against a marketplace install it therefore scans a read-only cache that is clean by
-construction. It belongs in the authoring checklist, where the plugin tree is editable, not in a
-consuming repo's gate.
+Its sibling, `<plugin>/skills/_shared/scripts/check_no_project_tokens.py`, scans a *plugin* tree for
+leaked tokens and developer paths, using the repo's `cla.io/project-tokens.local.md` as the
+vocabulary to scan with. **Which tree it scans depends on the install**, and that decides whether it
+belongs in a gate: `--repo-root` locates the token list, and if that repo vendors a plugin tree at
+`.claude/plugins/cla/` the scan re-targets to it (`_vendored_plugin_root`), otherwise it falls back
+to the tree the script itself lives in. So against an ordinary **marketplace install** it scans the
+read-only cache — clean by construction, and wiring it into that repo's gate asserts nothing about
+that repo. Against a **vendored tree** it checks files the repo owns, and earns its place there for
+the same reason the authoring checklist runs it.
 
 A repo whose gate still wires the plugin's `0.x`-era `conformance-checks/tests` directory should
 delete that wiring — that directory has not shipped since `1.0.0`, and a gate pointing at it either

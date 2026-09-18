@@ -211,15 +211,18 @@ to install.
   the one that guards your `cla.io/` content, and the one worth wiring in. `/cla:sync-context` runs
   it once after it writes; **beyond that, you own when it runs** — your gate, your pre-commit, or by
   hand. Nothing in the plugin schedules it.
-- **`check_no_project_tokens.py` reads the PLUGIN**, not your repo. It scans the plugin tree for
-  leaked project tokens and hardcoded developer paths; `--repo-root` only tells it where to find
-  your `cla.io/project-tokens.local.md` token list, which is the vocabulary it scans *with*. Under a
-  marketplace install the tree it scans is the read-only version-keyed cache, which is clean by
-  construction — so **wiring this one into a repo gate buys you a check that passes without saying
-  anything about your repo.** It earns its place when you are *authoring* a skill against a plugin
-  tree you can edit, which is what the authoring checklist uses it for. In a consuming repo that
-  only installs the plugin, run it if you want to confirm a release is clean against your own token
-  list; do not mistake it for a check over your own files.
+- **`check_no_project_tokens.py` reads a PLUGIN TREE**, and which one depends on how you installed.
+  It scans that tree for leaked project tokens and hardcoded developer paths, using your
+  `cla.io/project-tokens.local.md` as the vocabulary to scan *with*. `--repo-root` locates that
+  token list — and, if the repo you point it at **vendors** a plugin tree at
+  `.claude/plugins/cla/`, it scans that tree instead of the installed one. So:
+  - **Marketplace install (the normal case).** There is no vendored tree, so it scans the read-only
+    version-keyed cache — identical for everyone and clean by construction. **Wiring it into your
+    gate there buys a check that passes without saying anything about your repo.** Run it if you
+    want to confirm a release is clean against your own token list; do not mistake it for a check
+    over your own files.
+  - **Vendored tree (you keep a plugin tree in the repo and edit it).** Then it really is checking
+    files you own, and it belongs in your gate exactly as it does in the authoring checklist.
 
 > **Coming from a `0.x` release?** Every release up to and including `cla--v0.10.0` shipped the
 > plugin's own pytest tree, and the guidance of that era told you to wire its
