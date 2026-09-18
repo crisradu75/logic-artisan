@@ -10,23 +10,40 @@ are what this batch pins.
 narrows the in-progress branch so the wrong-branch report fires first. Both codes
 are non-zero, so a caller that only checks truthiness sees no difference — the
 harm is that the report names the wrong problem and hides the rebase that caused
-it. Only one test passes a marker AND a mismatching `--expect-branch` at once,
-which is what makes the kill attributable.
+it.
 
-**Two obvious mutants are DELIBERATELY ABSENT, and both are findings about the
-GUARD rather than about the script.** Neither is included, because neither can be
+**MUTANT 4 REINTRODUCES A DEFECT THAT SHIPPED**, and it is the reason this batch
+changed shape. `main()` used to force `no_in_progress_op` to False on the
+branch-mismatch path, where `in_progress is None` — so the field reported an
+operation that was not mid-flight. That is the same conflation that made the
+field's old name a defect (`{"clean": true}` read with 47 files staged),
+pointing the other way, and the module docstring's claim that the field "means
+exactly what it says" was false on that one path.
+
+The mutant re-adds the assignment. It is worth reading as the pair it forms with
+mutant 3: mutant 3 breaks the field's agreement with the op on the SUCCESS path,
+mutant 4 breaks it on the mismatch path, and
+`test_the_field_tracks_the_op_on_every_exit_code` states the invariant both
+violate rather than leaving three tests that happen to agree.
+
+**MUTANT 7 WAS UNKILLABLE UNTIL THIS CHANGE FIXED THE FIXTURE.** It is the mutant
+the guard looks built for — `test_worktree_relative_gitdir_resolves`'s docstring
+says the relative `gitdir:` pointer must be evaluated "against the worktree root,
+not the script's cwd" — and it could not fail, because the `tmp_repo` fixture
+calls `monkeypatch.chdir(tmp_path)`, `tmp_repo IS tmp_path`, and `_run` started
+the subprocess with no `cwd=`. The child's cwd therefore WAS `repo_root`, so
+`(repo_root / target).resolve()` and `target.resolve()` agreed on every input the
+test supplied. The test asserted a property its own fixture removed.
+
+The fix was on the TEST side, as reported: `_run` now passes an explicit neutral
+cwd. Nothing else in the script reads the process cwd — `_current_branch` passes
+`cwd=repo_root` to git directly — so no other test changed behaviour.
+
+**One obvious mutant is still DELIBERATELY ABSENT, and it is a finding about the
+GUARD rather than about the script.** It is not included, because it cannot be
 killed in a correct tree and a survivor nobody can act on trains the next reader
 to skip the whole list.
 
-  * `target = (repo_root / target).resolve()` -> `target.resolve()`. This is the
-    mutant the guard looks built for — `test_worktree_relative_gitdir_resolves`'s
-    docstring says the relative `gitdir:` pointer must resolve against the
-    worktree root "not the script's cwd". It cannot fail: the `tmp_repo` fixture
-    IS `tmp_path` and calls `monkeypatch.chdir(tmp_path)`, and `_run` starts the
-    child with no `cwd=`, so the child's cwd already IS `repo_root` and the two
-    expressions agree on every input the test supplies. The test asserts a
-    property its own fixture removes. Fix is on the TEST side — run the child
-    from a neutral directory — after which this becomes a good mutant.
   * Anything in `_git_dir`'s fail-closed region. All three fail-closed tests build
     their subject in a bare `tmp_path`, which is not a git repo, so even with
     `_git_dir` fully defeated `_current_branch` runs `git rev-parse` there, gets
@@ -51,6 +68,10 @@ SCRIPT = PLUGIN / "skills" / "_shared" / "scripts" / "git_state.py"
 # Scoped to the ONE guard file, never the area.
 TARGETS = [DEV / "tests" / "skills" / "_shared" / "test_git_state.py"]
 
+# Derived, not spelled: mutant 4 INSERTS a line, and a bare `\n` would write LF
+# into a CRLF checkout.
+_NL = "\r\n" if b"\r\n" in SCRIPT.read_bytes() else "\n"
+
 MUTANTS = [
     (
         "bisect drops out of the marker set, so a half-finished bisect reads as a "
@@ -73,7 +94,8 @@ MUTANTS = [
     ),
     (
         # The field renamed itself away from `clean` precisely so it could not
-        # drift from the op it reports. This makes it lie again.
+        # drift from the op it reports. This makes it lie again, on the success
+        # path.
         "the no_in_progress_op field stops tracking the op it reports, so the "
         "JSON says true in the same breath as in_progress_op: cherry-pick",
         SCRIPT,
@@ -82,11 +104,18 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the branch-mismatch exit leaves no_in_progress_op true, so a consumer "
-        "reading the field rather than the exit code proceeds on the wrong branch",
+        # RE-BREAKS A DEFECT THAT SHIPPED. The assignment below is what this
+        # change removed: on the branch-mismatch path `in_progress` is None, so
+        # forcing the field False claimed an operation that was not mid-flight.
+        # Re-adding it is a one-line edit that no exit code and no other field
+        # would betray — which is exactly why it survived as long as it did.
+        "the branch-mismatch path forces no_in_progress_op False again, so the "
+        "field reports an in-progress operation that does not exist",
         SCRIPT,
-        '        out["no_in_progress_op"] = False',
-        '        out["no_in_progress_op"] = True',
+        '        # "any non-zero exit halts", so no caller has to read the field to see it.',
+        '        # "any non-zero exit halts", so no caller has to read the field to see it.'
+        + _NL
+        + '        out["no_in_progress_op"] = False',
         TARGETS,
     ),
     (
@@ -105,6 +134,21 @@ MUTANTS = [
         SCRIPT,
         '    if (git_dir / "REVERT_HEAD").exists():',
         "    if False:",
+        TARGETS,
+    ),
+    (
+        # NEWLY KILLABLE. See the header: this mutant survived until `_run`
+        # stopped starting the child in the repo under test. A `git worktree
+        # add` writes a RELATIVE `gitdir:` pointer, so resolving it against the
+        # process cwd instead of the worktree root makes `.exists()` False and
+        # the script fails closed at exit 1 where it should have detected the
+        # in-progress merge.
+        "a relative `gitdir:` pointer is resolved against the process cwd rather "
+        "than the worktree root, so a real worktree fails closed instead of "
+        "reporting the op it is in",
+        SCRIPT,
+        "            target = (repo_root / target).resolve()",
+        "            target = target.resolve()",
         TARGETS,
     ),
 ]

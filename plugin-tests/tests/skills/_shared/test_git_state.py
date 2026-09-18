@@ -13,8 +13,25 @@ _SCRIPT = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / 
 
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run the script with an explicit NEUTRAL cwd, never the repo under test.
+
+    The `tmp_repo` fixture calls `monkeypatch.chdir(tmp_path)` and returns that
+    same `tmp_path`, so without this the child inherited a cwd that WAS
+    `repo_root`. That silently disarmed `test_worktree_relative_gitdir_resolves`:
+    its docstring says a relative `gitdir:` pointer must be evaluated "against
+    the worktree root, not the script's cwd", but with the two equal,
+    `(repo_root / target).resolve()` and `target.resolve()` agree on every input
+    the test supplies — the test asserted a property its own fixture removed, and
+    a mutant deleting the `repo_root /` join could not be killed.
+
+    `_current_branch` passes `cwd=repo_root` to git explicitly, so nothing else
+    in the script reads the process cwd and no other test changes behaviour.
+    This directory is a safe choice precisely because it is not any test's
+    `repo_root`.
+    """
     return subprocess.run(
         [sys.executable, str(_SCRIPT), "--repo-root", str(repo), *args],
+        cwd=Path(__file__).parent,
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
 
@@ -79,13 +96,69 @@ def test_expect_branch_match_exits_zero(tmp_repo: Path):
 
 
 def test_expect_branch_mismatch_exits_three(tmp_repo: Path):
+    """A branch mismatch is exit 3, and `no_in_progress_op` stays TRUE.
+
+    Being on the wrong branch is not an in-progress operation. The field
+    reported False here until it was fixed, which is the same conflation that
+    made the old `clean` name a defect — a run read `{"clean": true}` with 47
+    files staged — pointing the other way: the field claimed an operation that
+    was not mid-flight.
+
+    THE MISMATCH IS STILL FULLY REPORTED, and this test asserts all four of the
+    signals that carry it, so the correction cannot be mistaken for a loss of
+    information: the exit code, both branch fields, and stderr.
+    """
     result = _run(tmp_repo, "--expect-branch", "feature/nope")
     assert result.returncode == 3
     payload = json.loads(result.stdout)
-    assert payload["no_in_progress_op"] is False
+    assert payload["no_in_progress_op"] is True, (
+        "a branch mismatch is not an in-progress operation; the field answers "
+        "one question and the exit code carries the verdict"
+    )
+    assert payload["in_progress_op"] is None
     assert payload["current_branch"] == "master"
     assert payload["expected_branch"] == "feature/nope"
     assert "expected" in result.stderr
+
+
+def test_the_in_progress_paths_still_report_false(tmp_repo: Path):
+    """The second branch. Correcting the exit-3 path must not weaken the field
+    where it IS load-bearing — a real mid-flight operation.
+
+    `_detect_in_progress` has six markers and one shared return, so an edit that
+    stopped the field tracking it would look identical on the happy path. Pinned
+    with `--expect-branch` ALSO mismatching, which is the case where the two
+    rules could disagree: exit 2 wins, and the field reports the operation rather
+    than the branch.
+    """
+    (tmp_repo / ".git" / "MERGE_HEAD").write_text("deadbeef\n", encoding="utf-8")
+    result = _run(tmp_repo, "--expect-branch", "feature/nope")
+    assert result.returncode == 2, "an in-progress op outranks a branch mismatch"
+    payload = json.loads(result.stdout)
+    assert payload["no_in_progress_op"] is False
+    assert payload["in_progress_op"] == "merge"
+
+
+def test_the_field_tracks_the_op_on_every_exit_code(tmp_repo: Path):
+    """The invariant stated as one rule rather than three tests reading like a
+    coincidence: OUTSIDE the fail-closed path, `no_in_progress_op` is exactly
+    `in_progress_op is None`.
+
+    Exit 1 is the deliberate exception — nothing could be determined, so the
+    field is False with no operation named, and that asymmetry is what
+    fail-closed means. It is covered by the three exit-1 tests below.
+    """
+    for args, expected_rc in (
+        ((), 0),
+        (("--expect-branch", "master"), 0),
+        (("--expect-branch", "feature/nope"), 3),
+    ):
+        result = _run(tmp_repo, *args)
+        assert result.returncode == expected_rc, (args, result.stdout)
+        payload = json.loads(result.stdout)
+        assert payload["no_in_progress_op"] is (payload["in_progress_op"] is None), (
+            f"{args}: the field and the op it names disagree — {payload}"
+        )
 
 
 def test_in_progress_op_supersedes_branch_check(tmp_repo: Path):
