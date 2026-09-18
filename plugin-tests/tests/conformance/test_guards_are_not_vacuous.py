@@ -96,6 +96,13 @@ _COLLECTION_NAMES = frozenset(
         # run of this area — the first live firing of the derived direction, on
         # a name written three commits after it.
         "unregistered",
+        # `unparsed` arrived with the per-document diagram floors in
+        # `test_docs_name_shipped_paths.py`, and was caught on the full-suite run
+        # of the commit that introduced it. It holds the documents whose
+        # published-tree diagram stopped parsing or shrank below its own floor —
+        # findings, not bookkeeping, and precisely the silent-drop the
+        # per-document map replaced a combined total to catch.
+        "unparsed",
     }
 )
 

@@ -366,6 +366,35 @@ Then fill in the per-skill `cla.io/overlays/<skill>.md` overlays as the skills p
 facts. Pick up newer releases with `/plugin marketplace update`; your overlays and `cla.io/` are
 untouched by an install, because they live in the repo rather than the plugin directory.
 
+**Optionally, wire the staleness checker into the destination repo's own gate.** The plugin ships no
+test tree — the installed tree is a read-only cache with no pytest gate over it, so a guard filed as
+a test module would be unreachable there — so the conformance guards ship as stdlib-Python programs
+you invoke, each taking an optional `--repo-root` and reporting `0` clean / `1` violations named /
+`2` could-not-run:
+
+```bash
+python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py
+```
+
+That is the one whose subject is the destination repo: every repo-relative path named in
+`cla.io/project-facts.md` or an overlay must still resolve. `/cla:sync-context` runs it once after
+it writes, and nothing else schedules it — **the consuming repo owns when it runs.**
+
+Its sibling, `<plugin>/skills/_shared/scripts/check_no_project_tokens.py`, scans a *plugin* tree for
+leaked tokens and developer paths, using the repo's `cla.io/project-tokens.local.md` as the
+vocabulary to scan with. **Which tree it scans depends on the install**, and that decides whether it
+belongs in a gate: `--repo-root` locates the token list, and if that repo vendors a plugin tree at
+`.claude/plugins/cla/` the scan re-targets to it (`_vendored_plugin_root`), otherwise it falls back
+to the tree the script itself lives in. So against an ordinary **marketplace install** it scans the
+read-only cache — clean by construction, and wiring it into that repo's gate asserts nothing about
+that repo. Against a **vendored tree** it checks files the repo owns, and earns its place there for
+the same reason the authoring checklist runs it.
+
+A repo whose gate still wires the plugin's `0.x`-era `conformance-checks/tests` directory should
+delete that wiring — that directory has not shipped since `1.0.0`, and a gate pointing at it either
+fails on a missing path or passes while checking nothing. `check_fact_paths.py` is what replaces the
+half of it that was about the consuming repo.
+
 Improvement flows one way, and deliberately so: a skill improved while working in a consuming repo
 is reported back with `/cla:report-upstream` (which files an issue against this repo) and returns
 in the next release. There is no per-asset sync — the legacy `update-cla` engine that provided one
