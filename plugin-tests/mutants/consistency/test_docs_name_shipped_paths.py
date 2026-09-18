@@ -62,6 +62,17 @@ CLAUDE_MD = DEV.parent / "CLAUDE.md"
 # mutant "killed" and proves nothing.
 TARGETS = [GUARD]
 
+# EVERY ANCHOR BELOW IS A SINGLE LINE, and that is a rule rather than a style.
+# Two anchors here originally spanned three lines each. They matched while the
+# files had been written by this session, and stopped matching the moment a
+# rebase re-materialised them through git's line-ending conversion — a `\n` in
+# the anchor cannot match a `\r\n` on disk. `mutate.py` aborts the WHOLE batch in
+# preflight on one unresolvable anchor, so a multi-line anchor does not degrade
+# to one dead mutant; it silently takes the other nine with it, on someone
+# else's checkout rather than on yours. A replacement MAY span lines: it is
+# written, never matched.
+
+
 MUTANTS = [
     (
         # THE DEFECT, exactly as issue #264 reports it: consumer-facing prose in
@@ -132,12 +143,14 @@ MUTANTS = [
     (
         # NON-VACUITY, the other extraction path. Bare `skills/…` tokens are the
         # majority spelling in these docs — most references are written
-        # skill-relative with no prefix at all. Returning an empty prefix set
-        # drops them, and again nothing fails on the comparison.
-        "no bare top-level prefix is accepted, so most references are never read",
+        # skill-relative with no prefix at all. Emptying the shipped half of the
+        # prefix set drops them, and again nothing fails on the comparison; the
+        # bare floor is what notices. Pairs with the retired-half mutant below,
+        # which removes the other half of the same set.
+        "the shipped half of the bare prefix set is dropped",
         GUARD,
-        "        for name in top | _retired_top_level_names()\n        if not (_REPO_ROOT / name).exists()\n    )",
-        "        for name in ()\n    )",
+        '    top = {p.split("/")[0] for p in shipped if "/" in p}',
+        "    top = set()",
         TARGETS,
     ),
     (
@@ -150,8 +163,8 @@ MUTANTS = [
         # failure direction that gets a guard loosened until it checks nothing.
         "a shipped top-level name that also exists at the repo root is read as plugin-relative",
         GUARD,
-        "        for name in top | _retired_top_level_names()\n        if not (_REPO_ROOT / name).exists()\n    )",
-        "        for name in top | _retired_top_level_names()\n    )",
+        "        if not (_REPO_ROOT / name).exists()",
+        "        if True",
         TARGETS,
     ),
     (
