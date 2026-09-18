@@ -543,6 +543,58 @@ def test_source_scan_reports_a_token_in_a_json_description_key(tmp_path):
     ]
 
 
+def test_source_scan_covers_sh_under_the_scan_roots(tmp_path):
+    # Issue #254, and the same argument `.json` made one suffix earlier. The
+    # plugin ships exactly one shell script, `hooks/probe-python.sh`, and that
+    # file became the declared home of the hook wiring's rationale when the
+    # loader rejected `hooks.json`'s `_comment` array. Moving ~37 lines of
+    # hand-written English out of a scanned file and into an unscanned one is how
+    # a leak surface is created, so the suffix moved with the prose.
+    #
+    # Both shapes are seeded for the reason the `.json` case seeds two: a rule
+    # keyed on a path fragment rather than a suffix would pass on the real
+    # file's location and miss a `.sh` anywhere else under the roots.
+    _seed(tmp_path, "hooks/probe-python.sh", "# the funnel-demo wiring\nPYEXE=\n")
+    _seed(tmp_path, "skills/demo/scripts/helper.sh", "# helper for funnel-demo\n")
+    # The prose scan globs `*.md`, so neither is reachable from it.
+    assert find_violations(tmp_path / "skills", tmp_path, ["funnel-demo"]) == []
+    rels = sorted(h[0] for h in find_source_violations(tmp_path, ["funnel-demo"]))
+    assert rels == ["hooks/probe-python.sh", "skills/demo/scripts/helper.sh"]
+
+
+def test_source_scan_leaves_sh_outside_the_scan_roots_alone(tmp_path):
+    # The widening added a SUFFIX, not a root — the same distinction the `.json`
+    # case pins on the manifest. A `.sh` at the plugin root sits outside all five
+    # roots and stays out of scope.
+    #
+    # THE SECOND SEED IS A POSITIVE CONTROL, for the reason recorded on the
+    # `.json` twin: with no scan root present in `tmp_path`,
+    # `_iter_scanned_source_files` `continue`s past all five and yields nothing,
+    # so an absence asserted over an empty scan passes against ANY scanner,
+    # including one that never grew the suffix. Asserting the result is EXACTLY
+    # the in-root file proves the scan ran and that the outside one was excluded.
+    _seed(tmp_path, "install.sh", "# installs funnel-demo\n")
+    _seed(tmp_path, "hooks/probe-python.sh", "# the funnel-demo wiring\n")
+    rels = sorted(h[0] for h in find_source_violations(tmp_path, ["funnel-demo"]))
+    assert rels == ["hooks/probe-python.sh"]
+
+
+def test_source_scan_reports_a_token_in_a_sh_comment(tmp_path):
+    # What the widening is actually FOR. A shell script has no frontmatter
+    # concept, so nothing is stripped and a comment is scanned like any other
+    # line — which is the whole point, since the prose that moved into
+    # `probe-python.sh` is entirely comments.
+    _seed(
+        tmp_path,
+        "hooks/probe-python.sh",
+        "# WHY THE CHECK IS -x. Measured against the funnel-demo wiring.\nPYEXE=\n",
+    )
+    hits = find_source_violations(tmp_path, ["funnel-demo"])
+    assert [h[0] for h in hits] == ["hooks/probe-python.sh"]
+    # The reported line is the comment itself, 1-based, not the file.
+    assert [h[2] for h in hits] == [1]
+
+
 def test_source_scan_ignores_bytecode_and_overlays(tmp_path):
     # A stale .pyc still holds the string it was compiled from, so scanning it
     # would report a leak already fixed in source.
@@ -564,6 +616,12 @@ def test_source_scan_of_the_real_plugin_is_non_vacuous():
     # unreachable in the real plugin — a root pruned, a suffix typo'd — passes
     # the fixture test and leaves the actual gap open.
     assert any(p.suffix == ".json" for p in scanned)
+    # `.sh` gets the same real-tree assertion for the same reason, and it is the
+    # narrowest of the three: the plugin ships exactly ONE shell script, so if a
+    # root is pruned or the suffix typo'd, this is the only thing between that
+    # and a silently unscanned file — the file that now holds the hook wiring's
+    # entire rationale.
+    assert any(p.suffix == ".sh" for p in scanned)
 
 
 # --------------------------------------------------------------------------- #

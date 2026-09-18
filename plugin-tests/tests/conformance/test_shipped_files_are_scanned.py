@@ -58,24 +58,61 @@ _PUBLISHED_PREFIX = ".claude/plugins/cla"
 # empty this guard if it grew without one — the same role `_EXEMPT` plays in
 # `tests/consistency/test_guards_have_mutant_batches.py`.
 #
-# FOUR of the five are clean today; the fifth is not, and an earlier version of
-# this comment said all five were. Measured, both halves, rather than reasoned:
+# THREE of the four are clean today; the fourth is not, and an earlier version
+# of this comment said they all were. Re-measured from the repo root, both
+# halves rather than reasoned:
 #
-#   $ cd .claude/plugins/cla
-#   $ grep -c '\.claude/plugins/cla' .claude-plugin/plugin.json .gitattributes \
-#         hooks/git/pre-push hooks/probe-python.sh README.md
-#     ...:0  ...:0  ...:0  ...:0  README.md:1        <- README.md:183
-#   $ grep -rn 'C:\\Users\\' <the same five>          <- no match
+#   $ grep -c '\.claude/plugins/cla' \
+#         .claude/plugins/cla/.claude-plugin/plugin.json \
+#         .claude/plugins/cla/.gitattributes \
+#         .claude/plugins/cla/hooks/git/pre-push \
+#         .claude/plugins/cla/README.md
+#     ...:0  ...:0  ...:0  README.md:2       <- README.md:218 and :241
 #
-# So `README.md` DOES carry the literal the hardcoded-path rule looks for, in
-# the "Layout" code block. Widening that scanner to cover the plugin root — which
-# the previous wording invited as safe — fails immediately. The absolute paths in
-# `probe-python.sh` are generic (`$HOME/AppData/…`, `/usr/local/bin/…`) and match
-# neither rule.
+# THE DEVELOPER-PATH HALF IS NO LONGER A COMMENT. It is
+# `test_the_unscanned_exemptions_carry_no_developer_path` below, which runs the
+# shipped checker's own regexes over these files, paired with
+# `test_the_detector_used_below_actually_detects` as its positive control. It was
+# a `grep` in this comment for three generations and was wrong twice, which is
+# why it moved into code.
 #
-# This is CLAUDE.md check 3 (search for counterexamples, not just supporting
-# cases) failing inside the one change whose entire thesis is that hand-written
-# claims decay. Kept as the worked example rather than quietly corrected.
+# THE TRAP THAT BROKE IT, recorded so nobody re-derives the grep. No
+# backslash-count is portable. In BRE `\\` is one literal backslash, so
+# `'C:\\Users\\'` ends in a trailing backslash and GNU grep REFUSES it outright
+# (`grep: Trailing backslash`, rc=2) — which reads as "no match" to anyone
+# checking only the exit code. Doubling again to `'C:\\\\Users'` asks for two
+# literal backslashes and cannot match a real path. Except that it DOES match
+# under Git Bash, whose MSYS layer rewrites a path-shaped argument before grep
+# sees it: `printf '%s' 'C:\\\\Users'` prints `C:\\Users`. Same command, vacuous
+# on a POSIX shell and correct on this one — a measurement about the shell rather
+# than about the tree, which is exactly what CLAUDE.md check 3's platform clause
+# is about. A Python regex has no such layer, which is the other reason the check
+# moved.
+#
+# So `README.md` DOES carry the literal the hardcoded-path rule looks for.
+# Widening that scanner to cover the plugin root — which an older wording invited
+# as safe — fails immediately.
+#
+# THE LIST WAS FIVE UNTIL ISSUE #254. `hooks/probe-python.sh` left it when the
+# token scanner grew a `.sh` suffix, which it grew because that script became the
+# declared home of the wiring rationale the plugin loader had rejected out of
+# `hooks.json`. The entry's stated reason was "no demonstrated leak"; moving ~37
+# lines of hand-written English in would have made that reason false while the
+# line still read true, which is the exact decay this guard exists to catch. Its
+# absolute paths were and are generic (`$HOME/AppData/…`, `/usr/local/bin/…`) and
+# match neither path rule — the scanner run above is what says so now, rather
+# than this comment.
+#
+# The stale-count defect is CLAUDE.md check 3 (search for counterexamples, not
+# just supporting cases) failing inside the one change whose entire thesis is
+# that hand-written claims decay. Kept as the worked example rather than quietly
+# corrected — and note that the `README.md:1 / line 183` measurement it carried
+# had itself gone stale by the time #254 re-ran it. THREE GENERATIONS OF THE SAME
+# DEFECT NOW, which is the reason the pattern above is written the awkward way:
+# the original claim was unmeasured, #254's re-measurement used a grep that
+# cannot match a real path, and only a reviewer running it on a file that DOES
+# carry one caught that. A grep whose negative result is its whole point needs a
+# positive control in the same command, or it reports clean for having no teeth.
 EXEMPT: dict[str, str] = {
     ".claude-plugin/plugin.json":
         "outside every scan root; the manifest is validated by "
@@ -86,21 +123,16 @@ EXEMPT: dict[str, str] = {
         "the plugin's own root README, exempt for TWO independent reasons. Its "
         "install commands legitimately name this repository, which is what makes "
         "them copy-pasteable — so scanning it for project tokens would flag the "
-        "one file whose whole job is to identify the source. Separately, its "
-        "Layout block spells the literal `.claude/plugins/cla` (line 183), so it "
-        "would fail the hardcoded-path rule as well",
+        "one file whose whole job is to identify the source. Separately, it "
+        "spells the literal `.claude/plugins/cla` twice — once in prose about "
+        "`--plugin-dir` and once in the Layout block — so it would fail the "
+        "hardcoded-path rule as well",
     "hooks/git/pre-push":
         "inside a scan root, but has NO suffix, so every suffix-keyed scanner "
         "skips it. Watched by hand; also covered behaviourally by "
         "tests/consistency/test_pre_push_is_installed.py. Issue #190 decided to "
         "keep it exempt: reaching it needs a rule not keyed on suffix at all, "
         "and it has no demonstrated leak to justify one",
-    "hooks/probe-python.sh":
-        "inside a scan root, but `.sh` is a suffix no scanner opens. Adding it "
-        "would be the path scanner's fifth suffix and the token scanner's "
-        "fourth (`.py`, `.json`, `.md`). Issue #190 decided against it: the "
-        "absolute paths it does carry are generic ($HOME/..., /usr/local/...) "
-        "and match neither the hardcoded-path rule nor the developer-path one",
 }
 
 # The SECOND split, and the one that decayed first. `EXEMPT` above asks "does
@@ -152,8 +184,8 @@ TOKEN_EXEMPT: dict[str, str] = {
     "skills/project-review/scripts/mechanical-checks.mjs":
         "the plugin's one Node script. Neither token scanner opens `.mjs` — the "
         "prose one takes `SKILL.md`/`references/**/*.md` under `skills/`, and the "
-        "source one takes `.py`/`.json` under the scan roots plus `.md` under "
-        "`agents`/`output-styles` — so it is out of scope for both; the path "
+        "source one takes `.py`/`.json`/`.sh` under the scan roots plus `.md` "
+        "under `agents`/`output-styles` — so it is out of scope for both; the path "
         "scanner covers it, and its own behaviour is tested by "
         "plugin-tests/node/mechanical-checks.test.mjs. Left unscanned "
         "deliberately by issue #190, which widened only the suffix with a "
@@ -322,7 +354,7 @@ def test_the_coverage_split_is_not_vacuous():
     measurement::
 
         $ python plugin-tests/tests/conformance/test_shipped_files_are_scanned.py
-        shipped 108  reached 103  token-candidates 103  token-reached 101
+        shipped 108  reached 104  token-candidates 104  token-reached 102
 
     That one-below margin is the rule
     `test_no_hardcoded_plugin_paths.py` states for its own floor, and the first
@@ -338,18 +370,124 @@ def test_the_coverage_split_is_not_vacuous():
     commit and left the token floor five below its population, in the same
     change that wrote up the identical drift next door. **Re-run the printer and
     re-pin every floor whenever a scanner's reach changes** — the widening is
-    the signal, since nothing else will be.
+    the signal, since nothing else will be. Issue #254 widened the source token
+    scanner to `.sh`, which moved `reached` 103 -> 104 and `token-reached`
+    101 -> 102 (one file, `hooks/probe-python.sh`, which also left `EXEMPT` and
+    so raised `token-candidates` 103 -> 104); both floors moved with it, in this
+    commit, which is what that rule asks for rather than what it reports.
     """
     shipped, reached = _shipped(), _reached()
     token_candidates = shipped - set(EXEMPT)
     assert len(shipped) >= 107, f"shipped set collapsed to {len(shipped)} files"
     assert (
-        len(shipped & reached) >= 102
+        len(shipped & reached) >= 103
     ), f"scanner coverage collapsed to {len(shipped & reached)} files"
     assert (
-        len(token_candidates & _token_reached()) >= 100
+        len(token_candidates & _token_reached()) >= 101
     ), "token-scanner coverage collapsed to " \
        f"{len(token_candidates & _token_reached())} files"
+
+
+def _developer_path_kinds(text: str) -> list[str]:
+    """Which absolute-developer-path shapes `text` carries, by the SHIPPED rules.
+
+    Calls the checker's own regexes rather than restating them, the same
+    discipline `_token_reached` follows — a second copy here would drift from the
+    scanner and the drift would be invisible.
+
+    ALL THREE KINDS, and that sentence is load-bearing rather than descriptive.
+    The first version of this function implemented two and omitted
+    `MANGLED_WIN_PATH`, which made it a PARTIAL copy — exactly the drift the
+    paragraph above says it exists to avoid, in the function that says it.
+    Measured on `# see C:UsersaliceAppDataLocal for the cache`: the two
+    implemented patterns both return None and the omitted one matches, with a
+    non-placeholder user. A separator-stripped path in an exempt file — which is
+    to say a file NO scanner opens — was therefore reported clean, and the
+    checker's own comment names that shape as how a real developer username
+    survived a previous sweep.
+
+    Kept in `find_absolute_path_leaks`'s order and with its kind names, and each
+    shape tested INDEPENDENTLY rather than as an `elif` chain, for the reason
+    that function records: chaining let a line carrying a placeholder Windows
+    path skip the home-path check entirely.
+    """
+    kinds: list[str] = []
+    win = _TOKENS.WIN_ABS_PATH.search(text)
+    if win and not any(h in win.group(0) for h in _TOKENS.PLACEHOLDER_PATH_HINTS):
+        kinds.append("windows-drive-path")
+    home = _TOKENS.HOME_ABS_PATH.search(text)
+    if home and home.group(1).lower() not in _TOKENS.PLACEHOLDER_USERS:
+        kinds.append("home-directory-path")
+    mangled = _TOKENS.MANGLED_WIN_PATH.search(text)
+    if mangled and not _TOKENS._starts_with_placeholder_user(mangled.group(1)):
+        kinds.append("mangled-windows-path")
+    return kinds
+
+
+def test_the_detector_used_below_actually_detects():
+    """The positive control, and it is not ceremony.
+
+    Everything below asserts an ABSENCE across the exempt files, and an absence
+    is what a detector that matches nothing also reports. This claim was carried
+    in a comment as a `grep` for three generations and was wrong twice: first
+    unmeasured, then re-measured with a BRE pattern whose backslash count meant
+    two literal backslashes — which cannot match a real path, and whose rc=1
+    therefore proved nothing. A reviewer running it against a file that DID carry
+    a path is what surfaced that. The lesson is not "count backslashes more
+    carefully"; it is that a negative result needs a positive control in the same
+    run.
+
+    ONE ASSERTION PER KIND, not one for the set. A control that exercises only
+    the shapes already implemented cannot surface a MISSING shape — which is
+    precisely what happened: the two-assertion version of this test passed while
+    `_developer_path_kinds` silently omitted `MANGLED_WIN_PATH`, so the third
+    class of leak went unreported in every exempt file. A control is only as wide
+    as the thing it is written against, so it is written against the shipped
+    checker's kind list instead.
+    """
+    win = r"prefix C:\Users\anna\foo suffix"  # path-fixture-ok
+    assert _developer_path_kinds(win) == ["windows-drive-path"]
+    assert _developer_path_kinds("see /home/anna/thing for it") == [
+        "home-directory-path"
+    ]
+    # Separator-stripped — the shape a mangled scratchpad path collapses into,
+    # and the one the two implemented patterns both miss.
+    assert _developer_path_kinds(  # path-fixture-ok
+        "# see C:UsersannaAppDataLocal for the cache"
+    ) == ["mangled-windows-path"]
+    # And the placeholder exemptions still hold, so the control does not pass by
+    # reporting everything.
+    assert _developer_path_kinds("see /home/me/thing") == []
+    assert _developer_path_kinds(r"C:\Users\<name>\foo") == []
+
+
+def test_the_unscanned_exemptions_carry_no_developer_path():
+    """`EXEMPT` names the files NO scanner opens, so this is the only thing
+    standing between one of them and an unnoticed absolute developer path.
+
+    Scoped to the developer-path rule alone, deliberately: the install-path rule
+    genuinely does not apply to `README.md`, whose whole job is to name this
+    repository, and that difference is already argued per entry in `EXEMPT`. The
+    developer-path rule has no such exception — a hardcoded `C:\\Users\\<name>`
+    cannot be correct in any destination repo — so it applies to all four, which
+    is what makes it checkable here rather than only arguable.
+    """
+    offenders: list[str] = []
+    for name in sorted(EXEMPT):
+        path = _PLUGIN_ROOT / name
+        if not path.is_file():
+            continue  # `vanished` is the other guard's business, not this one's
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if _TOKENS.ABS_PATH_EXEMPT_MARKER in line:
+                continue
+            for kind in _developer_path_kinds(line):
+                offenders.append(f"{name}:{lineno} [{kind}] {line.strip()[:80]}")
+    assert not offenders, (
+        "exempt file(s) carry a hardcoded absolute developer path, which no "
+        "scanner opens and which cannot be correct in any destination repo:\n"
+        + "\n".join(f"    {o}" for o in offenders)
+    )
 
 
 def test_every_exemption_carries_a_reason():

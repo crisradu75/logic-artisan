@@ -79,6 +79,231 @@ def test_hooks_json_is_valid_json_with_expected_shape():
             )
 
 
+# The keys Claude Code's plugin loader recognises at the top level of a
+# `hooks.json`. HAND-WRITTEN, and deliberately so: this is an EXTERNAL contract
+# owned by the loader, and nothing in this repo derives it. The house preference
+# for a derived check has no source to derive from here — the only honest
+# alternatives are this list or no check, and no check is what shipped the defect
+# this file's guard exists for.
+#
+# NOT hand-GUESSED, though, and the first version of this constant was. It said
+# `{"description", "hooks"}` and defended itself with "every `hooks.json` in the
+# official plugin catalog carries `description` + `hooks` and nothing else" — a
+# claim with no command behind it (CLAUDE.md check 3) that was also false. The
+# loader is the authority, not the catalog, and it is readable::
+#
+#     $ grep -ao 'new Set(\["\$schema","description","hooks"[^]]*\])' \
+#           "$(command -v claude)"
+#     new Set(["$schema","description","hooks","modules","surface"])
+#
+# Measured against the installed binary, `claude --version` 2.1.276. The loader
+# filters `Object.keys(...)` against that set and builds the `unknown key`
+# notice from what is left, so every one of the five is accepted. `$schema` is
+# there on purpose — the same binary carries the changelog line "Fixed plugins
+# with a top-level `$schema` in `hooks/hooks.json` showing an \"unknown key\"
+# notice" — which is exactly the key an editor adds for validation, and the key
+# a two-element equality assertion would have reddened the suite for.
+#
+# So the check is SPLIT, and the split is the point:
+#   * REQUIRED, by equality on the intersection — `hooks` must be present. A
+#     `hooks.json` without it loads clean and fires nothing, which is the failure
+#     this whole module exists for, and containment alone would miss it.
+#   * OPTIONAL, by permission — the other four may appear and must not fail.
+# Anything outside the union is the warning, and that is what fails.
+_LOADER_TOP_LEVEL_KEYS = frozenset(
+    {"$schema", "description", "hooks", "modules", "surface"}
+)
+_REQUIRED_TOP_LEVEL_KEYS = frozenset({"hooks"})
+# What the loader MUST be allowed to accept, written down independently of the
+# set above rather than derived from it. The duplication is the point, and it is
+# the same argument `REQUIRED_SUFFIXES` makes in
+# `tests/conformance/test_no_hardcoded_plugin_paths.py`.
+#
+# MEASURED, not assumed: the first version of the optional-key test iterated
+# `_LOADER_TOP_LEVEL_KEYS - _REQUIRED_TOP_LEVEL_KEYS`, which is read out of the
+# thing under test — narrow the constant and the expectation narrows with it in
+# the same edit, so the assertion cannot react. The mutant
+# `mutants/hooks/test_hooks_wiring.py` was added to catch exactly the review's
+# finding SURVIVED against that version, and dies against this one. An
+# expectation read from the thing under test measures nothing.
+_MUST_ACCEPT_TOP_LEVEL_KEYS = frozenset({"$schema", "description", "modules", "surface"})
+# One level down, same mechanism, same notice — spelled `"<key>" in
+# hooks.<Event>[<i>]`. Measured in the same binary with
+# `grep -ao 'new Set(\["matcher","hooks"\])' "$(command -v claude)"`. Pinned
+# because it is the identical defect one nesting level deeper, and nothing else
+# would catch it.
+_LOADER_GROUP_KEYS = frozenset({"matcher", "hooks"})
+
+
+def classify_keys(keys, recognised, required):
+    """Partition a declared key set against the loader's contract.
+
+    Returns `(unknown, missing)` — keys the loader would warn about, and required
+    keys that are absent.
+
+    A PURE FUNCTION, separated from the file-reading above for the same reason
+    `split_coverage` is in `tests/conformance/test_shipped_files_are_scanned.py`:
+    the real `hooks.json` only ever exhibits the clean branch, so nothing that
+    reads it can show that the rule reacts to the cases it exists for. In
+    particular, narrowing `_LOADER_TOP_LEVEL_KEYS` back to the two-key set this
+    guard shipped with is INVISIBLE against the real file — it declares neither
+    `$schema` nor `modules` nor `surface`, so a wrong contract and the right one
+    agree on it exactly. The synthetic tests below are what discriminate, and
+    without them the constant could silently go wrong again.
+    """
+    return sorted(set(keys) - set(recognised)), sorted(set(required) - set(keys))
+
+
+def test_hooks_json_declares_only_loader_recognised_keys():
+    """An unrecognised top-level key is a warning on EVERY session start, in
+    EVERY consuming repo, that no consumer can fix.
+
+    Issue #254. `hooks.json` carried a ~37-line `_comment` array holding the
+    wiring's rationale. The loader ignores what it does not recognise and says
+    so — `cla: hooks.json: unknown key "_comment" ignored` — so the guards all
+    loaded and the only cost was noise, on the hottest possible path, in an
+    install cache that is read-only. Nothing pinned the key set, so nothing
+    objected for three releases.
+
+    The rationale now lives in `hooks/probe-python.sh`'s header, which the token
+    scanner was widened to reach in the same change, with a one-line
+    `description` here pointing at it.
+
+    Containment against the loader's set, equality on the required half — see
+    `_LOADER_TOP_LEVEL_KEYS` for why that shape and for the command that
+    established it. Containment alone would catch `_comment` coming back and miss
+    `hooks` going away; equality on the whole set would forbid a `$schema` the
+    loader deliberately supports.
+    """
+    keys = set(_load_hooks_json())
+    unknown, missing = classify_keys(
+        keys, _LOADER_TOP_LEVEL_KEYS, _REQUIRED_TOP_LEVEL_KEYS
+    )
+
+    assert not unknown, (
+        f"hooks.json declares top-level key(s) the plugin loader does not "
+        f"recognise: {unknown}. It accepts "
+        f"{sorted(_LOADER_TOP_LEVEL_KEYS)} and warns once per session, in every "
+        "repo running this plugin, for anything else — and drops the text a "
+        "`_comment`-style key was carrying. Prose belongs in "
+        "hooks/probe-python.sh; a pointer belongs in `description`."
+    )
+
+    assert not missing, (
+        f"hooks.json is missing required top-level key(s): {missing}. A "
+        "hooks.json with no `hooks` key loads without error and fires nothing, "
+        "which is the silent failure this module exists for."
+    )
+
+
+def test_a_commentary_key_is_reported():
+    """The defect itself, on synthetic input — `_comment` is `unknown`."""
+    unknown, missing = classify_keys(
+        {"_comment", "hooks"}, _LOADER_TOP_LEVEL_KEYS, _REQUIRED_TOP_LEVEL_KEYS
+    )
+    assert unknown == ["_comment"]
+    assert missing == []
+
+
+def test_a_loader_recognised_optional_key_is_accepted():
+    """`$schema` must NOT be reported, and this is the assertion the first version
+    of this guard would have failed.
+
+    The loader supports a top-level `$schema` deliberately — its own changelog
+    records fixing the "unknown key" notice for it — so an editor-validation key
+    is a legitimate thing for a consuming repo to add. An equality assertion
+    against a two-key set would have turned that into a red suite with a message
+    naming a contract that does not exist.
+
+    The expectation comes from `_MUST_ACCEPT_TOP_LEVEL_KEYS`, an INDEPENDENT
+    list, not from `_LOADER_TOP_LEVEL_KEYS` — see that constant for the mutation
+    run proving why. Every key on it is checked, not just `$schema`, so narrowing
+    the recognised set by any one of them fails here.
+    """
+    for optional in sorted(_MUST_ACCEPT_TOP_LEVEL_KEYS):
+        unknown, missing = classify_keys(
+            {optional, "hooks"},
+            _LOADER_TOP_LEVEL_KEYS,
+            _REQUIRED_TOP_LEVEL_KEYS,
+        )
+        assert unknown == [], (
+            f"{optional!r} is a key the plugin loader accepts, but this guard "
+            "reports it as unknown — so a consuming repo adding it goes red "
+            "against a contract that does not exist"
+        )
+        assert missing == []
+
+
+def test_the_recognised_set_declares_nothing_undeclared():
+    """The other direction, silent without this.
+
+    The test above is `MUST_ACCEPT - reported`, so ADDING a key to
+    `_LOADER_TOP_LEVEL_KEYS` without adding it to `_MUST_ACCEPT_TOP_LEVEL_KEYS`
+    passes: it is accepted, nothing is missing, and it carries exactly the
+    protection `$schema` had before the independent list existed — none.
+    Containment, so this stays a statement about the two constants rather than
+    re-deriving one from the other.
+    """
+    undeclared = sorted(
+        _LOADER_TOP_LEVEL_KEYS
+        - _MUST_ACCEPT_TOP_LEVEL_KEYS
+        - _REQUIRED_TOP_LEVEL_KEYS
+    )
+    assert not undeclared, (
+        f"key(s) accepted but not independently declared: {undeclared}. Add them "
+        "to _MUST_ACCEPT_TOP_LEVEL_KEYS, or nothing will notice them being "
+        "removed again."
+    )
+
+
+def test_a_missing_required_key_is_reported():
+    """The direction containment alone cannot see. A `hooks.json` whose `hooks`
+    key is gone declares nothing unknown — it is simply inert, and every guard in
+    this module would pass on it."""
+    unknown, missing = classify_keys(
+        {"description"}, _LOADER_TOP_LEVEL_KEYS, _REQUIRED_TOP_LEVEL_KEYS
+    )
+    assert unknown == []
+    assert missing == ["hooks"]
+
+
+def test_hook_groups_declare_only_loader_recognised_keys():
+    """The same warning one nesting level down, and nothing else would see it.
+
+    The loader validates each matcher group against its own set and reports a
+    stray key as `"<key>" in hooks.<Event>[<i>]`. Our groups use only `matcher`
+    and `hooks` today; this stops a `comment`, a `description` or a `_note` being
+    added to one and reintroducing issue #254's noise somewhere the top-level
+    check cannot look.
+    """
+    stray: list[str] = []
+    for event, groups in _load_hooks_json()["hooks"].items():
+        for index, group in enumerate(groups):
+            for key in sorted(set(group) - _LOADER_GROUP_KEYS):
+                stray.append(f'"{key}" in hooks.{event}[{index}]')
+    assert not stray, (
+        f"hook group(s) declare key(s) the loader does not recognise: {stray}. "
+        f"It accepts {sorted(_LOADER_GROUP_KEYS)} per group and warns for "
+        "anything else, in the same once-per-session way the top-level check "
+        "covers."
+    )
+
+
+def test_the_hooks_json_description_points_at_the_probe():
+    """A `description` that does not name the file holding the rationale is a
+    pointer to nowhere — which is what the `_comment` array was replaced with, so
+    it has to actually point."""
+    description = _load_hooks_json().get("description", "")
+    assert isinstance(description, str) and description.strip(), (
+        "hooks.json has no `description`; the loader accepts one and it is the "
+        "only place left to say what the wiring does"
+    )
+    assert "probe-python.sh" in description, (
+        "hooks.json's `description` must name hooks/probe-python.sh, which is "
+        f"where the wiring's rationale lives: {description!r}"
+    )
+
+
 def test_every_plugin_root_command_reference_resolves():
     """Every ${CLAUDE_PLUGIN_ROOT}/... path named in hooks.json exists on disk."""
     refs = [

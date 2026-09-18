@@ -30,8 +30,11 @@ violation at a time turns a run into a fix-and-rerun loop:
   (a) the PROSE scan for project tokens over synced-core ``SKILL.md`` and
       ``references/**/*.md``;
   (b) the SOURCE scan for project tokens over the plugin's scanned source roots
-      (``.py`` and ``.json`` everywhere, plus ``agents/*.md`` and
-      ``output-styles/*.md``);
+      — for the suffixes it covers, read ``_iter_scanned_source_files``, which is
+      the one statement of them. Spelling them out here was a defect in its own
+      right: this list was already stale ONE COMMIT after ``.sh`` was added,
+      inside the change that added it, and because (c) and (d) iterate the SAME
+      function, one stale sentence understated three of the four checks at once;
   (c) the hardcoded absolute-DEVELOPER-PATH scan over that same source — a
       different scanner with its own regexes and its own exemption marker, and
       the only one of the four that needs no token list;
@@ -351,8 +354,8 @@ def _missing_source_roots(plugin_root: Path) -> list[str]:
 def _iter_scanned_source_files(plugin_root: Path):
     """Yield every synced-core SOURCE file the prose scan cannot see.
 
-    `.py` and `.json` anywhere under the synced roots (including `tests/` and
-    `scripts/`), plus every `.md` under `agents/` or `output-styles/` (agent
+    `.py`, `.json` and `.sh` anywhere under the synced roots (including `tests/`
+    and `scripts/`), plus every `.md` under `agents/` or `output-styles/` (agent
     definitions and output-style files, neither reachable from the prose scan's
     `skills/` root). Overlays stay exempt by the same convention, and
     bytecode/cache directories are skipped — a stale `.pyc` still holds the
@@ -374,11 +377,20 @@ def _iter_scanned_source_files(plugin_root: Path):
     by the source repo's marketplace-manifest guard; nothing token-scans it, by
     design.
 
-    Not widened to `.sh` or to the suffix-less `hooks/git/pre-push`: neither has
-    a demonstrated leak, and a suffix-less file needs a rule that is not keyed on
-    suffix at all. Both are recorded as deliberate exemptions rather than
-    oversights — see the source repo's `EXEMPT` map, which fails on an exemption
-    a scanner has since grown to reach.
+    `.sh` was added for the same reason and on the same terms, by issue #254.
+    The plugin ships exactly one, `hooks/probe-python.sh`, and that file is the
+    declared home of the wiring rationale that used to sit in `hooks.json`'s
+    `_comment` array — rationale the plugin loader rejected, so it had to move
+    somewhere. Moving hand-written English out of a scanned file and into an
+    unscanned one is how a leak surface is created, so the suffix moved with it.
+    One shipped file, identical in every install, so this adds no per-repo
+    surface either.
+
+    Still NOT widened to the suffix-less `hooks/git/pre-push`: it has no
+    demonstrated leak, and reaching it needs a rule that is not keyed on suffix
+    at all. It is recorded as a deliberate exemption rather than an oversight —
+    see the source repo's `EXEMPT` map, which fails on an exemption a scanner has
+    since grown to reach.
     """
     md_roots = ("agents", "output-styles")
     for root_name in SOURCE_SCAN_ROOTS:
@@ -390,7 +402,7 @@ def _iter_scanned_source_files(plugin_root: Path):
                 continue
             if any(part in CACHE_DIRS for part in path.relative_to(root).parts):
                 continue
-            if path.suffix in (".py", ".json") or (
+            if path.suffix in (".py", ".json", ".sh") or (
                 root_name in md_roots and path.suffix == ".md"
             ):
                 yield path

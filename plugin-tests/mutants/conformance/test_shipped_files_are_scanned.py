@@ -37,6 +37,36 @@ PATH_GUARD = DEV / "tests" / "conformance" / "test_no_hardcoded_plugin_paths.py"
 TARGETS = [DEV / "tests" / "conformance"]
 
 _NL = "\r\n" if b"\r\n" in GUARD.read_bytes() else "\n"
+# Derived from the file it is inserted INTO, not from the guard. `.gitattributes`
+# and the `.py` files happen to share a line ending on both platforms today, but
+# borrowing one file's separator for an edit to another is the kind of coupling
+# that holds until it silently does not — and a wrong separator here aborts the
+# whole batch at preflight.
+_ATTR = PLUGIN / ".gitattributes"
+_NL_ATTR = "\r\n" if b"\r\n" in _ATTR.read_bytes() else "\n"
+
+# The planted path, ASSEMBLED rather than spelled, and both halves of that are
+# forced.
+#
+# `test_no_batch_hardcodes_an_absolute_path` runs the shipped checker's own
+# regexes over every line of every batch, so spelling a Windows drive path here
+# fails the suite — correctly: a batch carrying an absolute developer path works
+# on one machine. It caught the first version of this entry, and then caught the
+# second, where the only offender left was THIS COMMENT explaining the first.
+# That guard honours `path-fixture-ok` and nothing else: unlike the shipped
+# checker it does NOT exempt a placeholder-looking path, so prose here cannot
+# name the shape even to say it is forbidden. Describe it in words.
+#
+# The declared escape hatch, `path-fixture-ok`, is NOT usable here and that is
+# the interesting part. The marker exempts the LINE it appears on, and the line
+# this literal sits on is the mutant's replacement text — so the marker would
+# travel into the file being mutated, where the guard under test skips marked
+# lines too. The mutant would then plant a path nothing reports and SURVIVE,
+# which is a false negative wearing a real finding's costume. Splitting the
+# string keeps every source line here below both regexes while the assembled
+# value is a genuine path with no marker on it.
+_BACKSLASH = chr(92)
+_PLANTED_PATH = "C:" + _BACKSLASH.join(["", "Users", "someone", "proj"])
 
 GITATTRIBUTES_ENTRY = (
     '    ".gitattributes":' + _NL
@@ -125,10 +155,26 @@ MUTANTS = [
         PLUGIN / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py",
         # Anchored on the tuple alone, not the whole `if` line. The line is
         # wrapped, so including ` or (` bakes the current formatting into the
-        # anchor and a reflow or a fourth suffix breaks it — loudly, at
-        # preflight, but for no reason.
+        # anchor and a reflow or a fifth suffix breaks it — loudly, at
+        # preflight, but for no reason. (The anchor moved once already, when
+        # issue #254 made the tuple three-long; that is the preflight working.)
+        '(".py", ".json", ".sh")',
+        '(".py", ".sh")',
+        TARGETS,
+    ),
+    (
+        # The mutant issue #254's widening earns, and the mirror of the one
+        # above. Revert `.sh` and `hooks/probe-python.sh` has no reader at all:
+        # the path scanner does not take `.sh` either, and the file left `EXEMPT`
+        # in that same change precisely because a scanner had grown to reach it.
+        # So it lands in `unexplained` in BOTH coverage guards — which is what
+        # makes the widening load-bearing rather than decorative, and what stops
+        # the wiring rationale now living in that file from sitting unscanned.
+        "the source token scanner drops .sh, leaving hooks/probe-python.sh — the "
+        "declared home of the hooks.json wiring rationale — with no reader",
+        PLUGIN / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py",
+        '(".py", ".json", ".sh")',
         '(".py", ".json")',
-        '(".py",)',
         TARGETS,
     ),
     (
@@ -174,6 +220,53 @@ MUTANTS = [
         PLUGIN / "skills" / "_shared" / "scripts" / "check_no_project_tokens.py",
         'md_roots = ("agents", "output-styles")',
         'md_roots = ("agents",)',
+        TARGETS,
+    ),
+    (
+        # The review finding that the exempt files' cleanliness was recorded by a
+        # grep which could not match a real path. The claim is now executed, so it
+        # is mutable: plant the shape in an EXEMPT file and the guard must say so.
+        # `.gitattributes` is the carrier because it is the one exempt file whose
+        # content is pure configuration — no prose that could legitimately quote a
+        # path — and it is already this batch's anchor file for the same reason.
+        "an exempt file, which NO scanner opens, acquires a hardcoded absolute "
+        "developer path",
+        _ATTR,
+        "hooks/*.sh      text eol=lf",
+        f"# see {_PLANTED_PATH} for why"
+        + _NL_ATTR
+        + "hooks/*.sh      text eol=lf",
+        TARGETS,
+    ),
+    (
+        # The positive control's own mutant. Without it the absence assertion above
+        # reports clean for a detector that matches nothing — which is precisely
+        # how the grep version passed while proving nothing, twice.
+        "the developer-path detector stops detecting, so the exempt-file check "
+        "passes vacuously the way its grep predecessor did",
+        GUARD,
+        "    win = _TOKENS.WIN_ABS_PATH.search(text)",
+        "    win = None",
+        TARGETS,
+    ),
+    (
+        # The THIRD shape, which the first version of `_developer_path_kinds`
+        # omitted entirely — it implemented two of the shipped checker's three
+        # kinds and called itself a copy of them. Review found it; nothing here
+        # could have, because the control only exercised the two that existed.
+        # One mutant per kind now, so dropping any one of them fails.
+        "the separator-stripped shape stops being detected — the kind the "
+        "checker's own comment says a real developer username survived on",
+        GUARD,
+        "    mangled = _TOKENS.MANGLED_WIN_PATH.search(text)",
+        "    mangled = None",
+        TARGETS,
+    ),
+    (
+        "the home-directory shape stops being detected",
+        GUARD,
+        "    home = _TOKENS.HOME_ABS_PATH.search(text)",
+        "    home = None",
         TARGETS,
     ),
     (

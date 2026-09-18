@@ -1,13 +1,57 @@
 # Interpreter probe for every wiring in hooks.json. POSIX sh; sourced, not run.
 # The wiring is a postcondition, not a `||` chain — see WHY THE CALLER CHECKS
-# $PYEXE below:
+# $PYEXE below. This is the whole of it, and it is what the wirings really say:
 #
-#   P="${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh"; [ -r "$P" ] && . "$P"
-#   [ -n "$PYEXE" ] || { echo "cla: ... NOT running" >&2; exit 1; }
+#   PYEXE=; _cla_probe="${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh"
+#   [ -r "$_cla_probe" ] && . "$_cla_probe"
+#   [ -x "$PYEXE" ] || { echo "cla: ... NOT running" >&2; exit 1; }
 #   "$PYEXE" .../some-hook.py
 #
 # On success it leaves a usable Python 3.8+ in $PYEXE. On failure it prints why
 # and `exit 1`s the CALLING shell.
+#
+# THIS HEADER IS THE ONLY HOME FOR THE WIRING'S RATIONALE. `hooks.json` carried
+# ~37 lines of it in a top-level `_comment` array until issue #254, and the
+# loader does not recognise that key, so every session in every consuming repo
+# printed `unknown key "_comment" ignored` — noise no consumer could fix, since
+# the install cache is read-only. The JSON now carries a one-line `description`
+# pointing here, and the two things that comment explained and this file did not
+# are the two blocks directly below.
+#
+# WHAT THE LOADER ACTUALLY ACCEPTS, read out of the shipped binary rather than
+# inferred from what other plugins happen to write:
+#
+#   $ grep -ao 'new Set(\["\$schema","description","hooks"[^]]*\])' \
+#         "$(command -v claude)"
+#   new Set(["$schema","description","hooks","modules","surface"])
+#
+# Five keys at the top level, and anything else becomes the `unknown key`
+# notice. `$schema` is on that list DELIBERATELY — the same binary's changelog
+# carries "Fixed plugins with a top-level `$schema` in `hooks/hooks.json`
+# showing an \"unknown key\" notice" — so an editor-validation key is supported
+# and must never be described here as a warning. A second set governs one level
+# down, `new Set(["matcher","hooks"])` per matcher group, and produces the same
+# notice spelled `"<key>" in hooks.<Event>[<i>]`.
+#
+# This file ships, so a wrong contract here is wrong in every consuming repo.
+# `test_hooks_json_declares_only_loader_recognised_keys` pins both sets against
+# that measurement — REQUIRED keys by equality, OPTIONAL ones by permission — so
+# the array cannot come back and a legitimate `$schema` is not forbidden.
+# Re-run the command above when Claude Code updates; the set is the loader's to
+# change, not ours.
+#
+# WHY THE CALLER'S CHECK IS `-x` AND NOT `-n`. Measured, on a truncated CRLF
+# probe under dash: this file's first statement is the ASSIGNMENT `PYEXE=`, so a
+# trailing CR makes it `PYEXE=<CR>` — set, non-empty, and useless. `-n` passed
+# it and the wiring ran `<CR> some-hook.py`; `-x` refuses it. `[ -x "" ]` is
+# false too, so `-x` SUBSUMES the emptiness check rather than adding to it, which
+# is why the example above shows one test and not two.
+#
+# WHY EVERY WIRING LEADS WITH `PYEXE=;`. The same reason this file does, one
+# level out. This file clears it, but this file only runs when it is readable —
+# so without the caller's own clear, a MISSING probe plus a `PYEXE` exported into
+# the session would satisfy the postcondition and hand every hook a stale
+# interpreter. `test_every_wiring_sources_the_shared_probe` pins the prefix.
 #
 # WHY A FILE AND NOT AN INLINE STRING. This probe used to be a 350-char line
 # (measured off `main`: `_pyexe` was 350 chars, the probe half of each command
