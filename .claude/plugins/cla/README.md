@@ -199,6 +199,23 @@ python3 <plugin>/skills/_shared/scripts/check_no_project_tokens.py
 python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py
 ```
 
+Each takes one optional flag, `--repo-root <path>` (default: the repo the process is in, resolved
+via git), and reports through its exit code — **`0`** clean, **`1`** violations with every offending
+file, line and path named, **`2`** could-not-run, which is never a pass. Stdlib Python only; nothing
+to install. `check_fact_paths.py` is the one that guards your `cla.io/` content: every repo-relative
+path named in `cla.io/project-facts.md` or in a `cla.io/overlays/<skill>.md` must still resolve on
+disk. `/cla:sync-context` runs it once after it writes; **beyond that, you own when it runs** — put
+it in your own gate, your pre-commit, or run it by hand. Nothing in the plugin schedules it.
+
+> **Coming from a `0.x` release?** Every release up to and including `cla--v0.10.0` shipped the
+> plugin's own pytest tree, and the guidance of that era told you to wire its
+> `conformance-checks/tests` directory into your local gate. **Nothing from `1.0.0` on ships that
+> tree, under any name** — it moved to the source repo's own
+> development tree when the shipped plugin was reduced to assets you can actually invoke. A gate
+> still pointing at it either fails on a missing directory or, worse, passes while checking nothing.
+> Delete that wiring and run the two programs above instead: they are the shipped form of the same
+> two guards, and they take your repo, not the plugin's, as their subject.
+
 ## Layout
 
 ```

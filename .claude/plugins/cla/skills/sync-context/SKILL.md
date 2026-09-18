@@ -233,6 +233,15 @@ remedy differs and only one of them names a path to fix:
 | `1` | Stale paths found, each named with its file and line. | The write just made (a fact, an overlay pointer edit) introduced or left them. Fix every path the checker names and re-run until it exits 0. |
 | `2` | The checker could not look — an unresolvable repo root, an unreadable input, or a scan that extracted nothing. | **No path is named, so there is nothing to "fix" by editing the facts file.** Read the stderr reason and resolve *that* (pass `--repo-root`, fix the unreadable file). Never treat a 2 as a clean pass, and never re-run hoping for a 1. |
 
+**Beyond this one run, the repo being checked owns when the checker runs.** The plugin ships no test
+tree — an installed plugin is a read-only, version-keyed cache with no pytest gate over it, so a
+guard filed as a test module would be unreachable — and nothing in the plugin schedules this script.
+If the repo wants the check standing rather than once-per-`sync-context`, wire the command above into
+its own gate (its test command, a pre-commit hook, a CI step) and read the exit code by the table
+above. On a repo whose gate still wires the plugin's old `conformance-checks/tests` directory — the
+`0.x`-era shape, gone since `1.0.0` — say so in the Step 8 report and recommend re-pointing it at
+this program: that wiring now either fails on a missing directory or passes while checking nothing.
+
 ### Step 8 — Report
 
 Summarize what changed: `cla.io/project-facts.md` created vs updated (and which sections changed),

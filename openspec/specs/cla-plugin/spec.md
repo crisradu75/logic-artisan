@@ -1098,6 +1098,21 @@ invocation over that scope; the plugin SHALL NOT ship an aggregating test runner
 scope has nothing to aggregate. A separately-configured Node test suite MAY live in the same dev
 tree and be run by its own command.
 
+**The exclusion is a consumer-facing contract, and the docs SHALL state it.** Because no test
+directory ships, a consuming repo has no plugin test path to wire into its own gate, and any
+guidance that names one is wrong the moment it is read — it either fails on a missing directory or,
+worse, resolves nothing and passes, which is the silent shape this project treats as the more
+dangerous failure. Consumer-facing documentation SHALL therefore say plainly that the release
+carries no test tree, SHALL give the shipped conformance checkers as the programs they are
+(invocation, flags, and the meaning of each exit status), and SHALL state that the **consuming repo
+owns when they run** — nothing in the plugin schedules them beyond `/cla:sync-context`'s single
+post-write invocation of the staleness checker. Where an earlier release DID ship such a tree, the
+documentation SHALL name the retired path and the replacement, so a repo carrying the old wiring can
+find the fix without reading the source repo's history. **No document in the canonical repo SHALL
+name a plugin-relative path the published tree does not contain**, and that SHALL be enforced
+mechanically rather than by review, deriving the published tree from the tracked files under the
+plugin directory rather than from a maintained list.
+
 **Source-repo-only marking is by construction, not by declaration.** Because the dev tree is never
 published, every asset in it is source-repo-only inherently. The plugin SHALL NOT carry per-directory
 marker files declaring an asset source-repo-only, nor a guard that checks such markers, nor
@@ -1138,6 +1153,13 @@ because both mislead about what the consumer received, and neither is visible fr
 - **WHEN** the contents of `.claude/plugins/cla/` are enumerated
 - **THEN** no test directory, mutation corpus, `pyproject.toml`, or mutation runner is present
 - **AND** every remaining file is an asset a consuming repo can invoke, read, or have fire on its behalf
+
+#### Scenario: Consumer-facing guidance names no plugin path that does not ship
+
+- **WHEN** this repo's consumer-facing documentation is checked against the tracked files under the plugin directory
+- **THEN** every plugin-relative path it names resolves in that published tree, and the check fails naming the document and the token when one does not
+- **AND** the documentation states that the release carries no test tree, gives the shipped conformance checkers as programs with their exit statuses, and says the consuming repo owns when they run
+- **AND** where an earlier release shipped a test tree a consuming repo was told to wire in, the documentation names that retired path and the replacement to run instead
 
 #### Scenario: The dev tree is one scope with a bare gate
 
