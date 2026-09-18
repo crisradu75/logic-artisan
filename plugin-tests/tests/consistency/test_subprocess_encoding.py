@@ -274,6 +274,15 @@ def test_the_alternate_spellings_are_not_an_escape_hatch(source):
                                                # module that is not a spawner
     "subprocess.list2cmdline(cmd, text=True)", # only cond 2: the spawn module,
                                                # a callee that is not a spawner
+    # Also only cond 2, and it adds NO coverage the line above does not already
+    # give — it is here as the REALISTIC witness. `subprocess.list2cmdline(...,
+    # text=True)` is something nobody writes; constructing a `CompletedProcess`
+    # is what this repo's own test fakes actually do
+    # (`tests/skills/spec-to-pr/test_probe_state.py` builds two at module level).
+    # A corpus whose negatives are all invented invites the reader to assume the
+    # rule is about invented shapes. It earns no mutant of its own, for the same
+    # reason: the coverage is already pinned.
+    "subprocess.CompletedProcess(args, 0, text=True)",
     "os.path.run(cmd, text=True)",             # only cond 3: `func.value` is an
                                                # Attribute, not a Name — and
                                                # cond 4 would raise

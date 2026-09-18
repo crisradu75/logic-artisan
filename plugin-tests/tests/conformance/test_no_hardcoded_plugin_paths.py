@@ -24,6 +24,8 @@ run a script.
 
 from __future__ import annotations
 
+import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -173,9 +175,22 @@ def test_the_scan_is_not_vacuous():
     # along with it, so a false sense of headroom is exactly what "pinned near
     # it" is for this guard to not have.
     #
-    # It had drifted to a floor of 95 against a comment claiming 96, while the
-    # real count had risen to 99 — four files of headroom, which is precisely
-    # the decorative floor the rule above forbids.
+    # IT HAS DRIFTED TWICE, and only the first was ever written down.
+    #
+    #   * floor 95 against a comment claiming 96, while the real count had risen
+    #     to 99 — four files of headroom, which is precisely the decorative floor
+    #     the rule above forbids.
+    #   * floor 98 against a comment claiming 99, while the real count had risen
+    #     to 103 — FIVE files of headroom, the drift issue #246 reported. It was
+    #     corrected without leaving a trace, so this file's own record made the
+    #     problem look like it had happened once.
+    #
+    # Both were found by someone running the printer for an unrelated reason.
+    # The printer has been here the whole time: a printer nobody runs is not a
+    # defence, and `test_the_recorded_counts_are_the_real_ones` is the one that
+    # runs it. The floor above stays hand-pinned deliberately — a floor that
+    # re-derives itself moves to meet any collapse and asserts nothing — so what
+    # is checked automatically is the RECORD, not the bound.
     assert len(files) >= 102, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
@@ -289,10 +304,121 @@ def test_the_replacement_is_actually_in_use():
     # the wholesale deletion the docstring names, loose enough that ordinary
     # editing does not red the gate. That is a different rule from the scan
     # floor's, deliberately, because it counts a different kind of thing.
+    #
+    # 210 WAS EXAMINED WITH THE SCAN FLOOR AND DELIBERATELY NOT MOVED, which is
+    # worth recording because the two rows want opposite treatment and the next
+    # reader will see them side by side. When issue #246 re-derived the scan
+    # floor from 98 to 102, this one stayed: its gap to the real count is the
+    # rule rather than drift. Only the RECORD beside it was stale — it read 217
+    # against a real 235 — and that is the half now pinned by
+    # `test_the_recorded_counts_are_the_real_ones`. A stale record here misleads
+    # whoever next decides whether 210 is still the right bound, which is the
+    # only thing about this floor that was ever wrong.
     assert occurrences >= 210, (
         f"only {occurrences} ${{CLAUDE_PLUGIN_ROOT}} reference(s) in synced core; "
         "the cross-references skills need to invoke their own scripts appear to "
         "have gone missing rather than been converted"
+    )
+
+
+# The shape `__main__` prints, as a pattern, so the comments that QUOTE that
+# output can be found and checked. Keep the two in step: widening the printer
+# without widening this turns the check below off for the new field, and
+# `test_the_recorded_counts_are_the_real_ones`'s non-vacuity assertion is what
+# catches the cruder version of that mistake.
+_PRINTER_LINE = re.compile(
+    r"scanned (?P<scanned>\d+)\s+"
+    r"\.json (?P<json>\d+)\s+\.md (?P<md>\d+)\s+\.mjs (?P<mjs>\d+)\s+\.py (?P<py>\d+)\s+"
+    r"placeholder-refs (?P<refs>\d+) in (?P<ref_files>\d+) files"
+)
+
+
+def _live_printer_numbers() -> dict[str, int]:
+    """What `__main__` prints, as a dict. ONE source for both."""
+    files = list(_scanned_files())
+    by_suffix = Counter(p.suffix for p in files)
+    texts = [p.read_text(encoding="utf-8", errors="replace") for p in files]
+    return {
+        "scanned": len(files),
+        "json": by_suffix[".json"],
+        "md": by_suffix[".md"],
+        "mjs": by_suffix[".mjs"],
+        "py": by_suffix[".py"],
+        # Both numbers, because both are cited: the floor pins occurrences, and
+        # the file count is what makes the gap between them legible.
+        "refs": sum(t.count("${CLAUDE_PLUGIN_ROOT}") for t in texts),
+        "ref_files": sum(1 for t in texts if "${CLAUDE_PLUGIN_ROOT}" in t),
+    }
+
+
+def _printer_line() -> str:
+    """The one place the printed line is FORMATTED.
+
+    `__main__` calls this rather than recomputing, so the string a developer
+    pastes into a comment and the numbers the test compares it against cannot
+    come from two different computations. They could before: the printer built
+    its own `Counter` and its own sums, so the checker could have agreed with
+    the tree while disagreeing with the printer — a stale-record guard whose two
+    halves are allowed to drift is the defect it exists to catch, one level up.
+    """
+    n = _live_printer_numbers()
+    return (
+        f"scanned {n['scanned']}  "
+        f".json {n['json']}  .md {n['md']}  .mjs {n['mjs']}  .py {n['py']}  "
+        f"placeholder-refs {n['refs']} in {n['ref_files']} files"
+    )
+
+
+def test_the_recorded_counts_are_the_real_ones():
+    """The floors are hand-pinned; the RECORDED counts beside them are derived.
+
+    WHY NOT DERIVE THE FLOORS TOO — the question this test's shape answers. A
+    floor that re-derives itself asserts nothing: it moves to meet any collapse
+    and passes. The floors must stay hand-pinned to mean anything. What decays is
+    the *record* of what was measured, and the record is what misleads the next
+    person deciding whether a floor is still right.
+
+    THIS FILE IS THE WORKED EXAMPLE OF THAT DECAY, TWICE, and both times it was
+    found by accident rather than by a check:
+
+      * the scan floor sat at 95 under a comment claiming 96, against a real 99;
+      * then at 98 under a comment claiming 99, against a real 103 — five files
+        of headroom, in a file whose own rule calls a four-file margin "precisely
+        the decorative floor the rule above forbids". That is what issue #246
+        reported.
+
+    The file has had a `__main__` throughout, precisely so the numbers could be
+    re-derived. A printer nobody runs is not a defence; a test that runs it is.
+
+    A deliberate addition trips this, and the fix is to paste the new printer
+    output over the old — which is exactly the moment to ask whether the floor
+    beside it should move too.
+    """
+    source = Path(__file__).read_text(encoding="utf-8")
+    quoted = list(_PRINTER_LINE.finditer(source))
+    # Non-vacuity: if the printer's output format changes and the regex stops
+    # matching, this test must fail rather than pass over zero lines.
+    assert len(quoted) >= 2, (
+        f"expected the printer's output quoted beside each floor, found "
+        f"{len(quoted)}. If `__main__`'s format changed, update _PRINTER_LINE "
+        f"and the quoted lines together — a regex that matches nothing turns "
+        f"this guard off silently."
+    )
+    live = _live_printer_numbers()
+    stale = []
+    for match in quoted:
+        recorded = {k: int(v) for k, v in match.groupdict().items()}
+        if recorded != live:
+            wrong = {k: (v, live[k]) for k, v in recorded.items() if v != live[k]}
+            stale.append(
+                f"  line {source[:match.start()].count(chr(10)) + 1}: "
+                + ", ".join(f"{k} says {r} but is {a}" for k, (r, a) in wrong.items())
+            )
+    assert not stale, (
+        "recorded measurement(s) in this file no longer match the tree. Re-run "
+        "`python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py` "
+        "and paste its line over each stale one — then decide whether the floor "
+        "beside it should move too:\n" + "\n".join(stale)
     )
 
 
@@ -301,19 +427,5 @@ if __name__ == "__main__":
     # sibling guard's does: `pytest <this file>` prints a pass count and nothing
     # else, so a floor whose stated measuring command emits no measurement
     # cannot be re-derived — and this file is the worked example of that decay,
-    # having sat at a floor of 95 under a comment claiming 96 while the real
-    # count had risen to 99.
-    from collections import Counter
-
-    _files = list(_scanned_files())
-    _by_suffix = Counter(p.suffix for p in _files)
-    _texts = [p.read_text(encoding="utf-8", errors="replace") for p in _files]
-    # Both numbers, because both are cited: the floor pins occurrences, and the
-    # file count is what makes the gap between them legible.
-    _refs = sum(t.count("${CLAUDE_PLUGIN_ROOT}") for t in _texts)
-    _carrying = sum(1 for t in _texts if "${CLAUDE_PLUGIN_ROOT}" in t)
-    print(
-        f"scanned {len(_files)}  "
-        + "  ".join(f"{suf} {n}" for suf, n in sorted(_by_suffix.items()))
-        + f"  placeholder-refs {_refs} in {_carrying} files"
-    )
+    # twice over (see `test_the_recorded_counts_are_the_real_ones`).
+    print(_printer_line())
