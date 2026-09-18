@@ -171,7 +171,7 @@ Project-specific content (repo-tuned review checks, monorepo-shaped agent prompt
 
 ### Requirement: Guard hooks provided by the plugin
 
-The generic git/worktree guard hooks SHALL be provided by the plugin via `.claude/plugins/cla/hooks/hooks.json`, which MUST use the top-level `{"hooks": {…}}` wrapper (a bare `{"<Event>": …}` shape loads without error but never fires). That file's top level SHALL carry only keys Claude Code's plugin loader recognises — `hooks`, plus an optional one-line `description` — because the loader prints a warning for any other key on **every session start in every consuming repo**, where the install cache is read-only and no consumer can fix it. Commentary that does not fit `description` SHALL live in a scanned source file rather than in a commentary key. Hook commands SHALL locate their script via `${CLAUDE_PLUGIN_ROOT}` and the repo via `${CLAUDE_PROJECT_DIR}`. Any project-level hooks specific to the host repo (outside the plugin's generic guard set) SHALL remain wired in that repo's own `.claude/settings.json`, out of the plugin.
+The generic git/worktree guard hooks SHALL be provided by the plugin via `.claude/plugins/cla/hooks/hooks.json`, which MUST use the top-level `{"hooks": {…}}` wrapper (a bare `{"<Event>": …}` shape loads without error but never fires). That file SHALL declare only keys Claude Code's plugin loader recognises, at the top level and within each matcher group, because the loader prints a warning for any other key on **every session start in every consuming repo**, where the install cache is read-only and no consumer can fix it. The recognised sets are the loader's to define and SHALL be read out of the installed binary rather than inferred from other plugins — the repo's hook-wiring guard records the command — and the requirement here is the SHAPE of the check, not a copy of the sets: the required keys SHALL be asserted by equality (a `hooks.json` with no `hooks` key loads clean and fires nothing) and the remaining recognised keys SHALL be permitted but not required, so a key the loader deliberately supports is never forbidden. Commentary that does not fit `description` SHALL live in a scanned source file rather than in a commentary key. Hook commands SHALL locate their script via `${CLAUDE_PLUGIN_ROOT}` and the repo via `${CLAUDE_PROJECT_DIR}`. Any project-level hooks specific to the host repo (outside the plugin's generic guard set) SHALL remain wired in that repo's own `.claude/settings.json`, out of the plugin.
 
 #### Scenario: A plugin guard hook fires
 
@@ -186,9 +186,15 @@ The generic git/worktree guard hooks SHALL be provided by the plugin via `.claud
 
 #### Scenario: A commentary key is added to the hook wiring
 
-- **WHEN** `.claude/plugins/cla/hooks/hooks.json` gains a top-level key the plugin loader does not recognise (for instance a `_comment` array holding the wiring's rationale)
-- **THEN** the repo's hook-wiring guard fails on the key set, naming the loader-recognised keys
+- **WHEN** `.claude/plugins/cla/hooks/hooks.json` gains a key the plugin loader does not recognise — at the top level (for instance a `_comment` array holding the wiring's rationale) or inside a matcher group
+- **THEN** the repo's hook-wiring guard fails, naming the offending key and the loader-recognised set for that level
 - **AND** the rationale belongs in `hooks/probe-python.sh`, which a token scanner reaches, with a one-line pointer left in `description`
+
+#### Scenario: A loader-recognised optional key is added
+
+- **WHEN** `hooks.json` gains a top-level key the loader does accept, such as `$schema` for editor validation
+- **THEN** the guard passes, because only the required keys are asserted by equality and the rest are permitted
+- **AND** no session-start warning is produced, which is what makes permitting it correct rather than lenient
 
 ### Requirement: Skill fact/procedure separation
 

@@ -11,14 +11,34 @@
 # and `exit 1`s the CALLING shell.
 #
 # THIS HEADER IS THE ONLY HOME FOR THE WIRING'S RATIONALE. `hooks.json` carried
-# ~37 lines of it in a top-level `_comment` array until issue #254: Claude
-# Code's plugin loader recognises `description` and `hooks` and nothing else, so
-# every session in every consuming repo printed `unknown key "_comment"
-# ignored`, and no consumer could fix it — the install cache is read-only. The
-# JSON now carries a one-line `description` pointing here, and the two things
-# that comment explained and this file did not are the two blocks directly
-# below. `test_hooks_json_declares_only_loader_recognised_keys` pins the key set
-# so the array cannot come back.
+# ~37 lines of it in a top-level `_comment` array until issue #254, and the
+# loader does not recognise that key, so every session in every consuming repo
+# printed `unknown key "_comment" ignored` — noise no consumer could fix, since
+# the install cache is read-only. The JSON now carries a one-line `description`
+# pointing here, and the two things that comment explained and this file did not
+# are the two blocks directly below.
+#
+# WHAT THE LOADER ACTUALLY ACCEPTS, read out of the shipped binary rather than
+# inferred from what other plugins happen to write:
+#
+#   $ grep -ao 'new Set(\["\$schema","description","hooks"[^]]*\])' \
+#         "$(command -v claude)"
+#   new Set(["$schema","description","hooks","modules","surface"])
+#
+# Five keys at the top level, and anything else becomes the `unknown key`
+# notice. `$schema` is on that list DELIBERATELY — the same binary's changelog
+# carries "Fixed plugins with a top-level `$schema` in `hooks/hooks.json`
+# showing an \"unknown key\" notice" — so an editor-validation key is supported
+# and must never be described here as a warning. A second set governs one level
+# down, `new Set(["matcher","hooks"])` per matcher group, and produces the same
+# notice spelled `"<key>" in hooks.<Event>[<i>]`.
+#
+# This file ships, so a wrong contract here is wrong in every consuming repo.
+# `test_hooks_json_declares_only_loader_recognised_keys` pins both sets against
+# that measurement — REQUIRED keys by equality, OPTIONAL ones by permission — so
+# the array cannot come back and a legitimate `$schema` is not forbidden.
+# Re-run the command above when Claude Code updates; the set is the loader's to
+# change, not ours.
 #
 # WHY THE CALLER'S CHECK IS `-x` AND NOT `-n`. Measured, on a truncated CRLF
 # probe under dash: this file's first statement is the ASSIGNMENT `PYEXE=`, so a

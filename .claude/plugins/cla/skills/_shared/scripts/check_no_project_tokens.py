@@ -30,8 +30,11 @@ violation at a time turns a run into a fix-and-rerun loop:
   (a) the PROSE scan for project tokens over synced-core ``SKILL.md`` and
       ``references/**/*.md``;
   (b) the SOURCE scan for project tokens over the plugin's scanned source roots
-      (``.py`` and ``.json`` everywhere, plus ``agents/*.md`` and
-      ``output-styles/*.md``);
+      — for the suffixes it covers, read ``_iter_scanned_source_files``, which is
+      the one statement of them. Spelling them out here was a defect in its own
+      right: this list said ``.py`` and ``.json`` for a release after ``.sh`` was
+      added, and because (c) and (d) iterate the SAME function, one stale
+      sentence understated three of the four checks at once;
   (c) the hardcoded absolute-DEVELOPER-PATH scan over that same source — a
       different scanner with its own regexes and its own exemption marker, and
       the only one of the four that needs no token list;

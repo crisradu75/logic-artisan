@@ -41,7 +41,8 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 HOOKS_JSON = PLUGIN / "hooks" / "hooks.json"
-TARGETS = [DEV / "tests" / "hooks" / "test_hooks_wiring.py"]
+GUARD = DEV / "tests" / "hooks" / "test_hooks_wiring.py"
+TARGETS = [GUARD]
 
 MUTANTS = [
     (
@@ -79,6 +80,49 @@ MUTANTS = [
         HOOKS_JSON,
         'exit 1; }; \\"$PYEXE\\" \\"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\\"',
         '}; \\"$PYEXE\\" \\"${CLAUDE_PLUGIN_ROOT}/hooks/dispatch-edit-write-pretooluse.py\\"',
+        TARGETS,
+    ),
+    (
+        # THE REVIEW FINDING, re-broken. The first version of this guard hard-coded
+        # `{"description", "hooks"}` from an unmeasured claim about the official
+        # plugin catalog, and the loader's real set is five keys — `$schema` among
+        # them, supported on purpose. A consuming repo adding `$schema` for editor
+        # validation would have gone red against a contract that does not exist.
+        #
+        # THIS MUTANT ONLY DIES BECAUSE THE SYNTHETIC TESTS EXIST, and that is the
+        # entry's whole point. The real `hooks.json` declares neither `$schema`
+        # nor `modules` nor `surface`, so the narrow set and the correct one agree
+        # on it exactly — every assertion that reads the file passes either way.
+        # `test_a_loader_recognised_optional_key_is_accepted` is what
+        # discriminates, which is why `classify_keys` was split out as a pure
+        # function rather than left inline.
+        "the loader key set narrows back to the two-key contract the review "
+        "found wrong, forbidding a `$schema` the loader supports deliberately",
+        GUARD,
+        '{"$schema", "description", "hooks", "modules", "surface"}',
+        '{"description", "hooks"}',
+        TARGETS,
+    ),
+    (
+        # The other direction, and the one containment alone cannot see. With no
+        # required key, a `hooks.json` that has lost its `hooks` map declares
+        # nothing unknown and is simply inert — every other assertion in the
+        # module passes on it.
+        "the required half empties, so a hooks.json with no `hooks` key passes",
+        GUARD,
+        '_REQUIRED_TOP_LEVEL_KEYS = frozenset({"hooks"})',
+        "_REQUIRED_TOP_LEVEL_KEYS = frozenset()",
+        TARGETS,
+    ),
+    (
+        # The group-level check. Unlike the top-level set this one IS observable
+        # against the real file — every matcher group declares `matcher`, so
+        # dropping it from the recognised set reports all five groups at once.
+        "the group-level key set loses `matcher`, the level where the identical "
+        "warning is spelled `\"<key>\" in hooks.<Event>[<i>]`",
+        GUARD,
+        '_LOADER_GROUP_KEYS = frozenset({"matcher", "hooks"})',
+        '_LOADER_GROUP_KEYS = frozenset({"hooks"})',
         TARGETS,
     ),
 ]

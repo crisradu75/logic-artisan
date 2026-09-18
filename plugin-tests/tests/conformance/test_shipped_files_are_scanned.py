@@ -68,7 +68,26 @@ _PUBLISHED_PREFIX = ".claude/plugins/cla"
 #         .claude/plugins/cla/hooks/git/pre-push \
 #         .claude/plugins/cla/README.md
 #     ...:0  ...:0  ...:0  README.md:2       <- README.md:218 and :241
-#   $ grep -rn 'C:\\\\Users' <the same four>  <- no match (rc=1)
+#
+# THE DEVELOPER-PATH HALF IS NO LONGER A COMMENT. It is
+# `test_the_unscanned_exemptions_carry_no_developer_path` below, which runs the
+# shipped checker's own regexes over these files, paired with
+# `test_the_detector_used_below_actually_detects` as its positive control. It was
+# a `grep` in this comment for three generations and was wrong twice, which is
+# why it moved into code.
+#
+# THE TRAP THAT BROKE IT, recorded so nobody re-derives the grep. No
+# backslash-count is portable. In BRE `\\` is one literal backslash, so
+# `'C:\\Users\\'` ends in a trailing backslash and GNU grep REFUSES it outright
+# (`grep: Trailing backslash`, rc=2) — which reads as "no match" to anyone
+# checking only the exit code. Doubling again to `'C:\\\\Users'` asks for two
+# literal backslashes and cannot match a real path. Except that it DOES match
+# under Git Bash, whose MSYS layer rewrites a path-shaped argument before grep
+# sees it: `printf '%s' 'C:\\\\Users'` prints `C:\\Users`. Same command, vacuous
+# on a POSIX shell and correct on this one — a measurement about the shell rather
+# than about the tree, which is exactly what CLAUDE.md check 3's platform clause
+# is about. A Python regex has no such layer, which is the other reason the check
+# moved.
 #
 # So `README.md` DOES carry the literal the hardcoded-path rule looks for.
 # Widening that scanner to cover the plugin root — which an older wording invited
@@ -88,7 +107,12 @@ _PUBLISHED_PREFIX = ".claude/plugins/cla"
 # just supporting cases) failing inside the one change whose entire thesis is
 # that hand-written claims decay. Kept as the worked example rather than quietly
 # corrected — and note that the `README.md:1 / line 183` measurement it carried
-# had itself gone stale by the time #254 re-ran it.
+# had itself gone stale by the time #254 re-ran it. THREE GENERATIONS OF THE SAME
+# DEFECT NOW, which is the reason the pattern above is written the awkward way:
+# the original claim was unmeasured, #254's re-measurement used a grep that
+# cannot match a real path, and only a reviewer running it on a file that DOES
+# carry one caught that. A grep whose negative result is its whole point needs a
+# positive control in the same command, or it reports clean for having no teeth.
 EXEMPT: dict[str, str] = {
     ".claude-plugin/plugin.json":
         "outside every scan root; the manifest is validated by "
@@ -362,6 +386,72 @@ def test_the_coverage_split_is_not_vacuous():
         len(token_candidates & _token_reached()) >= 101
     ), "token-scanner coverage collapsed to " \
        f"{len(token_candidates & _token_reached())} files"
+
+
+def _developer_path_kinds(text: str) -> list[str]:
+    """Which absolute-developer-path shapes `text` carries, by the SHIPPED rules.
+
+    Calls the checker's own regexes rather than restating them, the same
+    discipline `_token_reached` follows — a second copy here would drift from the
+    scanner and the drift would be invisible.
+    """
+    kinds: list[str] = []
+    win = _TOKENS.WIN_ABS_PATH.search(text)
+    if win and not any(h in win.group(0) for h in _TOKENS.PLACEHOLDER_PATH_HINTS):
+        kinds.append("windows-drive-path")
+    home = _TOKENS.HOME_ABS_PATH.search(text)
+    if home and home.group(1).lower() not in _TOKENS.PLACEHOLDER_USERS:
+        kinds.append("home-directory-path")
+    return kinds
+
+
+def test_the_detector_used_below_actually_detects():
+    """The positive control, and it is not ceremony.
+
+    Everything below asserts an ABSENCE across the exempt files, and an absence
+    is what a detector that matches nothing also reports. This claim was carried
+    in a comment as a `grep` for three generations and was wrong twice: first
+    unmeasured, then re-measured with a BRE pattern whose backslash count meant
+    two literal backslashes — which cannot match a real path, and whose rc=1
+    therefore proved nothing. A reviewer running it against a file that DID carry
+    a path is what surfaced that. The lesson is not "count backslashes more
+    carefully"; it is that a negative result needs a positive control in the same
+    run.
+    """
+    win = r"prefix C:\Users\anna\foo suffix"  # path-fixture-ok
+    assert _developer_path_kinds(win) == ["windows-drive-path"]
+    assert _developer_path_kinds("see /home/anna/thing for it") == [
+        "home-directory-path"
+    ]
+
+
+def test_the_unscanned_exemptions_carry_no_developer_path():
+    """`EXEMPT` names the files NO scanner opens, so this is the only thing
+    standing between one of them and an unnoticed absolute developer path.
+
+    Scoped to the developer-path rule alone, deliberately: the install-path rule
+    genuinely does not apply to `README.md`, whose whole job is to name this
+    repository, and that difference is already argued per entry in `EXEMPT`. The
+    developer-path rule has no such exception — a hardcoded `C:\\Users\\<name>`
+    cannot be correct in any destination repo — so it applies to all four, which
+    is what makes it checkable here rather than only arguable.
+    """
+    offenders: list[str] = []
+    for name in sorted(EXEMPT):
+        path = _PLUGIN_ROOT / name
+        if not path.is_file():
+            continue  # `vanished` is the other guard's business, not this one's
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if _TOKENS.ABS_PATH_EXEMPT_MARKER in line:
+                continue
+            for kind in _developer_path_kinds(line):
+                offenders.append(f"{name}:{lineno} [{kind}] {line.strip()[:80]}")
+    assert not offenders, (
+        "exempt file(s) carry a hardcoded absolute developer path, which no "
+        "scanner opens and which cannot be correct in any destination repo:\n"
+        + "\n".join(f"    {o}" for o in offenders)
+    )
 
 
 def test_every_exemption_carries_a_reason():

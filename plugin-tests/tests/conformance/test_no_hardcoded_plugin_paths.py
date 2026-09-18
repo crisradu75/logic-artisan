@@ -231,11 +231,28 @@ def test_the_scan_is_not_vacuous():
     # nothing is missing, and it carries exactly the protection `.json` had
     # before `REQUIRED_SUFFIXES` existed — none. Not hypothetical, and `.sh` is
     # the live candidate: issue #254 added it to the TOKEN scanner (see
-    # `_iter_scanned_source_files`) and deliberately did NOT add it here, because
-    # the one shipped `.sh` carries no install path and the case for this scanner
-    # was never made. Should it ever be added, it is one file against a floor
-    # margin of one — so the count could not see it dropped again, and only this
-    # assertion plus a `REQUIRED_SUFFIXES` entry would.
+    # `_iter_scanned_source_files`) and did NOT add it here.
+    #
+    # THE CASE FOR ADDING IT HERE NOW EXISTS, and #254 is what made it — saying
+    # otherwise would repeat the mistake that change is about. That change moved
+    # ~37 lines of hand-written English into `hooks/probe-python.sh` on the stated
+    # argument that prose in an unscanned file is a leak surface. That argument
+    # does not stop at project tokens: prose about hook WIRING is exactly the
+    # prose that would spell `.claude/plugins/cla/hooks/...`, which is this
+    # scanner's whole subject.
+    #
+    # DECLINED, for now, with the reason rather than by omission. The file
+    # carries no such literal today — `grep -c '\.claude/plugins/cla'
+    # .claude/plugins/cla/hooks/probe-python.sh` prints 0 — so this is a gap, not
+    # a live defect, and the suffix would be this scanner's fifth for one file.
+    # What tips it is the SHAPE of the risk, not its size: the token scanner's
+    # widening was forced by prose that had already moved, while here nothing has
+    # moved yet. Revisit the moment that grep returns non-zero, or the moment any
+    # second `.sh` ships.
+    #
+    # Should it ever be added, it is one file against a floor margin of one — so
+    # the count could not see it dropped again, and only this assertion plus a
+    # `REQUIRED_SUFFIXES` entry would.
     #
     # Containment, not equality of the reached set — so this stays independent of
     # the filesystem and does not re-introduce the tautology.
