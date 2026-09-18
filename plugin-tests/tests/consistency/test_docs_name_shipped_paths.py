@@ -124,22 +124,57 @@ _PATH_SHAPED = re.compile(r"[A-Za-z0-9._][A-Za-z0-9._/-]*")
 # explicit-prefix pattern outright left 20+ bare `skills/…` hits, so the total
 # stayed over its floor and the mutant survived. The channels fail
 # independently, so they are floored independently. Set below the counts they
-# were measured at — 10 prefixed, 30 bare, 6 retired names, 22 tree entries
-# across 3 diagrams — and not at them, so an ordinary doc edit does not fail a
-# guard whose subject is not doc size. The command behind those four numbers:
+# were measured at — 10 prefixed, 30 bare, 6 retired names — and not at them, so
+# an ordinary doc edit does not fail a guard whose subject is not doc size. The
+# command behind every number in this block, including the two per-document maps:
 #
 #   python3 -c "import importlib.util as u; \
 #     s=u.spec_from_file_location('g','plugin-tests/tests/consistency/test_docs_name_shipped_paths.py'); \
 #     m=u.module_from_spec(s); s.loader.exec_module(m); \
 #     sh=m._tracked_shipped_paths(); b=m._bare_prefixes(sh); \
-#     c={k:sum(len(m._named_paths(p.read_text(encoding='utf-8'),b)[k]) \
-#        for p in m._DOCS.values()) for k in ('prefixed','bare')}; \
-#     print(c, len(m._retired_top_level_names()), \
-#           sum(len(v) for v in m._published_tree_entries().values()))"
+#     n={k:m._named_paths(p.read_text(encoding='utf-8'),b) for k,p in m._DOCS.items()}; \
+#     print({k:len(v['prefixed'])+len(v['bare']) for k,v in n.items()}); \
+#     print({k:sum(len(v[c]) for v in n.values()) for c in ('prefixed','bare')}); \
+#     print(len(m._retired_top_level_names()), \
+#           {k:len(v) for k,v in m._published_tree_entries().items()})"
 _MIN_PREFIXED_PATHS = 5
 _MIN_BARE_PATHS = 15
 _MIN_RETIRED_NAMES = 4
-_MIN_TREE_ENTRIES = 12
+
+# PER DOCUMENT, because a total across documents is the same mistake one axis
+# over. The per-channel split above exists because one combined number could not
+# notice half the extraction dying; a number summed over four documents cannot
+# notice one DOCUMENT dropping out, and the docs are not the same size — the root
+# `README.md` contributes 2 paths against the plugin README's 13, so it could go
+# to zero and leave a four-document total barely moved.
+#
+# Measured per document at 13 / 2 / 12 / 13 (plugin README, README,
+# DEVELOPER-GUIDE, CLAUDE), by the command in the block below. The root README's
+# floor is deliberately 1 rather than a larger round number: it genuinely names
+# almost no plugin paths in PROSE, and its real coverage is its tree diagram,
+# floored separately. A floor is a tripwire for an extraction that died, not a
+# target for how much a document should say.
+_MIN_PATHS_PER_DOC = {
+    "plugin README.md": 8,
+    "README.md": 1,
+    "DEVELOPER-GUIDE.md": 7,
+    "CLAUDE.md": 8,
+}
+
+# The documents that MUST carry a published-tree diagram, and the floor for each.
+# A map rather than a total, and the keys are the load-bearing part: a document
+# whose block stops parsing simply vanished from the old aggregate — the shipped
+# README's diagram could go unguarded with the suite green, because the other two
+# still cleared a combined floor of 12. Measured at 6 / 8 / 8.
+#
+# `DEVELOPER-GUIDE.md` is absent on purpose: it carries no tree diagram today. If
+# it grows one, add it here — and until then its six fenced blocks are exactly
+# the input that `_fenced_blocks` exists to keep out of this parse.
+_DIAGRAM_FLOORS = {
+    "plugin README.md": 4,
+    "README.md": 5,
+    "CLAUDE.md": 5,
+}
 
 
 def _git(*args: str) -> str:
@@ -273,14 +308,39 @@ def _named_paths(text: str, bare_prefixes: frozenset[str]) -> dict[str, set[str]
     return found
 
 
-def _fenced_lines(text: str):
+def _fenced_blocks(text: str):
+    """Each fenced code block, as its own list of lines.
+
+    BLOCKS, not a flat stream of fenced lines, and the distinction is a defect
+    that was found rather than designed around. `_published_tree_entries` tracks
+    whether it is under the `.claude/plugins/cla/` marker, and it clears that
+    state on an unindented line — so with the delimiters stripped and the blocks
+    concatenated, a LATER block whose first line happened to be indented two
+    spaces would be read as more tree entries, having never seen an unindented
+    line to reset on. `DEVELOPER-GUIDE.md` already carries six fenced blocks and
+    escapes only because it has no tree diagram to start the state off; that is
+    luck, not design. A block boundary is a hard reset here.
+    """
+    block: list[str] = []
     fenced = False
     for line in text.splitlines():
         if line.lstrip().startswith("```"):
+            if fenced:
+                yield block
+                block = []
             fenced = not fenced
             continue
         if fenced:
-            yield line
+            block.append(line)
+    if fenced and block:
+        # Unterminated fence: yield what there is rather than silently dropping
+        # it, so a malformed document is visible to the floors instead of empty.
+        yield block
+
+
+def _fenced_lines(text: str):
+    for block in _fenced_blocks(text):
+        yield from block
 
 
 def _published_tree_entries() -> dict[str, list[str]]:
@@ -310,22 +370,55 @@ def _published_tree_entries() -> dict[str, list[str]]:
     per_doc: dict[str, list[str]] = {}
     for label, path in _DOCS.items():
         entries: list[str] = []
-        inside = False
-        for line in _fenced_lines(path.read_text(encoding="utf-8")):
-            if not line.startswith(" "):
-                fields = line.split()
-                inside = bool(fields) and fields[0] == marker
-                continue
-            if not inside:
-                continue
-            if not re.match(r"^ {2}\S", line):
-                continue
-            token = line.strip().split()[0].split("<")[0].rstrip("/")
-            if token:
-                entries.append(token)
+        for block in _fenced_blocks(path.read_text(encoding="utf-8")):
+            # Reset PER BLOCK — see `_fenced_blocks` for the defect this closes.
+            inside = False
+            for line in block:
+                if not line.startswith(" "):
+                    fields = line.split()
+                    inside = bool(fields) and fields[0] == marker
+                    continue
+                if not inside:
+                    continue
+                if not re.match(r"^ {2}\S", line):
+                    continue
+                token = line.strip().split()[0].split("<")[0].rstrip("/")
+                if token:
+                    entries.append(token)
         if entries:
             per_doc[label] = entries
     return per_doc
+
+
+_TAGLESS_REMEDY = (
+    "this checkout derived NO retired top-level names, so the bare-reference "
+    "half of the extraction is inert and the migration notes stopped being "
+    "seen. The exemptions are almost certainly still correct — do NOT delete "
+    f"them. Fetch the release tags instead (`git fetch --tags`); "
+    "`test_the_retired_name_set_is_derived_and_non_empty` is the same diagnosis"
+)
+
+
+def _stale_notes_message(stale, retired) -> str:
+    """The message for unclaimed `_RETIREMENT_NOTES` entries.
+
+    Split out from the assertion so the tag-less branch can be tested directly
+    rather than by arranging a tag-less checkout. It exists because the obvious
+    message is actively harmful in one reachable case: on a shallow clone,
+    `--no-tags`, or a fresh fork, `_retired_top_level_names()` is empty, the
+    migration-note paths stop being extracted, and every exemption goes
+    unclaimed at once — where "drop the exemption with it" would delete correct
+    work to silence a checkout problem. Same condition, opposite remedy, so the
+    condition has to be named rather than inferred from the list.
+    """
+    listed = ", ".join(f"{d} -> {p}" for d, p in stale)
+    if not retired:
+        return f"{_TAGLESS_REMEDY}. Unclaimed entries: {listed}"
+    return (
+        "`_RETIREMENT_NOTES` entries whose document no longer names that path: "
+        f"{listed} — the note was deleted or reworded, so drop the exemption "
+        "with it"
+    )
 
 
 def test_every_plugin_path_named_in_the_docs_actually_ships():
@@ -338,10 +431,12 @@ def test_every_plugin_path_named_in_the_docs_actually_ships():
     shipped = _tracked_shipped_paths()
     bare = _bare_prefixes(shipped)
     counts = {"prefixed": 0, "bare": 0}
+    per_doc_counts: dict[str, int] = {}
     failures = []
     claimed_notes: set[tuple[str, str]] = set()
     for label, path in _DOCS.items():
         named = _named_paths(path.read_text(encoding="utf-8"), bare)
+        per_doc_counts[label] = sum(len(t) for t in named.values())
         for channel, tokens in named.items():
             counts[channel] += len(tokens)
             for token in sorted(tokens):
@@ -360,12 +455,19 @@ def test_every_plugin_path_named_in_the_docs_actually_ships():
             "stopped matching how the docs write paths, so this guard is passing "
             "vacuously over it"
         )
-    stale = sorted(set(_RETIREMENT_NOTES) - claimed_notes)
-    assert not stale, (
-        "`_RETIREMENT_NOTES` entries whose document no longer names that path: "
-        + ", ".join(f"{d} -> {p}" for d, p in stale)
-        + " — the note was deleted or reworded, so drop the exemption with it"
+    thin = {
+        label: (per_doc_counts.get(label, 0), floor)
+        for label, floor in _MIN_PATHS_PER_DOC.items()
+        if per_doc_counts.get(label, 0) < floor
+    }
+    assert not thin, (
+        "document(s) below their own extraction floor: "
+        + ", ".join(f"{d} {got} < {floor}" for d, (got, floor) in sorted(thin.items()))
+        + " — a per-document floor exists because a total across four documents "
+        "cannot notice ONE of them dropping out"
     )
+    stale = sorted(set(_RETIREMENT_NOTES) - claimed_notes)
+    assert not stale, _stale_notes_message(stale, _retired_top_level_names())
     assert not failures, "\n".join(failures)
 
 
@@ -399,11 +501,20 @@ def test_no_published_tree_diagram_lists_an_entry_that_does_not_ship():
     """
     shipped = _tracked_shipped_paths()
     per_doc = _published_tree_entries()
-    total = sum(len(v) for v in per_doc.values())
-    assert total >= _MIN_TREE_ENTRIES, (
-        f"read only {total} entries from {len(per_doc)} published-tree diagram(s) "
-        f"(floor {_MIN_TREE_ENTRIES}) — the blocks' shape changed and this guard "
-        "is no longer reading them"
+    unparsed = {
+        label: (len(per_doc.get(label, ())), floor)
+        for label, floor in _DIAGRAM_FLOORS.items()
+        if len(per_doc.get(label, ())) < floor
+    }
+    assert not unparsed, (
+        "published-tree diagram(s) that stopped parsing, or shrank below their "
+        "floor: "
+        + ", ".join(
+            f"{d} {got} < {floor}" for d, (got, floor) in sorted(unparsed.items())
+        )
+        + " — a document whose block stops parsing simply DISAPPEARS from a "
+        "combined total, which is how the shipped README's diagram could go "
+        "unguarded with the suite green. Floored per document for that reason."
     )
     failures = [
         f"{label}: the published-tree diagram lists `{entry}`, which does not ship"
@@ -412,3 +523,58 @@ def test_no_published_tree_diagram_lists_an_entry_that_does_not_ship():
         if entry not in shipped
     ]
     assert not failures, "\n".join(failures)
+
+
+def test_a_fenced_block_boundary_resets_the_diagram_parser():
+    """A later block cannot inherit the previous one's "inside the tree" state.
+
+    Asserted on synthetic input because the real documents do not exercise it
+    TODAY — `DEVELOPER-GUIDE.md` has six fenced blocks and no tree diagram, and
+    the diagrams elsewhere happen to be followed by blocks whose first line is
+    unindented. That is luck: it holds until someone writes a shell block whose
+    first line is indented two spaces after a diagram, at which point its lines
+    would be read as published entries and checked against the shipped tree.
+    A latent defect with no failing input is exactly what a unit test is for.
+    """
+    doc = (
+        "```\n"
+        f"{_PUBLISHED_PREFIX}\n"
+        "  skills/\n"
+        "```\n"
+        "\n"
+        "```bash\n"
+        "  conformance-checks/tests\n"
+        "```\n"
+    )
+    blocks = list(_fenced_blocks(doc))
+    assert len(blocks) == 2, f"expected two blocks, got {len(blocks)}: {blocks}"
+    assert blocks[0] == [_PUBLISHED_PREFIX, "  skills/"]
+    assert blocks[1] == ["  conformance-checks/tests"]
+
+
+def test_a_tagless_checkout_is_told_to_fetch_tags_not_to_delete_exemptions():
+    """The one case where the obvious message destroys correct work.
+
+    Without the release tags the retired-name set is empty, the bare channel
+    stops seeing the migration notes, and EVERY exemption goes unclaimed at
+    once. The ordinary reading of that — "the note was deleted, so drop the
+    exemption" — is exactly wrong there: the notes are intact and the checkout
+    is the problem. Asserted directly rather than by arranging a tag-less clone,
+    which is why `_stale_notes_message` is a function and not an inline string.
+    """
+    stale = sorted(_RETIREMENT_NOTES)
+    assert stale, "no exemptions to reason about — this test has lost its subject"
+
+    tagless = _stale_notes_message(stale, frozenset())
+    assert "git fetch --tags" in tagless
+    assert "do NOT delete" in tagless
+    assert "drop the exemption" not in tagless, (
+        "the tag-less branch still tells the reader to delete exemptions that "
+        "are correct"
+    )
+
+    # The ordinary branch must still give the ordinary remedy, or fixing the
+    # message above would have traded one wrong instruction for another.
+    ordinary = _stale_notes_message(stale, frozenset({"conformance-checks"}))
+    assert "drop the exemption" in ordinary
+    assert "git fetch --tags" not in ordinary
