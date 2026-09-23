@@ -467,9 +467,9 @@ def test_every_stated_leaf_hook_count_is_the_real_one(name):
             f"{name} no longer states a leaf-hook count (phrase 'leaf hook'); "
             "reword the doc or update this anchor deliberately"
         )
-    # These docs legitimately state TWO numbers around this phrase — the 7 leaves
-    # the dispatchers run, and the 8 leaf hook FILES once the directly-wired
-    # PostToolUse hook is counted. Requiring the real total to appear in ANY such
+    # These docs legitimately state TWO numbers around this phrase — the leaves
+    # the dispatchers run (8 today), and the leaf hook FILES once the
+    # directly-wired PostToolUse hook is counted (9). Requiring the real total to appear in ANY such
     # window keeps the assertion true without forcing one phrasing on the prose.
     claimed = set()
     for m in re.finditer("leaf hook", flat):

@@ -156,7 +156,7 @@ _EXEMPT: dict[str, str] = {
 # The problem this solves. `_guard_areas()` derives areas from the directories
 # present under `mutants/`, so creating `mutants/hooks/` for ONE guard made
 # `hooks` an area and `test_every_guard_file_has_a_mutant_batch_beside_its_scope`
-# demanded a batch for the 12 other guards in `tests/hooks/` at once — none of
+# demanded a batch for the 12 other guards then in `tests/hooks/` at once — none of
 # them exemptable, because the grandfather list above only shrinks. The rational
 # response was to write no batch, so the check discouraged exactly the behaviour
 # it exists to encourage. It already cost one: the batch proving
@@ -164,8 +164,10 @@ _EXEMPT: dict[str, str] = {
 # tree and committed nowhere, so it existed nowhere.
 #
 # `hooks` HAS SINCE BEEN ADOPTED, which is what this mechanism was built for and
-# its first actual use (issue #207). Six guards got a batch in that commit; the
-# other seven are listed below. The `git branch -D` batch exists again.
+# its first actual use (issue #207). Six guards got a batch in that commit and
+# seven were listed below; both counts have moved since, so read the map and
+# `mutants/hooks/` rather than these numbers. The `git branch -D` batch exists
+# again.
 #
 # The line was drawn on SEVERITY rather than on count. What matters is what gets
 # through when a guard is vacuous: a broken block or ask lets a destructive git
@@ -188,7 +190,7 @@ _EXEMPT: dict[str, str] = {
 #     be in an "adopted" set written before it existed, so it is skipped — an
 #     open-ended exemption, which is the opposite of countable debt.
 #   * `{"hooks": frozenset()}` — a one-token slip while landing the first batch —
-#     unpoliced all 13 guards in the area with every test in this file green.
+#     unpoliced all 13 guards then in the area with every test in this file green.
 #   * The decisive one: mutating the skip to `if adopted is not None:`, which
 #     turns the mechanism into a blanket area exemption, passed all five tests
 #     written for it. A branch no test can distinguish from its own opposite is

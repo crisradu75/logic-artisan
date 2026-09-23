@@ -194,8 +194,9 @@ MUTANTS = [
     # Mutant 8 is the INPUT-side one, and it is the only one that establishes the
     # scan actually opens a file it does not already know about. `hooks/` holds
     # no resolver and no group member, so a scan that had quietly stopped
-    # descending there would keep mutants 9 and 10 killed and this one green. The plant is a comment — no behaviour changes, because the check is
-    # a text scan and that is exactly the property being pinned.
+    # descending there would keep mutants 9 and 10 killed and this one green.
+    # The plant is a comment — no behaviour changes, because the check is a
+    # text scan and that is exactly the property being pinned.
     (
         "a sixth file starts resolving the retro ledger dir and nothing notices",
         PLUGIN / "hooks" / "_dispatch_lib.py",
