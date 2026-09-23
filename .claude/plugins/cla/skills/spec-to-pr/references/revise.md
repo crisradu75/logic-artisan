@@ -192,7 +192,8 @@ The two-chain floor is the originating decision's and carries its authority; the
    other route. Back up the fixed file, before any mutant, to the session scratchpad. Copy it
    back after each mutant. Never put a backup anywhere else outside the checkout. A delegate
    briefed per `subagent-brief.md` follows that brief's own mutation route instead. It mutates a
-   scratchpad copy, never the live file. **A test that DOES fail is
+   scratchpad copy, never the live file. Its result is not verified against the live tree. The
+   orchestrator treats it as unverified and runs the mutant itself before committing. **A test that DOES fail is
    not thereby correct: read the assertion that killed the mutant and confirm it states the
    behaviour you want.** A test written from a wrong mental model kills mutants exactly as
    reliably as a right one, and the green result reads as confirmation. Worst where the mutant
