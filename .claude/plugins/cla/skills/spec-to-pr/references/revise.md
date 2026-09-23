@@ -188,10 +188,12 @@ The two-chain floor is the originating decision's and carries its authority; the
    <path>`), then restore each mutant with `git checkout -- <path>`. Unstaged, that checkout
    discards the fix along with the mutant, and so does `git stash`. Re-stage after every further
    edit to the fix, or the next restore reverts that edit. The `ask-destructive-git` hook prompts
-   before this checkout, because the mutated file differs from the index. Unattended, or as a
-   delegate briefed per `subagent-brief.md`, take the other route. Back up the original to the
-   session scratchpad, and copy it back after each mutant. Never put a backup outside the
-   checkout. **A test that DOES fail is
+   before this checkout, because the mutated file differs from the index. Unattended, take the
+   other route. Back up the fixed file, before any mutant, to the session scratchpad. Copy it
+   back after each mutant. Never put a backup anywhere else outside the checkout. A delegate
+   briefed per `subagent-brief.md` follows that brief's own mutation route instead. It mutates a
+   scratchpad copy, never the live file. Its result is not verified against the live tree. The
+   orchestrator treats it as unverified and runs the mutant itself before committing. **A test that DOES fail is
    not thereby correct: read the assertion that killed the mutant and confirm it states the
    behaviour you want.** A test written from a wrong mental model kills mutants exactly as
    reliably as a right one, and the green result reads as confirmation. Worst where the mutant
@@ -201,7 +203,7 @@ The two-chain floor is the originating decision's and carries its authority; the
    Fix a surviving mutant, or name it in the Handoff report with a reason. A clean
    run is evidence about the mutants you thought of and nothing else — two commits in this repo each
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.
-3. Stage + commit as `fix: review round <N>`. The fix-round commit subject is structurally meaningful (it drives `probe_state.py`'s round counter and the round-N-on-fix-diff scoping above). Before staging, verify git-state:
+3. Stage + commit as `fix: review round <N>`. The fix-round commit subject is structurally meaningful (it drives `probe_state.py`'s round counter and the round-N-on-fix-diff scoping above). Before committing, verify git-state:
    ```
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <branch>
    ```
