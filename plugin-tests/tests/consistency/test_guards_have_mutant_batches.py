@@ -171,12 +171,9 @@ _EXEMPT: dict[str, str] = {
 # through when a guard is vacuous: a broken block or ask lets a destructive git
 # operation, an unsafe recursive delete, a cross-worktree write, or a push to the
 # default branch proceed. That covers five of the six — the three blocks,
-# `ask_destructive_git`, and `pre_push`.
-#
-# `log_commit_provenance` is the EXCEPTION and does not fit the scale at all: its
-# own docstring says it never blocks, never warns, and prints nothing on the
-# happy path. It earned a batch for a different reason — PR #204 added two gates
-# to it that were verified by hand and by nothing else.
+# `ask_destructive_git`, and `pre_push`. (The sixth was a commit-provenance
+# logging hook, batched because two of its gates had been verified only by hand;
+# it has since been deleted along with its batch.)
 #
 # A broken warn prints nothing, and warn output never reaches a transcript, so a
 # warn's batch is the only evidence it fires at all. That is an argument for

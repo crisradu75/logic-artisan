@@ -110,16 +110,16 @@ MUTANTS = [
     ),
     (
         # The near-miss the guard's own comment works through: `.mjs` is ONE
-        # file, so dropping it lands on the floor rather than under it (103 - 1
-        # = 102, floor >= 102) and the count cannot see it. Within
+        # file, so dropping it lands on the floor rather than under it (102 - 1
+        # = 101, floor >= 101) and the count cannot see it. Within
         # `test_the_scan_is_not_vacuous` the REQUIRED_SUFFIXES comparison is
         # therefore the ONLY assertion that can catch it, which is the whole
         # reason that second list exists as an independent source rather than
         # being derived from SCANNED_SUFFIXES.
         #
         # SCOPED TO THAT ONE TEST. Against the whole file this mutant also
-        # fails `test_the_recorded_counts_are_the_real_ones` (scanned 102
-        # against a recorded 103), and a kill that could have come from either
+        # fails `test_the_recorded_counts_are_the_real_ones` (scanned 101
+        # against a recorded 102), and a kill that could have come from either
         # proves neither. The claim above is only true of a run scoped this
         # way, and it used to be written as though it were true of the batch.
         "a declared suffix is dropped from the scan without moving the file count below its floor",
@@ -187,10 +187,10 @@ MUTANTS = [
     # These are the exact edits the block at the bottom of this file used to
     # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
     # not, and mutant 7 is the one that shows it. Measured against the re-pinned
-    # floor of `>= 102`:
+    # floor of `>= 101`:
     #
-    #     drop `output-styles`  102 files  clears the floor exactly
-    #     drop `lib`            101 files  fails the floor by one
+    #     drop `output-styles`  101 files  clears the floor exactly
+    #     drop `lib`            100 files  fails the floor by one
     #
     # That asymmetry is an accident of today's file counts and is the argument
     # for the separate list: the floor's stated rule is to be lowered on every
@@ -249,10 +249,10 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 103  .json 3  .md 69  .mjs 1  .py 30  placeholder-refs 237 in 53 files"
+        "    #     scanned 102  .json 3  .md 69  .mjs 1  .py 29  placeholder-refs 233 in 53 files"
         + _NL
         + "    #" + _NL
-        + "    # The real count is 103. Pinned near it, not",
+        + "    # The real count is 102. Pinned near it, not",
         "    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files"
         + _NL
         + "    #" + _NL
@@ -308,6 +308,10 @@ MUTANTS = [
 # `REQUIRED_SUFFIXES` is the only thing that catches it. That is the argument
 # the second list was added to make, and it does not depend on where the floor
 # happens to sit.
+#
+# Since then the floor moved to `>= 101` against a real 102, when the
+# commit-provenance hook was deleted from `hooks/`. The table above is shifted
+# by one file throughout; its shape, and the `.mjs` row's role, are unchanged.
 #
 # THE RECORDS ABOVE ARE NOW CHECKED, not trusted. The guard carries
 # `test_the_recorded_counts_are_the_real_ones`, which re-runs its printer and

@@ -509,8 +509,8 @@ Typical flows: small change → `shape-decision` → `lite-pr`; larger → `shap
 ### Guard hooks (conventions enforced, not just advised)
 
 Wired automatically by `hooks/hooks.json` when the plugin loads — these apply in this repo's own
-sessions too. Two dispatchers run 8 leaf hooks between them; `warn-wholesale-rewrite` and
-`log-commit-provenance` are wired directly on PostToolUse, making 10 leaf hook files in all. Three
+sessions too. Two dispatchers run 8 leaf hooks between them; `warn-wholesale-rewrite` is wired
+directly on PostToolUse, making 9 leaf hook files in all. Three
 severities: **blocks** stop the call, **asks** escalate to a permission prompt, **warns** let it
 through with a caution. Full enumeration and the rationale per hook:
 `.claude/plugins/cla/README.md` and DEVELOPER-GUIDE §8.

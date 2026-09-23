@@ -10,8 +10,8 @@ indistinguishable from a right one at a glance.
 `_runs_dir`, `_load_records`, `_coerce_int`, `_load_ledgers`, `_window` and
 `_fleet_roots` are byte-identical copies shared with `spec_to_pr_aggregate.py` and
 `lib/`, policed by `check_script_drift.py`. Every mutant below is in logic unique
-to this aggregator — `_usable_int`, the effectiveness block, `aggregate_provenance`,
-and `main`'s fleet suppression.
+to this aggregator — `_usable_int`, the effectiveness block, and `main`'s fleet
+suppression.
 
 **Mutants 2 and 3 are the two ways a rate lies, and they lie in opposite
 directions.** Mutant 2 folds `not_exercised` into the denominator, so the rate can
@@ -19,11 +19,6 @@ be improved by growing the checklist — rewarding exactly the bloat the retro
 exists to fight. Mutant 3 turns an EMPTY sample's `None` into `0.0`, so a window
 that measured nothing gets a failing grade and the heuristic fires on no data.
 Neither changes the shape of the output.
-
-**DELIBERATELY NOT A MUTANT:** `elif n > 0:` -> `elif n >= 1:` in
-`aggregate_provenance`. Over integers these agree on every input — a no-op dressed
-as a mutant. (`n > 0` -> `n >= 0` IS killable and is a legitimate alternative if a
-second provenance mutant is ever wanted.)
 
 **Coverage gaps, recorded because a mutant cannot fix them:** bare `--fleet` with
 no path is never exercised; a malformed `maintenance.failure_modes_bullets` value
@@ -79,14 +74,6 @@ MUTANTS = [
         SCRIPT,
         "        drifted.add(key)",
         "        pass  # warned on stderr, that will do",
-        TARGETS,
-    ),
-    (
-        "rows predating the trailer field are scored as failures, so measurement "
-        "adoption falls the further back in history you look",
-        SCRIPT,
-        "            no_field += 1",
-        "            unmeasured += 1",
         TARGETS,
     ),
     (

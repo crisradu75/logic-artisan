@@ -57,21 +57,6 @@ The effectiveness and rung heuristics do not, and here is the argument rather th
 Output is a single JSON object on stdout — the prevention rate, suggestion apply-rate, re-offending lessons, escalation-rung
 distribution, repeatedly-rejected lessons, failure-modes bullet trend, codify-process-issue rate.
 
-**Reading the commit-provenance ledger.** `--provenance` takes one or more `cla.io/retro/commit-provenance.jsonl` paths and adds a `commit_provenance` block:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit 0 \
-  --provenance <repo-a>/cla.io/retro/commit-provenance.jsonl <repo-b>/cla.io/retro/commit-provenance.jsonl
-```
-
-Given **bare**, it resolves for you: with `--fleet`, every listed repo's provenance ledger; without it, this repo's.
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/codify-retro/scripts/codify_aggregate.py --limit 0 --fleet --provenance
-```
-
-That ledger is written automatically by a guard hook on every commit, at no cost in anyone's attention, and until this flag existed nothing read it. It is independent of `--log` — pass either, or both — and it is never sliced by `--limit`, because adoption of a commit-message rule is a property of the whole history rather than of the last N runs.
-
 ### 2. Identify the load-bearing patterns
 
 Don't list every metric. Pick the 2-4 patterns that would actually change the loop. Heuristics:
@@ -79,8 +64,6 @@ Don't list every metric. Pick the 2-4 patterns that would actually change the lo
 **Effectiveness heuristics (the whole point):**
 - **Read `effectiveness.records` first.** It is how many runs carried a Step 2.5 tally at all. If it is `0`, the loop is not yet reporting outcomes and every rate below is unmeasured — say so plainly rather than reading `prevention_rate: null` as bad news. If it is well under `runs_analyzed`, the rate is drawn from that subset, not the window.
 - `effectiveness.prevention_rate` is the share of rules that were actually exercised and **held** — the loop's one outcome measure. Below `0.5` over a window with `records ≥ 5` → escalations are not sticking; the lessons are landing on rungs too weak to change behaviour. Falling across two windows is the same signal, earlier. Rising while `suggestions.proposed` stays flat is the loop working.
-- **Rows written before 2026-09-06 UNDERSTATE the rate, and by a lot — do not trend across that boundary.** The hook read `Measured-by:` as a git trailer, and git recognises only the LAST contiguous `Key: value` block; every commit ends with attribution lines, so a blank line between the measurements and those made the measurements invisible. Measured on the day it was found, by re-reading the commit messages themselves: the fleet's ledger said 59 of 228 (0.26) where the messages said 133 (0.58), and one repo logged 0.0 against a real 0.67. The hook now scans the whole message. A rate that appears to jump at that date is the fix landing, not behaviour changing.
-- **`commit_provenance.measurement_rate`** (only present when you pass `--provenance`) is the same effectiveness question asked of a rule the loop already escalated — "name the command behind a measurement claim" — but counted by a hook rather than self-reported, which is what makes it worth reading beside `prevention_rate`. Below `0.5` → the rule is stated in `CLAUDE.md` and a consistency guard and is still not reaching commits; that is a routing problem, not a reminder problem. Read `no_trailer_field` next to it: those rows predate the trailer and are excluded from the denominator on purpose. `by_skill` shows which skill drove each commit, so a rate that is poor only where `skill` is `none` means the orchestrated paths are fine and hand-driven commits are the gap.
 - **`apply_rate` is not an effectiveness signal, and reading it as one is the failure this metric exists to correct.** It says the user agreed, not that the writing worked. Measured 2026-09-05 with `codify_aggregate.py --limit 0 --fleet` over seven listed repo roots, five of which held records: 219 proposed, 219 applied, 0 rejected — a perfect score that measured nothing. Quote `prevention_rate` where you would once have quoted `apply_rate`.
 - A lesson in `re_offenses` with `count ≥ 2` → the artifact it was escalated to is **too weak**; the escalation isn't working. Bump it UP the ladder (memory → hook/script). This is the single most important signal — a re-offense means the prior fix failed.
 - A lesson in `rejected_lessons` with `count ≥ 2` → stop proposing it; **retire** it from `${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/failure-modes.md` (the SKILL.md's Step 6 already says to flag these — verify it's actually happening).

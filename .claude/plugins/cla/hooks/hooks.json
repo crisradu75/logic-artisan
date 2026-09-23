@@ -43,16 +43,6 @@
             "timeout": 15
           }
         ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "PYEXE=; _cla_probe=\"${CLAUDE_PLUGIN_ROOT}/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"${CLAUDE_PLUGIN_ROOT}/hooks/log-commit-provenance.py\"",
-            "timeout": 15
-          }
-        ]
       }
     ]
   }

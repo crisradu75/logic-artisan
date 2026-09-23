@@ -101,8 +101,8 @@ another skill's *reference file* is not calling that skill. `spec-to-pr`'s Revie
 Guard hooks wire themselves via the plugin's own `hooks/hooks.json` when the plugin loads — no
 `settings.json` step. Two dispatchers (one for Bash/PowerShell, one for Edit/Write) each run
 several leaf hooks in one Python process — 8 distinct leaf hooks between them (6 on the
-Bash/PowerShell matcher, 2 on Edit/Write) — plus `warn-wholesale-rewrite` and `log-commit-provenance` wired
-directly on PostToolUse: 10 leaf hook files in all. They run throughout every phase.
+Bash/PowerShell matcher, 2 on Edit/Write) — plus `warn-wholesale-rewrite` wired
+directly on PostToolUse: 9 leaf hook files in all. They run throughout every phase.
 **Blocks** (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt
 instead of blocking outright; **warns** (`warn-*`) surface a caution without blocking.
 

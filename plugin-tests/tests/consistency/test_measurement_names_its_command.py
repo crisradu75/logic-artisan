@@ -12,13 +12,13 @@ No shipped asset referenced it at all. And of the five such checks the project
 states, exactly one has a moment-of-edit mechanism — `hooks/warn-wholesale-rewrite.py`,
 wired on the `Write` matcher in `hooks/hooks.json`, for the rewrote-a-file check.
 
-    ls .claude/plugins/cla/hooks/*.py                          -> 13
+    ls .claude/plugins/cla/hooks/*.py                          -> 12
 
-Thirteen files: ten leaf hooks, two dispatchers and `_dispatch_lib.py`. Reading
-the other nine leaf hooks, none addresses the remaining four checks — they cover
+Twelve files: nine leaf hooks, two dispatchers and `_dispatch_lib.py`. Reading
+the other eight leaf hooks, none addresses the remaining four checks — they cover
 destructive git, `cd` in bash, recursive delete, worktree path escape, heredoc
-escape mangling, stacked-PR merge, stray scratch artifacts, comment date rot, and
-commit provenance. Project guidance loads at session start;
+escape mangling, stacked-PR merge, stray scratch artifacts, and comment date rot.
+Project guidance loads at session start;
 the claims get written hundreds of tool calls later, by which time the rule is out
 of context and the claim already reads as settled.
 
@@ -57,8 +57,8 @@ silently, and the design's honest claim is narrower than enforcement. What it
 buys is that the obligation sits in text read at the moment of committing rather
 than in a file loaded at session start, and that its output is a durable artifact
 a reviewer can falsify later. The adoption question — whether trailers are
-actually being written — is answered by the ledger column in
-`hooks/log-commit-provenance.py`, not here.
+actually being written — is not answered here; `git log --grep '^Measured-by:'`
+over a range answers it on demand.
 
 So the constants below are properties of the rule's WORDING. Each is a
 clause a rewrite could drop while leaving something that still reads like the
@@ -208,20 +208,14 @@ _FAMILY = (
 # keep, and forcing it in would demand a pre-commit chokepoint it has no commit
 # step to attach to.
 #
-# The distinction is producer versus consumer. `codify-retro` READS the ledger the
-# trailer feeds and has to warn that rows written before 2026-09-06 understate the
-# rate — the hook parsed the trailer with git, which sees only the last contiguous
-# `Key: value` block, so a blank line before the attribution lines hid the
-# measurements. It cannot give that warning without naming the field it is about.
+# The distinction is producer versus consumer: an entry here would be a file that
+# only READS trailers. Empty today — its one entry was `codify-retro`, which read
+# a commit-provenance ledger that has since been deleted.
 #
 # Each entry is verified below to still mention the trailer AND still not instruct
 # writing one, so an exemption cannot outlive its reason or quietly cover a file
 # that has since grown a commit step.
-_NAMES_BUT_DOES_NOT_INSTRUCT = {
-    "codify-retro/SKILL.md":
-        "a retro that reads the ledger; it warns about historic rows, and has no "
-        "commit step to hang the rule on",
-}
+_NAMES_BUT_DOES_NOT_INSTRUCT: dict[str, str] = {}
 
 
 def _path(rel: str) -> Path:
