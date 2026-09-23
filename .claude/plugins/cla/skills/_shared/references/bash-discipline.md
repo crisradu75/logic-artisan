@@ -1,6 +1,6 @@
 # Bash-style discipline (hard rules)
 
-These shapes defeat the project's Bash permission allowlist matching. The skill MUST NOT emit them. The same rules also live in the project's root `CLAUDE.md`; this file is the orchestrator's local enforcement reference.
+These shapes defeat the project's Bash permission allowlist matching, or write where the skill must not. The skill MUST NOT emit them. The same rules also live in the project's root `CLAUDE.md`; this file is the orchestrator's local enforcement reference.
 
 ## Forbidden shapes
 
@@ -8,6 +8,7 @@ These shapes defeat the project's Bash permission allowlist matching. The skill 
 - ❌ **Heredoc subshell:** `git commit -m "$(cat <<'EOF' ... EOF)"` for commit messages or PR bodies. Write the message/body to a file and use `git commit -F <file>`.
 - ❌ **Multi-line `--body` argument:** `gh pr create --body "...\n## ..."`. Use `--body-file <path>` (via `gh pr edit --body-file <path>`) — never `Skill(commit-commands:commit-push-pr)`, which this skill deliberately doesn't use (see "When NOT to use `Skill()`" and `design-tradeoffs.md`).
 - ❌ **Long `git add` file lists:** `git add file1 file2 ... file39`. Use a glob or directory: `git add openspec/changes/<name>/`.
+- ❌ **Writing outside the checkout:** `> ../run.log`, `cp <file> ../<file>.bak`. Write captured command output, logs and scratch copies to the session scratchpad. Never write them anywhere else outside the checkout. Never write to `..`, which in a consuming repo holds the user's other projects.
 - ❌ **`git add -A` (or `git add .`).** Always path-scope every staging call. Failure mode: an Archive-phase `git add -A` can sweep untracked files left by a parallel Claude session's in-progress cherry-pick into the archive commit, shipping unrelated content. Even when `git status --porcelain` shows nothing unrelated at the START of the run, an external session can mutate the working tree mid-flow; path-scoped staging makes this impossible.
 
 ## Mandated alternatives
