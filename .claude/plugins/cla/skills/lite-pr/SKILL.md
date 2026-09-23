@@ -155,7 +155,9 @@ One pass. Then:
    is how a real fix here once traded a silent no-op on the default path for the identical no-op on
    the overlay path. Do each one by hand: edit the code so the defect is back, run the affected
    test, confirm it FAILS, then restore the edit exactly — a test that still passes has not been
-   shown to catch anything, and an unrestored edit ships the defect. **A test that DOES fail is
+   shown to catch anything, and an unrestored edit ships the defect. Stage the fix first (`git add
+   <path>`) so `git checkout -- <path>` restores it from the index, or keep the pre-mutation copy
+   in the session scratchpad — never a backup copy outside the checkout. **A test that DOES fail is
    not thereby correct: read the assertion that killed the mutant and confirm it states the
    behaviour you want.** A test written from a wrong mental model kills mutants exactly as
    reliably as a right one, and the green result reads as confirmation. Worst where the mutant

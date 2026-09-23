@@ -8,6 +8,7 @@ These shapes defeat the project's Bash permission allowlist matching. The skill 
 - ❌ **Heredoc subshell:** `git commit -m "$(cat <<'EOF' ... EOF)"` for commit messages or PR bodies. Write the message/body to a file and use `git commit -F <file>`.
 - ❌ **Multi-line `--body` argument:** `gh pr create --body "...\n## ..."`. Use `--body-file <path>` (via `gh pr edit --body-file <path>`) — never `Skill(commit-commands:commit-push-pr)`, which this skill deliberately doesn't use (see "When NOT to use `Skill()`" and `design-tradeoffs.md`).
 - ❌ **Long `git add` file lists:** `git add file1 file2 ... file39`. Use a glob or directory: `git add openspec/changes/<name>/`.
+- ❌ **Writing outside the checkout:** `> ../run.log`, `cp <file> ../<file>.bak`. Captured command output, logs and scratch copies go to the session scratchpad or a gitignored in-repo directory — never outside the checkout, and never to `..`, which in a consuming repo is the user's own folder of sibling projects.
 - ❌ **`git add -A` (or `git add .`).** Always path-scope every staging call. Failure mode: an Archive-phase `git add -A` can sweep untracked files left by a parallel Claude session's in-progress cherry-pick into the archive commit, shipping unrelated content. Even when `git status --porcelain` shows nothing unrelated at the START of the run, an external session can mutate the working tree mid-flow; path-scoped staging makes this impossible.
 
 ## Mandated alternatives
