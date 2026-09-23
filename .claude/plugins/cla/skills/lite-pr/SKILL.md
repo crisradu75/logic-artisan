@@ -126,7 +126,7 @@ The command is a real invocation, not "the test suite" and not an elided one; th
 
 **Session-attribution lines go in the same block as the trailers, with no blank line between them.** `Co-Authored-By:` and `Claude-Session:` sit directly under the last `Measured-by:` line, inside one `-m`. Git parses trailers from the last paragraph only, and that paragraph must be `key: value` lines throughout. Anything else in it — a blank line, a line of prose, a bare `Closes #199` — puts every `Measured-by:` line outside the trailer block. Then `git log --pretty='%(trailers:key=Measured-by,valueonly=true,unfold=true)'` returns nothing.
 
-**Check that it parsed, before the push.** `git log -1 --format=%B | grep -c '^Measured-by:'` and `git log -1 --format='%(trailers:key=Measured-by,valueonly=true,unfold=true)' | grep -c .` must agree — what you wrote against what git's parser sees. Equal passes, including `0` and `0` for a change asserting no measurement. Different means the block is split: `git commit --amend` before pushing. Measured on a controlled pair, a blank line before the attribution lines took three written trailers to **0** parsed. Neither `git log --grep` nor the provenance hook notices — the hook scans the whole message by design — so this command is the only thing that reports it.
+**Check that it parsed, before the push.** `git log -1 --format=%B | grep -c '^Measured-by:'` and `git log -1 --format='%(trailers:key=Measured-by,valueonly=true,unfold=true)' | grep -c .` must agree — what you wrote against what git's parser sees. Equal passes, including `0` and `0` for a change asserting no measurement. Different means the block is split: `git commit --amend` before pushing. Measured on a controlled pair, a blank line before the attribution lines took three written trailers to **0** parsed. `git log --grep` does not notice — it scans the whole message — so this command is the only thing that reports it.
 
 **The trigger is a claim this change asserts, not a check that ran.** The standing pre-ship gates — the test suite, the linters, the conformance scripts every commit runs anyway — are not claims the change puts into the diff or the message, so they earn no trailer. Trailering them turns the block into fixed boilerplate on every commit, and a block that is identical every time stops being read, which costs exactly what this step was added to buy.
 
@@ -187,9 +187,8 @@ Suggestion-level findings: mention them in the final report; no fix applied auto
 Always done, after the final report. Append one counts-only JSON line so this skill's
 runs can be reviewed in aggregate. It was one of three frequently-used skills keeping no
 run data at all; the others are `shape-decision` and `feedback`, given a ledger in the
-same change. No claim is made here about which skill runs most — the only per-skill count
-that exists is the provenance ledger's `by_skill`, and it attributes most commits to no
-skill at all.
+same change. No claim is made here about which skill runs most — no per-skill count
+exists to support one.
 
 ```bash
 echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py lite-pr-runs.jsonl

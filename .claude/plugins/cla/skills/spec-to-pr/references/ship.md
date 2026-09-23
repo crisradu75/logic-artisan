@@ -95,12 +95,12 @@ A bare parse is not enough on its own, which is why this is a comparison. `%(tra
 
 **Nothing else will tell you.** Measured on a controlled pair — three `Measured-by:` lines, once well-formed and once with a blank line before the attribution lines:
 
-| | written | `%(trailers:…)` | `--grep '^Measured-by:'` | hook records |
-|---|---|---|---|---|
-| well-formed | 3 | 3 | finds it | 3 |
-| blank line before attribution | 3 | **0** | finds it | 3 |
+| | written | `%(trailers:…)` | `--grep '^Measured-by:'` |
+|---|---|---|---|
+| well-formed | 3 | 3 | finds it |
+| blank line before attribution | 3 | **0** | finds it |
 
-So `git log --grep` still finds a broken block, and so does the provenance hook — it scans the whole message rather than git's parser, and that is deliberate. This broke once at fleet scale before the hook was changed: the ledger read 59 of 228 measurements where the commit messages held 133, and one repo logged 0.0 against a real 0.67. The hook was made immune; the block itself still breaks, and now nothing reports it.
+So `git log --grep` still finds a broken block, but anything reading git's trailer parser does not. This broke once at fleet scale: a counter built on the parser read 59 of 228 measurements where the commit messages held 133, and one repo logged 0.0 against a real 0.67. The block itself still breaks, and nothing reports it.
 
 List every touched `apps/*/src/`/`packages/*/src/` path explicitly — a change scoped to one app stages just that app's `src/`; a change touching a shared package plus its consumer stages both. If your change legitimately touches other top-level paths (e.g. a per-app stylesheet, a smoke-test script, a config file, root `TODO.md`, a sub-app's own doc file, or — for a `.claude/`-meta change — the specific harness files it edited **inside this repo** (never a path in the installed plugin tree, which is outside the repo and not stageable at all) — see `cla.io/overlays/spec-to-pr.md` for this repo's worked examples), add each by name on the same `git add` line — never expand to `-A`. No commit-msg file; the change name is enough.
 
