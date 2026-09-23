@@ -185,8 +185,13 @@ The two-chain floor is the originating decision's and carries its authority; the
    the overlay path. Do each one by hand: edit the code so the defect is back, run the affected
    test, confirm it FAILS, then restore the edit exactly — a test that still passes has not been
    shown to catch anything, and an unrestored edit ships the defect. Stage the fix first (`git add
-   <path>`) so `git checkout -- <path>` restores it from the index, or keep the pre-mutation copy
-   in the session scratchpad — never a backup copy outside the checkout. **A test that DOES fail is
+   <path>`), then restore each mutant with `git checkout -- <path>`. Unstaged, that checkout
+   discards the fix along with the mutant, and so does `git stash`. Re-stage after every further
+   edit to the fix, or the next restore reverts that edit. The `ask-destructive-git` hook prompts
+   before this checkout, because the mutated file differs from the index. Unattended, or as a
+   delegate briefed per `subagent-brief.md`, take the other route. Back up the original to the
+   session scratchpad, and copy it back after each mutant. Never put a backup outside the
+   checkout. **A test that DOES fail is
    not thereby correct: read the assertion that killed the mutant and confirm it states the
    behaviour you want.** A test written from a wrong mental model kills mutants exactly as
    reliably as a right one, and the green result reads as confirmation. Worst where the mutant

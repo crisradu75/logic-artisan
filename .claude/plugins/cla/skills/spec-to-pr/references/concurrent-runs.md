@@ -17,7 +17,7 @@ git worktree add <worktrees-dir>/<change> -b <branch> origin/<base-branch>
 - The worktree is created **on `<branch>`**, so Ship's branch preflight takes the "already on `<branch>`" path (skips collision-check + checkout) — see the Ship stub's branch-preflight invariant (full recipe in `references/ship.md`).
 - **existing-change mode:** the change dir must already be committed (so `git worktree add` from `<base-branch>` includes it). **description / explore-result mode:** the artifacts are created inside the worktree during Propose — fine.
 - The two runs are fully isolated: different worktrees, different HEADs, different change dirs. Shared-file merge conflicts are limited to append-only `cla.io/retro/spec-to-pr-runs.jsonl` and `TODO.md` (trivial "keep both lines" resolutions if both PRs touch them).
-- **Cleanup:** the worktree persists after the run (the session lives in it). After the PR merges, remove it from the primary clone: `git worktree remove <worktrees-dir>/<change>` (the branch is already deleted by `gh pr merge --delete-branch`).
+- **Cleanup:** the worktree persists after the run (the session lives in it). After the PR merges, remove it from the primary clone: `git worktree remove <worktrees-dir>/<change>` (the branch is already deleted by `gh pr merge --delete-branch`). Then confirm the folder is gone, following `${CLAUDE_PLUGIN_ROOT}/skills/multi-pr/references/cleanup.md` step 3. Read `<worktrees-dir>` there in place of `.claude/worktrees`.
 
 ## The orchestrator vs. its own live delegate
 
