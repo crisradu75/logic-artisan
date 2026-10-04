@@ -95,6 +95,8 @@ For each change in the confirmed order:
    This is the live set's **parse integrity after any edit**, including edits that never touch a delta — the measured instance was a hand-filled TBD `## Purpose`, with no delta involved. It is not the same check as diffing a `## MODIFIED Requirements` block against the live spec for silently dropped scenarios, which is a separate concern.
 
 5. **Merge (only under the "merge before dependents" policy).** Once the change is genuinely done (Tier A clean, Tier B findings resolved per step 4, live spec set clean per step 4b):
+
+   **First confirm the PR is still mergeable** — the base branch moves while a long change is in flight. Run `gh pr view <#> --json mergeable,mergeStateStatus`, re-polling for up to ~30 s while it reads `UNKNOWN` (GitHub recomputes it asynchronously). On `CONFLICTING` / `DIRTY`: `git fetch origin <base-branch>`, then **merge** `origin/<base-branch>` into the feature branch (never a rebase or force-push), resolve per the existing show-before-applying rule, re-run the full Test gate and step 4b's `openspec validate --specs --strict` on the merged tree, push, and record in the running notes that the base moved and which files conflicted. Then return to the top of this step. GitHub starts no `pull_request` CI run for a conflicting PR, so **when no CI run exists for the final head after a few polls, run this check — never keep waiting** (GitHub issue #286).
    ```
    ALLOW_PR_MERGE=1 gh pr merge <#> --squash --delete-branch
    ```
