@@ -66,11 +66,14 @@ If there are zero hits across all symbols, return exactly:
 No stale references found.
 ```
 
-**Then, ALWAYS, one accounting footer line — hits or not:**
+**Then, ALWAYS, one accounting footer line — hits or not — followed by one line per supplied symbol:**
 
 ```
 Scanned: <N> files from <M> supplied paths/globs. Unresolved: <the supplied entries that matched zero files, or "none">.
+- `<symbol>`: <hit count>
 ```
+
+A per-symbol count of zero is a claim the caller re-checks with its own search, so report the count your Grep actually returned, never an estimate.
 
 The footer is what makes the zero-hit line falsifiable: `No stale references found. / Scanned: 0
 files ...` tells the caller the sweep searched nothing, which is a dispatch error to fix — not a
