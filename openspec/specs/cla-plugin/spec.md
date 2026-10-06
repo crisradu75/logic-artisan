@@ -531,7 +531,7 @@ The refresh skill SHALL additionally **document, in its own SKILL.md, the entry 
 - **AND** it does not scaffold the `cla.io/` directory tree of ledgers/inboxes or empty overlay stubs, which remain `cla-init`'s role
 - **AND** the skill-specific authored body of a per-skill overlay is not owned by the refresh skill
 
-#### Scenario: Onboarding order is documented
+#### Scenario: Refresh skill documents the onboarding order
 
 - **WHEN** the plugin's onboarding is documented
 - **THEN** the refresh skill's SKILL.md and `cla-init`'s SKILL.md state the order: marketplace install → `cla-init` → `/cla:sync-context`
@@ -2712,7 +2712,7 @@ The review size gate SHALL NOT count design decisions, however headed, and SHALL
 
 ### Requirement: Every new or modified scenario names its proof
 
-Each scenario a change adds, or whose text it changes, SHALL have a test task whose test carries a `scenario: <spec> / <heading>` comment line, or a tasks.md line `manual: <heading>: <reason>`. A pure heading rename, and a scenario carried forward unchanged in a MODIFIED block, SHALL be exempt. Scenario headings SHALL be unique within one spec, so `<spec> / <heading>` names one scenario.
+Each scenario a change adds, or whose text it changes, SHALL have a test task whose test carries a `scenario: <spec> / <heading>` comment line, or a tasks.md line `manual: <heading>: <reason>`. A pure heading rename, and a scenario carried forward unchanged in a MODIFIED block, SHALL be exempt.
 
 #### Scenario: Authoring a scenario
 
@@ -2724,6 +2724,10 @@ Each scenario a change adds, or whose text it changes, SHALL have a test task wh
 - **WHEN** a change renames a scenario heading and leaves the scenario's body unchanged
 - **THEN** the renamed scenario needs no new test task or `manual:` line
 
+### Requirement: Scenario headings are unique within one spec
+
+Scenario headings SHALL be unique within one spec, so `<spec> / <heading>` names one scenario. An authoring agent that adds a scenario whose heading another scenario in that spec already has SHALL rename the new heading.
+
 #### Scenario: Authoring a heading that is already taken
 
 - **WHEN** an authoring agent adds a scenario whose heading already names another scenario in that spec
@@ -2731,17 +2735,25 @@ Each scenario a change adds, or whose text it changes, SHALL have a test task wh
 
 ### Requirement: A scenario with no proof is an Important finding
 
-A change review SHALL report as an Important finding a scenario the change adds or rewrites that has neither a test task nor a `manual: <heading>: <reason>` line, and a scenario heading the change adds that repeats one in the same spec. It SHALL report a test task that names no `scenario:` marker as a Suggestion.
+A change review SHALL report as an Important finding a scenario the change adds or rewrites that has neither a test task nor a `manual: <heading>: <reason>` line.
 
 #### Scenario: A scenario with no proof
 
 - **WHEN** a delta adds a scenario and tasks.md has neither a test task for it nor a `manual: <heading>: <reason>` line
 - **THEN** the review reports an Important finding naming the scenario
 
+### Requirement: A repeated scenario heading is an Important finding
+
+A change review SHALL report as an Important finding a scenario heading the change adds that repeats another scenario heading in the same spec.
+
 #### Scenario: A repeated scenario heading
 
 - **WHEN** a delta adds a scenario whose heading already names another scenario in the same spec
 - **THEN** the review reports an Important finding naming the heading
+
+### Requirement: A test task naming no marker is a Suggestion
+
+A change review SHALL report as a Suggestion, which SHALL NOT block the verdict, a test task that does not name the `scenario: <spec> / <heading>` comment its test will carry.
 
 #### Scenario: A test task that names no marker
 
