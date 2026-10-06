@@ -103,6 +103,10 @@ _COLLECTION_NAMES = frozenset(
         # findings, not bookkeeping, and precisely the silent-drop the
         # per-document map replaced a combined total to catch.
         "unparsed",
+        # `unquoted` arrived with `test_cla_init_rules_match_config.py` and was
+        # caught on the full-suite run of that change. It holds the rules-block
+        # items YAML would read as a mapping — findings.
+        "unquoted",
     }
 )
 

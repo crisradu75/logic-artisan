@@ -166,6 +166,60 @@ def test_implement_complete(tmp_repo: Path, monkeypatch):
     assert result["implement"] is True
 
 
+def _status(apply_requires, artifacts):
+    """An `openspec status --json` payload with `isComplete: false`.
+
+    The shape is the one openspec 1.14.1 printed for a change with no
+    design.md: design stays "ready", so `isComplete` never turns true.
+    """
+    payload = {"isComplete": False, "isPlanningComplete": False, "artifacts": artifacts}
+    if apply_requires is not None:
+        payload["applyRequires"] = apply_requires
+    return subprocess.CompletedProcess([], 0, json.dumps(payload), "")
+
+
+_NO_DESIGN = [
+    {"id": "proposal", "status": "done"},
+    {"id": "specs", "status": "done"},
+    {"id": "design", "status": "ready"},
+    {"id": "tasks", "status": "done"},
+]
+
+
+def _probe_with(monkeypatch, status):
+    monkeypatch.setattr(probe_state, "_run", _stub_run({
+        ("openspec", "status", "--change", "demo", "--json"): status,
+        REPO_VIEW_KEY: REPO_VIEW_FAIL,
+    }))
+    return probe_state.probe("demo")
+
+
+# scenario: cla-plugin / Resume on a change with no design.md
+def test_implement_ready_without_design(tmp_repo: Path, monkeypatch):
+    """Scenario: Resume on a change with no design.md."""
+    make_change(tmp_repo, "demo")
+    result = _probe_with(monkeypatch, _status(["tasks"], _NO_DESIGN))
+    assert result["implement"] is True
+
+
+# scenario: cla-plugin / Required artifact not done
+def test_implement_not_ready_when_a_required_artifact_is_not_done(tmp_repo: Path, monkeypatch):
+    """Scenario: Required artifact not done."""
+    make_change(tmp_repo, "demo")
+    artifacts = [dict(a, status="ready") if a["id"] == "tasks" else a for a in _NO_DESIGN]
+    result = _probe_with(monkeypatch, _status(["tasks"], artifacts))
+    assert result["implement"] is False
+
+
+# scenario: cla-plugin / No applyRequires
+@pytest.mark.parametrize("apply_requires", [None, []], ids=["missing", "empty"])
+def test_implement_not_ready_without_apply_requires(tmp_repo: Path, monkeypatch, apply_requires):
+    """Scenario: No applyRequires — `all([])` must not read as ready."""
+    make_change(tmp_repo, "demo")
+    result = _probe_with(monkeypatch, _status(apply_requires, _NO_DESIGN))
+    assert result["implement"] is False
+
+
 def test_branch_present_and_ahead(tmp_repo: Path, monkeypatch):
     commit_on_branch(tmp_repo, "feature/demo", "first feature commit")
     monkeypatch.setattr(probe_state, "_run", _stub_run({

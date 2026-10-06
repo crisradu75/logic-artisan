@@ -83,10 +83,10 @@ per-tier model count first, and that is a change to the script, not to this file
 (Effort itself is only dialable on the Revise round-1 `Workflow` fan-out — see `model-routing.md`'s mechanism table — so an "effort too low" pattern can only be acted on there; everywhere else the lever is the *model* tier or the session model, not effort.)
 
 **Review-phase heuristics:**
-- `review_size_gate.large / runs_analyzed ≥ 0.6` → small-change gate (a≤5 ∧ b≤20 ∧ c=1) no longer captures modal change shape. Bump thresholds.
-- `review_verdicts.READY / runs_analyzed ≥ 0.8` with low aggregate `important` counts → checklist may be weakening. Spot-check 2 recent READY PRs by hand; restate any retired check.
-- `review_verdicts.RETHINK / runs_analyzed ≥ 0.2` → design conversations starting too late. Hoist recurring RETHINK triggers into a `/opsx:propose` pre-check.
-- `review_verified_claims.mean < 3` AND `review_verified_claims.n ≥ runs_analyzed / 2` → `### Verified claims` section going silent. Restate "≥3 positive verifications" rule. (Ignore when `n` is small — mostly nulls poisoning the mean.)
+- `review_size_gate.large / (review_size_gate.small + review_size_gate.large) ≥ 0.6` (a Review skipped for multi-spec logs no gate, so divide by the gated runs, not `runs_analyzed`) → small-change gate (a≤5 ∧ b≤20 ∧ c=1) no longer captures modal change shape. Bump thresholds.
+- `review_verdicts.READY / (sum of review_verdicts) ≥ 0.8` with low aggregate `important` counts → checklist may be weakening. Spot-check 2 recent READY PRs by hand; restate any retired check.
+- `review_verdicts.RETHINK / (sum of review_verdicts) ≥ 0.2` → design conversations starting too late. Hoist recurring RETHINK triggers into a `/opsx:propose` pre-check.
+- `review_verified_claims.mean < 1` AND `review_verified_claims.n ≥ runs_analyzed / 2` → `### Verified claims` section going silent. There is no quota to restate any more (the checklist dropped it), so spot-check 2 recent reports for a sweep that verified nothing it should have. (Ignore when `n` is small — mostly nulls poisoning the mean.)
 
 **Schema-integrity heuristics (act before trusting the others):**
 - `skipped_records > 0` → producer is writing malformed JSONL; the rest of the analysis runs on a shrunken sample.

@@ -3,8 +3,8 @@
 `probe_state.py` is resume detection: it decides what an interrupted run has
 already done. Every failure here is expensive in the same direction — work that
 WAS done reads as not done and gets redone, or work that was NOT done reads as
-done and gets skipped. The second is worse, and mutants 1, 3, 6 and 7 are all
-that shape.
+done and gets skipped. The second is worse, and mutants 1, 3, 6, 7, 9 and 10
+are all that shape.
 
 **Mutants 2 and 3 look like one mutant and are not.** The round counter must be
 BOTH deduped and a distinct-count rather than a max: a set-to-list refactor
@@ -120,6 +120,32 @@ MUTANTS = [
         SCRIPT,
         "        if not cwd_is_dir:",
         "        if False:",
+        TARGETS,
+    ),
+    (
+        # `all([])` is True, so without the emptiness guard every change whose
+        # status lacks `applyRequires` reads as ready and Implement is skipped.
+        "a missing or empty applyRequires reads as ready, so a resume skips "
+        "Implement for a change whose artifacts were never checked",
+        SCRIPT,
+        "    if not isinstance(required, list) or not required:",
+        "    if not isinstance(required, list):",
+        TARGETS,
+    ),
+    (
+        "a required artifact that is only `ready` counts as done, so a change "
+        "with unwritten tasks reads as ready to implement",
+        SCRIPT,
+        '    return all(status.get(r) == "done" for r in required)',
+        '    return all(status.get(r) in ("done", "ready") for r in required)',
+        TARGETS,
+    ),
+    (
+        "the applyRequires fallback is dropped, so a change with no design.md "
+        "never reads as ready and every resume re-runs Implement onward",
+        SCRIPT,
+        "    required = data.get(\"applyRequires\")",
+        "    required = None",
         TARGETS,
     ),
     (

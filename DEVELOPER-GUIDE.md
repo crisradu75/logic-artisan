@@ -129,7 +129,7 @@ When a change is too big to hold in one prompt, CLA drives it through OpenSpec (
 `opsx:*` skills) instead of skipping the thinking:
 
 1. **`multi-spec`** — turn a shaped decisions doc into a batch of full OpenSpec proposals
-   (`proposal.md`/`design.md`/`tasks.md`/`specs/` each), authored and committed one change at a
+   (`proposal.md`, `tasks.md` and spec deltas; `design.md` only on a stock trigger), authored and committed one change at a
    time. It stops at proposals — nothing is implemented yet.
 
    ```

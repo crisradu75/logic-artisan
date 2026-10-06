@@ -120,10 +120,16 @@ this; oversize records exit 1).
   `aggregate.py`'s `version_bump_misses` metric stays schema-compatible. See `cla.io/overlays/spec-to-pr.md`
   for this repo's concrete answer.
 - On Review: `size_gate` (`"small"` or `"large"`) and `verdict` (`"READY"` / `"FIX FIRST"` /
-  `"RETHINK"`) are ALWAYS required, in both small and large mode. Unknown strings get bucketed into
-  `review_size_gate_unknown` / `review_verdicts_unknown` and surface as drift.
-- On Review: `verified_claims_count` is required (the retro skill's "Verified-claims section going
-  silent" heuristic depends on it).
+  `"RETHINK"`) are required whenever the checklist ran, in both small and large mode. Unknown
+  strings get bucketed into `review_size_gate_unknown` / `review_verdicts_unknown` and surface as
+  drift.
+- On Review: `verified_claims_count` is required whenever the checklist ran (the retro skill's
+  "Verified-claims section going silent" heuristic depends on it).
+- On a Review that skipped the checklist because `/cla:multi-spec` already reviewed the change:
+  `status: "skip"` with `reason: "reviewed by multi-spec: <verdict>"`, naming the verdict its
+  `review.json` record gave (`READY` or `FIX FIRST`), and NO `size_gate`, `verdict`,
+  `verified_claims_count` or `agents`. The aggregator counts a missing field as absent, so a skip
+  never reads as a small-mode review.
 - `report_chars` (every phase, optional-additive) — the character count of THIS phase's final
   user-facing report text (the printed summary shown to the user for that phase, not the internal
   reasoning or any sub-agent transcript). A cheap verbosity proxy that `aggregate.py` computes per
