@@ -127,7 +127,17 @@ def _implement_done(change_name: str) -> bool:
         print(f"openspec status emitted non-JSON output ({exc.msg}); treating as not-complete",
               file=sys.stderr)
         return False
-    return bool(data.get("isComplete", False))
+    if data.get("isComplete"):
+        return True
+    # A change with no design.md never reports `isComplete` (design stays
+    # "ready"), yet OpenSpec applies it once every `applyRequires` artifact is
+    # done. A missing or empty list is not ready: `all([])` would say it is.
+    required = data.get("applyRequires")
+    if not isinstance(required, list) or not required:
+        return False
+    status = {a.get("id"): a.get("status")
+              for a in data.get("artifacts") or [] if isinstance(a, dict)}
+    return all(status.get(r) == "done" for r in required)
 
 
 _base_branch_cache: str | None = None

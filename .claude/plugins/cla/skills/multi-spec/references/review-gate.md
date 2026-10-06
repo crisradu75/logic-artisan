@@ -2,7 +2,7 @@
 
 Adapts `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` — this repo's single source of truth for change review — from its single-change shape to a whole-batch dispatch. Reuse its verification checks, agent prompts, model routing, and verdict rubric **verbatim**; only the scope (one change → N changes in one dispatch) and the report grouping (by change name) differ. Do not fork a second review methodology — if the checklist changes, this adaptation should be re-read, not independently maintained.
 
-## Why one dispatch for the whole batch, not N single-change reviews
+## Why one review for the whole batch, not N single-change reviews
 
 Two reasons, both from the real precedent this skill automates:
 
@@ -11,11 +11,11 @@ Two reasons, both from the real precedent this skill automates:
 
 ## Step 1 — Skip this whole gate for a batch of exactly 1
 
-If the plan (`references/plan-schema.md`) has only one change, there is no cross-change staleness class to catch — invoke the single-change `review-change` checklist directly on that one change instead of this adaptation. This is the only case where the size gate below doesn't apply (a batch of 1 is never "large" in review-change's own sense, but it's also not what this adaptation exists for).
+If the plan (`references/plan-schema.md`) has only one change, there is no cross-change staleness class to catch — invoke the single-change `review-change` checklist directly on that one change instead of this adaptation. Its own size gate then decides inline or dispatch.
 
 ## Step 2 — Read artifacts and pre-gather facts, across every change
 
-Read every change's `openspec/changes/<name>/{.openspec.yaml,proposal.md,design.md,tasks.md,specs/*/spec.md}` — batch the reads into as few messages as possible (all N changes' artifacts in one parallel batch, same "maximize parallelism in pre-gathering" rule the checklist itself states).
+Read every change's `openspec/changes/<name>/{.openspec.yaml,proposal.md,design.md,tasks.md,specs/*/spec.md}` — design.md and `specs/` may be absent (design.md is written only on a stock trigger; a `skip_specs` change has no delta), and an absent one reads as "(absent)", never as an incomplete change. Batch the reads into as few messages as possible (all N changes' artifacts in one parallel batch, same "maximize parallelism in pre-gathering" rule the checklist itself states).
 
 Run the same high-yield checks **per change** — note that `0a`–`0e` and `0j`–`0l` live in `checklist.md` itself; only the domain-specific checks (`0f`–`0i`) and the allocation-math/i18n/mock-data checks (1–9) live in the project overlay `cla.io/overlays/review-change.md`, which the checklist reads alongside itself. Read that overlay here too, or the batch gate silently skips exactly the repo-specific checks (the overlay's domain-specific 0f–0i and 1–9 checks) that catch the most repo-specific defects. Then add one check this adaptation introduces:
 
@@ -23,11 +23,16 @@ Run the same high-yield checks **per change** — note that `0a`–`0e` and `0j`
 
 Build ONE context brief covering all N changes (same table format as the checklist, with a `Change` column prepended so findings are attributable).
 
-## Step 3 — Size gate: always treat as "large" (skip the small-change path)
+## Step 3 — Size gate, per change
 
-A batch that reached this gate already has ≥2 changes each with their own full artifact set — this is never the checklist's "small change" case. Always proceed to the 3-agent dispatch.
+Apply the checklist's Step 3 size gate to **each** change on its own counts. Then:
 
-## Step 4 — Dispatch three agents, once, over the whole batch
+- **Every change grades small** → no dispatch. Review the batch inline: the per-change checks above, B1 across the batch, and the checklist's weight and proof checks, then go to Step 5.
+- **Any change grades large** → Step 4, one dispatch over the whole batch, so B1 still sees every change at once.
+
+Record each change's grade in the batch report.
+
+## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large)
 
 Same model routing as `review-change/references/checklist.md` Step 4, per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s "Review-agent dispatch" table:
 
@@ -38,13 +43,13 @@ Use the same three agent prompts verbatim from the checklist, with these adaptat
 
 - **"Change:"** becomes a list of all N change names.
 - **"Affected area:"** becomes the union of affected apps/packages across the batch.
-- **Content fields** (Proposal/Design/Tasks/Delta specs content) carry the FULL text of every change's corresponding artifact, clearly delimited by a `## Change: <name>` heading per change, so the agent can attribute findings to the right one.
+- **Content fields** (Proposal/Design/Tasks/Delta specs content) carry the FULL text of every change's corresponding artifact, or "(no design.md)" / "(skip_specs)" where it is absent, clearly delimited by a `## Change: <name>` heading per change, so the agent can attribute findings to the right one.
 - **Add check B1** (cross-change cross-reference verification) to each agent's existing check list, framed the same way the checklist frames its own domain-specific checks.
 - **Output format** — same line kinds as the checklist, including its `- [Open] …` kind for a row that carries no severity, but each line is prefixed with `[<change-name>]` so Phase 4's fix-application step can route each finding to the right change directory: `- [<change-name>] [Critical/Important/Suggestion] Issue description`, and `- [<change-name>] [Open] <what could not be settled>: <what it would take to settle it>`. **The mandatory sweep row is emitted once per change, with the prefix** — `- [<change-name>] [Open] swept for claim shapes: …` — because Step 5 groups this section by change and the checklist treats a change with no sweep row as one where the sweep was skipped. One unprefixed row for the whole batch leaves N-1 changes looking unswept..
 
 ## Step 5 — Aggregate and report, grouped by change
 
-Same deduplication and report shape as the checklist's Step 6, with one addition: group the `### Fix before implementing` / `### Fix during implementation` / `### Suggestions` / `### Open questions` sections by `[<change-name>]` prefix so Phase 4's fix step can work through them change-by-change. Compute the READY / FIX FIRST / RETHINK verdict **per change** (a batch can have one change RETHINK-worthy while the rest are READY — do not collapse to a single batch-wide verdict, since Phase 4's fix step needs to know which specific change(s) need edits).
+Same deduplication and report shape as the checklist's Step 5, with one addition: group the `### Fix before implementing` / `### Fix during implementation` / `### Suggestions` / `### Open questions` sections by `[<change-name>]` prefix so Phase 4's fix step can work through them change-by-change. Compute the READY / FIX FIRST / RETHINK verdict **per change** (a batch can have one change RETHINK-worthy while the rest are READY — do not collapse to a single batch-wide verdict, since Phase 4's fix step needs to know which specific change(s) need edits).
 
 ## Step 6 — Verdict integrity
 

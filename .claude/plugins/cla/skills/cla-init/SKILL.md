@@ -1,6 +1,6 @@
 ---
 name: cla-init
-description: "Idempotent, never-clobber project-data scaffolder for the cla plugin: creates a fresh (or partially-scaffolded) repo's cla.io/ tree — decisions/, feedback/, retro/, lessons-learned/ dirs, the empty .jsonl retro ledgers, the feedback/notes.md inbox, the lessons-learned log — and seeds skeleton cla.io/overlays/<skill>.md stubs for skills that consume one. Creates only what's missing; never overwrites or re-seeds what already exists, so it's safe to re-run anytime. Does NOT wire the plugin manifest or settings (stays manual). Triggers on /cla:cla-init or natural language like 'scaffold cla.io', 'initialize the cla plugin data', 'onboard this repo to cla', 'set up the cla project data'."
+description: "Idempotent, never-clobber project-data scaffolder for the cla plugin: creates a fresh (or partially-scaffolded) repo's cla.io/ tree — decisions/, feedback/, retro/, lessons-learned/ dirs, the empty .jsonl retro ledgers, the feedback/notes.md inbox, the lessons-learned log — and seeds skeleton cla.io/overlays/<skill>.md stubs for skills that consume one, plus OpenSpec authoring rules in a missing openspec/config.yaml (printed for pasting when the file exists). Creates only what's missing; never overwrites or re-seeds what already exists, so it's safe to re-run anytime. Does NOT wire the plugin manifest or settings (stays manual). Triggers on /cla:cla-init or natural language like 'scaffold cla.io', 'initialize the cla plugin data', 'onboard this repo to cla', 'set up the cla project data'."
 argument-hint: "(no args — scaffolds the current repo)"
 allowed-tools: Bash, Read, Grep, Glob
 ---
@@ -174,10 +174,54 @@ Substitute `<skill>` per skill. The stub seeds the **full menu** of fact-categor
 categories the `cla-plugin` "Per-skill project-context overlay" requirement enumerates); the human
 filling it in prunes the sections the skill doesn't use.
 
+### 6. OpenSpec authoring rules — `openspec/config.yaml`
+
+The one path outside `cla.io/` this skill writes, and it is still project data. OpenSpec injects a
+config's `rules:` into every artifact's authoring instructions, so the block below is how OpenSpec's
+own stock limits reach every CLA authoring run.
+
+- `openspec/` exists and neither `openspec/config.yaml` nor `openspec/config.yml` does → seed
+  `config.yaml` and report `created`.
+- Either file exists → leave it **byte-identical** and print the block for the user to paste.
+  OpenSpec reads `config.yaml` first, so a new `config.yaml` would silently hide an existing
+  `config.yml`. Never merge or append: never-clobber forbids it, and `openspec init` writes
+  `config.yaml` whenever neither exists, so printing is the common path.
+- `openspec/` absent → print the block and create nothing. `openspec init` owns that directory.
+
+```bash
+CFG="$ROOT/openspec/config.yaml"
+RULES="$(cat <<'EOF'
+rules:
+  proposal:
+    - Keep it to one page. Point to the specs and design instead of restating them.
+  design:
+    - Write design.md only when a stock trigger applies (a cross-cutting change, a new dependency or data model, security, performance or migration complexity, or real ambiguity), and name the trigger.
+    - Never restate the proposal or the specs.
+  specs:
+    - State one behaviour per ADDED requirement in 500 characters or fewer, and put the detail in scenarios.
+    - "A change with no externally visible behaviour change (a refactor, tooling, docs) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
+    - Read existing specs cheaply first (`openspec list --specs`, then `openspec show <id> --type spec --json --no-scenarios`), and read in full only the specs this change touches.
+  tasks:
+    - "Give each ADDED or MODIFIED scenario a test task, or a `manual: <reason>` note."
+EOF
+)"
+if [ -d "$ROOT/openspec" ] && [ ! -e "$CFG" ] && [ ! -e "$ROOT/openspec/config.yml" ]; then
+  printf 'schema: spec-driven\n\n%s\n' "$RULES" > "$CFG"
+  echo "openspec/config.yaml: created"
+else
+  echo "openspec/config.yaml: not written — if the config has no rules: block, add this one by hand:"
+  printf '%s\n' "$RULES"
+fi
+```
+
+Each item that contains `: ` stays double-quoted, or YAML reads it as a mapping and OpenSpec drops
+that artifact's rules.
+
 ## Report
 
 At the end, print a per-target summary — each directory, ledger, seed, and stub as `created` or
-`exists (skipped)` — so a re-run is transparently a no-op on already-present pieces.
+`exists (skipped)` — so a re-run is transparently a no-op on already-present pieces. For
+`openspec/config.yaml`, report `created`, or `not written` followed by the `rules:` block to paste.
 
 ## Non-goals (pinned — never do these)
 
@@ -186,6 +230,7 @@ At the end, print a per-target summary — each directory, ledger, seed, and stu
 - Does **NOT** create, read, or modify `.claude/settings.json` or `.claude/settings.local.json` — also
   manual, per-repo.
 - Does **NOT** read, copy, or modify any asset-core file (a `SKILL.md` body, an agent, a hook). It only
-  *creates a stub file under `cla.io/overlays/`*; it never touches the skill itself, and it could not — the plugin tree is read-only. The asset core arrives with the plugin install.
+  *creates a stub file under `cla.io/overlays/`* (and, as project data, seeds a missing
+  `openspec/config.yaml`); it never touches the skill itself, and it could not — the plugin tree is read-only. The asset core arrives with the plugin install.
 - Does **NOT** fill overlay stubs with real repo facts — stubs stay content-free skeletons; a human (or
   the extraction pass) fills them.

@@ -1,6 +1,6 @@
 ---
 name: multi-spec
-description: "Turn a shape-decision decisions file into a batch of full OpenSpec change proposals (proposal.md/design.md/tasks.md/specs/ each), authored and committed one change at a time so a local-machine crash or accidental delete never loses more than the change in flight, then reviewed once as a batch via review-change's 3-agent dispatch before opening a single PR. Stops at proposals-only — does not implement. Triggers on /cla:multi-spec or natural language like 'turn these decisions into changes', 'author all the proposals from this decisions file', 'batch-propose the shaped decisions'."
+description: "Turn a shape-decision decisions file into a batch of OpenSpec change proposals (proposal.md, tasks.md and spec deltas; design.md only where a stock trigger applies), authored and committed one change at a time so a local-machine crash or accidental delete never loses more than the change in flight, then reviewed once as a batch with review-change's checklist before opening a single PR. Stops at proposals-only — does not implement. Triggers on /cla:multi-spec or natural language like 'turn these decisions into changes', 'author all the proposals from this decisions file', 'batch-propose the shaped decisions'."
 argument-hint: "[decisions-file-path | (empty = most recent under cla.io/decisions/)]"
 ---
 
@@ -68,7 +68,7 @@ For each change in the plan, in dependency order: resume-check it, dispatch the 
 
 ## Phase 4 — Batch review gate
 
-Once every change is authored, validated, and committed, run **one** 3-agent review dispatch over the **whole batch** (same model routing as `review-change`'s checklist: Design Reviewer → opus, Task/Spec-and-Codebase → sonnet). **A batch of exactly one change skips the 3-agent dispatch** and goes straight to the single-change `review-change` checklist instead — there's no cross-change staleness class to catch. Apply every Critical/Important finding, re-validate, and commit the fixes as one follow-up commit **before Phase 5 opens the PR** — this ordering (review-then-PR) is load-bearing, never the reverse. Full dispatch mechanics, agent prompts, and the fix-application/commit recipe: `references/review-gate.md`.
+Once every change is authored, validated, and committed, run **one** review over the **whole batch**. The checklist's size gate grades each change: if any is large, dispatch the three agents once over the batch (same model routing as `review-change`'s checklist: Design Reviewer → opus, Task/Spec-and-Codebase → sonnet); if all are small, review inline. **A batch of exactly one change** goes straight to the single-change `review-change` checklist instead — there's no cross-change staleness class to catch. Apply every Critical/Important finding, re-validate, and commit the fixes as one follow-up commit **before Phase 5 opens the PR** — this ordering (review-then-PR) is load-bearing, never the reverse. Full dispatch mechanics, agent prompts, and the fix-application/commit recipe: `references/review-gate.md`.
 
 ## Phase 5 — Open the PR
 

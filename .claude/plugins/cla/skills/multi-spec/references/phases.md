@@ -44,7 +44,7 @@ Compare the two shas in Claude's own context (do not pipe through `grep`/`awk`).
 ## Phase 5 — open the PR
 
 ```
-gh pr create --title "docs(openspec): <N> <batch-slug> change proposals" --body "Proposals only (all four artifacts each) — not implemented. Changes: <name-1>, <name-2>, .... All pass openspec validate --strict."
+gh pr create --title "docs(openspec): <N> <batch-slug> change proposals" --body "Proposals only — not implemented. Changes: <name-1>, <name-2>, .... All pass openspec validate --strict."
 ```
 Single-line body, no `\n#` sequence (same `gh pr create --body` parser-bug avoidance `/cla:spec-to-pr` documents). Post-check: `gh pr view --json url state` returns `OPEN`.
 

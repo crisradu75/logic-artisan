@@ -249,7 +249,7 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 102  .json 3  .md 69  .mjs 1  .py 29  placeholder-refs 235 in 53 files"
+        "    #     scanned 102  .json 3  .md 69  .mjs 1  .py 29  placeholder-refs 237 in 53 files"
         + _NL
         + "    #" + _NL
         + "    # The real count is 102. Pinned near it, not",

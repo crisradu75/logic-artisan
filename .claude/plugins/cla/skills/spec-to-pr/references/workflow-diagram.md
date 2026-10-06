@@ -28,6 +28,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             │  REVIEW              │   cap: --review-rounds (default 1)
             │  (inline; Agent for  │   ✓ READY / ⚠ FIX FIRST after cap
             │   large changes)     │   sub-Opus + RETHINK-borderline → opus 2nd opinion
+            │                      │   multi-spec-reviewed → skip checklist (2b + retention + doc-sweep only)
             │     ↓                │
             │  APPLY REVIEW FIXES  │   ✓ all-applied / ⚠ partial
             │  (Edit/Write loop)   │
@@ -36,7 +37,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
                        ▼
             ┌──────────────────────┐
             │  IMPLEMENT           │   post-check: openspec status --change <name> --json
-            │  openspec apply      │   ✓ isComplete:true / ⚠ gaps (big change → sonnet delegate)
+            │  openspec apply      │   ✓ artifacts ready + all ticked + named tests exist / ⚠ gaps (big change → sonnet delegate)
             └──────────┬───────────┘
                        │
                        ▼

@@ -20,9 +20,11 @@ Announce: "Reviewing change: **<name>**"
 ## Step 2: Read artifacts and pre-gather facts
 
 Read the change directory at `openspec/changes/<name>/`:
-- `.openspec.yaml`, `proposal.md`, `design.md`, `tasks.md`, `specs/*/spec.md`
+- `.openspec.yaml`, `proposal.md`, `design.md` (when present), `tasks.md`, `specs/*/spec.md`
 
-If `proposal.md` or `design.md` is missing, report incomplete and stop.
+If `proposal.md` is missing, report incomplete and stop. design.md is optional: OpenSpec writes one only when a stock trigger applies. When it is absent, read it as "(absent)" everywhere below. A change with `skip_specs: true` in `.openspec.yaml` has no `specs/` directory, which is also not incomplete.
+
+**Read live specs overview-first.** For context on the existing specification, run `openspec list --specs`, then `openspec show <id> --type spec --json --no-scenarios` for an overview. Read in full, with scenarios, only the capabilities the change's delta touches. The MODIFIED retention comparison still reads the full live requirement.
 
 **Identify the affected app/package(s)** from the proposal's Impact section, then the specific files within it, using the per-change-type **affected-file map in `cla.io/project-facts.md`** ("Affected-file map" — run `/cla:sync-context` to populate it; falls back to the project overlay `cla.io/overlays/review-change.md` ("Affected-file map") if absent) — it lists exactly which files to read for each change type this repo supports (see `cla.io/project-facts.md`'s "Workspace shape" for its app/package list). Confirm the named files exist at the claimed paths, and that the proposal's layer boundaries match the actual data-flow direction.
 
@@ -31,7 +33,7 @@ If `proposal.md` or `design.md` is missing, report incomplete and stop.
 **IMPORTANT: Maximize parallelism in pre-gathering.** Independent reads and greps MUST be batched into single messages with multiple tool calls. Do NOT read files one at a time when they have no dependencies on each other.
 
 Parallel batch 1 — Read all artifacts simultaneously:
-- Read proposal.md, design.md, tasks.md, and all specs/*.md in ONE message
+- Read proposal.md, design.md (if present), tasks.md, and all specs/*.md in ONE message
 
 Parallel batch 2 — After reading artifacts, run ALL verification checks simultaneously. Most verification checks (0a–0l and 1–9 below) require reading source — do so freely; don't gate on the artifacts alone. <!-- enumerates-checks -->
 
@@ -55,17 +57,25 @@ Parallel batch 2 — After reading artifacts, run ALL verification checks simult
 
 0l. **Claim-shape sweep** — Walk the artifacts for the claim shapes named in §"Grounding contract" ("Claim shapes — four sentences that are claims and do not look like claims") and resolve each per that contract. Unlike `0a–0h`, this is not delegable to `fact-gatherer`: each shape returns a judgement — a comparison of two mechanisms, a classification, an assessment of one test's strength against another's — rather than a pass/fail row. **It reports even when clean, in `### Open questions`.** One line on every review that ran it — naming a shape that triggered and how it resolved, or stating that no sentence triggered any shape. Without it, a review where the sweep found nothing prints identically to one where nobody swept. It goes in `### Open questions` rather than `### Verified claims` for two reasons: that section is trimmed to six lines and a nothing-found note is the first thing a trim discards, and it is counted by a downstream alarm watching whether reviews are still producing verifications — a mandatory row would inflate that count and stop the alarm firing.
 
+### Weight and proof checks (always do, on both size-gate paths)
+
+These three are unlettered on purpose: they read the artifacts, not the code. Each one that fires is an **Important** finding. The orchestrator runs them, and Agents 2 and 3 carry them.
+
+- **Size.** A proposal over one page; an ADDED requirement over 500 characters or stating more than one behaviour; any artifact that restates the proposal or the specs instead of pointing to them. A MODIFIED requirement is exempt from the length check, because OpenSpec forbids trimming it outside a change made to split it. The remedy is the cut.
+- **Invented requirement.** A requirement that describes no observable behaviour change, such as a refactor, tooling or docs change written as a SHALL. Remedy: drop it and set `skip_specs: true` in `.openspec.yaml`.
+- **Scenario proof.** Each ADDED or MODIFIED scenario needs a tasks.md test task, or a `manual: <reason>` note, that names it. A scenario with neither is the finding.
+
 ### Applies when the change touches allocation math, mock data, or i18n
 
 These repo-specific checks — verify-"no-changes-needed" claims, file/symbol presence, numeric claims, cross-artifact consistency, **allocation-math integrity** (the load-bearing engine formulas), i18n literal discipline, fixed-ordering discipline, build/typecheck impact, and testing reality — live in the project overlay `cla.io/overlays/review-change.md` ("Applies when the change touches allocation math…"). Apply them for any change touching the engine, the mock dataset, or i18n. (A repo adopting `cla` replaces that overlay with its own domain checks.)
 
 All checks above (generic 0a–0e and 0j–0l here, plus the overlay's 0f–0i and 1–9) are run by the orchestrator (you), not by agents. Record results in the **context brief** below. <!-- enumerates-checks -->
 
-**`0l` is the one exception, and it is deliberate: the orchestrator runs it AND the Step-4 agents carry it.** The other checks resolve a claim to a fact, which one party can do once. `0l` is a *recognition* sweep — it asks whether a sentence is a claim at all — and the party that already decided a sentence was not a claim is the party least able to notice. Two independent passes is the point, not redundancy. Three consequences to hold. The orchestrator's sweep is the **comprehensive** one, because it alone holds every artifact — Agent 1 receives the proposal and design, Agent 3 the delta specs, and `tasks.md` goes only to Agent 2, which carries no shape check; so a shape triggered by a sentence in `tasks.md` is caught by the orchestrator or not at all, and the agents' passes are a second look at what each of them holds rather than full coverage. A shape row the orchestrator resolved does not excuse the agents from their own sweep, and **where the orchestrator's shape finding and an agent's disagree, the Step 6 tie-break applies as written — keep the higher severity.** That rule is worded for two dispatched reports; read the orchestrator's own sweep as a third report for this purpose.
+**`0l` is the one exception, and it is deliberate: the orchestrator runs it AND the Step-4 agents carry it.** The other checks resolve a claim to a fact, which one party can do once. `0l` is a *recognition* sweep — it asks whether a sentence is a claim at all — and the party that already decided a sentence was not a claim is the party least able to notice. Two independent passes is the point, not redundancy. Three consequences to hold. The orchestrator's sweep is the **comprehensive** one, because it alone holds every artifact — Agent 1 receives the proposal and design, Agent 3 the delta specs, and `tasks.md` goes only to Agent 2, which carries no shape check; so a shape triggered by a sentence in `tasks.md` is caught by the orchestrator or not at all, and the agents' passes are a second look at what each of them holds rather than full coverage. A shape row the orchestrator resolved does not excuse the agents from their own sweep, and **where the orchestrator's shape finding and an agent's disagree, the Step 5 tie-break applies as written — keep the higher severity.** That rule is worded for two dispatched reports; read the orchestrator's own sweep as a third report for this purpose.
 
 **Empirical-verification fidelity (when a finding claims RUNTIME or datastore semantics).** Most checks above are static (grep a symbol, read a file). Some findings instead assert *behavior* — "this write can violate a uniqueness constraint depending on row order," "this async path races that one," "this call returns an empty result rather than an error." When you resolve such a finding by *running something* (a scratch query, a throwaway test), the harness MUST structurally mirror the real object: the SAME field/column names, the SAME constraint shape, and — critically — the same *cardinality* on whatever the constraint keys off. The classic self-deception is a stand-in that is accidentally already unique (a primary key, a surrogate id) standing in for a genuinely non-unique grouping value, so the very collision the finding predicts becomes unreachable in the harness and the check "passes" without ever testing anything. **A "verified" claim built on a structurally-wrong harness is worse than an unverified one — it carries false confidence into the next decision.** **When a runtime/datastore-semantics Critical is hard to verify faithfully in a scratch harness, the safest resolution is often to defer adjudication to the change's own implementation test — which is structurally faithful by construction — rather than to a hand-built scratch check.** Any past incident of this shape in THIS repo (with the concrete constraint, the wrong stand-in, and what it let through) belongs in the project overlay `cla.io/overlays/review-change.md` ("Incident history") — read it before relying on a scratch harness here.
 
-**Cost offload for large changes (default — thin-orchestrator discipline).** On a **large** change (per the Step-3 size gate — pre-compute `a`/`b`/`c`/`d` before this step to know, including the complexity-concentration override), the *mechanical* portion of checks 0a–0h (grep a symbol, read a reference/config file, confirm a file/line claim) **defaults to** a dispatch to the read-only `fact-gatherer` agent (haiku) rather than being run inline: hand it the list of artifact claims — **minus any claim that needs a command run** (`fact-gatherer` has no `Bash`, so a row resting on a query, a build, or a test result comes back `unresolved` and looks like a finding; verify those yourself) — and it returns the context-brief rows as a **structured pass/fail table** (each row resolving to verbatim evidence or an explicit NOT-FOUND, per the grounding contract), so the raw greps/reads stay out of the orchestrator's context. **You still adjudicate every ✗ row yourself** — the agent gathers facts, it does not decide whether a failed claim matters. Judgment may keep the mechanical checks inline for a borderline-small change (a dispatch costs more than the checks save on a truly small change), and small changes stay fully inline. This is the `cla-plugin` thin-orchestrator discipline (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`); it is defined here because the checklist is the shared source of truth, so the default **applies to BOTH** the `/cla:spec-to-pr` Review phase AND the standalone `/cla:review-change` path — an intended, shared behavior, not a spec-to-pr-private optimization. Routing rationale: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`. `0l`'s claim-shape sweep sits outside this delegable set — each shape returns a judgement, not a pass/fail row a haiku dispatch could produce.
+**Cost offload for large changes (default — thin-orchestrator discipline).** On a **large** change (per the Step-3 size gate — pre-compute `a`/`b`/`c`/`e` before this step to know, including the complexity-concentration override), the *mechanical* portion of checks 0a–0h (grep a symbol, read a reference/config file, confirm a file/line claim) **defaults to** a dispatch to the read-only `fact-gatherer` agent (haiku) rather than being run inline: hand it the list of artifact claims — **minus any claim that needs a command run** (`fact-gatherer` has no `Bash`, so a row resting on a query, a build, or a test result comes back `unresolved` and looks like a finding; verify those yourself) — and it returns the context-brief rows as a **structured pass/fail table** (each row resolving to verbatim evidence or an explicit NOT-FOUND, per the grounding contract), so the raw greps/reads stay out of the orchestrator's context. **You still adjudicate every ✗ row yourself** — the agent gathers facts, it does not decide whether a failed claim matters. Judgment may keep the mechanical checks inline for a borderline-small change (a dispatch costs more than the checks save on a truly small change), and small changes stay fully inline. This is the `cla-plugin` thin-orchestrator discipline (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`); it is defined here because the checklist is the shared source of truth, so the default **applies to BOTH** the `/cla:spec-to-pr` Review phase AND the standalone `/cla:review-change` path — an intended, shared behavior, not a spec-to-pr-private optimization. Routing rationale: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`. `0l`'s claim-shape sweep sits outside this delegable set — each shape returns a judgement, not a pass/fail row a haiku dispatch could produce.
 
 **Dispatched Review agents return structured output (thin-orchestrator discipline).** The Step-4 review agents, the `fact-gatherer` sweep above, and the `doc-sweeper` sweep (spec-to-pr Review) all return terse, structured output the orchestrator can merge without re-parsing prose — the Step-4 agents' `- [Critical/Important/Suggestion] <issue>` line format IS that schema (severity label + one-line description, one per line), alongside the `- [Open] …` kind for a row that carries no severity, `fact-gatherer` returns the pass/fail table, and `doc-sweeper` returns the `path:line — symbol` hit list. Do NOT accept a prose-essay return in place of the structured shape; it defeats the context economy the dispatch exists for.
 
@@ -145,17 +155,16 @@ Add one row per entry to the context brief, tagged `INHERITED OBLIGATION`, so th
 
 **A pasted token is not a discharge.** The fix for a `VIOLATED` or `NOT ADDRESSED` obligation makes the consumption *implementable*: a `tasks.md` subtask naming the field and what reads it, plus the delta spec when the obligation is a required field or behaviour. Prose in `proposal.md` alone satisfies the grep and changes nothing an implementer does — re-flag an obligation whose only fix was prose, exactly as the subtle-implementation-risk rule below re-flags an artifact fix with no proving-test task.
 
-**Effect on the verdict — this is what makes the field load-bearing rather than decorative.** Every non-`HONOURED` entry is a **Critical** finding, and a report carrying one can never be `READY`; see the verdict rubric's carve-out in Step 6. Without that wiring a report could state `<token>: NOT ADDRESSED` beside `Verdict: READY` and no fix round would ever run.
+**Effect on the verdict — this is what makes the field load-bearing rather than decorative.** Every non-`HONOURED` entry is a **Critical** finding, and a report carrying one can never be `READY`; see the verdict rubric's carve-out in Step 5. Without that wiring a report could state `<token>: NOT ADDRESSED` beside `Verdict: READY` and no fix round would ever run.
 
 **Countability.** One verdict line per supplied entry, no exceptions. Fewer lines than entries means the round did not complete — a missing line is a failed round, not a pass.
 
 ## Step 3: Size gate — decide review mode
 
-Count five things from the artifacts:
+Count four things from the artifacts. Design decisions are deliberately not one of them: counting them let more decision headings buy the 3-agent review.
 - **a** = files listed in the proposal Impact section (Modified + New)
 - **b** = subtasks in tasks.md (count `- [ ]` lines)
 - **c** = capabilities touched (delta spec directories under `specs/`)
-- **d** = design decisions in design.md (count `### D`-heading blocks, or the equivalent enumerated decisions)
 - **e** = verifiable CLAIMS the artifacts make about existing code — every "X already works", "no
   changes needed to Y", "Z has signature W", every named symbol/file/line. Count them from the
   context brief you just built; each row is one claim.
@@ -164,7 +173,7 @@ Count five things from the artifacts:
 - **Small change** — `a ≤ 5` AND `b ≤ 20` AND `c = 1` AND `e < 25` **AND NOT the complexity-concentration override below**:
   - Skip the 3-agent dispatch. The orchestrator IS the reviewer — verification checks in Step 2 already produced the findings. Go straight to Step 5.
   - **If the change carries a `## MODIFIED Requirements` block, run the retention comparison yourself before you do** — `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`. Step 4's item 5 carries it for the large path, and a small change never reaches Step 4; since small is the modal case here, a binding that lives only in the dispatch reaches the minority of reviews. One live-spec read per modified requirement, and it reports on a clean one too.
-  - Announce: "Small change (a=.., b=.., c=.., d=..) — analyzing directly without agent dispatch."
+  - Announce: "Small change (a=.., b=.., c=.., e=..) — analyzing directly without agent dispatch."
 - **Large change** — any of the `a`/`b`/`c`/`e` thresholds exceeded, OR the complexity-concentration override fires:
   - Proceed to Step 4 to dispatch the 3 agents in parallel.
 
@@ -173,11 +182,11 @@ and subtask count both under-weight a docs- or design-heavy change whose risk li
 CLAIMS rather than what it touches: 3 files and 40 claims about existing behaviour grades "small"
 and skips the dispatch, yet every one of those claims is a place the artifact can be wrong about
 the codebase. Treat as **Large** when `e >= 25`, regardless of `a`/`b`/`c`. Announce it the same
-way: "Large change (a=.., b=.., c=.., d=.., e=..) — claim-density override — dispatching 3 agents."
+way: "Large change (a=.., b=.., c=.., e=..) — claim-density override — dispatching 3 agents."
 
-**Complexity-concentration override (a change can be conceptually large while geographically narrow).** File count under-weights a change whose whole weight lands in one already-large file — `a` reads "small" while the change is anything but. Treat as **Large** (dispatch the 3 agents) even when `a ≤ 5`, when the change is concentrated in one or two files AND carries substantial internal complexity: `d ≥ 4` design decisions, OR `b ≥ 15` subtasks. Evidence this is real, not hypothetical: a `seed.ts`-concentrated change gated Small on `a=4`, got the in-context review, and its post-implementation Revise round then surfaced **more** real Important findings (8, zero phantoms) than either genuinely-Large change in the same chain (4 each) — the in-context pass under-covered exactly because the file-count gate said "small." When the override fires, announce it: "Large change (a=.., b=.., c=.., d=..) — complexity-concentration override: {d≥4 decisions | b≥15 subtasks} in {N} file(s) — dispatching 3 agents."
+**Complexity-concentration override (a change can be conceptually large while geographically narrow).** File count under-weights a change whose whole weight lands in one already-large file — `a` reads "small" while the change is anything but. Treat as **Large** (dispatch the 3 agents) even when `a ≤ 5`, when the change is concentrated in one or two files AND carries `b ≥ 15` subtasks. Evidence this is real, not hypothetical: a `seed.ts`-concentrated change gated Small on `a=4`, got the in-context review, and its post-implementation Revise round then surfaced **more** real Important findings (8, zero phantoms) than either genuinely-Large change in the same chain (4 each) — the in-context pass under-covered exactly because the file-count gate said "small." When the override fires, announce it: "Large change (a=.., b=.., c=.., e=..) — complexity-concentration override: b≥15 subtasks in {N} file(s) — dispatching 3 agents."
 
-Modal case in this repo: small. Don't over-engineer a review — but don't let a one-file change with a dozen design decisions masquerade as one either.
+Modal case in this repo: small. Don't over-engineer a review.
 
 ## Step 4: Launch three review agents in parallel (large changes only)
 
@@ -224,7 +233,7 @@ Both leave a prompt with no placeholder text and no injected content. Only readi
 > **Affected area:** <the specific paths from Step 2>
 > **Context brief:** <pre-gathered facts table>
 > **Proposal content:** <full text>
-> **Design content:** <full text>
+> **Design content:** <full text, or "(no design.md)">
 > **Relevant repo-convention doc content:** <inject: the repo's own architecture/convention doc(s) for the affected area, per `cla.io/overlays/review-change.md`>
 >
 > Check:
@@ -260,7 +269,7 @@ Both leave a prompt with no placeholder text and no injected content. Only readi
 > **Affected area:** <the specific app/package + paths from Step 2>
 > **Context brief:** <pre-gathered facts table>
 > **Tasks content:** <full text>
-> **Design content:** <full text>
+> **Design content:** <full text, or "(no design.md)">
 > **Delta specs content:** <full text of each spec>
 >
 > Check:
@@ -278,6 +287,7 @@ Both leave a prompt with no placeholder text and no injected content. Only readi
 > 6. **File annotations** — Does each task list affected files with paths specific enough to grep (full paths, not a bare `src/`)?
 > 7. **Idempotency** — Flag tasks that "create" a file/constant already present or "add" an entity already listed — rewrite as "verify".
 > 8. **i18n parity** — Any task that adds a translation key but updates only one language file (of the correct i18n layer) is incomplete; all must change.
+> 9. **Scenario proof** — Each ADDED or MODIFIED scenario in the delta specs needs a test task or a `manual: <reason>` note that names it. A scenario with neither is **Important**.
 >
 > Output format — one line per issue:
 > - [Critical/Important/Suggestion] Issue description
@@ -294,12 +304,13 @@ Both leave a prompt with no placeholder text and no injected content. Only readi
 > **Affected area:** <the specific app/package + paths from Step 2>
 > **Context brief:** <pre-gathered facts table>
 > **Delta specs content:** <full text of each spec>
-> **Main specs directory:** openspec/specs/
+> **Main specs directory:** openspec/specs/ — list it with `openspec list --specs` and read an overview with `openspec show <id> --type spec --json --no-scenarios`; read in full only the capabilities the delta touches
 > **Source root:** <the affected app's/package's own `src/` per Step 2 — NOT a repo-root `src/`, which may not exist>
 >
 > Check:
 > 1. **Spec requirements vs current code behavior (MOST IMPORTANT):** For each SHALL requirement, verify current code state. Flag where the spec assumes behavior that doesn't exist yet (expected for ADDED Requirements) vs contradicts existing behavior (this is a bug).
 > 2. Spec testability (every SHALL has at least one WHEN/THEN scenario), conflicts with main specs, codebase pattern adherence (<inject: this repo's own architectural/authorization/i18n/styling/typechecking conventions, from `cla.io/overlays/review-change.md`>).
+>    **Size and invented requirements**, each **Important**: an ADDED requirement over 500 characters or stating more than one behaviour (a MODIFIED one is exempt from length); a delta that restates the proposal; a requirement that describes no observable behaviour change (remedy: drop it and set `skip_specs: true`).
 > 3. **Symbol-name accuracy** — For every symbol (function, type, interface, exported constant, component) referenced in a scenario, confirm it exists in the affected `src/` with the claimed name and signature. Wrong symbol names are the single most common bug.
 > 4. **Delta section correctness** — Are spec changes labeled `## ADDED Requirements` / `## MODIFIED Requirements` / `## REMOVED Requirements` correctly? An entirely new capability should be `## ADDED`; modifying an existing requirement should be `## MODIFIED` with both the new text and scenarios.
 > 5. **MODIFIED requirements are complete, AND retain what the live requirement already has.** Any `## MODIFIED Requirements` entry must include the full final requirement text plus its scenarios, not just the diff. That half is author-facing and is not falsifiable from the delta alone — a block carrying 3 of 5 live scenarios satisfies it on its face, because a modified block REPLACES its requirement rather than patching it, so the omission is invisible in the delta. **So compare the block's scenario headings against the live requirement in `openspec/specs/<capability>/spec.md`**, and report the line below per compared requirement. A scenario adjudicated `dropped` is **Critical**: it deletes a live `SHALL` from the specification set, silently, at archive.
@@ -339,26 +350,7 @@ Both leave a prompt with no placeholder text and no injected content. Only readi
 > as Critical/Important/Suggestion to make it fit — that manufactures a problem
 > out of a question, which is the failure this line kind exists to prevent.
 
-## Step 5: Analyze task parallelism
-
-Analyze `tasks.md` for implementation parallelism. Build a dependency graph:
-
-1. For each task group (`## N. heading`), identify:
-   - **Inputs**: files/state that must exist before this group can start
-   - **Outputs**: files/state this group produces
-   - **Dependencies**: which other groups must complete first
-
-2. Identify parallel lanes — groups with no mutual dependencies. The shape of the lanes depends on which app/package the change touches; see `cla.io/overlays/review-change.md` ("Parallelism lane examples") for this repo's worked examples of how the data-layer, i18n/localization, logic/query, and wiring groups typically depend on one another.
-
-3. Produce a parallelism plan showing which groups form parallel lanes:
-   ```
-   Gate:   Group 1 (prerequisite verification)
-   Lane A: Group 2 (data layer) → Group 4 (logic / query layer) → Group 5 (presentation layer)
-   Lane B: Group 3 (i18n / localization) — independent until the presentation layer uses the keys
-   Sync:   All lanes → Group 6 (wiring / composition layer) → Group 7 (smoke/e2e + docs)
-   ```
-
-## Step 6: Aggregate and report
+## Step 5: Aggregate and report
 
 **An `[Open]` line from any agent goes to `### Open questions`, never into a findings section.** Deduplicate open lines the same way as findings — two agents raising the same unsettled question is one row. Deduplicate findings. When multiple findings trace to one root cause, group them: "Root cause: X — fixing this resolves N of M findings."
 
@@ -377,8 +369,8 @@ Print a **compact** report:
 ```
 ## Review: <name>
 
-**Mode:** direct analysis (small change, a=.., b=.., c=.., d=..)   OR
-**Mode:** 3-agent dispatch (a=.., b=.., c=.., d=.., [complexity-concentration override] if it fired) | Design: N | Tasks: N | Specs: N
+**Mode:** direct analysis (small change, a=.., b=.., c=.., e=..)   OR
+**Mode:** 3-agent dispatch (a=.., b=.., c=.., e=.., [complexity-concentration override] if it fired) | Design: N or (absent) | Tasks: N | Specs: N
 
 ### Inherited obligations
 - <token>: HONOURED | VIOLATED | NOT ADDRESSED — <evidence>
@@ -401,21 +393,12 @@ Print a **compact** report:
 ### Suggestions
 - [source] [Critical/Important/Suggestion] Issue description
 
-### Implementation Parallelism
-
-Gate:   ...
-Lane A: ...
-Lane B: ...
-Sync:   ...
-
-Estimated speedup: X groups can run in parallel vs Y sequential
-
 **Verdict: READY / FIX FIRST / RETHINK**
 ```
 
 **Verdict rubric:**
 - **READY** — 0 Critical, 0 Important, **and every Step 2b inherited obligation `HONOURED`.** A non-`HONOURED` entry is a Critical, so it is already excluded by the count — this clause is stated anyway because the verdict is what selects the caller's fix round, and an obligation answered in the report but not reflected in the verdict changes nothing. A report may never pair `NOT ADDRESSED` with `READY`.
-- **FIX FIRST** — ≥1 Critical and/or Important finding, AS LONG AS every one of them (regardless of severity label) can be resolved by editing the artifact text (pinning a wording detail, splitting a task, adding a missing subtask, fixing a count, adding a missing i18n key, threading a prop, correcting a wrong SQL clause, pinning an under-specified value, etc.) without revisiting the design's premise. The number of edits doesn't matter; their *kind* does — and severity label doesn't gate this either: a Critical finding with a concrete, contained, single-edit fix (e.g. "this migration uses the wrong `ON DELETE` clause syntax," "this task bundles two unrelated concerns") is FIX FIRST, not an automatic RETHINK.
+- **FIX FIRST** — ≥1 Critical and/or Important finding, AS LONG AS every one of them (regardless of severity label) can be resolved by editing the artifact text (cutting a restated or redundant section, pinning a wording detail, splitting a task, adding a missing subtask, fixing a count, adding a missing i18n key, threading a prop, correcting a wrong SQL clause, pinning an under-specified value, etc.) without revisiting the design's premise. When a finding can be fixed either by adding text or by cutting it, recommend the cut. The number of edits doesn't matter; their *kind* does — and severity label doesn't gate this either: a Critical finding with a concrete, contained, single-edit fix (e.g. "this migration uses the wrong `ON DELETE` clause syntax," "this task bundles two unrelated concerns") is FIX FIRST, not an automatic RETHINK.
 - **RETHINK** — at least one Critical or Important finding whose fix requires re-opening the design conversation (an unstated assumption about how the allocation math works, a data-flow inversion, a goal/non-goal that needs renegotiation, a genuinely missing architectural decision like "how is this value even obtained"). RETHINK is about *the kind of work needed to resolve the finding*, not about the count OR the severity label. A change with 8 Important (or even 2 Critical) findings that are all "edit this paragraph," "fix this clause," or "add this task" is FIX FIRST; a change with 1 Important finding that says "the whole approach assumes the engine returns X but it returns Y" is RETHINK. **Do not shortcut this to "any Critical → RETHINK"** — that literal reading contradicted this same rubric's own principle in an earlier version and corrupted the `verdict` field's meaning in `/cla:spec-to-pr-retro`'s telemetry (multiple real runs had Criticals that were single-edit fixes, correctly resolved in one Review round, yet got mislabeled RETHINK). Judge by the fix's nature, always.
 
 ### Fixing a "subtle-implementation-risk" finding — the artifact fix MUST add a proving test
@@ -432,14 +415,14 @@ The verdict is the review's whole output; the two ways it silently degrades are 
 
 These are the review analogue of the phantom-finding verification discipline (`/cla:spec-to-pr` Revise): the cost of holding a verdict open one more round is small; the cost of a capitulated READY is a real defect shipped with a green light on it.
 
-### Why `### Verified claims` is mandatory
+### Why `### Verified claims` is printed
 
-Silent "✓" work is invisible to the user — they can't tell whether the reviewer checked 10 things and they all passed, or skipped the check. Emit at least 3 positive verifications per review so the sweep's breadth is legible. This also anchors the report in grounded evidence rather than agent synthesis.
+Silent "✓" work is invisible to the user — they can't tell whether the reviewer checked 10 things and they all passed, or skipped the check. List the load-bearing verifications the review actually made. There is no quota: a padded list is noise, and the `### Open questions` sweep row is what shows the review ran.
 
 ### Report constraints
 
 - One line per finding.
-- **A `[Critical]` or `[Important]` never prints under `### Suggestions`.** Severity is stated twice, by the section and by the label. On a disagreement the finding moves and the label stands; never edit the label down to match the section. The two Fix sections are timing-based, so the move goes to whichever of them the fix's timing warrants. Only the move out of `### Suggestions` is forced. **The cost, stated because this reads as cosmetic:** `spec-to-pr`'s Review loop applies each Critical and Important finding and does nothing with Suggestions. A Critical filed under that heading is **dropped**, not deferred. This is not Step 6's tie-break, which settles two dispatched reports grading one finding differently — that one settles two reviewers, this one settles a single finding's two statements of itself.
+- **A `[Critical]` or `[Important]` never prints under `### Suggestions`.** Severity is stated twice, by the section and by the label. On a disagreement the finding moves and the label stands; never edit the label down to match the section. The two Fix sections are timing-based, so the move goes to whichever of them the fix's timing warrants. Only the move out of `### Suggestions` is forced. **The cost, stated because this reads as cosmetic:** `spec-to-pr`'s Review loop applies each Critical and Important finding and does nothing with Suggestions. A Critical filed under that heading is **dropped**, not deferred. This is not Step 5's tie-break, which settles two dispatched reports grading one finding differently — that one settles two reviewers, this one settles a single finding's two statements of itself.
 - Omit any section with zero findings (don't print empty headers) — **except `### Inherited obligations` (omitted only when the caller supplied no entries) and `### Open questions` (never omitted — and note it can never legitimately read "(none)": the claim-shape sweep runs on every review and always emits its one row, so an empty section means the sweep was skipped, not that nothing was found).** Both are required output fields rather than findings lists. For `### Inherited obligations`, `HONOURED` lines are the answer, not an empty section; for `### Open questions`, the sweep row is — an empty one is evidence the sweep did not run. Dropping either because "there is nothing to fix" removes the evidence that anyone looked.
 - Total report should fit on one screen (~40 lines max).
 - If `Verified claims` would be longer than 6 lines, keep the 6 most load-bearing (the ones directly tied to the artifacts' top claims). **`### Open questions` is not trimmed, and is kept short by grouping rather than by cutting.** Trimming it would delete precisely the rows nobody has resolved, which is the opposite of what a budget should drop first. But one shape resolves *per state*, so a change specifying many demo states can emit many near-identical rows: group those into one row naming the count and the shared reason (`4 demo states: producing paths are added by this change, not yet written`) rather than listing each. Group, never drop.
