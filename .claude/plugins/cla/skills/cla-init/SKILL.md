@@ -202,8 +202,9 @@ rules:
     - State one behaviour per ADDED requirement in 500 characters or fewer, and put the detail in scenarios.
     - "A change with no externally visible behaviour change (a refactor, tooling, docs) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
     - Read existing specs cheaply first (`openspec list --specs`, then `openspec show <id> --type spec --json --no-scenarios`), and read in full only the specs this change touches.
+    - "Keep every scenario heading unique within its spec, so `<spec> / <heading>` names exactly one scenario."
   tasks:
-    - "Give each scenario this change adds, or whose text it changes, a test task or a `manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block needs neither."
+    - "Give each scenario this change adds, or whose text it changes, a test task whose test carries a `scenario: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. A pure heading rename, or a scenario carried forward unchanged in a MODIFIED block, needs neither."
 EOF
 )"
 if [ -d "$ROOT/openspec" ] && [ ! -e "$CFG" ] && [ ! -e "$ROOT/openspec/config.yml" ]; then

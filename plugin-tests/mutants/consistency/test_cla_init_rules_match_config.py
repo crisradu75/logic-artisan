@@ -34,19 +34,33 @@ MUTANTS = [
     (
         # One line, no line ending in the anchor: the config has no eol
         # attribute, so a fresh clone may check it out CRLF.
-        "this repo's config drops the carried-forward exemption cla-init still seeds",
+        "this repo's config drops the rename and carried-forward exemptions cla-init still seeds",
         CONFIG,
-        " note. A scenario carried forward unchanged in a MODIFIED block needs neither.\"",
-        ' note."',
+        "`manual: <heading>: <reason>`. A pure heading rename, or a scenario carried forward "
+        "unchanged in a MODIFIED block, needs neither.\"",
+        '`manual: <heading>: <reason>`."',
+        TARGETS,
+    ),
+    (
+        "cla-init stops seeding the unique-heading rule, so a consumer's markers can "
+        "name two scenarios at once",
+        SKILL,
+        '    - "Keep every scenario heading unique within its spec, so `<spec> / <heading>` '
+        'names exactly one scenario."',
+        "",
         TARGETS,
     ),
     (
         "cla-init unquotes an item containing ': ', so YAML reads it as a mapping",
         SKILL,
-        '    - "Give each scenario this change adds, or whose text it changes, a test task or a '
-        '`manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block needs neither."',
-        "    - Give each scenario this change adds, or whose text it changes, a test task or a "
-        "`manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block needs neither.",
+        '    - "Give each scenario this change adds, or whose text it changes, a test task whose test '
+        "carries a `scenario: <spec> / <heading>` comment line above it, or a line "
+        "`manual: <heading>: <reason>`. A pure heading rename, or a scenario carried forward "
+        'unchanged in a MODIFIED block, needs neither."',
+        "    - Give each scenario this change adds, or whose text it changes, a test task whose test "
+        "carries a `scenario: <spec> / <heading>` comment line above it, or a line "
+        "`manual: <heading>: <reason>`. A pure heading rename, or a scenario carried forward "
+        "unchanged in a MODIFIED block, needs neither.",
         # Only the quoting test: the equality test would kill this one too,
         # which would prove nothing about the quoting check.
         [f"{TARGETS[0]}::test_an_item_with_a_colon_is_quoted"],

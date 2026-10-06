@@ -12,8 +12,9 @@ all. From that section onward the subject is a **gate** — a check whose featur
 detecting something, where a green run is the evidence everyone downstream relies
 on. Writing an ordinary unit test, the opening sections are the whole file for you.
 
-**Which tests a change owes** is set elsewhere: each scenario a change adds or rewrites gets a test task or
-a `manual: <reason>` note (`multi-spec/references/authoring-brief.md`, step 4), and spec-to-pr's
+**Which tests a change owes** is set elsewhere: each scenario a change adds or rewrites gets a test task,
+whose test carries a `scenario: <spec> / <heading>` comment line above it, or a tasks.md line
+`manual: <heading>: <reason>` (`multi-spec/references/authoring-brief.md`, step 4), and spec-to-pr's
 Implement post-check greps for every test a ticked task names.
 
 ## No tautological assertion

@@ -59,11 +59,12 @@ Parallel batch 2 — After reading artifacts, run ALL verification checks simult
 
 ### Weight and proof checks (always do, on both size-gate paths)
 
-These three are unlettered on purpose: they read the artifacts, not the code. Each one that fires is an **Important** finding. The orchestrator runs them, and Agents 2 and 3 carry them.
+These four are unlettered on purpose: they read the artifacts, not the code. Each one that fires is an **Important** finding, except the marker case named under Scenario proof. The orchestrator runs them, and Agents 2 and 3 carry them.
 
 - **Size.** A proposal over one page; an ADDED requirement over 500 characters or stating more than one behaviour; any artifact that restates the proposal or the specs instead of pointing to them. A MODIFIED requirement is exempt from the length check, because OpenSpec forbids trimming it outside a change made to split it. The remedy is the cut.
 - **Invented requirement.** A requirement that describes no observable behaviour change, such as a refactor, tooling or docs change written as a SHALL. Remedy: drop it and set `skip_specs: true` in `.openspec.yaml`.
-- **Scenario proof.** Each scenario the change adds, or whose text it changes, needs a tasks.md test task, or a `manual: <reason>` note, that names it. A scenario with neither is the finding. A scenario carried forward unchanged in a MODIFIED block is exempt.
+- **Scenario proof.** Each scenario the change adds, or whose text it changes, needs a tasks.md test task that names it, or a tasks.md line `manual: <heading>: <reason>`. A scenario with neither is the finding. A pure heading rename and a scenario carried forward unchanged in a MODIFIED block are exempt. A test task that does not name the `scenario: <spec> / <heading>` comment its test will carry is a **Suggestion**, not a blocker.
+- **Repeated scenario heading.** A scenario heading the change adds that already names another scenario in the same spec, live or in the delta. `<spec> / <heading>` must name one scenario. Remedy: rename the new heading.
 
 ### Applies when the change touches allocation math, mock data, or i18n
 
@@ -287,7 +288,7 @@ Both leave a prompt with no placeholder text and no injected content. Only readi
 > 6. **File annotations** — Does each task list affected files with paths specific enough to grep (full paths, not a bare `src/`)?
 > 7. **Idempotency** — Flag tasks that "create" a file/constant already present or "add" an entity already listed — rewrite as "verify".
 > 8. **i18n parity** — Any task that adds a translation key but updates only one language file (of the correct i18n layer) is incomplete; all must change.
-> 9. **Scenario proof** — Each scenario the delta specs add, or whose text they change, needs a test task or a `manual: <reason>` note that names it; one carried forward unchanged in a MODIFIED block is exempt. A scenario with neither is **Important**.
+> 9. **Scenario proof** — Each scenario the delta specs add, or whose text they change, needs a test task that names it or a tasks.md line `manual: <heading>: <reason>`; a pure heading rename, or one carried forward unchanged in a MODIFIED block, is exempt. A scenario with neither is **Important**. A test task that names no `scenario: <spec> / <heading>` marker is a **Suggestion**. A heading the delta adds that repeats another in the same spec is **Important**.
 >
 > Output format — one line per issue:
 > - [Critical/Important/Suggestion] Issue description

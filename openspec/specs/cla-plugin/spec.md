@@ -2712,21 +2712,41 @@ The review size gate SHALL NOT count design decisions, however headed, and SHALL
 
 ### Requirement: Every new or modified scenario names its proof
 
-Each scenario a change adds, or whose text it changes, SHALL have a tasks.md test task or a `manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block SHALL be exempt.
+Each scenario a change adds, or whose text it changes, SHALL have a test task whose test carries a `scenario: <spec> / <heading>` comment line, or a tasks.md line `manual: <heading>: <reason>`. A pure heading rename, and a scenario carried forward unchanged in a MODIFIED block, SHALL be exempt. Scenario headings SHALL be unique within one spec, so `<spec> / <heading>` names one scenario.
 
 #### Scenario: Authoring a scenario
 
 - **WHEN** an authoring agent adds or modifies a scenario
-- **THEN** tasks.md carries a test task or a `manual: <reason>` note for it
+- **THEN** its test carries a `scenario: <spec> / <heading>` comment line above it, or tasks.md carries `manual: <heading>: <reason>` for it
+
+#### Scenario: A pure heading rename
+
+- **WHEN** a change renames a scenario heading and leaves the scenario's body unchanged
+- **THEN** the renamed scenario needs no new test task or `manual:` line
+
+#### Scenario: Authoring a heading that is already taken
+
+- **WHEN** an authoring agent adds a scenario whose heading already names another scenario in that spec
+- **THEN** it renames the new heading so that `<spec> / <heading>` stays unique
 
 ### Requirement: A scenario with no proof is an Important finding
 
-A change review SHALL report a scenario the change adds or rewrites that has neither a test task nor a `manual:` note as an Important finding.
+A change review SHALL report as an Important finding a scenario the change adds or rewrites that has neither a test task nor a `manual: <heading>: <reason>` line, and a scenario heading the change adds that repeats one in the same spec. It SHALL report a test task that names no `scenario:` marker as a Suggestion.
 
 #### Scenario: A scenario with no proof
 
-- **WHEN** a delta adds a scenario and tasks.md has neither a test task for it nor a `manual:` note
+- **WHEN** a delta adds a scenario and tasks.md has neither a test task for it nor a `manual: <heading>: <reason>` line
 - **THEN** the review reports an Important finding naming the scenario
+
+#### Scenario: A repeated scenario heading
+
+- **WHEN** a delta adds a scenario whose heading already names another scenario in the same spec
+- **THEN** the review reports an Important finding naming the heading
+
+#### Scenario: A test task that names no marker
+
+- **WHEN** a test task proves a scenario but does not name the `scenario: <spec> / <heading>` comment its test will carry
+- **THEN** the review reports a Suggestion, which does not block the verdict
 
 ### Requirement: A ticked task that names a test is checked for that test
 
