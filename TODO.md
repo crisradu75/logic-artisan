@@ -4,7 +4,7 @@
 - (none)
 
 **Deferred-Known-Issues** (Important PR-review findings the team consciously deferred):
-- [Important] spec-to-pr's Review skip keys on commit subjects, not on multi-spec's per-change verdict. A change multi-spec graded RETHINK, or whose fixes were never re-reviewed, can skip the second review. A change graded READY in a batch merged with a merge commit gets reviewed twice. — rationale: the fix needs a new per-change verdict record from multi-spec's gate (for example, in the plan JSON). That is a design decision for the user, not a review-round edit. What the skip gives up is recorded in the archived design.md (`openspec/changes/archive/2026-10-07-lighter-openspec-packages/design.md`).
+- (none)
 
 **Suggestions** (low-priority PR-review residue):
 - [Suggestion] `probe_state.py` `_implement_done`: test a required artifact that is absent from `artifacts[]`, and a non-list `applyRequires` (for example `"tasks"`), each with a mutant.

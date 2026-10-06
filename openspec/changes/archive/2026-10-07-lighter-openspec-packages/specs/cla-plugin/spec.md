@@ -117,23 +117,57 @@ spec-to-pr's Implement post-check SHALL search the tree for each test a ticked t
 
 ### Requirement: A change multi-spec already reviewed skips the checklist pass
 
-spec-to-pr's Review SHALL skip the checklist pass when the change directory is clean and its last commit is multi-spec's review-fix commit, or multi-spec's squash-merged PR whose last commit is multi-spec's review-fix or propose commit. It SHALL still run the inherited-obligation check, the MODIFIED-block retention comparison and the doc-sweep, and SHALL log Review as `skip` with the reason.
+spec-to-pr's Review SHALL skip the checklist pass only when the change directory is clean, its files still match the digest in its `review.json`, and that record says READY, or FIX FIRST with every Critical and Important finding applied and none deferred. It SHALL still run the inherited-obligation check, the MODIFIED-block retention comparison and the doc-sweep, and SHALL log Review as `skip` with the verdict it trusted.
 
-#### Scenario: A change merged from a multi-spec PR
+#### Scenario: A change multi-spec passed
 
-- **WHEN** spec-to-pr runs on a change whose directory was last touched by `docs(openspec): 3 batch change proposals (#140)`
-- **AND** PR #140's last commit is `docs(openspec): apply review fixes to batch proposals`
-- **THEN** Review skips the checklist pass and logs `skip` with the reason
+- **WHEN** spec-to-pr runs on a clean change whose files match its `review.json` digest
+- **AND** the record says `FIX FIRST`, `all_applied: true` and no deferred finding
+- **THEN** Review skips the checklist pass and logs `skip` with reason `reviewed by multi-spec: FIX FIRST`
 
-#### Scenario: A squash-merged PR with a later edit
+#### Scenario: A change multi-spec did not pass
 
-- **WHEN** the squash-merged PR's last commit is neither multi-spec's review-fix nor its propose commit
+- **WHEN** the record says `RETHINK`, or `all_applied: false`, or lists a deferred finding
+- **THEN** Review runs the full checklist and reports each deferred finding as a known issue
+
+#### Scenario: A change with no usable review record
+
+- **WHEN** the change has no `review.json`, or it does not parse as JSON
 - **THEN** Review runs the full checklist
 
 #### Scenario: A change edited after multi-spec's review
 
 - **WHEN** a later commit, or an uncommitted edit, touched the change directory
 - **THEN** Review runs the full checklist
+
+#### Scenario: A passed batch merged with a merge commit
+
+- **WHEN** a READY change's proposals PR was merged with a merge commit
+- **THEN** its files still match the record's digest, and Review skips the checklist pass
+
+#### Scenario: An edit squashed in after multi-spec's review
+
+- **WHEN** a commit pushed to the proposals PR after its review edited the change, and the PR was squash-merged
+- **THEN** the change's files no longer match the record's digest, and Review runs the full checklist
+
+### Requirement: multi-spec records each change's review verdict
+
+multi-spec's review gate SHALL write `review.json` into every change directory it reviews, whatever the verdict, in the commit that applies its fixes. The record SHALL state the verdict, whether every Critical and Important finding was applied, each deferred Critical or Important finding, a digest of the reviewed files, and the date.
+
+#### Scenario: A READY change gets a review record
+
+- **WHEN** multi-spec's gate rates a change READY with nothing to fix
+- **THEN** the gate's commit adds that change's `review.json` with `verdict: READY` and `all_applied: true`
+
+#### Scenario: A finding deferred out of scope
+
+- **WHEN** the gate defers an Important finding as out of scope
+- **THEN** the change's record lists it under `deferred` and sets `all_applied: false`
+
+#### Scenario: A review record passes strict validation
+
+- **WHEN** a change directory carries its `review.json`
+- **THEN** `openspec validate <name> --strict` and `openspec archive` still pass
 
 ### Requirement: multi-spec's batch review is size-gated per change
 
