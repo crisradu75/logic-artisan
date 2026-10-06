@@ -90,7 +90,7 @@ The review size gate SHALL NOT count design decisions, however headed, and SHALL
 
 ### Requirement: Every new or modified scenario names its proof
 
-Each ADDED or MODIFIED scenario SHALL have a tasks.md test task or a `manual: <reason>` note.
+Each scenario a change adds, or whose text it changes, SHALL have a tasks.md test task or a `manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block SHALL be exempt.
 
 #### Scenario: Authoring a scenario
 
@@ -99,7 +99,7 @@ Each ADDED or MODIFIED scenario SHALL have a tasks.md test task or a `manual: <r
 
 ### Requirement: A scenario with no proof is an Important finding
 
-A change review SHALL report an ADDED or MODIFIED scenario that has neither a test task nor a `manual:` note as an Important finding.
+A change review SHALL report a scenario the change adds or rewrites that has neither a test task nor a `manual:` note as an Important finding.
 
 #### Scenario: A scenario with no proof
 
@@ -117,7 +117,7 @@ spec-to-pr's Implement post-check SHALL search the tree for each test a ticked t
 
 ### Requirement: A change multi-spec already reviewed skips the checklist pass
 
-spec-to-pr's Review SHALL skip the checklist pass when the change directory is clean and its last commit is multi-spec's review-fix commit, or multi-spec's squash-merged PR whose last commit has a `docs(openspec): ` subject. It SHALL still run the inherited-obligation check, the MODIFIED-block retention comparison and the doc-sweep, and SHALL log Review as `skip` with the reason.
+spec-to-pr's Review SHALL skip the checklist pass when the change directory is clean and its last commit is multi-spec's review-fix commit, or multi-spec's squash-merged PR whose last commit is multi-spec's review-fix or propose commit. It SHALL still run the inherited-obligation check, the MODIFIED-block retention comparison and the doc-sweep, and SHALL log Review as `skip` with the reason.
 
 #### Scenario: A change merged from a multi-spec PR
 
@@ -127,7 +127,7 @@ spec-to-pr's Review SHALL skip the checklist pass when the change directory is c
 
 #### Scenario: A squash-merged PR with a later edit
 
-- **WHEN** the squash-merged PR's last commit has a subject that does not start with `docs(openspec): `
+- **WHEN** the squash-merged PR's last commit is neither multi-spec's review-fix nor its propose commit
 - **THEN** Review runs the full checklist
 
 #### Scenario: A change edited after multi-spec's review

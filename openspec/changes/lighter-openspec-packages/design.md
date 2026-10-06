@@ -9,7 +9,7 @@ Stock trigger: **cross-cutting**. This file records only the decisions the propo
 spec-to-pr skips the checklist pass when the change directory has no uncommitted edits and the last commit touching it (`git log -1 --format=%s -- openspec/changes/<name>/`) is one of:
 
 - `docs(openspec): apply review fixes to <slug> proposals`, which multi-spec writes after its review gate; or
-- `docs(openspec): <N> <slug> change proposals (#<pr>)`, the squash-merge form of multi-spec's PR title, **and** the last commit on that PR (`gh pr view <pr> --json commits`) has a `docs(openspec): ` subject. Without the second check, an edit pushed to the proposals PR after its review would be squashed in unseen.
+- `docs(openspec): <N> <slug> change proposals (#<pr>)`, the squash-merge form of multi-spec's PR title, **and** the last commit on that PR (`gh pr view <pr> --json commits`) is multi-spec's review-fix commit or its `docs(openspec): propose ` commit. Without the second check, an edit pushed to the proposals PR after its review would be squashed in unseen.
 
 Anything else, including `gh` failing, means a full review. A miss costs a review and never skips a check.
 
@@ -23,8 +23,8 @@ What the skip gives up, accepted because issue #291 asks for one artifact review
 
 Named limits:
 
-- The check trusts that a commit with a `docs(openspec): ` subject came from multi-spec. This holds by convention only. No code enforces it.
-- The squash-form check reads only the PR's last commit, and accepts any `docs(openspec): ` subject there, including multi-spec's own `docs(openspec): propose <name>` commit of a batch reviewed READY.
+- The check trusts that a commit with one of multi-spec's subjects came from multi-spec. This holds by convention only. No code enforces it.
+- The squash-form check reads only the PR's last commit.
 - Two cases always miss the skip and get a full review: a single-commit PR squash-merged under that commit's own subject, and a batch reviewed READY and merged with a merge commit, where the last commit touching the change is multi-spec's `docs(openspec): propose <name>`. Each costs a review and never skips one.
 
 Rejected: keying on the review-fix commit alone. This repo squash-merges multi-spec PRs (`d6c99ee`, `573c6bd`), so that commit does not survive, and a batch reviewed READY never writes one. Also rejected: a marker file in the change directory, which would add an artifact to every package.

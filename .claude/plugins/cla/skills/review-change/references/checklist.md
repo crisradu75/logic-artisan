@@ -63,7 +63,7 @@ These three are unlettered on purpose: they read the artifacts, not the code. Ea
 
 - **Size.** A proposal over one page; an ADDED requirement over 500 characters or stating more than one behaviour; any artifact that restates the proposal or the specs instead of pointing to them. A MODIFIED requirement is exempt from the length check, because OpenSpec forbids trimming it outside a change made to split it. The remedy is the cut.
 - **Invented requirement.** A requirement that describes no observable behaviour change, such as a refactor, tooling or docs change written as a SHALL. Remedy: drop it and set `skip_specs: true` in `.openspec.yaml`.
-- **Scenario proof.** Each ADDED or MODIFIED scenario needs a tasks.md test task, or a `manual: <reason>` note, that names it. A scenario with neither is the finding.
+- **Scenario proof.** Each scenario the change adds, or whose text it changes, needs a tasks.md test task, or a `manual: <reason>` note, that names it. A scenario with neither is the finding. A scenario carried forward unchanged in a MODIFIED block is exempt.
 
 ### Applies when the change touches allocation math, mock data, or i18n
 
@@ -215,7 +215,7 @@ Reading the prompt back instead is the failure this replaces. It asks the party 
 **Two failures the grep does not catch**, named so nobody reads a clean run as full coverage:
 
 - a placeholder **deleted** rather than left unfilled;
-- one replaced by a bare "see the overlay" pointer, the failure line 198 names.
+- one replaced by a bare "see the overlay" pointer, the failure the "Injection is mandatory" paragraph below names.
 
 Both leave a prompt with no placeholder text and no injected content. Only reading the composed prompt finds those. This check does not claim to.
 
@@ -287,7 +287,7 @@ Both leave a prompt with no placeholder text and no injected content. Only readi
 > 6. **File annotations** — Does each task list affected files with paths specific enough to grep (full paths, not a bare `src/`)?
 > 7. **Idempotency** — Flag tasks that "create" a file/constant already present or "add" an entity already listed — rewrite as "verify".
 > 8. **i18n parity** — Any task that adds a translation key but updates only one language file (of the correct i18n layer) is incomplete; all must change.
-> 9. **Scenario proof** — Each ADDED or MODIFIED scenario in the delta specs needs a test task or a `manual: <reason>` note that names it. A scenario with neither is **Important**.
+> 9. **Scenario proof** — Each scenario the delta specs add, or whose text they change, needs a test task or a `manual: <reason>` note that names it; one carried forward unchanged in a MODIFIED block is exempt. A scenario with neither is **Important**.
 >
 > Output format — one line per issue:
 > - [Critical/Important/Suggestion] Issue description

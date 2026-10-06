@@ -189,6 +189,7 @@ own stock limits reach every CLA authoring run.
 - `openspec/` absent → print the block and create nothing. `openspec init` owns that directory.
 
 ```bash
+: "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
 CFG="$ROOT/openspec/config.yaml"
 RULES="$(cat <<'EOF'
 rules:
@@ -202,14 +203,22 @@ rules:
     - "A change with no externally visible behaviour change (a refactor, tooling, docs) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
     - Read existing specs cheaply first (`openspec list --specs`, then `openspec show <id> --type spec --json --no-scenarios`), and read in full only the specs this change touches.
   tasks:
-    - "Give each ADDED or MODIFIED scenario a test task, or a `manual: <reason>` note."
+    - "Give each scenario this change adds, or whose text it changes, a test task or a `manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block needs neither."
 EOF
 )"
 if [ -d "$ROOT/openspec" ] && [ ! -e "$CFG" ] && [ ! -e "$ROOT/openspec/config.yml" ]; then
-  printf 'schema: spec-driven\n\n%s\n' "$RULES" > "$CFG"
-  echo "openspec/config.yaml: created"
+  if printf 'schema: spec-driven\n\n%s\n' "$RULES" > "$CFG"; then
+    echo "openspec/config.yaml: created"
+  else
+    echo "openspec/config.yaml: write FAILED; add this block by hand:"
+    printf '%s\n' "$RULES"
+  fi
 else
-  echo "openspec/config.yaml: not written — if the config has no rules: block, add this one by hand:"
+  if [ ! -d "$ROOT/openspec" ]; then
+    echo "openspec/config.yaml: not written, no openspec/ (run openspec init, then add this block):"
+  else
+    echo "openspec/config.yaml: not written, a config exists; if it has no rules: block, add this one:"
+  fi
   printf '%s\n' "$RULES"
 fi
 ```

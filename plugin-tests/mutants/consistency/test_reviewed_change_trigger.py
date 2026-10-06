@@ -16,6 +16,7 @@ SKILLS = PLUGIN / "skills"
 SPEC_TO_PR = SKILLS / "spec-to-pr" / "SKILL.md"
 REVIEW_GATE = SKILLS / "multi-spec" / "references" / "review-gate.md"
 PHASES = SKILLS / "multi-spec" / "references" / "phases.md"
+AUTHORING_BRIEF = SKILLS / "multi-spec" / "references" / "authoring-brief.md"
 
 TARGETS = [DEV / "tests" / "consistency" / "test_reviewed_change_trigger.py"]
 
@@ -45,8 +46,24 @@ MUTANTS = [
         "spec-to-pr stops checking the squashed PR's last commit, so a post-review "
         "edit is skipped unseen",
         SPEC_TO_PR,
-        "`gh pr view <pr> --json commits --jq '.commits[-1].messageHeadline'`, starts with `docs(openspec): `",
+        "`gh pr view <pr> --json commits --jq '.commits[-1].messageHeadline'`, starts with "
+        "`docs(openspec): apply review fixes to ` or `docs(openspec): propose `",
         "the PR title, matches",
+        TARGETS,
+    ),
+    (
+        "spec-to-pr loosens the squash check to any docs(openspec) subject, so a "
+        "post-review docs edit is skipped unseen",
+        SPEC_TO_PR,
+        "starts with `docs(openspec): apply review fixes to ` or `docs(openspec): propose `",
+        "starts with `docs(openspec): `",
+        TARGETS,
+    ),
+    (
+        "multi-spec rewords its propose commit, so a READY batch never skips",
+        AUTHORING_BRIEF,
+        'git commit -m "docs(openspec): propose <name>"',
+        'git commit -m "docs(openspec): add <name>"',
         TARGETS,
     ),
 ]

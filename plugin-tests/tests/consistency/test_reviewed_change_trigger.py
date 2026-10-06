@@ -5,7 +5,9 @@ The skip keys on the subject of the last commit touching a change directory
 squash-merge form of multi-spec's PR title. Both subjects are composed in
 multi-spec's own references — the commit in `review-gate.md`, the PR title in
 `phases.md`. If either side rewords its subject, the other still reads fine and
-the skip silently stops firing, or fires on a subject nothing writes.
+the skip silently stops firing, or fires on a subject nothing writes. The
+squash path also checks the PR's last commit against the review-fix subject
+and the propose subject (`authoring-brief.md`), so those are pinned too.
 
 Scope, stated narrowly: this pins that the subjects agree across the files. It
 does not exercise the skip, which is prose the orchestrator runs.
@@ -19,6 +21,7 @@ _SKILLS = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / 
 _SPEC_TO_PR = _SKILLS / "spec-to-pr" / "SKILL.md"
 _REVIEW_GATE = _SKILLS / "multi-spec" / "references" / "review-gate.md"
 _PHASES = _SKILLS / "multi-spec" / "references" / "phases.md"
+_AUTHORING_BRIEF = _SKILLS / "multi-spec" / "references" / "authoring-brief.md"
 
 # What multi-spec writes, as the reader of the subject sees it.
 _REVIEW_FIX = "docs(openspec): apply review fixes to <slug> proposals"
@@ -48,5 +51,14 @@ def test_spec_to_pr_keys_on_both_subjects():
 
 def test_spec_to_pr_checks_the_squashed_pr_for_a_later_edit():
     text = _read(_SPEC_TO_PR)
-    assert "gh pr view <pr> --json commits" in text
-    assert "starts with `docs(openspec): `" in text
+    # One sentence, so the two halves cannot be satisfied by unrelated lines.
+    assert (
+        "`gh pr view <pr> --json commits --jq '.commits[-1].messageHeadline'`, starts with "
+        "`docs(openspec): apply review fixes to ` or `docs(openspec): propose `"
+    ) in text
+
+
+def test_the_squash_check_names_subjects_multi_spec_writes():
+    # The squash check accepts multi-spec's two last subjects; both must be
+    # what multi-spec actually writes, or a READY batch never skips.
+    assert 'git commit -m "docs(openspec): propose <name>"' in _read(_AUTHORING_BRIEF)
