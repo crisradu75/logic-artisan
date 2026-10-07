@@ -1,7 +1,8 @@
 # run-ledgers — rationale
 
 Why each requirement in `spec.md` exists. The spec states the behaviour; this file keeps the
-evidence and reasoning behind it, moved verbatim when the requirements were compacted (#293).
+evidence and reasoning behind it, moved out when the requirements were compacted (#293) and edited
+only so each section reads on its own.
 Headings name the requirement each section explains.
 
 ## A retro aggregator treats a malformed record as one lost record
@@ -10,7 +11,7 @@ Its input is a ledger every producer writes as prose instructing a model, so a r
 
 ## Shape drift that costs a metric is tallied in the structured output
 
-The two are not alternatives. The rule is deliberately scoped to that class rather than to every warning: an entry-level note that changes no metric is worth a line on stderr and not a counter, and a rule wide enough to cover both would be satisfied by neither. A warning is written to a stream nobody reads after the fact, while the JSON is what the retro reasons from — so a class that only warns is invisible at exactly the moment it matters, and the metric it degraded reads identically to one computed over every record. This is not a new rule: `codify_aggregate.py`'s module docstring already states it, and this requirement makes it binding on both aggregators rather than on whichever one happened to be written more carefully.
+Tallying and warning are not alternatives. The rule is deliberately scoped to drift that costs a metric rather than to every warning: an entry-level note that changes no metric is worth a line on stderr and not a counter, and a rule wide enough to cover both would be satisfied by neither. A warning is written to a stream nobody reads after the fact, while the JSON is what the retro reasons from — so a class that only warns is invisible at exactly the moment it matters, and the metric it degraded reads identically to one computed over every record. This is not a new rule: `codify_aggregate.py`'s module docstring already states it, and this requirement makes it binding on both aggregators rather than on whichever one happened to be written more carefully.
 
 ## A partial sample is visible beside the record count
 
@@ -29,19 +30,21 @@ suggestive rather than a base rate. A default is a cost every run pays and is pr
 rate, so the default stays where it is.
 
 The two-chain floor is the originating decision's own. The eight-change denominator and the majority
-bar are stated judgements rather than measurements, labelled as such so a later pass argues with a
-written number instead of inventing one.
+bar are stated judgements rather than measurements, and SHALL be labelled as such where they appear,
+so a later pass argues with a written number instead of inventing one.
 
 ## The Revise record attributes findings to the round that surfaced them
 
-That condition is not answerable from the run ledger as it stands: the Revise phase record carries
+The reversal condition is not answerable from the run ledger as it stands: the Revise phase record carries
 `rounds_used`, and the per-agent finding counts are summed across every round, so nothing attributes
 a finding to the round that surfaced it.
 
 ## The two `found` counts are related by a stated inequality
 
-The per-agent field credits one finding to every agent that surfaced it and counts phantoms, while
-this one is deduplicated after triage. The inverting case — an INT-CAP/INT-SYC or SIR-TEST
+The relation is stated as an inequality with its equality case named, not as a prohibition on
+equality. The per-agent field credits one finding to every agent that surfaced it and counts
+phantoms, while `findings_by_round` is deduplicated after triage. The equality case is common, which
+is why a match is not drift. The inverting case — an INT-CAP/INT-SYC or SIR-TEST
 re-verification hit, or a Critical on an orchestrator-specified remedy — exists because
 `revise_findings_by_tier` is keyed strictly by canonical agent id. An assumed equality between two fields spelled `found` is
 exactly the kind of invariant a later reader would act on, and an unqualified inequality is the same

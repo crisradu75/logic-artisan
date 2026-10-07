@@ -21,8 +21,7 @@ the drifted field, analyzes every other record, and exits successfully.
 ### Requirement: Shape drift that costs a metric is tallied in the structured output
 
 Drift that costs an aggregator a field its metrics are computed from SHALL be tallied into
-structured output, naming the field, not only warned about. A note that changes no metric needs
-only a line on stderr.
+structured output, naming the field, not only warned about.
 
 #### Scenario: A skipped record is counted, not only warned about
 
@@ -62,14 +61,14 @@ before multi-ledger reading existed.
 
 ### Requirement: A declined default names the ledger evidence that would reverse it
 
-A default declined on thin evidence SHALL carry a reversal condition stated against the run ledger.
-For the opt-in second Revise round it SHALL be, verbatim:
+A default this workflow declines on thin evidence SHALL state the run-ledger condition that would
+reverse it. A second Revise round stays conditional until:
 
 > Revisit the `--pr-rounds` default when `findings_by_round` covers at least eight changes across at
 > least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical
 > or Important finding on a majority of them.
 
-Its eight-change denominator and majority bar SHALL be labelled as judgements.
+Its eight-change denominator and majority bar SHALL be labelled judgements where they appear.
 
 #### Scenario: The deferral is stated with its reversal condition
 
@@ -82,8 +81,8 @@ Its eight-change denominator and majority bar SHALL be labelled as judgements.
 
 The Revise phase record SHALL carry `findings_by_round`: an array in round order, one entry per
 dispatched round, each recording the round number, that round's deduplicated Critical-plus-Important
-`found`, and `sibling_instance` — how many of that `found` were a defect the previous round's fix
-introduced or a sibling instance it missed. Round 1 records `0`.
+`found`, and `sibling_instance`: how many of that `found` were the round-≥2 question's target, a
+defect the previous round's fix introduced or a sibling instance it missed. Round 1 records `0`.
 
 #### Scenario: A run with two rounds is logged with per-round attribution
 
@@ -108,9 +107,9 @@ with `found: 0`.
 ### Requirement: The two `found` counts are related by a stated inequality
 
 The schema SHALL state that, over agent-surfaced findings, the per-agent `found` sum is greater
-than or equal to the `findings_by_round` `found` sum. It SHALL name the equality case (every finding
-surfaced by one agent), so a match is not read as drift, and the inverting case: an
-orchestrator-originated finding enters the per-round total and no per-agent bucket.
+than or equal to the `findings_by_round` `found` sum, and name the equality case (every finding
+surfaced by exactly one agent); a match SHALL NOT be read as producer drift. It SHALL name the one
+inverting case: an orchestrator-originated finding enters the per-round total, no per-agent bucket.
 
 #### Scenario: The two `found` counts are related by an inequality, not a prohibition
 
@@ -125,7 +124,7 @@ orchestrator-originated finding enters the per-round total and no per-agent buck
 
 ### Requirement: A round with no measurement logs `sibling_instance` as null
 
-`sibling_instance` SHALL be JSON `null` when a round was never asked the sibling-instance question, or was asked
+`sibling_instance` SHALL be JSON `null` when a round was never asked the round-≥2 question, or was asked
 and its enumeration stayed uncited after the one re-dispatch. A round asked that found no sibling
 instance writes `0`; round 1 writes `0` by definition.
 
@@ -139,10 +138,10 @@ instance writes `0`; round 1 writes `0` by definition.
 
 ### Requirement: A ledger field kept for a deferred decision states the test it qualifies under
 
-The run-log schema SHALL state a qualifying test for any field kept for a deferred decision rather
-than read by the aggregator. The test SHALL be one the field's own change cannot satisfy: a reviewed
-requirement archived into the plugin's live spec names the field as the evidence its reversal
-condition reads.
+The run-log schema lists only fields the aggregator reads; a field kept for a deferred decision is
+an exception. The schema SHALL state the exception's qualifying test, not assert it for one field.
+The test SHALL be one the field's own change cannot satisfy: a reviewed requirement archived into
+the plugin's live spec names the field as the evidence its reversal condition reads.
 
 #### Scenario: The exception names a test the change cannot self-certify
 

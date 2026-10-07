@@ -11,7 +11,7 @@ over the limit, mixing SHALL statements with the measurements and reasoning behi
   characters. Each of the 13 scenarios moves byte-for-byte under the requirement it proves.
 - Move the reasoning and measurements to a new `openspec/specs/run-ledgers/rationale.md`, under the
   same requirement headings. The Purpose paragraph points to it.
-- Reword two requirement headings to match their narrower scope; nothing references them.
+- Reword one requirement heading to match its narrower scope; nothing references it.
 
 No behaviour changes, so this change carries no spec delta (`skip_specs`), as in step 1.
 
