@@ -1,4 +1,4 @@
-# The cla plugin's development tree: tests, mutation batches, and the two
+# The cla plugin's development tree: tests, mutation batches, and the
 # helper scripts whose whole subject is this repository's own source.
 #
 # ONE pytest scope, where there used to be twelve.
