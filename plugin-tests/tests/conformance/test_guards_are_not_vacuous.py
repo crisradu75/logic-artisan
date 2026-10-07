@@ -91,6 +91,10 @@ _COLLECTION_NAMES = frozenset(
         # rule the name appeared in the assertion's own message and would have
         # been immunised rather than reported.
         "orphans",
+        # `dangling` arrived with the scenario-marker resolution check in
+        # `test_scenario_proof_format.py`, added when the live spec was split
+        # into capabilities; this test caught it on the next full-suite run.
+        "dangling",
         # `unregistered` arrived with the ledger-dir membership check in
         # `test_check_script_drift.py`, and the test below caught it on the next
         # run of this area — the first live firing of the derived direction, on

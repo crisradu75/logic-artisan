@@ -68,8 +68,40 @@ def test_a_missing_marker_is_only_a_suggestion():
     assert f"A test task that names no {_MARKER} marker is a **Suggestion**." in _read(_DISPATCH)
 
 
+_LIVE_SPECS = _REPO / "openspec" / "specs"
+
+
+def _live_specs() -> list[Path]:
+    return sorted(_LIVE_SPECS.glob("*/spec.md"))
+
+
 def test_the_old_manual_format_is_gone():
-    sites = [_CONFIG, *(_REPO / ".claude" / "plugins" / "cla").rglob("*.md"), *(_REPO / "openspec" / "specs").glob("*/spec.md")]
+    specs = _live_specs()
+    # Its own floor: the shipped .md files alone clear the total, so a glob that
+    # stopped matching the live specs would pass silently without this.
+    assert len(specs) >= 6, f"found {len(specs)} live specs under {_LIVE_SPECS}"
+    sites = [_CONFIG, *(_REPO / ".claude" / "plugins" / "cla").rglob("*.md"), *specs]
     stale = [str(p.relative_to(_REPO)) for p in sites if "`manual: <reason>`" in _read(p)]
     assert len(sites) > 50, "the scan found too few files to mean anything"
     assert not stale, f"still using `manual: <reason>`: {stale}"
+
+
+def test_every_scenario_marker_names_a_live_scenario():
+    """A `scenario: <spec> / <heading>` comment is a claim that the test proves
+    that scenario. One naming a spec or heading that no longer exists proves
+    nothing and reads as coverage, which is what a spec move or a heading
+    rename leaves behind unless something checks."""
+    import re
+
+    live = set()
+    for spec in _live_specs():
+        text = _read(spec)
+        live |= {(spec.parent.name, h.strip()) for h in re.findall(r"^#### Scenario: (.+)$", text, re.M)}
+    assert len(live) >= 250, f"only {len(live)} live scenarios found"
+    markers = []
+    for test in sorted((_REPO / "plugin-tests").rglob("*.py")):
+        for m in re.finditer(r"^\s*# scenario: ([a-z0-9-]+) / (.+?)\s*$", _read(test), re.M):
+            markers.append((test.relative_to(_REPO), m.group(1), m.group(2)))
+    assert len(markers) >= 16, f"only {len(markers)} scenario markers found"
+    dangling = [f"{t}: {cap} / {h}" for t, cap, h in markers if (cap, h) not in live]
+    assert not dangling, f"scenario markers naming no live scenario: {dangling}"
