@@ -18,6 +18,8 @@ _REPO = Path(__file__).resolve().parents[3]
 _SKILLS = _REPO / ".claude" / "plugins" / "cla" / "skills"
 _BRIEF = _SKILLS / "multi-spec" / "references" / "authoring-brief.md"
 _CHECKLIST = _SKILLS / "review-change" / "references" / "checklist.md"
+# The three dispatched agents' prompts, read only on a large change.
+_DISPATCH = _SKILLS / "review-change" / "references" / "dispatch.md"
 _CONFIG = _REPO / "openspec" / "config.yaml"
 
 _MARKER = "`scenario: <spec> / <heading>`"
@@ -56,16 +58,14 @@ def test_the_review_flags_a_scenario_with_no_proof():
 
 # scenario: cla-plugin / A repeated scenario heading
 def test_the_review_flags_a_repeated_heading():
-    text = _read(_CHECKLIST)
-    assert "- **Repeated scenario heading.**" in text
-    assert "A heading the delta adds that repeats another in the same spec is **Important**." in text
+    assert "- **Repeated scenario heading.**" in _read(_CHECKLIST)
+    assert "A heading the delta adds that repeats another in the same spec is **Important**." in _read(_DISPATCH)
 
 
 # scenario: cla-plugin / A test task that names no marker
 def test_a_missing_marker_is_only_a_suggestion():
-    text = _read(_CHECKLIST)
-    assert f"A test task that does not name the {_MARKER} comment its test will carry is a **Suggestion**, not a blocker." in text
-    assert f"A test task that names no {_MARKER} marker is a **Suggestion**." in text
+    assert f"A test task that does not name the {_MARKER} comment its test will carry is a **Suggestion**, not a blocker." in _read(_CHECKLIST)
+    assert f"A test task that names no {_MARKER} marker is a **Suggestion**." in _read(_DISPATCH)
 
 
 def test_the_old_manual_format_is_gone():

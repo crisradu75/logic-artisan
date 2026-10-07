@@ -146,5 +146,5 @@ MUTANTS = [
 # `test_the_guard_notices_when_its_own_state_is_gutted`,
 # `test_the_adjacency_cap_is_load_bearing` and
 # `test_line_granularity_rejects_markers_split_across_bullets` — which is the
-# form `_shared/references/test-quality.md` prefers anyway, since a tamper test
+# form `_shared/references/test-quality-gates.md` prefers anyway, since a tamper test
 # keeps holding after a later refactor turns the check into a no-op.

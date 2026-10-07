@@ -6,7 +6,7 @@ argument-hint: "[change-name]"
 
 # review-change — pre-implementation review of an OpenSpec change
 
-The full review workflow lives in `references/checklist.md` (single source of truth, also read directly by `/cla:spec-to-pr`'s Review phase).
+The full review workflow lives in `references/checklist.md` and, for a large change's agent prompts, `references/dispatch.md` (the single source of truth, also read directly by `/cla:spec-to-pr`'s Review phase).
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
 files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
@@ -28,8 +28,8 @@ the placeholder ALREADY substituted, so commands written here are safe. A
 `references/` file is opened with `Read`, which returns the raw bytes — the
 placeholder arrives literal there, and that is the case this rule exists for.
 
-**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 12 high-yield verification checks (`0a`–`0l`), the context-brief table format, the size gate (small vs large), the 3-agent dispatch (with full agent prompts), the weight and proof checks, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 12 high-yield verification checks (`0a`–`0l`), the context-brief table format, the size gate (small vs large), the 3-agent dispatch (pointer to `references/dispatch.md`, read only for a large change), the weight and proof checks, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).
 
 Pass `$ARGUMENTS` (the change name, optional) through to Step 1 of the checklist.
 
-To revise review behavior, edit `references/checklist.md` — do NOT add workflow logic to this shell.
+To revise review behavior, edit `references/checklist.md` (or `references/dispatch.md` for the dispatched agents) — do NOT add workflow logic to this shell.

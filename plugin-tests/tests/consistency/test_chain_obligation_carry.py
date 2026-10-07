@@ -65,6 +65,8 @@ _SPEC_TO_PR = _SKILLS / "spec-to-pr" / "SKILL.md"
 _MULTI_PR = _SKILLS / "multi-pr" / "SKILL.md"
 _CHANGE_LOOP = _SKILLS / "multi-pr" / "references" / "change-loop.md"
 _CHECKLIST = _SKILLS / "review-change" / "references" / "checklist.md"
+# Step 4 of the checklist, split out because only a large change reads it.
+_DISPATCH = _SKILLS / "review-change" / "references" / "dispatch.md"
 
 # The one flag this change adds. A constant only so the floors below can pin it;
 # the parity check derives its flag set from the producer.
@@ -150,7 +152,7 @@ _REGIONS: dict[str, tuple[Path, str, str, tuple[str, ...]]] = {
         ),
     ),
     "checklist gives the obligations to the dispatched agents": (
-        _CHECKLIST,
+        _DISPATCH,
         "**Inherited-obligation rows in the context brief.**",
         "### Agent 1:",
         ("inherited obligation", "critical", "pasted into prose"),
@@ -261,7 +263,7 @@ def test_the_guarded_files_and_regions_all_resolve():
     nothing, so a floor parked in a separate test can be skipped or error out and
     leave the real check silently green.
     """
-    for path in (_SPEC_TO_PR, _MULTI_PR, _CHANGE_LOOP, _CHECKLIST):
+    for path in (_SPEC_TO_PR, _MULTI_PR, _CHANGE_LOOP, _CHECKLIST, _DISPATCH):
         assert path.is_file(), f"{path} does not exist — the guard reads nothing"
     assert len(_REGIONS) >= 9, (
         f"_REGIONS declares {len(_REGIONS)} regions; the nine sides of the "
@@ -277,7 +279,7 @@ def test_the_guarded_files_and_regions_all_resolve():
     # and the producer keeps a write step and a read step; losing any of those
     # leaves one end of the hand-off unchecked.
     covered = [path for path, _, _, _ in _REGIONS.values()]
-    for path, sides in ((_SPEC_TO_PR, 3), (_CHECKLIST, 4), (_CHANGE_LOOP, 2)):
+    for path, sides in ((_SPEC_TO_PR, 3), (_CHECKLIST, 3), (_DISPATCH, 1), (_CHANGE_LOOP, 2)):
         assert covered.count(path) >= sides, (
             f"{path.name} is covered by {covered.count(path)} region(s); {sides} "
             "are required. A dropped region stops checking one side of the "

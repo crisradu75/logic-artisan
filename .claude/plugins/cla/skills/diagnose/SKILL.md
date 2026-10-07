@@ -198,7 +198,8 @@ commit message names the cause.
   Phase 1, cheapest first, each with what it is for and when it stops paying.
   Read before choosing a strategy.
 - **`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`** — the
-  rules the Phase 5 regression test is held to, including how a test written
-  from a wrong model passes and defends the defect.
+  rules the Phase 5 regression test is held to. Also read `test-quality-gates.md`
+  beside it, "How planting goes wrong": a regression test written from a wrong
+  model of the cause passes and defends the defect.
 - **`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/bash-discipline.md`** — for
   the Phase 1 loop and the Phase 6 grep.

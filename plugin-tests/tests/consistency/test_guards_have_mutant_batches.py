@@ -326,7 +326,7 @@ def _stale_pending_entries(dev_tree: Path, pending: dict[str, str], areas):
     A pure function over explicit inputs so every branch can be planted. It takes
     `dev_tree`, `pending` AND `areas` as parameters and reads no module global —
     a helper that quietly reads a global instead of its own argument is the exact
-    bug this repo's `test-quality.md` names, and an earlier draft of this file
+    bug this repo's `test-quality-gates.md` names, and an earlier draft of this file
     reintroduced it."""
     problems = []
     for rel, reason in sorted(pending.items()):
@@ -410,7 +410,7 @@ def test_the_grandfather_list_only_shrinks():
     # RATCHET this down to the new real count whenever an entry is deleted. Left
     # at its original 12 while the real count fell to 8, it silently permitted
     # four new exemptions — a bound far above its population is the same
-    # decorative-floor defect `test-quality.md` describes, applied to a ceiling.
+    # decorative-floor defect `test-quality-gates.md` describes, applied to a ceiling.
     #
     # 7 -> 4 with the batches for `test_subprocess_encoding.py`,
     # `test_token_list_is_curated_here.py` and `test_mutate.py` (issue #176).
@@ -908,7 +908,7 @@ def test_the_batch_area_filter_still_rejects_the_dunder_shape(tmp_path, monkeypa
     GITIGNORED — a runtime artifact, not a fixture. On a fresh clone, before
     anything has run, it does not exist, so the comparison it feeds is trivially
     equal whether the filter is there or not. Planted here for that reason, which
-    is the rule this repo's own `test-quality.md` states: prove a guard by
+    is the rule this repo's own `test-quality-gates.md` states: prove a guard by
     planting what it must catch.
 
     An `empty_area` is planted alongside and MUST survive into the list. A batch

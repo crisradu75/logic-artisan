@@ -99,7 +99,7 @@ Every phase resumes from git-tracked repo state, never from a log or the plan fi
 - `references/phases.md` — Phase 1/2/5 full mechanics, and the shared push post-check procedure used everywhere a push happens.
 - `references/plan-schema.md` — the change-plan JSON shape, where it lives, and exactly what resume reads from it vs. re-derives from git.
 - `references/authoring-brief.md` — Phase 3's full mechanics: the resume check, the per-change Opus dispatch prompt template, the post-check, and the commit/push recipe.
-- `references/review-gate.md` — Phase 4's full mechanics: the batch adaptation of `review-change`'s checklist (agent prompts, model routing, verdict rubric) plus the fix-application/commit recipe.
+- `references/review-gate.md` — Phase 4's full mechanics: the batch adaptation of `review-change`'s checklist and `dispatch.md` (agent prompts, model routing, verdict rubric) plus the fix-application/commit recipe.
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` — model/effort routing single source of truth (reused verbatim, not forked).
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/bash-discipline.md` — the hard bash-shape rules binding every commit/stage call in this skill.
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md` — the thin-orchestrator runtime disciplines this skill follows throughout.

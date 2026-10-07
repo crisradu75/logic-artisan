@@ -148,5 +148,5 @@ MUTANTS = [
 # relocation, not an edit. It is covered structurally instead, by
 # `test_the_chokepoint_anchor_is_load_bearing`, which feeds `_why_not` both
 # orderings and asserts it separates them. That is the form
-# `_shared/references/test-quality.md` prefers anyway, since a tamper test keeps
+# `_shared/references/test-quality-gates.md` prefers anyway, since a tamper test keeps
 # holding after a later refactor turns the check into a no-op.

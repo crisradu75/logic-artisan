@@ -91,7 +91,7 @@ the behaviour you want, and a test written from a wrong mental model kills mutan
 exactly as reliably as a correct one. Read the killing assertion before recording the
 run as evidence — worst where the mutant is the simpler form of the code, since if the
 simpler form is right, the test defending the original is defending the bug. Full rule:
-`skills/_shared/references/test-quality.md`, "How planting goes wrong".
+`skills/_shared/references/test-quality-gates.md`, "How planting goes wrong".
 
 TARGETS. Passed straight to pytest, so a scope dir, a test file, or a
 `::`-qualified node all work; pytest finds the scope's `pyproject.toml` by

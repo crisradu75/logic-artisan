@@ -8,7 +8,7 @@ diagram point here; change routing HERE and reflect it in those pointers, never 
 **Shared, and now filed as such.** This is the repo's single routing source for *all* dispatched
 review work. It lived under `spec-to-pr/references/` until the skills that depend on it outnumbered
 its nominal owner; it now sits in `skills/_shared/references/`, which is what it always was:
-`review-change/references/checklist.md` (Step 4 3-agent dispatch) and `project-review/SKILL.md`
+`review-change/references/dispatch.md` (the checklist's Step 4 3-agent dispatch) and `project-review/SKILL.md`
 (Step 2 5-agent dispatch) both route by the "Review-agent dispatch" section below. Keeping one table
 means the "reviewer runs at the top tier, structured-rubric work runs a tier down" posture is
 consistent wherever agents review code — see that section for why each review dimension gets the tier
