@@ -32,8 +32,8 @@ discharge is a runnable command string is falsifiable by running it.
 **Why this is not a keyword scan over the diff.** That was the obvious design and
 it is measured to be the wrong one. The same idea was already built and withdrawn
 once in this repo for the sibling case (a scan of ticked task bodies — see
-`openspec/specs/orchestration/spec.md`, "Completeness signals read the claim, not the
-glyph", and GitHub issue #105: 173 ticked tasks, 6 lines reached, 0 true
+`openspec/specs/orchestration/spec.md`, "A task list is not reported complete on tick
+marks alone", and GitHub issue #105: 173 ticked tasks, 6 lines reached, 0 true
 positives, 4 false positives, trip words colliding with vocabulary the skills use
 deliberately). Re-measured for the diff-side variant before choosing:
 

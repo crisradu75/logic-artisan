@@ -1,6 +1,7 @@
 """Every site stating the mutation gate states the SAME mutation gate.
 
-`openspec/specs/orchestration/spec.md`, "Review-fix evidence gate", requires that
+`openspec/specs/orchestration/spec.md`, "A review fix is proven by breaking it and watching a test
+fail", requires that
 every shipped markdown file stating the gate carry the killed-mutant clause: a kill
 establishes that the suite reacts to that edit, not that the code or the test is
 correct, so the killing assertion has to be read. Without a guard that is an
@@ -87,12 +88,12 @@ def test_the_discovery_is_not_vacuous() -> None:
     ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)),
 )
 def test_every_gate_site_carries_the_killed_mutant_clause(path: Path) -> None:
-    """The spec's "Every site stating the gate states the same contract"."""
+    """The spec's "A caught breakage is not enough"."""
     body = path.read_text(encoding="utf-8")
     assert _REQUIRED_CLAUSE in body, (
         f"{path.relative_to(_PLUGIN_ROOT)} states the mutation gate but omits "
         f"the killed-mutant clause ({_REQUIRED_CLAUSE!r}). A site without it "
         f"briefs its reader that a killed mutant is self-certifying, which the "
-        f'spec\'s "Review-fix evidence gate" requirement forbids. Add the '
+        f'spec\'s "A review fix is proven by breaking it" requirement forbids. Add the '
         f"clause here rather than removing this site from the gate."
     )

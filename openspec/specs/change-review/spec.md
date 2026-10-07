@@ -2,13 +2,13 @@
 
 ## Purpose
 
-How a change is reviewed before implementation: which claims get verified, how findings are graded and merged, and the findings an oversized or unproven artifact earns.
+How a change is reviewed before implementation: which claims are checked, how findings are graded and merged, and which findings an oversized or unproven artifact earns.
 
 ## Requirements
 
 ### Requirement: Review reads an absent design.md as absent
 
-A change review SHALL stop as incomplete only when proposal.md is missing. When design.md is absent, the review SHALL read it as "(absent)" and pass "(no design.md)" to any dispatched agent.
+A change review SHALL stop as incomplete only when proposal.md is missing. When design.md is absent, the review SHALL read it as "(absent)" and pass "(no design.md)" to any agent it dispatches.
 
 #### Scenario: A change without design.md is reviewed
 
@@ -18,7 +18,7 @@ A change review SHALL stop as incomplete only when proposal.md is missing. When 
 
 ### Requirement: An oversized or restating artifact is an Important finding
 
-A change review SHALL report an Important finding for a proposal over one page, an ADDED requirement over 500 characters or stating several behaviours, or an artifact that restates the proposal or the specs. A MODIFIED requirement SHALL be exempt from the length check, since OpenSpec forbids trimming it outside a change made to split it.
+A change review SHALL report an Important finding for a proposal over one page, an ADDED requirement over 500 characters or stating several behaviours, or an artifact that restates the proposal or the specs. A MODIFIED requirement is exempt from the length check, since OpenSpec forbids trimming it outside a change made to split it.
 
 #### Scenario: An ADDED requirement is too long
 
@@ -32,7 +32,7 @@ A change review SHALL report an Important finding for a proposal over one page, 
 
 ### Requirement: Cutting is a FIX FIRST remedy and is preferred
 
-The review verdict rubric SHALL list cutting a restated or redundant section among the FIX FIRST remedies. When a finding can be fixed either by adding text or by cutting it, the review SHALL prefer the cut.
+The review's verdict rules SHALL list cutting a restated or redundant section among the FIX FIRST remedies. When a finding can be fixed either by adding text or by cutting it, the review SHALL recommend the cut.
 
 #### Scenario: A finding that a cut resolves
 
@@ -41,7 +41,7 @@ The review verdict rubric SHALL list cutting a restated or redundant section amo
 
 ### Requirement: Design headings do not buy the large-change review
 
-The review size gate SHALL NOT count design decisions, however headed, and SHALL select the 3-agent review from files, subtasks, capabilities and claims alone. Its complexity-concentration override SHALL fire only when 15 or more subtasks are concentrated in one or two files.
+The review's size gate SHALL NOT count design decisions, however headed, and SHALL choose the 3-agent review from files, subtasks, capabilities and claims alone. Its override for a change concentrated in few files SHALL fire only when 15 or more subtasks fall in one or two files.
 
 #### Scenario: Many decision headings in a narrow change
 
@@ -50,7 +50,7 @@ The review size gate SHALL NOT count design decisions, however headed, and SHALL
 
 ### Requirement: A scenario with no proof is an Important finding
 
-A change review SHALL report as an Important finding a scenario the change adds or rewrites that has neither a test task nor a `manual: <heading>: <reason>` line.
+A change review SHALL report as Important a scenario the change adds or rewrites that has neither a test task nor a `manual: <heading>: <reason>` line.
 
 #### Scenario: A scenario with no proof
 
@@ -59,7 +59,7 @@ A change review SHALL report as an Important finding a scenario the change adds 
 
 ### Requirement: A repeated scenario heading is an Important finding
 
-A change review SHALL report as an Important finding a scenario heading the change adds that repeats another scenario heading in the same spec.
+A change review SHALL report as Important a scenario heading the change adds that repeats another scenario heading in the same spec.
 
 #### Scenario: A repeated scenario heading
 
@@ -68,7 +68,7 @@ A change review SHALL report as an Important finding a scenario heading the chan
 
 ### Requirement: A test task naming no marker is a Suggestion
 
-A change review SHALL report as a Suggestion, which SHALL NOT block the verdict, a test task that does not name the `scenario: <spec> / <heading>` comment its test will carry.
+A change review SHALL report as a Suggestion, which does not block the verdict, a test task that does not name the `scenario: <spec> / <heading>` comment its test will carry.
 
 #### Scenario: A test task that names no marker
 
@@ -114,7 +114,7 @@ The review SHALL treat a sentence whose truth depends on the code, real data, a 
 
 ### Requirement: A MODIFIED block keeps its live scenarios
 
-The review SHALL run `openspec validate <change> --strict` and SHALL report a MODIFIED block that drops a scenario the live requirement still has as Critical, because archive would delete it.
+The review SHALL run `openspec validate <change> --strict` and SHALL report as Critical a MODIFIED block that drops a scenario the live requirement still has, since archiving would delete it.
 
 #### Scenario: A MODIFIED block drops a live scenario
 
@@ -123,7 +123,7 @@ The review SHALL run `openspec validate <change> --strict` and SHALL report a MO
 
 ### Requirement: The same finding at two severities keeps the higher
 
-Where two reviewers report the same finding at different severities, the review SHALL keep the higher severity.
+Where two reviewers report the same finding at different severities, the review SHALL keep the higher one.
 
 #### Scenario: Two reviewers disagree on severity
 
