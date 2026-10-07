@@ -330,13 +330,8 @@ one** — the same reason `remedy-rejected` exists separately from `blocked`. A 
 resting on invented data is worse than an unticked one, because the tick is the only signal
 anything downstream reads, and the two are indistinguishable in it.
 
-Where the unproducible state was written as a *requirement*, the defect is older than this
-dispatch and belongs upstream: `review-change`'s Shape 1
-(`${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md`, "Producible state")
-grades a state recorded `NOT PRODUCIBLE` and written as a requirement as
-a **Critical** before implementation ever starts. A delegate hitting it here means that
-check did not run or did not fire — worth saying in the `blocked` return, because the fix is
-to the requirement, not to the task.
+Where the unproducible state was written as a *requirement*, say so in the `blocked` return:
+the fix is to the requirement, not to the task.
 
 ---
 

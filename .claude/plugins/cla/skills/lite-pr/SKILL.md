@@ -48,8 +48,10 @@ Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (th
    **A live spec is a parsed document, not a prose file — validate it before the commit.** This step is the plugin's one write site with no delta and no archive behind it, so nothing downstream re-parses what you just wrote. An ordinary prose edit can leave the file reading correctly to a human while its structure is broken: a `## Requirements` heading duplicated by a replacement that ended with one, for instance, *closes* the section, and every requirement below it becomes invisible to `validate`, `list` and `archive`. In a repo using OpenSpec, run:
 
    ```
-   openspec validate --specs --strict
+   openspec validate --specs
    ```
+
+   Not `--strict`: some live specs carry long-requirement warnings, which are style, not structure.
 
    `✗ spec/<cap>` in the output → fix it before committing. Non-zero with **no** `✗` line (`command not found`, `unknown option`) is a tooling fault, not a spec fault — say so rather than attributing it to this edit. `No items found to validate.` is **not** a pass: it means nothing was checked, which is also what a repo not using OpenSpec sees — there, say so once and skip the step rather than recording a vacuous success.
 3. Update the `CLAUDE.md` section(s) the plan named (most often "Allocation math" or "Conventions to preserve").

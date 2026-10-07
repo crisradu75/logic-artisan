@@ -59,34 +59,7 @@ with a `specs/` directory, K distinct capabilities, J touched by more than one.*
 change with no `specs/` directory is a real, reportable answer; a change whose `ls`
 errored is not.
 
-**The re-base check triggers on `## MODIFIED Requirements`, not on overlap.** The
-mechanism above is about *when the delta was authored*, and anything that reached
-the live spec afterwards moves the text out from under it — an archived change from
-a previous chain, a `/cla:lite-pr` landed in between, a hand edit. So **every**
-in-scope change carrying a MODIFIED block earns the check: compare its delta against
-the live spec **as of that moment**, not as the delta was authored, per
-`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md` — which
-defines what "compare" means here, in what order, and what the report line looks like.
-The word on its own was the entire specification, and an undefined comparison run
-without rename resolution reports every renamed requirement as missing. In-scope
-overlap does not create the obligation; it raises the priority and names which sibling
-to compare against.
-
-A change that only ADDS a brand-new capability is genuinely clean, and that is worth
-recording — on the batch above, changes 5, 6 and 7 each added exactly one new
-capability and carried zero re-base risk. Report that too, per change, rather than
-leaving it unstated.
-
-**Then deliver it, because a record with no reader is not a mechanism.** This is the
-same failure the `## Carried obligations` machinery exists to prevent (`SKILL.md`
-Phase 3, from GitHub issues #98/#100/#102): the review this check gates happens
-inside `Skill(cla:spec-to-pr, …)` hours later, in a different phase, from a
-reference file that is closed by then. Write one row per affected change under
-`## Capability re-base` in `cla.io/retro/multi-pr-run-notes-<date>.md` — change,
-capability, the sibling or landed change to diff against, and the one-line failure
-if dropped — and let change-loop step 2 turn the rows owed by a change into
-`--inherits` entries the same way it does for carried obligations. A batch with
-nothing to carry writes the counted denominator above, not a bare `none`.
+**Every change carrying a `## MODIFIED Requirements` block is re-validated against the live spec as it is now:** `openspec validate <change> --strict`. Anything that reached the live spec after the delta was written (an archived change, a `/cla:lite-pr`, a hand edit) can make the block stale, and validate reports it. spec-to-pr's Review and its pre-archive check both run this validate, so nothing needs carrying forward.
 
 ## 1b. The pre-flight gate — ask everything now
 

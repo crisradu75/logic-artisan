@@ -33,7 +33,6 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             │  REVIEW              │   cap: --review-rounds (default 1)
             │  (inline; Agent for  │   ✓ READY / ⚠ FIX FIRST after cap
             │   large changes)     │   sub-Opus + RETHINK-borderline → opus 2nd opinion
-            │                      │   multi-spec review.json passed → skip checklist (2b + retention + doc-sweep only)
             │     ↓                │
             │  APPLY REVIEW FIXES  │   ✓ all-applied / ⚠ partial
             │  (Edit/Write loop)   │

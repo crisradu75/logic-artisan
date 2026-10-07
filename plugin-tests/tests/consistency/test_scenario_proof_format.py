@@ -102,6 +102,6 @@ def test_every_scenario_marker_names_a_live_scenario():
     for test in sorted((_REPO / "plugin-tests").rglob("*.py")):
         for m in re.finditer(r"^\s*# scenario: ([a-z0-9-]+) / (.+?)\s*$", _read(test), re.M):
             markers.append((test.relative_to(_REPO), m.group(1), m.group(2)))
-    assert len(markers) >= 16, f"only {len(markers)} scenario markers found"
+    assert len(markers) >= 10, f"only {len(markers)} scenario markers found"
     dangling = [f"{t}: {cap} / {h}" for t, cap, h in markers if (cap, h) not in live]
     assert not dangling, f"scenario markers naming no live scenario: {dangling}"

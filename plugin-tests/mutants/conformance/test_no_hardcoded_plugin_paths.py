@@ -110,16 +110,16 @@ MUTANTS = [
     ),
     (
         # The near-miss the guard's own comment works through: `.mjs` is ONE
-        # file, so dropping it lands on the floor rather than under it (111 - 1
-        # = 110, floor >= 110) and the count cannot see it. Within
+        # file, so dropping it lands on the floor rather than under it (110 - 1
+        # = 109, floor >= 109) and the count cannot see it. Within
         # `test_the_scan_is_not_vacuous` the REQUIRED_SUFFIXES comparison is
         # therefore the ONLY assertion that can catch it, which is the whole
         # reason that second list exists as an independent source rather than
         # being derived from SCANNED_SUFFIXES.
         #
         # SCOPED TO THAT ONE TEST. Against the whole file this mutant also
-        # fails `test_the_recorded_counts_are_the_real_ones` (scanned 110
-        # against a recorded 111), and a kill that could have come from either
+        # fails `test_the_recorded_counts_are_the_real_ones` (scanned 109
+        # against a recorded 110), and a kill that could have come from either
         # proves neither. The claim above is only true of a run scoped this
         # way, and it used to be written as though it were true of the batch.
         "a declared suffix is dropped from the scan without moving the file count below its floor",
@@ -187,10 +187,10 @@ MUTANTS = [
     # These are the exact edits the block at the bottom of this file used to
     # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
     # not, and mutant 7 is the one that shows it. Measured against the re-pinned
-    # floor of `>= 110`:
+    # floor of `>= 109`:
     #
-    #     drop `output-styles`  110 files  clears the floor exactly
-    #     drop `lib`            109 files  fails the floor by one
+    #     drop `output-styles`  109 files  clears the floor exactly
+    #     drop `lib`            108 files  fails the floor by one
     #
     # That asymmetry is an accident of today's file counts and is the argument
     # for the separate list: the floor's stated rule is to be lowered on every
@@ -249,10 +249,10 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 111  .json 3  .md 78  .mjs 1  .py 29  placeholder-refs 236 in 60 files"
+        "    #     scanned 110  .json 3  .md 77  .mjs 1  .py 29  placeholder-refs 226 in 57 files"
         + _NL
         + "    #" + _NL
-        + "    # The real count is 111. Pinned near it, not",
+        + "    # The real count is 110. Pinned near it, not",
         "    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files"
         + _NL
         + "    #" + _NL
