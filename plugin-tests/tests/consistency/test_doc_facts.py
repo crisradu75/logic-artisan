@@ -741,7 +741,7 @@ def test_the_phase_table_names_every_shipped_skill() -> None:
 
 # The two tests above run against the live tree, where the defect is absent by
 # construction — so neither has been SHOWN able to fire. These feed the helpers
-# a synthetic tree instead, which `test-quality.md` calls the better of the two
+# a synthetic tree instead, which `test-quality-gates.md` calls the better of the two
 # ways out: a planted failure is evidence at one moment, a test supplying bad
 # state keeps holding after a refactor turns the check into a no-op.
 

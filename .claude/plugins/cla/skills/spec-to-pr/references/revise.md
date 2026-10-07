@@ -199,7 +199,7 @@ The two-chain floor is the originating decision's and carries its authority; the
    reliably as a right one, and the green result reads as confirmation. Worst where the mutant
    is the *simpler* form of the code: if the simpler form is right, the test defending the
    original is defending the bug. Full rule and the case that produced it:
-   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`, "How planting goes wrong".
+   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality-gates.md`, "How planting goes wrong".
    Fix a surviving mutant, or name it in the Handoff report with a reason. A clean
    run is evidence about the mutants you thought of and nothing else — two commits in this repo each
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.

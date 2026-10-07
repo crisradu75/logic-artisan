@@ -261,7 +261,7 @@ def test_every_family_seam_restates_the_rule():
 # `_MARKERS`'s floor and `_MAX_SPAN`'s cap both defend against a state the tree
 # is not currently in, so a mutation over the real files cannot reach them —
 # measured: both survived a batch in which every other mutant was killed. That
-# is the case `_shared/references/test-quality.md` calls out, and it prefers
+# is the case `_shared/references/test-quality-gates.md` calls out, and it prefers
 # this form: assert the check can still fire, which keeps holding after a later
 # refactor quietly turns it into a no-op.
 #

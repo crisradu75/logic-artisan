@@ -34,12 +34,12 @@ Record each change's grade in the batch report.
 
 ## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large)
 
-Same model routing as `review-change/references/checklist.md` Step 4, per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s "Review-agent dispatch" table:
+Same model routing as `review-change/references/dispatch.md` (the checklist's Step 4), per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s "Review-agent dispatch" table:
 
 - **Agent 1 (Design Reviewer) → `opus`**
 - **Agents 2 & 3 (Task Reviewer, Spec & Codebase Reviewer) → `sonnet`**
 
-Use the same three agent prompts verbatim from the checklist, with these adaptations:
+Use the same three agent prompts verbatim from `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/dispatch.md`, with these adaptations:
 
 - **"Change:"** becomes a list of all N change names.
 - **"Affected area:"** becomes the union of affected apps/packages across the batch.

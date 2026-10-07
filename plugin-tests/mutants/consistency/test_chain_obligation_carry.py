@@ -32,6 +32,7 @@ SPEC_TO_PR = SKILLS / "spec-to-pr" / "SKILL.md"
 MULTI_PR = SKILLS / "multi-pr" / "SKILL.md"
 CHANGE_LOOP = SKILLS / "multi-pr" / "references" / "change-loop.md"
 CHECKLIST = SKILLS / "review-change" / "references" / "checklist.md"
+DISPATCH = SKILLS / "review-change" / "references" / "dispatch.md"
 GUARD = DEV / "tests" / "consistency" / "test_chain_obligation_carry.py"
 
 # Scoped to the ONE guard under test, never to `tests/consistency/` as a whole:
@@ -89,7 +90,7 @@ MUTANTS = [
     ),
     (
         "the dispatched agents stop being told what an obligation row means",
-        CHECKLIST,
+        DISPATCH,
         "not a mention pasted into prose",
         "however the artifacts prefer to phrase it",
         TARGETS,

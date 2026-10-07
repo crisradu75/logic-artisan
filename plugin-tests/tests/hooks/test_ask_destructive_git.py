@@ -1087,7 +1087,7 @@ def test_a_discard_only_prompt_names_the_env_only_hatch(dirty, monkeypatch, caps
 
 
 def test_the_discard_probe_is_not_vacuous(dirty, monkeypatch, capsys):
-    """Structural non-vacuity guarantee for a guard, per test-quality.md. The
+    """Structural non-vacuity guarantee for a guard, per test-quality-gates.md. The
     prompt-on-dirty and silence-on-clean assertions above are each satisfiable
     by a half-broken probe, so pin that BOTH outcomes are reachable from the
     SAME repository by changing only its state -- which no constant-returning
@@ -1395,7 +1395,7 @@ def test_two_quoted_paths_both_reach_the_probe(repo, monkeypatch, capsys):
 # Real git cannot produce a non-zero return WITH matching output, so the branch
 # that distinguishes "git refused" from "git looked and found nothing" is
 # unreachable from a repository fixture -- both produce empty output, and
-# deleting the branch entirely left the whole suite green. test-quality.md's
+# deleting the branch entirely left the whole suite green. test-quality-gates.md's
 # answer to a state planting cannot reach is to prove it structurally.
 
 

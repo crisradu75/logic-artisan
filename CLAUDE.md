@@ -287,7 +287,7 @@ consuming repo (issue #193), where the assertion killing a column-offset mutant 
 itself the defect: the mutant died, the gate reported green, and the wrong belief
 reached a PR. A review agent reasoning from the type's stated invariant caught it
 there; no gate did. Full rule:
-`.claude/plugins/cla/skills/_shared/references/test-quality.md`, "How planting goes wrong".
+`.claude/plugins/cla/skills/_shared/references/test-quality-gates.md`, "How planting goes wrong".
 
 **And a SURVIVOR is not automatically a finding about the code.** Some mutants cannot be
 killed, because the edit is unobservable in a correct tree — a floor constant that only

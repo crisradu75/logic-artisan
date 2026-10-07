@@ -38,7 +38,7 @@ Go straight to Implement once the plan is posted — no pause, no "shall I proce
 
 ### Implement
 
-Tests written in this phase follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md` — the rules that decide whether a test can fail at all. Its head says which parts apply to any test and which apply only to a gate.
+Tests written in this phase follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md` — the rules that decide whether a test can fail at all. It covers any test; read `test-quality-gates.md` beside it only when the test is a gate.
 
 Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (there's no `tasks.md` to walk; the plan's bullet list from above is the task list). For each item in the plan:
 
@@ -170,7 +170,7 @@ One pass. Then:
    reliably as a right one, and the green result reads as confirmation. Worst where the mutant
    is the *simpler* form of the code: if the simpler form is right, the test defending the
    original is defending the bug. Full rule and the case that produced it:
-   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`, "How planting goes wrong".
+   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality-gates.md`, "How planting goes wrong".
    Fix a surviving mutant, or name it in the final report with a reason. A clean
    run is evidence about the mutants you thought of and nothing else — two commits in this repo each
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.

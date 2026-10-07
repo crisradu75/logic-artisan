@@ -430,7 +430,7 @@ def test_every_family_file_states_the_comparison_clause():
 # --------------------------------------------------------------------------- #
 # The guard's own non-vacuity. Both floors below defend against a state the tree
 # is not currently in, so a mutation over the real files cannot reach them —
-# the case `_shared/references/test-quality.md` calls out, and it prefers this
+# the case `_shared/references/test-quality-gates.md` calls out, and it prefers this
 # form: assert the check can still fire.
 # --------------------------------------------------------------------------- #
 
