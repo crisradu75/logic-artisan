@@ -2,7 +2,7 @@
 
 ## Python packaging gotcha
 
-1. **Pre-check (Python packaging gotcha).** Scan `tasks.md` for subtasks that promote a `.py` file to a package (e.g. "add `<name>/__init__.py`" or "rewrite imports as `from .X import Y`"). If any subtask renames or splits a module that has a sibling file with the same stem (e.g. `tests/fixtures.py` AND `tests/fixtures/` both exist or would coexist), flag it: `python3 -m <pkg>.<sibling>` will silently resolve to the file, not the directory. Resolve by collapsing the file into `<sibling>/__init__.py` before the package promotion. Capture the resolution as a one-line note for the Handoff report.
+**Pre-check.** Scan `tasks.md` for subtasks that promote a `.py` file to a package (e.g. "add `<name>/__init__.py`" or "rewrite imports as `from .X import Y`"). If any subtask renames or splits a module that has a sibling file with the same stem (e.g. `tests/fixtures.py` AND `tests/fixtures/` both exist or would coexist), flag it: `python3 -m <pkg>.<sibling>` will silently resolve to the file, not the directory. Resolve by collapsing the file into `<sibling>/__init__.py` before the package promotion. Capture the resolution as a one-line note for the Handoff report.
 
 ## Delegating Implement to one coding agent
 
@@ -24,7 +24,7 @@ Seven rules make the delegation safe — three about the brief, four about readi
 
   Plus a process check for a gate that may still be running: `ps` on POSIX, `tasklist` on Windows. **You cannot attribute a process to your delegate** — no attribution comes back — so read this as "is a build or suite running at all", and if one is, wait for it rather than deciding whose it is.
 - **Then pick by what the miss was, because one recovery does not fit both.** A `blocked` naming a gate too long for one foreground call will hit the identical wall on a re-dispatch: **run that gate yourself** — the orchestrator may legitimately background it — and carry on from its result. Only a miss with work genuinely unfinished earns a re-dispatch, and that brief is scoped to what remains: re-derive state from `tasks.md` and the tree first, since the stalled delegate's edits are still there and a full re-enumeration would redo landed work.
-- **Take-over before the quiet check is not permitted.** It is what produced the recorded ~40-minute incident, where the orchestrator's own commands manufactured the failures it then investigated as a regression. The orchestrator-vs-own-delegate rule above says why; this is that rule at the moment it is most tempting to break.
+- **Take-over before the quiet check is not permitted.** It is what produced the recorded ~40-minute incident, where the orchestrator's own commands manufactured the failures it then investigated as a regression. The orchestrator-vs-own-delegate rule (`SKILL.md` "Concurrent runs", and `references/concurrent-runs.md`) says why; this is that rule at the moment it is most tempting to break.
 
 After the agent returns, run the Post-check task-box count **regardless of what the agent reported** and finish any task it skipped. The post-check is the deterministic backstop; the terminal contract just catches a hallucinated-completion one phase earlier.
 
