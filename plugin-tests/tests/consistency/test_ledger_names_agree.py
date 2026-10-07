@@ -93,3 +93,34 @@ def test_the_writer_and_reader_name_the_same_ledger(skill, prose, aggregate_py):
         f"write succeeds, the read finds nothing, and the retro reports a cold "
         f"start — the run history is silently unreachable."
     )
+
+
+_CLA_INIT = _PLUGIN_ROOT / "skills" / "cla-init" / "SKILL.md"
+
+
+def _ledgers_written_by_skills() -> dict[str, Path]:
+    """Every ledger a shipped skill or reference appends to, and where."""
+    found: dict[str, Path] = {}
+    for md in sorted(_PLUGIN_ROOT.glob("skills/**/*.md")):
+        for name in _WRITER_RE.findall(md.read_text(encoding="utf-8")):
+            found.setdefault(name, md)
+    return found
+
+
+def test_cla_init_lists_every_ledger_a_skill_writes():
+    """`cla-init`'s scaffold step is where a reader learns which ledgers exist
+    and what reads each. It said two while six were written (#300), and nothing
+    noticed; a new `log_run.py <name>.jsonl` now has to be listed there too."""
+    written = _ledgers_written_by_skills()
+    # Non-vacuity: the two contract ledgers above must be found by this scan.
+    assert {"spec-to-pr-runs.jsonl", "codify-runs.jsonl"} <= set(written), written
+    text = _CLA_INIT.read_text(encoding="utf-8")
+    missing = {
+        name: str(path.relative_to(_PLUGIN_ROOT))
+        for name, path in written.items()
+        if name.removesuffix(".jsonl") not in text
+    }
+    assert not missing, (
+        f"skills write ledgers that cla-init's scaffold step does not list: "
+        f"{missing}. Add each with its reader, or drop the write."
+    )

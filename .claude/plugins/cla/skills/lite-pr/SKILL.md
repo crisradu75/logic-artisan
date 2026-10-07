@@ -217,7 +217,7 @@ writing `false` if Test never ran.
 Read it back with the generic summariser — this skill has no bespoke retro, deliberately:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --fleet --ledger lite-pr-runs.jsonl
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --ledger lite-pr-runs.jsonl   # add --fleet to read every repo in cla.io/fleet.local.md
 ```
 
 Best-effort: if `log_run.py` exits non-zero, note it and continue. A missing ledger line
@@ -238,7 +238,7 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 - No `proposal.md`/`design.md`/`tasks.md`, no delta specs, no `openspec/changes/` directory, no archive step.
 - No multi-round PR-review loop — one pass, one fix round, no re-verification.
 - No pre-push confirmation gate.
-- No per-run JSONL logging, no retro tooling.
+- No bespoke retro skill — Step 7's ledger is read with the generic `ledger_summary.py`.
 
 ## References
 

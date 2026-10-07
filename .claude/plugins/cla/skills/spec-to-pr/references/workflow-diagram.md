@@ -12,7 +12,12 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
                         │
               ┌─────────┴─────────┐
               │  Bootstrap perms  │   HALT-on-decline (only)
-              │  check_perms.py   │
+              │  (Read + compare) │
+              └─────────┬─────────┘
+                        │
+              ┌─────────┴─────────┐
+              │  PRECHECK         │   git_state.py in-progress op → resolve first
+              │  working tree     │   out-of-scope dirty paths → ask
               └─────────┬─────────┘
                         │
                         ▼

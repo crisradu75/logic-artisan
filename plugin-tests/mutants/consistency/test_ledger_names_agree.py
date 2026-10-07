@@ -34,6 +34,7 @@ CODIFY_SKILL = PLUGIN / "skills" / "codify-learnings" / "SKILL.md"
 SCHEMA = PLUGIN / "skills" / "_shared" / "references" / "run-log-schema.md"
 CODIFY_READER = PLUGIN / "skills" / "codify-retro" / "scripts" / "codify_aggregate.py"
 S2P_READER = PLUGIN / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py"
+CLA_INIT = PLUGIN / "skills" / "cla-init" / "SKILL.md"
 
 # Scoped to the ONE guard file: a target red for any other reason reports every
 # mutant "killed" and proves nothing.
@@ -117,6 +118,24 @@ MUTANTS = [
         GUARD,
         'if isinstance(node, ast.FunctionDef) and node.name == "_default_log_path":',
         'if isinstance(node, ast.FunctionDef) and node.name == "_default_log_pathx":',
+        TARGETS,
+    ),
+    (
+        # Mutates the INPUT, not the guard: drop one ledger from cla-init's list
+        # and the scan must name it as missing.
+        "cla-init's ledger list drops a ledger a skill still writes",
+        CLA_INIT,
+        "#   lite-pr-runs, shape-decision-runs, feedback-runs\n",
+        "#   shape-decision-runs, feedback-runs\n",
+        TARGETS,
+    ),
+    (
+        # NON-VACUITY of the scan: a pattern that finds nothing would pass the
+        # missing-ledger check on an empty set.
+        "the cross-skill scan reads no files",
+        GUARD,
+        'for md in sorted(_PLUGIN_ROOT.glob("skills/**/*.md")):',
+        'for md in sorted(_PLUGIN_ROOT.glob("skills/**/*.mdx")):',
         TARGETS,
     ),
 ]
