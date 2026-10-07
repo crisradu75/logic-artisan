@@ -45,7 +45,7 @@ Use the same three agent prompts verbatim from `${CLAUDE_PLUGIN_ROOT}/skills/rev
 - **"Affected area:"** becomes the union of affected apps/packages across the batch.
 - **Content fields** (Proposal/Design/Tasks/Delta specs content) carry the FULL text of every change's corresponding artifact, or "(no design.md)" / "(skip_specs)" where it is absent, clearly delimited by a `## Change: <name>` heading per change, so the agent can attribute findings to the right one.
 - **Add check B1** (cross-change cross-reference verification) to each agent's existing check list, framed the same way `dispatch.md`'s agent prompts frame their own domain-specific checks.
-- **Output format** — same line kinds as the checklist, including its `- [Open] …` kind for a row that carries no severity, but each line is prefixed with `[<change-name>]` so Phase 4's fix-application step can route each finding to the right change directory: `- [<change-name>] [Critical/Important/Suggestion] Issue description`, and `- [<change-name>] [Open] <what could not be settled>: <what it would take to settle it>`. One unprefixed row for the whole batch leaves N-1 changes looking unswept..
+- **Output format** — same line kinds as the checklist, including its `- [Open] …` kind for a row that carries no severity, but each line is prefixed with `[<change-name>]` so Phase 4's fix-application step can route each finding to the right change directory: `- [<change-name>] [Critical/Important/Suggestion] Issue description`, and `- [<change-name>] [Open] <what could not be settled>: <what it would take to settle it>`.
 
 ## Step 5 — Aggregate and report, grouped by change
 
@@ -79,4 +79,4 @@ The checklist's "no capitulation, no sycophancy" (INT-CAP / INT-SYC) rules apply
    `openspec/changes/` is safe to path-scope broadly here specifically because this is the ONE point in the run where every change in the batch — and nothing else — is expected to be dirty; if `git status --porcelain` outside `openspec/changes/` is non-empty, name those paths explicitly instead of widening the add.
 6. Run the push post-check (`references/phases.md`) before proceeding to Phase 5.
 
-**Resume note:** if a commit matching `docs(openspec): apply review fixes to <batch-slug> proposals` already exists on this branch, review is done — skip straight to Phase 5.
+**Resume note:** if a commit matching `docs(openspec): apply review fixes to <batch-slug> proposals` already exists on this branch, or the batch report says no fixes were needed, review is done — skip straight to Phase 5.

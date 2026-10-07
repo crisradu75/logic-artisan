@@ -86,13 +86,13 @@ multi-spec's batch review SHALL apply the checklist's size gate to each change, 
 
 ### Requirement: The review report carries no parallelism plan and no claim quota
 
-A change review report SHALL NOT include an implementation-parallelism section and SHALL NOT require a minimum number of verified claims. It SHALL keep the claim-shape sweep row in its open questions.
+A change review report SHALL NOT include an implementation-parallelism section and SHALL NOT require a minimum number of verified claims.
 
 #### Scenario: A small change is reviewed
 
 - **WHEN** a review report is printed
 - **THEN** it has no implementation-parallelism section
-- **AND** its open questions carry the claim-shape sweep row
+- **AND** it does not pad its verified claims to reach a count
 
 ### Requirement: An invented requirement is an Important finding
 

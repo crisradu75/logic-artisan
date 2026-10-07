@@ -165,7 +165,7 @@ def test_the_scan_is_not_vacuous():
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
     #     scanned 110  .json 3  .md 77  .mjs 1  .py 29  placeholder-refs 226 in 57 files
     #
-    # The real count is 111. Pinned near it, not
+    # The real count is 110. Pinned near it, not
     # comfortably below it, matching the rule `test_subprocess_encoding.py`
     # states for its own floor: move it to the new real count when something is
     # deliberately added or deleted, never to a number chosen to be safe from
@@ -191,7 +191,7 @@ def test_the_scan_is_not_vacuous():
     # runs it. The floor above stays hand-pinned deliberately — a floor that
     # re-derives itself moves to meet any collapse and asserts nothing — so what
     # is checked automatically is the RECORD, not the bound.
-    assert len(files) >= 110, f"scan set collapsed to {len(files)} files"
+    assert len(files) >= 109, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"

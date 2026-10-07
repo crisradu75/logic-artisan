@@ -59,9 +59,9 @@ Parallel batch 2 — After reading artifacts, run ALL verification checks simult
 
 ### Weight and proof checks (always do, on both size-gate paths)
 
-These are unlettered on purpose: they read the artifacts, not the code. Each one that fires is an **Important** finding, except the marker case named under Scenario proof. The orchestrator runs them, and Agents 2 and 3 carry them.
+These are unlettered on purpose: they read the artifacts, not the code. Each one that fires is an **Important** finding, except the dropped-scenario case under Spec validity and the marker case under Scenario proof. The orchestrator runs them, and Agents 2 and 3 carry them.
 
-- **Spec validity.** Run `openspec validate <change> --strict`. Any error is a finding. A MODIFIED block that drops a scenario the live requirement still has is **Critical**: archive would delete it.
+- **Spec validity.** Run `openspec validate <change> --strict`. Any error is a finding, and so is an `Archive would refuse this delta` line, which exits 0. A MODIFIED block that drops a scenario the live requirement still has is **Critical**: archive would delete it.
 - **Size.** A proposal over one page; an ADDED requirement over 500 characters or stating more than one behaviour; any artifact that restates the proposal or the specs instead of pointing to them. A MODIFIED requirement is exempt from the length check, because OpenSpec forbids trimming it outside a change made to split it. The remedy is the cut.
 - **Invented requirement.** A requirement that describes no observable behaviour change, such as a refactor, tooling or docs change written as a SHALL. Remedy: drop it and set `skip_specs: true` in `.openspec.yaml`.
 - **Scenario proof.** Each scenario the change adds, or whose text it changes, needs a tasks.md test task that names it, or a tasks.md line `manual: <heading>: <reason>`. A scenario with neither is the finding. A pure heading rename and a scenario carried forward unchanged in a MODIFIED block are exempt. A test task that does not name the `scenario: <spec> / <heading>` comment its test will carry is a **Suggestion**, not a blocker.
@@ -90,7 +90,7 @@ Build a table like this as the verification step produces results. It is the sub
 **Only ✓ rows.** That section is the positive-verification list and renders `- ✓ …` entries. Every other row reaches the report by its own route:
 
 - a ✗ row, by the promotion rule below;
-- a row that is neither a pass nor a finding, through `### Open questions` — a ✗ that is just to-be-created by this change, an `unresolved:`, an `open:`.
+- a row that is neither a pass nor a finding, through `### Open questions` — a ✗ that is just to-be-created by this change, or an `unresolved:`.
 
 Stated here rather than left to the template's shape. A reader taking "becomes the section" literally renders a failed check as a verified one.
 
@@ -217,7 +217,7 @@ These are the review analogue of the phantom-finding verification discipline (`/
 
 ### Why `### Verified claims` is printed
 
-Silent "✓" work is invisible to the user — they can't tell whether the reviewer checked 10 things and they all passed, or skipped the check. List the load-bearing verifications the review actually made. There is no quota: a padded list is noise, and the `### Open questions` sweep row is what shows the review ran.
+Silent "✓" work is invisible to the user — they can't tell whether the reviewer checked 10 things and they all passed, or skipped the check. List the load-bearing verifications the review actually made. There is no quota: a padded list is noise.
 
 ### Report constraints
 

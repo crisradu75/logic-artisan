@@ -1,6 +1,6 @@
 # archive — materialize spec + commit the archive to the PR (full mechanics)
 
-The Archive phase's step-by-step procedure. `SKILL.md`'s Archive stub carries the load-bearing invariants (path-scoped staging, the two-sided scope assertion, the push post-check); this file carries the recipes. **Distinct from `archive-preflight.md`** — that file holds the pre-archive main-spec heading-sanity checks + retired-path cleanup; THIS file holds the archive-and-commit procedure that runs after those checks pass.
+The Archive phase's step-by-step procedure. `SKILL.md`'s Archive stub carries the invariants; this file carries the recipes. The checks that run before archiving are in `archive-preflight.md`.
 
 After the PR-review loop completes, archive the OpenSpec change so the active spec at `openspec/specs/<capability>/` is materialized and the change directory moves to `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/`. The archive's file moves + spec sync are then committed and pushed to the same PR so they merge atomically.
 
@@ -12,7 +12,7 @@ openspec archive <change-name> --yes
 ```
 Post-check: `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/proposal.md` exists AND `openspec/changes/<change-name>/proposal.md` no longer exists. ✓ on both true; ⚠ on either false (capture stderr for the Handoff Issues section).
 
-**Pre-archive: main-spec heading sanity + retired-path cleanup.** Older main specs predating OpenSpec heading conventions block the archive's materialization step. Before invoking `openspec archive`, run the three heading-sanity checks — (a) `## Purpose` / `## Requirements` present; (b) legacy `### <Name>` rewritten to `### Requirement: <Name>`; (c) every delta MODIFIED-block heading exists *verbatim* in the active spec (rename the active heading first if the delta renamed it) — **and** the retired-path spec-grep cleanup (a retired script/file's cross-refs in traceability matrices or "Implementation" tables stay stale unless cleaned here). Grep recipes and past offenses: **`references/archive-preflight.md`**. Apply all remediations in the same archive commit so the fixes ship with it.
+**Before archiving, run `references/archive-preflight.md`** and apply its fixes in the same archive commit.
 
 ## 2. Commit the archive's file moves + spec sync
 

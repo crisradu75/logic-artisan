@@ -47,7 +47,7 @@ The gate SHALL further state that a **killed** mutant does not discharge it eith
 
 A skill that sequences a batch of changes SHALL find, before the batch runs, two edges a dependency list cannot express, and SHALL name both wherever it states its merge policy, including hoisted summaries.
 
-- **Shared environment state.** A change that migrates a shared environment, seeds shared fixture data or provisions infrastructure SHALL be merged before the next change starts, whether or not anything depends on its code. The skill SHALL decide this per change from its artifacts, show how it reached a "no", decide it in every autonomy mode, and deliver it to the change it affects through the channel that carries inherited obligations. A policy that performs no merges SHALL surface the conflict rather than proceed.
+- **Shared environment state.** A change that migrates a shared environment, seeds shared fixture data or provisions infrastructure SHALL be merged before the next change starts, whether or not anything depends on its code. The skill SHALL decide this per change from its artifacts, show how it reached a "no", decide it in every autonomy mode, and enforce it when merging. A policy that performs no merges SHALL surface the conflict rather than proceed.
 - **Stale spec baselines.** A change carrying a MODIFIED block SHALL be re-validated against the live specs as they are when it runs (`openspec validate <change> --strict`), whether or not a sibling touches the same capability.
 - The skill SHALL report which capabilities more than one change touches, with its denominator (changes scanned, changes with spec deltas, capabilities found), and SHALL report a failed enumeration as a failure, not as "no overlap".
 
@@ -78,9 +78,9 @@ A skill that sequences a batch of changes SHALL find, before the batch runs, two
 
 #### Scenario: A finding reaches the review it is for
 
-- **WHEN** sequencing produces a shared-state edge for a named change
-- **THEN** it is delivered in the invocation that starts that change, by the channel already carrying inherited obligations
-- **AND** recording it in a run artifact that nothing reads back does not satisfy the requirement
+- **WHEN** sequencing finds a shared-state edge for a named change
+- **THEN** multi-pr merges that change before starting the next one
+- **AND** recording the edge in a run artifact that nothing acts on does not satisfy the requirement
 
 #### Scenario: The determination survives an autonomy mode
 
