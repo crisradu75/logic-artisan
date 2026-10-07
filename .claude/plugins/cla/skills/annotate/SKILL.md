@@ -1,6 +1,6 @@
 ---
 name: annotate
-description: "Put a Markdown, plain-text or HTML document — or a whole OpenSpec change — in front of the user to be read and marked up. Renders it as an HTML page, opens it in a chrome-less browser window, and serves it locally so any passage can be selected and commented on, each comment paired with the passage it is about and appended to a file this session reads back and works through. A change opens as one page with its proposal, design, tasks and spec deltas in tabs, the passages that answer each other shown side by side, and a derived coverage view of what nothing implements. Never writes to what is being annotated. Triggers on /cla:annotate or natural language like 'let me annotate this', 'open this doc so I can comment on it', 'let me review change X as a block', 'I want to mark up the spec', 'read my annotations', 'work through my comments on X'. Not for reviewing a change against this repo's standards; that is review-change."
+description: "Open a Markdown, text or HTML document, or a whole OpenSpec change, as a local page where the user selects passages and comments; the comments are read back and worked through. Never edits the source. Triggers: /cla:annotate, 'let me annotate this', 'read my annotations'. Not for review-change."
 argument-hint: "<path to a .md, .txt, .html or .htm file, or an OpenSpec change id>"
 allowed-tools: Bash, Read, Grep, Glob, Edit
 ---

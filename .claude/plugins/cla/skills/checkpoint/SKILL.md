@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: "Compact the current session into a briefing the next session can resume from: what was decided and why, what landed, what is in flight with its exact next action, and the open threads. Points at commits, PRs, and decision docs rather than restating them, and never copies secrets or file contents. Writes cla.io/checkpoints/<date>-<slug>.md. Triggers on /cla:checkpoint or natural language like 'checkpoint this session', 'write a handoff for the next session', 'I am running out of context', 'summarize where we are so I can resume tomorrow'."
+description: "Compact the session into a resumable briefing in cla.io/checkpoints/: decisions and why, what landed, what is in flight with its next action, open threads. Points at commits and PRs; never copies secrets. Triggers: /cla:checkpoint, 'checkpoint this session', 'I am running out of context'."
 argument-hint: "[optional slug for the checkpoint file]"
 allowed-tools: Bash, Read, Grep, Glob, Write
 ---

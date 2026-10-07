@@ -1,6 +1,6 @@
 ---
 name: multi-spec
-description: "Turn a shape-decision decisions file into a batch of OpenSpec change proposals (proposal.md, tasks.md and spec deltas; design.md only where a stock trigger applies), authored and committed one change at a time so a local-machine crash or accidental delete never loses more than the change in flight, then reviewed once as a batch with review-change's checklist before opening a single PR. Stops at proposals-only — does not implement. Triggers on /cla:multi-spec or natural language like 'turn these decisions into changes', 'author all the proposals from this decisions file', 'batch-propose the shaped decisions'."
+description: "Turn a shape-decision decisions file into a batch of OpenSpec change proposals, committed one change at a time, reviewed once as a batch, then opened as one PR. Proposals only, no implementation. Triggers: /cla:multi-spec, 'turn these decisions into changes', 'batch-propose the shaped decisions'."
 argument-hint: "[decisions-file-path | (empty = most recent under cla.io/decisions/)]"
 ---
 

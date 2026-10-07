@@ -3,6 +3,9 @@ name: cla-init
 description: "Idempotent, never-clobber project-data scaffolder for the cla plugin: creates a fresh (or partially-scaffolded) repo's cla.io/ tree — decisions/, feedback/, retro/, lessons-learned/ dirs, the empty .jsonl retro ledgers, the feedback/notes.md inbox, the lessons-learned log — and seeds skeleton cla.io/overlays/<skill>.md stubs for skills that consume one, plus OpenSpec authoring rules in a missing openspec/config.yaml (printed for pasting when the file exists). Creates only what's missing; never overwrites or re-seeds what already exists, so it's safe to re-run anytime. Does NOT wire the plugin manifest or settings (stays manual). Triggers on /cla:cla-init or natural language like 'scaffold cla.io', 'initialize the cla plugin data', 'onboard this repo to cla', 'set up the cla project data'."
 argument-hint: "(no args — scaffolds the current repo)"
 allowed-tools: Bash, Read, Grep, Glob
+# Slash-command only (once per repo, at onboarding): keeps this description out of the
+# always-loaded skill listing. Nothing invokes it programmatically.
+disable-model-invocation: true
 ---
 
 # /cla:cla-init — scaffold the cla plugin's project-data baseline

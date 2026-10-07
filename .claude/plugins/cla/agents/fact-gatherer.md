@@ -1,6 +1,6 @@
 ---
 name: fact-gatherer
-description: Use this agent when an orchestrator needs the mechanical, read-only portion of a claims-verification sweep executed cheaply — grepping for symbols, reading reference files, and confirming file/line claims against source, then returning a structured pass/fail table. Typical triggers include /cla:spec-to-pr's Review phase on a large change offloading its checklist 0a–0h mechanics, and any workflow that has a list of "artifact claims X about the code" and needs each one checked against ground truth. See "When to invoke" in the agent body for worked scenarios. It CANNOT execute commands — a claim needing a query, a build, or any shell invocation must be verified by the caller, not handed here. Do NOT use it to make judgment calls about whether a failed claim matters — it reports facts; the caller adjudicates.
+description: "Read-only mechanical verification of artifact claims about code (grep symbols, read references, check file:line claims), returning a pass/fail table. Cannot run commands; the caller judges failures. Used by spec-to-pr Review on large changes for checklist checks 0a-0h."
 model: haiku
 color: cyan
 tools: ["Read", "Grep", "Glob"]

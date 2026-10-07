@@ -691,13 +691,13 @@ def test_every_invocation_cell_holds_a_legal_value() -> None:
 
     Dropping the Invoked by cell from an unmarked row, or relabelling a real
     skill `n/a — dispatched`, leaves both marked sets untouched — so without
-    this the table can misalign or lie about 20 of its 22 rows in silence.
+    this the table can misalign or lie about 21 of its 23 rows in silence.
 
-    Counted with this module's own `phase_table_rows()`: 22 body rows, of which
-    `_row_skill_name` reads 20 as naming a shipped skill and 2 as non-skill
-    rows; the Invoked by column holds 18 `you or Claude`, 2 `**you only**`,
+    Counted with this module's own `phase_table_rows()`: 23 body rows, of which
+    `_row_skill_name` reads 21 as naming a shipped skill and 2 as non-skill
+    rows; the Invoked by column holds 12 `you or Claude`, 9 `**you only**`,
     1 `n/a — vendored` and 1 `n/a — dispatched`. The set match above pins only
-    the 2 marked cells, which is where the other 20 come from.
+    the 9 marked cells, which is where the other 14 come from.
     """
     for row in phase_table_rows():
         assert len(row) == 4, f"phase-table row has {len(row)} cells, expected 4: {row}"

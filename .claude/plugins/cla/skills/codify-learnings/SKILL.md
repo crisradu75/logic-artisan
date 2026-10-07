@@ -2,6 +2,9 @@
 name: codify-learnings
 description: "Review the current conversation for lessons that would make a future, similar session go better. Propose interactive improvements to docs, slash commands, skills, hooks/settings, and user memory in this repo. Append the annotated report to the rolling log at cla.io/lessons-learned/lessons-learned.md. Triggers on natural language like 'review this session', 'codify what we learned', 'propose improvements from this conversation', or via the /cla:codify-learnings slash command."
 argument-hint: "[scope-note]"
+# Slash-command only (an end-of-session retro the user starts): keeps this description out of the
+# always-loaded skill listing. Nothing invokes it programmatically.
+disable-model-invocation: true
 ---
 
 # Codify learnings
