@@ -106,7 +106,7 @@ proposed before anybody counted.
 Read it back with the generic summariser:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --fleet --ledger shape-decision-runs.jsonl
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --ledger shape-decision-runs.jsonl   # add --fleet to read every repo in cla.io/fleet.local.md
 ```
 
 Best-effort: a failed write is noted and the run continues.

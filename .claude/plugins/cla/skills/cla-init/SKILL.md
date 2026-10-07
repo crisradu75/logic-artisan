@@ -79,14 +79,15 @@ shaped-decision `.md` files created by `shape-decision`/`multi-spec`).
 # shared lib/log_run.py (which takes the ledger filename as its argument):
 #   spec-to-pr-runs     read by /cla:spec-to-pr-retro
 #   codify-runs         read by /cla:codify-retro
-# Not seeded — log_run.py creates each on its first append, and each skill names
-# its reader next to its writer:
-#   lite-pr-runs, shape-decision-runs, feedback-runs   lib/ledger_summary.py
-#   right-model-runs                                   right-model's expiry review
+# Not seeded — log_run.py creates each on its first append:
+#   lite-pr-runs, shape-decision-runs, feedback-runs
+#                       read by lib/ledger_summary.py, named in each skill
+#   right-model-runs    no reader yet: right-model names /cla:project-review,
+#                       which does not read it (tracked in #299)
 #
-# There were four more (multi-pr, multi-spec, multi-lite, project-review). None
-# had a reader, so they were deleted. If you add a ledger, add its reader in the
-# same change — an unread ledger is exhaust, not data.
+# There were four more (multi-pr, multi-spec, multi-lite, project-review). No
+# skill pointed a reader at them, so they were deleted. If you add a ledger, name
+# its reader in the same change — an unread ledger is exhaust, not data.
 for f in spec-to-pr-runs codify-runs; do
   [ -e "$ROOT/cla.io/retro/$f.jsonl" ] || : > "$ROOT/cla.io/retro/$f.jsonl"
 done

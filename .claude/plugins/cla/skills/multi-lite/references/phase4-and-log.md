@@ -5,8 +5,8 @@ The Phase 4 summary shape. `SKILL.md`'s stub carries the load-bearing invariant;
 This file used to also hold a "Log the run" recipe appending to
 `cla.io/retro/multi-lite-runs.jsonl`. That ledger held 4 records across five
 repos and no skill ever read it, so it was deleted along with the two other
-unread chain ledgers. Only `spec-to-pr-runs` and `codify-runs` remain, because
-only those two have a retro skill that consumes them.
+unread chain ledgers. The ledgers that remain, and what reads each, are listed
+in `cla-init`'s scaffold step.
 
 ## Phase 4 — Final summary
 

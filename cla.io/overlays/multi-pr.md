@@ -44,7 +44,7 @@ already, and nothing checks them:
 Filling this file is the fix for those 4, not softening more pointers.
 
 **2026-08-14 — host classifier refused `gh pr merge` regardless of configuration.** In this repo,
-on Claude Code with `--permission-mode auto`: `Bash(gh *)` present in the local, untracked `settings.local.json`,
+on Claude Code with `--permission-mode auto`: `Bash(gh *)` present in the machine-local `settings.local.json`,
 `ALLOW_PR_MERGE=1` prefixed (the plugin's own hook confirmed it was disarmed), and the merge was
 still refused by the host's auto-mode permission classifier — and refused again without
 `--delete-branch`, and again after adding an explicit `Bash(gh pr merge *)` allowlist entry. This

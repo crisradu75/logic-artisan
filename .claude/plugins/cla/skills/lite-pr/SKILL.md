@@ -217,7 +217,7 @@ writing `false` if Test never ran.
 Read it back with the generic summariser — this skill has no bespoke retro, deliberately:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --fleet --ledger lite-pr-runs.jsonl
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --ledger lite-pr-runs.jsonl   # add --fleet to read every repo in cla.io/fleet.local.md
 ```
 
 Best-effort: if `log_run.py` exits non-zero, note it and continue. A missing ledger line

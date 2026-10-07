@@ -15,6 +15,11 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
               │  (Read + compare) │
               └─────────┬─────────┘
                         │
+              ┌─────────┴─────────┐
+              │  PRECHECK         │   git_state.py in-progress op → resolve first
+              │  working tree     │   out-of-scope dirty paths → ask
+              └─────────┬─────────┘
+                        │
                         ▼
             ┌──────────────────────┐
             │  PROPOSE             │   post-check: openspec validate <name> --strict

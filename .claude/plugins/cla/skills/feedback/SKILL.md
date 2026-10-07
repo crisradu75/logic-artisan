@@ -85,7 +85,7 @@ drifts toward 1:1 means the merge step is not earning its place.
 Read it back with the generic summariser:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --fleet --ledger feedback-runs.jsonl
+python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --ledger feedback-runs.jsonl   # add --fleet to read every repo in cla.io/fleet.local.md
 ```
 
 Best-effort: a failed write is noted and the run continues.
