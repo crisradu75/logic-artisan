@@ -63,22 +63,27 @@ Shape 4, compensating coverage and exclusion reach, as first specified:
 > not. Severity floor: **Important** for an unverified compensating claim, **Critical** where the
 > replacement is measurably weaker than what it replaced.
 
+## An exclusion's reach is enumerated
+
+Exclusion reach is the second trigger of shape 4; its original text is quoted under "A
+compensating-coverage claim is read, not accepted".
+
 ## One numbered check reaches the claim shapes and is not delegated
 
 The check exists so that the shapes are reached during the workflow's verification sweep and not only
-by a reader of the contract section. The exclusion appears where the delegation decision is made, not
-only where the check is defined. Each shape returns a judgement — a comparison of two mechanisms, a
+by a reader of the contract section. Each shape returns a judgement — a comparison of two mechanisms, a
 classification, an assessment of one test's strength against another's — rather than a pass or fail
 row, so a sub-agent returning a pass/fail table cannot carry it.
 
-## Reviewer report severities are reconciled by the evidence behind them
+Originally specified as: "No existing check SHALL be renumbered or reworded, and every enumeration of
+which checks the orchestrator runs SHALL be updated to name the new one."
+
+## The severity rule keys on evidence, with the higher severity as fallback
 
 Where every dispatched reviewer is licensed to read source, the reviewer's role does not identify who
 read the implementation, so a role-keyed rule is not decidable from the reports the orchestrator
 holds. The evidence is, and it is present because the grounding contract already requires every
 finding to carry its resolving evidence.
-
-## The higher severity stands only as a fallback
 
 Applied unconditionally, the fallback converts every disagreement into an escalation, inflating the
 counts that the workflow's own verdict rubric already warns against reading literally.
@@ -115,7 +120,7 @@ A rename mapping names requirements, not scenarios, so a scenario renamed in pla
 
 ## A flag is adjudicated, never acted on alone
 
-A flag can be a rename, which is why nothing acts on one alone. An uncited intentional removal is still reported because the verdict is then a claim rather than a reference.
+An uncited intentional removal is still reported because the verdict is then a claim rather than a reference.
 
 ## An unadjudicated flag is treated as dropped
 

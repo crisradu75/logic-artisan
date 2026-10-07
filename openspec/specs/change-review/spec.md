@@ -20,6 +20,13 @@ rather than as further independent numbered checks appended to the workflow's ch
 - **THEN** the four claim shapes are enumerated as part of that contract
 - **AND** they are not added as four further independent numbered checks
 
+#### Scenario: The shapes reach the reviewers who produce the findings
+
+- **WHEN** a review dispatches agents to produce its findings rather than adjudicating inline
+- **THEN** the shape list is carried in those agents' own briefs, not only in the orchestrator's sweep
+- **AND** the shape text is carried into each prompt in full, never as a pointer to the contract, because a dispatched agent does not load the skill and cannot resolve one
+- **AND** a shape whose resolution requires re-reading the change artifacts is stated as not delegable to that dispatch
+
 ### Requirement: Each claim shape is stated as an executable check
 
 **Four shapes SHALL be named**, each stated as a trigger, a resolution naming what to read and what to
@@ -45,11 +52,23 @@ failures, not procedure failures.
 
 ### Requirement: Producible state is resolved against the data the system will run on
 
-Shape 1, **producible state**, is triggered by an artifact specifying fixed example, demo, fixture,
-or sample states a surface must show. Its resolution SHALL read the production function or query for
-each state, resolve its gating predicate against the real data the system will run on, and record the
-producing path with its corpus figure. Searched with none found SHALL resolve as **not producible**,
-floor **Critical**; NOT searched SHALL resolve as unresolved, with no severity floor.
+Shape 1, **producible state**, is triggered by an artifact specifying a fixed set of example, demo,
+fixture, or sample states a surface must show. Its resolution SHALL name and read the production
+function or query that would produce each state; resolve the predicate gating it against the real data
+the system will run on rather than the fixture's; and record the producing path with the corpus figure,
+or an explicit not-producible with the line that forbids it.
+
+#### Scenario: A specified demo state is traced to the data that would produce it
+
+- **WHEN** an artifact specifies a fixed set of example, demo, fixture, or sample states a surface must show
+- **THEN** the reviewer names and reads the production function or query that would produce each state, and resolves its gating predicate against the real data rather than the fixture's
+- **AND** records the producing path with the corpus figure, or an explicit not-producible with the line that forbids it
+
+### Requirement: A producible-state search that finds nothing resolves negative
+
+Having searched and found no producing path SHALL resolve as **not producible**; NOT having searched
+SHALL resolve as unresolved, and SHALL carry no severity floor. An unproducible state written as a
+requirement is **Critical**.
 
 #### Scenario: An unproducible demo state resolves negative rather than unresolved
 
@@ -62,24 +81,36 @@ floor **Critical**; NOT searched SHALL resolve as unresolved, with no severity f
 
 Shape 2, **precedent strictness**, is triggered by an artifact naming an existing shipped
 implementation as the precedent it mirrors, follows, or is modelled on. Its resolution SHALL read the
-precedent's actual mechanism and, per provision the new requirement imposes, record whether the
-precedent satisfies it, does not, or does not have it, and what extra strictness buys and who pays.
-Floor: **Important**, **Critical** where it blocks implementation.
+named precedent's actual mechanism at its path; for each provision the new requirement imposes, record
+whether the precedent satisfies it, does not satisfy it, or does not have it; for each provision the
+precedent does not satisfy, state what the extra strictness buys and who pays.
 
 #### Scenario: A named precedent is read for what it actually enforces
 
 - **WHEN** an artifact names a shipped implementation as the precedent it mirrors
-- **THEN** the reviewer reads that precedent's mechanism and records, per provision the artifact imposes, whether the precedent satisfies it, does not, or does not have it
+- **THEN** the reviewer reads that precedent's mechanism at its path and records, per provision the artifact imposes, whether the precedent satisfies it, does not satisfy it, or does not have it
 - **AND** for each provision the precedent does not satisfy, states what the extra strictness buys and who pays
-- **AND** the shape states why no other check finds this: every other check asks whether the artifact is strong enough, and this one asks whether it is stronger than it needs to be
+
+### Requirement: Precedent strictness states its floor and why no other check finds it
+
+The precedent-strictness shape's severity floor SHALL be **Important**, rising to **Critical** where
+the provision blocks implementation. Its text SHALL state why no other check finds this: every other
+check asks whether the artifact is strong enough, and this one asks whether it is stronger than it
+needs to be.
+
+#### Scenario: Precedent strictness states its floor and its reason
+
+- **WHEN** the precedent-strictness shape is stated
+- **THEN** its floor is Important, rising to Critical where the provision blocks implementation
+- **AND** it says why no other check finds this: every other check asks whether the artifact is strong enough, and this one asks whether it is stronger than it needs to be
 
 ### Requirement: A guarantee is classified as a code or a deployment property
 
 Shape 3, **guarantee class**, is triggered by an artifact stating that a mechanism prevents,
 controls, serialises, or makes impossible a hazard. Its resolution SHALL classify the guarantee as a
-code property, quoting the enforcing line, or a deployment property, which the artifact must say and
-name the trigger that changes. Leaving it unclassified SHALL itself be the failure. Floor: no named
-trigger is **Important**; a deployment property described as a code property is **Critical**.
+**code property** (a constraint, a lock, a registration, a type, a test that goes red), quoting the
+enforcing line, or a **deployment property** (true only because of how many processes, instances,
+workers, or regions run today), which the artifact must say and name the trigger condition for.
 
 #### Scenario: A guarantee is classified before it is accepted
 
@@ -87,6 +118,18 @@ trigger is **Important**; a deployment property described as a code property is 
 - **THEN** the reviewer classifies the guarantee as a code property or a deployment property
 - **AND** a code property is resolved by quoting the enforcing line
 - **AND** a deployment property is accepted only where the artifact says so and names the trigger that changes it
+
+### Requirement: An unclassified guarantee is itself the failure
+
+Leaving the guarantee unclassified SHALL itself be the failure. Severity floor: a deployment property
+with no named trigger is **Important**; a deployment property described as a code property is
+**Critical**, being a false statement about what the code enforces.
+
+#### Scenario: A guarantee's class sets its floor
+
+- **WHEN** a guarantee is left unclassified, classified as a deployment property with no named trigger, or is a deployment property described as a code property
+- **THEN** the unclassified guarantee is itself the failure
+- **AND** the deployment property with no named trigger is Important, and the one described as a code property is Critical
 
 ### Requirement: A compensating-coverage claim is read, not accepted
 
@@ -117,10 +160,10 @@ surface and, for each, name where it is otherwise covered or state that it is no
 ### Requirement: The claim-shape list is open by signature
 
 **The list SHALL be stated as open, by signature rather than by disclaimer.** The common signature
-SHALL be given (a sentence is a claim when its truth depends on something outside the artifact though
-its grammar is not assertive) with the grammars that hide one: an explanation, a comparison to
-something shipped, a specification of output shape, and a trade. A sentence matching that signature
-SHALL be in scope whether or not it appears among the named shapes.
+SHALL be given — a sentence is a claim under this contract when its truth depends on something outside
+the artifact even though its grammar is not assertive — together with the grammars that hide one: an
+explanation, a comparison to something shipped, a specification of output shape, and a trade. A
+sentence matching that signature SHALL be in scope whether or not it appears among the named shapes.
 
 #### Scenario: An unnamed shape matching the signature is in scope
 
@@ -140,26 +183,13 @@ identifier from the reporting instances travels into the portable text.
 - **AND** the shape is stated so a repository with a different architecture can still apply it
 - **AND** a shape that can only fire in the reporting instance's kind of product is rewritten or dropped
 
-### Requirement: Dispatched reviewers carry the claim shapes in full
-
-A review that dispatches agents to produce its findings SHALL carry the shape list in those agents'
-own briefs, in full and never as a pointer to the contract. A shape whose resolution requires
-re-reading the change artifacts SHALL be stated as not delegable to that dispatch.
-
-#### Scenario: The shapes reach the reviewers who produce the findings
-
-- **WHEN** a review dispatches agents to produce its findings rather than adjudicating inline
-- **THEN** the shape list is carried in those agents' own briefs, not only in the orchestrator's sweep
-- **AND** the shape text is carried into each prompt in full, never as a pointer to the contract, because a dispatched agent does not load the skill and cannot resolve one
-- **AND** a shape whose resolution requires re-reading the change artifacts is stated as not delegable to that dispatch
-
 ### Requirement: One numbered check reaches the claim shapes and is not delegated
 
-**Exactly one numbered check SHALL be added to the workflow's check list**, pointing at the shape list
+Exactly one numbered check SHALL be added to the workflow's check list, pointing at the shape list
 rather than restating it. No existing check SHALL be renumbered or reworded, and every enumeration of
-the orchestrator's checks SHALL name the new one. **That check SHALL be stated as outside the mechanical
-portion that defaults to a fact-gathering sub-agent**, in the paragraph where the delegation decision
-is made.
+which checks the orchestrator runs SHALL name the new one. That check SHALL be stated as
+outside the mechanical portion that defaults to a fact-gathering sub-agent, and the exclusion SHALL
+appear in the paragraph where the delegation decision is made, not only where the check is defined.
 
 #### Scenario: The sweep reaches the shapes and is not delegated
 
@@ -171,10 +201,10 @@ is made.
 ### Requirement: Reviewer report severities are reconciled by the evidence behind them
 
 A CLA review workflow that dispatches more than one reviewer and merges their reports SHALL state how
-a finding reported by two of them at different severities is graded. The merged severity SHALL be taken
-from the report whose evidence is **implementation-level** (a source line, a schema, a migration, a
-query result) over one whose evidence is the specification delta or artifact text alone. The rule
-SHALL key on the evidence attached to the finding, not on which reviewer reported it.
+a finding reported by two of them at different severities is graded. Where the reports disagree, the
+merged severity SHALL be taken from the report whose evidence for that severity is
+**implementation-level** — a source line, a schema, a migration, a query result — over the report
+whose evidence is the specification delta or the artifact text alone.
 
 #### Scenario: Two reports grade one finding differently
 
@@ -182,9 +212,10 @@ SHALL key on the evidence attached to the finding, not on which reviewer reporte
 - **THEN** the merged severity is taken from the report whose evidence is implementation-level
 - **AND** the report whose evidence is the specification delta or artifact text alone does not set the severity
 
-### Requirement: The higher severity stands only as a fallback
+### Requirement: The severity rule keys on evidence, with the higher severity as fallback
 
-Where neither report's evidence is implementation-level, or both are, the **higher severity SHALL
+The severity rule SHALL key on the evidence attached to the finding, not on which reviewer reported
+it. Where neither report's evidence is implementation-level, or both are, the **higher severity SHALL
 stand**. This fallback SHALL NOT be stated as the primary rule.
 
 #### Scenario: Neither report's evidence discriminates
@@ -195,8 +226,8 @@ stand**. This fallback SHALL NOT be stated as the primary rule.
 
 ### Requirement: A severity tie-break is recorded on its finding
 
-The tie-break SHALL be recorded on the finding it resolved, so that a reader can see one occurred, and
-SHALL NOT add a line to the report, which is budgeted at one line per finding.
+A severity tie-break SHALL be recorded on the finding it resolved, so that a reader can see one
+occurred, and SHALL NOT add a line to the report, which is budgeted at one line per finding.
 
 #### Scenario: The tie-break is visible without costing a report line
 
@@ -206,10 +237,10 @@ SHALL NOT add a line to the report, which is budgeted at one line per finding.
 
 ### Requirement: The tie-break rule states its evidence without claiming measurement
 
-**The rule's evidence SHALL be stated with it and SHALL NOT be presented as measured**: one
-overlapping finding out of eighteen, from one change, observed under a different dispatch shape. The
-text SHALL state that low overlap is the reviewer split working as intended and that the rule is
-therefore expected to fire rarely.
+**The severity tie-break rule's evidence SHALL be stated with it and SHALL NOT be presented as
+measured**: one overlapping finding out of eighteen, from one change, observed under a different
+dispatch shape. The text SHALL state that low overlap is the reviewer split working as intended and
+that the rule is therefore expected to fire rarely.
 
 #### Scenario: The rule carries its own evidence honestly
 
@@ -231,15 +262,10 @@ refuses a change.
 - **THEN** the comparison reports the difference
 - **AND** an instruction satisfied by reading the delta alone is treated as not covering this
 
-#### Scenario: A change with no modified block
-
-- **WHEN** a change's delta contains no modified-requirement block
-- **THEN** the check is reported as not applicable, naming what was scanned
-- **AND** it is not recorded as a passing comparison
-
 ### Requirement: The comparison attaches to the block, not the workflow
 
-**The obligation attaches to the block, not to the workflow that produced it.** It SHALL apply
+**The obligation to compare a MODIFIED block attaches to the block, not to the workflow that
+produced it.** It SHALL apply
 wherever a change carrying such a block is reviewed before implementation, prepared for archive, or
 sequenced within a batch.
 
@@ -293,7 +319,7 @@ positives**: a scenario renamed in place remains flagged.
 
 ### Requirement: A flag is adjudicated, never acted on alone
 
-**Nothing SHALL refuse, halt, or auto-correct on a flag alone.** Each flagged scenario SHALL be
+**Because a flag can be a rename, nothing SHALL refuse, halt, or auto-correct on a flag alone.** Each flagged scenario SHALL be
 adjudicated to exactly one of: renamed, intentionally removed, or dropped. Only *dropped* is a finding.
 An intentional removal SHALL cite the change's own artifacts; asserted without a citation it carries a
 lower severity than a drop but is still reported.
@@ -343,9 +369,16 @@ many flags were adjudicated to each verdict.
 - **THEN** it reports how many requirements were compared across how many capabilities, how many were flagged, and how each flag was adjudicated
 - **AND** a bare statement that nothing was found does not satisfy this
 
+#### Scenario: A change with no modified block
+
+- **WHEN** a change's delta contains no modified-requirement block
+- **THEN** the check is reported as not applicable, naming what was scanned
+- **AND** it is not recorded as a passing comparison
+
 ### Requirement: A failed enumeration is a failed check
 
-**A failed enumeration SHALL be reported as a failed check, not as an empty result.**
+In a retention comparison, **a failed enumeration SHALL be reported as a failed check, not as an
+empty result**: a command that errors yields no headings, which is not "no differences".
 
 #### Scenario: An enumeration that errored is not zero differences
 
