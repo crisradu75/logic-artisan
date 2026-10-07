@@ -12,7 +12,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
                         │
               ┌─────────┴─────────┐
               │  Bootstrap perms  │   HALT-on-decline (only)
-              │  check_perms.py   │
+              │  (Read + compare) │
               └─────────┬─────────┘
                         │
                         ▼
