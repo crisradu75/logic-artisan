@@ -32,7 +32,7 @@ discharge is a runnable command string is falsifiable by running it.
 **Why this is not a keyword scan over the diff.** That was the obvious design and
 it is measured to be the wrong one. The same idea was already built and withdrawn
 once in this repo for the sibling case (a scan of ticked task bodies — see
-`openspec/specs/cla-plugin/spec.md`, "Completeness signals read the claim, not the
+`openspec/specs/orchestration/spec.md`, "Completeness signals read the claim, not the
 glyph", and GitHub issue #105: 173 ticked tasks, 6 lines reached, 0 true
 positives, 4 false positives, trip words colliding with vocabulary the skills use
 deliberately). Re-measured for the diff-side variant before choosing:
@@ -149,7 +149,7 @@ Every looping test carries its own floor, in the same function. A floor in a
 separate test function is coupled to nothing: a `-k`, a skip, or a collection
 error leaves the real test silently green.
 
-Spec: `openspec/specs/cla-plugin/spec.md`, "A measurement names the command that
+Spec: `openspec/specs/orchestration/spec.md`, "A measurement names the command that
 produced it".
 """
 

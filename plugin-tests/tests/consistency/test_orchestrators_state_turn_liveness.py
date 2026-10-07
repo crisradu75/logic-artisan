@@ -52,7 +52,7 @@ non-vacuity assertion in a SEPARATE test function, and pytest couples nothing â€
 a `-k`, a skip, or a collection error in the floor left the real test silently
 green. Two of these tests were proven to pass while checking zero things.
 
-Spec: `openspec/specs/cla-plugin/spec.md`, "Unattended-run turn liveness".
+Spec: `openspec/specs/orchestration/spec.md`, "Unattended-run turn liveness".
 """
 
 from __future__ import annotations

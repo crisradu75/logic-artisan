@@ -44,7 +44,7 @@ def _example_record() -> dict:
     return json.loads(blocks[0])
 
 
-# scenario: cla-plugin / A READY change gets a review record
+# scenario: change-review / A READY change gets a review record
 def test_multi_spec_writes_a_record_for_every_change_whatever_its_verdict():
     text = _read(_REVIEW_GATE)
     assert f"**Write a review record into every reviewed change, whatever its verdict**, as `{_RECORD}`." in text
@@ -52,7 +52,7 @@ def test_multi_spec_writes_a_record_for_every_change_whatever_its_verdict():
     assert "git add -- openspec/changes/" in text
 
 
-# scenario: cla-plugin / A finding deferred out of scope
+# scenario: change-review / A finding deferred out of scope
 def test_the_example_record_has_exactly_the_documented_fields():
     record = _example_record()
     assert set(record) == _FIELDS
@@ -72,8 +72,8 @@ def test_the_verdict_values_match_the_rubric():
     assert "**Verdict: READY / FIX FIRST / RETHINK**" in _read(_CHECKLIST)
 
 
-# scenario: cla-plugin / A change edited after multi-spec's review
-# scenario: cla-plugin / An edit squashed in after multi-spec's review
+# scenario: change-review / A change edited after multi-spec's review
+# scenario: change-review / An edit squashed in after multi-spec's review
 def test_both_sides_compute_the_same_artifact_digest():
     assert _DIGEST.format(n="<name>") in _read(_REVIEW_GATE)
     assert _DIGEST.format(n="<change-name>") + " equals the record's `artifacts`" in _read(_SPEC_TO_PR)
@@ -89,8 +89,8 @@ def test_spec_to_pr_reads_the_record_multi_spec_writes():
     assert "`openspec/changes/<change-name>/review.json`" in _read(_SPEC_TO_PR)
 
 
-# scenario: cla-plugin / A change multi-spec passed
-# scenario: cla-plugin / A change multi-spec did not pass
+# scenario: change-review / A change multi-spec passed
+# scenario: change-review / A change multi-spec did not pass
 def test_spec_to_pr_skips_only_on_a_qualifying_record():
     text = _read(_SPEC_TO_PR)
     # One sentence, so RETHINK, a partial apply or a deferral cannot slip in.
@@ -100,7 +100,7 @@ def test_spec_to_pr_skips_only_on_a_qualifying_record():
     ) in text
 
 
-# scenario: cla-plugin / A change with no usable review record
+# scenario: change-review / A change with no usable review record
 def test_spec_to_pr_fails_closed_on_a_missing_or_unreadable_record():
     assert (
         "Skip only when all of these hold; anything else, including a missing or "
