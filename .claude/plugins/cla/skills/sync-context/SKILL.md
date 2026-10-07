@@ -152,9 +152,9 @@ this skill's own staleness checker, `${CLAUDE_PLUGIN_ROOT}/skills/sync-context/s
 — run it as a program (`python3 <path>`; exit 0 clean, non-zero with every stale path named), no
 pytest required in the repo being checked.
 
-**Keep it terse: one line per fact, under its `##` section.** Other skills read one named section
-at a time (`grep -n '^## '`, then a sliced read), so a section is the unit of cost; prose
-explanations belong in the overlay that needs them.
+**Keep it terse: one fact per line, under its `##` section.** Skills that cite a section read the
+whole file, so every line is paid on each read; prose explanations belong in the overlay that
+needs them. A list-valued fact (an affected-file map) stays a list.
 
 While drafting, also look for a fact **restated verbatim (or near-verbatim) across two or more**
 overlays that isn't in one of the categories above — that's a genuine tie-break hit found empirically

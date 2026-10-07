@@ -18,7 +18,8 @@ Orchestrates `/cla:lite-pr` across a **sequence** of small candidates extracted 
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
 Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
 that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
-path with `/skills/<name>` removed. If you cannot establish it, say so and stop. Detail:
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 This is the `lite-pr` analogue of `/cla:multi-pr` (which chains `/cla:spec-to-pr` over OpenSpec changes). Use `multi-lite` when the work is a batch of **small** changes that don't need OpenSpec artifacts — the same "which workflow" judgment call `lite-pr` vs `spec-to-pr` already asks, applied to a batch.

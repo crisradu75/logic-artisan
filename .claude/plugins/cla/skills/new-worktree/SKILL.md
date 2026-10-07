@@ -7,6 +7,14 @@ description: "Start an isolated git worktree for this repo with dependencies ins
 
 See `cla.io/overlays/new-worktree.md` for this repo's own workspace shape, its gitignored env file(s), and why a bare `EnterWorktree` alone leaves the new worktree without a working dev setup (no installed dependencies, no env-derived secrets, so a dependent process silently degrades). This skill does the full setup in two tool round-trips total.
 
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
+`references/` file opened with `Read` carries it literally, and it is not an environment variable in
+Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
+that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
+
 **The dominant cost here is round-trips, not the install's own execution time.** See `cla.io/overlays/new-worktree.md` for this repo's own measured install timing. What actually makes a rerun feel slower is extra tool calls layered on top (a separate `git worktree list` lookup, ad hoc verification checks, status checks) — each one is a full model round-trip regardless of how fast the command inside it runs. So: keep this to the fewest possible tool calls, and don't add "just to be sure" verification steps — trust each command's own output/exit code.
 
 ## Path discipline once inside a worktree
@@ -125,7 +133,9 @@ memory `worktree-isolation-file-paths`.)
 ## When `EnterWorktree` refuses over path casing
 
 A refusal naming two paths that differ only in letter case: **read `references/path-casing.md`**
-and follow it. Don't retry `EnterWorktree`; it will refuse the same way.
+and follow it. Don't retry `EnterWorktree`; it will refuse the same way. Never "fix" it by renaming
+the repo directory. The fallback is a manual worktree, which gets no write redirection: every
+path must target the worktree explicitly, and the final report must say this mode was used.
 
 ## Non-goals
 

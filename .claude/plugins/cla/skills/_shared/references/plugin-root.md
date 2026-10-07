@@ -1,8 +1,9 @@
 # Resolving `${CLAUDE_PLUGIN_ROOT}`
 
-The full rule behind the short form at the top of six skills' `SKILL.md`.
+The full rule behind the short form near the top of every skill whose `references/` name plugin
+files this way. This file is itself a `references/` file, so the placeholder in it arrives literal.
 
-Commands in this skill and its reference
+Commands in a skill and its reference
 files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
 plugin's install directory, and Claude Code substitutes it into skill content --
 but it is **not** an environment variable in the Bash tool. If you ever see the
@@ -18,6 +19,6 @@ segment. If you cannot establish it either way, say so and stop rather than
 guessing a path.
 
 Measured, so you know which half is load-bearing: a `SKILL.md` body arrives with
-the placeholder ALREADY substituted, so commands written here are safe. A
+the placeholder ALREADY substituted, so commands written in a `SKILL.md` are safe. A
 `references/` file is opened with `Read`, which returns the raw bytes — the
 placeholder arrives literal there, and that is the case this rule exists for.

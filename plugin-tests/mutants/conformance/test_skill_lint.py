@@ -15,6 +15,8 @@ from pathlib import Path
 PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 DEV = Path(__file__).resolve().parents[2]
 SKILL = PLUGIN / "skills" / "right-model" / "SKILL.md"
+MULTI_PR = PLUGIN / "skills" / "multi-pr" / "SKILL.md"
+REVIEW_CHANGE = PLUGIN / "skills" / "review-change" / "SKILL.md"
 LINT = DEV / "tests" / "conformance" / "test_skill_lint.py"
 TARGETS = [DEV / "tests" / "conformance"]
 
@@ -54,6 +56,22 @@ MUTANTS = [
         LINT,
         "MAX_DESCRIPTION_CHARS = 1024",
         "MAX_DESCRIPTION_CHARS = 100",
+        TARGETS,
+    ),
+    (
+        # Mutates the INPUT: a skill whose references run placeholder commands
+        # loses its resolver rule, the gap multi-pr shipped with.
+        "a skill whose references use the placeholder stops saying how to resolve it",
+        MULTI_PR,
+        "**Resolving `${CLAUDE_PLUGIN_ROOT}`.**",
+        "**Resolving the plugin root.**",
+        TARGETS,
+    ),
+    (
+        "one copy of the resolver short form drifts from the others",
+        REVIEW_CHANGE,
+        "If neither works, say so and stop.",
+        "If neither works, guess the usual path.",
         TARGETS,
     ),
 ]

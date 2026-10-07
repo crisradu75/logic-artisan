@@ -12,7 +12,8 @@ Automates a manual precedent set in this repo's own history (see `cla.io/overlay
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
 Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
 that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
-path with `/skills/<name>` removed. If you cannot establish it, say so and stop. Detail:
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 **The durability requirement is the reason this skill exists as more than a loop over `openspec-propose`.** A batch of N proposal directories sitting uncommitted for the whole run is a real, already-realized loss mode in this repo's own history (see `cla.io/overlays/multi-spec.md`) while sitting untracked. Every phase below is ordered to keep the loss window to at most one change.

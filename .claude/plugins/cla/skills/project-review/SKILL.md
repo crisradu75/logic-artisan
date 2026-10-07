@@ -12,7 +12,8 @@ Run a comprehensive CTO-level review of this repo (see the project overlay for w
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
 Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
 that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
-path with `/skills/<name>` removed. If you cannot establish it, say so and stop. Detail:
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 **When to run:** After several incremental changes, before a pitch/demo, or when you want a fresh first-principles assessment.

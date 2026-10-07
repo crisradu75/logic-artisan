@@ -61,7 +61,7 @@ correct whether or not that ordering holds. A
 non-empty directory git no longer tracks is never deleted; that is somebody's
 work, and the add fails instead so a human can look.
 
-Then continue with step 2 unchanged — the dependency install and env-file copy
+Then continue with `SKILL.md`'s step 2 unchanged — the dependency install and env-file copy
 are the same, run against the returned `worktree_path`.
 
 **One thing genuinely changes, and it must go in the final report.** A session
@@ -70,7 +70,8 @@ redirected into the worktree automatically. A manually created worktree gets non
 of that: the session is still rooted in the primary clone, so **every** subsequent
 path must target the worktree explicitly. `block-worktree-path-escape.py` is no
 backstop here either — it only fires for a session whose cwd *is* the worktree, so
-in this mode the path discipline above is the only thing protecting the boundary.
+in this mode `SKILL.md`'s "Path discipline once inside a worktree" is the only thing protecting
+the boundary.
 
 **One detection limit worth knowing.** `--diagnose` compares the path as given
 against its resolved form, and `os.path.realpath` folds letter case only on

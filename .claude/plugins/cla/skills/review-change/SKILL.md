@@ -12,7 +12,8 @@ The full review workflow lives in `references/checklist.md` and, for a large cha
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
 Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
 that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
-path with `/skills/<name>` removed. If you cannot establish it, say so and stop. Detail:
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 **Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 12 high-yield verification checks (`0a`–`0l`), the context-brief table format, the size gate (small vs large), the 3-agent dispatch (pointer to `references/dispatch.md`, read only for a large change), the weight and proof checks, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).

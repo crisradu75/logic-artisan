@@ -479,3 +479,60 @@ def test_every_slash_command_named_in_prose_resolves_to_a_real_skill():
     assert not problems, (
         "prose names a /cla: skill that does not exist:\n" + "\n".join(problems)
     )
+
+
+# A `SKILL.md` body arrives with `${CLAUDE_PLUGIN_ROOT}` substituted; a
+# `references/` file opened with `Read` does not. A skill whose references carry
+# commands with the literal placeholder must therefore tell the model how to
+# resolve it, or a command written there runs against `/skills/...`. That gap
+# reached a merge once (multi-pr) and was re-opened by moving new-worktree's
+# path-casing commands into a reference, so the pairing is checked, not assumed.
+_RESOLVER_MARKER = "**Resolving `${CLAUDE_PLUGIN_ROOT}`.**"
+_RESOLVER_END = "skills/_shared/references/plugin-root.md`."
+
+
+def _resolver_block(text: str) -> str | None:
+    if _RESOLVER_MARKER not in text:
+        return None
+    start = text.index(_RESOLVER_MARKER)
+    end = text.index(_RESOLVER_END, start) + len(_RESOLVER_END)
+    return text[start:end]
+
+
+def _skills_needing_the_resolver() -> list[Path]:
+    needing = []
+    for skill_md in sorted(_PLUGIN_ROOT.glob("skills/*/SKILL.md")):
+        refs = sorted((skill_md.parent / "references").glob("*.md"))
+        if any("${CLAUDE_PLUGIN_ROOT}" in r.read_text(encoding="utf-8") for r in refs):
+            needing.append(skill_md)
+    return needing
+
+
+def test_every_skill_whose_references_use_the_placeholder_says_how_to_resolve_it():
+    needing = _skills_needing_the_resolver()
+    # Non-vacuity: eight skills qualified when this guard was written.
+    assert len(needing) >= 8, [p.parent.name for p in needing]
+    missing = [
+        p.parent.name for p in needing
+        if _resolver_block(p.read_text(encoding="utf-8")) is None
+    ]
+    assert not missing, (
+        f"these skills' references/ run `${{CLAUDE_PLUGIN_ROOT}}` commands but their "
+        f"SKILL.md never says how to resolve it: {missing}. Paste the short form the "
+        f"other skills carry."
+    )
+
+
+def test_every_copy_of_the_resolver_short_form_is_the_same_text():
+    """One text in N files: an edit landing in one copy is drift, not a variant."""
+    blocks = {
+        p.parent.name: b
+        for p in sorted(_PLUGIN_ROOT.glob("skills/*/SKILL.md"))
+        if (b := _resolver_block(p.read_text(encoding="utf-8"))) is not None
+    }
+    assert len(blocks) >= 8, sorted(blocks)
+    distinct = set(blocks.values())
+    assert len(distinct) == 1, (
+        "the resolver short form differs between skills: "
+        + ", ".join(f"{name}" for name, b in blocks.items() if b != blocks[sorted(blocks)[0]])
+    )

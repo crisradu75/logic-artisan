@@ -15,7 +15,8 @@ Review the current conversation. Identify lessons that would make a future, simi
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
 Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
 that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
-path with `/skills/<name>` removed. If you cannot establish it, say so and stop. Detail:
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 ## Inputs

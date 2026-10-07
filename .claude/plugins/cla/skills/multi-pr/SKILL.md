@@ -15,6 +15,14 @@ disable-model-invocation: true
 
 Orchestrates `/cla:spec-to-pr` across a **sequence** of OpenSpec changes rather than one. Where `/cla:spec-to-pr` drives a single change from idea to an opened, archived PR and then stops, `multi-pr` adds the layer on top: figure out which order the open changes must ship in, run the full `/cla:spec-to-pr` workflow on each one, make sure nothing gets left half-resolved, give every dependent its parent's code before starting it (a merge under the default policy; a stacked branch under the stacked one), and end with a clean repo. This is the skill for "I'm about to be away for a few hours — take every open change to done."
 
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
+`references/` file opened with `Read` carries it literally, and it is not an environment variable in
+Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
+that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
+
 **This skill does not reimplement `/cla:spec-to-pr`.** Every actual propose/review/implement/test/ship/revise/archive step for a single change is `/cla:spec-to-pr`'s job — invoke it via `Skill(cla:spec-to-pr, args="<change-name> ...")`. `multi-pr` owns exactly four things `/cla:spec-to-pr` doesn't: **sequencing**, **the upfront confirmation gate**, **the no-unresolved-issues escalation**, and **inter-change landing (merge or stack) + final cleanup**.
 
 ## Skill-level rules (hoisted — read first)
