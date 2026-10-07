@@ -46,7 +46,7 @@ revision of this change violated exactly that, putting the report template and
 its position in the orchestrator, where the dispatched-agent path never reads it.
 `test_the_report_template_lives_only_where_review_behaviour_does` pins the repair.
 
-Spec: `openspec/specs/orchestration/spec.md`, "Cross-change obligation carry".
+Spec: `openspec/specs/orchestration/spec.md`, "An obligation one change creates for a later change is delivered to it".
 Issues: #98, #100, #102.
 """
 

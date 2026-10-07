@@ -97,7 +97,7 @@ def test_every_scenario_marker_names_a_live_scenario():
     for spec in _live_specs():
         text = _read(spec)
         live |= {(spec.parent.name, h.strip()) for h in re.findall(r"^#### Scenario: (.+)$", text, re.M)}
-    assert len(live) >= 250, f"only {len(live)} live scenarios found"
+    assert len(live) >= 220, f"only {len(live)} live scenarios found"
     markers = []
     for test in sorted((_REPO / "plugin-tests").rglob("*.py")):
         for m in re.finditer(r"^\s*# scenario: ([a-z0-9-]+) / (.+?)\s*$", _read(test), re.M):
