@@ -2,80 +2,17 @@
 
 ## Purpose
 
-How a change is reviewed before implementation: the grounding contract for claims, reconciling reviewer severities, comparing MODIFIED blocks against the live requirement, the findings an oversized or unproven artifact earns, and multi-spec's batch review gate and its recorded verdicts.
+How a change is reviewed before implementation: the grounding contract for claims, reconciling reviewer severities, comparing MODIFIED blocks against the live requirement, the findings an oversized or unproven artifact earns, and multi-spec's batch review gate and its recorded verdicts. Where a requirement has reasoning, measurements or
+compressed detail behind it, they are in `rationale.md`, under the same heading.
 
 ## Requirements
 
 ### Requirement: Grounding contract enumerates the claim shapes that do not look like claims
 
-A cla-plugin review workflow whose grounding contract binds every claim to evidence SHALL additionally
+A CLA review workflow whose grounding contract binds every claim to evidence SHALL additionally
 enumerate, beside that rule, the sentence shapes whose truth depends on something outside the artifact
 but whose grammar is not assertive. The enumeration SHALL be stated as part of the grounding contract
 rather than as further independent numbered checks appended to the workflow's check list.
-
-The reason SHALL be recorded with the enumeration: the failures this addresses are **recognition**
-failures, not procedure failures. In each reported instance the reviewer already held the grounding
-rule, already held the license to read source, and did not engage either — because the sentence
-presented as an explanation, a comparison, a specification of output, or a trade rather than as an
-assertion about existing code.
-
-**Four shapes SHALL be named**, each stated as a trigger, a resolution naming what to read and what to
-resolve it against, a failure mode, and a severity floor. A shape stated only as an instruction to
-confirm that a claim is grounded SHALL NOT satisfy this requirement.
-
-1. **Producible state.** Triggered by an artifact specifying a fixed set of example, demo, fixture, or
-   sample states a surface must show. Resolution: name and read the production function or query that
-   would produce each state; resolve the predicate gating it against the **real data the system will run on** rather than
-   the fixture's; record the producing path with the corpus figure, or an explicit not-producible with
-   the line that forbids it. Having searched and found no producing path SHALL resolve as **not producible**; NOT having searched SHALL resolve as unresolved, and SHALL carry no severity floor. The negative default applies once the reviewer has looked, because an absent producing path is itself the finding — it does not apply to a reviewer who ran out of budget, which the grounding contract already routes to unresolved. Severity floor: an unproducible state written as a requirement is
-   **Critical**, because such a requirement does not fail loudly — the available resolution under
-   implementation pressure is to invent the data.
-2. **Precedent strictness.** Triggered by an artifact naming an existing shipped implementation as the
-   precedent it mirrors, follows, or is modelled on. Resolution: read the named precedent's actual
-   mechanism at its path; for each provision the new requirement imposes, record whether the precedent
-   satisfies it, does not satisfy it, or does not have it; for each provision the precedent does not
-   satisfy, state what the extra strictness buys and who pays. Severity floor: **Important**, rising
-   to **Critical** where the provision blocks implementation. The text SHALL state why no other check
-   finds this: every other check asks whether the artifact is strong enough, and this one asks whether
-   it is stronger than it needs to be.
-3. **Guarantee class.** Triggered by an artifact stating that a mechanism prevents, controls,
-   serialises, or makes impossible a hazard. Resolution: classify the guarantee as a **code property**
-   — a constraint, a lock, a registration, a type, a test that goes red — or a **deployment property**,
-   true only because of how many processes, instances, workers, or regions run today; for a code
-   property, quote the enforcing line; for a deployment property, require the artifact to say so and to
-   name the trigger condition that changes it. Leaving the guarantee unclassified SHALL itself be the
-   failure, because the two read identically in prose and the gap becomes visible only once the
-   deployment fact changes, at which point the hazard returns with no code change and nothing red.
-   Severity floor: a deployment property with no named trigger is **Important**; a deployment property
-   described as a code property is **Critical**, being a false statement about what the code enforces.
-4. **Compensating coverage and exclusion reach.** Triggered in two ways. Where a change gives up
-   automated coverage for a named alternative, the resolution SHALL be to read the named replacement
-   and confirm what kind of assertion it actually runs, then state its strength relative to what was
-   given up — the given-up half is visible in the diff and the replacement is a promise, so the promise
-   is the half verified. Where an exclusion entry is added to any keyed allowlist or denylist, the resolution SHALL be to enumerate the components or modules reachable only
-   through the excluded surface and, for each, name where it is otherwise covered or state that it is
-   not. Severity floor: **Important** for an unverified compensating claim, **Critical** where the
-   replacement is measurably weaker than what it replaced.
-
-**The list SHALL be stated as open, by signature rather than by disclaimer.** The common signature
-SHALL be given — a sentence is a claim under this contract when its truth depends on something outside
-the artifact even though its grammar is not assertive — together with the grammars that hide one: an
-explanation, a comparison to something shipped, a specification of output shape, and a trade. A
-sentence matching that signature SHALL be in scope whether or not it appears among the named shapes.
-
-**Exactly one numbered check SHALL be added to the workflow's check list**, pointing at the shape list
-rather than restating it, so that the shapes are reached during the workflow's verification sweep and
-not only by a reader of the contract section. No existing check SHALL be renumbered or reworded, and
-every enumeration of which checks the orchestrator runs SHALL be updated to name the new one.
-
-**That check SHALL be stated as outside the mechanical portion that defaults to a fact-gathering
-sub-agent**, and the exclusion SHALL appear in the paragraph where the delegation decision is made, not
-only where the check is defined. Each shape returns a judgement — a comparison of two mechanisms, a
-classification, an assessment of one test's strength against another's — rather than a pass or fail
-row, so a sub-agent returning a pass/fail table cannot carry it.
-
-The shapes SHALL be stated so that no repository-specific mechanism, product name, or infrastructure
-identifier from the reporting instances travels into the portable text.
 
 #### Scenario: The shapes are named inside the grounding contract
 
@@ -83,11 +20,36 @@ identifier from the reporting instances travels into the portable text.
 - **THEN** the four claim shapes are enumerated as part of that contract
 - **AND** they are not added as four further independent numbered checks
 
+### Requirement: Each claim shape is stated as an executable check
+
+**Four shapes SHALL be named**, each stated as a trigger, a resolution naming what to read and what to
+resolve it against, a failure mode, and a severity floor. A shape stated only as an instruction to
+confirm that a claim is grounded SHALL NOT satisfy this requirement.
+
 #### Scenario: Each shape is executable rather than an instruction to verify
 
 - **WHEN** a claim shape is stated
 - **THEN** it names its trigger, the resolution steps naming what to read and what to resolve it against, its failure mode, and its severity floor
 - **AND** a shape whose text only instructs the reviewer to confirm the claim is grounded is treated as not meeting the requirement
+
+### Requirement: The claim-shape enumeration records its reason
+
+The reason SHALL be recorded with the enumeration: the failures this addresses are **recognition**
+failures, not procedure failures.
+
+#### Scenario: The enumeration carries its reason
+
+- **WHEN** the claim shapes are stated in the contract
+- **THEN** the text says why they are enumerated — that these are recognition failures, not procedure failures
+- **AND** it is stated with the list rather than left to a reader to infer from the shapes themselves
+
+### Requirement: Producible state is resolved against the data the system will run on
+
+Shape 1, **producible state**, is triggered by an artifact specifying fixed example, demo, fixture,
+or sample states a surface must show. Its resolution SHALL read the production function or query for
+each state, resolve its gating predicate against the real data the system will run on, and record the
+producing path with its corpus figure. Searched with none found SHALL resolve as **not producible**,
+floor **Critical**; NOT searched SHALL resolve as unresolved, with no severity floor.
 
 #### Scenario: An unproducible demo state resolves negative rather than unresolved
 
@@ -96,6 +58,29 @@ identifier from the reporting instances travels into the portable text.
 - **AND** the requirement specifying it is graded Critical
 - **AND** where the reviewer has not searched, the row resolves as unresolved instead and carries no severity floor
 
+### Requirement: A named precedent is checked for extra strictness
+
+Shape 2, **precedent strictness**, is triggered by an artifact naming an existing shipped
+implementation as the precedent it mirrors, follows, or is modelled on. Its resolution SHALL read the
+precedent's actual mechanism and, per provision the new requirement imposes, record whether the
+precedent satisfies it, does not, or does not have it, and what extra strictness buys and who pays.
+Floor: **Important**, **Critical** where it blocks implementation.
+
+#### Scenario: A named precedent is read for what it actually enforces
+
+- **WHEN** an artifact names a shipped implementation as the precedent it mirrors
+- **THEN** the reviewer reads that precedent's mechanism and records, per provision the artifact imposes, whether the precedent satisfies it, does not, or does not have it
+- **AND** for each provision the precedent does not satisfy, states what the extra strictness buys and who pays
+- **AND** the shape states why no other check finds this: every other check asks whether the artifact is strong enough, and this one asks whether it is stronger than it needs to be
+
+### Requirement: A guarantee is classified as a code or a deployment property
+
+Shape 3, **guarantee class**, is triggered by an artifact stating that a mechanism prevents,
+controls, serialises, or makes impossible a hazard. Its resolution SHALL classify the guarantee as a
+code property, quoting the enforcing line, or a deployment property, which the artifact must say and
+name the trigger that changes. Leaving it unclassified SHALL itself be the failure. Floor: no named
+trigger is **Important**; a deployment property described as a code property is **Critical**.
+
 #### Scenario: A guarantee is classified before it is accepted
 
 - **WHEN** an artifact states that a mechanism prevents a hazard
@@ -103,11 +88,25 @@ identifier from the reporting instances travels into the portable text.
 - **AND** a code property is resolved by quoting the enforcing line
 - **AND** a deployment property is accepted only where the artifact says so and names the trigger that changes it
 
+### Requirement: A compensating-coverage claim is read, not accepted
+
+Shape 4, **compensating coverage**: where a change gives up automated coverage for a named
+alternative, the resolution SHALL be to read the named replacement and confirm what kind of assertion
+it actually runs, then state its strength relative to what was given up. Floor: **Important** for an
+unverified compensating claim, **Critical** where the replacement is measurably weaker than what it
+replaced.
+
 #### Scenario: A compensating-coverage claim is read rather than accepted
 
 - **WHEN** a change gives up automated coverage in exchange for a named alternative
 - **THEN** the reviewer reads the named replacement and records what kind of assertion it actually runs
 - **AND** states the replacement's strength relative to what was given up
+
+### Requirement: An exclusion's reach is enumerated
+
+Shape 4, **exclusion reach**: where an exclusion entry is added to any keyed allowlist or denylist,
+the resolution SHALL be to enumerate the components or modules reachable only through the excluded
+surface and, for each, name where it is otherwise covered or state that it is not.
 
 #### Scenario: An exclusion's reach is enumerated
 
@@ -115,11 +114,24 @@ identifier from the reporting instances travels into the portable text.
 - **THEN** the components or modules reachable only through the excluded surface are enumerated
 - **AND** each is paired with where it is otherwise covered, or stated to be uncovered
 
-#### Scenario: The enumeration carries its reason
+### Requirement: The claim-shape list is open by signature
 
-- **WHEN** the claim shapes are stated in the contract
-- **THEN** the text says why they are enumerated — that these are recognition failures, not procedure failures
-- **AND** it is stated with the list rather than left to a reader to infer from the shapes themselves
+**The list SHALL be stated as open, by signature rather than by disclaimer.** The common signature
+SHALL be given (a sentence is a claim when its truth depends on something outside the artifact though
+its grammar is not assertive) with the grammars that hide one: an explanation, a comparison to
+something shipped, a specification of output shape, and a trade. A sentence matching that signature
+SHALL be in scope whether or not it appears among the named shapes.
+
+#### Scenario: An unnamed shape matching the signature is in scope
+
+- **WHEN** an artifact carries a sentence whose truth depends on code, corpus, precedent, deployment, or a test file, phrased as an explanation, a comparison, an output specification, or a trade
+- **THEN** the contract covers it whether or not it matches one of the named shapes
+- **AND** the contract states this as a signature rather than as a closing disclaimer
+
+### Requirement: The claim shapes are portable
+
+The shapes SHALL be stated so that no repository-specific mechanism, product name, or infrastructure
+identifier from the reporting instances travels into the portable text.
 
 #### Scenario: A shape carries no trace of the instance that produced it
 
@@ -128,11 +140,11 @@ identifier from the reporting instances travels into the portable text.
 - **AND** the shape is stated so a repository with a different architecture can still apply it
 - **AND** a shape that can only fire in the reporting instance's kind of product is rewritten or dropped
 
-#### Scenario: An unnamed shape matching the signature is in scope
+### Requirement: Dispatched reviewers carry the claim shapes in full
 
-- **WHEN** an artifact carries a sentence whose truth depends on code, corpus, precedent, deployment, or a test file, phrased as an explanation, a comparison, an output specification, or a trade
-- **THEN** the contract covers it whether or not it matches one of the named shapes
-- **AND** the contract states this as a signature rather than as a closing disclaimer
+A review that dispatches agents to produce its findings SHALL carry the shape list in those agents'
+own briefs, in full and never as a pointer to the contract. A shape whose resolution requires
+re-reading the change artifacts SHALL be stated as not delegable to that dispatch.
 
 #### Scenario: The shapes reach the reviewers who produce the findings
 
@@ -140,6 +152,14 @@ identifier from the reporting instances travels into the portable text.
 - **THEN** the shape list is carried in those agents' own briefs, not only in the orchestrator's sweep
 - **AND** the shape text is carried into each prompt in full, never as a pointer to the contract, because a dispatched agent does not load the skill and cannot resolve one
 - **AND** a shape whose resolution requires re-reading the change artifacts is stated as not delegable to that dispatch
+
+### Requirement: One numbered check reaches the claim shapes and is not delegated
+
+**Exactly one numbered check SHALL be added to the workflow's check list**, pointing at the shape list
+rather than restating it. No existing check SHALL be renumbered or reworded, and every enumeration of
+the orchestrator's checks SHALL name the new one. **That check SHALL be stated as outside the mechanical
+portion that defaults to a fact-gathering sub-agent**, in the paragraph where the delegation decision
+is made.
 
 #### Scenario: The sweep reaches the shapes and is not delegated
 
@@ -150,31 +170,11 @@ identifier from the reporting instances travels into the portable text.
 
 ### Requirement: Reviewer report severities are reconciled by the evidence behind them
 
-A cla-plugin review workflow that dispatches more than one reviewer and merges their reports SHALL
-state how a finding reported by two of them at different severities is graded. Where the reports
-disagree, the merged severity SHALL be taken from the report whose evidence for that severity is
-**implementation-level** — a source line, a schema, a migration, a query result — over the report
-whose evidence is the specification delta or the artifact text alone.
-
-**The rule SHALL key on the evidence attached to the finding, not on which reviewer reported it.**
-Where every dispatched reviewer is licensed to read source, the reviewer's role does not identify who
-read the implementation, so a role-keyed rule is not decidable from the reports the orchestrator
-holds. The evidence is, and it is present because the grounding contract already requires every
-finding to carry its resolving evidence.
-
-Where neither report's evidence is implementation-level, or both are, the **higher severity SHALL
-stand**. This fallback SHALL NOT be stated as the primary rule: applied unconditionally it converts
-every disagreement into an escalation, inflating the counts that the workflow's own verdict rubric
-already warns against reading literally.
-
-The tie-break SHALL be recorded on the finding it resolved, so that a reader can see one occurred, and
-SHALL NOT add a line to the report, which is budgeted at one line per finding.
-
-**The rule's evidence SHALL be stated with it and SHALL NOT be presented as measured.** It rests on a
-single overlapping finding out of eighteen, from one change in one chain in one consuming repository,
-and the observed instance was a two-reviewer split under a different workflow rather than the dispatch
-this rule governs. The text SHALL state that low overlap is the reviewer split working as intended and
-that the rule is therefore expected to fire rarely.
+A CLA review workflow that dispatches more than one reviewer and merges their reports SHALL state how
+a finding reported by two of them at different severities is graded. The merged severity SHALL be taken
+from the report whose evidence is **implementation-level** (a source line, a schema, a migration, a
+query result) over one whose evidence is the specification delta or artifact text alone. The rule
+SHALL key on the evidence attached to the finding, not on which reviewer reported it.
 
 #### Scenario: Two reports grade one finding differently
 
@@ -182,17 +182,34 @@ that the rule is therefore expected to fire rarely.
 - **THEN** the merged severity is taken from the report whose evidence is implementation-level
 - **AND** the report whose evidence is the specification delta or artifact text alone does not set the severity
 
+### Requirement: The higher severity stands only as a fallback
+
+Where neither report's evidence is implementation-level, or both are, the **higher severity SHALL
+stand**. This fallback SHALL NOT be stated as the primary rule.
+
 #### Scenario: Neither report's evidence discriminates
 
 - **WHEN** neither report's evidence for the severity is implementation-level, or both are
 - **THEN** the higher severity stands
 - **AND** this is stated as the fallback rather than as the rule
 
+### Requirement: A severity tie-break is recorded on its finding
+
+The tie-break SHALL be recorded on the finding it resolved, so that a reader can see one occurred, and
+SHALL NOT add a line to the report, which is budgeted at one line per finding.
+
 #### Scenario: The tie-break is visible without costing a report line
 
 - **WHEN** a severity tie-break is applied
 - **THEN** it is recorded on the finding it resolved
 - **AND** no additional line is added to the report
+
+### Requirement: The tie-break rule states its evidence without claiming measurement
+
+**The rule's evidence SHALL be stated with it and SHALL NOT be presented as measured**: one
+overlapping finding out of eighteen, from one change, observed under a different dispatch shape. The
+text SHALL state that low overlap is the reviewer split working as intended and that the rule is
+therefore expected to fire rarely.
 
 #### Scenario: The rule carries its own evidence honestly
 
@@ -203,29 +220,10 @@ that the rule is therefore expected to fire rarely.
 
 ### Requirement: A MODIFIED block is compared against the live requirement it replaces
 
-A skill that reviews, archives, or sequences a change SHALL compare each `## MODIFIED Requirements` block's scenario set against the live requirement that block will replace, and SHALL NOT treat the block's internal completeness as evidence of retention.
-
-A modified-requirement block replaces its named requirement wholesale rather than patching it, so a scenario present on the live requirement and absent from the block is deleted at sync or archive. A current `openspec` refuses that apply, and a repo on an older version gets no such refusal — so the loss is caught late, by a tool the plugin does not own and may not be running, or not at all. The block is internally consistent either way: it carries a full requirement text and a list of scenarios in both the retaining and the dropping case, so **the omission is not visible in the delta at all** and any instruction phrased as a property of the delta alone cannot be checked.
-
-**The obligation attaches to the block, not to the workflow that produced it.** It SHALL apply wherever a change carrying such a block is reviewed before implementation, prepared for archive, or sequenced within a batch — a change authored and shipped outside any batch passes through no cross-change sequencing step and would otherwise be compared nowhere.
-
-**The comparison baseline SHALL be the live specification as it stands at the moment of the check**, not as the delta was authored. A correct block goes stale when anything else reaches the live specification first — a sibling in the same batch, a change archived from an earlier batch, a small change landed in between, a hand edit.
-
-**Where a step already locates the live requirement for another purpose, the comparison SHALL be carried by that step** rather than added beside it. A step that confirms a modified block's heading exists in the live specification has already resolved the requirement the comparison needs, and stopping at the heading is what leaves scenario retention unchecked.
-
-This requirement is distinct from validating the live specification set's parse integrity after an edit: that concerns whether the document still parses, whereas this concerns content the delta silently omits, which parses correctly and reads correctly. It is also distinct from an enforcing refusal inside the tool that applies the delta — **nothing in this requirement blocks, edits, or refuses a change.**
-
-#### Scenario: A change outside a batch is still compared
-
-- **WHEN** a change carrying a modified-requirement block is taken to a pull request on its own, passing through no cross-change sequencing step
-- **THEN** the comparison runs anyway, at that change's own pre-implementation review and again before its archive
-- **AND** a comparison available only to batch-sequenced changes does not satisfy this
-
-#### Scenario: Heading existence is not retention
-
-- **WHEN** a step confirms that a modified block's requirement heading exists verbatim in the live specification
-- **THEN** that step also compares the scenario headings under it
-- **AND** a confirmed heading with an unexamined scenario set is recorded as unchecked, not as a pass
+A skill that reviews, archives, or sequences a change SHALL compare each `## MODIFIED Requirements`
+block's scenario set against the live requirement that block will replace, and SHALL NOT treat the
+block's internal completeness as evidence of retention. Nothing in this comparison blocks, edits, or
+refuses a change.
 
 #### Scenario: A delta that looks complete on its own face
 
@@ -233,29 +231,53 @@ This requirement is distinct from validating the live specification set's parse 
 - **THEN** the comparison reports the difference
 - **AND** an instruction satisfied by reading the delta alone is treated as not covering this
 
-#### Scenario: The baseline is current, not as-authored
-
-- **WHEN** the live requirement changed after the delta was written
-- **THEN** the comparison reads the live specification as it stands at the moment of the check
-- **AND** comparing against the text the delta was authored against does not satisfy this
-
 #### Scenario: A change with no modified block
 
 - **WHEN** a change's delta contains no modified-requirement block
 - **THEN** the check is reported as not applicable, naming what was scanned
 - **AND** it is not recorded as a passing comparison
 
+### Requirement: The comparison attaches to the block, not the workflow
+
+**The obligation attaches to the block, not to the workflow that produced it.** It SHALL apply
+wherever a change carrying such a block is reviewed before implementation, prepared for archive, or
+sequenced within a batch.
+
+#### Scenario: A change outside a batch is still compared
+
+- **WHEN** a change carrying a modified-requirement block is taken to a pull request on its own, passing through no cross-change sequencing step
+- **THEN** the comparison runs anyway, at that change's own pre-implementation review and again before its archive
+- **AND** a comparison available only to batch-sequenced changes does not satisfy this
+
+### Requirement: The comparison baseline is the live specification at check time
+
+**The comparison baseline SHALL be the live specification as it stands at the moment of the check**,
+not as the delta was authored.
+
+#### Scenario: The baseline is current, not as-authored
+
+- **WHEN** the live requirement changed after the delta was written
+- **THEN** the comparison reads the live specification as it stands at the moment of the check
+- **AND** comparing against the text the delta was authored against does not satisfy this
+
+### Requirement: A step that already locates the live requirement carries the comparison
+
+**Where a step already locates the live requirement for another purpose, the comparison SHALL be
+carried by that step** rather than added beside it. Confirming a modified block's heading exists is
+not a comparison of its scenarios.
+
+#### Scenario: Heading existence is not retention
+
+- **WHEN** a step confirms that a modified block's requirement heading exists verbatim in the live specification
+- **THEN** that step also compares the scenario headings under it
+- **AND** a confirmed heading with an unexamined scenario set is recorded as unchecked, not as a pass
+
 ### Requirement: Renames are resolved before a comparison reports a loss
 
-A retention comparison SHALL resolve the delta's requirement-rename mapping before matching a modified block to a live requirement, and SHALL treat every remaining difference as a flag for adjudication rather than as a confirmed loss.
-
-A rename and a deletion are byte-identical to a comparison of headings, and exactly one of them destroys a live normative statement. Ordering is therefore load-bearing: a comparison that resolves renames at any later point reports every renamed requirement as missing from the live specification. This was measured — the one real execution of an unordered comparison flagged two items across two changes and both were benign renames, one of them caused precisely by an unresolved rename mapping.
-
-**Rename resolution SHALL NOT be claimed to eliminate false positives.** A rename mapping names requirements, not scenarios, so a scenario renamed in place — its heading rewritten to widen its scope, its content retained — remains indistinguishable from a deleted scenario and remains flagged. That was the second of the two measured flags. A residual false-positive rate is a property of the delta format, not a defect in the procedure.
-
-**Because a flag can be a rename, nothing SHALL refuse, halt, or auto-correct on a flag alone.** Each flagged scenario SHALL be adjudicated to exactly one of: renamed, intentionally removed, or dropped. Only *dropped* is a finding. An intentional removal SHALL cite the change's own artifacts; asserted without a citation it carries a lower severity than a drop but is still reported, because the verdict is then a claim rather than a reference.
-
-**An unadjudicated flag SHALL be treated as dropped, not as waived.** The comparison exists to force an adjudication, and defaulting an unexamined flag to benign returns the situation to the one where the loss is silent.
+A retention comparison SHALL resolve the delta's requirement-rename mapping before matching a modified
+block to a live requirement, and SHALL treat every remaining difference as a flag for adjudication
+rather than as a confirmed loss. **Rename resolution SHALL NOT be claimed to eliminate false
+positives**: a scenario renamed in place remains flagged.
 
 #### Scenario: A requirement renamed by the same delta
 
@@ -269,11 +291,22 @@ A rename and a deletion are byte-identical to a comparison of headings, and exac
 - **THEN** it is flagged as missing and adjudicated as renamed
 - **AND** the procedure does not claim to have distinguished it mechanically
 
+### Requirement: A flag is adjudicated, never acted on alone
+
+**Nothing SHALL refuse, halt, or auto-correct on a flag alone.** Each flagged scenario SHALL be
+adjudicated to exactly one of: renamed, intentionally removed, or dropped. Only *dropped* is a finding.
+An intentional removal SHALL cite the change's own artifacts; asserted without a citation it carries a
+lower severity than a drop but is still reported.
+
 #### Scenario: A flag does not block the change
 
 - **WHEN** a comparison flags one or more scenarios
 - **THEN** the change is not refused, halted, or edited by the comparison itself
 - **AND** the flag is carried to whoever adjudicates it
+
+### Requirement: An unadjudicated flag is treated as dropped
+
+**An unadjudicated flag SHALL be treated as dropped, not as waived.**
 
 #### Scenario: An unadjudicated flag is a finding
 
@@ -283,13 +316,8 @@ A rename and a deletion are byte-identical to a comparison of headings, and exac
 
 ### Requirement: A retention report states both directions and its denominator
 
-A retention comparison SHALL report added scenario counts alongside missing ones, for every compared requirement, including one where nothing is missing.
-
-A missing-only report cannot separate a widening from a truncation. Both present as "one scenario missing", and telling them apart then costs opening both documents — the work the report exists to remove. Stating the live count, the delta count and both differences on one line makes a block that grew and reorganised distinguishable at a glance from one that lost a normative statement.
-
-**A comparison that found nothing SHALL still report what it examined.** Silence and a clean result are indistinguishable to a reader, and so are a clean result and a step that did not run. The report SHALL name how many modified requirements were compared, across how many capabilities, how many were flagged, and how many flags were adjudicated to each verdict.
-
-**A failed enumeration SHALL be reported as a failed check, not as an empty result.** A command that errors — run from the wrong directory, against a repository that stores its specifications elsewhere, against a capability whose live file is absent — yields no headings, and reading that as "no differences" converts a check that never ran into a confident pass across every requirement it was meant to cover.
+A retention comparison SHALL report added scenario counts alongside missing ones, for every compared
+requirement, including one where nothing is missing.
 
 #### Scenario: A widening is distinguishable from a truncation
 
@@ -303,11 +331,21 @@ A missing-only report cannot separate a widening from a truncation. Both present
 - **THEN** the report states its counts with both differences at zero
 - **AND** omitting it is not treated as reporting it
 
+### Requirement: A clean comparison still states what it examined
+
+**A comparison that found nothing SHALL still report what it examined.** The report SHALL name how
+many modified requirements were compared, across how many capabilities, how many were flagged, and how
+many flags were adjudicated to each verdict.
+
 #### Scenario: The run states its denominator
 
 - **WHEN** a step finishes comparing a change's modified blocks
 - **THEN** it reports how many requirements were compared across how many capabilities, how many were flagged, and how each flag was adjudicated
 - **AND** a bare statement that nothing was found does not satisfy this
+
+### Requirement: A failed enumeration is a failed check
+
+**A failed enumeration SHALL be reported as a failed check, not as an empty result.**
 
 #### Scenario: An enumeration that errored is not zero differences
 
