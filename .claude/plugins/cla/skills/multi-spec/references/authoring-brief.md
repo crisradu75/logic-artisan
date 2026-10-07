@@ -2,14 +2,12 @@
 
 Phase 3 dispatches one `Agent(subagent_type: "claude", model: "opus")` call per change, awaited sequentially. This file is the prompt template — fill in the bracketed parts from the change plan (`references/plan-schema.md`) and the source decisions file.
 
-## Why Opus, why one-at-a-time
-
-Proposal/design/tasks/specs authoring is the premise-setting step for a change — same bucket as a Review verdict, not rubric-application work. A cheaper model's failure mode here is systematically under-specified artifacts (unpinned load-bearing numbers, a missed MODIFIED-requirement scenario carry-forward, a wrong cross-reference), which is expensive to unwind — a full review-and-fix round downstream, or worse, silently propagated into a sibling change's cross-reference before anyone catches it. Sequential (not parallel) dispatch is required anyway by Phase 3's commit-before-next-change durability rule, and it has a second benefit: each change's agent can be handed the already-authored siblings' summaries, so a later change's cross-reference to an earlier one is correct from the start rather than only caught in Phase 4's batch review.
+Opus, one change at a time: authoring sets the premise every later phase builds on, and each change's agent gets the siblings already written.
 
 ## Prompt template
 
 ```
-You are authoring one OpenSpec change proposal in this repo (see `cla.io/overlays/multi-spec.md` for its monorepo shape, or `cla.io/project-facts.md`'s "Workspace shape" if populated). Do NOT assume a fixed package list — read the "Repo layout" section of the root `CLAUDE.md` for the authoritative current set of packages before referencing one in the proposal (the workspace gains packages over time; a hardcoded list drifts, and referencing a package that does not yet exist on the current tree seeds a false claim into the proposal).
+You are authoring one OpenSpec change proposal in this repo (see `cla.io/overlays/multi-spec.md` for its monorepo shape, or `cla.io/project-facts.md`'s "Workspace shape" if populated). Check the root `CLAUDE.md` "Repo layout" before naming a package; the list changes.
 
 **Change name:** <name>
 **One-line scope:** <one_line_scope from the plan>
