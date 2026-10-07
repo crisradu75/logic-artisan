@@ -12,15 +12,13 @@ The obligation binds only where the presentation is the document's own. A format
 
 ## Instrumentation of a reader's document is additive and reversible
 
-What the layer adds for itself is enumerable, so the reversibility check can subtract it. Appended, so it shifts no position the instrumentation has already recorded for the content above it. Self-contained, because it is the one thing that crosses an isolation boundary the rest of this design exists to maintain — anything it inherits from the other side of that boundary resolves to nothing, and does so silently.
-
 A transform that rewrites, normalises, reformats or re-serialises the document has changed the artifact under review into a different artifact, and the reader would be annotating the skill's opinion of their document rather than their document.
 
-This is also what makes the presentation obligation checkable. "The page looks the same" is a judgement; "the bytes outside the injected attributes are identical" is a measurement, and it is the one that catches a renderer quietly normalising an author's markup.
+The byte-for-byte property is also what makes the presentation obligation checkable. "The page looks the same" is a judgement; "the bytes outside the injected attributes are identical" is a measurement, and it is the one that catches a renderer quietly normalising an author's markup.
 
-## The source document is never written to
+## The annotation layer's own presentation is enumerable, appended, and self-contained
 
-The reversibility property is about the instrumented copy's relationship to the source, not a licence to modify the source and undo it.
+Enumerable, so the reversibility check can subtract it. Appended, so it shifts no position the instrumentation has already recorded for the content above it. Self-contained, because it is the one thing that crosses the isolation boundary between the layer and the document (see "An annotation layer shares no namespace with the document it annotates") — anything it inherits from the other side of that boundary resolves to nothing, and does so silently.
 
 ## A document already using the instrumentation's identifiers is refused
 
@@ -60,7 +58,7 @@ Prefixing the skill's own names removes today's three collisions and leaves the 
 
 ## The isolation still lets the layer address the document
 
-An isolation that also cuts off selection, block lookup and geometry has replaced a styling problem with a functional one; the mechanism chosen must keep the layer able to read the document it is annotating.
+An isolation that also cuts off selection, block lookup and geometry has replaced a styling problem with a functional one.
 
 ## A rendering path shared by several formats is proven equivalent on the path that already worked
 

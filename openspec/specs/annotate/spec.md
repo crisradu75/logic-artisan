@@ -2,17 +2,17 @@
 
 ## Purpose
 
-How the `annotate` skill presents a reader's own document for marking up: instrumentation that is additive and reversible, how annotatable blocks are chosen and anchored to source lines across formats, and how the annotation layer stays out of the document's namespace. The reasoning and measurements behind each requirement are
-in `rationale.md`, under the same heading.
+How the `annotate` skill presents a reader's own document for marking up: instrumentation that is additive and reversible, how annotatable blocks are chosen and anchored to source lines across formats, and how the annotation layer stays out of the document's namespace. Where a requirement has reasoning or measurements behind it,
+they are in `rationale.md`, under the same heading.
 
 ## Requirements
 
 ### Requirement: A document that carries its own presentation is annotated as presented
 
 Where a document carries its own presentation, a skill that puts it in front of a reader to be
-marked up SHALL present it as its author wrote it, and SHALL NOT present an extraction as the
-document. A format with no presentation of its own, such as plain text or a markup the skill
-renders, uses the skill's rendering.
+marked up SHALL present it as its author wrote it rather than substituting the skill's own
+rendering, and SHALL NOT present an extraction as the document. A format with no presentation of
+its own, such as plain text or a markup the skill itself renders, uses the skill's rendering.
 
 #### Scenario: A designed document opens as designed
 
@@ -38,21 +38,35 @@ rather than degrade quietly, so the reader knows which of the two they are looki
 
 ### Requirement: Instrumentation of a reader's document is additive and reversible
 
-Instrumentation of a document a skill did not write (identifiers that bind an annotation to a
-passage) SHALL be additive only: attributes on markup already there, plus at most the presentation
-the annotation layer needs to be visible, and nothing else about the file's bytes. That presentation
-SHALL be enumerable, appended rather than interleaved, and self-contained. Removing everything added SHALL yield the original input byte for byte, and the
-skill SHALL carry a test that checks exactly that.
+Where a skill must add machine-readable structure to a document it did not write (identifiers that
+bind an annotation to a passage), that instrumentation SHALL be **additive only**: it adds attributes
+to markup that is already there, plus at most the presentation the annotation layer itself needs in
+order to be visible, and changes nothing else about the file's bytes. **The reversibility SHALL be
+verified as a property, not asserted.**
 
 #### Scenario: The injected attributes strip back to the original
 
 - **WHEN** the instrumented output has its injected attributes removed
 - **THEN** the result is byte-identical to the source document
 
+### Requirement: The annotation layer's own presentation is enumerable, appended, and self-contained
+
+**What the layer adds for itself SHALL be enumerable, appended rather than interleaved, and
+self-contained.** Removing everything the instrumentation added (the attributes AND the layer's own
+appended presentation) SHALL yield the original input byte for byte, and the skill SHALL carry a
+test that checks exactly that.
+
+#### Scenario: The layer's own presentation is appended and strips back
+
+- **WHEN** a document is instrumented for annotation
+- **THEN** the presentation the layer adds for itself is appended after every instrumented block and depends on nothing defined outside it
+- **AND** removing the attributes and that presentation yields the source document byte for byte
+
 ### Requirement: The source document is never written to
 
-The instrumented copy SHALL be a separate artifact in working storage. Rendering SHALL NOT write
-to the source document, not even to modify it and undo the change.
+**The document itself SHALL never be written to.** The instrumented copy is a separate artifact in
+working storage; the reversibility property is about that copy's relationship to the source, not a
+licence to modify the source and undo it.
 
 #### Scenario: The source document is unchanged by rendering
 
@@ -146,8 +160,8 @@ rather than a naming convention.
 
 ### Requirement: The isolation still lets the layer address the document
 
-The isolation SHALL still permit the annotation layer to address the document's content: selection,
-block lookup and geometry.
+The isolation SHALL still permit the layer to address the document's content: the mechanism chosen
+must keep the layer able to read the document it is annotating.
 
 #### Scenario: Selection still works across the isolation
 
