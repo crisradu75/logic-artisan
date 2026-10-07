@@ -13,9 +13,11 @@ portable:
 
 - **Skills** (`/cla:<name>`) — the workflows. Each one carries a change through a phase of its
   life: capture → decide → specify → build → review → learn. You invoke them by slash command;
-  all but `multi-lite`, `multi-pr`, `cla-init`, `sync-context`, `save-permissions`, `codify-learnings`, `codify-retro`, `spec-to-pr-retro` and `right-model` — which set `disable-model-invocation: true` (the first two open and merge
-  PRs unattended; the rest are run deliberately and kept out of the always-loaded listing) — can
-  also be triggered by describing what you want in natural language.
+  all but `multi-lite`, `multi-pr`, `cla-init`, `save-permissions`, `codify-learnings`,
+  `codify-retro`, `spec-to-pr-retro` and `right-model` — which set
+  `disable-model-invocation: true` (the first two open and merge PRs unattended; the rest are run
+  deliberately and kept out of the always-loaded listing) — can also be triggered by describing
+  what you want in natural language.
 - **Guard hooks** — always-on guardrails wired automatically when the plugin loads. They block,
   ask, or warn on risky tool calls (a push to main, an `rm -rf`, a commit that would collide with
   another session). You don't invoke them; they fire when a convention is about to be broken.
@@ -471,8 +473,9 @@ go in `plugin-tests/tests/skills/<name>/`, not beside the skill.
 
 ## 12. Evidence behind CLAUDE.md's rules
 
-`CLAUDE.md` states each rule once and points here for the measurement or incident that produced
-it. Kept verbatim so the evidence survives; read it when you question or revise a rule.
+`CLAUDE.md` states each rule once and points here, from the top of its Commands section, for
+the measurement or incident that produced it. Kept verbatim so the evidence survives; each
+heading names the rule it backs.
 
 ### The parallel gate: measurements and the cache incident
 
@@ -481,7 +484,7 @@ it. Kept verbatim so the evidence survives; read it when you question or revise 
 two consecutive invocations of the same tree — and **the first of those failed 3 tests
 the other two forms passed**, all in `tests/hooks/test_hooks_wiring.py`
 (`test_wiring_refuses_when_the_probe_is_unusable`, the `truncated` cases). The second
-invocation was green. So the trap below is not a hypothetical any more; it is the most
+invocation was green. So the plain `-n auto` trap CLAUDE.md describes is not a hypothetical any more; it is the most
 recent measurement, and the failure did not reproduce on demand, which is the whole
 problem with it.
 
@@ -522,7 +525,7 @@ folklore.)
 
 ### Why the Playwright suite earns its exception
 
-**Why it earns the exception.** Every other check on that page is a string grep
+**Why it earns the exception.** Every other check on the annotation page is a string grep
 against generated HTML and JS, which is all a stdlib suite can do. During the
 review of the margin change, a reviewer simulated 21 plausible regressions
 against the rendered page and **19 survived all 46 tests then covering it** — and
@@ -571,7 +574,7 @@ than expecting nine.)
 
 Recorded after
 a guard flaked 3-of-5 runs under a concurrent batch, and reproduced twice on 2026-08-28
-during the review of the commit that added this line — one agent read a mutated
+during the review of the commit that added CLAUDE.md's rule — one agent read a mutated
 `check_script_drift.py`, another aborted at preflight on a leftover `.mutate-backup`.
 
 ### Repeated green runs: the session behind the rule
@@ -584,7 +587,7 @@ used is gone; the lesson is about the count, not the command.)
 
 ### Unarchived merges: the measurement behind the rule
 
-Measured 2026-08-28: three fully-implemented merged changes had accumulated that way, and `openspec/specs/cla-plugin/spec.md` was missing 11 requirements — the shipped skills carried behaviour no live spec described.
+Measured 2026-08-28: three fully-implemented merged changes had accumulated unarchived (merged without Archive), and `openspec/specs/cla-plugin/spec.md` was missing 11 requirements — the shipped skills carried behaviour no live spec described.
 
 ### The scan roots: why five
 
@@ -592,7 +595,7 @@ It was eight until the dev tree moved out; the three `*-checks/` entries then na
 
 ### The coverage lists: why they are not restated
 
-They were spelled out in this paragraph and went stale inside the very change that widened them — twice, once in the widening and once in the fix, each time three lines below a sentence saying not to restate them.
+They were spelled out in CLAUDE.md's architecture paragraph and went stale inside the very change that widened them — twice, once in the widening and once in the fix, each time three lines below a sentence saying not to restate them.
 
 Both used to be written out as a list and a count, and both went stale while nothing noticed — the defect issue #178 named.
 

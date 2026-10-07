@@ -1,6 +1,6 @@
 ---
 name: save-permissions
-description: "Collect every tool permission granted during the current conversation and persist them to .claude/settings.local.json. Triggers on /cla:save-permissions or natural language like 'save my permissions', 'persist allowed tools', 'reduce permission prompts for next session'."
+description: "Persist every tool permission granted this conversation to .claude/settings.local.json. Run with /cla:save-permissions."
 # Slash-command only (writes settings; run on request): keeps this description out of the
 # always-loaded skill listing. Nothing invokes it programmatically.
 disable-model-invocation: true

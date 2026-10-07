@@ -58,6 +58,9 @@ you realise mid-flight that the work wants isolation. No penalty for deciding la
 
 ## Commands
 
+The measurement or incident behind each rule in this file is kept verbatim in DEVELOPER-GUIDE §12,
+under a heading naming the rule. Read it when you question or revise a rule.
+
 Run the full test suite:
 
 ```bash
@@ -75,8 +78,7 @@ pytest plugin-tests/tests/skills/<name>
 
 ### The parallel gate, and the three things that make it safe
 
-The rules below come from measured incidents; the measurements and the history behind them are
-in DEVELOPER-GUIDE §12. Re-measure rather than quoting any number.
+Re-measure rather than quoting any number from DEVELOPER-GUIDE §12.
 
 **`--dist loadfile` is load-bearing, not tuning, and plain `-n auto` is the trap.**
 `loadfile` pins every test in a file to one worker. Without it a module's tests are
@@ -404,9 +406,10 @@ matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scrip
 
 ### Skills by life-cycle phase
 
-Every shipped skill is invocable as `/cla:<name>`, and all but `multi-lite`, `multi-pr`, `cla-init`, `sync-context`, `save-permissions`, `codify-learnings`, `codify-retro`, `spec-to-pr-retro` and `right-model` — which set
-`disable-model-invocation: true`: the first two are unattended orchestrators that open and merge PRs,
-the rest are run deliberately and kept out of the always-loaded skill listing — can also be
+Every shipped skill is invocable as `/cla:<name>`, and all but `multi-lite`, `multi-pr`, `cla-init`,
+`save-permissions`, `codify-learnings`, `codify-retro`, `spec-to-pr-retro` and `right-model` — which
+set `disable-model-invocation: true`: the first two are unattended orchestrators that open and merge
+PRs, the rest are run deliberately and kept out of the always-loaded skill listing — can also be
 triggered by natural language.
 
 Claude Code already surfaces each one's name and description — so the full phase table lives in

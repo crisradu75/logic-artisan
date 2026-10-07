@@ -1,6 +1,6 @@
 ---
 name: annotate
-description: "Open a Markdown, text or HTML document, or a whole OpenSpec change, as a local page where the user selects passages and comments; the comments are read back and worked through. Never edits the source. Triggers: /cla:annotate, 'let me annotate this', 'read my annotations'. Not for review-change."
+description: "Open a Markdown, text or HTML document, or a whole OpenSpec change, as a local page where the user selects passages and comments; the comments are read back and worked through. Never edits the source. Triggers: /cla:annotate, 'let me annotate this', 'let me review change X as a block', 'read my annotations'. Not a pre-implementation review (review-change)."
 argument-hint: "<path to a .md, .txt, .html or .htm file, or an OpenSpec change id>"
 allowed-tools: Bash, Read, Grep, Glob, Edit
 ---

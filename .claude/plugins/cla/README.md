@@ -48,7 +48,7 @@ and invoked bare as `/release`.
 | Phase | Skill | Invoked by | What it does |
 |---|---|---|---|
 | **0. Bootstrap** (per repo, once) | `cla-init` | **you only** | Scaffold the `cla.io/` tree + empty overlay stubs (structure only, never facts) |
-| | `sync-context` | **you only** | Populate/reconcile `cla.io/project-facts.md` — the repo's shared facts (members, commands, ports, file maps) |
+| | `sync-context` | you or Claude | Populate/reconcile `cla.io/project-facts.md` — the repo's shared facts (members, commands, ports, file maps) |
 | | `save-permissions` | **you only** | Persist tool permissions granted this session to `.claude/settings.local.json` |
 | **1. Discover & shape** | `feedback` | you or Claude | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | you or Claude | Walk a decision option-by-option with pros/cons + a recommended pick |

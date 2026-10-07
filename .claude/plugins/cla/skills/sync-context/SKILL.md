@@ -1,11 +1,8 @@
 ---
 name: sync-context
-description: "Populate or reconcile cla.io/project-facts.md — the repo-wide file of facts shared across cla skills (workspace members, dev/build/test commands, ports, the affected-file map, doc-sweep paths, test locations, i18n layers, env files). Reads the repo's own manifests directly via an LLM extractor (no stack-specific parser), so it works on any tech stack. Self-sufficient — creates cla.io/ and project-facts.md if missing, so it also covers fact-onboarding on a fresh repo (structure-only scaffolding is still /cla:cla-init's job). Proposes (never silently writes) new project-tokens.local.md entries for a new app/package name, and owns terminology.md's entry format. Triggers on /cla:sync-context or natural language like 'sync the project facts', 'refresh cla.io/project-facts.md', 'update the shared repo facts', 'the workspace member list is stale'."
+description: "Populate or reconcile cla.io/project-facts.md, the repo's shared facts (workspace members, commands, ports, doc-sweep paths), by reading the repo's own manifests; creates the file if missing. Other skills point here when facts are stale. Triggers: /cla:sync-context, 'sync the project facts'."
 argument-hint: "(no args — reads and reconciles the current repo)"
 allowed-tools: Bash, Read, Grep, Glob, Write, Edit, AskUserQuestion
-# Slash-command only (run deliberately when facts change): keeps this description out of the
-# always-loaded skill listing. Nothing invokes it programmatically.
-disable-model-invocation: true
 ---
 
 # /cla:sync-context — populate/reconcile the consolidated project-facts file
