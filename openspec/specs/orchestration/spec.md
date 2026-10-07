@@ -45,25 +45,11 @@ The gate SHALL further state that a **killed** mutant does not discharge it eith
 
 ### Requirement: Sequencing edges beyond the source dependency graph
 
-A skill that sequences a batch of changes SHALL establish, before the batch runs, the edges its source dependency graph cannot express, and SHALL NOT present a merge or landing policy in vocabulary that can only see that graph. A dependency list records **source-level** need — one change's code or spec requiring another's — and two edges outside it are each sufficient to break a later change whose own work is correct.
+A skill that sequences a batch of changes SHALL find, before the batch runs, two edges a dependency list cannot express, and SHALL name both wherever it states its merge policy, including hoisted summaries.
 
-**Shared mutable environment state.** A change that applies a migration to a shared environment, seeds shared fixture data, or performs a provisioning step SHALL create a merge-before-next edge **regardless of whether any other change depends on its code**. That state has already moved for every subsequent branch, so only merging its source makes the tree consistent with it again.
-
-The skill SHALL determine this **per change, from named artifacts, as an orchestrator-computed fact rather than a user preference** — the change is unimplemented at sequencing time, so the determination SHALL name the sources that are available then rather than a diff that does not yet exist. A negative SHALL carry its derivation rather than the bare word, on the same reasoning the skill already applies to a counted zero elsewhere: a determination whose default is negative and whose negative is never shown is an exemption rather than a check.
-
-**It SHALL survive any autonomy mode.** Where the skill offers a mode that pre-answers its gate with recommended defaults, this determination SHALL NOT be among the pre-answered items, and SHALL appear in whatever output that mode requires. An unattended run is where this edge was measured to cost the most, so establishing it only in attended runs inverts the fix.
-
-**Every statement of the policy SHALL name both edges**, including any hoisted summary that binds when the detailed reference is not loaded, and including the statement that governs the merge itself — a summary keyed on the dependency list alone is the form in which this defect is actually met, and the statement nearest the merge is the one that decides it.
-
-**A policy that performs no merges SHALL NOT silently absorb this edge.** Where the skill offers a stacked or open-all policy, or falls back to one mid-run, a change sitting after a shared-state edge cannot satisfy it by branching, and the conflict SHALL be surfaced rather than proceeded through.
-
-**Stale delta baselines.** Where a batch's changes are authored against one baseline of a shared specification set and no delta is applied before the others are written — which holds whether authoring is sequential or parallel — a modified-requirement block that replaces its requirement wholesale SHALL be treated as a collision risk. The obligation SHALL attach to **every in-scope change carrying such a block**, not only to those whose capability another in-scope change also touches: text that reached the live specification after authoring moves the baseline identically whether it came from a sibling in this batch, a change landed by another workflow, or a hand edit. Each such change's delta SHALL be re-checked against the live specification **as of that moment**, not as the delta was authored, before that change is reviewed.
-
-The skill SHALL additionally compute and name which capabilities are touched by more than one in-scope change, which prioritises the check and identifies the sibling to compare against. This SHALL NOT rest on an individual change's own task list happening to warn, which is the only thing that has caught it.
-
-**The result SHALL carry its denominator**, so that a check which failed to run is distinguishable from one that ran and found nothing: how many in-scope changes were scanned, how many carried spec deltas, and how many capabilities were found. A non-zero exit from the enumeration SHALL be reported as a failed check rather than as an empty result, since a run from an unexpected working directory otherwise yields a confident batch-wide clean answer.
-
-**Both edges SHALL be delivered, not only recorded.** A finding this step produces is acted on by a review that runs in a later phase, from a different reference; recording it in a run artifact that nothing reads back SHALL NOT satisfy this requirement. The skill SHALL feed each finding into the invocation that starts the change it concerns, by the same channel that already carries that change's inherited obligations.
+- **Shared environment state.** A change that migrates a shared environment, seeds shared fixture data or provisions infrastructure SHALL be merged before the next change starts, whether or not anything depends on its code. The skill SHALL decide this per change from its artifacts, show how it reached a "no", decide it in every autonomy mode, and deliver it to the change it affects through the channel that carries inherited obligations. A policy that performs no merges SHALL surface the conflict rather than proceed.
+- **Stale spec baselines.** A change carrying a MODIFIED block SHALL be re-validated against the live specs as they are when it runs (`openspec validate <change> --strict`), whether or not a sibling touches the same capability.
+- The skill SHALL report which capabilities more than one change touches, with its denominator (changes scanned, changes with spec deltas, capabilities found), and SHALL report a failed enumeration as a failure, not as "no overlap".
 
 #### Scenario: An independent change that moved shared state still merges first
 
@@ -79,10 +65,10 @@ The skill SHALL additionally compute and name which capabilities are touched by 
 
 #### Scenario: A stale delta baseline is checked whether or not a sibling overlaps
 
-- **WHEN** an in-scope change carries a block that replaces a requirement wholesale
-- **THEN** its delta is re-checked against the live specification as of that moment, before that change is reviewed
-- **AND** the check attaches even when no other in-scope change touches that capability
-- **AND** the capabilities touched by more than one in-scope change are additionally computed and named
+- **WHEN** an in-scope change carries a MODIFIED block
+- **THEN** it is re-validated with `openspec validate <change> --strict` against the live specs as they are when it runs
+- **AND** the check runs even when no other in-scope change touches that capability
+- **AND** the capabilities touched by more than one in-scope change are additionally named
 
 #### Scenario: A check that could not run is not reported as a clean batch
 
@@ -92,7 +78,7 @@ The skill SHALL additionally compute and name which capabilities are touched by 
 
 #### Scenario: A finding reaches the review it is for
 
-- **WHEN** sequencing produces a re-base obligation or a shared-state edge for a named change
+- **WHEN** sequencing produces a shared-state edge for a named change
 - **THEN** it is delivered in the invocation that starts that change, by the channel already carrying inherited obligations
 - **AND** recording it in a run artifact that nothing reads back does not satisfy the requirement
 
@@ -1176,15 +1162,7 @@ spec-to-pr's resume probe SHALL report Implement's artifacts ready when OpenSpec
 
 ### Requirement: The live specification set is validated where it is written
 
-A skill that writes or hand-edits the live specification set SHALL validate that set's own parse integrity before the commit that lands the edit, and SHALL NOT treat validation of a *change* as covering it. The two are different objects: a change's validation reads the change, while the defect here is a structurally broken document under the live specification directory, which every per-change check passes over.
-
-**The obligation attaches to the edit, not to the delta.** It SHALL cover any hand-edit to a live specification's prose — filling a placeholder section, rewording, adding a canonical heading — including edits that pass through no delta and no archive at all. A live specification is a parsed document rather than a prose file, and the guidance SHALL say so where such edits are performed, because the flow otherwise treats one as a comment.
-
-**Where a step's own remediation instructs a hand-edit to a live specification, that step SHALL carry the validation with it.** A remediation that adds a canonical heading is itself capable of producing a duplicated heading, which closes the section and makes every requirement below it invisible to validation, listing and archiving while the file still reads correctly to a human.
-
-**In a sequence of changes, a broken live set SHALL halt rather than warn.** Each change starts from the specification set the previous one left, so the failure compounds and surfaces at a later change's archive, far from the edit that caused it.
-
-This requirement is distinct from any check comparing a delta's modified-requirement block against the live specification for silently dropped scenarios: that concerns the *content* a sync writes, whereas this concerns the live set's *parse integrity after any edit*, and the measured instance passed through no delta at all.
+A skill that writes or hand-edits the live specs SHALL run `openspec validate --specs` before the commit that lands the edit; validating a change does not cover the live specs. This includes edits that pass through no delta and no archive. A failure SHALL halt, and in a chain of changes it SHALL be caught before that change's pull request merges. Warnings, such as a long requirement, are not failures.
 
 #### Scenario: EVERY write site validates the live set, not only the change
 

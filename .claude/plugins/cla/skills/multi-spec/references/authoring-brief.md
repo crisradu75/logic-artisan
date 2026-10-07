@@ -32,26 +32,7 @@ Follow these steps, mirroring `.claude/skills/openspec-propose`'s own artifact-c
    - **Every scenario the change adds, or whose text it changes, names its proof:** a tasks.md test task whose test carries a comment line `scenario: <spec> / <heading>` above it (after the language's comment token, e.g. `# scenario: change-authoring / Authoring a scenario`), and the task names that marker; or a tasks.md line `manual: <heading>: <reason>`, naming the heading so a guard can match it. A pure heading rename and a scenario carried forward unchanged in a MODIFIED block are exempt.
    - **Scenario headings are unique within one spec**, so `<spec> / <heading>` names exactly one scenario. Before adding one, check the live spec and your delta for the same heading, and rename yours if it is taken.
    - **Pin load-bearing numbers, when design.md exists.** Any threshold, band, cap, weight, tolerance, or split that changes scoring/behavior gets a concrete recommended default in design.md — never "set during implementation." A change with no such number needs no pinned-parameters block.
-   - **On a MODIFIED requirement, carry the FULL final requirement text + ALL its existing scenarios forward** — read the active spec, copy every scenario, then add/adjust. Never write a diff-only MODIFIED block; `openspec` archive-sync REPLACES the whole requirement, so an omitted scenario is silently deleted. Check your own block against the live requirement before you finish, by the procedure below. (Canonical copy, for whoever edits this next — not for you to open: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`, `## Procedure`.)
-
-     1. Parse `## RENAMED Requirements` in the **same delta file** and build the FROM->TO map.
-     2. For each `### Requirement: <Name>` under `## MODIFIED Requirements`, resolve `<Name>` through that
-        map to the name it carries **in the live spec**, then locate that requirement there.
-     3. Enumerate `#### Scenario:` headings in the delta's block and in the live requirement's block.
-        Block boundary: from the `### Requirement:` line to the next line beginning `### ` or `## `, or
-        end of file.
-     4. Report one line per compared requirement, including a clean one:
-
-        `<capability>/<requirement name>: live N -> delta M (+K added, -J missing)`
-
-        then, only when `K` or `J` is non-zero, one line per differing scenario, heading verbatim:
-        `  - <live heading absent from the delta>` / `  + <delta heading absent from the live spec>`
-
-     Adjudicate each missing scenario to exactly one of **renamed**, **intentionally removed**, or
-     **dropped**. Only `dropped` is a finding, and it is **Critical** — it deletes a live `SHALL`.
-     `intentionally removed` with no supporting sentence in the change's own artifacts is **Important**.
-     Added-only (`J = 0`) is never a finding. **An unadjudicated flag is treated as `dropped`, not
-     waived.** Nothing here refuses, halts, or edits a change; it flags, and a human adjudicates.
+   - **On a MODIFIED requirement, carry the full requirement text and all its live scenarios forward**, then adjust. Archive replaces the whole requirement, so an omitted scenario is deleted. `openspec validate <name> --strict` (step 5) fails a block that drops one.
 5. Once every artifact required by `applyRequires` is `done`, re-checked via `openspec status --change "<name>" --json`, run `openspec validate <name> --strict`. With no design.md, OpenSpec still reports `isComplete: false`; that is expected.
 
 **Terminal contract.** End with exactly one of:

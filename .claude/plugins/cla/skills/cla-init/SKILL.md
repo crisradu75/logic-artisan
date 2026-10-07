@@ -195,6 +195,10 @@ own stock limits reach every CLA authoring run.
   `config.yaml` whenever neither exists, so printing is the common path.
 - `openspec/` absent → print the block and create nothing. `openspec init` owns that directory.
 
+**OpenSpec version.** CLA relies on `openspec validate <change> --strict` failing a MODIFIED block that
+drops a live scenario (verified on 1.14.1). When `openspec/` exists, run `openspec --version` and, if it
+is older than 1.14.1, say so in the report and recommend upgrading.
+
 ```bash
 : "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
 CFG="$ROOT/openspec/config.yaml"
@@ -238,7 +242,7 @@ that artifact's rules.
 
 At the end, print a per-target summary — each directory, ledger, seed, and stub as `created` or
 `exists (skipped)` — so a re-run is transparently a no-op on already-present pieces. For
-`openspec/config.yaml`, report `created`, or `not written` followed by the `rules:` block to paste.
+`openspec/config.yaml`, report `created`, or `not written` followed by the `rules:` block to paste. Add the OpenSpec version line when it is older than 1.14.1.
 
 ## Non-goals (pinned — never do these)
 

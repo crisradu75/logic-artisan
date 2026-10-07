@@ -152,16 +152,6 @@ Cap: `--review-rounds N` (default `1`).
 
 Do NOT invoke `Skill(cla:review-change)` — the checklist carries everything; review behavior is edited there, never here.
 
-**Skip the checklist pass for a change `/cla:multi-spec` already reviewed and passed.** multi-spec's batch gate ran the same checklist before the proposals PR opened, and recorded each change's result in `openspec/changes/<change-name>/review.json` (shape: `${CLAUDE_PLUGIN_ROOT}/skills/multi-spec/references/review-gate.md`, Step 7). Skip only when all of these hold; anything else, including a missing or unreadable record, runs the full checklist:
-
-1. `git status --porcelain -- openspec/changes/<change-name>/` is empty.
-2. The record parses as JSON, its `verdict` is `READY` or `FIX FIRST`, `all_applied` is `true`, and `deferred` is empty.
-3. `git ls-files -s -- openspec/changes/<change-name>/ ':(exclude)openspec/changes/<change-name>/review.json' | git hash-object --stdin` equals the record's `artifacts`, so no file in the change changed after the review, whether it was merged by squash, merge commit or rebase.
-
-When a readable record lists `deferred` findings, the full checklist takes each one as a known issue: report it at its recorded severity unless the artifacts now resolve it. A record left in place after a full review is multi-spec's history, not this Review's result.
-
-On a skip, still run the checklist's **Step 2b** (inherited obligations), the **MODIFIED-block retention comparison** against the live spec as it is now (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`), and the **doc-staleness sweeps** below; act on their findings as a review round would. Log Review as `status: "skip"` with `reason: "reviewed by multi-spec: <verdict>"`, the record's verdict (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`). The skip trusts that the record came from multi-spec's gate. It does not re-check the artifacts' claims against code that changed after that review, and nobody independently re-reads the fixes that gate applied.
-
 **Doc-staleness sweeps — read `references/review-sweeps.md` and run them in the same Review pass.** When the proposal retires a symbol, concept or mechanism, dispatch `doc-sweeper` (haiku) with the retired list plus the repo's doc-path list from `cla.io/project-facts.md`; for a `.claude/`-meta change, a second dispatch over that skill's own `SKILL.md` + `references/*.md`. Check the `Scanned:` footer, then **re-search every zero-count symbol yourself** — a non-zero footer has still hidden real hits. Every hit is an Important finding.
 
 **Large change:** checks 0a–0h default to a `fact-gatherer` dispatch (the checklist's "Cost offload for large changes"); you still adjudicate every ✗ row.
@@ -298,15 +288,13 @@ User-driven mid-run interrupts (Ctrl-C, an explicit "stop" / "halt" / "wait" mes
 
 ### Archive
 
-**Read `references/archive.md` first** — the full archive-and-commit recipe, the capability-enumeration step, the scope-assertion and push-post-check commands. Archive materializes the active `openspec/specs/<capability>/` and moves the change dir to `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/`, committed to the same PR so it merges atomically. Load-bearing invariants (hold these even if the reference isn't reloaded):
+**Read `references/archive.md` first**, and run `references/archive-preflight.md` before archiving. Archive moves the change to `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/` and updates `openspec/specs/<capability>/`, committed to the same PR. Hold these even if the reference isn't reloaded:
 
-- **Run `openspec archive <change-name> --yes` directly** (no `Skill(openspec-archive-change)` hop). Post-check: the dated archive dir's `proposal.md` exists AND the change dir's no longer does. First run the pre-archive main-spec heading-sanity checks + retired-path cleanup per **`references/archive-preflight.md`**, remediating in the same commit.
-- **Commit the already-staged set; do NOT re-stage here.** `openspec archive` has moved the change dir off disk, so a `git add` naming a rename-source path fails with `did not match any files` and takes the commit with it. Once the two-sided scope assertion has passed, `git commit -m "chore: archive <change-name>"` (full detail: `references/archive.md`).
-- **Enumerate EVERY capability the change modifies** (`ls openspec/changes/<change-name>/specs/`) — a change can materialize MORE THAN ONE; stage one `openspec/specs/<cap>/` group per capability.
-- **Path-scoped staging, NEVER a broad `git add openspec/`** (it sweeps sibling untracked change dirs in a chain). Stage only the change dir (deletions) + the dated archive dir (additions) + each capability's `openspec/specs/<cap>/`.
-- **Validate the LIVE spec set before the commit — `openspec validate --specs --strict`.** Validating the *change* does not cover it: this step rewrites `openspec/specs/`, and a structurally broken live spec commits, pushes and merges with every other check green. `✗ spec/<cap>` → halt via `AskUserQuestion`, do not commit. Non-zero with no `✗` line is a **tooling fault** (missing binary, CLI without `--specs`), not a spec fault. `No items found to validate.` is **not a pass** — nothing was checked.
-- **Two-sided scope assertion on `git diff --name-only --cached`:** reject any staged path outside {change dir / dated archive dir / `openspec/specs/<cap>/spec.md` per capability} (over-staging → halt via `AskUserQuestion`), AND confirm every capability under `.../specs/` has its `openspec/specs/<cap>/spec.md` staged (under-staging → silent active-spec drift; stage it and re-diff).
-- **Push post-check (required):** a 0-exit `git push` is NOT sufficient — verify HEAD branch = `<branch>`, `@{u}` == HEAD sha, and that sha appears in `gh pr view <#> --json commits` (each a separate Bash call, compared in-context). Any failure → Archive `⚠` + prominent Handoff warning "archive commit DID NOT REACH the PR". The archive commit is NOT re-reviewed. Rationale (archive-while-OPEN): `references/design-tradeoffs.md`.
+- Run `openspec archive <change-name> --yes` directly, not through `Skill(openspec-archive-change)`.
+- Stage only the change dir, the dated archive dir and each touched `openspec/specs/<cap>/`. Never `git add openspec/`: in a chain it sweeps in sibling changes.
+- Run `openspec validate --specs` before the commit; `✗ spec/<cap>` halts.
+- Commit the staged set as `git commit -m "chore: archive <change-name>"` without re-staging: the archive moved the change dir, so naming its old path fails.
+- After pushing, confirm the archive commit reached the PR. If it did not, mark Archive `⚠` and say so prominently in Handoff.
 
 ### Handoff
 
