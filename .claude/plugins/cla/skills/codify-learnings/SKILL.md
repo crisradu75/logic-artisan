@@ -11,25 +11,12 @@ disable-model-invocation: true
 
 Review the current conversation. Identify lessons that would make a future, similar session go better. Propose concrete improvements to `.claude/`-scoped artifacts. Walk each suggestion interactively. Append the full report (applied + rejected) to the rolling log at `cla.io/lessons-learned/lessons-learned.md`.
 
-**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
-files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
-plugin's install directory, and Claude Code substitutes it into skill content --
-but it is **not** an environment variable in the Bash tool. If you ever see the
-literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
-it yourself first; never pass it through to a shell, where an unset variable
-expands to nothing and the command silently runs against `/skills/...`.
-
-To resolve it: the harness prepends a `Base directory for this skill: <absolute
-path>` line when it loads a skill. The plugin root is that path with the trailing
-`/skills/<skill-name>` removed. Failing that, take the absolute path of any file
-you have already read from this plugin and cut it at the `.../plugins/cla`
-segment. If you cannot establish it either way, say so and stop rather than
-guessing a path.
-
-Measured, so you know which half is load-bearing: a `SKILL.md` body arrives with
-the placeholder ALREADY substituted, so commands written here are safe. A
-`references/` file is opened with `Read`, which returns the raw bytes — the
-placeholder arrives literal there, and that is the case this rule exists for.
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
+`references/` file opened with `Read` carries it literally, and it is not an environment variable in
+Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
+that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
+path with `/skills/<name>` removed. If you cannot establish it, say so and stop. Detail:
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 ## Inputs
 

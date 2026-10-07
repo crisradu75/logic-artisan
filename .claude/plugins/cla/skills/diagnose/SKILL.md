@@ -25,11 +25,7 @@ withholds, and this is the skill that job hands off to.
 Detect which, first, because the hypothesis gate below branches on it.
 
 **The discriminator is whether an invoker is present to answer, not which skill
-called.** Caller identity is the wrong test: `lite-pr` reaches this skill both
-ways — a user who just accepted its offer is present, and the same `lite-pr`
-driven by `multi-lite` has nobody behind it.
-
-Decide it with these three, in order. The first that applies settles it:
+called** (`lite-pr` reaches this skill both ways). The first rule that applies settles it:
 
 1. **The caller declared the mode.** `spec-to-pr`'s Test phase states it runs
    this skill in unattended mode; take a caller at its word. → **unattended**
@@ -38,18 +34,10 @@ Decide it with these three, in order. The first that applies settles it:
    proof of presence. → **attended**
 3. **Neither.** Assume nobody is there. → **unattended**
 
-Rule 3 is the safe default and points the way it does deliberately. Guessing
-*attended* wrongly stops an unattended run dead on a question nobody will
-answer. Guessing *unattended* wrongly costs one prune — the hypotheses still get
-ranked, written down, and reported, so the user sees the reasoning either way
-and can redirect it.
-
-**An unattended run inherits the parent's autonomy contract.** It does not stop
-to ask, and a mid-run halt for a question nobody is there to answer is how an
-unattended chain dies at 3am.
-
-The discipline is identical in both modes: hypotheses ranked, falsifiable, and
-written down before anything is touched. Only who prunes them changes.
+Rule 3 errs safe: a wrong *attended* guess stalls a run on an unanswerable question; a wrong
+*unattended* guess costs one prune. **An unattended run inherits the parent's autonomy contract**
+and never stops to ask. Either way, hypotheses are ranked, falsifiable, and written down before
+anything is touched; only who prunes them changes.
 
 ## Phase 1 — a deterministic pass/fail loop, before anything else
 

@@ -105,10 +105,6 @@ an extra opus `Agent` dispatch for Propose authoring and for each Agent-1-class 
 top of the session's own tier. That is the intended trade — the alternative is a design review at
 the cheaper tier — but it shows up on every run.
 
-A prior version of this note asserted the sub-Opus branch was the default, on the strength of a
-launcher pin that had since changed — which made the budgeting advice exactly backwards for anyone
-reading it.
-
 **When the session is already Opus**, the escalate-UP dispatches are no-ops and cost nothing extra;
 routing Agent-1-class dispatches to `opus` changes nothing, and the real economy is routing the
 rubric-application agents *down* to `sonnet`. When the session is at or
@@ -148,6 +144,4 @@ comment nits (`comment-analyzer` → haiku), rubric checks (`pr-test-analyzer`, 
 `routing.revise_findings_by_tier` telemetry (found vs phantom **per agent**, see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`)
 is the standing check on this bet; `/cla:spec-to-pr-retro` flags a phantom rate concentrated on any one
 agent — including the sonnet/haiku-routed ones (`comment-analyzer`, `pr-test-analyzer`,
-`type-design-analyzer`, `plugin-dev:skill-reviewer`) relative to the opus bug-hunters. (The field is
-keyed per-agent since the 2026-07-18 schema pin; it is no longer keyed by model tier, so the retro
-reads the phantom rate per agent and infers the tier from which model that agent routes to.)
+`type-design-analyzer`, `plugin-dev:skill-reviewer`) relative to the opus bug-hunters.

@@ -8,25 +8,12 @@ argument-hint: "[decisions-file-path | (empty = most recent under cla.io/decisio
 
 Automates a manual precedent set in this repo's own history (see `cla.io/overlays/multi-spec.md` for the named commit/PR): one shape-decision output authored out into N full OpenSpec change proposals, reviewed once as a batch, opened as one PR. **Proposals only** — implementation is `/cla:spec-to-pr` (per-change) or `/cla:multi-pr` (the whole produced sequence), invoked separately afterward.
 
-**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
-files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
-plugin's install directory, and Claude Code substitutes it into skill content --
-but it is **not** an environment variable in the Bash tool. If you ever see the
-literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
-it yourself first; never pass it through to a shell, where an unset variable
-expands to nothing and the command silently runs against `/skills/...`.
-
-To resolve it: the harness prepends a `Base directory for this skill: <absolute
-path>` line when it loads a skill. The plugin root is that path with the trailing
-`/skills/<skill-name>` removed. Failing that, take the absolute path of any file
-you have already read from this plugin and cut it at the `.../plugins/cla`
-segment. If you cannot establish it either way, say so and stop rather than
-guessing a path.
-
-Measured, so you know which half is load-bearing: a `SKILL.md` body arrives with
-the placeholder ALREADY substituted, so commands written here are safe. A
-`references/` file is opened with `Read`, which returns the raw bytes — the
-placeholder arrives literal there, and that is the case this rule exists for.
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
+`references/` file opened with `Read` carries it literally, and it is not an environment variable in
+Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
+that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
+path with `/skills/<name>` removed. If you cannot establish it, say so and stop. Detail:
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 **The durability requirement is the reason this skill exists as more than a loop over `openspec-propose`.** A batch of N proposal directories sitting uncommitted for the whole run is a real, already-realized loss mode in this repo's own history (see `cla.io/overlays/multi-spec.md`) while sitting untracked. Every phase below is ordered to keep the loss window to at most one change.
 

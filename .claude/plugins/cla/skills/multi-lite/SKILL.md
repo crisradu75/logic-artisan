@@ -14,25 +14,12 @@ disable-model-invocation: true
 
 Orchestrates `/cla:lite-pr` across a **sequence** of small candidates extracted from a single decision-shaped markdown doc. Where `/cla:lite-pr` drives one small change from description to an opened PR and then stops, `multi-lite` adds the layer on top: extract every lite-pr-sized candidate the doc describes, figure out what order they must run in, confirm that plan once, run the full `/cla:lite-pr` workflow on each, and keep going through the whole set unattended — serializing only the genuine dependencies and quarantining a failure without abandoning the independents.
 
-**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
-files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
-plugin's install directory, and Claude Code substitutes it into skill content --
-but it is **not** an environment variable in the Bash tool. If you ever see the
-literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
-it yourself first; never pass it through to a shell, where an unset variable
-expands to nothing and the command silently runs against `/skills/...`.
-
-To resolve it: the harness prepends a `Base directory for this skill: <absolute
-path>` line when it loads a skill. The plugin root is that path with the trailing
-`/skills/<skill-name>` removed. Failing that, take the absolute path of any file
-you have already read from this plugin and cut it at the `.../plugins/cla`
-segment. If you cannot establish it either way, say so and stop rather than
-guessing a path.
-
-Measured, so you know which half is load-bearing: a `SKILL.md` body arrives with
-the placeholder ALREADY substituted, so commands written here are safe. A
-`references/` file is opened with `Read`, which returns the raw bytes — the
-placeholder arrives literal there, and that is the case this rule exists for.
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
+`references/` file opened with `Read` carries it literally, and it is not an environment variable in
+Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
+that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
+path with `/skills/<name>` removed. If you cannot establish it, say so and stop. Detail:
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 This is the `lite-pr` analogue of `/cla:multi-pr` (which chains `/cla:spec-to-pr` over OpenSpec changes). Use `multi-lite` when the work is a batch of **small** changes that don't need OpenSpec artifacts — the same "which workflow" judgment call `lite-pr` vs `spec-to-pr` already asks, applied to a batch.
 

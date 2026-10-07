@@ -85,8 +85,6 @@ shaped-decision `.md` files created by `shape-decision`/`multi-spec`).
 # Not seeded — log_run.py creates each on its first append:
 #   lite-pr-runs, shape-decision-runs, feedback-runs
 #                       read by lib/ledger_summary.py, named in each skill
-#   right-model-runs    no reader yet: right-model names /cla:project-review,
-#                       which does not read it (tracked in #299)
 #
 # There were four more (multi-pr, multi-spec, multi-lite, project-review). No
 # skill pointed a reader at them, so they were deleted. If you add a ledger, name
