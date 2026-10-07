@@ -60,6 +60,7 @@ PROFILES: dict[str, dict[str, str | None]] = {
         _SPEC: None,
         f"{_SPEC_REFS}/precheck.md": _SPEC,  # Precheck: "Read ... first"
         _CHECKLIST: _SPEC,  # Review: "Read ... and execute it inline"
+        f"{_SPEC_REFS}/review-sweeps.md": _SPEC,  # Review: sweeps + a FIX FIRST round's fixes
         f"{_SHARED}/test-quality.md": _SPEC,  # Implement: tests "follow" it
         f"{_SPEC_REFS}/ship.md": _SPEC,  # Ship: "Read ... first"
         f"{_SPEC_REFS}/revise.md": _SPEC,  # Revise: "Read ... first"
