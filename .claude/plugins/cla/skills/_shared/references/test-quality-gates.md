@@ -126,7 +126,7 @@ reach is a rule, and lives with the other rules below.
 
 ## Prove a gate by planting what it is supposed to catch
 
-The first rules in this file are about a test that cannot fail. A **gate** — a guard standing
+The first rules in `test-quality.md` are about a test that cannot fail. A **gate** — a guard standing
 between a defect and a release — has a sharper version of the same problem, because
 its green run is the evidence everyone downstream relies on.
 
@@ -288,7 +288,7 @@ file's own subject: a green targeted run is evidence about the target and nothin
 
 ## Why these and not a longer list
 
-Every *rule* here is the same failure mode seen from a different angle: the suite goes
+Every *rule* in the two files is the same failure mode seen from a different angle: the suite goes
 green and the coverage is imaginary. A tautological assertion cannot fail; a floor far
 below its population will not fail; an alarm whose precondition sits above the volume
 it will really see never runs at all; a case list over N rules × M constructs leaves
@@ -305,7 +305,7 @@ repo's rather than as something to go and run).
 (Two sections are not in that list. "Which gates are worth planting against" is
 routing, not a rule — it answers whether the gate sections after it apply to you at
 all, which is why it sits before them rather than claiming membership here. "No
-implementation-detail testing" is a rule, but its failure mode is the opposite one:
+implementation-detail testing" (in `test-quality.md`) is a rule, but its failure mode is the opposite one:
 the test fails too easily rather than not at all, so it does not belong to the shared
 shape this list is drawn around.)
 

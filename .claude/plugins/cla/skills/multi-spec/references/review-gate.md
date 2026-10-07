@@ -1,6 +1,6 @@
 # multi-spec — batch review gate (Phase 4)
 
-Adapts `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` — this repo's single source of truth for change review — from its single-change shape to a whole-batch dispatch. Reuse its verification checks, agent prompts, model routing, and verdict rubric **verbatim**; only the scope (one change → N changes in one dispatch) and the report grouping (by change name) differ. Do not fork a second review methodology — if the checklist changes, this adaptation should be re-read, not independently maintained.
+Adapts `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` — this repo's single source of truth for change review — from its single-change shape to a whole-batch dispatch. Reuse its verification checks and verdict rubric, and the agent prompts and model routing in `dispatch.md` beside it, **verbatim**; only the scope (one change → N changes in one dispatch) and the report grouping (by change name) differ. Do not fork a second review methodology — if the checklist changes, this adaptation should be re-read, not independently maintained.
 
 ## Why one review for the whole batch, not N single-change reviews
 
@@ -44,7 +44,7 @@ Use the same three agent prompts verbatim from `${CLAUDE_PLUGIN_ROOT}/skills/rev
 - **"Change:"** becomes a list of all N change names.
 - **"Affected area:"** becomes the union of affected apps/packages across the batch.
 - **Content fields** (Proposal/Design/Tasks/Delta specs content) carry the FULL text of every change's corresponding artifact, or "(no design.md)" / "(skip_specs)" where it is absent, clearly delimited by a `## Change: <name>` heading per change, so the agent can attribute findings to the right one.
-- **Add check B1** (cross-change cross-reference verification) to each agent's existing check list, framed the same way the checklist frames its own domain-specific checks.
+- **Add check B1** (cross-change cross-reference verification) to each agent's existing check list, framed the same way `dispatch.md`'s agent prompts frame their own domain-specific checks.
 - **Output format** — same line kinds as the checklist, including its `- [Open] …` kind for a row that carries no severity, but each line is prefixed with `[<change-name>]` so Phase 4's fix-application step can route each finding to the right change directory: `- [<change-name>] [Critical/Important/Suggestion] Issue description`, and `- [<change-name>] [Open] <what could not be settled>: <what it would take to settle it>`. **The mandatory sweep row is emitted once per change, with the prefix** — `- [<change-name>] [Open] swept for claim shapes: …` — because Step 5 groups this section by change and the checklist treats a change with no sweep row as one where the sweep was skipped. One unprefixed row for the whole batch leaves N-1 changes looking unswept..
 
 ## Step 5 — Aggregate and report, grouped by change

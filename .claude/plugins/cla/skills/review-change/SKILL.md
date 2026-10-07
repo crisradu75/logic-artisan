@@ -6,7 +6,7 @@ argument-hint: "[change-name]"
 
 # review-change — pre-implementation review of an OpenSpec change
 
-The full review workflow lives in `references/checklist.md` (single source of truth, also read directly by `/cla:spec-to-pr`'s Review phase).
+The full review workflow lives in `references/checklist.md` and, for a large change's agent prompts, `references/dispatch.md` (the single source of truth, also read directly by `/cla:spec-to-pr`'s Review phase).
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
 files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
@@ -32,4 +32,4 @@ placeholder arrives literal there, and that is the case this rule exists for.
 
 Pass `$ARGUMENTS` (the change name, optional) through to Step 1 of the checklist.
 
-To revise review behavior, edit `references/checklist.md` — do NOT add workflow logic to this shell.
+To revise review behavior, edit `references/checklist.md` (or `references/dispatch.md` for the dispatched agents) — do NOT add workflow logic to this shell.

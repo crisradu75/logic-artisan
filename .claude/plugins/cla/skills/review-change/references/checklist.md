@@ -1,6 +1,6 @@
 # review-change checklist (single source of truth)
 
-This file holds the full review-change workflow. It is loaded directly — both by the standalone `Skill(cla:review-change)` entry point (via the thin `SKILL.md` shell) AND by `/cla:spec-to-pr`'s Review phase (which reads this file directly and skips the skill-load round trip). Any change to review behavior MUST be made here, not in either caller.
+This file and `dispatch.md` beside it hold the full review-change workflow; `dispatch.md` is Step 4 (the three agent prompts), read only for a large change. This file is loaded directly — both by the standalone `Skill(cla:review-change)` entry point (via the thin `SKILL.md` shell) AND by `/cla:spec-to-pr`'s Review phase (which reads this file directly and skips the skill-load round trip). Any change to review behavior MUST be made in these two files — dispatched-agent behavior in `dispatch.md` — not in either caller.
 
 Review an OpenSpec change before implementation. Scales from in-context analysis for small changes to a 3-agent dispatch for larger ones. Prints a concise verdict.
 
@@ -173,7 +173,7 @@ Count four things from the artifacts. Design decisions are deliberately not one 
 **Rule:**
 - **Small change** — `a ≤ 5` AND `b ≤ 20` AND `c = 1` AND `e < 25` **AND NOT the complexity-concentration override below**:
   - Skip the 3-agent dispatch. The orchestrator IS the reviewer — verification checks in Step 2 already produced the findings. Go straight to Step 5.
-  - **If the change carries a `## MODIFIED Requirements` block, run the retention comparison yourself before you do** — `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`. Step 4's item 5 carries it for the large path, and a small change never reaches Step 4; since small is the modal case here, a binding that lives only in the dispatch reaches the minority of reviews. One live-spec read per modified requirement, and it reports on a clean one too.
+  - **If the change carries a `## MODIFIED Requirements` block, run the retention comparison yourself before you do** — `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/modified-block-retention.md`. On the large path it is check 5 of Agent 3's prompt in `dispatch.md`, and a small change never reaches Step 4; since small is the modal case here, a binding that lives only in the dispatch reaches the minority of reviews. One live-spec read per modified requirement, and it reports on a clean one too.
   - Announce: "Small change (a=.., b=.., c=.., e=..) — analyzing directly without agent dispatch."
 - **Large change** — any of the `a`/`b`/`c`/`e` thresholds exceeded, OR the complexity-concentration override fires:
   - Proceed to Step 4 to dispatch the 3 agents in parallel.
