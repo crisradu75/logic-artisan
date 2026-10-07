@@ -8,25 +8,13 @@ argument-hint: "[change-name]"
 
 The full review workflow lives in `references/checklist.md` and, for a large change's agent prompts, `references/dispatch.md` (the single source of truth, also read directly by `/cla:spec-to-pr`'s Review phase).
 
-**Resolving `${CLAUDE_PLUGIN_ROOT}`.** Commands in this skill and its reference
-files name plugin files as `${CLAUDE_PLUGIN_ROOT}/...`. That placeholder is this
-plugin's install directory, and Claude Code substitutes it into skill content --
-but it is **not** an environment variable in the Bash tool. If you ever see the
-literal text `${CLAUDE_PLUGIN_ROOT}` in a command you are about to run, resolve
-it yourself first; never pass it through to a shell, where an unset variable
-expands to nothing and the command silently runs against `/skills/...`.
-
-To resolve it: the harness prepends a `Base directory for this skill: <absolute
-path>` line when it loads a skill. The plugin root is that path with the trailing
-`/skills/<skill-name>` removed. Failing that, take the absolute path of any file
-you have already read from this plugin and cut it at the `.../plugins/cla`
-segment. If you cannot establish it either way, say so and stop rather than
-guessing a path.
-
-Measured, so you know which half is load-bearing: a `SKILL.md` body arrives with
-the placeholder ALREADY substituted, so commands written here are safe. A
-`references/` file is opened with `Read`, which returns the raw bytes — the
-placeholder arrives literal there, and that is the case this rule exists for.
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
+`references/` file opened with `Read` carries it literally, and it is not an environment variable in
+Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
+that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
 **Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and follow it end-to-end.** It defines: change selection, parallel artifact reads, the 12 high-yield verification checks (`0a`–`0l`), the context-brief table format, the size gate (small vs large), the 3-agent dispatch (pointer to `references/dispatch.md`, read only for a large change), the weight and proof checks, and the final report shape + verdict rubric (READY / FIX FIRST / RETHINK).
 

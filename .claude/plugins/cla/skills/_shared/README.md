@@ -31,6 +31,7 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `conflict-resolution.md` | procedure for a mid-flight rebase/cherry-pick/merge — what `git_state.py` exit 2 hands you |
 | `test-quality.md` | whether a test can fail at all — the rules for any test; read at authoring time |
 | `test-quality-gates.md` | the rest of that doctrine, for a gate: floors, alarm volume, planting; read only when authoring or proving a gate |
+| `plugin-root.md` | the full rule for resolving `${CLAUDE_PLUGIN_ROOT}` in a `references/` file; six skills carry the short form |
 | `skill-authoring.md` | plugin-wide doctrine for writing a skill: progressive disclosure + completion criteria |
 
 ## `scripts/`
