@@ -178,7 +178,7 @@ EOF
 ```
 
 Substitute `<skill>` per skill. The stub seeds the **full menu** of fact-category sections (matching the
-categories the `cla-plugin` "Per-skill project-context overlay" requirement enumerates); the human
+categories the `plugin-architecture` "Per-skill project-context overlay" requirement enumerates); the human
 filling it in prunes the sections the skill doesn't use.
 
 ### 6. OpenSpec authoring rules — `openspec/config.yaml`
