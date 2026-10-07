@@ -2,7 +2,7 @@
 
 ## Purpose
 
-What the plugin's skills must do when they author an OpenSpec change: which files a change needs, how scenarios name their proof, and how live specs are read. The rules are written out in `openspec/config.yaml`.
+What the plugin's skills must do when they author an OpenSpec change: which files a change needs, how scenarios name their proof, and how live specs are read. Most of these rules are also in `openspec/config.yaml`.
 
 ## Requirements
 

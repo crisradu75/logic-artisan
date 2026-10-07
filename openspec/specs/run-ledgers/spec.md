@@ -12,7 +12,7 @@ A retro aggregator SHALL treat a malformed record as one lost record, never a lo
 
 #### Scenario: One malformed record does not abort the aggregate
 
-- **WHEN** a ledger holds a record whose field has a different container type than the aggregator expects
+- **WHEN** a ledger holds a record whose field has a list where the aggregator expects an object, or the reverse
 - **THEN** the aggregator skips that field, analyzes every other record, and exits successfully
 - **AND** it does not return an empty result for the whole ledger
 
@@ -67,7 +67,7 @@ The Revise phase record SHALL carry an optional `findings_by_round` array, one e
 - `found`: that round's deduplicated Critical-plus-Important count;
 - `sibling_instance`: how many of `found` were a defect the previous round's fix introduced or a sibling instance it missed. Round 1 records `0`. A later round records `null` when it was never asked that question, or its answer stayed uncited after the one re-dispatch, and `0` when it was asked and found none.
 
-A record without the field stays valid, is not producer drift, and is not read as a round that found nothing. The schema SHALL state that, over agent-surfaced findings, the per-agent `found` sum is at least the per-round sum, since one finding reported by two agents counts twice per agent and once per round. It SHALL name the equality case (each finding reported by one agent), which is not drift, and the inverting case: a finding the orchestrator raises counts per round but in no agent's bucket.
+A record without the field stays valid, is not a writer error, and is not read as a round that found nothing. The schema SHALL state that, over agent-surfaced findings, the per-agent `found` sum is at least the per-round sum, since one finding reported by two agents counts twice per agent and once per round. It SHALL name the equality case (each finding reported by one agent), which is not drift, and the one exception: a finding the orchestrator raises counts per round but in no agent's bucket.
 
 #### Scenario: A run with two rounds is logged with per-round attribution
 
@@ -79,15 +79,15 @@ A record without the field stays valid, is not producer drift, and is not read a
 #### Scenario: An older record without the field stays valid
 
 - **WHEN** a run record written before this field existed is read from the ledger
-- **THEN** the missing `findings_by_round` is not an error and is not counted as producer drift
+- **THEN** the missing `findings_by_round` is not an error and is not counted as a writer error
 - **AND** it is not read as a round that found nothing, which would be an entry with `found: 0`
 
 #### Scenario: The two `found` counts are related by an inequality, not a prohibition
 
 - **WHEN** a reader compares `findings_by_round`'s per-round `found` totals with the per-agent counts on the same record
 - **THEN** the schema states the per-agent sum is greater than or equal to the per-round sum, and why
-- **AND** it names the equality case, so a match is not read as producer drift
-- **AND** it names the inverting case of a finding the orchestrator raises
+- **AND** it names the equality case, so a match is not read as a writer error
+- **AND** it names the one exception, a finding the orchestrator raises
 
 #### Scenario: A round that produced no measurement is not logged as a zero
 

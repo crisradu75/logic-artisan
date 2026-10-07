@@ -64,7 +64,7 @@ The skill SHALL also report which capabilities more than one change touches, wit
 
 #### Scenario: The decision is made in every autonomy mode
 
-- **WHEN** a mode answers the pre-flight gate with recommended defaults
+- **WHEN** a mode answers the start-of-run questions with recommended defaults
 - **THEN** the shared-state decision is still made for each change from its artifacts, and shown with its reasoning
 
 ### Requirement: A small-change chain merges only what it tested and reviewed, under a policy confirmed per run
@@ -268,7 +268,7 @@ The plugin SHALL keep, in a shared reference read when tests are written, the ru
 - a plant that lands and is caught still proves nothing alone: read the catching assertion and confirm it states the wanted behaviour. The riskiest case is a plant that is the simpler form of the code;
 - advice on when planting is worth its cost does not narrow the review-fix check, which stays unconditional.
 
-For a new alarm, threshold or minimum-sample rule, the reference SHALL require stating the volume it will meet in ordinary operation, where that figure comes from, and the outcome at both ends of that range. It SHALL say that a plant against the live tree does not reach this case, and that a neighbouring rule (feeding the check bad state) does, provided the bad state is sized to real volume.
+For a new alarm, threshold or minimum-sample rule, the reference SHALL require stating the volume it will meet in ordinary operation, where that figure comes from, and the outcome at both ends of that range. It SHALL say that a test planted against the current code does not reach this case, and that a neighbouring rule (feeding the check bad state) does, provided the bad state is sized to real volume.
 
 #### Scenario: A reader is routed before being asked to read gate doctrine
 
@@ -298,7 +298,7 @@ For a new alarm, threshold or minimum-sample rule, the reference SHALL require s
 - **WHEN** the reference is read by someone adding an alarm, threshold, or minimum-sample rule
 - **THEN** it requires the ordinary operating volume, and its source, to be stated
 - **AND** it requires both outcomes at that volume: the alarm can fire, and fires only when it should
-- **AND** it says a plant against the live tree does not reach this, and states when the bad-state rule does
+- **AND** it says a test planted against the current code does not reach this, and states when the bad-state rule does
 
 ### Requirement: A fix brief makes the defect binding and the proposed fix rejectable
 
@@ -306,9 +306,9 @@ A brief that dispatches an agent to fix a defect SHALL state the defect and the 
 
 Where a brief format is shared across skills and cited by slot name, the fix form SHALL be a second form of the existing task slot, not a new slot.
 
-#### Scenario: The terminal contract asks for defect-gone evidence
+#### Scenario: The required return asks for defect-gone evidence
 
-- **WHEN** a fix dispatch's terminal contract is stated
+- **WHEN** a fix dispatch's required return is stated
 - **THEN** `done` requires the brief's defect check, re-run, with output showing the defect gone
 - **AND** a `done` without that evidence is treated as not done
 
@@ -327,12 +327,12 @@ Where a brief format is shared across skills and cited by slot name, the fix for
 
 - **WHEN** the orchestrator cannot name a check that shows the defect
 - **THEN** the defect is treated as not grounded, to be grounded before dispatch
-- **AND** the brief is NOT treated as exempt from the terminal contract
+- **AND** the brief is NOT treated as exempt from the required return
 
-#### Scenario: Every site restating the terminal contract states the same one
+#### Scenario: Every site restating the required return states the same one
 
-- **WHEN** the terminal contract is restated outside the brief that defines it
-- **THEN** every site briefing a fix dispatch states the three-status form
+- **WHEN** the required return is restated outside the brief that defines it
+- **THEN** every site briefing a fix dispatch states the same three statuses: `done`, `blocked`, `remedy-rejected`
 - **AND** a site briefing a dispatch that never fixes a defect is left unchanged
 
 #### Scenario: A permission to disagree does not satisfy the requirement
@@ -465,7 +465,7 @@ A brief SHALL tell the dispatched agent to run every check (build, lint, test or
 
 For a dispatch whose brief declares a set of statuses, the orchestrator SHALL check whether the return carries one of them before acting on its prose. A return with none SHALL be treated as blocked however finished it reads, and a `done` without the evidence its contract requires is treated as not done. No new status SHALL be added for this. Each such event SHALL be recorded as a Handoff issue, not absorbed by quietly finishing the work. A dispatch whose brief declares no statuses (a read-only gatherer, a reviewer returning findings) is out of scope.
 
-#### Scenario: An evidence-free return is blocked
+#### Scenario: A return with no status is blocked
 
 - **WHEN** a dispatched agent returns without a status token
 - **THEN** the orchestrator treats the return as blocked, whether or not its prose reads as finished

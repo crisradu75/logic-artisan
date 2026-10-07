@@ -29,7 +29,7 @@ Where a document carries its own styling and layout, the skill SHALL show it tha
 
 ### Requirement: The skill adds markup to a copy and changes nothing else
 
-The skill SHALL never write to the source document; it instruments a separate copy. In that copy it SHALL only add attributes to existing elements, plus its own presentation appended after the document's content and depending on nothing outside itself. Removing everything it added SHALL give back the source byte for byte, and a test SHALL check this.
+The skill SHALL never write to the source document; it instruments a separate copy. In that copy it SHALL only add attributes to existing elements, plus at most the presentation the annotation layer needs to be visible, appended after the document's content and depending on nothing outside itself. Removing everything it added SHALL give back the source byte for byte, and a test SHALL check this.
 
 #### Scenario: The injected attributes strip back to the original
 

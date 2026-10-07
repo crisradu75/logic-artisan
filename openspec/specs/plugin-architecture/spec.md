@@ -125,7 +125,7 @@ An overlay at the old location, a skill's `references/project-context.md`, SHALL
 
 ### Requirement: Guard hooks provided by the plugin
 
-The plugin's guard hooks SHALL be wired in `.claude/plugins/cla/hooks/hooks.json` using the top-level `{"hooks": {…}}` wrapper (a bare event map loads but never fires). The file SHALL use only keys Claude Code's plugin loader recognises, at the top level and in each matcher group, since any other key prints a warning at every session start in every consuming repo. The check SHALL take the recognised keys from the installed Claude Code, require the required keys exactly, and allow the other recognised keys. Commentary that does not fit `description` SHALL live in a scanned source file. Hook commands SHALL find their scripts via `${CLAUDE_PLUGIN_ROOT}` and the repo via `${CLAUDE_PROJECT_DIR}`. Hooks specific to a host repo SHALL stay in that repo's `.claude/settings.json`.
+The plugin's guard hooks SHALL be wired in `.claude/plugins/cla/hooks/hooks.json` using the top-level `{"hooks": {…}}` wrapper (a bare event map loads but never fires). The file SHALL use only keys Claude Code's plugin loader recognises, at the top level and in each matcher group, since any other key prints a warning at every session start in every consuming repo. The check SHALL take the recognised keys from the installed Claude Code, fail when a required key is missing, and accept any other key the loader recognises. Commentary that does not fit `description` SHALL live in a scanned source file. Hook commands SHALL find their scripts via `${CLAUDE_PLUGIN_ROOT}` and the repo via `${CLAUDE_PROJECT_DIR}`. Hooks specific to a host repo SHALL stay in that repo's `.claude/settings.json`.
 
 #### Scenario: A plugin guard hook fires
 
@@ -194,7 +194,7 @@ The plugin SHALL provide `/cla:cla-init` (`skills/cla-init/SKILL.md`), which set
 - an empty overlay stub `cla.io/overlays/<skill>.md` (heading plus empty fact-category sections) for each skill that reads its own overlay for repo facts — not for a skill that only mentions the overlay path;
 - `openspec/config.yaml`, per "cla-init seeds OpenSpec authoring rules without clobbering".
 
-It SHALL NOT overwrite, truncate, or merge anything that exists, SHALL NOT fill stubs with real facts, SHALL NOT touch skill, agent, or hook files, and SHALL NOT touch `.claude-plugin/plugin.json` or `.claude/settings*.json` (those stay manual). Its SKILL.md SHALL state the onboarding order — marketplace install, then `cla-init`, then `/cla:sync-context` — and that the install provides skills but no project data.
+It SHALL NOT overwrite, truncate, or merge anything that exists, SHALL NOT fill stubs with real facts, SHALL NOT touch skill, agent, or hook files, and SHALL NOT touch `.claude-plugin/plugin.json` or `.claude/settings*.json` (those stay manual). Its SKILL.md and sync-context's SKILL.md SHALL state the onboarding order — marketplace install, then `cla-init`, then `/cla:sync-context` — and that the install provides skills but no project data.
 
 #### Scenario: A fresh repo is scaffolded
 
