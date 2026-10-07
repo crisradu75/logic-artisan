@@ -6,9 +6,10 @@ that command: run it before an edit and after, and quote both.
 
 Three numbers, each with a fixed rule so a before/after compares like with like:
 
-- **Session** — what every session pays before any skill runs: the forced output
-  style body, plus the `description:` of every skill the model can invoke on its
-  own (`disable-model-invocation: true` skills are not listed) and every agent.
+- **Session** — what every session pays before any skill runs: the body of each
+  output style with `force-for-plugin` true, plus the `description:` of every
+  skill the model can invoke on its own (skills with `disable-model-invocation`
+  true are not listed) and every agent.
 - **Per skill** — `SKILL.md` (loaded whole on invocation) and its *reachable* set:
   every `references/*.md` the skill names, followed transitively. Reachable is an
   upper bound — a reference read only on a rare branch still counts — so moving
@@ -16,106 +17,126 @@ Three numbers, each with a fixed rule so a before/after compares like with like:
   second unchanged, which is the evidence that nothing was dropped.
 - **Profiles** — the files a typical run actually reads, curated in `PROFILES`
   because "read on every run" is a judgement about prose no regex can make. Each
-  entry names the line that forces the read, and `check_profiles` fails when a
-  profile names a file that no longer exists or that its skill no longer reaches.
+  entry names the file whose text forces the read, and `check_profiles` fails
+  when that file no longer names it directly. Reachability alone would not do:
+  most references reach most others, so a pointer could be deleted and the file
+  would still be "reachable".
 
 Words are whitespace-separated runs, which is what `LC_ALL=C.UTF-8 wc -w`
 reports. Under a C locale `wc -w` skips a run with no printable ASCII, such as a
 lone em dash, and reads about 2% lower on this plugin's prose (2026-10-07,
 `LC_ALL=C wc -w` against `LC_ALL=C.UTF-8 wc -w` on `skills/spec-to-pr/SKILL.md`).
-The figures quoted in #296-#299 were taken under the C locale.
 Tokens are not reported: the ratio varies by model and text, and a word count is
 reproducible.
 
     python3 plugin-tests/scripts/measure_load.py              # summary table
     python3 plugin-tests/scripts/measure_load.py --skill spec-to-pr
     python3 plugin-tests/scripts/measure_load.py --json       # for a PR body
+    python3 plugin-tests/scripts/measure_load.py --root <other checkout>/.claude/plugins/cla
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-PLUGIN_ROOT = _REPO_ROOT / ".claude" / "plugins" / "cla"
+_DEV_TREE = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = _DEV_TREE.parent / ".claude" / "plugins" / "cla"
 
-# A typical run of each skill: the files read on every pass, not on a branch.
-# Paths are relative to the plugin root; the first entry is the skill's SKILL.md.
-PROFILES: dict[str, tuple[str, ...]] = {
+_SPEC = "skills/spec-to-pr/SKILL.md"
+_SPEC_REFS = "skills/spec-to-pr/references"
+_SHARED = "skills/_shared/references"
+_CHECKLIST = "skills/review-change/references/checklist.md"
+
+# A typical run of each skill: file -> the file whose text forces the read
+# (None for the SKILL.md itself). Paths are relative to the plugin root.
+PROFILES: dict[str, dict[str, str | None]] = {
     # Baseline in #296: one change, tests written, PR opened, no delegate.
-    "spec-to-pr": (
-        "skills/spec-to-pr/SKILL.md",
-        "skills/spec-to-pr/references/precheck.md",  # Precheck: "Read ... first"
-        "skills/review-change/references/checklist.md",  # Review: "Read ... and execute it inline"
-        "skills/_shared/references/test-quality.md",  # Implement: tests "follow" it
-        "skills/spec-to-pr/references/ship.md",  # Ship: "Read ... first"
-        "skills/spec-to-pr/references/revise.md",  # Revise: "Read ... first"
-        "skills/spec-to-pr/references/archive.md",  # Archive: "Read ... first"
-        "skills/spec-to-pr/references/archive-preflight.md",  # read from archive.md
-        "skills/spec-to-pr/references/handoff.md",  # Handoff: "Read ... first"
-        "skills/_shared/references/run-log-schema.md",  # Handoff builds the run record from it
-    ),
-    "lite-pr": (
-        "skills/lite-pr/SKILL.md",
-        "skills/_shared/references/test-quality.md",  # Implement: tests "follow" it
-    ),
-    "review-change": (
-        "skills/review-change/SKILL.md",
-        "skills/review-change/references/checklist.md",  # "Read ... and execute it"
-    ),
+    "spec-to-pr": {
+        _SPEC: None,
+        f"{_SPEC_REFS}/precheck.md": _SPEC,  # Precheck: "Read ... first"
+        _CHECKLIST: _SPEC,  # Review: "Read ... and execute it inline"
+        f"{_SHARED}/test-quality.md": _SPEC,  # Implement: tests "follow" it
+        f"{_SPEC_REFS}/ship.md": _SPEC,  # Ship: "Read ... first"
+        f"{_SPEC_REFS}/revise.md": _SPEC,  # Revise: "Read ... first"
+        f"{_SPEC_REFS}/archive.md": _SPEC,  # Archive: "Read ... first"
+        f"{_SPEC_REFS}/archive-preflight.md": f"{_SPEC_REFS}/archive.md",
+        f"{_SPEC_REFS}/handoff.md": _SPEC,  # Handoff: "Read ... first"
+        f"{_SHARED}/run-log-schema.md": f"{_SPEC_REFS}/handoff.md",  # builds the run record
+    },
+    "lite-pr": {
+        "skills/lite-pr/SKILL.md": None,
+        f"{_SHARED}/test-quality.md": "skills/lite-pr/SKILL.md",  # tests "follow" it
+    },
+    "review-change": {
+        "skills/review-change/SKILL.md": None,
+        _CHECKLIST: "skills/review-change/SKILL.md",  # "Read ... and execute it"
+    },
 }
 
 _REF = re.compile(r"(\$\{CLAUDE_PLUGIN_ROOT\}/)?([\w./-]+\.md)")
+_YAML_TRUE = {"true", "yes", "on"}
+
+
+def _load_parse_frontmatter():
+    """The repo's one frontmatter parser, loaded by path from the conformance
+    area (not on `pythonpath`), as `test_doc_facts.py` does. A second parser
+    here could disagree with it, which is the defect class that file names."""
+    path = _DEV_TREE / "tests" / "conformance" / "test_skill_lint.py"
+    spec = importlib.util.spec_from_file_location("_skill_lint_for_measure_load", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.parse_frontmatter
+
+
+parse_frontmatter = _load_parse_frontmatter()
+
+
+def _is_true(value: str) -> bool:
+    """YAML's spellings of true; the parser leaves quotes and comments on."""
+    return value.split("#")[0].strip().strip("\"'").lower() in _YAML_TRUE
 
 
 def count_words(path: Path) -> int:
     return len(path.read_text(encoding="utf-8").split())
 
 
-def frontmatter(text: str) -> dict[str, str]:
-    """Top-level `key: value` pairs of a leading `---` block. Values are raw."""
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return {}
-    fields: dict[str, str] = {}
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        if line[:1] in (" ", "\t", "#") or ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        fields[key.strip()] = value.strip()
-    return fields
-
-
 def _skill_dir(path: Path, root: Path) -> Path:
-    """The skill directory a file belongs to: `skills/<name>/`."""
+    """The skill directory a file belongs to: `skills/<name>/`. Both resolved."""
     rel = path.relative_to(root / "skills")
     return root / "skills" / rel.parts[0]
 
 
 def _resolve(token: str, prefixed: bool, source: Path, root: Path) -> Path | None:
+    """`root` and `source` must be resolved. Bare names try the naming file's
+    own directory first, so a reference naming a sibling (`archive-preflight.md`
+    from `archive.md`) resolves."""
     if prefixed:
         candidates = [root / token]
     else:
-        candidates = [_skill_dir(source, root) / token, root / "skills" / token, root / token]
-    resolved_root = root.resolve()
+        candidates = [
+            source.parent / token,
+            _skill_dir(source, root) / token,
+            root / "skills" / token,
+            root / token,
+        ]
     for candidate in candidates:
         candidate = candidate.resolve()
         if not candidate.is_file():
             continue
-        if not candidate.is_relative_to(resolved_root):
+        if not candidate.is_relative_to(root):
             continue
         return candidate
     return None
 
 
 def references(source: Path, root: Path) -> set[Path]:
-    """The `references/*.md` files `source` names, resolved and existing."""
+    """The `references/*.md` files `source` names directly, resolved."""
+    root, source = root.resolve(), source.resolve()
     found: set[Path] = set()
     for match in _REF.finditer(source.read_text(encoding="utf-8")):
         target = _resolve(match.group(2), bool(match.group(1)), source, root)
@@ -137,20 +158,30 @@ def reachable(skill_md: Path, root: Path) -> set[Path]:
     return seen
 
 
+def _frontmatter(path: Path) -> dict[str, str]:
+    mapping, error = parse_frontmatter(path.read_text(encoding="utf-8"))
+    return {} if error is not None else mapping
+
+
 def session_load(root: Path) -> dict:
-    """Words present in every session: forced output styles plus listings."""
+    """Words present in every session: forced output styles plus listings.
+    Keyed by path relative to the plugin root, so no two entries collide."""
+    root = root.resolve()
     styles = {}
     for style in sorted((root / "output-styles").glob("*.md")):
+        if not _is_true(_frontmatter(style).get("force-for-plugin", "")):
+            continue
         text = style.read_text(encoding="utf-8")
         body = text.split("---", 2)[2] if text.startswith("---") else text
-        styles[style.name] = len(body.split())
+        styles[style.relative_to(root).as_posix()] = len(body.split())
     descriptions = {}
     for path in sorted(root.glob("skills/*/SKILL.md")) + sorted(root.glob("agents/*.md")):
-        fields = frontmatter(path.read_text(encoding="utf-8"))
-        if fields.get("disable-model-invocation", "").lower() == "true":
+        fields = _frontmatter(path)
+        if _is_true(fields.get("disable-model-invocation", "")):
             continue
-        name = fields.get("name") or path.parent.name
-        descriptions[name] = len(fields.get("description", "").split())
+        descriptions[path.relative_to(root).as_posix()] = len(
+            fields.get("description", "").split()
+        )
     return {
         "output_styles": styles,
         "descriptions": descriptions,
@@ -159,6 +190,7 @@ def session_load(root: Path) -> dict:
 
 
 def skill_load(root: Path) -> dict[str, dict]:
+    root = root.resolve()
     result = {}
     for skill_md in sorted(root.glob("skills/*/SKILL.md")):
         refs = reachable(skill_md, root)
@@ -167,32 +199,35 @@ def skill_load(root: Path) -> dict[str, dict]:
             "skill_md": body,
             "reachable": body + sum(count_words(p) for p in refs),
             "references": {
-                p.relative_to(root.resolve()).as_posix(): count_words(p)
-                for p in sorted(refs)
+                p.relative_to(root).as_posix(): count_words(p) for p in sorted(refs)
             },
         }
     return result
 
 
-def check_profiles(root: Path, profiles: dict[str, tuple[str, ...]] | None = None) -> list[str]:
-    """Problems with `profiles`: a missing file, or one its skill cannot reach."""
+def check_profiles(root: Path, profiles: dict[str, dict[str, str | None]] | None = None) -> list[str]:
+    """Problems with `profiles`: a missing file, a forcing file outside the
+    profile, or a forcing file that no longer names the file directly."""
+    root = root.resolve()
     problems = []
     for name, files in (PROFILES if profiles is None else profiles).items():
-        skill_md = root / files[0]
-        if not skill_md.is_file():
-            problems.append(f"{name}: {files[0]} does not exist")
-            continue
-        refs = reachable(skill_md, root)
-        for rel in files[1:]:
+        for rel, forced_by in files.items():
             path = root / rel
             if not path.is_file():
                 problems.append(f"{name}: {rel} does not exist")
-            elif path.resolve() not in refs:
-                problems.append(f"{name}: {rel} is not reachable from {files[0]}")
+            elif forced_by is None:
+                continue
+            elif forced_by not in files:
+                problems.append(f"{name}: {rel} is forced by {forced_by}, which is not in the profile")
+            elif not (root / forced_by).is_file():
+                continue  # reported as missing on its own entry
+            elif path.resolve() not in references(root / forced_by, root):
+                problems.append(f"{name}: {forced_by} no longer names {rel}")
     return problems
 
 
-def profile_load(root: Path, profiles: dict[str, tuple[str, ...]] | None = None) -> dict[str, dict]:
+def profile_load(root: Path, profiles: dict[str, dict[str, str | None]] | None = None) -> dict[str, dict]:
+    root = root.resolve()
     result = {}
     for name, files in (PROFILES if profiles is None else profiles).items():
         words = {rel: count_words(root / rel) for rel in files}
@@ -240,15 +275,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--json", action="store_true", help="print the full measurement as JSON")
     parser.add_argument("--skill", help="break one skill down by file")
-    parser.add_argument("--root", type=Path, default=PLUGIN_ROOT, help=argparse.SUPPRESS)
+    parser.add_argument("--root", type=Path, default=PLUGIN_ROOT,
+                        help="plugin root to measure (default: this checkout's)")
     args = parser.parse_args(argv)
+    root = args.root.resolve()
 
-    problems = check_profiles(args.root)
+    problems = check_profiles(root)
     if problems:
         for problem in problems:
             print(f"stale profile: {problem}", file=sys.stderr)
         return 2
-    data = measure(args.root)
+    data = measure(root)
     if args.json:
         print(json.dumps(data, indent=2))
     elif args.skill:

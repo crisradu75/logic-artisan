@@ -27,8 +27,9 @@ def _tree(tmp_path: Path) -> Path:
         "Facts live in `cla.io/project-facts.md`; any `skills/<name>/SKILL.md`.\n"
         "Never `../../../outside/references/o.md`.\n",
     )
-    _write(root / "skills" / "a" / "references" / "x.md", "x words here `references/y.md`\n")
+    _write(root / "skills" / "a" / "references" / "x.md", "x words `references/y.md` [w](w.md)\n")
     _write(root / "skills" / "a" / "references" / "y.md", "y\n")
+    _write(root / "skills" / "a" / "references" / "w.md", "w w\n")
     _write(root / "skills" / "_shared" / "references" / "s.md", "s s\n")
     _write(root / "skills" / "_shared" / "references" / "t.md", "t t t\n")
     _write(
@@ -37,8 +38,15 @@ def _tree(tmp_path: Path) -> Path:
         "`references/z.md`\n",
     )
     _write(root / "skills" / "b" / "references" / "z.md", "z\n")
+    _write(
+        root / "skills" / "c" / "SKILL.md",
+        "---\nname: c\ndescription: eight nine\n"
+        "disable-model-invocation: \"yes\"  # merges PRs unattended\n---\n",
+    )
     _write(root / "agents" / "helper.md", "---\nname: helper\ndescription: six seven\n---\nbody\n")
-    _write(root / "output-styles" / "S.md", "---\nname: S\n---\nalpha beta gamma\n")
+    _write(root / "agents" / "other.md", "---\ndescription: ten\n---\nbody\n")
+    _write(root / "output-styles" / "S.md", "---\nname: S\nforce-for-plugin: true\n---\nalpha beta gamma\n")
+    _write(root / "output-styles" / "Opt.md", "---\nname: Opt\n---\nnot paid every session\n")
     _write(tmp_path / "outside" / "references" / "o.md", "outside\n")
     return root
 
@@ -49,12 +57,13 @@ def _names(paths: set[Path]) -> set[str]:
 
 def test_reachable_follows_every_reference_form_transitively(tmp_path):
     """Skill-relative, `${CLAUDE_PLUGIN_ROOT}`-prefixed and bare `_shared/`
-    references all resolve, and `y.md` is reached only through `x.md` — a
-    resolver that took `references/y.md` relative to the plugin root, or that
-    stopped at depth one, misses it."""
+    references all resolve. `y.md` and `w.md` are reached only through `x.md`,
+    and `w.md` only as a bare sibling name in a markdown link — a resolver that
+    stopped at depth one, or that never looked beside the naming file, misses
+    them."""
     root = _tree(tmp_path)
     assert _names(ml.reachable(root / "skills" / "a" / "SKILL.md", root)) == {
-        "x.md", "y.md", "s.md", "t.md",
+        "x.md", "y.md", "w.md", "s.md", "t.md",
     }
 
 
@@ -69,14 +78,20 @@ def test_reachable_excludes_other_skills_and_paths_outside_the_plugin(tmp_path):
     assert "o.md" not in names
 
 
-def test_session_counts_listed_descriptions_and_output_styles_only(tmp_path):
-    """`b` sets `disable-model-invocation: true`, so its description is not in
-    the always-loaded listing and must not be counted; the agent's is. The
-    indented `description:` under `a`'s `metadata:` is not the top-level key."""
+def test_session_counts_listed_descriptions_and_forced_styles_only(tmp_path):
+    """`b` and `c` both opt out of model invocation, `c` spelled the way YAML
+    also reads as true, with an inline comment; neither is listed. The indented
+    `description:` under `a`'s `metadata:` is not the top-level key. Two agents,
+    one without `name:`, are keyed by path so neither overwrites the other. The
+    style without `force-for-plugin` is opt-in, so no session pays for it."""
     session = ml.session_load(_tree(tmp_path))
-    assert session["descriptions"] == {"a": 3, "helper": 2}
-    assert session["output_styles"] == {"S.md": 3}
-    assert session["total"] == 8
+    assert session["descriptions"] == {
+        "skills/a/SKILL.md": 3,
+        "agents/helper.md": 2,
+        "agents/other.md": 1,
+    }
+    assert session["output_styles"] == {"output-styles/S.md": 3}
+    assert session["total"] == 9
 
 
 def test_skill_load_reports_body_and_reachable_totals(tmp_path):
@@ -84,37 +99,41 @@ def test_skill_load_reports_body_and_reachable_totals(tmp_path):
     row = ml.skill_load(root)["a"]
     body = ml.count_words(root / "skills" / "a" / "SKILL.md")
     assert row["skill_md"] == body
-    # x.md 4 words, y.md 1, s.md 2, t.md 3.
-    assert row["reachable"] == body + 10
+    # x.md 4 words, y.md 1, w.md 2, s.md 2, t.md 3.
+    assert row["reachable"] == body + 12
     assert set(row["references"]) == {
         "skills/a/references/x.md",
         "skills/a/references/y.md",
+        "skills/a/references/w.md",
         "skills/_shared/references/s.md",
         "skills/_shared/references/t.md",
     }
 
 
-def test_check_profiles_reports_a_missing_or_unreachable_file(tmp_path):
-    """A profile is a claim about what a run reads; once the skill stops naming
-    a file, or the file is gone, the claim is stale and the meter must say so."""
+def test_check_profiles_needs_a_direct_pointer_not_reachability(tmp_path):
+    """A profile entry claims its forcing file names it. `y.md` is reachable
+    from SKILL.md through `x.md`, so a reachability check would accept it as
+    forced by SKILL.md — exactly the pointer deletion the check exists to see."""
     root = _tree(tmp_path)
+    sk, x, y = "skills/a/SKILL.md", "skills/a/references/x.md", "skills/a/references/y.md"
     profiles = {
-        "good": ("skills/a/SKILL.md", "skills/a/references/y.md"),
-        "gone": ("skills/a/SKILL.md", "skills/a/references/missing.md"),
-        "unreached": ("skills/a/SKILL.md", "skills/b/references/z.md"),
-        "no-skill": ("skills/c/SKILL.md",),
+        "good": {sk: None, x: sk, y: x},
+        "indirect": {sk: None, y: sk},
+        "gone": {sk: None, "skills/a/references/missing.md": sk},
+        "outsider": {sk: None, y: x},
+        "no-skill": {"skills/q/SKILL.md": None},
     }
-    problems = ml.check_profiles(root, profiles)
-    assert problems == [
+    assert ml.check_profiles(root, profiles) == [
+        f"indirect: {sk} no longer names {y}",
         "gone: skills/a/references/missing.md does not exist",
-        "unreached: skills/b/references/z.md is not reachable from skills/a/SKILL.md",
-        "no-skill: skills/c/SKILL.md does not exist",
+        f"outsider: {y} is forced by {x}, which is not in the profile",
+        "no-skill: skills/q/SKILL.md does not exist",
     ]
 
 
 def test_profiles_hold_in_the_real_plugin():
-    """The enforcement: every curated profile names files that exist and that
-    its skill still reaches, so an edit that moves a reference fails here."""
+    """The enforcement: every curated profile entry is still named directly by
+    the file it says forces the read, so deleting a pointer fails here."""
     assert ml.check_profiles(ml.PLUGIN_ROOT) == []
 
 
@@ -127,14 +146,42 @@ def test_real_spec_to_pr_profile_is_more_than_its_skill_md():
     assert profile["total"] > 2 * files["skills/spec-to-pr/SKILL.md"]
 
 
+def test_relative_root_measures_the_same_as_absolute(tmp_path, monkeypatch):
+    """A sibling checkout passed by relative path is the obvious way to take a
+    "before" reading; a resolved/unresolved path mismatch used to crash it."""
+    root = _tree(tmp_path)
+    monkeypatch.setattr(ml, "PROFILES", {})
+    monkeypatch.chdir(tmp_path)
+    assert ml.measure(Path("plugin")) == ml.measure(root)
+    assert ml.reachable(Path("plugin/skills/a/SKILL.md"), Path("plugin")) == ml.reachable(
+        root / "skills" / "a" / "SKILL.md", root
+    )
+
+
 def test_cli_json_round_trips_and_stale_profile_exits_2(tmp_path, capsys, monkeypatch):
     root = _tree(tmp_path)
-    monkeypatch.setattr(ml, "PROFILES", {"a": ("skills/a/SKILL.md", "skills/a/references/x.md")})
+    sk, x = "skills/a/SKILL.md", "skills/a/references/x.md"
+    monkeypatch.setattr(ml, "PROFILES", {"a": {sk: None, x: sk}})
     assert ml.main(["--json", "--root", str(root)]) == 0
     data = json.loads(capsys.readouterr().out)
     assert set(data) == {"session", "skills", "profiles"}
     assert data["profiles"]["a"]["total"] == data["skills"]["a"]["skill_md"] + 4
 
-    monkeypatch.setattr(ml, "PROFILES", {"a": ("skills/a/SKILL.md", "skills/b/references/z.md")})
+    monkeypatch.setattr(ml, "PROFILES", {"a": {sk: None, "skills/b/references/z.md": sk}})
     assert ml.main(["--root", str(root)]) == 2
     assert "stale profile" in capsys.readouterr().err
+
+
+def test_cli_skill_breakdown_lists_references_largest_first(tmp_path, capsys, monkeypatch):
+    root = _tree(tmp_path)
+    sk, x = "skills/a/SKILL.md", "skills/a/references/x.md"
+    monkeypatch.setattr(ml, "PROFILES", {"a": {sk: None, x: sk}})
+    assert ml.main(["--skill", "a", "--root", str(root)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    refs = [line.split()[1] for line in lines[1:6]]
+    assert refs[0] == "skills/a/references/x.md"
+    assert refs[-1] == "skills/a/references/y.md"
+    assert lines[6].startswith("profile: ")
+
+    assert ml.main(["--skill", "nope", "--root", str(root)]) == 2
+    assert "no such skill" in capsys.readouterr().err
