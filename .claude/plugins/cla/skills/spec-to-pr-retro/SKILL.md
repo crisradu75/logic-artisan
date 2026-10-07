@@ -1,7 +1,10 @@
 ---
 name: spec-to-pr-retro
-description: "Review recent /cla:spec-to-pr runs and propose concrete improvements to the orchestrator (SKILL.md, hooks, memory). Reads the project's runs JSONL log, aggregates deterministic metrics (phase warn rates, cap exhaustion, Review size-gate distribution, Review verdict mix, agent dispatch frequency, ask choice distribution), then surfaces patterns and proposes specific edits. Triggers on /cla:spec-to-pr-retro or natural language like 'review my recent spec-to-pr runs', 'how is spec-to-pr doing', 'what should I fix in spec-to-pr'."
+description: "Review recent /cla:spec-to-pr runs from the spec-to-pr-runs ledger (warn rates, cap exhaustion, review mix, dispatches) and propose improvements to the orchestrator. Run with /cla:spec-to-pr-retro."
 argument-hint: "[N (last N runs, default 10)]"
+# Slash-command only (a periodic retro over many runs): keeps this description out of the
+# always-loaded skill listing. Nothing invokes it programmatically.
+disable-model-invocation: true
 ---
 
 # /cla:spec-to-pr-retro — retrospective on the orchestrator

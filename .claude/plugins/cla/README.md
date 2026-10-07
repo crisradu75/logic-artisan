@@ -40,16 +40,16 @@ full list of subcommands the CLI actually ships.
 ## The software life cycle, phase by phase
 
 CLA's skills map onto the arc of a change. Each shipped skill is invocable as `/cla:<name>`, and
-all but the two marked **you only** below can also be triggered by natural language; `[loop]`
+all but those marked **you only** below can also be triggered by natural language; `[loop]`
 marks a self-improvement retro over prior runs of another skill. One
 skill, `release`, is not shipped — it acts on this repo's own distribution, so it is repo-local
 and invoked bare as `/release`.
 
 | Phase | Skill | Invoked by | What it does |
 |---|---|---|---|
-| **0. Bootstrap** (per repo, once) | `cla-init` | you or Claude | Scaffold the `cla.io/` tree + empty overlay stubs (structure only, never facts) |
+| **0. Bootstrap** (per repo, once) | `cla-init` | **you only** | Scaffold the `cla.io/` tree + empty overlay stubs (structure only, never facts) |
 | | `sync-context` | you or Claude | Populate/reconcile `cla.io/project-facts.md` — the repo's shared facts (members, commands, ports, file maps) |
-| | `save-permissions` | you or Claude | Persist tool permissions granted this session to `.claude/settings.local.json` |
+| | `save-permissions` | **you only** | Persist tool permissions granted this session to `.claude/settings.local.json` |
 | **1. Discover & shape** | `feedback` | you or Claude | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | you or Claude | Walk a decision option-by-option with pros/cons + a recommended pick |
 | | (`opsx:explore`) | n/a — vendored | OpenSpec's thinking-partner mode for investigating a problem before committing to a change |
@@ -63,18 +63,20 @@ and invoked bare as `/release`.
 | **4. Review & assure** | `project-review` | you or Claude | CTO-level review of the whole repo: vision, structure, requirements, architecture, validation |
 | | `annotate` | you or Claude | Render a doc as a page, open it chrome-less, and collect the user's own comments against selected passages — read back and worked through here |
 | | (agents) | n/a — dispatched | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to |
-| **5. Learn & improve** | `codify-learnings` | you or Claude | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
-| | `codify-retro` | you or Claude | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
-| | `spec-to-pr-retro` | you or Claude | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
+| **5. Learn & improve** | `codify-learnings` | **you only** | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
+| | `codify-retro` | **you only** | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
+| | `spec-to-pr-retro` | **you only** | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
 | | `report-upstream` | you or Claude | File a defect in CLA's own portable core as an issue against the canonical source |
 | | `checkpoint` | you or Claude | Compact a session into a resumable briefing (`cla.io/checkpoints/`) |
-| **Any phase** (utility) | `right-model` | you or Claude | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
+| **Any phase** (utility) | `right-model` | **you only** | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 | | `diagnose` | you or Claude | Find a failure's cause instead of guessing: deterministic loop, ranked falsifiable hypotheses, regression test before the fix. Escalated from either Test phase after two rounds on one cause |
 
 **"Invoked by" is derived, not curated.** A skill reads **you only** exactly when its
-`SKILL.md` frontmatter sets `disable-model-invocation: true`. Every skill that carries it is an
-unattended orchestrator that opens and merges pull requests, so a description match must
-never start one — only you typing the command. Everything else can be triggered either by
+`SKILL.md` frontmatter sets `disable-model-invocation: true`. Two reasons put a skill there.
+`multi-lite` and `multi-pr` are unattended orchestrators that open and merge pull requests, so
+a description match must never start one. The rest are run deliberately — onboarding, retros,
+settings — and marking them keeps their descriptions out of the skill listing every session
+loads. Everything else can be triggered either by
 you or by Claude recognising the task. The two non-skill rows are marked `n/a`: `opsx:explore`
 is OpenSpec's, not CLA's, and the agents are dispatched by other skills rather than invoked.
 
@@ -82,7 +84,7 @@ is OpenSpec's, not CLA's, and the agents are dispatched by other skills rather t
 column also says something about what a skill may CALL.** It does not. It says how a skill
 *starts*, and CLA's skills compose across it in both directions. `lite-pr` invokes
 `Skill(shape-decision)` when a description is too open-ended to plan from — one `you or Claude`
-row calling another — and the two **you only** rows are the heaviest callers in the tree:
+row calling another — and two **you only** rows are the heaviest callers in the tree:
 `multi-lite` drives a full `lite-pr` run per candidate, `multi-pr` a full `spec-to-pr` run per
 change. One distinction is worth stating, because it is easy to misread as a chain: consulting
 another skill's *reference file* is not calling that skill. `spec-to-pr`'s Review reads

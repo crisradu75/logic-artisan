@@ -691,13 +691,13 @@ def test_every_invocation_cell_holds_a_legal_value() -> None:
 
     Dropping the Invoked by cell from an unmarked row, or relabelling a real
     skill `n/a — dispatched`, leaves both marked sets untouched — so without
-    this the table can misalign or lie about 20 of its 22 rows in silence.
+    this the table can misalign or lie about 21 of its 23 rows in silence.
 
-    Counted with this module's own `phase_table_rows()`: 22 body rows, of which
-    `_row_skill_name` reads 20 as naming a shipped skill and 2 as non-skill
-    rows; the Invoked by column holds 18 `you or Claude`, 2 `**you only**`,
+    Counted with this module's own `phase_table_rows()`: 23 body rows, of which
+    `_row_skill_name` reads 21 as naming a shipped skill and 2 as non-skill
+    rows; the Invoked by column holds 13 `you or Claude`, 8 `**you only**`,
     1 `n/a — vendored` and 1 `n/a — dispatched`. The set match above pins only
-    the 2 marked cells, which is where the other 20 come from.
+    the 8 marked cells, which is where the other 15 come from.
     """
     for row in phase_table_rows():
         assert len(row) == 4, f"phase-table row has {len(row)} cells, expected 4: {row}"
@@ -808,9 +808,9 @@ def test_the_table_reader_stops_at_the_end_of_the_phase_table(tmp_path) -> None:
 # The same derived fact, in the two docs that are not the table.
 #
 # `CLAUDE.md` and `DEVELOPER-GUIDE.md` each qualify their "invocable by natural
-# language" sentence by NAMING the two skills. That is the same copied derived
-# value the assertions above exist for, and without these the guard's own
-# headline failure mode — a third skill sets the key, the copy still names two —
+# language" sentence by NAMING the user-only skills. That is the same copied
+# derived value the assertions above exist for, and without these the guard's own
+# headline failure mode — another skill sets the key, the copy still names the old set —
 # stays alive in two files, in the commit that added the guard against it.
 
 _INVOCATION_CLAIM_PHRASE = "disable-model-invocation"

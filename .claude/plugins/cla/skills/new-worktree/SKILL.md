@@ -1,6 +1,6 @@
 ---
 name: new-worktree
-description: "Start a new isolated git worktree for this repo, with dependencies installed and any gitignored env files carried over. Run from inside a worktree that already exists, it detects that and runs the setup half only. Triggers on /cla:new-worktree or natural language like 'new worktree', 'start a worktree for X', 'work on this in a worktree', 'finish the worktree setup'."
+description: "Start an isolated git worktree for this repo with dependencies installed and gitignored env files carried over; inside an existing worktree it runs only the setup half. Triggers: /cla:new-worktree, 'new worktree', 'work on this in a worktree'."
 ---
 
 # New worktree, fully set up

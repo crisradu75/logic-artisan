@@ -1,6 +1,6 @@
 ---
 name: report-upstream
-description: "Report a defect or gap in the cla plugin's own portable core back to the canonical source repo as a GitHub issue. Use when working in a repo that consumes the plugin and you find something wrong in a synced skill, agent, hook, or script — something that would be wrong in every repo running it, not just this one. Triggers on /cla:report-upstream or natural language like 'this hook is broken upstream', 'report this to the cla source', 'file this against the plugin', 'that's a bug in the harness itself'."
+description: "File a defect in the cla plugin's own portable core (a synced skill, agent, hook or script that would be wrong in every repo) as an issue against the canonical source. Triggers: /cla:report-upstream, 'this hook is broken upstream', 'report this to the cla source'."
 argument-hint: "[what is wrong | (empty — infer from the conversation)]"
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 ---

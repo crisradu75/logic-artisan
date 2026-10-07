@@ -1,6 +1,6 @@
 ---
 name: doc-sweeper
-description: Use this agent when an orchestrator needs to cheaply grep a SUPPLIED set of documentation paths for references to retired concepts — deleted functions, removed props, replaced modules, renamed daypart/translation keys, retired mock-data constants — and return a structured hit list. Typical triggers include /cla:spec-to-pr's Review cross-PR doc-staleness sweep (given the set of symbols a change retires plus the repo's doc-path list, find every stale mention), the analogous sweep of a `.claude/`-level skill's own `references/*.md` network, and any pre-merge check that a rename/removal left no dangling references in prose. See "When to invoke" in the agent body for worked scenarios. Do NOT use it to decide whether a hit is worth fixing — it reports locations; the caller adjudicates. The caller ALWAYS supplies the exact path/glob list to search — this agent has no built-in notion of "the repo's docs" or "a skill" and does not guess a documentation surface on its own.
+description: "Read-only grep of a caller-supplied list of documentation paths for references to retired symbols, returning a path:line hit list with a scanned-files footer. The caller supplies the paths and judges the hits. Used by spec-to-pr Review's doc-staleness sweeps and post-rename checks."
 model: haiku
 color: cyan
 tools: ["Read", "Grep", "Glob"]

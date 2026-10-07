@@ -13,9 +13,11 @@ portable:
 
 - **Skills** (`/cla:<name>`) — the workflows. Each one carries a change through a phase of its
   life: capture → decide → specify → build → review → learn. You invoke them by slash command;
-  all but `multi-lite` and `multi-pr` — which set `disable-model-invocation: true`, being
-  unattended orchestrators that open and merge PRs — can also be triggered by describing what
-  you want in natural language.
+  all but `multi-lite`, `multi-pr`, `cla-init`, `save-permissions`, `codify-learnings`,
+  `codify-retro`, `spec-to-pr-retro` and `right-model` — which set
+  `disable-model-invocation: true` (the first two open and merge PRs unattended; the rest are run
+  deliberately and kept out of the always-loaded listing) — can also be triggered by describing
+  what you want in natural language.
 - **Guard hooks** — always-on guardrails wired automatically when the plugin loads. They block,
   ask, or warn on risky tool calls (a push to main, an `rm -rf`, a commit that would collide with
   another session). You don't invoke them; they fire when a convention is about to be broken.
@@ -468,6 +470,134 @@ enforcer are gone — a skill has no scope of its own any more.)
 Then update the counts: the skill tables in `CLAUDE.md` and the plugin README, and the cheat sheet
 below. `plugin-tests/tests/consistency/test_doc_facts.py` fails if you forget. A new skill's tests
 go in `plugin-tests/tests/skills/<name>/`, not beside the skill.
+
+## 12. Evidence behind CLAUDE.md's rules
+
+`CLAUDE.md` states each rule once and points here, from the top of its Commands section, for
+the measurement or incident that produced it. Kept verbatim so the evidence survives; each
+heading names the rule it backs.
+
+### The parallel gate: measurements and the cache incident
+
+**Measured on this repo 2026-09-05:** serial 296.6s and `-n auto --dist loadfile` 149.6s
+(2.0x). The pass count moved several times inside the branch that measured it and is deliberately not repeated here — run the command; `--collect-only -q` gives the total without executing anything. Plain `-n auto` ran 84.9s and 100.9s on
+two consecutive invocations of the same tree — and **the first of those failed 3 tests
+the other two forms passed**, all in `tests/hooks/test_hooks_wiring.py`
+(`test_wiring_refuses_when_the_probe_is_unusable`, the `truncated` cases). The second
+invocation was green. So the plain `-n auto` trap CLAUDE.md describes is not a hypothetical any more; it is the most
+recent measurement, and the failure did not reproduce on demand, which is the whole
+problem with it.
+
+The mechanism was never proven, but the shared state it named was real and is now gone.
+Those tests built their environment with `_inherited_env`, which copies the real `HOME`,
+so the probe resolved its cache to the **developer's own** `~/.cache/cla/pyexe` and wrote
+it — one shared mutable file, several xdist workers, and `--dist loadfile` keeps that
+file's tests on one worker, which fits only plain `-n auto` failing. An autouse fixture in
+`plugin-tests/tests/hooks/conftest.py` now relocates it per test via `CLA_PROBE_CACHE`.
+
+**State this carefully.** The failure never reproduced on demand, so no run count proves
+it fixed, and none is offered as if it did. What is measured is narrower and is the
+reason the change is worth having anyway: deleting `~/.cache/cla/pyexe` and running the
+full suite used to recreate it and now does not. A test suite writing a developer's home
+directory was a defect on its own terms, whatever it did to the scheduler.
+
+**Numbers here go stale, and this paragraph has been stale before.** Re-measure rather
+than quoting it; the counts above move with every test added.
+
+### Why `--dist loadfile` is worth its premium
+
+The peer repo `claude-plugins` hit the same class of
+failure from a different cause and recorded the rule as "the full-suite pass is luck
+about which worker gets which file, not evidence of safety". The premium over plain
+`-n auto` was 18s when first measured and about 50-65s on 2026-09-05; either way it is
+the whole price of not finding out the hard way, and the run above is what finding out
+looks like.
+
+### Why the twelve test scopes became one
+
+The twelve-scope split existed for exactly one reason — pytest's default import mode cannot hold
+two test modules with the same basename — and the collision set is now empty. Measured with
+`git ls-files '.claude/plugins/cla/**/tests/*.py' | xargs -n1 basename | sort | uniq -d`, the only
+duplicate is `conftest.py`, which pytest special-cases per directory. (Note for anyone re-deriving
+this: the split's usual justification named a second collision on `scripts/log_run.py`, which
+`git ls-files | grep log_run` shows never existed — one module, one test. The measurement, not the
+folklore.)
+
+### Why the Playwright suite earns its exception
+
+**Why it earns the exception.** Every other check on the annotation page is a string grep
+against generated HTML and JS, which is all a stdlib suite can do. During the
+review of the margin change, a reviewer simulated 21 plausible regressions
+against the rendered page and **19 survived all 46 tests then covering it** — and
+two defects that shipped in that change were found only by driving a browser: an
+open drawer laid on top of the margin at 1440px, and a note drawn at
+`top:-135.78px` beside nothing for a block on a hidden tab. Neither has a string
+to grep for. Its mutant batch re-breaks six such regressions and all six die
+(`plugin-tests/mutants/annotate/test_page_in_a_browser.py`).
+
+### Check 3: the escapes that produced it
+
+Measured 2026-09-12, three times in one session: a firing count restated as 84 that re-ran at 86 (test runs had moved it); a gap table that went stale inside the change that invalidated it, claiming 33% headroom where 2.4% remained; and a `Remove-Item` failure measured on Windows PowerShell 5.1 and reported as universal, where the tool actually runs pwsh 7.6.6 and the command works. Recorded in `cla.io/lessons-learned/lessons-learned.md` (2026-08-14): review caught six such claims in one session, and in one of them the comment's own text contained the token it declared absent. Two more were invented blockers — "widening the scan roots fails on the test fixtures" survived until someone widened the scan roots and got zero violations. A seventh was caught by the merge check on the PR that added this very rule: a commit count nobody had run, in three files including the hook written to measure it.
+
+### Check 5: the escape that produced it
+
+Measured 2026-08-23 — `scan()` in `check_fact_paths.py` gained a third return value, the three callers in `tests/conformance/` were updated, that scope passed, and a fourth caller in `tests/consistency/` went red only when the full suite ran. One `grep -rn "<name>(" ` would have found it before the first edit.
+
+### A clean mutation run: the commits behind the rule
+
+Measured on this repo: commits `1cf09da` and `0027bc7` each
+recorded "three mutations checked, all caught" and each shipped a critical that a later
+review found — the mutants covered the branch the author was reasoning about, not the
+branch they got wrong.
+
+### A killed mutant: the case behind the rule
+
+Reported from a
+consuming repo (issue #193), where the assertion killing a column-offset mutant was
+itself the defect: the mutant died, the gate reported green, and the wrong belief
+reached a PR. A review agent reasoning from the type's stated invariant caught it
+there; no gate did.
+
+### A survivor: the batch behind the rule
+
+Measured 2026-08-28 with
+`python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_check_labels_agree.py`
+over a then-nine-mutant batch: two survived and neither could have done otherwise. The
+`defined - _delegated_labels() - covered` one was fixed by mutating the *prose* the guard
+reads instead of the guard, which does discriminate and is killed; the `_MIN_MARKED_LINES`
+floor constant was deleted from the batch with the reason recorded in it.
+
+(The batch has since been reworked, so re-run it rather
+than expecting nine.)
+
+### Concurrent mutation runs: the flake behind the rule
+
+Recorded after
+a guard flaked 3-of-5 runs under a concurrent batch, and reproduced twice on 2026-08-28
+during the review of the commit that added CLAUDE.md's rule — one agent read a mutated
+`check_script_drift.py`, another aborted at preflight on a leftover `.mutate-backup`.
+
+### Repeated green runs: the session behind the rule
+
+Recorded
+2026-08-22, after adding a navigation rail to `annotate` cost five full scope runs, a whole
+sweep of the entire suite, and an unrelated change to a server, for an edit whose real gate
+was one 13-second run over that one area and looking at the page. (The runner those runs
+used is gone; the lesson is about the count, not the command.)
+
+### Unarchived merges: the measurement behind the rule
+
+Measured 2026-08-28: three fully-implemented merged changes had accumulated unarchived (merged without Archive), and `openspec/specs/cla-plugin/spec.md` was missing 11 requirements — the shipped skills carried behaviour no live spec described.
+
+### The scan roots: why five
+
+It was eight until the dev tree moved out; the three `*-checks/` entries then named directories that no longer exist, and a stale root is worse than a missing one, because the guard refuses to run at all rather than quietly scanning less.
+
+### The coverage lists: why they are not restated
+
+They were spelled out in CLAUDE.md's architecture paragraph and went stale inside the very change that widened them — twice, once in the widening and once in the fix, each time three lines below a sentence saying not to restate them.
+
+Both used to be written out as a list and a count, and both went stale while nothing noticed — the defect issue #178 named.
 
 ## Release and distribution history
 

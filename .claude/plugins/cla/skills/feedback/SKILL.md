@@ -1,6 +1,6 @@
 ---
 name: feedback
-description: "Interactive feedback capture: takes the user's notes one at a time until done, asking a clarifying question only when a note is genuinely ambiguous. Does a light READ-ONLY repo grounding pass per note (relevant file/component and a probable root cause where clear, labeled a hypothesis — never editing code). Consolidates into a dated doc under cla.io/feedback/, grouped by area/screen with severity tags; merges near-duplicates only after user confirmation. Output is triage, not decisions — hands off to /cla:shape-decision. Triggers on /cla:feedback or natural language like 'capture my feedback notes', 'take these notes one at a time', 'consolidate my app feedback into a doc'."
+description: "Capture the user's notes one at a time, ground each read-only in the repo, and consolidate them into a dated triage doc under cla.io/feedback/ grouped by area with severity. Triage, not decisions. Triggers: /cla:feedback, 'take these notes one at a time', 'capture my feedback'."
 argument-hint: "[optional first note | (empty = start interactive capture)]"
 allowed-tools: Read, Grep, Glob, Write, AskUserQuestion, Bash
 ---

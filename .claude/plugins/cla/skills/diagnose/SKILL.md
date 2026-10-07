@@ -1,6 +1,6 @@
 ---
 name: diagnose
-description: "Find the cause of a failure instead of guessing at fixes. Builds a deterministic pass/fail loop first, reproduces the reported bug, ranks falsifiable hypotheses before touching anything, instruments one variable at a time with tagged [DEBUG-xxxx] logs, writes the regression test before the fix at a genuinely correct seam, then cleans up and states the confirmed cause in the commit message. Reached either way: a user invokes it directly, or a Test phase escalates to it after two rounds spend themselves on the same stated cause with the gate still red. Triggers on /cla:diagnose or natural language like 'diagnose this', 'why is this test failing', 'I keep guessing at this bug', 'find the root cause', 'this failure makes no sense', 'I have tried three fixes and it is still red'."
+description: "Find a failure's root cause instead of guessing: a deterministic repro loop, ranked falsifiable hypotheses, one-variable instrumentation, the regression test before the fix. Also reached when a Test phase stalls on one cause. Triggers: /cla:diagnose, 'why is this failing', 'find the root cause'."
 argument-hint: "[what is failing | (empty — infer from the conversation)]"
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash, AskUserQuestion, Agent
 ---

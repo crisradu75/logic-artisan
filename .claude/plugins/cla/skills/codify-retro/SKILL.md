@@ -1,7 +1,10 @@
 ---
 name: codify-retro
-description: "Review recent /cla:codify-learnings runs and propose concrete improvements to the loop itself (codify-learnings/SKILL.md, references/failure-modes.md, the escalation ladder). Reads the project's codify-runs JSONL log, aggregates deterministic metrics (the prevention rate — whether the lessons earlier runs wrote actually held — plus suggestion apply-rate, lessons that re-offend across runs, escalation-rung distribution, repeatedly-rejected lessons, failure-modes bloat, codify-process-issue rate), then surfaces patterns and proposes specific edits. Triggers on /cla:codify-retro or natural language like 'review my recent codify runs', 'how is codify-learnings doing', 'what should I fix in codify-learnings'."
+description: "Review recent /cla:codify-learnings runs from the codify-runs ledger and propose concrete improvements to that loop. Run with /cla:codify-retro."
 argument-hint: "[N (last N runs, default 10)]"
+# Slash-command only (a periodic retro over many runs): keeps this description out of the
+# always-loaded skill listing. Nothing invokes it programmatically.
+disable-model-invocation: true
 ---
 
 # /cla:codify-retro — retrospective on the learning loop

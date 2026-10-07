@@ -216,8 +216,8 @@ MUTANTS = [
         # this one has to fail on the prose alone.
         "CLAUDE.md names the wrong skill as user-invoked only",
         REPO / "CLAUDE.md",
-        "all but `multi-lite` and `multi-pr` — which",
-        "all but `multi-lite` and `checkpoint` — which",
+        "all but `multi-lite`, `multi-pr`, `cla-init`,",
+        "all but `multi-lite`, `checkpoint`, `cla-init`,",
         TARGETS,
     ),
     (
@@ -228,8 +228,8 @@ MUTANTS = [
         # a wrong-name mutant cannot reach.
         "DEVELOPER-GUIDE.md loses the qualification entirely",
         REPO / "DEVELOPER-GUIDE.md",
-        "`disable-model-invocation: true`, being",
-        "`no-auto-invoke: true`, being",
+        "`disable-model-invocation: true` (the first two",
+        "`no-auto-invoke: true` (the first two",
         TARGETS,
     ),
 ]

@@ -1,6 +1,6 @@
 ---
 name: review-change
-description: "Pre-implementation review of an OpenSpec change in this repo. Verifies claims, checks symbol/file/reference reality, sizes the change, and either reviews directly (small) or dispatches three parallel agents (large). Aware of the repo's structure via its project-context overlay. Triggers on /cla:review-change or natural language like 'review the openspec change', 'check the change before I implement it'."
+description: "Pre-implementation review of an OpenSpec change: verify its claims and file and symbol references, size it, then review directly (small) or with three parallel agents (large). Triggers: /cla:review-change, 'review the openspec change', 'check the change before I implement it'."
 argument-hint: "[change-name]"
 ---
 
