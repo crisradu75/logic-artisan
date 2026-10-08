@@ -153,7 +153,9 @@ of them carries `findings_by_round`, so the Revise evidence in the companion doc
 - **P4a — Delete `project-review`'s `mechanical-checks.mjs` and its Node suite.** The pre-PR
   gate becomes pytest only; CLAUDE.md's "configured by 1 of 4" row and the `node --test` lines
   go.
-  Correction (2026-10-08): 1 of 4 repos (agentic-air, vendored copy) configures checks; P4a is being re-decided.
+  Correction (2026-10-08): 1 of 4 repos (agentic-air, vendored copy) configures checks. Re-decided
+  by the owner the same day with that fact in hand: delete anyway — no repo on the marketplace
+  plugin uses it, and agentic-air's vendored copy keeps working as it is.
 - **P4b — Keep `diagnose`, and log escalations to it** as a count on the spec-to-pr run record
   (alongside P1a's `flags`). Re-measure in about a month.
 - **P4c — Keep `save-permissions`, `right-model` and `checkpoint`.** Owner's call.
