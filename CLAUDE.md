@@ -24,7 +24,7 @@ which never ships.
 
 - Use `/cla:new-worktree` whenever work needs its own copy of the repo, before starting or partway
   through.
-- Every shipped skill is invocable as `/cla:<name>`, and all but `cla-init`, `codify-learnings`,
+- Every shipped skill is invocable as `/cla:<name>`, and all but `cla-setup`, `codify-learnings`,
   `multi-lite`, `multi-pr`, `right-model`, `save-permissions` and `spec-to-pr-retro` — which set
   `disable-model-invocation: true` — can also be triggered by natural language.
 
@@ -93,8 +93,9 @@ openspec validate --specs --strict
 - **Keep facts out of the shipped plugin.** `skills/`, `agents/`, `hooks/`, `output-styles/` and
   `lib/` hold only steps that work in any repo. No project-specific word and no absolute path from
   a developer's machine: `skills/_shared/scripts/check_no_project_tokens.py` fails on either. A
-  repo's own facts go in its own `cla.io/` (overlays, `project-facts.md`). In this repo the overlays
-  stay empty templates: this is where the plugin is made, not a repo that uses it.
+  repo's own facts go in its own `cla.io/project-facts.md`; a rule for one skill in that repo goes
+  in an optional `cla.io/overlays/<skill>.md`. A skill reads an overlay only if it is present, and
+  nothing ships or seeds one.
 - **Do not copy the checkers' lists of file types into any doc.** Read them in the code. A new kind
   of shipped file stays unchecked until someone adds it to a checker.
 

@@ -165,7 +165,7 @@ MUTANTS = [
         # this one has to fail on the prose alone.
         "CLAUDE.md names the wrong skill as user-invoked only",
         REPO / "CLAUDE.md",
-        "all but `cla-init`, `codify-learnings`,",
+        "all but `cla-setup`, `codify-learnings`,",
         "all but `checkpoint`, `codify-learnings`,",
         TARGETS,
     ),

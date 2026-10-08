@@ -1,22 +1,22 @@
-"""Mutation batch for test_cla_init_rules_match_config.py.
+"""Mutation batch for test_cla_setup_rules_match_config.py.
 
-Each mutant edits one copy of the OpenSpec `rules:` block — the one cla-init
+Each mutant edits one copy of the OpenSpec `rules:` block — the one cla-setup
 seeds into consuming repos, or the one this repo's `openspec/config.yaml`
 carries — so the two drift, or an item loses the quotes YAML needs; or breaks
 the seed script's report on an existing config, including which lines it would
 remove; or puts a third copy of the spec rules in a skill.
 
-Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_cla_init_rules_match_config.py
+Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_cla_setup_rules_match_config.py
 """
 
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 DEV = Path(__file__).resolve().parents[2]
-SKILL = REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-init" / "SKILL.md"
+SKILL = REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
 CHECKLIST = REPO / ".claude" / "plugins" / "cla" / "skills" / "review-change" / "references" / "checklist.md"
 CONFIG = REPO / "openspec" / "config.yaml"
-GUARD = DEV / "tests" / "consistency" / "test_cla_init_rules_match_config.py"
+GUARD = DEV / "tests" / "consistency" / "test_cla_setup_rules_match_config.py"
 
 TARGETS = [GUARD]
 
@@ -28,40 +28,40 @@ _TASKS_RULE = (
 
 MUTANTS = [
     (
-        "cla-init stops checking config.yml, so a seeded config.yaml hides the user's file",
+        "cla-setup stops checking config.yml, so a seeded config.yaml hides the user's file",
         SKILL,
         ' && [ ! -e "$ROOT/openspec/config.yml" ]; then',
         "; then",
         [f"{GUARD}::test_the_seed_treats_config_yml_as_existing"],
     ),
     (
-        "cla-init loosens the requirement limit, so consumers author under another rule",
+        "cla-setup loosens the requirement limit, so consumers author under another rule",
         SKILL,
         "as one sentence of 500 characters or fewer",
         "as one sentence of 800 characters or fewer",
-        [f"{GUARD}::test_cla_init_seeds_the_block_this_repo_carries"],
+        [f"{GUARD}::test_cla_setup_seeds_the_block_this_repo_carries"],
     ),
     (
         # One line, no line ending in the anchor: the config has no eol
         # attribute, so a fresh clone may check it out CRLF.
-        "this repo's config drops the scenarios-are-examples clause cla-init still seeds",
+        "this repo's config drops the scenarios-are-examples clause cla-setup still seeds",
         CONFIG,
         '`manual: <heading>: <reason>`. Scenarios are examples, not one test each."',
         '`manual: <heading>: <reason>`."',
-        [f"{GUARD}::test_cla_init_seeds_the_block_this_repo_carries"],
+        [f"{GUARD}::test_cla_setup_seeds_the_block_this_repo_carries"],
     ),
     (
-        "cla-init stops seeding the remove-and-add rule, so a consumer keeps "
+        "cla-setup stops seeding the remove-and-add rule, so a consumer keeps "
         "OpenSpec's keep-it-whole instruction for an over-limit requirement",
         SKILL,
         "    - \"A MODIFIED block keeps every live scenario. To cut a live requirement's scenarios or "
         "bring it within these limits, list it under REMOVED and add the rewrite under ADDED with a new "
         "heading. This overrides OpenSpec's instruction to keep an existing requirement whole.\"\n",
         "",
-        [f"{GUARD}::test_cla_init_seeds_the_block_this_repo_carries"],
+        [f"{GUARD}::test_cla_setup_seeds_the_block_this_repo_carries"],
     ),
     (
-        "cla-init unquotes an item containing ': ', so YAML reads it as a mapping",
+        "cla-setup unquotes an item containing ': ', so YAML reads it as a mapping",
         SKILL,
         f'    - "{_TASKS_RULE}"',
         f"    - {_TASKS_RULE}",
@@ -164,7 +164,7 @@ MUTANTS = [
         [f"{GUARD}::test_no_skill_carries_a_third_copy_of_the_spec_rules"],
     ),
     (
-        "the third-copy scan stops exempting cla-init, whose seed copy it must then find",
+        "the third-copy scan stops exempting cla-setup, whose seed copy it must then find",
         GUARD,
         "if p != _SKILL and any(",
         "if p != _CONFIG and any(",

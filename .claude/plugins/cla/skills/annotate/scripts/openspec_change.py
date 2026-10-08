@@ -31,8 +31,8 @@ and only the first two settle anything:
               promises that name no file and no identifier at all
 
 **Only a reference or a path link TO A TASK discharges a promise.** A bullet can
-MENTION a name without being about it — this repo's own sweep bullet lists `sync-context` among
-its candidates and was read as implemented by every task touching that skill.
+MENTION a name without being about it — this repo's own sweep bullet once listed `sync-context`
+among its candidates and was read as implemented by every task touching that skill.
 Identifier and wording links are shown, because they are often the useful thing
 to read, and are never counted as coverage.
 
@@ -65,10 +65,10 @@ import re
 # empty), which is exactly why one change cannot set it.
 UBIQUITOUS = 4
 
-# An identifier shorter than this does not identify one thing. `cla-init` is
-# eight characters and names a skill mentioned all over this repo; matching on it
-# reported a proposal bullet as covered because that bullet happened to LIST the
-# skill among sweep candidates. `EXEMPT_SKILLS` is thirteen and does identify one
+# An identifier shorter than this does not identify one thing. `cla-init` (a
+# skill since merged into `cla-setup`) was eight characters and named a skill
+# mentioned all over this repo; matching on it reported a proposal bullet as
+# covered because that bullet happened to LIST the skill among sweep candidates. `EXEMPT_SKILLS` is thirteen and does identify one
 # thing. The line sits between them.
 IDENT_MIN = 12
 
@@ -570,7 +570,7 @@ def coverage(claims, links):
         # Only a path or an explicit citation discharges a promise. An identifier
         # in common is shown — it is often the useful thing to read — but it does
         # not settle the question, because a bullet can MENTION a name without
-        # being about it: the sweep bullet here lists `sync-context` among its
+        # being about it: a sweep bullet here once listed `sync-context` among its
         # candidates and was read as implemented by every task touching that
         # skill. A path names a file the change touches and a citation names its
         # target outright; neither can be a passing mention.

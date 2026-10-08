@@ -14,7 +14,7 @@ skills invoke it as a program.
 
 One ledger remains, and this writer refuses any other name: `spec-to-pr-runs`,
 read by `/cla:spec-to-pr-retro`. Every other ledger a skill once wrote, the
-codify one included, was retired because nothing read it; `/cla:cla-init` lists
+codify one included, was retired because nothing read it; `/cla:cla-setup` lists
 the retired files a repo still holds and offers to delete them. No record count is quoted
 here on purpose: it goes stale on the next append, and a stale number in a
 docstring reads as fact.

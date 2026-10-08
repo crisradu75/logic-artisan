@@ -1,7 +1,7 @@
 """Mutation batch for test_ledger_names_agree.py.
 
 The guard claims the ledger filename a skill WRITES cannot drift from the one its
-retro skill READS, from the one `log_run.py` accepts, or from the one cla-init
+retro skill READS, from the one `log_run.py` accepts, or from the one cla-setup
 seeds, without a test going red. `log_run.py` refuses a misspelled name, but only
 at the end of a run, where the refusal is non-fatal and easy to miss; the reader
 then reports `runs_analyzed: 0`, which reads as "the loop has not run yet".
@@ -23,7 +23,7 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 GUARD = DEV / "tests" / "consistency" / "test_ledger_names_agree.py"
 SCHEMA = PLUGIN / "skills" / "_shared" / "references" / "run-log-schema.md"
 S2P_READER = PLUGIN / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py"
-CLA_INIT = PLUGIN / "skills" / "cla-init" / "SKILL.md"
+CLA_SETUP = PLUGIN / "skills" / "cla-setup" / "SKILL.md"
 FEEDBACK_SKILL = PLUGIN / "skills" / "feedback" / "SKILL.md"
 
 # Scoped to the ONE guard file: a target red for any other reason reports every
@@ -90,10 +90,10 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Mutates the INPUT, not the guard: cla-init seeds a ledger the writer
+        # Mutates the INPUT, not the guard: cla-setup seeds a ledger the writer
         # refuses again, and the seed scan must name it.
-        "cla-init's seed loop seeds the retired codify ledger again",
-        CLA_INIT,
+        "cla-setup's seed loop seeds the retired codify ledger again",
+        CLA_SETUP,
         "for f in spec-to-pr-runs; do",
         "for f in spec-to-pr-runs codify-runs; do",
         TARGETS,

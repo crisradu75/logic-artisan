@@ -300,7 +300,10 @@ test('getOverlayPath: an empty-string override is treated as unset, not as an em
 // OVERLAY_RELPATH, including a typo or the pre-migration `references/` path. A
 // wrong value here is silent by construction: `loadConfig` finds no file and the
 // script legitimately reports "no checks configured", so every review reads as
-// clean having run nothing. Pin the value, and pin that it resolves.
+// clean having run nothing. Pin the value, and pin that it resolves into this
+// repo's overlay directory. Overlays are optional, so this repo carries no
+// project-review overlay of its own; the directory is what must be right.
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 test('OVERLAY_RELPATH names the repo-level overlay, and it resolves in this repo', () => {
   assert.equal(OVERLAY_RELPATH, 'cla.io/overlays/project-review.md');
   const prevRoot = process.env.MECHANICAL_CHECKS_ROOT;
@@ -309,11 +312,12 @@ test('OVERLAY_RELPATH names the repo-level overlay, and it resolves in this repo
   delete process.env.MECHANICAL_CHECKS_OVERLAY;
   try {
     const resolved = defaultOverlayPath();
+    assert.equal(resolved, join(REPO_ROOT, OVERLAY_RELPATH));
     assert.ok(
-      existsSync(resolved),
-      `the overlay reader resolves ${resolved}, which does not exist — every ` +
-      `mechanical-checks run would report "no checks configured" regardless of ` +
-      `what the repo actually configured`
+      existsSync(join(resolved, '..')),
+      `the overlay reader resolves ${resolved}, whose directory does not exist — ` +
+      `every mechanical-checks run would report "no checks configured" regardless ` +
+      `of what the repo actually configured`
     );
   } finally {
     if (prevRoot !== undefined) process.env.MECHANICAL_CHECKS_ROOT = prevRoot;

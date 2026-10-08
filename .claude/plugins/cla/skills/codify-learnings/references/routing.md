@@ -8,7 +8,7 @@ the plugin can be edited here, and the prompts that catch failures a skim would 
 | Rung | What lands there | Reach |
 |---|---|---|
 | `checklist` | a prompt under "Failure prompts" below | retro time only — no work session reads it |
-| `doc` | memory, a `CLAUDE.md`, `cla.io/overlays/<skill>.md`, a `SKILL.md` | every session that loads it; advisory |
+| `doc` | memory, a `CLAUDE.md`, `cla.io/project-facts.md`, `cla.io/overlays/<skill>.md`, a `SKILL.md` | every session that loads it; advisory |
 | `hook` | a hook, `.claude/settings.json` | every matching tool call; enforced |
 | `script` | a script, or build/lint/test config | every run; the failure becomes impossible |
 
@@ -29,8 +29,9 @@ the plugin can be edited here, and the prompts that catch failures a skim would 
 
 ## Which home
 
-- **About this repo** → its `CLAUDE.md`, or `cla.io/overlays/<skill>.md` when it is about how one
-  skill runs here. Git, cloud sessions and reviewers see both.
+- **About this repo** → its `CLAUDE.md`; `cla.io/project-facts.md` when it is a fact a skill reads (a
+  command, a path); `cla.io/overlays/<skill>.md` when it is a rule about how one skill runs here.
+  Git, cloud sessions and reviewers see all three.
 - **About how this user personally likes to work** → memory, and nothing else goes there. Memory
   lives outside the repo, so a repo lesson written there is invisible to everyone but this machine.
 - **About the plugin's portable procedure** → the plugin, if it is writable here; otherwise

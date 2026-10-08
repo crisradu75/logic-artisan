@@ -70,7 +70,7 @@ def _live_specs() -> list[Path]:
 
 
 def _asks(path: Path) -> str:
-    # cla-init quotes the retired rules verbatim in its RETIRED list, so it can
+    # cla-setup quotes the retired rules verbatim in its RETIRED list, so it can
     # find and remove them from a consumer's config; that list asks for nothing.
     return re.sub(r"\nRETIRED=\"\$\(cat <<'EOF'\n.*?\nEOF\n", "\n", _read(path), flags=re.S)
 

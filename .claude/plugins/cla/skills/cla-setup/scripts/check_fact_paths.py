@@ -7,19 +7,18 @@ A portable, generic checker that pairs with the sibling conformance guard
 same "generic checker + per-repo data" shape, but this one lints PATHS rather
 than project-token leakage. It scans ``cla.io/project-facts.md`` (the repo-level,
 never-synced consolidated fact file — see the ``cla-context-refresh`` change) and
-every per-skill ``references/project-context.md`` overlay (globbed generically —
-NOT a hardcoded skill list, so it also lints future overlays and any new skill's
-own overlay stub), extracts every token that looks like a repo-relative path, and
+every ``cla.io/overlays/*.md`` overlay present (globbed generically — NOT a
+hardcoded skill list, so it also lints any new skill's overlay), extracts every token that looks like a repo-relative path, and
 fails when any such path no longer resolves on disk.
 
-It lives with ``sync-context`` because it lints exactly what that skill produces,
+It lives with ``cla-setup`` because it lints exactly what that skill produces,
 and it reads the CONSUMING repo's data — which is why it is a skill helper rather
 than a test: a consuming repo has no test gate over the plugin cache, so a
 checker filed as a pytest module is unreachable there in practice.
 
 RUN IT AS A PROGRAM, from anywhere inside the repo it should check::
 
-    python3 ${CLAUDE_PLUGIN_ROOT}/skills/sync-context/scripts/check_fact_paths.py
+    python3 ${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/check_fact_paths.py
 
 EXIT CODES:
   - ``0`` — clean, or a trivial pass. One summary line names what was scanned and
@@ -43,13 +42,13 @@ invoke the bare form.
 
 COVERAGE LIMITS (read before trusting this guard blindly):
   - This is a **path-existence check only**. It does NOT validate the non-path
-    mechanical facts the refresh skill (``/cla:sync-context``) produces — commands,
+    mechanical facts the setup skill (``/cla:cla-setup``) produces — commands,
     ports, workspace-member counts, doc-sweep completeness. Those drift silently
-    with respect to this guard; they are kept fresh by ``/cla:sync-context`` plus
+    with respect to this guard; they are kept fresh by ``/cla:cla-setup`` plus
     human review, not by this file.
   - It does NOT detect a fact **duplicated** between ``cla.io/project-facts.md`` and
     an overlay (the maintenance regression ``cla-context-refresh`` fights in the
-    first place) — that is caught at trim time and by the refresh skill's own
+    first place) — that is caught at trim time and by the setup skill's own
     reconcile pass, never mechanically by this guard.
   - Most overlay path references are glob/placeholder-shaped (``docs/**/*.md``,
     ``apps/<app>/src/``) and are deliberately SKIPPED (see ``_keep_if_path`` and
@@ -304,7 +303,7 @@ def _tracked_top_level_names(repo_root: Path) -> set[str] | None:
     path reference added in the SAME uncommitted change silently unrecognized
     (skipped, never checked) until the next commit — reintroducing a
     same-shape non-determinism one level down. The index also resolves
-    correctly in a repo with zero commits yet (right after `cla-init`
+    correctly in a repo with zero commits yet (right after `cla-setup`
     scaffolds `cla.io/` but before the first commit), where `ls-tree HEAD`
     would simply fail (no revision named `HEAD`).
 
@@ -568,13 +567,13 @@ def main(argv: list[str] | None = None) -> int:
     # Trivial pass ONLY when there is genuinely nothing to scan (a fresh repo
     # with no facts file AND no overlays). An absent facts file does NOT skip the
     # overlay scan: overlays carry concrete paths, so a repo that installed the
-    # plugin but has not run /cla:sync-context still gets its overlays linted —
+    # plugin but has not run /cla:cla-setup still gets its overlays linted —
     # that is exactly when their pointers are most likely dangling.
     scanned_files = list(_iter_scanned_files(repo_root))
     if not scanned_files:
         print(
             f"{_PROG}: no {PROJECT_FACTS_RELPATH.as_posix()} and no per-skill "
-            "overlays — nothing to scan; run /cla:sync-context to populate the "
+            "overlays — nothing to scan; run /cla:cla-setup to populate the "
             "facts file"
         )
         return EXIT_CLEAN

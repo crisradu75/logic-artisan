@@ -104,7 +104,7 @@ MUTANTS = [
         # from.
         "the shipped README tells a consumer to run the retired conformance scope",
         PLUGIN_README,
-        "python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py",
+        "python3 <plugin>/skills/cla-setup/scripts/check_fact_paths.py",
         "python3 <plugin>/conformance-checks/tests/test_project_facts_paths.py",
         TARGETS,
     ),
@@ -199,7 +199,7 @@ MUTANTS = [
         # prefix is present.
         "a retired single-segment entry is named with an explicit plugin prefix",
         PLUGIN_README,
-        "python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py",
+        "python3 <plugin>/skills/cla-setup/scripts/check_fact_paths.py",
         "python3 <plugin>/mutate.py",
         TARGETS,
     ),

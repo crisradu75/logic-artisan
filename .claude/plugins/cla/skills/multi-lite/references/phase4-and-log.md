@@ -6,7 +6,7 @@ This file used to also hold a "Log the run" recipe appending to
 `cla.io/retro/multi-lite-runs.jsonl`. That ledger held 4 records across five
 repos and no skill ever read it, so it was deleted along with the two other
 unread chain ledgers. The ledgers that remain, and what reads each, are listed
-in `cla-init`'s scaffold step.
+in `cla-setup`'s Part 1.
 
 ## Phase 4 — Final summary
 

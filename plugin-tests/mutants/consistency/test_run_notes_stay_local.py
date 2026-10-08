@@ -3,8 +3,9 @@
 Each mutant makes a chain commit its run notes again, drops the sentence that says
 they are local, lets a notes-less multi-lite resume look mergeable or a notes-less
 multi-pr resume run on, drops a chain's refusal to start while its notes are not
-ignored, stops this repo ignoring new notes, breaks cla-init's ignore-line block
-(re-appends on every run, misses an equivalent line, overrides a deliberate un-ignore,
+ignored, stops this repo ignoring new notes, breaks cla-setup's ignore-line block
+(re-appends on every run, misses an equivalent line, lets this machine's global excludes
+stand in for the repo's line, overrides a deliberate un-ignore,
 probes a file the line does not cover, clobbers the file, glues the line onto an
 unterminated last line), or breaks its tracked-notes offer (lists untracked or
 non-notes files, deletes the working copy, drops the warning). One more lets
@@ -26,7 +27,7 @@ LITE_LOOP = SKILLS / "multi-lite" / "references" / "candidate-loop.md"
 PR_CLEANUP = SKILLS / "multi-pr" / "references" / "cleanup.md"
 PR_SKILL = SKILLS / "multi-pr" / "SKILL.md"
 PR_LOOP = SKILLS / "multi-pr" / "references" / "change-loop.md"
-CLA_INIT = SKILLS / "cla-init" / "SKILL.md"
+CLA_SETUP = SKILLS / "cla-setup" / "SKILL.md"
 GITIGNORE = REPO / ".gitignore"
 GUARD = DEV / "tests" / "consistency" / "test_run_notes_stay_local.py"
 
@@ -84,78 +85,92 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "cla-init appends the line on every run",
-        CLA_INIT,
-        'if git -C "$ROOT" check-ignore -q --no-index "$probe"; then',
+        "cla-setup appends the line on every run",
+        CLA_SETUP,
+        'if git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -q --no-index "$probe"; then',
         "if false; then",
         TARGETS,
     ),
     (
-        "cla-init is back to an exact-line grep, so a CRLF or equivalent line is missed",
-        CLA_INIT,
-        'if git -C "$ROOT" check-ignore -q --no-index "$probe"; then',
+        "cla-setup is back to an exact-line grep, so a CRLF or equivalent line is missed",
+        CLA_SETUP,
+        'if git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -q --no-index "$probe"; then',
         'if [ -e "$ROOT/.gitignore" ] && grep -qxF -- "$line" "$ROOT/.gitignore"; then',
         TARGETS,
     ),
     (
-        "cla-init appends the line over a deliberate un-ignore",
-        CLA_INIT,
+        "cla-setup lets this machine's global excludes stand in for the repo's line",
+        CLA_SETUP,
+        'if git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -q --no-index "$probe"; then',
+        'if git -C "$ROOT" check-ignore -q --no-index "$probe"; then',
+        TARGETS,
+    ),
+    (
+        "cla-setup reads a global excludes match as a deliberate un-ignore",
+        CLA_SETUP,
+        'elif match="$(git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -v --no-index "$probe")"; then',
         'elif match="$(git -C "$ROOT" check-ignore -v --no-index "$probe")"; then',
+        TARGETS,
+    ),
+    (
+        "cla-setup appends the line over a deliberate un-ignore",
+        CLA_SETUP,
+        'elif match="$(git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -v --no-index "$probe")"; then',
         "elif false; then",
         TARGETS,
     ),
     (
-        "cla-init probes a file the run-notes line does not cover",
-        CLA_INIT,
+        "cla-setup probes a file the run-notes line does not cover",
+        CLA_SETUP,
         "probe='cla.io/retro/multi-lite-run-notes-x.md'",
         "probe='cla.io/retro/multi-lite-runs.jsonl'",
         TARGETS,
     ),
     (
-        "cla-init stops telling the user an un-ignore keeps the chains from starting",
-        CLA_INIT,
+        "cla-setup stops telling the user an un-ignore keeps the chains from starting",
+        CLA_SETUP,
         "tell the user the chains will not start until that `!` line",
         "tell the user",
         TARGETS,
     ),
     (
-        "cla-init overwrites an existing .gitignore",
-        CLA_INIT,
+        "cla-setup overwrites an existing .gitignore",
+        CLA_SETUP,
         "printf '%s\\n' \"$line\" >> \"$ROOT/.gitignore\"",
         "printf '%s\\n' \"$line\" > \"$ROOT/.gitignore\"",
         TARGETS,
     ),
     (
-        "cla-init glues the line onto a last line with no newline",
-        CLA_INIT,
+        "cla-setup glues the line onto a last line with no newline",
+        CLA_SETUP,
         '[ -n "$(tail -c 1 "$ROOT/.gitignore")" ]; then echo >> "$ROOT/.gitignore"; fi',
         '[ -n "$(tail -c 1 "$ROOT/.gitignore")" ]; then :; fi',
         TARGETS,
     ),
     (
-        "cla-init lists untracked notes as tracked",
-        CLA_INIT,
+        "cla-setup lists untracked notes as tracked",
+        CLA_SETUP,
         'git -C "$ROOT" ls-files -- \'cla.io/retro/*-run-notes-*.md\'',
         "git -C \"$ROOT\" ls-files --cached --others -- 'cla.io/retro/*-run-notes-*.md'",
         TARGETS,
     ),
     (
-        "cla-init lists every tracked file under cla.io/retro/",
-        CLA_INIT,
+        "cla-setup lists every tracked file under cla.io/retro/",
+        CLA_SETUP,
         'git -C "$ROOT" ls-files -- \'cla.io/retro/*-run-notes-*.md\'',
         "git -C \"$ROOT\" ls-files -- 'cla.io/retro/*'",
         TARGETS,
     ),
     (
-        "cla-init's yes deletes the working copies too",
-        CLA_INIT,
+        "cla-setup's yes deletes the working copies too",
+        CLA_SETUP,
         'rm -q --cached -- <each listed path>',
         'rm -q -- <each listed path>',
         TARGETS,
     ),
     (
-        "cla-init untracks without warning about other clones",
-        CLA_INIT,
+        "cla-setup untracks without warning about other clones",
+        CLA_SETUP,
         ", warning that every other clone\n  loses its working copies on its next pull (history keeps them).",
         ".",
         TARGETS,

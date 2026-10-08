@@ -27,6 +27,11 @@ distinguishes a by-path load from an ambient one.
 Mutant 3 keeps the pair honest: it proves the imported guard is actually
 interrogated, not merely imported.
 
+Mutants 4-7 mutate the INPUT, since the two newer checks agree with any rule on a
+correct tree: a shipped skill that stops naming the overlay this repo keeps for it
+(an orphan), and the three ways a shipped file could make an overlay a fact
+fallback or a mandatory input again, one of them wrapped across a line break.
+
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_overlays_are_reachable.py
 """
 
@@ -37,7 +42,8 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 
 GUARD = DEV / "tests" / "consistency" / "test_overlays_are_reachable.py"
 CONFORMANCE = DEV / "tests" / "conformance"
-CHECKER = PLUGIN / "skills" / "sync-context" / "scripts" / "check_fact_paths.py"
+CHECKER = PLUGIN / "skills" / "cla-setup" / "scripts" / "check_fact_paths.py"
+SKILLS = PLUGIN / "skills"
 
 # Scoped to the ONE guard file, never to `tests/consistency/` as a whole: a
 # target that is red for any other reason reports every mutant "killed" and
@@ -84,6 +90,34 @@ MUTANTS = [
         CHECKER,
         '        for path in sorted(overlays_root.glob("*.md")):',
         '        for path in sorted(overlays_root.glob("*.markdown")):',
+        TARGETS,
+    ),
+    (
+        "codify-learnings stops naming the overlay this repo keeps for it",
+        SKILLS / "codify-learnings" / "SKILL.md",
+        "`cla.io/overlays/codify-learnings.md`, if present",
+        "its overlay, if present",
+        TARGETS,
+    ),
+    (
+        "lite-pr falls back to its overlay for commands again",
+        SKILLS / "lite-pr" / "SKILL.md",
+        "only (run `/cla:cla-setup` when it is missing or stale)",
+        "(falls back to `cla.io/overlays/lite-pr.md` if absent)",
+        TARGETS,
+    ),
+    (
+        "spec-to-pr reads its gates from the overlay when the facts file is absent, wrapped",
+        SKILLS / "spec-to-pr" / "SKILL.md",
+        '"Workspace shape"; run `/cla:cla-setup` when it is missing or stale)',
+        '"Workspace shape"; `cla.io/overlays/spec-to-pr.md`\nwhen that file is absent)',
+        TARGETS,
+    ),
+    (
+        "review-change calls overlay injection mandatory again",
+        SKILLS / "review-change" / "references" / "dispatch.md",
+        "**Filling the placeholders.**",
+        "**Injection is mandatory.**",
         TARGETS,
     ),
 ]

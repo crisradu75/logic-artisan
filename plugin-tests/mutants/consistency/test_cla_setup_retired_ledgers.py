@@ -1,17 +1,17 @@
-"""Mutation batch for test_cla_init_retired_ledgers.py.
+"""Mutation batch for test_cla_setup_retired_ledgers.py.
 
-Each mutant edits cla-init's retired-ledger block so it lists the wrong files,
+Each mutant edits cla-setup's retired-ledger block so it lists the wrong files,
 deletes what it should only list, or offers a live ledger for deletion.
 
-Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_cla_init_retired_ledgers.py
+Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_cla_setup_retired_ledgers.py
 """
 
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 DEV = Path(__file__).resolve().parents[2]
-SKILL = REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-init" / "SKILL.md"
-GUARD = DEV / "tests" / "consistency" / "test_cla_init_retired_ledgers.py"
+SKILL = REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
+GUARD = DEV / "tests" / "consistency" / "test_cla_setup_retired_ledgers.py"
 
 TARGETS = [GUARD]
 

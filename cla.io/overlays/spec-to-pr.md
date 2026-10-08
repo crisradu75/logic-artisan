@@ -3,21 +3,11 @@
 <!--
 Project-specific overlay for the `spec-to-pr` cla skill. This file is repo-local
 (never distributed with the plugin). The generic SKILL.md supplies the procedure; this
-file supplies the repo's facts. A skill runs fine against an empty stub — fill in
-only the sections its SKILL.md references, delete the rest.
+file holds this skill's own rules and incidents here; facts are in `cla.io/project-facts.md`.
+The file is optional.
 -->
 
-## Repo commands
-<!-- build/lint/test/dev commands with this repo's package-manager + workspace tokens -->
-
-## Packages, paths, and app names
-<!-- workspace/app/package/dir names and file paths this skill touches -->
-
-## Permission sets
-<!-- repo-scoped tool-permission expectations, if the skill uses them -->
-
 ## Incident / offense history
-<!-- past failures in this repo that justify a discipline rule in the skill -->
 
 ### 2026-08-23 — the autonomy gate lost to a status report
 
@@ -42,12 +32,3 @@ because it is checkable at the moment of writing rather than requiring a
 judgement about how prose reads.
 
 Also at user memory: `feedback_never_end_a_turn_at_a_phase_boundary`.
-
-## Product / domain context
-<!-- this repo's applications, data, market, concepts -->
-
-## Infrastructure values
-<!-- ports, service names, env-var names tied to this repo's processes -->
-
-## Repo file lists
-<!-- enumerated specs/docs/files this skill is expected to touch -->

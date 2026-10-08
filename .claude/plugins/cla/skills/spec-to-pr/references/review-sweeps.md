@@ -4,7 +4,7 @@ Read from the Review stub in `SKILL.md`: the doc-staleness sweeps run in every R
 
 ## Doc-staleness sweeps
 
-**Application sweep.** When the proposal touches application source, list every word or symbol it retires (deleted functions, removed props, replaced modules, renamed domain keys, retired constants) and dispatch `doc-sweeper` (haiku, read-only — `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`) with that list PLUS this repo's doc-path list from `cla.io/project-facts.md` ("Doc-sweep paths (five-path list)"; `cla.io/overlays/spec-to-pr.md` when that file is absent). `doc-sweeper` knows no doc paths of its own; the caller supplies them all.
+**Application sweep.** When the proposal touches application source, list every word or symbol it retires (deleted functions, removed props, replaced modules, renamed domain keys, retired constants) and dispatch `doc-sweeper` (haiku, read-only — `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`) with that list PLUS this repo's doc-path list from `cla.io/project-facts.md` ("Doc-sweep paths"). `doc-sweeper` knows no doc paths of its own; the caller supplies them all.
 
 **`.claude/`-meta sweep, in the SAME Review pass.** When the proposal touches a `${CLAUDE_PLUGIN_ROOT}/skills/<name>/SKILL.md` or `references/*.md`, list every mechanism or rule it retires or alters (a dispatch mechanism, a demotion policy, a tool dependency) and dispatch `doc-sweeper` again over `${CLAUDE_PLUGIN_ROOT}/skills/<name>/SKILL.md` and `${CLAUDE_PLUGIN_ROOT}/skills/<name>/references/*.md`. The application sweep cannot see these.
 

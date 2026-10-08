@@ -12,7 +12,7 @@ Exit 0 → proceed. Exit 2 → an in-progress cherry-pick / merge / rebase / rev
 ```
 git status --porcelain
 ```
-- **In-scope:** anything under `openspec/changes/<change-name>/`, the source directories the change affects (e.g. `apps/*/src/`, `packages/*/src/`), or a directly related file it legitimately touches — a stylesheet, a smoke-test script, a config file, its `docs/`, a sub-app's own doc file (this repo's worked examples: `cla.io/overlays/spec-to-pr.md`).
+- **In-scope:** anything under `openspec/changes/<change-name>/`, the source directories the change affects (e.g. `apps/*/src/`, `packages/*/src/`), or a directly related file it legitimately touches — a stylesheet, a smoke-test script, a config file, its `docs/`, a sub-app's own doc file.
 - **Out-of-scope:** everything else — typically `.claude/`, root `CLAUDE.md`, root `TODO.md`, another change's files.
 
 Every dirty path in-scope, or a clean tree → proceed silently. (In existing-change mode the change-directory edits are in-scope; in description / explore-result mode only a clean tree is expected.)

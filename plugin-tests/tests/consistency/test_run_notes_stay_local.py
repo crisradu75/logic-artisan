@@ -3,7 +3,7 @@
 multi-lite and multi-pr keep their run notes as gitignored working state: no recipe
 adds, commits or pushes them, each refuses to start while git would see them, and a
 resume without them falls back to GitHub state, where multi-lite finds no recorded
-head and so merges nothing and multi-pr stops before any later change. cla-init
+head and so merges nothing and multi-pr stops before any later change. cla-setup
 writes the ignore line into a consuming repo's `.gitignore` and offers to untrack
 notes already tracked; its blocks, and the chains' check, run under bash here.
 
@@ -26,7 +26,7 @@ _SKILLS = _REPO / ".claude" / "plugins" / "cla" / "skills"
 _HANDOFF = _SKILLS / "spec-to-pr" / "references" / "handoff.md"
 _LITE = _SKILLS / "multi-lite"
 _PR = _SKILLS / "multi-pr"
-_CLA_INIT = _SKILLS / "cla-init" / "SKILL.md"
+_CLA_SETUP = _SKILLS / "cla-setup" / "SKILL.md"
 _LINE = "cla.io/retro/*-run-notes-*.md"
 _BASH = shutil.which("bash")
 
@@ -69,7 +69,7 @@ def test_no_recipe_stages_or_commits_run_notes() -> None:
 # requirement: run-ledgers / Chain run notes stay local
 def test_each_chain_says_its_notes_are_local() -> None:
     boot = _read(_LITE / "references" / "bootstrap-and-tracking.md")
-    assert f"`.gitignore` ignores `{_LINE}` (`/cla:cla-init` adds the line), nothing in this run adds or commits it" in boot
+    assert f"`.gitignore` ignores `{_LINE}` (`/cla:cla-setup` adds the line), nothing in this run adds or commits it" in boot
     loop = _read(_PR / "references" / "change-loop.md")
     assert "**The running notes are local working state:** gitignored, never added or committed." in loop
     assert "falls back to GitHub state" in boot and "falls back to GitHub state" in loop
@@ -111,8 +111,8 @@ _GIT_ENV = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM"
 
 
 def _block(marker: str) -> str:
-    match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?" + re.escape(marker) + r"[^`]*?)```", _read(_CLA_INIT))
-    assert match, f"cla-init/SKILL.md: no block holding {marker!r}"
+    match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?" + re.escape(marker) + r"[^`]*?)```", _read(_CLA_SETUP))
+    assert match, f"cla-setup/SKILL.md: no block holding {marker!r}"
     return match.group(1)
 
 
@@ -149,9 +149,9 @@ def _ignored(root: Path, path: str) -> bool:
     return out.returncode == 0
 
 
-# requirement: repo-context / Setting up a repo's cla.io directory
+# requirement: repo-context / Setting up a repo with cla-setup
 @_needs_bash
-def test_cla_init_creates_the_ignore_line_and_a_rerun_keeps_it(tmp_path: Path) -> None:
+def test_cla_setup_creates_the_ignore_line_and_a_rerun_keeps_it(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     assert _run(root) == "created: .gitignore run-notes line"
     gitignore = root / ".gitignore"
@@ -163,9 +163,9 @@ def test_cla_init_creates_the_ignore_line_and_a_rerun_keeps_it(tmp_path: Path) -
     assert gitignore.read_bytes() == f"{_LINE}\n".encode()
 
 
-# requirement: repo-context / Setting up a repo's cla.io directory
+# requirement: repo-context / Setting up a repo with cla-setup
 @_needs_bash
-def test_cla_init_appends_to_an_existing_gitignore_without_changing_it(tmp_path: Path) -> None:
+def test_cla_setup_appends_to_an_existing_gitignore_without_changing_it(tmp_path: Path) -> None:
     # No trailing newline, and a line that only contains the pattern.
     before = f"node_modules/\n{_LINE}.bak"
     root = _repo(tmp_path, before.encode())
@@ -173,7 +173,7 @@ def test_cla_init_appends_to_an_existing_gitignore_without_changing_it(tmp_path:
     assert (root / ".gitignore").read_bytes() == f"{before}\n{_LINE}\n".encode()
 
 
-# requirement: repo-context / Setting up a repo's cla.io directory
+# requirement: repo-context / Setting up a repo with cla-setup
 @_needs_bash
 @pytest.mark.parametrize("before", [
     f"node_modules/\r\n{_LINE}\r\n",        # CRLF
@@ -181,22 +181,67 @@ def test_cla_init_appends_to_an_existing_gitignore_without_changing_it(tmp_path:
     f"/{_LINE}\n",                            # anchored, same files
     "cla.io/retro/\n",                        # a wider pattern
 ])
-def test_cla_init_takes_an_equivalent_line_for_the_line(tmp_path: Path, before: str) -> None:
+def test_cla_setup_takes_an_equivalent_line_for_the_line(tmp_path: Path, before: str) -> None:
     root = _repo(tmp_path, before.encode())
     assert _run(root) == "exists (skipped): .gitignore run-notes line"
     assert (root / ".gitignore").read_bytes() == before.encode()
 
 
-# requirement: repo-context / Setting up a repo's cla.io directory
+def _global_excludes_env(tmp_path: Path, where: str) -> dict[str, str]:
+    """A git environment whose user-level excludes ignore the run notes.
+
+    `where` picks the route: `config` sets `core.excludesFile` in a global config
+    file; `xdg` leaves it unset and relies on git's default, `$XDG_CONFIG_HOME/git/ignore`.
+    """
+    home = tmp_path / "home"
+    if where == "config":
+        excludes = home / "excludes"
+        excludes.parent.mkdir(parents=True)
+        excludes.write_text(f"{_LINE}\n", encoding="utf-8")
+        gitconfig = home / "gitconfig"
+        gitconfig.write_text(f"[core]\n\texcludesFile = {excludes.as_posix()}\n", encoding="utf-8")
+        return {**_GIT_ENV, "GIT_CONFIG_GLOBAL": str(gitconfig)}
+    ignore = home / "xdg" / "git" / "ignore"
+    ignore.parent.mkdir(parents=True)
+    ignore.write_text(f"{_LINE}\n", encoding="utf-8")
+    return {**_GIT_ENV, "XDG_CONFIG_HOME": str(home / "xdg")}
+
+
+# requirement: repo-context / Setting up a repo with cla-setup
 @_needs_bash
-def test_cla_init_leaves_a_deliberate_un_ignore_alone(tmp_path: Path) -> None:
+@pytest.mark.parametrize("where", ["config", "xdg"])
+def test_cla_setup_writes_the_line_when_only_global_excludes_ignore_the_notes(tmp_path: Path, where: str) -> None:
+    # The global excludes reach this machine only; another clone of the repo
+    # would see the notes, so the repo's own line is still owed.
+    env = _global_excludes_env(tmp_path, where)
+    root = tmp_path / "repo"
+    root.mkdir()
+    _repo(root, b"node_modules/\n")
+    probe = "cla.io/retro/multi-lite-run-notes-x.md"
+    # Non-vacuity: under this environment git itself already ignores the notes,
+    # which is exactly what made the old check skip the line.
+    assert subprocess.run(["git", "check-ignore", "-q", "--no-index", probe], cwd=root, env=env,
+                          capture_output=True).returncode == 0
+    out = subprocess.run(
+        [_BASH, "-c", _block("run-notes line")], cwd=root,
+        env={**env, "ROOT": str(root).replace("\\", "/")},
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "created: .gitignore run-notes line"
+    assert (root / ".gitignore").read_bytes() == f"node_modules/\n{_LINE}\n".encode()
+
+
+# requirement: repo-context / Setting up a repo with cla-setup
+@_needs_bash
+def test_cla_setup_leaves_a_deliberate_un_ignore_alone(tmp_path: Path) -> None:
     before = f"{_LINE}\n!cla.io/retro/multi-lite-run-notes-*.md\n"
     root = _repo(tmp_path, before.encode())
     out = _run(root)
     assert out.startswith("un-ignored (left as is): .gitignore:2:!cla.io/retro/multi-lite-run-notes-*.md"), out
     assert (root / ".gitignore").read_bytes() == before.encode()
-    item_8 = _between(_read(_CLA_INIT), "### 8. Ignore", "## Report")
-    assert "the chains will not start until that `!` line" in item_8
+    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", "## Part 2")
+    assert "the chains will not start until that `!` line" in item_7
 
 
 def _commit_all(root: Path) -> None:
@@ -223,28 +268,28 @@ def _listed(root: Path) -> list[str]:
     return [line.removeprefix(prefix) for line in lines]
 
 
-# requirement: repo-context / Setting up a repo's cla.io directory
+# requirement: repo-context / Setting up a repo with cla-setup
 @_needs_bash
-def test_cla_init_lists_tracked_notes_and_changes_nothing_without_a_yes(tmp_path: Path) -> None:
+def test_cla_setup_lists_tracked_notes_and_changes_nothing_without_a_yes(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     assert _listed(root) == []
     tracked = _seed_tracked_notes(root)
     status = _git(root, "status", "--porcelain")
     assert _listed(root) == tracked
     assert _git(root, "status", "--porcelain") == status  # the "no" path: nothing moved
-    item_8 = _between(_read(_CLA_INIT), "### 8. Ignore", "## Report")
-    assert "Only on an explicit yes" in item_8
-    assert "loses its working copies on its next pull (history keeps them)" in item_8
+    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", "## Part 2")
+    assert "Only on an explicit yes" in item_7
+    assert "loses its working copies on its next pull (history keeps them)" in item_7
 
 
-# requirement: repo-context / Setting up a repo's cla.io directory
+# requirement: repo-context / Setting up a repo with cla-setup
 @_needs_bash
-def test_cla_init_untracks_exactly_the_listed_notes_on_a_yes(tmp_path: Path) -> None:
+def test_cla_setup_untracks_exactly_the_listed_notes_on_a_yes(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     tracked = _seed_tracked_notes(root)
-    item_8 = _between(_read(_CLA_INIT), "### 8. Ignore", "## Report")
-    match = re.search(r"`(git -C \"\$ROOT\" rm [^`]*?)<each listed path>`", item_8)
-    assert match, "item 8 names no untrack command"
+    item_7 = _between(_read(_CLA_SETUP), "### 7. Ignore", "## Part 2")
+    match = re.search(r"`(git -C \"\$ROOT\" rm [^`]*?)<each listed path>`", item_7)
+    assert match, "item 7 names no untrack command"
     out = _bash(match.group(1) + " ".join(_listed(root)), root)
     assert out.returncode == 0, out.stderr
     assert _git(root, "ls-files").split() == ["cla.io/retro/spec-to-pr-runs.jsonl"]
@@ -257,7 +302,7 @@ def test_cla_init_untracks_exactly_the_listed_notes_on_a_yes(tmp_path: Path) -> 
 def _chain_check(skill_text: str, chain: str) -> str:
     probe = f"cla.io/retro/{chain}-run-notes-x.md"
     line = (f"`git check-ignore -q --no-index {probe}`. Non-zero → stop: "
-            "\"run /cla:cla-init first (run notes would be visible to git)\".")
+            "\"run /cla:cla-setup first (run notes would be visible to git)\".")
     assert line in skill_text, chain
     return f"git check-ignore -q --no-index {probe}"
 
@@ -273,5 +318,5 @@ def test_each_chain_refuses_to_start_while_its_notes_are_not_ignored(tmp_path: P
     command = _chain_check(_between(text, "## Phase 0", "\n## Phase "), chain)
     root = _repo(tmp_path, b"node_modules/\n")
     assert _bash(command, root).returncode != 0
-    _run(root)  # cla-init's block adds the line
+    _run(root)  # cla-setup's block adds the line
     assert _bash(command, root).returncode == 0

@@ -13,7 +13,7 @@ portable:
 
 - **Skills** (`/cla:<name>`) — the workflows. Each one carries a change through a phase of its
   life: capture → decide → specify → build → review → learn. You invoke them by slash command;
-  all but `multi-lite`, `multi-pr`, `cla-init`, `save-permissions`, `codify-learnings`,
+  all but `multi-lite`, `multi-pr`, `cla-setup`, `save-permissions`, `codify-learnings`,
   `spec-to-pr-retro` and `right-model` — which set
   `disable-model-invocation: true` (the first two open and merge PRs unattended; the rest are run
   deliberately and kept out of the always-loaded listing) — can also be triggered by describing
@@ -28,9 +28,12 @@ The split that everything obeys: **procedure is portable, facts are per-repo.**
 
 - Portable procedure lives in the synced core (`skills/`, `agents/`, `hooks/`, `output-styles/`)
   and is identical in every repo that uses CLA.
-- Your repo's facts live in overlays (`cla.io/overlays/<skill>.md`, `*.local.md`) and in the
-  repo-root `cla.io/` tree (decisions, feedback, retro ledgers, `project-facts.md`). They sit in
-  the repo, not the plugin directory, so installing or updating the plugin never touches them.
+- Your repo's facts live in `cla.io/project-facts.md`, the one home for every command, path, port,
+  install step and env file a skill reads. The rest of the repo-root `cla.io/` tree holds decisions,
+  feedback, retro ledgers and the lessons log, plus optional per-skill overlays
+  (`cla.io/overlays/<skill>.md`) for a rule that applies to one skill in this repo and the
+  machine-read `*.local.md` files. All of it sits in the repo, not the plugin directory, so
+  installing or updating the plugin never touches it.
 
 Keep that split in mind and the rest of the harness follows from it.
 
@@ -312,7 +315,7 @@ ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the c
 
 The discipline throughout: a ledger earns its place by a reader. `lib/log_run.py` accepts one,
 `spec-to-pr-runs`, which `spec-to-pr-retro` reads. The ledgers retired for having no reader are
-listed by `cla-init`, which offers to delete the ones a repo still holds.
+listed by `cla-setup`, which offers to delete the ones a repo still holds.
 
 Three utilities worth knowing at any phase:
 
@@ -360,15 +363,15 @@ destination repo:
    > "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
    > so. If both spellings are genuinely in use, install from each.
 
-3. **`/cla:cla-init`** — scaffold the `cla.io/` tree and empty overlay stubs. Idempotent and
-   never-clobber: safe to re-run on a partially-scaffolded repo.
-4. **`/cla:sync-context`** — populate `cla.io/project-facts.md` with the repo's facts: workspace
-   members, dev/build/test commands, ports, affected-file map, test locations, env files. This is
-   the single physical copy of every fact the skills share.
+3. **`/cla:cla-setup`** — create whatever is missing of the `cla.io/` tree (never overwriting),
+   seed the OpenSpec authoring rules, then populate `cla.io/project-facts.md` with the repo's facts:
+   workspace members, install/dev/build/test commands, ports, affected-file map, test locations,
+   env files. Safe to re-run; it changes an existing file only on your yes. Re-run it whenever a
+   skill reports missing or stale facts.
 
-Then fill in the per-skill `cla.io/overlays/<skill>.md` overlays as the skills prompt for
-facts. Pick up newer releases with `/plugin marketplace update`; your overlays and `cla.io/` are
-untouched by an install, because they live in the repo rather than the plugin directory.
+Overlays are optional: add `cla.io/overlays/<skill>.md` only when one skill needs a rule specific to
+this repo. Pick up newer releases with `/plugin marketplace update`; `cla.io/` is untouched by an
+install, because it lives in the repo rather than the plugin directory.
 
 **Optionally, wire the staleness checker into the destination repo's own gate.** The plugin ships no
 test tree — the installed tree is a read-only cache with no pytest gate over it, so a guard filed as
@@ -377,11 +380,11 @@ you invoke, each taking an optional `--repo-root` and reporting `0` clean / `1` 
 `2` could-not-run:
 
 ```bash
-python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py
+python3 <plugin>/skills/cla-setup/scripts/check_fact_paths.py
 ```
 
 That is the one whose subject is the destination repo: every repo-relative path named in
-`cla.io/project-facts.md` or an overlay must still resolve. `/cla:sync-context` runs it once after
+`cla.io/project-facts.md` or an overlay must still resolve. `/cla:cla-setup` runs it once after
 it writes, and nothing else schedules it — **the consuming repo owns when it runs.**
 
 Its sibling, `<plugin>/skills/_shared/scripts/check_no_project_tokens.py`, scans a *plugin* tree for
@@ -522,7 +525,7 @@ never collected as tests. A batch is optional. `plugin-tests/tests/launcher/` te
 Of the four portable guards, **two reach consuming repos and two do not, and the difference is
 where they live.** No project token in synced core
 (`skills/_shared/scripts/check_no_project_tokens.py`) and no dead path in `cla.io/project-facts.md`
-or an overlay (`skills/sync-context/scripts/check_fact_paths.py`) are skill scripts inside the
+or an overlay (`skills/cla-setup/scripts/check_fact_paths.py`) are skill scripts inside the
 shipped tree, so a consumer gets them and can run them as programs. No hardcoded plugin path and no
 SKILL.md with broken frontmatter or a dead reference are pytest guards in `plugin-tests/`; they
 police the plugin's own source and do not reach a consumer at all, which is deliberate — a consuming
@@ -558,7 +561,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `lib/log_run.py` | The one ledger writer: validates the record against its shape, enforces the 4 KiB atomic-append ceiling, refuses every ledger name but `spec-to-pr-runs.jsonl`. |
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
 | `plugin-tests/scripts/migrate_run_records.py` *(dev tree)* | One-off rewrite of old-shape `spec-to-pr-runs.jsonl` records into the shape `log_run.py` enforces: every mapping comes from a shape found in a real ledger, a valid record is left untouched, and one that still fails is reported and left exactly as it was. |
-| `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
+| `cla-setup/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
 | `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's automatic round 2 still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
@@ -592,8 +595,9 @@ enforcer are gone — a skill has no scope of its own any more.)
 3. **Every reference the body names must exist.** A bare `references/<file>` means *this skill's
    own* file; to cite another skill's, write the explicit
    `${CLAUDE_PLUGIN_ROOT}/skills/<owner>/references/<file>`. Both mistakes fail the same test.
-4. **Project-specific facts go in an overlay, never in the body.** If the skill reads
-   `cla.io/overlays/<name>.md`, add it to `cla-init`'s seeding list so a fresh repo gets a stub.
+4. **Project-specific facts never go in the body.** The skill reads them from
+   `cla.io/project-facts.md`; a rule specific to one repo goes in `cla.io/overlays/<name>.md`,
+   which the skill reads only if present. No skill may require an overlay, and nothing seeds one.
    The token guard fails the suite if a repo name leaks into the body.
 
 Then add the skill to the plugin README's phase table and to the cheat sheet below. If its frontmatter
@@ -925,7 +929,7 @@ discovery for every consumer.
 | Get a whole-repo health review | `project-review` |
 | Capture this session's lessons | `codify-learnings` |
 | Tune the spec-to-pr loop | `spec-to-pr-retro` |
-| Set up CLA in a new repo | marketplace install → `cla-init` → `sync-context` |
+| Set up CLA in a new repo | marketplace install → `/cla:cla-setup` |
 | Pull newer CLA core into a repo | `/plugin marketplace update` |
 | Report a defect in the portable core | `report-upstream` |
 | Publish a new version of the plugin | `/release` (repo-local, not `/cla:release`) |

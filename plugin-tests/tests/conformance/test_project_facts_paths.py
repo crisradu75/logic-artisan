@@ -1,7 +1,7 @@
 """Unit tests for the promoted staleness checker.
 
 The checker itself is no longer here. It is a program at
-``skills/sync-context/scripts/check_fact_paths.py`` — a consuming repo has no
+``skills/cla-setup/scripts/check_fact_paths.py`` — a consuming repo has no
 pytest gate over the plugin cache, so a guard filed as a test module is
 unreachable there in practice, while ``python3 <script>`` is not. What stays in
 this file is the evidence that the checker works: the unit tests of its
@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
-CHECKER = _PLUGIN_ROOT / "skills" / "sync-context" / "scripts" / "check_fact_paths.py"
+CHECKER = _PLUGIN_ROOT / "skills" / "cla-setup" / "scripts" / "check_fact_paths.py"
 
 
 def _vendored_repo_root():
@@ -284,7 +284,7 @@ def test_tracked_top_level_names_returns_none_outside_a_git_repo(tmp_path):
 
 
 def test_tracked_top_level_names_returns_none_before_the_first_commit(tmp_path):
-    # A repo right after `cla-init` scaffolds `cla.io/` but before the first
+    # A repo right after `cla-setup` scaffolds `cla.io/` but before the first
     # commit has an INDEX (once something is `git add`ed) but no `HEAD` yet —
     # this is exactly the case an earlier `git ls-tree HEAD`-based draft of
     # this function got wrong (rc != 0, "unknown revision"). Using the index
@@ -541,7 +541,7 @@ def test_cli_exits_clean_and_reports_a_nonzero_scanned_file_count(tmp_path):
 
 
 def test_cli_exits_clean_with_a_stated_reason_when_the_facts_file_is_absent(tmp_path):
-    # A fresh repo that has installed the plugin but not yet run /cla:sync-context
+    # A fresh repo that has installed the plugin but not yet run /cla:cla-setup
     # must not get a failing result — and must say why it passed.
     result = _run_cli("--repo-root", str(tmp_path))
     assert result.returncode == EXIT_CLEAN, result.stderr

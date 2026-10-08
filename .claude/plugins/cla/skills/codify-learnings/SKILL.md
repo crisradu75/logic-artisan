@@ -13,8 +13,9 @@ Turn this session's failures into at most three fixes that change how the next s
 A rule that already existed and failed again is the most important thing this skill can find.
 
 Before Step 1, read `references/routing.md` — the ladder, where each kind of lesson lives, the
-plugin-writability check, and the failure prompts — and `cla.io/overlays/codify-learnings.md` if
-it exists, for this repo's memory location and verification commands. `$ARGUMENTS`, if set,
+plugin-writability check, and the failure prompts. This repo's verification commands are in
+`cla.io/project-facts.md`; `cla.io/overlays/codify-learnings.md`, if present, says where memory
+lives and adds this skill's own rules here. `$ARGUMENTS`, if set,
 narrows the focus; the review still covers the whole session.
 
 ## Step 1 — List the session's failures
@@ -59,8 +60,8 @@ grep -rn -i '<keyword>' cla.io/lessons-learned/
   is at most a second aid. Ask: could a config or script change have prevented the detour?
 - **Route by writability** (reference, "Is the plugin writable here?"). Read-only: a fix to a
   plugin file goes to `/cla:report-upstream`, and its line says so.
-- **Pick the home** (reference, "Which home"): repo lessons go to the repo's `CLAUDE.md` or
-  `cla.io/overlays/`; memory holds only how this user personally likes to work.
+- **Pick the home** (reference, "Which home"): repo lessons go to the repo's `CLAUDE.md`,
+  `cla.io/project-facts.md` or `cla.io/overlays/`; memory holds only how this user personally likes to work.
 - **When a fix graduates a lesson**, the same fix deletes the lower-rung text it duplicates.
 - **Never propose edits to** a skill's bundled scripts (`**/scripts/**/*.py`), `openspec/**`, or a
   vendored framework directory. The repo's own tooling, configs and source are in scope.

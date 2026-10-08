@@ -1,6 +1,6 @@
 # Project Review Criteria
 
-Evaluation rubric for a CTO-level review of this repo's workspace. Each dimension has review signals, grade definitions, and grep hints — this repo's own concrete component list, calibration examples, and grep recipes live in `cla.io/overlays/project-review.md` ("Review criteria — repo specifics"); this file holds the portable rubric *shape*. Because this may be a monorepo, assess each component's coherence and the seams **between** them — and attribute every finding to the app/package it applies to.
+Evaluation rubric for a CTO-level review of this repo's workspace. Each dimension has review signals, grade definitions, and grep hints — this file holds the portable rubric *shape*. Calibrate it to the repo in front of you; `cla.io/overlays/project-review.md`, if present, may add this repo's own signals, calibration examples or grep recipes. Because this may be a monorepo, assess each component's coherence and the seams **between** them — and attribute every finding to the app/package it applies to.
 
 ---
 
@@ -16,15 +16,11 @@ Evaluation rubric for a CTO-level review of this repo's workspace. Each dimensio
 - **Docs accuracy**: Do README/docs/specs match the current code (counts, formulas, domain-vocabulary sets, package paths)? Any stale numbers or references to a superseded layout?
 - **Onboarding**: Could a new contributor extend the domain model or add a new surface, using only the docs + guidance doc?
 
-See `cla.io/overlays/project-review.md` for this repo's own concrete signal list.
-
 ### Grade definitions
 - **A**: A new engineer grasps the product and the workspace shape in a few minutes. Docs lead with the value prop, core logic is explained and matches the code, scope per component is explicit, naming is self-documenting.
 - **B**: Clear but requires reading multiple files. Minor stale numbers or one doc referencing a superseded structure.
 - **C**: Requires significant exploration. Purpose implicit; docs materially diverge from code or from the workspace layout.
 - **D**: Confusing or contradictory. README is a stub, or docs describe an architecture the code no longer has.
-
-See `cla.io/overlays/project-review.md` for this repo's own calibration examples per grade.
 
 ---
 
@@ -48,8 +44,6 @@ See `cla.io/overlays/project-review.md` for this repo's own calibration examples
   generality, and the swap usually reshapes the interface anyway.
 - **Gitignore hygiene**: Build output, secrets, and local dev artifacts excluded?
 
-See `cla.io/overlays/project-review.md` for this repo's own concrete signal list, grep hints, and calibration examples.
-
 ### Grade definitions
 - **A**: Clean apps/packages split, healthy dependency direction, shared packages have coherent barrels, per-app trees are logical, components reasonably scoped.
 - **B**: Mostly clean with 1-2 minor issues.
@@ -68,8 +62,6 @@ See `cla.io/overlays/project-review.md` for this repo's own concrete signal list
 - **Traceability**: Can you trace spec → implementation in the right package/app?
 - **Spec currency**: Do specs match the current implementation (formulas, domain-vocabulary counts)? **Watch for staleness from any past restructure.**
 - **Change pipeline**: Stale active changes? Is the archive clean?
-
-See `cla.io/overlays/project-review.md` for this repo's own concrete spec-sampling picks and grep hints.
 
 ### Grade definitions
 - **A**: Good coverage across every product/component, plain outcome-level specs with testable criteria, specs match implementation, clean change pipeline.
@@ -93,8 +85,6 @@ See `cla.io/overlays/project-review.md` for this repo's own concrete spec-sampli
 - **Multi-tenant/authorization design** (if applicable): Is isolation enforced at the data layer (e.g. DB row-security policies), not merely in the UI? Is the DB client seam clean, with any privileged-key usage kept server-only?
 - **Styling consistency, extensibility, and type safety** across the boundary types.
 
-See `cla.io/overlays/project-review.md` for this repo's own concrete signal list, grep hints, and calibration examples.
-
 ### Grade definitions
 - **A**: Strict architectural discipline with a pure core whose formulas match spec; clean external-data seam; vendor-neutral backend adapter (if any); tenant isolation enforced at the data layer (if applicable); consistent i18n + styling; easy to extend.
 - **B**: Good patterns with minor bleed. *E.g. one bare string literal in a component, a hardcoded weight in two places, or a slightly leaky adapter boundary.*
@@ -115,8 +105,6 @@ See `cla.io/overlays/project-review.md` for this repo's own concrete signal list
 - **Core-logic edge cases**: empty/degenerate input, all-excluded selection, zero/negative input, a zero-denominator division guard — handled, or a crash?
 - **Input validation**: do intake forms guard required inputs before proceeding?
 - **Honesty of any demo/prototype component**: is it clear which data is mock, and are any intentional simulated-latency delays documented as fake work? Is any gap between an intended-testing spec and reality acknowledged?
-
-See `cla.io/overlays/project-review.md` for this repo's own concrete signal list, grep hints, and calibration examples.
 
 ### Grade definitions
 - **A**: Suites cover each component's core invariants; the isolation suite (if any) proves cross-tenant isolation; smoke/e2e are current; build+lint+test clean; core logic guards its edge cases (no crash on degenerate input); any mock/intended-testing gap is documented.

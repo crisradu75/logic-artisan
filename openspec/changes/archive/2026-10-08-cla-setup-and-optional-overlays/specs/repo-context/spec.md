@@ -1,42 +1,31 @@
-# repo-context Specification
+## REMOVED Requirements
 
-## Purpose
+### Requirement: Setting up a repo's cla.io directory
 
-Where a repo keeps the facts and records the plugin's skills read and write, and the skills and checkers that maintain them.
+**Reason**: `/cla:cla-init` is merged into `/cla:cla-setup`, which no longer creates overlay stubs.
+**Migration**: Run `/cla:cla-setup`; replaced by "Setting up a repo with cla-setup".
 
-## Requirements
+### Requirement: Seeding a repo's OpenSpec authoring rules
 
-### Requirement: Internal terminology
+**Reason**: The command that seeds the rules is now `/cla:cla-setup`.
+**Migration**: Replaced by "OpenSpec authoring rules on setup"; the rules block and the update-on-yes behaviour are unchanged.
 
-A skill that settles a naming question SHALL record it in `cla.io/terminology.md` within the same session, as an entry `**Term**: what it IS. _Avoid_: alias-1, alias-2`, and no skill SHALL read or change a glossary the repo keeps for external or business terms.
+### Requirement: Shared repo facts
 
-#### Scenario: A name is settled
+**Reason**: `/cla:sync-context` is merged into `/cla:cla-setup`, and the facts file becomes the only home for facts.
+**Migration**: Run `/cla:cla-setup`; replaced by "Repo facts in one file".
 
-- **WHEN** a session settles what an internal thing is called
-- **THEN** `cla.io/terminology.md` holds the entry before the session ends, creating the file if needed
+### Requirement: Per-skill overlays
 
-### Requirement: Checking recorded paths
+**Reason**: Overlays now hold only a skill's own settings, never facts, and no skill requires one.
+**Migration**: Replaced by "Optional per-skill overlays"; `/cla:cla-setup` proposes moving facts out of existing overlays.
 
-The plugin SHALL ship a checker a consuming repo runs as `python3 <path>` that names the file, line and path of every repo path in `cla.io/project-facts.md` or an overlay that no longer exists, exiting 0 when none is stale, 1 when some are, and 2 when it cannot run.
+### Requirement: Reporting retired ledgers
 
-#### Scenario: A renamed directory
+**Reason**: The command that reports them is now `/cla:cla-setup`.
+**Migration**: Replaced by "Retired ledgers on setup"; the listing and delete-on-yes behaviour are unchanged.
 
-- **WHEN** the facts file names a directory that was since renamed
-- **THEN** the checker reports that file, line and path and exits 1
-
-### Requirement: Checking the plugin text for repo names
-
-The plugin SHALL ship a checker a consuming repo runs as `python3 <path>` that reports, with path, token, line and excerpt, every place the installed plugin's text holds a token from `cla.io/project-tokens.local.md` or a developer's absolute path, exiting 0 when clean, 1 on a match, and 2 when it cannot run.
-
-#### Scenario: A repo name in a skill
-
-- **WHEN** a skill's body names a token from the repo's token list
-- **THEN** the checker reports the path, token, line and excerpt and exits 1
-
-#### Scenario: No token list
-
-- **WHEN** the repo has no `cla.io/project-tokens.local.md`
-- **THEN** the token check passes and says why
+## ADDED Requirements
 
 ### Requirement: Setting up a repo with cla-setup
 

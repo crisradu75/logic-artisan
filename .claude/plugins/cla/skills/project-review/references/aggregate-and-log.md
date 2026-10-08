@@ -7,9 +7,7 @@ the full recipe for everything else in those two steps.
 ## Step 1 — Project Snapshot template
 
 The shape below is a generic template — fill the `Apps`/`Packages`/`Backend` lines from
-`cla.io/project-facts.md`'s "Workspace shape" (run `/cla:sync-context` to populate it; falls back to
-`cla.io/overlays/project-review.md`'s "What the repo is" / "Per-dimension agent-dispatch injection facts" —
-Project Snapshot, if absent); `Dataset` stays dynamic (counts read live from the dataset itself):
+`cla.io/project-facts.md`'s "Workspace shape"; `Dataset` stays dynamic (counts read live from the dataset itself):
 
 ```
 Project: <this repo's name> (<its workspace/monorepo shape>)

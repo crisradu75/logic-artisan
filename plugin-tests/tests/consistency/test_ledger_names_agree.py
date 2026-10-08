@@ -12,7 +12,7 @@ but only at write time, at the end of a long run, where a refused write is
 non-fatal and easy to miss. The reader of a misspelled name finds nothing and
 reports a cold start: `runs_analyzed: 0`. So this checks the prose names before
 any run does: the writer's against the reader's, every skill's against the
-writer's `SHAPES`, and cla-init's seeded ledgers against the same.
+writer's `SHAPES`, and cla-setup's seeded ledgers against the same.
 
 `test_ledger_dir_agrees.py` checks the DIRECTORY half of this same contract
 behaviourally. This guards the FILENAME half.
@@ -91,7 +91,7 @@ def test_the_writer_and_reader_name_the_same_ledger(skill, prose, aggregate_py):
     )
 
 
-_CLA_INIT = _PLUGIN_ROOT / "skills" / "cla-init" / "SKILL.md"
+_CLA_SETUP = _PLUGIN_ROOT / "skills" / "cla-setup" / "SKILL.md"
 
 
 def _ledgers_written_by_skills() -> dict[str, Path]:
@@ -111,8 +111,8 @@ def test_skills_write_exactly_the_ledgers_the_writer_accepts():
         name: str(path.relative_to(_PLUGIN_ROOT)) for name, path in written.items()}
 
 
-def test_cla_init_seeds_exactly_the_ledgers_the_writer_accepts():
-    text = _CLA_INIT.read_text(encoding="utf-8")
+def test_cla_setup_seeds_exactly_the_ledgers_the_writer_accepts():
+    text = _CLA_SETUP.read_text(encoding="utf-8")
     match = re.search(r'for f in ([^;]*); do\n  \[ -e "\$ROOT/cla\.io/retro/\$f\.jsonl" \] \|\| :', text)
-    assert match, "cla-init/SKILL.md: no ledger seed loop found"
+    assert match, "cla-setup/SKILL.md: no ledger seed loop found"
     assert {f"{name}.jsonl" for name in match.group(1).split()} == set(log_run.SHAPES)

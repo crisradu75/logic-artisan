@@ -8,7 +8,7 @@ argument-hint: "[change-name | description | (empty)]"
 
 Drives one OpenSpec change from a description, a change name or an `/opsx:explore` result to an opened, archived PR with its review fixes applied. Order: Precheck → Propose → Review → Implement → Test → Ship → Revise → Archive → Handoff (`references/workflow-diagram.md`).
 
-**Each phase that names a reference reads it first; its stub here carries only the rules that gate correctness.** Why a rule exists is in `references/design-tradeoffs.md`, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md` and this repo's `cla.io/overlays/spec-to-pr.md`. Read those only when revising the skill, never during a run.
+**Each phase that names a reference reads it first; its stub here carries only the rules that gate correctness.** Why a rule exists is in `references/design-tradeoffs.md`, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md` and this repo's `cla.io/lessons-learned/`. Read those only when revising the skill, never during a run.
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
@@ -145,11 +145,11 @@ For each round:
 
 Cap: `--test-rounds N` (default `3`).
 
-**The gates are this repo's lint, build/typecheck and test commands**, read from `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape"; `cla.io/overlays/spec-to-pr.md` when that file is absent). Run at the workspace root they already fan out across every app and package. `--test-cmd` replaces discovery with a literal command.
+**The gates are this repo's lint, build/typecheck and test commands**, read from `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape"; run `/cla:cla-setup` when it is missing or stale). `cla.io/overlays/spec-to-pr.md`, if present, adds rules specific to this skill in this repo. Run at the workspace root they already fan out across every app and package. `--test-cmd` replaces discovery with a literal command.
 
 **Which gates to run.** Take the changed paths from `git diff --name-only <base-branch>...HEAD`. **`smoke`** is the lint command (cheap, fails fast); **`full`** is build/typecheck (the primary gate), then tests. Run whichever exist.
 
-**No gates to run means one of two things, and they are not interchangeable.** No changed path is source-affecting → `skip`. Source-affecting is any path with a `src` component, or a suffix the repo builds from — `.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .rb .php .sh .sql .vue .svelte .json .yaml .yml .toml .css .scss .html` and anything else this repo builds from; **the list is illustrative, so a suffix not on it counts as source-affecting.** **Source changes but no commands named → `warn`, never `skip`**, saying plainly that `project-facts.md` is stale (run `/cla:sync-context`) or the repo has no gate.
+**No gates to run means one of two things, and they are not interchangeable.** No changed path is source-affecting → `skip`. Source-affecting is any path with a `src` component, or a suffix the repo builds from — `.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .rb .php .sh .sql .vue .svelte .json .yaml .yml .toml .css .scss .html` and anything else this repo builds from; **the list is illustrative, so a suffix not on it counts as source-affecting.** **Source changes but no commands named → `warn`, never `skip`**, saying plainly that `project-facts.md` is stale (run `/cla:cla-setup`) or the repo has no gate.
 
 Each round, smoke first: a smoke failure → diagnose and fix, decrement, re-run from smoke next round (a smoke pass never skips `full`). Smoke clean → every `full` command, build first. All exit 0 → `ok`. A `full` failure → diagnose and fix, decrement. Budget exhausted → `warn` with the failing checks and the first error.
 
@@ -161,7 +161,7 @@ Each round, smoke first: a smoke failure → diagnose and fix, decrement, re-run
 
 **Read `references/test-notes.md` before editing for an infra-dependent gate failure** (the failing file changes between identical runs, or stderr names the infra tool's own error). It also covers the optional browser smoke, never a hard gate.
 
-**External-API fixtures (a judgment call, not a scripted gate):** a change that adds or extends a call to an external HTTP API, whose tests use only stub mocks with an assumed response shape and no fixture captured against the real response, is an Important finding in Review or Revise (a repo's concrete example: `cla.io/overlays/spec-to-pr.md` "Incident / offense history").
+**External-API fixtures (a judgment call, not a scripted gate):** a change that adds or extends a call to an external HTTP API, whose tests use only stub mocks with an assumed response shape and no fixture captured against the real response, is an Important finding in Review or Revise.
 
 ### Autonomy gate
 

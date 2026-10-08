@@ -3,7 +3,7 @@
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/conformance/test_project_facts_paths.py
 
 The guard was promoted out of this scope into a program at
-`skills/sync-context/scripts/check_fact_paths.py`; the tests for it stayed here.
+`skills/cla-setup/scripts/check_fact_paths.py`; the tests for it stayed here.
 So the mutants break the PROGRAM and the tests in this scope are the target.
 
 Each entry breaks one branch where a wrong choice yields a SILENT CLEAN REPORT —
@@ -29,7 +29,7 @@ from pathlib import Path
 
 PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 DEV = Path(__file__).resolve().parents[2]
-CHECKER = PLUGIN / "skills" / "sync-context" / "scripts" / "check_fact_paths.py"
+CHECKER = PLUGIN / "skills" / "cla-setup" / "scripts" / "check_fact_paths.py"
 TARGETS = [DEV / "tests" / "conformance"]
 
 MUTANTS = [

@@ -38,7 +38,7 @@ Exit 0 → proceed. Exit 2 (in-progress git op) or 3 (wrong branch) → halt and
 
 **`grep -rn "\[DEBUG-" <the paths about to be staged>` must return nothing; remove any tagged line before staging.** It is `/cla:diagnose`'s instrumentation tag, which only an interrupted run leaks this far. The pattern also lives in `${CLAUDE_PLUGIN_ROOT}/skills/diagnose/SKILL.md` Phase 6; a rename must touch both, or this grep searches for a string nothing writes.
 
-Then scan the untracked (`??`) entries of `git status --porcelain` for a stray scratch artifact: a background agent's tool-redirect bug can write a mangled, extension-bearing filename into the repo root instead of the scratchpad. It sits at the repo root (no `/` in the path) AND contains a substring characteristic of a scratch/temp-dir path (this repo's signature, if it has hit one: `cla.io/overlays/spec-to-pr.md` "Incident / offense history"). Read its first lines to confirm (typically a `git diff` dump), then `rm "<path>"` before staging. Never fold it into the commit, and never skip this because Implement's delegate reported success.
+Then scan the untracked (`??`) entries of `git status --porcelain` for a stray scratch artifact: a background agent's tool-redirect bug can write a mangled, extension-bearing filename into the repo root instead of the scratchpad. It sits at the repo root (no `/` in the path) AND contains a substring characteristic of a scratch/temp-dir path. Read its first lines to confirm (typically a `git diff` dump), then `rm "<path>"` before staging. Never fold it into the commit, and never skip this because Implement's delegate reported success.
 
 ## 2b. Every measurement this change asserts names the command that produced it
 
@@ -62,7 +62,7 @@ git add openspec/changes/<change-name>/ apps/<app>/src/ packages/<package>/src/
 git commit -m "feat: <change-name>"
 git push -u origin <branch>
 ```
-Add any other legitimately touched file by name on the same line — a stylesheet, a smoke script, a config file, root `TODO.md`, or for a `.claude/`-meta change the harness files it edited **inside this repo** (never a path in the installed plugin tree; this repo's worked examples: `cla.io/overlays/spec-to-pr.md`). Never expand to `-A`.
+Add any other legitimately touched file by name on the same line — a stylesheet, a smoke script, a config file, root `TODO.md`, or for a `.claude/`-meta change the harness files it edited **inside this repo** (never a path in the installed plugin tree). Never expand to `-A`.
 
 **Trailers go in a single second `-m`**, newline-separated, which makes them the message's last paragraph; the session-attribution lines go directly under the last `Measured-by:` line, with no blank line:
 

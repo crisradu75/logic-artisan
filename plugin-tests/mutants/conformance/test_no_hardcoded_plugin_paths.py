@@ -247,10 +247,10 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 101  .json 3  .md 70  .mjs 1  .py 27  placeholder-refs 183 in 51 files"
+        "    #     scanned 100  .json 3  .md 69  .mjs 1  .py 27  placeholder-refs 182 in 51 files"
         + _NL
         + "    #" + _NL
-        + "    # The real count is 101. Pinned near it, not",
+        + "    # The real count is 100. Pinned near it, not",
         "    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files"
         + _NL
         + "    #" + _NL
@@ -312,7 +312,8 @@ MUTANTS = [
 # by one file throughout; its shape, and the `.mjs` row's role, are unchanged.
 # It moved again, to `>= 100` against a real 101, when slim-spec-to-pr merged
 # `archive-preflight.md` into `archive.md`; the placeholder floor moved to
-# `>= 178` against a real 182 in the same change.
+# `>= 178` against a real 182 in the same change. And to `>= 99` against a real
+# 100 when cla-setup-and-optional-overlays merged two skills into one `SKILL.md`.
 #
 # THE RECORDS ABOVE ARE NOW CHECKED, not trusted. The guard carries
 # `test_the_recorded_counts_are_the_real_ones`, which re-runs its printer and

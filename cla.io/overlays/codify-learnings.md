@@ -3,8 +3,8 @@
 <!--
 Project-specific overlay for the `codify-learnings` cla skill. This file is repo-local
 (never distributed with the plugin). The generic SKILL.md supplies the procedure; this
-file supplies the repo's facts: where memory lives, the verification commands, and the
-repo lessons that Step 2 searches before calling a failure new.
+file holds this skill's own settings here: where memory lives, and the repo lessons that Step 2
+searches before calling a failure new. Commands and file lists are in `cla.io/project-facts.md`.
 -->
 
 ## Memory index glob
@@ -16,30 +16,11 @@ sibling `*.md`. On Windows that resolves to
 There is exactly one such directory for this repo; if a glob ever matches more than one,
 prefer the one whose slug matches this repo's path (`C--code-logic-artisan`).
 
-## Repo stack + verification path
+## Verification
 
-Verification path for this repo — a change is not "done" until the suite passes:
-
-```bash
-pytest plugin-tests -q -n auto --dist loadfile   # the whole suite: the gate
-pytest plugin-tests/tests/hooks -n auto --dist loadfile   # one area, while iterating
-pytest plugin-tests -k <name>            # one subject, across areas
-node --test plugin-tests/node/mechanical-checks.test.mjs
-```
-
-`-n auto --dist loadfile` needs `pytest-xdist` and takes the suite from ~204s to ~74s.
-Use `--dist loadfile`, never plain `-n auto`, and keep the flags off `addopts` so
-`mutate.py` stays serial — CLAUDE.md's "The parallel gate" has the reasons.
-
-The plugin's own tests do NOT live in the plugin. `.claude/plugins/cla/` ships to
-consuming repos and carries only assets a consumer can use, so every test, mutation
-batch and pytest config lives in this repo's own `plugin-tests/` tree instead.
-
-There is no CI — the local commands above are the whole verification story. Run the
-pytest gate plus the Node suite before calling a change done.
-
-The suite reports skips — a skipped guard has not run, and several guards are
-dormant without an overlay file, so treat a skip line as a finding rather than noise.
+The verification commands are in `cla.io/project-facts.md`. A change is not "done" until the gate
+passes. The suite reports skips — a skipped guard has not run, and several guards are dormant
+without an overlay file, so treat a skip line as a finding rather than noise.
 
 ## Incident / offense history
 
@@ -74,15 +55,3 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
   load; the handler was later sized from the guards instead.
 - **2026-07-25 — the push-to-main guard (now `hooks/git/pre-push`) did not fire** on `git -C <dir> push origin main`;
   the sibling hooks had the same global-flag gap.
-
-## Repo file lists
-
-Docs that must stay in lockstep with the code:
-- root `CLAUDE.md` — skill table, scope count, guard-hook list, commands
-- `.claude/plugins/cla/skills/*/SKILL.md` and their `references/*.md`
-- `.claude/plugins/cla/hooks/_dispatch_lib.py` — `HOOK_WORST_CASE_SECONDS` must match each
-  hook's real (call sites × timeout). The wiring test
-  (`plugin-tests/tests/hooks/test_hooks_wiring.py`) asserts that every dispatched
-  hook HAS an entry, that no entry is stale, and that the enforcing hooks' sum fits the
-  handler budget — what it never verifies is that a given number matches that hook's real
-  (call sites × timeout), so a wrong-but-small value passes silently

@@ -16,7 +16,7 @@ BRIEF = SKILLS / "multi-spec" / "references" / "authoring-brief.md"
 CHECKLIST = SKILLS / "review-change" / "references" / "checklist.md"
 DISPATCH = SKILLS / "review-change" / "references" / "dispatch.md"
 TEST_QUALITY = SKILLS / "_shared" / "references" / "test-quality.md"
-CLA_INIT = SKILLS / "cla-init" / "SKILL.md"
+CLA_SETUP = SKILLS / "cla-setup" / "SKILL.md"
 CONFIG = REPO / "openspec" / "config.yaml"
 GUARD = DEV / "tests" / "consistency" / "test_scenario_proof_format.py"
 WORKFLOW_SPEC = REPO / "openspec" / "specs" / "change-workflow" / "spec.md"
@@ -103,9 +103,9 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The retired-form scan skips cla-init's RETIRED list and nothing else.
-        "cla-init asks for the old manual form outside its retired list",
-        CLA_INIT,
+        # The retired-form scan skips cla-setup's RETIRED list and nothing else.
+        "cla-setup asks for the old manual form outside its retired list",
+        CLA_SETUP,
         "Each item that contains `: ` stays double-quoted",
         "Note a hand-checked rule as `manual: <reason>`. Each item that contains `: ` stays double-quoted",
         TARGETS,

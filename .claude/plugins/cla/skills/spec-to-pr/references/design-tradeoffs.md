@@ -1,6 +1,6 @@
 # Design trade-offs and rationale behind `/cla:spec-to-pr`
 
-Why the skill's rules are shaped as they are. **Not read during a run** — read it when revising the skill, and before deleting a rule that looks redundant. Dated, repo-specific incidents live in the consuming repo's `cla.io/overlays/spec-to-pr.md` "Incident / offense history"; the enforcement-tier vocabulary in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md`.
+Why the skill's rules are shaped as they are. **Not read during a run** — read it when revising the skill, and before deleting a rule that looks redundant. Dated, repo-specific incidents live in each repo's `cla.io/lessons-learned/`; the enforcement-tier vocabulary in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md`.
 
 ## Shape of the skill
 
@@ -28,7 +28,7 @@ The orchestrator never halts on a sub-step failure; each becomes a `warn` phase 
 
 A phase-boundary confirmation prompt is a regression against the documented contract; past sessions lost ~5 minutes per pause to model-side gating nothing authorized. "Merge and clean" was once over-read as "skip review"; it is about cleanup after Archive.
 
-**Turn liveness is a check, not a prohibition.** The prohibition asks you to notice mid-flow that what you are writing *reads* as an ending — a judgement, and a real chain lost a round-trip to it: the author wrote the banned shape and then behaved like its reader. "Is there a tool call in this message?" needs no judgement. Incident: the overlay, 2026-08-23.
+**Turn liveness is a check, not a prohibition.** The prohibition asks you to notice mid-flow that what you are writing *reads* as an ending — a judgement, and a real chain lost a round-trip to it: the author wrote the banned shape and then behaved like its reader. "Is there a tool call in this message?" needs no judgement. Incident: 2026-08-23, a `/cla:multi-pr` chain in the source repo.
 
 ## Implement
 
@@ -45,7 +45,7 @@ A phase-boundary confirmation prompt is a regression against the documented cont
 
 ## Review
 
-- **Sweeps:** a real sweep once returned a silent false-negative over an entire skills tree (`Scanned: 0` on a surface); another reported `No stale references found.` with `Scanned: 121` and `Unresolved: none` while a direct search found 9 hits (GitHub issue #279). Hence the footer check and the zero-count re-search. A stale doc reference can mask a broken key contract in a repo's load-bearing conventions (the overlay names them).
+- **Sweeps:** a real sweep once returned a silent false-negative over an entire skills tree (`Scanned: 0` on a surface); another reported `No stale references found.` with `Scanned: 121` and `Unresolved: none` while a direct search found 9 hits (GitHub issue #279). Hence the footer check and the zero-count re-search. A stale doc reference can mask a broken key contract in a repo's load-bearing conventions.
 
 ## Ship
 
@@ -86,7 +86,7 @@ It broke once at fleet scale: a counter built on the parser read 59 of 228 measu
 
 **Two exit counts.** Before `remedy-rejected` existed every triaged finding was closed, so one untriaged counter was right by accident. A rejected finding is the first triaged-but-live one; counting only untriaged exits `ok` with an open Critical, and Handoff prints `gh pr merge` over it with every phase genuinely reporting `ok`.
 
-Precedents for SIR-TEST ("reuse an existing helper" re-implemented with the wrong fallback; "gate this like its sibling" shipped with half the gate tested) and for the runtime-harness fidelity rule: the overlay and `review-change/references/checklist.md` "Empirical-verification fidelity".
+Precedents for SIR-TEST ("reuse an existing helper" re-implemented with the wrong fallback; "gate this like its sibling" shipped with half the gate tested) and for the runtime-harness fidelity rule: `review-change/references/checklist.md` "Empirical-verification fidelity".
 
 ## Archive — while the PR is still OPEN
 

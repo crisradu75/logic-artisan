@@ -11,7 +11,7 @@ Run the shared bootstrap once before the chain starts — the same `/cla:multi-p
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
    ```
    Non-zero → resolve before continuing (in-progress rebase/cherry-pick, or a dirty tree with out-of-scope paths). A dirty tree at chain start poisons every subsequent candidate.
-3. From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`. Non-zero → stop: "run /cla:cla-init first (run notes would be visible to git)".
+3. From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`. Non-zero → stop: "run /cla:cla-setup first (run notes would be visible to git)".
 
 **Start from `<base-branch>`, clean (primary clone).** Check `git rev-parse --abbrev-ref HEAD`. If not on `<base-branch>`, and the current branch carries local commits unrelated to this run, leave it untouched, then sync to `<base-branch>` with the two separate commands the hoisted base-management rule requires (`git checkout <base-branch>` then `git pull` — never `&&`-chained).
 
@@ -29,4 +29,4 @@ Use `TaskCreate` once to lay down the chain — one task per candidate (`"<id>: 
 - `merge_commit` — the merge commit's oid, written at step 8c once the merge is confirmed. Step 3 checks a dependency against it.
 - `status` — `merged`, `open` (plain or with a reason), `failed` with the failing check or a reason, `failed-review` with a reason, `failed-merge` with a reason, or `blocked-by-upstream-failure`. Notes step 8 records go beside it: the shared-state derivation, `gate skipped: no source-affecting paths`, `behind base: merged tree not tested`, and `base not updated`. Every reason steps 2, 7 and 8 can write is listed in `references/phase4-and-log.md` under "Shipped & left open".
 
-Step 2's resume check reads `deferred`, `review`, `head_sha` and `status` back. A row missing `deferred` can never resume as clean. The file is local working state: `.gitignore` ignores `cla.io/retro/*-run-notes-*.md` (`/cla:cla-init` adds the line), nothing in this run adds or commits it, and it survives a session restart in the primary clone's working tree, so a resume on this machine reads it back. A resume without it (another machine, or the file deleted) falls back to GitHub state, step 2's title match.
+Step 2's resume check reads `deferred`, `review`, `head_sha` and `status` back. A row missing `deferred` can never resume as clean. The file is local working state: `.gitignore` ignores `cla.io/retro/*-run-notes-*.md` (`/cla:cla-setup` adds the line), nothing in this run adds or commits it, and it survives a session restart in the primary clone's working tree, so a resume on this machine reads it back. A resume without it (another machine, or the file deleted) falls back to GitHub state, step 2's title match.

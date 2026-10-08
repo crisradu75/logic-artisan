@@ -3,18 +3,9 @@
 <!--
 Project-specific overlay for the `multi-pr` cla skill. This file is repo-local
 (never distributed with the plugin). The generic SKILL.md supplies the procedure; this
-file supplies the repo's facts. A skill runs fine against an empty stub — fill in
-only the sections its SKILL.md references, delete the rest.
+file holds this skill's own rules and incidents here; facts are in `cla.io/project-facts.md`.
+The file is optional.
 -->
-
-## Repo commands
-<!-- build/lint/test/dev commands with this repo's package-manager + workspace tokens -->
-
-## Packages, paths, and app names
-<!-- workspace/app/package/dir names and file paths this skill touches -->
-
-## Permission sets
-<!-- repo-scoped tool-permission expectations, if the skill uses them -->
 
 ## Incident / offense history
 
@@ -23,25 +14,6 @@ only the sections its SKILL.md references, delete the rest.
 hold this repo's only measured per-change timings (two `large-extend` changes). There is no
 worktree-pivot or stranded-docs precedent to offer; the two incidents below came from landing a
 stack by hand, not from a chain.
-
-`grep -rn "overlays/multi-pr" .claude/plugins/cla/skills/multi-pr/` returns 9 pointers into this
-file. Counted by hand against what is actually written below:
-
-Named by what each asks for rather than by line number — line numbers here went stale once
-already, and nothing checks them:
-
-- **3 resolve.** `SKILL.md`'s reference-list entry, and the two pointers at the dated 2026-08-14
-  incidents (the `gh pr merge` refusal, from `discover-and-gate.md`'s merge-policy section; the
-  deletion path, from `change-loop.md`). Both incidents are present below.
-- **3 ask for something absent and say so.** The worktree pivot (`SKILL.md`), the stranded-docs
-  precedent (`discover-and-gate.md`'s unmerged-dependency check), and the infra hard-gate command
-  (`discover-and-gate.md`'s 4th gate question, which says "if it has one … omit it entirely
-  otherwise"). Each reads correctly when the fact is missing.
-- **3 ask for something absent and do not hedge.** The local-stack status command
-  (`discover-and-gate.md`'s infra self-remediation), and the build/lint/test fallback in
-  `change-loop.md` and `cleanup.md` — all three want the empty "Repo commands" section above.
-
-Filling this file is the fix for those 4, not softening more pointers.
 
 **2026-08-14 — host classifier refused `gh pr merge` regardless of configuration.** In this repo,
 on Claude Code with `--permission-mode auto`: `Bash(gh *)` present in the machine-local `settings.local.json`,
@@ -57,13 +29,3 @@ rather than retargeting it. Recovery: restore the deleted branch from the merge 
 parent, push it, reopen the PR, retarget it to main, delete the scaffold. The stacked landing
 recipe is retarget-first because of this incident; the warn-stacked-pr-merge hook's close warning
 is measured, not theoretical.
-<!-- past failures in this repo that justify a discipline rule in the skill -->
-
-## Product / domain context
-<!-- this repo's applications, data, market, concepts -->
-
-## Infrastructure values
-<!-- ports, service names, env-var names tied to this repo's processes -->
-
-## Repo file lists
-<!-- enumerated specs/docs/files this skill is expected to touch -->

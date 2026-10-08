@@ -40,8 +40,7 @@ see the Windows note below for a way that can happen silently.
 > "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
 > so. If both spellings are genuinely in use, install from each.
 
-Then, inside the repo: `/cla:cla-init` (scaffold `cla.io/` + overlay stubs) and `/cla:sync-context`
-(populate the repo's facts). Pick up later releases with `/plugin marketplace update`. Details:
+Then, inside the repo: `/cla:cla-setup` (scaffold `cla.io/` and populate the repo's facts). Pick up later releases with `/plugin marketplace update`. Details:
 [Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo).
 
 ## Developing the harness (this repo only)

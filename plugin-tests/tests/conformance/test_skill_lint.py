@@ -31,7 +31,7 @@ import pytest
 # Claude Code shows a skill's `description` in the picker and matches natural
 # language against it. There is no hard platform ceiling documented, so this is a
 # STYLE ceiling, not a platform one: the longest description in the tree today is
-# 852 chars (`sync-context`), and 1024 leaves room to grow while still failing a
+# 790 chars (`multi-lite`, 2026-10-08), and 1024 leaves room to grow while still failing a
 # description that has quietly turned into a second SKILL.md body. Raise it
 # deliberately if a skill genuinely needs more; do not raise it to silence a
 # failure.
