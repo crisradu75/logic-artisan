@@ -1,9 +1,10 @@
-"""Drift guard: two facts this repo's docs restate must match their source.
+"""Drift guard: three facts this repo's docs restate must match their source.
 
 1. The release version: `CLAUDE.md`'s "Current release" line must name the
    version in `plugin.json` (which `test_marketplace_manifest.py` pins to the
    marketplace `ref`). `/release` edits all three in one commit.
-2. Whether Claude may invoke a skill: a value that lives in each `SKILL.md`'s
+2. Every guard hook a doc names in backticks has a file under `hooks/`.
+3. Whether Claude may invoke a skill: a value that lives in each `SKILL.md`'s
    frontmatter (`disable-model-invocation`) and is restated in the plugin
    README's phase table and in a sentence naming the skills in `CLAUDE.md` and
    `DEVELOPER-GUIDE.md`.
@@ -25,6 +26,7 @@ _REPO_ROOT = _PLUGIN_ROOT.parents[2]
 
 _DOCS = {
     "CLAUDE.md": _REPO_ROOT / "CLAUDE.md",
+    "README.md": _REPO_ROOT / "README.md",
     "DEVELOPER-GUIDE.md": _REPO_ROOT / "DEVELOPER-GUIDE.md",
     "plugin README.md": _PLUGIN_ROOT / "README.md",
 }
@@ -46,6 +48,27 @@ def test_the_release_version_agrees_across_the_manifest_and_the_prose():
     )
     assert match.group(1) == version, (
         f"CLAUDE.md says release {match.group(1)}, plugin.json says {version}"
+    )
+
+
+def test_every_named_leaf_hook_exists():
+    """A 2026-08 review found six invented hook names in a single guide section.
+    A backticked `block-`/`ask-`/`warn-`/`guard-` name is read as a live hook;
+    mention a deleted one WITHOUT backticks if the reference is historical.
+
+    The `(?:\\.py)?` is load-bearing, not decoration: without it a backticked
+    `` `guard-x.py` `` matched nothing at all — the character class cannot match a
+    dot — so the one spelling most likely to name a real hook file was the one
+    spelling this guard could not see."""
+    missing = []
+    for name, path in _DOCS.items():
+        text = path.read_text(encoding="utf-8")
+        for hook in re.findall(r"`((?:block|ask|warn|guard)-[a-z0-9-]+(?:\.py)?)`", text):
+            stem = hook[:-3] if hook.endswith(".py") else hook
+            if not (_PLUGIN_ROOT / "hooks" / f"{stem}.py").is_file():
+                missing.append(f"  {name}: `{hook}` has no hooks/{stem}.py")
+    assert not missing, (
+        "doc names a guard hook that does not exist on disk:\n" + "\n".join(missing)
     )
 
 

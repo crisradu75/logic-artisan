@@ -164,6 +164,13 @@ of them carries `findings_by_round`, so the Revise evidence in the companion doc
   shrink `doc_facts` to release-version agreement plus the invocation table. Keep the four
   consumer-facing conformance guards, `check_labels_agree`, `mutation_gate_sites_agree`, and
   the small local-safety checks.
+  *Implemented differently:* the scanners were left as they are, because walking every shipped
+  file would flag the plugin's own README (it names this repo and `.claude/plugins/cla` for the
+  install commands); only the coverage-map guard was deleted. So nothing flags a new shipped file
+  that no scanner opens (today `.claude-plugin/plugin.json`, `.gitattributes`, `README.md`,
+  `hooks/git/pre-push` — the deleted guard's `EXEMPT` map, `git show
+  c9db69f^:plugin-tests/tests/conformance/test_shipped_files_are_scanned.py`). `doc_facts` also
+  kept its check that every named hook exists.
 - **P6 — CLAUDE.md becomes rules-only** (about 1,100–1,300 words, estimate). The script table
   and layout trees move to DEVELOPER-GUIDE §11, rationale to §12, versioning history to
   "Release and distribution history"; copies of the plugin README are deleted. CLAUDE.md drops

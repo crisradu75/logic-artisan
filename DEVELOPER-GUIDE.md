@@ -442,7 +442,8 @@ Contributing to the harness rather than using it? The extra rules:
   exception noted above. Scripts carrying copies of the same helper (the two retro aggregators,
   `lib/log_run.py`, `lib/ledger_summary.py`) are kept in step by hand;
   `plugin-tests/tests/consistency/test_ledger_dir_agrees.py` checks that the ledger writer and
-  the spec-to-pr reader resolve the same directory.
+  every reader of it (both aggregators and `lib/ledger_summary.py`) resolve the same directory,
+  run from a subdirectory of the repo.
 
 - **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
   covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work

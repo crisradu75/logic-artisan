@@ -1,6 +1,6 @@
 """Fixtures shared across test areas.
 
-`make_dir_alias` used to be copied into three test modules (two hook guards and
+`make_dir_alias` used to be copied into several test modules (hook guards and
 `new-worktree`); it lives here so there is one copy.
 """
 

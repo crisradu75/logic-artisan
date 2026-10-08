@@ -32,6 +32,26 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        # The drift `test_every_named_leaf_hook_exists` was written against: a doc
+        # names a guard hook that has no file. Planted in the shipped plugin
+        # README, the doc a consuming repo actually reads.
+        "the plugin README names a guard hook that does not exist",
+        PLUGIN / "README.md",
+        "**Blocks:** `block-cd-in-bash` (",
+        "**Blocks:** `block-cd-in-shell` (",
+        TARGETS,
+    ),
+    (
+        # The `.py` spelling. Without `(?:\.py)?` in the guard's pattern a
+        # backticked `name.py` matches nothing, so this mutant survives exactly
+        # when that half of the pattern is lost.
+        "a doc names a missing guard hook by its file name",
+        REPO / "DEVELOPER-GUIDE.md",
+        "`warn-heredoc-escape-mangling`",
+        "`warn-heredoc-escape-mangler.py`",
+        TARGETS,
+    ),
+    (
         # The defect this pair was written against: a THIRD skill forbids model
         # invocation and the table still shows it as model-invocable, telling a
         # reader Claude may start an unattended orchestrator on a description
