@@ -142,7 +142,7 @@ Order: Precheck → Propose → Review → Implement → Test → Ship → Revis
 
 **Post-check:** `openspec validate <name> --strict`. Exit 0 → status `ok`. Non-zero → status `warn`, capture stderr for the Handoff Issues section.
 
-**Read live specs overview-first, in every phase that needs them.** `openspec list --specs`, then `openspec show <id> --type spec --json --no-scenarios`; read in full only the capabilities the change touches. A MODIFIED block still carries its full live requirement. design.md is written only when a stock trigger applies, and a change with no behaviour change sets `skip_specs: true` instead of inventing a requirement.
+**Apply `openspec/config.yaml` `rules:` in every phase that reads specs or writes a change's artifacts.** They set how live specs are read, what a spec may state, and how each requirement is proven. A MODIFIED block still carries its full live requirement.
 
 ### Review
 
@@ -165,7 +165,7 @@ For each round:
 3. If `READY` → status `ok`, exit loop.
 4. If `FIX FIRST` or `RETHINK`:
    - **Before the round's first fix, read `references/review-sweeps.md` "Applying a round's fixes" and capture the `design.md` rejected-alternatives snapshot** — the round's fixes routinely edit `design.md` itself.
-   - Apply each Critical and Important finding by direct Edit/Write to `openspec/changes/<name>/`, then re-check that each fix landed (grep or re-read the named clause — not a re-dispatch).
+   - Apply each Critical and Important finding by direct Edit/Write to `openspec/changes/<name>/` — to design.md or tasks.md, and to spec text only when the finding is about an outcome or interface — then re-check that each fix landed (grep or re-read the named clause — not a re-dispatch).
    - **An applied remedy that reintroduces a rejected alternative is a Critical on the fix itself** — withdraw or re-specify it. No snapshot captured → the check did not run: Review `warn`, recorded under *Issues encountered*. No `design.md` → out of scope.
    - Run `openspec validate <name> --strict` as the final correctness check after all fixes for the round. Exit 0 → fixes are at least structurally sound.
    - Decrement remaining round budget. If exhausted, status `warn`, exit loop with residue captured for the Handoff Issues section. If verdict was RETHINK and Critical-count > 0 after re-validation, mark `warn` even if budget remains — the next round is the user's call.
@@ -188,7 +188,7 @@ For each round:
 
    **Neither reads the claim under the tick, so neither can catch a task that is ticked and untrue.** The box count is a presence check on the glyph; the artifact-ready flag is weaker still and does not read task state at all (see step 2 above). Three cheap additions close it:
 
-   - **A ticked task that names a test is checked for that test.** A task names one when it quotes a test name, has a `Test:` clause, or names a test file. For each such ticked task, grep the tree for the named test (the `def test_…`, `it(`/`describe(` string, or the file). A miss is the contract firing exactly as a `done` without evidence: record a Handoff Issue and write the test inline before leaving Implement. Each scenario a change adds or rewrites has such a task, whose test carries a `scenario: <spec> / <heading>` comment line, or a tasks.md line `manual: <heading>: <reason>`, so this check is what ties a scenario to its proof. When you write the test, put that comment line above it.
+   - **A ticked task that names a test is checked for that test.** A task names one when it quotes a test name, has a `Test:` clause, or names a test file. For each such ticked task, grep the tree for the named test (the `def test_…`, `it(`/`describe(` string, or the file). A miss is the contract firing exactly as a `done` without evidence: record a Handoff Issue and write the test inline before leaving Implement. Each requirement a change adds or modifies has such a task, whose test carries a `requirement: <spec> / <heading>` comment line, or a tasks.md line `manual: <heading>: <reason>`, so this check is what ties a requirement to its proof. When you write the test, put that comment line above it.
 
    - **A task whose text asserts a MEASUREMENT records the measured value inline.** A confirmed value, a count, a mutation-test result — the tick is not the evidence, the number is: `- [x] 4.2 … measured: 1158 passed, 1 skipped`. A delegate that must produce a number produces a real one; a delegate that need only tick a box ticks it. The briefs that demanded numbers are the ones that came back with them.
    - **Re-measure a 2–3 task sample of the measurement- or test-bearing tasks yourself** (re-run the measurement, or the named test), rather than trusting the ticks wholesale. Sampling, not exhaustive re-verification — that would cost as much as the implementation.

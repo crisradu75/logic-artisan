@@ -188,7 +188,7 @@ def test_excluded_subtree_contributes_no_text_to_an_enclosing_block():
 # --------------------------------------------------------------- reversibility
 
 
-# scenario: annotate / The layer's own presentation is appended and strips back
+# requirement: annotate / The skill adds markup to a copy and changes nothing else
 def test_stripping_the_instrumentation_yields_the_original_bytes():
     out, _, _ = RH.instrument(SHAPES)
     assert out != SHAPES, "the fixture must actually be instrumented"
@@ -210,7 +210,7 @@ def test_the_marker_stylesheet_uses_no_var_reference():
     assert "prefers-color-scheme" in RH.MARKER_CSS
 
 
-# scenario: annotate / The layer's own presentation is appended and strips back
+# requirement: annotate / The skill adds markup to a copy and changes nothing else
 def test_the_stylesheet_is_appended_after_all_content():
     out, ctx, _ = RH.instrument(SHAPES)
     assert out.index(RH.MARK_OPEN) > out.rindex("data-blk="), \

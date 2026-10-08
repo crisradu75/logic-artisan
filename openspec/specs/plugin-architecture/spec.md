@@ -578,7 +578,7 @@ Before cutting a tag, the release workflow SHALL check the shipped-asset boundar
 
 ### Requirement: cla-init seeds OpenSpec authoring rules without clobbering
 
-When `openspec/` exists and has neither `config.yaml` nor `config.yml`, cla-init SHALL create `openspec/config.yaml` with `schema: spec-driven` and a `rules:` block stating the stock limits and the scenario-proof rule. This is the one project-data path cla-init writes outside `cla.io/`. Otherwise it SHALL print the block and write nothing.
+cla-init SHALL create `openspec/config.yaml` with the shipped `rules:` block when `openspec/` has no config, and otherwise SHALL list each shipped rule the existing config lacks, leaving that file unchanged unless the user agrees to update it.
 
 #### Scenario: No config.yaml
 
@@ -588,4 +588,9 @@ When `openspec/` exists and has neither `config.yaml` nor `config.yml`, cla-init
 #### Scenario: An existing config.yaml or config.yml
 
 - **WHEN** cla-init runs in a repo whose `openspec/config.yaml` or `openspec/config.yml` exists
-- **THEN** no new config file is created, the existing one is byte-identical afterwards, and the rules block is printed
+- **THEN** no new config file is created, the existing one is unchanged, and each shipped rule it lacks is listed as missing or outdated
+
+#### Scenario: The user agrees to update the rules
+
+- **WHEN** cla-init has listed missing or outdated rules and the user agrees to update them
+- **THEN** the listed rules are added to the existing config and the repo's own rules stay

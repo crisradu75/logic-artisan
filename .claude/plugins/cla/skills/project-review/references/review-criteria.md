@@ -64,16 +64,16 @@ See `cla.io/overlays/project-review.md` for this repo's own concrete signal list
 
 ### Review signals
 - **Spec coverage**: Do the core capabilities of every product/component have specs? Gaps?
-- **Spec quality**: MUST/SHOULD/MAY/SHALL with testable WHEN/THEN acceptance criteria?
+- **Spec quality**: Do specs state only outcomes and interfaces, in plain words, within `openspec/config.yaml` `rules.specs` where the repo has them, rather than implementation detail, code names or tool internals? SHALL with testable WHEN/THEN scenarios?
 - **Traceability**: Can you trace spec → implementation in the right package/app?
-- **Spec currency**: Do specs match the current implementation (formulas, domain-vocabulary counts, workspace paths)? **Watch for staleness from any past restructure.**
+- **Spec currency**: Do specs match the current implementation (formulas, domain-vocabulary counts)? **Watch for staleness from any past restructure.**
 - **Change pipeline**: Stale active changes? Is the archive clean?
 
 See `cla.io/overlays/project-review.md` for this repo's own concrete spec-sampling picks and grep hints.
 
 ### Grade definitions
-- **A**: Good coverage across every product/component, testable criteria, specs match implementation, clean change pipeline.
-- **B**: Reasonable coverage with minor gaps. Most specs current; some lack testable criteria, or one spec lags a past restructure.
+- **A**: Good coverage across every product/component, plain outcome-level specs with testable criteria, specs match implementation, clean change pipeline.
+- **B**: Reasonable coverage with minor gaps. Most specs current; some lack testable criteria or carry implementation detail, or one spec lags a past restructure.
 - **C**: Significant gaps — several stale specs (e.g. still describing a superseded layout), or specs that don't match the code. Weak traceability.
 - **D**: Specs absent or decorative (a real gap if the repo has a spec framework initialized, not "N/A").
 

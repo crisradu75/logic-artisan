@@ -1,8 +1,8 @@
 """Mutation batch for test_scenario_proof_format.py.
 
-Each mutant drifts one site of the scenario-to-test convention away from the
-others: back to the old `manual: <reason>` form, or dropping a rule the guard
-ported from crisradu75/interoga-ro#711 will rely on.
+Each mutant drifts one site of the requirement-to-test convention away from the
+others: back to a per-scenario rule, back to a retired marker or manual form,
+or a marker left naming no live requirement.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_scenario_proof_format.py
 """
@@ -14,48 +14,70 @@ DEV = Path(__file__).resolve().parents[2]
 SKILLS = REPO / ".claude" / "plugins" / "cla" / "skills"
 BRIEF = SKILLS / "multi-spec" / "references" / "authoring-brief.md"
 CHECKLIST = SKILLS / "review-change" / "references" / "checklist.md"
+DISPATCH = SKILLS / "review-change" / "references" / "dispatch.md"
 TEST_QUALITY = SKILLS / "_shared" / "references" / "test-quality.md"
 CONFIG = REPO / "openspec" / "config.yaml"
 GUARD = DEV / "tests" / "consistency" / "test_scenario_proof_format.py"
 REVIEW_SPEC = REPO / "openspec" / "specs" / "change-review" / "spec.md"
 PROBE_TEST = DEV / "tests" / "skills" / "spec-to-pr" / "test_probe_state.py"
 
-TARGETS = [DEV / "tests" / "consistency" / "test_scenario_proof_format.py"]
+TARGETS = [GUARD]
 
 MUTANTS = [
     (
-        "the brief drops the marker, so authored tests carry no link",
-        BRIEF,
-        "a comment line `scenario: <spec> / <heading>` above it",
-        "a comment naming the scenario above it",
-        TARGETS,
-    ),
-    (
-        "the brief's manual line stops naming the heading, so a guard cannot match it",
-        BRIEF,
-        "or a tasks.md line `manual: <heading>: <reason>`, naming the heading",
-        "or a tasks.md line `manual: <reason>`, naming the heading",
-        TARGETS,
-    ),
-    (
-        "the config drops the pure-rename exemption",
+        "the rules go back to one test per scenario",
         CONFIG,
-        "A pure heading rename, or a scenario carried forward unchanged in a MODIFIED block, needs neither.",
-        "A scenario carried forward unchanged in a MODIFIED block needs neither.",
+        "Scenarios are examples, not one test each.",
+        "Each scenario needs its own test.",
         TARGETS,
     ),
     (
-        "the brief drops the unique-heading rule",
+        "the rules ask for the retired per-scenario marker",
+        CONFIG,
+        "carries a `requirement: <spec> / <heading>` comment line above it",
+        "carries a `scenario: <spec> / <heading>` comment line above it",
+        TARGETS,
+    ),
+    (
+        "the brief stops pointing at the rules",
         BRIEF,
-        "**Scenario headings are unique within one spec**",
-        "**Scenario headings should be descriptive**",
+        "**Apply `openspec/config.yaml` `rules:`**",
+        "**Follow the stock limits**",
         TARGETS,
     ),
     (
-        "the checklist reverts its scenario-proof check to the old manual form",
+        "the brief restates a limit the rules own, so the two can drift",
+        BRIEF,
+        "**Apply `openspec/config.yaml` `rules:`** as step 3's",
+        "**Apply `openspec/config.yaml` `rules:`** (each requirement in 500 characters or fewer) as step 3's",
+        TARGETS,
+    ),
+    (
+        "the rules drop the unique-heading rule",
+        CONFIG,
+        "Keep every scenario heading unique within its spec",
+        "Prefer descriptive scenario headings within its spec",
+        TARGETS,
+    ),
+    (
+        "the checklist goes back to proving scenarios",
         CHECKLIST,
-        "or a tasks.md line `manual: <heading>: <reason>`. A scenario with neither is the finding.",
-        "or a `manual: <reason>` note. A scenario with neither is the finding.",
+        "A requirement with neither is the finding.",
+        "A scenario with neither is the finding.",
+        TARGETS,
+    ),
+    (
+        "the checklist reverts its proof check to the old manual form",
+        CHECKLIST,
+        "or a tasks.md line `manual: <heading>: <reason>`. A requirement with neither is the finding.",
+        "or a `manual: <reason>` note. A requirement with neither is the finding.",
+        TARGETS,
+    ),
+    (
+        "the dispatched task reviewer goes back to proving scenarios",
+        DISPATCH,
+        "A requirement with neither is **Important**.",
+        "A scenario with neither is **Important**.",
         TARGETS,
     ),
     (
@@ -73,10 +95,24 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "the dispatched task reviewer makes a missing marker block the verdict",
+        DISPATCH,
+        "marker is a **Suggestion**.",
+        "marker is **Important**.",
+        TARGETS,
+    ),
+    (
         "a shipped reference keeps the old manual form",
         TEST_QUALITY,
-        "`manual: <heading>: <reason>` (`multi-spec/references/authoring-brief.md`, step 4)",
-        "`manual: <reason>` (`multi-spec/references/authoring-brief.md`, step 4)",
+        "`manual: <heading>: <reason>` (`openspec/config.yaml` `rules.tasks`)",
+        "`manual: <reason>` (`openspec/config.yaml` `rules.tasks`)",
+        TARGETS,
+    ),
+    (
+        "a shipped reference keeps the per-scenario marker",
+        TEST_QUALITY,
+        "`requirement: <spec> / <heading>` comment line above it",
+        "`scenario: <spec> / <heading>` comment line above it",
         TARGETS,
     ),
     (
@@ -84,6 +120,13 @@ MUTANTS = [
         GUARD,
         'return sorted(_LIVE_SPECS.glob("*/spec.md"))',
         'return sorted(_LIVE_SPECS.glob("*/nope.md"))',
+        TARGETS,
+    ),
+    (
+        "the requirement-heading pattern stops matching",
+        GUARD,
+        'r"^### Requirement: (.+)$"',
+        'r"^### Requirements: (.+)$"',
         TARGETS,
     ),
     (
@@ -97,10 +140,19 @@ MUTANTS = [
     (
         # Mutates the INPUT: a marker left naming the wrong capability, the
         # residue a spec move leaves behind.
-        "a scenario marker names a capability its scenario is not in",
+        "a requirement marker names a capability its requirement is not in",
+        GUARD,
+        "# requirement: change-review / A repeated scenario heading is an Important finding",
+        "# requirement: change-authoring / A repeated scenario heading is an Important finding",
+        TARGETS,
+    ),
+    (
+        # Mutates the INPUT: a test keeps a retired per-scenario marker, which
+        # the requirement check above does not read.
+        "a test keeps a retired per-scenario marker",
         PROBE_TEST,
-        "# scenario: orchestration / Resume on a change with no design.md",
-        "# scenario: change-authoring / Resume on a change with no design.md",
+        '    """Scenario: Required artifact not done."""',
+        "    # scenario: orchestration / Required artifact not done",
         TARGETS,
     ),
 ]
