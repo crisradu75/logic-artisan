@@ -3,8 +3,8 @@
 Each mutant edits one copy of the OpenSpec `rules:` block — the one cla-init
 seeds into consuming repos, or the one this repo's `openspec/config.yaml`
 carries — so the two drift, or an item loses the quotes YAML needs; or breaks
-the seed script's report on an existing config; or puts a third copy of the
-spec rules in a skill.
+the seed script's report on an existing config, including which lines it would
+remove; or puts a third copy of the spec rules in a skill.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_cla_init_rules_match_config.py
 """
@@ -51,11 +51,12 @@ MUTANTS = [
         [f"{GUARD}::test_cla_init_seeds_the_block_this_repo_carries"],
     ),
     (
-        "cla-init stops seeding the unique-heading rule, so a consumer's specs "
-        "can name two scenarios at once",
+        "cla-init stops seeding the remove-and-add rule, so a consumer keeps "
+        "OpenSpec's keep-it-whole instruction for an over-limit requirement",
         SKILL,
-        '    - "Keep every scenario heading unique within its spec, so `<spec> / <heading>` '
-        'names exactly one scenario."',
+        "    - \"A MODIFIED block keeps every live scenario. To cut a live requirement's scenarios or "
+        "bring it within these limits, list it under REMOVED and add the rewrite under ADDED with a new "
+        "heading. This overrides OpenSpec's instruction to keep an existing requirement whole.\"\n",
         "",
         [f"{GUARD}::test_cla_init_seeds_the_block_this_repo_carries"],
     ),
@@ -92,8 +93,38 @@ MUTANTS = [
     (
         "the report stops naming the artifact a missing rule belongs under",
         SKILL,
-        "|| printf '%s %s\\n' \"$KEY\" \"${line#    }\"",
-        "|| printf '%s\\n' \"${line#    }\"",
+        "printf '%s %s %s\\n' \"$2\" \"$KEY\" \"${line#    }\"",
+        "printf '%s %s\\n' \"$2\" \"${line#    }\"",
+        [f"{GUARD}::test_an_outdated_rule_is_listed_and_the_file_left_alone"],
+    ),
+    (
+        "the update stops listing earlier wordings to remove",
+        SKILL,
+        'DIFF="$(rule_lines "$RULES" + 0; rule_lines "$RETIRED" - 1)"',
+        'DIFF="$(rule_lines "$RULES" + 0)"',
+        [f"{GUARD}::test_an_earlier_wording_alone_is_listed_for_removal",
+         f"{GUARD}::test_an_outdated_rule_is_listed_and_the_file_left_alone"],
+    ),
+    (
+        "the update lists the earlier wordings the file does not carry",
+        SKILL,
+        'rule_lines "$RETIRED" - 1)"',
+        'rule_lines "$RETIRED" - 0)"',
+        [f"{GUARD}::test_a_config_with_every_rule_is_reported_current"],
+    ),
+    (
+        "the update marks current shipped rules for removal",
+        SKILL,
+        'rule_lines "$RETIRED" - 1)"',
+        'rule_lines "$RULES" - 1)"',
+        [f"{GUARD}::test_a_config_with_every_rule_is_reported_current"],
+    ),
+    (
+        # Mutates the INPUT: the retired list claims a line only the repo wrote.
+        "a repo's own rule is taken for an earlier wording and listed for removal",
+        SKILL,
+        "  tasks:\n    - \"Give each ADDED or MODIFIED scenario",
+        "  tasks:\n    - \"Give each scenario a test.\"\n    - \"Give each ADDED or MODIFIED scenario",
         [f"{GUARD}::test_an_outdated_rule_is_listed_and_the_file_left_alone"],
     ),
     (
@@ -116,6 +147,20 @@ MUTANTS = [
         CHECKLIST,
         "Apply `openspec/config.yaml` `rules.specs` to every requirement",
         "Apply `openspec/config.yaml` `rules.specs` (500 characters or fewer) to every requirement",
+        [f"{GUARD}::test_no_skill_carries_a_third_copy_of_the_spec_rules"],
+    ),
+    (
+        "a skill restates the per-spec cap",
+        CHECKLIST,
+        "Apply `openspec/config.yaml` `rules.specs` to every requirement",
+        "Apply `openspec/config.yaml` `rules.specs` (up to 8 requirements per spec) to every requirement",
+        [f"{GUARD}::test_no_skill_carries_a_third_copy_of_the_spec_rules"],
+    ),
+    (
+        "a skill restates the scenario cap in other words",
+        CHECKLIST,
+        "Apply `openspec/config.yaml` `rules.specs` to every requirement",
+        "Apply `openspec/config.yaml` `rules.specs` (no more than 3 scenarios) to every requirement",
         [f"{GUARD}::test_no_skill_carries_a_third_copy_of_the_spec_rules"],
     ),
     (

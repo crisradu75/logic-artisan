@@ -142,7 +142,7 @@ Order: Precheck → Propose → Review → Implement → Test → Ship → Revis
 
 **Post-check:** `openspec validate <name> --strict`. Exit 0 → status `ok`. Non-zero → status `warn`, capture stderr for the Handoff Issues section.
 
-**Apply `openspec/config.yaml` `rules:` in every phase that reads specs or writes a change's artifacts.** They set how live specs are read, what a spec may state, and how each requirement is proven. A MODIFIED block still carries its full live requirement.
+**Apply `openspec/config.yaml` `rules:` in every phase that reads specs or writes a change's artifacts.** A MODIFIED block still carries its full live requirement.
 
 ### Review
 
@@ -165,7 +165,7 @@ For each round:
 3. If `READY` → status `ok`, exit loop.
 4. If `FIX FIRST` or `RETHINK`:
    - **Before the round's first fix, read `references/review-sweeps.md` "Applying a round's fixes" and capture the `design.md` rejected-alternatives snapshot** — the round's fixes routinely edit `design.md` itself.
-   - Apply each Critical and Important finding by direct Edit/Write to `openspec/changes/<name>/` — to design.md or tasks.md, and to spec text only when the finding is about an outcome or interface — then re-check that each fix landed (grep or re-read the named clause — not a re-dispatch).
+   - Apply each Critical and Important finding by direct Edit/Write to `openspec/changes/<name>/`, then re-check that each fix landed (grep or re-read the named clause — not a re-dispatch).
    - **An applied remedy that reintroduces a rejected alternative is a Critical on the fix itself** — withdraw or re-specify it. No snapshot captured → the check did not run: Review `warn`, recorded under *Issues encountered*. No `design.md` → out of scope.
    - Run `openspec validate <name> --strict` as the final correctness check after all fixes for the round. Exit 0 → fixes are at least structurally sound.
    - Decrement remaining round budget. If exhausted, status `warn`, exit loop with residue captured for the Handoff Issues section. If verdict was RETHINK and Critical-count > 0 after re-validation, mark `warn` even if budget remains — the next round is the user's call.

@@ -85,13 +85,13 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 > **Review criteria:** {Dimension 3 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
 >
-> **Start by reading:** sample 3 specs under `openspec/specs/` spanning products — <inject: this repo's own recommended sample-spec picks (one per major product/component, plus the architecture-level spec), from `cla.io/overlays/project-review.md` ("Per-dimension agent-dispatch injection facts" — Agent 3)>. List `openspec/changes/`.
+> **Start by reading:** sample 3 specs under `openspec/specs/` spanning products — <inject: this repo's own recommended sample-spec picks (one per major product/component), from `cla.io/overlays/project-review.md` ("Per-dimension agent-dispatch injection facts" — Agent 3)>. List `openspec/changes/`.
 >
 > Evaluate:
-> 1. Spec quality — MUST/SHOULD/MAY/SHALL with testable WHEN/THEN criteria?
+> 1. Spec quality — do specs state only outcomes and interfaces, in plain words, within `openspec/config.yaml` `rules.specs` where present, with testable WHEN/THEN scenarios? Implementation detail, code names or tool internals in a spec count against it.
 > 2. Coverage — do the core capabilities of every product/component have specs? Gaps?
 > 3. Traceability — pick 2 specs (spanning different products/components) and verify the implementation exists in the right package/app.
-> 4. Spec currency — do sampled specs match current code (formulas, dataset/domain-vocabulary counts, workspace paths)? **Specifically check whether the architecture spec or older specs still describe an earlier, since-restructured layout** — a real staleness risk after any repo restructure.
+> 4. Spec currency — do sampled specs match current code (formulas, dataset/domain-vocabulary counts)? Flag a spec still describing behaviour a past restructure changed.
 > 5. Change pipeline — stale active changes under `openspec/changes/`? Is `changes/archive/` clean?
 
 ### Agent 4: Architecture & Design

@@ -57,15 +57,6 @@ A change review SHALL report as Important a scenario the change adds or rewrites
 - **WHEN** a delta adds a scenario and tasks.md has neither a test task for it nor a `manual: <heading>: <reason>` line
 - **THEN** the review reports an Important finding naming the scenario
 
-### Requirement: A repeated scenario heading is an Important finding
-
-A change review SHALL report as Important a scenario heading the change adds that repeats another scenario heading in the same spec.
-
-#### Scenario: A repeated scenario heading
-
-- **WHEN** a delta adds a scenario whose heading already names another scenario in the same spec
-- **THEN** the review reports an Important finding naming the heading
-
 ### Requirement: A test task naming no marker is a Suggestion
 
 A change review SHALL report as a Suggestion, which does not block the verdict, a test task that does not name the `scenario: <spec> / <heading>` comment its test will carry.

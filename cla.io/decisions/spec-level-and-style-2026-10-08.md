@@ -92,6 +92,13 @@ then average 57 words, against 391 before (`deltas.py logic-artisan 2026-10-07`)
   - At most 3 scenarios per requirement and 8 requirements per capability.
   - The limits apply to edited (MODIFIED) requirements too: the exemption in review-change and
     the three non-`--strict` validation carve-outs go.
+  - Implemented as (Phase B1 review), narrowing the bullet above: `--strict` covers what a
+    change touches — `validate <change> --strict` before archive, and each spec lite-pr edits.
+    OpenSpec skips the length check on MODIFIED blocks; the REMOVED + ADDED rule in `rules.specs`
+    and review-change's Spec level check cover them. The three whole-tree `validate --specs`
+    sites stay non-strict, because consumers' over-limit legacy requirements are rewritten only
+    when a change touches them. This repo's live specs must pass `validate --specs --strict`
+    after S7.
 - **S3 — Prove requirements, not scenarios.** Each outcome or interface requirement needs at
   least one test, or a `manual:` line with a reason. Scenarios are examples, not test
   contracts. The `config.yaml` tasks rule, `cla-init`'s copy, review-change and

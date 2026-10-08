@@ -28,7 +28,7 @@ Skip when the description is already concrete and unambiguous (a clear single ch
 
 Produce a plan directly in the conversation as plain text — do NOT call `EnterPlanMode`/`ExitPlanMode`. `ExitPlanMode` is itself a user-approval gate, and lite-pr is continuous by design (see Autonomy below): post the plan for visibility, then proceed — don't hold it open for approval. The plan MUST explicitly list, alongside the code files to change:
 
-- which `openspec/specs/<capability>/spec.md` file(s) need updating (or note "new capability — no existing spec" / "no outcome or interface change — no spec update needed"). A spec changes only when an outcome or interface it states changes; internal structure is not spec material.
+- which `openspec/specs/<capability>/spec.md` file(s) need updating (or note "new capability — no existing spec" / "no outcome or interface change — no spec update needed").
 - if the change touches this repo's own core calculation-engine formulas, whether every doc/spec this repo names as needing to stay in lockstep with those formulas needs updating too — see `cla.io/project-facts.md` ("Allocation-formula lockstep doc set") for the exact file set (run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/lite-pr.md` if absent); a formula/knob change shipped without all of them is a silent spec violation, not just stale docs.
 - which test file(s) need adding/updating, and under which workspace package/app they live — see `cla.io/overlays/lite-pr.md` for this repo's own worked examples.
 
@@ -45,13 +45,14 @@ Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (th
 1. Make the code change.
 2. Update the spec.md section(s) the plan named, only to change an outcome or interface they state, applying `openspec/config.yaml` `rules.specs` — edit the existing `### Requirement:` / `#### Scenario:` blocks in place, or for a genuinely new capability start the file in that structure. Prefer this repo's canonical terms from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term). Never create a delta file, never touch `openspec/changes/`.
 
-   **A live spec is a parsed document, not a prose file — validate it before the commit.** This step is the plugin's one write site with no delta and no archive behind it, so nothing downstream re-parses what you just wrote. An ordinary prose edit can leave the file reading correctly to a human while its structure is broken: a `## Requirements` heading duplicated by a replacement that ended with one, for instance, *closes* the section, and every requirement below it becomes invisible to `validate`, `list` and `archive`. In a repo using OpenSpec, run:
+   **A live spec is a parsed document, not a prose file — validate it before the commit.** This is the plugin's one write site with no delta or archive behind it, so nothing downstream re-parses it, and a prose edit can break structure while reading fine: a duplicated `## Requirements` heading *closes* the section, hiding every requirement below it from `validate`, `list` and `archive`. In a repo using OpenSpec, run:
 
    ```
    openspec validate --specs
+   openspec validate <capability> --type spec --strict   # each spec you edited
    ```
 
-   Not `--strict`: some live specs carry long-requirement warnings, which are style, not structure.
+   The first checks structure, not the limits in `rules.specs`: older requirements over them are rewritten when a change touches them. In the second, a `very long` warning on a requirement you edited (`requirements[<n>]`, the n-th `### Requirement:` from 0) is a fix before committing; on one you did not touch, it is that older text.
 
    `✗ spec/<cap>` in the output → fix it before committing. Non-zero with **no** `✗` line (`command not found`, `unknown option`) is a tooling fault, not a spec fault — say so rather than attributing it to this edit. `No items found to validate.` is **not** a pass: it means nothing was checked, which is also what a repo not using OpenSpec sees — there, say so once and skip the step rather than recording a vacuous success.
 3. Update the `CLAUDE.md` section(s) the plan named (most often "Allocation math" or "Conventions to preserve").

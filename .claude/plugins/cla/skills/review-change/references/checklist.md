@@ -39,9 +39,9 @@ Parallel batch 2 — After reading artifacts, run ALL verification checks simult
 
 ### High-yield checks (always do — these catch the vast majority of real issues)
 
-0a. **Symbol reality check** — For every task or design.md passage that names a TypeScript function, type, interface, class, exported constant, or React component (e.g., "call `computeTotal` in `Checkout.ts`", "add a field to `LineItem`", "add a prop to `OrderSummary`"), grep the affected app/package's `src/` to confirm the symbol exists at the claimed path with the claimed signature. Wrong symbol names are the #1 task-authoring error. A code name in a spec is not verified here: it is a Spec level finding below, unless it is the interface.
+0a. **Symbol reality check** — For every task or design.md passage that names a TypeScript function, type, interface, class, exported constant, or React component (e.g., "call `computeTotal` in `Checkout.ts`", "add a field to `LineItem`", "add a prop to `OrderSummary`"), grep the affected app/package's `src/` to confirm the symbol exists at the claimed path with the claimed signature. Wrong symbol names are the #1 task-authoring error.
 
-0b. **Reference / config-file reality check** — For every task/spec that names a config or data file (an i18n JSON, a dataset JSON) or asserts its contents (a translation key path like `dashboard.example.label`, a record name, a category key), read the file and confirm. Past failure mode: a task references a `t('some.key')` that doesn't exist in the JSON, or an enum key that the engine's `order` array doesn't include.
+0b. **Reference / config-file reality check** — For every task/design.md that names a config or data file (an i18n JSON, a dataset JSON) or asserts its contents (a translation key path like `dashboard.example.label`, a record name, a category key), read the file and confirm. Past failure mode: a task references a `t('some.key')` that doesn't exist in the JSON, or an enum key that the engine's `order` array doesn't include.
 
 0c. **Component / provider wiring check** — For a change that wires a UI component to shared state: for every task that says "wire component X to state Y" or "pass Z down from the app root", read the affected app's root/composition component (see the overlay's affected-file map and this repo's prop/handler names) and confirm the prop/handler is actually threaded, and that a new control re-running a computation calls back through the update handler rather than mutating local state.
 
@@ -66,7 +66,6 @@ These are unlettered on purpose: they read the artifacts, not the code. Each one
 - **Spec level.** Apply `openspec/config.yaml` `rules.specs` to every requirement the change adds or modifies, MODIFIED ones included. A code name, file path or skill-internal rule in a spec is a finding unless it is the interface, and so is anything else those rules exclude. The remedy moves the detail to design.md, tasks or code, or cuts it.
 - **Invented requirement.** A requirement that describes no observable behaviour change, such as a refactor, tooling or docs change written as a SHALL. Remedy: drop it and set `skip_specs: true` in `.openspec.yaml`.
 - **Requirement proof.** Each requirement the change adds or modifies needs a tasks.md test task that names it, or a tasks.md line `manual: <heading>: <reason>`. A requirement with neither is the finding. Scenarios are examples and need no test of their own. A test task that does not name the `requirement: <spec> / <heading>` comment its test will carry is a **Suggestion**, not a blocker.
-- **Repeated scenario heading.** A scenario heading the change adds that already names another scenario in the same spec, live or in the delta. `<spec> / <heading>` must name one scenario. Remedy: rename the new heading.
 
 ### Applies when the change touches allocation math, mock data, or i18n
 

@@ -28,7 +28,7 @@ git add openspec/changes/<change-name>/ openspec/changes/archive/<YYYY-MM-DD>-<c
 git diff --name-only --cached
 ```
 
-**Why `--specs`.** Archive rewrites the live specs, and validating the change does not check them. Not `--strict`: some live specs carry long-requirement warnings, which are style, not structure.
+**Why `--specs`.** Archive rewrites the live specs, and validating the change does not check them. Not `--strict`: the preflight validated this change with `--strict`, and a live requirement written before the limits in `rules.specs` is rewritten when a change touches it.
 
 **Read the output, not only the exit code:**
 

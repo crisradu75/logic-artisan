@@ -16,6 +16,7 @@ BRIEF = SKILLS / "multi-spec" / "references" / "authoring-brief.md"
 CHECKLIST = SKILLS / "review-change" / "references" / "checklist.md"
 DISPATCH = SKILLS / "review-change" / "references" / "dispatch.md"
 TEST_QUALITY = SKILLS / "_shared" / "references" / "test-quality.md"
+CLA_INIT = SKILLS / "cla-init" / "SKILL.md"
 CONFIG = REPO / "openspec" / "config.yaml"
 GUARD = DEV / "tests" / "consistency" / "test_scenario_proof_format.py"
 REVIEW_SPEC = REPO / "openspec" / "specs" / "change-review" / "spec.md"
@@ -53,13 +54,6 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the rules drop the unique-heading rule",
-        CONFIG,
-        "Keep every scenario heading unique within its spec",
-        "Prefer descriptive scenario headings within its spec",
-        TARGETS,
-    ),
-    (
         "the checklist goes back to proving scenarios",
         CHECKLIST,
         "A requirement with neither is the finding.",
@@ -78,13 +72,6 @@ MUTANTS = [
         DISPATCH,
         "A requirement with neither is **Important**.",
         "A scenario with neither is **Important**.",
-        TARGETS,
-    ),
-    (
-        "the checklist drops the repeated-heading finding",
-        CHECKLIST,
-        "- **Repeated scenario heading.**",
-        "- **Scenario heading style.**",
         TARGETS,
     ),
     (
@@ -116,6 +103,14 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        # The retired-form scan skips cla-init's RETIRED list and nothing else.
+        "cla-init asks for the old manual form outside its retired list",
+        CLA_INIT,
+        "Each item that contains `: ` stays double-quoted",
+        "Note a hand-checked rule as `manual: <reason>`. Each item that contains `: ` stays double-quoted",
+        TARGETS,
+    ),
+    (
         "the live-spec scan stops matching any spec",
         GUARD,
         'return sorted(_LIVE_SPECS.glob("*/spec.md"))',
@@ -142,8 +137,8 @@ MUTANTS = [
         # residue a spec move leaves behind.
         "a requirement marker names a capability its requirement is not in",
         GUARD,
-        "# requirement: change-review / A repeated scenario heading is an Important finding",
-        "# requirement: change-authoring / A repeated scenario heading is an Important finding",
+        "# requirement: change-review / A test task naming no marker is a Suggestion",
+        "# requirement: change-authoring / A test task naming no marker is a Suggestion",
         TARGETS,
     ),
     (

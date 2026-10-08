@@ -12,8 +12,9 @@ item containing `: ` is quoted, that no skill carries a third copy of the spec
 rules, and that the seed condition treats an existing `config.yml` as a config.
 It also runs the seed item, a bash block the model executes, against scratch
 repos: it seeds a missing config, and on an existing one it lists the shipped
-rules the file lacks and leaves the file byte-identical. The update the user
-may then agree to is the model's own edit and is not run here.
+rules the file lacks (`+`) and the earlier wordings it still carries (`-`),
+never the repo's own lines, and leaves the file byte-identical. The update the
+user may then agree to is the model's own edit and is not run here.
 """
 
 from __future__ import annotations
@@ -73,6 +74,11 @@ def test_an_item_with_a_colon_is_quoted():
     assert unquoted == []
 
 
+# Each limit as a restatement would spell it: "500 characters", "at most 3
+# scenarios", "up to 8 requirements per spec".
+_LIMITS = ("500 char", "≤500", "3 scenarios", "8 requirements")
+
+
 def test_no_skill_carries_a_third_copy_of_the_spec_rules():
     # `openspec/config.yaml` is the single source; skills point at it. A copy
     # in a skill drifts from it, and both read fine on their own.
@@ -80,7 +86,7 @@ def test_no_skill_carries_a_third_copy_of_the_spec_rules():
     copies = [
         str(p.relative_to(_REPO))
         for p in plugin.rglob("*.md")
-        if p != _SKILL and any(s in p.read_text(encoding="utf-8") for s in ("500 characters", "≤500", "at most 3 scenarios"))
+        if p != _SKILL and any(s in p.read_text(encoding="utf-8") for s in _LIMITS)
     ]
     assert len(list(plugin.rglob("*.md"))) > 50, "the scan found too few files to mean anything"
     assert copies == [], f"skills restating `rules.specs`: {copies}"
@@ -111,6 +117,16 @@ def _rule_items() -> list[str]:
     return [line for line in _skill_block().splitlines() if line.startswith("    - ")]
 
 
+def _retired(fragment: str) -> str:
+    text = _SKILL.read_text(encoding="utf-8")
+    match = re.search(r"RETIRED=\"\$\(cat <<'EOF'\n(.*?)\nEOF\n", text, re.DOTALL)
+    assert match, "cla-init/SKILL.md: no RETIRED heredoc found"
+    return next(line.strip() for line in match.group(1).splitlines() if fragment in line)
+
+
+_HEADER = "openspec/{}: exists (skipped), missing or outdated rules (+ add, - remove):"
+
+
 _needs_bash = pytest.mark.skipif(_BASH is None, reason="bash is not installed")
 
 
@@ -139,22 +155,36 @@ def test_a_config_with_every_rule_is_reported_current(tmp_path: Path):
 def test_an_outdated_rule_is_listed_and_the_file_left_alone(tmp_path: Path):
     items = _rule_items()
     tasks_rule = next(i for i in items if "requirement: <spec> / <heading>" in i)
-    # An older wording of one rule, the repo's own extra rule, CRLF line
-    # endings and a different indent: only the outdated rule is listed.
+    old_tasks_rule = _retired("`scenario: <spec> / <heading>`")
+    # A shipped earlier wording in place of the tasks rule, the repo's own rule
+    # (one reading like a shipped rule), CRLF line endings and a different
+    # indent: the new rule is listed to add, the earlier wording to remove,
+    # and the repo's own lines not at all.
     lines = ["schema: spec-driven", "rules:"]
     for item in items:
-        lines.append("  " + item.strip() if item != tasks_rule else '  - "Give each scenario a test."')
-    lines.append("  - A rule of this repo's own.")
+        lines.append("  " + (item if item != tasks_rule else old_tasks_rule).strip())
+    lines += ["  - A rule of this repo's own.", '  - "Give each scenario a test."']
     original = ("\r\n".join(lines) + "\r\n").encode("utf-8")
     cfg = tmp_path / "openspec" / "config.yaml"
     cfg.parent.mkdir()
     cfg.write_bytes(original)
     out = _run_seed(tmp_path)
     assert out.splitlines() == [
-        "openspec/config.yaml: exists (skipped), missing or outdated rules:",
-        "tasks: " + tasks_rule.strip(),
+        _HEADER.format("config.yaml"),
+        "+ tasks: " + tasks_rule.strip(),
+        "- tasks: " + old_tasks_rule,
     ]
     assert cfg.read_bytes() == original
+
+
+# requirement: plugin-architecture / cla-init seeds OpenSpec authoring rules without clobbering
+@_needs_bash
+def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
+    old_rule = _retired("Keep every scenario heading unique")
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes() + f"    {old_rule}\n".encode("utf-8"))
+    assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- specs: " + old_rule]
 
 
 # requirement: plugin-architecture / cla-init seeds OpenSpec authoring rules without clobbering
@@ -164,7 +194,8 @@ def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     yml.parent.mkdir()
     yml.write_text("schema: spec-driven\n", encoding="utf-8")
     out = _run_seed(tmp_path).splitlines()
-    assert out[0] == "openspec/config.yml: exists (skipped), missing or outdated rules:"
+    assert out[0] == _HEADER.format("config.yml")
     assert len(out) == 1 + len(_rule_items())
+    assert all(line.startswith("+ ") for line in out[1:])
     assert not (tmp_path / "openspec" / "config.yaml").exists()
     assert yml.read_text(encoding="utf-8") == "schema: spec-driven\n"

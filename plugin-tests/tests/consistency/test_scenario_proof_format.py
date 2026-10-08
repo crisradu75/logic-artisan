@@ -50,21 +50,10 @@ def test_the_brief_applies_the_rules_instead_of_copying_them():
     assert not copies, f"the authoring brief restates the rules: {copies}"
 
 
-# requirement: change-authoring / Scenario headings are unique within one spec
-def test_headings_are_unique_within_a_spec():
-    assert "Keep every scenario heading unique within its spec, so `<spec> / <heading>` names exactly one scenario." in _read(_CONFIG)
-
-
 # requirement: change-review / A scenario with no proof is an Important finding
 def test_the_review_flags_a_requirement_with_no_proof():
     assert f"or a tasks.md line {_MANUAL}. A requirement with neither is the finding." in _read(_CHECKLIST)
     assert "A requirement with neither is **Important**." in _read(_DISPATCH)
-
-
-# requirement: change-review / A repeated scenario heading is an Important finding
-def test_the_review_flags_a_repeated_heading():
-    assert "- **Repeated scenario heading.**" in _read(_CHECKLIST)
-    assert "A heading the delta adds that repeats another in the same spec is **Important**." in _read(_DISPATCH)
 
 
 # requirement: change-review / A test task naming no marker is a Suggestion
@@ -80,6 +69,12 @@ def _live_specs() -> list[Path]:
     return sorted(_LIVE_SPECS.glob("*/spec.md"))
 
 
+def _asks(path: Path) -> str:
+    # cla-init quotes the retired rules verbatim in its RETIRED list, so it can
+    # find and remove them from a consumer's config; that list asks for nothing.
+    return re.sub(r"\nRETIRED=\"\$\(cat <<'EOF'\n.*?\nEOF\n", "\n", _read(path), flags=re.S)
+
+
 def test_the_retired_formats_are_gone():
     specs = _live_specs()
     # Its own floor: the shipped .md files alone clear the total, so a glob that
@@ -87,11 +82,11 @@ def test_the_retired_formats_are_gone():
     assert len(specs) >= 6, f"found {len(specs)} live specs under {_LIVE_SPECS}"
     shipped = [_CONFIG, *_PLUGIN.rglob("*.md")]
     assert len(shipped) > 50, "the scan found too few files to mean anything"
-    stale = [str(p.relative_to(_REPO)) for p in [*shipped, *specs] if "`manual: <reason>`" in _read(p)]
+    stale = [str(p.relative_to(_REPO)) for p in [*shipped, *specs] if "`manual: <reason>`" in _asks(p)]
     assert not stale, f"still using `manual: <reason>`: {stale}"
     # The live specs still describe the per-scenario marker until they are
     # rewritten, so this half reads the rules and the plugin only.
-    stale = [str(p.relative_to(_REPO)) for p in shipped if "`scenario: <spec> / <heading>`" in _read(p)]
+    stale = [str(p.relative_to(_REPO)) for p in shipped if "`scenario: <spec> / <heading>`" in _asks(p)]
     assert not stale, f"still asking for a per-scenario marker: {stale}"
 
 

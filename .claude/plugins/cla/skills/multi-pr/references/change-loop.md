@@ -82,7 +82,7 @@ For each change in the confirmed order:
    openspec validate --specs
    ```
 
-   Not `--strict`: some live specs carry long-requirement warnings, which are style, not structure.
+   Not `--strict`: spec-to-pr validated the change with `--strict` before archiving, and a live requirement written before the limits in `rules.specs` is rewritten when a change touches it.
 
    Placement is the whole point. `/cla:spec-to-pr`'s own Archive already validated at its commit, so this exists to cover the two windows that open *after* it returns: step 4's deferred-finding fix rounds, and any hand-resolved merge conflict in a materialized spec — which is a documented occurrence in this plugin, and is exactly the hand-edit this check is about.
 

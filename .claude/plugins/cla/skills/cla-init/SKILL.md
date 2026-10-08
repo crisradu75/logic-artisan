@@ -1,6 +1,6 @@
 ---
 name: cla-init
-description: "Idempotent, never-clobber scaffolder for a repo's cla.io/ tree, empty ledgers, overlay stubs and OpenSpec authoring rules. Creates only what is missing. Run with /cla:cla-init."
+description: "Idempotent, never-clobber scaffolder for a repo's cla.io/ tree, empty ledgers, overlay stubs and OpenSpec authoring rules. Creates only what is missing; changes an existing OpenSpec config's rules only on the user's yes to the shown diff. Run with /cla:cla-init."
 argument-hint: "(no args — scaffolds the current repo)"
 allowed-tools: Bash, Read, Edit, Grep, Glob
 # Slash-command only (once per repo, at onboarding): keeps this description out of the
@@ -191,13 +191,14 @@ own stock limits reach every CLA authoring run.
 - `openspec/` exists and neither `openspec/config.yaml` nor `openspec/config.yml` does → seed
   `config.yaml` and report `created`.
 - Either file exists → leave it **byte-identical** and compare: the script below lists, under its
-  artifact, each shipped rule the file does not carry word for word, as missing or outdated, or
-  reports the rules current. OpenSpec reads `config.yaml` first, so a new `config.yaml` would
-  silently hide an existing `config.yml`. `openspec init` writes `config.yaml` whenever neither
-  exists, so this is the common path.
-- Rules listed → show the list and offer to update them. Only on the user's yes, add each listed
-  rule under its artifact and delete the older wording it replaces, leaving the repo's own rules as
-  they are. This is the one edit this skill makes to an existing file; never make it silently.
+  artifact, each shipped rule the file does not carry word for word (`+`) and each earlier wording
+  of a shipped rule it still carries (`-`), or reports the rules current. OpenSpec reads
+  `config.yaml` first, so a new `config.yaml` would silently hide an existing `config.yml`.
+  `openspec init` writes `config.yaml` whenever neither exists, so this is the common path.
+- Lines listed → show the user exactly those `+` and `-` lines and ask for a yes on that diff. Only
+  on yes, add each `+` line under its artifact and delete each `-` line, and change nothing else: a
+  line the script did not mark `-` is the repo's own and stays, however close it reads to a shipped
+  rule. This is the one edit this skill makes to an existing file; never make it silently.
 - `openspec/` absent → print the block and create nothing. `openspec init` owns that directory.
 
 **OpenSpec version.** CLA relies on `openspec validate <change> --strict` failing a MODIFIED block that
@@ -216,14 +217,28 @@ rules:
     - "Keep it to one page: for each decision, the choice, one line of why, and one line per rejected alternative. No history or transcripts."
     - Never restate the proposal or the specs.
   specs:
-    - "Specify only outcomes a user or owner would recognise, and interfaces others depend on: a CLI flag, a file or ledger format a consumer reads, an API contract. Leave implementation choices to the model; put a detail a reviewer must agree on, such as a security parameter or a data model, in design.md. How a skill or agent works inside is never spec material."
-    - "Write each requirement, ADDED or MODIFIED, as one sentence of 500 characters or fewer in plain words, with at most 3 scenarios; a spec holds at most 8 requirements. No history, reasons, measurements, coined terms, file paths or code names, unless the name is the interface. To shrink a live requirement, remove it and add it back under a new heading."
+    - "Specify only outcomes a user or owner would recognise, and interfaces others depend on: a CLI flag, a file or ledger format a consumer reads, an API contract. Leave implementation choices to the implementer; put a detail a reviewer must agree on, such as a security parameter or a data model, in design.md. Internal steps are not spec material."
+    - "Write each requirement, ADDED or MODIFIED, as one sentence of 500 characters or fewer in plain words, with at most 3 scenarios. No history, reasons, measurements, coined terms, file paths or code names, unless the name is the interface. A spec holds at most 8 requirements; when one is full, add a new capability rather than a ninth."
+    - "A MODIFIED block keeps every live scenario. To cut a live requirement's scenarios or bring it within these limits, list it under REMOVED and add the rewrite under ADDED with a new heading. This overrides OpenSpec's instruction to keep an existing requirement whole."
     - "A change with no externally visible behaviour change (a refactor, tooling, docs, or a rule about how a skill file is worded) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
     - Read existing specs cheaply first (`openspec list --specs`, then `openspec show <id> --type spec --json --no-scenarios`), and read in full only the specs this change touches.
-    - "Keep every scenario heading unique within its spec, so `<spec> / <heading>` names exactly one scenario."
   tasks:
     - "Give each requirement this change adds or modifies a test task whose test carries a `requirement: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. Scenarios are examples, not one test each."
     - "Cite headings, not line numbers. A `measured:` note gives the value; the command that produced it goes in the commit message."
+EOF
+)"
+# Earlier wordings of shipped rules: the only lines the update may remove.
+RETIRED="$(cat <<'EOF'
+rules:
+  specs:
+    - State one behaviour per ADDED requirement in 500 characters or fewer, and put the detail in scenarios.
+    - "State behaviour only, in plain words: one behaviour per ADDED requirement in 500 characters or fewer, with the detail in scenarios. No history, reasons, measurements or coined terms."
+    - "A change with no externally visible behaviour change (a refactor, tooling, docs) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
+    - "Keep every scenario heading unique within its spec, so `<spec> / <heading>` names exactly one scenario."
+  tasks:
+    - "Give each ADDED or MODIFIED scenario a test task, or a `manual: <reason>` note."
+    - "Give each scenario this change adds, or whose text it changes, a test task or a `manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block needs neither."
+    - "Give each scenario this change adds, or whose text it changes, a test task whose test carries a `scenario: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. A pure heading rename, or a scenario carried forward unchanged in a MODIFIED block, needs neither."
 EOF
 )"
 if [ -d "$ROOT/openspec" ] && [ ! -e "$CFG" ] && [ ! -e "$ROOT/openspec/config.yml" ]; then
@@ -239,17 +254,22 @@ elif [ ! -d "$ROOT/openspec" ]; then
 else
   OLD="$CFG"; [ -e "$OLD" ] || OLD="$ROOT/openspec/config.yml"
   HAVE="$(tr -d '\r' < "$OLD" | sed 's/^[[:space:]]*//')"
-  MISSING="$(printf '%s\n' "$RULES" | while IFS= read -r line; do
-    case "$line" in
-      "  "[a-z]*:) KEY="${line#  }" ;;
-      "    - "*) printf '%s\n' "$HAVE" | grep -Fxq -- "${line#    }" || printf '%s %s\n' "$KEY" "${line#    }" ;;
-    esac
-  done)"
-  if [ -z "$MISSING" ]; then
+  # $1 block, $2 mark, $3 = 1 lists the block's lines the file has, 0 those it lacks.
+  rule_lines() {
+    printf '%s\n' "$1" | while IFS= read -r line; do
+      case "$line" in
+        "  "[a-z]*:) KEY="${line#  }" ;;
+        "    - "*) HAS=0; printf '%s\n' "$HAVE" | grep -Fxq -- "${line#    }" && HAS=1
+          [ "$HAS" = "$3" ] && printf '%s %s %s\n' "$2" "$KEY" "${line#    }" ;;
+      esac
+    done
+  }
+  DIFF="$(rule_lines "$RULES" + 0; rule_lines "$RETIRED" - 1)"
+  if [ -z "$DIFF" ]; then
     echo "openspec/${OLD##*/}: exists (skipped), rules current"
   else
-    echo "openspec/${OLD##*/}: exists (skipped), missing or outdated rules:"
-    printf '%s\n' "$MISSING"
+    echo "openspec/${OLD##*/}: exists (skipped), missing or outdated rules (+ add, - remove):"
+    printf '%s\n' "$DIFF"
   fi
 fi
 ```
@@ -261,8 +281,8 @@ that artifact's rules.
 
 At the end, print a per-target summary — each directory, ledger, seed, and stub as `created` or
 `exists (skipped)` — so a re-run is transparently a no-op on already-present pieces. For
-`openspec/config.yaml`, report `created`, `rules current`, the missing or outdated rules, or `not
-written` followed by the `rules:` block to paste. Add the OpenSpec version line when it is older than 1.14.1.
+`openspec/config.yaml`, report `created`, `rules current`, the `+`/`-` lines, or `not written`
+followed by the `rules:` block to paste. Add the OpenSpec version line when it is older than 1.14.1.
 
 ## Non-goals (pinned — never do these)
 

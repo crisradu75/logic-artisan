@@ -58,15 +58,6 @@ Each scenario a change adds, or whose text it changes, SHALL have a test task wh
 - **WHEN** a change renames a scenario heading and leaves the scenario's body unchanged
 - **THEN** the renamed scenario needs no new test task or `manual:` line
 
-### Requirement: Scenario headings are unique within one spec
-
-Scenario headings SHALL be unique within one spec, so `<spec> / <heading>` names one scenario. An authoring agent that adds a scenario with a heading already used in that spec SHALL rename the new heading.
-
-#### Scenario: Authoring a heading that is already taken
-
-- **WHEN** an authoring agent adds a scenario whose heading already names another scenario in that spec
-- **THEN** it renames the new heading so that `<spec> / <heading>` stays unique
-
 ### Requirement: A change with no behaviour change carries no spec delta
 
 A change with no externally visible behaviour change, such as a refactor, tooling, docs, or a rule about how a skill file is worded, SHALL set `skip_specs: true` in its `.openspec.yaml` and write no spec delta, rather than invent a requirement to pass validation.
