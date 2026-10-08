@@ -203,33 +203,29 @@ dependency-first, unattended:
 /cla:multi-pr change-a change-b        # or no args = auto-discover every open change
 ```
 
-**The one place CLA merges — when it can.** The single-change skills stop at an opened PR, but a
-chainer must get a dependency's code under its dependents before they can build on it. The default
-is a merge, through the `ask-destructive-git` guard: `ALLOW_PR_MERGE=1 gh pr merge <#> --squash
---delete-branch` — the prefix drops *only* the PR-merge confirmation, for that one command.
-Force-push and `reset --hard` still prompt. No PR is ever merged without you having chosen to run
-a chainer.
+**The one place CLA merges.** The single-change skills stop at an opened PR, but a chainer must
+get a dependency's code under its dependents before they can build on it. Both chainers merge the
+same way, from one shared reference (`skills/_shared/references/chain-merge.md`), through the
+`ask-destructive-git` guard: `ALLOW_PR_MERGE=1 gh pr merge <#> --squash --delete-branch
+--match-head-commit <head>` — the prefix drops *only* the PR-merge confirmation, for that one
+command. Force-push and `reset --hard` still prompt. Before each merge the chainer checks the PR
+again: the full test gate is green on the exact head being merged, the head has not moved since
+review, and GitHub reports no conflicts or failing checks. A re-run after an interruption never
+merges commits pushed after review — those PRs stay open for you. No PR is ever merged without you
+having chosen to run a chainer.
 
 `multi-lite` asks for its merge policy at the plan gate. **`merge-each-clean`** (recommended)
-merges every candidate whose review left no Critical/Important finding unresolved. Before each
-merge it checks the PR again: the full test gate is green on the exact head being merged, the head
-has not moved, and GitHub reports no conflicts or failing checks. A re-run after an interruption
-finishes what the run left undecided, but never merges commits pushed after review — those PRs
-stay open for you. A 9-candidate run then ends with
-open PRs only for the candidates that could not merge, each with its reason.
+merges every candidate whose review left no Critical/Important finding unresolved. A 9-candidate
+run then ends with open PRs only for the candidates that could not merge, each with its reason.
 **`merge-dependencies-only`** merges only what must land before a later candidate: one another
 candidate builds on, or one whose changed files move shared environment state (a migration, seed
 data, provisioning). It leaves the rest open for you. An autonomous invocation gets `merge-dependencies-only` unless it names
 the wider policy.
 
-Some host runtimes refuse `gh pr merge` outright, regardless of allowlist. For that case (or by
-choice, when you want the whole chain reviewable before anything lands) `multi-pr` has a
-**stacked** policy: no merges at all — each dependent branches off its parent's feature branch via
-`spec-to-pr`'s `--pr-base` flag, its PR opens against the parent, and the run ends by handing you
-the ordered, parents-first landing commands. Land a stack with **merge commits**
-(`gh pr merge <#> --merge --delete-branch`), never squash — squashing a stacked parent makes every
-child PR re-show the parent's diff and conflict; the details and the squash-required alternative
-live in `multi-pr`'s change-loop reference.
+`multi-pr` merges only a change a later change needs: one it depends on, or one that moved shared
+environment state. Every other PR stays open for you. Some host runtimes refuse `gh pr merge`
+outright, regardless of allowlist. Either chainer then stops merging for the rest of the run;
+`multi-pr` halts before the change that needed the merge.
 
 ## 7. Parallel and safe: worktrees
 

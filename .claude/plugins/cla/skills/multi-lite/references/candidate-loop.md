@@ -32,7 +32,7 @@ For each candidate in the confirmed order:
    - **Test-phase halt (hard failure — never opened a PR).** `/cla:lite-pr` stopped at its one deliberate halt (an unresolved Test failure). Mark this candidate `failed`, mark everything transitively downstream `blocked-by-upstream-failure`, record the failing check, and **continue with the next independent candidate**.
    - **PR opened.** A PR being open does **not** yet mean the candidate is clean — proceed to step 6.
 
-6. **Capture the real identifiers immediately (this is what makes resume/merge deterministic).** From `/cla:lite-pr`'s ship report, read the concrete **branch name** and **PR number** it just opened, then read the PR's head commit with `gh pr view <pr-number> --json headRefOid`. Write all three into this candidate's row in the run-notes ledger as `branch`, `pr_number`, and `head_sha`.
+6. **Capture the real identifiers immediately (this is what makes resume/merge deterministic).** From `/cla:lite-pr`'s ship report, read the concrete **branch name** and **PR number** it just opened, and record them with the PR's head in this candidate's row as `branch`, `pr_number`, and `head_sha`, per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/chain-merge.md` "Record the head".
 
    **In the same write, record the deferred findings.** `/cla:lite-pr` keeps them only in context, so a resumed step 7 has nothing else to read them from.
 
@@ -53,12 +53,7 @@ For each candidate in the confirmed order:
 
      **Show each fix works, to the same standard `/cla:lite-pr` holds its own fixes to** (its Review step 2b). Break what the fix touches by hand so the defect is back, run the affected test, and confirm it FAILS. Then restore the edit exactly by that step's unattended route. A fix whose break no test catches is not shown to work. **A test that does fail is not thereby correct: read the assertion that killed the mutant and confirm it states the behaviour the finding asked for.** A test written from a wrong mental model kills mutants as reliably as a right one. Full rule: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality-gates.md`, "How planting goes wrong". An assertion that defends the wrong behaviour counts as a fix not shown to work.
 
-     Then commit path-scoped (`fix: resolve deferred review findings`) after a `git_state.py` check, and push to the captured branch. **Verify the commit exists and the push landed**, comparing each value in-context (not piped through `grep`/`awk`). Do not stop to ask on a failure: this run is unattended, and a question here stalls every later candidate.
-     - `git rev-parse HEAD` must differ from the row's current `head_sha`. The same value means no commit was made (a hook rejected it, or nothing was staged).
-     - `git status --porcelain -- . ':(exclude)cla.io/retro'` must be empty. Anything listed is part of the fix that is not in the commit, which every later test would still see on disk.
-     - `git rev-parse HEAD` must equal `git ls-remote origin <captured-branch>`.
-
-     The first two failing → write `review: unresolved` with the reason `fix not committed`. The third failing → the reason is `push not verified`. Either way, take the unresolved branch below. All three pass → update the row's `head_sha` to that pushed commit.
+     Then commit path-scoped (`fix: resolve deferred review findings`) after a `git_state.py` check, and push to the captured branch. Run the three commit checks in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/chain-merge.md` "Record the head". Do not stop to ask on a failure: this run is unattended, and a question here stalls every later candidate. A failed check → write `review: unresolved` with its reason (`fix not committed` or `push not verified`), and take the unresolved branch below. All three pass → the row's `head_sha` is now that pushed commit.
      - **Resolved by that round** → every finding's fix passed the break-it check and the three commit checks above. Write `review: clean` and go to step 8. Step 8b runs the full Test gate on this head before any merge.
      - **A fix whose break no test caught** → write `review: unresolved` with the reason `enforcement fix unverified`, and take the unresolved branch below.
      - **Still unresolved after the round (or genuinely out of scope)** → write `review: unresolved`. Never treat it as silently clean, and **never merge a candidate carrying an unresolved Critical/Important finding.** The status carries the review's own reason, so Phase 4 tells the user the real problem: `unresolved <severity> finding` for a finding that survived, or the reason already written beside `review` (`fix not committed`, `push not verified`, `enforcement fix unverified`, `findings lost on resume`, `deferred findings not determinable`). If this candidate must merge before a later one (step 8's definition, including its changed-files check), set `failed-review — <reason>` and quarantine as defined at the top of step 8: its downstream subtree for a `depends_on` edge, every later candidate for a shared-state edge. If it's independent, leave its PR open and set `open — <reason>`. Surface the specific finding either way, and skip step 8.
@@ -80,56 +75,13 @@ For each candidate in the confirmed order:
 
    **Then, only for a yes: the ledger header records `merging stopped`** → the host already refused a merge this session, so do not attempt one. An independent candidate gets status `open — merge refused earlier in the run`. A candidate that must merge before a later one gets `failed-merge — merge refused earlier in the run`, quarantined as defined above. A candidate the policy said no to keeps its plain `open`: a refusal does not change what the user has to do about it.
 
-   **8b. Pre-merge checks (every merge, under either policy).** Run them in this order. The local gate runs before GitHub's merge state is read, because the gate takes minutes and remote checks are usually still running right after a push.
-   1. **The PR is open on the recorded head.** Run `gh pr view <captured-pr-number> --json state,headRefOid`. `state` must be `OPEN`. `headRefOid` must equal the row's `head_sha`; a different head means commits nobody tested or reviewed here, so do not merge, and the reason is `head moved`. This holds on a resume too: step 2 never sends a moved head here.
-   2. **The local checkout is exactly that head.** `git rev-parse HEAD` must equal `head_sha`. If it does not, run `git checkout <captured-branch>` then `git pull`, and compare again. Still different → do not merge; the reason is `local head mismatch`. Then `git status --porcelain -- . ':(exclude)cla.io/retro'` must be empty. Anything listed would be tested by the gate below without being part of the merge, so do not merge; the reason is `uncommitted changes`.
-   3. **The full Test gate is green on `head_sha`.** Every merge needs this. `/cla:lite-pr` ran its gate before its own review fixes were committed, and step 7's enforcement round re-ran only narrow tests. Run `/cla:lite-pr`'s full Test gate: smoke, then full, the commands its Test phase reads from `cla.io/project-facts.md`.
-      - Green → continue.
-      - Red → do not merge; the reason is `full gate red: <failing check>`. Do not re-run it hoping for green. A flaky gate is a finding for the user, not a retry.
-      - `cla.io/project-facts.md` names no test commands and the PR changes source-affecting paths (as `/cla:lite-pr`'s Test phase defines them) → do not merge; the reason is `full gate unavailable`. `/cla:lite-pr` treats this case as a warning. A merge cannot, because nothing would have tested the merged code. If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it".
-      - The PR changes no source-affecting paths → there is nothing to gate. Record `gate skipped: no source-affecting paths` beside the status and continue.
-   4. **Remote checks have finished.** Run `gh pr checks <captured-pr-number> --json name,bucket`. Read the result in context:
-      - JSON output → each check's `bucket` is `pass`, `fail`, `pending`, `skipping`, or `cancel`.
-        - Any `pending` → wait with `python3 -c "import time; time.sleep(60)"` and query again, for at most 15 queries (about 15 minutes). Still pending after that → the reason is `checks still pending`.
-        - Any `fail` or `cancel` → the reason is `checks not green`.
-        - Only `pass` and `skipping` → continue.
-      - The output says `no checks reported` → checks may not have registered yet for a head pushed moments ago. Wait once with `python3 -c "import time; time.sleep(60)"` and query again. Still none → the repo has no remote checks for this PR; continue.
-      - Any other output with a non-zero exit (an auth, network, or rate-limit error) → do not merge; the reason is `checks not readable`. `gh pr checks` exits 1 both for no checks and for a failure, so only the message tells them apart.
-   5. **`mergeStateStatus` allows the merge.** Run `gh pr view <captured-pr-number> --json mergeStateStatus`.
-      - `CLEAN`, `HAS_HOOKS`, or `BEHIND` → proceed. `BEHIND` means the base gained commits after this branch was cut, so the tree the merge produces was never tested as a whole. Squash applies onto the current base, and branch protection that requires an up-to-date branch reports `BLOCKED` instead. Under either policy, record `behind base: merged tree not tested` beside the status so Phase 4 reports it.
-      - `DIRTY` → the reason is `conflicts`. Never rebase to clear it, because a rebase changes the code that was tested and reviewed.
-      - `UNSTABLE` → the reason is `checks not green`.
-      - `BLOCKED` → the reason is `blocked by branch protection`.
-      - `DRAFT` → the reason is `draft`.
-      - `UNKNOWN` → GitHub has not computed it yet. Wait once with `python3 -c "import time; time.sleep(15)"`, then query again. Still `UNKNOWN` → the reason is `mergeability unknown`.
+   **8b. Pre-merge checks, merge and confirmation (every merge, under either policy).** Run them as `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/chain-merge.md` states, from "Pre-merge checks" through "If `gh pr merge` exits non-zero". The full gate there is `/cla:lite-pr`'s full Test gate: smoke, then full, the commands its Test phase reads from `cla.io/project-facts.md`. If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". The shared file's reasons become this candidate's status:
+   - `MERGED` confirmed → the row has `status: merged` and `merge_commit`; mark the task `completed`.
+   - Any reason, on a candidate that need not merge before a later one → set `open — <reason>` and move on.
+   - Any reason, on a candidate that must → set `failed-merge — <reason>` and quarantine as defined at the top of step 8. A `queued` PR is not merged now, so it counts here too.
+   - A host refusal → the `merging stopped` header line that file writes is what every later candidate's 8a reads. Do not switch to "dependencies only" instead: a host that refused one merge refuses a dependency's merge too.
 
-   A failed check on a candidate that need not merge before a later one → set its status to `open — <reason>` and move on. On a candidate that must → set `failed-merge — <reason>` and quarantine as defined at the top of step 8. The chain continues with whatever is not quarantined.
-
-   **8c. Merge, then confirm it landed.** Pass the checked head to the merge, so the merge refuses if the branch moved after 8b:
-   ```
-   ALLOW_PR_MERGE=1 gh pr merge <captured-pr-number> --squash --delete-branch --match-head-commit <head_sha>
-   ```
-   **The `ALLOW_PR_MERGE=1` prefix is required, and belongs on the merge
-   command only.** `ask-destructive-git.py` prompts on every `gh pr merge`,
-   because a hook cannot tell an authorized merge from one the agent assumed —
-   a real failure that shipped two unrequested merges. This chain is the
-   legitimate exception: the user confirmed the candidate plan and the merge
-   policy that authorizes this merge in Phase 1, and the run is unattended by
-   design, so a prompt here would hang. Use the narrow variable, NOT
-   `ALLOW_DESTRUCTIVE_GIT=1` — that would also disarm the force-push,
-   `reset --hard` and branch-force-delete checks. Do not export either;
-   prefixing this one command is what keeps the exception scoped.
-
-   **An exit code of 0 does not prove a merge.** On a branch that requires a merge queue, `gh pr merge` exits 0 after only adding the PR to the queue, or after turning on auto-merge while required checks are pending. Confirm it:
-   1. `gh pr view <captured-pr-number> --json state,mergeCommit,autoMergeRequest`. `state` must be `MERGED`. Otherwise:
-      - `autoMergeRequest` is set, or the PR is in a merge queue → GitHub will merge it later, after this run has moved on. Do not disable that; the user's repo chose it. The reason is `queued: merges later outside this run`. It is not merged now, so a candidate that must merge before a later one is still `failed-merge` and quarantined. Phase 4 says plainly that this PR will merge on its own.
-      - Anything else → a failed 8b check with the reason `merge not confirmed (state <state>)`.
-   2. `MERGED` is the fact. Write `status: merged` and `merge_commit: <mergeCommit.oid>` to the row now, and mark the task `completed`.
-   3. Bring the local base up to date so the next candidate branches off it. In the primary clone: `git checkout <base-branch>` then `git pull`. In a reactive-worktree pivot, which cannot check out `<base-branch>`: `git fetch origin <base-branch>`. A failure here is not a merge failure. Record `base not updated` beside the merged status, so Phase 4 reports it even after a resume, and continue. The next candidate's step 3 pulls again and halts the run if the base still cannot be updated.
-
-   **If `gh pr merge` exits non-zero, check the PR before reading the error.** Run `gh pr view <captured-pr-number> --json state,mergeCommit`. A `MERGED` state means the merge happened and only a later part failed. `--delete-branch` fails this way when the branch is checked out in a worktree. Take the confirmation steps above. Otherwise, take the first arm that matches:
-   - **The host runtime refused to run the command at all** → a tool-permission denial from the host, with no output from `gh` itself. This is the answer for the whole run. Do NOT hunt for a flag spelling that gets through; that is working around a safety gate, not configuring one (the same rule as `/cla:multi-pr`). Append `merging stopped: host refused merge of <id>` to the ledger header. Handle this candidate as a failed 8b check with the reason `merge refused`. Every later candidate then takes 8a's `merging stopped` branch. Do not switch to "dependencies only" instead: a host that refused one merge refuses a dependency's merge too.
-   - **Any other error from `gh`** → a failed 8b check with the reason `merge error: <first line of the error>`. That covers the `--match-head-commit` refusal (the branch moved after 8b), a conflict, a failing required check, branch protection, an auth or rate-limit error, and a disallowed merge method. It does **not** set `merging stopped`: an error `gh` returned is about this PR or this moment, not a refusal by the host.
+   The chain continues with whatever is not quarantined. Never rebase a `conflicts` PR: it is left open and flagged.
 
 Move to the next candidate — **in the same message as step 8's outcome.**
 

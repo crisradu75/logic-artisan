@@ -189,7 +189,7 @@ MUTANTS = [
         # tree into the state the floor exists for.
         "the parity floor is relaxed to nothing",
         GUARD,
-        "    assert len(flags) >= 5, (",
+        "    assert len(flags) >= 4, (",
         "    assert len(flags) >= 0, (",
         TARGETS,
     ),

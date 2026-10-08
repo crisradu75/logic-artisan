@@ -249,10 +249,10 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 100  .json 3  .md 70  .py 27  placeholder-refs 176 in 49 files"
+        "    #     scanned 101  .json 3  .md 71  .py 27  placeholder-refs 194 in 52 files"
         + _NL
         + "    #" + _NL
-        + "    # The real count is 100. Pinned near it, not",
+        + "    # The real count is 101. Pinned near it, not",
         "    #     scanned 99  .json 3  .md 67  .py 28  placeholder-refs 217 in 48 files"
         + _NL
         + "    #" + _NL
@@ -289,7 +289,7 @@ MUTANTS = [
 #
 # Where each one landed, re-derived rather than remembered:
 #
-#   * the scan floor is `>= 99` against a real 100, a margin of one, which is
+#   * the scan floor is `>= 100` against a real 101, a margin of one, which is
 #     what that file's own rule asks for. It has moved with every file the
 #     plugin gained or lost; `git log -p` on the guard has each step.
 #   * `>= 172` against a real 176 is the placeholder floor; its gap is the rule,

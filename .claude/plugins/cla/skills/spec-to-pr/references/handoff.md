@@ -57,7 +57,7 @@ Stage + commit as `docs: TODO.md` and push to the feature branch. Skip only when
 ## 4. Next-steps gating
 
 Gated on the phase tally **and on "Rejected remedies, still open" being empty.** A non-empty one takes the **✗ branch** below even when every glyph is ✓, listing each open rejected finding with the delegate's reason in place of the failing phases. (It reaches Handoff with Revise `warn` — re-attempt or cap exhaustion — and the ⚠ branch would name `gh pr merge` over a live Critical; the section, not the glyph, tells the two apart.)
-- **All ✓:** print `gh pr merge <#> --squash --delete-branch`, one line, no preamble. **Stacked child (`--pr-base` passed):** never a bare merge command — print "lands with its chain — see the multi-pr report"; the chain lands parents-first with merge commits.
+- **All ✓:** print `gh pr merge <#> --squash --delete-branch`, one line, no preamble. **Stacked child (`--pr-base` passed):** never a bare merge command — print "lands after its parent — retarget it to the base branch first, then merge parents first with merge commits".
 - **Any ⚠:** print "**Review warnings before merging.**" FIRST, then each ⚠ phase's one-line summary indented, and only then, on a new line, `gh pr merge` as the eventual command.
 - **Any ✗:** print "**This PR is NOT ready to merge.**", list the failing phases, and do NOT name `gh pr merge`.
 

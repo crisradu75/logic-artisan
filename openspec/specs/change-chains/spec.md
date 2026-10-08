@@ -29,20 +29,6 @@ What the plugin promises when a batch of changes from one decisions doc is propo
 - **WHEN** one change in the batch depends on another
 - **THEN** the change it depends on runs first
 
-### Requirement: What an OpenSpec change chain merges
-
-`/cla:multi-pr` SHALL merge a pull request only under the merge policy confirmed at the start of the run, whose default merges each change before a later change that depends on it starts and leaves open the pull request of a change that nothing later needs merged.
-
-#### Scenario: A change later in the order
-
-- **WHEN** one change depends on another in the batch and the run uses the default merge policy
-- **THEN** the dependency is merged before the dependent starts
-
-#### Scenario: An independent change
-
-- **WHEN** a change that nothing later depends on, and that moves no shared environment state, is done under the default merge policy
-- **THEN** its pull request is left open for the user to merge
-
 ### Requirement: A failed OpenSpec change stops the chain
 
 `/cla:multi-pr` SHALL stop before any later change when a change fails to open or archive its pull request or leaves the live specs failing validation, and SHALL report each change in the batch as shipped, halted with its reason, or never attempted.
@@ -84,3 +70,22 @@ A chain confirmed at its start SHALL keep running without the user until every c
 
 - **WHEN** one change finishes and another is still to run
 - **THEN** the chain starts the next change without waiting for the user
+
+### Requirement: An OpenSpec change chain merges only a later change's prerequisite, on the head it checked
+
+`/cla:multi-pr` SHALL merge a pull request only when the merges were confirmed at the start of the run and a later change needs it merged, and only when its head is the commit its review and full test suite covered and the host reports it merged rather than queued, leaving every other pull request open for the user and stopping the chain when a needed merge cannot happen.
+
+#### Scenario: A change later in the order
+
+- **WHEN** one change depends on another in the batch
+- **THEN** the dependency is merged before the dependent starts
+
+#### Scenario: An independent change
+
+- **WHEN** a change that nothing later depends on, and that moves no shared environment state, is done
+- **THEN** its pull request is left open for the user to merge
+
+#### Scenario: Commits pushed after review
+
+- **WHEN** a change a later change needs merged has a pull request head other than the one its review and full test suite covered
+- **THEN** it is not merged and no later change starts

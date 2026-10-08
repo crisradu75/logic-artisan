@@ -80,12 +80,12 @@ _TEMPLATE = "HONOURED | VIOLATED | NOT ADDRESSED"
 # to the rest of the file. Measured over the nine real regions:
 #   python -c "import test_chain_obligation_carry as g; \
 #              print(sorted(len(g._region(n)) for n in g._REGIONS))"
-# -> 367 / 407 / 659 / 1023 / 1353 / 1630 / 2021 / 2790 / 3562
-# 5000 clears the widest (the `4a` write step, 3562) with ~1.4x headroom. It is
+# -> 353 / 407 / 439 / 616 / 1227 / 1457 / 1727 / 2716 / 3564
+# 5000 clears the widest (the `4a` write step, 3564) with ~1.4x headroom. It is
 # well under what a deleted end anchor actually swallows, measured the same way
-# (`len(text) - text.find(start)`): the `4a` region would run 13956 characters to
-# the end of `change-loop.md`, and the Step 2b region 25945 to the end of
-# `checklist.md`. The cap has ~3x of margin against the nearest real failure, so
+# (`len(text) - text.find(start)`): the `4a` region would run 12481 characters to
+# the end of `change-loop.md`, and the Step 2b region 15828 to the end of
+# `checklist.md`. The cap has ~2.5x of margin against the nearest real failure, so
 # it is not a number the prose has to be written around.
 _MAX_REGION = 5000
 
@@ -180,7 +180,7 @@ _REGIONS: dict[str, tuple[Path, str, str, tuple[str, ...]]] = {
     "multi-pr reads the rows into the flag": (
         _CHANGE_LOOP,
         "**Inherited-obligation clause.**",
-        "**Stacked clause**",
+        "**Re-position HEAD first.**",
         (
             _CARRY_FLAG,
             "carried obligations",
@@ -192,7 +192,7 @@ _REGIONS: dict[str, tuple[Path, str, str, tuple[str, ...]]] = {
     "multi-pr writes the rows": (
         _CHANGE_LOOP,
         "4a. **Record the obligations",
-        "5-alt.",
+        "4b. **Validate the live spec set",
         (
             "carried obligations",
             "owed by",
@@ -296,9 +296,10 @@ def test_every_flag_multi_pr_passes_is_documented_by_spec_to_pr():
         'Skill(cla:spec-to-pr, args="…") invocation — the carry is recorded and '
         "then delivered nowhere, which is the defect this guard exists for"
     )
-    assert len(flags) >= 5, (
-        f"derived only {sorted(flags)} from multi-pr's invocations; the four "
-        "pre-existing flags plus the carry flag are the floor. A shrinking set "
+    assert len(flags) >= 4, (
+        f"derived only {sorted(flags)} from multi-pr's invocations; the three "
+        "round-cap flags plus the carry flag are the floor (`--pr-base` went "
+        "with the stacked policy). A shrinking set "
         "means the extraction stopped matching, not that the flags went away."
     )
     consumer = _read(_SPEC_TO_PR)
@@ -425,7 +426,7 @@ def test_the_guard_notices_when_its_own_state_is_gutted(
 def test_the_parity_floor_is_reachable(monkeypatch):
     """Put the tree in the one state the floor exists for: the extraction still
     finds the carry flag, and everything it finds is documented, but it has
-    stopped finding the other four. Only the floor can fail here."""
+    stopped finding the other three. Only the floor can fail here."""
     monkeypatch.setattr(sys.modules[__name__], "_passed_flags", lambda: {_CARRY_FLAG})
     with pytest.raises(AssertionError, match="floor"):
         test_every_flag_multi_pr_passes_is_documented_by_spec_to_pr()

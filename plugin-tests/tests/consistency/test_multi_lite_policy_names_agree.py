@@ -12,6 +12,10 @@ The resume half has the same shape. Step 2 decides whether an open PR still need
 merging by reading the ledger's `review` and `head_sha` columns. If the ledger
 recipe stops declaring a column step 2 reads — or step 2 reads one the recipe
 never writes — resume silently skips a clean PR the policy promised to merge.
+
+Step 8's pre-merge checks, the merge and its confirmation live in the shared
+`_shared/references/chain-merge.md`, which `multi-pr` follows too, so the tests
+for those steps read that file.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ _SKILL = (
     / ".claude" / "plugins" / "cla" / "skills" / "multi-lite"
 )
 _REFS = _SKILL / "references"
+_CHAIN_MERGE = _SKILL.parent / "_shared" / "references" / "chain-merge.md"
 
 POLICIES = {"merge-each-clean", "merge-dependencies-only"}
 
@@ -117,8 +122,10 @@ _STEP_2 = ("2. **Resume check", "3. **Ensure the right base.**")
 _STEP_3 = ("3. **Ensure the right base.**", "4. **Run `/cla:lite-pr`")
 _STEP_8A = ("**8a. Should this candidate merge?**", "**8b. Pre-merge checks")
 _STEP_7 = ("7. **Enforce `/cla:lite-pr`'s deferred review findings", "8. **Merge per the confirmed policy")
-_STEP_8B = ("**8b. Pre-merge checks", "**8c. Merge, then confirm it landed.**")
-_STEP_8C = ("**8c. Merge, then confirm it landed.**", "Move to the next candidate")
+# In chain-merge.md: the checks, then the merge and its confirmation.
+_RECORD_HEAD = ("## Record the head", "## Pre-merge checks (every merge)")
+_STEP_8B = ("## Pre-merge checks (every merge)", "## Merge, then confirm it landed")
+_STEP_8C = ("## Merge, then confirm it landed", "## A fix needed after a merge")
 
 
 def _line(section: str, marker: str) -> str:
@@ -178,14 +185,17 @@ def test_the_enforcement_round_proves_a_commit_exists():
     """HEAD equal to the remote proves nothing when no commit was made: both still
     sit at the old head, and the gate would pass on the uncommitted fix."""
     step_7 = _section(_read(_REFS / "candidate-loop.md"), *_STEP_7)
-    moved = _line(step_7, "must differ from the row's current `head_sha`")
-    assert "no commit was made" in moved
-    assert "`git status --porcelain" in step_7
+    assert "chain-merge.md` \"Record the head\"" in step_7
     assert "`fix not committed`" in step_7
+    record = _section(_read(_CHAIN_MERGE), *_RECORD_HEAD)
+    moved = _line(record, "must differ from the row's current `head_sha`")
+    assert "no commit was made" in moved
+    assert "`git status --porcelain" in record
+    assert "`fix not committed`" in record
 
 
 def test_every_merge_requires_a_clean_tree():
-    step_8b = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8B)
+    step_8b = _section(_read(_CHAIN_MERGE), *_STEP_8B)
     clean = _line(step_8b, "`uncommitted changes`")
     assert "`git status --porcelain" in clean
     assert "do not merge" in clean
@@ -232,14 +242,14 @@ def test_every_merge_runs_the_full_gate_first():
     """`/cla:lite-pr` commits its review fixes after its own Test phase, so the
     full gate at 8b is the only full run a merged head gets — and a gate with
     nothing to run is not a pass."""
-    step_8b = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8B)
+    step_8b = _section(_read(_CHAIN_MERGE), *_STEP_8B)
     assert "full Test gate" in step_8b
     unavailable = _line(step_8b, "`full gate unavailable`")
     assert "do not merge" in unavailable
 
 
 def test_only_mergeable_states_proceed():
-    step_8b = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8B)
+    step_8b = _section(_read(_CHAIN_MERGE), *_STEP_8B)
     # Only the states listed before the arrow proceed; the explanation after it
     # legitimately names `BLOCKED`.
     proceeding = _line(step_8b, "→ proceed").split("→", 1)[0]
@@ -250,7 +260,7 @@ def test_only_mergeable_states_proceed():
 
 
 def test_a_merge_is_confirmed_by_state_not_exit_code():
-    step_8c = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8C)
+    step_8c = _section(_read(_CHAIN_MERGE), *_STEP_8C)
     assert "exit code of 0 does not prove a merge" in step_8c
     confirm = _line(step_8c, "`state` must be `MERGED`")
     assert "Otherwise" in confirm
@@ -261,7 +271,7 @@ def test_a_merge_is_confirmed_by_state_not_exit_code():
 
 
 def test_an_ordinary_gh_error_does_not_stop_merging_for_the_run():
-    step_8c = _section(_read(_REFS / "candidate-loop.md"), *_STEP_8C)
+    step_8c = _section(_read(_CHAIN_MERGE), *_STEP_8C)
     catch_all = _line(step_8c, "**Any other error from `gh`**")
     assert "does **not** set `merging stopped`" in catch_all
     host = _line(step_8c, "**The host runtime refused")

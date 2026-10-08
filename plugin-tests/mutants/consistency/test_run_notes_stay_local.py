@@ -186,8 +186,8 @@ MUTANTS = [
     (
         "multi-lite starts while git would see its notes",
         LITE_BOOT,
-        "3. From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`.",
-        "3. From the repo root.",
+        "- From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`.",
+        "- From the repo root.",
         TARGETS,
     ),
     (

@@ -4,18 +4,11 @@ The Phase 0 and Phase 2 step-by-step procedures. `SKILL.md`'s stubs for these ph
 
 ## Phase 0 — Bootstrap + working-tree precheck
 
-Run the shared bootstrap once before the chain starts — the same `/cla:multi-pr` bootstrap gate, not something `/cla:lite-pr` itself runs:
+Run the shared bootstrap once before the chain starts (`/cla:lite-pr` does not run it): `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/chain-merge.md`, "Bootstrap" — the permissions check, `git_state.py`, and a clean, current `<base-branch>` in the primary clone. This skill's run-notes check:
 
-1. The permissions check from `/cla:spec-to-pr`'s own "Bootstrap permissions" section (compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/required-permissions.json` against `.claude/settings.local.json`). Missing patterns → surface them and apply on approval; that's the one bootstrap ask, the same carve-out the siblings make.
-2. ```
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
-   ```
-   Non-zero → resolve before continuing (in-progress rebase/cherry-pick, or a dirty tree with out-of-scope paths). A dirty tree at chain start poisons every subsequent candidate.
-3. From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`. Non-zero → stop: "run /cla:cla-setup first (run notes would be visible to git)". Any ignore source counts here: this run only needs git to ignore the notes on this machine, while `/cla:cla-setup` checks for the repo's own `.gitignore` line.
+- From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`. Non-zero → stop: "run /cla:cla-setup first (run notes would be visible to git)". Any ignore source counts here: this run only needs git to ignore the notes on this machine, while `/cla:cla-setup` checks for the repo's own `.gitignore` line.
 
-**Start from `<base-branch>`, clean (primary clone).** Check `git rev-parse --abbrev-ref HEAD`. If not on `<base-branch>`, and the current branch carries local commits unrelated to this run, leave it untouched, then sync to `<base-branch>` with the two separate commands the hoisted base-management rule requires (`git checkout <base-branch>` then `git pull` — never `&&`-chained).
-
-Each candidate's `/cla:lite-pr` run must branch off an up-to-date `<base-branch>`. (Per the hoisted rule: `git checkout <base-branch>` is valid here because `multi-lite` runs in the primary clone; if a mid-chain guard block forces a reactive worktree pivot, base off `origin/<base-branch>` via `git worktree add … -b <branch> origin/<base-branch>` instead.)
+Each candidate's `/cla:lite-pr` run must branch off an up-to-date `<base-branch>`.
 
 ## Phase 2 — Task tracking + the run-notes ledger
 
@@ -26,7 +19,7 @@ Use `TaskCreate` once to lay down the chain — one task per candidate (`"<id>: 
 - `branch`, `pr_number`, `head_sha` — filled at step 6, the moment a PR opens. `head_sha` is updated only when step 7 pushes and verifies its own fix. Nothing else updates it.
 - `deferred` — the count of Critical/Important findings `/cla:lite-pr` deferred, written at step 6. The findings themselves go verbatim under a `## Deferred findings` section below the table, one subsection per candidate id. Empty means step 6 never recorded them.
 - `review` — `clean` or `unresolved`, written at step 7, with the reason beside `unresolved`. Empty means step 7 has not finished for this candidate.
-- `merge_commit` — the merge commit's oid, written at step 8c once the merge is confirmed. Step 3 checks a dependency against it.
+- `merge_commit` — the merge commit's oid, written at step 8b once the merge is confirmed. Step 3 checks a dependency against it.
 - `status` — `merged`, `open` (plain or with a reason), `failed` with the failing check or a reason, `failed-review` with a reason, `failed-merge` with a reason, or `blocked-by-upstream-failure`. Notes step 8 records go beside it: the shared-state derivation, `gate skipped: no source-affecting paths`, `behind base: merged tree not tested`, and `base not updated`. Every reason steps 2, 7 and 8 can write is listed in `references/phase4-and-log.md` under "Shipped & left open".
 
 Step 2's resume check reads `deferred`, `review`, `head_sha` and `status` back. A row missing `deferred` can never resume as clean. The file is local working state: `.gitignore` ignores `cla.io/retro/*-run-notes-*.md` (`/cla:cla-setup` adds the line), nothing in this run adds or commits it, and it survives a session restart in the primary clone's working tree, so a resume on this machine reads it back. A resume without it (another machine, or the file deleted) falls back to GitHub state, step 2's title match.

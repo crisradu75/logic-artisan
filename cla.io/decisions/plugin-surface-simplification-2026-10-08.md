@@ -192,8 +192,10 @@ of them carries `findings_by_round`, so the Revise evidence in the companion doc
   bootstrap and autonomy override. multi-pr adopts multi-lite's `gh pr checks` / `head_sha` /
   `--match-head-commit` guards in the process. The two skills stay separate, and the
   turn-liveness copies stay where they are.
+  *Implemented as:* `skills/_shared/references/chain-merge.md`, which both skills follow; `multi-pr` records each head, merges with `--match-head-commit`, and halts when a needed merge cannot happen (`openspec/changes/archive/2026-10-08-chain-merge-shared/`), 2026-10-08.
 - **P7a — Delete multi-pr's stacked and open-all policies.** multi-pr keeps
   merge-before-dependents. multi-lite's `merge-each-clean` stays (too new to judge).
+  *Implemented as:* both policies deleted from `multi-pr`, its README row and DEVELOPER-GUIDE §6; `spec-to-pr`'s `--pr-base` stays for a stack built by hand, 2026-10-08.
 - **P8 — Remove agentic-air from `cla.io/fleet.local.md`** — done in this PR, with the reason
   recorded in that file. Re-add it only after re-onboarding.
 
