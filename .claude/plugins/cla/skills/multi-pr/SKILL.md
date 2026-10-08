@@ -81,7 +81,7 @@ Then, from the repo root, `git check-ignore -q --no-index cla.io/retro/multi-pr-
 
 ## Phase 2: Task tracking
 
-Use `TaskCreate` once at the start to lay down the chain itself — one task per change (`"<name>: spec-to-pr + land"`) plus a final `"Final cleanup pass"` task. This is the one place in the `/cla:spec-to-pr` family where task tracking is genuinely the right tool (per spec-to-pr's own "Task tracking" section: *"gated by external state, or recoverable across sessions"* — a multi-hour, multi-change chain is exactly that shape), unlike inside a single `/cla:spec-to-pr` run where it's noise. Use `TaskUpdate` to transition each change's task to `in_progress` when its `/cla:spec-to-pr` invocation starts and to `completed` only after that change is merged (or, under the stacked and "open all" policies, after it's archived with its PR open against the right base).
+Use `TaskCreate` once at the start to lay down the chain itself — one task per change (`"<name>: spec-to-pr + land"`) plus a final `"Final cleanup pass"` task. This is the one place in the `/cla:spec-to-pr` family where task tracking is genuinely the right tool (per spec-to-pr's own hoisted `TaskCreate` rule: *"parallel, externally gated or cross-session sub-work"* — a multi-hour, multi-change chain is exactly that shape), unlike inside a single `/cla:spec-to-pr` run where it's noise. Use `TaskUpdate` to transition each change's task to `in_progress` when its `/cla:spec-to-pr` invocation starts and to `completed` only after that change is merged (or, under the stacked and "open all" policies, after it's archived with its PR open against the right base).
 
 ## Phase 3: Per-change loop
 

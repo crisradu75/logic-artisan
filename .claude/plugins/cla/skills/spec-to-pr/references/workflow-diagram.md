@@ -41,16 +41,15 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
                        ▼
             ┌──────────────────────┐
             │  IMPLEMENT           │   post-check: openspec status --change <name> --json
-            │  openspec apply      │   ✓ artifacts ready + all ticked + named tests exist / ⚠ gaps (big change → sonnet delegate)
+            │  apply-change skill  │   ✓ artifacts ready + all ticked + named tests exist / ⚠ gaps (big change → sonnet delegate)
             └──────────┬───────────┘
                        │
                        ▼
             ┌──────────────────────┐
             │  TEST                │   cap: --test-rounds (default 3)
-            │  npm run build       │   ✓ exit 0 / ⚠ failures after cap
-            │  + npm run lint      │   ✗ skipped (no source-affecting paths)
-            │  (discover by        │   (Playwright smoke = optional/manual)
-            │   package.json)      │
+            │  lint, then build +  │   ✓ exit 0 / ⚠ failures after cap
+            │  tests (commands from│   ✗ skipped (no source-affecting paths)
+            │  project-facts.md)   │   (browser smoke = optional/manual)
             └──────────┬───────────┘
                        │
                        ▼      ─── HALT here in --gate-on-push or --interactive ───
@@ -91,8 +90,8 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             │    (gh pr edit,     │   (mirror Issues into PR body — only if any)
             │     only if issues) │   includes routing telemetry in run-log JSONL
             │  + optional         │
-            │    `docs: TODO.md`  │   only if Suggestion residue exists
-            │    commit + push    │
+            │    `docs: TODO.md`  │   only if any residue exists
+            │    commit + push    │   + run record, committed last
             └─────────────────────┘
 
 DEVELOPMENT-ONLY BOUNDARY — orchestrator stops here.
@@ -124,6 +123,5 @@ step — it ran in Archive)
 
 | Mode | Halt points |
 |---|---|
-| `--auto` (default) | bootstrap-decline only |
-| `--gate-on-push` | bootstrap-decline + before push/PR |
-| `--interactive` | bootstrap-decline + after every phase |
+| default (continuous) | bootstrap-decline only |
+| `--gate-on-push` or `--interactive` | bootstrap-decline + before push/PR |

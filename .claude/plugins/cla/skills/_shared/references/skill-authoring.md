@@ -13,12 +13,12 @@ This is plugin-wide doctrine: it lives in `_shared/` because every skill is held
 
 ## Keep-inline vs move boundary (conservative)
 
-**Rule: correctness-gating invariants stay inline as one-liners; only mechanics/rationale/templates/examples move.** Each stub MUST be **self-sufficient for its own invariant** — carry the rule itself, not just a "read the reference" pointer, so a skipped read never loses protection.
+**Rule: correctness-gating invariants stay inline as one-liners; only mechanics/rationale/templates/examples move.** Each stub MUST be **self-sufficient for its own invariant** — carry the rule itself, not just a "read the reference" pointer, so a skipped read never loses protection. **Beyond those one-liners a stub never restates its reference**: a mandatory reference is read in full anyway, so a second copy only doubles the words and the places to keep in step. Rationale goes to a reference read only when revising the skill (`spec-to-pr/references/design-tradeoffs.md`).
 
 **Always stays inline:**
 - The hoisted skill-level rules block.
-- Mode/argument detection, the autonomy/halt contract (+ its exceptions), the per-loop caps table.
-- The standalone correctness sections (e.g. "Bash-style discipline", "Continue-on-everything", "Development-only boundary") — these do NOT consolidate into a runtime-rules-style reference.
+- Mode/argument detection, the autonomy/halt contract (+ its exceptions), the per-loop caps (a flags table can carry them).
+- The standalone correctness rules (e.g. Bash-style discipline, Continue-on-everything, Development-only boundary) — they may become hoisted bullets, but do NOT consolidate into a runtime-rules-style reference.
 - Per phase: the load-bearing one-liner invariants + the mandatory-read pointer.
 
 **Moves to `references/*.md`:** step-by-step procedures, exact bash/command recipes, snippets, templates, the full option-text of `AskUserQuestion` gates, rationale/tradeoff prose, and worked examples.
@@ -27,7 +27,7 @@ This is plugin-wide doctrine: it lives in `_shared/` because every skill is held
 
 These invariants commonly live in *phase-step prose* rather than the hoisted block, so the restructure silently drops them from the inline stub. **Verify each is still inline after the move:**
 
-- **`git_state`-before-every-commit** — the #1 repeat offender: it commonly lives in phase-step prose rather than the hoisted block, so the restructure silently drops it from the inline stub (caught only by review when that happens — see `cla.io/overlays/spec-to-pr.md` "Incident history" for concrete precedents). If the skill runs its own commits, this MUST be a hoisted one-liner, not left only in the moved recipe.
+- **`git_state`-before-every-commit** — the #1 repeat offender: it commonly lives in phase-step prose rather than the hoisted block, so the restructure silently drops it from the inline stub (caught only by review when that happens — see `cla.io/overlays/spec-to-pr.md` "Incident / offense history" for concrete precedents). If the skill runs its own commits, this MUST be a hoisted one-liner, not left only in the moved recipe.
 - **never `git add -A` / path-scoped staging.**
 - The skill's **merge / quarantine / halt authorization** (e.g. multi-pr's whole-chain-halt vs multi-lite's downstream-only quarantine — these differ per skill; preserve the SKILL's own semantics verbatim, never swap in a sibling's).
 - Any **safety-confirmation gate** (e.g. codify-learnings' interactive-apply confirmation; spec-to-pr's destructive-git ask).

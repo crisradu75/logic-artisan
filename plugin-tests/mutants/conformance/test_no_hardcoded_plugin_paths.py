@@ -186,7 +186,9 @@ MUTANTS = [
     #
     # These are the exact edits the block at the bottom of this file used to
     # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
-    # not, and both show it. Measured against the floor of `>= 101`:
+    # not, and both show it. Measured against the floor of `>= 101` (since
+    # slim-spec-to-pr, `>= 100` against a real 101: each drop leaves 100, still
+    # exactly on the floor):
     #
     #     drop `output-styles`  101 files  clears the floor exactly
     #     drop `lib`            101 files  clears the floor exactly
@@ -245,10 +247,10 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 102  .json 3  .md 71  .mjs 1  .py 27  placeholder-refs 199 in 51 files"
+        "    #     scanned 101  .json 3  .md 70  .mjs 1  .py 27  placeholder-refs 182 in 51 files"
         + _NL
         + "    #" + _NL
-        + "    # The real count is 102. Pinned near it, not",
+        + "    # The real count is 101. Pinned near it, not",
         "    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files"
         + _NL
         + "    #" + _NL
@@ -308,6 +310,9 @@ MUTANTS = [
 # Since then the floor moved to `>= 101` against a real 102, when the
 # commit-provenance hook was deleted from `hooks/`. The table above is shifted
 # by one file throughout; its shape, and the `.mjs` row's role, are unchanged.
+# It moved again, to `>= 100` against a real 101, when slim-spec-to-pr merged
+# `archive-preflight.md` into `archive.md`; the placeholder floor moved to
+# `>= 178` against a real 182 in the same change.
 #
 # THE RECORDS ABOVE ARE NOW CHECKED, not trusted. The guard carries
 # `test_the_recorded_counts_are_the_real_ones`, which re-runs its printer and

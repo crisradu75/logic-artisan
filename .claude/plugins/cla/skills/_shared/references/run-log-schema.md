@@ -1,21 +1,11 @@
 # spec-to-pr — per-run JSONL record
 
-Handoff step 5 pipes one JSON object per run to `lib/log_run.py`, which appends it to
-`cla.io/retro/spec-to-pr-runs.jsonl`. `/cla:spec-to-pr-retro` reads it through
-`spec_to_pr_aggregate.py`.
-
-**The shape lives in code, not here.** `log_run.py` checks every record against `SHAPES` in that
-file — required keys and value shapes — and refuses one that does not match, printing one line that
-names every field that is off, `; `-separated (`log_run: spec-to-pr-runs.jsonl record refused:
-<field> must be ...; <field> is required`), and writing nothing. On a refusal, rebuild the record
-from the example below, fixing every field named, and pipe it again, **once**. If it is refused again,
-or the write fails for any other reason, put the stderr line in the Handoff Issues section and
-finish the run: a missing ledger line never halts it, and never marks it `warn`. This file says
-what each field MEANS; where the two disagree, the code is right.
-
-**Every field earns its place by a reader.** `spec_to_pr_aggregate.py` reads every field below
-except `mode`, which identifies the run. Add a field only together with its reader; leaving an
-optional field out passes the check and silently costs the retro that signal.
+Handoff pipes one JSON object per run to `lib/log_run.py`, which appends it to
+`cla.io/retro/spec-to-pr-runs.jsonl`; `/cla:spec-to-pr-retro` reads it through
+`spec_to_pr_aggregate.py`. Build the record from the example below. `log_run.py` checks it against
+`SHAPES` in that file and refuses an off-shape record, naming every field that is off; the retry
+rule is in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/handoff.md` §5. This file says what
+each field MEANS; where the two disagree, the code is right.
 
 ## Invocation
 
@@ -81,6 +71,3 @@ append stays atomic against a concurrent run.
   many of those triage disproved. It credits a finding to every agent that raised it, so its
   `found` total is usually at least `findings_by_round`'s; a finding the orchestrator raised itself
   lands only in the latter.
-
-Records written before a field was dropped keep it; the check allows extra keys, and nothing reads
-them.

@@ -106,8 +106,8 @@ MUTANTS = [
     (
         "the resume rule loses the reason it exists",
         SPEC_TO_PR,
-        "The JSON above has **no `review` field**:",
-        "The JSON above lists the phases it knows about:",
+        "The JSON has **no `review` field**,",
+        "The JSON lists the phases it knows about,",
         TARGETS,
     ),
     (
@@ -128,8 +128,8 @@ MUTANTS = [
     (
         "the argument contract stops deriving the carry from the prerequisite's actual state",
         SPEC_TO_PR,
-        "which by definition post-date this change's authoring — not from the batch as proposed",
-        "which the chain plan already described up front",
+        "fix rounds added), not from the batch as proposed",
+        "fix rounds added), which the chain plan already described up front",
         TARGETS,
     ),
     # ---- multi-pr, which records and reads back ----------------------------

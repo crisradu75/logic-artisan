@@ -16,7 +16,7 @@ When a step needs to process bulk raw material (a large diff, a wide file set, v
 
 - **Read slices, not whole files.** Use `Read` with `offset`/`limit`, or `Grep` to locate the section first, when you only need part of a file. Reading a 600-line file to check one rule wastes ~20k tokens per turn thereafter.
 - **`tail`/`head` large command output.** Pipe verbose command output (test logs, `git log`, long `--json`) through `head`/`tail` (or `wc -l` first) rather than letting the full dump land in context.
-- **Scratch-file-then-delegate large intermediate material.** When a step produces a large intermediate artifact another step consumes, write it to `temp/` and hand the path to a delegate, rather than carrying the whole artifact inline. (The happy path needs no scratch file — see `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/design-tradeoffs.md`, "Run logs and the PR-body scratch file".)
+- **Scratch-file-then-delegate large intermediate material.** When a step produces a large intermediate artifact another step consumes, write it to `temp/` and hand the path to a delegate, rather than carrying the whole artifact inline. (The happy path needs no scratch file: the only one spec-to-pr writes is Handoff's multi-line PR body, `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/handoff.md` §2.)
 
 ## 3. Batch independent tool calls into one message
 
