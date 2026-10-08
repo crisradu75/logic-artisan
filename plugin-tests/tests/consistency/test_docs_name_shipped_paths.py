@@ -132,7 +132,7 @@ _PATH_SHAPED = re.compile(r"[A-Za-z0-9._][A-Za-z0-9._/-]*")
 #     sh=m._tracked_shipped_paths(); b=m._bare_prefixes(sh); \
 #     n={k:m._named_paths(p.read_text(encoding='utf-8'),b) for k,p in m._DOCS.items()}; \
 #     print({k:len(v['prefixed'])+len(v['bare']) for k,v in n.items()}); \
-#     print({k:sum(len(v[c]) for v in n.values()) for c in ('prefixed','bare')}); \
+#     print({c:sum(len(v[c]) for v in n.values()) for c in ('prefixed','bare')}); \
 #     print(len(m._retired_top_level_names()), \
 #           {k:len(v) for k,v in m._published_tree_entries().items()})"
 _MIN_PREFIXED_PATHS = 5
@@ -141,37 +141,43 @@ _MIN_RETIRED_NAMES = 4
 
 # PER DOCUMENT, because a total across documents is the same mistake one axis
 # over. The per-channel split above exists because one combined number could not
-# notice half the extraction dying; a number summed over four documents cannot
+# notice half the extraction dying; a number summed over several documents cannot
 # notice one DOCUMENT dropping out, and the docs are not the same size — the root
 # `README.md` contributes 2 paths against the plugin README's 13, so it could go
-# to zero and leave a four-document total barely moved.
+# to zero and leave a total barely moved.
 #
-# Measured per document at 13 / 2 / 12 / 13 (plugin README, README,
-# DEVELOPER-GUIDE, CLAUDE), by the command in the block below. The root README's
-# floor is deliberately 1 rather than a larger round number: it genuinely names
-# almost no plugin paths in PROSE, and its real coverage is its tree diagram,
-# floored separately. A floor is a tripwire for an extraction that died, not a
-# target for how much a document should say.
+# Measured per document at 13 / 2 / 14 (plugin README, README, DEVELOPER-GUIDE)
+# by the command in the block above. The root README's floor is deliberately 1
+# rather than a larger round number: it genuinely names almost no plugin paths in
+# PROSE, and its real coverage is its tree diagram, floored separately. A floor
+# is a tripwire for an extraction that died, not a target for how much a document
+# should say.
+#
+# `CLAUDE.md` is checked (every plugin path it names must ship) but carries NO
+# floor, on purpose. It holds rules only since change `claude-md-rules-only`, and
+# a floor on it would pin how many paths a rules file restates — the reference
+# material moved to DEVELOPER-GUIDE §11, which is floored instead. The floors'
+# job, noticing the shared extraction dying, is done by the other three.
 _MIN_PATHS_PER_DOC = {
     "plugin README.md": 8,
     "README.md": 1,
     "DEVELOPER-GUIDE.md": 7,
-    "CLAUDE.md": 8,
 }
 
 # The documents that MUST carry a published-tree diagram, and the floor for each.
 # A map rather than a total, and the keys are the load-bearing part: a document
 # whose block stops parsing simply vanished from the old aggregate — the shipped
 # README's diagram could go unguarded with the suite green, because the other two
-# still cleared a combined floor of 12. Measured at 6 / 8 / 8.
+# still cleared a combined floor of 12. Measured at 6 / 8 / 7 (plugin README,
+# README, DEVELOPER-GUIDE) by the command above.
 #
-# `DEVELOPER-GUIDE.md` is absent on purpose: it carries no tree diagram today. If
-# it grows one, add it here — and until then its six fenced blocks are exactly
-# the input that `_fenced_blocks` exists to keep out of this parse.
+# `CLAUDE.md` is absent on purpose: its diagram moved to DEVELOPER-GUIDE §11
+# with the rest of its reference material (change `claude-md-rules-only`). If a
+# diagram is ever written there again, the naming check below still reads it.
 _DIAGRAM_FLOORS = {
     "plugin README.md": 4,
     "README.md": 5,
-    "CLAUDE.md": 5,
+    "DEVELOPER-GUIDE.md": 5,
 }
 
 
@@ -315,9 +321,10 @@ def _fenced_blocks(text: str):
     state on an unindented line — so with the delimiters stripped and the blocks
     concatenated, a LATER block whose first line happened to be indented two
     spaces would be read as more tree entries, having never seen an unindented
-    line to reset on. `DEVELOPER-GUIDE.md` already carries six fenced blocks and
-    escapes only because it has no tree diagram to start the state off; that is
-    luck, not design. A block boundary is a hard reset here.
+    line to reset on. `DEVELOPER-GUIDE.md` carries a tree diagram among several
+    other fenced blocks, and escapes only because each block after it happens to
+    open on an unindented line; that is luck, not design. A block boundary is a
+    hard reset here.
     """
     block: list[str] = []
     fenced = False
@@ -461,7 +468,7 @@ def test_every_plugin_path_named_in_the_docs_actually_ships():
     assert not thin, (
         "document(s) below their own extraction floor: "
         + ", ".join(f"{d} {got} < {floor}" for d, (got, floor) in sorted(thin.items()))
-        + " — a per-document floor exists because a total across four documents "
+        + " — a per-document floor exists because a total across documents "
         "cannot notice ONE of them dropping out"
     )
     stale = sorted(set(_RETIREMENT_NOTES) - claimed_notes)
@@ -527,9 +534,8 @@ def test_a_fenced_block_boundary_resets_the_diagram_parser():
     """A later block cannot inherit the previous one's "inside the tree" state.
 
     Asserted on synthetic input because the real documents do not exercise it
-    TODAY — `DEVELOPER-GUIDE.md` has six fenced blocks and no tree diagram, and
-    the diagrams elsewhere happen to be followed by blocks whose first line is
-    unindented. That is luck: it holds until someone writes a shell block whose
+    TODAY — every diagram, `DEVELOPER-GUIDE.md`'s included, happens to be
+    followed by blocks whose first line is unindented. That is luck: it holds until someone writes a shell block whose
     first line is indented two spaces after a diagram, at which point its lines
     would be read as published entries and checked against the shipped tree.
     A latent defect with no failing input is exactly what a unit test is for.

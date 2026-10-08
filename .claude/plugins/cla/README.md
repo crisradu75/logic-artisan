@@ -188,7 +188,7 @@ a test filed here would be unreachable in your repo by construction.
 
 CLA's own suite therefore runs only in the repo that develops it, where it is one isolated
 pytest scope — 1 in total, down from 12 — living outside the plugin directory entirely. Each skill
-*that ships tests* (6 today) has its tests there rather than beside itself, alongside the guards over
+*that ships tests* (5 today) has its tests there rather than beside itself, alongside the guards over
 the hooks, the shared library, and the source repo's own launchers and catalog. The one Node script
 (`project-review/scripts/mechanical-checks.mjs`) has a `node --test` suite in the same place.
 

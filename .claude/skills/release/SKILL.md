@@ -72,9 +72,8 @@ it. Otherwise ask with `AskUserQuestion`, showing what changed since the last ta
 - **minor** — a skill added or removed, a new guard, a restructure consumers will notice.
 - **major** — a change that breaks a consuming repo's existing usage.
 
-While the line is `0.9.x`, it is the pre-1.0 validation line. It becomes `1.0.0` once a
-real task has been run end-to-end through the plugin in a consuming repo — installing
-and resolving paths is verified; running a task through it is the remaining gate.
+The pre-1.0 validation line is closed; how it closed is in DEVELOPER-GUIDE.md, "Release and
+distribution history".
 
 ## Step 3 — The three-file edit, in one commit
 

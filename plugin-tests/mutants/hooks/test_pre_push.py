@@ -3,8 +3,8 @@
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/test_pre_push.py
 
 `hooks/git/pre-push` is the ONLY thing enforcing "no direct push to main/master"
-in this repo (CLAUDE.md: "Merging is unguarded... the local run before opening a
-PR is the only gate that exists" — pre-push is the analogous statement for
+in this repo (CLAUDE.md: "Merging is unguarded. Your local run before opening a
+PR is the only gate." — pre-push is the analogous statement for
 pushing). It replaced a 491-line PreToolUse hook that parsed the `git push`
 command string and lost to every spelling variant; the whole point of the
 replacement is that git hands it the RESOLVED refspec, so there is no command

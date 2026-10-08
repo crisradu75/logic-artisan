@@ -2,7 +2,7 @@
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/release/test_check_shipped_tree.py
 
-Mutating what the scan TOUCHES, not only what it targets. CLAUDE.md records two
+Mutating what the scan TOUCHES, not only what it targets. DEVELOPER-GUIDE §12 records two
 commits that each said "three mutations checked, all caught" and each shipped a
 critical, because the mutants covered the branch the author was reasoning about
 and not the branch they got wrong. So the set below deliberately includes the

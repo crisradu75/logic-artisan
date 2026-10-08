@@ -406,21 +406,24 @@ was deleted when the marketplace became the sole distribution route.
 
 ## 11. Working on CLA itself (this repo)
 
-Contributing to the harness rather than using it? The extra rules:
+Contributing to the harness rather than using it? The rules themselves are in `CLAUDE.md`, which
+every session here loads. This section is the reference behind them: what runs, where things live,
+and why each script exists.
 
 - **Run the whole verification story locally — there is no CI, by design:**
 
   ```bash
   pytest plugin-tests -q -n auto --dist loadfile    # all pytest scopes (1) — the whole suite
   node --test plugin-tests/node/mechanical-checks.test.mjs
+  openspec validate --specs --strict                # the live specs
   ```
 
-  Both green is the only gate before a PR — and they ARE two commands: `pytest` does not reach the
-  Node suite. Watch the skip count — a skipped guard has not run (one pre-push permission-bit test
+  All three green is the only gate before a PR — and `pytest` does not reach the Node suite, so it
+  is a separate command. Watch the skip count — a skipped guard has not run (one pre-push permission-bit test
   always skips on Windows), and the skip count is also how you check a parallel run against a
   serial one. `-n auto --dist loadfile` needs `pytest-xdist`; drop both flags without it. Use
-  `--dist loadfile` rather than plain `-n auto`, and run `mutate.py` serially — CLAUDE.md's "The
-  parallel gate" section has the measurements and the reasons.
+  `--dist loadfile` rather than plain `-n auto`, and run `mutate.py` serially — `CLAUDE.md` states
+  the rules, and section 12 has the measurements behind them.
 
 - **The plugin's tests do not live in the plugin.** `.claude/plugins/cla/` is published whole to
   consuming repos and carries only assets a consumer can use, so every test, mutation batch, the
@@ -431,7 +434,7 @@ Contributing to the harness rather than using it? The extra rules:
 - **Bare `pytest` over the dev tree IS the gate** — the inversion of the old rule, which forbade it.
   There is one scope now, not twelve, because the split rested on a single module-basename collision
   that no longer exists. Inside `plugin-tests/tests/` the old scope names survive as areas
-  (`conformance/`, `consistency/`, `launcher/`, `hooks/`, `lib/`, and 6 skills with tests plus
+  (`conformance/`, `consistency/`, `launcher/`, `hooks/`, `lib/`, and 5 skills with tests plus
   `_shared/` under `skills/`). Iterate on one with `pytest plugin-tests/tests/<area>`.
 
 - **Keep facts out of the synced core.** A conformance guard fails if a project-specific token or an
@@ -441,14 +444,136 @@ Contributing to the harness rather than using it? The extra rules:
   repo stay neutral stubs — this is the source, not a consumer.
 
 - **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself), with one Node
-  exception noted above. The spec-to-pr retro aggregator carries a copy of `lib/log_run.py`'s
-  ledger-directory resolver, kept in step by hand;
+  exception, `project-review/scripts/mechanical-checks.mjs`. The spec-to-pr retro aggregator
+  carries a copy of `lib/log_run.py`'s ledger-directory resolver, kept in step by hand;
   `plugin-tests/tests/consistency/test_ledger_dir_agrees.py` checks that the writer and the
   aggregator resolve the same directory, run from a subdirectory of the repo.
 
-- **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
-  covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work
-  lives in GitHub issues.
+- **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change. It
+  holds the rules only; the layout, the script table and the guard reference are below, and the
+  evidence behind each rule is in section 12. Deferred work lives in GitHub issues: `TODO.md` was
+  retired on 2026-08-28 (issues #173–180), and the root `TODO.md` that reappears is a different
+  artifact — `/cla:spec-to-pr`'s Handoff writes Suggestion residue there, in this repo and in every
+  consuming repo.
+
+- **Platform-divergent code is only ever exercised on the machine you are on.** Several hooks shell
+  out to real `git` and branch on Windows vs POSIX, and the directory-alias tests take a junction
+  path on Windows and a symlink path everywhere else (the shared `make_dir_alias` fixture in
+  `plugin-tests/tests/conftest.py`). A green local run is evidence about that machine, not about the
+  others.
+
+- **The Playwright suite is opt-in by construction.**
+  `plugin-tests/tests/skills/annotate/test_page_in_a_browser.py` drives the annotation page in a
+  real headless Chromium. It calls `pytest.importorskip` at module level, so a checkout without
+  Playwright runs the suite exactly as before and sees one skip — nothing is added to the install
+  path, and nothing in the shipped plugin depends on it. Enable it with:
+
+  ```bash
+  pip install playwright && playwright install chromium
+  ```
+
+### Layout
+
+The published plugin — everything here ships to a consuming repo:
+
+```
+.claude/plugins/cla/
+  .claude-plugin/plugin.json   manifest
+  agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
+  hooks/                       guard hooks + hooks.json wiring
+  lib/log_run.py               the one ledger writer, invoked as a program
+  output-styles/               the project's writing convention (force-for-plugin: true)
+  skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill)
+  skills/<name>/
+    SKILL.md                   the skill itself (portable procedure)
+    references/                supporting docs (portable; overlays live in cla.io/overlays/)
+    scripts/                   deterministic helpers (stdlib Python)
+```
+
+**`lib/` is the odd one out in the plugin**: not a skill (no `SKILL.md`) and not a guard hook. It
+holds `log_run.py`, the one ledger writer, which `spec-to-pr` invokes as a program.
+
+…and the two repo-root trees that do NOT ship, which is where the tests and the release workflow
+went:
+
+```
+plugin-tests/                  the repo's ONE pytest scope
+  pyproject.toml               testpaths, norecursedirs, and the 9-entry pythonpath
+  mutate.py                    mutation checker: break a fix, confirm a test fails, restore
+  tests/<area>/                conformance, consistency, launcher, hooks, lib, skills/<name>
+  mutants/<area>/              mutation batches, mirroring tests/ — a sibling, never a child
+  scripts/measure_load.py
+  scripts/migrate_run_records.py
+  node/mechanical-checks.test.mjs
+.claude/skills/release/        repo-local skill, invoked as /release (not /cla:release)
+  SKILL.md
+  scripts/check_shipped_tree.py
+```
+
+`pyproject.toml` sets `testpaths = ["tests"]`, `norecursedirs` (pytest's default list plus
+`mutants` and `node`), and a `pythonpath` reaching out of the dev tree into the plugin, because the
+scripts under test stay shipped and only their tests moved. `mutants/` mirrors `tests/`'s
+subdirectory names so a guard's batch is found by name, and sits beside `tests/` so the batches are
+never collected as tests. A batch is optional. `plugin-tests/tests/launcher/` tests the repo-root
+`cla`/`cla.cmd` launchers, which live outside the plugin tree entirely.
+
+### The guards that police the fact/procedure split
+
+Of the four portable guards, **two reach consuming repos and two do not, and the difference is
+where they live.** No project token in synced core
+(`skills/_shared/scripts/check_no_project_tokens.py`) and no dead path in `cla.io/project-facts.md`
+or an overlay (`skills/sync-context/scripts/check_fact_paths.py`) are skill scripts inside the
+shipped tree, so a consumer gets them and can run them as programs. No hardcoded plugin path and no
+SKILL.md with broken frontmatter or a dead reference are pytest guards in `plugin-tests/`; they
+police the plugin's own source and do not reach a consumer at all, which is deliberate — a consuming
+repo has no pytest gate over its plugin cache, so a guard filed as a test module is unreachable
+there in practice.
+
+`check_no_project_tokens.py` runs as a program and, in this repo, also as a subprocess of a
+`plugin-tests/tests/conformance/` test. One scanner covers `SKILL.md`/`references/*.md` prose under
+`skills/`; a second covers source files under **five** roots — `skills/`, `agents/`, `hooks/`,
+`output-styles/` and `lib/` — because the marketplace ships the whole directory (`.md` there is
+frontmatter-exempt the same way `SKILL.md`'s own `description:` is). The two scanner families do
+not have the same reach: the hardcoded-path one (`test_no_hardcoded_plugin_paths.py`) reaches
+strictly more file types than the project-token one, which is why a file can be covered by one and
+not the other. **The suffix lists are not written in any doc**: read
+`SCANNED_SUFFIXES`/`REQUIRED_SUFFIXES` in that guard and `_iter_scanned_source_files` in the
+checker. Some shipped files are reached by no scanner on purpose (the plugin's own `README.md` names
+this repo and the plugin path), and nothing tracks which.
+
+### Every script, and why it exists
+
+A script earns its place only by doing something a direct command plus a sentence of prose
+cannot do reliably. Seven that failed that bar were deleted; these are the survivors, and the
+rule going in is the rule going out — **if a script here can't be justified in one line, it
+isn't a survivor.** (Guard hooks are listed in section 8.)
+
+Shipped scripts are given relative to `.claude/plugins/cla/` and never repeat that prefix — a bare
+top-level path (`lib/...`) for a script outside `skills/`, and a
+skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script that belongs to one.
+
+| Script | Why prose can't do it |
+|---|---|
+| `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
+| `lib/log_run.py` | The one ledger writer: validates the record against its shape, enforces the 4 KiB atomic-append ceiling, refuses every ledger name but `spec-to-pr-runs.jsonl`. |
+| `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
+| `plugin-tests/scripts/migrate_run_records.py` *(dev tree)* | One-off rewrite of old-shape `spec-to-pr-runs.jsonl` records into the shape `log_run.py` enforces: every mapping comes from a shape found in a real ledger, a valid record is left untouched, and one that still fails is reported and left exactly as it was. |
+| `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
+| `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
+| `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's automatic round 2 still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
+| `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
+| `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 14-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
+| `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 0 of 4 consuming repos on 2026-10-08 (`grep -c '"type"' */cla.io/overlays/project-review.md`, decision P4 in `cla.io/decisions/plugin-surface-simplification-2026-10-08.md`), which schedules its deletion. |
+| `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
+| `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
+| `annotate/scripts/render_html.py` | Instruments an author's own HTML in place — attributes spliced at source offsets, so stripping them returns the original bytes and the document under review stays the document under review. Refuses a file whose markup already uses those attributes, because that collision mis-anchors every annotation in the element and is invisible on the page. |
+| `annotate/scripts/annotate_server.py` | Serves the page on loopback, validates each record before it reaches the file, and opens a chrome-less browser window. |
+| `annotate/scripts/openspec_change.py` | Extracts a change's claims and the links between them, with thresholds measured over 355 real changes rather than reasoned about — the first cut left 83% of promises falsely uncovered. |
+| `annotate/scripts/sweep_changes.py` | Runs the link detector over a corpus of real changes and reports the coverage split — the command behind every threshold in `openspec_change.py`, and how a consuming repo re-measures before trusting the coverage tab. |
+| `annotate/scripts/render_change.py` | Lays a change's files into one annotatable page, binding each claim to its block one-match-or-none and keeping injected counterparts outside the blocks whose offsets they would corrupt. |
+| `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
+| `_shared/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across four skills. |
+| `spec-to-pr/scripts/_git_common.py` | Repo root plus the `branch-prefix.local.md` overlay contract, for `probe_state.py`. |
 
 ### Adding a skill
 
@@ -471,16 +596,20 @@ enforcer are gone — a skill has no scope of its own any more.)
    `cla.io/overlays/<name>.md`, add it to `cla-init`'s seeding list so a fresh repo gets a stub.
    The token guard fails the suite if a repo name leaks into the body.
 
-Then update the counts: the skill tables in `CLAUDE.md` and the plugin README, and the cheat sheet
-below. `plugin-tests/tests/consistency/test_doc_facts.py` fails if the plugin README's phase
-table misses the skill; nothing checks the counts. A new skill's tests
+Then add the skill to the plugin README's phase table and to the cheat sheet below. If its frontmatter
+forbids model invocation, also add it to the one sentence naming those skills in `CLAUDE.md` and in
+section 1. `plugin-tests/tests/consistency/test_doc_facts.py` fails if the phase table
+misses the skill or any of those three copies disagrees with the frontmatter; nothing checks the
+counts. A new skill's tests
 go in `plugin-tests/tests/skills/<name>/`, not beside the skill.
 
 ## 12. Evidence behind CLAUDE.md's rules
 
-`CLAUDE.md` states each rule once and points here, from the top of its Commands section, for
-the measurement or incident that produced it. Kept verbatim so the evidence survives; each
-heading names the rule it backs.
+`CLAUDE.md` states each rule once, in its compressed form, and points here from its first
+paragraph for the measurement or incident that produced it. Kept verbatim so the evidence
+survives; each heading names the rule it backs. Where `CLAUDE.md` compressed a rule when it became
+rules-only (change `claude-md-rules-only`), the full earlier wording is kept here too, so nothing the
+compression left out is lost.
 
 ### The parallel gate: measurements and the cache incident
 
@@ -509,6 +638,26 @@ directory was a defect on its own terms, whatever it did to the scheduler.
 **Numbers here go stale, and this paragraph has been stale before.** Re-measure rather
 than quoting it; the counts above move with every test added.
 
+**The rules' full wording, as `CLAUDE.md` carried it before the rules-only compression.**
+`loadfile` pins every test in a file to one worker. Without it a module's tests are split across
+workers, and `tests/skills/annotate/test_page_in_a_browser.py` has module-scoped fixtures that own
+a loopback server port and a Chromium process — two workers building those race for the port.
+That suite skips wherever Playwright is absent, which is exactly why a green plain `-n auto` here
+is not evidence: it means those tests did not run.
+
+A parallel run is trusted only when its pass AND skip counts match a serial run of the same tree.
+Skip counts matter here specifically: `tests/consistency/` and `tests/launcher/` skip their whole
+scope conditionally, and the annotate browser suite skips without Playwright — so a dropped scope
+shows up as a skip-count change and nowhere else. The check is necessary, not sufficient: it
+catches gross divergence, not a test passing for the wrong reason.
+
+### Why `mutate.py` stays serial
+
+It shells out as `pytest -q -x <targets>` and reads the exit code to decide killed vs survived — a
+judgement its own docstring says every check exists to protect. This is why `-n auto` is NOT in an
+`addopts` key: `addopts` applies to every invocation, so putting it there would silently change how
+the mutation runner executes.
+
 ### Why `--dist loadfile` is worth its premium
 
 The peer repo `claude-plugins` hit the same class of
@@ -530,6 +679,10 @@ folklore.)
 
 ### Why the Playwright suite earns its exception
 
+Keep it to what a string cannot answer — geometry, stacking, what a breakpoint does to the flow,
+whether a round-trip leaves the page in the state it claims. Anything checkable by reading the
+generated source belongs in `test_render_doc.py`, which is cheaper and always runs.
+
 **Why it earns the exception.** Every other check on the annotation page is a string grep
 against generated HTML and JS, which is all a stdlib suite can do. During the
 review of the margin change, a reviewer simulated 21 plausible regressions
@@ -540,11 +693,49 @@ open drawer laid on top of the margin at 1440px, and a note drawn at
 to grep for. Its mutant batch re-breaks six such regressions and all six die
 (`plugin-tests/mutants/annotate/test_page_in_a_browser.py`).
 
+### The five checks: the shape every escape had
+
+The plugin's behaviour lives mostly in markdown, so a prose edit ships like code but nothing
+compiles it. Every defect that reached review in this repo had one shape: the artifact was checked,
+the system it lands in was not.
+
+### Check 2: why a rewrite is diffed
+
+A rewrite silently loses rules an edit would have preserved; "it reads better" is not evidence that
+nothing went missing.
+
 ### Check 3: the escapes that produced it
+
+**The rule's full wording before the rules-only compression.** Two halves, and the second is the
+one that keeps escaping. For a **diagnosis**, search the same source for counterexamples before
+shipping it, not just for supporting cases — a table of three examples proves nothing if three
+counterexamples sit in the same file. For a **measurement** — "measured", "verified", "zero
+violations", any number — name the command that produced it, in the same commit. If you cannot name
+one, you did not measure it: delete the claim or go run it. Reasoning that feels like measurement is
+the most expensive thing in this repo, because it ships with a measurement's authority. **And a
+measurement is evidence about the tree and conditions it ran on, nothing else.** A pair asserting
+sameness — "unchanged", "same counts", "no regression" — must come from one tree, and say so;
+measured on two it asserts a third claim, that conditions matched, with no command behind it. A
+before/after delta is the exception, not a violation: "faster", "up exactly N" are two trees by
+construction, so name both. Re-asserting an earlier number as current is the same defect with one
+run missing, and a number true under one platform, shell or edition is not true generally until
+someone runs the others.
 
 Measured 2026-09-12, three times in one session: a firing count restated as 84 that re-ran at 86 (test runs had moved it); a gap table that went stale inside the change that invalidated it, claiming 33% headroom where 2.4% remained; and a `Remove-Item` failure measured on Windows PowerShell 5.1 and reported as universal, where the tool actually runs pwsh 7.6.6 and the command works. Recorded in `cla.io/lessons-learned/lessons-learned.md` (2026-08-14): review caught six such claims in one session, and in one of them the comment's own text contained the token it declared absent. Two more were invented blockers — "widening the scan roots fails on the test fixtures" survived until someone widened the scan roots and got zero violations. A seventh was caught by the merge check on the PR that added this very rule: a commit count nobody had run, in three files including the hook written to measure it.
 
+### Check 4: the fix's second branch
+
+A fix is a change like any other and earns the same evidence the original code needed; "the
+reviewer's finding is now handled" is not that evidence. A fix also has a second branch nobody
+looks at: correcting one return path of a function commonly breaks another, which is how
+`lint_profile` traded a silent no-op on the default path for the identical no-op on the overlay
+path.
+
 ### Check 5: the escape that produced it
+
+Check 5 is check 4's second-branch problem one level up: there, the other branch is inside the
+function; here, it is in a file you were not looking at. Running the one scope you work in green is
+what makes the omission feel finished.
 
 Measured 2026-08-23 — `scan()` in `check_fact_paths.py` gained a third return value, the three callers in `tests/conformance/` were updated, that scope passed, and a fourth caller in `tests/consistency/` went red only when the full suite ran. One `grep -rn "<name>(" ` would have found it before the first edit.
 
@@ -557,6 +748,12 @@ branch they got wrong.
 
 ### A killed mutant: the case behind the rule
 
+The kill proves the suite reacts to that edit; it proves neither the code nor the test right. A
+test written from a wrong mental model kills mutants exactly as reliably as a correct one, and the
+green result reads as confirmation. Worst where the mutant is the *simpler* form of the code: if the
+simpler form is correct, the test defending the original is defending the defect, and the gate pins
+it while reporting green.
+
 Reported from a
 consuming repo (issue #193), where the assertion killing a column-offset mutant was
 itself the defect: the mutant died, the gate reported green, and the wrong belief
@@ -564,6 +761,11 @@ reached a PR. A review agent reasoning from the type's stated invariant caught i
 there; no gate did.
 
 ### A survivor: the batch behind the rule
+
+Some mutants cannot be killed, because the edit is unobservable in a correct tree — a floor
+constant that only binds when something is missing, or two expressions that agree on every input
+the real files reach. Never leave one in a batch: a survivor nobody acts on trains the next reader
+to skip the whole list.
 
 Measured 2026-08-28 with
 `python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_check_labels_agree.py`
@@ -581,6 +783,12 @@ Recorded after
 a guard flaked 3-of-5 runs under a concurrent batch, and reproduced twice on 2026-08-28
 during the review of the commit that added CLAUDE.md's rule — one agent read a mutated
 `check_script_drift.py`, another aborted at preflight on a leftover `.mutate-backup`.
+
+### Matching the checking to the change
+
+The five checks are priced for a *fix* or a new component — the cases where being wrong is
+expensive and invisible. An increment to something already built and already tested does not earn
+them, and paying them anyway is not caution, it is waste with the shape of rigour.
 
 ### Repeated green runs: the session behind the rule
 
@@ -610,6 +818,21 @@ Background a working session rarely needs, which is why it lives here rather tha
 The operative rules — the three-file bump, the preconditions, the never-move invariant — are in
 `/release`'s own SKILL.md (repo-local at `.claude/skills/release/`, not shipped, because a
 consuming repo has no catalog of its own to bump); this section is only the *why* behind them.
+
+**How the catalog publishes.** `.claude-plugin/marketplace.json` at the repo root publishes one
+plugin, `cla`, from `.claude/plugins/cla/` (`git-subdir` source, `url` + `path`, schema verified
+against the live docs). It pins an **exact release tag**, not a moving major tag, which is why a
+release is a deliberate three-file edit and why consumers pick a new release up only on
+`/plugin marketplace update`. Consumers add the marketplace from the repo:
+
+```bash
+claude plugin marketplace add crisradu75/logic-artisan
+claude plugin install cla@cris-logic-artisan --scope project
+```
+
+**The versioning line.** The `0.9.x`/`0.10.x` validation line closed when a real task was run
+end-to-end through the plugin in a consuming repo — the gate `1.0.0` was waiting on. Versioning
+from there is ordinary semver, as `CLAUDE.md` states it.
 
 **A published tag is never moved.** `0.9.0` was cut, a consumer installed it, and the very next fix
 therefore became `0.9.1` rather than a re-tag — moving it would have changed what that consumer had

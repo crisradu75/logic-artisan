@@ -1,7 +1,7 @@
 """Mutation batch for test_log_run.py.
 
-CLAUDE.md's script table justifies `log_run.py` as "the one ledger writer:
-validates the record, enforces the 4 KiB atomic-append ceiling, refuses every
+DEVELOPER-GUIDE §11's script table justifies `log_run.py` as "the one ledger writer:
+validates the record against its shape, enforces the 4 KiB atomic-append ceiling, refuses every
 ledger name but `spec-to-pr-runs.jsonl`". Those are three separable claims and this batch
 breaks each of them, because each fails silently in a different way: an
 off-shape record is one the retro skips, an oversize record interleaves bytes

@@ -1,6 +1,6 @@
 """Mutation batch for test_manual_worktree.py.
 
-CLAUDE.md's script table justifies this script in one line: it "routes around the
+DEVELOPER-GUIDE §11's script table justifies this script in one line: it "routes around the
 Windows path-casing refusal, and refuses to remove a worktree holding uncommitted
 work — where a model slip destroys work". The second half is the reason this
 batch exists at all, and mutant 1 is the whole argument: it is the edit that

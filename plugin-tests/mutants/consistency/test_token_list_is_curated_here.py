@@ -37,8 +37,8 @@ directory git reports — measured from the checker's own location:
     branch B (.claude walk)  : <repo root>       resolve() equal: True
 
 Both then resolve the token list to the same existing file, so no input this repo
-can present distinguishes the two. That is CLAUDE.md's "two rules agree on all
-correct inputs", and the rule is to mutate the input rather than the guard — but
+can present distinguishes the two. That is CLAUDE.md's "two candidate rules agree
+on every correct input", and the rule is to mutate the input rather than the guard — but
 the discriminating input is a marketplace install, where the walk finds the user's
 GLOBAL `~/.claude` and the git call is what saves it. That environment cannot be
 built inside this batch. Deleted rather than shipped as a permanent survivor,
