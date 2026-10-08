@@ -44,21 +44,16 @@ What the plugin promises when `/cla:multi-lite` runs and merges a batch of small
 - **WHEN** one change in a `/cla:multi-lite` chain fails its tests
 - **THEN** it and its dependents are skipped with a reason and the independent changes still run
 
-### Requirement: A resumed small-change chain merges only commits it checked
+### Requirement: A resumed small-change chain merges only the head it checked
 
-When `/cla:multi-lite` resumes an interrupted run, it SHALL never merge a pull request holding a commit its review and full test suite did not cover, except commits that change nothing but the run's notes file, a renamed file counting under both its names, SHALL take no recorded head from notes edited on a pull request after the run committed them, and SHALL leave any such pull request open with its reason for the user.
+When `/cla:multi-lite` resumes an interrupted run, it SHALL merge a pull request only when its head is the commit its local run notes recorded as covered by its review and full test suite, and SHALL leave every other open pull request, including one found without those notes, open with its reason for the user.
 
 #### Scenario: Commits pushed while the run was stopped
 
 - **WHEN** a run resumes and a candidate's pull request head differs from the head the run recorded
-- **THEN** the pull request is left open with a reason and is not merged
+- **THEN** the pull request is left open as moved since review and is not merged
 
-#### Scenario: No recorded head it can trust
+#### Scenario: No local run notes
 
-- **WHEN** a run resumes without the head it recorded for a candidate's pull request, or its notes were edited on a pull request after the run committed them
-- **THEN** the pull request is left open with a reason and is not merged
-
-#### Scenario: Only notes commits
-
-- **WHEN** the only commits since the recorded head change nothing but the run's notes file
-- **THEN** the run treats the head as unmoved and carries on with that candidate
+- **WHEN** a run resumes without its notes file and finds a candidate's open pull request on GitHub
+- **THEN** the pull request is left open as unverifiable and is not merged

@@ -181,6 +181,14 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
   message and forgives a head move only when every commit since carries it and touches nothing
   but the notes (renames counted by both paths). It restores the notes from the commit that
   added them, never a branch tip, and merges no open PR on notes edited on the PR since.
+  *Superseded for run-notes (owner, 2026-10-08):* `multi-lite` / `multi-pr` run-notes are local,
+  gitignored working state (`cla.io/retro/*-run-notes-*.md`, added by `cla-init`), never
+  committed; only spec-to-pr's ledger line still rides its PR. Why: the PR-carried mechanism kept
+  growing (lookup, take-back-out, restore from the run's own write, edit check, notes-only
+  head-move exemption, ~25 tests) and still trusted anyone with push access. Lost: a resume on
+  another machine uses the GitHub fallback, where `multi-lite` finds no recorded head and so merges
+  nothing; `multi-pr`'s timing estimates are per machine. This repo's already-tracked notes files
+  stay tracked as history; the ignore line applies to new ones only.
 - **D11 — `cla-init` (merged into `cla-setup` by the companion doc's P4) reports orphan
   ledgers and offers to delete them.** It carries a list of
   retired ledger names; a re-run lists the ones present and deletes only on an explicit yes.

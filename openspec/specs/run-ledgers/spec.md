@@ -119,21 +119,16 @@ The writer SHALL append only to the spec-to-pr ledger, refusing a record for any
 - **WHEN** a run ends without opening a pull request
 - **THEN** its run record stays uncommitted and its report says so
 
-### Requirement: Chain run notes ride the last open pull request
+### Requirement: Chain run notes stay local
 
-`/cla:multi-lite` and `/cla:multi-pr` SHALL commit only their own run's notes, only onto the branch of their last pull request still open at that moment and never onto the base branch, leaving the notes uncommitted, saying so and pushing nothing when no pull request is open, and a re-run SHALL read back its own committed notes even when another run's notes were committed later.
+`/cla:multi-lite` and `/cla:multi-pr` SHALL keep their run notes as local working state that no step adds, commits or pushes, and a resume that cannot find them SHALL fall back to the state of the pull requests on GitHub.
 
 #### Scenario: A chain ends with a pull request open
 
-- **WHEN** a chain finishes with at least one of its pull requests open
-- **THEN** its own notes, and no other run's, are committed on the last open one's branch
+- **WHEN** a chain finishes with some of its pull requests still open
+- **THEN** its run notes stay uncommitted on the machine that ran it and no branch gets a notes commit
 
-#### Scenario: The last pull request merges before the commit
+#### Scenario: Resuming where the notes are missing
 
-- **WHEN** the last open pull request merges and its branch is deleted just before the notes would be committed
-- **THEN** the notes stay uncommitted, the report says so, and the deleted branch is not pushed again
-
-#### Scenario: Another run committed notes later
-
-- **WHEN** a chain is re-run after a different run's notes were committed onto another open pull request
-- **THEN** the re-run reads back its own notes, not the other run's
+- **WHEN** a chain is re-run on another machine, or after its notes file was deleted
+- **THEN** it reads each change's state from GitHub instead

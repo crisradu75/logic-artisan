@@ -52,7 +52,8 @@ the plugin's standard repo-state resolution seam is git-based.
   every seed/stub file, check existence FIRST; if present, skip it untouched (no truncate, no
   overwrite, no re-seed, no merge) and report `exists (skipped)`. The two exceptions are item 6's
   rules update to an existing OpenSpec config and item 7's deletion of retired ledgers, each made
-  only on the user's yes.
+  only on the user's yes. Item 8 appends one line to an existing `.gitignore` when it is absent,
+  and changes nothing else in it.
 - **The guard is load-bearing.** A bare `> "$f"` or `cat > "$f"` truncates an existing file and defeats
   never-clobber. ALWAYS guard with `[ -e "$f" ] ||`. Pinned idioms:
   - directory → `mkdir -p "$dir"` (idempotent by construction)
@@ -291,13 +292,35 @@ done
   report each `deleted`; on anything else report each `kept` and leave it. The deletion is left
   uncommitted, like every other change this skill makes.
 
+### 8. Ignore the chains' run notes — `.gitignore`
+
+`/cla:multi-lite` and `/cla:multi-pr` keep their run notes as local working state that nothing
+commits. This adds the ignore line when the repo's `.gitignore` lacks it, creating the file if
+needed:
+
+```bash
+: "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
+line='cla.io/retro/*-run-notes-*.md'
+if [ -e "$ROOT/.gitignore" ] && grep -qxF -- "$line" "$ROOT/.gitignore"; then
+  echo "exists (skipped): .gitignore run-notes line"
+else
+  # A last line with no newline would swallow the new one.
+  if [ -s "$ROOT/.gitignore" ] && [ -n "$(tail -c 1 "$ROOT/.gitignore")" ]; then echo >> "$ROOT/.gitignore"; fi
+  printf '%s\n' "$line" >> "$ROOT/.gitignore"
+  echo "created: .gitignore run-notes line"
+fi
+```
+
+Notes files already tracked stay tracked; the line keeps new ones out.
+
 ## Report
 
 At the end, print a per-target summary — each directory, ledger, seed, and stub as `created` or
 `exists (skipped)` — so a re-run is transparently a no-op on already-present pieces. For
 `openspec/config.yaml`, report `created`, `rules current`, the `+`/`-` lines, or `not written`
 followed by the `rules:` block to paste. Add the OpenSpec version line when it is older than 1.14.1.
-For item 7, report each retired ledger `deleted` or `kept`, or that none is present.
+For item 7, report each retired ledger `deleted` or `kept`, or that none is present. For item 8,
+report the line `created` or `exists (skipped)`.
 
 ## Non-goals (pinned — never do these)
 
