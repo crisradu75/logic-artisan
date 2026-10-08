@@ -25,9 +25,8 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `bash-discipline.md` | hard rules for emitted bash shape |
 | `base-branch-resolution.md` | how to resolve this repo's default branch, never assume it |
 | `required-permissions.json` | the bootstrap permission set the ship skills check |
-| `run-log-schema.md` | the per-run JSONL contract the retro skills consume |
+| `run-log-schema.md` | the per-run spec-to-pr JSONL record Handoff writes; `model-routing.md` points at its `routing` fields |
 | `past-offenses.md` | the generic enforcement-tier vocabulary behind the guardrails |
-| `retro-skeleton.md` | the workflow every `*-retro` skill follows, minus its own heuristics |
 | `conflict-resolution.md` | procedure for a mid-flight rebase/cherry-pick/merge — what `git_state.py` exit 2 hands you |
 | `test-quality.md` | whether a test can fail at all — the rules for any test; read at authoring time |
 | `test-quality-gates.md` | the rest of that doctrine, for a gate: floors, alarm volume, planting; read only when authoring or proving a gate |

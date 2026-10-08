@@ -6,9 +6,8 @@ so the kill proves the test reads that pair and not merely that both files
 parse. The writer-side mutants also redden `tests/lib/`; `TARGETS` is this one
 guard file, so a kill here is attributed to the agreement test.
 
-**DELIBERATELY NOT A MUTANT:** the regexes that read the aggregator's source
-(`name == "..."`, `cap_hit = {...}`) each assert they found something, so a
-pattern that stops matching fails the test outright rather than passing empty.
+The test imports the aggregator's constants rather than reading its source with
+regexes, so there is no "pattern stopped matching" branch left to mutate.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_run_record_values_agree.py
 """
@@ -24,27 +23,6 @@ TARGETS = [DEV / "tests" / "consistency" / "test_run_record_values_agree.py"]
 
 MUTANTS = [
     (
-        "the writer accepts a size gate the reader counts as drift",
-        LOG_RUN,
-        'SIZE_GATES = ("small", "large")',
-        'SIZE_GATES = ("small", "medium", "large")',
-        TARGETS,
-    ),
-    (
-        "the reader stops knowing a verdict the writer accepts",
-        AGG,
-        'VALID_VERDICTS = {"READY", "FIX FIRST", "RETHINK"}',
-        'VALID_VERDICTS = {"READY", "FIX FIRST"}',
-        TARGETS,
-    ),
-    (
-        "the reader's agent list loses an id the writer requires",
-        AGG,
-        '    "pr-test-analyzer", "comment-analyzer", "plugin-dev-skill-reviewer",',
-        '    "pr-test-analyzer", "comment-analyzer",',
-        TARGETS,
-    ),
-    (
         "the writer renames a phase the reader matches by name",
         LOG_RUN,
         '                     "Revise", "Archive", "Handoff")',
@@ -59,17 +37,38 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the writer accepts a status the reader's tally does not list",
-        LOG_RUN,
-        'STATUSES = ("ok", "warn", "skip", "fail")',
-        'STATUSES = ("ok", "warn", "skip", "fail", "partial")',
+        "the reader's cap metrics stop counting a phase that must carry the pair",
+        AGG,
+        'CAPPED_PHASES = ("Review", "Test", "Revise")',
+        'CAPPED_PHASES = ("Review", "Revise")',
+        TARGETS,
+    ),
+    (
+        "the nudge reads a phase whose rounds pair is optional",
+        AGG,
+        'NUDGE_PHASES = ("Revise", "Test")',
+        'NUDGE_PHASES = ("Revise", "Test", "Review")',
+        TARGETS,
+    ),
+    (
+        "the reader's findings phase is a name the writer refuses",
+        AGG,
+        'FINDINGS_PHASE = "Revise"',
+        'FINDINGS_PHASE = "PR-Revise"',
         TARGETS,
     ),
     (
         "the reader ranks the reasons of a status the writer does not require one on",
         AGG,
-        '            if status in ("warn", "fail") and phase.get("reason"):',
-        '            if status in ("warn", "fail", "skip") and phase.get("reason"):',
+        'REASON_STATUSES = ("warn", "fail")',
+        'REASON_STATUSES = ("warn", "fail", "skip")',
+        TARGETS,
+    ),
+    (
+        "the writer requires a reason on a status the reader does not read one from",
+        LOG_RUN,
+        '    if status in ("warn", "fail") and "reason" not in phase:',
+        '    if status in ("warn", "fail", "skip") and "reason" not in phase:',
         TARGETS,
     ),
     (

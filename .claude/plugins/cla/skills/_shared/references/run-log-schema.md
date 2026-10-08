@@ -13,11 +13,13 @@ or the write fails for any other reason, put the stderr line in the Handoff Issu
 finish the run: a missing ledger line never halts it, and never marks it `warn`. This file says
 what each field MEANS; where the two disagree, the code is right.
 
-**Every field earns its place by a reader.** Add a field only when the aggregator reads it.
-`change`, `mode` and `args` identify the run for a human. `findings_by_round` is the one field
-kept for a decision rather than a metric (see below); no other field is excused that way. The check
-refuses a wrong shape, not a missing optional field — leaving one out passes, and silently costs the
-retro that signal.
+**Every field earns its place by a reader.** Add a field only when something reads it. The
+aggregator reads `ts`, `change`, each phase's `status`, `reason` and rounds pair, Revise's
+`findings_by_round`, `asks`, and `routing.revise_findings_by_tier`; `mode` and `args` identify the
+run for a human. The rest — the Review fields, `version_bumped`, `report_chars`,
+`deferred_to_todo`, `cost`, and the other `routing` keys — no aggregator reads; they serve someone
+reading one run's record by hand. The check refuses a wrong shape, not a missing optional field —
+leaving one out passes, and silently costs the retro that signal.
 
 ## Invocation
 
@@ -76,8 +78,7 @@ atomic against a concurrent run.
   is not `skip`; optional on Review. A phase that used its whole cap, with a cap above 1, is a cap
   exhaustion.
 - `report_chars` (optional, any phase) — characters in that phase's printed report: a verbosity
-  proxy, not token spend. Omit rather than estimate. Implement, Ship and Archive run under the
-  one-sentence-per-transition rule, so a climbing mean there means that rule is being broken.
+  proxy, not token spend. Omit rather than estimate.
 - Review: `size_gate` and `verdict` whenever the checklist ran, and `verified_claims_count`.
   `agents` lists the Review agents that ran in large mode and is omitted or `[]` in small mode —
   set it from what actually dispatched, at the moment you record `size_gate`. On an `ok` Review the
@@ -94,8 +95,8 @@ atomic against a concurrent run.
   reconstructed at Handoff. `found` is that round's deduplicated Critical+Important count after
   triage. `sibling_instance` is, of that `found`, how many were a defect the previous round's fix
   introduced or a sibling the fix missed (`revise.md`'s round-≥2 question): `0` on round 1, and
-  `null` — not `0` — on a round that was never asked or whose enumeration stayed uncited. It is
-  the evidence the `--pr-rounds` default's reversal condition in `revise.md` reads.
+  `null` — not `0` — on a round that was never asked or whose enumeration stayed uncited. The
+  retro computes the `--pr-rounds` reversal condition in `revise.md` from it.
 - `asks` — every user ask in the run, by header and chosen label. `deferred_to_todo` — items
   persisted to `TODO.md`.
 - `cost` — measured wall-clock minutes, the session model, sub-agent dispatches (the real cost

@@ -151,6 +151,13 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
   found/phantom, ask distribution, and the `findings_by_round` reversal check computed outright.
   Drop the dead heuristic, the unread fields, and (after D3) the drift buckets.
   `retro-skeleton.md` folds in.
+  *Implemented as:* the fleet file's roots are per-machine absolute paths, so when it is missing,
+  lists nothing, or lists no root that exists here, the script reads this repo's ledger and says
+  so (`source: local`, `fallback`). A record it cannot read is skipped, named and counted. Cap
+  exhaustion's `total` now counts only phases that ran with a cap above 1. The reversal check
+  reads every record, not the `--limit` window, and identifies a chain by ledger + the date in
+  `ts` (records carry no chain id), stated in its output; on the migrated fleet it reports 37
+  changes, 16 chains, 37 surfacing, `condition_met: true`.
 - **D8a — Revise round 2 runs automatically whenever round 1 committed fixes,** scoped to that
   fix diff. The cap stays 2. This answers the archived reversal condition; `revise.md`'s
   "not made unconditional" paragraph and the `run-ledgers` spec requirement are updated in the
@@ -170,6 +177,9 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
 - **D12 — spec-to-pr's Handoff prints a one-line retro nudge** when, over the last 5 ledger
   lines, Revise or Test hit its round cap in ≥ 3, or the same warn reason appears in ≥ 2.
   Printed only, never blocks.
+  *Implemented as:* `spec_to_pr_aggregate.py --nudge`, counted per phase (Revise hit its cap in
+  ≥ 3, or Test did) and per record for a reason (one run warning twice with one reason counts
+  once; the migration placeholder never counts).
 - **D13 — Delivery: `multi-spec` → `multi-pr`.** Author the five changes below from this doc,
   review them, then run them as one dependency-ordered chain. Released together with the
   companion doc `plugin-surface-simplification-2026-10-08.md` as 2.0.0 (see its "Delivery").

@@ -79,6 +79,14 @@ After the terminal report has been printed, serialize the in-context phase outco
 
 **`log_run.py` checks the shape and refuses a record that does not match**, printing one line naming every field that is off. **On a refusal, rebuild the record from the example, fixing every field named, and pipe it again — once.** If it is refused a second time, or fails for any other reason (disk, permissions, the 4 KiB ceiling), capture the stderr line in the Handoff Issues section and finish the run; do NOT mark the run as warn — a missing log line is a small loss; halting at the very end of a successful workflow is a large one.
 
+**Then print the retro nudge**, whether or not the append succeeded:
+
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --nudge
+```
+
+It prints one line suggesting `/cla:spec-to-pr-retro`, or nothing; print what it prints, verbatim, after the terminal report. It reads this repo's last 5 records and speaks when Revise or Test used its whole round cap (a cap above 1) in 3 of them, or the same warn reason appears in 2. It never fails, never blocks, and changes nothing about the run's status.
+
 ## 6. Commit the run-log line to the feature branch (INVARIANT — so it ships with the PR, never dangles)
 
 Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty on the working tree. Commit that one-line append onto the feature branch so it merges atomically with the change instead of lingering as an uncommitted file. Committing it here on the feature branch avoids both the dangling file and a later direct-to-main push, which the repo's `pre-push` hook refuses (when installed — it is a manual per-clone step).
@@ -99,4 +107,4 @@ Steps 5 and 6 are the run's last two actions. If either was skipped, say so in t
 
 **Build the Revise phase's `findings_by_round` at triage time, not here.** Each round's entry is written as that round closes, from what it actually found — `found` is the deduplicated Critical+Important count, and `sibling_instance` counts what the round's enumeration question surfaced. Reconstructing the array at Handoff, from memory of rounds already closed, produces the plausible number rather than the observed one, and the field exists to settle a deferral that a plausible number cannot. A round that was never asked the question records `sibling_instance: null`, which means *not asked* — never `0`, which means asked and found nothing; the schema and `revise.md` say so, and a later reader must not count it as a quiet round.
 
-**The Review record's `agents` field MUST agree with its `size_gate`, every time — this is the one field this checklist has been observed to drop in practice** (a downstream repo's `/cla:spec-to-pr-retro` run flagged multiple logged runs with `size_gate: "large"` and `agents: []`, caught by `spec_to_pr_aggregate.py`'s `review_gate_pair_mismatches` metric). Large mode: `agents` MUST be `["design", "task", "spec"]` (or whichever subset actually ran). Small mode: `agents` MUST be omitted or `[]`. Set this field from what Review actually dispatched, not from memory of "what large mode usually does" — assemble it at the same point you record `size_gate`, not as an afterthought when building the JSON object for `log_run.py`.
+**The Review record's `agents` field MUST agree with its `size_gate`, every time — this is the one field this checklist has been observed to drop in practice** (a downstream repo's `/cla:spec-to-pr-retro` run flagged multiple logged runs with `size_gate: "large"` and `agents: []`; `log_run.py` now refuses that pair on an `ok` Review). Large mode: `agents` MUST be `["design", "task", "spec"]` (or whichever subset actually ran). Small mode: `agents` MUST be omitted or `[]`. Set this field from what Review actually dispatched, not from memory of "what large mode usually does" — assemble it at the same point you record `size_gate`, not as an afterthought when building the JSON object for `log_run.py`.

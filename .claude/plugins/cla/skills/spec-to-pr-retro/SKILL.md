@@ -1,121 +1,37 @@
 ---
 name: spec-to-pr-retro
-description: "Review recent /cla:spec-to-pr runs from the spec-to-pr-runs ledger (warn rates, cap exhaustion, review mix, dispatches) and propose improvements to the orchestrator. Run with /cla:spec-to-pr-retro."
-argument-hint: "[N (last N runs, default 10)]"
+description: "Review recent /cla:spec-to-pr runs across the fleet's spec-to-pr ledgers (warn reasons, round-cap exhaustion, per-agent Revise yield, ask answers, the --pr-rounds reversal check) and propose edits to the orchestrator. Run with /cla:spec-to-pr-retro."
+argument-hint: "[N (last N runs per ledger, default 10)]"
 # Slash-command only (a periodic retro over many runs): keeps this description out of the
 # always-loaded skill listing. Nothing invokes it programmatically.
 disable-model-invocation: true
 ---
 
-# /cla:spec-to-pr-retro — retrospective on the orchestrator
+# /cla:spec-to-pr-retro
 
-Reviews the repo's `cla.io/retro/spec-to-pr-runs.jsonl` log and proposes targeted improvements. The data is captured by `spec-to-pr`'s Handoff phase via `log_run.py` — one JSON line per run, counts-only (no prose; prose lives in transcripts and PR bodies). The ledger is committed to the repo so it syncs across machines via git (override the dir with `CLAUDE_RETRO_DIR`).
+Run it when Handoff prints a retro nudge, after about five new `/cla:spec-to-pr` runs, or when the loop feels off. For one run, read that run's record instead.
 
-## When to invoke
-
-- After ~5+ /cla:spec-to-pr runs have accumulated (smaller windows are noisy).
-- When the orchestrator's behavior feels off (too many warns, too many cap exhaustions, too many user asks).
-- Periodically as part of repo hygiene.
-
-## Workflow
-
-**Read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/retro-skeleton.md` first** — it carries the
-five workflow steps, the report shape, the apply-gate, and the sources-of-truth list that every
-retro shares. This body supplies only what is specific to the orchestrator loop: the aggregate
-command and the interpretation heuristics.
-
-### 1. Read the aggregated metrics
+## Read
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit <N>
 ```
 
-Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrapper), or `10` if `$ARGUMENTS` is empty. Substitute the literal number before invoking — the script does not expand shell variables.
+`<N>` is `$ARGUMENTS`, or `10`. It reads every repo root in `cla.io/fleet.local.md` (absolute paths, per machine). When that file is missing or none of its roots exist here, it reads this repo's ledger and `source` says `local`. `--log <path>...` names ledgers instead.
 
+## What each field means
 
-**Reading more than one repo's ledger.** `--log` takes several paths, and the records aggregate together.
+- `ledgers`, `runs_analyzed`, `window`: the sample. `found: false` is a repo with no ledger yet; `skipped_records` counts lines it could not read (unmigrated or damaged). Under five runs is an anecdote: say so and stop.
+- `warn_reasons`: a reason that recurs is one fix to make. Never rank `warn_reasons_unrecorded`.
+- `cap_exhaustion.<phase>`: `hit/total` at or above 30% means the default cap is too low.
+- `revise_findings.<agent>`: `found/runs` far below `code-reviewer`'s marks a trigger to narrow. `phantom/found` at or above 0.4 over five or more runs: demote that agent one tier, or narrow it. Never demote `code-reviewer` or `silent-failure-hunter`; spot-check two of their runs instead. `found` is Critical and Important together.
+- `asks`: one answer chosen 80% of the time or more should become the default, with no prompt.
+- `findings_by_round_reversal`: `condition_met: true` means the `--pr-rounds` reversal condition in spec-to-pr's Revise reference holds. Propose revisiting that default, citing the counts and `chain_proxy`.
 
-Prefer `--fleet`, which resolves the paths from `cla.io/fleet.local.md` — one repo root per `- ` bullet, curated per machine, never synced:
+## Report
 
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit 0 --fleet
-```
+Under 40 lines: the window, then the 2–4 patterns that would change the loop, each with its metric, then numbered edits (file and section, the exact change, the metric).
 
-`--log` still takes explicit paths, and the two are mutually exclusive — both resolve the same argument, so accepting both would make precedence a guess the caller cannot see. A missing fleet file, or one with no bullets, refuses rather than analysing nothing: `runs_analyzed: 0` is what this skill tells you to read as a cold start.
+## Apply
 
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit 0 \
-  --log <repo-a>/cla.io/retro/spec-to-pr-runs.jsonl <repo-b>/cla.io/retro/spec-to-pr-runs.jsonl
-```
-
-Worth doing whenever one repo's ledger is thin, which is the usual case — this repo's 8 spec-to-pr records put one round-cap exhaustion rate at 4 of 5 where the fleet's 156 put it at 6 of 129. ("A five-record sample" stood here and in the sibling retro: it conflated the metric's denominator, 5, with the ledger's size, 8.) Three things change in fleet mode, and each is visible in the output rather than assumed: `--limit` applies PER LEDGER, so `runs_analyzed` can reach N x ledgers; `ledgers` carries per-path provenance, and a path that did not resolve shows `found: false` with `records: 0` — check it before trusting the sample size; and `log_path` is omitted, since no single path describes the result.
-
-Output is a single JSON object on stdout — phase outcomes, warn reasons, cap exhaustion rates, mean rounds used, per-agent finding rates, ask choice distribution, version-bump miss count, deferred-to-TODO totals.
-
-If `runs_analyzed: 0` on a SINGLE-ledger run, the log doesn't exist yet — say so, stop. The user needs to run `/cla:spec-to-pr` a few times first. On a multi-ledger run this conclusion does not follow: read `ledgers` instead, where a path that did not resolve shows `found: false`, and say which ledger was missing rather than reporting a cold start.
-
-### 2. Identify the load-bearing patterns
-
-Don't list every metric. Pick the 2-4 patterns that would actually change orchestrator behavior. Heuristics for what counts as load-bearing:
-
-**Workflow heuristics:**
-- Cap exhaustion ≥30% on a loop (`cap_exhaustion.<phase>.hit / .total`) → default cap too low for the changes this project ships. Note: the aggregator only counts a hit when `cap > 1` (a single-pass phase like Review with default cap 1 reaches its cap trivially every run — that is not exhaustion and is excluded), so a high `review` rate here is real, not an artifact.
-- A phase warns on ≥40% of runs (`phase_outcomes.<phase>.warn / runs_analyzed`) → the warn reason in `warn_reasons` tells you what to harden.
-- An agent dispatches on <20% of runs (`revise_agents.<name>.dispatches / runs_analyzed`) → narrow trigger; decide whether by design or drift.
-- An agent dispatches on every run → expected baseline (`code-reviewer`, `silent-failure-hunter`); no action on dispatch count alone — check its *yield* (next).
-- **Per-agent yield (dispatch vs. found).** An agent dispatched on ~every run BUT with low per-run yield (`revise_findings.<name>.found / .runs` well below the two bug-hunters') is a trim-the-trigger candidate — it's spending tokens for little severity-weighted signal. This is exactly how the `type-design-analyzer` / `comment-analyzer` triggers were narrowed (they ran on every change but produced mostly precedent-noise on purely-additive ones). Trust this only over `revise_findings_records` — if `revise_findings_legacy_records` dominates the window (older runs, pre-schema-pin), the yield sample is too thin to act on. And `found` is producer-filtered to **Critical+Important only** (Suggestions are excluded at the producer, per the run-log schema) but is not split *between* those two: a high count can be all Important with zero Critical, so spot-check one PR before recommending a trim.
-- One ask answered the same way ≥80% of times (`asks[].choices`) → make the default silent, remove the prompt.
-- `version_bump_misses` recurring → preflight check should be stricter or auto-bump. (Inert when the repo has no `plugin.json`/version manifest to bump: Ship then logs `version_bumped: true` every run and this metric stays 0 — ignore it in that case.)
-- Same warn reason recurring (`warn_reasons` top entries) → feature request, not a per-run issue.
-  A warn whose record kept no reason is counted in `warn_reasons_unrecorded`, never ranked — those phases warned for causes nobody can now read.
-
-**Routing heuristics (telemetry → concrete `model-routing.md` edits).** The `routing` object exists so metrics can *steer routing*, not just describe it — turn these into specific table edits, not vague "consider tuning." Each rule names a threshold and the edit it justifies:
-
-- **Non-bug-hunter phantom rate ≥ 0.4 over ≥5 dispatches** (`revise_findings.<agent>.phantom / .found` for `comment-analyzer` / `pr-test-analyzer` / `type-design-analyzer` / `plugin-dev:skill-reviewer`) → that agent is spending triage cost on wrong findings at its current tier. Propose either **demoting it one tier** in `model-routing.md`'s Revise table (if it isn't already at haiku) OR **tightening its trigger** (the yield lever above) — pick demotion when its `found` yield is otherwise healthy, trigger-tightening when yield is also low.
-- **Bug-hunter phantom rate ≥ 0.3 over ≥5 dispatches** (`code-reviewer` / `silent-failure-hunter`) → these are **never demoted** (phantom-finding economics), so this instead flags an *accuracy* problem: propose a manual spot-check of 2 recent runs and, if confirmed, a prompt/diff-slice tightening — NOT a model change. A rising bug-hunter phantom rate is the standing check on the never-demote bet (see `model-routing.md` rationale); surface it explicitly rather than letting it hide.
-- **`escalate_up_fired: true` on ≥50% of sub-Opus runs** (of runs where it *could* fire — the denominator is runs that reached the FIX-FIRST/RETHINK boundary, not `runs_analyzed`) → borderline verdicts are common enough on this project that the escalate-up dispatch is effectively always-on when sub-Opus. Propose either making the Design-Reviewer `opus` dispatch the default for large changes regardless of session model, or noting that this project's runs should just launch at Opus (the escalate-up cost is being paid every run anyway).
-<!-- A fourth routing heuristic, "a tier is never exercised", was DELETED here on
-2026-09-05. It read `routing.models.opus`, `routing.models.haiku` and
-`routing_models_unknown` — and `spec_to_pr_aggregate.py` emits none of the three.
-Measured: `grep -c routing_models_unknown` over that script returns 0, and the
-`--limit 0` output has no `routing` key at all. So the rule could never fire, and
-its instruction to "cross-check against `routing_models_unknown`" sent the reader
-to a field that does not exist, where finding nothing is indistinguishable from
-finding it clean. Do not restore it as prose: it needs the aggregator to emit a
-per-tier model count first, and that is a change to the script, not to this file. -->
-
-(Effort itself is only dialable on the Revise round-1 `Workflow` fan-out — see `model-routing.md`'s mechanism table — so an "effort too low" pattern can only be acted on there; everywhere else the lever is the *model* tier or the session model, not effort.)
-
-**Review-phase heuristics:**
-- `review_size_gate.large / (review_size_gate.small + review_size_gate.large) ≥ 0.6` (a Review skipped for multi-spec logs no gate, so divide by the gated runs, not `runs_analyzed`) → small-change gate (a≤5 ∧ b≤20 ∧ c=1) no longer captures modal change shape. Bump thresholds.
-- `review_verdicts.READY / (sum of review_verdicts) ≥ 0.8` with low aggregate `important` counts → checklist may be weakening. Spot-check 2 recent READY PRs by hand; restate any retired check.
-- `review_verdicts.RETHINK / (sum of review_verdicts) ≥ 0.2` → design conversations starting too late. Hoist recurring RETHINK triggers into a `/opsx:propose` pre-check.
-- `review_verified_claims.mean < 1` AND `review_verified_claims.n ≥ runs_analyzed / 2` → `### Verified claims` section going silent. There is no quota to restate any more (the checklist dropped it), so spot-check 2 recent reports for a sweep that verified nothing it should have. (Ignore when `n` is small — mostly nulls poisoning the mean.)
-
-**Schema-integrity heuristics (act before trusting the others):**
-- `skipped_records > 0` → producer is writing malformed JSONL; the rest of the analysis runs on a shrunken sample.
-- `shape_drift_records > 0` → some records lost a field the metrics are computed from, so `runs_analyzed` overstates the sample those metrics actually ran on. `shape_drift_fields` names which field drifted and how often. The name is the AGGREGATOR's, not always the producer's: `phases` and `asks` are ledger keys you can grep for, while `warn_reasons`, `review_agents`, `revise_agents`, `review_size_gate` and `review_verdicts` name what the metric lost — the producer writes those as `reason`, `agents`, `size_gate` and `verdict` INSIDE a `phases` entry. Read the stderr line beside the count for the record index and the actual key. Read this before any ratio below: a rate over a thinned sample reads exactly like a rate over a whole one.
-- `review_size_gate_unknown` / `review_verdicts_unknown` non-empty → producer is emitting values outside the whitelist; rates above are computed against the whitelisted subset only.
-- `review_gate_pair_mismatches > 0` → producer is emitting size_gate/agents inconsistently; agent dispatch counts may be miscounted on the affected runs.
-- `review_agents_unknown_types` / `revise_agents_unknown_types` non-empty → producer is putting non-strings in the `agents` list.
-- `revise_findings_malformed_records > 0` → the producer is emitting `routing.revise_findings_by_tier` in a shape that's neither the pinned per-agent form nor a known legacy shape (a non-dict field, an unknown/misspelled agent key, or an agent key with a non-dict value). Unlike `revise_findings_legacy_records` (benign pre-pin history), this is CURRENT drift — fix the producer's serialization (`run-log-schema.md`). Each malformed record also printed a stderr warning naming the record index.
-
-If schema-integrity rows are non-zero, fix the producer (the record shape `${CLAUDE_PLUGIN_ROOT}/lib/log_run.py` checks at write time, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md` for what each field means, or the orchestrator's serialization) BEFORE acting on workflow heuristics — those rates may be computed against a partly-poisoned window.
-
-(Per-agent finding YIELD is now logged and surfaced — `revise_findings.<agent>` carries `found`/`phantom`/`runs` from the pinned per-agent shape of `routing.revise_findings_by_tier` (the shape `${CLAUDE_PLUGIN_ROOT}/lib/log_run.py` now refuses anything else at write time; before that the field appeared in two other, mutually-incompatible shapes — model-tier and severity — which `spec_to_pr_aggregate.py` counts under `revise_findings_legacy_records` and excludes from yield). Join `revise_findings` with `revise_agents.<agent>.dispatches` for the dispatch-vs-yield picture. `found` is Critical+Important combined (Suggestions excluded at the producer) but not split between the two — a high count could be all Important, so verify the actual severity in the PR before acting on a low-yield trim.)
-
-Single-digit run counts in a category mean "interesting anecdote, not a pattern" — call them out as such, don't propose changes.
-
-### 3-5. Propose, report, and optionally apply
-
-Per the shared skeleton. Worked examples in this loop's own vocabulary:
-
-- ❌ "Review is too slow."
-- ✅ "In `spec-to-pr/SKILL.md`'s Review size gate, lower the large-change threshold to `a > 4` — 7 of 12 runs gated Small and then surfaced Important findings in Revise (`review_gate: small` with `revise_findings >= 3`)."
-
-The usual apply targets are `spec-to-pr/SKILL.md`, its `references/*.md`, and the shared
-`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`.
-
-## When NOT to use
-
-Per the shared skeleton's "When NOT to use a retro". This loop's threshold is ~5 `/cla:spec-to-pr` runs.
+Apply only the numbers the user picks. Never edit `openspec/**` or a script. The plugin is writable only when `${CLAUDE_PLUGIN_ROOT}` is inside `git rev-parse --show-toplevel`; otherwise send the edits to `/cla:report-upstream`.

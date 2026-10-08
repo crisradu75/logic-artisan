@@ -1,1115 +1,444 @@
-"""Tests for spec_to_pr_aggregate.py — deterministic metrics over JSONL run records."""
+"""Tests for spec_to_pr_aggregate.py — every field it emits, the fleet default and
+its fallback, skipped lines, the findings_by_round reversal check, and --nudge.
+
+The script runs as a program, the way the retro skill and spec-to-pr's Handoff
+invoke it, so every test goes through a subprocess.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py"
+_SKILLS = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills"
+SCRIPT = _SKILLS / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py"
+PLACEHOLDER = "reason not recorded (migrated record)"
 
 
-def _write_log(path: Path, records: list[dict]) -> None:
+def _rec(change: str = "c", ts: str = "2026-10-01T10:00:00Z", phases: list | None = None,
+         **extra) -> dict:
+    return {"ts": ts, "change": change, "mode": "description",
+            "phases": phases if phases is not None else [{"name": "Propose", "status": "ok"}],
+            **extra}
+
+
+def _phase(name: str, status: str = "ok", **fields) -> dict:
+    return {"name": name, "status": status, **fields}
+
+
+def _revise(rounds: list[tuple[int, int]], used: int | None = None, cap: int = 2) -> dict:
+    """A Revise phase whose findings_by_round holds (round, found) pairs."""
+    return _phase("Revise", rounds_used=used if used is not None else len(rounds),
+                  rounds_cap=cap,
+                  findings_by_round=[{"round": r, "found": f, "sibling_instance": 0}
+                                     for r, f in rounds])
+
+
+def _write(path: Path, records: list, raw_lines: list[str] = ()) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+    lines = [json.dumps(r) for r in records] + list(raw_lines)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
 
 
-def _run(log: Path, limit: int = 10) -> tuple[dict, str]:
-    r = subprocess.run(
-        [sys.executable, str(SCRIPT), "--log", str(log), "--limit", str(limit)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
-    )
+def _env(retro_dir: Path | None = None) -> dict:
+    env = dict(os.environ)
+    env.pop("CLAUDE_RETRO_DIR", None)
+    if retro_dir is not None:
+        env["CLAUDE_RETRO_DIR"] = str(retro_dir)
+    return env
+
+
+def _call(*args: str, env: dict | None = None, cwd: Path | None = None):
+    return subprocess.run([sys.executable, str(SCRIPT), *args], capture_output=True,
+                          text=True, encoding="utf-8", errors="replace", check=False,
+                          env=env if env is not None else _env(), cwd=cwd)
+
+
+def _run(*args: str, env: dict | None = None) -> tuple[dict, str]:
+    r = _call(*args, env=env)
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout), r.stderr
 
 
-def test_empty_log_returns_zero(tmp_path: Path) -> None:
-    out, _ = _run(tmp_path / "missing.jsonl")
-    assert out["runs_analyzed"] == 0
+def _log(*paths: Path, limit: int = 10) -> tuple[dict, str]:
+    return _run("--log", *map(str, paths), "--limit", str(limit))
 
 
-def test_phase_outcome_tally(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Test", "status": "ok"}]},
-        {"phases": [{"name": "Test", "status": "warn", "reason": "flaky"}]},
-        {"phases": [{"name": "Test", "status": "ok"}]},
-    ])
-    out, _ = _run(log)
-    assert out["phase_outcomes"]["Test"] == {"ok": 2, "warn": 1}
-    assert out["warn_reasons"] == [{"reason": "flaky", "count": 1}]
+# --- the emitted fields ------------------------------------------------------
+
+def test_emits_exactly_the_kept_fields(tmp_path: Path) -> None:
+    out, _ = _log(_write(tmp_path / "l.jsonl", [_rec()]))
+    assert set(out) == {
+        "source", "ledgers", "runs_analyzed", "window", "skipped_records",
+        "warn_reasons", "warn_reasons_unrecorded", "cap_exhaustion",
+        "revise_findings", "asks", "findings_by_round_reversal",
+    }
 
 
-def test_the_migration_placeholder_is_counted_apart_from_real_reasons(tmp_path: Path) -> None:
-    # Every migrated warn that kept no reason carries the same placeholder, so in
-    # the ranking it would outnumber every real reason and read as THE cause.
-    log = tmp_path / "runs.jsonl"
-    placeholder = "reason not recorded (migrated record)"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "warn", "reason": placeholder},
-                    {"name": "Revise", "status": "fail", "reason": placeholder}]},
-        {"phases": [{"name": "Test", "status": "warn", "reason": placeholder}]},
-        {"phases": [{"name": "Test", "status": "warn", "reason": "flaky"}]},
-    ])
-    out, _ = _run(log)
-    assert out["warn_reasons"] == [{"reason": "flaky", "count": 1}]
-    assert out["warn_reasons_unrecorded"] == 3
-    # Still a warn in the outcome tally: the phase did warn, only its reason is lost.
-    assert out["phase_outcomes"]["Test"] == {"warn": 2}
-
-
-def test_cap_exhaustion_and_round_counts(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Revise", "status": "ok",
-                     "rounds_used": 2, "rounds_cap": 2}]},
-        {"phases": [{"name": "Revise", "status": "ok",
-                     "rounds_used": 1, "rounds_cap": 2}]},
-    ])
-    out, _ = _run(log)
-    assert out["cap_exhaustion"]["revise"] == {"hit": 1, "total": 2}
-    assert out["round_counts"]["revise"] == 1.5
-
-
-def test_revise_agent_dispatch_count_only(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Revise", "status": "ok",
-                     "agents": ["code-reviewer", "silent-failure-hunter"],
-                     "critical": 1, "important": 3}]},
-        {"phases": [{"name": "Revise", "status": "ok",
-                     "agents": ["code-reviewer"],
-                     "critical": 0, "important": 2}]},
-    ])
-    out, _ = _run(log)
-    assert out["revise_agents"]["code-reviewer"] == {"dispatches": 2}
-    assert out["revise_agents"]["silent-failure-hunter"] == {"dispatches": 1}
-    # `revise_agents` carries dispatch counts ONLY — per-agent finding yield
-    # lives in the separate `revise_findings` block (fed by
-    # routing.revise_findings_by_tier), never inline on the dispatch entry.
-    assert "mean_critical" not in out["revise_agents"]["code-reviewer"]
-    assert "found" not in out["revise_agents"]["code-reviewer"]
-    # These records carry no routing.revise_findings_by_tier, so no yield data.
-    assert out["revise_findings"] == {}
-    assert out["revise_findings_records"] == 0
-
-
-def test_revise_findings_per_agent_yield(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Revise", "status": "ok",
-                     "agents": ["code-reviewer", "type-design-analyzer"]}],
-         "routing": {"revise_findings_by_tier": {
-             "code_reviewer": {"found": 2, "phantom": 0},
-             "type_design_analyzer": {"found": 5, "phantom": 1}}}},
-        {"phases": [{"name": "Revise", "status": "ok",
-                     "agents": ["code-reviewer", "type-design-analyzer"]}],
-         "routing": {"revise_findings_by_tier": {
-             "code_reviewer": {"found": 0, "phantom": 0},
-             "type_design_analyzer": {"found": 1, "phantom": 0}}}},
-        # A LEGACY model-tier shape: must NOT be tallied as an agent, but must
-        # be counted so the retro knows coverage is partial.
-        {"phases": [{"name": "Revise", "status": "ok", "agents": ["code-reviewer"]}],
-         "routing": {"revise_findings_by_tier": {
-             "opus": {"found": 3, "phantom": 0}, "sonnet": {"found": 2, "phantom": 0}}}},
-    ])
-    out, _ = _run(log)
-    # Underscore agent keys normalize to hyphens and join the dispatch names.
-    assert out["revise_findings"]["code-reviewer"] == {"found": 2, "phantom": 0, "runs": 2}
-    assert out["revise_findings"]["type-design-analyzer"] == {"found": 6, "phantom": 1, "runs": 2}
-    # opus/sonnet are model tiers, not agents — never appear in revise_findings.
-    assert "opus" not in out["revise_findings"]
-    assert out["revise_findings_records"] == 2
-    assert out["revise_findings_legacy_records"] == 1
-
-
-def _rfbt_record(rfbt: object) -> dict:
-    """A minimal Revise record carrying the given revise_findings_by_tier value."""
-    return {"phases": [{"name": "Revise", "status": "ok", "agents": ["code-reviewer"]}],
-            "routing": {"revise_findings_by_tier": rfbt}}
-
-
-def test_empty_findings_by_tier_counts_as_neither(tmp_path: Path) -> None:
-    # An empty {} = a Revise round that logged no findings. It is NOT a legacy
-    # shape, and counting it as one would inflate the denominator the yield gate
-    # reads ("if legacy dominates, sample too thin") and wrongly suppress it.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record({})])
-    out, stderr = _run(log)
-    assert out["revise_findings"] == {}
-    assert out["revise_findings_records"] == 0
-    assert out["revise_findings_legacy_records"] == 0
-    assert out["revise_findings_malformed_records"] == 0
-    assert stderr == ""  # empty is legitimate "no data", not drift — no warning
-
-
-def test_routing_without_findings_by_tier_counts_as_neither(tmp_path: Path) -> None:
-    # routing present (model tally logged) but no findings field — the common
-    # real case; counted in no bucket, no warning.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok",
-                                  "agents": ["code-reviewer"]}],
-                      "routing": {"implement_delegated": True}}])
-    out, stderr = _run(log)
-    assert out["revise_findings_records"] == 0
-    assert out["revise_findings_legacy_records"] == 0
-    assert out["revise_findings_malformed_records"] == 0
-    assert stderr == ""
-
-
-def test_legacy_severity_shape_counted_as_legacy_not_agent(tmp_path: Path) -> None:
-    # The severity legacy shape (scalar-int values, incl. phantom_rejected which
-    # normalizes to phantom-rejected) is genuine pre-pin data → legacy, no drift.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record({"critical": 2, "important": 3, "phantom_rejected": 1})])
-    out, stderr = _run(log)
-    assert out["revise_findings"] == {}
-    assert out["revise_findings_records"] == 0
-    assert out["revise_findings_legacy_records"] == 1
-    assert out["revise_findings_malformed_records"] == 0
-    assert stderr == ""
-
-
-def test_non_dict_findings_by_tier_is_malformed_and_warns(tmp_path: Path) -> None:
-    # Present but wrong type (a producer regressing the field to a string/list).
-    # Must NOT vanish silently — warn + count malformed, per the module contract.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record("n/a")])
-    out, stderr = _run(log)
-    assert out["revise_findings_records"] == 0
-    assert out["revise_findings_legacy_records"] == 0
-    assert out["revise_findings_malformed_records"] == 1
-    assert "expected dict" in stderr
-
-
-def test_unknown_agent_key_is_malformed_not_legacy(tmp_path: Path) -> None:
-    # A renamed/misspelled agent must not masquerade as benign legacy history —
-    # it's current-producer drift, so malformed + warn.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record({"brand-new-analyzer": {"found": 9, "phantom": 2}})])
-    out, stderr = _run(log)
-    assert out["revise_findings"] == {}
-    assert out["revise_findings_records"] == 0
-    assert out["revise_findings_legacy_records"] == 0
-    assert out["revise_findings_malformed_records"] == 1
-    assert "producer drift" in stderr
-
-
-def test_agent_key_non_dict_value_is_malformed(tmp_path: Path) -> None:
-    # A correct agent key with a corrupt scalar value is drift, not legacy.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record({"code_reviewer": 5})])
-    out, stderr = _run(log)
-    assert out["revise_findings"] == {}
-    assert out["revise_findings_records"] == 0
-    assert out["revise_findings_malformed_records"] == 1
-    assert "expected dict" in stderr
-
-
-def test_negative_found_phantom_clamped_to_zero(tmp_path: Path) -> None:
-    # A negative count is nonsensical and would drag an agent's cumulative yield
-    # below its true total — clamp to 0 rather than sum it.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record({"code_reviewer": {"found": -5, "phantom": -1}})])
-    out, _ = _run(log)
-    assert out["revise_findings"]["code-reviewer"] == {"found": 0, "phantom": 0, "runs": 1}
-    assert out["revise_findings_records"] == 1
-
-
-def test_duplicate_agent_spelling_counted_once(tmp_path: Path) -> None:
-    # code_reviewer and code-reviewer both normalize to code-reviewer in one
-    # record — runs must increment once, not twice (mirrors _tally_agents dedup).
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record({"code_reviewer": {"found": 1, "phantom": 0},
-                                   "code-reviewer": {"found": 2, "phantom": 0}})])
-    out, stderr = _run(log)
-    assert out["revise_findings"]["code-reviewer"]["runs"] == 1
-    assert out["revise_findings"]["code-reviewer"]["found"] == 1  # first wins, second skipped
-    assert "keyed twice" in stderr
-
-
-def test_plugin_dev_colon_key_normalizes_and_matches(tmp_path: Path) -> None:
-    # plugin-dev:skill-reviewer is the one canonical key whose colon must map to
-    # a hyphen to join the whitelist.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record({"plugin-dev:skill-reviewer": {"found": 4, "phantom": 1}})])
-    out, _ = _run(log)
-    assert out["revise_findings"]["plugin-dev-skill-reviewer"] == {
-        "found": 4, "phantom": 1, "runs": 1}
-    assert out["revise_findings_records"] == 1
-
-
-def test_mixed_agent_and_unknown_key_matches_but_warns(tmp_path: Path) -> None:
-    # A valid agent alongside a stray key: counts as a per-agent record (agent
-    # data is real) but the stray key must not be dropped silently.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [_rfbt_record({"code_reviewer": {"found": 1, "phantom": 0},
-                                   "mystery": {"found": 9, "phantom": 9}})])
-    out, stderr = _run(log)
-    assert out["revise_findings"]["code-reviewer"] == {"found": 1, "phantom": 0, "runs": 1}
-    assert out["revise_findings_records"] == 1
-    assert out["revise_findings_malformed_records"] == 0
-    assert "stray keys ignored" in stderr
-
-
-def test_limit_keeps_last_n(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"change": f"c{i}", "phases": []} for i in range(20)])
-    out, _ = _run(log, limit=5)
-    assert out["runs_analyzed"] == 5
-
-
-def test_limit_zero_returns_all(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"change": f"c{i}", "phases": []} for i in range(7)])
-    out, _ = _run(log, limit=0)
-    assert out["runs_analyzed"] == 7
-
-
-# requirement: run-ledgers / The spec-to-pr retro report
-def test_malformed_line_skipped_and_counted(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    log.write_text('{"change":"ok","phases":[]}\nnot json\n{"change":"ok2","phases":[]}\n',
-                   encoding="utf-8")
-    out, stderr = _run(log)
-    assert "skipping malformed" in stderr
+def test_window_is_chronological_across_ledgers(tmp_path: Path) -> None:
+    # Argument order is not time order: the newer ledger is named first.
+    newer = _write(tmp_path / "a.jsonl", [_rec(ts="2026-10-05T00:00:00Z")])
+    older = _write(tmp_path / "b.jsonl", [_rec(ts="2026-09-01T00:00:00Z")])
+    out, _ = _log(newer, older)
     assert out["runs_analyzed"] == 2
-    assert out["skipped_records"] == 1
-
-
-def test_missing_phases_key_warns(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"change": "drifted"}])  # no phases key at all
-    out, stderr = _run(log)
-    assert "missing or non-list `phases`" in stderr
-    assert out["runs_analyzed"] == 1
-    assert out["phase_outcomes"] == {}
-    # The bare-missing-key variant reaches the same branch as the wrong-type one,
-    # so it must reach the same tally. Asserted here rather than only in the
-    # wrong-type test: a refactor that split the two would otherwise stop counting
-    # this case with nothing in the suite noticing.
-    assert out["shape_drift_fields"] == {"phases": 1}
-    assert out["shape_drift_records"] == 1
-
-
-def test_report_chars_mean_per_phase(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "report_chars": 400}]},
-        {"phases": [{"name": "Review", "status": "ok", "report_chars": 600}]},
-        {"phases": [{"name": "Test", "status": "ok"}]},  # no report_chars — excluded
-    ])
-    out, _ = _run(log)
-    assert out["report_chars"] == {"Review": {"mean": 500.0, "n": 2}}
-
-
-def test_report_chars_two_phases_independent(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [
-            {"name": "Review", "status": "ok", "report_chars": 400},
-            {"name": "Test", "status": "ok", "report_chars": 900},
-        ]},
-    ])
-    out, _ = _run(log)
-    assert out["report_chars"] == {
-        "Review": {"mean": 400.0, "n": 1},
-        "Test": {"mean": 900.0, "n": 1},
-    }
-
-
-def test_report_chars_negative_clamped_to_zero(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "report_chars": -5}]},
-    ])
-    out, stderr = _run(log)
-    assert "negative, clamped to 0" in stderr
-    assert out["report_chars"] == {"Review": {"mean": 0.0, "n": 1}}
-
-
-def test_report_chars_type_confused_warns_and_coerces(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "report_chars": "big"}]},
-    ])
-    out, stderr = _run(log)
-    assert "report_chars='big' not int" in stderr
-    assert out["report_chars"] == {}
-    assert out["report_chars_coerced"] == 1
-
-
-def test_report_chars_bool_rejected(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "report_chars": True}]},
-    ])
-    out, stderr = _run(log)
-    assert "report_chars=True is bool" in stderr
-    assert out["report_chars"] == {}
-    assert out["report_chars_coerced"] == 1
-
-
-def test_report_chars_mixed_valid_and_malformed_same_run(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "report_chars": 400}]},
-        {"phases": [{"name": "Review", "status": "ok", "report_chars": "bad"}]},
-    ])
-    out, _ = _run(log)
-    assert out["report_chars"] == {"Review": {"mean": 400.0, "n": 1}}
-    assert out["report_chars_coerced"] == 1
-
-
-def test_type_confused_rounds_used_warns(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Revise", "status": "ok",
-                     "rounds_used": "2", "rounds_cap": 2}]},
-    ])
-    out, stderr = _run(log)
-    assert "rounds_used='2' not int" in stderr
-    assert out["cap_exhaustion"]["revise"] == {"hit": 0, "total": 0}
-
-
-def test_type_confused_agents_warns(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Revise", "status": "ok",
-                     "agents": "code-reviewer"}]},   # string, not list
-    ])
-    out, stderr = _run(log)
-    assert "Revise `agents` is str, expected list" in stderr
-    assert out["revise_agents"] == {}
-
-
-def test_asks_distribution(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [], "asks": [{"header": "Scope split", "choice": "tight"}]},
-        {"phases": [], "asks": [{"header": "Scope split", "choice": "tight"}]},
-        {"phases": [], "asks": [{"header": "Scope split", "choice": "full"}]},
-    ])
-    out, _ = _run(log)
-    assert out["asks"] == [{"header": "Scope split",
-                            "choices": {"tight": 2, "full": 1}}]
-
-
-def test_review_size_gate_and_verdicts(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok",
-                     "size_gate": "small", "verdict": "READY",
-                     "verified_claims_count": 5}]},
-        {"phases": [{"name": "Review", "status": "ok",
-                     "size_gate": "small", "verdict": "FIX FIRST",
-                     "verified_claims_count": 4}]},
-        {"phases": [{"name": "Review", "status": "warn",
-                     "size_gate": "large", "verdict": "RETHINK",
-                     "verified_claims_count": 8,
-                     "agents": ["design", "task", "spec"]}]},
-    ])
-    out, _ = _run(log)
-    assert out["review_size_gate"] == {"small": 2, "large": 1}
-    assert out["review_verdicts"] == {"READY": 1, "FIX FIRST": 1, "RETHINK": 1}
-    assert out["review_verified_claims"] == {"mean": round((5 + 4 + 8) / 3, 2), "n": 3}
-    assert out["review_agents"] == {
-        "design": {"dispatches": 1},
-        "task": {"dispatches": 1},
-        "spec": {"dispatches": 1},
-    }
-    assert out["review_gate_pair_mismatches"] == 0
-
-
-def test_review_missing_optional_fields_emits_no_warnings(tmp_path: Path) -> None:
-    """Happy-path small-mode entry without `agents` must NOT emit stderr noise —
-    a future regression that warns on legitimate absence would mask real drift."""
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok"}]},
-    ])
-    out, stderr = _run(log)
-    assert out["review_size_gate"] == {}
-    assert out["review_verdicts"] == {}
-    assert out["review_verified_claims"] == {"mean": 0.0, "n": 0}
-    assert out["review_agents"] == {}
-    assert out["review_gate_pair_mismatches"] == 0
-    assert stderr == "", f"unexpected stderr: {stderr!r}"
-
-
-def test_review_agents_type_confusion_warns(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok",
-                     "size_gate": "large", "agents": "design"}]},
-    ])
-    out, stderr = _run(log)
-    assert "Review `agents` is str, expected list" in stderr
-    assert out["review_agents"] == {}
-
-
-def test_review_size_gate_unknown_value_surfaced(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "size_gate": "medium"}]},
-    ])
-    out, stderr = _run(log)
-    assert "'medium'" in stderr and "size_gate" in stderr
-    assert out["review_size_gate"] == {}
-    assert out["review_size_gate_unknown"] == {"medium": 1}
-
-
-def test_review_verdict_unknown_value_surfaced(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "verdict": "ready"}]},  # lowercase typo
-    ])
-    out, stderr = _run(log)
-    assert "'ready'" in stderr and "verdict" in stderr
-    assert out["review_verdicts"] == {}
-    assert out["review_verdicts_unknown"] == {"ready": 1}
-
-
-def test_duplicate_agents_count_once_with_warning(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "size_gate": "large",
-                     "agents": ["design", "design", "task"]}]},
-    ])
-    out, stderr = _run(log)
-    assert out["review_agents"] == {"design": {"dispatches": 1}, "task": {"dispatches": 1}}
-    assert "duplicates" in stderr
-
-
-def test_size_gate_agents_pair_mismatch_detected(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        # small mode should have no agents — this is a producer bug
-        {"phases": [{"name": "Review", "status": "ok", "size_gate": "small",
-                     "agents": ["design"]}]},
-        # large mode requires agents — empty list is a producer bug
-        {"phases": [{"name": "Review", "status": "ok", "size_gate": "large",
-                     "agents": []}]},
-    ])
-    out, stderr = _run(log)
-    assert out["review_gate_pair_mismatches"] == 2
-    assert "contradicts agents" in stderr
-
-
-def test_a_warn_review_whose_agents_could_not_run_is_not_a_mismatch(tmp_path: Path) -> None:
-    # The writer accepts this pair on a warn Review, with its reason: it is the
-    # truthful record of a gate that called for agents none could dispatch.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "warn", "size_gate": "large", "agents": [],
-                     "reason": "no agent could be dispatched"}]},
-        {"phases": [{"name": "Review", "status": "ok", "size_gate": "large", "agents": []}]},
-    ])
-    out, _ = _run(log)
-    assert out["review_gate_pair_mismatches"] == 1
-
-
-def test_review_and_revise_agents_independent(tmp_path: Path) -> None:
-    """Renaming `agent_dispatches` → `revise_agent_dispatches` while adding
-    `review_agent_dispatches` is the kind of refactor that could cross-wire
-    the two counters. Lock the independence in."""
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [
-            {"name": "Review", "status": "ok", "size_gate": "large",
-             "agents": ["design"]},
-            {"name": "Revise", "status": "ok", "agents": ["design", "silent-failure-hunter"]},
-        ]},
-    ])
-    out, _ = _run(log)
-    assert out["review_agents"] == {"design": {"dispatches": 1}}
-    assert out["revise_agents"] == {
-        "design": {"dispatches": 1},
-        "silent-failure-hunter": {"dispatches": 1},
-    }
-
-
-def test_non_string_agent_entry_bucketed_by_type(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "status": "ok", "size_gate": "large",
-                     "agents": ["design", 42, None]}]},
-    ])
-    out, stderr = _run(log)
-    assert out["review_agents"] == {"design": {"dispatches": 1}}
-    assert out["review_agents_unknown_types"] == {"int": 1, "NoneType": 1}
-    assert "non-string" in stderr
-
-
-def test_version_bump_misses(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Ship", "status": "warn", "version_bumped": False}]},
-        {"phases": [{"name": "Ship", "status": "ok", "version_bumped": True}]},
-    ])
-    out, _ = _run(log)
-    assert out["version_bump_misses"] == 1
-
-
-def test_missing_ledger_warns_and_reports_zero(tmp_path: Path) -> None:
-    # The "no file" branch must name where it looked (silent-misconfig guard).
-    import os
-    r = subprocess.run(
-        [sys.executable, str(SCRIPT)],  # no --log → default resolution
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
-        env={**os.environ, "CLAUDE_RETRO_DIR": str(tmp_path)},
-    )
-    assert r.returncode == 0
-    out = json.loads(r.stdout)
-    assert out["runs_analyzed"] == 0
-    assert out["log_path"] == str(tmp_path / "spec-to-pr-runs.jsonl")
-    assert "no ledger at" in r.stderr
-
-
-def _import_default_log_path():
-    # Load by explicit path: the aggregator is a `scripts/` file reached by
-    # path, not a module on `sys.path`, so an explicit-path load is what makes
-    # it importable at all here.
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("_ut_s2p_aggregate", SCRIPT)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod._default_log_path
-
-
-def test_default_log_path_env_override(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("CLAUDE_RETRO_DIR", str(tmp_path))
-    assert _import_default_log_path()() == tmp_path / "spec-to-pr-runs.jsonl"
-
-
-def test_default_log_path_rejects_relative_override(monkeypatch) -> None:
-    monkeypatch.setenv("CLAUDE_RETRO_DIR", "relative/dir")
-    import pytest
-    with pytest.raises(ValueError, match="absolute path"):
-        _import_default_log_path()()
-
-
-def test_default_log_path_default_is_claude_retro(monkeypatch) -> None:
-    monkeypatch.delenv("CLAUDE_RETRO_DIR", raising=False)
-    p = _import_default_log_path()()
-    assert p.name == "spec-to-pr-runs.jsonl"
-    assert p.parent.name == "retro"
-    assert p.parent.parent.name == "cla.io"
-
-
-# --- Container-shape drift: survive the record, and count it -----------------
-#
-# The crash these cover was real, not hypothetical: one record in a consuming
-# repo carried `"asks": 2` — a count where the list belongs — and the aggregator
-# died with `TypeError: 'int' object is not iterable`, exit 1, zero bytes of
-# output. That repo's retro could not be run at all.
-
-
-def _run_multi(logs: list[Path], limit: int = 10) -> tuple[dict, str]:
-    """`_run`, but for the multi-ledger form of --log."""
-    r = subprocess.run(
-        [sys.executable, str(SCRIPT), "--limit", str(limit), "--log", *[str(p) for p in logs]],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
-    )
-    assert r.returncode == 0, r.stderr
-    return json.loads(r.stdout), r.stderr
-
-
-def test_non_list_asks_does_not_abort_the_run(tmp_path: Path) -> None:
-    # The regression. `_run` asserts exit 0, so a re-broken guard fails here on
-    # the return code before any tally assertion is reached.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Test", "status": "ok"}], "asks": 2},
-        {"phases": [{"name": "Test", "status": "ok"}]},
-    ])
-    out, _ = _run(log)
-    assert out["runs_analyzed"] == 2, "the good record must still be analyzed"
-    assert out["phase_outcomes"]["Test"] == {"ok": 2}
-
-
-def test_non_list_asks_is_tallied_and_named(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [], "asks": 2}])
-    out, err = _run(log)
-    assert out["shape_drift_fields"] == {"asks": 1}
-    assert out["shape_drift_records"] == 1
-    assert "`asks` is int" in err, "the diagnostic must name the field and the type it got"
-
-
-def test_non_list_phases_is_tallied(tmp_path: Path) -> None:
-    # Warned about since forever, counted nowhere — so a metric computed over a
-    # subset of `runs_analyzed` read identically to one computed over all of it.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": {"test": "ok"}},          # the dict dialect
-        {"phases": [{"name": "Test", "status": "ok"}]},
-    ])
-    out, _ = _run(log)
-    assert out["runs_analyzed"] == 2
-    assert out["shape_drift_fields"] == {"phases": 1}
-    assert out["shape_drift_records"] == 1
-
-
-def test_one_record_drifting_twice_counts_once_as_a_record(tmp_path: Path) -> None:
-    # Both fields appear in the per-field tally; the record count stays 1. This
-    # is the real shape of interoga-ro record 23, which drifts in both.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": {"test": "ok"}, "asks": 2}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"phases": 1, "asks": 1}
-    assert out["shape_drift_records"] == 1
-
-
-def test_clean_records_are_not_flagged_as_drift(tmp_path: Path) -> None:
-    """Well-formed input must read zero — the false-POSITIVE direction.
-
-    Not a non-vacuity guard, despite an earlier name that said so: a review agent
-    patched an `aggregate()` that kept both fields and never incremented them, and
-    this test passed against it while every sibling `..._is_tallied` test failed.
-    Those siblings are what make the counter non-vacuous. This one makes zero
-    meaningful, which is the other half and is worth its own test — a counter that
-    fires on clean records would make the alarm useless in the opposite way.
-    """
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Test", "status": "ok"}], "asks": [{"header": "h", "choice": "c"}]},
-        {"phases": [{"name": "Ship", "status": "ok"}]},
-    ])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {}
-    assert out["shape_drift_records"] == 0
-    assert out["asks"] == [{"header": "h", "choices": {"c": 1}}]
-
-
-# --- Multi-ledger --log ------------------------------------------------------
-
-
-def test_multiple_logs_aggregate_into_one_result(tmp_path: Path) -> None:
-    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
-    _write_log(a, [{"phases": [{"name": "Test", "status": "ok"}]}])
-    _write_log(b, [{"phases": [{"name": "Test", "status": "warn", "reason": "x"}]},
-                   {"phases": [{"name": "Test", "status": "ok"}]}])
-    out, _ = _run_multi([a, b])
-    assert out["runs_analyzed"] == 3
-    assert out["phase_outcomes"]["Test"] == {"ok": 2, "warn": 1}
-    assert out["log_paths"] == [str(a), str(b)]
-
-
-def test_single_log_still_reports_log_path_as_a_string(tmp_path: Path) -> None:
-    # The pre-existing contract. Every caller today passes one ledger.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": []}])
-    out, _ = _run(log)
-    assert out["log_path"] == str(log)
-    assert out["log_paths"] == [str(log)]
-
-
-def test_multiple_logs_omit_log_path_rather_than_naming_one(tmp_path: Path) -> None:
-    # Naming one of several would attribute a fleet-wide aggregate to one repo.
-    # Omitting it makes a stale consumer fail loudly instead of quietly wrong.
-    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
-    _write_log(a, [{"phases": []}])
-    _write_log(b, [{"phases": []}])
-    out, _ = _run_multi([a, b])
-    assert "log_path" not in out
-    assert out["log_paths"] == [str(a), str(b)]
+    assert out["window"] == {"first_ts": "2026-09-01T00:00:00Z",
+                             "last_ts": "2026-10-05T00:00:00Z"}
 
 
 def test_limit_applies_per_ledger(tmp_path: Path) -> None:
-    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
-    _write_log(a, [{"phases": []} for _ in range(5)])
-    _write_log(b, [{"phases": []} for _ in range(5)])
-    out, _ = _run_multi([a, b], limit=2)
-    assert out["runs_analyzed"] == 4, "limit is the last N from EACH ledger, not overall"
+    a = _write(tmp_path / "a.jsonl", [_rec(change=f"a{i}") for i in range(4)])
+    b = _write(tmp_path / "b.jsonl", [_rec(change=f"b{i}") for i in range(4)])
+    out, _ = _log(a, b, limit=3)
+    assert out["runs_analyzed"] == 6
+    assert [entry["records"] for entry in out["ledgers"]] == [4, 4]
+    out, _ = _log(a, b, limit=0)
+    assert out["runs_analyzed"] == 8
 
 
-def test_skipped_records_sum_across_ledgers(tmp_path: Path) -> None:
-    # `main()` accumulates `skipped` across the loop; nothing exercised that sum.
-    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
-    a.write_text(json.dumps({"phases": []}) + "\n{ broken\n", encoding="utf-8")
-    b.write_text(json.dumps({"phases": []}) + "\nalso broken\n", encoding="utf-8")
-    out, _ = _run_multi([a, b])
-    assert out["runs_analyzed"] == 2
-    assert out["skipped_records"] == 2, "one malformed line from each ledger"
+def test_warn_reasons_rank_real_reasons_and_count_the_placeholder_apart(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(phases=[_phase("Test", "warn", reason="flaky", rounds_used=1, rounds_cap=3),
+                     _phase("Revise", "fail", reason=PLACEHOLDER, rounds_used=1, rounds_cap=2)]),
+        _rec(phases=[_phase("Test", "warn", reason="flaky", rounds_used=1, rounds_cap=3)]),
+        _rec(phases=[_phase("Ship", "fail", reason="push refused")]),
+        # A reason on an ok or skip phase is not a warn reason.
+        _rec(phases=[_phase("Archive", "skip", reason="nothing to archive")]),
+    ])
+    out, _ = _log(log)
+    assert out["warn_reasons"] == [{"reason": "flaky", "count": 2},
+                                   {"reason": "push refused", "count": 1}]
+    assert out["warn_reasons_unrecorded"] == 1
 
 
-def test_ledgers_names_a_path_that_did_not_resolve(tmp_path: Path) -> None:
-    # The whole point of reading several ledgers is sample size, so a path that
-    # contributed nothing must be visible on stdout, not only on stderr.
-    good, missing = tmp_path / "a.jsonl", tmp_path / "nope.jsonl"
-    _write_log(good, [{"phases": []}, {"phases": []}])
-    out, _ = _run_multi([good, missing])
-    assert out["runs_analyzed"] == 2
+def test_warn_reasons_keep_the_top_ten(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(phases=[_phase("Ship", "warn", reason=f"r{i}")]) for i in range(12)])
+    out, _ = _log(log, limit=0)
+    assert len(out["warn_reasons"]) == 10
+
+
+def test_cap_exhaustion_counts_only_phases_with_room_to_loop(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(phases=[_phase("Review", rounds_used=1, rounds_cap=1),   # single pass
+                     _phase("Test", rounds_used=3, rounds_cap=3),     # hit
+                     _revise([(1, 2), (2, 1)])]),                     # hit
+        _rec(phases=[_phase("Review", rounds_used=2, rounds_cap=2),   # hit
+                     _phase("Test", rounds_used=1, rounds_cap=3),
+                     _revise([(1, 0)])]),
+        _rec(phases=[_phase("Test", "skip")]),                        # no pair
+    ])
+    out, _ = _log(log)
+    assert out["cap_exhaustion"] == {
+        "review": {"hit": 1, "total": 1},
+        "test": {"hit": 1, "total": 2},
+        "revise": {"hit": 1, "total": 2},
+    }
+
+
+def test_revise_findings_sum_per_agent(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(routing={"revise_findings_by_tier": {
+            "code-reviewer": {"found": 2, "phantom": 0},
+            "comment-analyzer": {"found": 1, "phantom": 1}}}),
+        _rec(routing={"revise_findings_by_tier": {
+            "code-reviewer": {"found": 3, "phantom": 1},
+            "plugin-dev:skill-reviewer": {"found": 1, "phantom": 0}}}),
+        _rec(routing={"implement_delegated": True}),  # no findings block
+    ])
+    out, _ = _log(log)
+    assert out["revise_findings"] == {
+        "code-reviewer": {"found": 5, "phantom": 1, "runs": 2},
+        "comment-analyzer": {"found": 1, "phantom": 1, "runs": 1},
+        "plugin-dev:skill-reviewer": {"found": 1, "phantom": 0, "runs": 1},
+    }
+
+
+def test_asks_tally_choices_per_header(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(asks=[{"header": "Tree", "choice": "Commit first"},
+                   {"header": "Scope", "choice": "Full"}]),
+        _rec(asks=[{"header": "Tree", "choice": "Commit first"}]),
+        _rec(asks=[{"header": "Tree", "choice": "Stash — then go"}]),
+    ])
+    out, _ = _log(log)
+    assert {a["header"]: a["choices"] for a in out["asks"]} == {
+        "Tree": {"Commit first": 2, "Stash — then go": 1},
+        "Scope": {"Full": 1},
+    }
+
+
+# --- skipped lines -----------------------------------------------------------
+
+# requirement: run-ledgers / The spec-to-pr retro summary
+def test_unreadable_lines_are_skipped_named_and_counted(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(phases=[_phase("Ship", "warn", reason="kept")]),
+        _rec(phases={"review": "ok"}),                              # old dict shape
+        _rec(phases=[_revise([(1, 1)], used=True)]),                # bool count
+        _rec(routing={"revise_findings_by_tier": {"opus": 3}}),     # not per agent
+    ], raw_lines=["{not json", "[1, 2]"])
+    out, err = _log(log)
+    assert out["runs_analyzed"] == 1
+    assert out["warn_reasons"] == [{"reason": "kept", "count": 1}]
+    assert out["skipped_records"] == 5
+    assert out["ledgers"][0]["skipped"] == 5
+    for line, field in [(2, "`phases`"), (3, "`rounds_used`"),
+                        (4, "`routing.revise_findings_by_tier`"), (5, "not JSON"),
+                        (6, "not a JSON object")]:
+        assert f"line {line} skipped: {field}" in err
+
+
+def test_a_record_without_ts_or_change_is_skipped(tmp_path: Path) -> None:
+    no_ts = _rec()
+    del no_ts["ts"]
+    log = _write(tmp_path / "l.jsonl", [no_ts, _rec(change=None)])
+    out, err = _log(log)
+    assert out["runs_analyzed"] == 0
+    assert out["skipped_records"] == 2
+    assert "`ts`" in err and "`change`" in err
+
+
+# --- which ledgers: --log, the fleet default, the fallback ---------------------
+
+# requirement: run-ledgers / The spec-to-pr retro summary
+def test_log_names_every_ledger_and_marks_a_missing_one(tmp_path: Path) -> None:
+    real = _write(tmp_path / "a.jsonl", [_rec()])
+    out, err = _log(real, tmp_path / "missing.jsonl", real)
+    assert out["source"] == "log"
     assert out["ledgers"] == [
-        {"path": str(good), "found": True, "records": 2, "skipped": 0},
-        {"path": str(missing), "found": False, "records": 0, "skipped": 0},
+        {"path": str(real), "found": True, "records": 1, "skipped": 0},
+        {"path": str(tmp_path / "missing.jsonl"), "found": False, "records": 0, "skipped": 0},
     ]
+    assert out["runs_analyzed"] == 1  # the repeated path is read once
+    assert "no ledger at" in err
 
 
-def test_a_deduped_repeat_is_reported_as_the_single_ledger_it_is(tmp_path: Path) -> None:
-    """`log_path` must follow what was READ, not what was asked for.
-
-    The two diverged the moment dedupe arrived: the branch tested the raw argparse
-    list while the output was derived from the deduped one, so `--log a a` read
-    exactly one ledger, listed one path, and still omitted `log_path` — the
-    documented "this is a fleet result, do not attribute it to one repo" signal.
-    """
-    log = tmp_path / "a.jsonl"
-    _write_log(log, [{"phases": []}])
-    out, _ = _run_multi([log, log])
-    assert len(out["ledgers"]) == 1
-    assert out["log_paths"] == [str(log)]
-    assert out["log_path"] == str(log), "one ledger read must report as a single-ledger run"
+def _fleet_repo(tmp_path: Path, bullets: list[str] | None) -> Path:
+    """A repo whose ledger dir is `<repo>/cla.io/retro`, with an optional fleet file."""
+    retro = tmp_path / "home" / "cla.io" / "retro"
+    _write(retro / "spec-to-pr-runs.jsonl", [_rec(change="local")])
+    if bullets is not None:
+        (retro.parent / "fleet.local.md").write_text(
+            "# fleet\n\nprose, not a bullet\n\n" + "".join(f"- {b}\n" for b in bullets),
+            encoding="utf-8")
+    return retro
 
 
-def test_the_same_ledger_twice_is_not_double_counted(tmp_path: Path) -> None:
-    # A fleet invocation is assembled from a repo list, often by glob or brace
-    # expansion, so a repeated path is a real shape rather than a typo alone.
-    log = tmp_path / "a.jsonl"
-    _write_log(log, [{"phases": []}, {"phases": []}])
-    out, err = _run_multi([log, log])
-    assert out["runs_analyzed"] == 2, "the duplicate must not double the sample"
-    assert len(out["ledgers"]) == 1
-    assert "given more than once" in err
+# requirement: run-ledgers / The spec-to-pr retro summary
+def test_default_reads_every_root_in_the_fleet_file(tmp_path: Path) -> None:
+    other = tmp_path / "other"
+    _write(other / "cla.io" / "retro" / "spec-to-pr-runs.jsonl",
+           [_rec(change="o1"), _rec(change="o2")])
+    retro = _fleet_repo(tmp_path, [str(tmp_path / "home"),
+                                   f"`{other}`   # a comment",
+                                   str(tmp_path / "gone")])
+    out, _ = _run("--limit", "0", env=_env(retro))
+    assert out["source"] == "fleet"
+    assert "fallback" not in out
+    assert out["runs_analyzed"] == 3
+    assert [(Path(e["path"]).parents[2].name, e["found"]) for e in out["ledgers"]] == [
+        ("home", True), ("other", True), ("gone", False)]
 
 
-def test_window_is_chronological_regardless_of_argument_order(tmp_path: Path) -> None:
-    # Records arrive concatenated in argument order. Taking the first and last of
-    # that concatenation produced a window that ended before it started.
-    old, new = tmp_path / "old.jsonl", tmp_path / "new.jsonl"
-    _write_log(old, [{"ts": "2020-01-01T00:00:00Z", "phases": []}])
-    _write_log(new, [{"ts": "2026-09-01T00:00:00Z", "phases": []}])
-    for order in ([new, old], [old, new]):
-        out, _ = _run_multi(order)
-        assert out["window"] == {"first_ts": "2020-01-01T00:00:00Z",
-                                 "last_ts": "2026-09-01T00:00:00Z"}, f"order {order}"
+def test_no_fleet_file_falls_back_to_the_local_ledger(tmp_path: Path) -> None:
+    out, err = _run(env=_env(_fleet_repo(tmp_path, None)))
+    assert out["source"] == "local"
+    assert "no fleet file" in out["fallback"]
+    assert out["runs_analyzed"] == 1
+    assert "reading this repo's ledger only" in err
 
 
-def test_absent_asks_is_not_counted_as_drift(tmp_path: Path) -> None:
-    # An optional field that is absent, or explicitly null, is not drift.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": []}, {"phases": [], "asks": None}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {}
-    assert out["shape_drift_records"] == 0
-
-
-def test_unhashable_ask_keys_do_not_abort_the_run(tmp_path: Path) -> None:
-    # The container guard fixed one level; the KEYS drawn out of it are a second
-    # surface, and a list-valued header took the whole aggregate down.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [], "asks": [{"header": ["h"], "choice": "c"}]},
-                     {"phases": [], "asks": [{"header": "ok", "choice": "c"}]}])
-    out, _ = _run(log)
-    assert out["runs_analyzed"] == 2
-    assert out["asks"] == [{"header": "ok", "choices": {"c": 1}}]
-    assert out["shape_drift_fields"] == {"asks": 1}
-
-
-def test_unhashable_phase_name_does_not_abort_the_run(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": {"a": 1}, "status": "ok"}]},
-                     {"phases": [{"name": "Test", "status": "ok"}]}])
-    out, _ = _run(log)
-    assert out["runs_analyzed"] == 2
-    assert out["phase_outcomes"] == {"Test": {"ok": 1}}
-    assert out["shape_drift_fields"] == {"phases": 1}
-
-
-def test_unhashable_size_gate_does_not_abort_the_run(tmp_path: Path) -> None:
-    # The pair-check tested `size_gate in VALID_SIZE_GATES` on the RAW value,
-    # outside the isinstance guard above it.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Review", "status": "ok",
-                                  "size_gate": {"a": 1}, "agents": []}]}])
-    out, _ = _run(log)
+def test_a_fleet_file_with_no_bullets_falls_back(tmp_path: Path) -> None:
+    out, _ = _run(env=_env(_fleet_repo(tmp_path, [])))
+    assert out["source"] == "local"
+    assert "lists no repo root" in out["fallback"]
     assert out["runs_analyzed"] == 1
 
 
-# --- Drift branches the second review found untested ------------------------
-#
-# "Deleting any single one of these `.add(...)` calls survives the entire suite."
-# Each test below deletes exactly that possibility for one branch.
-
-
-def test_non_dict_routing_is_tallied(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [], "routing": "n/a"}])
-    out, err = _run(log)
-    assert out["shape_drift_fields"] == {"routing": 1}
-    assert "`routing` is str" in err
-
-
-def test_non_int_deferred_to_todo_is_tallied(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [], "deferred_to_todo": "three"}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"deferred_to_todo": 1}
-
-
-def test_non_string_ts_is_tallied(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [], "ts": 123}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"ts": 1}
-    assert out["window"] == {"first_ts": None, "last_ts": None}
-
-
-def test_non_string_warn_reason_is_tallied(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Test", "status": "warn", "reason": ["x"]}]}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"warn_reasons": 1}
-    assert out["warn_reasons"] == []
-    assert out["phase_outcomes"]["Test"] == {"warn": 1}, "the phase still counts"
-
-
-def test_non_list_review_agents_is_tallied(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Review", "status": "ok", "agents": "design"}]}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"review_agents": 1}
-
-
-def test_non_list_revise_agents_is_tallied(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok", "agents": "code-reviewer"}]}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"revise_agents": 1}
-
-
-def test_uncoercible_rounds_used_and_cap_are_tallied(tmp_path: Path) -> None:
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Revise", "status": "ok", "rounds_used": "two", "rounds_cap": 2}]},
-        {"phases": [{"name": "Revise", "status": "ok", "rounds_used": 2, "rounds_cap": "two"}]},
-    ])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"rounds_used": 1, "rounds_cap": 1}
-
-
-def test_non_string_size_gate_and_verdict_are_tallied(tmp_path: Path) -> None:
-    # These were dropped in COMPLETE silence before: no warning, no unknown
-    # bucket, no tally, while runs_analyzed counted the record.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Review", "status": "ok",
-                                  "size_gate": 1, "verdict": 7, "agents": []}]}])
-    out, err = _run(log)
-    assert out["shape_drift_fields"] == {"review_size_gate": 1, "review_verdicts": 1}
-    assert "`size_gate` is int" in err
-    assert "`verdict` is int" in err
-
-
-def test_a_retired_agent_name_is_history_not_drift(tmp_path: Path) -> None:
-    """Drift names a producer edit. These records are immutable, so there is none.
-
-    Counting them as drift pinned `shape_drift_records` permanently above zero —
-    measured at 4 of this repo's 8 records — which is the standing alarm nobody
-    reads, and the exact failure the counter was added to end.
-    """
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok",
-                                  "agents": ["code-reviewer"]}],
-                      "routing": {"revise_findings_by_tier": {
-                          "code_reviewer": {"found": 2, "phantom": 0},
-                          "skill-doc-reviewer": {"found": 1, "phantom": 0}}}}])
-    out, _ = _run(log)
-    assert out["retired_agent_keys"] == {"skill-doc-reviewer": 1}
-    assert out["shape_drift_fields"] == {}, "history is not drift"
-    assert out["shape_drift_records"] == 0
-    assert out["revise_findings"]["code-reviewer"]["found"] == 2
-
-
-def test_non_dict_findings_by_tier_reaches_the_drift_tally(tmp_path: Path) -> None:
-    # The MORE severe shape escaped the tally while a dict with one bad key
-    # reached it.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [], "routing": {"revise_findings_by_tier": ["x"]}}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"revise_findings_by_tier": 1}
-    assert out["revise_findings_malformed_records"] == 1
-
-
-def test_absent_rounds_cap_is_tallied(tmp_path: Path) -> None:
-    # Absence does the identical harm as an uncoercible value: the phase joins
-    # cap_total and can never be a hit, depressing the exhaustion rate.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok", "rounds_used": 2}]}])
-    out, _ = _run(log)
-    assert out["shape_drift_fields"] == {"rounds_cap": 1}
-    assert out["cap_exhaustion"]["revise"] == {"hit": 0, "total": 1}
-
-
-def test_mixed_agent_keys_reach_the_drift_tally(tmp_path: Path) -> None:
-    # A record mixing a valid agent with a bad key took the "matched" branch and
-    # was counted as a CLEAN per-agent record. This is the shape that fires on
-    # records 0 and 2 of the real ledger.
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Revise", "status": "ok",
-                                  "agents": ["code-reviewer"]}],
-                      "routing": {"revise_findings_by_tier": {
-                          "code_reviewer": {"found": 2, "phantom": 0},
-                          "not_an_agent": {"found": 1}}}}])
-    out, _ = _run(log)
-    assert out["revise_findings"]["code-reviewer"]["found"] == 2
-    assert out["shape_drift_fields"] == {"revise_findings_by_tier": 1}
-
-
-def test_a_non_bool_version_bumped_is_warned_and_tallied(tmp_path: Path) -> None:
-    """`"no"` used to read as "the bump happened" — the direction that HIDES a
-    defect rather than inventing one."""
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Ship", "version_bumped": "no"}]}])
-    out, err = _run(log)
-    assert out["version_bump_misses"] == 0
-    assert out["shape_drift_fields"].get("version_bumped") == 1
-    assert "`version_bumped`='no' not a bool" in err
-
-
-def test_an_honest_version_bumped_bool_is_not_drift(tmp_path: Path) -> None:
-    """Non-vacuity partner: `false` still counts as a miss, `true` is not drift."""
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Ship", "version_bumped": False}]},
-                     {"phases": [{"name": "Ship", "version_bumped": True}]}])
-    out, _ = _run(log)
-    assert out["version_bump_misses"] == 1
-    assert "version_bumped" not in out["shape_drift_fields"]
-
-
-def test_a_malformed_found_count_reaches_the_drift_tally(tmp_path: Path) -> None:
-    """The run still counts, so without this the agent's phantom RATE drifts
-    toward zero for what is only a type error."""
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"routing": {"revise_findings_by_tier": {
-        "code-reviewer": {"found": "lots", "phantom": 1}}}}])
-    out, err = _run(log)
-    assert out["shape_drift_fields"].get("revise_findings_by_tier") == 1
-    assert "found='lots' not int" in err
-
-
-def test_an_absent_found_count_is_a_legitimate_zero_not_drift(
-        tmp_path: Path) -> None:
-    """Non-vacuity partner: the field defaults to 0 when absent, and 0 is data.
-    Only a PRESENT-but-malformed value coerces to None and counts as drift."""
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"routing": {"revise_findings_by_tier": {
-        "code-reviewer": {"phantom": 0}}}}])
-    out, _ = _run(log)
-    assert "revise_findings_by_tier" not in out["shape_drift_fields"]
-    assert out["revise_findings"]["code-reviewer"]["found"] == 0
-
-
-# --- --fleet: the repo list that used to live only in someone's memory --------
-
-
-def _fleet_file(tmp_path: Path, roots: list[Path], extra: str = "") -> Path:
-    f = tmp_path / "fleet.local.md"
-    body = "# fleet\n\n" + extra + "".join(f"- {r}\n" for r in roots)
-    f.write_text(body, encoding="utf-8")
-    return f
-
-
-def _run_fleet(fleet: Path, limit: int = 0, extra: list[str] | None = None):
-    r = subprocess.run(
-        [sys.executable, str(SCRIPT), "--limit", str(limit), "--fleet", str(fleet),
-         *(extra or [])],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
-    return r
-
-
-def test_fleet_reads_every_listed_root(tmp_path: Path) -> None:
-    roots = []
-    for name in ("repo-a", "repo-b"):
-        root = tmp_path / name
-        _write_log(root / "cla.io" / "retro" / 'spec-to-pr-runs.jsonl', [{"ts": "2026-09-05"}])
-        roots.append(root)
-    r = _run_fleet(_fleet_file(tmp_path, roots))
-    assert r.returncode == 0, r.stderr
-    out = json.loads(r.stdout)
-    assert out["runs_analyzed"] == 2
-    assert len(out["ledgers"]) == 2
-    assert all(row["found"] for row in out["ledgers"])
-
-
-def test_a_listed_root_with_no_ledger_is_reported_not_hidden(tmp_path: Path) -> None:
-    """A repo that has not run the loop is expected, and must stay VISIBLE —
-    that `found: false` row is what stops a 1-repo result reading as a 2-repo one."""
-    root = tmp_path / "has-data"
-    _write_log(root / "cla.io" / "retro" / 'spec-to-pr-runs.jsonl', [{"ts": "2026-09-05"}])
-    r = _run_fleet(_fleet_file(tmp_path, [root, tmp_path / "empty-repo"]))
-    assert r.returncode == 0, r.stderr
-    out = json.loads(r.stdout)
-    assert [row["found"] for row in out["ledgers"]] == [True, False]
-    # And the message must name the FLEET, not an argument the caller never typed.
-    assert "a root listed in the fleet file" in r.stderr
-    assert "given explicitly via --log" not in r.stderr
-
-
-def test_comments_and_backticks_are_stripped_from_a_root(tmp_path: Path) -> None:
-    root = tmp_path / "repo-a"
-    _write_log(root / "cla.io" / "retro" / 'spec-to-pr-runs.jsonl', [{"ts": "2026-09-05"}])
-    f = tmp_path / "fleet.local.md"
-    f.write_text(f"# fleet\n\n- `{root}`   # trailing note\n"
-                 "not a bullet, ignored\n", encoding="utf-8")
-    r = _run_fleet(f)
-    assert r.returncode == 0, r.stderr
-    out = json.loads(r.stdout)
+# requirement: run-ledgers / The spec-to-pr retro summary
+def test_a_fleet_file_whose_roots_do_not_exist_here_falls_back(tmp_path: Path) -> None:
+    # The fleet file holds per-machine absolute paths: another machine's list
+    # resolves to nothing here, and reading nothing would look like a cold start.
+    out, _ = _run(env=_env(_fleet_repo(tmp_path, [str(tmp_path / "x"), str(tmp_path / "y")])))
+    assert out["source"] == "local"
+    assert "exists on this machine" in out["fallback"]
     assert out["runs_analyzed"] == 1
-    assert len(out["ledgers"]) == 1
 
 
-def test_a_missing_fleet_file_refuses_rather_than_analysing_nothing(
-        tmp_path: Path) -> None:
-    """`runs_analyzed: 0` is what the retro skill teaches the reader to treat as a
-    cold start, so a typo'd fleet path must not produce it."""
-    r = _run_fleet(tmp_path / "nope.md")
+def test_an_unresolvable_repo_root_fails_rather_than_guessing(tmp_path: Path) -> None:
+    r = _call(env=_env(), cwd=tmp_path)  # not a git repo, no override
     assert r.returncode == 1
-    assert "no fleet file at" in r.stderr
+    assert "CLAUDE_RETRO_DIR" in r.stderr
 
 
-def test_a_fleet_file_with_no_bullets_refuses(tmp_path: Path) -> None:
-    f = tmp_path / "fleet.local.md"
-    f.write_text("# fleet\n\nprose only, nobody wrote a bullet\n", encoding="utf-8")
-    r = _run_fleet(f)
-    assert r.returncode == 1
-    assert "lists no repo roots" in r.stderr
+# --- the findings_by_round reversal check ----------------------------------
+
+def _reversal(tmp_path: Path, records: list, name: str = "l.jsonl") -> dict:
+    out, _ = _log(_write(tmp_path / name, records), limit=1)
+    return out["findings_by_round_reversal"]
 
 
-def test_fleet_and_log_are_mutually_exclusive(tmp_path: Path) -> None:
-    """Both resolve the same argument; accepting both would make precedence a
-    guess the caller cannot see."""
-    root = tmp_path / "repo-a"
-    log = root / "cla.io" / "retro" / 'spec-to-pr-runs.jsonl'
-    _write_log(log, [{"ts": "2026-09-05"}])
-    r = _run_fleet(_fleet_file(tmp_path, [root]), extra=["--log", str(log)])
-    assert r.returncode == 1
-    assert "mutually exclusive" in r.stderr
+def _changes(n: int, surfaced: int, days: list[str]) -> list[dict]:
+    """n changes that ran a round 2, `surfaced` of them finding something there,
+    dated round-robin over `days`."""
+    return [_rec(change=f"c{i}", ts=f"{days[i % len(days)]}T12:00:00Z",
+                 phases=[_revise([(1, 3), (2, 1 if i < surfaced else 0)])])
+            for i in range(n)]
 
 
-def test_a_malformed_verified_claims_count_reaches_the_drift_tally(
-        tmp_path: Path) -> None:
-    """The hardest loss to see: `review_verified_claims.n` is the very number the
-    schema tells the reader to judge the mean by, and a malformed value shrank it
-    with nothing said."""
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [
-        {"phases": [{"name": "Review", "verified_claims_count": "twelve"}]},
-        {"phases": [{"name": "Review", "verified_claims_count": 8}]},
-    ])
-    out, err = _run(log)
-    assert out["review_verified_claims"] == {"mean": 8, "n": 1}
-    assert out["shape_drift_fields"].get("review_verified_claims") == 1
-    assert "verified_claims_count='twelve' not int" in err
+# requirement: run-ledgers / The spec-to-pr retro summary
+def test_reversal_met(tmp_path: Path) -> None:
+    # _reversal passes --limit 1: the check reads every record, not the window.
+    check = _reversal(tmp_path, _changes(8, 5, ["2026-09-01", "2026-09-02"]))
+    assert check["changes_with_round_2"] == 8
+    assert check["surfaced_critical_or_important"] == 5
+    assert check["chains"] == 2
+    assert (check["min_changes"], check["min_chains"]) == (8, 2)
+    assert check["condition_met"] is True
 
 
-def test_an_absent_verified_claims_count_is_not_drift(tmp_path: Path) -> None:
-    """Non-vacuity partner: most records never carry the field, and a low `n` from
-    genuine absence must stay distinguishable from one caused by bad values."""
-    log = tmp_path / "runs.jsonl"
-    _write_log(log, [{"phases": [{"name": "Review"}]},
-                     {"phases": [{"name": "Review", "verified_claims_count": 4}]}])
-    out, _ = _run(log)
-    assert out["review_verified_claims"] == {"mean": 4, "n": 1}
-    assert "review_verified_claims" not in out["shape_drift_fields"]
+def test_reversal_not_met_below_eight_changes(tmp_path: Path) -> None:
+    check = _reversal(tmp_path, _changes(7, 7, ["2026-09-01", "2026-09-02"]))
+    assert check["condition_met"] is False
+
+
+def test_reversal_not_met_on_one_chain(tmp_path: Path) -> None:
+    check = _reversal(tmp_path, _changes(10, 10, ["2026-09-01"]))
+    assert check["chains"] == 1
+    assert check["condition_met"] is False
+
+
+def test_reversal_needs_a_strict_majority(tmp_path: Path) -> None:
+    check = _reversal(tmp_path, _changes(8, 4, ["2026-09-01", "2026-09-02"]))
+    assert check["surfaced_critical_or_important"] == 4
+    assert check["condition_met"] is False
+
+
+def test_reversal_counts_only_changes_where_a_round_2_ran(tmp_path: Path) -> None:
+    records = _changes(8, 8, ["2026-09-01", "2026-09-02"]) + [
+        # Round 1 only, round 2 on another phase, and a rerun of c0: none adds a change.
+        _rec(change="single", phases=[_revise([(1, 9)])]),
+        _rec(change="elsewhere", phases=[_phase("Test", rounds_used=1, rounds_cap=3),
+                                         _phase("Propose")]),
+        _rec(change="c0", ts="2026-09-03T00:00:00Z", phases=[_revise([(1, 1), (2, 0)])]),
+    ]
+    check = _reversal(tmp_path, records)
+    assert check["changes_with_round_2"] == 8
+    assert check["surfaced_critical_or_important"] == 8
+    assert check["chains"] == 3  # the rerun ran on a third date
+
+
+def test_reversal_chain_proxy_is_ledger_and_date(tmp_path: Path) -> None:
+    # One date in two repos is two chains; the proxy is stated in the output.
+    a = _write(tmp_path / "a" / "l.jsonl", _changes(4, 4, ["2026-09-01"]))
+    b = _write(tmp_path / "b" / "l.jsonl", _changes(4, 4, ["2026-09-01"]))
+    out, _ = _log(a, b)
+    check = out["findings_by_round_reversal"]
+    assert check["changes_with_round_2"] == 8  # c0..c3 in each repo are different changes
+    assert check["chains"] == 2
+    assert check["condition_met"] is True
+    assert "ledger" in check["chain_proxy"] and "date" in check["chain_proxy"]
+
+
+# --- --nudge -----------------------------------------------------------------
+
+def _nudge(tmp_path: Path, records: list, raw_lines: list[str] = ()) -> str:
+    retro = tmp_path / "cla.io" / "retro"
+    _write(retro / "spec-to-pr-runs.jsonl", records, raw_lines)
+    r = _call("--nudge", env=_env(retro))
+    assert r.returncode == 0, r.stderr
+    return r.stdout
+
+
+def _capped(name: str, hit: bool) -> dict:
+    cap = 2 if name == "Revise" else 3
+    return _phase(name, rounds_used=cap if hit else 1, rounds_cap=cap)
+
+
+# requirement: run-ledgers / Handoff suggests a retro
+def test_nudge_on_three_revise_cap_hits_in_the_last_five(tmp_path: Path) -> None:
+    records = [_rec(phases=[_capped("Revise", hit)])
+               for hit in (False, False, True, True, False, True, False)]
+    out = _nudge(tmp_path, records)
+    assert out.count("\n") == 1
+    assert "Revise hit its round cap in 3 of the last 5 runs" in out
+    assert "/cla:spec-to-pr-retro" in out
+
+
+def test_nudge_on_three_test_cap_hits(tmp_path: Path) -> None:
+    out = _nudge(tmp_path, [_rec(phases=[_capped("Test", True)]) for _ in range(3)])
+    assert "Test hit its round cap in 3 of the last 3 runs" in out
+
+
+# requirement: run-ledgers / Handoff suggests a retro
+def test_no_nudge_on_two_cap_hits_or_cap_one(tmp_path: Path) -> None:
+    records = [_rec(phases=[_capped("Revise", h), _capped("Test", h)])
+               for h in (True, True, False, False, False)]
+    assert _nudge(tmp_path, records) == ""
+    # A cap of 1 used is a single pass, not exhaustion.
+    single = [_rec(phases=[_phase("Revise", rounds_used=1, rounds_cap=1)]) for _ in range(5)]
+    assert _nudge(tmp_path, single) == ""
+
+
+def test_old_cap_hits_outside_the_last_five_do_not_nudge(tmp_path: Path) -> None:
+    records = [_rec(phases=[_capped("Revise", True)]) for _ in range(3)]
+    records += [_rec(phases=[_capped("Revise", False)]) for _ in range(5)]
+    assert _nudge(tmp_path, records) == ""
+
+
+# requirement: run-ledgers / Handoff suggests a retro
+def test_nudge_on_a_warn_reason_repeated_in_two_runs(tmp_path: Path) -> None:
+    records = [
+        _rec(phases=[_phase("Ship", "warn", reason="push refused")]),
+        _rec(),
+        _rec(phases=[_phase("Ship", "fail", reason="push refused")]),
+    ]
+    out = _nudge(tmp_path, records)
+    assert 'warn reason "push refused" recurred in 2 of the last 3 runs' in out
+
+
+def test_no_nudge_on_one_run_repeating_a_reason_or_on_the_placeholder(tmp_path: Path) -> None:
+    records = [
+        _rec(phases=[_phase("Ship", "warn", reason="same"), _phase("Archive", "warn", reason="same")]),
+        _rec(phases=[_phase("Ship", "warn", reason=PLACEHOLDER)]),
+        _rec(phases=[_phase("Ship", "warn", reason=PLACEHOLDER)]),
+    ]
+    assert _nudge(tmp_path, records) == ""
+
+
+def test_nudge_joins_every_trigger_into_one_line(tmp_path: Path) -> None:
+    records = [_rec(phases=[_capped("Revise", True), _phase("Ship", "warn", reason="r")])
+               for _ in range(3)]
+    out = _nudge(tmp_path, records)
+    assert out.count("\n") == 1
+    assert "Revise hit" in out and 'warn reason "r"' in out
+
+
+def test_nudge_skips_unreadable_lines_and_never_fails(tmp_path: Path) -> None:
+    assert _nudge(tmp_path, [_rec()], raw_lines=["{broken"]) == ""
+    # No ledger at all: nothing printed, exit 0.
+    r = _call("--nudge", env=_env(tmp_path / "nowhere"))
+    assert (r.returncode, r.stdout) == (0, "")
+    # Unresolvable repo root: still exit 0.
+    r = _call("--nudge", env=_env(), cwd=tmp_path)
+    assert (r.returncode, r.stdout) == (0, "")
+
+
+def test_nudge_reads_only_this_repos_ledger(tmp_path: Path) -> None:
+    r = _call("--nudge", "--log", str(tmp_path / "x.jsonl"))
+    assert r.returncode == 2  # argparse: mutually exclusive
+
+
+# requirement: run-ledgers / Handoff suggests a retro
+def test_handoff_prints_the_nudge_after_appending_the_record() -> None:
+    command = "spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --nudge"
+    for prose in (_SKILLS / "spec-to-pr" / "references" / "handoff.md",
+                  _SKILLS / "spec-to-pr" / "SKILL.md"):
+        text = prose.read_text(encoding="utf-8")
+        assert command in text, f"{prose.name} no longer runs the nudge"
+        # After the append, which is what makes this run one of the last five.
+        assert text.index("lib/log_run.py") < text.index(command), prose.name
