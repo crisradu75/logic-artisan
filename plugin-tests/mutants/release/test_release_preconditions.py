@@ -16,8 +16,9 @@ ANCHORING NOTES, both learned by the preflight refusing.
    table, Step 1's runnable block, and Step 3's re-run block — so a bare command
    anchor is ambiguous and `mutate.py` refuses it. That ambiguity is not
    incidental: it is the same repetition that let the guard be satisfied by the
-   table describing the gate rather than by the gate itself. Mutant 1 therefore
-   carries the preceding `git status -sb` line, which occurs only in Step 1.
+   table describing the gate rather than by the gate itself. Mutants 1 and 2
+   therefore carry the preceding `git status -sb` line, which occurs only in
+   Step 1.
 2. `mutate.py` reads `read_bytes().decode()`, so line endings survive verbatim
    and a hardcoded `\\n` will not match this repo's CRLF checkout. The separator
    is read off the file rather than assumed, so the batch works on either — and
@@ -38,23 +39,18 @@ _NL = "\r\n" if b"\r\n" in SKILL.read_bytes() else "\n"
 
 MUTANTS = [
     (
-        # The exact drop round 1 found: the release gate stopped covering the
-        # Node suite when `run_tests.py` was deleted, so a shipped `.mjs` could
-        # ship broken behind a fully green precondition list.
-        "the Node suite is dropped from Step 1's runnable preconditions",
+        # The gate's first command dropped from the runnable block. The batch
+        # began with the Node suite in this slot — the exact drop round 1 found
+        # when `run_tests.py` was deleted; that suite went with the one Node
+        # script it tested.
+        "the pytest gate is dropped from Step 1's runnable preconditions",
         SKILL,
-        _NL.join(
-            [
-                "git status -sb",
-                "pytest plugin-tests -q -n auto --dist loadfile",
-                "node --test plugin-tests/node/mechanical-checks.test.mjs",
-            ]
-        ),
         _NL.join(["git status -sb", "pytest plugin-tests -q -n auto --dist loadfile"]),
+        "git status -sb",
         TARGETS,
     ),
     (
-        # The third gate command, added when the live specs were held to the
+        # The second gate command, added when the live specs were held to the
         # OpenSpec length limit: a release must not tag a tree whose live specs
         # fail `--strict`.
         "the strict OpenSpec validation is dropped from Step 1's runnable preconditions",
@@ -63,17 +59,10 @@ MUTANTS = [
             [
                 "git status -sb",
                 "pytest plugin-tests -q -n auto --dist loadfile",
-                "node --test plugin-tests/node/mechanical-checks.test.mjs",
                 "openspec validate --specs --strict",
             ]
         ),
-        _NL.join(
-            [
-                "git status -sb",
-                "pytest plugin-tests -q -n auto --dist loadfile",
-                "node --test plugin-tests/node/mechanical-checks.test.mjs",
-            ]
-        ),
+        _NL.join(["git status -sb", "pytest plugin-tests -q -n auto --dist loadfile"]),
         TARGETS,
     ),
     (

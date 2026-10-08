@@ -144,16 +144,13 @@ def test_the_skill_states_the_never_move_invariant():
 
 def test_the_precondition_block_names_every_command_the_documented_gate_runs():
     """CLAUDE.md's "Before opening a PR" row is this repo's own statement of what
-    the shipping gate consists of — currently three commands, `pytest plugin-tests`,
-    the `node --test` run `pytest` cannot reach (`norecursedirs` excludes
-    `node`), and `openspec validate --specs --strict` over the live specs. The
-    deleted `run_tests.py` used to fold the first two into one 13-entry run,
-    so cutting it over to this skill's two-command precondition list silently
-    dropped Node coverage from the tag gate: `check_shipped_tree.py` ships
-    `project-review/scripts/mechanical-checks.mjs`, and nothing in the
-    preconditions ran its tests. Commit `ee3e359` on
-    `extract-dev-tree-from-plugin` is the proof — it fixed that suite failing
-    with `ERR_MODULE_NOT_FOUND` while `pytest` stayed green throughout.
+    the shipping gate consists of — currently two commands, `pytest plugin-tests`
+    and `openspec validate --specs --strict` over the live specs. The guard was
+    written when a third, a `node --test` run `pytest` could not reach, had
+    silently dropped out of the tag gate (commit `ee3e359` on
+    `extract-dev-tree-from-plugin`); that suite was deleted with the one Node
+    script it tested, and the failure shape — the doc's gate and the release
+    preconditions drifting apart — is unchanged.
 
     Derived from CLAUDE.md rather than hardcoded, so a future change to what
     "before opening a PR" runs is what this test forces release/SKILL.md to

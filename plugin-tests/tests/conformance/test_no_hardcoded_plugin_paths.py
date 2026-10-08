@@ -31,14 +31,14 @@ from pathlib import Path
 import pytest
 
 BAD = ".claude/plugins/cla"
-# `hooks/` is scanned too, and so are `.py`/`.mjs`/`.json`. The first version
+# `hooks/` is scanned too, and so are `.py`/`.json`. The first version
 # covered only `*.md` under three roots, which left the guard blind to exactly
-# the surfaces that still held the literal path: a usage comment in
-# `mechanical-checks.mjs`, one in `_dispatch_lib.py`, and anything in
-# `hooks/hooks.json`. A guard that cannot see where the defect actually lives is
+# the surfaces that still held the literal path: a usage comment in a Node
+# script (deleted 2026-10-08, and `.mjs` with it), one in `_dispatch_lib.py`,
+# and anything in `hooks/hooks.json`. A guard that cannot see where the defect actually lives is
 # a guard that reports clean.
 SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")
-SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
+SCANNED_SUFFIXES = (".md", ".py", ".json")
 
 # What the scanner is REQUIRED to reach, written down independently of the
 # constant above rather than derived from it. The duplication is the point.
@@ -66,19 +66,22 @@ SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
 #     def load():
 #         s = importlib.util.spec_from_file_location("m", p.resolve())
 #         m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
-#     for drop in (".json", ".mjs", ".py", ".md", None):
+#     for drop in (".json", ".py", ".md", None):
 #         m = load()
 #         if drop:
 #             m.SCANNED_SUFFIXES = tuple(x for x in m.SCANNED_SUFFIXES if x != drop)
 #         files = list(m._scanned_files())
 #         print(drop, len(files), sorted(m.REQUIRED_SUFFIXES - {f.suffix for f in files}))
 #     PY
-#     .json 99 ['.json']  .mjs 101 ['.mjs']  .py 75 ['.py']  .md 31 ['.md']  None 102 []
+#     .json 97 ['.json']  .py 73 ['.py']  .md 30 ['.md']  None 100 []
 #
-# The `.mjs` row is the load-bearing one: 101 clears the floor, so only this
-# assertion is left. Against the tautological version that column was `[]` in
-# every row — which is what "it could not react" means, measured.
-REQUIRED_SUFFIXES = frozenset({".md", ".py", ".mjs", ".json"})
+# Against the tautological version that column was `[]` in every row — which is
+# what "it could not react" means, measured. A `.mjs` row used to be the
+# load-bearing one (one file, so dropping it cleared the floor and only this
+# assertion was left); `.mjs` went with the one Node script on 2026-10-08, and
+# today every row is under the floor too. This assertion stays because a floor
+# is lowered on every deliberate deletion, and it is not.
+REQUIRED_SUFFIXES = frozenset({".md", ".py", ".json"})
 
 # The same independent-list argument, for the OTHER axis of the scan. Five roots
 # are declared above and only `agents/` was ever asserted, so dropping
@@ -158,9 +161,9 @@ def test_the_scan_is_not_vacuous():
     # Re-measured with this file's own `__main__`, which is why it has one::
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 101  .json 3  .md 70  .mjs 1  .py 27  placeholder-refs 183 in 51 files
+    #     scanned 100  .json 3  .md 70  .py 27  placeholder-refs 176 in 49 files
     #
-    # The real count is 101. Pinned near it, not
+    # The real count is 100. Pinned near it, not
     # comfortably below it, matching the rule `test_subprocess_encoding.py`
     # states for its own floor: move it to the new real count when something is
     # deliberately added or deleted, never to a number chosen to be safe from
@@ -191,8 +194,9 @@ def test_the_scan_is_not_vacuous():
     # and from 101 to 100 when slim-spec-to-pr merged `archive-preflight.md`
     # into `archive.md`, and from 100 to 99 when cla-setup-and-optional-overlays
     # merged two skills' `SKILL.md` files into one, and from 99 to 100 when
-    # cla-setup-review-fixes added `_shared/references/terminology-format.md`.
-    assert len(files) >= 100, f"scan set collapsed to {len(files)} files"
+    # cla-setup-review-fixes added `_shared/references/terminology-format.md`,
+    # and from 100 to 99 when delete-mechanical-checks deleted the one `.mjs`.
+    assert len(files) >= 99, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
@@ -202,13 +206,12 @@ def test_the_scan_is_not_vacuous():
     #
     # Direction one: a suffix removed from `SCANNED_SUFFIXES`. This is why the
     # floor cannot be the whole defence — a suffix contributing fewer files than
-    # the floor's margin drops out without moving the count below it. `.mjs` is
-    # one file against a margin of one, so dropping it lands exactly ON the
-    # floor and passes it. `hooks/hooks.json` is the sharper case: it was
+    # the floor's margin drops out without moving the count below it (`.mjs`,
+    # one file, did exactly that until it was deleted). `hooks/hooks.json` is the sharper case: it was
     # covered here and nowhere else until issue #190 widened the token scanner
     # to `.json`; once a second scanner reached it, losing it HERE became
     # invisible to anything but this assertion. Today the floor happens to
-    # catch a `.json` drop (101 - 3 = 98 < 100),
+    # catch a `.json` drop (100 - 3 = 97 < 99),
     # but that is arithmetic, not a guarantee: the comment above prescribes
     # lowering the floor on a deliberate deletion, and a floor lowered to 96
     # hands the `.json` narrowing a green run. And this is not hypothetical:
@@ -319,7 +322,7 @@ def test_the_replacement_is_actually_in_use():
     # line would be a second copy that `_PRINTER_LINE` cannot see:
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 101  .json 3  .md 70  .mjs 1  .py 27  placeholder-refs 183 in 51 files
+    #     scanned 100  .json 3  .md 70  .py 27  placeholder-refs 176 in 49 files
     #
     # The file-count version sat at 34 under a comment claiming 36 while the real
     # figure was 48 — fourteen of headroom, found by running that printer for the
@@ -352,8 +355,10 @@ def test_the_replacement_is_actually_in_use():
     # deleted three skills' logging steps and the generic ledger reader: 208 to
     # 202, under 204, the gap of four kept. And to 178 when slim-spec-to-pr cut
     # spec-to-pr's SKILL.md and references to stubs: 199 to 182, under 198, the
-    # gap of four kept.
-    assert occurrences >= 178, (
+    # gap of four kept. And to 172 when delete-mechanical-checks deleted the Node
+    # script, project-review's command for it and that skill's resolver
+    # paragraph: 183 to 176, under 178, a gap of four.
+    assert occurrences >= 172, (
         f"only {occurrences} ${{CLAUDE_PLUGIN_ROOT}} reference(s) in synced core; "
         "the cross-references skills need to invoke their own scripts appear to "
         "have gone missing rather than been converted"
@@ -367,7 +372,7 @@ def test_the_replacement_is_actually_in_use():
 # catches the cruder version of that mistake.
 _PRINTER_LINE = re.compile(
     r"scanned (?P<scanned>\d+)\s+"
-    r"\.json (?P<json>\d+)\s+\.md (?P<md>\d+)\s+\.mjs (?P<mjs>\d+)\s+\.py (?P<py>\d+)\s+"
+    r"\.json (?P<json>\d+)\s+\.md (?P<md>\d+)\s+\.py (?P<py>\d+)\s+"
     r"placeholder-refs (?P<refs>\d+) in (?P<ref_files>\d+) files"
 )
 
@@ -381,7 +386,6 @@ def _live_printer_numbers() -> dict[str, int]:
         "scanned": len(files),
         "json": by_suffix[".json"],
         "md": by_suffix[".md"],
-        "mjs": by_suffix[".mjs"],
         "py": by_suffix[".py"],
         # Both numbers, because both are cited: the floor pins occurrences, and
         # the file count is what makes the gap between them legible.
@@ -403,7 +407,7 @@ def _printer_line() -> str:
     n = _live_printer_numbers()
     return (
         f"scanned {n['scanned']}  "
-        f".json {n['json']}  .md {n['md']}  .mjs {n['mjs']}  .py {n['py']}  "
+        f".json {n['json']}  .md {n['md']}  .py {n['py']}  "
         f"placeholder-refs {n['refs']} in {n['ref_files']} files"
     )
 
@@ -445,7 +449,7 @@ def test_the_recorded_counts_are_the_real_ones():
     )
     live = _live_printer_numbers()
     # THE PRINTER MUST ACCOUNT FOR EVERY FILE IT COUNTED. `_live_printer_numbers`
-    # names its four suffix keys by hand, where the `__main__` it replaced derived
+    # names its suffix keys by hand, where the `__main__` it replaced derived
     # them from `sorted(by_suffix.items())` — so a FIFTH scanned suffix would be
     # counted in `scanned` and reported nowhere.
     #
@@ -459,7 +463,7 @@ def test_the_recorded_counts_are_the_real_ones():
     #
     # One assertion closes it, and it is a real check rather than a restatement:
     # both sides come from the same scan, but only the left is enumerated by hand.
-    counted = live["json"] + live["md"] + live["mjs"] + live["py"]
+    counted = live["json"] + live["md"] + live["py"]
     assert counted == live["scanned"], (
         f"the printer counted {live['scanned']} files but reports only {counted} "
         f"across its named suffixes — {live['scanned'] - counted} file(s) are "

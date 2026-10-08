@@ -159,6 +159,9 @@ of them carries `findings_by_round`, so the Revise evidence in the companion doc
   Correction (2026-10-08): 1 of 4 repos (agentic-air, vendored copy) configures checks. Re-decided
   by the owner the same day with that fact in hand: delete anyway — no repo on the marketplace
   plugin uses it, and agentic-air's vendored copy keeps working as it is.
+  *Implemented as:* deleted 2026-10-08 (`openspec/changes/archive/2026-10-08-delete-mechanical-checks/`).
+  project-review's Step 0 keeps build, lint and test; cross-file checks a repo wants belong in its
+  own tests.
 - **P4b — Keep `diagnose`, and log escalations to it** as a count on the spec-to-pr run record
   (alongside P1a's `flags`). Re-measure in about a month.
 - **P4c — Keep `save-permissions`, `right-model` and `checkpoint`.** Owner's call.

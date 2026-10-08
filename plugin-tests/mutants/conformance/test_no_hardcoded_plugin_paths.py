@@ -61,6 +61,7 @@ TARGETS = [GUARD]
 # recording which tests go red:
 #
 #     mutant 3 (.mjs dropped)          scan_is_not_vacuous + recorded_counts
+#     (mutant 3 now drops `.json`; `.mjs` was deleted on 2026-10-08)
 #     mutant 7 (output-styles dropped) required_root_is_reached + recorded_counts
 #     mutant 8 (lib dropped)           required_root_is_reached + recorded_counts
 #                                      + scan_is_not_vacuous
@@ -109,23 +110,23 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The near-miss the guard's own comment works through: `.mjs` is ONE
-        # file, so dropping it lands on the floor rather than under it (103 - 1
-        # = 102, floor >= 102) and the count cannot see it. Within
-        # `test_the_scan_is_not_vacuous` the REQUIRED_SUFFIXES comparison is
-        # therefore the ONLY assertion that can catch it, which is the whole
-        # reason that second list exists as an independent source rather than
-        # being derived from SCANNED_SUFFIXES.
+        # A declared suffix dropped from the scan. This was the near-miss the
+        # guard's comment works through while `.mjs` existed: ONE file, so
+        # dropping it landed on the floor rather than under it and only the
+        # REQUIRED_SUFFIXES comparison could catch it. `.mjs` went with the one
+        # Node script on 2026-10-08, and the smallest suffix left, `.json`
+        # (3 files), takes the count to 97 against `>= 99` — so this kill now
+        # comes from the floor AND REQUIRED_SUFFIXES, and attributes to
+        # neither alone. The guard records the command that shows the suffix
+        # assertion firing by itself (its `missing` column); a batch cannot
+        # isolate it with one edit.
         #
-        # SCOPED TO THAT ONE TEST. Against the whole file this mutant also
-        # fails `test_the_recorded_counts_are_the_real_ones` (scanned 102
-        # against a recorded 103), and a kill that could have come from either
-        # proves neither. The claim above is only true of a run scoped this
-        # way, and it used to be written as though it were true of the batch.
-        "a declared suffix is dropped from the scan without moving the file count below its floor",
+        # SCOPED TO `test_the_scan_is_not_vacuous`, so the recorded-counts
+        # test, which also reacts to any moved count, is not what kills it.
+        "a declared suffix is dropped from the scan",
         GUARD,
-        'SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")',
         'SCANNED_SUFFIXES = (".md", ".py", ".json")',
+        'SCANNED_SUFFIXES = (".md", ".py")',
         _SCAN_VACUITY,
     ),
     (
@@ -138,8 +139,8 @@ MUTANTS = [
         # same edit from either end and this one needs no file to exist.
         "a scanned suffix stops being declared required, so its removal would go unnoticed",
         GUARD,
-        'REQUIRED_SUFFIXES = frozenset({".md", ".py", ".mjs", ".json"})',
         'REQUIRED_SUFFIXES = frozenset({".md", ".py", ".json"})',
+        'REQUIRED_SUFFIXES = frozenset({".md", ".py"})',
         TARGETS,
     ),
     (
@@ -247,11 +248,11 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 101  .json 3  .md 70  .mjs 1  .py 27  placeholder-refs 183 in 51 files"
+        "    #     scanned 100  .json 3  .md 70  .py 27  placeholder-refs 176 in 49 files"
         + _NL
         + "    #" + _NL
-        + "    # The real count is 101. Pinned near it, not",
-        "    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files"
+        + "    # The real count is 100. Pinned near it, not",
+        "    #     scanned 99  .json 3  .md 67  .py 28  placeholder-refs 217 in 48 files"
         + _NL
         + "    #" + _NL
         + "    # The real count is 99. Pinned near it, not",
@@ -315,7 +316,9 @@ MUTANTS = [
 # `>= 178` against a real 182 in the same change. And to `>= 99` against a real
 # 100 when cla-setup-and-optional-overlays merged two skills into one `SKILL.md`.
 # And to `>= 100` against a real 101 when cla-setup-review-fixes added
-# `_shared/references/terminology-format.md`.
+# `_shared/references/terminology-format.md`. And to `>= 99` against a real 100
+# when delete-mechanical-checks deleted the one `.mjs`, which also retired the
+# `.mjs` row's role: every row of the table is now under the floor.
 #
 # THE RECORDS ABOVE ARE NOW CHECKED, not trusted. The guard carries
 # `test_the_recorded_counts_are_the_real_ones`, which re-runs its printer and

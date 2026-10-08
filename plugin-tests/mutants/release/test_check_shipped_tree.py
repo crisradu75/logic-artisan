@@ -14,7 +14,8 @@ three-valued exit contract and the report-all loop, not just the pattern list:
   2. an anchor dropped from one pattern — the silent WIDENING that a hand-typed
      regex reintroduces every release.
   3. the `[^/.]+` stem widened to `[^/]+` — the exact defect measured on the
-     11-pattern draft, which accepted `mechanical-checks.test.mjs`.
+     11-pattern draft, which accepted a compound name (`mechanical-checks.test.mjs`
+     then; with the one Node script deleted, `helper.test.py` stands in for it).
   4. the report-all loop given an early exit — one offender named per run turns a
      single cleanup into as many release attempts as there are files.
   5. the conftest.py leaf-name exclusion neutered — the one dev-asset shape whose
@@ -57,10 +58,10 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the scripts pattern stem widens, re-accepting mechanical-checks.test.mjs",
+        "the scripts pattern stem widens, re-accepting helper.test.py",
         SCAN,
-        r'(r"skills/[^/]+/scripts/[^/.]+\.(?:py|mjs)",',
-        r'(r"skills/[^/]+/scripts/[^/]+\.(?:py|mjs)",',
+        r'(r"skills/[^/]+/scripts/[^/.]+\.py",',
+        r'(r"skills/[^/]+/scripts/[^/]+\.py",',
         TARGETS,
     ),
     (
@@ -95,7 +96,7 @@ MUTANTS = [
         "the test_*.py / *_test.py leaf-shape exclusion never matches, "
         "re-accepting a pytest module as a shipped script",
         SCAN,
-        r'_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.(?:py|mjs)$")',
+        r'_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.py$")',
         r'_EXCLUDED_LEAF_PATTERN = re.compile(r"(?!x)x")',
         TARGETS,
     ),

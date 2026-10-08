@@ -86,7 +86,7 @@ _NAMED_OVERLAY = re.compile(r"cla\.io/overlays/([a-z0-9][a-z0-9.-]*\.md)")
 def _overlays_named_by_the_plugin() -> set[str]:
     names: set[str] = set()
     for path in _PLUGIN_ROOT.rglob("*"):
-        if path.suffix in {".md", ".py", ".mjs"} and path.is_file():
+        if path.suffix in {".md", ".py"} and path.is_file():
             names |= set(_NAMED_OVERLAY.findall(path.read_text(encoding="utf-8")))
     return names
 

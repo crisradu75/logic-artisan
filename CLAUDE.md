@@ -53,7 +53,6 @@ which never ships.
 pytest plugin-tests -q -n auto --dist loadfile   # the gate
 pytest plugin-tests                              # serial
 pytest plugin-tests/tests/<area> -n auto --dist loadfile    # one area while iterating
-node --test plugin-tests/node/mechanical-checks.test.mjs     # pytest does not reach this
 openspec validate --specs --strict
 ```
 
@@ -140,12 +139,12 @@ or a new component. A small addition to something already built and tested does 
 | Editing one skill or area | `pytest plugin-tests/tests/<area> -n auto --dist loadfile`, **once** |
 | Fixing a defect a review found | that area, plus a mutation batch over what the fix touches |
 | Adding a new script, skill, or hook | the five checks above, in full |
-| Before opening a PR | `pytest plugin-tests -q -n auto --dist loadfile`, `node --test plugin-tests/node/mechanical-checks.test.mjs` and `openspec validate --specs --strict`, each once |
+| Before opening a PR | `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict`, each once |
 
 ## No CI — verification is local
 
 - **This repo runs no CI, by design. Do not add a workflow;** if a change seems to need one, raise
-  it. The three commands in the last table row are the whole shipping gate.
+  it. The two commands in the last table row are the whole shipping gate.
 - **Merging is unguarded.** Your local run before opening a PR is the only gate.
 - **A green run is evidence about your machine only.** Several hooks behave differently on Windows
   and on Linux/macOS; do not claim the other platform passed.

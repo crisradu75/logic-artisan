@@ -104,9 +104,10 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
     (r"skills/[^/]+/references/[^/.]+\.(?:md|json)",
      "Supporting docs, plus the permission-set JSON files. Single-dot stem only, "
      "so a compound extension cannot slip through."),
-    (r"skills/[^/]+/scripts/[^/.]+\.(?:py|mjs)",
-     "Deterministic helpers a skill calls. Single-dot stem only — the wide form "
-     "accepted mechanical-checks.test.mjs."),
+    (r"skills/[^/]+/scripts/[^/.]+\.py",
+     "Deterministic helpers a skill calls, all stdlib Python. Single-dot stem "
+     "only — the wide form accepted a compound name (mechanical-checks.test.mjs "
+     "then; helper.test.py now)."),
 )
 
 # The one shape whose name is otherwise a legal script name. A pytest fixture
@@ -115,13 +116,13 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
 EXCLUDED_LEAF_NAMES = frozenset({"conftest.py"})
 
 # A pytest MODULE is exactly a denylist shape: `skills/foo/scripts/test_foo.py`
-# matches pattern 14 (`skills/[^/]+/scripts/[^/.]+\.(?:py|mjs)`) just as
+# matches pattern 14 (`skills/[^/]+/scripts/[^/.]+\.py`) just as
 # legitimately as a real helper does, and so do `hooks/test_x.py` and
 # `lib/test_x.py`. The docstring's whole claim — that these 14 patterns are
 # narrow enough that nothing a denylist catches gets through — was false for
 # this one shape, so it is excluded by leaf shape here, the same way
 # `conftest.py` is excluded by leaf name above.
-_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.(?:py|mjs)$")
+_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.py$")
 
 _COMPILED = tuple(re.compile(rf"^{pattern}$") for pattern, _ in ALLOWLIST)
 

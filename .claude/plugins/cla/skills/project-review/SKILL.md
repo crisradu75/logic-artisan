@@ -6,15 +6,7 @@ allowed-tools: Read, Bash, Grep, Glob, Agent
 
 # Project Review
 
-Run a comprehensive CTO-level review of this repo. Spine: **Step 0 mechanical checks (run FIRST) → Step 1 snapshot → Step 2 five parallel review agents → Step 3 aggregate, report, log.**
-
-**Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
-`references/` file opened with `Read` carries it literally, and it is not an environment variable in
-Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
-that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
-path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
-at `.../plugins/cla`. If neither works, say so and stop. Detail:
-`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
+Run a comprehensive CTO-level review of this repo. Spine: **Step 0 build, lint and test (run FIRST) → Step 1 snapshot → Step 2 five parallel review agents → Step 3 aggregate, report, log.**
 
 **When to run:** After several incremental changes, before a pitch/demo, or when you want a fresh first-principles assessment.
 
@@ -24,15 +16,11 @@ at `.../plugins/cla`. If neither works, say so and stop. Detail:
 
 **Read `cla.io/project-facts.md` before reviewing** — the repo's workspace layout, backend, dataset location, i18n layers and dev/build/test commands (run `/cla:cla-setup` when it is missing or stale) — and the repo's own root guidance doc and README for what the product is. `cla.io/overlays/project-review.md`, if present, adds review rules specific to this repo. If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". The agent prompts and the Step-1 Project Snapshot template take their repo facts from these sources, injected by the orchestrator at dispatch time, rather than hardcoding them. When naming a product/domain concept in the report, prefer this repo's canonical term from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term).
 
-## Step 0: Mechanical checks — run FIRST, before any agent dispatch
+## Step 0: Build, lint and test — run FIRST, before any agent dispatch
 
-This step MUST complete before Step 2's dispatch — every agent receives its output as pre-verified input. **Read `references/mechanical-checks.md` first** for the full checklist: what each check means, where its exact commands live (`cla.io/project-facts.md`), and how to interpret PASS/FAIL/SKIP. This stub carries only the ordering invariant and the one command worth having on hand:
+This step MUST complete before Step 2's dispatch — every agent receives its output as pre-verified input. **Read `references/baseline-checks.md` first** for the full checklist: what each check means, where its exact commands live (`cla.io/project-facts.md`), and how to interpret PASS/FAIL/SKIP. This stub carries only the ordering invariant.
 
-```bash
-node ${CLAUDE_PLUGIN_ROOT}/skills/project-review/scripts/mechanical-checks.mjs
-```
-
-Print any FAIL immediately (`[Project Review] ⚠ {check}: {details}`), then collect everything into the **Mechanical Facts** table (format in the reference). Announce: `[Project Review] Mechanical checks complete — {n} PASS, {m} FAIL`
+Print any FAIL immediately (`[Project Review] ⚠ {check}: {details}`), then collect everything into the **Mechanical Facts** table (format in the reference). Announce: `[Project Review] Baseline checks complete — {n} PASS, {m} FAIL`
 
 ## Step 1: Collect project snapshot
 
@@ -66,10 +54,10 @@ The report is the whole output — this skill persists no state across runs.
 
 ## References
 
-- `references/mechanical-checks.md` — Step 0's full checklist: what each check verifies, exact commands, PASS/FAIL/SKIP interpretation, and the Mechanical Facts table format (mandatory-read from the Step 0 stub)
+- `references/baseline-checks.md` — Step 0's full checklist: what each check verifies, exact commands, PASS/FAIL/SKIP interpretation, and the Mechanical Facts table format (mandatory-read from the Step 0 stub)
 - `references/review-agents.md` — Step 2's full per-agent dispatch prompts: the standard instructions plus all five dimension prompts (mandatory-read from the Step 2 stub)
 - `references/review-criteria.md` — the portable grading rubric (signals + grade definitions) per dimension
 - `references/aggregate-and-log.md` — Step 1's snapshot template plus Step 3's dedup/merge/report-template/retro-log-append recipe (mandatory-read from the Step 1 and Step 3 stubs)
-- `cla.io/overlays/project-review.md`, if present — review rules specific to this repo, and the static-analysis script's check list (read by the orchestrator; dispatched agents never load it themselves)
+- `cla.io/overlays/project-review.md`, if present — review rules specific to this repo (read by the orchestrator; dispatched agents never load it themselves)
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` — the shared model/effort routing table (Step 2's "Review-agent dispatch" section is the single source of truth for this skill's per-agent model)
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md` — the thin-orchestrator standing disciplines this skill follows (delegation, I/O hygiene, batching, structured output)

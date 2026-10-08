@@ -417,12 +417,10 @@ and why each script exists.
 
   ```bash
   pytest plugin-tests -q -n auto --dist loadfile    # all pytest scopes (1) — the whole suite
-  node --test plugin-tests/node/mechanical-checks.test.mjs
   openspec validate --specs --strict                # the live specs
   ```
 
-  All three green is the only gate before a PR — and `pytest` does not reach the Node suite, so it
-  is a separate command. Watch the skip count — a skipped guard has not run (one pre-push permission-bit test
+  Both green is the only gate before a PR. Watch the skip count — a skipped guard has not run (one pre-push permission-bit test
   always skips on Windows), and the skip count is also how you check a parallel run against a
   serial one. `-n auto --dist loadfile` needs `pytest-xdist`; drop both flags without it. Use
   `--dist loadfile` rather than plain `-n auto`, and run `mutate.py` serially — `CLAUDE.md` states
@@ -446,8 +444,7 @@ and why each script exists.
   also runs in a consuming repo, which has no pytest gate over its plugin cache. Overlays in this
   repo stay neutral stubs — this is the source, not a consumer.
 
-- **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself), with one Node
-  exception, `project-review/scripts/mechanical-checks.mjs`. The spec-to-pr retro aggregator
+- **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself). The spec-to-pr retro aggregator
   carries a copy of `lib/log_run.py`'s ledger-directory resolver, kept in step by hand;
   `plugin-tests/tests/consistency/test_ledger_dir_agrees.py` checks that the writer and the
   aggregator resolve the same directory, run from a subdirectory of the repo.
@@ -507,14 +504,13 @@ plugin-tests/                  the repo's ONE pytest scope
   mutants/<area>/              mutation batches, mirroring tests/ — a sibling, never a child
   scripts/measure_load.py
   scripts/migrate_run_records.py
-  node/mechanical-checks.test.mjs
 .claude/skills/release/        repo-local skill, invoked as /release (not /cla:release)
   SKILL.md
   scripts/check_shipped_tree.py
 ```
 
 `pyproject.toml` sets `testpaths = ["tests"]`, `norecursedirs` (pytest's default list plus
-`mutants` and `node`), and a `pythonpath` reaching out of the dev tree into the plugin, because the
+`mutants`), and a `pythonpath` reaching out of the dev tree into the plugin, because the
 scripts under test stay shipped and only their tests moved. `mutants/` mirrors `tests/`'s
 subdirectory names so a guard's batch is found by name, and sits beside `tests/` so the batches are
 never collected as tests. A batch is optional. `plugin-tests/tests/launcher/` tests the repo-root
@@ -566,7 +562,6 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's automatic round 2 still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 14-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
-| `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos on 2026-10-08: agentic-air declares 6 checks in its own copy of the plugin, in project-review's `project-context.md` reference file, section "Mechanical checks — repo specifics" (run in that repo on 2026-10-08: `awk '/^## Mechanical checks — repo specifics/{f=1;next} /^## /{f=0} f' <that file> \| grep -c '"type":'` → 6). That repo copied the plugin into its own tree and is no longer on the marketplace plugin, so its config does not live in `cla.io/overlays/project-review.md`, where the other three (claude-plugins, interoga-ro, market-distiller-mcp) would put it (`grep -c '"type"' */cla.io/overlays/project-review.md` → 0 in each). Decision P4a in `cla.io/decisions/plugin-surface-simplification-2026-10-08.md` scheduled its deletion on the 0-of-4 count and is being re-decided. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
 | `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
 | `annotate/scripts/render_html.py` | Instruments an author's own HTML in place — attributes spliced at source offsets, so stripping them returns the original bytes and the document under review stays the document under review. Refuses a file whose markup already uses those attributes, because that collision mis-anchors every annotation in the element and is invisible on the page. |

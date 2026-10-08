@@ -30,7 +30,7 @@ Evaluation rubric for a CTO-level review of this repo's workspace. Each dimensio
 
 ### Review signals
 - **Workspace layout**: Is the apps/packages split (if any) clean, and are internal workspace deps sensible? Do shared packages have coherent public surfaces (barrel exports)?
-- **Package boundaries**: The mechanical check already verified this repo's own boundary invariants. Beyond that pass/fail, is the dependency *direction* healthy — nothing over-coupled, nothing that should be shared trapped inside one app?
+- **Package boundaries**: Do packages keep the boundaries the repo documents, and is the dependency *direction* healthy — nothing over-coupled, nothing that should be shared trapped inside one app?
 - **Per-app internal structure**: Is each app's own source tree cleanly bucketed by concern?
 - **File naming**: Consistent conventions across components/functions/keys/package names?
 - **Depth / sizing**: Are the largest/most-central components or screens reasonably scoped, or do they need decomposition?

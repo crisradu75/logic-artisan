@@ -16,10 +16,10 @@ Packages: <one clause per shared package: name (one-line role)>
 Backend:  <this repo's own backend project, if any>
 Dataset:  <this repo's own domain-vocabulary/dataset counts and where they live, if applicable>
 Active OpenSpec changes: {count from ls openspec/changes/ excluding archive/}   Archived: {count from openspec/changes/archive/}
-Build: {PASS/FAIL}   Lint: {PASS/FAIL}   Tests: {PASS/FAIL}   Static checks: {n PASS / m FAIL from the script}
+Build: {PASS/FAIL}   Lint: {PASS/FAIL}   Tests: {PASS/FAIL}
 ```
 
-This snapshot + the Mechanical Facts table (`references/mechanical-checks.md`) = the complete brief
+This snapshot + the Mechanical Facts table (`references/baseline-checks.md`) = the complete brief
 every agent receives. Do NOT read full file contents to paste into agent prompts — agents read
 specific files themselves.
 
@@ -28,7 +28,7 @@ specific files themselves.
 Wait for all five agents. Then:
 
 1. **Deduplicate:** If two agents found the same gap, keep the more specific version.
-2. **Merge mechanical + qualitative:** Combine FAIL items from Step 0 with agent findings. Mechanical FAILs count as gaps in the relevant dimension (build/lint/test → Validation or Architecture; i18n/daypart → Architecture/Vision; boundary → Structure/Architecture).
+2. **Merge mechanical + qualitative:** Combine FAIL items from Step 0 with agent findings. Build/lint/test FAILs count as gaps in Validation or Architecture.
 3. **Compute verdict:** per the rubric table in `SKILL.md` Step 3 (kept inline there — the correctness-gating thresholds).
 4. **Extract top recommendations:** the 3-5 highest-impact gaps, prioritized by: core-flow impact (the product's primary user path), real breakage risk (broken build, corrupted core calculations, missing translations, tenant-isolation holes) over aesthetics, and actionability.
 
@@ -38,7 +38,7 @@ Print the full report:
 ## Project Review: {repo}
 **Date:** {today}  |  **Reviewer:** Claude (CTO-level review)
 
-### Mechanical Checks
+### Baseline Checks
 {n} PASS, {m} FAIL
 {list any FAILs with one-line details}
 

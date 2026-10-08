@@ -196,8 +196,7 @@ CLA's own suite therefore runs only in the repo that develops it, where it is on
 pytest scope — 1 in total, down from 12 — living outside the plugin directory entirely. The 4
 shipped skills that have tests, plus the repo-local `/release`, keep them there rather than beside
 themselves (`ls plugin-tests/tests/skills` lists those five plus `_shared`, which is not a skill), alongside the guards over
-the hooks, the shared library, and the source repo's own launchers and catalog. The one Node script
-(`project-review/scripts/mechanical-checks.mjs`) has a `node --test` suite in the same place.
+the hooks, the shared library, and the source repo's own launchers and catalog.
 
 There is no CI — that local run is the whole verification story. **Nothing in it is a command for
 you to run**; if you want to check your own repo's conformance, the two guards above are programs:

@@ -5,7 +5,7 @@ any agent's prompt — `SKILL.md` keeps only the dispatch invariant (all five in
 routing) inline; this file is the actual prompt content.
 
 Each agent receives: (1) the Project Snapshot (Step 1, template in `references/aggregate-and-log.md`),
-(2) the Mechanical Facts table (Step 0, `references/mechanical-checks.md`), (3) the relevant dimension
+(2) the Mechanical Facts table (Step 0, `references/baseline-checks.md`), (3) the relevant dimension
 criteria from `references/review-criteria.md`, (4) the standard instructions below.
 
 **Filling `<inject:>` placeholders.** The orchestrator replaces each one before dispatch, from
@@ -23,7 +23,7 @@ files.
 >
 > **Finding caps:** At most **3 strengths** and **5 gaps**. Prioritize the most impactful.
 >
-> **Pre-verified facts:** The Mechanical Facts table already verified workspace build/lint/test and this repo's own cross-file invariants (shared-i18n parity + usage, any load-bearing key consistency, package boundaries). Do NOT re-check these — focus on qualitative judgment.
+> **Pre-verified facts:** The Mechanical Facts table already verified workspace build/lint/test, including any cross-file invariants this repo's own tests enforce. Do NOT re-check these — focus on qualitative judgment.
 >
 > **Context:** <inject: this repo's own one-paragraph product/component summary + its test-surface summary (unit suites, smoke/e2e scripts, any DB-isolation suite)>.
 >
@@ -82,7 +82,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 >
 > Evaluate:
 > 1. Workspace layout — is the apps/packages split clean and are workspace-internal deps sensible? Do the shared packages have coherent public surfaces (barrel exports)?
-> 2. Package boundaries — the mechanical check already verified the workspace's own boundary invariants (which packages must stay platform-safe, which may depend on which). Beyond that pass/fail, is the *dependency direction* healthy (no accidental over-coupling, nothing that should be shared living inside one app)?
+> 2. Package boundaries — do the packages keep the boundaries the repo documents (which must stay platform-safe, which may depend on which), and is the *dependency direction* healthy (no accidental over-coupling, nothing that should be shared living inside one app)?
 > 3. Per-app internal structure — <inject: this repo's own per-app source-tree bucketing convention>.
 > 4. File / symbol naming — consistent PascalCase components, camelCase functions, dotted i18n keys, kebab package names?
 > 5. Component sizing — <inject: this repo's own largest/most-central components or screens worth checking for decomposition>.

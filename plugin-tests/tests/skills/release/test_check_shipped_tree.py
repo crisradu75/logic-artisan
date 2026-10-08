@@ -67,8 +67,8 @@ def _run(repo: Path) -> subprocess.CompletedProcess:
         pytest.param("skills/project-review/scripts/x.test.mjs", id="test-mjs"),
         pytest.param("skills/annotate/tests/conftest.py", id="conftest"),
         # The four the 11-pattern draft ACCEPTED. These are why the list is 14.
-        pytest.param("skills/project-review/scripts/mechanical-checks.test.mjs",
-                     id="draft-accepted-compound-mjs"),
+        pytest.param("skills/annotate/scripts/helper.test.py",
+                     id="draft-accepted-compound-stem"),
         pytest.param("skills/annotate/scripts/conftest.py",
                      id="draft-accepted-conftest-as-script"),
         pytest.param("hooks/tests/test_dispatch.py",
@@ -212,7 +212,7 @@ def test_conftest_is_rejected_wherever_it_appears():
 def test_a_compound_extension_cannot_pass_as_a_script_or_a_reference():
     """The `[^/.]+` stem in patterns 13 and 14 is exactly what D1a's measurement
     added; `[^/]+` swallowed the `.test` segment."""
-    assert not cst.is_allowed("skills/project-review/scripts/mechanical-checks.test.mjs")
-    assert cst.is_allowed("skills/project-review/scripts/mechanical-checks.mjs")
+    assert not cst.is_allowed("skills/annotate/scripts/helper.test.py")
+    assert cst.is_allowed("skills/annotate/scripts/helper.py")
     assert not cst.is_allowed("skills/annotate/references/notes.draft.md")
     assert cst.is_allowed("skills/annotate/references/notes.md")
