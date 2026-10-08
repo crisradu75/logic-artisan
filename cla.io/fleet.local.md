@@ -31,11 +31,17 @@ shows up in the output's `ledgers` array as `found: false` with `records: 0`, wh
 a four-repo aggregate is prevented from being mistaken for a six-repo one. Removing a
 quiet repo from this list would hide exactly that.
 
+A *frozen* repo is different: one that stopped running cla but still holds old rows keeps
+stale data in every aggregate. `agentic-air` was removed on 2026-10-08 for that reason — it
+vendors plugin 0.0.1, does not enable the marketplace plugin, and its last ledger row is
+from 2026-07-22, yet its 64 spec-to-pr rows were about a third of the sample. Re-add it
+only after it is re-onboarded (marketplace install, then `cla-init` and `sync-context` —
+`cla-setup` once those merge).
+
 ## Roots
 
 - C:/Code/logic-artisan
 - C:/Code/claude-plugins
-- C:/Code/agentic-air
 - C:/Code/interoga-ro
 - C:/Code/market-distiller-mcp
 - C:/Code/future-champs   # scaffolded, ledgers still empty

@@ -151,14 +151,16 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
 - **D10 — Ledger rows ride the work PR.** Every ledger line and run-notes update is committed on
   the feature branch of the PR it describes (`multi-lite` / `multi-pr`: the chain's last PR).
   No standalone "record the run" commits or PRs.
-- **D11 — `cla-init` reports orphan ledgers and offers to delete them.** It carries a list of
+- **D11 — `cla-init` (merged into `cla-setup` by the companion doc's P4) reports orphan
+  ledgers and offers to delete them.** It carries a list of
   retired ledger names; a re-run lists the ones present and deletes only on an explicit yes.
   Works in every consuming repo, including ones not read here.
 - **D12 — spec-to-pr's Handoff prints a one-line retro nudge** when, over the last 5 ledger
   lines, Revise or Test hit its round cap in ≥ 3, or the same warn reason appears in ≥ 2.
   Printed only, never blocks.
 - **D13 — Delivery: `multi-spec` → `multi-pr`.** Author the five changes below from this doc,
-  review them, then run them as one dependency-ordered chain. One minor release at the end.
+  review them, then run them as one dependency-ordered chain. Released together with the
+  companion doc `plugin-surface-simplification-2026-10-08.md` as 2.0.0 (see its "Delivery").
 
 **Kept as is:** the `multi-lite` / `multi-pr` run-notes (resume keys, head SHAs, timing
 estimates — working state, not retro data).
@@ -183,7 +185,7 @@ estimates — working state, not retro data).
 5. **retire-unread-ledgers** — D9, D10, D11. After 2 and 3, which remove two of the resolver
    copies.
 
-One minor release covers all five (a skill removed). Estimate, not measured: retro and
+Released with the companion doc as 2.0.0, after its P5 guard change lands first. Estimate, not measured: retro and
 learning prose from about 15k words to about 3k; ledger code from about 2,160 lines to roughly
 600–700. Re-measure with `wc` and `plugin-tests/scripts/measure_load.py` when the changes land.
 
