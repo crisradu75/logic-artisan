@@ -3,8 +3,10 @@
 Each mutant edits one recipe so a run record or run-notes file lands on the base
 branch, a chain commits notes that are not its own, pushes after its last PR
 merged, a run with nothing open stops saying its notes are uncommitted, a re-run
-finds the wrong doc's notes or stays on the PR branch after taking them out, or
-the head check forgives a move that is not the run's own notes commit.
+finds the wrong doc's notes or stays on the PR branch after taking them out, a
+re-run restores the tip's notes instead of its own write, misses an edit made on
+the PR since, or touches another chain's notes, or the head check forgives a move
+that is not the run's own notes commit.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_run_records_ride_the_work_pr.py
 """
@@ -105,43 +107,43 @@ MUTANTS = [
     (
         "a multi-lite re-run takes the newest notes commit of any doc",
         LITE_BOOT,
-        "`git log --remotes --format='%H %s' --fixed-strings --grep='<notes-message>'`",
+        "`git log --remotes=origin --format='%H %s' --fixed-strings --grep='<notes-message>'`",
         "`git log --remotes -1 --format=%D --grep='^chore: multi-lite run notes'`",
         TARGETS,
     ),
     (
         "a multi-lite re-run accepts a subject that only contains its message",
         LITE_BOOT,
-        "take the first line whose subject is exactly `<notes-message>`",
-        "take the first line",
+        "the write is the first line whose subject is exactly `<notes-message>`",
+        "the write is the first line",
         TARGETS,
     ),
     (
         "a multi-lite re-run stays on the PR branch after taking the notes out",
         LITE_BOOT,
-        "verify the push, then `git checkout <base-branch>`",
-        "verify the push",
+        "Then `git checkout <base-branch>` and restore: ",
+        "Then restore: ",
         TARGETS,
     ),
     (
         "a multi-pr re-run takes the newest notes commit only",
         PR_LOOP,
-        "`git log --remotes --format='%H %s' --grep='^chore: multi-pr run notes '`",
+        "`git log --remotes=origin --format='%H %s' --grep='^chore: multi-pr run notes '`",
         "`git log --remotes -1 --format=%D --grep='^chore: multi-pr run notes '`",
         TARGETS,
     ),
     (
         "a multi-pr re-run looks up only the newest notes file",
         PR_LOOP,
-        "For each `<notes-path>` missing from the working tree, take its newest `%H`",
-        "Take the newest `%H`",
+        "For each `<notes-path>` missing from the working tree, its write is the newest `%H`",
+        "Its write is the newest `%H`",
         TARGETS,
     ),
     (
         "a multi-pr re-run stays on the PR branch after taking the notes out",
         PR_LOOP,
-        "verify the push, then `git checkout <base-branch>`",
-        "verify the push",
+        "Then `git checkout <base-branch>` and restore: ",
+        "Then restore: ",
         TARGETS,
     ),
     (
@@ -163,6 +165,111 @@ MUTANTS = [
         LITE_LOOP,
         ", and every subject `git log --format=%s <head_sha>..<headRefOid>` prints is `<notes-message>`",
         "",
+        TARGETS,
+    ),
+    (
+        "a multi-lite re-run restores the tip's notes again (B1: a forged row passes)",
+        LITE_BOOT,
+        " and restore: `git show <sha>:<notes> > <notes>`.",
+        ".",
+        TARGETS,
+    ),
+    (
+        "a multi-pr re-run restores the tip's notes again",
+        PR_LOOP,
+        " and restore: `git show <sha>:<notes-path> > <notes-path>`, which drops",
+        ", which keeps",
+        TARGETS,
+    ),
+    (
+        "a multi-lite re-run takes the newest subject match, which may be a removal or an edit",
+        LITE_BOOT,
+        " and whose `git show --name-status --format= <sha>` prints one line, `A` and the notes path `<notes>`",
+        "",
+        TARGETS,
+    ),
+    (
+        "a multi-lite re-run reads writes from any remote, a contributor's fork included",
+        LITE_BOOT,
+        "`git log --remotes=origin --format='%H %s' --fixed-strings",
+        "`git log --remotes --format='%H %s' --fixed-strings",
+        TARGETS,
+    ),
+    (
+        "a multi-pr re-run reads writes from any remote",
+        PR_LOOP,
+        "`git log --remotes=origin --format='%H %s' --grep=",
+        "`git log --remotes --format='%H %s' --grep=",
+        TARGETS,
+    ),
+    (
+        "the multi-lite edit check misses a commit that modifies the notes",
+        LITE_BOOT,
+        "`git log --format=%H --diff-filter=AM <sha>..origin/<branch> -- <notes>`",
+        "`git log --format=%H --diff-filter=A <sha>..origin/<branch> -- <notes>`",
+        TARGETS,
+    ),
+    (
+        "the multi-lite edit check flags the re-run's own take-back-out, so an interrupted re-run trusts nothing",
+        LITE_BOOT,
+        "`git log --format=%H --diff-filter=AM <sha>..origin/<branch> -- <notes>`",
+        "`git log --format=%H <sha>..origin/<branch> -- <notes>`",
+        TARGETS,
+    ),
+    (
+        "the multi-pr edit check misses a commit that modifies the notes",
+        PR_LOOP,
+        "`git log --format=%H --diff-filter=AM <sha>..origin/<branch> -- <notes-path>`",
+        "`git log --format=%H --diff-filter=A <sha>..origin/<branch> -- <notes-path>`",
+        TARGETS,
+    ),
+    (
+        "multi-lite keeps trusting recorded heads when the notes were edited on the PR",
+        LITE_BOOT,
+        "blank every row's `head_sha`, `review` and `merge_commit`, so step 2",
+        "keep the restored rows, so step 2",
+        TARGETS,
+    ),
+    (
+        "a multi-pr re-run takes another chain's notes out of its PR",
+        PR_LOOP,
+        " Go on only when `git show <sha>:<notes-path>` names a change of this run's sequence under `## Sequence`; never touch another chain's notes.",
+        "",
+        TARGETS,
+    ),
+    (
+        "a multi-lite take-back-out pushes after a failed pull or a merged PR",
+        LITE_BOOT,
+        "only if the pull succeeded, the state is `OPEN` and `git ls-files -- <notes>` prints the path: ",
+        "",
+        TARGETS,
+    ),
+    (
+        "a multi-pr take-back-out pushes after a failed pull or a merged PR",
+        PR_LOOP,
+        "only if the pull succeeded, the state is `OPEN` and `git ls-files -- <notes-path>` prints the path: ",
+        "",
+        TARGETS,
+    ),
+    (
+        "the head check runs with no recorded head",
+        LITE_LOOP,
+        "**`OPEN`, `head_sha` is set but is not `headRefOid`",
+        "**`OPEN`, `head_sha` is not `headRefOid`",
+        TARGETS,
+    ),
+    (
+        "the head check passes when one of its commands fails",
+        LITE_LOOP,
+        " A command that fails means this arm does not match.",
+        "",
+        TARGETS,
+    ),
+    (
+        "the notes path in a commit subject may be spelled any way",
+        LITE_BOOT,
+        "exactly, the path repo-relative with forward slashes, on every commit",
+        "exactly, on every commit",
         TARGETS,
     ),
 ]

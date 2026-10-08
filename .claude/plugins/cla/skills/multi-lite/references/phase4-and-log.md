@@ -38,7 +38,7 @@ chain's last open PR, never `<base-branch>`:
   git commit -m "<notes-message>"
   git push
   ```
-  `<notes>` is this run's notes file and nothing else, never a glob; `<notes-message>` is defined
+  `<notes>` is this run's notes file alone; `<notes-message>` is defined
   in `references/bootstrap-and-tracking.md`, Phase 2. If `git pull` fails or the state is not
   `OPEN`, the PR merged or closed after the query: stop and leave the notes uncommitted, saying
   so, and never push, which would recreate a deleted branch. Verify the push landed

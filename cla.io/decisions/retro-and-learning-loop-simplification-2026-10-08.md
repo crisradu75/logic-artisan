@@ -179,7 +179,8 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
   *Implemented as:* a chain commits only its own notes file, under one fixed message per chain,
   and never pushes once the last PR has merged or closed. A re-run finds that commit by its
   message and forgives a head move only when every commit since carries it and touches nothing
-  but the notes (renames counted by both paths).
+  but the notes (renames counted by both paths). It restores the notes from the commit that
+  added them, never a branch tip, and merges no open PR on notes edited on the PR since.
 - **D11 — `cla-init` (merged into `cla-setup` by the companion doc's P4) reports orphan
   ledgers and offers to delete them.** It carries a list of
   retired ledger names; a re-run lists the ones present and deletes only on an explicit yes.

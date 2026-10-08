@@ -44,21 +44,21 @@ What the plugin promises when `/cla:multi-lite` runs and merges a batch of small
 - **WHEN** one change in a `/cla:multi-lite` chain fails its tests
 - **THEN** it and its dependents are skipped with a reason and the independent changes still run
 
-### Requirement: A resumed small-change chain merges only checked commits
+### Requirement: A resumed small-change chain merges only commits it checked
 
-When `/cla:multi-lite` resumes an interrupted run, it SHALL never merge a pull request holding a commit its review and full test suite did not cover, except the run's own notes commits that change nothing but its notes file, a renamed file counting under both its names, and SHALL leave any such pull request open with its reason for the user.
+When `/cla:multi-lite` resumes an interrupted run, it SHALL never merge a pull request holding a commit its review and full test suite did not cover, except commits that change nothing but the run's notes file, a renamed file counting under both its names, SHALL take no recorded head from notes edited on a pull request after the run committed them, and SHALL leave any such pull request open with its reason for the user.
 
 #### Scenario: Commits pushed while the run was stopped
 
 - **WHEN** a run resumes and a candidate's pull request head differs from the head the run recorded
 - **THEN** the pull request is left open with a reason and is not merged
 
-#### Scenario: No recorded head
+#### Scenario: No recorded head it can trust
 
-- **WHEN** a run resumes without the head it recorded for a candidate's pull request
+- **WHEN** a run resumes without the head it recorded for a candidate's pull request, or its notes were edited on a pull request after the run committed them
 - **THEN** the pull request is left open with a reason and is not merged
 
-#### Scenario: Only the run's own notes commits
+#### Scenario: Only notes commits
 
-- **WHEN** the only commits since the recorded head are the run's own notes commits
+- **WHEN** the only commits since the recorded head change nothing but the run's notes file
 - **THEN** the run treats the head as unmoved and carries on with that candidate
