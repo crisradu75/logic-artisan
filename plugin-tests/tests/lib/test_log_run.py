@@ -2,9 +2,9 @@
 
 Ported from the two per-skill copies this replaced (spec-to-pr's and
 codify-learnings's `tests/test_log_run.py`, which were themselves near-identical),
-plus the cases the new `<ledger>` argument introduces, plus the record-shape check
-for the two ledgers it accepts. The plumbing tests write a minimal codify record,
-the smallest one the writer takes, so they test the writer and not the shapes. The ledger dir is
+plus the cases the `<ledger>` argument introduces, plus the record-shape check
+for the one ledger it accepts. The plumbing tests write the smallest spec-to-pr
+record the writer takes, so they test the writer and not the shape. The ledger dir is
 redirected to a tmp dir via CLAUDE_RETRO_DIR; the tests that must exercise the
 NO-override path instead run inside a throwaway git repo (`scratch_repo`), so
 no test touches a real ledger.
@@ -24,13 +24,13 @@ SCRIPT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "
 
 import log_run as log_run_shapes  # noqa: E402 — the shapes, for the ids a record may use
 
-LEDGER = "codify-runs.jsonl"
+LEDGER = "spec-to-pr-runs.jsonl"
 
 
 def _rec(**extra) -> str:
-    """The smallest record the plumbing ledger accepts, plus any extra keys."""
-    return json.dumps({"ts": "2026-10-08", "applied": [], "re_offenses": [], **extra},
-                      ensure_ascii=False)
+    """The smallest record the ledger accepts, plus any extra keys."""
+    return json.dumps({"ts": "2026-10-08T09:15:00Z", "change": "c", "mode": "description",
+                       "phases": [], **extra}, ensure_ascii=False)
 
 
 def _run(stdin: str, retro_dir: Path | None, ledger: str | None = LEDGER,
@@ -99,17 +99,6 @@ def test_appends_one_line_per_call(tmp_path: Path) -> None:
     assert json.loads(lines[1])["change"] == "b"
 
 
-def test_two_ledgers_stay_separate(tmp_path: Path) -> None:
-    # The whole point of the `<ledger>` argument: one writer, two ledgers.
-    # If the argument were ignored, both records would land in one file.
-    retro = tmp_path / "retro"
-    assert _run(json.dumps(_spec_record()), retro, ledger=SPEC).returncode == 0
-    assert _run(_rec(), retro, ledger=CODIFY).returncode == 0
-
-    assert json.loads((retro / SPEC).read_text(encoding="utf-8")) == _spec_record()
-    assert json.loads((retro / CODIFY).read_text(encoding="utf-8")) == json.loads(_rec())
-
-
 def test_creates_deeply_missing_parent_dirs(tmp_path: Path) -> None:
     retro = tmp_path / "nested" / "deep" / "retro"
     r = _run(_rec(), retro)
@@ -174,30 +163,31 @@ def test_extra_arguments_are_refused(tmp_path: Path) -> None:
     assert not (tmp_path / "retro").exists()
 
 
-# requirement: run-ledgers / Only checked run records are written
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
 @pytest.mark.parametrize("bad", [
     "../escape.jsonl",
-    "../codify-runs.jsonl",
+    "../spec-to-pr-runs.jsonl",
     "sub/dir.jsonl",
     "sub\\dir.jsonl",
     "runs.txt",
     ".hidden.jsonl",
     "",
-    # Retired ledgers, and a near miss of a live one: a typo would start a file
+    # Retired ledgers, and near misses of the live one: a typo would start a file
     # nothing reads.
+    "codify-runs.jsonl",
     "lite-pr-runs.jsonl",
     "feedback-runs.jsonl",
     "spec-to-pr-runs-old.jsonl",
-    "Codify-runs.jsonl",
+    "Spec-to-pr-runs.jsonl",
 ])
-def test_a_ledger_name_that_is_not_one_of_the_two_is_refused(tmp_path: Path, bad: str) -> None:
+def test_a_ledger_name_that_is_not_the_one_is_refused(tmp_path: Path, bad: str) -> None:
     # The caller is a model assembling a command line, so a path-shaped argument
     # writing outside the ledger dir is a real shape, not a hypothetical one.
     retro = tmp_path / "retro"
     r = _run(_rec(), retro, ledger=bad)
     assert r.returncode == 1, f"{bad!r} was accepted"
-    assert r.stderr.strip() == (f"log_run: {bad!r} is not a ledger; the ledgers are "
-                                "codify-runs.jsonl, spec-to-pr-runs.jsonl")
+    assert r.stderr.strip() == (f"log_run: {bad!r} is not a ledger; the only ledger is "
+                                "spec-to-pr-runs.jsonl")
     assert not retro.exists() and not (tmp_path / "escape.jsonl").exists()
 
 
@@ -242,7 +232,7 @@ def test_relative_override_is_rejected_loudly(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 # Record shapes
 # --------------------------------------------------------------------------- #
-# Two ledgers have a shape the writer checks. Each refusal case below is one
+# One ledger has a shape the writer checks. Each refusal case below is one
 # edit to a conforming record, and must be refused with one line naming the
 # field, leaving the ledger absent. The fleet's real drift is in the list:
 # `phases` as an object (the motivating defect), `date` for `ts`, `phase` for
@@ -250,7 +240,6 @@ def test_relative_override_is_rejected_loudly(tmp_path: Path) -> None:
 # `revise_findings_by_tier`.
 
 SPEC = "spec-to-pr-runs.jsonl"
-CODIFY = "codify-runs.jsonl"
 
 
 def _spec_record() -> dict:
@@ -274,30 +263,6 @@ def _spec_record() -> dict:
         "routing": {"revise_findings_by_tier": {
             "code-reviewer": {"found": 2, "phantom": 0},
             "plugin-dev:skill-reviewer": {"found": 0, "phantom": 0}}},
-    }
-
-
-def _codify_record() -> dict:
-    return {
-        "ts": "2026-10-08",
-        "applied": [{"target": "hooks/block-cd-in-bash.py", "rung": "hook"},
-                    {"target": "CLAUDE.md", "rung": "doc"}],
-        "re_offenses": [{"artifact": "CLAUDE.md", "escalated_to": "hook"}],
-    }
-
-
-def _old_codify_record() -> dict:
-    """The shape codify-learnings wrote before slim-codify-learnings: counts and a
-    slug per re-offense. Every fleet record has it, and the writer must not take it."""
-    return {
-        "ts": "2026-10-08", "scope": "repo-wide",
-        "suggestions": {"proposed": 2, "applied": 2, "rejected": 0},
-        "memory": {"proposed": 1, "applied": 1},
-        "re_offenses": [{"lesson": "stale-port", "failing_artifact": "CLAUDE.md",
-                         "escalated_to": "hook"}],
-        "rejected_lessons": [],
-        "maintenance": {"failure_modes_bullets": 51, "live_log_entries": 30, "trimmed": False},
-        "process_issue": False,
     }
 
 
@@ -420,30 +385,6 @@ SPEC_REFUSALS = [
      "`rounds_used` and `rounds_cap` are required on a Revise phase that was not skipped (fail)"),
 ]
 
-CODIFY_REFUSALS = [
-    ("ts-missing", _drop("ts"), "`ts` is required"),
-    ("ts-not-a-date", _set("ts", "08/10/2026"), "`ts` must be an ISO-8601 date or date-time"),
-    ("applied-missing", _drop("applied"), "`applied` is required"),
-    ("applied-a-count", _set("applied", 2), "`applied` must be a list"),
-    ("applied-target-missing", _set("applied", [{"rung": "doc"}]), "`applied[0].target` is required"),
-    ("applied-target-blank", _set("applied", [{"target": " ", "rung": "doc"}]),
-     "`applied[0].target` must be a non-empty string"),
-    ("applied-rung-missing", _set("applied", [{"target": "CLAUDE.md"}]), "`applied[0].rung` is required"),
-    # The old six-value enum named artifact types; a rung is one of four.
-    ("applied-rung-artifact-type", _set("applied", [{"target": "CLAUDE.md", "rung": "claude_md"}]),
-     '`applied[0].rung` must be one of "checklist", "doc", "hook", "script"'),
-    ("re-offenses-missing", _drop("re_offenses"), "`re_offenses` is required"),
-    ("re-offenses-object", _set("re_offenses", {"artifact": "x"}), "`re_offenses` must be a list"),
-    # Keyed by slug, the old way: 78 distinct slugs over 88 re-offenses never joined.
-    ("re-offense-by-slug", _set("re_offenses", [{"lesson": "stale-port", "escalated_to": "hook"}]),
-     "`re_offenses[0].artifact` is required"),
-    ("escalated-to-missing", _set("re_offenses", [{"artifact": "CLAUDE.md"}]),
-     "`re_offenses[0].escalated_to` is required"),
-    ("escalated-to-unknown", _set("re_offenses", [{"artifact": "CLAUDE.md", "escalated_to": "memory"}]),
-     "`re_offenses[0].escalated_to` must be one of"),
-]
-
-
 def _assert_refused(r: subprocess.CompletedProcess[str], ledger: str, fragment: str,
                     retro: Path) -> None:
     assert r.returncode == 1, f"accepted: {r.stdout}"
@@ -454,51 +395,21 @@ def _assert_refused(r: subprocess.CompletedProcess[str], ledger: str, fragment: 
     assert not (retro / ledger).exists(), "a refused record must leave the ledger unchanged"
 
 
-# requirement: run-ledgers / Only checked run records are written
-@pytest.mark.parametrize("ledger, record", [(SPEC, _spec_record()), (CODIFY, _codify_record())],
-                         ids=["spec-to-pr", "codify"])
-def test_a_conforming_record_is_appended_unchanged(tmp_path: Path, ledger: str, record: dict) -> None:
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
+def test_a_conforming_record_is_appended_unchanged(tmp_path: Path) -> None:
     retro = tmp_path / "retro"
-    r = _run(json.dumps(record), retro, ledger=ledger)
+    r = _run(json.dumps(_spec_record()), retro, ledger=SPEC)
     assert r.returncode == 0, r.stderr
-    assert json.loads((retro / ledger).read_text(encoding="utf-8")) == record
+    assert json.loads((retro / SPEC).read_text(encoding="utf-8")) == _spec_record()
 
 
-# requirement: run-ledgers / Only checked run records are written
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
 @pytest.mark.parametrize("case, edit, fragment", SPEC_REFUSALS, ids=[c[0] for c in SPEC_REFUSALS])
 def test_an_off_shape_spec_to_pr_record_is_refused(tmp_path: Path, case: str, edit, fragment: str) -> None:
     record = _spec_record()
     edit(record)
     _assert_refused(_run(json.dumps(record), tmp_path / "retro", ledger=SPEC), SPEC, fragment,
                     tmp_path / "retro")
-
-
-# requirement: run-ledgers / Only checked run records are written
-@pytest.mark.parametrize("case, edit, fragment", CODIFY_REFUSALS, ids=[c[0] for c in CODIFY_REFUSALS])
-def test_an_off_shape_codify_record_is_refused(tmp_path: Path, case: str, edit, fragment: str) -> None:
-    record = _codify_record()
-    edit(record)
-    _assert_refused(_run(json.dumps(record), tmp_path / "retro", ledger=CODIFY), CODIFY, fragment,
-                    tmp_path / "retro")
-
-
-# requirement: run-ledgers / Only checked run records are written
-def test_the_old_codify_record_is_refused_naming_each_new_field(tmp_path: Path) -> None:
-    r = _run(json.dumps(_old_codify_record()), tmp_path / "retro", ledger=CODIFY)
-    for fragment in ("`applied` is required", "`re_offenses[0].artifact` is required"):
-        _assert_refused(r, CODIFY, fragment, tmp_path / "retro")
-
-
-@pytest.mark.parametrize("edit", [
-    _set("applied", []), _set("re_offenses", []),
-    _set("applied", [{"target": "t", "rung": rung} for rung in log_run_shapes.RUNGS]),
-    _set("ts", "2026-10-08T12:15:00Z"), _set("scope", "a key no reader names is kept"),
-], ids=["nothing-applied", "no-re-offenses", "every-rung", "ts-date-time", "extra-key"])
-def test_a_codify_record_may_be_empty_or_carry_extra_keys(tmp_path: Path, edit) -> None:
-    record = _codify_record()
-    edit(record)
-    r = _run(json.dumps(record), tmp_path / "retro", ledger=CODIFY)
-    assert r.returncode == 0, r.stderr
 
 
 @pytest.mark.parametrize("edit", [
@@ -539,7 +450,7 @@ def test_fields_an_older_record_carries_are_kept_unchecked(tmp_path: Path) -> No
     assert json.loads((tmp_path / "retro" / SPEC).read_text(encoding="utf-8")) == record
 
 
-# requirement: run-ledgers / Only checked run records are written
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
 def test_every_problem_is_named_on_the_one_refusal_line(tmp_path: Path) -> None:
     # The caller has ONE retry. A refusal naming only the first problem spends it
     # on a record still wrong in a field nobody mentioned.

@@ -7,7 +7,7 @@ own aggregator script.
 
 So the two halves of a single contract now live in different languages, in
 different files, with nothing comparing them. `log_run.py` now refuses any name
-but the two in its `SHAPES`, so a typo on the writer side fails at write time —
+but the one in its `SHAPES`, so a typo on the writer side fails at write time —
 but only at write time, at the end of a long run, where a refused write is
 non-fatal and easy to miss. The reader of a misspelled name finds nothing and
 reports a cold start: `runs_analyzed: 0`. So this checks the prose names before

@@ -35,9 +35,18 @@ What the plugin promises when `/cla:multi-lite` runs and merges a batch of small
 - **THEN** only the changes a later change needs merged are merged
 - **AND** the report says which policy applied and why
 
-### Requirement: A resumed small-change chain never merges unchecked commits
+### Requirement: A failed small change skips its dependents
 
-When `/cla:multi-lite` resumes an interrupted run, it SHALL never merge a pull request whose head is not the exact commit its review and full test suite both covered, and SHALL leave such a pull request open with its reason for the user.
+`/cla:multi-lite` SHALL skip a failed change and every change that depends on it, continue with the changes that do not, and report each skipped change with its reason.
+
+#### Scenario: A failed small change
+
+- **WHEN** one change in a `/cla:multi-lite` chain fails its tests
+- **THEN** it and its dependents are skipped with a reason and the independent changes still run
+
+### Requirement: A resumed small-change chain merges only checked commits
+
+When `/cla:multi-lite` resumes an interrupted run, it SHALL never merge a pull request holding a commit its review and full test suite did not cover, except the run's own notes commits that change nothing but its notes file, a renamed file counting under both its names, and SHALL leave any such pull request open with its reason for the user.
 
 #### Scenario: Commits pushed while the run was stopped
 
@@ -49,11 +58,7 @@ When `/cla:multi-lite` resumes an interrupted run, it SHALL never merge a pull r
 - **WHEN** a run resumes without the head it recorded for a candidate's pull request
 - **THEN** the pull request is left open with a reason and is not merged
 
-### Requirement: A failed small change skips its dependents
+#### Scenario: Only the run's own notes commits
 
-`/cla:multi-lite` SHALL skip a failed change and every change that depends on it, continue with the changes that do not, and report each skipped change with its reason.
-
-#### Scenario: A failed small change
-
-- **WHEN** one change in a `/cla:multi-lite` chain fails its tests
-- **THEN** it and its dependents are skipped with a reason and the independent changes still run
+- **WHEN** the only commits since the recorded head are the run's own notes commits
+- **THEN** the run treats the head as unmoved and carries on with that candidate

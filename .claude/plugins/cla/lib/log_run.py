@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Append one JSON line to a project run-ledger under `cla.io/retro/`.
 
-ONE writer, shared by every skill that keeps a ledger, invoked with the ledger
-filename as an argument:
+ONE writer, invoked with the ledger filename as an argument:
 
     python ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl < record.json
 
@@ -13,10 +12,10 @@ one independently. Living at the plugin root instead of under
 `skills/<name>/scripts/` sidesteps that entirely: nothing imports it, the
 skills invoke it as a program.
 
-Two ledgers remain, and this writer refuses any other name: `spec-to-pr-runs`,
-read by `/cla:spec-to-pr-retro`, and `codify-runs`. Every other ledger a skill
-once wrote was retired because nothing read it; `/cla:cla-init` lists the retired
-files a repo still holds and offers to delete them. No record count is quoted
+One ledger remains, and this writer refuses any other name: `spec-to-pr-runs`,
+read by `/cla:spec-to-pr-retro`. Every other ledger a skill once wrote, the
+codify one included, was retired because nothing read it; `/cla:cla-init` lists
+the retired files a repo still holds and offers to delete them. No record count is quoted
 here on purpose: it goes stale on the next append, and a stale number in a
 docstring reads as fact.
 
@@ -45,8 +44,8 @@ one append is lost).
 The record is COUNTS-ONLY (no prose) — prose lives in the skill's own report.
 The 4 KiB ceiling below is what enforces that in practice.
 
-SHAPES. `SHAPES` below is the one definition of what a `spec-to-pr-runs` and a
-`codify-runs` record look like — required keys AND value shapes, because the
+SHAPES. `SHAPES` below is the one definition of what a `spec-to-pr-runs` record
+looks like — required keys AND value shapes, because the
 defect that motivated it (`phases` written as an object instead of a list) keeps
 the key present and only a value check sees it. Producers are prose a model
 follows, and in long sessions it wrote records from memory: `date` for `ts`, a
@@ -120,8 +119,6 @@ COUNT = _leaf(lambda v: type(v) is int and v >= 0, "a non-negative integer")
 TEXT = _leaf(lambda v: isinstance(v, str) and v.strip() != "", "a non-empty string")
 TS = _leaf(lambda v: _iso(v, date_ok=False),
            'an ISO-8601 date-time with a zone, e.g. "2026-05-28T14:32:11Z"')
-TS_OR_DATE = _leaf(lambda v: _iso(v, date_ok=True),
-                   'an ISO-8601 date or date-time, e.g. "2026-05-28"')
 FLAG = _leaf(lambda v: isinstance(v, str) and len(v) > 2 and v.startswith("--")
              and "=" not in v and not any(c.isspace() for c in v),
              'a flag name as typed, without its value, e.g. "--inherits"')
@@ -135,9 +132,6 @@ STATUSES = ("ok", "warn", "skip", "fail")
 # retro's per-agent yield never splits one agent across two keys.
 REVISE_AGENTS = ("code-reviewer", "silent-failure-hunter", "pr-test-analyzer",
                  "comment-analyzer", "type-design-analyzer", "plugin-dev:skill-reviewer")
-# The four rungs of codify-learnings' escalation ladder, weakest first. A rung, not
-# an artifact type: memory, CLAUDE.md, an overlay and a SKILL.md are all `doc`.
-RUNGS = ("checklist", "doc", "hook", "script")
 # Phases that loop, and so must say how many rounds they used out of how many,
 # whenever they ran. Review loops too but is single-pass by default, and its pair
 # stays optional.
@@ -193,11 +187,6 @@ SHAPES: dict[str, tuple] = {
          "routing": _obj(optional={
              "revise_findings_by_tier": ("map", _obj({"found": COUNT, "phantom": COUNT}),
                                          _findings_rule)})},
-    ),
-    "codify-runs.jsonl": _obj(
-        {"ts": TS_OR_DATE,
-         "applied": ("list", _obj({"target": TEXT, "rung": _one_of(*RUNGS)})),
-         "re_offenses": ("list", _obj({"artifact": TEXT, "escalated_to": _one_of(*RUNGS)}))},
     ),
 }
 
@@ -302,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     # Only a named ledger, so never a path: `../../etc/thing.jsonl` would write
     # outside the ledger dir, and the caller is a model assembling a command line.
     if ledger not in SHAPES:
-        print(f"log_run: {ledger!r} is not a ledger; the ledgers are "
+        print(f"log_run: {ledger!r} is not a ledger; the only ledger is "
               + ", ".join(sorted(SHAPES)), file=sys.stderr)
         return 1
 

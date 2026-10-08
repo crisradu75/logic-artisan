@@ -107,3 +107,8 @@ The plugin SHALL ship a checker a consuming repo runs as `python3 <path>` that r
 
 - **WHEN** the user answers anything but yes
 - **THEN** every listed ledger is kept and reported as kept
+
+#### Scenario: The codify ledger
+
+- **WHEN** `cla.io/retro/` holds the codify-learnings ledger
+- **THEN** `/cla:cla-init` lists it as a retired ledger

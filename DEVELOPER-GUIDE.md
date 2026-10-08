@@ -300,7 +300,7 @@ ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the c
 
 - **`codify-learnings`** — run it at the end of a session worth learning from. It reviews the
   conversation for reusable lessons and proposes concrete edits — to docs, skills, hooks, or
-  memory — interactively, then logs the run.
+  memory — interactively, then logs the fixes and re-offenses in `lessons-learned/`.
 
   ```
   /cla:codify-learnings
@@ -310,10 +310,9 @@ ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the c
   the ledger and improves the orchestrator. `codify-learnings` needs no retro of its own: it checks
   each session failure against the rules earlier runs wrote, and escalates a rule that failed again.
 
-The discipline throughout: a ledger earns its place by a reader. `lib/log_run.py` accepts two —
-`spec-to-pr-runs`, which `spec-to-pr-retro` reads, and `codify-runs`, which `codify-learnings`
-writes beside the fixes it applies and no script reads yet. The ledgers retired for having no
-reader are listed by `cla-init`, which offers to delete the ones a repo still holds.
+The discipline throughout: a ledger earns its place by a reader. `lib/log_run.py` accepts one,
+`spec-to-pr-runs`, which `spec-to-pr-retro` reads. The ledgers retired for having no reader are
+listed by `cla-init`, which offers to delete the ones a repo still holds.
 
 Three utilities worth knowing at any phase:
 

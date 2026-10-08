@@ -92,7 +92,7 @@ Apply each accepted fix with the tool it needs; for one going upstream, invoke
 
 ## Step 5 — Log
 
-**Lessons log.** Prepend one entry of at most 150 words to `cla.io/lessons-learned/lessons-learned.md`,
+Prepend one entry of at most 150 words to `cla.io/lessons-learned/lessons-learned.md`,
 above its first `## ` entry (create the file with a `# Lessons learned` title if it is missing; read
 only its first lines). Newest first, entries separated by `---`:
 
@@ -103,31 +103,7 @@ only its first lines). Newest first, entries separated by `---`:
 - Re-offense: `<artifact>` → <rung>
 ```
 
-**Ledger.** Append one record:
-
-```bash
-echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py codify-runs.jsonl
-```
-
-Build it from this example, which the writer accepts as written:
-
-```json
-{"ts": "2026-10-08",
- "applied": [{"target": "hooks/block-cd-in-bash.py", "rung": "hook"}],
- "re_offenses": [{"artifact": "CLAUDE.md", "escalated_to": "hook"}]}
-```
-
-- `ts` is today's date. `applied` has one entry per APPLIED fix: its target path
-  (`report-upstream` for one filed upstream) and its rung. `re_offenses` has one entry per
-  re-offense found in Step 2: the failing artifact's path or hook name, and the rung its fix
-  proposed. Either list may be empty.
-- A rung is one of `checklist`, `doc`, `hook`, `script`.
-- `log_run.py` refuses an off-shape record with one line naming every field that is off. Rebuild
-  the record from the example, fixing each named field, and pipe it again **once**. A second
-  refusal, or any other failure: say the line was not written, and finish — a missing ledger line
-  never blocks the run.
-
-The ledger and the log are tracked files; include them when the applied fixes are committed.
+The log is a tracked file; include it when the applied fixes are committed.
 
 Close with one line: fixes proposed, applied and rejected, and each re-offense with the rung it
 went to.

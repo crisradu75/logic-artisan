@@ -26,7 +26,7 @@ _REPO = Path(__file__).resolve().parents[3]
 _SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-init" / "SKILL.md"
 _BASH = shutil.which("bash")
 
-RETIRED = ("commit-provenance", "right-model-runs", "multi-pr-runs", "multi-spec-runs",
+RETIRED = ("codify-runs", "commit-provenance", "right-model-runs", "multi-pr-runs", "multi-spec-runs",
            "multi-lite-runs", "project-review-runs", "lite-pr-runs", "shape-decision-runs",
            "feedback-runs")
 
@@ -76,7 +76,8 @@ def test_only_the_retired_ledgers_present_are_listed_and_none_is_deleted(tmp_pat
     for name in present:
         (retro / name).write_text('{"a": 1}\n', encoding="utf-8")
     # In the list's order, not the directory's.
-    assert _run(tmp_path) == ["retired ledger: cla.io/retro/commit-provenance.jsonl",
+    assert _run(tmp_path) == ["retired ledger: cla.io/retro/codify-runs.jsonl",
+                              "retired ledger: cla.io/retro/commit-provenance.jsonl",
                               "retired ledger: cla.io/retro/lite-pr-runs.jsonl"]
     assert sorted(p.name for p in retro.iterdir()) == sorted(present)
 

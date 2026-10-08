@@ -1,14 +1,14 @@
 """Mutation batch for test_log_run.py.
 
 CLAUDE.md's script table justifies `log_run.py` as "the one ledger writer:
-validates the record, enforces the 4 KiB atomic-append ceiling, refuses any
-ledger name but its two". Those are three separable claims and this batch
-breaks each of them, because each fails silently in a different way: a wrong
-ledger name splits a history nobody reads back, an oversize record interleaves
-bytes inside one line under concurrency, and a name outside the two starts a
-file nothing reads, or writes outside the ledger directory entirely.
+validates the record, enforces the 4 KiB atomic-append ceiling, refuses every
+ledger name but `spec-to-pr-runs.jsonl`". Those are three separable claims and this batch
+breaks each of them, because each fails silently in a different way: an
+off-shape record is one the retro skips, an oversize record interleaves bytes
+inside one line under concurrency, and any other name starts a file nothing
+reads, or writes outside the ledger directory entirely.
 
-**Mutant 5 is inside `_runs_dir`**, whose logic has a copy in the aggregator.
+**Mutant 4 is inside `_runs_dir`**, whose logic has a copy in the aggregator.
 It edits only an error message, which the writer/reader agreement test
 (`tests/consistency/test_ledger_dir_agrees.py`) does not read, and `TARGETS` is
 the single guard file, so the kill attributes to this guard.
@@ -18,19 +18,21 @@ Defeating `if not path.is_absolute():` makes the child write
 `relative/retro/spec-to-pr-runs.jsonl` relative to the pytest process cwd — i.e.
 into the working tree. `mutate.py` restores the mutated SOURCE but does not
 remove a file the mutant's run created, so the batch would litter the repo. The
-message mutant (mutant 5) pins the same test without writing anything.
+message mutant (mutant 4) pins the same test without writing anything.
 
 **DELIBERATELY NOT MUTANTS, each unkillable in a correct tree:**
 
   * `>= 4096` -> `> 4096`. Nothing in the suite sits at exactly 4096 bytes, so the
-    two comparisons agree on every input. Mutant 2 changes the MAGNITUDE instead,
+    two comparisons agree on every input. Mutant 1 changes the MAGNITUDE instead,
     which the ~5 KB record does discriminate.
   * `timeout=10` in `_git_toplevel` -> any other value. No test makes git hang.
+  * `_runs_dir() / ledger` -> `_runs_dir() / "spec-to-pr-runs.jsonl"`. With one
+    accepted name the two are the same path; it was a mutant while there were two.
   * `_pin_streams_utf8`'s body -> `pass`. Every message the tests read back is
     ASCII, and the ledger write goes through `sys.stdin.buffer` and an explicit
     `encode("utf-8")`, never the reconfigured streams.
 
-**Mutants 8 onward are the record-shape check.** Mutant 9 is the dropped
+**Mutants 7 onward are the record-shape check.** Mutant 8 is the dropped
 2026-09-05 proposal's own failure, restored on purpose: a check that sees the
 `phases` KEY and not its VALUE accepts `phases` written as an object, which is the
 drift that motivated the check. The rest each loosen one rule the fleet's real
@@ -49,11 +51,7 @@ the source through `\n` in its REPLACEMENT, never its anchor, so it holds on
 either checkout. (The Review-pair and Revise-agents mutants went with those
 fields, in retire-unread-ledgers.)
 
-**Then the codify shape slim-codify-learnings introduced:** a rung
-list that loses one or regains a retired artifact type, applied fixes whose
-entries go unchecked, a re-offense keyed by slug again (the 78-distinct-slugs
-defect), and a record with no date. **The last four are the fields
-retire-unread-ledgers added:** a flag spelled two ways, or with its value, would
+**The last four are the fields retire-unread-ledgers added:** a flag spelled two ways, or with its value, would
 split one flag's count, and a diagnose count that is not a count reads as zero.
 
 And one honest limit, recorded rather than chased:
@@ -74,16 +72,6 @@ SCRIPT = PLUGIN / "lib" / "log_run.py"
 TARGETS = [DEV / "tests" / "lib" / "test_log_run.py"]
 
 MUTANTS = [
-    (
-        # One writer, one file again. Every skill's record lands in the
-        # orchestrator's ledger whatever ledger it named, and each retro then
-        # reads a history that is partly someone else's.
-        "the ledger argument is ignored and every record lands in one file",
-        SCRIPT,
-        "        log_path = _runs_dir() / ledger",
-        '        log_path = _runs_dir() / "spec-to-pr-runs.jsonl"',
-        TARGETS,
-    ),
     (
         # The ceiling is about ATOMICITY, not disk: POSIX guarantees an append
         # under PIPE_BUF lands whole. Above it two parallel sessions can
@@ -293,42 +281,6 @@ MUTANTS = [
         SCRIPT,
         'ROUNDS_REQUIRED_ON = ("Test", "Revise")',
         'ROUNDS_REQUIRED_ON = ("Test",)',
-        TARGETS,
-    ),
-    # --- the codify shape (slim-codify-learnings) -------------------------------
-    (
-        "the rung list loses a rung the ladder has, refusing a real record",
-        SCRIPT,
-        'RUNGS = ("checklist", "doc", "hook", "script")',
-        'RUNGS = ("checklist", "doc", "hook")',
-        TARGETS,
-    ),
-    (
-        "a retired artifact-type rung (`claude_md`) is accepted again",
-        SCRIPT,
-        'RUNGS = ("checklist", "doc", "hook", "script")',
-        'RUNGS = ("checklist", "doc", "hook", "script", "claude_md")',
-        TARGETS,
-    ),
-    (
-        "an applied fix may be anything, so one with no target passes",
-        SCRIPT,
-        '         "applied": ("list", _obj({"target": TEXT, "rung": _one_of(*RUNGS)})),',
-        '         "applied": ("list", _leaf(lambda v: True, "anything")),',
-        TARGETS,
-    ),
-    (
-        "a re-offense keyed by slug passes: `artifact` becomes optional",
-        SCRIPT,
-        '"re_offenses": ("list", _obj({"artifact": TEXT, "escalated_to": _one_of(*RUNGS)}))},',
-        '"re_offenses": ("list", _obj({"escalated_to": _one_of(*RUNGS)}, {"artifact": TEXT}))},',
-        TARGETS,
-    ),
-    (
-        "a codify record with no date passes",
-        SCRIPT,
-        '        {"ts": TS_OR_DATE,',
-        '        {',
         TARGETS,
     ),
     (

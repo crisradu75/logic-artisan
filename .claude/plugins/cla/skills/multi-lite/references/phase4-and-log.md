@@ -32,18 +32,21 @@ chain's last open PR, never `<base-branch>`:
   ```
   git checkout <branch>
   git pull
+  gh pr view <pr-number> --json state
   python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <branch>
-  git add -- cla.io/retro/multi-lite-run-notes-*.md
-  git commit -m "chore: multi-lite run notes"
+  git add -- <notes>
+  git commit -m "<notes-message>"
   git push
   ```
-  The glob also picks up an earlier run's notes left uncommitted. Verify the push landed
+  `<notes>` is this run's notes file and nothing else, never a glob; `<notes-message>` is defined
+  in `references/bootstrap-and-tracking.md`, Phase 2. If `git pull` fails or the state is not
+  `OPEN`, the PR merged or closed after the query: stop and leave the notes uncommitted, saying
+  so, and never push, which would recreate a deleted branch. Verify the push landed
   (`git rev-parse HEAD` against `git ls-remote origin <branch>`, compared in-context), stay on
-  that branch, and name the PR in the summary as carrying the notes. A re-run takes them back out
-  of it first (`references/bootstrap-and-tracking.md`, Phase 2).
+  that branch, and name the PR in the summary as carrying the notes. A re-run takes them back
+  out of it first (`references/bootstrap-and-tracking.md`, Phase 2).
 - **None is open** (every PR merged, or none was opened) → leave the file uncommitted and say so
-  in the summary: nothing is left to resume, and the next run's Phase 4 glob commits it onto that
-  run's last open PR.
+  in the summary: nothing is left to resume.
 
 Never commit or push the notes to `<base-branch>`, open a PR for them alone, or reach for
 `ALLOW_PUSH_TO_MAIN=1`. Skip this step if the run finished in a reactive-worktree pivot, and say

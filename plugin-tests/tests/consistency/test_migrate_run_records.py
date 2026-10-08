@@ -480,27 +480,18 @@ def test_a_missing_file_is_an_error(tmp_path: Path) -> None:
     assert r.returncode == 1 and "no file at" in r.stderr
 
 
-def test_this_repos_ledgers_pass_the_writers_check() -> None:
+def test_this_repos_ledger_passes_the_writers_check() -> None:
     # The migration's acceptance condition, held from here on: nothing in this
-    # repo's own ledgers is off-shape, so a reader needs no path for old shapes —
-    # with the one stated exception, a spec-to-pr Test or Revise phase that never
+    # repo's spec-to-pr ledger is off-shape, so a reader needs no path for old
+    # shapes — with the one stated exception, a Test or Revise phase that never
     # carried a rounds pair (`_history_gaps`). A record this repo writes from now
-    # on is held to the pair by the writer itself.
-    #
-    # A codify record that still carries `suggestions` predates the shape
-    # slim-codify-learnings introduced. It cannot be mapped — the old record
-    # counted fixes and never named their targets — so it stays as history, and
-    # only a record in the new shape is held to it.
-    for name in ("spec-to-pr-runs.jsonl", "codify-runs.jsonl"):
-        path = _REPO / "cla.io" / "retro" / name
-        if not path.exists():
-            continue
-        for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if line.strip():
-                rec = json.loads(line)
-                if name == "codify-runs.jsonl" and "suggestions" in rec:
-                    continue
-                problems = set(log_run.shape_problems(rec, log_run.SHAPES[name]))
-                if name == "spec-to-pr-runs.jsonl":
-                    problems -= _history_gaps(rec, rec)
-                assert not problems, f"{name}:{no}: {problems}"
+    # on is held to the pair by the writer itself. The codify ledger is retired:
+    # nothing writes it, so its history is held to nothing.
+    name = "spec-to-pr-runs.jsonl"
+    path = _REPO / "cla.io" / "retro" / name
+    assert path.exists()
+    for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if line.strip():
+            rec = json.loads(line)
+            problems = set(log_run.shape_problems(rec, log_run.SHAPES[name])) - _history_gaps(rec, rec)
+            assert not problems, f"{name}:{no}: {problems}"

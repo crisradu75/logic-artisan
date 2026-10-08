@@ -157,7 +157,7 @@ def test_resume_without_recorded_findings_is_never_clean():
         assert "`review: clean`" not in arm
 
 
-# requirement: small-change-chains / A resumed small-change chain never merges unchecked commits
+# requirement: small-change-chains / A resumed small-change chain merges only checked commits
 def test_resume_never_merges_a_moved_head():
     """Commits pushed after `head_sha` was recorded were not tested or reviewed by
     the run. The moved-head arm must stop the row, and must come before every arm

@@ -1,7 +1,7 @@
 """Mutation batch for test_ledger_names_agree.py.
 
 The guard claims the ledger filename a skill WRITES cannot drift from the one its
-retro skill READS, from the two `log_run.py` accepts, or from the two cla-init
+retro skill READS, from the one `log_run.py` accepts, or from the one cla-init
 seeds, without a test going red. `log_run.py` refuses a misspelled name, but only
 at the end of a run, where the refusal is non-fatal and easy to miss; the reader
 then reports `runs_analyzed: 0`, which reads as "the loop has not run yet".
@@ -10,8 +10,7 @@ then reports `runs_analyzed: 0`, which reads as "the loop has not run yet".
 prose on the writer side, a Python constant on the reader side — so one mutant
 breaks the spec-to-pr writer and one its reader. Two more break the guard's own
 extraction, because a guard that cannot read either side reports agreement
-between two things it never found. The codify ledger has no reader; its writer's
-spelling is pinned against `SHAPES`, and the first mutant proves that.
+between two things it never found.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_ledger_names_agree.py
 """
@@ -22,7 +21,6 @@ DEV = Path(__file__).resolve().parents[2]
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 
 GUARD = DEV / "tests" / "consistency" / "test_ledger_names_agree.py"
-CODIFY_SKILL = PLUGIN / "skills" / "codify-learnings" / "SKILL.md"
 SCHEMA = PLUGIN / "skills" / "_shared" / "references" / "run-log-schema.md"
 S2P_READER = PLUGIN / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py"
 CLA_INIT = PLUGIN / "skills" / "cla-init" / "SKILL.md"
@@ -33,16 +31,6 @@ FEEDBACK_SKILL = PLUGIN / "skills" / "feedback" / "SKILL.md"
 TARGETS = [GUARD]
 
 MUTANTS = [
-    (
-        # A singular/plural slip in prose: `log_run.py` refuses it, at the end
-        # of every run, and the run finishes anyway. With no codify reader, the
-        # scan against `SHAPES` is what names the ledger codify-learnings writes.
-        "the codify writer's prose names a ledger the writer does not accept",
-        CODIFY_SKILL,
-        "log_run.py codify-runs.jsonl",
-        "log_run.py codify-run.jsonl",
-        TARGETS,
-    ),
     (
         # THE DEFECT THE GUARD EXISTS FOR, writer side. The invocation lives in
         # a SHARED reference rather than in a skill's own SKILL.md.
@@ -76,7 +64,7 @@ MUTANTS = [
         # did not perform that edit, and when a reviewer ran the edit it
         # described, it SURVIVED — every `log_run.py <ledger>` invocation in the
         # prose sits on one line with exactly one space
-        # (`codify-learnings/SKILL.md`), so `\s+` and `" "` agree on every
+        # (`_shared/references/run-log-schema.md`), so `\s+` and `" "` agree on every
         # input the real files supply. That is this batch's own unkillable class
         # again, and here the input side cannot rescue it either: wrapping an
         # invocation across a line is tolerated by `\s+`, so the guard still
@@ -102,12 +90,12 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Mutates the INPUT, not the guard: cla-init stops seeding a ledger the
-        # writer accepts, and the seed scan must name the gap.
-        "cla-init's seed loop drops a ledger a skill still writes",
+        # Mutates the INPUT, not the guard: cla-init seeds a ledger the writer
+        # refuses again, and the seed scan must name it.
+        "cla-init's seed loop seeds the retired codify ledger again",
         CLA_INIT,
-        "for f in spec-to-pr-runs codify-runs; do",
         "for f in spec-to-pr-runs; do",
+        "for f in spec-to-pr-runs codify-runs; do",
         TARGETS,
     ),
     (

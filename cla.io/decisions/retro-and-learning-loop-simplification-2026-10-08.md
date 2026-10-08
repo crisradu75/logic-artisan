@@ -141,7 +141,8 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
   152 memory items through). Rungs are `checklist`, `doc`, `hook`, `script`: memory, CLAUDE.md,
   an overlay and a SKILL.md share the `doc` rung, as the old reference already treated them;
   `.claude/settings.json` sits with `hook`. `failure-modes.md` became a section of the one
-  reference.
+  reference. The ledger line was dropped on 2026-10-08: nothing read it, and the lessons-log
+  entry records the same fixes, rungs and re-offenses.
 - **D5 — Memory is for personal preferences only.** Repo lessons go to the repo's CLAUDE.md or
   `cla.io/overlays/`, so git, cloud sessions and reviewers see them.
 - **D6 — Shrink `failure-modes.md` to about 15 bullets.** Keep the highest-yield prompts;
@@ -175,6 +176,10 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
 - **D10 — Ledger rows ride the work PR.** Every ledger line and run-notes update is committed on
   the feature branch of the PR it describes (`multi-lite` / `multi-pr`: the chain's last PR).
   No standalone "record the run" commits or PRs.
+  *Implemented as:* a chain commits only its own notes file, under one fixed message per chain,
+  and never pushes once the last PR has merged or closed. A re-run finds that commit by its
+  message and forgives a head move only when every commit since carries it and touches nothing
+  but the notes (renames counted by both paths).
 - **D11 — `cla-init` (merged into `cla-setup` by the companion doc's P4) reports orphan
   ledgers and offers to delete them.** It carries a list of
   retired ledger names; a re-run lists the ones present and deletes only on an explicit yes.

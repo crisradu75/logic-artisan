@@ -1,6 +1,6 @@
 ---
 name: cla-init
-description: "Idempotent, never-clobber scaffolder for a repo's cla.io/ tree, empty ledgers, overlay stubs and OpenSpec authoring rules. Creates only what is missing; changes an existing OpenSpec config's rules, or deletes retired run ledgers, only on the user's yes. Run with /cla:cla-init."
+description: "Idempotent, never-clobber scaffolder for a repo's cla.io/ tree, the empty run ledger, overlay stubs and OpenSpec authoring rules. Creates only what is missing; changes an existing OpenSpec config's rules, or deletes retired run ledgers, only on the user's yes. Run with /cla:cla-init."
 argument-hint: "(no args — scaffolds the current repo)"
 allowed-tools: Bash, Read, Edit, Grep, Glob
 # Slash-command only (once per repo, at onboarding): keeps this description out of the
@@ -11,7 +11,7 @@ disable-model-invocation: true
 # /cla:cla-init — scaffold the cla plugin's project-data baseline
 
 Bring a fresh or partially-scaffolded repo up to the project-data baseline the other `cla` skills
-expect: the `cla.io/` tree (retro ledgers, feedback inbox, lessons-learned log, decisions dir) and
+expect: the `cla.io/` tree (retro ledger, feedback inbox, lessons-learned log, decisions dir) and
 skeleton `cla.io/overlays/<skill>.md` overlay stubs for each skill that reads its own overlay.
 
 This skill is **project-data only**. It does NOT touch any *asset-core* file (`SKILL.md` bodies,
@@ -77,18 +77,16 @@ mkdir -p "$ROOT/cla.io/decisions" "$ROOT/cla.io/feedback" "$ROOT/cla.io/retro" "
 `cla.io/decisions/` gets no seed file — an empty dir is the correct initial state (it holds ad-hoc
 shaped-decision `.md` files created by `shape-decision`/`multi-spec`).
 
-### 2. Retro ledgers (0-byte — an empty file is a valid empty JSONL ledger; NO `[]` or placeholder line)
+### 2. Retro ledger (0-byte — an empty file is a valid empty JSONL ledger; NO `[]` or placeholder line)
 
 ```bash
-# The only two ledgers lib/log_run.py accepts, appended via that shared writer
+# The only ledger lib/log_run.py accepts, appended via that shared writer
 # (which takes the ledger filename as its argument and refuses any other):
 #   spec-to-pr-runs     read by /cla:spec-to-pr-retro
-#   codify-runs         /cla:codify-learnings' applied fixes and re-offenses;
-#                       no script reads it back
 # Every other ledger was retired because nothing read it (item 7 lists them). If
 # you add one, give it a shape in log_run.py and a reader in the same change: an
 # unread ledger is exhaust, not data.
-for f in spec-to-pr-runs codify-runs; do
+for f in spec-to-pr-runs; do
   [ -e "$ROOT/cla.io/retro/$f.jsonl" ] || : > "$ROOT/cla.io/retro/$f.jsonl"
 done
 ```
@@ -281,8 +279,8 @@ holds them, and no install removes them. This block only lists the ones present:
 
 ```bash
 : "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
-for f in commit-provenance right-model-runs multi-pr-runs multi-spec-runs multi-lite-runs \
-         project-review-runs lite-pr-runs shape-decision-runs feedback-runs; do
+for f in codify-runs commit-provenance right-model-runs multi-pr-runs multi-spec-runs \
+         multi-lite-runs project-review-runs lite-pr-runs shape-decision-runs feedback-runs; do
   if [ -e "$ROOT/cla.io/retro/$f.jsonl" ]; then echo "retired ledger: cla.io/retro/$f.jsonl"; fi
 done
 ```

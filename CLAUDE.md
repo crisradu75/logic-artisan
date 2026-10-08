@@ -126,7 +126,7 @@ subdirectory names, so the batches are never collected as tests. A batch is opti
 has one, it carries the guard's name.
 
 **`lib/` is the odd one out in the plugin**: not a skill (no `SKILL.md`) and not a guard hook. It
-holds `log_run.py`, the one ledger writer the two run-logging skills invoke as a program.
+holds `log_run.py`, the one ledger writer, which `spec-to-pr` invokes as a program.
 
 Of the four portable guards that police the fact/procedure split, **two reach consuming repos and
 two do not, and the difference is where they live.** No project token in synced core
@@ -376,7 +376,7 @@ matching every existing row (`_shared/scripts/git_state.py`, `spec-to-pr-retro/s
 | Script | Why prose can't do it |
 |---|---|
 | `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
-| `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses any ledger name but its two. |
+| `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses every ledger name but `spec-to-pr-runs.jsonl`. |
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
 | `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
