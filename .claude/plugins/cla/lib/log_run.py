@@ -51,13 +51,17 @@ SHAPES. `SHAPES` below is the one definition of what a `spec-to-pr-runs` and a
 defect that motivated it (`phases` written as an object instead of a list) keeps
 the key present and only a value check sees it. Producers are prose a model
 follows, and in long sessions it wrote records from memory: `date` for `ts`, a
-dict for `phases`. A refused record prints ONE line naming the field and
-nothing is written. Any other ledger name gets only the name and size checks.
+dict for `phases`. A refused record prints ONE line naming EVERY field that is
+off, joined by `; `, and nothing is written — every problem at once, because the
+caller has one retry and a check that named only the first would spend it on a
+record still wrong in a field it had not been told about. Any other ledger name
+gets only the name and size checks.
 
 A caller MUST NOT halt if this script fails — a missing log line is infinitely
 preferable to a halted workflow at the end of a successful run. On a shape
-refusal the caller fixes the field named and retries once; on any other
-failure, or a second refusal, it notes the line and continues.
+refusal the caller rebuilds the record from its reference example, fixing every
+field named, and retries once; on any other failure, or a second refusal, it
+notes the line and continues.
 """
 
 from __future__ import annotations
@@ -82,8 +86,9 @@ _LEDGER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$")
 # A shape is one of four tuples:
 #   ("leaf", test, what)              test(value) -> bool; `what` goes in the refusal
 #   ("list", item_shape)
-#   ("map", value_shape, rule)        an object with free keys, every value one shape
-#   ("obj", required, optional, rule) dicts of key -> shape; rule(obj) -> refusal|None
+#   ("map", value_shape, rule)        an object with free keys, every value one shape;
+#                                     rule(obj) -> list of refusals over the keys
+#   ("obj", required, optional, rule) dicts of key -> shape; rule(obj) -> list of refusals
 # Keys not named are allowed and kept: a shape says what readers rely on, not
 # everything a producer may add.
 
@@ -129,37 +134,73 @@ COUNT_OR_NULL = _leaf(lambda v: v is None or (type(v) is int and v >= 0),
 
 SPEC_TO_PR_PHASES = ("Precheck", "Propose", "Review", "Implement", "Test", "Ship",
                      "Revise", "Archive", "Handoff")
+STATUSES = ("ok", "warn", "skip", "fail")
+SIZE_GATES = ("small", "large")
+VERDICTS = ("READY", "FIX FIRST", "RETHINK")
+# The bare id for the five pr-review-toolkit agents — not the `pr-review-toolkit:`
+# form passed to `Agent` — and the prefixed one for the skill reviewer, which has no
+# bare form. One list for Revise `agents` and for `revise_findings_by_tier`, so the
+# retro can join dispatches to yield.
 REVISE_AGENTS = ("code-reviewer", "silent-failure-hunter", "pr-test-analyzer",
                  "comment-analyzer", "type-design-analyzer", "plugin-dev:skill-reviewer")
 RUNGS = ("checklist", "memory", "claude_md", "skill_md", "hook", "script")
+# Phases that loop, and so must say how many rounds they used out of how many,
+# whenever they ran. Review loops too but is single-pass by default, and its pair
+# stays optional.
+ROUNDS_REQUIRED_ON = ("Test", "Revise")
 
 
-def _phase_rule(phase: dict) -> str | None:
-    name = phase["name"]
-    if phase["status"] in ("warn", "fail") and "reason" not in phase:
-        return f"`reason` is required on a {phase['status']} phase ({name})"
+def _not_one_of(one: str, many: str, bad: list, allowed: tuple) -> str:
+    """One refusal for every off-list entry of one field, so a record with three
+    retired agent names gets one clause, not three copies of the allowed list."""
+    shown = ", ".join(repr(b) for b in bad)
+    if len(bad) == 1:
+        return f"{one} {shown} must be one of " + ", ".join(allowed)
+    return f"{many} {shown} must each be one of " + ", ".join(allowed)
+
+
+def _phase_rule(phase: dict) -> list[str]:
+    """Cross-field checks on one phase. Runs only once `name` and `status`
+    conform, so both are known values here; every optional field is read
+    defensively, because its own shape problem is reported separately."""
+    name, status = phase["name"], phase["status"]
+    problems = []
+    if status in ("warn", "fail") and "reason" not in phase:
+        problems.append(f"`reason` is required on a {status} phase ({name})")
     if ("rounds_used" in phase) != ("rounds_cap" in phase):
-        return f"`rounds_used` and `rounds_cap` go together ({name})"
-    if name == "Review" and "size_gate" in phase:
+        problems.append(f"`rounds_used` and `rounds_cap` go together ({name})")
+    elif "rounds_used" not in phase and name in ROUNDS_REQUIRED_ON and status != "skip":
+        problems.append(f"`rounds_used` and `rounds_cap` are required on a {name} phase "
+                        f"that was not skipped ({status})")
+    # Only an `ok` Review must agree with itself. A warn Review is how a run says
+    # truthfully that the gate called for agents and none could be dispatched —
+    # `size_gate: "large"`, `agents: []`, and the reason why.
+    if name == "Review" and status == "ok" and "size_gate" in phase:
         if (phase["size_gate"] == "large") != bool(phase.get("agents")):
-            return ("`agents` must list the Review agents that ran in large mode, "
-                    "and be omitted or [] in small mode (Review)")
-    return None
+            problems.append("`agents` must list the Review agents that ran in large mode, "
+                            "and be omitted or [] in small mode (Review)")
+    if name == "Revise" and isinstance(phase.get("agents"), list):
+        bad = [a for a in phase["agents"]
+               if isinstance(a, str) and a.strip() and a not in REVISE_AGENTS]
+        if bad:
+            problems.append(_not_one_of("Revise `agents` entry", "Revise `agents` entries",
+                                        bad, REVISE_AGENTS))
+    return problems
 
 
-def _findings_rule(by_agent: dict) -> str | None:
-    for agent in by_agent:
-        if agent not in REVISE_AGENTS:
-            return (f"`routing.revise_findings_by_tier` key {agent!r} must be one of "
-                    + ", ".join(REVISE_AGENTS))
-    return None
+def _findings_rule(by_agent: dict) -> list[str]:
+    bad = [agent for agent in by_agent if agent not in REVISE_AGENTS]
+    if not bad:
+        return []
+    return [_not_one_of("`routing.revise_findings_by_tier` key",
+                        "`routing.revise_findings_by_tier` keys", bad, REVISE_AGENTS)]
 
 
 _PHASE = _obj(
-    {"name": _one_of(*SPEC_TO_PR_PHASES), "status": _one_of("ok", "warn", "skip", "fail")},
+    {"name": _one_of(*SPEC_TO_PR_PHASES), "status": _one_of(*STATUSES)},
     {"reason": TEXT, "rounds_used": COUNT, "rounds_cap": COUNT, "report_chars": COUNT,
-     "size_gate": _one_of("small", "large"),
-     "verdict": _one_of("READY", "FIX FIRST", "RETHINK"),
+     "size_gate": _one_of(*SIZE_GATES),
+     "verdict": _one_of(*VERDICTS),
      "verified_claims_count": COUNT,
      "agents": ("list", TEXT),
      "version_bumped": BOOL,
@@ -203,39 +244,44 @@ def _shown(value: object) -> str:
     return text if len(text) <= 40 else text[:37] + "..."
 
 
-def shape_problem(value: object, shape: tuple, path: str = "") -> str | None:
-    """The first way `value` departs from `shape`, as one line naming the field,
-    or None when it conforms."""
+def shape_problems(value: object, shape: tuple, path: str = "") -> list[str]:
+    """Every way `value` departs from `shape`, each as one clause naming the
+    field; empty when it conforms."""
     kind = shape[0]
     here = f"`{path}`" if path else "the record"
     if kind == "leaf":
-        return None if shape[1](value) else f"{here} must be {shape[2]}, got {_shown(value)}"
+        return [] if shape[1](value) else [f"{here} must be {shape[2]}, got {_shown(value)}"]
     if kind == "list":
         if not isinstance(value, list):
-            return f"{here} must be a list, got {_shown(value)}"
-        for i, item in enumerate(value):
-            problem = shape_problem(item, shape[1], f"{path}[{i}]")
-            if problem:
-                return problem
-        return None
+            return [f"{here} must be a list, got {_shown(value)}"]
+        return [problem for i, item in enumerate(value)
+                for problem in shape_problems(item, shape[1], f"{path}[{i}]")]
     if not isinstance(value, dict):
-        return f"{here} must be an object, got {_shown(value)}"
+        return [f"{here} must be an object, got {_shown(value)}"]
     if kind == "map":  # free keys, one value shape, then a rule over the keys
-        for key, item in value.items():
-            problem = shape_problem(item, shape[1], f"{path}.{key}")
-            if problem:
-                return problem
-        return shape[2](value)
+        problems = [problem for key, item in value.items()
+                    for problem in shape_problems(item, shape[1], f"{path}.{key}")]
+        return problems + shape[2](value)
     _, required, optional, rule = shape
-    for key in required:
-        if key not in value:
-            return f"`{path + '.' if path else ''}{key}` is required"
+    prefix = path + "." if path else ""
+    problems = [f"`{prefix}{key}` is required" for key in required if key not in value]
+    required_ok = not problems
     for key, sub in {**required, **optional}.items():
         if key in value:
-            problem = shape_problem(value[key], sub, f"{path + '.' if path else ''}{key}")
-            if problem:
-                return problem
-    return rule(value) if rule else None
+            found = shape_problems(value[key], sub, prefix + key)
+            problems += found
+            if found and key in required:
+                required_ok = False
+    # A rule reads the required keys as known values, so it runs only once they
+    # all conform; the optional fields it reads are its own to guard.
+    if rule and required_ok:
+        problems += rule(value)
+    return problems
+
+
+def shape_problem(value: object, shape: tuple) -> str | None:
+    """`shape_problems` as the one refusal line, `; `-joined, or None."""
+    return "; ".join(shape_problems(value, shape)) or None
 
 
 def _git_toplevel() -> Path | None:

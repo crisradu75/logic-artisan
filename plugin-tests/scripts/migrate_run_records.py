@@ -17,19 +17,37 @@ ledger; each is mapped mechanically, never guessed:
   * a phase keyed `phase` instead of `name`, or named in lower case -> `name`,
     capitalised the way the reader expects.
   * status `partial` -> `warn`; a `warn`/`fail` with no reason gets the side block's
-    `warn_reason`, else a reason saying none was recorded.
+    `warn_reason`, else `NO_REASON`, which the retro counts apart from real reasons.
   * `date` (or, failing that, `started`) -> `ts` at `T00:00:00Z`; a date-only `ts`
-    the same way. With no date in the record at all, the author time of the commit
-    that appended the line (`git log -L`) — the run's Handoff commits it, so that is
-    when the run ended.
+    the same way. A `ts` that is no date at all is replaced the same way and kept
+    as `ts_unmapped`. With no date in the record at all, the author time of the
+    commit that appended the line (`git log -L`) — the run's Handoff commits it, so
+    that is when the run ended.
   * `change_name` -> `change`.
   * `asks` as `{"count": n, "choices": [...]}` or a bare count -> a list of
     `{header, choice}`, with "(not recorded)" for what the record did not keep.
-  * `routing.revise_findings_by_tier` entries that are not a canonical agent with
-    `found`/`phantom` (model-tier or severity keys, retired agent names) move to
-    `routing.revise_findings_unmapped`; `code_reviewer`-style keys are re-spelled.
-  * a Review `size_gate` outside small/large, or `large` with no agents listed (the
-    two cannot both be true) -> moved to `size_gate_unmapped` on that phase.
+  * Revise `agents`: the `pr-review-toolkit:` prefix is stripped to the bare id;
+    an entry that is still no canonical agent (a retired name, `orchestrator-inline`
+    lifted from a round-2 list) moves to `agents_unmapped` on the phase.
+  * `routing.revise_findings_by_tier`: a canonical agent whose value counts by
+    severity only, `{"critical": n, "important": n, "suggestion": n}` with zeros
+    omitted, becomes `{"found": critical + important, "phantom": 0}` — the record
+    omits every zero count, so an absent `phantom` is a zero, not an unknown; one
+    that also carries `phantom` is ambiguous (counted within those, or beside
+    them?) and is not mapped. Every other entry that is not a canonical agent with
+    `found`/`phantom` (model-tier or top-level severity keys, retired agent names)
+    moves to `routing.revise_findings_unmapped`; `code_reviewer`-style keys are
+    re-spelled. When nothing is left the key is dropped: absent reads as no data,
+    while `{}` would read as a Revise that found nothing.
+  * an `ok` Review whose `size_gate` is outside small/large, or `large` with no
+    agents listed (the two cannot both be true) -> moved to `size_gate_unmapped`
+    on that phase. A warn Review keeps the pair: that is how a run records agents
+    it could not dispatch.
+
+ONE GAP IS LEFT, on purpose. The writer requires `rounds_used`/`rounds_cap` on a
+Test or Revise phase that ran; a record written before that rule carried no pair,
+and this script does not invent round counts. Such a record is migrated and keeps
+that gap — `remaining_problems` excludes it and nothing else.
 
 Every other field is kept. A record that already passes is not touched, so a second
 run changes nothing. A record that still fails after mapping is reported with the
@@ -41,6 +59,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -56,11 +75,24 @@ SHAPE = log_run.SHAPES[LEDGER]
 PHASE_SHAPE = SHAPE[1]["phases"][1]
 AGENT_FINDINGS_SHAPE = SHAPE[2]["routing"][2]["revise_findings_by_tier"][1]
 NOT_RECORDED = "(not recorded)"
+# The retro's aggregator holds a copy of this string to count it apart from real
+# reasons; a consistency test keeps the two equal.
 NO_REASON = "reason not recorded (migrated record)"
+TOOLKIT_PREFIX = "pr-review-toolkit:"
+_SEVERITY_ONLY = {"critical", "important", "suggestion"}
+# See "ONE GAP IS LEFT" above. Matched against the writer's own refusal clause, so a
+# reworded clause stops matching and the record reports as unmappable — loud, not lax.
+_HISTORY_GAP = re.compile(r"^`rounds_used` and `rounds_cap` are required on a (Test|Revise) "
+                          r"phase that was not skipped \((ok|warn|fail)\)$")
 _CANONICAL = {name.lower(): name for name in log_run.SPEC_TO_PR_PHASES}
 _CAP_KEY = {"Review": "review_rounds", "Test": "test_rounds", "Revise": "pr_rounds"}
 _LIFT = ("rounds_used", "rounds_cap", "size_gate", "verdict", "verified_claims_count",
          "agents", "version_bumped", "findings_by_round", "report_chars", "reason")
+
+
+def remaining_problems(rec: dict) -> list[str]:
+    """The writer's refusals for `rec`, less the one gap history may keep."""
+    return [p for p in log_run.shape_problems(rec, SHAPE) if not _HISTORY_GAP.match(p)]
 
 
 def _field_ok(key: str, value: object) -> bool:
@@ -134,11 +166,6 @@ def _phase_list(rec: dict, notes: list[str]) -> list | None:
                 for key in ("rounds_used", "rounds_cap"):
                     if key in entry:
                         entry[key + "_unmapped"] = entry.pop(key)
-        if name == "Review" and "size_gate" in entry and (
-                entry["size_gate"] not in ("small", "large")
-                or (entry["size_gate"] == "large") != bool(entry.get("agents"))):
-            entry["size_gate_unmapped"] = entry.pop("size_gate")
-            notes.append("Review size_gate moved aside")
         if entry.get("status") == "partial":
             entry["status"] = "warn"
             entry.setdefault("reason", "partial (migrated record)")
@@ -146,7 +173,47 @@ def _phase_list(rec: dict, notes: list[str]) -> list | None:
         if entry.get("status") in ("warn", "fail") and "reason" not in entry:
             entry["reason"] = NO_REASON
             notes.append(f"{name} {entry['status']} given a reason")
+        # After the status is final: only an `ok` Review must agree with itself.
+        if name == "Review" and "size_gate" in entry and (
+                entry["size_gate"] not in log_run.SIZE_GATES
+                or (entry.get("status") == "ok"
+                    and (entry["size_gate"] == "large") != bool(entry.get("agents")))):
+            entry["size_gate_unmapped"] = entry.pop("size_gate")
+            notes.append("Review size_gate moved aside")
+        if name == "Revise":
+            _revise_agents(entry, notes)
     return entries
+
+
+def _revise_agents(entry: dict, notes: list[str]) -> None:
+    """Revise `agents` by canonical id: prefix stripped, anything else set aside."""
+    agents = entry.get("agents")
+    if not isinstance(agents, list):
+        return
+    kept: list = []
+    aside: list = []
+    stripped = 0
+    for agent in agents:
+        bare = agent
+        if isinstance(agent, str) and agent.startswith(TOOLKIT_PREFIX):
+            bare = agent[len(TOOLKIT_PREFIX):]
+        if isinstance(bare, str) and bare in log_run.REVISE_AGENTS:
+            stripped += bare != agent
+            if bare not in kept:
+                kept.append(bare)
+        else:
+            aside.append(agent)
+    if kept == agents:
+        return
+    if stripped:
+        notes.append(f"Revise agents: {TOOLKIT_PREFIX} prefix stripped")
+    if aside:
+        entry["agents_unmapped"] = aside
+        notes.append(f"Revise agents: {len(aside)} non-agent entries moved aside")
+    if kept or not aside:
+        entry["agents"] = kept
+    else:
+        del entry["agents"]  # nothing canonical was dispatched on record: no data, not none
 
 
 def _asks(value: object) -> list | None:
@@ -169,24 +236,47 @@ def _findings(routing: dict, notes: list[str]) -> dict:
     if not isinstance(by_tier, dict):
         return routing
     kept, moved = {}, {}
+    severity_mapped = 0
     for key, value in by_tier.items():
         agent = key.replace("_", "-") if isinstance(key, str) else key
-        if (agent in log_run.REVISE_AGENTS and agent not in kept
-                and log_run.shape_problem(value, AGENT_FINDINGS_SHAPE) is None):
-            kept[agent] = value
-        else:
-            moved[key] = value
-    if not moved and list(kept) == list(by_tier):
+        if agent in log_run.REVISE_AGENTS and agent not in kept:
+            if log_run.shape_problem(value, AGENT_FINDINGS_SHAPE) is None:
+                kept[agent] = value
+                continue
+            counts = _severity_counts(value)
+            if counts is not None:
+                kept[agent] = counts
+                severity_mapped += 1
+                continue
+        moved[key] = value
+    if not moved and not severity_mapped and list(kept) == list(by_tier):
         return routing
     out = {}
     for key, value in routing.items():
-        out[key] = kept if key == "revise_findings_by_tier" else value
+        if key != "revise_findings_by_tier":
+            out[key] = value
+        elif kept:
+            out[key] = kept
     if moved:
         out["revise_findings_unmapped"] = moved
         notes.append(f"revise_findings_by_tier: {len(moved)} non-agent entries moved aside")
-    else:
+        if not kept:
+            notes.append("revise_findings_by_tier dropped (nothing left)")
+    if severity_mapped:
+        notes.append(f"revise_findings_by_tier: {severity_mapped} severity counts -> found")
+    if not moved and not severity_mapped:
         notes.append("revise_findings_by_tier keys re-spelled")
     return out
+
+
+def _severity_counts(value: object) -> dict | None:
+    """`{"critical": n, "important": n, "suggestion": n}`, zeros omitted, as
+    `{found, phantom}`; None for anything else, including a `phantom` key."""
+    if not isinstance(value, dict) or not set(value) <= _SEVERITY_ONLY:
+        return None
+    if not all(type(n) is int and n >= 0 for n in value.values()):
+        return None
+    return {"found": value.get("critical", 0) + value.get("important", 0), "phantom": 0}
 
 
 def _date_ts(value: object) -> str | None:
@@ -199,7 +289,7 @@ def migrate(rec: dict, first_seen=None) -> tuple[dict, list[str]]:
     """The record in the enforced shape, and what changed. A record already in
     shape comes back as is, with no notes. `first_seen()` gives the time the line
     entered git, asked only when the record carries no date of its own."""
-    if log_run.shape_problem(rec, SHAPE) is None:
+    if not remaining_problems(rec):
         return rec, []
     notes: list[str] = []
     ts, ts_from = None, None
@@ -213,11 +303,16 @@ def migrate(rec: dict, first_seen=None) -> tuple[dict, list[str]]:
             ts = first_seen()
             ts_from = "git history" if ts else None
     out: dict = {}
-    if ts and ts_from not in ("ts", "date"):
+    # The derived `ts` takes the place of the key it replaces: an existing `ts`
+    # (date-only or junk), else the `date` it came from, else the front.
+    if ts and "ts" not in rec and ts_from != "date":
         out["ts"] = ts
     for key, value in rec.items():
-        if key == "ts" and ts_from == "ts":
+        if key == "ts" and ts:
             out["ts"] = ts
+            if ts_from != "ts":  # junk, not a date: kept beside, never lost
+                out["ts_unmapped"] = value
+                notes.append("unreadable ts moved aside")
         elif key == "date" and ts_from == "date":
             out["ts"] = ts
         elif key == "change_name" and "change" not in rec:
@@ -282,7 +377,7 @@ class _History:
 def run(ledger: Path, dry_run: bool, history_from: Path | None) -> int:
     lines = ledger.read_text(encoding="utf-8").splitlines(keepends=True)
     history = _History(history_from or ledger, lines)
-    out_lines, migrated, unmapped, valid = [], 0, 0, 0
+    out_lines, migrated, unmapped, valid, gaps = [], 0, 0, 0, 0
     for no, line in enumerate(lines, 1):
         if not line.strip():
             out_lines.append(line)
@@ -299,24 +394,27 @@ def run(ledger: Path, dry_run: bool, history_from: Path | None) -> int:
             unmapped += 1
             out_lines.append(line)
             continue
-        if log_run.shape_problem(rec, SHAPE) is None:
+        if not remaining_problems(rec):
             valid += 1
+            gaps += log_run.shape_problem(rec, SHAPE) is not None
             out_lines.append(line)
             continue
         new, notes = migrate(rec, lambda: history.first_seen(no))
-        problem = log_run.shape_problem(new, SHAPE)
+        problems = remaining_problems(new)
         label = rec.get("change") or rec.get("change_name") or "?"
-        if problem:
-            print(f"line {no} ({label}): cannot map: {problem}")
+        if problems:
+            print(f"line {no} ({label}): cannot map: " + "; ".join(problems))
             unmapped += 1
             out_lines.append(line)
             continue
         print(f"line {no} ({label}): " + "; ".join(notes))
         migrated += 1
+        gaps += log_run.shape_problem(new, SHAPE) is not None
         ending = "\n" if line.endswith("\n") else ""
         out_lines.append(json.dumps(new, separators=(",", ":"), ensure_ascii=False) + ending)
     print(f"{ledger}: {len(lines)} lines, {valid} already in shape, {migrated} migrated, "
-          f"{unmapped} cannot map" + (" (dry run, nothing written)" if dry_run else ""))
+          f"{unmapped} cannot map, {gaps} keep the rounds-pair gap"
+          + (" (dry run, nothing written)" if dry_run else ""))
     if migrated and not dry_run:
         tmp = ledger.with_name(ledger.name + ".migrating")
         tmp.write_text("".join(out_lines), encoding="utf-8", newline="")

@@ -118,6 +118,12 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
   proposal 1 on exactly the two conditions it was dropped for.
   - **D3a — Migrate the 40 off-shape spec-to-pr records once** (a one-off script per repo;
     the dict shape maps onto the list one). No reader-side compatibility path survives it.
+  - **Implemented as:** the `run-log-schema.md` rewrite deliberately dropped the `findings_by_round`
+    exception paragraph ("not a general licence", the archived-requirement test, the exit); the
+    reversal condition stays verbatim in `revise.md`, and change 4 (D8a) resolves it. The rounds
+    pair is required on Test and Revise unless skipped; migrated history keeps that one gap where
+    it never carried the pair. 3 fleet codify records fail the codify shape (claude-plugins line 21,
+    interoga-ro lines 5 and 11) and are left for D4.
 - **D4 — Slim `codify-learnings` to about 1,000 words and one reference.**
   1. List the session's failures (corrections, reverts, denials, wasted turns).
   2. For each, search for an existing rule (CLAUDE.md, `cla.io/overlays/`, hooks, memory). A

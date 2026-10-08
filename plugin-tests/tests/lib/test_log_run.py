@@ -22,6 +22,8 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "lib" / "log_run.py"
 
+import log_run as log_run_shapes  # noqa: E402 — the shapes, for the ids a record may use
+
 LEDGER = "example-runs.jsonl"
 
 
@@ -302,6 +304,20 @@ def _drop(path: str):
     return edit
 
 
+def _drop_both_rounds(name: str):
+    def edit(rec: dict) -> None:
+        for key in ("rounds_used", "rounds_cap"):
+            del _phase(rec, name)[key]
+    return edit
+
+
+def _chain(*edits):
+    def edit(rec: dict) -> None:
+        for one in edits:
+            one(rec)
+    return edit
+
+
 def _review_without_gate_or_agents(rec: dict) -> None:
     review = _phase(rec, "Review")
     del review["size_gate"]
@@ -369,6 +385,27 @@ SPEC_REFUSALS = [
      "`routing.revise_findings_by_tier.code-reviewer.phantom` is required"),
     ("findings-not-object", _set("routing.revise_findings_by_tier", [1, 2]),
      "`routing.revise_findings_by_tier` must be an object"),
+    ("findings-two-bad-keys", _set("routing.revise_findings_by_tier", {
+        "opus": {"found": 1, "phantom": 0}, "code_reviewer": {"found": 1, "phantom": 0}}),
+     "`routing.revise_findings_by_tier` keys 'opus', 'code_reviewer' must each be one of"),
+    # The rule reads `name` and `status`; with one missing it must not run, so the
+    # refusal names the field instead of crashing on it.
+    ("status-missing", _drop("phases.Test.status"), "`phases[3].status` is required"),
+    # Revise `agents` by canonical id: the prefixed form the dispatch uses, and a
+    # label for work the orchestrator did itself, are both refused by name.
+    ("revise-agent-prefixed", _set("phases.Revise.agents", ["pr-review-toolkit:code-reviewer"]),
+     "Revise `agents` entry 'pr-review-toolkit:code-reviewer' must be one of code-reviewer, "),
+    ("revise-agent-not-an-agent", _set("phases.Revise.agents", ["code-reviewer", "orchestrator-inline"]),
+     "Revise `agents` entry 'orchestrator-inline' must be one of"),
+    # The looping phases say how many rounds they used, whenever they ran.
+    ("test-without-rounds", _drop_both_rounds("Test"),
+     "`rounds_used` and `rounds_cap` are required on a Test phase that was not skipped (warn)"),
+    ("revise-without-rounds", _drop_both_rounds("Revise"),
+     "`rounds_used` and `rounds_cap` are required on a Revise phase that was not skipped (ok)"),
+    ("revise-failed-without-rounds", _chain(_drop_both_rounds("Revise"),
+                                            _set("phases.Revise.status", "fail"),
+                                            _set("phases.Revise.reason", "gate red")),
+     "`rounds_used` and `rounds_cap` are required on a Revise phase that was not skipped (fail)"),
 ]
 
 CODIFY_REFUSALS = [
@@ -435,13 +472,71 @@ def test_an_off_shape_codify_record_is_refused(tmp_path: Path, case: str, edit, 
     _set("notes", "a key no reader names is kept"),
     _set("ts", "2026-10-08T12:15:00+03:00"),
     _set("routing.revise_findings_by_tier", {}),
+    _drop_both_rounds("Review"),
+    _chain(_set("phases.Test.status", "skip"), _drop_both_rounds("Test"),
+           _drop("phases.Test.reason")),
+    _chain(_set("phases.Revise.status", "skip"), _drop_both_rounds("Revise")),
+    _set("phases.Revise.agents", list(log_run_shapes.REVISE_AGENTS)),
 ], ids=["no-args", "no-asks", "no-routing", "no-deferred", "no-size-gate", "no-findings-by-round",
-        "agents-empty-without-gate", "review-skipped", "extra-key", "ts-offset", "findings-empty"])
+        "agents-empty-without-gate", "review-skipped", "extra-key", "ts-offset", "findings-empty",
+        "review-without-rounds", "test-skipped-without-rounds", "revise-skipped-without-rounds",
+        "every-canonical-revise-agent"])
 def test_optional_fields_and_extra_keys_are_accepted(tmp_path: Path, edit) -> None:
     record = _spec_record()
     edit(record)
     r = _run(json.dumps(record), tmp_path / "retro", ledger=SPEC)
     assert r.returncode == 0, r.stderr
+
+
+# requirement: run-ledgers / Run records are checked when written
+@pytest.mark.parametrize("gate, agents", [("large", []), ("small", ["design"])],
+                         ids=["large-none-dispatched", "small-with-agents"])
+def test_a_warn_review_may_record_a_gate_its_agents_did_not_follow(
+        tmp_path: Path, gate: str, agents: list) -> None:
+    # The honest record of a run whose gate said large and whose agents could not
+    # be dispatched: it warns, says why, and lists none. Refusing it would leave
+    # the run two choices, both worse — invent the agents, or write no line.
+    record = _spec_record()
+    review = _phase(record, "Review")
+    review.update(status="warn", size_gate=gate, agents=agents,
+                  reason="size gate said large but no agents could be dispatched")
+    r = _run(json.dumps(record), tmp_path / "retro", ledger=SPEC)
+    assert r.returncode == 0, r.stderr
+    # ...while the same pair on an `ok` Review is still refused.
+    review.update(status="ok")
+    _assert_refused(_run(json.dumps(record), tmp_path / "retro2", ledger=SPEC), SPEC,
+                    "`agents` must list the Review agents", tmp_path / "retro2")
+
+
+# requirement: run-ledgers / Run records are checked when written
+def test_every_problem_is_named_on_the_one_refusal_line(tmp_path: Path) -> None:
+    # The caller has ONE retry. A refusal naming only the first problem spends it
+    # on a record still wrong in a field nobody mentioned.
+    record = _spec_record()
+    _date_for_ts(record)
+    record["mode"] = "resume"
+    _phase(record, "Revise")["agents"] = ["pr-review-toolkit:code-reviewer", "orchestrator-inline"]
+    _drop("phases.Test.reason")(record)
+    r = _run(json.dumps(record), tmp_path / "retro", ledger=SPEC)
+    for fragment in ("`ts` is required", "`mode` must be one of",
+                     "`reason` is required on a warn phase (Test)",
+                     "Revise `agents` entries 'pr-review-toolkit:code-reviewer', "
+                     "'orchestrator-inline' must each be one of"):
+        _assert_refused(r, SPEC, fragment, tmp_path / "retro")
+    assert r.stderr.count("; ") == 3, r.stderr
+
+
+def test_a_phase_with_an_unknown_status_gets_no_rule_clauses_about_it() -> None:
+    # The rules read `status` as a known value. Run on `running`, the rounds rule
+    # would add "required on a Test phase that was not skipped (running)" — a
+    # clause about a status that does not exist, sending the one retry after the
+    # wrong field.
+    record = _spec_record()
+    test = _phase(record, "Test")
+    test["status"] = "running"
+    del test["rounds_used"], test["rounds_cap"]
+    assert log_run_shapes.shape_problems(record, log_run_shapes.SHAPES[SPEC]) == [
+        '`phases[3].status` must be one of "ok", "warn", "skip", "fail", got "running"']
 
 
 # requirement: run-ledgers / Run records are checked when written

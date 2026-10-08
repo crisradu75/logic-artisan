@@ -112,4 +112,22 @@ MUTANTS = [
         '    "skill-reviewer",',
         TARGETS,
     ),
+    # --- review findings on C1 ------------------------------------------------
+    (
+        # S5. Every migrated warn shares the placeholder, so it tops the ranking
+        # and reads as the commonest cause of warning.
+        "the migration's placeholder reason is ranked with the real ones",
+        SCRIPT,
+        "                elif reason == UNRECORDED_REASON:",
+        "                elif False:",
+        TARGETS,
+    ),
+    (
+        # B1 on the reader's side: a truthful warn record counted as producer drift.
+        "a warn Review's gate/agents pair is counted as a mismatch",
+        SCRIPT,
+        "                if status == \"ok\" and isinstance(size_gate, str) and size_gate in VALID_SIZE_GATES:",
+        "                if isinstance(size_gate, str) and size_gate in VALID_SIZE_GATES:",
+        TARGETS,
+    ),
 ]

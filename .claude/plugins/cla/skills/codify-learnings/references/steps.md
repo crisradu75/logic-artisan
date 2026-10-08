@@ -16,26 +16,28 @@ If nothing misfired, write one line to that effect in the log's `### Codify-proc
 
 ## Step 7 ledger schema
 
-Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB). `log_run.py` checks this shape — it is defined once, in that file's `SHAPES` — and refuses a record that does not match with one line naming the field. Every key below is required except `effectiveness`, `output_chars` and a re-offense's `failing_artifact`; `re_offenses` and `rejected_lessons` are lists even when empty, counts are integers, and `trimmed` / `process_issue` are `true` / `false`:
+Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB). `log_run.py` checks this shape — it is defined once, in that file's `SHAPES` — and refuses a record that does not match with one line naming every field that is off. Every key below is required except `effectiveness`, `output_chars` and a re-offense's `failing_artifact`; `re_offenses` and `rejected_lessons` are lists even when empty, counts are integers, and `trimmed` / `process_issue` are `true` / `false`. The example is a record the check accepts as written — build yours from it, replacing each value with this run's:
 
 ```json
 {
-  "ts": "<today's date, YYYY-MM-DD, from the currentDate context>",
-  "scope": "<'repo-wide' or an optional subsystem scope note>",
-  "suggestions": {"proposed": N, "applied": N, "rejected": N},
-  "memory": {"proposed": N, "applied": N},
-  "effectiveness": {"prevented": N, "re_offended": N, "not_exercised": N},
+  "ts": "2026-05-28",
+  "scope": "repo-wide",
+  "suggestions": {"proposed": 2, "applied": 2, "rejected": 0},
+  "memory": {"proposed": 1, "applied": 1},
+  "effectiveness": {"prevented": 3, "re_offended": 1, "not_exercised": 9},
   "re_offenses": [
-    {"lesson": "<short slug>", "failing_artifact": "<artifact that failed to prevent it>",
-     "escalated_to": "checklist|memory|claude_md|skill_md|hook|script"}
+    {"lesson": "stale-port", "failing_artifact": "CLAUDE.md", "escalated_to": "hook"}
   ],
-  "rejected_lessons": ["<short slug>", "..."],
-  "maintenance": {"failure_modes_bullets": N, "live_log_entries": N, "trimmed": true|false},
-  "process_issue": true|false,
-  "output_chars": N
+  "rejected_lessons": [],
+  "maintenance": {"failure_modes_bullets": 51, "live_log_entries": 30, "trimmed": false},
+  "process_issue": false,
+  "output_chars": 900
 }
 ```
 
+- `ts` is today's date, `YYYY-MM-DD`, from the currentDate context. `scope` is `repo-wide` or a
+  short subsystem scope note. A re-offense's `lesson` and each `rejected_lessons` entry are short
+  slugs; `failing_artifact` names the artifact that failed to prevent it.
 - `effectiveness` is the **Step 2.5 tally** — the three buckets that step already
   produces, one count each, over every `failure-modes.md` bullet and memory entry it
   classified. It is the loop's only outcome measure: every other field counts what this
@@ -44,14 +46,14 @@ Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB). 
   once in detail. Omit the whole field only if Step 2.5 genuinely classified nothing;
   do NOT write zeros to fill it, because a zero denominator and a real one are read
   differently downstream.
-- `escalated_to` MUST be one of the six escalation-ladder rungs (the aggregator buckets anything else under `escalation_rungs_unknown`).
+- `escalated_to` MUST be one of the six escalation-ladder rungs — `checklist`, `memory`, `claude_md`, `skill_md`, `hook`, `script` — (the aggregator buckets anything else under `escalation_rungs_unknown`).
 - `rejected_lessons` lists the slugs of any suggestions marked REJECTED this run — `/cla:codify-retro` flags a slug rejected ≥2× for retirement.
 - `process_issue` is `true` when the Step 3.5 self-check found a codify-process problem (mis-routing, weak effectiveness check, workflow snag), else `false`.
 - `output_chars` (optional) — the character count of the report this run appended to
   `lessons-learned.md` (the Step 6 rolling-log entry). A verbosity proxy `/cla:codify-retro` trends
   over time — a climbing mean signals the report template itself is ballooning, not a full
   session-token-spend measure. Count the appended entry text only; omit rather than estimate.
-- This step is best-effort. If `log_run.py` refuses the record, fix the field its one-line message names and pipe it again, **once**. If it is refused again, or fails for any other reason (write failure, the size ceiling), note it and continue — a missing ledger line never blocks the run. Do NOT halt.
+- This step is best-effort. If `log_run.py` refuses the record, rebuild it from the example above, fixing every field its one-line message names, and pipe it again, **once**. If it is refused again, or fails for any other reason (write failure, the size ceiling), note it and continue — a missing ledger line never blocks the run. Do NOT halt.
 
 ## Prefer-fixes trigger examples
 

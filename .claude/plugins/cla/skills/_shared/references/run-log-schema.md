@@ -6,8 +6,9 @@ Handoff step 5 pipes one JSON object per run to `lib/log_run.py`, which appends 
 
 **The shape lives in code, not here.** `log_run.py` checks every record against `SHAPES` in that
 file — required keys and value shapes — and refuses one that does not match, printing one line that
-names the field (`log_run: spec-to-pr-runs.jsonl record refused: <field> must be ...`) and writing
-nothing. On a refusal, fix that field and pipe the record again, **once**. If it is refused again,
+names every field that is off, `; `-separated (`log_run: spec-to-pr-runs.jsonl record refused:
+<field> must be ...; <field> is required`), and writing nothing. On a refusal, rebuild the record
+from the example below, fixing every field named, and pipe it again, **once**. If it is refused again,
 or the write fails for any other reason, put the stderr line in the Handoff Issues section and
 finish the run: a missing ledger line never halts it, and never marks it `warn`. This file says
 what each field MEANS; where the two disagree, the code is right.
@@ -25,7 +26,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
 {
   "ts": "2026-05-28T14:32:11Z",
   "change": "<change-name>",
-  "mode": "description|explore-result|existing-change",
+  "mode": "description",
   "args": {"review_rounds": 1, "test_rounds": 3, "pr_rounds": 2, "auto": true},
   "phases": [
     {"name": "Propose",   "status": "ok", "report_chars": 140},
@@ -68,23 +69,27 @@ atomic against a concurrent run.
 
 ## What each field means
 
-- `ts` — when the run ended, UTC. `change`, `mode`, `args` — the change, how it was entered, and the
-  caps it ran under.
+- `ts` — when the run ended, UTC. `change`, `mode`, `args` — the change, how it was entered
+  (`description`, `explore-result` or `existing-change`), and the caps it ran under.
 - `reason` — on every `warn` / `fail` phase: the retro's only signal into *why*, grouped by exact text.
-- `rounds_used` / `rounds_cap` — on Review, Test and Revise, always as a pair. A phase that used its
-  whole cap, with a cap above 1, is a cap exhaustion.
+- `rounds_used` / `rounds_cap` — always as a pair. Required on Test and Revise whenever their status
+  is not `skip`; optional on Review. A phase that used its whole cap, with a cap above 1, is a cap
+  exhaustion.
 - `report_chars` (optional, any phase) — characters in that phase's printed report: a verbosity
   proxy, not token spend. Omit rather than estimate. Implement, Ship and Archive run under the
   one-sentence-per-transition rule, so a climbing mean there means that rule is being broken.
 - Review: `size_gate` and `verdict` whenever the checklist ran, and `verified_claims_count`.
   `agents` lists the Review agents that ran in large mode and is omitted or `[]` in small mode —
-  set it from what actually dispatched, at the moment you record `size_gate`.
+  set it from what actually dispatched, at the moment you record `size_gate`. On an `ok` Review the
+  two must agree. A gate that called for agents none could dispatch is recorded as it happened —
+  `size_gate: "large"`, `agents: []` — on a `warn` Review whose `reason` says why.
 - Ship: `version_bumped` — whether Ship bumped a version manifest. A repo with no version-bump
   preflight writes a constant; `cla.io/overlays/spec-to-pr.md` says which.
 - Revise: `agents` lists every agent dispatched, once each, by canonical id: `code-reviewer`,
   `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer` (bare —
   not the `pr-review-toolkit:` form you pass to `Agent`) and `plugin-dev:skill-reviewer` (prefixed;
-  it has no bare form).
+  it has no bare form). Nothing else goes in it — work the orchestrator did itself is not an agent,
+  and the check refuses any other id.
 - Revise: `findings_by_round` — one entry per round, built as each round closes, never
   reconstructed at Handoff. `found` is that round's deduplicated Critical+Important count after
   triage. `sibling_instance` is, of that `found`, how many were a defect the previous round's fix

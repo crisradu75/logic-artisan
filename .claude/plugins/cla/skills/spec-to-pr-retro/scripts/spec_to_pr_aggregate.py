@@ -14,6 +14,9 @@ Schema of the output (all counts are over the analyzed window):
       "window": {"first_ts": str|None, "last_ts": str|None},
       "phase_outcomes": {<phase>: {"ok": n, "warn": n, "skip": n, "fail": n}},
       "warn_reasons": [{"reason": str, "count": int}, ...],   # top 10
+      "warn_reasons_unrecorded": int,                          # warn/fail phases
+        # whose reason is the migration's placeholder (UNRECORDED_REASON): no
+        # reason was kept, so it is counted here and never ranked as one.
       "cap_exhaustion": {                                      # rounds_used==rounds_cap, cap>1 only (cap==1 single-pass not counted)
         "review": {"hit": n, "total": n},
         "test":   {"hit": n, "total": n},
@@ -34,9 +37,11 @@ Schema of the output (all counts are over the analyzed window):
       "review_verified_claims": {"mean": float, "n": int},     # mean over `n`
         # records that emitted `verified_claims_count`. Disqualify the mean
         # when `n` is small relative to runs_analyzed (mostly nulls).
-      "review_gate_pair_mismatches": int,                      # records where
+      "review_gate_pair_mismatches": int,                      # `ok` Reviews where
         # size_gate=="small" had agents OR size_gate=="large" had none.
-        # Non-zero = producer is emitting an inconsistent schema.
+        # Non-zero = producer is emitting an inconsistent schema. A warn Review
+        # is not counted: that pair plus a reason is how a run records agents
+        # it could not dispatch, and the writer accepts it.
       "review_agents": {<agent-name>: {"dispatches": n}},       # large-mode
         # only; same shape and caveat as revise_agents below.
       "review_agents_unknown_types": {<type-name>: n},         # non-string
@@ -276,8 +281,18 @@ def _load_records(log_path: Path, limit: int,
     return sliced, skipped
 
 
+# The allowed values below are COPIES of `lib/log_run.py`'s `SHAPES` lists, kept
+# as copies for the same reason `_runs_dir` is: this script runs as a standalone
+# program and imports nothing from the plugin. A consistency test
+# (`tests/consistency/test_run_record_values_agree.py`) keeps the two equal.
 VALID_SIZE_GATES = {"small", "large"}
 VALID_VERDICTS = {"READY", "FIX FIRST", "RETHINK"}
+
+# The placeholder `migrate_run_records.py` writes as the `reason` of a warn/fail
+# phase whose record kept none. It is not a reason: ranked with the real ones it
+# tops `warn_reasons` (every migrated warn shares the one string) and reads as
+# the most common cause of warning. Counted apart instead.
+UNRECORDED_REASON = "reason not recorded (migrated record)"
 
 # Revise agents whose per-agent finding YIELD the retro tracks (read from
 # routing.revise_findings_by_tier). The finding record normalizes agent names
@@ -452,6 +467,7 @@ def aggregate(records: list[dict]) -> dict:
 
     phase_outcomes: dict[str, Counter] = defaultdict(Counter)
     warn_reasons: Counter = Counter()
+    warn_reasons_unrecorded = 0
     cap_hit = {"review": 0, "test": 0, "revise": 0}
     cap_total = {"review": 0, "test": 0, "revise": 0}
     rounds_used: dict[str, list[int]] = {"review": [], "test": [], "revise": []}
@@ -516,6 +532,8 @@ def aggregate(records: list[dict]) -> dict:
                 reason = _str_key(phase["reason"], "reason", f"record {ri} phase {name}")
                 if reason is None:
                     drifted_fields.add("warn_reasons")
+                elif reason == UNRECORDED_REASON:
+                    warn_reasons_unrecorded += 1
                 else:
                     warn_reasons[reason] += 1
             if "report_chars" in phase:
@@ -610,7 +628,8 @@ def aggregate(records: list[dict]) -> dict:
                 # from the `isinstance` guard above — that one returns before this line
                 # only when it matches, so an unhashable `size_gate` reached the `in`
                 # test and raised, aborting the run.
-                if isinstance(size_gate, str) and size_gate in VALID_SIZE_GATES:
+                # Only on an `ok` Review — see `review_gate_pair_mismatches` above.
+                if status == "ok" and isinstance(size_gate, str) and size_gate in VALID_SIZE_GATES:
                     has_agents = bool([a for a in agents if isinstance(a, str)])
                     if (size_gate == "large") != has_agents:
                         review_gate_pair_mismatches += 1
@@ -799,6 +818,7 @@ def aggregate(records: list[dict]) -> dict:
         "window": _window(timestamps),
         "phase_outcomes": {name: dict(counter) for name, counter in phase_outcomes.items()},
         "warn_reasons": [{"reason": r, "count": c} for r, c in warn_reasons.most_common(10)],
+        "warn_reasons_unrecorded": warn_reasons_unrecorded,
         "cap_exhaustion": {k: {"hit": cap_hit[k], "total": cap_total[k]} for k in cap_hit},
         "round_counts": {k: round(statistics.mean(v), 2) if v else 0.0
                          for k, v in rounds_used.items()},

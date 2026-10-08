@@ -41,6 +41,24 @@ def test_phase_outcome_tally(tmp_path: Path) -> None:
     assert out["warn_reasons"] == [{"reason": "flaky", "count": 1}]
 
 
+def test_the_migration_placeholder_is_counted_apart_from_real_reasons(tmp_path: Path) -> None:
+    # Every migrated warn that kept no reason carries the same placeholder, so in
+    # the ranking it would outnumber every real reason and read as THE cause.
+    log = tmp_path / "runs.jsonl"
+    placeholder = "reason not recorded (migrated record)"
+    _write_log(log, [
+        {"phases": [{"name": "Review", "status": "warn", "reason": placeholder},
+                    {"name": "Revise", "status": "fail", "reason": placeholder}]},
+        {"phases": [{"name": "Test", "status": "warn", "reason": placeholder}]},
+        {"phases": [{"name": "Test", "status": "warn", "reason": "flaky"}]},
+    ])
+    out, _ = _run(log)
+    assert out["warn_reasons"] == [{"reason": "flaky", "count": 1}]
+    assert out["warn_reasons_unrecorded"] == 3
+    # Still a warn in the outcome tally: the phase did warn, only its reason is lost.
+    assert out["phase_outcomes"]["Test"] == {"warn": 2}
+
+
 def test_cap_exhaustion_and_round_counts(tmp_path: Path) -> None:
     log = tmp_path / "runs.jsonl"
     _write_log(log, [
@@ -477,6 +495,19 @@ def test_size_gate_agents_pair_mismatch_detected(tmp_path: Path) -> None:
     out, stderr = _run(log)
     assert out["review_gate_pair_mismatches"] == 2
     assert "contradicts agents" in stderr
+
+
+def test_a_warn_review_whose_agents_could_not_run_is_not_a_mismatch(tmp_path: Path) -> None:
+    # The writer accepts this pair on a warn Review, with its reason: it is the
+    # truthful record of a gate that called for agents none could dispatch.
+    log = tmp_path / "runs.jsonl"
+    _write_log(log, [
+        {"phases": [{"name": "Review", "status": "warn", "size_gate": "large", "agents": [],
+                     "reason": "no agent could be dispatched"}]},
+        {"phases": [{"name": "Review", "status": "ok", "size_gate": "large", "agents": []}]},
+    ])
+    out, _ = _run(log)
+    assert out["review_gate_pair_mismatches"] == 1
 
 
 def test_review_and_revise_agents_independent(tmp_path: Path) -> None:

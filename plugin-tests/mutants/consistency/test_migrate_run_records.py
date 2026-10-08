@@ -11,6 +11,12 @@ the NEWEST commit in a line's history instead of the oldest dates a run by the
 last edit to its line, which in one real ledger is a docs commit three weeks
 after the run.
 
+**Mutants 16 onward are the review findings on C1:** a warn Review keeps its gate
+(B1), Revise agents by canonical id with the rest kept aside (S3), a findings map
+emptied by the move dropped rather than left `{}`, and per-agent severity counts
+mapped to `found` only where the record leaves no doubt (S4), the one history gap
+excused and nothing wider (Choice 1), and a junk `ts` giving way to `started` (d).
+
 **DELIBERATELY NOT MUTANTS:**
 
   * `_History`'s `timeout=60` — no test makes git hang.
@@ -26,6 +32,7 @@ from pathlib import Path
 
 DEV = Path(__file__).resolve().parents[2]
 SCRIPT = DEV / "scripts" / "migrate_run_records.py"
+LOG_RUN = DEV.parent / ".claude" / "plugins" / "cla" / "lib" / "log_run.py"
 TARGETS = [DEV / "tests" / "consistency" / "test_migrate_run_records.py"]
 
 MUTANTS = [
@@ -104,10 +111,10 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "a Review gate that contradicts its agents is left in place",
+        "an ok Review gate that contradicts its agents is left in place",
         SCRIPT,
-        '                or (entry["size_gate"] == "large") != bool(entry.get("agents"))):',
-        "                or False):",
+        '                    and (entry["size_gate"] == "large") != bool(entry.get("agents")))):',
+        "                    and False)):",
         TARGETS,
     ),
     (
@@ -127,8 +134,8 @@ MUTANTS = [
     (
         "a record it cannot map is rewritten anyway",
         SCRIPT,
-        "        if problem:",
-        "        if problem and False:",
+        "        if problems:",
+        "        if problems and False:",
         TARGETS,
     ),
     (
@@ -136,6 +143,120 @@ MUTANTS = [
         SCRIPT,
         "    if migrated and not dry_run:",
         "    if migrated:",
+        TARGETS,
+    ),
+    # --- review findings on C1 ------------------------------------------------
+    (
+        # B1 mirrored: the truthful warn record loses the gate it reported.
+        "a warn Review's gate is moved aside as if it contradicted itself",
+        SCRIPT,
+        '                or (entry.get("status") == "ok"',
+        '                or (entry.get("status") != "skip"',
+        TARGETS,
+    ),
+    (
+        # S3. `pr-review-toolkit:code-reviewer` survives into a record the writer
+        # now refuses, so every such line reports as unmappable.
+        "the `pr-review-toolkit:` prefix is not stripped",
+        SCRIPT,
+        '            bare = agent[len(TOOLKIT_PREFIX):]',
+        "            bare = agent",
+        TARGETS,
+    ),
+    (
+        "a non-agent Revise entry is dropped instead of kept beside the phase",
+        SCRIPT,
+        '        entry["agents_unmapped"] = aside',
+        "        pass",
+        TARGETS,
+    ),
+    (
+        "a Revise list with nothing canonical left becomes `[]`, saying no agent ran",
+        SCRIPT,
+        "    if kept or not aside:",
+        "    if True:",
+        TARGETS,
+    ),
+    (
+        # S4. `{}` left behind reads as "Revise found nothing".
+        "a findings map emptied by the move is left as `{}` instead of dropped",
+        SCRIPT,
+        "        elif kept:",
+        "        else:",
+        TARGETS,
+    ),
+    (
+        "per-agent severity counts are moved aside instead of mapped",
+        SCRIPT,
+        "            counts = _severity_counts(value)",
+        "            counts = None",
+        TARGETS,
+    ),
+    (
+        "`found` counts suggestions too",
+        SCRIPT,
+        '    return {"found": value.get("critical", 0) + value.get("important", 0), "phantom": 0}',
+        '    return {"found": sum(value.values()), "phantom": 0}',
+        TARGETS,
+    ),
+    (
+        # The ambiguous one: are the phantoms within critical+important or beside?
+        "a severity map carrying `phantom` is mapped as if its meaning were known",
+        SCRIPT,
+        "    if not isinstance(value, dict) or not set(value) <= _SEVERITY_ONLY:",
+        '    if not isinstance(value, dict) or not set(value) <= _SEVERITY_ONLY | {"phantom"}:',
+        TARGETS,
+    ),
+    (
+        # Choice 1. History without a rounds pair is reported unmappable and left
+        # in its old shape — or, the other way, any refusal is excused.
+        "the rounds-pair gap is not excused, so a record that never had the pair "
+        "cannot be migrated at all",
+        SCRIPT,
+        "    return [p for p in log_run.shape_problems(rec, SHAPE) if not _HISTORY_GAP.match(p)]",
+        "    return log_run.shape_problems(rec, SHAPE)",
+        TARGETS,
+    ),
+    (
+        # `(Test|Revise)` and `(\w+)` agree on every clause the writer emits today,
+        # so this survived until a test stated the pattern's scope directly. The
+        # INPUT mutant below covers what the scope is for.
+        "the gap pattern excuses the clause on any phase, not only Test and Revise",
+        SCRIPT,
+        '_HISTORY_GAP = re.compile(r"^`rounds_used` and `rounds_cap` are required on a (Test|Revise) "',
+        '_HISTORY_GAP = re.compile(r"^`rounds_used` and `rounds_cap` are required on a (\\w+) "',
+        TARGETS,
+    ),
+    (
+        # Mutating the INPUT: when the writer starts requiring the pair on another
+        # phase, history missing it there must be reported, not silently excused.
+        "the writer starts requiring the rounds pair on Review, and Review history "
+        "missing it goes unreported",
+        LOG_RUN,
+        'ROUNDS_REQUIRED_ON = ("Test", "Revise")',
+        'ROUNDS_REQUIRED_ON = ("Test", "Revise", "Review")',
+        TARGETS,
+    ),
+    (
+        "the gap excuses every refusal",
+        SCRIPT,
+        "    return [p for p in log_run.shape_problems(rec, SHAPE) if not _HISTORY_GAP.match(p)]",
+        "    return []",
+        TARGETS,
+    ),
+    (
+        # nit (d). A junk `ts` overwrote the date derived from `started`.
+        "a junk `ts` survives over the date the record's own `started` gives",
+        SCRIPT,
+        "        if key == \"ts\" and ts:",
+        "        if key == \"ts\" and ts_from == \"ts\":",
+        TARGETS,
+    ),
+    (
+        "the junk `ts` is lost rather than kept beside",
+        SCRIPT,
+        '                out["ts_unmapped"] = value',
+        "                pass",
         TARGETS,
     ),
 ]

@@ -67,6 +67,7 @@ Don't list every metric. Pick the 2-4 patterns that would actually change orches
 - One ask answered the same way ≥80% of times (`asks[].choices`) → make the default silent, remove the prompt.
 - `version_bump_misses` recurring → preflight check should be stricter or auto-bump. (Inert when the repo has no `plugin.json`/version manifest to bump: Ship then logs `version_bumped: true` every run and this metric stays 0 — ignore it in that case.)
 - Same warn reason recurring (`warn_reasons` top entries) → feature request, not a per-run issue.
+  A warn whose record kept no reason is counted in `warn_reasons_unrecorded`, never ranked — those phases warned for causes nobody can now read.
 
 **Routing heuristics (telemetry → concrete `model-routing.md` edits).** The `routing` object exists so metrics can *steer routing*, not just describe it — turn these into specific table edits, not vague "consider tuning." Each rule names a threshold and the edit it justifies:
 

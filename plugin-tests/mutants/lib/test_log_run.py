@@ -42,6 +42,13 @@ object's rule).
 **DELIBERATELY NOT A MUTANT, for the shapes:** `_shown`'s 40-character cut. No
 test reads back a value that long, and the refusal names the field either way.
 
+**Mutants 23 onward are the review findings on C1:** the Review pair held only on
+an `ok` Review (B1), every problem on the one line (S1) — at the join, in the object
+walk, and in the findings key rule — the rule gated on conforming required keys,
+canonical Revise agent ids (S3), and the rounds pair required on a Test or Revise
+that ran (Choice 1). The object-walk mutant writes a newline into the source
+through `\n` in its REPLACEMENT, never its anchor, so it holds on either checkout.
+
 And one honest limit, recorded rather than chased:
 `test_nothing_is_written_when_the_record_is_rejected` is a real test but is not
 independently pinnable — no single-token edit makes a rejected record write
@@ -187,8 +194,8 @@ MUTANTS = [
     (
         "a warn or fail phase may omit its reason, the one field the retro groups by",
         SCRIPT,
-        '    if phase["status"] in ("warn", "fail") and "reason" not in phase:',
-        '    if phase["status"] in ("warn",) and "reason" not in phase:',
+        '    if status in ("warn", "fail") and "reason" not in phase:',
+        '    if status in ("warn",) and "reason" not in phase:',
         TARGETS,
     ),
     (
@@ -208,15 +215,15 @@ MUTANTS = [
     (
         "list items are never checked, so a phase entry may be anything",
         SCRIPT,
-        "        for i, item in enumerate(value):",
-        "        for i, item in enumerate(value[:0]):",
+        "        return [problem for i, item in enumerate(value)",
+        "        return [problem for i, item in enumerate(value[:0])",
         TARGETS,
     ),
     (
         "a map's key rule is skipped, so legacy `opus` / `code_reviewer` keys pass",
         SCRIPT,
-        "        return shape[2](value)",
-        "        return None",
+        "        return problems + shape[2](value)",
+        "        return problems",
         TARGETS,
     ),
     (
@@ -229,8 +236,8 @@ MUTANTS = [
     (
         "an object's rule is skipped, so every cross-field check goes quiet",
         SCRIPT,
-        "    return rule(value) if rule else None",
-        "    return None",
+        "        problems += rule(value)",
+        "        pass",
         TARGETS,
     ),
     (
@@ -238,6 +245,79 @@ MUTANTS = [
         SCRIPT,
         '                 "comment-analyzer", "type-design-analyzer", "plugin-dev:skill-reviewer")',
         '                 "comment-analyzer", "type-design-analyzer")',
+        TARGETS,
+    ),
+    # --- review findings on C1 ------------------------------------------------
+    (
+        # B1. The honest warn record — gate large, nothing dispatched, a reason —
+        # refused, so the run must either invent agents or write no line.
+        "the Review pair check runs on every status, refusing a truthful warn",
+        SCRIPT,
+        '    if name == "Review" and status == "ok" and "size_gate" in phase:',
+        '    if name == "Review" and "size_gate" in phase:',
+        TARGETS,
+    ),
+    (
+        # S1. The refusal names the first problem only; the one retry fixes it
+        # and is refused again on the next.
+        "the refusal line names only the first problem",
+        SCRIPT,
+        '    return "; ".join(shape_problems(value, shape)) or None',
+        "    return (shape_problems(value, shape) or [None])[0]",
+        TARGETS,
+    ),
+    (
+        "the object walk stops at the first field with a problem",
+        SCRIPT,
+        "            problems += found",
+        "            if found:\n                return problems + found",
+        TARGETS,
+    ),
+    (
+        # The rule reads `status` as a known value; ungated it crashes on a
+        # missing one and adds clauses about a status that does not exist.
+        "an object's rule runs even when its required keys are missing or off-list",
+        SCRIPT,
+        "    if rule and required_ok:",
+        "    if rule:",
+        TARGETS,
+    ),
+    (
+        "only a missing required key gates the rule; an off-list one does not",
+        SCRIPT,
+        "            if found and key in required:",
+        "            if found and key in optional:",
+        TARGETS,
+    ),
+    (
+        "a findings refusal names only the first bad key",
+        SCRIPT,
+        "    bad = [agent for agent in by_agent if agent not in REVISE_AGENTS]",
+        "    bad = [agent for agent in by_agent if agent not in REVISE_AGENTS][:1]",
+        TARGETS,
+    ),
+    (
+        # S3. `pr-review-toolkit:code-reviewer` and `orchestrator-inline` pass,
+        # and the retro counts dispatches under ids yield is never keyed by.
+        "Revise `agents` stop being checked against the canonical ids",
+        SCRIPT,
+        '    if name == "Revise" and isinstance(phase.get("agents"), list):',
+        '    if False and isinstance(phase.get("agents"), list):',
+        TARGETS,
+    ),
+    (
+        # Choice 1, both halves.
+        "Revise may omit its rounds pair; only Test is held to it",
+        SCRIPT,
+        'ROUNDS_REQUIRED_ON = ("Test", "Revise")',
+        'ROUNDS_REQUIRED_ON = ("Test",)',
+        TARGETS,
+    ),
+    (
+        "a skipped Test or Revise must carry a rounds pair it never had",
+        SCRIPT,
+        '    elif "rounds_used" not in phase and name in ROUNDS_REQUIRED_ON and status != "skip":',
+        '    elif "rounds_used" not in phase and name in ROUNDS_REQUIRED_ON:',
         TARGETS,
     ),
 ]

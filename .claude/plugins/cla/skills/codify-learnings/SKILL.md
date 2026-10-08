@@ -167,7 +167,7 @@ This step is always done. After the rolling-log write, append one counts-only JS
 echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py codify-runs.jsonl
 ```
 
-The record lands in the repo's `cla.io/retro/codify-runs.jsonl` (a tracked repo file — include it when you next commit, so it syncs across machines via git; override the dir with `CLAUDE_RETRO_DIR`). `log_run.py` checks the record's shape and refuses a mismatch with one line naming the field: fix it and pipe again, **once**. A second refusal or any other failure: note it and continue — a missing ledger line never blocks the run.
+The record lands in the repo's `cla.io/retro/codify-runs.jsonl` (a tracked repo file — include it when you next commit, so it syncs across machines via git; override the dir with `CLAUDE_RETRO_DIR`). `log_run.py` checks the record's shape and refuses a mismatch with one line naming every field that is off: rebuild the record from the example in `references/steps.md`, fixing every field named, and pipe it again, **once**. A second refusal or any other failure: note it and continue — a missing ledger line never blocks the run.
 
 ## Style
 

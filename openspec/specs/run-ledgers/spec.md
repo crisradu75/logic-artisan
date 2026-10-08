@@ -45,7 +45,7 @@ Each `/cla:spec-to-pr` run SHALL append one record to `cla.io/retro/spec-to-pr-r
 
 ### Requirement: Run records are checked when written
 
-The writer SHALL refuse a spec-to-pr or codify-learnings run record whose fields or field values do not match that ledger's record shape, printing one line that names the field and leaving the ledger unchanged, and a skill whose record is refused SHALL correct it and try once more, then finish its run whether or not the record was written.
+The writer SHALL refuse a spec-to-pr or codify-learnings run record whose fields or field values do not match that ledger's record shape, printing one line that names every field that does not match and leaving the ledger unchanged, and a skill whose record is refused SHALL correct it and try once more, then finish its run whether or not the record was written.
 
 #### Scenario: Phases written as an object
 

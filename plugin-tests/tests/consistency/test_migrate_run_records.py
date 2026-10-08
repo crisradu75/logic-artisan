@@ -125,11 +125,58 @@ LARGE_NO_AGENTS = {"ts": "2026-07-28T01:00:00Z", "change": "change-i", "mode": "
                    "phases": [{"name": "Review", "status": "ok", "rounds_used": 1, "rounds_cap": 1,
                                "size_gate": "large", "agents": []}]}
 
+# Revise agents in the form passed to `Agent`, a retired name, and a duplicate once
+# the prefix is gone — a list record the first cut of the check accepted.
+PREFIXED_AGENTS = {
+    "ts": "2026-08-13T00:00:00Z", "change": "change-k", "mode": "description",
+    "phases": [{"name": "Test", "status": "ok", "rounds_used": 1, "rounds_cap": 3},
+               {"name": "Revise", "status": "ok", "rounds_used": 1, "rounds_cap": 2,
+                "agents": ["pr-review-toolkit:code-reviewer", "code-reviewer",
+                           "pr-review-toolkit:comment-analyzer", "skill-reviewer",
+                           "plugin-dev:skill-reviewer"]}],
+}
+
+# A chain-era round-2 list naming work the orchestrator did itself.
+ROUND_TWO_INLINE = {
+    "change": "change-l", "mode": "existing-change", "date": "2026-09-14",
+    "caps": {"pr_rounds": 2},
+    "phases": {"revise": "ok"},
+    "revise": {"rounds": 2, "agents_round1": ["code-reviewer", "silent-failure-hunter"],
+               "agents_round2": ["code-reviewer", "orchestrator-inline"]},
+}
+
+# Per-agent severity counts with every zero omitted (one fleet repo's runs), one of
+# them carrying a `phantom` whose relation to the severities the record does not say.
+SEVERITY_PER_AGENT = {
+    "ts": "2026-07-31T15:30:00Z", "change": "change-m", "mode": "existing-change",
+    "phases": [{"name": "Propose", "status": "ok"}],
+    "routing": {"implement_delegated": True, "revise_findings_by_tier": {
+        "code-reviewer": {"important": 3},
+        "silent-failure-hunter": {"critical": 1, "important": 4, "suggestion": 2},
+        "pr-test-analyzer": {},
+        "comment-analyzer": {"critical": 2, "important": 2, "suggestion": 1, "phantom": 2}}},
+}
+
+# The honest record of a Review whose gate said large and whose agents could not be
+# dispatched — off-shape only in its `date`. The gate must survive the migration.
+WARN_REVIEW_NO_AGENTS = {
+    "change": "change-n", "mode": "existing-change", "date": "2026-08-31",
+    "phases": [{"name": "Review", "status": "warn", "rounds_used": 1, "rounds_cap": 1,
+                "size_gate": "large", "agents": [], "reason": "no agent could be dispatched"}],
+}
+
+# A `ts` that is no date at all, beside a `started` that is.
+JUNK_TS = {"ts": "yesterday", "change": "change-o", "mode": "existing-change",
+           "started": "2026-08-30", "phases": [{"name": "Propose", "status": "ok"}]}
+
 FORMS = {
     "dict-with-side-blocks": DICT_WITH_SIDE_BLOCKS, "dated-chain": DATED_CHAIN,
     "dict-values": DICT_VALUES, "phase-keyed": PHASE_KEYED, "mixed-findings": MIXED_FINDINGS,
     "started-only": STARTED_ONLY, "date-only-ts": DATE_ONLY_TS, "medium-gate": MEDIUM_GATE,
     "large-no-agents": LARGE_NO_AGENTS, "no-caps": NO_CAPS,
+    "prefixed-agents": PREFIXED_AGENTS, "round-two-inline": ROUND_TWO_INLINE,
+    "severity-per-agent": SEVERITY_PER_AGENT, "warn-review-no-agents": WARN_REVIEW_NO_AGENTS,
+    "junk-ts": JUNK_TS,
 }
 _RUN_TIME = "2026-09-07T13:30:49Z"
 
@@ -142,12 +189,75 @@ def _phase(rec: dict, name: str) -> dict:
     return next(p for p in rec["phases"] if p["name"] == name)
 
 
+def _carried_a_rounds_pair(old: dict, name: str) -> bool:
+    """Whether the ORIGINAL record held both halves of `name`'s rounds pair
+    anywhere the migration reads them from: the phase entry or its side block."""
+    phases = old.get("phases")
+    if isinstance(phases, dict):
+        entry = phases.get(name.lower())
+        entries = [entry] if isinstance(entry, dict) else []
+    else:
+        entries = [p for p in phases if (p.get("name") or p.get("phase", "")).lower() == name.lower()]
+    side = old.get(name.lower()) if isinstance(old.get(name.lower()), dict) else {}
+    return any({"rounds_used", "rounds_cap"} <= set(e) for e in entries) or (
+        {"rounds_used", "rounds_cap"} <= set(side))
+
+
+def _history_gaps(new: dict, old: dict) -> set[str]:
+    """THE ONE EXCEPTION to "a migrated record passes the writer's check".
+
+    The writer requires `rounds_used`/`rounds_cap` on a Test or Revise phase that
+    was not skipped. The migration never invents round counts, so a record that
+    never carried the pair keeps that one gap — and only that one, only on those
+    two phases, only where the phase holds neither half, and only where the
+    original record did not hold the pair either. Every clause this returns is
+    the writer's exact wording for one such phase; anything else stays a failure.
+    """
+    allowed = set()
+    for phase in new["phases"]:
+        if (phase["name"] in ("Test", "Revise") and phase["status"] != "skip"
+                and not {"rounds_used", "rounds_cap"} & set(phase)
+                and not _carried_a_rounds_pair(old, phase["name"])):
+            allowed.add(f"`rounds_used` and `rounds_cap` are required on a {phase['name']} "
+                        f"phase that was not skipped ({phase['status']})")
+    return allowed
+
+
 @pytest.mark.parametrize("form", sorted(FORMS))
 def test_every_fleet_form_maps_to_a_record_the_writer_accepts(form: str) -> None:
     assert log_run.shape_problem(FORMS[form], _SHAPE), "fixture should start off-shape"
     new, notes = _migrate(FORMS[form])
-    assert log_run.shape_problem(new, _SHAPE) is None
+    assert set(log_run.shape_problems(new, _SHAPE)) <= _history_gaps(new, FORMS[form])
+    assert mig.remaining_problems(new) == []
     assert notes, "a migrated record says what changed"
+
+
+def test_the_history_gap_is_exactly_the_rounds_pair_and_nothing_wider() -> None:
+    # The forms that do keep the gap, and the clause they keep — so the exception
+    # above is pinned to what it excuses, not merely allowed to be empty.
+    gapped = {form: sorted(log_run.shape_problems(_migrate(rec)[0], _SHAPE))
+              for form, rec in FORMS.items() if log_run.shape_problems(_migrate(rec)[0], _SHAPE)}
+    assert gapped == {
+        "dict-values": [
+            "`rounds_used` and `rounds_cap` are required on a Revise phase that was not skipped (warn)",
+            "`rounds_used` and `rounds_cap` are required on a Test phase that was not skipped (ok)"],
+        "no-caps": [
+            "`rounds_used` and `rounds_cap` are required on a Revise phase that was not skipped (ok)"],
+    }
+    # A Test phase that ran with no pair and is otherwise in shape is NOT
+    # migrated into anything: the gap is left, not filled, and not called broken.
+    rec = {"ts": "2026-10-01T00:00:00Z", "change": "change-p", "mode": "description",
+           "phases": [{"name": "Test", "status": "ok"}]}
+    assert mig.migrate(rec) == (rec, [])
+    # The pattern names the two phases, not "any phase": the writer emits the clause
+    # for no other phase today, so this is the only place that scope is stated.
+    review_clause = ("`rounds_used` and `rounds_cap` are required on a Review phase "
+                     "that was not skipped (ok)")
+    assert not mig._HISTORY_GAP.match(review_clause)
+    # And another refusal on a phase that is not Test or Revise is not excused, nor
+    # is any other refusal riding along with it.
+    rec["phases"].append({"name": "Ship", "status": "warn"})
+    assert mig.remaining_problems(rec) == ["`reason` is required on a warn phase (Ship)"]
 
 
 # Fields a form renames or replaces; every other top-level field must survive as is.
@@ -159,7 +269,7 @@ def test_every_other_field_is_kept(form: str) -> None:
     old = FORMS[form]
     new, _ = _migrate(old)
     for key, value in old.items():
-        if key not in _REPLACED and not (key == "ts" and form == "date-only-ts"):
+        if key not in _REPLACED and not (key == "ts" and form in ("date-only-ts", "junk-ts")):
             assert new[key] == value, key
     if "routing" in old:
         for key, value in old["routing"].items():
@@ -220,7 +330,9 @@ def test_dict_values_keep_an_unpaired_round_count_beside_the_phase() -> None:
     assert review["critical_found"] == 3
     assert _phase(new, "Revise")["reason"] == mig.NO_REASON
     assert new["asks"] == [{"header": mig.NOT_RECORDED, "choice": mig.NOT_RECORDED}] * 2
-    assert new["routing"]["revise_findings_by_tier"] == {}
+    # Every entry moved aside: the key goes, because `{}` would read as a Revise
+    # that found nothing, and these counts say only that it found SOMETHING.
+    assert "revise_findings_by_tier" not in new["routing"]
     assert new["routing"]["revise_findings_unmapped"] == {"code-reviewer": 3, "comment-analyzer": 0}
 
 
@@ -244,16 +356,68 @@ def test_a_phase_key_becomes_name_first_and_capitalised() -> None:
     assert [p["name"] for p in new["phases"]] == ["Propose", "Review", "Revise"]
     assert new["routing"]["revise_findings_unmapped"] == {
         "critical": 0, "important": 15, "phantom_rejected": 1}
+    assert new["routing"] == {"revise_findings_unmapped": new["routing"]["revise_findings_unmapped"]}
 
 
 def test_findings_keep_the_canonical_agents_and_move_the_rest_aside() -> None:
     new, _ = _migrate(MIXED_FINDINGS)
     assert new["routing"]["revise_findings_by_tier"] == {
         "silent-failure-hunter": {"found": 4, "phantom": 0},
-        "pr-test-analyzer": {"found": 2, "phantom": 1}}
+        "pr-test-analyzer": {"found": 2, "phantom": 1},
+        "type-design-analyzer": {"found": 1, "phantom": 0},
+        "comment-analyzer": {"found": 0, "phantom": 0}}
     assert new["routing"]["revise_findings_unmapped"] == {
-        "skill-reviewer": {"found": 1, "phantom": 0}, "opus": {"found": 3, "phantom": 0},
-        "type-design-analyzer": {"important": 1, "suggestion": 2}, "comment-analyzer": {}}
+        "skill-reviewer": {"found": 1, "phantom": 0}, "opus": {"found": 3, "phantom": 0}}
+
+
+def test_severity_counts_per_agent_become_found_unless_phantom_makes_them_ambiguous() -> None:
+    new, notes = _migrate(SEVERITY_PER_AGENT)
+    # found = critical + important; suggestions are not findings the yield counts,
+    # and the record omits every zero, so an absent phantom is 0.
+    assert new["routing"]["revise_findings_by_tier"] == {
+        "code-reviewer": {"found": 3, "phantom": 0},
+        "silent-failure-hunter": {"found": 5, "phantom": 0},
+        "pr-test-analyzer": {"found": 0, "phantom": 0}}
+    # Whether those 2 phantoms sit inside the 4 or beside them, the record does not say.
+    assert new["routing"]["revise_findings_unmapped"] == {
+        "comment-analyzer": {"critical": 2, "important": 2, "suggestion": 1, "phantom": 2}}
+    assert new["routing"]["implement_delegated"] is True
+    assert "revise_findings_by_tier: 3 severity counts -> found" in notes
+
+
+def test_revise_agents_are_canonical_ids_and_the_rest_is_kept_aside() -> None:
+    new, notes = _migrate(PREFIXED_AGENTS)
+    revise = _phase(new, "Revise")
+    assert revise["agents"] == ["code-reviewer", "comment-analyzer", "plugin-dev:skill-reviewer"]
+    assert revise["agents_unmapped"] == ["skill-reviewer"]
+    assert "Revise agents: pr-review-toolkit: prefix stripped" in notes
+    # The chain era's round-2 list: merged, and the orchestrator's own label set aside.
+    revise = _phase(_migrate(ROUND_TWO_INLINE)[0], "Revise")
+    assert revise["agents"] == ["code-reviewer", "silent-failure-hunter"]
+    assert revise["agents_unmapped"] == ["orchestrator-inline"]
+    assert (revise["rounds_used"], revise["rounds_cap"]) == (2, 2)
+
+
+def test_revise_agents_with_nothing_canonical_are_dropped_not_emptied() -> None:
+    # `[]` would say no agent ran; the record says agents ran, just none by an id.
+    rec = json.loads(json.dumps(PREFIXED_AGENTS))
+    _phase(rec, "Revise")["agents"] = ["orchestrator-inline", "general-purpose-residue"]
+    revise = _phase(_migrate(rec)[0], "Revise")
+    assert "agents" not in revise
+    assert revise["agents_unmapped"] == ["orchestrator-inline", "general-purpose-residue"]
+
+
+def test_a_warn_review_keeps_a_gate_its_agents_did_not_follow() -> None:
+    review = _phase(_migrate(WARN_REVIEW_NO_AGENTS)[0], "Review")
+    assert (review["size_gate"], review["agents"]) == ("large", [])
+    assert "size_gate_unmapped" not in review
+
+
+def test_an_unreadable_ts_gives_way_to_the_records_own_date_and_is_kept() -> None:
+    new, notes = _migrate(JUNK_TS)
+    assert new["ts"] == "2026-08-30T00:00:00Z" and new["ts_unmapped"] == "yesterday"
+    assert list(new)[:2] == ["ts", "ts_unmapped"], "ts keeps its own place"
+    assert "ts from started (2026-08-30T00:00:00Z)" in notes
 
 
 def test_dates_come_from_the_record_before_git() -> None:
@@ -363,12 +527,18 @@ def test_a_missing_file_is_an_error(tmp_path: Path) -> None:
 
 def test_this_repos_ledgers_pass_the_writers_check() -> None:
     # The migration's acceptance condition, held from here on: nothing in this
-    # repo's own ledgers is off-shape, so a reader needs no path for old shapes.
+    # repo's own ledgers is off-shape, so a reader needs no path for old shapes —
+    # with the one stated exception, a spec-to-pr Test or Revise phase that never
+    # carried a rounds pair (`_history_gaps`). A record this repo writes from now
+    # on is held to the pair by the writer itself.
     for name in ("spec-to-pr-runs.jsonl", "codify-runs.jsonl"):
         path = _REPO / "cla.io" / "retro" / name
         if not path.exists():
             continue
         for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if line.strip():
-                problem = log_run.shape_problem(json.loads(line), log_run.SHAPES[name])
-                assert problem is None, f"{name}:{no}: {problem}"
+                rec = json.loads(line)
+                problems = set(log_run.shape_problems(rec, log_run.SHAPES[name]))
+                if name == "spec-to-pr-runs.jsonl":
+                    problems -= _history_gaps(rec, rec)
+                assert not problems, f"{name}:{no}: {problems}"
