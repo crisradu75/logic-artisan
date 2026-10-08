@@ -103,12 +103,13 @@ also runs in a consuming repo, which has no pytest gate over its plugin cache.
 
 ## Testing
 
-There is **no CI, by design** — the two local runs below are the whole verification story and the
-only gate before a merge:
+There is **no CI, by design** — the three local commands below are the whole verification story
+and the only gate before a merge:
 
 ```bash
 pytest plugin-tests -q -n auto --dist loadfile             # every pytest scope (1 today)
 node --test plugin-tests/node/mechanical-checks.test.mjs   # the one Node suite pytest cannot reach
+openspec validate --specs --strict                         # the live specs
 ```
 
 `-n auto --dist loadfile` needs `pytest-xdist` (`pip install pytest-xdist`); without it, drop both

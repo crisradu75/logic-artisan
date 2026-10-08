@@ -563,7 +563,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's automatic round 2 still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 14-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
-| `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 0 of 4 consuming repos on 2026-10-08 (`grep -c '"type"' */cla.io/overlays/project-review.md`, decision P4 in `cla.io/decisions/plugin-surface-simplification-2026-10-08.md`), which schedules its deletion. |
+| `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos on 2026-10-08: agentic-air declares 6 checks in its own copy of the plugin, in project-review's `project-context.md` reference file, section "Mechanical checks — repo specifics" (run in that repo on 2026-10-08: `awk '/^## Mechanical checks — repo specifics/{f=1;next} /^## /{f=0} f' <that file> \| grep -c '"type":'` → 6). That repo copied the plugin into its own tree and is no longer on the marketplace plugin, so its config does not live in `cla.io/overlays/project-review.md`, where the other three (claude-plugins, interoga-ro, market-distiller-mcp) would put it (`grep -c '"type"' */cla.io/overlays/project-review.md` → 0 in each). Decision P4a in `cla.io/decisions/plugin-surface-simplification-2026-10-08.md` scheduled its deletion on the 0-of-4 count and is being re-decided. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
 | `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
 | `annotate/scripts/render_html.py` | Instruments an author's own HTML in place — attributes spliced at source offsets, so stripping them returns the original bytes and the document under review stays the document under review. Refuses a file whose markup already uses those attributes, because that collision mis-anchors every annotation in the element and is invisible on the page. |
@@ -606,7 +606,7 @@ go in `plugin-tests/tests/skills/<name>/`, not beside the skill.
 ## 12. Evidence behind CLAUDE.md's rules
 
 `CLAUDE.md` states each rule once, in its compressed form, and points here from its first
-paragraph for the measurement or incident that produced it. Kept verbatim so the evidence
+paragraph for the measurement, incident or decision that produced it. Kept verbatim so the evidence
 survives; each heading names the rule it backs. Where `CLAUDE.md` compressed a rule when it became
 rules-only (change `claude-md-rules-only`), the full earlier wording is kept here too, so nothing the
 compression left out is lost.
@@ -699,6 +699,12 @@ The plugin's behaviour lives mostly in markdown, so a prose edit ships like code
 compiles it. Every defect that reached review in this repo had one shape: the artifact was checked,
 the system it lands in was not.
 
+### Check 1: what an inserted step inherits
+
+**The rule's wording before the plain-language rewrite.** A phase added between two others
+inherits whatever the next one asserts on entry — a clean-tree check, a state file, a branch
+assumption.
+
 ### Check 2: why a rewrite is diffed
 
 A rewrite silently loses rules an edit would have preserved; "it reads better" is not evidence that
@@ -764,8 +770,10 @@ there; no gate did.
 
 Some mutants cannot be killed, because the edit is unobservable in a correct tree — a floor
 constant that only binds when something is missing, or two expressions that agree on every input
-the real files reach. Never leave one in a batch: a survivor nobody acts on trains the next reader
-to skip the whole list.
+the real files reach. **Where a guard's two candidate rules agree on all correct inputs, mutate the
+input, not the guard** (CLAUDE.md now says it as "add a bad input file instead of breaking the
+check"). Never leave one in a batch: a survivor nobody acts on trains the next reader to skip the
+whole list.
 
 Measured 2026-08-28 with
 `python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_check_labels_agree.py`
@@ -811,6 +819,28 @@ It was eight until the dev tree moved out; the three `*-checks/` entries then na
 They were spelled out in CLAUDE.md's architecture paragraph and went stale inside the very change that widened them — twice, once in the widening and once in the fix, each time three lines below a sentence saying not to restate them.
 
 Both used to be written out as a list and a count, and both went stale while nothing noticed — the defect issue #178 named.
+
+### No CI: the decision behind the rule
+
+Not an incident — an owner decision. CI existed briefly: `.github/workflows/tests.yml` ran pytest on
+ubuntu and windows × Python 3.11/3.13 plus the Node suite, added in #18. It was deleted in #24
+(commit `b444dd2`, "This repo does not want CI"), which also wrote down the two consequences
+CLAUDE.md still carries: code that differs by platform is exercised only on the machine you are on,
+and nothing gates a merge, so the local run before opening a PR is the only gate.
+`git log --oneline -- .github/workflows` shows both commits.
+
+### Stdlib-only shipped scripts: why
+
+No incident either; the reason is the rule's own. A repo installs the plugin as a copied folder and
+never runs a `pip install` for it, so a third-party import in a shipped script fails on the first
+machine that lacks the package. The rule is as old as this repo's first CLAUDE.md (`85af744`, #2:
+"All scripts are stdlib-only Python"). The one exception, the Playwright browser suite, is test-only
+and opt-in; its case is under "Why the Playwright suite earns its exception" above.
+
+### Releasing: the history behind the rules
+
+The never-move-a-tag rule, the no-local-marketplace rule, and why a release is a three-file edit
+are each told under "Release and distribution history" below.
 
 ## Release and distribution history
 
