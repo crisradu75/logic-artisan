@@ -45,7 +45,7 @@ which never ships.
 - Versioning: a change that breaks how another repo uses the plugin is a major version; adding or
   removing a skill or guard is a minor; fixes and doc corrections are a patch.
 
-**Current release: `cla--v1.2.4`.**
+**Current release: `cla--v2.0.0`.**
 
 ## Running the tests
 
