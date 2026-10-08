@@ -7,7 +7,7 @@ Opus, one change at a time: authoring sets the premise every later phase builds 
 ## Prompt template
 
 ```
-You are authoring one OpenSpec change proposal in this repo (see `cla.io/overlays/multi-spec.md` for its monorepo shape, or `cla.io/project-facts.md`'s "Workspace shape" if populated). Check the root `CLAUDE.md` "Repo layout" before naming a package; the list changes.
+You are authoring one OpenSpec change proposal in this repo (its workspace shape is in `cla.io/project-facts.md`'s "Workspace shape"). Check the root `CLAUDE.md` "Repo layout" before naming a package; the list changes.
 
 **Change name:** <name>
 **One-line scope:** <one_line_scope from the plan>
@@ -21,14 +21,9 @@ Follow these steps, mirroring `.claude/skills/openspec-propose`'s own artifact-c
 
 1. If `openspec/changes/<name>/` does not yet exist, run `openspec new change "<name>"`. If it already exists (a prior run's crash left it here), skip this step and go straight to step 2 — do not overwrite what's already there without reading it first.
 2. Run `openspec status --change "<name>" --json` to get the artifact build order (`applyRequires`, `artifacts`).
-3. For each artifact in dependency order, run `openspec instructions <artifact-id> --change "<name>" --json`, read its `template`/`instruction`/`context`/`rules`, read any completed dependency artifacts for context, and write the artifact to its `resolvedOutputPath`. Do NOT copy `context`/`rules` blocks into the output file — they constrain what you write, they are not content for the file. Two artifacts are conditional, so "every artifact" does not mean all four:
-   - **design.md only on a stock trigger:** a cross-cutting change, a new dependency or data model, security, performance or migration complexity, or real ambiguity. With none, write no design.md. With one, write it short, never restating the proposal or specs, and name the trigger in your report.
-   - **No spec delta for a change with no externally visible behaviour change** (a refactor, tooling, docs): set `skip_specs: true` in `.openspec.yaml` instead. Never invent a requirement to satisfy validation.
-   - **Read live specs overview-first:** `openspec list --specs`, then `openspec show <id> --type spec --json --no-scenarios`. Read in full, with scenarios, only the capabilities your delta touches.
+3. For each artifact in dependency order, run `openspec instructions <artifact-id> --change "<name>" --json`, read its `template`/`instruction`/`context`/`rules`, read any completed dependency artifacts for context, and write the artifact to its `resolvedOutputPath`. Do NOT copy `context`/`rules` blocks into the output file — they constrain what you write, they are not content for the file. design.md and the spec delta are conditional (step 4's rules say when), so "every artifact" does not mean all four.
 4. Apply these pre-checks as you write:
-   - **Stock limits:** proposal one page; one behaviour per ADDED requirement in ≤500 characters, detail in scenarios. They are spelled out in `openspec/config.yaml` `rules:` where the repo has them (cla-init prints the block).
-   - **Every scenario the change adds, or whose text it changes, names its proof:** a tasks.md test task whose test carries a comment line `scenario: <spec> / <heading>` above it (after the language's comment token, e.g. `# scenario: change-authoring / Authoring a scenario`), and the task names that marker; or a tasks.md line `manual: <heading>: <reason>`, naming the heading so a guard can match it. A pure heading rename and a scenario carried forward unchanged in a MODIFIED block are exempt.
-   - **Scenario headings are unique within one spec**, so `<spec> / <heading>` names exactly one scenario. Before adding one, check the live spec and your delta for the same heading, and rename yours if it is taken.
+   - **Apply `openspec/config.yaml` `rules:`** as step 3's `openspec instructions` returns them: they set when design.md and a spec delta are written, how live specs are read, what a spec may state, its size, and how each requirement is proven. Where the repo has none, `/cla:cla-setup` seeds or offers them.
    - **Pin load-bearing numbers, when design.md exists.** Any threshold, band, cap, weight, tolerance, or split that changes scoring/behavior gets a concrete recommended default in design.md — never "set during implementation." A change with no such number needs no pinned-parameters block.
    - **On a MODIFIED requirement, carry the full requirement text and all its live scenarios forward**, then adjust. Archive replaces the whole requirement, so an omitted scenario is deleted. `openspec validate <name> --strict` (step 5) fails a block that drops one. Do not rename a live scenario inside the block: validate treats it as dropped.
 5. Once every artifact required by `applyRequires` is `done`, re-checked via `openspec status --change "<name>" --json`, run `openspec validate <name> --strict`. With no design.md, OpenSpec still reports `isComplete: false`; that is expected.

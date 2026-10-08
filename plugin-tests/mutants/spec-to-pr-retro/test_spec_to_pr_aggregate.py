@@ -1,39 +1,20 @@
 """Mutation batch for test_spec_to_pr_aggregate.py.
 
-This aggregator's output is what a retro proposes orchestrator changes FROM, so
-the expensive failures are the ones that make a producer bug look like a
-behavioural finding, or vice versa. Mutants 1, 2 and 6 are all that shape: each
-leaves a plausible report in which drift and signal have swapped places.
+The aggregator's output is what a retro proposes orchestrator changes FROM, and
+its `--nudge` line is what sends a user to the retro at all. So the mutants are
+the edits that would change a number a reader acts on without anything looking
+wrong: a threshold off by one, a window that silently widens, a placeholder
+counted as a real reason, a routine Revise round 2 counted as cap exhaustion.
 
-**NONE OF THE DRIFT-PINNED FUNCTIONS IS MUTATED HERE.** `_git_toplevel`,
-`_runs_dir`, `_load_records`, `_coerce_int`, `_load_ledgers`, `_window` and
-`_fleet_roots` are byte-identical copies shared with `codify_aggregate.py` and
-`lib/`, policed by `check_script_drift.py`. Everything below is in this
-aggregator's own code — `_normalize_agent`, `_tally_agents`, the Review pair
-check, the findings reader, the cap block and `RETIRED_AGENT_KEYS`.
+**NEITHER SHARED-COPY FUNCTION IS MUTATED HERE.** `_git_toplevel` and
+`_runs_dir` are copies of `lib/log_run.py`'s; the directory resolver is mutated
+in `mutants/consistency/test_ledger_dir_agrees.py`, and the phase and status
+constants in `mutants/consistency/test_run_record_values_agree.py`. `_fleet_roots`
+is no copy any more — its twin went with the generic ledger reader — so its two
+parsing rules are mutated below.
 
-**Mutant 6 is the one worth reading the killing test for.** Charging a RETIRED
-agent name as producer drift pins `shape_drift_records` permanently above zero —
-a standing alarm nobody reads, which is worse than no alarm. The test that kills
-it defends a DISTINCTION (history vs drift) rather than a count, and both halves
-of its argument fail under the mutant, which is the right shape.
-
-**DELIBERATELY NOT MUTANTS, and the first is a coverage finding in its own
-right:**
-
-  * `cap > 1` -> `cap > 0` in the exhaustion block. **No fixture anywhere carries
-    `rounds_cap: 1`**, so the mutated and original expressions agree on every
-    input the suite supplies. The `cap > 1` rule exists so Review never
-    false-alarms the >=30% exhaustion rule — a number the retro acts on — and it
-    is guarded by nothing. That is the most valuable gap this batch found and a
-    mutant cannot close it; a fixture can.
-  * `used == cap` -> `used >= cap`. Same cause: no fixture has `used > cap`.
-
-**More gaps, recorded:** `warn_reasons`' `most_common(10)` truncation is untested
-(no fixture has 11 distinct reasons), so the documented "top 10" is unpinned;
-`deferred_to_todo_total` is never asserted as a positive sum; and a
-`revise_findings_by_tier` whose keys are ONLY retired names is counted as legacy
-rather than history, which no test states either way.
+`_cap_hit` uses `>=` because the writer accepts `rounds_used > rounds_cap`; the
+tests write such a record, so `==` is a killable mutant here.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/spec-to-pr-retro/test_spec_to_pr_aggregate.py
 """
@@ -50,65 +31,270 @@ TARGETS = [
 ]
 
 MUTANTS = [
+    # --- reading ------------------------------------------------------------
     (
-        # The harm stays visible in the killing test: the phase still joins the
-        # denominator and can never be a hit, so the rate is depressed with
-        # nothing said about why.
-        "an absent rounds_cap stops being counted as drift, so a phase with no cap "
-        "joins the exhaustion denominator and silently depresses the rate",
+        "a bool passes as a count, so `true` reads as one round",
         SCRIPT,
-        '                    drifted_fields.add("rounds_cap")',
-        "                    pass  # absence is fine",
+        "    return type(value) is int  # bool is an int subclass and is not a count",
+        "    return isinstance(value, int)",
         TARGETS,
     ),
     (
-        # Inverting rather than deleting is what makes this worth more than a
-        # removal: it fails from BOTH sides — honest records read as
-        # contradictions and contradictory ones read as consistent.
-        "the Review size-gate/agents pair check is inverted, so a producer "
-        "emitting `small` WITH agents reads as consistent and every honest record does not",
+        "an unreadable line is dropped without being counted",
         SCRIPT,
-        '                    if (size_gate == "large") != has_agents:',
-        '                    if (size_gate == "large") == has_agents:',
+        "                skipped += 1",
+        "                pass",
         TARGETS,
     ),
     (
-        # The underscore replace is kept, so the legacy-severity test still
-        # passes — which is the point of keeping the two replaces separable.
-        "the colon spelling stops normalising, so a real agent's yield is filed "
-        "as producer drift instead of counted",
+        "a line that is not UTF-8 ends the whole run again",
         SCRIPT,
-        '    return key.replace("_", "-").replace(":", "-")',
-        '    return key.replace("_", "-")',
+        "            except UnicodeDecodeError:",
+        "            except KeyError:",
         TARGETS,
     ),
     (
-        # The `continue` is kept, so this is a pure double-count rather than a
-        # structural break — dispatch frequency inflates on a producer bug and
-        # the duplicate is never reported.
-        "agents stop being deduped within one dispatch, so a repeated agent "
-        "credits twice and the duplicate is never warned about",
+        "a skipped line is no longer named on stderr",
         SCRIPT,
-        "            duplicates.append(agent)",
-        "            target_counter[agent] += 1",
+        "                if not quiet:",
+        "                if False:",
         TARGETS,
     ),
     (
-        # The `phantom` clamp one line below is deliberately left intact so the
-        # failure names exactly one field.
-        "the negative-count clamp is dropped, so a stray negative `found` drags "
-        "an agent's cumulative yield below its true total",
+        "--nudge names every unreadable line of the whole ledger again",
         SCRIPT,
-        '                        revise_findings[agent]["found"] += max(0, found or 0)',
-        '                        revise_findings[agent]["found"] += found or 0',
+        "            line = nudge(_load(path, quiet=True)[0]) if path.exists() else None",
+        "            line = nudge(_load(path)[0]) if path.exists() else None",
         TARGETS,
     ),
     (
-        "a retired agent name becomes drift again, pinning shape_drift_records "
-        "permanently above zero — the standing alarm nobody reads",
+        "a ledger named twice is read twice, doubling every count",
         SCRIPT,
-        '    "skill-doc-reviewer", "skill-reviewer",',
-        '    "skill-reviewer",',
+        "        if key in seen:  # one ledger named twice would double every count",
+        "        if False:",
+        TARGETS,
+    ),
+    (
+        "a fleet file listing only another machine's paths is read as the fleet, "
+        "reporting nothing — which reads as a cold start",
+        SCRIPT,
+        "    if not any(root.is_dir() for root in roots):",
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "--limit stops applying, so the window is the whole history",
+        SCRIPT,
+        "        kept = records[-args.limit:] if args.limit > 0 else records",
+        "        kept = records",
+        TARGETS,
+    ),
+    # --- window metrics -----------------------------------------------------
+    (
+        "the migration's placeholder is ranked with the real reasons",
+        SCRIPT,
+        "            if reason in PLACEHOLDER_REASONS:",
+        "            if False:",
+        TARGETS,
+    ),
+    (
+        "the migration's `partial` placeholder is ranked, and can nudge, as a real reason",
+        SCRIPT,
+        "PLACEHOLDER_REASONS = (UNRECORDED_REASON, PARTIAL_REASON)",
+        "PLACEHOLDER_REASONS = (UNRECORDED_REASON,)",
+        TARGETS,
+    ),
+    (
+        "asks under the migration's placeholder header are tallied as one question",
+        SCRIPT,
+        "            if ask[\"header\"] == NOT_RECORDED:  # one header for every question",
+        "            if False:",
+        TARGETS,
+    ),
+    (
+        "warn_reasons stops keeping only the top ten",
+        SCRIPT,
+        "warn_reasons.most_common(10)]",
+        "warn_reasons.most_common()]",
+        TARGETS,
+    ),
+    (
+        "a single-pass phase joins the exhaustion denominator and depresses the rate",
+        SCRIPT,
+        '            if phase["name"] in caps and phase.get("rounds_cap", 0) > 1:',
+        '            if phase["name"] in caps and phase.get("rounds_cap", 0) > 0:',
+        TARGETS,
+    ),
+    (
+        "a cap of 1 reached counts as exhaustion",
+        SCRIPT,
+        '    if not (cap > 1 and phase.get("rounds_used", 0) >= cap):',
+        '    if not (cap > 0 and phase.get("rounds_used", 0) >= cap):',
+        TARGETS,
+    ),
+    (
+        "more rounds than the cap, which the writer accepts, stops counting as a hit",
+        SCRIPT,
+        '    if not (cap > 1 and phase.get("rounds_used", 0) >= cap):',
+        '    if not (cap > 1 and phase.get("rounds_used", 0) == cap):',
+        TARGETS,
+    ),
+    (
+        "Revise's routine round 2 counts as exhaustion",
+        SCRIPT,
+        '    return phase["name"] not in RESIDUE_PHASES or phase["status"] in REASON_STATUSES',
+        "    return True",
+        TARGETS,
+    ),
+    (
+        "Test needs a warn too, so a clean Test that used every round stops counting",
+        SCRIPT,
+        '    return phase["name"] not in RESIDUE_PHASES or phase["status"] in REASON_STATUSES',
+        '    return phase["status"] in REASON_STATUSES',
+        TARGETS,
+    ),
+    (
+        "a Revise that failed at its cap is not counted as leaving findings open",
+        SCRIPT,
+        '    return phase["name"] not in RESIDUE_PHASES or phase["status"] in REASON_STATUSES',
+        '    return phase["name"] not in RESIDUE_PHASES or phase["status"] == "warn"',
+        TARGETS,
+    ),
+    (
+        "an agent's runs stop being counted, so found/runs has no denominator",
+        SCRIPT,
+        '            findings[agent]["runs"] += 1',
+        '            findings[agent]["runs"] += 0',
+        TARGETS,
+    ),
+    # --- round-2 yield -----------------------------------------------------
+    (
+        "a round-1-only change counts as one where a round 2 ran",
+        SCRIPT,
+        '                 for r in p.get("findings_by_round", []) if r["round"] >= 2]',
+        '                 for r in p.get("findings_by_round", []) if r["round"] >= 1]',
+        TARGETS,
+    ),
+    (
+        "a re-run change counts twice",
+        SCRIPT,
+        '        key = (ledger, rec["change"])',
+        '        key = (ledger, rec["change"], rec["ts"])',
+        TARGETS,
+    ),
+    (
+        "a round 2 that found nothing counts as surfacing a finding",
+        SCRIPT,
+        '        if any(r["found"] >= 1 for r in later):',
+        '        if any(r["found"] >= 0 for r in later):',
+        TARGETS,
+    ),
+    (
+        "the chain proxy drops the ledger, so two repos on one date are one chain",
+        SCRIPT,
+        '        chains.add((ledger, rec["ts"][:10]))',
+        '        chains.add(rec["ts"][:10])',
+        TARGETS,
+    ),
+    # --- the nudge ----------------------------------------------------------
+    (
+        "the nudge reads the whole ledger, so old cap hits keep nudging",
+        SCRIPT,
+        "    recent = records[-NUDGE_RUNS:]",
+        "    recent = records",
+        TARGETS,
+    ),
+    (
+        "the nudge line names only warn, though a Revise that failed at its cap counts too",
+        SCRIPT,
+        '            still = " and still warned or failed" if name in RESIDUE_PHASES else ""',
+        '            still = " and still warned" if name in RESIDUE_PHASES else ""',
+        TARGETS,
+    ),
+    (
+        "two cap hits nudge",
+        SCRIPT,
+        "NUDGE_CAP_HITS = 3",
+        "NUDGE_CAP_HITS = 2",
+        TARGETS,
+    ),
+    (
+        "a reason must recur three times to nudge",
+        SCRIPT,
+        "NUDGE_SAME_REASON = 2",
+        "NUDGE_SAME_REASON = 3",
+        TARGETS,
+    ),
+    (
+        "one run warning twice with one reason counts as the reason recurring",
+        SCRIPT,
+        "    seen = Counter(r for rec in recent for r in set(_reasons(rec)) if r not in PLACEHOLDER_REASONS)",
+        "    seen = Counter(r for rec in recent for r in _reasons(rec) if r not in PLACEHOLDER_REASONS)",
+        TARGETS,
+    ),
+    (
+        "the migration placeholder recurring nudges",
+        SCRIPT,
+        "    seen = Counter(r for rec in recent for r in set(_reasons(rec)) if r not in PLACEHOLDER_REASONS)",
+        "    seen = Counter(r for rec in recent for r in set(_reasons(rec)))",
+        TARGETS,
+    ),
+    # --- the fleet file, now read here only -----------------------------------
+    (
+        "an inline `#` comment is read as part of the repo root",
+        SCRIPT,
+        '        item = line[2:].split("#", 1)[0].strip().strip("`").strip()',
+        '        item = line[2:].strip().strip("`").strip()',
+        TARGETS,
+    ),
+    (
+        "a root in backticks is read with its backticks",
+        SCRIPT,
+        '        item = line[2:].split("#", 1)[0].strip().strip("`").strip()',
+        '        item = line[2:].split("#", 1)[0].strip()',
+        TARGETS,
+    ),
+    # --- flags and diagnose escalations ------------------------------------
+    (
+        "a run naming one flag twice counts as two runs using it",
+        SCRIPT,
+        '            flags.update(set(rec["flags"]))',
+        '            flags.update(rec["flags"])',
+        TARGETS,
+    ),
+    (
+        "a record written before `flags` existed counts as a run with no flags",
+        SCRIPT,
+        '        if "flags" in rec:  # absent on records written before the field existed',
+        "        if True:",
+        TARGETS,
+    ),
+    (
+        "flags tied on count come out in file order, not by name",
+        SCRIPT,
+        "                  \"runs\": dict(sorted(flags.items(), key=lambda kv: (-kv[1], kv[0])))},",
+        "                  \"runs\": dict(flags.most_common())},",
+        TARGETS,
+    ),
+    (
+        "a run with zero escalations counts as a run that escalated",
+        SCRIPT,
+        '            diagnose["runs"] += rec["escalated_to_diagnose"] > 0',
+        '            diagnose["runs"] += 1',
+        TARGETS,
+    ),
+    (
+        "a diagnose count that is not a count is read rather than skipped",
+        SCRIPT,
+        '    if "escalated_to_diagnose" in rec and not _is_int(rec["escalated_to_diagnose"]):',
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "a flag that is not a string is read rather than skipped",
+        SCRIPT,
+        "    if not (isinstance(flags, list) and all(isinstance(f, str) for f in flags)):",
+        "    if not isinstance(flags, list):",
         TARGETS,
     ),
 ]

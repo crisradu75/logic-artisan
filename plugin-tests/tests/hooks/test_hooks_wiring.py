@@ -141,9 +141,8 @@ def classify_keys(keys, recognised, required):
     Returns `(unknown, missing)` — keys the loader would warn about, and required
     keys that are absent.
 
-    A PURE FUNCTION, separated from the file-reading above for the same reason
-    `split_coverage` is in `tests/conformance/test_shipped_files_are_scanned.py`:
-    the real `hooks.json` only ever exhibits the clean branch, so nothing that
+    A PURE FUNCTION, separated from the file-reading above because the real
+    `hooks.json` only ever exhibits the clean branch, so nothing that
     reads it can show that the rule reacts to the cases it exists for. In
     particular, narrowing `_LOADER_TOP_LEVEL_KEYS` back to the two-key set this
     guard shipped with is INVISIBLE against the real file — it declares neither
@@ -154,6 +153,7 @@ def classify_keys(keys, recognised, required):
     return sorted(set(keys) - set(recognised)), sorted(set(required) - set(keys))
 
 
+# requirement: guard-hooks / Guard hooks load with the plugin
 def test_hooks_json_declares_only_loader_recognised_keys():
     """An unrecognised top-level key is a warning on EVERY session start, in
     EVERY consuming repo, that no consumer can fix.

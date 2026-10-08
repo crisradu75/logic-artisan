@@ -1,11 +1,10 @@
 """Every site stating the mutation gate states the SAME mutation gate.
 
-`openspec/specs/orchestration/spec.md`, "A review fix is proven by breaking it and watching a test
-fail", requires that
-every shipped markdown file stating the gate carry the killed-mutant clause: a kill
-establishes that the suite reacts to that edit, not that the code or the test is
-correct, so the killing assertion has to be read. Without a guard that is an
-obligation asserted in a spec and enforced by nobody.
+Every shipped markdown file stating the gate carries the killed-mutant clause: a
+kill establishes that the suite reacts to that edit, not that the code or the test
+is correct, so the killing assertion has to be read. This is a rule about how the
+skill files are worded, so no live spec states it; without a guard it is enforced
+by nobody.
 
 **This is not a hypothetical drift.** The gate text lived in two shipped skills,
 `lite-pr/SKILL.md` and `spec-to-pr/references/revise.md`, and before the commit
@@ -44,7 +43,9 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cl
 # keys on the procedure rather than on a section title a skill may not use.
 _GATE_ANCHOR = "confirm it FAILS"
 
-# The clause the spec requires alongside it. This is the actionable half: a site
+# The clause every site must carry alongside it. The rule is
+# `_shared/references/test-quality-gates.md`, "How planting goes wrong"; this
+# test holds each site to it. This is the actionable half: a site
 # may say a great deal about mutants and still never tell the reader to read the
 # assertion that killed one.
 _REQUIRED_CLAUSE = "read the assertion that killed the mutant"
@@ -69,9 +70,8 @@ def _gate_sites() -> list[Path]:
 def test_the_discovery_is_not_vacuous() -> None:
     """A guard whose collection is empty passes while checking nothing.
 
-    This is the shape `test_guards_are_not_vacuous.py` catches statically for
-    an asserted-empty collection; here the collection is built by a filesystem
-    walk, so the floor has to be asserted against the population it really has.
+    The collection is built by a filesystem walk, so the floor has to be
+    asserted against the population it really has.
     """
     sites = _gate_sites()
     assert len(sites) >= _KNOWN_SITE_COUNT, (
@@ -88,12 +88,13 @@ def test_the_discovery_is_not_vacuous() -> None:
     ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)),
 )
 def test_every_gate_site_carries_the_killed_mutant_clause(path: Path) -> None:
-    """The spec's "A caught breakage is not enough"."""
+    """A caught breakage is not enough: each site tells its reader to read the
+    assertion that killed the mutant."""
     body = path.read_text(encoding="utf-8")
     assert _REQUIRED_CLAUSE in body, (
         f"{path.relative_to(_PLUGIN_ROOT)} states the mutation gate but omits "
         f"the killed-mutant clause ({_REQUIRED_CLAUSE!r}). A site without it "
-        f"briefs its reader that a killed mutant is self-certifying, which the "
-        f'spec\'s "A review fix is proven by breaking it" requirement forbids. Add the '
+        f"briefs its reader that a killed mutant is self-certifying, which "
+        f'test-quality-gates.md "How planting goes wrong" forbids. Add the '
         f"clause here rather than removing this site from the gate."
     )

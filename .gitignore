@@ -2,3 +2,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .DS_Store
+
+# multi-lite / multi-pr run notes: local working state, never committed
+cla.io/retro/*-run-notes-*.md

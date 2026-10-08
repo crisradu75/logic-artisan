@@ -2,8 +2,7 @@
 
 `consistency-checks/` guards the repo that DEVELOPS the harness: that its
 overlays are reachable, that its token list is curated, that its `pre-push` hook
-is installed, that its sibling scripts have not drifted. Every one of those is a
-statement about this working tree.
+is installed. Every one of those is a statement about this working tree.
 
 The scope nevertheless ships inside the plugin package — `git-subdir` takes a
 whole directory and offers no exclude list — so a consuming repo that runs the
@@ -14,8 +13,8 @@ A failure that means "not applicable here" is worse than useless: it trains the
 reader to ignore a red suite, and this suite is the only gate the project has.
 So detect the situation and skip, with the reason attached.
 
-Detection is the same one `codify-learnings/references/plugin-writability.md`
-documents, and it holds for the same reason: a plugin loaded from a working tree
+Detection is the same one `codify-learnings/references/routing.md` documents
+("Is the plugin writable here?"), and it holds for the same reason: a plugin loaded from a working tree
 is inside a git repo; an installed one is a plain directory in a version-keyed
 cache (verified: the cache has no `.git`).
 """

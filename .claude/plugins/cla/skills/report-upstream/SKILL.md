@@ -23,7 +23,8 @@ This skill moves **prose, not code**. It opens an issue; a human upstream decide
 - **Yes → report it.** A guard hook that no-ops on a platform. A script that mishandles a
   line ending. A skill step that is wrong everywhere, not just here.
 - **No → report nothing, and change nothing.** It is legitimate local adaptation and
-  belongs in this repo's own overlay (`cla.io/overlays/<skill>.md`). Say so and stop —
+  belongs in this repo: a fact in `cla.io/project-facts.md`, a rule for one skill in
+  `cla.io/overlays/<skill>.md`. Say so and stop —
   a channel that carries local preferences upstream stops being read.
 
 If the answer is genuinely unclear, ask the user rather than guessing. A wrong "yes" costs

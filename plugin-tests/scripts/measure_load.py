@@ -65,7 +65,6 @@ PROFILES: dict[str, dict[str, str | None]] = {
         f"{_SPEC_REFS}/ship.md": _SPEC,  # Ship: "Read ... first"
         f"{_SPEC_REFS}/revise.md": _SPEC,  # Revise: "Read ... first"
         f"{_SPEC_REFS}/archive.md": _SPEC,  # Archive: "Read ... first"
-        f"{_SPEC_REFS}/archive-preflight.md": f"{_SPEC_REFS}/archive.md",
         f"{_SPEC_REFS}/handoff.md": _SPEC,  # Handoff: "Read ... first"
         f"{_SHARED}/run-log-schema.md": f"{_SPEC_REFS}/handoff.md",  # builds the run record
     },
@@ -114,8 +113,8 @@ def _skill_dir(path: Path, root: Path) -> Path:
 
 def _resolve(token: str, prefixed: bool, source: Path, root: Path) -> Path | None:
     """`root` and `source` must be resolved. Bare names try the naming file's
-    own directory first, so a reference naming a sibling (`archive-preflight.md`
-    from `archive.md`) resolves."""
+    own directory first, so a reference naming a sibling (`design-tradeoffs.md`
+    from `revise.md`) resolves."""
     if prefixed:
         candidates = [root / token]
     else:

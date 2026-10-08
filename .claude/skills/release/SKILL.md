@@ -40,7 +40,7 @@ git status --porcelain
 git fetch origin
 git status -sb
 pytest plugin-tests -q -n auto --dist loadfile
-node --test plugin-tests/node/mechanical-checks.test.mjs
+openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 ```
 
@@ -49,8 +49,8 @@ python3 .claude/skills/release/scripts/check_shipped_tree.py
 | On the repo's default branch | A tag cut from a feature branch pins commits that may never merge. |
 | Working tree clean (`git status --porcelain` prints nothing) | An uncommitted edit is either in the release or it isn't; a dirty tree means nobody knows which. **Nothing is excluded, and nothing should be:** no pathspec, so the check covers the whole repo from any directory, and a half-resolved merge conflict shows up here too. The run ledgers under `cla.io/retro/` are written at a controlled moment and should be committed, not hidden. |
 | Up to date with `origin` | Tagging a stale local branch publishes a tree that is not what `main` holds. |
-| `pytest plugin-tests -q -n auto --dist loadfile` fully green | There is no CI. This run, plus the Node run below, is the whole gate that exists. |
-| `node --test plugin-tests/node/mechanical-checks.test.mjs` fully green | the pytest gate does not reach it — `norecursedirs` excludes `node` — so a broken `mechanical-checks.mjs`, a SHIPPED file, ships behind an all-green pytest run without this line. Not hypothetical: commit `ee3e359` on `extract-dev-tree-from-plugin` fixed this suite failing with `ERR_MODULE_NOT_FOUND` while pytest stayed green throughout. |
+| `pytest plugin-tests -q -n auto --dist loadfile` fully green | There is no CI. This run, plus the spec validation below, is the whole gate that exists. |
+| `openspec validate --specs --strict` passes with no warning | It is the second command in CLAUDE.md's "Before opening a PR" gate, so the OpenSpec CLI is now a release precondition: without it on `PATH` this step fails and no tag is cut. |
 | The work is reviewed and merged | See the invariant above. |
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 
@@ -70,9 +70,8 @@ it. Otherwise ask with `AskUserQuestion`, showing what changed since the last ta
 - **minor** — a skill added or removed, a new guard, a restructure consumers will notice.
 - **major** — a change that breaks a consuming repo's existing usage.
 
-While the line is `0.9.x`, it is the pre-1.0 validation line. It becomes `1.0.0` once a
-real task has been run end-to-end through the plugin in a consuming repo — installing
-and resolving paths is verified; running a task through it is the remaining gate.
+The pre-1.0 validation line is closed; how it closed is in DEVELOPER-GUIDE.md, "Release and
+distribution history".
 
 ## Step 3 — The three-file edit, in one commit
 
@@ -89,14 +88,11 @@ version lives in `CLAUDE.md`'s "Current release" line, pinned by
 Then re-run the suite — the two manifest tests and the doc-fact test are what confirm
 the three copies agree — and commit all three together:
 
-**If `test_every_batch_is_loadable_and_declares_real_targets` goes red here, it is a
-mutant batch anchored on the version literal, not a broken bump.** The anchor named in
-the failure no longer appears, `mutate.py` aborts that whole batch in preflight, and the
-guard reports it. Fix the batch, not the bump: anchor on the version-independent prefix
-and inject a digit, as `mutants/consistency/test_doc_facts.py` and
-`mutants/consistency/test_marketplace_manifest.py` both do. This step is the earliest
-point it can be caught — at step 1 the version has not moved, so the anchors still
-resolve — which is why it surfaces after the bump and before the tag.
+**A mutation batch anchored on the version literal breaks with every bump** — the anchor
+no longer appears and `mutate.py` refuses the whole batch in preflight. Nothing in the
+suite runs batches, so this shows up only when someone next runs one. Anchor on the
+version-independent prefix and inject a digit, as `mutants/consistency/test_doc_facts.py`
+and `mutants/consistency/test_marketplace_manifest.py` both do.
 
 **Branch BEFORE committing.** Step 1 put you on the default branch; committing there and
 branching afterwards leaves the local default branch carrying a commit `origin` does not
@@ -106,7 +102,7 @@ default branch never moves:
 ```bash
 git checkout -b release/<new>
 pytest plugin-tests -q -n auto --dist loadfile
-node --test plugin-tests/node/mechanical-checks.test.mjs
+openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude-plugin/marketplace.json CLAUDE.md
 git commit -m "release: <new>"

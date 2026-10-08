@@ -7,18 +7,18 @@ This is plugin-wide doctrine: it lives in `_shared/` because every skill is held
 1. **Baseline.** `wc -w -c <skill>/SKILL.md` — record before.
 2. **Classify every section** as INLINE-invariant (stays) or MECHANICS (moves) — see the boundary below.
 3. **Move mechanics** into on-demand `references/*.md` (per-phase or per-topic; reuse existing reference files, don't duplicate). Each moved section leaves a **short inline stub** = the load-bearing one-liner(s) + a mandatory **"read `references/<name>.md` first"** pointer.
-4. **Route repo-specific worked examples** (real symbol/file names, dated incidents) that you move OUT to the skill's `cla.io/overlays/spec-to-pr.md` overlay, leaving a generic pointer in the synced-core reference — per the **Skill fact/procedure separation** requirement. Never let a repo token land in a generic synced-core `references/*.md`.
+4. **Route repo-specific material out of the plugin** — a fact (a real file name, a command) to the repo's `cla.io/project-facts.md`, a rule that applies to one skill to `cla.io/overlays/<skill>.md`, a dated incident to `cla.io/lessons-learned/` — leaving the generic procedure in the reference. Never let a repo token land in a generic synced-core `references/*.md`.
 5. **Update the `## References` list** for any new file.
 6. **Post-size + validate** (see "Validation" below).
 
 ## Keep-inline vs move boundary (conservative)
 
-**Rule: correctness-gating invariants stay inline as one-liners; only mechanics/rationale/templates/examples move.** Each stub MUST be **self-sufficient for its own invariant** — carry the rule itself, not just a "read the reference" pointer, so a skipped read never loses protection.
+**Rule: correctness-gating invariants stay inline as one-liners; only mechanics/rationale/templates/examples move.** Each stub MUST be **self-sufficient for its own invariant** — carry the rule itself, not just a "read the reference" pointer, so a skipped read loses the procedure, never the gate. **Beyond those one-liners a stub never restates its reference**: a mandatory reference is read in full anyway, so a second copy only doubles the words and the places to keep in step. Rationale goes to a reference read only when revising the skill (`spec-to-pr/references/design-tradeoffs.md`).
 
 **Always stays inline:**
 - The hoisted skill-level rules block.
-- Mode/argument detection, the autonomy/halt contract (+ its exceptions), the per-loop caps table.
-- The standalone correctness sections (e.g. "Bash-style discipline", "Continue-on-everything", "Development-only boundary") — these do NOT consolidate into a runtime-rules-style reference.
+- Mode/argument detection, the autonomy/halt contract (+ its exceptions), the per-loop caps (a flags table can carry them).
+- The standalone correctness rules (e.g. Bash-style discipline, Continue-on-everything, Development-only boundary) — they may become hoisted bullets, but do NOT consolidate into a runtime-rules-style reference.
 - Per phase: the load-bearing one-liner invariants + the mandatory-read pointer.
 
 **Moves to `references/*.md`:** step-by-step procedures, exact bash/command recipes, snippets, templates, the full option-text of `AskUserQuestion` gates, rationale/tradeoff prose, and worked examples.
@@ -27,7 +27,7 @@ This is plugin-wide doctrine: it lives in `_shared/` because every skill is held
 
 These invariants commonly live in *phase-step prose* rather than the hoisted block, so the restructure silently drops them from the inline stub. **Verify each is still inline after the move:**
 
-- **`git_state`-before-every-commit** — the #1 repeat offender: it commonly lives in phase-step prose rather than the hoisted block, so the restructure silently drops it from the inline stub (caught only by review when that happens — see `cla.io/overlays/spec-to-pr.md` "Incident history" for concrete precedents). If the skill runs its own commits, this MUST be a hoisted one-liner, not left only in the moved recipe.
+- **`git_state`-before-every-commit** — the #1 repeat offender: it commonly lives in phase-step prose rather than the hoisted block, so the restructure silently drops it from the inline stub (caught only by review when that happens). If the skill runs its own commits, this MUST be a hoisted one-liner, not left only in the moved recipe.
 - **never `git add -A` / path-scoped staging.**
 - The skill's **merge / quarantine / halt authorization** (e.g. multi-pr's whole-chain-halt vs multi-lite's downstream-only quarantine — these differ per skill; preserve the SKILL's own semantics verbatim, never swap in a sibling's).
 - Any **safety-confirmation gate** (e.g. codify-learnings' interactive-apply confirmation; spec-to-pr's destructive-git ask).
@@ -35,7 +35,7 @@ These invariants commonly live in *phase-step prose* rather than the hoisted blo
 
 ## Validation (before shipping)
 
-- **`wc -w -c` after** — note before/after. The ~size target is **aspirational, not a gate**: correctness prose staying inline WINS over hitting a number. Never relocate an invariant to shrink the file (the `wc` proxy is gameable exactly this way — the "invariants stay inline" spec scenario is the guard).
+- **`wc -w -c` after** — note before/after. The ~size target is **aspirational, not a gate**: correctness prose staying inline WINS over hitting a number. Never relocate an invariant to shrink the file (the `wc` proxy is gameable exactly this way — the behavior-preservation read below is the guard).
 - **Conformance guard** — `python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_no_project_tokens.py` MUST **exit 0** (no repo token, and no hardcoded absolute developer path, leaked into a new synced-core reference). It is a program, not a pytest module: a consuming repo has no test gate over the plugin cache.
 - **Pointer resolution** — every mandatory-read pointer resolves to a real file; a cross-skill pointer (e.g. `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`) uses the full path.
 - **A behavior-preservation read** — diff removed-vs-retained lines and confirm no correctness-gating invariant left inline context and each stub is self-sufficient.

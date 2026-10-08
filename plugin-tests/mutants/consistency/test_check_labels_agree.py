@@ -72,8 +72,8 @@ MUTANTS = [
         # file was never looked at.
         "review-gate claims only 0a-0e live in the checklist, omitting 0j-0l",
         REVIEW_GATE,
-        "note that `0a`–`0e` and `0j`–`0l` live in `checklist.md` itself; only the domain-specific checks (`0f`–`0i`)",
-        "note that only 0a–0e live in `checklist.md` itself; the domain-specific checks (0f–0i)",
+        "note that `0a`–`0e` and `0j`–`0l` live in `checklist.md` itself; the repo-specific checks (`0f`–`0i`",
+        "note that only 0a–0e live in `checklist.md` itself; the repo-specific checks (0f–0i",
         TARGETS,
     ),
     (
@@ -122,8 +122,8 @@ MUTANTS = [
         # orchestrator reading it runs the old set.
         "a marked enumeration goes short by one check",
         CHECKLIST,
-        "All checks above (generic 0a–0e and 0j–0l here, plus the overlay's 0f–0i and 1–9)",
-        "All checks above (generic 0a–0e and 0j–0k here, plus the overlay's 0f–0i and 1–9)",
+        "All checks above (generic 0a–0e and 0j–0l here, plus the overlay's 0f–0i and 1–9 when it has them)",
+        "All checks above (generic 0a–0e and 0j–0k here, plus the overlay's 0f–0i and 1–9 when it has them)",
         TARGETS,
     ),
     (
@@ -151,8 +151,8 @@ MUTANTS = [
         # Mutating the guard could not distinguish them; mutating the prose can.
         "a marked enumeration drops a check the overlay owns",
         CHECKLIST,
-        "plus the overlay's 0f–0i and 1–9)",
-        "plus the overlay's 0f–0h and 1–9)",
+        "plus the overlay's 0f–0i and 1–9 when it has them)",
+        "plus the overlay's 0f–0h and 1–9 when it has them)",
         TARGETS,
     ),
     (

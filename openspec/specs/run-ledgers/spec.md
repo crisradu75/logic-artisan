@@ -2,116 +2,133 @@
 
 ## Purpose
 
-How skills record their runs and how those records are read: aggregators that survive bad records and say what they lost, and the run-log fields that a deferred decision waits on.
+The run records skills append under a repo's `cla.io/retro/`, and the retro reports read from them.
 
 ## Requirements
 
-### Requirement: A malformed record costs one record, and the loss is counted
+### Requirement: Ledger files
 
-A retro aggregator SHALL treat a malformed record as one lost record, never a lost run: it skips the bad field, analyzes every other record, and exits successfully. When the skipped field feeds a metric, the aggregator SHALL count it in its structured output, naming the field, not only warn about it. The output SHALL show beside the record count how many records were dropped this way, reporting zero for a clean ledger rather than omitting it.
+Skills that record their runs SHALL append one JSON object per line to a ledger in the repo's `cla.io/retro/` directory, or in the directory `CLAUDE_RETRO_DIR` names, and a record that is not a single JSON object SHALL be refused, leaving the ledger unchanged.
 
-#### Scenario: One malformed record does not abort the aggregate
+#### Scenario: A run is recorded
 
-- **WHEN** a ledger holds a record whose field has a list where the aggregator expects an object, or the reverse
-- **THEN** the aggregator skips that field, analyzes every other record, and exits successfully
-- **AND** it does not return an empty result for the whole ledger
+- **WHEN** a skill records a run
+- **THEN** the ledger gains exactly one line holding that run's JSON object
 
-#### Scenario: A skipped record is counted, not only warned about
+#### Scenario: A broken record
 
-- **WHEN** an aggregator skips a field because its shape changed
-- **THEN** the structured output counts it under the field's name
-- **AND** a message on stderr alone does not satisfy this
+- **WHEN** a skill hands the writer something that is not a JSON object
+- **THEN** the writer refuses it and the ledger is unchanged
 
-#### Scenario: A degraded sample is visible beside the reported one
+### Requirement: The spec-to-pr run record
 
-- **WHEN** some records are dropped from a metric while the reported record count includes them
-- **THEN** the output carries a count of those records, so a reader can tell a whole sample from a partial one
-- **AND** a clean ledger reports zero there rather than omitting the field
+Each `/cla:spec-to-pr` run SHALL append one record to `cla.io/retro/spec-to-pr-runs.jsonl` giving its time, change and mode, the flags it was invoked with, how many times it escalated to `/cla:diagnose`, and, for each phase, its status, the reason for a warning or failure, and the rounds used, with the pull request review phase also giving the Critical and Important findings each round found.
 
-### Requirement: An aggregator reads several ledgers in one run
+#### Scenario: A run with two pull request review rounds
 
-An aggregator SHALL be able to read several ledgers in one run, and SHALL NOT report a single ledger's path as the source of a result drawn from several. Given one path or none, it SHALL behave as it did before.
+- **WHEN** a run's pull request review takes two rounds
+- **THEN** its record lists both rounds in order with the findings each found
 
-#### Scenario: Several ledgers aggregate into one result
+#### Scenario: A run invoked with flags
 
-- **WHEN** an aggregator is given more than one ledger path in a single run
-- **THEN** it analyzes the records of all of them together
-- **AND** the output names every path it read
-- **AND** it reports no single-ledger source field for the result
+- **WHEN** a run is invoked with `--inherits` and `--pr-rounds 1`
+- **THEN** its record lists both flag names, without their values
 
-#### Scenario: The single-ledger contract is unchanged
+### Requirement: Summarising recent spec-to-pr runs
 
-- **WHEN** an aggregator is given one ledger path, or none
-- **THEN** it resolves and reports that one path as before
-- **AND** a caller written against the single-ledger output works unmodified
+`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the repo's fleet file lists or, when none of them exists on the machine, only the repo's own ledger and saying so, naming each ledger read, counting a record it cannot read as skipped instead of failing, and reporting how many of those runs' changes had a second pull request review round and how many of those found a Critical or Important finding in it.
 
-### Requirement: A declined default names the ledger evidence that would reverse it
+#### Scenario: One unreadable record
 
-A default this workflow declines on thin evidence SHALL state the run-ledger condition that would reverse it. A second Revise round stays conditional until:
+- **WHEN** a ledger holds one record with a field of the wrong shape
+- **THEN** the summary covers every other record and counts the skipped one
 
-> Revisit the `--pr-rounds` default when `findings_by_round` covers at least eight changes across at least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical or Important finding on a majority of them.
+#### Scenario: No fleet on this machine
 
-Wherever this appears, the eight-change count and the majority bar SHALL be labelled as judgements, not measurements.
+- **WHEN** the fleet file is missing or lists no repo that exists on the machine
+- **THEN** the summary reads only the repo's own ledger and says why
 
-#### Scenario: The deferral is stated with its reversal condition
+#### Scenario: Second-round yield
 
-- **WHEN** a reader asks why a second Revise round is not the default
-- **THEN** the skill states the deferral, the evidence behind it, and the reversal condition verbatim
-- **AND** the eight-change count and the majority bar are labelled as judgements
+- **WHEN** three changes in the summarised runs had a second pull request review round and two of those rounds found a Critical or Important finding
+- **THEN** the summary reports three such changes, two of which found one
 
-### Requirement: The Revise record counts findings per round
+### Requirement: Handoff suggests a retro on repeated trouble
 
-The Revise phase record SHALL carry an optional `findings_by_round` array, one entry per dispatched round in round order, each with:
+After recording its run, `/cla:spec-to-pr` SHALL print one line suggesting `/cla:spec-to-pr-retro` when, among the repo's last five run records, the test phase used its whole round cap in at least three, the pull request review phase ended at its round cap with a warning or failure in at least three, or one warning reason appears in at least two, and SHALL print nothing otherwise, never blocking the run.
 
-- `round`;
-- `found`: that round's deduplicated Critical-plus-Important count;
-- `sibling_instance`: how many of `found` were a defect the previous round's fix introduced or a sibling instance it missed. Round 1 records `0`. A later round records `null` when it was never asked that question, or its answer stayed uncited after the one re-dispatch, and `0` when it was asked and found none.
+#### Scenario: Revise keeps ending at its cap with a warning or failure
 
-A record without the field stays valid, is not a writer error, and is not read as a round that found nothing. The schema SHALL state that, over agent-surfaced findings, the per-agent `found` sum is at least the per-round sum, since one finding reported by two agents counts twice per agent and once per round. It SHALL name the equality case (each finding reported by one agent), which is not drift, and the one exception: a finding the orchestrator raises counts per round but in no agent's bucket.
+- **WHEN** the pull request review phase ended at its round cap with a warning or failure in three of the last five runs
+- **THEN** Handoff prints one line naming that and suggesting the retro
 
-#### Scenario: A run with two rounds is logged with per-round attribution
+#### Scenario: Revise reaches its cap cleanly
 
-- **WHEN** the Revise phase runs two rounds and the run record is appended
-- **THEN** `findings_by_round` holds one entry per round in round order
-- **AND** round 1's entry carries `sibling_instance: 0`
-- **AND** round 2's entry carries that round's own deduplicated Critical-plus-Important count and its sibling-instance count
+- **WHEN** the pull request review phase used its whole round cap in each of the last five runs and never warned or failed
+- **THEN** Handoff prints nothing for it
 
-#### Scenario: An older record without the field stays valid
+#### Scenario: A quiet ledger
 
-- **WHEN** a run record written before this field existed is read from the ledger
-- **THEN** the missing `findings_by_round` is not an error and is not counted as a writer error
-- **AND** it is not read as a round that found nothing, which would be an entry with `found: 0`
+- **WHEN** no phase hit its cap in three of the last five runs and no warning reason repeats
+- **THEN** Handoff prints nothing extra and the run ends as before
 
-#### Scenario: The two `found` counts are related by an inequality, not a prohibition
+### Requirement: Summarising flag use and diagnose escalations
 
-- **WHEN** a reader compares `findings_by_round`'s per-round `found` totals with the per-agent counts on the same record
-- **THEN** the schema states the per-agent sum is greater than or equal to the per-round sum, and why
-- **AND** it names the equality case, so a match is not read as a writer error
-- **AND** it names the one exception, a finding the orchestrator raises
+`/cla:spec-to-pr-retro` SHALL report, over the summarised runs whose records carry them, how many runs used each flag, and how many runs escalated to `/cla:diagnose` and how many times in all.
 
-#### Scenario: A round that produced no measurement is not logged as a zero
+#### Scenario: Flags across runs
 
-- **WHEN** a round ≥ 2 was never asked the question, or its answer stayed uncited after the one re-dispatch
-- **THEN** that round's `sibling_instance` is `null`, not `0`
-- **AND** a reader can tell it apart from a round that was asked and found none (`0`) and from a record with no `findings_by_round` at all
+- **WHEN** three summarised runs record their flags, two of them `--inherits`, and a fourth record predates flags
+- **THEN** the summary reports `--inherits` used in two of the three runs that recorded flags
 
-### Requirement: A ledger field kept for a deferred decision states when it qualifies and when it lapses
+#### Scenario: Diagnose escalations
 
-The run-log schema lists only fields an aggregator reads. For a field kept instead for a deferred decision, the schema SHALL state the test it qualifies under: a requirement archived into the plugin's own live spec names the field as the evidence its reversal condition reads, not prose in the same change. The test SHALL name the plugin's spec as the authority, not a path a consuming repo would resolve against its own tree. The schema SHALL also state the exit: when the condition is met or that requirement is removed, the field is added to the aggregator or dropped, and it SHALL say when that check happens.
+- **WHEN** of three summarised runs one escalated twice, one once and one never
+- **THEN** the summary reports two escalating runs and three escalations
 
-#### Scenario: The exception names a test the change cannot self-certify
+### Requirement: Only checked spec-to-pr run records are written
 
-- **WHEN** a reader asks why a field no aggregator reads is listed in the schema
-- **THEN** the schema states that the field qualifies only through a requirement archived into the plugin's live spec, not through prose in the same change
+The writer SHALL append only to the spec-to-pr ledger, refusing a record for any other ledger or one whose fields or field values do not match the spec-to-pr record shape, printing one line that names the ledger it accepts or every field that does not match and leaving the ledger unchanged, and a skill whose record is refused SHALL correct it and try once more, then finish its run whether or not the record was written.
 
-#### Scenario: A consumer can evaluate the test
+#### Scenario: Phases written as an object
 
-- **WHEN** the schema is read in a repo that installed the plugin from the marketplace
-- **THEN** the test names the plugin's own spec as the authority
-- **AND** it does not require the reader to resolve a path against their own repository's spec tree
+- **WHEN** a spec-to-pr record gives its phases as an object instead of a list
+- **THEN** the writer refuses it with a line naming `phases`, and the ledger is unchanged
 
-#### Scenario: The exception states when it lapses
+#### Scenario: The retired codify ledger
 
-- **WHEN** the requirement naming the field is removed, or its reversal condition is met
-- **THEN** the schema says the field returns to the main rule
-- **AND** it names when that check happens, since nothing runs it automatically
+- **WHEN** a skill writes to the codify-learnings ledger
+- **THEN** the writer refuses it with a line naming the spec-to-pr ledger, and writes nothing
+
+#### Scenario: A record refused twice
+
+- **WHEN** a skill's corrected record is refused again
+- **THEN** the skill reports that the record was not written and its run still finishes
+
+### Requirement: The spec-to-pr run record rides its pull request
+
+`/cla:spec-to-pr` SHALL commit its run record only on the branch of the pull request it opened, never on the base branch, and when it opened none SHALL leave the record uncommitted and say so in its report.
+
+#### Scenario: A run that opened a pull request
+
+- **WHEN** a run ends with its pull request open
+- **THEN** its run record is committed on that pull request's branch
+
+#### Scenario: A run that opened none
+
+- **WHEN** a run ends without opening a pull request
+- **THEN** its run record stays uncommitted and its report says so
+
+### Requirement: Chain run notes stay local
+
+`/cla:multi-lite` and `/cla:multi-pr` SHALL keep their run notes as local working state that no step adds, commits or pushes, and a resume that cannot find them SHALL fall back to the state of the pull requests on GitHub.
+
+#### Scenario: A chain ends with a pull request open
+
+- **WHEN** a chain finishes with some of its pull requests still open
+- **THEN** its run notes stay uncommitted on the machine that ran it and no branch gets a notes commit
+
+#### Scenario: Resuming where the notes are missing
+
+- **WHEN** a chain is re-run on another machine, or after its notes file was deleted
+- **THEN** it reads each change's state from GitHub instead

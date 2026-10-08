@@ -38,6 +38,7 @@ def repo(tmp_path):
 # ---------------------------------------------------------------- the invariant
 
 
+# requirement: annotate / The document is shown as written and never changed
 def test_rendering_never_writes_to_the_document(repo):
     src = repo / "doc.md"
     body = "# Title\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
@@ -75,6 +76,7 @@ def test_a_read_only_document_still_renders(repo):
 # ---------------------------------------------------------------- addressing
 
 
+# requirement: annotate / Opening a document for annotation
 def test_every_addressable_block_carries_an_id_and_a_source_line():
     body, ctx = render("# H\n\npara one\n\n- item\n\n```\ncode\n```\n")
     found = re.findall(r'data-blk="(b\d+)" data-line="(\d+)"', body)
@@ -83,6 +85,7 @@ def test_every_addressable_block_carries_an_id_and_a_source_line():
     assert all(int(l) > 0 for _, l in found)                 # lines real
 
 
+# requirement: annotate / Comments are saved with their source line
 def test_the_source_line_points_at_the_right_line():
     md = "# Title\n\nfirst para\n\nsecond para\n"
     body, _ = render(md)
@@ -483,7 +486,8 @@ def test_the_page_does_not_follow_the_system_theme(repo):
     css = page[page.index("<style>"):page.index("</style>")]
     # Comments are stripped before the check, because a comment EXPLAINING that
     # there is no such rule contains the token and passes a naive scan — the
-    # failure CLAUDE.md records under "a diagnosis, a measurement, or a count".
+    # failure DEVELOPER-GUIDE §12 records under "Check 3: the escapes that
+    # produced it".
     rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     # The favicon keeps its own such rule — it sits on the tab strip, which does
     # follow the OS — but it is a data URI, not part of this stylesheet.
@@ -924,8 +928,8 @@ def test_a_failed_undo_does_not_assert_what_the_file_says(doc_page):
     the file's contents, which the client cannot know from here."""
     # Over the COMMENT-STRIPPED script. The comment explaining why that wording
     # was dropped quotes it, so a raw scan finds the phrase in the very sentence
-    # saying it is gone — the failure CLAUDE.md records verbatim, reproduced here
-    # on the first run of this check.
+    # saying it is gone — the failure DEVELOPER-GUIDE §12 records under "Check 3:
+    # the escapes that produced it", reproduced here on the first run of this check.
     script = code_of(script_of(doc_page))
     assert "still deleted" not in script
     assert "could not be confirmed" in script

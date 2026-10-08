@@ -2,7 +2,7 @@
 name: shape-decision
 description: "Shape a decision by walking through choices one at a time with pros/cons and a recommended pick. Triggers on /cla:shape-decision or natural language like 'help me decide between X and Y', 'shape this decision', 'walk me through the options'."
 argument-hint: "[topic]"
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash
+allowed-tools: Read, Grep, Glob, Write, Edit
 ---
 
 **Topic:** $ARGUMENTS
@@ -33,7 +33,7 @@ Follow this protocol strictly:
 ## Getting started
 
 1. Analyze the topic provided in the arguments (or inferred from context).
-2. **Ground the questions in this repo.** If the topic concerns product/engine behavior, do a quick read/grep before formulating questions so the options and pros/cons reflect real constraints instead of generic possibilities — state briefly what you checked. See `cla.io/overlays/shape-decision.md` for this repo's own useful starting points (capability specs, architecture/convention docs, deliberately-deferred/postponed-item trackers — a topic may already have a parked decision worth surfacing as context rather than re-litigating from scratch). Skip the repo-grounding read for topics that are purely abstract or preference-based (personal tradeoffs, etc.) — **except** when the topic concerns naming: also read `cla.io/terminology.md` if present in that case (see "Domain-terminology capture" below for how it's used during the session), since a naming-shaped decision is exactly what that file exists to inform.
+2. **Ground the questions in this repo.** If the topic concerns product/engine behavior, do a quick read/grep before formulating questions so the options and pros/cons reflect real constraints instead of generic possibilities — state briefly what you checked. Useful starting points: the capability specs, the architecture/convention docs (`cla.io/project-facts.md` "Doc-sweep paths" lists them), and any deferred-items tracker — a topic may already have a parked decision worth surfacing as context rather than re-litigating from scratch. Skip the repo-grounding read for topics that are purely abstract or preference-based (personal tradeoffs, etc.) — **except** when the topic concerns naming: also read `cla.io/terminology.md` if present in that case (see "Domain-terminology capture" below for how it's used during the session), since a naming-shaped decision is exactly what that file exists to inform.
 3. Formulate the question set per the "Right-size the question count" rule above.
 4. State the topic, the progress estimate, and the one-time revision-support note, then ask the first question.
 
@@ -62,7 +62,7 @@ Follow this protocol strictly:
 While asking or discussing a question, watch for a term the user's answer disambiguates, sharpens, or resolves a conflict on — most decisions don't have one (build tooling, workflow ordering, file locations rarely hinge on internal-naming disambiguation). When one does:
 
 - **Check the user's phrasing against `cla.io/terminology.md`** (read once at grounding, per Getting Started step 2) — a term used inconsistently with an existing entry is worth surfacing as a clarifying question ("your terminology file defines X as Y — is that still what you mean here?") rather than silently drifting.
-- **Write the resolution inline, the moment it resolves** — do not batch it to the end of the session or fold it into the Decision Summary. Follow the entry format `sync-context`'s SKILL.md documents — do not re-derive or paraphrase it here, since `sync-context` is that format's single owner. Create `cla.io/terminology.md` lazily if it doesn't exist yet.
+- **Write the resolution inline, the moment it resolves** — do not batch it to the end of the session or fold it into the Decision Summary. Follow the entry format in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/terminology-format.md` — do not re-derive or paraphrase it here. Create `cla.io/terminology.md` lazily if it doesn't exist yet.
 - **Only terms specific to this repo's own product/codebase belong** — a general programming or process concept doesn't, even if the conversation uses it a lot.
 - **This is a side-effect, not a goal.** Don't force a term into the file looking for something to write — most runs of this skill won't touch it at all.
 
@@ -75,38 +75,4 @@ Keep the file lean enough to resume cold in a future session — do NOT include 
 - The topic (and what was inferred, if it was inferred rather than given)
 - Each question asked, the chosen option, and its one-line rationale
 - The final Decision Summary table
-- A short closing note on why the decision matters and what the natural next step is (e.g. "feeds into `/cla:spec-to-pr` or `/cla:lite-pr` for change X", or resolves a postponed item in this repo's own deferred-items tracker — see `cla.io/overlays/shape-decision.md`)
-
-## Log the run (counts-only ledger)
-
-Always done, after the decision is persisted (or declined). One counts-only JSON line:
-
-```bash
-echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py shape-decision-runs.jsonl
-```
-
-```json
-{
-  "ts": "<ISO-8601>",
-  "topic_slug": "<the kebab-case slug, or omit if nothing was persisted>",
-  "questions": N,
-  "options_total": N,
-  "took_recommendation": N,
-  "persisted": true|false
-}
-```
-
-**`took_recommendation` against `questions` is the field this ledger exists for.** This
-skill names a recommended option on every question, and if the recommendation is taken
-every single time, that is either a skill with excellent judgement or a user waving it
-through — and the counts cannot tell you which, but they can tell you it is happening.
-The same shape as `codify-learnings`' apply gate, which ran at 219 applied of 219
-proposed before anybody counted.
-
-Read it back with the generic summariser:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --ledger shape-decision-runs.jsonl   # add --fleet to read every repo in cla.io/fleet.local.md
-```
-
-Best-effort: a failed write is noted and the run continues.
+- A short closing note on why the decision matters and what the natural next step is (e.g. "feeds into `/cla:spec-to-pr` or `/cla:lite-pr` for change X", or resolves a postponed item in this repo's own deferred-items tracker)

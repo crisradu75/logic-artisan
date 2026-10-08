@@ -22,8 +22,8 @@ floor could not see. 11 collapses the tag-less branch of the stale-exemption
 message, whose remedy is the opposite of the ordinary one.
 
 **Two edits are deliberately NOT in this list, because neither can be killed in
-a correct tree** — see root CLAUDE.md, "a SURVIVOR is not automatically a
-finding about the code":
+a correct tree** — see root CLAUDE.md, "A SURVIVOR is not automatically a
+finding":
 
   * *Disabling the comparison.* With no violating path present there is nothing
     for the edit to miss. Mutants 1-2 cover that branch from the input side,
@@ -104,7 +104,7 @@ MUTANTS = [
         # from.
         "the shipped README tells a consumer to run the retired conformance scope",
         PLUGIN_README,
-        "python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py",
+        "python3 <plugin>/skills/cla-setup/scripts/check_fact_paths.py",
         "python3 <plugin>/conformance-checks/tests/test_project_facts_paths.py",
         TARGETS,
     ),
@@ -120,8 +120,8 @@ MUTANTS = [
         # is the whole reason that set exists.
         "a guarded doc names the retired scope bare, as the shipped defect did",
         CLAUDE_MD,
-        "**Deferred work lives in GitHub issues**",
-        "Wire `conformance-checks/tests` into your gate.\n\n**Deferred work lives in GitHub issues**",
+        "- **Deferred work goes in GitHub issues.**",
+        "- Wire `conformance-checks/tests` into your gate.\n- **Deferred work goes in GitHub issues.**",
         TARGETS,
     ),
     (
@@ -178,7 +178,7 @@ MUTANTS = [
     (
         # The repo-root exclusion in `_bare_prefixes`, which the module docstring
         # calls load-bearing and measured. This mutant is what measured it:
-        # dropping the exclusion admits `.claude-plugin`, and CLAUDE.md's
+        # dropping the exclusion admits `.claude-plugin`, and the guarded docs'
         # `.claude-plugin/marketplace.json` — the REPO-ROOT catalog, not a plugin
         # file — is then read as a plugin path and reported as not shipping. It
         # dies on a false positive rather than a false negative, which is the
@@ -199,7 +199,7 @@ MUTANTS = [
         # prefix is present.
         "a retired single-segment entry is named with an explicit plugin prefix",
         PLUGIN_README,
-        "python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py",
+        "python3 <plugin>/skills/cla-setup/scripts/check_fact_paths.py",
         "python3 <plugin>/mutate.py",
         TARGETS,
     ),
@@ -248,7 +248,7 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The ellipsis skip. CLAUDE.md writes `lib/...` as a placeholder for "a
+        # The ellipsis skip. DEVELOPER-GUIDE writes `lib/...` as a placeholder for "a
         # script directly under the plugin root"; treating it as a literal path
         # reports a file nobody claimed exists. Same false-positive direction as
         # the mutant above, and the same consequence if it were left in.

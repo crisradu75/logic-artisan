@@ -59,8 +59,8 @@ MUTANTS = [
     (
         "a pasted token becomes a valid discharge",
         CHECKLIST,
-        "a `tasks.md` subtask naming the field and what reads it, plus the delta spec",
-        "a sentence in `proposal.md` naming the field, plus the delta spec",
+        "a `tasks.md` subtask naming the field and what reads it.",
+        "a sentence in `proposal.md` naming the field.",
         TARGETS,
     ),
     (
@@ -106,8 +106,8 @@ MUTANTS = [
     (
         "the resume rule loses the reason it exists",
         SPEC_TO_PR,
-        "The JSON above has **no `review` field**:",
-        "The JSON above lists the phases it knows about:",
+        "The JSON has **no `review` field**,",
+        "The JSON lists the phases it knows about,",
         TARGETS,
     ),
     (
@@ -128,8 +128,8 @@ MUTANTS = [
     (
         "the argument contract stops deriving the carry from the prerequisite's actual state",
         SPEC_TO_PR,
-        "which by definition post-date this change's authoring — not from the batch as proposed",
-        "which the chain plan already described up front",
+        "fix rounds added), not from the batch as proposed",
+        "fix rounds added), which the chain plan already described up front",
         TARGETS,
     ),
     # ---- multi-pr, which records and reads back ----------------------------
@@ -189,7 +189,7 @@ MUTANTS = [
         # tree into the state the floor exists for.
         "the parity floor is relaxed to nothing",
         GUARD,
-        "    assert len(flags) >= 5, (",
+        "    assert len(flags) >= 4, (",
         "    assert len(flags) >= 0, (",
         TARGETS,
     ),

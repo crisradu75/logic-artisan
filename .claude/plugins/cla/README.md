@@ -27,15 +27,14 @@ full list of subcommands the CLI actually ships.
 
 - **Is:** a repeatable, guard-railed pipeline for turning intent into reviewed, shippable changes,
   plus the self-improvement loops that keep the pipeline sharp.
-- **Is:** portable across repos and tech stacks — project specifics live behind neutral overlays,
+- **Is:** portable across repos and tech stacks — project specifics live in your repo's `cla.io/`,
   never baked into the synced core (see *Architecture*).
 - **Isn't:** product/app code, a CI system, or a deploy tool. The single-change ship skills
   (`lite-pr`, `spec-to-pr`) stop at an **opened PR**; the `multi-*` chainers may merge a dependency
-  PR to unblock its dependents during an unattended run (or, under `multi-pr`'s stacked policy,
-  merge nothing and stack the PRs instead) — but nothing here deploys, and no PR is merged without
-  you having chosen to run a chainer.
-- **Isn't:** a store of project facts. Those live in `cla.io/` and per-skill overlays, which sit in
-  the repo rather than the plugin, so no install touches them.
+  PR to unblock its dependents during an unattended run — but nothing here deploys, and no PR is
+  merged without you having chosen to run a chainer.
+- **Isn't:** a store of project facts. Those live in `cla.io/project-facts.md`, in the repo rather
+  than the plugin, so no install touches them.
 
 ## The software life cycle, phase by phase
 
@@ -47,8 +46,7 @@ and invoked bare as `/release`.
 
 | Phase | Skill | Invoked by | What it does |
 |---|---|---|---|
-| **0. Bootstrap** (per repo, once) | `cla-init` | **you only** | Scaffold the `cla.io/` tree + empty overlay stubs (structure only, never facts) |
-| | `sync-context` | you or Claude | Populate/reconcile `cla.io/project-facts.md` — the repo's shared facts (members, commands, ports, file maps) |
+| **0. Bootstrap** (per repo; re-run when facts go stale) | `cla-setup` | **you only** | Create whatever is missing of `cla.io/`, seed OpenSpec authoring rules, and populate or reconcile `cla.io/project-facts.md` — the repo's facts (members, commands, ports, file maps) |
 | | `save-permissions` | **you only** | Persist tool permissions granted this session to `.claude/settings.local.json` |
 | **1. Discover & shape** | `feedback` | you or Claude | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | you or Claude | Walk a decision option-by-option with pros/cons + a recommended pick |
@@ -59,12 +57,11 @@ and invoked bare as `/release`.
 | | `lite-pr` | you or Claude | Lightweight end-to-end path for a small change: implement + docs + tests + PR + one review round |
 | | `spec-to-pr` | you or Claude | Drive one OpenSpec change end-to-end to an opened, archived PR with review fixes applied |
 | | `multi-lite` | **you only** | Chain several `lite-pr` runs extracted from one decisions doc, dependency-first |
-| | `multi-pr` | **you only** | Chain several OpenSpec changes → PRs, merging each before its dependents (or stacking PRs on their parents when merging is unavailable) |
+| | `multi-pr` | **you only** | Chain several OpenSpec changes → PRs, merging each before its dependents |
 | **4. Review & assure** | `project-review` | you or Claude | CTO-level review of the whole repo: vision, structure, requirements, architecture, validation |
 | | `annotate` | you or Claude | Render a doc as a page, open it chrome-less, and collect the user's own comments against selected passages — read back and worked through here |
 | | (agents) | n/a — dispatched | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to |
-| **5. Learn & improve** | `codify-learnings` | **you only** | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
-| | `codify-retro` | **you only** | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
+| **5. Learn & improve** | `codify-learnings` | **you only** | Turn the current session's failures into up to three fixes — tools and hooks before docs — escalating any rule that failed again; log them `[loop]` |
 | | `spec-to-pr-retro` | **you only** | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
 | | `report-upstream` | you or Claude | File a defect in CLA's own portable core as an issue against the canonical source |
 | | `checkpoint` | you or Claude | Compact a session into a resumable briefing (`cla.io/checkpoints/`) |
@@ -96,7 +93,7 @@ another skill's *reference file* is not calling that skill. `spec-to-pr`'s Revie
 - **Small change:** `shape-decision` → `lite-pr` (or straight to `lite-pr`).
 - **Larger change:** `shape-decision` → `multi-spec` → `review-change` → `spec-to-pr`.
 - **A batch off one decisions doc:** `multi-lite` (small) or `multi-pr` (spec-scale).
-- **After a session:** `codify-learnings`; periodically `*-retro` to tune the loops.
+- **After a session:** `codify-learnings`; periodically `spec-to-pr-retro` to tune the orchestrator.
 
 ## Always-on guardrails (hooks)
 
@@ -150,13 +147,15 @@ CLA is portable because it separates *procedure* (generic, synced everywhere) fr
   suffix list copied here goes stale with nothing to catch it, and one did.
   It is a program rather than a test precisely so it runs here — an installed plugin is a read-only
   cache with no pytest gate over it, so a guard filed as a test module would be unreachable.
-- **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` beside them: the repo's own
-  facts and tuned checks. They live in YOUR repo, not in the plugin: the installed plugin tree is a
-  read-only, version-keyed cache, so a fact stored there would be unwritable and would vanish on
-  the next update. A plugin update never touches them.
+- **Overlays** — optional `cla.io/overlays/<skill>.md` files holding a rule specific to one skill in
+  your repo, plus the machine-read `*.local.md` files beside them (such as `branch-prefix.local.md`).
+  A skill reads its overlay only if it is there; no skill needs one. Facts never go in an overlay.
+  They live in YOUR repo, not in the plugin: the installed plugin tree is a read-only, version-keyed
+  cache, so anything stored there would be unwritable and would vanish on the next update.
 - **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, `retro/` run ledgers,
-  `lessons-learned/`, and the consolidated **`project-facts.md`** (one physical copy of every fact
-  shared across skills). A **staleness guard** (`skills/sync-context/scripts/check_fact_paths.py`, also a program) fails
+  `lessons-learned/`, and **`project-facts.md`** — the one home for every command, path, port,
+  install step and env file a skill reads. A **staleness guard**
+  (`skills/cla-setup/scripts/check_fact_paths.py`, also a program) fails
   when a path named there no longer exists.
 
 ## Installing and updating
@@ -174,8 +173,13 @@ fails or lands somewhere the next update discards. A fix that belongs in the har
 **`/cla:report-upstream`**, which files it as an issue against the canonical source. A fact that
 belongs to your repo goes in `cla.io/`.
 
-**Onboarding a fresh repo:** install (above) → `cla-init` (scaffold `cla.io/`) → `sync-context`
-(populate the facts) → install the `pre-push` hook (see *Guardrails*).
+**Onboarding a fresh repo:** install (above) → `/cla:cla-setup` (scaffold `cla.io/` and populate
+the facts) → install the `pre-push` hook (see *Guardrails*).
+
+**Coming from 1.x?** The `cla-init` and `sync-context` skills were merged into `/cla:cla-setup`. Run
+it once: it reports what your `cla.io/` is missing, proposes moving facts out of overlays into
+`project-facts.md` and the stories of dated incidents into `cla.io/lessons-learned/` (any rule they
+state stays in the overlay), and proposes deleting overlays left with no rule.
 
 The marketplace install is the only route in. `update-cla`, the old pull-based file-sync updater,
 has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can delete that too.
@@ -188,17 +192,17 @@ way to run. An installed plugin is a read-only, version-keyed cache with no pyte
 a test filed here would be unreachable in your repo by construction.
 
 CLA's own suite therefore runs only in the repo that develops it, where it is one isolated
-pytest scope — 1 in total, down from 12 — living outside the plugin directory entirely. Each skill
-*that ships tests* (6 today) has its tests there rather than beside itself, alongside the guards over
-the hooks, the shared library, and the source repo's own launchers and catalog. The one Node script
-(`project-review/scripts/mechanical-checks.mjs`) has a `node --test` suite in the same place.
+pytest scope — 1 in total, down from 12 — living outside the plugin directory entirely. The 4
+shipped skills that have tests, plus the repo-local `/release`, keep them there rather than beside
+themselves (`ls plugin-tests/tests/skills` lists those five plus `_shared`, which is not a skill), alongside the guards over
+the hooks, the shared library, and the source repo's own launchers and catalog.
 
 There is no CI — that local run is the whole verification story. **Nothing in it is a command for
 you to run**; if you want to check your own repo's conformance, the two guards above are programs:
 
 ```bash
 python3 <plugin>/skills/_shared/scripts/check_no_project_tokens.py
-python3 <plugin>/skills/sync-context/scripts/check_fact_paths.py
+python3 <plugin>/skills/cla-setup/scripts/check_fact_paths.py
 ```
 
 Each takes one optional flag, `--repo-root <path>` (default: the repo the process is in, resolved
@@ -210,7 +214,7 @@ to install.
 
 - **`check_fact_paths.py` reads YOUR repo.** Every repo-relative path named in
   `cla.io/project-facts.md` or in a `cla.io/overlays/<skill>.md` must still resolve on disk. This is
-  the one that guards your `cla.io/` content, and the one worth wiring in. `/cla:sync-context` runs
+  the one that guards your `cla.io/` content, and the one worth wiring in. `/cla:cla-setup` runs
   it once after it writes; **beyond that, you own when it runs** — your gate, your pre-commit, or by
   hand. Nothing in the plugin schedules it.
 - **`check_no_project_tokens.py` reads a PLUGIN TREE**, and which one depends on how you installed.

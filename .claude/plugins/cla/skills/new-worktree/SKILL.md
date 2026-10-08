@@ -5,7 +5,7 @@ description: "Start an isolated git worktree for this repo with dependencies ins
 
 # New worktree, fully set up
 
-See `cla.io/overlays/new-worktree.md` for this repo's own workspace shape, its gitignored env file(s), and why a bare `EnterWorktree` alone leaves the new worktree without a working dev setup (no installed dependencies, no env-derived secrets, so a dependent process silently degrades). This skill does the full setup in two tool round-trips total.
+A bare `EnterWorktree` leaves the new worktree without a working dev setup — no installed dependencies, no env-derived secrets, so a dependent process silently degrades. This skill does the full setup in two tool round-trips total. This repo's install command, workspace shape and gitignored env file(s) come from `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape", "Env files"; run `/cla:cla-setup` when it is missing or stale). `cla.io/overlays/new-worktree.md`, if present, adds rules specific to this skill in this repo.
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
 `references/` file opened with `Read` carries it literally, and it is not an environment variable in
@@ -15,7 +15,7 @@ path with `/skills/<name>` removed, or the absolute path of any plugin file you 
 at `.../plugins/cla`. If neither works, say so and stop. Detail:
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
 
-**The dominant cost here is round-trips, not the install's own execution time.** See `cla.io/overlays/new-worktree.md` for this repo's own measured install timing. What actually makes a rerun feel slower is extra tool calls layered on top (a separate `git worktree list` lookup, ad hoc verification checks, status checks) — each one is a full model round-trip regardless of how fast the command inside it runs. So: keep this to the fewest possible tool calls, and don't add "just to be sure" verification steps — trust each command's own output/exit code.
+**The dominant cost here is round-trips, not the install's own execution time.** What actually makes a rerun feel slower is extra tool calls layered on top (a separate `git worktree list` lookup, ad hoc verification checks, status checks) — each one is a full model round-trip regardless of how fast the command inside it runs. So: keep this to the fewest possible tool calls, and don't add "just to be sure" verification steps — trust each command's own output/exit code.
 
 ## Path discipline once inside a worktree
 
@@ -51,7 +51,7 @@ memory `worktree-isolation-file-paths`.)
    case that announces itself. Likewise don't check whether setup has already been
    done: step 2 is idempotent (the install is offline-preferring and mostly hardlinks
    on a rerun, the env copy is a guarded `cp`), so re-running it is cheaper than
-   detecting it, and needs no extra fact from the overlay.
+   detecting it.
 
    In the setup-only case, say so in the step 3 report — "worktree already existed;
    ran setup only" — so nobody reads it as a fresh worktree on a fresh base.
@@ -77,8 +77,8 @@ memory `worktree-isolation-file-paths`.)
    separate tool calls (not chained with `&&`, not sequential turns). This is the
    only other round-trip; do not precede it with a separate `git worktree list` call
    to locate the main checkout — resolve it inline, in the copy command itself:**
-   - This repo's own dependency-install command (offline-preferring where the package manager supports it) at the new worktree's root — see `cla.io/overlays/new-worktree.md` for the exact command and why it's the **only** install needed (don't also run a separate install inside a sub-app whose own lockfile/install has been consolidated away); see `cla.io/project-facts.md` ("Workspace shape") for this repo's current workspace-member list (run `/cla:sync-context` to populate it; falls back to the overlay if absent).
-   - Copy this repo's own gitignored env file(s) (see `cla.io/project-facts.md` ("Env files") for the exact path(s); falls back to `cla.io/overlays/new-worktree.md` if absent) from the main checkout into the new worktree, resolving the main checkout path inline (don't spend a tool
+   - This repo's own dependency-install command (offline-preferring where the package manager supports it) at the new worktree's root, from `cla.io/project-facts.md` ("Dev / build / test commands"). Run only the root install the facts name — don't also run a separate install inside a sub-app whose own lockfile/install has been consolidated away (the "Workspace shape" section lists the members). If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it".
+   - Copy this repo's own gitignored env file(s) (`cla.io/project-facts.md`, "Env files", for the exact path(s)) from the main checkout into the new worktree, resolving the main checkout path inline (don't spend a tool
      call discovering it first — but don't use `git rev-parse --show-toplevel` or
      `$CLAUDE_PROJECT_DIR` for this either: verified live, `CLAUDE_PROJECT_DIR` is
      unset in the Bash tool's shell, and `--show-toplevel` run from inside the new
@@ -120,9 +120,9 @@ memory `worktree-isolation-file-paths`.)
    Don't oversell it as a big win — it isn't one once the store is warm, disk I/O
    dominates at that point (a content-addressable package store also means a warm
    rerun mostly hardlinks rather than re-downloads). If installs are still slow on
-   Windows, see `cla.io/overlays/new-worktree.md` for a machine-level mitigation worth
-   mentioning — but don't change that setting without asking; it's machine-level, not
-   project-level.
+   Windows, a machine-level mitigation (such as an antivirus exclusion for the package
+   store) may be worth mentioning — but don't change that setting without asking; it's
+   machine-level, not project-level.
 
 3. **Report back** using each step's own output — worktree path, branch name, and
    whether the install and the `.env` copy succeeded (or what was skipped and why).
@@ -149,6 +149,6 @@ path must target the worktree explicitly, and the final report must say this mod
   step 2 against the worktree you are already in.
 - Doesn't set up any heavier local backend stack this repo may have (e.g. Docker
   containers for a local database stack) — that's a heavier, explicit step the user
-  can run themselves per this repo's own docs (see `cla.io/overlays/new-worktree.md`)
+  can run themselves per this repo's own docs (`cla.io/project-facts.md`, "Infrastructure")
   if they need that part of the workspace functional in this worktree, not something
   to do unprompted on every worktree creation.

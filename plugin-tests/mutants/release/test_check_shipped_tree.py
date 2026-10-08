@@ -2,7 +2,7 @@
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/release/test_check_shipped_tree.py
 
-Mutating what the scan TOUCHES, not only what it targets. CLAUDE.md records two
+Mutating what the scan TOUCHES, not only what it targets. DEVELOPER-GUIDE §12 records two
 commits that each said "three mutations checked, all caught" and each shipped a
 critical, because the mutants covered the branch the author was reasoning about
 and not the branch they got wrong. So the set below deliberately includes the
@@ -14,12 +14,14 @@ three-valued exit contract and the report-all loop, not just the pattern list:
   2. an anchor dropped from one pattern — the silent WIDENING that a hand-typed
      regex reintroduces every release.
   3. the `[^/.]+` stem widened to `[^/]+` — the exact defect measured on the
-     11-pattern draft, which accepted `mechanical-checks.test.mjs`.
+     11-pattern draft, which accepted a compound name (`mechanical-checks.test.mjs`
+     then; with the one Node script deleted, `helper.test.py` stands in for it).
   4. the report-all loop given an early exit — one offender named per run turns a
      single cleanup into as many release attempts as there are files.
   5. the conftest.py leaf-name exclusion neutered — the one dev-asset shape whose
      name is otherwise a legal script name.
-  6. the test_*.py / *_test.py leaf-shape exclusion widened to never match — the
+  6. the scripts pattern re-admitting `.mjs` — skill scripts are Python only.
+  7. the test_*.py / *_test.py leaf-shape exclusion widened to never match — the
      hole a review measured directly: `skills/foo/scripts/test_foo.py`,
      `hooks/test_x.py`, and `lib/test_x.py` all returned ALLOW before this
      exclusion existed, because a pytest module is exactly a denylist shape and
@@ -57,10 +59,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the scripts pattern stem widens, re-accepting mechanical-checks.test.mjs",
+        "the scripts pattern stem widens, re-accepting helper.test.py",
         SCAN,
+        r'(r"skills/[^/]+/scripts/[^/.]+\.py",',
+        r'(r"skills/[^/]+/scripts/[^/]+\.py",',
+        TARGETS,
+    ),
+    (
+        "the scripts pattern accepts .mjs again, so a Node script ships",
+        SCAN,
+        r'(r"skills/[^/]+/scripts/[^/.]+\.py",',
         r'(r"skills/[^/]+/scripts/[^/.]+\.(?:py|mjs)",',
-        r'(r"skills/[^/]+/scripts/[^/]+\.(?:py|mjs)",',
         TARGETS,
     ),
     (
@@ -95,7 +104,7 @@ MUTANTS = [
         "the test_*.py / *_test.py leaf-shape exclusion never matches, "
         "re-accepting a pytest module as a shipped script",
         SCAN,
-        r'_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.(?:py|mjs)$")',
+        r'_EXCLUDED_LEAF_PATTERN = re.compile(r"^(?:test_.+|.+_test)\.py$")',
         r'_EXCLUDED_LEAF_PATTERN = re.compile(r"(?!x)x")',
         TARGETS,
     ),

@@ -2,7 +2,7 @@
 
 The standing runtime disciplines that keep `/cla:spec-to-pr`'s per-run context small. Pointed at from the hoisted skill-level rules and every phase that handles bulk raw material. These are the NEW thin-orchestrator disciplines only — the separate correctness-gating sections in `SKILL.md` ("Bash-style discipline", "Continue-on-everything escalation", "Development-only boundary") are NOT part of this file and stay inline.
 
-The governing spec requirement is `plugin-architecture`'s **Skill token-efficiency disciplines** (thin-orchestrator runtime execution). The total cost of a run ≈ Σ over turns of the orchestrator's context size, so every raw file/diff/grep dump the orchestrator pulls inline is re-billed on every subsequent turn. Keep raw material OUT of the parent context.
+The total cost of a run ≈ Σ over turns of the orchestrator's context size, so every raw file/diff/grep dump the orchestrator pulls inline is re-billed on every subsequent turn. Keep raw material OUT of the parent context.
 
 ## 1. Delegate raw-material handling — only conclusions return
 
@@ -16,7 +16,7 @@ When a step needs to process bulk raw material (a large diff, a wide file set, v
 
 - **Read slices, not whole files.** Use `Read` with `offset`/`limit`, or `Grep` to locate the section first, when you only need part of a file. Reading a 600-line file to check one rule wastes ~20k tokens per turn thereafter.
 - **`tail`/`head` large command output.** Pipe verbose command output (test logs, `git log`, long `--json`) through `head`/`tail` (or `wc -l` first) rather than letting the full dump land in context.
-- **Scratch-file-then-delegate large intermediate material.** When a step produces a large intermediate artifact another step consumes, write it to `temp/` and hand the path to a delegate, rather than carrying the whole artifact inline. (The happy path needs no scratch file — see `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/design-tradeoffs.md`, "Run logs and the PR-body scratch file".)
+- **Scratch-file-then-delegate large intermediate material.** When a step produces a large intermediate artifact another step consumes, write it to `temp/` and hand the path to a delegate, rather than carrying the whole artifact inline. (The happy path needs no scratch file: the only one spec-to-pr writes is Handoff's multi-line PR body, `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/handoff.md` §2.)
 
 ## 3. Batch independent tool calls into one message
 

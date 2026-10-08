@@ -125,6 +125,7 @@ def test_the_merge_rule_is_not_vacuous(tmp_path):
     assert "note" in store.read_all(p)[0]
 
 
+# requirement: annotate / Comments are saved with their source line
 def test_a_tombstone_hides_but_never_removes(tmp_path):
     p = str(tmp_path / "c.jsonl")
     store.append(p, {"id": "a1", "text": "t", "note": "n"})

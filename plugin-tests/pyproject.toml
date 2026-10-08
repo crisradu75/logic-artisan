@@ -12,8 +12,8 @@
 #
 # `conftest.py` is the only duplicate, and pytest special-cases it — one per
 # directory is legal and expected. (The other historical duplicate,
-# `test_aggregate.py`, was renamed to `test_codify_aggregate.py` /
-# `test_spec_to_pr_aggregate.py` by change `decouple-skills-from-dev-assets`.)
+# `test_aggregate.py`, was renamed to `test_spec_to_pr_aggregate.py` and a
+# since-deleted `test_codify_aggregate.py` by change `decouple-skills-from-dev-assets`.)
 # With the collision set empty, one scope is viable.
 #
 # Note for anyone re-deriving this: do NOT take the reason from the deleted
@@ -26,8 +26,7 @@
 # `mutants/conformance/test_skill_lint.py` would collide with
 # `tests/conformance/test_skill_lint.py`. `testpaths` alone keeps them out,
 # exactly as it did in the twelve old scopes. The batch subdirectories mirror
-# the `tests/` ones because `test_guards_have_mutant_batches.py` maps guard to
-# batch positionally in both directions.
+# the `tests/` ones, so a guard's batch (when it has one) is found by name.
 #
 # `pythonpath` entries are resolved against rootdir, which is this file's own
 # directory. The `../` entries reach the scripts under test, which stay in the
@@ -44,11 +43,11 @@ testpaths = ["tests"]
 # Setting `norecursedirs` REPLACES pytest's own default list rather than
 # extending it (`pytest --help` / `_pytest.main`'s own `addini` call: default
 # `["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv",
-# "{arch}"]`), so that default set is restated here alongside the two this move
-# added — otherwise a `.venv`, a `build/` dir, or any other default-pruned name
+# "{arch}"]`), so that default set is restated here alongside `mutants`, which
+# this move added — otherwise a `.venv`, a `build/` dir, or any other default-pruned name
 # would be walked and collected against, silently reappearing the moment one
 # exists under this tree.
-norecursedirs = ["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}", "mutants", "node"]
+norecursedirs = ["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}", "mutants"]
 pythonpath = [
   "scripts",
   "../.claude/skills/release/scripts",
@@ -56,7 +55,6 @@ pythonpath = [
   "../.claude/plugins/cla/lib",
   "../.claude/plugins/cla/skills/_shared/scripts",
   "../.claude/plugins/cla/skills/annotate/scripts",
-  "../.claude/plugins/cla/skills/codify-retro/scripts",
   "../.claude/plugins/cla/skills/new-worktree/scripts",
   "../.claude/plugins/cla/skills/spec-to-pr/scripts",
   "../.claude/plugins/cla/skills/spec-to-pr-retro/scripts",

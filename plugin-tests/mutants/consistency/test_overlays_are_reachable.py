@@ -27,6 +27,13 @@ distinguishes a by-path load from an ambient one.
 Mutant 3 keeps the pair honest: it proves the imported guard is actually
 interrogated, not merely imported.
 
+Mutants 4-9 mutate the INPUT, since the newer checks agree with any rule on a
+correct tree: a shipped skill that stops naming the overlay this repo keeps for it
+(an orphan), the four ways a shipped file could make an overlay a fact fallback or
+a mandatory input again (one wrapped across a line break, one the "(facts file or
+the overlay)" shape a review found), and a skill that drops the line telling the
+user how to move a fact left in an old overlay.
+
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_overlays_are_reachable.py
 """
 
@@ -37,7 +44,8 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 
 GUARD = DEV / "tests" / "consistency" / "test_overlays_are_reachable.py"
 CONFORMANCE = DEV / "tests" / "conformance"
-CHECKER = PLUGIN / "skills" / "sync-context" / "scripts" / "check_fact_paths.py"
+CHECKER = PLUGIN / "skills" / "cla-setup" / "scripts" / "check_fact_paths.py"
+SKILLS = PLUGIN / "skills"
 
 # Scoped to the ONE guard file, never to `tests/consistency/` as a whole: a
 # target that is red for any other reason reports every mutant "killed" and
@@ -84,6 +92,48 @@ MUTANTS = [
         CHECKER,
         '        for path in sorted(overlays_root.glob("*.md")):',
         '        for path in sorted(overlays_root.glob("*.markdown")):',
+        TARGETS,
+    ),
+    (
+        "codify-learnings stops naming the overlay this repo keeps for it",
+        SKILLS / "codify-learnings" / "SKILL.md",
+        "`cla.io/overlays/codify-learnings.md`, if present",
+        "its overlay, if present",
+        TARGETS,
+    ),
+    (
+        "lite-pr falls back to its overlay for commands again",
+        SKILLS / "lite-pr" / "SKILL.md",
+        "only (run `/cla:cla-setup` when it is missing or stale)",
+        "(falls back to `cla.io/overlays/lite-pr.md` if absent)",
+        TARGETS,
+    ),
+    (
+        "spec-to-pr reads its gates from the overlay when the facts file is absent, wrapped",
+        SKILLS / "spec-to-pr" / "SKILL.md",
+        '"Workspace shape"; run `/cla:cla-setup` when it is missing or stale)',
+        '"Workspace shape"; `cla.io/overlays/spec-to-pr.md`\nwhen that file is absent)',
+        TARGETS,
+    ),
+    (
+        "codify-learnings reads commands from the facts file or the overlay again",
+        SKILLS / "codify-learnings" / "references" / "routing.md",
+        "(in\n  `cla.io/project-facts.md`), a typecheck",
+        "(`cla.io/project-facts.md`\n  or the overlay), a typecheck",
+        TARGETS,
+    ),
+    (
+        "new-worktree stops saying how to move an install command left in an old overlay",
+        SKILLS / "new-worktree" / "SKILL.md",
+        ' tell the user "run /cla:cla-setup to move it".',
+        "",
+        TARGETS,
+    ),
+    (
+        "review-change calls overlay injection mandatory again",
+        SKILLS / "review-change" / "references" / "dispatch.md",
+        "**Filling the placeholders.**",
+        "**Injection is mandatory.**",
         TARGETS,
     ),
 ]

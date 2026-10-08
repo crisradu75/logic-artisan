@@ -40,8 +40,7 @@ see the Windows note below for a way that can happen silently.
 > "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
 > so. If both spellings are genuinely in use, install from each.
 
-Then, inside the repo: `/cla:cla-init` (scaffold `cla.io/` + overlay stubs) and `/cla:sync-context`
-(populate the repo's facts). Pick up later releases with `/plugin marketplace update`. Details:
+Then, inside the repo: `/cla:cla-setup` (scaffold `cla.io/` and populate the repo's facts). Pick up later releases with `/plugin marketplace update`. Details:
 [Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo).
 
 ## Developing the harness (this repo only)
@@ -103,12 +102,12 @@ also runs in a consuming repo, which has no pytest gate over its plugin cache.
 
 ## Testing
 
-There is **no CI, by design** — the two local runs below are the whole verification story and the
-only gate before a merge:
+There is **no CI, by design** — the two local commands below are the whole verification story
+and the only gate before a merge:
 
 ```bash
 pytest plugin-tests -q -n auto --dist loadfile             # every pytest scope (1 today)
-node --test plugin-tests/node/mechanical-checks.test.mjs   # the one Node suite pytest cannot reach
+openspec validate --specs --strict                         # the live specs
 ```
 
 `-n auto --dist loadfile` needs `pytest-xdist` (`pip install pytest-xdist`); without it, drop both

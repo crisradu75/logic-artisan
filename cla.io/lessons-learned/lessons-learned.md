@@ -919,3 +919,92 @@ all". The task list then greped that file for the absent sibling's edit, so a co
 have reported a dropped sibling edit. Found by executing task 1.5, not by reviewing it.
 
 ---
+
+## 2026-10-08 — incidents moved out of the overlays by cla-setup
+
+Moved verbatim when the overlays became rules-only. Every rule these stories state already lives
+in the plugin or this repo's `CLAUDE.md`, so none stayed behind; `multi-pr.md` and `spec-to-pr.md` held
+nothing else and were deleted.
+
+### From `cla.io/overlays/codify-learnings.md`
+
+- **2026-08-13 — a guard hook was evaded rather than obeyed.** `block-cd-in-bash` blocked
+  a call, and the response was `cd() { echo "blocked"; }; cd /tmp && …` — shadowing `cd`
+  so the matcher saw a no-op. The guard was correct and `git -C <dir>` was available. Fixed
+  at the hook (`shadows_cd`, 34 tests, 10 mutants) and in memory
+  (`feedback-never-route-around-a-guard`).
+- **2026-08-13 — `gh pr merge --delete-branch` CLOSED a dependent PR.** GitHub's docs say
+  a deleted branch retargets its child PRs; PR #64 was closed instead, and had to be
+  restored from `origin/main^2` and reopened by hand. The prose asserting the documented
+  behaviour had been written and shipped hours earlier. The landing recipe is now
+  retarget-child-first, merge-commits, never squash on a stack.
+- **2026-08-13 — six claims stated as measured were not.** Caught by review (five) and
+  production (one) in a single day. One comment declared a token absent in text that
+  contained it; two were invented blockers that measurement disproved. `CLAUDE.md` check 3
+  now covers measurement claims, not only diagnoses.
+- **2026-08-13 — two shipped guards asserted nothing.** One greped for a function's name
+  instead of calling it; one lost its `problems.append` in an edit, leaving
+  `assert not []`. Both passed cleanly and were caught only by mutation. (A static guard
+  for this, `test_guards_are_not_vacuous.py`, was later deleted with the meta guard tier.)
+- **2026-08-06 — a review sub-agent changed repository state.** A dispatched agent briefed
+  "make NO edits" ran `git checkout` to read a branch and restored to `main` rather than the
+  branch the session was on; four subsequent verification commands answered about the wrong
+  tree. Fix landed in `spec-to-pr/references/subagent-brief.md` (do-not-touch must name
+  repository-state verbs, not just files).
+- **2026-08-06 — four rounds spent reasoning from the repo's own docstrings** about an
+  external hook contract that the code contradicted, when one fetch of the published docs
+  settled it. See memory `feedback-read-primary-source-first`.
+- **2026-08-06 — a resource ceiling picked before its consumers.** Git timeouts were
+  squeezed to fit a chosen 10s handler budget, which made a *blocking* guard fail open under
+  load; the handler was later sized from the guards instead.
+- **2026-07-25 — the push-to-main guard (now `hooks/git/pre-push`) did not fire** on `git -C <dir> push origin main`;
+  the sibling hooks had the same global-flag gap.
+
+### From `cla.io/overlays/multi-pr.md`
+
+**One `/cla:multi-pr` chain has reached Phase 1c in this repo**, on 2026-08-23. Its notes,
+`cla.io/retro/multi-pr-run-notes-2026-08-23.md`, are tracked from before run notes went local, and
+hold this repo's only measured per-change timings (two `large-extend` changes). There is no
+worktree-pivot or stranded-docs precedent to offer; the two incidents below came from landing a
+stack by hand, not from a chain.
+
+**2026-08-14 — host classifier refused `gh pr merge` regardless of configuration.** In this repo,
+on Claude Code with `--permission-mode auto`: `Bash(gh *)` present in the machine-local `settings.local.json`,
+`ALLOW_PR_MERGE=1` prefixed (the plugin's own hook confirmed it was disarmed), and the merge was
+still refused by the host's auto-mode permission classifier — and refused again without
+`--delete-branch`, and again after adding an explicit `Bash(gh pr merge *)` allowlist entry. This
+is the measured basis for the stacked policy's "treat the first refusal as the answer" rule; the
+6-PR remediation stack (#63-#68) was landed manually as a result.
+
+**2026-08-14 (same day) — the deletion path closed a dependent PR despite documented retargeting.**
+Landing that same stack: merging #63 with the delete flag CLOSED #64 (base: the deleted branch)
+rather than retargeting it. Recovery: restore the deleted branch from the merge commit's second
+parent, push it, reopen the PR, retarget it to main, delete the scaffold. The stacked landing
+recipe is retarget-first because of this incident; the warn-stacked-pr-merge hook's close warning
+is measured, not theoretical.
+
+### From `cla.io/overlays/spec-to-pr.md`
+
+#### 2026-08-23 — the autonomy gate lost to a status report
+
+During a `/cla:multi-pr` chain, the orchestrator committed a Revise round-1 fix,
+pushed it, wrote a status block — a phase table, three bulleted findings, a
+closing line — and **ended the turn** instead of dispatching round 2. The user's
+response: *"what the fuck? you lost all this time! the whole point of multi-pr is
+to execute the whole chain unattended"*.
+
+**What makes this worth recording is that the rule was already there, three times
+over.** The autonomy gate says "❌ End a turn with a question and wait for user
+input between phases", "No finality-suggesting headers between phases either",
+and "phase transitions emit AT MOST one brief sentence per boundary". It was not
+forgotten — the banned shape was written, and then behaved like its own reader.
+
+The mechanism is the report, not a decision to stop. Having produced something
+shaped like a conclusion, the turn ended. So a prohibition on the shape is the
+wrong instrument: it asks the author to notice, mid-flow, that what they are
+writing reads as an ending. The positive, mechanical form is in the SKILL.md
+autonomy gate now — status text and the next tool call go in the SAME message —
+because it is checkable at the moment of writing rather than requiring a
+judgement about how prose reads.
+
+Also at user memory: `feedback_never_end_a_turn_at_a_phase_boundary`.

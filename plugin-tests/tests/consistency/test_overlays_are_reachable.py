@@ -38,6 +38,7 @@ are fixed by the same change.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -76,12 +77,98 @@ def _import_from(directory: Path, module: str):
     return loaded
 
 
-def test_this_repo_actually_has_overlays_to_reach():
-    """Non-vacuity partner. Every check below is trivially satisfiable in a repo
-    with no overlays at all, so pin that this one has them."""
-    assert _OVERLAYS.is_dir(), f"{_OVERLAYS} is missing"
-    found = sorted(p.name for p in _OVERLAYS.glob("*.md"))
-    assert len(found) >= 8, f"expected this repo's overlay set, found {found}"
+_SKILLS = _PLUGIN_ROOT / "skills"
+# A concrete overlay name as shipped prose or code spells it. `<skill>` and other
+# placeholders do not match, because `<` is not in the class.
+_NAMED_OVERLAY = re.compile(r"cla\.io/overlays/([a-z0-9][a-z0-9.-]*\.md)")
+
+
+def _overlays_named_by_the_plugin() -> set[str]:
+    names: set[str] = set()
+    for path in _PLUGIN_ROOT.rglob("*"):
+        if path.suffix in {".md", ".py"} and path.is_file():
+            names |= set(_NAMED_OVERLAY.findall(path.read_text(encoding="utf-8")))
+    return names
+
+
+# requirement: repo-context / Optional per-skill overlays
+def test_every_overlay_here_is_one_the_plugin_reads():
+    """Overlays are optional, so this repo carries only the ones with content, and
+    each must still be READ by something. An overlay whose skill stopped naming
+    it is dead text that looks configured. The named set's floor keeps the check
+    from passing over a scan that found nothing."""
+    named = _overlays_named_by_the_plugin()
+    assert "branch-prefix.local.md" in named and len(named) >= 3, named
+    present = sorted(p.name for p in _OVERLAYS.glob("*.md"))
+    assert "branch-prefix.local.md" in present, present
+    orphans = [name for name in present if name not in named]
+    assert not orphans, (
+        f"{orphans} sit in {_OVERLAYS} but no shipped skill or script names them, "
+        "so nothing reads them"
+    )
+    for name in present:
+        text = (_OVERLAYS / name).read_text(encoding="utf-8")
+        assert text.strip(), f"{name} is empty; delete it, since an absent overlay means the same"
+
+
+# A clause that sends a reader to an overlay when a fact is missing elsewhere, in
+# the three spellings the plugin used: "falls back to `cla.io/overlays/x.md`",
+# "`cla.io/overlays/x.md` when that file is absent", and "(`cla.io/project-facts.md`
+# or the overlay)". Matched over whitespace-joined text, since a clause wrapped
+# across two lines is still one clause.
+_FALLBACK = re.compile(
+    r"fall(?:s|ing)? back to (?:the |this |its )?(?:project )?(?:overlay|`cla\.io/overlays)"
+    r"|cla\.io/overlays/[a-z0-9.-]+\.md`? when that file is absent"
+    r"|project-facts\.md`?,? or (?:from |in )?(?:the|its|this skill's) overlay\b",
+    re.IGNORECASE,
+)
+_MANDATORY = re.compile(r"injection is mandatory", re.IGNORECASE)
+
+
+# requirement: repo-context / Optional per-skill overlays
+def test_no_shipped_text_makes_an_overlay_a_fallback_or_mandatory():
+    """Facts have one home, `cla.io/project-facts.md`. A "fall back to the
+    overlay" clause gives the same fact a second one, and "mandatory" injection
+    from a file that is optional injects nothing in most repos."""
+    files = sorted(p for p in _PLUGIN_ROOT.rglob("*.md") if p.is_file())
+    assert len(files) > 50, "the scan found too few files to mean anything"
+    hits = []
+    for p in files:
+        text = " ".join(p.read_text(encoding="utf-8").split())
+        hits += [f"{p.relative_to(_PLUGIN_ROOT)}: {m.group(0)!r}"
+                 for pattern in (_FALLBACK, _MANDATORY) for m in pattern.finditer(text)]
+    assert not hits, f"overlay used as a fact fallback or called mandatory: {hits}"
+
+
+# The one sentence every skill that reads a fact from the facts file carries for a
+# repo set up before overlays went rules-only: the fact may still sit in the overlay.
+_TRANSITIONAL = (
+    'If `cla.io/project-facts.md` lacks a fact this skill needs and this skill\'s overlay exists, '
+    'the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it".'
+)
+# Skills that name the facts file without reading a fact from it in the session:
+# cla-setup writes it, report-upstream and shape-decision only route or suggest,
+# and multi-spec names it only in a brief for a dispatched agent.
+_NO_TRANSITIONAL = {"cla-setup", "report-upstream", "shape-decision", "multi-spec", "_shared"}
+
+
+# requirement: repo-context / Optional per-skill overlays
+def test_every_skill_reading_the_facts_file_says_how_to_move_an_old_fact():
+    """A skill reads a fact only from the facts file, so in a repo whose old overlay
+    still holds it the fact is silently missing. The shared line turns that into an
+    instruction the user can act on."""
+    readers = sorted({p.relative_to(_SKILLS).parts[0] for p in _SKILLS.rglob("*.md")
+                      if "cla.io/project-facts.md" in p.read_text(encoding="utf-8")})
+    assert len(readers) >= 8, readers
+    missing = []
+    for skill in readers:
+        if skill in _NO_TRANSITIONAL:
+            continue
+        text = " ".join(" ".join(p.read_text(encoding="utf-8").split())
+                        for p in (_SKILLS / skill).rglob("*.md"))
+        if _TRANSITIONAL not in text:
+            missing.append(skill)
+    assert not missing, f"{missing} read the facts file but never say how to move a fact from an old overlay"
 
 
 def test_the_staleness_guard_scans_this_repos_overlays():
@@ -97,11 +184,10 @@ def test_the_staleness_guard_scans_this_repos_overlays():
         f"other than {_OVERLAYS}, so those overlays are unchecked and the guard "
         "still reports success"
     )
-    # Opening the files is not the same as extracting anything from them. The
-    # guard's own `checked > 0` assert is gated on `cla.io/project-facts.md`
-    # existing, and this repo has none — so a regression in candidate extraction
-    # would leave `checked == 0`, `stale == []`, and a green guard. Pin the floor
-    # here, where the overlays are known to exist.
+    # Opening the files is not the same as extracting anything from them: a
+    # regression in candidate extraction would leave `checked == 0`,
+    # `stale == []`, and a green guard. Pin the floor here, where this repo's
+    # facts file and overlays are known to name real paths.
     checked, _stale, _unreadable = guard.scan(_REPO_ROOT)
     assert checked > 0, (
         "the staleness guard extracted zero path candidates from this repo's "

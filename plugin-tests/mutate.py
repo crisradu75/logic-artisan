@@ -30,7 +30,7 @@ real in-place edit to a real file, restored after the target runs, so anything
 else reading concurrently can see mutated source alongside a clean `git status` —
 which looks exactly like a genuine defect. Recorded after a guard flaked 3-of-5
 runs under a concurrent batch, and reproduced twice on 2026-08-28: one review
-agent read a mutated `check_script_drift.py`, another aborted at preflight on a
+agent read a mutated test-tree script, another aborted at preflight on a
 leftover `.mutate-backup` from a run in flight. Serialise the two, or copy the
 tree and run the batch there.
 
@@ -363,7 +363,7 @@ def run_pytest(targets: list[Path]) -> tuple[int, str]:
     # NOT kept, and now tested rather than assumed: PYTHONUTF8 and PYTHONIOENCODING.
     # The concern was that dropping them leaves the child on the platform default
     # encoding. Measured the same way over `plugin-tests/tests/skills/codify-retro`
-    # — 70 non-ASCII lines between its test module and the script it drives —
+    # (since deleted) — 70 non-ASCII lines between its test module and the script it drives —
     # with each of PYTHONUTF8=1, PYTHONUTF8=0, PYTHONIOENCODING=cp1252 and
     # PYTHONIOENCODING=utf-8: all four match the baseline exit code and count line.
     # They stay out because the allowlist's rule is to name what the child NEEDS,

@@ -1,240 +1,73 @@
-# spec-to-pr — per-run JSONL log schema
+# spec-to-pr — per-run JSONL record
 
-Handoff step 5 serializes the in-context phase outcomes as a single JSON object and pipes it to
-`lib/log_run.py`, which appends it to `cla.io/retro/spec-to-pr-runs.jsonl`. This file is the
-data source for `/cla:spec-to-pr-retro`.
-
-`aggregate.py` is the consumer. **The schema below lists every field it actually reads** — adding
-fields the aggregator doesn't consume is dead weight (drop them rather than carry them). Two
-exceptions, and both are narrow:
-
-- `change`, `mode`, and `args` are identification-only — not read by the aggregator, kept so a human
-  (or a future heuristic) can attribute a ledger line to a specific run.
-- `findings_by_round` is a **deferred-decision instrument**. A rule elsewhere in this plugin is
-  explicitly deferred on evidence this field is the only thing that would supply, and its reversal
-  condition names it. Recording it from the first run is the point: a decision waiting on a ledger
-  that starts collecting the day someone finally reads it waits another year. **This exception is
-  not a general licence.** A field qualifies only when a requirement **archived into this plugin's
-  own live spec** names it as the evidence that requirement's reversal condition reads — not prose
-  written beside the field in the same change. That distinction is the whole test: a deferral and the
-  field it excuses, authored together by one author, certify each other, and anyone could qualify an
-  unread field by adding a paragraph naming it. A requirement that survived review and archive
-  cannot be written to order. (The authority is the plugin's spec, wherever this file is read. In a
-  repo that installed the plugin, it is not your `openspec/specs/` — that tree holds your
-  requirements, and no requirement of yours qualifies a field in the plugin's schema.)
-
-  **The exit.** When that requirement's condition is met, or the requirement is removed, the field
-  loses its exception and falls back under the main rule — added to the aggregator or dropped. Check
-  it at the next schema change that touches this phase, since nothing else will notice.
-
-The producer (this skill) is the contract: `aggregate.py` silently absorbs missing fields, so a missing
-field is a silent loss of retro signal, not an error.
+Handoff pipes one JSON object per run to `lib/log_run.py`, which appends it to
+`cla.io/retro/spec-to-pr-runs.jsonl`; `/cla:spec-to-pr-retro` reads it through
+`spec_to_pr_aggregate.py`. Build the record from the example below. `log_run.py` checks it against
+`SHAPES` in that file and refuses an off-shape record, naming every field that is off; the retry
+rule is in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/handoff.md` §5. This file says what
+each field MEANS; where the two disagree, the code is right.
 
 ## Invocation
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py spec-to-pr-runs.jsonl <<'JSON'
 {
-  "ts": "<ISO-8601 UTC, e.g. 2026-05-28T14:32:11Z>",
+  "ts": "2026-05-28T14:32:11Z",
   "change": "<change-name>",
-  "mode": "<description|explore-result|existing-change>",
-  "args": {"review_rounds": N, "test_rounds": N, "pr_rounds": N, "auto": true|false},
+  "mode": "description",
+  "flags": ["--inherits", "--pr-rounds"],
   "phases": [
-    {"name": "Propose",   "status": "ok|warn|skip|fail", "reason": "<required iff warn/fail>",
-     "report_chars": N},
-    {"name": "Review",    "status": "...", "rounds_used": N, "rounds_cap": N,
-     "size_gate": "small|large", "verdict": "READY|FIX FIRST|RETHINK",
-     "verified_claims_count": N,
-     "agents": ["design", "task", "spec"],   /* large mode only — omit in small */
-     "reason": "<iff warn/fail>", "report_chars": N},
-    {"name": "Implement", "status": "...", "reason": "<iff warn/fail>", "report_chars": N},
-    {"name": "Test",      "status": "...", "rounds_used": N, "rounds_cap": N,
-     "reason": "<iff warn/fail>", "report_chars": N},
-    {"name": "Ship",      "status": "...", "version_bumped": true,
-     "reason": "<iff warn/fail>", "report_chars": N},
-    {"name": "Revise",    "status": "...", "rounds_used": N, "rounds_cap": N,
-     "agents": ["code-reviewer", "silent-failure-hunter", ...],
-     "findings_by_round": [{"round": 1, "found": N, "sibling_instance": 0},
-                           {"round": 2, "found": N, "sibling_instance": N | null}],
-     "reason": "<iff warn/fail>", "report_chars": N},
-    {"name": "Archive",   "status": "...", "reason": "<iff warn/fail>", "report_chars": N},
-    {"name": "Handoff",   "status": "ok", "report_chars": N}
+    {"name": "Propose",   "status": "ok"},
+    {"name": "Review",    "status": "ok", "rounds_used": 1, "rounds_cap": 1},
+    {"name": "Implement", "status": "ok"},
+    {"name": "Test",      "status": "warn", "rounds_used": 2, "rounds_cap": 3,
+     "reason": "<why it warned>"},
+    {"name": "Ship",      "status": "ok"},
+    {"name": "Revise",    "status": "ok", "rounds_used": 2, "rounds_cap": 2,
+     "findings_by_round": [{"round": 1, "found": 3}, {"round": 2, "found": 1}]},
+    {"name": "Archive",   "status": "ok"},
+    {"name": "Handoff",   "status": "ok"}
   ],
+  "escalated_to_diagnose": 0,
   "asks": [{"header": "<header>", "choice": "<chosen-option-label>"}],
-  "deferred_to_todo": N,
-  "cost": {"wall_clock_minutes": N, "model": "<the session model>",
-           "agents_dispatched": N, "escalations": N},
   "routing": {
-    "models": {"opus": N, "sonnet": N, "haiku": N},
-    "implement_delegated": true|false,
-    "escalate_up_fired": true|false,
     "revise_findings_by_tier": {
-      "code-reviewer":         {"found": N, "phantom": N},
-      "silent-failure-hunter": {"found": N, "phantom": N},
-      "type-design-analyzer":  {"found": N, "phantom": N},
-      "pr-test-analyzer":      {"found": N, "phantom": N},
-      "comment-analyzer":      {"found": N, "phantom": N}
+      "code-reviewer":         {"found": 2, "phantom": 0},
+      "silent-failure-hunter": {"found": 1, "phantom": 0}
     }
   }
 }
 JSON
 ```
 
-### The `cost` object — why a run's price is recorded at all
+Shapes the check holds you to, most often missed from memory: `ts` is a date-time with a zone, never
+a bare date and never a `date` key; `phases` is a LIST of objects in run order, each with `name`
+(capitalised, as above) and `status` (`ok` / `warn` / `skip` / `fail`); counts are integers, never
+strings or booleans; `flags` and `asks` are lists. Counts only — no prose, and under 4 KiB, so the
+append stays atomic against a concurrent run.
 
-`right-model` recommends a tier and never learns whether the recommendation was
-right, because nothing anywhere records what a run actually cost. For a single
-developer paying per token that is the one number that decides whether a workflow
-is worth invoking, and its absence is why every routing rule in this plugin rests
-on argument rather than measurement.
+## What each field means
 
-Four fields, all cheap and all honest about what they are:
-
-- `wall_clock_minutes` — end minus start, measured, not estimated. The only field
-  that needs no interpretation.
-- `model` — the session model the run executed at, so a cost is comparable only
-  against runs of the same tier.
-- `agents_dispatched` — the count of sub-agent dispatches. This is the real cost
-  driver in this plugin: each Review or Revise agent is its own context window,
-  and a large-change run dispatching eight of them costs several times a small
-  one, regardless of wall-clock.
-- `escalations` — how many of those were escalate-up dispatches to a higher tier.
-
-**Token counts are deliberately NOT recorded.** The orchestrator cannot observe
-its own token usage, so any number it wrote would be a guess wearing a
-measurement, and `agents_dispatched` is the honest proxy that correlates with it.
-Recording a fabricated total would poison the very comparison this object exists
-to enable — see `skill-authoring.md`'s prove-it-adjacent rule.
-
-Counts only, no prose — prose lives in the transcript and the PR body. The record must stay under
-4 KiB so the direct `open("ab")` append remains atomic against concurrent runs (the script enforces
-this; oversize records exit 1).
-
-## Field obligations
-
-- `reason` is REQUIRED on any phase with `warn`/`fail` status — the only signal `aggregate.py` has
-  into *why* a phase warned. `/cla:spec-to-pr-retro` cannot propose a fix for an unnamed reason.
-- On Ship: `version_bumped` reflects whether this repo has a version-bump preflight (e.g. a
-  `plugin.json`/version-manifest artifact bumped in-PR) as part of Ship. When the repo has no such
-  artifact, Ship has no version-bump preflight and the field is retained at a constant value only so
-  `aggregate.py`'s `version_bump_misses` metric stays schema-compatible. See `cla.io/overlays/spec-to-pr.md`
-  for this repo's concrete answer.
-- On Review: `size_gate` (`"small"` or `"large"`) and `verdict` (`"READY"` / `"FIX FIRST"` /
-  `"RETHINK"`) are required whenever the checklist ran, in both small and large mode. Unknown
-  strings get bucketed into `review_size_gate_unknown` / `review_verdicts_unknown` and surface as
-  drift.
-- On Review: `verified_claims_count` is required whenever the checklist ran (the retro skill's
-  "Verified-claims section going silent" heuristic depends on it).
-- `report_chars` (every phase, optional-additive) — the character count of THIS phase's final
-  user-facing report text (the printed summary shown to the user for that phase, not the internal
-  reasoning or any sub-agent transcript). A cheap verbosity proxy that `aggregate.py` computes per
-  phase (`report_chars.<Phase>.mean`) — it approximates the phase's *printed-report* cost, not full
-  session token spend (which isn't observable from in-context). Omit entirely rather than guess; a
-  missing value is silently excluded from that phase's mean, same as every other optional field (a
-  present-but-malformed value is excluded too, but counted separately under `report_chars_coerced`
-  so the two cases stay distinguishable). Most phases run under this skill's one-sentence-per-phase-
-  transition rule (no headers/bullets outside the Handoff terminal report — see `SKILL.md`), so
-  Implement/Ship/Archive should sit near a small, near-constant floor; only Propose/Review/Handoff
-  carry substantial variable-length content. A climbing mean on a low-narration phase more likely
-  signals that one-sentence rule being violated than genuine prose growth.
-- On Review: `agents` is REQUIRED in large mode (must contain `["design", "task", "spec"]` or
-  equivalent) and MUST be omitted (or empty `[]`) in small mode. Inconsistency between `size_gate`
-  and `agents` is counted as `review_gate_pair_mismatches` — non-zero means the producer is buggy.
-- On Revise: `agents` lists every agent dispatched. Duplicates within a list are counted once
-  (deduped with a stderr warning) — emit each agent once. **Log each agent under its EXACT canonical
-  id from this fixed list** (do NOT log the `pr-review-toolkit:`-prefixed `subagent_type` you pass to
-  `Agent` — the ledger key is the bare name for those): `code-reviewer`, `silent-failure-hunter`,
-  `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer` (all **bare**), and
-  `plugin-dev:skill-reviewer` (**prefixed** — it has no bare form). Inconsistent names (e.g.
-  `code-reviewer` in some runs, `pr-review-toolkit:code-reviewer` in others) split one agent across
-  two ledger keys and corrupt `/cla:spec-to-pr-retro`'s dispatch counts.
-
-### `routing` object (model-routing telemetry)
-
-Added by `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s routing rules. **Entirely optional and additive** — records
-predating it omit it and `aggregate.py` absorbs their absence silently (each rate's denominator counts
-only records that carried the relevant field, NOT `runs_analyzed`, so legacy runs never dilute the
-ratios). Emit it whenever any routed dispatch happened in the run.
-
-- `models`: per-dispatch tally of which model ran each dispatched agent across the whole run —
-  **every routed dispatch counts**: the Revise round-1 `Workflow` fan-out, every Revise round-≥2
-  `Agent` dispatch, the Implement delegate, and any escalate-up dispatch. (Same scope as the hoisted
-  routing rule in SKILL.md — if it got a `model:`, it gets counted, whether via `Agent(model:)` or
-  `Workflow`'s `agent(..., {model})`.) Keys are canonical model names — **`opus` / `sonnet` / `haiku`
-  only**; any other string lands in `routing_models_unknown` and reads as producer drift. Count each
-  dispatch once. All counts in `routing` are non-negative — the aggregator rejects negatives with a
-  warning.
-- `implement_delegated`: `true` iff the Implement phase delegated to a coding sub-agent (the sized
-  trigger fired — see `model-routing.md`); `false` iff it ran inline. Omit only if Implement did not
-  run at all.
-- `escalate_up_fired`: `true` iff the session was below Opus AND the Review-verdict escalate-up
-  dispatch happened (a RETHINK-borderline verdict seconded by an opus `Agent`); `false` on an Opus
-  session or when no escalation was needed.
-- `findings_by_round`: one entry per dispatched Revise round, in round order. `found` is that
-  round's **deduplicated** Critical+Important count after triage — the findings, not the agent
-  reports of them. `sibling_instance` is, verbatim: *Of that round's `found`, how many were the shape the round-≥2 question targets: a defect the previous round's fix introduced, or a sibling instance of the defect the previous round's fix missed. `0` on round 1, which has no previous fix.* It is
-  `0` on round 1, which has no previous fix to have missed anything — a definition, not a
-  measurement.
-
-  **`null` is the spelling for "no measurement", and it is not `0`.** Write `null` on a round ≥ 2
-  that was never asked the question — one entered on an empty `PREV_FIX_SHA`, or a rejection-only
-  re-entry dispatched against open findings rather than a diff — and on a round whose enumeration
-  was still uncited after its one re-dispatch. Write `0` only for a round that was asked and found
-  no sibling instance. Three states, all distinguishable by a hand-reader: an integer is a count,
-  `null` is a round that produced none, and an absent `findings_by_round` is a record written before
-  the field existed. **Optional, and absent on records written before it existed** — absent is not
-  `found: 0`, and a reader must distinguish them rather than treating a missing field as a measured
-  zero.
-
-  **Over agent-surfaced findings, the sum of `revise_findings_by_tier[*].found` is greater than or
-  equal to the sum of `findings_by_round[*].found`.** The per-agent field credits one finding to
-  every agent that surfaced it, and counts phantoms; this one is deduplicated after triage. Two
-  agents reporting the same defect count twice there and once here. **They are equal whenever every
-  finding was surfaced by exactly one agent**, which is common, so do not read a match as a producer
-  bug — and do not read the relation as an equality to assert either. Both fields are spelled
-  `found`, which is why the direction is stated rather than left to be inferred.
-
-  **One case inverts it, and it is not drift.** A finding the *orchestrator* originates rather than
-  an agent — an INT-CAP/INT-SYC or SIR-TEST re-verification hit, or a Critical on an
-  orchestrator-specified remedy — is a real Critical or Important in the round's `found`, and lands
-  in no per-agent bucket, because `revise_findings_by_tier` is keyed strictly by canonical agent id.
-  Enough of those on one round and the per-round sum exceeds the per-agent sum. The direction above
-  is stated over agent-surfaced findings for exactly this reason.
-
-  **What it is for.** Revise does not make a second round automatic, and the reason is that the
-  evidence for doing so is one chain of three to four changes. This field is what would end that
-  deferral: the condition is, verbatim:
-
-  > Revisit the `--pr-rounds` default when `findings_by_round` covers at least eight changes across at least two distinct chains in which a round ≥ 2 ran, and a round ≥ 2 surfaced at least one Critical or Important finding on a majority of them.
-
-  The two-chain floor comes from the originating decision; the eight-change denominator and the
-  majority bar are stated judgements, chosen so the question is not re-argued on another sample of
-  four.
-
-- `revise_findings_by_tier`: **per-AGENT** count of Revise findings, keyed by the SAME canonical
-  agent ids the Revise `agents` list uses (`code-reviewer`, `silent-failure-hunter`,
-  `type-design-analyzer`, `pr-test-analyzer`, `comment-analyzer`, `plugin-dev:skill-reviewer`) —
-  emit only the agents that were dispatched. Per agent: `found` = the Critical+Important findings it
-  surfaced (Suggestions are NOT counted — they flow to `TODO.md` and are not a per-agent quality
-  signal); `phantom` = of those `found`, how many were disproven during triage (the agent claimed a
-  bug that verification refuted). This is the load-bearing signal `/cla:spec-to-pr-retro`'s per-agent
-  YIELD heuristic reads (`aggregate.py`'s `revise_findings`): an agent dispatched on ~every run but
-  with near-zero `found`/run is a trim-the-trigger candidate, and a phantom rate concentrated on one
-  agent flags a bug-hunter whose accuracy is slipping.
-  **Schema pin (2026-07-18):** this field is keyed per-AGENT. It previously appeared in two other,
-  mutually-incompatible shapes — legacy **model-tier** (`opus`/`sonnet`/`haiku`) and legacy
-  **severity** (`critical`/`important`/`suggestion`/`phantom_rejected`) — which made the field
-  impossible to aggregate (its keys changed meaning row to row). `aggregate.py` now consumes ONLY the
-  per-agent shape and counts every genuine legacy-shape record (all keys drawn from the model-tier or
-  severity sets) under `revise_findings_legacy_records` so the drift stays visible; do not emit either
-  legacy shape. Anything that is NEITHER per-agent NOR a genuine legacy shape — a non-dict field, an
-  unknown/misspelled agent key, or an agent key with a non-dict value — counts under
-  `revise_findings_malformed_records` with a stderr warning (it is current-producer drift, not benign
-  history, so it must not hide in the legacy bucket). An empty `{}` (a Revise round that found nothing)
-  counts in NO bucket — legitimate "no data," not a shape error. Underscore agent keys (`code_reviewer`)
-  are tolerated by the aggregator (normalized to hyphens) but hyphens are canonical — match the `agents`
-  list. `found`/`phantom` are trusted as producer-filtered to Critical+Important; the aggregator does
-  not re-derive severity, so honoring the "Suggestions excluded" rule above is a producer obligation.
-
-(The orchestrator's runtime handling of a `log_run.py` failure — non-fatal, capture stderr but do
-not warn the whole run — is stated inline in `SKILL.md` Handoff step 5.)
+- `ts` — when the run ended, UTC. `change`, `mode` — the change and how it was entered
+  (`description`, `explore-result` or `existing-change`).
+- `flags` — every flag the run was invoked with, by name as typed and without its value
+  (`"--pr-rounds"`, not `"--pr-rounds 1"`); `[]` when there were none. The retro counts how often
+  each flag is used.
+- `reason` — on every `warn` / `fail` phase: the retro's only signal into *why*, grouped by exact text.
+- `rounds_used` / `rounds_cap` — always as a pair. Required on Test and Revise whenever their status
+  is not `skip`; optional on Review. A phase that used its whole cap, with a cap above 1, is a cap
+  exhaustion — on Revise, whose round 2 is routine, only when it also ended `warn` or `fail`.
+- Revise: `findings_by_round` — one entry per round, built as each round closes, never
+  reconstructed at Handoff. `found` is that round's deduplicated Critical+Important count after
+  triage. The retro's round-2 yield reads it.
+- `escalated_to_diagnose` — how many times the run escalated to `/cla:diagnose` (Test's
+  same-cause rule, or anywhere else); `0` when it never did.
+- `asks` — every user ask in the run, by header and chosen label.
+- `routing.revise_findings_by_tier` — per Revise agent dispatched, by canonical id:
+  `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`,
+  `type-design-analyzer` (bare — not the `pr-review-toolkit:` form you pass to `Agent`) and
+  `plugin-dev:skill-reviewer` (prefixed; it has no bare form); the check refuses any other key.
+  `found` = Critical+Important findings it surfaced — Suggestions excluded — and `phantom` = how
+  many of those triage disproved. It credits a finding to every agent that raised it, so its
+  `found` total is usually at least `findings_by_round`'s; a finding the orchestrator raised itself
+  lands only in the latter.

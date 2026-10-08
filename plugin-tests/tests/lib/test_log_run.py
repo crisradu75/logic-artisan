@@ -2,7 +2,9 @@
 
 Ported from the two per-skill copies this replaced (spec-to-pr's and
 codify-learnings's `tests/test_log_run.py`, which were themselves near-identical),
-plus the cases the new `<ledger>` argument introduces. The ledger dir is
+plus the cases the `<ledger>` argument introduces, plus the record-shape check
+for the one ledger it accepts. The plumbing tests write the smallest spec-to-pr
+record the writer takes, so they test the writer and not the shape. The ledger dir is
 redirected to a tmp dir via CLAUDE_RETRO_DIR; the tests that must exercise the
 NO-override path instead run inside a throwaway git repo (`scratch_repo`), so
 no test touches a real ledger.
@@ -20,7 +22,15 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "lib" / "log_run.py"
 
+import log_run as log_run_shapes  # noqa: E402 — the shapes, for the ids a record may use
+
 LEDGER = "spec-to-pr-runs.jsonl"
+
+
+def _rec(**extra) -> str:
+    """The smallest record the ledger accepts, plus any extra keys."""
+    return json.dumps({"ts": "2026-10-08T09:15:00Z", "change": "c", "mode": "description",
+                       "phases": [], **extra}, ensure_ascii=False)
 
 
 def _run(stdin: str, retro_dir: Path | None, ledger: str | None = LEDGER,
@@ -71,11 +81,12 @@ def scratch_repo(tmp_path: Path) -> Path:
 # Appending
 # --------------------------------------------------------------------------- #
 
+# requirement: run-ledgers / Ledger files
 def test_appends_one_line_per_call(tmp_path: Path) -> None:
     retro = tmp_path / "retro"
 
-    r1 = _run('{"change":"a","phases":[]}', retro)
-    r2 = _run('{"change":"b","phases":[]}', retro)
+    r1 = _run(_rec(change="a"), retro)
+    r2 = _run(_rec(change="b"), retro)
 
     assert r1.returncode == 0, r1.stderr
     assert r2.returncode == 0, r2.stderr
@@ -88,27 +99,16 @@ def test_appends_one_line_per_call(tmp_path: Path) -> None:
     assert json.loads(lines[1])["change"] == "b"
 
 
-def test_two_ledgers_stay_separate(tmp_path: Path) -> None:
-    # The whole point of the `<ledger>` argument: one writer, several ledgers.
-    # If the argument were ignored, both records would land in one file.
-    retro = tmp_path / "retro"
-    _run('{"a":1}', retro, ledger="spec-to-pr-runs.jsonl")
-    _run('{"b":2}', retro, ledger="codify-runs.jsonl")
-
-    assert json.loads((retro / "spec-to-pr-runs.jsonl").read_text(encoding="utf-8")) == {"a": 1}
-    assert json.loads((retro / "codify-runs.jsonl").read_text(encoding="utf-8")) == {"b": 2}
-
-
 def test_creates_deeply_missing_parent_dirs(tmp_path: Path) -> None:
     retro = tmp_path / "nested" / "deep" / "retro"
-    r = _run('{"change":"x","phases":[]}', retro)
+    r = _run(_rec(), retro)
     assert r.returncode == 0, r.stderr
     assert Path(r.stdout.strip()).exists()
 
 
 def test_preserves_unicode(tmp_path: Path) -> None:
     retro = tmp_path / "retro"
-    r = _run('{"note":"café — ✓"}', retro)
+    r = _run(_rec(note="café — ✓"), retro)
     assert r.returncode == 0, r.stderr
     written = Path(r.stdout.strip()).read_text(encoding="utf-8")
     assert "café — ✓" in written, "record must not be escaped to ASCII"
@@ -131,11 +131,12 @@ def test_rejects_malformed_json(tmp_path: Path) -> None:
 
 
 def test_rejects_oversize_record(tmp_path: Path) -> None:
-    r = _run(json.dumps({"prose": "x" * 5000}), tmp_path / "retro")
+    r = _run(_rec(prose="x" * 5000), tmp_path / "retro")
     assert r.returncode == 1
     assert "4 KiB" in r.stderr
 
 
+# requirement: run-ledgers / Ledger files
 def test_nothing_is_written_when_the_record_is_rejected(tmp_path: Path) -> None:
     # A rejected record must not leave a partial line behind for the retro to
     # trip over — the ledger is append-only and nothing repairs it.
@@ -149,46 +150,63 @@ def test_nothing_is_written_when_the_record_is_rejected(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 def test_missing_ledger_argument_is_refused(tmp_path: Path) -> None:
-    r = _run('{"a":1}', tmp_path / "retro", args=[])
+    r = _run(_rec(), tmp_path / "retro", args=[])
     assert r.returncode == 1
     assert "usage" in r.stderr
 
 
 def test_extra_arguments_are_refused(tmp_path: Path) -> None:
-    r = _run('{"a":1}', tmp_path / "retro", args=[LEDGER, "extra.jsonl"])
+    # A record the ledger accepts, so only the arity rule can refuse it.
+    r = _run(_rec(), tmp_path / "retro", args=[LEDGER, "extra.jsonl"])
     assert r.returncode == 1
+    assert "usage" in r.stderr
+    assert not (tmp_path / "retro").exists()
 
 
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
 @pytest.mark.parametrize("bad", [
     "../escape.jsonl",
+    "../spec-to-pr-runs.jsonl",
     "sub/dir.jsonl",
     "sub\\dir.jsonl",
     "runs.txt",
     ".hidden.jsonl",
     "",
+    # Retired ledgers, and near misses of the live one: a typo would start a file
+    # nothing reads.
+    "codify-runs.jsonl",
+    "lite-pr-runs.jsonl",
+    "feedback-runs.jsonl",
+    "spec-to-pr-runs-old.jsonl",
+    "Spec-to-pr-runs.jsonl",
 ])
-def test_a_ledger_name_that_is_not_a_bare_filename_is_refused(tmp_path: Path, bad: str) -> None:
+def test_a_ledger_name_that_is_not_the_one_is_refused(tmp_path: Path, bad: str) -> None:
     # The caller is a model assembling a command line, so a path-shaped argument
     # writing outside the ledger dir is a real shape, not a hypothetical one.
-    r = _run('{"a":1}', tmp_path / "retro", ledger=bad)
+    retro = tmp_path / "retro"
+    r = _run(_rec(), retro, ledger=bad)
     assert r.returncode == 1, f"{bad!r} was accepted"
-    assert not (tmp_path / "escape.jsonl").exists()
+    assert r.stderr.strip() == (f"log_run: {bad!r} is not a ledger; the only ledger is "
+                                "spec-to-pr-runs.jsonl")
+    assert not retro.exists() and not (tmp_path / "escape.jsonl").exists()
 
 
 # --------------------------------------------------------------------------- #
 # Resolving the ledger dir
 # --------------------------------------------------------------------------- #
 
+# requirement: run-ledgers / Ledger files
 def test_runs_dir_env_override(tmp_path: Path) -> None:
     retro = tmp_path / "elsewhere"
-    r = _run('{"a":1}', retro)
+    r = _run(_rec(), retro)
     assert Path(r.stdout.strip()).parent == retro
 
 
+# requirement: plugin-distribution / Repo data stays in the repo
 def test_runs_dir_default_is_cla_io_retro(scratch_repo: Path) -> None:
     # With no override, the dir comes from `git rev-parse --show-toplevel` —
     # hence `cwd`, so the write lands in the scratch repo, not this one.
-    r = _run('{"a":1}', None, cwd=scratch_repo)
+    r = _run(_rec(), None, cwd=scratch_repo)
     assert r.returncode == 0, r.stderr
     written = Path(r.stdout.strip())
     assert written.parent.as_posix().endswith("cla.io/retro")
@@ -196,7 +214,7 @@ def test_runs_dir_default_is_cla_io_retro(scratch_repo: Path) -> None:
 
 
 def test_blank_override_is_treated_as_unset(scratch_repo: Path) -> None:
-    r = _run('{"a":1}', Path("   "), cwd=scratch_repo)
+    r = _run(_rec(), Path("   "), cwd=scratch_repo)
     assert r.returncode == 0, r.stderr
     written = Path(r.stdout.strip())
     assert written.parent.as_posix().endswith("cla.io/retro")
@@ -206,6 +224,260 @@ def test_blank_override_is_treated_as_unset(scratch_repo: Path) -> None:
 def test_relative_override_is_rejected_loudly(tmp_path: Path) -> None:
     # Silently guessing would make logged runs vanish from the retro, which
     # resolves the same path independently.
-    r = _run('{"a":1}', Path("relative/retro"))
+    r = _run(_rec(), Path("relative/retro"))
     assert r.returncode == 1
     assert "absolute path" in r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Record shapes
+# --------------------------------------------------------------------------- #
+# One ledger has a shape the writer checks. Each refusal case below is one
+# edit to a conforming record, and must be refused with one line naming the
+# field, leaving the ledger absent. The fleet's real drift is in the list:
+# `phases` as an object (the motivating defect), `date` for `ts`, `phase` for
+# `name`, `asks` as an object, and the legacy severity and model-tier shapes of
+# `revise_findings_by_tier`.
+
+SPEC = "spec-to-pr-runs.jsonl"
+
+
+def _spec_record() -> dict:
+    return {
+        "ts": "2026-10-08T09:15:00Z", "change": "add-thing", "mode": "existing-change",
+        "flags": ["--inherits", "--pr-rounds"],
+        "phases": [
+            {"name": "Propose", "status": "ok"},
+            {"name": "Review", "status": "ok", "rounds_used": 1, "rounds_cap": 1},
+            {"name": "Implement", "status": "ok"},
+            {"name": "Test", "status": "warn", "rounds_used": 2, "rounds_cap": 3,
+             "reason": "one flaky test re-run"},
+            {"name": "Ship", "status": "ok"},
+            {"name": "Revise", "status": "ok", "rounds_used": 2, "rounds_cap": 2,
+             "findings_by_round": [{"round": 1, "found": 3}, {"round": 2, "found": 1}]},
+            {"name": "Archive", "status": "ok"},
+            {"name": "Handoff", "status": "ok"},
+        ],
+        "escalated_to_diagnose": 1,
+        "asks": [{"header": "Scope", "choice": "split"}],
+        "routing": {"revise_findings_by_tier": {
+            "code-reviewer": {"found": 2, "phantom": 0},
+            "plugin-dev:skill-reviewer": {"found": 0, "phantom": 0}}},
+    }
+
+
+def _phase(rec: dict, name: str) -> dict:
+    return next(p for p in rec["phases"] if p["name"] == name)
+
+
+def _set(path: str, value):
+    """An edit that sets one dotted path, `phases.Test.reason` style."""
+    def edit(rec: dict) -> None:
+        *parents, last = path.split(".")
+        node = rec
+        for key in parents:
+            node = _phase(rec, key) if node is rec.get("phases") else node[key]
+        node[last] = value
+    return edit
+
+
+def _drop(path: str):
+    def edit(rec: dict) -> None:
+        *parents, last = path.split(".")
+        node = rec
+        for key in parents:
+            node = _phase(rec, key) if node is rec.get("phases") else node[key]
+        del node[last]
+    return edit
+
+
+def _drop_both_rounds(name: str):
+    def edit(rec: dict) -> None:
+        for key in ("rounds_used", "rounds_cap"):
+            del _phase(rec, name)[key]
+    return edit
+
+
+def _chain(*edits):
+    def edit(rec: dict) -> None:
+        for one in edits:
+            one(rec)
+    return edit
+
+
+def _rename_phase_key(rec: dict) -> None:
+    rec["phases"] = [{"phase": p.pop("name"), **p} for p in rec["phases"]]
+
+
+def _date_for_ts(rec: dict) -> None:
+    rec["date"] = rec.pop("ts")[:10]
+
+
+def _phases_as_object(rec: dict) -> None:
+    rec["phases"] = {p["name"].lower(): p["status"] for p in rec["phases"]}
+
+
+SPEC_REFUSALS = [
+    # (case id, edit, a fragment the refusal must contain)
+    ("phases-object", _phases_as_object, "`phases` must be a list"),
+    ("ts-missing", _drop("ts"), "`ts` is required"),
+    ("date-instead-of-ts", _date_for_ts, "`ts` is required"),
+    ("ts-date-only", _set("ts", "2026-10-08"), "`ts` must be an ISO-8601 date-time"),
+    ("ts-no-zone", _set("ts", "2026-10-08T09:15:00"), "`ts` must be"),
+    ("ts-not-a-date", _set("ts", "2026-13-40T09:15:00Z"), "`ts` must be"),
+    ("ts-number", _set("ts", 1780000000), "`ts` must be"),
+    ("change-missing", _drop("change"), "`change` is required"),
+    ("mode-unknown", _set("mode", "resume"), "`mode` must be one of"),
+    ("phase-key-not-name", _rename_phase_key, "`phases[0].name` is required"),
+    ("phase-name-lowercase", _set("phases.Propose.name", "propose"), "`phases[0].name` must be one of"),
+    ("status-partial", _set("phases.Implement.status", "partial"), "`phases[2].status` must be one of"),
+    ("warn-without-reason", _drop("phases.Test.reason"), "`reason` is required on a warn phase (Test)"),
+    ("fail-without-reason", _set("phases.Ship.status", "fail"), "`reason` is required on a fail phase (Ship)"),
+    ("empty-reason", _set("phases.Test.reason", " "), "`phases[3].reason` must be a non-empty string"),
+    ("rounds-without-cap", _drop("phases.Test.rounds_cap"), "`rounds_used` and `rounds_cap` go together (Test)"),
+    ("cap-without-rounds", _drop("phases.Revise.rounds_used"), "`rounds_used` and `rounds_cap` go together (Revise)"),
+    ("rounds-as-string", _set("phases.Revise.rounds_used", "2"), "`phases[5].rounds_used` must be a non-negative integer"),
+    ("rounds-as-bool", _set("phases.Revise.rounds_used", True), "`phases[5].rounds_used` must be a non-negative integer"),
+    ("rounds-negative", _set("phases.Revise.rounds_cap", -1), "`phases[5].rounds_cap` must be a non-negative integer"),
+    ("findings-by-round-object", _set("phases.Revise.findings_by_round", {"1": 3}), "`phases[5].findings_by_round` must be a list"),
+    ("round-missing-found", _set("phases.Revise.findings_by_round", [{"round": 1}]),
+     "`phases[5].findings_by_round[0].found` is required"),
+    ("asks-object", _set("asks", {"count": 1, "choices": ["split"]}), "`asks` must be a list"),
+    ("ask-missing-choice", _set("asks", [{"header": "Scope"}]), "`asks[0].choice` is required"),
+    # Flags by name as typed: one spelling per flag, or the retro counts two.
+    ("flags-a-string", _set("flags", "--inherits"), "`flags` must be a list"),
+    ("flag-without-dashes", _set("flags", ["inherits"]), "`flags[0]` must be a flag name as typed"),
+    ("flag-with-value", _set("flags", ["--pr-rounds 1"]), "`flags[0]` must be a flag name as typed"),
+    ("flag-with-equals", _set("flags", ["--pr-rounds=1"]), "`flags[0]` must be a flag name as typed"),
+    ("flag-bare-dashes", _set("flags", ["--"]), "`flags[0]` must be a flag name as typed"),
+    ("diagnose-string", _set("escalated_to_diagnose", "1"), "`escalated_to_diagnose` must be a non-negative integer"),
+    ("diagnose-bool", _set("escalated_to_diagnose", True), "`escalated_to_diagnose` must be a non-negative integer"),
+    ("routing-not-object", _set("routing", ["code-reviewer"]), "`routing` must be an object"),
+    ("findings-severity-shape", _set("routing.revise_findings_by_tier", {"critical": 2, "important": 4}),
+     "`routing.revise_findings_by_tier.critical` must be an object"),
+    ("findings-model-tier-shape", _set("routing.revise_findings_by_tier", {"opus": {"found": 1, "phantom": 0}}),
+     "`routing.revise_findings_by_tier` key 'opus' must be one of"),
+    ("findings-underscore-key", _set("routing.revise_findings_by_tier", {"code_reviewer": {"found": 1, "phantom": 0}}),
+     "key 'code_reviewer'"),
+    ("findings-missing-phantom", _set("routing.revise_findings_by_tier", {"code-reviewer": {"found": 1}}),
+     "`routing.revise_findings_by_tier.code-reviewer.phantom` is required"),
+    ("findings-not-object", _set("routing.revise_findings_by_tier", [1, 2]),
+     "`routing.revise_findings_by_tier` must be an object"),
+    ("findings-two-bad-keys", _set("routing.revise_findings_by_tier", {
+        "opus": {"found": 1, "phantom": 0}, "code_reviewer": {"found": 1, "phantom": 0}}),
+     "`routing.revise_findings_by_tier` keys 'opus', 'code_reviewer' must each be one of"),
+    # The rule reads `name` and `status`; with one missing it must not run, so the
+    # refusal names the field instead of crashing on it.
+    ("status-missing", _drop("phases.Test.status"), "`phases[3].status` is required"),
+    # Findings by canonical id: the prefixed form the dispatch uses is refused by name.
+    ("findings-prefixed-key", _set("routing.revise_findings_by_tier",
+                                   {"pr-review-toolkit:code-reviewer": {"found": 1, "phantom": 0}}),
+     "`routing.revise_findings_by_tier` key 'pr-review-toolkit:code-reviewer' must be one of "
+     "code-reviewer, "),
+    # The looping phases say how many rounds they used, whenever they ran.
+    ("test-without-rounds", _drop_both_rounds("Test"),
+     "`rounds_used` and `rounds_cap` are required on a Test phase that was not skipped (warn)"),
+    ("revise-without-rounds", _drop_both_rounds("Revise"),
+     "`rounds_used` and `rounds_cap` are required on a Revise phase that was not skipped (ok)"),
+    ("revise-failed-without-rounds", _chain(_drop_both_rounds("Revise"),
+                                            _set("phases.Revise.status", "fail"),
+                                            _set("phases.Revise.reason", "gate red")),
+     "`rounds_used` and `rounds_cap` are required on a Revise phase that was not skipped (fail)"),
+]
+
+def _assert_refused(r: subprocess.CompletedProcess[str], ledger: str, fragment: str,
+                    retro: Path) -> None:
+    assert r.returncode == 1, f"accepted: {r.stdout}"
+    message = r.stderr.strip()
+    assert "\n" not in message, f"a refusal is one line, got:\n{message}"
+    assert message.startswith(f"log_run: {ledger} record refused: "), message
+    assert fragment in message, f"{fragment!r} not in {message!r}"
+    assert not (retro / ledger).exists(), "a refused record must leave the ledger unchanged"
+
+
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
+def test_a_conforming_record_is_appended_unchanged(tmp_path: Path) -> None:
+    retro = tmp_path / "retro"
+    r = _run(json.dumps(_spec_record()), retro, ledger=SPEC)
+    assert r.returncode == 0, r.stderr
+    assert json.loads((retro / SPEC).read_text(encoding="utf-8")) == _spec_record()
+
+
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
+@pytest.mark.parametrize("case, edit, fragment", SPEC_REFUSALS, ids=[c[0] for c in SPEC_REFUSALS])
+def test_an_off_shape_spec_to_pr_record_is_refused(tmp_path: Path, case: str, edit, fragment: str) -> None:
+    record = _spec_record()
+    edit(record)
+    _assert_refused(_run(json.dumps(record), tmp_path / "retro", ledger=SPEC), SPEC, fragment,
+                    tmp_path / "retro")
+
+
+@pytest.mark.parametrize("edit", [
+    _drop("flags"), _set("flags", []), _drop("escalated_to_diagnose"),
+    _set("escalated_to_diagnose", 0), _drop("asks"), _drop("routing"),
+    _drop("phases.Revise.findings_by_round"), _set("phases.Review.status", "skip"),
+    _set("notes", "a key no reader names is kept"),
+    _set("ts", "2026-10-08T12:15:00+03:00"),
+    _set("routing.revise_findings_by_tier", {}),
+    _drop_both_rounds("Review"),
+    _chain(_set("phases.Test.status", "skip"), _drop_both_rounds("Test"),
+           _drop("phases.Test.reason")),
+    _chain(_set("phases.Revise.status", "skip"), _drop_both_rounds("Revise")),
+    _set("routing.revise_findings_by_tier",
+         {agent: {"found": 0, "phantom": 0} for agent in log_run_shapes.REVISE_AGENTS}),
+], ids=["no-flags", "flags-empty", "no-diagnose", "diagnose-zero", "no-asks", "no-routing",
+        "no-findings-by-round", "review-skipped", "extra-key", "ts-offset", "findings-empty",
+        "review-without-rounds", "test-skipped-without-rounds", "revise-skipped-without-rounds",
+        "every-canonical-revise-agent"])
+def test_optional_fields_and_extra_keys_are_accepted(tmp_path: Path, edit) -> None:
+    record = _spec_record()
+    edit(record)
+    r = _run(json.dumps(record), tmp_path / "retro", ledger=SPEC)
+    assert r.returncode == 0, r.stderr
+
+
+def test_fields_an_older_record_carries_are_kept_unchecked(tmp_path: Path) -> None:
+    # Fields the record dropped, in shapes the writer once refused: a later record
+    # carrying them is appended as is, because nothing reads them any more.
+    record = _spec_record()
+    _phase(record, "Review").update(size_gate="medium", agents=[], verdict="FIX_FIRST")
+    _phase(record, "Revise").update(agents=["orchestrator-inline"])
+    _phase(record, "Revise")["findings_by_round"][0]["sibling_instance"] = "n/a"
+    record.update(args={"auto": "yes"}, cost={"model": 4}, deferred_to_todo="0")
+    record["routing"]["escalate_up_fired"] = "no"
+    r = _run(json.dumps(record), tmp_path / "retro", ledger=SPEC)
+    assert r.returncode == 0, r.stderr
+    assert json.loads((tmp_path / "retro" / SPEC).read_text(encoding="utf-8")) == record
+
+
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
+def test_every_problem_is_named_on_the_one_refusal_line(tmp_path: Path) -> None:
+    # The caller has ONE retry. A refusal naming only the first problem spends it
+    # on a record still wrong in a field nobody mentioned.
+    record = _spec_record()
+    _date_for_ts(record)
+    record["mode"] = "resume"
+    record["routing"]["revise_findings_by_tier"] = {
+        "pr-review-toolkit:code-reviewer": {"found": 1, "phantom": 0},
+        "orchestrator-inline": {"found": 1, "phantom": 0}}
+    _drop("phases.Test.reason")(record)
+    r = _run(json.dumps(record), tmp_path / "retro", ledger=SPEC)
+    for fragment in ("`ts` is required", "`mode` must be one of",
+                     "`reason` is required on a warn phase (Test)",
+                     "`routing.revise_findings_by_tier` keys 'pr-review-toolkit:code-reviewer', "
+                     "'orchestrator-inline' must each be one of"):
+        _assert_refused(r, SPEC, fragment, tmp_path / "retro")
+    assert r.stderr.count("; ") == 3, r.stderr
+
+
+def test_a_phase_with_an_unknown_status_gets_no_rule_clauses_about_it() -> None:
+    # The rules read `status` as a known value. Run on `running`, the rounds rule
+    # would add "required on a Test phase that was not skipped (running)" — a
+    # clause about a status that does not exist, sending the one retry after the
+    # wrong field.
+    record = _spec_record()
+    test = _phase(record, "Test")
+    test["status"] = "running"
+    del test["rounds_used"], test["rounds_cap"]
+    assert log_run_shapes.shape_problems(record, log_run_shapes.SHAPES[SPEC]) == [
+        '`phases[3].status` must be one of "ok", "warn", "skip", "fail", got "running"']

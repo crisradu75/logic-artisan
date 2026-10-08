@@ -31,7 +31,7 @@ import pytest
 # Claude Code shows a skill's `description` in the picker and matches natural
 # language against it. There is no hard platform ceiling documented, so this is a
 # STYLE ceiling, not a platform one: the longest description in the tree today is
-# 852 chars (`sync-context`), and 1024 leaves room to grow while still failing a
+# 790 chars (`multi-lite`, 2026-10-08), and 1024 leaves room to grow while still failing a
 # description that has quietly turned into a second SKILL.md body. Raise it
 # deliberately if a skill genuinely needs more; do not raise it to silence a
 # failure.
@@ -510,8 +510,11 @@ def _skills_needing_the_resolver() -> list[Path]:
 
 def test_every_skill_whose_references_use_the_placeholder_says_how_to_resolve_it():
     needing = _skills_needing_the_resolver()
-    # Non-vacuity: eight skills qualified when this guard was written.
-    assert len(needing) >= 8, [p.parent.name for p in needing]
+    # Non-vacuity: eight skills qualified when this guard was written; seven
+    # since codify-learnings folded its references into one with no placeholder;
+    # six since project-review's only placeholder command went with the deleted
+    # Node script (its SKILL.md dropped the resolver with it).
+    assert len(needing) >= 6, [p.parent.name for p in needing]
     missing = [
         p.parent.name for p in needing
         if _resolver_block(p.read_text(encoding="utf-8")) is None
@@ -530,7 +533,7 @@ def test_every_copy_of_the_resolver_short_form_is_the_same_text():
         for p in sorted(_PLUGIN_ROOT.glob("skills/*/SKILL.md"))
         if (b := _resolver_block(p.read_text(encoding="utf-8"))) is not None
     }
-    assert len(blocks) >= 8, sorted(blocks)
+    assert len(blocks) >= 6, sorted(blocks)
     distinct = set(blocks.values())
     assert len(distinct) == 1, (
         "the resolver short form differs between skills: "

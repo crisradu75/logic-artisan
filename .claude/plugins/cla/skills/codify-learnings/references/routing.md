@@ -1,80 +1,100 @@
-# Lesson routing and escalation (full detail)
+# Routing, the ladder, and the failure prompts
 
-Read this before assigning a suggestion's target artifact or rung. `SKILL.md`'s "Lesson routing and escalation" carries only the one-line ladder summary and the re-offense-moves-up-a-rung rule; this file is the full reasoning behind both.
+The one reference for `codify-learnings`: where a fix lands, how far a re-offense climbs, whether
+the plugin can be edited here, and the prompts that catch failures a skim would miss.
 
-## Why routing matters
+## The ladder
 
-**Every lesson must land where it will actually change behavior.** The candidate artifacts differ sharply in reach — this is the most common way the loop leaks:
-
-| Artifact | When it loads | Reach |
+| Rung | What lands there | Reach |
 |---|---|---|
-| `failure-modes.md` | only during the next `codify-learnings` run | **retro-time only** — does NOT influence normal work sessions |
-| user memory (`memory/*.md`) | every session, as advisory context | broad, cross-project — but advisory, Claude must choose to apply it |
-| `CLAUDE.md` / `SKILL.md` | every session touching that repo/skill | scoped, advisory |
-| hook / `settings.json` | every matching tool call, deterministically | **enforced** — cannot be forgotten |
-| script change | every run of that script | impossible to violate |
+| `checklist` | a prompt under "Failure prompts" below | retro time only — no work session reads it |
+| `doc` | memory, a `CLAUDE.md`, `cla.io/project-facts.md`, `cla.io/overlays/<skill>.md`, a `SKILL.md` | every session that loads it; advisory |
+| `hook` | a hook, `.claude/settings.json` | every matching tool call; enforced |
+| `script` | a script, or build/lint/test config | every run; the failure becomes impossible |
 
-**Routing rule.** A lesson MUST land in at least one artifact that auto-loads into future *work* sessions (memory, `CLAUDE.md`, `SKILL.md`, a hook, or a script). Landing a lesson *only* in `failure-modes.md` is permitted **only** when it is genuinely a retro-time review check that cannot be acted on mid-session. `failure-modes.md` is a staging checklist, not a destination: a preventable lesson parked only there cannot prevent anything until it re-offends and a later run finally promotes it.
+- **A lesson lands where work sessions load it** — `doc` or higher. `checklist` is only for a check
+  that can be made at retro time and never mid-session.
+- **A new lesson** enters at the lowest rung that would have prevented it, usually `doc`.
+- **A re-offense** climbs one rung above the artifact that failed. Restating it louder on the same
+  rung is the failure this ladder exists to stop.
+- **A re-offending rule a hook can detect** — a command shape, a path pattern, a branch name —
+  becomes a hook. Make it block (`exit 2`) when a violation is always wrong; make it warn
+  (`exit 0` and a message) when it has legitimate exceptions the hook cannot tell apart.
+- **A `doc` rule that re-offends with nothing mechanical to enforce:** narrow the trigger (a
+  sharper sibling failure earns its own rule), or graduate its one mechanical sub-case to a hook,
+  or move it to a home with better reach (memory ↔ `CLAUDE.md`). Log a move as a lateral, not a
+  climb: the lesson has now failed at two artifacts.
+- **When a lesson graduates**, delete the lower-rung text it duplicates in the same fix — a prompt
+  below, a `CLAUDE.md` line, a memory entry — unless that text covers more than what graduated.
 
-## The escalation ladder
+## Which home
 
-**Three of these four rungs live inside the plugin, and the plugin is read-only
-in every repo that installed it.** Before routing anything, run the check in
-`references/plugin-writability.md`. Where it answers read-only, the `SKILL.md`,
-hook and script rungs are not available: the lesson goes to
-`/cla:report-upstream` instead, and a lesson that is genuinely about this repo
-goes to `cla.io/overlays/<skill>.md`, which is writable either way. Do not
-silently downgrade a core lesson to a local file — that reaches no other repo and
-does not change the prose that produced the miss.
+- **About this repo** → its `CLAUDE.md`; `cla.io/project-facts.md` when it is a fact a skill reads (a
+  command, a path); `cla.io/overlays/<skill>.md` when it is a rule about how one skill runs here.
+  Git, cloud sessions and reviewers see all three.
+- **About how this user personally likes to work** → memory, and nothing else goes there. Memory
+  lives outside the repo, so a repo lesson written there is invisible to everyone but this machine.
+- **About the plugin's portable procedure** → the plugin, if it is writable here; otherwise
+  `/cla:report-upstream`.
 
-Rungs from weakest to strongest:
+## Is the plugin writable here?
 
-```
-failure-modes checklist  →  memory / CLAUDE.md / SKILL.md  →  hook / settings.json  →  script change
-   (retro-time only)         (advisory, every session)         (deterministic)          (impossible to violate)
-```
+Check; do not assume. The two cases differ in one stable way: a plugin loaded from a working tree
+(`--plugin-dir`, the plugin's own source repo) sits **inside** the repo; an installed one is a
+read-only, version-keyed cache **outside** it, where an edit fails or is discarded at the next
+update — while reporting as applied.
 
-- A **new** lesson enters at the lowest rung that can actually prevent it — usually memory or a doc, rarely the checklist alone.
-- A lesson that **re-offended this session** (Step 2.5) moves **up one rung**. An advisory rule that keeps being violated needs enforcement, not a louder reminder.
-- A re-offending **behavioral** rule that is hook-able — a deterministic precondition on a tool call (compound bash, branch-name length, a forbidden command shape, a path pattern) — MUST be proposed as a `PreToolUse` hook. "Prefer enforcement over reminders" is the behavioral-rule analogue of "Prefer fixes over diagnostics".
-- When a lesson graduates to *any* higher rung (memory / `CLAUDE.md` / `SKILL.md` / hook / script), retire the now-redundant lower-rung bullet in the same run (Step 2.6).
+1. Repo root: `git rev-parse --show-toplevel`.
+2. Plugin root: the absolute path of this file, or of the skill's `SKILL.md`, cut at
+   `.../plugins/cla`.
+3. Plugin root inside the repo root → **writable**. Outside, or either path unknown →
+   **read-only**.
 
-### When a memory re-offends and there is no hook to graduate to
-
-The middle rung is **flat** — memory, `CLAUDE.md` and `SKILL.md` are one rung, not three.
-So a re-offending memory whose lesson is a judgement call ("check for counterexamples",
-"don't do unrequested work") has nowhere obvious to go: the next rung up is enforcement,
-and no hook can evaluate whether a diagnosis was checked or whether work was wanted.
-Restating the same memory louder is the failure mode this ladder exists to prevent, and
-it is what happens when the rung is treated as unavailable.
-
-Do this instead, in order:
-
-1. **Narrow the trigger, don't raise the volume.** Ask what *shape* the re-offense took
-   this time and whether the existing rule names it. A rule that says "verify your
-   diagnosis" does not cover "you asserted a measurement you never took" — that is a
-   sibling failure with a sharper, more checkable trigger, and it earns its own rule
-   rather than another clause on the old one.
-2. **Look for the enforceable sub-case.** A judgement rule often contains one mechanical
-   part. "Don't evade a guard" is judgement; "don't redefine a guarded command name" is a
-   regex. Graduate that part to a hook and leave the rest at the middle rung.
-3. **Move it laterally, and say so.** `memory → CLAUDE.md` (or the reverse) is legitimate
-   when the new home has better reach for the case at hand — a repo-specific pre-ship
-   check belongs in `CLAUDE.md`; a cross-repo instinct belongs in memory. Record it in the
-   log as a **lateral with a reason**, never as a rung climb, so a future run can see the
-   lesson has now failed at two artifacts and treat that as the signal it is.
-
-## Enforcement tiers (the shared vocabulary behind the ladder)
-
-The ladder above is an *ascent from weakest to strongest enforcement*. Name the four tiers explicitly — the same vocabulary `spec-to-pr`'s guardrails use (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md`), so both loops graduate re-offenders in one language:
-
-| Tier | What it means | Ladder rung(s) it maps to |
+| Target | Writable | Read-only |
 |---|---|---|
-| **Instructional** | prose a session may or may not follow (drifts over long contexts) | `failure-modes checklist`, `memory`, `CLAUDE.md`, `SKILL.md` |
-| **Structural** | a format/schema/exit-code contract that makes the wrong thing not *fit* (a JSON schema pin, an exit-code contract, a two-sided scope assertion) | usually a `script` change that enforces a shape, not behavior |
-| **Prompted** | a hook that *warns* but lets the tool call through (`exit 0` + stderr message) | `hook / settings.json` — the warn variant |
-| **Mechanical** | a hook that *blocks* the tool call (`exit 2`), or a script whose logic can't be bypassed | `hook / settings.json` — the block variant; `script change` |
+| `cla.io/**`, repo `CLAUDE.md`, `.claude/settings*.json`, memory | edit | edit |
+| a `SKILL.md`, `references/**`, `hooks/**`, `lib/**`, any plugin script | edit | `/cla:report-upstream` |
 
-Two consequences worth stating:
-- **When graduating a re-offender to a hook, choose Prompted vs Mechanical deliberately.** A rule whose violation is always wrong and cheaply detectable (a forbidden command shape, a path escape) → **Mechanical** (`exit 2`, block). A rule with legitimate exceptions the hook can't distinguish → **Prompted** (`exit 0` + warning) so it flags without false-blocking. Don't default every graduation to a hard block; match the tier to how absolute the rule is. (This repo's existing hooks already split this way — `block-*` are Mechanical, `warn-*` are Prompted.)
-- **The rung enum in the Step-7 log record is unchanged** (`checklist|memory|claude_md|skill_md|hook|script` — a data contract with `codify_aggregate.py`). The tier names are a descriptive overlay on top of it, not a new field.
+Read-only never means dropping the lesson, and never means writing a portable fix into a local
+overlay to make it stick: that reaches no other repo and leaves the prose that missed unchanged.
+Say in the fix's line that it is going upstream.
+
+## Failure prompts
+
+Prompts for Step 1, not destinations. Each names a failure that is easy to live through without
+noticing.
+
+- **Done without proof.** Was a change declared done, or a count or diagnosis stated, without the
+  command that shows it — the repo's own build, lint and test commands (in
+  `cla.io/project-facts.md`), a typecheck right after a bulk edit, a clean environment rather than a dev box?
+- **Not asked for.** Did you do work the user did not ask for, or carry out a plan other than the
+  one you announced?
+- **Secondary source first.** Did you reason from a docstring, memory, a summary or a peer repo's
+  working tree when one read of the primary source — published docs, the code, `git show
+  <branch>:<path>` — would have settled it?
+- **Unauthorised action.** Did you delete, force, reset, commit, push, merge or publish without
+  the user's authorisation for that artifact? An earlier yes does not carry to later work.
+- **Blast radius.** Did a change reach further than you checked — a caller in another directory,
+  a sibling copy of the same claim, every place that enumerates the same set?
+- **Platform-divergent behaviour.** Did something depend on the OS, shell, stdout encoding, an
+  environment default, a path separator or a runtime version? Check the other platforms' failure
+  classes too, not only the one you hit.
+- **Silent failure.** Did something return a plausible wrong value, swallow an error, take a
+  fallback on an unexpected value, or use a sentinel that collides with real data?
+- **Wrong distribution.** Did a heuristic, threshold, timeout or retry count fail on real inputs?
+- **Guessing at a cause.** Did finding a cause take more than two turns? What signal was missed —
+  and would a deterministic loop (`/cla:diagnose`) have found it sooner?
+- **Pushback.** Did the user push back with a question, repeat a correction, or remind you of a
+  documented rule? A question like "why would X matter?" means your model is wrong: rebuild it,
+  do not defend it. A repeated reminder means the rule is not load-bearing: escalate it.
+- **Asked or assumed wrongly.** Did you ask something the files already answered, or silently
+  decide something only the user could — an ambiguous mapping, category or default?
+- **Unchecked agent.** Did you act on a sub-agent's finding without checking it against the code,
+  or brief an agent with a paraphrase instead of the artifact itself?
+- **Friction.** Were tool calls denied, or the same permission prompted repeatedly? Did a hook
+  fire when it should not have, or stay silent when it should have fired?
+- **Doc drift.** Did a change leave a doc, a `SKILL.md`, a table, a count or a path describing the
+  old behaviour? Grep for the old name before calling it done.
+- **Not written down.** Did the user explain something, or did you find something by grepping,
+  that belongs in `CLAUDE.md` or a `SKILL.md`? Did the user state a working preference you will
+  need again (memory)?

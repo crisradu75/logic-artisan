@@ -17,6 +17,8 @@ PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 DEV = Path(__file__).resolve().parents[2]
 REFS = PLUGIN / "skills" / "multi-lite" / "references"
 LOOP = REFS / "candidate-loop.md"
+# Step 8's checks, merge and confirmation moved here; multi-pr follows it too.
+SHARED = PLUGIN / "skills" / "_shared" / "references" / "chain-merge.md"
 GUARD = DEV / "tests" / "consistency" / "test_multi_lite_policy_names_agree.py"
 
 
@@ -92,28 +94,28 @@ MUTANTS = [
     ),
     (
         "a gate with no test commands becomes a warning and the merge proceeds",
-        LOOP,
+        SHARED,
         "→ do not merge; the reason is `full gate unavailable`.",
         "→ record `full gate unavailable` as a warning and continue.",
         TARGETS,
     ),
     (
         "a conflicting PR proceeds to the merge",
-        LOOP,
+        SHARED,
         "`CLEAN`, `HAS_HOOKS`, or `BEHIND` → proceed.",
         "`CLEAN`, `HAS_HOOKS`, `DIRTY`, or `BEHIND` → proceed.",
         TARGETS,
     ),
     (
         "a zero exit code is trusted as a merge",
-        LOOP,
+        SHARED,
         "`state` must be `MERGED`. Otherwise:",
         "The exit code already confirmed the merge; read `mergeCommit` for the ledger. If it is empty:",
         TARGETS,
     ),
     (
         "an ordinary gh error stops merging for the whole run",
-        LOOP,
+        SHARED,
         "It does **not** set `merging stopped`: an error",
         "It also sets `merging stopped`, since an error",
         TARGETS,
@@ -127,23 +129,23 @@ MUTANTS = [
     ),
     (
         "the enforcement round trusts HEAD == remote without proving a commit exists",
-        LOOP,
-        _nl("     - `git rev-parse HEAD` must differ from the row's current `head_sha`. The same value means no commit was made (a hook rejected it, or nothing was staged).\n"),
+        SHARED,
+        _nl("- `git rev-parse HEAD` must differ from the row's current `head_sha`. The same value means no commit was made (a hook rejected it, or nothing was staged).\n", SHARED),
         "",
         TARGETS,
     ),
     (
         "8b stops requiring a clean tree before the gate",
-        LOOP,
-        " Then `git status --porcelain -- . ':(exclude)cla.io/retro'` must be empty. Anything listed would be tested by the gate below without being part of the merge, so do not merge; the reason is `uncommitted changes`.",
+        SHARED,
+        "Then `git status --porcelain -- . ':(exclude)cla.io/retro'` must be empty; anything listed would be tested by the gate below without being part of the merge, so do not merge; the reason is `uncommitted changes`.",
         "",
         TARGETS,
     ),
     (
         "a queued or auto-merge PR is recorded as merged",
-        LOOP,
-        "It is not merged now, so a candidate that must merge before a later one is still `failed-merge` and quarantined.",
-        "Treat it as merged: write `status: merged` and continue.",
+        SHARED,
+        "It is not merged now, so it does not count as merged;",
+        "Treat it as merged: write `status: merged` and continue;",
         TARGETS,
     ),
     (

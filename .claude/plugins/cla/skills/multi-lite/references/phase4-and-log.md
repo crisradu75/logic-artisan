@@ -6,7 +6,7 @@ This file used to also hold a "Log the run" recipe appending to
 `cla.io/retro/multi-lite-runs.jsonl`. That ledger held 4 records across five
 repos and no skill ever read it, so it was deleted along with the two other
 unread chain ledgers. The ledgers that remain, and what reads each, are listed
-in `cla-init`'s scaffold step.
+in `cla-setup`'s Part 1.
 
 ## Phase 4 — Final summary
 
@@ -21,24 +21,3 @@ After every candidate has been run, merged or left open per the confirmed policy
 - **Review fix rounds run**: which candidates needed a Phase 3 step 7 enforcement round, and whether it resolved the findings.
 - **Out of scope**: the non-lite items skipped in Phase 1a, with their suggested route (`/cla:spec-to-pr` / `/cla:multi-spec`).
 - **Next steps**: for each PR left open, the one action it needs. A PR whose problem the user fixes by pushing commits (a finding, a conflict, a red gate) is theirs to review and merge by hand afterwards: a re-run never merges commits it did not test and review, and leaves that PR open as `head moved since review`. Point at re-running `/cla:multi-lite` for what a re-run does handle: finishing candidates an interruption left undecided, retrying merges that failed for a passing reason (pending checks, a host refusal in an earlier session), and picking up a blocked-downstream subtree once its upstream has merged.
-
-## Commit the run-notes file (best-effort)
-
-The per-run notes file (`cla.io/retro/multi-lite-run-notes-<date>.md`, created or
-reused in Phase 2) is the resume artifact — commit it so a later session and another
-machine can read it back. Whenever the last candidate's PR was left open, under either policy,
-Phase 3 ends with HEAD on that candidate's feature branch, so **return
-to `<base-branch>` first, unconditionally, whatever branch HEAD is on**:
-
-```
-git checkout <base-branch>
-git pull
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <base-branch>
-git add cla.io/retro/multi-lite-run-notes-<date>.md
-git commit -m "chore: multi-lite run notes"
-git push
-```
-
-**Verify the push landed** — `git rev-parse HEAD` vs `git ls-remote origin <base-branch>`, compared in-context — since this is a direct push, not one delegated to `commit-push-pr`. Best-effort and non-fatal: skip it entirely if the run finished in a reactive-worktree pivot (it may not be able to reach `<base-branch>`; note it and move on).
-
-**If the push is blocked** by the repo's `pre-push` guard — the whole point of this step is a direct commit to `<base-branch>` — don't reach for `ALLOW_PUSH_TO_MAIN=1` as a routine workaround; that escape hatch is for a genuine emergency, not scheduled housekeeping. Fall back to a small branch + PR for just the notes file: `git checkout -b chore/multi-lite-run-notes`, commit there, push, `gh pr create`, then report the PR URL in the final summary as a "log PR — merge whenever" item. Note in the summary that this run took the fallback path.

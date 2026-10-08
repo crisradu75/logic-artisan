@@ -162,7 +162,7 @@ def test_a_generic_filename_inside_a_path_is_still_evidence():
 
 
 def test_a_short_identifier_is_not_evidence():
-    # `cla-init` is eight characters and names a skill mentioned repo-wide;
+    # `cla-init` is eight characters and named a skill mentioned repo-wide;
     # matching on it reported a bullet as covered because the bullet LISTED it.
     assert OC.tokens_of({"raw": "the `cla-init` skill"}) == set()
     assert "exempt_skills" in OC.tokens_of({"raw": "drop `EXEMPT_SKILLS`"})
@@ -209,7 +209,7 @@ def test_a_weaker_reason_already_recorded_is_upgraded_by_a_stronger_one():
 
 def test_only_a_path_or_a_citation_discharges_a_promise():
     """A bullet can MENTION a name without being about it. The sweep bullet in
-    this repo's own change lists `sync-context` among its candidates and was
+    this repo's own change listed `sync-context` among its candidates and was
     read as implemented by every task touching that skill."""
     prop = ("# P\n\n## What Changes\n\n"
             "- Sweep for leftovers (candidates: `report-upstream`, `sync-context`)\n")

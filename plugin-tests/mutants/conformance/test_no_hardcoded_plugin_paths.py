@@ -60,7 +60,9 @@ TARGETS = [GUARD]
 # interesting ones here. Measured, applying each mutant to a scratch copy and
 # recording which tests go red:
 #
-#     mutant 3 (.mjs dropped)          scan_is_not_vacuous + recorded_counts
+#     mutant 3 (.json dropped)         scan_is_not_vacuous + recorded_counts
+#                                      + replacement_is_actually_in_use
+#     (re-measured 2026-10-08, after the one `.mjs` was deleted)
 #     mutant 7 (output-styles dropped) required_root_is_reached + recorded_counts
 #     mutant 8 (lib dropped)           required_root_is_reached + recorded_counts
 #                                      + scan_is_not_vacuous
@@ -109,23 +111,23 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The near-miss the guard's own comment works through: `.mjs` is ONE
-        # file, so dropping it lands on the floor rather than under it (110 - 1
-        # = 109, floor >= 109) and the count cannot see it. Within
-        # `test_the_scan_is_not_vacuous` the REQUIRED_SUFFIXES comparison is
-        # therefore the ONLY assertion that can catch it, which is the whole
-        # reason that second list exists as an independent source rather than
-        # being derived from SCANNED_SUFFIXES.
+        # A declared suffix dropped from the scan. This was the near-miss the
+        # guard's comment works through while `.mjs` existed: ONE file, so
+        # dropping it landed on the floor rather than under it and only the
+        # REQUIRED_SUFFIXES comparison could catch it. `.mjs` went with the one
+        # Node script on 2026-10-08, and the smallest suffix left, `.json`
+        # (3 files), takes the count to 97 against `>= 99` — so this kill now
+        # comes from the floor AND REQUIRED_SUFFIXES, and attributes to
+        # neither alone. The guard records the command that shows the suffix
+        # assertion firing by itself (its `missing` column); a batch cannot
+        # isolate it with one edit.
         #
-        # SCOPED TO THAT ONE TEST. Against the whole file this mutant also
-        # fails `test_the_recorded_counts_are_the_real_ones` (scanned 109
-        # against a recorded 110), and a kill that could have come from either
-        # proves neither. The claim above is only true of a run scoped this
-        # way, and it used to be written as though it were true of the batch.
-        "a declared suffix is dropped from the scan without moving the file count below its floor",
+        # SCOPED TO `test_the_scan_is_not_vacuous`, so the recorded-counts
+        # test, which also reacts to any moved count, is not what kills it.
+        "a declared suffix is dropped from the scan",
         GUARD,
-        'SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")',
         'SCANNED_SUFFIXES = (".md", ".py", ".json")',
+        'SCANNED_SUFFIXES = (".md", ".py")',
         _SCAN_VACUITY,
     ),
     (
@@ -138,13 +140,13 @@ MUTANTS = [
         # same edit from either end and this one needs no file to exist.
         "a scanned suffix stops being declared required, so its removal would go unnoticed",
         GUARD,
-        'REQUIRED_SUFFIXES = frozenset({".md", ".py", ".mjs", ".json"})',
         'REQUIRED_SUFFIXES = frozenset({".md", ".py", ".json"})',
+        'REQUIRED_SUFFIXES = frozenset({".md", ".py"})',
         TARGETS,
     ),
     (
-        # The root list narrowed. `hooks/` is 14 of 103 files, so this one IS
-        # visible to the floor (89 < 102) — unlike `lib` and `output-styles`,
+        # The root list narrowed. `hooks/` is 13 of 102 files, so this one IS
+        # visible to the floor (89 < 101) — unlike `lib` and `output-styles`,
         # which are not, and which mutants 1-2 cover a different way.
         #
         # THE ASYMMETRY IS NO LONGER LEFT STANDING. This comment used to end
@@ -164,7 +166,7 @@ MUTANTS = [
         # its own docstring records the measurement: 51 files carry 235
         # occurrences, so a change deleting most of them while leaving one per
         # file held the old assertion green. This restores the file-count form;
-        # 51 is far below the floor of 210, so it dies loudly.
+        # 53 is far below the floor of 204, so it dies loudly.
         #
         # (This pair read 50/234 until a cross-branch comparison caught it —
         # the same drift the rest of this block is about, in the sentence that
@@ -186,26 +188,25 @@ MUTANTS = [
     #
     # These are the exact edits the block at the bottom of this file used to
     # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
-    # not, and mutant 7 is the one that shows it. Measured against the re-pinned
-    # floor of `>= 109`:
+    # not, and both show it. Measured against the floor of `>= 101` (since
+    # slim-spec-to-pr, `>= 100` against a real 101: each drop leaves 100, still
+    # exactly on the floor):
     #
-    #     drop `output-styles`  109 files  clears the floor exactly
-    #     drop `lib`            108 files  fails the floor by one
+    #     drop `output-styles`  101 files  clears the floor exactly
+    #     drop `lib`            101 files  clears the floor exactly
     #
-    # That asymmetry is an accident of today's file counts and is the argument
-    # for the separate list: the floor's stated rule is to be lowered on every
-    # deliberate deletion, and one lowering puts `lib` where `output-styles`
-    # already is, while `REQUIRED_ROOTS` keeps failing either way.
+    # Against the earlier floor of `>= 102`, dropping `lib` (two files then)
+    # failed it by one. This comment called that asymmetry an accident of the
+    # file counts and predicted one lowering would put `lib` where
+    # `output-styles` was; deleting `lib/ledger_summary.py` did exactly that,
+    # and `REQUIRED_ROOTS` keeps failing either way.
     #
     # BOTH ARE SCOPED TO `test_every_required_root_is_actually_reached`, so each
     # kill attributes to `REQUIRED_ROOTS` and to nothing else. This paragraph
     # used to end "mutant 7 is killed by REQUIRED_ROOTS alone, and mutant 8
     # currently dies twice over" — measured against the whole file that is now
-    # false in both halves: 7 dies twice (the root check and the recorded
-    # counts) and 8 dies three times (those two plus the floor). The asymmetry
-    # above is still real and still the argument; it is just no longer
-    # something the batch DEMONSTRATES, so it is stated as a measurement rather
-    # than implied by a kill.
+    # false: measured against the whole file, each dies twice (the root check
+    # and the recorded counts), and neither reaches the floor.
     (
         "the one-file root is dropped from the scan, which no count can see",
         GUARD,
@@ -214,8 +215,7 @@ MUTANTS = [
         _ROOTS_REACHED,
     ),
     (
-        "the two-file root is dropped from the scan, taking lib/log_run.py and "
-        "lib/ledger_summary.py out of it",
+        "the `lib` root is dropped from the scan, taking lib/log_run.py out of it",
         GUARD,
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks")',
@@ -249,11 +249,11 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 110  .json 3  .md 77  .mjs 1  .py 29  placeholder-refs 226 in 57 files"
+        "    #     scanned 101  .json 3  .md 71  .py 27  placeholder-refs 194 in 52 files"
         + _NL
         + "    #" + _NL
-        + "    # The real count is 110. Pinned near it, not",
-        "    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files"
+        + "    # The real count is 101. Pinned near it, not",
+        "    #     scanned 99  .json 3  .md 67  .py 28  placeholder-refs 217 in 48 files"
         + _NL
         + "    #" + _NL
         + "    # The real count is 99. Pinned near it, not",
@@ -289,29 +289,16 @@ MUTANTS = [
 #
 # Where each one landed, re-derived rather than remembered:
 #
-#   * the scan floor's drift is fixed: `>= 102` against a real 103, a margin of
-#     one, which is what that file's own rule asks for.
-#   * `>= 210` was examined and deliberately NOT moved — its gap is the rule,
-#     not drift. Only its recorded count was stale (217 against a real 235) and
-#     that is now corrected.
-#   * the `.json` parenthetical is true again, because the floor moved under
-#     it. Re-run with the guard's own recorded experiment against `>= 102`:
-#
-#     drop  files  >=102?  missing-required
-#    .json    100   False  ['.json']
-#     .mjs    102    True  ['.mjs']
-#      .py     73   False  ['.py']
-#      .md     34   False  ['.md']
-#     None    103    True  []
-#
-# The `.mjs` row is still the load-bearing one: it clears the floor exactly, so
-# `REQUIRED_SUFFIXES` is the only thing that catches it. That is the argument
-# the second list was added to make, and it does not depend on where the floor
-# happens to sit.
-#
-# Since then the floor moved to `>= 101` against a real 102, when the
-# commit-provenance hook was deleted from `hooks/`. The table above is shifted
-# by one file throughout; its shape, and the `.mjs` row's role, are unchanged.
+#   * the scan floor is `>= 100` against a real 101, a margin of one, which is
+#     what that file's own rule asks for. It has moved with every file the
+#     plugin gained or lost; `git log -p` on the guard has each step.
+#   * `>= 172` against a real 176 is the placeholder floor; its gap is the rule,
+#     not drift.
+#   * there is no longer a suffix whose loss clears the scan floor. The `.mjs`
+#     row did, which is why `REQUIRED_SUFFIXES` was added; the one `.mjs` was
+#     deleted on 2026-10-08, so dropping any declared suffix now also breaks
+#     the floor, and mutant 3 is no longer attributable to `REQUIRED_SUFFIXES`
+#     alone.
 #
 # THE RECORDS ABOVE ARE NOW CHECKED, not trusted. The guard carries
 # `test_the_recorded_counts_are_the_real_ones`, which re-runs its printer and

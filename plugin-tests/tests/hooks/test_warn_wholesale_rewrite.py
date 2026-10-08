@@ -96,6 +96,7 @@ def _context(out: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+# requirement: guard-hooks / Risky actions warn
 def test_warns_when_a_write_materially_shrinks_a_tracked_file(monkeypatch, capsys, repo):
     (repo / REL).write_text(_words(200), encoding="utf-8")
     ctx = _context(_run(monkeypatch, capsys, repo, _payload()))

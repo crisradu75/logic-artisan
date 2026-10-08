@@ -5,8 +5,15 @@ any agent's prompt — `SKILL.md` keeps only the dispatch invariant (all five in
 routing) inline; this file is the actual prompt content.
 
 Each agent receives: (1) the Project Snapshot (Step 1, template in `references/aggregate-and-log.md`),
-(2) the Mechanical Facts table (Step 0, `references/mechanical-checks.md`), (3) the relevant dimension
+(2) the Baseline Facts table (Step 0, `references/baseline-checks.md`), (3) the relevant dimension
 criteria from `references/review-criteria.md`, (4) the standard instructions below.
+
+**Filling `<inject:>` placeholders.** The orchestrator replaces each one before dispatch, from
+`cla.io/project-facts.md` for facts (members, paths, commands, test locations), from the repo's own
+guidance docs and code for conventions, formulas and recipes, and from
+`cla.io/overlays/project-review.md` when that file is present and covers it. A placeholder nothing
+covers is replaced with `(none recorded)` — never left for the agent, which reads none of these
+files.
 
 **Standard instructions for ALL agents:**
 
@@ -16,9 +23,9 @@ criteria from `references/review-criteria.md`, (4) the standard instructions bel
 >
 > **Finding caps:** At most **3 strengths** and **5 gaps**. Prioritize the most impactful.
 >
-> **Pre-verified facts:** The Mechanical Facts table already verified workspace build/lint/test and this repo's own cross-file invariants (shared-i18n parity + usage, any load-bearing key consistency, package boundaries). Do NOT re-check these — focus on qualitative judgment.
+> **Pre-verified facts:** The Baseline Facts table already verified workspace build/lint/test, including any cross-file invariants this repo's own tests enforce. Do NOT re-check these — focus on qualitative judgment.
 >
-> **Context:** <inject: this repo's own one-paragraph product/component summary + its test-surface summary (unit suites, smoke/e2e scripts, any DB-isolation suite), from `cla.io/overlays/project-review.md` ("Per-dimension agent-dispatch injection facts" — shared Context)>.
+> **Context:** <inject: this repo's own one-paragraph product/component summary + its test-surface summary (unit suites, smoke/e2e scripts, any DB-isolation suite)>.
 >
 > **Output format:**
 > ```
@@ -35,8 +42,8 @@ criteria from `references/review-criteria.md`, (4) the standard instructions bel
 ## Fallback: reviewing a PLUGIN/HARNESS repo (no application code)
 
 The five dimension prompts below assume an application repo — apps, packages, an engine,
-i18n layers, a datastore. In a repo whose deliverable is the harness itself, every
-`<inject:>` placeholder resolves to an empty overlay and the orchestrator would otherwise
+i18n layers, a datastore. In a repo whose deliverable is the harness itself, most
+`<inject:>` placeholders have nothing to fill them and the orchestrator would otherwise
 improvise all five briefs from scratch. Use these substitutions instead; everything else
 about the dispatch (five agents, one message, the model routing, the caps) is unchanged.
 
@@ -44,7 +51,7 @@ about the dispatch (five agents, one message, the model routing, the caps) is un
 |---|---|
 | 1 — Vision & Clarity | Root `README.md`, the plugin's own `README.md`, `CLAUDE.md`, the developer guide. Ask: can a new engineer tell what the harness is, who it is for, and how to install it, in minutes? Do the counts and version claims match the tree? |
 | 2 — Structure | The skill tree: one dir per skill, `SKILL.md`/`references/`/`scripts/`/`tests/` consistency, what lives in the shared references layer vs one skill's own, whether any skill's directory has become a de-facto common library. |
-| 3 — Requirements & Specs → **skill portfolio** | Every `SKILL.md` frontmatter (does the description state WHEN to trigger?), the body (actionable procedure vs vague prose), overlay stubs matching actual consumers, and the portfolio question: is each skill justified, is any redundant, is anything missing from the life cycle? |
+| 3 — Requirements & Specs → **skill portfolio** | Every `SKILL.md` frontmatter (does the description state WHEN to trigger?), the body (actionable procedure vs vague prose), and the portfolio question: is each skill justified, is any redundant, is anything missing from the life cycle? |
 | 4 — Architecture | The fact/procedure split and the guards enforcing it; model routing for dispatched agents; hook wiring and the block/ask/warn taxonomy; the distribution mechanism; how per-repo state is kept out of portable core. |
 | 5 — Validation | The aggregating test runner and its scopes; what the conformance/consistency guards actually cover; the markdown gap (prose ships like code with nothing compiling it) and the compensating checks; mutation-testing practice; platform-divergence risk with no CI. |
 
@@ -55,13 +62,13 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 ### Agent 1: Vision & Clarity
 
-> **Review criteria:** {Dimension 1 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 1 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
-> **Start by reading:** <inject: this repo's top-level docs to read for a vision/clarity pass, from `cla.io/overlays/project-review.md` ("Per-dimension agent-dispatch injection facts" — Agent 1)>.
+> **Start by reading:** <inject: this repo's top-level docs to read for a vision/clarity pass>.
 >
 > Evaluate:
 > 1. Can a new senior engineer understand the product AND the workspace shape in a few minutes from the top-level docs (what/who/why, and which component does what)?
-> 2. Is each component's scope explicit? <inject: this repo's own per-component scope statement, from `cla.io/overlays/project-review.md`>.
+> 2. Is each component's scope explicit? <inject: this repo's own per-component scope statement>.
 > 3. Does the repo's own guidance doc give an accurate, current picture of the workspace layout, its core data/control flow, and its conventions?
 > 4. Are component / function / type / i18n-key / package names self-documenting?
 > 5. Do the docs match the current code (formulas, dataset/domain-vocabulary counts, package paths)? Flag stale claims — e.g. any spec/doc still describing an earlier, since-restructured layout.
@@ -69,41 +76,41 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 ### Agent 2: Structure & Organization
 
-> **Review criteria:** {Dimension 2 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 2 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
-> **Start by reading:** <inject: this repo's workspace-config files to read for a structure pass (workspace manifest, root package manifest, lint config, each package's manifest), from `cla.io/overlays/project-review.md` ("Per-dimension agent-dispatch injection facts" — Agent 2)>. Use Glob to survey each app's and package's source tree.
+> **Start by reading:** <inject: this repo's workspace-config files to read for a structure pass (workspace manifest, root package manifest, lint config, each package's manifest)>. Use Glob to survey each app's and package's source tree.
 >
 > Evaluate:
 > 1. Workspace layout — is the apps/packages split clean and are workspace-internal deps sensible? Do the shared packages have coherent public surfaces (barrel exports)?
-> 2. Package boundaries — the mechanical check already verified the workspace's own boundary invariants (which packages must stay platform-safe, which may depend on which). Beyond that pass/fail, is the *dependency direction* healthy (no accidental over-coupling, nothing that should be shared living inside one app)?
-> 3. Per-app internal structure — <inject: this repo's own per-app source-tree bucketing convention, from `cla.io/overlays/project-review.md`>.
+> 2. Package boundaries — do the packages keep the boundaries the repo documents (which must stay platform-safe, which may depend on which), and is the *dependency direction* healthy (no accidental over-coupling, nothing that should be shared living inside one app)?
+> 3. Per-app internal structure — <inject: this repo's own per-app source-tree bucketing convention>.
 > 4. File / symbol naming — consistent PascalCase components, camelCase functions, dotted i18n keys, kebab package names?
-> 5. Component sizing — <inject: this repo's own largest/most-central components or screens worth checking for decomposition, from `cla.io/overlays/project-review.md`>.
+> 5. Component sizing — <inject: this repo's own largest/most-central components or screens worth checking for decomposition>.
 > 6. Gitignore hygiene — build output, `node_modules/`, `.env`, and any per-app local artifacts excluded?
 
 ### Agent 3: Requirements & Specifications
 
-> **Review criteria:** {Dimension 3 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 3 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
-> **Start by reading:** sample 3 specs under `openspec/specs/` spanning products — <inject: this repo's own recommended sample-spec picks (one per major product/component, plus the architecture-level spec), from `cla.io/overlays/project-review.md` ("Per-dimension agent-dispatch injection facts" — Agent 3)>. List `openspec/changes/`.
+> **Start by reading:** sample 3 specs under `openspec/specs/` spanning products — <inject: this repo's own recommended sample-spec picks (one per major product/component)>. List `openspec/changes/`.
 >
 > Evaluate:
-> 1. Spec quality — MUST/SHOULD/MAY/SHALL with testable WHEN/THEN criteria?
+> 1. Spec quality — do specs state only outcomes and interfaces, in plain words, within `openspec/config.yaml` `rules.specs` where present, with testable WHEN/THEN scenarios? Implementation detail, code names or tool internals in a spec count against it.
 > 2. Coverage — do the core capabilities of every product/component have specs? Gaps?
 > 3. Traceability — pick 2 specs (spanning different products/components) and verify the implementation exists in the right package/app.
-> 4. Spec currency — do sampled specs match current code (formulas, dataset/domain-vocabulary counts, workspace paths)? **Specifically check whether the architecture spec or older specs still describe an earlier, since-restructured layout** — a real staleness risk after any repo restructure.
+> 4. Spec currency — do sampled specs match current code (formulas, dataset/domain-vocabulary counts)? Flag a spec still describing behaviour a past restructure changed.
 > 5. Change pipeline — stale active changes under `openspec/changes/`? Is `changes/archive/` clean?
 
 ### Agent 4: Architecture & Design
 
-> **Review criteria:** {Dimension 4 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 4 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
-> **Start by reading:** <inject: this repo's own core-engine, data-gateway, app-entrypoint, backend-route/adapter, and RLS/data-client files to read for an architecture pass, from `cla.io/overlays/project-review.md` ("Per-dimension agent-dispatch injection facts" — Agent 4)>.
+> **Start by reading:** <inject: this repo's own core-engine, data-gateway, app-entrypoint, backend-route/adapter, and RLS/data-client files to read for an architecture pass>.
 >
 > Evaluate:
 > 1. Data-flow discipline (core product) — is the gateway → projection → engine → component chain strictly one-directional? Is the app's root component the single source of truth for its draft/result state, re-running the engine on any live edit?
-> 2. Engine purity — is the core generate/compute function pure (no UI-framework imports, no side effects)? <inject: the grep recipe that should return empty confirming engine purity, from `cla.io/overlays/project-review.md`>.
-> 3. Allocation-math integrity — do the formulas match this repo's own allocation-engine spec? <inject: the exact formula set + invariants this repo's engine must preserve, from `cla.io/overlays/project-review.md`>. Excluded units zeroed? Fixed roster ordering preserved?
+> 2. Engine purity — is the core generate/compute function pure (no UI-framework imports, no side effects)? <inject: the grep recipe that should return empty confirming engine purity>.
+> 3. Allocation-math integrity — do the formulas match this repo's own allocation-engine spec? <inject: the exact formula set + invariants this repo's engine must preserve>. Excluded units zeroed? Fixed roster ordering preserved?
 > 4. i18n architecture — is all user-facing text routed through the translation-key mechanism (every i18n layer)? Are any load-bearing enum-like values (e.g. a status or category enum) carried as keys end-to-end?
 > 5. Data seam — is the gateway a clean seam a real upstream data feed could replace? Is any simulated latency intentional/localized? Is the shared data-schema package genuinely reusable by a backend (platform-safe)?
 > 6. Backend design — is any LLM/external-API adapter interface vendor-neutral (no vendor SDK type leaking into routes/contract)? Is the wire contract duplicated-in-sync between server and frontend as documented?
@@ -112,15 +119,15 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 ### Agent 5: Validation & Quality Assurance
 
-> **Review criteria:** {Dimension 5 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 5 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
-> **Start by reading:** <inject: this repo's own core-engine test file, smoke/e2e script paths, RLS/DB test directory, and the testing-strategy spec, from `cla.io/overlays/project-review.md` ("Per-dimension agent-dispatch injection facts" — Agent 5)>, then the core engine source and the primary intake-form component for edge-case/validation logic.
+> **Start by reading:** <inject: this repo's own core-engine test file, smoke/e2e script paths, RLS/DB test directory, and the testing-strategy spec>, then the core engine source and the primary intake-form component for edge-case/validation logic.
 >
 > Evaluate (grade against the repo's actual reality — its own suites + smoke/e2e scripts + any DB-isolation suite):
 > 1. Unit-suite coverage — does the core engine's test suite cover its core invariants (budget integrity, identity/consistency checks, calibration, any minimum-floor logic) and edge cases? Do the other packages/apps have meaningful suites?
 > 2. Multi-tenant safety net (if applicable) — does the DB-level isolation test suite actually assert cross-tenant isolation (tenant A cannot read tenant B's rows)? Where present, this is the highest-stakes correctness property in the repo.
 > 3. Smoke/e2e currency — do the repo's own smoke/e2e scripts still match the current UI (selectors, strings, flow)? Would they pass today? (Note: edit-time drift may already be guarded by a hook — check for one — but currency of the *whole flow* is still a judgment call.)
-> 4. Build + lint + test as the safety net — clean (from Mechanical Facts)? Is the type surface strong enough to catch domain misuse across package boundaries?
-> 5. Engine edge cases — empty/degenerate input, all-excluded selection, zero/negative budget, a zero-denominator division guard: handled, or `NaN`/crash? <inject: the grep recipe for this repo's own division-guard pattern, from `cla.io/overlays/project-review.md`>.
+> 4. Build + lint + test as the safety net — clean (from Baseline Facts)? Is the type surface strong enough to catch domain misuse across package boundaries?
+> 5. Engine edge cases — empty/degenerate input, all-excluded selection, zero/negative budget, a zero-denominator division guard: handled, or `NaN`/crash? <inject: the grep recipe for this repo's own division-guard pattern>.
 > 6. Input validation — does the primary intake form guard its required inputs before proceeding? Do other create/edit forms validate?
 > 7. Honesty of the demo (if the product is a demo/prototype) — is it clear which data is mock, and are any intentional simulated-latency delays documented as fake work? Is any gap between a testing-strategy spec and reality acknowledged?

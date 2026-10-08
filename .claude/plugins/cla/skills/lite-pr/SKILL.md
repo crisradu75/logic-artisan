@@ -8,6 +8,8 @@ argument-hint: "[description | (empty)]"
 
 Sibling to `/cla:spec-to-pr` for changes that don't need OpenSpec's artifacts or its multi-round PR-review loop. There is no formal routing rule between the two and no mid-flight escalation path — if a change turns out bigger than expected once you're inside Implement, stop and reassess manually (re-plan, split the change, or switch to `/cla:spec-to-pr`) rather than expecting an automatic handoff.
 
+**Where this repo's facts and rules live.** Commands, paths and file sets come from `cla.io/project-facts.md` only (run `/cla:cla-setup` when it is missing or stale). If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". `cla.io/overlays/lite-pr.md`, if present, adds rules specific to this skill in this repo; apply them alongside the steps below.
+
 ## Mode detection
 
 Parse `$ARGUMENTS`:
@@ -28,9 +30,9 @@ Skip when the description is already concrete and unambiguous (a clear single ch
 
 Produce a plan directly in the conversation as plain text — do NOT call `EnterPlanMode`/`ExitPlanMode`. `ExitPlanMode` is itself a user-approval gate, and lite-pr is continuous by design (see Autonomy below): post the plan for visibility, then proceed — don't hold it open for approval. The plan MUST explicitly list, alongside the code files to change:
 
-- which `openspec/specs/<capability>/spec.md` file(s) need updating (or note "new capability — no existing spec" / "behavior-invisible change — no spec update needed"). See `cla.io/overlays/lite-pr.md` for this repo's own architecture-as-a-capability spec path — a structural change (new data-flow layer, new module boundary) belongs there, not in a separate architecture doc.
-- if the change touches this repo's own core calculation-engine formulas, whether every doc/spec this repo names as needing to stay in lockstep with those formulas needs updating too — see `cla.io/project-facts.md` ("Allocation-formula lockstep doc set") for the exact file set (run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/lite-pr.md` if absent); a formula/knob change shipped without all of them is a silent spec violation, not just stale docs.
-- which test file(s) need adding/updating, and under which workspace package/app they live — see `cla.io/overlays/lite-pr.md` for this repo's own worked examples.
+- which `openspec/specs/<capability>/spec.md` file(s) need updating (or note "new capability — no existing spec" / "no outcome or interface change — no spec update needed").
+- if the change touches this repo's own core calculation-engine formulas, whether every doc/spec this repo names as needing to stay in lockstep with those formulas needs updating too — see the lockstep set of files `cla.io/project-facts.md` lists for them, under whatever heading; a formula/knob change shipped without all of them is a silent spec violation, not just stale docs.
+- which test file(s) need adding/updating, and under which workspace package/app they live — see `cla.io/project-facts.md` ("Test-file locations").
 
 No plan is written to disk. The plan lives in the conversation; its durable record is the doc updates it produces during Implement. Unlike `/cla:spec-to-pr`, nothing is created here that later needs archiving or deleting.
 
@@ -43,15 +45,16 @@ Tests written in this phase follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/referen
 Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (there's no `tasks.md` to walk; the plan's bullet list from above is the task list). For each item in the plan:
 
 1. Make the code change.
-2. Update the spec.md section(s) the plan named — edit the existing `### Requirement:` / `#### Scenario:` blocks in place if the file already uses that structure; for a genuinely new capability with no existing file, plain prose describing the behavior is fine. Prefer this repo's canonical terms from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term). Never create a delta file, never touch `openspec/changes/`.
+2. Update the spec.md section(s) the plan named, only to change an outcome or interface they state, applying `openspec/config.yaml` `rules.specs` — edit the existing `### Requirement:` / `#### Scenario:` blocks in place, or for a genuinely new capability start the file in that structure. Prefer this repo's canonical terms from `cla.io/terminology.md` if it exists and covers the concept (soft — proceed on your own judgement if absent or silent on the term). Never create a delta file, never touch `openspec/changes/`.
 
-   **A live spec is a parsed document, not a prose file — validate it before the commit.** This step is the plugin's one write site with no delta and no archive behind it, so nothing downstream re-parses what you just wrote. An ordinary prose edit can leave the file reading correctly to a human while its structure is broken: a `## Requirements` heading duplicated by a replacement that ended with one, for instance, *closes* the section, and every requirement below it becomes invisible to `validate`, `list` and `archive`. In a repo using OpenSpec, run:
+   **A live spec is a parsed document, not a prose file — validate it before the commit.** This is the plugin's one write site with no delta or archive behind it, so nothing downstream re-parses it, and a prose edit can break structure while reading fine: a duplicated `## Requirements` heading *closes* the section, hiding every requirement below it from `validate`, `list` and `archive`. In a repo using OpenSpec, run:
 
    ```
    openspec validate --specs
+   openspec validate <capability> --type spec --strict   # each spec you edited
    ```
 
-   Not `--strict`: some live specs carry long-requirement warnings, which are style, not structure.
+   The first checks structure, not the limits in `rules.specs`: older requirements over them are rewritten when a change touches them. In the second, a `very long` warning on a requirement you edited (`requirements[<n>]`, the n-th `### Requirement:` from 0) is a fix before committing; on one you did not touch, it is that older text.
 
    `✗ spec/<cap>` in the output → fix it before committing. Non-zero with **no** `✗` line (`command not found`, `unknown option`) is a tooling fault, not a spec fault — say so rather than attributing it to this edit. `No items found to validate.` is **not** a pass: it means nothing was checked, which is also what a repo not using OpenSpec sees — there, say so once and skip the step rather than recording a vacuous success.
 3. Update the `CLAUDE.md` section(s) the plan named (most often "Allocation math" or "Conventions to preserve").
@@ -86,7 +89,7 @@ git status --porcelain
 
 Take the path from each line (strip the two-char status prefix; untracked files show as `??`). If no changed path is source-affecting, there is nothing to gate — skip to Ship. Source-affecting means any path with a `src` component, or any file whose suffix belongs to the repo's own source or config — `.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .rb .php .sh .sql .vue .svelte .json .yaml .yml .toml .css .scss .html` and anything else this repo actually builds from. **The list is illustrative, not exhaustive: when a suffix is not on it, treat the path as source-affecting.** `.py` is called out because it was once missing, and in a Python repo a real source change then did not register as source-affecting at all — the run reported a clean docs-only skip having gated nothing. A closed list reproduces that defect for every language it omits.
 
-Otherwise read the correctness gates out of `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape") — this repo's own record of them, whatever its stack (run `/cla:sync-context` to populate it; falls back to `cla.io/overlays/lite-pr.md` if absent). Split them into two tiers: `smoke` is the cheap lint fast-fail, `full` is the build/typecheck command (primary gate) then the test command. Run smoke first; only run full once smoke is clean (smoke is a pre-filter, not a correctness proof, so full still runs in full). In a workspace/monorepo, the root `build`/`lint`/`test` commands are typically themselves a fan-out across every app/package, so running them at root covers the whole workspace in one shot; there is no separate per-app/package suite to union in. If the file names no commands and the change touches source, say so and treat it as a warning rather than a clean skip. Any standalone smoke/e2e scripts and any hard gate needing external local infra (a live database stack, etc.) are intentionally excluded from this gate — they need external state a plain `npm run` can't provide, and are manual/optional checks, not part of Test. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's own concrete examples (falls back to `cla.io/overlays/lite-pr.md` if absent).
+Otherwise read the correctness gates out of `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape") — this repo's own record of them, whatever its stack. Split them into two tiers: `smoke` is the cheap lint fast-fail, `full` is the build/typecheck command (primary gate) then the test command. Run smoke first; only run full once smoke is clean (smoke is a pre-filter, not a correctness proof, so full still runs in full). In a workspace/monorepo, the root `build`/`lint`/`test` commands are typically themselves a fan-out across every app/package, so running them at root covers the whole workspace in one shot; there is no separate per-app/package suite to union in. If the file names no commands and the change touches source, say so and treat it as a warning rather than a clean skip. Any standalone smoke/e2e scripts and any hard gate needing external local infra (a live database stack, etc.) are intentionally excluded from this gate — they need external state a plain `npm run` can't provide, and are manual/optional checks, not part of Test. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's own concrete examples.
 
 Then, smoke tier first, then full:
 
@@ -116,7 +119,7 @@ Pre-commit safety check:
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
 ```
 
-Exit 0 → proceed. Any non-zero exit → halt and surface via `AskUserQuestion` — same contract as `/cla:spec-to-pr`: never infer "probably fine" on a non-zero exit. This bare invocation passes no `--expect-branch` (lite-pr's feature branch doesn't exist until `commit-push-pr` runs), so a non-zero exit means an in-progress rebase/cherry-pick from another session (exit 2) or an unresolvable/corrupt git state (exit 1) — not a branch mismatch. Resolving an exit-2 in-progress op: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`. If another session is active in this same clone, prefer running lite-pr from an isolated worktree (`/cla:new-worktree`) in the first place — a shared-clone `git commit` mid-flow is a real collision risk here, not a hypothetical one (see `cla.io/overlays/lite-pr.md` for a recorded incident in this repo).
+Exit 0 → proceed. Any non-zero exit → halt and surface via `AskUserQuestion` — same contract as `/cla:spec-to-pr`: never infer "probably fine" on a non-zero exit. This bare invocation passes no `--expect-branch` (lite-pr's feature branch doesn't exist until `commit-push-pr` runs), so a non-zero exit means an in-progress rebase/cherry-pick from another session (exit 2) or an unresolvable/corrupt git state (exit 1) — not a branch mismatch. Resolving an exit-2 in-progress op: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`. If another session is active in this same clone, prefer running lite-pr from an isolated worktree (`/cla:new-worktree`) in the first place — a shared-clone `git commit` mid-flow is a real collision risk here, not a hypothetical one.
 
 **Then, before handing off: every measurement this change asserts names the command that produced it.** This stop is where the change's claims are assembled into a message, which is why the obligation is discharged here rather than while an edit is being typed — a rule that fires at the keyboard fires hundreds of tool calls before the claim is written down. For each measurement the change asserts — a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact — one trailer line goes at the end of the commit message:
 
@@ -142,7 +145,7 @@ No pause before this runs — continuous by design (see Autonomy below). Use `co
 
 ### Review
 
-**Dispatch the review agents directly — do NOT chain `Skill(pr-review-toolkit:review-pr)`.** That skill is itself a thin dispatcher that calls the same `pr-review-toolkit:*` agents; the hop adds a 1–2 turn skill-load round trip with no extra capability (same economy `/cla:spec-to-pr`'s "When NOT to use `Skill()`" section applies). Pick the agents by diff content — `code-reviewer` + `silent-failure-hunter` for any logic/behavior code; add `pr-test-analyzer` when tests change, `type-design-analyzer` on a new invariant-bearing type, `comment-analyzer` on a substantial prose/doc block, `plugin-dev:skill-reviewer` on a SKILL.md frontmatter/new-skill change — and route each per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`. Launch them in parallel in one message; pass each the diff described by file+symbol (let it read the hunks itself), not the raw diff pasted inline.
+**Dispatch the review agents directly — do NOT chain `Skill(pr-review-toolkit:review-pr)`.** That skill is itself a thin dispatcher that calls the same `pr-review-toolkit:*` agents; the hop adds a 1–2 turn skill-load round trip with no extra capability (the same economy as `/cla:spec-to-pr`'s "No `Skill()` hops" rule). Pick the agents by diff content — `code-reviewer` + `silent-failure-hunter` for any logic/behavior code; add `pr-test-analyzer` when tests change, `type-design-analyzer` on a new invariant-bearing type, `comment-analyzer` on a substantial prose/doc block, `plugin-dev:skill-reviewer` on a SKILL.md frontmatter/new-skill change — and route each per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`. Launch them in parallel in one message; pass each the diff described by file+symbol (let it read the hunks itself), not the raw diff pasted inline.
 
 **Brief each one per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md`** (scope / task / do-not-touch / report / done-when). These run in parallel over one working tree, which makes the do-not-touch slot load-bearing rather than ceremonial: two agents editing the same file overwrite each other with no merge and no warning. These are review agents, so the brief's own instruction is that they report findings and edit nothing — and where an agent type exists in `.claude/agents/`, prefer a `tools:` allowlist that makes that mechanically true instead of relying on the prose holding.
 
@@ -186,45 +189,6 @@ This is a deliberate scope limit: a full triage → fix → re-review loop is `/
 
 Suggestion-level findings: mention them in the final report; no fix applied automatically.
 
-## Step 7 — Log the run (counts-only ledger)
-
-Always done, after the final report. Append one counts-only JSON line so this skill's
-runs can be reviewed in aggregate. It was one of three frequently-used skills keeping no
-run data at all; the others are `shape-decision` and `feedback`, given a ledger in the
-same change. No claim is made here about which skill runs most — no per-skill count
-exists to support one.
-
-```bash
-echo '<record-json>' | python3 ${CLAUDE_PLUGIN_ROOT}/lib/log_run.py lite-pr-runs.jsonl
-```
-
-```json
-{
-  "ts": "<ISO-8601>",
-  "mode": "inferred-from-conversation|description|asked",
-  "phases": {"implement": "ok|warn|skip", "test": "ok|warn|skip",
-             "ship": "ok|warn|skip", "review": "ok|warn|skip"},
-  "test_halted": true|false,
-  "findings": {"critical": N, "important": N, "suggestion": N},
-  "fixes_committed": true|false,
-  "pr_opened": true|false
-}
-```
-
-`test_halted` is the one field worth getting exactly right: the Test-phase stop is this
-skill's ONLY gate, so how often it fires is the whole question of whether the gate is
-placed well. `false` means the phase ran and did not halt; omit the field rather than
-writing `false` if Test never ran.
-
-Read it back with the generic summariser — this skill has no bespoke retro, deliberately:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/lib/ledger_summary.py --ledger lite-pr-runs.jsonl   # add --fleet to read every repo in cla.io/fleet.local.md
-```
-
-Best-effort: if `log_run.py` exits non-zero, note it and continue. A missing ledger line
-never blocks a run.
-
 ## Autonomy
 
 Continuous — no "confirm to proceed?" prompts between phases, matching `/cla:spec-to-pr`'s default. Plan does not gate on approval (no `EnterPlanMode`/`ExitPlanMode`) — the plan is posted, then every phase runs straight through: Plan → Implement → Test → Ship → Review. The only stop point in the entire flow is the Test-phase halt on an unresolved failure (see Test above). A user-driven interrupt (Ctrl-C, an explicit "stop"/"wait" message) still halts — that's a hard interrupt, not a model-side pause.
@@ -240,7 +204,6 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 - No `proposal.md`/`design.md`/`tasks.md`, no delta specs, no `openspec/changes/` directory, no archive step.
 - No multi-round PR-review loop — one pass, one fix round, no re-verification.
 - No pre-push confirmation gate.
-- No bespoke retro skill — Step 7's ledger is read with the generic `ledger_summary.py`.
 
 ## References
 

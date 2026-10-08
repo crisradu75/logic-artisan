@@ -97,35 +97,7 @@ def test_detects_posix_escaped_space_path():
 # End-to-end via subprocess
 # --------------------------------------------------------------------------- #
 
-def make_dir_alias(link: Path, real: Path) -> None:
-    """Create `link` -> `real` as a real symlink where permitted, falling back
-    to an NTFS directory junction (`mklink /J`, no elevated privileges needed
-    on Windows -- unlike a symlink) so this test gets real coverage on a
-    standard, non-admin Windows account instead of skipping."""
-    try:
-        link.symlink_to(real, target_is_directory=True)
-        return
-    except (OSError, NotImplementedError, AttributeError):
-        pass
-    if os.name != "nt":
-        pytest.skip("symlink creation not permitted, and junctions are Windows-only")
-    result = subprocess.run(
-        ["cmd", "/c", "mklink", "/J", str(link), str(real)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
-    if result.returncode != 0:
-        pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
-    if not link.exists():
-        # `mklink /J` reports success against a MISSING target: rc 0, "Junction
-        # created for ...", and the link resolves nowhere. Without this the
-        # helper returns normally having created nothing usable, and the caller
-        # asserts against an alias that does not resolve -- a test that passes
-        # for the wrong reason, which is the failure shape this helper was
-        # written to remove.
-        pytest.skip("directory alias created but does not resolve")
-
-
-def test_a_directory_merely_CONTAINING_a_link_is_allowed(tmp_path):
+def test_a_directory_merely_CONTAINING_a_link_is_allowed(tmp_path, make_dir_alias):
     """The removed trigger 2, pinned as an ALLOW so the removal is deliberate.
 
     This used to block. The walk that found the link cost a scan budget, a
@@ -163,7 +135,8 @@ def test_a_worktree_path_is_not_blocked_for_being_one(tmp_path):
     assert r.returncode == 0, r.stderr
 
 
-def test_a_worktree_path_that_IS_a_link_still_blocks(tmp_path):
+# requirement: guard-hooks / Unsafe commands are blocked
+def test_a_worktree_path_that_IS_a_link_still_blocks(tmp_path, make_dir_alias):
     """The half of the worktree case that must survive the narrowing.
 
     Removing trigger 1 must not remove coverage of the incident shape merely
@@ -184,6 +157,7 @@ def test_a_worktree_path_that_IS_a_link_still_blocks(tmp_path):
     assert "symlink" in r.stderr or "junction" in r.stderr
 
 
+# requirement: guard-hooks / Unsafe commands are blocked
 def test_allows_a_clean_recursive_delete(tmp_path):
     target = tmp_path / "build-output"
     target.mkdir()
@@ -193,7 +167,7 @@ def test_allows_a_clean_recursive_delete(tmp_path):
     assert r.stderr.strip() == ""
 
 
-def test_second_target_still_checked_after_an_earlier_allowed_one(tmp_path):
+def test_second_target_still_checked_after_an_earlier_allowed_one(tmp_path, make_dir_alias):
     # A command with two separate rm -rf invocations: the first targets an
     # ordinary directory (allowed), the second a link (blocked).
     # Guards that resolving/checking the first candidate can't short-circuit
@@ -244,7 +218,7 @@ def test_allows_non_destructive_command(tmp_path):
     assert r.stderr.strip() == ""
 
 
-def test_there_is_no_escape_hatch(tmp_path):
+def test_there_is_no_escape_hatch(tmp_path, make_dir_alias):
     """`ALLOW_UNSAFE_RM` is gone, and nothing may resurrect it accidentally.
 
     The hatch was removed with the two broad triggers. It was unreachable in
@@ -289,7 +263,7 @@ def test_there_is_no_escape_hatch(tmp_path):
     )
 
 
-def test_the_remedy_follows_the_callers_tool_not_the_platform(tmp_path):
+def test_the_remedy_follows_the_callers_tool_not_the_platform(tmp_path, make_dir_alias):
     """A git-bash caller must be told `rm`, not `Remove-Item`. Issue #236.
 
     `sys.platform` is `win32` for this hook process whichever tool invoked it,
@@ -355,7 +329,7 @@ def test_the_remedy_follows_the_callers_tool_not_the_platform(tmp_path):
     )
 
 
-def test_an_unknown_tool_falls_back_to_the_platform_remedy(tmp_path):
+def test_an_unknown_tool_falls_back_to_the_platform_remedy(tmp_path, make_dir_alias):
     """Absent or unrecognised `tool_name` reproduces the pre-#236 behaviour.
 
     Older payload shapes, this file's own other tests, and any future tool land
@@ -385,7 +359,7 @@ def test_an_unknown_tool_falls_back_to_the_platform_remedy(tmp_path):
         )
 
 
-def test_the_block_message_names_a_remedy_that_works(tmp_path):
+def test_the_block_message_names_a_remedy_that_works(tmp_path, make_dir_alias):
     """With no escape hatch, a wrong remedy leaves the caller with nowhere to go.
 
     That is not hypothetical. The first version of this shrink prescribed "a
@@ -451,7 +425,7 @@ def test_the_block_message_names_a_remedy_that_works(tmp_path):
     assert "non-recursive rm/Remove-Item" not in r.stderr
 
 
-def test_blocks_a_delete_whose_target_is_itself_a_junction(tmp_path):
+def test_blocks_a_delete_whose_target_is_itself_a_junction(tmp_path, make_dir_alias):
     """The shape the hook was written for, and the one it used to allow.
 
     `rm` from git-bash/MSYS recurses THROUGH a directory junction as though it
@@ -484,7 +458,7 @@ def test_blocks_a_delete_whose_target_is_itself_a_junction(tmp_path):
 
 
 @pytest.mark.parametrize("suffix", ["", "/", "/.", "\\"])
-def test_blocks_the_junction_target_however_the_path_is_spelled(tmp_path, suffix):
+def test_blocks_the_junction_target_however_the_path_is_spelled(tmp_path, suffix, make_dir_alias):
     """Trailing separators, and the reason this is a separate test.
 
     `os.path.islink` is an lstat, and POSIX lstat RESOLVES a trailing slash — so
@@ -603,7 +577,7 @@ def test_a_link_to_a_file_is_not_blocked(tmp_path):
     # regression cell, not as evidence for the folding.
     "{p}/./", "{p}/./.", "{p}//.",
 ])
-def test_the_trailing_separator_strip_is_what_sees_through_a_slash(tmp_path, spelling, monkeypatch):
+def test_the_trailing_separator_strip_is_what_sees_through_a_slash(tmp_path, spelling, monkeypatch, make_dir_alias):
     """The strip, isolated — and it can only be tested this way.
 
     On Windows the strip is a NO-OP: `os.stat(..., follow_symlinks=False)` reads
@@ -754,7 +728,7 @@ def test_a_glob_or_redirection_token_is_not_treated_as_undetermined(tmp_path, ta
     assert r.returncode == 0, f"an ordinary command must not block: {r.stderr[:300]}"
 
 
-def test_an_unreadable_target_says_it_could_not_examine_the_path(tmp_path, monkeypatch):
+def test_an_unreadable_target_says_it_could_not_examine_the_path(tmp_path, monkeypatch, make_dir_alias):
     """The block message must not assert what the code did not determine.
 
     The undetermined branch reused the confirmed-link text, so a path the hook
@@ -787,7 +761,7 @@ def test_an_unreadable_target_says_it_could_not_examine_the_path(tmp_path, monke
     )
 
 
-def test_a_decided_block_survives_a_failed_write_to_stderr(tmp_path, monkeypatch, capsys):
+def test_a_decided_block_survives_a_failed_write_to_stderr(tmp_path, monkeypatch, capsys, make_dir_alias):
     """The `_Blocked` refactor, pinned — it had no test.
 
     The block sites once sat inside `except OSError: continue`, so a
@@ -847,7 +821,7 @@ def test_an_embedded_null_in_the_path_does_not_crash_the_hook(tmp_path):
     )
 
 
-def test_a_target_reached_through_a_link_is_still_allowed(tmp_path):
+def test_a_target_reached_through_a_link_is_still_allowed(tmp_path, make_dir_alias):
     """The negative case that actually guards trigger 0, replacing a weaker one.
 
     An earlier version of this test just deleted an ordinary nested directory —

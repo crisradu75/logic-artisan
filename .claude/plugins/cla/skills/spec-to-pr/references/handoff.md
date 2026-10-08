@@ -1,18 +1,17 @@
-# handoff — terminal report, PR-body mirror, run-log, discipline audit (full mechanics)
+# handoff — terminal report, PR-body mirror, TODO.md, run record
 
-The Handoff phase's step-by-step procedure. `SKILL.md`'s Handoff stub carries the load-bearing invariants (the next-steps gating rule, the run-log-must-be-committed-not-dangling rule, the feature-branch-only guard); this file carries the report shape and the recipes.
+The Handoff phase's procedure. Why its gates are shaped as they are: `design-tradeoffs.md` "Handoff".
 
 ## 1. Emit the terminal report inline
 
-From the orchestrator's working memory of each phase. Use this exact shape (one section per row, in this order):
-- Header: `## <change-name> — workflow complete` (or `… completed with issues` if any phase is `warn` or `fail`).
-- PR URL + branch + mode + caps.
-- Phases table: one row per phase with glyph (`✓` / `⚠` / `✗`), phase name, and the one-line summary you held in context for that phase.
-- Counts at a glance: ✓/⚠/✗ phase tally; Critical/Important/Suggestion remaining; failing test names if any.
-- Issues encountered: bulleted list of `warn`/`fail` outcomes from any phase. Empty section when there are none — print "(none)".
-- **Deferred Known Issues:** every Critical/Important PR-review finding triaged as Deferred-Known-Issue in Revise, each with its one-line rationale. This section is the durable record of "we saw it, we chose not to fix it now, here's why." Empty section when there are none — print "(none)".
+From your working memory of each phase, as rendered Markdown in the assistant turn — never a file or a script. Sections in this order, "(none)" under an empty one:
 
-  **Split into three named subsections, always, even when one or two are empty:**
+- Header: `## <change-name> — workflow complete` (`… completed with issues` if any phase is `warn` or `fail`).
+- PR URL + branch + mode + caps. When `<inherits>` was non-empty: one verdict line per supplied entry, `HONOURED` ones included, here ahead of the phase table, even on a resumed run that skipped Review.
+- Phases table: one row per phase — glyph (`✓` / `⚠` / `✗`), phase name, the one-line summary you held for it.
+- Counts at a glance: the ✓/⚠/✗ tally; Critical/Important/Suggestion remaining; failing test names, if any.
+- Issues encountered: every `warn`/`fail` outcome from any phase.
+- **Deferred Known Issues:** every Critical/Important Revise finding triaged Deferred-Known-Issue, each with its one-line rationale, **split into three named subsections, always, even when empty:**
 
   ```
   **Blocked on a missing artifact** — cannot be resolved now; name the artifact.
@@ -20,83 +19,76 @@ From the orchestrator's working memory of each phase. Use this exact shape (one 
   **Skipped** — no reason above applies.
   ```
 
-  Under the full-severity policy the first two are legitimate holds and `Skipped` is a policy breach, so **a non-empty `Skipped` fails Handoff.** One bucket under a single alarming label makes the two indistinguishable without re-reading every item, which in practice means the section gets waved through unread. Keep the headings verbatim so the check stays a grep rather than a judgement.
-- **Rejected remedies, still open:** every Critical/Important finding a fix delegate returned `remedy-rejected` on **citing the remedy**, and which the run ended without closing. One line each: the finding, and the delegate's stated reason for rejecting the fix. Empty section when there are none — print "(none)".
+  The first two are legitimate holds; **a non-empty `Skipped` fails Handoff.** Keep the headings verbatim so the check is a grep.
+- **Rejected remedies, still open:** every Critical/Important finding a fix delegate rejected **citing the remedy** that the run did not close — one line each: the finding and the delegate's reason. Not a Deferred Known Issue (nobody chose to defer it) and not Suggestion residue: a live defect whose obvious fix was rejected. A finding closed by disproof does not appear here.
+- Deferred to TODO.md: Suggestion-level residue, plus any cap-exhausted untriaged residue.
+- Next steps for you (§4).
 
-  This is its own bucket and not a variant of either neighbour. It is **not** a Deferred Known Issue — nobody chose to defer it; a delegate examined the proposed fix and found it wrong, which is a *successful* return and leaves the defect real and unfixed. It is **not** Suggestion-level residue either. Filing it under either heading loses the one thing a reader needs: that a live Critical remains and the reason the obvious fix for it was rejected. A finding closed by disproof — the defect itself shown not to exist — does not appear here; it closed, and nothing is outstanding.
-- Deferred to TODO.md: bulleted residue list (Suggestion-level only, plus any cap-exhausted untriaged residue). Empty when none.
-- Next steps for you (see step 4 for the gating rule).
+## 2. Mirror the issues into the PR body
 
-Render directly as Markdown text in the assistant turn. Do not write to a file or invoke a script.
+Skip when there are no issues and no rejected remedies.
+- **Few short issues:** one line — `gh pr edit <#> --body "Closes openspec/changes/<name>/. Checks: <the checks that ran>. Known issues: <comma-separated brief list>."`.
+- **Long or multi-line:** write `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run): the original one-liner plus a `## Known issues` section, one bullet per issue, then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`.
 
-## 2. Mirror the Issues encountered list into the PR body
+**Mirror "Rejected remedies, still open" first** — one line per finding with the delegate's reason. It is the most severe thing the body carries.
 
-Skip entirely when there are no issues.
-- **Few short issues:** edit the body inline as one line — e.g. `gh pr edit <#> --body "Closes openspec/changes/<name>/. Checks: build + lint passed. Known issues: <comma-separated brief list>."`.
-- **Long or multi-line issues:** write a single short Markdown body to `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run — no per-run timestamped dir), then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`. The file body is intentionally terse: original one-liner + a `## Known issues` section with one bullet per issue. No restated test plan, no closing summary.
+## 3. Persist to TODO.md
 
-**Mirror "Rejected remedies, still open" too, and put it first.** It is the most severe thing the report carries — a live Critical — so a PR body naming the Deferred-Known-Issues while omitting it inverts the severity order the body exists to convey. One line per finding with the delegate's reason.
+When there is ANY Deferred-Known-Issue, ANY rejected remedy still open, OR ANY Suggestion, append one section to the repo-root `TODO.md` (create it if absent):
 
-## 3. Persist Deferred-Known-Issues + Rejected-remedies-still-open + Suggestions to TODO.md
+```
+## Deferred from PR #<N> (<change-name>) — <YYYY-MM-DD>
 
-Durable record beyond PR-body staleness. The PR body goes stale once the PR merges; `TODO.md` is the load-bearing follow-up tracker per repo CLAUDE.md ("Deferred ideas and follow-ups, organized by plugin"). When the Revise output has any Deferred-Known-Issues, any **rejected remedies still open**, OR any Suggestions:
-- Append a single section to `TODO.md` at the repo root (create the file if absent) with the shape:
-  ```
-  ## Deferred from PR #<N> (<change-name>) — <YYYY-MM-DD>
+**Rejected remedies, still open** (findings whose proposed fix a delegate rejected with reasons; the defect is REAL and UNFIXED):
+- [Critical] <issue> — remedy rejected because: <the delegate's reason>
+- ...
 
-  **Rejected remedies, still open** (findings whose proposed fix a delegate rejected with reasons; the defect is REAL and UNFIXED):
-  - [Critical] <issue> — remedy rejected because: <the delegate's reason>
-  - ...
+**Deferred-Known-Issues** (Important PR-review findings the team consciously deferred):
+- [Important] <issue> — rationale: <one line>
+- ...
 
-  **Deferred-Known-Issues** (Important PR-review findings the team consciously deferred):
-  - [Important] <issue> — rationale: <one line>
-  - ...
+**Suggestions** (low-priority PR-review residue):
+- [Suggestion] <issue>
+- ...
+```
 
-  **Suggestions** (low-priority PR-review residue):
-  - [Suggestion] <issue>
-  - ...
-  ```
-- Stage + commit as `docs: TODO.md`. Push to the same feature branch (the user merges it with the rest of the PR; TODO.md becomes part of history).
-- Skip entirely only if ALL THREE lists are empty. A run whose only residue is rejected-open findings still writes the section — that is the case the rejected-remedies block was added for, and a two-list trigger would skip exactly it.
-- This commit lands AFTER the archive commit, so the TODO.md edit reflects the final state. The pr-review agents do NOT re-review it (mechanical doc edit).
+Stage + commit as `docs: TODO.md` and push to the feature branch. Skip only when all three lists are empty — a run whose only residue is rejected-open findings still writes the section. This lands after the archive commit and is not re-reviewed.
 
-## 4. Next-steps gating (INVARIANT — also stubbed inline in SKILL.md)
+## 4. Next-steps gating
 
-The terminal report's "Next steps for you" section is gated on the overall phase tally, **and on the "Rejected remedies, still open" section being empty.** A non-empty one takes the **✗ branch** below — it does NOT print `gh pr merge` — even when every phase glyph is ✓.
+Gated on the phase tally **and on "Rejected remedies, still open" being empty.** A non-empty one takes the **✗ branch** below even when every glyph is ✓, listing each open rejected finding with the delegate's reason in place of the failing phases. (It reaches Handoff with Revise `warn` — re-attempt or cap exhaustion — and the ⚠ branch would name `gh pr merge` over a live Critical; the section, not the glyph, tells the two apart.)
+- **All ✓:** print `gh pr merge <#> --squash --delete-branch`, one line, no preamble. **Stacked child (`--pr-base` passed):** never a bare merge command — print "lands after its parent — retarget it to the base branch first, then merge parents first with merge commits" (steps: `branch-and-pr-base.md`, "Landing a stack").
+- **Any ⚠:** print "**Review warnings before merging.**" FIRST, then each ⚠ phase's one-line summary indented, and only then, on a new line, `gh pr merge` as the eventual command.
+- **Any ✗:** print "**This PR is NOT ready to merge.**", list the failing phases, and do NOT name `gh pr merge`.
 
-**Why ✗ and not ⚠.** The ⚠ branch still names `gh pr merge` as the eventual command, so routing there would print a merge command over an open Critical, which is the failure this gate exists to prevent. The ⚠ branch also lists "each ⚠ phase's one-line summary", and a rejected remedy is not a phase — it would print a warning header over an empty list, which reads as boilerplate. So: ✗ branch, and list each open rejected finding with the delegate's reason in place of the failing-phase list.
-
-**How this state is reached.** `revise.md`'s exit gate never releases the loop `ok` while a finding is open, so an open rejected finding reaches Handoff by one of two routes, both of which mark Revise `warn`: **re-attempt exhaustion** (the finding's remedy was rejected twice, by two independently-decided remedies, and nothing is left to try) or **cap exhaustion**. So the glyph is `warn`, not `✓` — and that is exactly why this gate is needed rather than redundant: the ⚠ branch names `gh pr merge` as the eventual command, which is right for an ordinary warn and wrong for a live Critical. Gating on the *section* rather than the *glyph* is what tells those two apart, because the glyph cannot.
-- **All ✓:** print `gh pr merge <#> --squash --delete-branch` as the next step. Single line, no preamble. **Stacked-child exception (`--pr-base` passed):** never print a bare merge command — squash-merging a stacked parent breaks every child PR. Print "lands with its chain — see the multi-pr report" instead; the chain report carries the parents-first, merge-commit landing checklist.
-- **Any ⚠ (warn):** print a "**Review warnings before merging.**" line FIRST, then list each ⚠ phase's one-line summary indented. Only after that — and on a new line — name `gh pr merge` as the eventual command. The intent: the user should not type `gh pr merge` without first reading what warned.
-- **Any ✗ (fail):** print "**This PR is NOT ready to merge.**" and DO NOT name `gh pr merge` at all. List the failing phases. The user can override by typing merge themselves, but the report does not endorse it.
-
-Do NOT name `openspec archive` in any case (Archive already did it).
+Never name `openspec archive` (Archive did it).
 
 ## 5. Append the per-run record to the JSONL log
 
-After the terminal report has been printed, serialize the in-context phase outcomes as a single JSON object and pipe it to `${CLAUDE_PLUGIN_ROOT}/lib/log_run.py` (with `spec-to-pr-runs.jsonl` as its argument). **The exact JSON schema (every field `aggregate.py` reads, counts-only, under 4 KiB) and the per-field obligations live in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`** — follow that shape exactly; it is the contract `/cla:spec-to-pr-retro` consumes. **Include the `routing` object** (the per-dispatch model tally, `implement_delegated`, `escalate_up_fired`, and `revise_findings_by_tier` — keyed **per agent**, `found`/`phantom` counting Critical+Important only, Suggestions excluded) — it is the telemetry that lets the retro validate the routing table AND drives its per-agent yield heuristic; assemble it from the models you dispatched, whether Implement delegated, whether escalate-up fired, and the Revise triage outcome per agent.
+After the report, serialize the run as one JSON object and pipe it to `${CLAUDE_PLUGIN_ROOT}/lib/log_run.py` with `spec-to-pr-runs.jsonl` as its argument. **Build it from the example in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`, re-read now — not from memory.** `flags` comes from the invocation, `escalated_to_diagnose` from the count Test kept, `routing.revise_findings_by_tier` from each Revise agent's triage outcome, and Revise's `findings_by_round` from the entries written as each round closed — never reconstructed here.
 
-**Failure is non-fatal.** If `log_run.py` exits non-zero (disk full, perms, oversize record), capture the stderr in the Handoff Issues section but do NOT mark the overall run as warn — a missing log line is a small loss; halting at the very end of a successful workflow is a large one.
+**`log_run.py` refuses a record off the shape**, printing one line naming every field that is off. **Rebuild it from the example, fixing every field named, and pipe it again — once.** Refused again, or any other failure (disk, permissions, the 4 KiB ceiling) → the stderr line goes in Issues and the run finishes; it never marks the run `warn`.
 
-## 6. Commit the run-log line to the feature branch (INVARIANT — so it ships with the PR, never dangles)
+**Then print the retro nudge**, whether or not the append succeeded:
 
-Step 5's `log_run.py` append leaves `cla.io/retro/spec-to-pr-runs.jsonl` dirty on the working tree. Commit that one-line append onto the feature branch so it merges atomically with the change instead of lingering as an uncommitted file. Committing it here on the feature branch avoids both the dangling file and a later direct-to-main push, which the repo's `pre-push` hook refuses (when installed — it is a manual per-clone step).
-- **Guard — feature branch only.** Do this ONLY when Ship opened a PR (HEAD is `<branch>`). If Ship was `skip` (still on `<base-branch>`, branch collision, or the autonomy gate was declined), SKIP this commit: a direct-to-base-branch push would be blocked, so leave the append as a local uncommitted change and note it in the Handoff Issues section for the user to place.
-- **Skip when the log is out-of-repo.** If `CLAUDE_RETRO_DIR` points outside the repo, there is nothing tracked to stage — skip.
-- Verify git-state, then path-scoped stage + commit + push (never `-A`):
+```
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --nudge
+```
+
+Print what it prints, verbatim, after the report: one line suggesting `/cla:spec-to-pr-retro`, or nothing. It never fails, never blocks, and changes nothing about the run's status.
+
+## 6. Commit the run-log line to the feature branch
+
+The append leaves `cla.io/retro/spec-to-pr-runs.jsonl` modified. Commit it onto the feature branch so it merges with the PR instead of dangling, or being pushed to the base branch later.
+- **Guard — feature branch only.** Do this ONLY when Ship opened a PR (HEAD is `<branch>`). If Ship was `skip` (still on `<base-branch>`, a branch collision, a declined gate), leave the append uncommitted and say so in Issues.
+- **Skip when the log is out-of-repo** (`CLAUDE_RETRO_DIR` outside the repo): nothing tracked to stage.
+- Verify git state, then stage the one path, commit and push:
   ```
   python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py --expect-branch <branch>
   git add -- cla.io/retro/spec-to-pr-runs.jsonl
   git commit -m "chore: spec-to-pr run log"
   git push
   ```
-- This commit lands AFTER the archive and optional `docs: TODO.md` commits and is NOT re-reviewed by the pr-review agents (mechanical, like the archive commit). It is the LAST commit of the run.
+- It is the LAST commit of the run, after the archive and optional `docs: TODO.md` commits, and is not re-reviewed.
 
-Steps 5 and 6 are the run's last two actions. If either was skipped, say so in the terminal report — a missing run-log line, or one left uncommitted, is a loose end the user should see now rather than a gap discovered later by `/cla:spec-to-pr-retro` finding a run absent from the ledger.
-
-## Run-log fields assembled during the run
-
-**Build the Revise phase's `findings_by_round` at triage time, not here.** Each round's entry is written as that round closes, from what it actually found — `found` is the deduplicated Critical+Important count, and `sibling_instance` counts what the round's enumeration question surfaced. Reconstructing the array at Handoff, from memory of rounds already closed, produces the plausible number rather than the observed one, and the field exists to settle a deferral that a plausible number cannot. A round that was never asked the question records `sibling_instance: 0`, which means *not asked*; the schema says so, and a later reader must not count it as a quiet round.
-
-**The Review record's `agents` field MUST agree with its `size_gate`, every time — this is the one field this checklist has been observed to drop in practice** (a downstream repo's `/cla:spec-to-pr-retro` run flagged multiple logged runs with `size_gate: "large"` and `agents: []`, caught by `spec_to_pr_aggregate.py`'s `review_gate_pair_mismatches` metric). Large mode: `agents` MUST be `["design", "task", "spec"]` (or whichever subset actually ran). Small mode: `agents` MUST be omitted or `[]`. Set this field from what Review actually dispatched, not from memory of "what large mode usually does" — assemble it at the same point you record `size_gate`, not as an afterthought when building the JSON object for `log_run.py`.
+Steps 5 and 6 are the run's last two actions. If either was skipped, say so in the report — a run-log line missing or left uncommitted is a loose end the user should see now.

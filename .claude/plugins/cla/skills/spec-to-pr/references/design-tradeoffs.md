@@ -1,117 +1,102 @@
-# Design trade-offs accepted by `/cla:spec-to-pr`
+# Design trade-offs and rationale behind `/cla:spec-to-pr`
 
-Reference material for design rationale that doesn't change run-to-run. Claude does not need to re-read this every workflow run; it's here for human readers and for re-reading when the design itself is being revised.
+Why the skill's rules are shaped as they are. **Not read during a run** — read it when revising the skill, and before deleting a rule that looks redundant. Dated, repo-specific incidents live in each repo's `cla.io/lessons-learned/`; the enforcement-tier vocabulary in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md`.
 
-## Ship — inline `git` + `gh pr create`, minimal messages
+## Shape of the skill
 
-Ship runs path-scoped `git add openspec/changes/<name>/ apps/<app>/src/ packages/<package>/src/` (the specific app/package paths touched — there is no repo-root `src/`) → `git commit -m "feat: <change-name>"` → `git push` → `gh pr create --title "feat: <change-name>" --body "Closes openspec/changes/<name>/. Checks: build + lint passed."`. No commit-msg or pr-body file is written, and never `git add -A` (see `bash-discipline.md`).
+**Phase stubs carry only gate rules; each phase reads its reference first** (2026-10-08, the plugin-surface simplification's P1). `SKILL.md` had grown to restate every mandatory reference (about 2,600 duplicated words), so each rule had two copies to keep in step and a run read both. A stub now keeps only the rules whose loss is silent and expensive — git state, staging scope, the exit gate, the merge gating, turn liveness, the `<inherits>` resume — and rationale lives here.
 
-**Trade-off accepted:** commit subjects and PR bodies are minimal — no Summary section, no Test-plan checklist, no body explaining "why". The proposal under `openspec/changes/<name>/` is the why; the diff is the what; commit/PR text is just a marker. This is appropriate for a single-developer project where nobody reads PR descriptions to decide whether to merge. If the project ever grows to multi-reviewer, replace the single-line `--body "..."` with a `--body-file` build-up call and add the structure back.
+**No `Skill()` hops.** `Skill(pr-review-toolkit:review-pr)` is itself a dispatcher of the same agents; `Skill(commit-commands:commit-push-pr)` re-prompted with the diff and asked for the same four shell commands; `Skill(openspec-archive-change)` wraps one CLI call. Each cost a turn or two of indirection for no capability. `Skill(openspec-apply-change)` is the exception: it carries real workflow logic (walk tasks.md, locate the module, edit, tick, re-validate). Inline instead when you already hold the artifacts and source, or need side knowledge the skill lacks — judgment, not a subtask count. Use `Skill()` only for capability the orchestrator lacks.
 
-Earlier versions delegated this phase to `commit-commands:commit-push-pr`, which auto-generated a verbose commit + PR body from the staged diff. Removed because that plugin re-prompted Claude with the diff and asked it to run the same shell commands, costing turns of indirection for output nobody read.
+**No `TaskCreate` for phases or a linear tasks.md walk.** Phase outcomes live in context and surface in the Handoff report; tasks.md checkboxes are the task list. It earns its place only for parallel, externally gated or cross-session sub-work. The harness's nudges are generic; the skill's rule wins.
 
-## Archive — archiving while PR still OPEN
+**Session-model routing.** Inline judgment (Propose authoring, the Review verdict, Revise triage) runs at the session model, which the skill cannot change. On a sub-Opus session the two highest-leverage moments escalate to an `opus` Agent; on Opus that is a no-op. Full table: `model-routing.md`.
 
-Archive runs `openspec-archive-change` and commits the result to the PR branch BEFORE the user merges. When the user merges the PR, the archive is applied atomically with everything else.
+**`<base-branch>` is resolved, never assumed.** The harness once hardcoded `master`, which broke every `main`-default repo: `master..HEAD` fails with `unknown revision`, and `git checkout master` cannot succeed.
 
-**Trade-off accepted:** the archive runs while the PR is still `OPEN`. If the user later substantially modifies or rejects the PR, the archived state in `openspec/specs/` and `openspec/changes/archive/` is stale (visible in the PR diff but not yet in main). To unwind: revert the `chore: archive` commit on the PR branch and (if any portion was merged) manually re-extract the change from `archive/` back into `changes/`. The risk is acceptable because, in the typical autonomous workflow, the PR opened by Ship is reviewed in Revise and approved (any blocking issues would have manifested as Critical/Important findings and been fixed before this point).
+**`<inherits>`** — GitHub issues #98, #100, #102: one chain in which three consecutive changes dropped the same obligation, each internally consistent and silently wrong. Carrying the obligation into the dependent's own Review is the mechanism; the chain's note of it is not — a note nobody re-reads at the right moment is no note, and the right moment is that change's Review, not its Implement. Its resume rule exists because `probe_state.py` has no review state.
 
-## Continue-on-everything escalation
+## Continue-on-everything
 
-The orchestrator never halts on a sub-step failure. Every failure becomes a `warn` phase and a line in the terminal report's "Issues encountered" section.
-
-**Trade-off accepted:** a failing `openspec validate` propagates downstream and may produce a PR built on broken artifacts. The user is the only safety net; the report and PR-body callouts are the surface that makes the safety net usable. The user explicitly chose this escalation policy in the explore session.
+The orchestrator never halts on a sub-step failure; each becomes a `warn` phase and an Issues line. **Accepted:** a failing `openspec validate` propagates and may yield a PR built on broken artifacts. The user is the safety net, and the report and PR-body callouts make that net usable. The owner chose this policy. `/cla:lite-pr` halts on an unresolved test failure instead; that difference is deliberate.
 
 ## Layer-1 wildcard permissions
 
-`Bash(git *)`, `Bash(python *)`, etc. trust *all* invocations of those tools by Claude in the project.
+`Bash(git *)`, `Bash(python *)` and the like trust every invocation. **Accepted:** broader than per-subcommand allowlisting; `required-permissions-narrow.json` exists for stricter users. The default is wide because the user already trusts the orchestrator with autonomous push and PR-open.
 
-**Trade-off accepted:** broader trust scope than per-subcommand allowlisting (`Bash(git status *)`, `Bash(git add *)`, ...). The narrower set in `references/required-permissions-narrow.json` is documented for users who want stricter allowlisting, but the default is the wildcard set because the user is already trusting the orchestrator with autonomous push and PR-open authority.
+## Autonomy gate and turn liveness
 
-## Revise fix-round commits stay manual
+A phase-boundary confirmation prompt is a regression against the documented contract; past sessions lost ~5 minutes per pause to model-side gating nothing authorized. "Merge and clean" was once over-read as "skip review"; it is about cleanup after Archive.
 
-Revise (PR-review fix rounds) commits as `fix: review round N` via a direct `git commit` rather than delegating to `commit-commands:commit-push-pr`.
+**Turn liveness is a check, not a prohibition.** The prohibition asks you to notice mid-flow that what you are writing *reads* as an ending — a judgement, and a real chain lost a round-trip to it: the author wrote the banned shape and then behaved like its reader. "Is there a tool call in this message?" needs no judgement. Incident: 2026-08-23, a `/cla:multi-pr` chain in the source repo.
 
-**Trade-off accepted:** the round-N subject is structurally meaningful — it drives `probe_state.py`'s round counter and the round-N-on-fix-diff scoping. The plugin would auto-generate a different subject and break that contract.
+## Implement
 
-## Revise round 1 — Workflow fan-out (round ≥2 stays direct-Agent)
+- Post-check: issue #111 records three ticked tasks in one chain that asserted false things — including a mutation test that could not have failed — with every mechanical check passing. The box count is a presence check on a glyph; the artifact-ready flag does not read task state at all. Briefs that demanded numbers are the ones that came back with real ones, hence the inline `measured:` value; a sample re-measure, not exhaustive re-verification, because that would cost as much as the implementation.
+- A ticked box with "NOT DONE" beneath it is honest work filed dishonestly, and makes every downstream count wrong.
+- A mechanical scan for ticked-but-open tasks was built and withdrawn: over this repo it reached 6 of 173 ticked tasks with 0 true positives against 4 false (issue #105).
 
-Round 1 dispatches the review agents via one `Workflow` script instead of parallel `Agent` calls (see SKILL.md Revise + `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`). Chosen because `Workflow`'s `agent()` exposes the two knobs `Agent` lacks — per-call **effort** (opus bug-hunters at `medium` instead of inherited session effort) and **schema-forced findings** (no prose re-parsing) — and the merge/dedup runs in code at zero token cost.
+## Test
 
-**Trade-off accepted:** a second orchestration mechanism inside one phase, with quieter failure semantics (a crashed reviewer becomes a `null` in the results array rather than an inline error). Mitigated by two mandatory rules in SKILL.md: the completeness check (`reported < launched` → Revise `warn`) and the whole-Workflow-failure fallback to direct `Agent` dispatches. Round ≥2 stays on plain `Agent` calls — 1-2 small scoped dispatches don't repay the script overhead.
+- **The source-affecting suffix list is illustrative.** `.py` was once missing, and in a Python repo a real source change did not register as source-affecting: the run reported a clean docs-only skip having gated nothing. A closed list reproduces that for every language it omits.
+- **No commands is `warn`, not `skip`**, because a skip announces a source change as docs-only and runs no gate, with a reason plausible enough that nobody questions it — worse than a missing gate.
+- **State a cause before editing:** the round budget bounds attempts, not how well-reasoned each is, and an edit without a stated cause spends a round either way. Two rounds on one cause means the hypothesis is wrong; a third edit against it spends the last round to learn nothing, so `/cla:diagnose` builds a deterministic pass/fail loop and ranks falsifiable hypotheses first. The escalation is counted where it happens because Handoff, at the end of a long run, would rebuild it from memory.
+- **Symptom fixes** turn the gate green without touching the defect, and because Test warns and continues, a suppression ships and Revise never sees it.
 
-**The Workflow choice is NOT diff-size-gated (revised after a 7-change chain).** An early version of this guidance told the orchestrator to prefer direct `Agent` calls over `Workflow` for *large* diffs, reasoning that embedding a big diff in the script string risked backtick/quote breakage. Across a measured 7-change `multi-pr` run this diagnosis proved wrong on the causal variable: the first 3 changes avoided `Workflow` citing diff size and used direct `Agent` calls; the last 4 used `Workflow` cleanly on similarly-sized diffs — the only thing that changed was **how the diff reached the agent**. When the prompt *describes* the diff by file/symbol and tells the agent to read the hunks itself (`git diff <base-branch>..feature/<name>`), the script string carries no diff text at all, so its size is irrelevant and there is nothing to escape. When the diff is *pasted verbatim*, even a small one can corrupt the template literal. SKILL.md's Revise "Diff-embedding discipline" rule now makes describe-not-paste the mandatory technique and drops the size-based fallback framing entirely: `Workflow` is the default for round 1 at any diff size, and the direct-`Agent` fallback fires only on an actual `Workflow` failure, never pre-emptively on a size heuristic.
+## Review
 
-## Background moved out of SKILL.md
+- **Sweeps:** a real sweep once returned a silent false-negative over an entire skills tree (`Scanned: 0` on a surface); another reported `No stale references found.` with `Scanned: 121` and `Unresolved: none` while a direct search found 9 hits (GitHub issue #279). Hence the footer check and the zero-count re-search. A stale doc reference can mask a broken key contract in a repo's load-bearing conventions.
 
-Rationale behind rules `SKILL.md` states in short form. Not read per run.
+## Ship
 
-### Run logs and the PR-body scratch file
+Ship runs path-scoped `git add`, `git commit -m "feat: <change-name>"`, `git push`, and a one-line `gh pr create`. **Accepted:** minimal commit subjects and PR bodies — the proposal is the why, the diff the what; commit and PR text are markers. Fit for a single-developer project; with multiple reviewers, replace the one-line body with a `--body-file` build-up. Earlier versions delegated to `commit-commands:commit-push-pr`, which generated verbose text nobody read and cost turns.
 
-## Per-run scratch directory (created on demand)
+**`Measured-by:` trailers are discharged at the commit** because that is where claims are assembled into a message; a rule firing at the keyboard fires hundreds of tool calls before the claim is written, and by the commit it already reads as settled. Standing gates earn no trailer: a block identical on every commit stops being read. Trailers make the corpus queryable — `git log --grep='^Measured-by:'`.
 
-Only created when Handoff needs to mirror multi-line issues into the PR body. Path:
+**Why the parse check compares two counts.** `%(trailers:...)` returning nothing looks the same for a broken block and for a commit that rightly carries none. Measured on a controlled pair, three `Measured-by:` lines, once well-formed and once with a blank line before the attribution lines:
 
-```
-temp/spec-to-pr-issues-<change-name>.md
-```
+| | written | `%(trailers:…)` | `--grep '^Measured-by:'` |
+|---|---|---|---|
+| well-formed | 3 | 3 | finds it |
+| blank line before attribution | 3 | **0** | finds it |
 
-(Single fixed name per change; overwritten on re-run. No timestamped directory.) Written only when the Issues section is non-empty AND too long to fit a single-line `--body`. Then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`.
+It broke once at fleet scale: a counter built on the parser read 59 of 228 measurements where the messages held 133, and one repo logged 0.0 against a real 0.67.
 
-If you find yourself wanting to write a multi-paragraph commit or PR body anyway — don't. The proposal.md and the diff are the spec; the commit/PR are markers.
+## Revise
 
-**No per-phase JSON logs.** The orchestrator synthesizes the Handoff report directly from in-context phase outcomes. Mid-run resume across separate Claude sessions still works via `probe_state.py` (which reads repo state, not log files); the previous session's per-phase summaries are not recoverable, but resume picks up at the right phase regardless.
+**Fix-round commits stay manual.** `fix: review round N` drives `probe_state.py`'s round counter and round N's diff scoping; a generated subject would break both.
 
-**One per-RUN JSONL line is fine and required.** After printing the Handoff report, Handoff step 5 appends a single counts-only JSON line via `${CLAUDE_PLUGIN_ROOT}/lib/log_run.py` to the repo's `cla.io/retro/spec-to-pr-runs.jsonl`, and Handoff step 6 commits that line onto the feature branch (`chore: spec-to-pr run log`) so it merges with the PR and syncs across machines via git — never left dangling as an uncommitted file (override the dir with `CLAUDE_RETRO_DIR`, in which case the commit is skipped). This is the data source for `/cla:spec-to-pr-retro`, which proposes orchestrator improvements based on patterns across runs (cap-exhaustion rates, agent dispatch frequency, ask choice distribution, recurring warn reasons). Per-phase mid-run logs remain forbidden; per-run terminal logs are the explicit exception.
+**Round 1 is one `Workflow` fan-out; round ≥2 is direct `Agent`.** `Workflow`'s `agent()` gives per-call effort (opus bug-hunters at `medium`) and schema-forced findings, and the merge runs in code. **Accepted:** a second orchestration mechanism with quieter failures (a crashed reviewer is a `null`), mitigated by the completeness check and the fallback. Round ≥2's one or two scoped dispatches do not repay the script overhead. **Not size-gated:** over a 7-change `multi-pr` run the first 3 changes avoided `Workflow` citing diff size, the last 4 used it cleanly on similar diffs; the variable was how the diff reached the agent. Described, the script carries no diff text; pasted, even a small diff corrupts the template literal. A missing `Workflow` tool is `ok`, not `warn`, because a capability gap is not a run defect, and warning on it would flood the retro's warn-reason signal on every Workflow-less harness.
 
-### Task tracking
+**Never-demoted bug-hunters.** A cheaper bug-hunter emits more phantom findings, whose triage costs more than the saving, in every round; a prose-promoted `skill-reviewer` sits in the bug-hunter's position on a markdown-behaviour diff. `routing.revise_findings_by_tier` is keyed per agent, so a demoted agent's phantom rate shows against its own name in `/cla:spec-to-pr-retro` — the signal that polices the rule. A body-only prose edit leaves triggering behaviour unchanged, which is why the frontmatter row excludes it. A signal-empty agent on the ambiguous row is by design, not a cost omission.
 
-Do NOT use `TaskCreate` for per-phase progress — phase outcomes live in the orchestrator's working context and are emitted in the Handoff terminal report.
+**Tight `type-design-analyzer` / `comment-analyzer` triggers.** Across a measured multi-change `multi-pr` run, the two opus bug-hunters and `pr-test-analyzer` caught every shipping-bug Critical and every real coverage gap; the two narrow agents earned real Important findings on invasive changes but almost only precedent-inherited Suggestions on additive ones — the largest token sink for the least yield. Firing them on a real signal keeps their catches. **That is the only safe reduction the data supports: Review's 3-agent dispatch is NOT reduced for low-risk changes** — a purely additive change with every low-risk signal still had a Critical caught there.
 
-**Use `TaskCreate` when sub-work is parallel, gated by external state, or recoverable across sessions** — for example, applying 4 PR-review fixes from independent agents that the user might want to inspect mid-run, or diagnosing N test failures where the next session needs to know which were fixed. **Skip when sub-work is linearly sequential** (e.g. a 25-subtask Implement implementation that flows top-to-bottom from `tasks.md` — the tasks.md checkboxes ARE the task list; duplicating them in `TaskCreate` adds noise without adding signal). When in doubt, skip.
+**Round 2 runs whenever round 1 committed fixes, and the cap stays 2:** in 37 of 37 changes that ran a round ≥ 2, across 16 chains, that round surfaced a Critical or Important (`spec_to_pr_aggregate.py --limit 0` over this repo and the migrated consumer ledgers, 2026-10-08). Those rounds ran while the recipe captured the fix SHA after the commit, so some may have reviewed the whole PR; the orchestrators reported sibling-instance answers on all of them.
 
-The harness may emit `<system-reminder>` nudges to use `TaskCreate`. These are generic; the rule above takes precedence.
+**Round 2 asks its own question** because re-asking round 1's question over round 1's fix diff mostly re-confirms the fix. The orchestrator names the resource because an unnamed one yields a different scope per agent; the return cites its search because a confident "nothing else" costs an agent nothing to write, so the search is what gets checked. A mandatory question asked where it is ill-posed (the full-PR fallback, a rejection-only re-entry) is how a check becomes decorative. The orchestrator-specified hunks are named because only those had nobody to argue with.
 
-### When not to use Skill()
+**The three-status rejection.** A required reason is what keeps `remedy-rejected` from being the cheapest exit from a hard finding. A disproof closes a Critical — the strongest outcome — on a fact row the exiting delegate wrote, so the orchestrator re-derives it; it cannot ask the check's output to change, because nothing was implemented and the output can only reproduce its baseline. A rejection costs no round (the delegate did more work than one applying a wrong fix), so the bound sits on the finding: two rejections of two independently decided remedies means the finding needs a design conversation, which is the user's. Converting it to Deferred-Known-Issue would close it and empty the bucket that withholds `gh pr merge`. Recording a rejection as a delegate failure teaches the next delegate to apply a remedy it believes is wrong.
 
-Many sub-skills don't *execute* — they re-prompt Claude with their workflow text and ask Claude to run the same tool calls it would have run anyway. This costs 1–2 turns of indirection per invocation with no extra capability. Specifically:
+**Deferred items in three named subsections:** a fix round once returned four items under one "not applied" heading — three legitimate holds and one cheap fix nobody had done — and only a full re-read separated them.
 
-- `Skill(pr-review-toolkit:review-pr)` — itself a dispatcher that calls `Agent` with `code-reviewer`/`silent-failure-hunter`/etc. Skip the hop and dispatch the agents directly.
-- `Skill(commit-commands:commit-push-pr)` — re-prompts with the diff and asks Claude to run the same 4 shell commands. Inline them in Ship.
-- `Skill(openspec-archive-change)` — wraps a single CLI call. Run `openspec archive --yes` directly in Archive.
+**The rejected-alternatives snapshot `warn`.** Without it every glyph reads ✓, and a round whose check never ran prints `gh pr merge`. The no-`design.md` condition names the missing document, not a missing directory: by Revise, Propose has always created the directory. Marks are per remedy only on the Revise path, where delegated and orchestrator-applied fixes mix; on Review's no-delegate path a mark would be on everything.
 
-Use `Skill()` only when the sub-skill genuinely encapsulates capability the orchestrator lacks (e.g. an MCP tool integration, a stateful workflow with its own internal probes). For review/commit/PR work, prefer `Agent(...)` (parallel, isolated context) or inline execution.
+**The empty-staging guard.** `git add -- <path>` on an unmodified path exits 0, `git commit` then fails, and `git push` prints "Everything up-to-date" and exits 0. Inspecting only the push reports a clean Revise and leaves the next round reviewing the whole PR. Keying the carve-out on "zero Applied" would suppress the guard exactly when a delegate reported `done` without editing.
 
-**Implement is the exception.** `Skill(openspec-apply-change)` carries non-trivial workflow logic (read tasks.md → for each subtask, locate the implementing module/test → edit → tick the checkbox → re-validate). The work is not a thin shell wrapper, so the indirection is worth it. **When to inline instead:** use direct `Edit`/`Write` calls when you already hold the relevant artifact + source text in context from Review and adding a `Skill()` hop would be pure indirection, OR when the work needs repo-specific side knowledge the skill doesn't carry (e.g. a packaging gotcha you need to apply mid-flight). Use judgment, not a subtask-count threshold.
+**Two exit counts.** Before `remedy-rejected` existed every triaged finding was closed, so one untriaged counter was right by accident. A rejected finding is the first triaged-but-live one; counting only untriaged exits `ok` with an open Critical, and Handoff prints `gh pr merge` over it with every phase genuinely reporting `ok`.
 
-### Session-model routing
+Precedents for SIR-TEST ("reuse an existing helper" re-implemented with the wrong fallback; "gate this like its sibling" shipped with half the gate tested) and for the runtime-harness fidelity rule: `review-change/references/checklist.md` "Empirical-verification fidelity".
 
-The routable dispatches (Implement/Revise agents) follow `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`. The **inline** judgment moments — Propose authoring, the Review verdict, Revise triage — run at the session model, which the skill cannot change mid-run. To protect quality on a **sub-Opus session**, escalate the two highest-leverage of those *up*:
+## Archive — while the PR is still OPEN
 
-- **Propose authoring** (description / explore-result modes): dispatch the proposal/design/tasks authoring to an `opus` `Agent`, then continue inline.
-- **RETHINK-borderline Review verdict**: when the inline review lands at the FIX-FIRST/RETHINK boundary, second it with an `opus` `Agent` fed the context brief before committing to the verdict.
+Archive commits to the PR branch before the user merges, so the archive lands atomically with the change. **Accepted:** if the PR is later substantially modified or rejected, `openspec/specs/` and `openspec/changes/archive/` on the branch are stale. To unwind, revert the `chore: archive` commit and, if any part merged, move the change from `archive/` back to `changes/` by hand. Acceptable because by then Revise has reviewed the PR.
 
-On an **Opus session this is a no-op** (inline already is Opus). No flag — read the session model from the environment context. Record whether it fired in the run log (`routing.escalate_up_fired`, Handoff step 5). Full rationale + table: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`.
+## Handoff and the run record
 
-### Ticked-but-open tasks: the withdrawn scan
-
-A mechanical scan for that shape was built and withdrawn — over this repo's own corpus it reached 6 lines of 173 ticked tasks and produced 0 true positives against 4 false ones, because the prose here sits on the task line rather than beneath it. Evidence and what a rebuild would need: issue #105.
-
-### Why turn liveness is a check, not a prohibition
-
-This is stated as a check rather than a prohibition deliberately: the rule above asks you to notice mid-flow that what you are writing *reads* as an ending, which is a judgement, and a real chain lost a round-trip to exactly that judgement going wrong — the author wrote the banned shape and then behaved like its reader. "Is there a tool call in this message?" needs no judgement. Dated incident: `cla.io/overlays/spec-to-pr.md` "Incident / offense history".
-
-### Revise is part of the continuous flow
-
-**Revise (PR review) is also in scope of "continuous".** The Revise Round 1 agent dispatch happens automatically after Ship's PR opens. Do NOT skip Revise when the user said "merge and clean" — that phrase is about post-Archive cleanup (merge + branch delete), not a directive to bypass review. If the user wants to skip review explicitly, they will say `--skip-review` or `no review`. (Past sessions have over-interpreted "merge and clean" as "skip review" — that was an error; review is part of the default flow.)
-
-**Revise always runs the full agent dispatch per the agent-selection table** below. There is no "degraded" mode and no PR-count threshold that reduces agent count. The table is the source of truth: pick every row whose "Diff contains" condition matches the PR — `code-reviewer + silent-failure-hunter` for any logic / behavior code; `+ pr-test-analyzer` when tests are added; `+ type-design-analyzer` when new types are added; `+ comment-analyzer` when new comments / docs are added; `+ plugin-dev:skill-reviewer` when a `${CLAUDE_PLUGIN_ROOT}/skills/*/SKILL.md` frontmatter changes or a new skill is created. Sub-agents have their own context windows, so dispatching them consumes far less of the parent context than reading the diff inline would — the parent only sees each agent's final summary. If you find yourself drafting a "to save budget I'll only run 1 agent" rationale, delete it and dispatch every row the table says applies.
-
-### History behind rules SKILL.md states briefly
-
-- `<inherits>`: GitHub issues #98, #100, #102 — one chain in which three consecutive changes dropped the same obligation, each one internally consistent and silently wrong.
-- Implement post-check: Issue #111 records three ticked tasks in one chain that asserted things that were false — including a mutation test that could not have failed anything — with every mechanical check passing all three.
-- Test source-affecting list: `.py` is called out because it was once missing, and in a Python repo a real source change then did not register as source-affecting at all — the run reported a clean docs-only skip having gated nothing. A closed list reproduces that defect for every language it omits.
-- Autonomy gate: a phase-boundary confirmation prompt is a regression against the documented contract — past sessions have lost ~5 minutes per pause to model-side gating that the SKILL.md never authorized.
-- Handoff's three named subsections: measured — a fix round returned four items under one "not applied" heading — three legitimate holds and one genuinely cheap fix nobody had done.
-- Review's multi-spec skip lives in spec-to-pr, not the checklist, because it decides which checklist parts run, not how any check behaves.
+- **"Rejected remedies, still open" takes the ✗ branch.** It reaches Handoff with Revise `warn`, and the ⚠ branch names `gh pr merge` as the eventual command — right for an ordinary warn, wrong for a live Critical. The ⚠ branch also lists ⚠ phases, and a rejected remedy is not a phase. Gating on the section rather than the glyph tells the two apart.
+- **`TODO.md`** outlives the PR body, which goes stale at merge. A run whose only residue is rejected-open findings still writes it; a two-list trigger skipped exactly that case.
+- **The `<inherits>` verdict lines are mirrored** so a chain passing N entries can count N lines; without them it cannot tell an answered run from one that dropped the flag.
+- **One counts-only run record, no per-phase logs.** Resume reads repo state through `probe_state.py`, so per-phase logs add nothing; a previous session's phase summaries are lost, but resume still picks the right phase. The record is committed on the feature branch so it merges with the PR, syncs through git, and never needs a direct push to the base branch (the `pre-push` hook refuses that).
+- **Built from the example, not memory:** records written from memory late in a long session are how `date` came to replace `ts` and `phases` came to be written as an object. `findings_by_round` is written as each round closes because a reconstruction produces the plausible number, and the retro's round-2 yield reads it.
+- **Schema design** (`_shared/references/run-log-schema.md`): every field earns its place by a reader — `spec_to_pr_aggregate.py` reads every field except `mode`, which identifies the run. Add a field only with its reader; an optional field left out passes the check and silently costs the retro that signal. Records written before a field was dropped keep it; the check allows extra keys and nothing reads them.

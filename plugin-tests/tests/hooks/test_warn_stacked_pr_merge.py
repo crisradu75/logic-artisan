@@ -31,6 +31,7 @@ hook = _load_module()
 # _wants_stacked_check
 # --------------------------------------------------------------------------- #
 
+# requirement: guard-hooks / Risky actions warn
 def test_wants_check_explicit_number_and_delete_branch():
     assert hook._wants_stacked_check("gh pr merge 305 --squash --delete-branch")
 

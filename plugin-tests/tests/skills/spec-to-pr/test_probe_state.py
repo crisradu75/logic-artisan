@@ -194,7 +194,7 @@ def _probe_with(monkeypatch, status):
     return probe_state.probe("demo")
 
 
-# scenario: orchestration / Resume on a change with no design.md
+# requirement: change-workflow / Resuming a partly done change
 def test_implement_ready_without_design(tmp_repo: Path, monkeypatch):
     """Scenario: Resume on a change with no design.md."""
     make_change(tmp_repo, "demo")
@@ -202,7 +202,7 @@ def test_implement_ready_without_design(tmp_repo: Path, monkeypatch):
     assert result["implement"] is True
 
 
-# scenario: orchestration / Required artifact not done
+# requirement: change-workflow / Resuming a partly done change
 def test_implement_not_ready_when_a_required_artifact_is_not_done(tmp_repo: Path, monkeypatch):
     """Scenario: Required artifact not done."""
     make_change(tmp_repo, "demo")
@@ -211,7 +211,7 @@ def test_implement_not_ready_when_a_required_artifact_is_not_done(tmp_repo: Path
     assert result["implement"] is False
 
 
-# scenario: orchestration / No applyRequires
+# requirement: change-workflow / Resuming a partly done change
 @pytest.mark.parametrize("apply_requires", [None, []], ids=["missing", "empty"])
 def test_implement_not_ready_without_apply_requires(tmp_repo: Path, monkeypatch, apply_requires):
     """Scenario: No applyRequires — `all([])` must not read as ready."""

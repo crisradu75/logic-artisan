@@ -67,8 +67,8 @@ def _run(repo: Path) -> subprocess.CompletedProcess:
         pytest.param("skills/project-review/scripts/x.test.mjs", id="test-mjs"),
         pytest.param("skills/annotate/tests/conftest.py", id="conftest"),
         # The four the 11-pattern draft ACCEPTED. These are why the list is 14.
-        pytest.param("skills/project-review/scripts/mechanical-checks.test.mjs",
-                     id="draft-accepted-compound-mjs"),
+        pytest.param("skills/annotate/scripts/helper.test.py",
+                     id="draft-accepted-compound-stem"),
         pytest.param("skills/annotate/scripts/conftest.py",
                      id="draft-accepted-conftest-as-script"),
         pytest.param("hooks/tests/test_dispatch.py",
@@ -84,6 +84,9 @@ def _run(repo: Path) -> subprocess.CompletedProcess:
                      id="pytest-module-as-script"),
         pytest.param("hooks/test_dispatch.py",
                      id="pytest-module-in-hooks"),
+        # Skill scripts are Python only since the one Node script was deleted.
+        pytest.param("skills/annotate/scripts/helper.mjs",
+                     id="non-python-script"),
     ],
 )
 def test_a_planted_dev_asset_is_refused_and_named(tmp_path, planted):
@@ -109,6 +112,7 @@ def test_the_clean_seeded_tree_itself_passes(tmp_path):
     assert f"{len(_CLEAN_TREE)} files" in result.stdout
 
 
+# requirement: plugin-distribution / Publishing a release
 def test_every_offender_is_named_in_one_run(tmp_path):
     """Reporting one at a time turns a single cleanup into as many release
     attempts as there are files."""
@@ -148,6 +152,7 @@ def test_a_git_failure_is_could_not_run(tmp_path):
     assert result.returncode == cst.EXIT_CANNOT_RUN
 
 
+# requirement: plugin-distribution / What a release contains
 def test_the_real_tree_passes_with_the_real_file_count():
     """Exit 0 alone is not the check — the files-examined count must agree with
     an independently-measured `git ls-files`."""
@@ -172,8 +177,7 @@ def test_the_real_tree_passes_with_the_real_file_count():
 
 
 def test_the_allowlist_is_capped_and_every_entry_carries_a_reason():
-    """The pressure valve, bounded — the same convention `_EXEMPT` runs in
-    test_guards_have_mutant_batches.py.
+    """The pressure valve, bounded.
 
     The list was 14 when the convention landed. A fifteenth pattern lands by
     raising this cap in the SAME commit that adds the pattern and its reason;
@@ -211,7 +215,8 @@ def test_conftest_is_rejected_wherever_it_appears():
 def test_a_compound_extension_cannot_pass_as_a_script_or_a_reference():
     """The `[^/.]+` stem in patterns 13 and 14 is exactly what D1a's measurement
     added; `[^/]+` swallowed the `.test` segment."""
-    assert not cst.is_allowed("skills/project-review/scripts/mechanical-checks.test.mjs")
-    assert cst.is_allowed("skills/project-review/scripts/mechanical-checks.mjs")
+    assert not cst.is_allowed("skills/annotate/scripts/helper.test.py")
+    assert cst.is_allowed("skills/annotate/scripts/helper.py")
+    assert not cst.is_allowed("skills/annotate/scripts/helper.mjs")
     assert not cst.is_allowed("skills/annotate/references/notes.draft.md")
     assert cst.is_allowed("skills/annotate/references/notes.md")

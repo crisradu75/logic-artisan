@@ -29,7 +29,7 @@ Anchoring on the literal `1.0.1` meant every release broke this batch in
 preflight — and `mutate.py` aborts the WHOLE batch on one bad anchor, so a stale
 anchor here silently disarmed the other three mutants too. Measured live while
 cutting 1.1.0: the three-file bump is correct, the shipped-tree check passes, and
-`test_every_batch_is_loadable_and_declares_real_targets` goes red in the middle of
+`test_every_batch_is_loadable_and_declares_real_targets` (since deleted) went red in the middle of
 the release procedure, after the bump and before the tag.
 
 The fix is the one `mutants/consistency/test_doc_facts.py` already settled after

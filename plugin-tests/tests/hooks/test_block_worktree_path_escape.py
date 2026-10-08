@@ -27,49 +27,6 @@ _HOOKS_DIR = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 
 
 
-def make_dir_alias(link: Path, real: Path) -> None:
-    """Create `link` -> `real` as a directory alias, or skip if neither works.
-
-    A real symlink where permitted, else an NTFS junction (`mklink /J`), which
-    needs no elevated privileges on Windows -- unlike a symlink, which raises
-    WinError 1314 for every unprivileged account. Without the fallback these
-    tests skipped on the ONE platform whose path handling they exist to check,
-    while the suite still reported green.
-
-    `os.path.realpath` resolves a junction exactly like a symlink, and every
-    caller here goes through `realpath`, so the substitution is exact.
-    (`os.path.islink()` is False for a junction -- irrelevant here, and exactly
-    why `block-unsafe-recursive-delete` does its own reparse-point check rather
-    than trusting `islink`.)
-    """
-    try:
-        link.symlink_to(real, target_is_directory=True)
-        return
-    except (OSError, NotImplementedError, AttributeError):
-        pass
-    if os.name != "nt":
-        # The junction fallback is Windows-only. Without this gate, ANY
-        # non-privilege symlink failure on Linux/macOS -- FileExistsError, an
-        # overlayfs or SMB mount that disallows symlinks -- spawned `cmd`, which
-        # does not exist there, and `FileNotFoundError` propagated: the test
-        # ERRORED where it previously skipped. These files are synced core, so
-        # every POSIX consumer would have inherited that.
-        pytest.skip("symlink creation not permitted, and junctions are Windows-only")
-    result = subprocess.run(
-        ["cmd", "/c", "mklink", "/J", str(link), str(real)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
-    if result.returncode != 0:
-        pytest.skip(f"neither symlink nor junction creation permitted here: {result.stderr}")
-    if not link.exists():
-        # `mklink /J` reports success against a MISSING target: rc 0, "Junction
-        # created for ...", and the link resolves nowhere. Without this the
-        # helper returns normally having created nothing usable, and the caller
-        # asserts against an alias that does not resolve -- a test that passes
-        # for the wrong reason, which is the failure shape this helper was
-        # written to remove.
-        pytest.skip("directory alias created but does not resolve")
-
 def _load_module():
     if str(_HOOKS_DIR) not in sys.path:
         sys.path.insert(0, str(_HOOKS_DIR))
@@ -129,6 +86,7 @@ def _run(mod, file_path, cwd_payload=None, process_cwd=None, monkeypatch=None):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: guard-hooks / Unsafe commands are blocked
 def test_blocks_an_escape_using_the_payload_cwd_not_the_process_cwd(
     worktree_pair, monkeypatch, capsys
 ):
@@ -354,7 +312,7 @@ def test_is_inside_tolerates_a_differently_spelled_but_identical_path(worktree_p
     assert hook._is_inside(os.path.join(odd, "seed.txt"), root)
 
 
-def test_is_inside_survives_a_symlinked_spelling_on_every_platform(worktree_pair, tmp_path):
+def test_is_inside_survives_a_symlinked_spelling_on_every_platform(worktree_pair, tmp_path, make_dir_alias):
     """The case-insensitivity tests skip on Linux — where CI runs.
 
     That left the whole invariant unexercised precisely where an agent tidying

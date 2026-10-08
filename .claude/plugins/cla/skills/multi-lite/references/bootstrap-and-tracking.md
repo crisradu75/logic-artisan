@@ -4,17 +4,11 @@ The Phase 0 and Phase 2 step-by-step procedures. `SKILL.md`'s stubs for these ph
 
 ## Phase 0 — Bootstrap + working-tree precheck
 
-Run the shared bootstrap once before the chain starts — the same `/cla:multi-pr` bootstrap gate, not something `/cla:lite-pr` itself runs:
+Run the shared bootstrap once before the chain starts (`/cla:lite-pr` does not run it): `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/chain-merge.md`, "Bootstrap" — the permissions check, `git_state.py`, and a clean, current `<base-branch>` in the primary clone. This skill's run-notes check:
 
-1. The permissions check from `/cla:spec-to-pr`'s own "Bootstrap permissions" section (compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/required-permissions.json` against `.claude/settings.local.json`). Missing patterns → surface them and apply on approval; that's the one bootstrap ask, the same carve-out the siblings make.
-2. ```
-   python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
-   ```
-   Non-zero → resolve before continuing (in-progress rebase/cherry-pick, or a dirty tree with out-of-scope paths). A dirty tree at chain start poisons every subsequent candidate.
+- From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`. Non-zero → stop: "run /cla:cla-setup first (run notes would be visible to git)". Any ignore source counts here: this run only needs git to ignore the notes on this machine, while `/cla:cla-setup` checks for the repo's own `.gitignore` line.
 
-**Start from `<base-branch>`, clean (primary clone).** Check `git rev-parse --abbrev-ref HEAD`. If not on `<base-branch>`, and the current branch carries local commits unrelated to this run, leave it untouched, then sync to `<base-branch>` with the two separate commands the hoisted base-management rule requires (`git checkout <base-branch>` then `git pull` — never `&&`-chained).
-
-Each candidate's `/cla:lite-pr` run must branch off an up-to-date `<base-branch>`. (Per the hoisted rule: `git checkout <base-branch>` is valid here because `multi-lite` runs in the primary clone; if a mid-chain guard block forces a reactive worktree pivot, base off `origin/<base-branch>` via `git worktree add … -b <branch> origin/<base-branch>` instead.)
+Each candidate's `/cla:lite-pr` run must branch off an up-to-date `<base-branch>`.
 
 ## Phase 2 — Task tracking + the run-notes ledger
 
@@ -22,10 +16,10 @@ Use `TaskCreate` once to lay down the chain — one task per candidate (`"<id>: 
 
 **Also create a per-run notes file, `cla.io/retro/multi-lite-run-notes-<date>.md`** (same convention as `/cla:multi-pr`'s per-run notes), **unless one already belongs to this doc.** First look for an existing `cla.io/retro/multi-lite-run-notes-*.md` that names the same source doc and whose candidate ids match the ones Phase 1a derived. If one exists, it is this run's ledger whatever date it carries: reuse it, never overwrite it, and keep its ids where Phase 1a's wording differs. A resume that started a fresh file would find no `pr_number` or `head_sha`, and every PR the earlier session opened would be left open as unverifiable. A new file records the source doc's path on its first line. Open a new file with a header line `policy: <merge-each-clean | merge-dependencies-only>` carrying the policy confirmed at Phase 1c. If step 8 later stops merging because the host refused a merge, append `merging stopped: host refused merge of <id>` beneath it. For each candidate record a row with the columns `id | status | branch | pr_number | head_sha | deferred | review | merge_commit` as the chain progresses:
 
-- `branch`, `pr_number`, `head_sha` — filled at step 6, the moment a PR opens. `head_sha` is updated only when step 7 pushes and verifies its own fix. Nothing else updates it, so a head that differs on resume is always commits this run did not test or review.
+- `branch`, `pr_number`, `head_sha` — filled at step 6, the moment a PR opens. `head_sha` is updated only when step 7 pushes and verifies its own fix. Nothing else updates it.
 - `deferred` — the count of Critical/Important findings `/cla:lite-pr` deferred, written at step 6. The findings themselves go verbatim under a `## Deferred findings` section below the table, one subsection per candidate id. Empty means step 6 never recorded them.
 - `review` — `clean` or `unresolved`, written at step 7, with the reason beside `unresolved`. Empty means step 7 has not finished for this candidate.
-- `merge_commit` — the merge commit's oid, written at step 8c once the merge is confirmed. Step 3 checks a dependency against it.
+- `merge_commit` — the merge commit's oid, written at step 8b once the merge is confirmed. Step 3 checks a dependency against it.
 - `status` — `merged`, `open` (plain or with a reason), `failed` with the failing check or a reason, `failed-review` with a reason, `failed-merge` with a reason, or `blocked-by-upstream-failure`. Notes step 8 records go beside it: the shared-state derivation, `gate skipped: no source-affecting paths`, `behind base: merged tree not tested`, and `base not updated`. Every reason steps 2, 7 and 8 can write is listed in `references/phase4-and-log.md` under "Shipped & left open".
 
-Step 2's resume check reads `deferred`, `review`, `head_sha` and `status` back. A row missing `deferred` can never resume as clean. `multi-lite` cannot predict a candidate's branch name the way `/cla:multi-pr` keys off `/cla:spec-to-pr`'s resolved `<branch>` (the configured prefix plus the change name) — `/cla:lite-pr` delegates branch naming to `commit-push-pr`, which derives it from the change content — so the branch/PR must be captured after the fact and written here, not guessed. This file is committed at the end (see `references/phase4-and-log.md`); mid-run it lives in the primary clone's working tree and survives a session restart, so a resume reads it back.
+Step 2's resume check reads `deferred`, `review`, `head_sha` and `status` back. A row missing `deferred` can never resume as clean. The file is local working state: `.gitignore` ignores `cla.io/retro/*-run-notes-*.md` (`/cla:cla-setup` adds the line), nothing in this run adds or commits it, and it survives a session restart in the primary clone's working tree, so a resume on this machine reads it back. A resume without it (another machine, or the file deleted) falls back to GitHub state, step 2's title match.
