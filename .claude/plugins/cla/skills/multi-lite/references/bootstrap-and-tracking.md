@@ -11,6 +11,7 @@ Run the shared bootstrap once before the chain starts — the same `/cla:multi-p
    python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
    ```
    Non-zero → resolve before continuing (in-progress rebase/cherry-pick, or a dirty tree with out-of-scope paths). A dirty tree at chain start poisons every subsequent candidate.
+3. From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`. Non-zero → stop: "run /cla:cla-init first (run notes would be visible to git)".
 
 **Start from `<base-branch>`, clean (primary clone).** Check `git rev-parse --abbrev-ref HEAD`. If not on `<base-branch>`, and the current branch carries local commits unrelated to this run, leave it untouched, then sync to `<base-branch>` with the two separate commands the hoisted base-management rule requires (`git checkout <base-branch>` then `git pull` — never `&&`-chained).
 

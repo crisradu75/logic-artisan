@@ -187,8 +187,10 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
   growing (lookup, take-back-out, restore from the run's own write, edit check, notes-only
   head-move exemption, ~25 tests) and still trusted anyone with push access. Lost: a resume on
   another machine uses the GitHub fallback, where `multi-lite` finds no recorded head and so merges
-  nothing; `multi-pr`'s timing estimates are per machine. This repo's already-tracked notes files
-  stay tracked as history; the ignore line applies to new ones only.
+  nothing, and `multi-pr` cannot read the obligations earlier changes recorded, so it stops before
+  any later change; `multi-pr`'s timing estimates are per machine. This repo's already-tracked
+  notes files stay tracked as history; the ignore line applies to new ones only, and `cla-init`
+  offers to untrack tracked ones (on a yes only).
 - **D11 — `cla-init` (merged into `cla-setup` by the companion doc's P4) reports orphan
   ledgers and offers to delete them.** It carries a list of
   retired ledger names; a re-run lists the ones present and deletes only on an explicit yes.

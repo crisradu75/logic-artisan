@@ -1,11 +1,14 @@
 """Mutation batch for test_run_notes_stay_local.py.
 
 Each mutant makes a chain commit its run notes again, drops the sentence that says
-they are local, lets a notes-less multi-lite resume look mergeable, stops this repo
-ignoring new notes, or breaks cla-init's ignore-line block (re-appends on every run,
-clobbers the file, glues the line onto an unterminated last line, or takes a line
-that merely contains the pattern for it). One more lets spec-to-pr commit its record
-with no PR open.
+they are local, lets a notes-less multi-lite resume look mergeable or a notes-less
+multi-pr resume run on, drops a chain's refusal to start while its notes are not
+ignored, stops this repo ignoring new notes, breaks cla-init's ignore-line block
+(re-appends on every run, misses an equivalent line, overrides a deliberate un-ignore,
+probes a file the line does not cover, clobbers the file, glues the line onto an
+unterminated last line), or breaks its tracked-notes offer (lists untracked or
+non-notes files, deletes the working copy, drops the warning). One more lets
+spec-to-pr commit its record with no PR open.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_run_notes_stay_local.py
 """
@@ -21,6 +24,7 @@ LITE_PHASE4 = SKILLS / "multi-lite" / "references" / "phase4-and-log.md"
 LITE_BOOT = SKILLS / "multi-lite" / "references" / "bootstrap-and-tracking.md"
 LITE_LOOP = SKILLS / "multi-lite" / "references" / "candidate-loop.md"
 PR_CLEANUP = SKILLS / "multi-pr" / "references" / "cleanup.md"
+PR_SKILL = SKILLS / "multi-pr" / "SKILL.md"
 PR_LOOP = SKILLS / "multi-pr" / "references" / "change-loop.md"
 CLA_INIT = SKILLS / "cla-init" / "SKILL.md"
 GITIGNORE = REPO / ".gitignore"
@@ -82,15 +86,36 @@ MUTANTS = [
     (
         "cla-init appends the line on every run",
         CLA_INIT,
-        'if [ -e "$ROOT/.gitignore" ] && grep -qxF -- "$line" "$ROOT/.gitignore"; then',
+        'if git -C "$ROOT" check-ignore -q --no-index "$probe"; then',
         "if false; then",
         TARGETS,
     ),
     (
-        "cla-init takes a line that only contains the pattern for it",
+        "cla-init is back to an exact-line grep, so a CRLF or equivalent line is missed",
         CLA_INIT,
-        'grep -qxF -- "$line" "$ROOT/.gitignore"',
-        'grep -qF -- "$line" "$ROOT/.gitignore"',
+        'if git -C "$ROOT" check-ignore -q --no-index "$probe"; then',
+        'if [ -e "$ROOT/.gitignore" ] && grep -qxF -- "$line" "$ROOT/.gitignore"; then',
+        TARGETS,
+    ),
+    (
+        "cla-init appends the line over a deliberate un-ignore",
+        CLA_INIT,
+        'elif match="$(git -C "$ROOT" check-ignore -v --no-index "$probe")"; then',
+        "elif false; then",
+        TARGETS,
+    ),
+    (
+        "cla-init probes a file the run-notes line does not cover",
+        CLA_INIT,
+        "probe='cla.io/retro/multi-lite-run-notes-x.md'",
+        "probe='cla.io/retro/multi-lite-runs.jsonl'",
+        TARGETS,
+    ),
+    (
+        "cla-init stops telling the user an un-ignore keeps the chains from starting",
+        CLA_INIT,
+        "tell the user the chains will not start until that `!` line",
+        "tell the user",
         TARGETS,
     ),
     (
@@ -105,6 +130,63 @@ MUTANTS = [
         CLA_INIT,
         '[ -n "$(tail -c 1 "$ROOT/.gitignore")" ]; then echo >> "$ROOT/.gitignore"; fi',
         '[ -n "$(tail -c 1 "$ROOT/.gitignore")" ]; then :; fi',
+        TARGETS,
+    ),
+    (
+        "cla-init lists untracked notes as tracked",
+        CLA_INIT,
+        'git -C "$ROOT" ls-files -- \'cla.io/retro/*-run-notes-*.md\'',
+        "git -C \"$ROOT\" ls-files --cached --others -- 'cla.io/retro/*-run-notes-*.md'",
+        TARGETS,
+    ),
+    (
+        "cla-init lists every tracked file under cla.io/retro/",
+        CLA_INIT,
+        'git -C "$ROOT" ls-files -- \'cla.io/retro/*-run-notes-*.md\'',
+        "git -C \"$ROOT\" ls-files -- 'cla.io/retro/*'",
+        TARGETS,
+    ),
+    (
+        "cla-init's yes deletes the working copies too",
+        CLA_INIT,
+        'rm -q --cached -- <each listed path>',
+        'rm -q -- <each listed path>',
+        TARGETS,
+    ),
+    (
+        "cla-init untracks without warning about other clones",
+        CLA_INIT,
+        ", warning that every other clone\n  loses its working copies on its next pull (history keeps them).",
+        ".",
+        TARGETS,
+    ),
+    (
+        "multi-lite starts while git would see its notes",
+        LITE_BOOT,
+        "3. From the repo root, `git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`.",
+        "3. From the repo root.",
+        TARGETS,
+    ),
+    (
+        "multi-pr checks the other chain's notes name",
+        PR_SKILL,
+        "`git check-ignore -q --no-index cla.io/retro/multi-pr-run-notes-x.md`",
+        "`git check-ignore -q --no-index cla.io/retro/multi-lite-run-notes-x.md`",
+        TARGETS,
+    ),
+    (
+        "a notes-less multi-pr resume runs the later changes anyway",
+        PR_LOOP,
+        "**It then stops before running any not-yet-shipped change that has an earlier change in the sequence**",
+        "**It then runs every not-yet-shipped change**",
+        TARGETS,
+    ),
+    (
+        "multi-pr's SKILL.md stops stating the notes-less stop",
+        PR_SKILL,
+        " A resume with no running notes stops before any not-yet-shipped change that has an earlier change, "
+        "since its obligations are unknown.",
+        "",
         TARGETS,
     ),
 ]

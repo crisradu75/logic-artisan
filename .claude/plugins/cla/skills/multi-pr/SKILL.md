@@ -66,6 +66,8 @@ Non-zero exit → resolve exactly per `/cla:spec-to-pr`'s "Working-tree precheck
 
 **Starting-branch check.** `git_state.py` does NOT inspect the working tree at all — its `no_in_progress_op` field means only that no rebase/cherry-pick/merge is mid-flight. Uncommitted *files* need a separate `git status --porcelain`, and neither check flags "the current branch simply isn't `<base-branch>`." Separately check `git rev-parse --abbrev-ref HEAD`: if it's not `<base-branch>` and carries one or more local commits not yet on `<base-branch>` (`git log <base-branch>..HEAD --oneline`) that are unrelated to any in-scope change, treat that branch as pre-existing state outside this run's scope — do NOT merge, rebase, or push it as part of the chain. Simply `git checkout <base-branch> && git pull` before Phase 1 discovery, leaving the other branch untouched for the user to handle separately. Untracked in-scope change directories under `openspec/changes/` survive a branch checkout (they're untracked, not branch-scoped) — a quick `git status --porcelain` after the checkout confirms they're still present.
 
+Then, from the repo root, `git check-ignore -q --no-index cla.io/retro/multi-pr-run-notes-x.md`. Non-zero → stop: "run /cla:cla-init first (run notes would be visible to git)".
+
 ## Phase 1: Discover + sequence + pre-flight gate
 
 **Read `references/discover-and-gate.md` first** — how to discover and order the changes, the two edges `depends_on` cannot express, the full pre-flight-gate question wording, and the chain-time-estimate recipe. Load-bearing invariants (hold these even if the reference isn't reloaded):
@@ -96,7 +98,7 @@ Use `TaskCreate` once at the start to lay down the chain itself — one task per
 
 ## Resume behavior
 
-Re-invoking `/cla:multi-pr` after an interruption picks up cleanly — full mechanics in `references/change-loop.md` ("Resume behavior"). Invariant: skip Phase 1's `AskUserQuestion` gate only on a genuine same-session resume; a fresh session always re-asks, since it has no way to know what the previous session decided.
+Re-invoking `/cla:multi-pr` after an interruption picks up cleanly — full mechanics in `references/change-loop.md` ("Resume behavior"). Invariant: skip Phase 1's `AskUserQuestion` gate only on a genuine same-session resume; a fresh session always re-asks, since it has no way to know what the previous session decided. A resume with no running notes stops before any not-yet-shipped change that has an earlier change, since its obligations are unknown.
 
 ## What this skill deliberately does not do
 

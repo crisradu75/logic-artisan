@@ -57,7 +57,7 @@ Parse `$ARGUMENTS`:
 
 ## Phase 0 — Bootstrap + working-tree precheck
 
-**Read `references/bootstrap-and-tracking.md` first** for the full precheck recipe. Run before Phase 1: the permissions check (apply on approval) and `git_state.py` from `spec-to-pr/scripts/` — resolve any non-zero exit before continuing; a dirty/mid-op tree poisons every subsequent candidate. Then confirm HEAD is on a clean, up-to-date `<base-branch>` (per the hoisted base-management rule) so the first candidate branches off a current base.
+**Read `references/bootstrap-and-tracking.md` first** for the full precheck recipe. Run before Phase 1: the permissions check (apply on approval), `git_state.py` from `spec-to-pr/scripts/` and the run-notes ignore check — resolve any non-zero exit before continuing; a dirty/mid-op tree poisons every subsequent candidate. Then confirm HEAD is on a clean, up-to-date `<base-branch>` (per the hoisted base-management rule) so the first candidate branches off a current base.
 
 ## Phase 1 — Extract candidates, sequence, and confirm (the one gate)
 

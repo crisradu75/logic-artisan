@@ -18,11 +18,11 @@ only the sections its SKILL.md references, delete the rest.
 
 ## Incident / offense history
 
-**No `/cla:multi-pr` chain has reached Phase 1c in this repo.** There is no
-`cla.io/retro/multi-pr-run-notes-*.md` file — the file a chain first writes at Phase 1c step 4, and
-appends measured actuals to at Phase 3 step 6. So this repo has no measured per-change timings, no
-worktree-pivot precedent, and no stranded-docs precedent to offer; the two incidents below came
-from landing a stack by hand, not from a chain.
+**One `/cla:multi-pr` chain has reached Phase 1c in this repo**, on 2026-08-23. Its notes,
+`cla.io/retro/multi-pr-run-notes-2026-08-23.md`, are tracked from before run notes went local, and
+hold this repo's only measured per-change timings (two `large-extend` changes). There is no
+worktree-pivot or stranded-docs precedent to offer; the two incidents below came from landing a
+stack by hand, not from a chain.
 
 `grep -rn "overlays/multi-pr" .claude/plugins/cla/skills/multi-pr/` returns 9 pointers into this
 file. Counted by hand against what is actually written below:
