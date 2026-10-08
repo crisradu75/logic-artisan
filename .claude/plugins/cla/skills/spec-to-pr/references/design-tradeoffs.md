@@ -46,7 +46,6 @@ A phase-boundary confirmation prompt is a regression against the documented cont
 ## Review
 
 - **Sweeps:** a real sweep once returned a silent false-negative over an entire skills tree (`Scanned: 0` on a surface); another reported `No stale references found.` with `Scanned: 121` and `Unresolved: none` while a direct search found 9 hits (GitHub issue #279). Hence the footer check and the zero-count re-search. A stale doc reference can mask a broken key contract in a repo's load-bearing conventions (the overlay names them).
-- The multi-spec Review skip lives in spec-to-pr, not the checklist, because it decides which checklist parts run, not how a check behaves.
 
 ## Ship
 

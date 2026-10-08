@@ -64,7 +64,7 @@ return {findings, launched: DISPATCHES.length, reported: reported.length};
 
 ## Round N (N ≥ 2)
 
-Dispatch via `Agent`, each agent one tier down (`opus→sonnet`, `sonnet→haiku`, `haiku` stays) except the never-demoted set, which stays `opus`. Scope it to the diff the previous fix commit added, inlined into each prompt:
+Dispatch via `Agent`, each agent one tier down (`opus→sonnet`, `sonnet→haiku`, `haiku` stays) except the never-demoted set, which stays `opus`. Scope it to the diff the previous fix commit added, inlined into each prompt — do not make agents re-read it:
 
 ```
 PREV_FIX_SHA=$(git rev-parse HEAD)   # captured immediately BEFORE the round-(N-1) fix commit (step 3)
@@ -78,7 +78,7 @@ On a resume, where the held SHA is lost, take `PREV_FIX_SHA` as the parent of th
 > Does this fix introduce the defect it fixed, somewhere else? Enumerate every other instance of the resource or shape the fix concerns.
 
 - **You name the resource**, concretely: "every call site of `<function>`", "every branch of `<function>` that returns the args tuple", "every place `<key>` is read from config". You hold the finding and the remedy; an agent holds a diff.
-- **You grant repo search.** A sibling instance is outside the inlined diff, so the prompt says: read and grep the repository freely to answer this question, under the read-only discipline in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md` slot 3.
+- **You grant repo search.** A sibling instance is outside the inlined diff, so for this question alone the prompt says: read and grep the repository freely to answer this question, under the read-only discipline in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md` slot 3.
 - **The enumeration is the deliverable:** every other instance, and per instance whether the defect is present there. An empty enumeration is a stated result — "no other instance exists" — never a skipped step.
 - **The return cites its search:** the command or paths scanned, then the list, then a verdict per instance. Nothing found returns `enumerated: no other instance of <the named resource>; searched: <the command>`. **An enumeration with no search behind it is not an empty result — it is a missing one.**
 
@@ -186,7 +186,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
    git commit -m "fix: review round <N>"
    git push
    ```
-   **Every measurement this round asserts names its command**, exactly as Ship does: one `Measured-by: <command> — <claim>` trailer per claim in a single second `-m`, with the `Co-Authored-By:` / `Claude-Session:` lines directly under it, and the parse check (`git log -1 --format=%B | grep -c '^Measured-by:'` equal to `git log -1 --format='%(trailers:key=Measured-by,valueonly=true,unfold=true)' | grep -c .`) before pushing — rules and recipe in `ship.md` §2b and §3. A fix round is where mutation results and counts get written, so it binds here; the standing pre-PR gates are not claims this round asserts.
+   **Every measurement this round asserts names its command** in a `Measured-by:` trailer, parse-checked before pushing — rules and recipe in `ship.md` §2b and §3; a fix round is where mutation results and counts get written.
 
    **`git diff --cached --name-only` must list at least one path. Empty output means NOTHING was staged — stop.** Do not commit or push; name which of `<changed-paths>` produced nothing and mark Revise `warn`. (`--name-only`, not `--quiet`: `--quiet`'s healthy exit code is 1, which the hoisted rule would read as a failure.) `git add` on an unmodified path exits 0, and `git push` then prints "Everything up-to-date" and exits 0, so the push exit code cannot catch this.
 

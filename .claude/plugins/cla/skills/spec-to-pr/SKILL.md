@@ -159,7 +159,9 @@ Each round, smoke first: a smoke failure → diagnose and fix, decrement, re-run
 
 **No symptom fixes.** Loosening an assertion, widening a type or wrapping the failing call turns the gate green without touching the defect, and this phase warns and continues, so a suppression ships. If the only account of a fix is that it makes the check pass, record the round `warn` with the real failure. A test edit forced here follows `test-quality.md`.
 
-**Read `references/test-notes.md` before editing for an infra-dependent gate failure** (the failing file changes between identical runs, or stderr names the infra tool's own error). It also covers the optional browser smoke, never a hard gate, and external-API fixtures.
+**Read `references/test-notes.md` before editing for an infra-dependent gate failure** (the failing file changes between identical runs, or stderr names the infra tool's own error). It also covers the optional browser smoke, never a hard gate.
+
+**External-API fixtures (a judgment call, not a scripted gate):** a change that adds or extends a call to an external HTTP API, whose tests use only stub mocks with an assumed response shape and no fixture captured against the real response, is an Important finding in Review or Revise (a repo's concrete example: `cla.io/overlays/spec-to-pr.md` "Incident / offense history").
 
 ### Autonomy gate
 
@@ -181,7 +183,7 @@ The exceptions:
 
 ### Revise — PR-review loop
 
-Cap: `--pr-rounds N` (default `2`): round 2 runs whenever round 1 committed fixes, scoped to that fix diff. **Read `references/revise.md` first** — agent selection, the round-1 `Workflow` fan-out, round 2's sibling-instance question, triage, fix delegation, the mutation gate, the commit and the exit gate. Gate rules: dispatch every row the diff matches, and `code-reviewer` and `silent-failure-hunter` are never demoted in any round; every Critical and Important is triaged, and counts as Applied only when the defect is shown gone; **the loop exits clean only when untriaged and open are both zero** — a remedy-rejected finding citing the remedy is triaged and still open; `git_state.py --expect-branch <branch>` before each `fix: review round <N>` commit.
+Cap: `--pr-rounds N` (default `2`): round 2 runs whenever round 1 committed fixes, scoped to that fix diff. **Read `references/revise.md` first** — agent selection, the round-1 `Workflow` fan-out, round 2's sibling-instance question, triage, fix delegation, the mutation gate, the commit and the exit gate. Gate rules: dispatch every row the diff matches, and `code-reviewer` and `silent-failure-hunter` are never demoted in any round; every Critical and Important is triaged, and counts as Applied only when the defect is shown gone; **the loop exits clean only when untriaged and open are both zero** — a remedy-rejected finding citing the remedy is triaged and still open; `git_state.py --expect-branch <branch>` before each `fix: review round <N>` commit. A non-zero `git push` exit → Revise `warn`, and Handoff says prominently that round-N fixes are local-only. Round ≥2 asks each agent whether the fix introduces its defect elsewhere: you name the resource, grant repo search, and the return cites the search it ran — an uncited enumeration is missing, not empty.
 
 ### Archive
 

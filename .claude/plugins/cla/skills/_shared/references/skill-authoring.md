@@ -13,7 +13,7 @@ This is plugin-wide doctrine: it lives in `_shared/` because every skill is held
 
 ## Keep-inline vs move boundary (conservative)
 
-**Rule: correctness-gating invariants stay inline as one-liners; only mechanics/rationale/templates/examples move.** Each stub MUST be **self-sufficient for its own invariant** — carry the rule itself, not just a "read the reference" pointer, so a skipped read never loses protection. **Beyond those one-liners a stub never restates its reference**: a mandatory reference is read in full anyway, so a second copy only doubles the words and the places to keep in step. Rationale goes to a reference read only when revising the skill (`spec-to-pr/references/design-tradeoffs.md`).
+**Rule: correctness-gating invariants stay inline as one-liners; only mechanics/rationale/templates/examples move.** Each stub MUST be **self-sufficient for its own invariant** — carry the rule itself, not just a "read the reference" pointer, so a skipped read loses the procedure, never the gate. **Beyond those one-liners a stub never restates its reference**: a mandatory reference is read in full anyway, so a second copy only doubles the words and the places to keep in step. Rationale goes to a reference read only when revising the skill (`spec-to-pr/references/design-tradeoffs.md`).
 
 **Always stays inline:**
 - The hoisted skill-level rules block.

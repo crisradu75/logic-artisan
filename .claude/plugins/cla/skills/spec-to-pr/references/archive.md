@@ -4,6 +4,8 @@ The Archive phase's procedure. It moves the change to `openspec/changes/archive/
 
 ## 1. Before archiving
 
+**List the capabilities this change modifies now**, while the change dir still exists: `ls openspec/changes/<change-name>/specs/`, held for §3 (on a resume past the archive, list `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/specs/` instead).
+
 Fix what these find in this PR, in the same archive commit:
 
 1. Run `openspec validate <change-name> --strict` and fix what it reports. It fails a MODIFIED block that drops a live scenario and a malformed delta. A MODIFIED heading the live spec does not have only prints an `Archive would refuse this delta` line and exits 0: treat that line as a failure too.
@@ -20,7 +22,7 @@ Post-check: `openspec/changes/archive/<YYYY-MM-DD>-<change-name>/proposal.md` ex
 
 ## 3. Commit the file moves and the spec sync
 
-**Enumerate the capabilities this change modifies** — a change can materialize more than one: `ls openspec/changes/<change-name>/specs/` lists them (read it before archiving, or from the dated archive dir after). Stage **one `openspec/specs/<cap>/` per capability**.
+Stage **one `openspec/specs/<cap>/` per capability §1 listed** — a change can materialize more than one.
 
 **Pre-commit git-state, live-spec and scope checks — all required:**
 ```
