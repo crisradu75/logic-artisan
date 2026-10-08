@@ -19,7 +19,7 @@ TEST_QUALITY = SKILLS / "_shared" / "references" / "test-quality.md"
 CLA_INIT = SKILLS / "cla-init" / "SKILL.md"
 CONFIG = REPO / "openspec" / "config.yaml"
 GUARD = DEV / "tests" / "consistency" / "test_scenario_proof_format.py"
-REVIEW_SPEC = REPO / "openspec" / "specs" / "change-review" / "spec.md"
+WORKFLOW_SPEC = REPO / "openspec" / "specs" / "change-workflow" / "spec.md"
 PROBE_TEST = DEV / "tests" / "skills" / "spec-to-pr" / "test_probe_state.py"
 
 TARGETS = [GUARD]
@@ -127,9 +127,18 @@ MUTANTS = [
     (
         # Mutates the INPUT: a live spec reintroduces the retired form.
         "a live spec reintroduces the old manual form",
-        REVIEW_SPEC,
-        "### Requirement: A scenario with no proof is an Important finding\n",
-        "### Requirement: A scenario with no proof is an Important finding\n\nOr write `manual: <reason>`.\n",
+        WORKFLOW_SPEC,
+        "### Requirement: Each requirement names its proof\n",
+        "### Requirement: Each requirement names its proof\n\nOr write `manual: <reason>`.\n",
+        TARGETS,
+    ),
+    (
+        # Mutates the INPUT: a live spec asks for the retired per-scenario
+        # marker, which the scan skipped until the live specs were rewritten.
+        "a live spec asks for the per-scenario marker",
+        WORKFLOW_SPEC,
+        "proven by a test carrying a `requirement: <spec> / <heading>` comment line",
+        "proven by a test carrying a `scenario: <spec> / <heading>` comment line",
         TARGETS,
     ),
     (
@@ -137,8 +146,8 @@ MUTANTS = [
         # residue a spec move leaves behind.
         "a requirement marker names a capability its requirement is not in",
         GUARD,
-        "# requirement: change-review / A test task naming no marker is a Suggestion",
-        "# requirement: change-authoring / A test task naming no marker is a Suggestion",
+        "# requirement: change-workflow / Specs follow the repo's authoring rules",
+        "# requirement: change-chains / Specs follow the repo's authoring rules",
         TARGETS,
     ),
     (
@@ -147,7 +156,7 @@ MUTANTS = [
         "a test keeps a retired per-scenario marker",
         PROBE_TEST,
         '    """Scenario: Required artifact not done."""',
-        "    # scenario: orchestration / Required artifact not done",
+        "    # scenario: change-workflow / Tasks not written yet",
         TARGETS,
     ),
 ]

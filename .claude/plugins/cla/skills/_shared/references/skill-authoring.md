@@ -7,7 +7,7 @@ This is plugin-wide doctrine: it lives in `_shared/` because every skill is held
 1. **Baseline.** `wc -w -c <skill>/SKILL.md` — record before.
 2. **Classify every section** as INLINE-invariant (stays) or MECHANICS (moves) — see the boundary below.
 3. **Move mechanics** into on-demand `references/*.md` (per-phase or per-topic; reuse existing reference files, don't duplicate). Each moved section leaves a **short inline stub** = the load-bearing one-liner(s) + a mandatory **"read `references/<name>.md` first"** pointer.
-4. **Route repo-specific worked examples** (real symbol/file names, dated incidents) that you move OUT to the skill's `cla.io/overlays/spec-to-pr.md` overlay, leaving a generic pointer in the synced-core reference — per the **Skill fact/procedure separation** requirement. Never let a repo token land in a generic synced-core `references/*.md`.
+4. **Route repo-specific worked examples** (real symbol/file names, dated incidents) that you move OUT to the skill's `cla.io/overlays/spec-to-pr.md` overlay, leaving a generic pointer in the synced-core reference — extract a fact, keep a procedure. Never let a repo token land in a generic synced-core `references/*.md`.
 5. **Update the `## References` list** for any new file.
 6. **Post-size + validate** (see "Validation" below).
 

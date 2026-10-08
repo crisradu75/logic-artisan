@@ -38,6 +38,7 @@ def repo(tmp_path):
 # ---------------------------------------------------------------- the invariant
 
 
+# requirement: annotate / The document is shown as written and never changed
 def test_rendering_never_writes_to_the_document(repo):
     src = repo / "doc.md"
     body = "# Title\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
@@ -75,6 +76,7 @@ def test_a_read_only_document_still_renders(repo):
 # ---------------------------------------------------------------- addressing
 
 
+# requirement: annotate / Opening a document for annotation
 def test_every_addressable_block_carries_an_id_and_a_source_line():
     body, ctx = render("# H\n\npara one\n\n- item\n\n```\ncode\n```\n")
     found = re.findall(r'data-blk="(b\d+)" data-line="(\d+)"', body)
@@ -83,6 +85,7 @@ def test_every_addressable_block_carries_an_id_and_a_source_line():
     assert all(int(l) > 0 for _, l in found)                 # lines real
 
 
+# requirement: annotate / Comments are saved with their source line
 def test_the_source_line_points_at_the_right_line():
     md = "# Title\n\nfirst para\n\nsecond para\n"
     body, _ = render(md)

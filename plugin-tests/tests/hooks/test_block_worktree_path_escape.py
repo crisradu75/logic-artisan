@@ -86,6 +86,7 @@ def _run(mod, file_path, cwd_payload=None, process_cwd=None, monkeypatch=None):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: guard-hooks / Unsafe commands are blocked
 def test_blocks_an_escape_using_the_payload_cwd_not_the_process_cwd(
     worktree_pair, monkeypatch, capsys
 ):

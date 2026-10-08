@@ -175,6 +175,7 @@ def test_the_gutter_is_declared_injected_so_it_is_stripped_before_text_is_read()
 # ---------------------------------------------------------------- the page
 
 
+# requirement: annotate / Opening a document for annotation
 def test_one_tab_per_file_in_the_fixed_order_plus_coverage(built):
     tabs = re.findall(r'<button class="tab(?: on)?" data-tab="([^"]+)"', built["html"])
     assert tabs == ["proposal", "design", "tasks", "spec-cla-plugin"]

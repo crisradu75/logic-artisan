@@ -142,6 +142,7 @@ def test_trailing_line_col_and_wrapping_punctuation_resolved_correctly(tmp_path)
     assert find_stale_paths(tmp_path) == []
 
 
+# requirement: repo-context / Checking recorded paths
 def test_multiple_stale_paths_all_reported(tmp_path):
     (tmp_path / "cla.io").mkdir()
     (tmp_path / "apps").mkdir()

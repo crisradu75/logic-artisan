@@ -59,8 +59,8 @@ MUTANTS = [
     (
         "a pasted token becomes a valid discharge",
         CHECKLIST,
-        "a `tasks.md` subtask naming the field and what reads it, plus the delta spec",
-        "a sentence in `proposal.md` naming the field, plus the delta spec",
+        "a `tasks.md` subtask naming the field and what reads it.",
+        "a sentence in `proposal.md` naming the field.",
         TARGETS,
     ),
     (

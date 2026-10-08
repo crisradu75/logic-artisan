@@ -66,6 +66,7 @@ def _reason(payload: dict) -> str:
 # --------------------------------------------------------------------------- #
 
 
+# requirement: guard-hooks / Destructive git commands ask first
 @pytest.mark.parametrize(
     "command",
     [
@@ -94,6 +95,7 @@ def test_force_push_shapes_prompt(command, monkeypatch, capsys):
     assert "force-push" in _reason(payload)
 
 
+# requirement: guard-hooks / Destructive git commands ask first
 @pytest.mark.parametrize(
     "command",
     [

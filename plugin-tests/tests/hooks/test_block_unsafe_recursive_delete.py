@@ -135,6 +135,7 @@ def test_a_worktree_path_is_not_blocked_for_being_one(tmp_path):
     assert r.returncode == 0, r.stderr
 
 
+# requirement: guard-hooks / Unsafe commands are blocked
 def test_a_worktree_path_that_IS_a_link_still_blocks(tmp_path, make_dir_alias):
     """The half of the worktree case that must survive the narrowing.
 
@@ -156,6 +157,7 @@ def test_a_worktree_path_that_IS_a_link_still_blocks(tmp_path, make_dir_alias):
     assert "symlink" in r.stderr or "junction" in r.stderr
 
 
+# requirement: guard-hooks / Unsafe commands are blocked
 def test_allows_a_clean_recursive_delete(tmp_path):
     target = tmp_path / "build-output"
     target.mkdir()

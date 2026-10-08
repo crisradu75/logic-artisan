@@ -33,7 +33,7 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-# requirement: change-authoring / Every new or modified scenario names its proof
+# requirement: change-workflow / Each requirement names its proof
 def test_the_rules_ask_for_proof_per_requirement():
     config = _read(_CONFIG)
     assert (
@@ -42,7 +42,7 @@ def test_the_rules_ask_for_proof_per_requirement():
     )
 
 
-# requirement: change-authoring / The authoring brief points to the stock limits and asks for no doc-sync task
+# requirement: change-workflow / Specs follow the repo's authoring rules
 def test_the_brief_applies_the_rules_instead_of_copying_them():
     brief = _read(_BRIEF)
     assert "**Apply `openspec/config.yaml` `rules:`**" in brief
@@ -50,13 +50,13 @@ def test_the_brief_applies_the_rules_instead_of_copying_them():
     assert not copies, f"the authoring brief restates the rules: {copies}"
 
 
-# requirement: change-review / A scenario with no proof is an Important finding
+# requirement: change-workflow / Each requirement names its proof
 def test_the_review_flags_a_requirement_with_no_proof():
     assert f"or a tasks.md line {_MANUAL}. A requirement with neither is the finding." in _read(_CHECKLIST)
     assert "A requirement with neither is **Important**." in _read(_DISPATCH)
 
 
-# requirement: change-review / A test task naming no marker is a Suggestion
+# requirement: change-workflow / Each requirement names its proof
 def test_a_missing_marker_is_only_a_suggestion():
     assert f"A test task that does not name the {_MARKER} comment its test will carry is a **Suggestion**, not a blocker." in _read(_CHECKLIST)
     assert f"A test task that names no {_MARKER} marker is a **Suggestion**." in _read(_DISPATCH)
@@ -84,9 +84,7 @@ def test_the_retired_formats_are_gone():
     assert len(shipped) > 50, "the scan found too few files to mean anything"
     stale = [str(p.relative_to(_REPO)) for p in [*shipped, *specs] if "`manual: <reason>`" in _asks(p)]
     assert not stale, f"still using `manual: <reason>`: {stale}"
-    # The live specs still describe the per-scenario marker until they are
-    # rewritten, so this half reads the rules and the plugin only.
-    stale = [str(p.relative_to(_REPO)) for p in shipped if "`scenario: <spec> / <heading>`" in _asks(p)]
+    stale = [str(p.relative_to(_REPO)) for p in [*shipped, *specs] if "`scenario: <spec> / <heading>`" in _asks(p)]
     assert not stale, f"still asking for a per-scenario marker: {stale}"
 
 

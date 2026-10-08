@@ -46,7 +46,7 @@ revision of this change violated exactly that, putting the report template and
 its position in the orchestrator, where the dispatched-agent path never reads it.
 `test_the_report_template_lives_only_where_review_behaviour_does` pins the repair.
 
-Spec: `openspec/specs/orchestration/spec.md`, "An obligation one change creates for a later change is delivered to it".
+Spec: `openspec/specs/change-chains/spec.md`, "Obligations reach the change that owes them".
 Issues: #98, #100, #102.
 """
 
@@ -397,6 +397,7 @@ def _surviving(checks) -> int:
     return alive
 
 
+# requirement: change-chains / Obligations reach the change that owes them
 def test_the_checks_all_pass_on_the_real_tree():
     """Baseline. Without it the tamper cases are satisfiable by a guard that
     fails on everything, including the truth."""

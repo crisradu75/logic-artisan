@@ -52,7 +52,7 @@ non-vacuity assertion in a SEPARATE test function, and pytest couples nothing â€
 a `-k`, a skip, or a collection error in the floor left the real test silently
 green. Two of these tests were proven to pass while checking zero things.
 
-Spec: `openspec/specs/orchestration/spec.md`, "An unattended run does not end a turn while work is pending".
+Spec: `openspec/specs/change-chains/spec.md`, "An unattended chain keeps running".
 """
 
 from __future__ import annotations
@@ -189,6 +189,7 @@ def test_the_declared_family_matches_the_tree():
     )
 
 
+# requirement: change-chains / An unattended chain keeps running
 def test_every_family_skill_states_the_turn_liveness_rule():
     seen = set()
     for name in _FAMILY:

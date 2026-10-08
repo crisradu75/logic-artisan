@@ -255,6 +255,7 @@ def test_absent_or_empty_token_list_yields_no_tokens(tmp_path):
     assert load_tokens(empty) == []
 
 
+# requirement: repo-context / Checking the plugin text for repo names
 def test_body_token_is_flagged_with_accurate_line(tmp_path):
     skills = tmp_path / "skills"
     (skills / "demo").mkdir(parents=True)

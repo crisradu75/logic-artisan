@@ -67,6 +67,7 @@ def test_the_tag_the_release_would_cut_has_the_expected_shape():
     )
 
 
+# requirement: plugin-distribution / Publishing a release
 def test_all_three_copies_of_the_version_agree():
     """The precondition `claude plugin tag` cannot check: it compares two of the
     three copies and never reads CLAUDE.md."""
@@ -121,6 +122,7 @@ def test_the_status_command_parser_is_not_vacuous():
     assert _step_1_status_commands(body) == ["git status --porcelain -- ."]
 
 
+# requirement: plugin-distribution / Publishing a release
 def test_the_skill_states_the_never_move_invariant():
     """The one rule whose violation cannot be undone. If it is ever edited out of
     the skill, the skill has stopped being safe to run."""

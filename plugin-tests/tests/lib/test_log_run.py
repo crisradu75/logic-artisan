@@ -71,6 +71,7 @@ def scratch_repo(tmp_path: Path) -> Path:
 # Appending
 # --------------------------------------------------------------------------- #
 
+# requirement: run-ledgers / Ledger files
 def test_appends_one_line_per_call(tmp_path: Path) -> None:
     retro = tmp_path / "retro"
 
@@ -136,6 +137,7 @@ def test_rejects_oversize_record(tmp_path: Path) -> None:
     assert "4 KiB" in r.stderr
 
 
+# requirement: run-ledgers / Ledger files
 def test_nothing_is_written_when_the_record_is_rejected(tmp_path: Path) -> None:
     # A rejected record must not leave a partial line behind for the retro to
     # trip over — the ledger is append-only and nothing repairs it.
@@ -179,12 +181,14 @@ def test_a_ledger_name_that_is_not_a_bare_filename_is_refused(tmp_path: Path, ba
 # Resolving the ledger dir
 # --------------------------------------------------------------------------- #
 
+# requirement: run-ledgers / Ledger files
 def test_runs_dir_env_override(tmp_path: Path) -> None:
     retro = tmp_path / "elsewhere"
     r = _run('{"a":1}', retro)
     assert Path(r.stdout.strip()).parent == retro
 
 
+# requirement: plugin-distribution / Repo data stays in the repo
 def test_runs_dir_default_is_cla_io_retro(scratch_repo: Path) -> None:
     # With no override, the dir comes from `git rev-parse --show-toplevel` —
     # hence `cwd`, so the write lands in the scratch repo, not this one.

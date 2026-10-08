@@ -153,6 +153,7 @@ def test_an_unclosed_frontmatter_fence_warns(capsys):
     assert "closing" in capsys.readouterr().err
 
 
+# requirement: repo-context / Per-skill overlays
 def test_an_absent_overlay_is_silent(monkeypatch, capsys, tmp_path):
     """The non-vacuity partner, and the one case that must stay quiet: not
     configured is the ORDINARY state, so a warning here would fire in every repo
@@ -175,6 +176,7 @@ def test_an_absent_overlay_is_silent(monkeypatch, capsys, tmp_path):
     assert capsys.readouterr().err == "", "an un-configured repo must not be warned at"
 
 
+# requirement: repo-context / Per-skill overlays
 def test_a_present_overlay_is_actually_read_end_to_end(monkeypatch, tmp_path, capsys):
     """The join between `overlay_path()` and `prefix_from_text()` — the ONE path
     that matters in a configured repo, and the one nothing covered.

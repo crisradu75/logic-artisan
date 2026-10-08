@@ -153,6 +153,7 @@ def classify_keys(keys, recognised, required):
     return sorted(set(keys) - set(recognised)), sorted(set(required) - set(keys))
 
 
+# requirement: guard-hooks / Guard hooks load with the plugin
 def test_hooks_json_declares_only_loader_recognised_keys():
     """An unrecognised top-level key is a warning on EVERY session start, in
     EVERY consuming repo, that no consumer can fix.

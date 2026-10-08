@@ -370,6 +370,7 @@ def test_clean_records_are_not_flagged_as_drift(tmp_path: Path) -> None:
 # --- Multi-ledger --log ------------------------------------------------------
 
 
+# requirement: run-ledgers / Retro reports
 def test_multiple_logs_aggregate_into_one_result(tmp_path: Path) -> None:
     a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
     _write_log(a, [{"suggestions": {"proposed": 2, "applied": 2, "rejected": 0}}])

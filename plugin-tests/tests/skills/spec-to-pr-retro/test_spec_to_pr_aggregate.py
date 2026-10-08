@@ -249,6 +249,7 @@ def test_limit_zero_returns_all(tmp_path: Path) -> None:
     assert out["runs_analyzed"] == 7
 
 
+# requirement: run-ledgers / Retro reports
 def test_malformed_line_skipped_and_counted(tmp_path: Path) -> None:
     log = tmp_path / "runs.jsonl"
     log.write_text('{"change":"ok","phases":[]}\nnot json\n{"change":"ok2","phases":[]}\n',

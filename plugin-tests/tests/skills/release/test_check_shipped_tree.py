@@ -109,6 +109,7 @@ def test_the_clean_seeded_tree_itself_passes(tmp_path):
     assert f"{len(_CLEAN_TREE)} files" in result.stdout
 
 
+# requirement: plugin-distribution / Publishing a release
 def test_every_offender_is_named_in_one_run(tmp_path):
     """Reporting one at a time turns a single cleanup into as many release
     attempts as there are files."""
@@ -148,6 +149,7 @@ def test_a_git_failure_is_could_not_run(tmp_path):
     assert result.returncode == cst.EXIT_CANNOT_RUN
 
 
+# requirement: plugin-distribution / What a release contains
 def test_the_real_tree_passes_with_the_real_file_count():
     """Exit 0 alone is not the check — the files-examined count must agree with
     an independently-measured `git ls-files`."""

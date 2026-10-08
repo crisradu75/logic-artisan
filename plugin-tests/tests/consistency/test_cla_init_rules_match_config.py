@@ -50,6 +50,7 @@ def _config_block() -> str:
     return block.rstrip()
 
 
+# requirement: change-workflow / Specs follow the repo's authoring rules
 def test_cla_init_seeds_the_block_this_repo_carries():
     assert _skill_block() == _config_block()
 
@@ -130,7 +131,7 @@ _HEADER = "openspec/{}: exists (skipped), missing or outdated rules (+ add, - re
 _needs_bash = pytest.mark.skipif(_BASH is None, reason="bash is not installed")
 
 
-# requirement: plugin-architecture / cla-init seeds OpenSpec authoring rules without clobbering
+# requirement: repo-context / cla-init seeds OpenSpec authoring rules without clobbering
 @_needs_bash
 def test_the_seed_creates_a_missing_config(tmp_path: Path):
     (tmp_path / "openspec").mkdir()
@@ -139,7 +140,7 @@ def test_the_seed_creates_a_missing_config(tmp_path: Path):
     assert written == f"schema: spec-driven\n\n{_skill_block()}\n"
 
 
-# requirement: plugin-architecture / cla-init seeds OpenSpec authoring rules without clobbering
+# requirement: repo-context / cla-init seeds OpenSpec authoring rules without clobbering
 @_needs_bash
 def test_a_config_with_every_rule_is_reported_current(tmp_path: Path):
     cfg = tmp_path / "openspec" / "config.yaml"
@@ -150,7 +151,7 @@ def test_a_config_with_every_rule_is_reported_current(tmp_path: Path):
     assert cfg.read_bytes() == _CONFIG.read_bytes()
 
 
-# requirement: plugin-architecture / cla-init seeds OpenSpec authoring rules without clobbering
+# requirement: repo-context / cla-init seeds OpenSpec authoring rules without clobbering
 @_needs_bash
 def test_an_outdated_rule_is_listed_and_the_file_left_alone(tmp_path: Path):
     items = _rule_items()
@@ -177,7 +178,7 @@ def test_an_outdated_rule_is_listed_and_the_file_left_alone(tmp_path: Path):
     assert cfg.read_bytes() == original
 
 
-# requirement: plugin-architecture / cla-init seeds OpenSpec authoring rules without clobbering
+# requirement: repo-context / cla-init seeds OpenSpec authoring rules without clobbering
 @_needs_bash
 def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
     old_rule = _retired("Keep every scenario heading unique")
@@ -187,7 +188,7 @@ def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
     assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- specs: " + old_rule]
 
 
-# requirement: plugin-architecture / cla-init seeds OpenSpec authoring rules without clobbering
+# requirement: repo-context / cla-init seeds OpenSpec authoring rules without clobbering
 @_needs_bash
 def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     yml = tmp_path / "openspec" / "config.yml"

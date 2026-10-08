@@ -94,6 +94,7 @@ def test_entries_are_distinctly_named_and_described():
         assert e.get("description"), f"{e['name']}: an entry needs to say what it is"
 
 
+# requirement: plugin-distribution / Installing a pinned release
 def test_the_published_ref_matches_the_plugin_version():
     """The manifest pins an exact release tag rather than a moving major tag, so
     publishing a release means editing the `ref` here. That is the whole point —

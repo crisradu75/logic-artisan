@@ -148,6 +148,7 @@ def _run(monkeypatch, capsys, command):
     return code, capsys.readouterr().err
 
 
+# requirement: guard-hooks / Unsafe commands are blocked
 def test_main_blocks_a_directive(monkeypatch, capsys):
     code, err = _run(monkeypatch, capsys, "cd /tmp && ls")
     assert code == 2

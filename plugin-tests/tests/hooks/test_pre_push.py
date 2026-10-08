@@ -54,6 +54,7 @@ def _line(remote_ref: str, local_sha: str = _SHA) -> str:
     return f"refs/heads/x {local_sha} {remote_ref} {_ZERO}\n"
 
 
+# requirement: guard-hooks / Direct pushes to main are refused
 @pytest.mark.parametrize("branch", ["main", "master"])
 def test_refuses_a_push_to_the_default_branch(branch):
     r = _run(_line(f"refs/heads/{branch}"))
@@ -91,6 +92,7 @@ def test_allows_a_multi_ref_push_of_only_feature_branches():
     assert r.returncode == 0
 
 
+# requirement: guard-hooks / Direct pushes to main are refused
 def test_the_documented_override_works():
     r = _run(_line("refs/heads/main"), {"ALLOW_PUSH_TO_MAIN": "1"})
     assert r.returncode == 0

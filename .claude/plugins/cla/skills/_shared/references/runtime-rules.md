@@ -2,7 +2,7 @@
 
 The standing runtime disciplines that keep `/cla:spec-to-pr`'s per-run context small. Pointed at from the hoisted skill-level rules and every phase that handles bulk raw material. These are the NEW thin-orchestrator disciplines only — the separate correctness-gating sections in `SKILL.md` ("Bash-style discipline", "Continue-on-everything escalation", "Development-only boundary") are NOT part of this file and stay inline.
 
-The governing spec requirement is `plugin-architecture`'s **Skill token-efficiency disciplines** (thin-orchestrator runtime execution). The total cost of a run ≈ Σ over turns of the orchestrator's context size, so every raw file/diff/grep dump the orchestrator pulls inline is re-billed on every subsequent turn. Keep raw material OUT of the parent context.
+The total cost of a run ≈ Σ over turns of the orchestrator's context size, so every raw file/diff/grep dump the orchestrator pulls inline is re-billed on every subsequent turn. Keep raw material OUT of the parent context.
 
 ## 1. Delegate raw-material handling — only conclusions return
 

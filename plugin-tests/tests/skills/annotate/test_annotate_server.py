@@ -129,6 +129,7 @@ VALID = {"text": "harbour", "blk": "b2", "note": "too vague", "off": 4,
 # ---------------------------------------------------------------- the invariant
 
 
+# requirement: annotate / The document is shown as written and never changed
 def test_the_server_never_modifies_the_document(live):
     before = hashlib.sha256(live.doc.read_bytes()).hexdigest()
     mtime = live.doc.stat().st_mtime_ns
@@ -151,6 +152,7 @@ def test_the_server_never_modifies_the_document(live):
 # ---------------------------------------------------------------- writing
 
 
+# requirement: annotate / Comments are saved with their source line
 def test_a_valid_annotation_is_stamped_and_stored(live):
     code, raw, _ = live.post("/api/annotations", VALID)
     assert code == 200
@@ -646,6 +648,7 @@ def test_the_rebuild_endpoint_rewrites_the_page_in_place(live):
     assert "The harbour was loud." in live.page.read_text(encoding="utf-8")
 
 
+# requirement: annotate / Existing comments are reported when the page is rebuilt
 def test_the_rebuild_reports_an_anchor_the_edit_broke(live):
     live.post("/api/annotations", VALID)
     live.doc.write_text("# Spec\n\nNothing of the kind remains.\n", encoding="utf-8")
