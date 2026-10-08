@@ -15,9 +15,8 @@ skills invoke it as a program.
 
 Three of those five per-skill WRITERS were deleted rather than migrated
 (`multi-pr`, `multi-spec`, `multi-lite`); the ledger FILES they left behind still
-exist across the fleet. Every ledger now has a reader: `spec-to-pr-runs` and
-`codify-runs` by their own retro skills, and any other by `lib/ledger_summary.py`,
-which derives a summary from the records rather than being written per ledger. No record count is
+exist across the fleet. Every ledger now has a reader: `spec-to-pr-runs` by its
+own retro skill, and any other by `lib/ledger_summary.py`, which derives a summary from the records rather than being written per ledger. No record count is
 quoted here on purpose: it goes stale on the next append, and a stale number in a
 docstring reads as fact.
 
@@ -143,7 +142,9 @@ VERDICTS = ("READY", "FIX FIRST", "RETHINK")
 # retro can join dispatches to yield.
 REVISE_AGENTS = ("code-reviewer", "silent-failure-hunter", "pr-test-analyzer",
                  "comment-analyzer", "type-design-analyzer", "plugin-dev:skill-reviewer")
-RUNGS = ("checklist", "memory", "claude_md", "skill_md", "hook", "script")
+# The four rungs of codify-learnings' escalation ladder, weakest first. A rung, not
+# an artifact type: memory, CLAUDE.md, an overlay and a SKILL.md are all `doc`.
+RUNGS = ("checklist", "doc", "hook", "script")
 # Phases that loop, and so must say how many rounds they used out of how many,
 # whenever they ran. Review loops too but is single-pass by default, and its pair
 # stays optional.
@@ -223,18 +224,9 @@ SHAPES: dict[str, tuple] = {
                                          _findings_rule)})},
     ),
     "codify-runs.jsonl": _obj(
-        {"ts": TS_OR_DATE, "scope": TEXT,
-         "suggestions": _obj({"proposed": COUNT, "applied": COUNT, "rejected": COUNT}),
-         "memory": _obj({"proposed": COUNT, "applied": COUNT}),
-         "re_offenses": ("list", _obj({"lesson": TEXT, "escalated_to": _one_of(*RUNGS)},
-                                      {"failing_artifact": TEXT})),
-         "rejected_lessons": ("list", TEXT),
-         "maintenance": _obj({"failure_modes_bullets": COUNT, "live_log_entries": COUNT,
-                              "trimmed": BOOL}),
-         "process_issue": BOOL},
-        {"effectiveness": _obj({"prevented": COUNT, "re_offended": COUNT,
-                                "not_exercised": COUNT}),
-         "output_chars": COUNT},
+        {"ts": TS_OR_DATE,
+         "applied": ("list", _obj({"target": TEXT, "rung": _one_of(*RUNGS)})),
+         "re_offenses": ("list", _obj({"artifact": TEXT, "escalated_to": _one_of(*RUNGS)}))},
     ),
 }
 
@@ -303,7 +295,8 @@ def _runs_dir() -> Path:
     """The in-repo, git-synced ledger dir: <repo-root>/cla.io/retro/.
 
     Raises on a non-absolute override or an unresolvable repo root rather than
-    guessing a path: the consumers (the two retro aggregators) resolve
+    guessing a path: the readers (the spec-to-pr aggregator and
+    `ledger_summary.py`) resolve
     independently with identical logic, so a silently-wrong path here would make
     logged runs vanish from the retro with no error.
     """

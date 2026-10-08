@@ -115,12 +115,12 @@ the mutation runner executes. Keep speed flags on the command line.
 consuming repos and carries only assets a consumer can use, so every test, every mutation batch,
 the mutation runner, and the pytest configuration live in this repo's own `plugin-tests/` tree.
 It is the repo's ONLY pytest scope — 1 in total, down from 12 — with a single `pyproject.toml`
-(`testpaths = ["tests"]`, `norecursedirs = ["mutants", "node"]`, and a `pythonpath` of 10 entries
+(`testpaths = ["tests"]`, `norecursedirs = ["mutants", "node"]`, and a `pythonpath` of 9 entries
 reaching out of the dev tree into the plugin, because the scripts under test stay shipped and only
 their tests moved).
 
 Inside `plugin-tests/tests/` the old scope names survive as area directories: `conformance/`,
-`consistency/`, `launcher/`, `hooks/`, `lib/`, and `skills/<name>/` — 6 areas under `skills/`, one
+`consistency/`, `launcher/`, `hooks/`, `lib/`, and `skills/<name>/` — 5 areas under `skills/`, one
 per skill that ships tests, plus `_shared/`. `mutants/` is a SIBLING of `tests/`, mirroring its
 subdirectory names, so the batches are never collected as tests. A batch is optional; when a guard
 has one, it carries the guard's name.
@@ -351,7 +351,7 @@ went:
 
 ```
 plugin-tests/                  the repo's ONE pytest scope
-  pyproject.toml               testpaths, norecursedirs, and the 10-entry pythonpath
+  pyproject.toml               testpaths, norecursedirs, and the 9-entry pythonpath
   mutate.py                    mutation checker: break a fix, confirm a test fails, restore
   tests/<area>/                conformance, consistency, launcher, hooks, lib, skills/<name>
   mutants/<area>/              mutation batches, mirroring tests/ — a sibling, never a child
@@ -372,7 +372,7 @@ isn't a survivor.** (Guard hooks are listed separately below.)
 Shipped scripts are given relative to `.claude/plugins/cla/` and never repeat that prefix — a bare
 top-level path (`lib/...`) for a script outside `skills/`, and a
 skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script that belongs to one,
-matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scripts/codify_aggregate.py`,
+matching every existing row (`_shared/scripts/git_state.py`, `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py`,
 `annotate/scripts/*.py`, and so on).
 
 | Script | Why prose can't do it |
@@ -383,7 +383,7 @@ matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scrip
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
 | `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
-| `codify-retro/scripts/codify_aggregate.py`, `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over JSONL run records, including malformed-shape and producer-drift buckets a reader would gloss. `--log` takes several paths, so one run can aggregate the fleet's ledgers rather than this repo's alone — which matters because any single repo's sample is thin enough to mislead: this repo's 8 spec-to-pr records put round-cap exhaustion at 4 of 5, the fleet's 156 put it at 6 of 129. |
+| `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over JSONL run records, including malformed-shape and producer-drift buckets a reader would gloss. `--log` takes several paths, so one run can aggregate the fleet's ledgers rather than this repo's alone — which matters because any single repo's sample is thin enough to mislead: this repo's 8 spec-to-pr records put round-cap exhaustion at 4 of 5, the fleet's 156 put it at 6 of 129. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 14-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
 | `project-review/scripts/mechanical-checks.mjs` | Cross-file key-set parity from repo-supplied config; hand-grepping it is exactly what it replaces. Configured by 1 of 4 consuming repos today. |
@@ -401,7 +401,7 @@ matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scrip
 ### Skills by life-cycle phase
 
 Every shipped skill is invocable as `/cla:<name>`, and all but `multi-lite`, `multi-pr`, `cla-init`,
-`save-permissions`, `codify-learnings`, `codify-retro`, `spec-to-pr-retro` and `right-model` — which
+`save-permissions`, `codify-learnings`, `spec-to-pr-retro` and `right-model` — which
 set `disable-model-invocation: true`: the first two are unattended orchestrators that open and merge
 PRs, the rest are run deliberately and kept out of the always-loaded skill listing — can also be
 triggered by natural language.

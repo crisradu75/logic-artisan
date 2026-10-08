@@ -63,8 +63,7 @@ and invoked bare as `/release`.
 | **4. Review & assure** | `project-review` | you or Claude | CTO-level review of the whole repo: vision, structure, requirements, architecture, validation |
 | | `annotate` | you or Claude | Render a doc as a page, open it chrome-less, and collect the user's own comments against selected passages — read back and worked through here |
 | | (agents) | n/a — dispatched | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to |
-| **5. Learn & improve** | `codify-learnings` | **you only** | Review the current session for reusable lessons; propose doc/skill/hook/memory edits; log them `[loop]` |
-| | `codify-retro` | **you only** | Meta-review recent `codify-learnings` runs and improve that loop itself `[loop]` |
+| **5. Learn & improve** | `codify-learnings` | **you only** | Turn the current session's failures into up to three fixes — tools and hooks before docs — escalating any rule that failed again; log them `[loop]` |
 | | `spec-to-pr-retro` | **you only** | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
 | | `report-upstream` | you or Claude | File a defect in CLA's own portable core as an issue against the canonical source |
 | | `checkpoint` | you or Claude | Compact a session into a resumable briefing (`cla.io/checkpoints/`) |
@@ -96,7 +95,7 @@ another skill's *reference file* is not calling that skill. `spec-to-pr`'s Revie
 - **Small change:** `shape-decision` → `lite-pr` (or straight to `lite-pr`).
 - **Larger change:** `shape-decision` → `multi-spec` → `review-change` → `spec-to-pr`.
 - **A batch off one decisions doc:** `multi-lite` (small) or `multi-pr` (spec-scale).
-- **After a session:** `codify-learnings`; periodically `*-retro` to tune the loops.
+- **After a session:** `codify-learnings`; periodically `spec-to-pr-retro` to tune the orchestrator.
 
 ## Always-on guardrails (hooks)
 

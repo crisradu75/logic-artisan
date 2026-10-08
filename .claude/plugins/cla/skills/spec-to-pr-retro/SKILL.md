@@ -35,7 +35,7 @@ Where `<N>` is the value from `$ARGUMENTS` (passed through by the command wrappe
 
 **Reading more than one repo's ledger.** `--log` takes several paths, and the records aggregate together.
 
-Prefer `--fleet`, which resolves the paths from `cla.io/fleet.local.md` — one repo root per `- ` bullet, curated per machine, never synced. The same file serves this loop and `codify-retro`:
+Prefer `--fleet`, which resolves the paths from `cla.io/fleet.local.md` — one repo root per `- ` bullet, curated per machine, never synced:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --limit 0 --fleet

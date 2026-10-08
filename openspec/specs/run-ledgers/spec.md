@@ -29,20 +29,6 @@ Each `/cla:spec-to-pr` run SHALL append one record to `cla.io/retro/spec-to-pr-r
 - **WHEN** a run's pull request review takes two rounds
 - **THEN** its record lists both rounds in order with the findings each found
 
-### Requirement: Retro reports
-
-`/cla:spec-to-pr-retro [N]` and `/cla:codify-retro [N]` SHALL summarise the last N runs of their ledger, 10 by default, and propose improvements, reading several ledgers together when given several and naming each one read, and counting a malformed record as lost instead of failing the report.
-
-#### Scenario: One malformed record
-
-- **WHEN** a ledger holds one record with a field of the wrong shape
-- **THEN** the report covers every other record and counts the damaged one
-
-#### Scenario: Ledgers from several repos
-
-- **WHEN** the report is given the ledgers of several repos
-- **THEN** it summarises their runs together and names every ledger it read
-
 ### Requirement: Run records are checked when written
 
 The writer SHALL refuse a spec-to-pr or codify-learnings run record whose fields or field values do not match that ledger's record shape, printing one line that names every field that does not match and leaving the ledger unchanged, and a skill whose record is refused SHALL correct it and try once more, then finish its run whether or not the record was written.
@@ -61,3 +47,17 @@ The writer SHALL refuse a spec-to-pr or codify-learnings run record whose fields
 
 - **WHEN** a skill's corrected record is refused again
 - **THEN** the skill reports that the record was not written and its run still finishes
+
+### Requirement: The spec-to-pr retro report
+
+`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of the spec-to-pr ledger, 10 by default, and propose improvements, reading several ledgers together when given several and naming each one read, and counting a malformed record as lost instead of failing the report.
+
+#### Scenario: One malformed record
+
+- **WHEN** a ledger holds one record with a field of the wrong shape
+- **THEN** the report covers every other record and counts the damaged one
+
+#### Scenario: Ledgers from several repos
+
+- **WHEN** the report is given the ledgers of several repos
+- **THEN** it summarises their runs together and names every ledger it read

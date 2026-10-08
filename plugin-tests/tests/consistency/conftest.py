@@ -13,8 +13,8 @@ A failure that means "not applicable here" is worse than useless: it trains the
 reader to ignore a red suite, and this suite is the only gate the project has.
 So detect the situation and skip, with the reason attached.
 
-Detection is the same one `codify-learnings/references/plugin-writability.md`
-documents, and it holds for the same reason: a plugin loaded from a working tree
+Detection is the same one `codify-learnings/references/routing.md` documents
+("Is the plugin writable here?"), and it holds for the same reason: a plugin loaded from a working tree
 is inside a git repo; an installed one is a plain directory in a version-keyed
 cache (verified: the cache has no `.git`).
 """

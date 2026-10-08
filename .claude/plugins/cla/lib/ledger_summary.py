@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Summarise ANY cla run-ledger, deriving the shape from the records themselves.
 
-WHY THIS IS GENERIC WHERE THE OTHER TWO READERS ARE NOT.
+WHY THIS IS GENERIC WHERE THE OTHER READER IS NOT.
 
-`codify_aggregate.py` and `spec_to_pr_aggregate.py` are specific on purpose: they
-know what `re_offenses` means and gate real heuristics on it. That specificity is
-also why they cost what they cost, and it is why five ledgers went unread — nobody
-was going to write five more of them. Measured across the fleet: `multi-lite`,
+`spec_to_pr_aggregate.py` is specific on purpose: it knows what a phase's rounds
+mean and gates real heuristics on them. That specificity is also why it costs what
+it costs, and it is why five ledgers went unread — nobody was going to write five
+more of them. Measured across the fleet: `multi-lite`,
 `multi-pr`, `multi-spec`, `project-review` and `right-model` hold 22 rows between
 them with no reader at all, and this repo's own rule says an unread ledger is
 exhaust.
@@ -18,8 +18,8 @@ becomes length stats — and one level of nesting is flattened with dotted keys.
 Nothing is configured, because a config file is one more thing to keep in step
 with a schema, and the schema is already in the records.
 
-WHAT IT DELIBERATELY DOES NOT DO. It proposes nothing. The two specific readers
-exist to turn metrics into named edits, and a generic tool cannot do that without
+WHAT IT DELIBERATELY DOES NOT DO. It proposes nothing. The specific reader
+exists to turn metrics into named edits, and a generic tool cannot do that without
 knowing what a field means. This answers "what is in this ledger, and is anything
 lopsided", which is exactly the question that has gone unanswered for the ledgers
 nothing reads. Treat a lopsided field as a prompt to look, not as a verdict.
@@ -72,7 +72,7 @@ def _runs_dir() -> Path:
     """The in-repo, git-synced ledger dir: <repo-root>/cla.io/retro/.
 
     Raises on a non-absolute override or an unresolvable repo root rather than
-    guessing a path: the consumers (the two retro aggregators) resolve
+    guessing a path: the writer and the spec-to-pr aggregator resolve
     independently with identical logic, so a silently-wrong path here would make
     logged runs vanish from the retro with no error.
     """
@@ -103,13 +103,13 @@ def _fleet_roots(path: Path) -> list[Path]:
     Format and location follow `cla.io/project-tokens.local.md`, the closest
     precedent: a `*.local.md` file in the repo's own tree, one item per `- `
     bullet, inline `#` comments and surrounding backticks stripped. It holds repo
-    ROOTS rather than ledger paths, so one file serves both aggregators and both
-    of this one's ledger kinds — each caller appends the ledger name it already
-    knows.
+    ROOTS rather than ledger paths, so one file serves the spec-to-pr aggregator
+    and every ledger this one reads — each caller appends the ledger name it
+    already knows.
 
     Raises rather than returning empty on a missing or contentless file: a fleet
-    run that silently analysed nothing would print `runs_analyzed: 0`, which both
-    retro skills instruct the reader to interpret as a cold start.
+    run that silently analysed nothing would print `records: 0`, which reads as a
+    cold start.
     """
     if not path.exists():
         raise FileNotFoundError(
@@ -201,8 +201,7 @@ def summarise_field(values: list) -> dict:
 
 def summarise(records: list[dict]) -> dict:
     if not records:
-        # `window` is emitted here too, for the reason `codify_aggregate.aggregate`
-        # records about its own skeleton: a key present on every populated result
+        # `window` is emitted here too: a key present on every populated result
         # and absent on the empty one makes a consumer's `.get(...)` read a clean
         # value where it should read "nothing was measured".
         return {"records": 0, "window": {"first_ts": None, "last_ts": None},

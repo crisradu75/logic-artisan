@@ -3,19 +3,9 @@
 <!--
 Project-specific overlay for the `codify-learnings` cla skill. This file is repo-local
 (never distributed with the plugin). The generic SKILL.md supplies the procedure; this
-file supplies the repo's facts. A skill runs fine against an empty stub — fill in
-only the sections its SKILL.md references, delete the rest.
+file supplies the repo's facts: where memory lives, the verification commands, and the
+repo lessons that Step 2 searches before calling a failure new.
 -->
-
-## Default scope note
-
-`repo-wide`. This repo holds no product code — it is the CLA harness itself
-(`.claude/plugins/cla/`), so almost every session touches skills, hooks, or both and
-repo-wide is the honest default.
-
-Narrow only when a session was genuinely dominated by one area, e.g.:
-- `scope: repo-wide (.claude/plugins/cla/hooks/)` — a session spent entirely in the guard layer
-- `scope: repo-wide (cross-repo port from <peer-repo>)` — porting skills in from a peer
 
 ## Memory index glob
 
@@ -51,13 +41,6 @@ pytest gate plus the Node suite before calling a change done.
 The suite reports skips — a skipped guard has not run, and several guards are
 dormant without an overlay file, so treat a skip line as a finding rather than noise.
 
-## Packages, paths, and app names
-
-- Synced core (portable, no repo facts): `.claude/plugins/cla/{skills,agents,hooks,output-styles}/`
-- Overlays (repo-local, never synced): each skill's `references/project-context.md`, any `*.local.md`
-- Per-repo state: `cla.io/` — `decisions/`, `feedback/`, `retro/`, `lessons-learned/`
-- Worktree convention: `.claude/worktrees/<name>` in the primary clone
-
 ## Incident / offense history
 
 - **2026-08-13 — a guard hook was evaded rather than obeyed.** `block-cd-in-bash` blocked
@@ -91,24 +74,6 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
   load; the handler was later sized from the guards instead.
 - **2026-07-25 — the push-to-main guard (now `hooks/git/pre-push`) did not fire** on `git -C <dir> push origin main`;
   the sibling hooks had the same global-flag gap.
-
-## Product / domain context
-
-`logic-artisan` is the canonical home of CLA (Cris Logic Artisan), a Claude Code
-dev-workflow harness packaged as a plugin. No application code — the deliverable is the
-process layer, installed by other repos from the GitHub marketplace.
-
-## Infrastructure values
-
-No servers, ports, or env files. Behaviour-affecting env vars are the hooks' own escape
-hatches: `ALLOW_PUSH_TO_MAIN`, `ALLOW_SHARED_CLONE_MUTATION`, `ALLOW_WORKTREE_PATH_ESCAPE`,
-`ALLOW_DESTRUCTIVE_GIT`, `ALLOW_GIT_IDENTITY_MISMATCH`, `ALLOW_DATED_PROSE`,
-`CLA_EXPECTED_GIT_EMAIL`. This list drifts as hooks are added — the
-authoritative enumeration is the hook sources themselves:
-
-```bash
-grep -ohE '"(ALLOW|CLA)_[A-Z_]+"' .claude/plugins/cla/hooks/*.py | sort -u
-```
 
 ## Repo file lists
 

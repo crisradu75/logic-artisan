@@ -16,7 +16,6 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 WRITER = PLUGIN / "lib" / "log_run.py"
 READERS = {
     "spec_to_pr_aggregate": PLUGIN / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py",
-    "codify_aggregate": PLUGIN / "skills" / "codify-retro" / "scripts" / "codify_aggregate.py",
     "ledger_summary": PLUGIN / "lib" / "ledger_summary.py",
 }
 TARGETS = [DEV / "tests" / "consistency" / "test_ledger_dir_agrees.py"]

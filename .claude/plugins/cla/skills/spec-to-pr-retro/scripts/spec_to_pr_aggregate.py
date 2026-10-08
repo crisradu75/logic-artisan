@@ -150,7 +150,7 @@ def _runs_dir() -> Path:
     """The in-repo, git-synced ledger dir: <repo-root>/cla.io/retro/.
 
     Raises on a non-absolute override or an unresolvable repo root rather than
-    guessing a path: the consumers (the two retro aggregators) resolve
+    guessing a path: the writer and `lib/ledger_summary.py` resolve
     independently with identical logic, so a silently-wrong path here would make
     logged runs vanish from the retro with no error.
     """
@@ -187,13 +187,13 @@ def _fleet_roots(path: Path) -> list[Path]:
     Format and location follow `cla.io/project-tokens.local.md`, the closest
     precedent: a `*.local.md` file in the repo's own tree, one item per `- `
     bullet, inline `#` comments and surrounding backticks stripped. It holds repo
-    ROOTS rather than ledger paths, so one file serves both aggregators and both
-    of this one's ledger kinds — each caller appends the ledger name it already
+    ROOTS rather than ledger paths, so one file serves this aggregator and
+    `lib/ledger_summary.py` — each caller appends the ledger name it already
     knows.
 
     Raises rather than returning empty on a missing or contentless file: a fleet
-    run that silently analysed nothing would print `runs_analyzed: 0`, which both
-    retro skills instruct the reader to interpret as a cold start.
+    run that silently analysed nothing would print `runs_analyzed: 0`, which the
+    retro skill instructs the reader to interpret as a cold start.
     """
     if not path.exists():
         raise FileNotFoundError(
@@ -411,8 +411,6 @@ def _window(timestamps: list[str]) -> dict:
     explicit offsets, so two instants on the same day in different zones can order
     wrongly; that is bounded inside a day, where argument order was unbounded.
 
-    Copied in both aggregators; keep the copies the same. The sort once landed in
-    one and not the other, and nothing caught it but a reviewer.
     """
     if not timestamps:
         return {"first_ts": None, "last_ts": None}
@@ -433,7 +431,6 @@ def _load_ledgers(log_paths: list[Path], limit: int,
     while still being echoed back, so a four-repo aggregate could claim five on the
     one stream nothing reads after the fact.
 
-    Copied in both aggregators; keep the copies the same.
     """
     records: list[dict] = []
     skipped = 0
@@ -492,9 +489,8 @@ def aggregate(records: list[dict]) -> dict:
     revise_findings_legacy_records = 0
     revise_findings_malformed_records = 0
     retired_agent_keys: Counter[str] = Counter()
-    # Container-shape drift, tallied rather than only warned about. `codify_aggregate.py`'s
-    # module docstring already states the rule this restores — bad records are skipped with
-    # a stderr warning AND tallied, so the consumer sees the noise floor in structured
+    # Container-shape drift, tallied rather than only warned about: bad records are
+    # skipped with a stderr warning AND tallied, so the consumer sees the noise floor in structured
     # output. Without the tally a metric silently computed over a subset of
     # `runs_analyzed` reports identically to one computed over all of it.
     shape_drift: Counter[str] = Counter()
@@ -508,12 +504,9 @@ def aggregate(records: list[dict]) -> dict:
 
         phases = rec.get("phases")
         if not isinstance(phases, list):
-            # ABSENT counts as drift here, unlike `codify_aggregate.py`'s optional
-            # containers. The two scripts differ because their fields do: `phases`
+            # ABSENT counts as drift here, unlike an optional container: `phases`
             # is required of every spec-to-pr record, so a record without one has
-            # lost the data every phase metric is computed from, while an absent
-            # `re_offenses` just means a run found none. Making the two "consistent"
-            # would silence a real signal to make two counters look alike.
+            # lost the data every phase metric is computed from.
             print(f"aggregate: record {ri}: missing or non-list `phases`", file=sys.stderr)
             drifted_fields.add("phases")
             phases = []

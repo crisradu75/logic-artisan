@@ -2,8 +2,9 @@
 
 The mutants put back into each example the kinds of value a template carries and
 a record cannot: the alternatives-as-one-string `mode` the review found, a
-placeholder where a count belongs, a `true|false` where a boolean belongs, and a
-retired agent name in Revise `agents`. Each is a record the writer refuses, so a
+placeholder where a count belongs, a retired agent name in Revise `agents`, and,
+in the codify example, a rung from the retired artifact-type list and a re-offense
+keyed by slug instead of artifact. Each is a record the writer refuses, so a
 recipe that says "build from the example" would spend its one retry on it.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_run_record_examples.py
@@ -14,7 +15,7 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]
 SKILLS = DEV.parent / ".claude" / "plugins" / "cla" / "skills"
 SCHEMA = SKILLS / "_shared" / "references" / "run-log-schema.md"
-STEPS = SKILLS / "codify-learnings" / "references" / "steps.md"
+CODIFY = SKILLS / "codify-learnings" / "SKILL.md"
 TARGETS = [DEV / "tests" / "consistency" / "test_run_record_examples.py"]
 
 MUTANTS = [
@@ -40,17 +41,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the codify example's `trimmed` is a template, not a boolean",
-        STEPS,
-        '"live_log_entries": 30, "trimmed": false}',
-        '"live_log_entries": 30, "trimmed": "true|false"}',
+        "the codify example's rung is an artifact type, not a rung",
+        CODIFY,
+        '"target": "hooks/block-cd-in-bash.py", "rung": "hook"}',
+        '"target": "hooks/block-cd-in-bash.py", "rung": "skill_md"}',
         TARGETS,
     ),
     (
-        "the codify example's rung is one the ladder does not have",
-        STEPS,
-        '"failing_artifact": "CLAUDE.md", "escalated_to": "hook"}',
-        '"failing_artifact": "CLAUDE.md", "escalated_to": "doc"}',
+        "the codify example keys its re-offense by slug again",
+        CODIFY,
+        '[{"artifact": "CLAUDE.md", "escalated_to": "hook"}]',
+        '[{"lesson": "stale-port", "escalated_to": "hook"}]',
         TARGETS,
     ),
 ]

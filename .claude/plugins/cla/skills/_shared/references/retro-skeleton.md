@@ -6,8 +6,8 @@ aggregates it deterministically, and proposes edits to the loop itself.
 Read this file first; then read the calling skill's own body for the two things
 that are genuinely per-loop: **its aggregate script path** and **its
 interpretation heuristics** (which metrics matter, and what a given value means).
-Everything below is identical across retros by design — when it drifts, the two
-loops start giving contradictory advice about the same kind of evidence.
+Everything below is generic by design, so a new retro inherits it rather than
+re-deriving it.
 
 ## 1. Read the aggregated metrics
 
@@ -58,7 +58,8 @@ Keep the whole report under ~40 lines. Long retros don't get acted on.
 ## 5. Optional: invite the user to apply edits
 
 **Check first whether the plugin is writable here** — the procedure is in
-`${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/plugin-writability.md`.
+`${CLAUDE_PLUGIN_ROOT}/skills/codify-learnings/references/routing.md`, "Is the plugin
+writable here?".
 Every target a retro proposes lives inside the plugin. When the plugin is
 installed from a marketplace that tree is a read-only, version-keyed cache: an
 edit either fails or lands somewhere the next update discards, **while reporting

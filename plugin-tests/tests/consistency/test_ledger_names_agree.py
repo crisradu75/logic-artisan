@@ -10,7 +10,7 @@ different files, with nothing comparing them. A typo on the writer side is
 accepted — `log_run.py` validates only the SHAPE of the argument
 (`^[A-Za-z0-9][A-Za-z0-9._-]*\\.jsonl$`), so a misspelled name is happily written
 to a brand-new file. The reader then finds nothing, and reports a cold start:
-`runs_analyzed: 0`, which both retro skills explicitly instruct the model to read
+`runs_analyzed: 0`, which the retro skill explicitly instructs the model to read
 as "the log doesn't exist yet — run the loop a few times first." Three silences
 in a row, and the run history is simply gone.
 
@@ -30,11 +30,6 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cl
 
 # (skill that writes, the prose file carrying the invocation, the reader's aggregator)
 _LEDGER_CONTRACTS = [
-    (
-        "codify-learnings",
-        _PLUGIN_ROOT / "skills" / "codify-learnings" / "SKILL.md",
-        _PLUGIN_ROOT / "skills" / "codify-retro" / "scripts" / "codify_aggregate.py",
-    ),
     (
         "spec-to-pr",
         _PLUGIN_ROOT / "skills" / "_shared" / "references" / "run-log-schema.md",

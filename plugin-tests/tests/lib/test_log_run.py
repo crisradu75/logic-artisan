@@ -266,16 +266,25 @@ def _spec_record() -> dict:
 
 def _codify_record() -> dict:
     return {
+        "ts": "2026-10-08",
+        "applied": [{"target": "hooks/block-cd-in-bash.py", "rung": "hook"},
+                    {"target": "CLAUDE.md", "rung": "doc"}],
+        "re_offenses": [{"artifact": "CLAUDE.md", "escalated_to": "hook"}],
+    }
+
+
+def _old_codify_record() -> dict:
+    """The shape codify-learnings wrote before slim-codify-learnings: counts and a
+    slug per re-offense. Every fleet record has it, and the writer must not take it."""
+    return {
         "ts": "2026-10-08", "scope": "repo-wide",
         "suggestions": {"proposed": 2, "applied": 2, "rejected": 0},
         "memory": {"proposed": 1, "applied": 1},
-        "effectiveness": {"prevented": 3, "re_offended": 1, "not_exercised": 9},
         "re_offenses": [{"lesson": "stale-port", "failing_artifact": "CLAUDE.md",
                          "escalated_to": "hook"}],
         "rejected_lessons": [],
         "maintenance": {"failure_modes_bullets": 51, "live_log_entries": 30, "trimmed": False},
         "process_issue": False,
-        "output_chars": 900,
     }
 
 
@@ -411,19 +420,24 @@ SPEC_REFUSALS = [
 CODIFY_REFUSALS = [
     ("ts-missing", _drop("ts"), "`ts` is required"),
     ("ts-not-a-date", _set("ts", "08/10/2026"), "`ts` must be an ISO-8601 date or date-time"),
-    ("scope-missing", _drop("scope"), "`scope` is required"),
-    ("suggestions-flattened", _drop("suggestions"), "`suggestions` is required"),
-    ("suggestions-count-string", _set("suggestions.applied", "2"), "`suggestions.applied` must be a non-negative integer"),
-    ("memory-not-object", _set("memory", 1), "`memory` must be an object"),
-    ("re-offenses-object", _set("re_offenses", {"lesson": "x"}), "`re_offenses` must be a list"),
-    ("rung-unknown", _set("re_offenses", [{"lesson": "x", "escalated_to": "doc"}]),
+    ("applied-missing", _drop("applied"), "`applied` is required"),
+    ("applied-a-count", _set("applied", 2), "`applied` must be a list"),
+    ("applied-target-missing", _set("applied", [{"rung": "doc"}]), "`applied[0].target` is required"),
+    ("applied-target-blank", _set("applied", [{"target": " ", "rung": "doc"}]),
+     "`applied[0].target` must be a non-empty string"),
+    ("applied-rung-missing", _set("applied", [{"target": "CLAUDE.md"}]), "`applied[0].rung` is required"),
+    # The old six-value enum named artifact types; a rung is one of four.
+    ("applied-rung-artifact-type", _set("applied", [{"target": "CLAUDE.md", "rung": "claude_md"}]),
+     '`applied[0].rung` must be one of "checklist", "doc", "hook", "script"'),
+    ("re-offenses-missing", _drop("re_offenses"), "`re_offenses` is required"),
+    ("re-offenses-object", _set("re_offenses", {"artifact": "x"}), "`re_offenses` must be a list"),
+    # Keyed by slug, the old way: 78 distinct slugs over 88 re-offenses never joined.
+    ("re-offense-by-slug", _set("re_offenses", [{"lesson": "stale-port", "escalated_to": "hook"}]),
+     "`re_offenses[0].artifact` is required"),
+    ("escalated-to-missing", _set("re_offenses", [{"artifact": "CLAUDE.md"}]),
+     "`re_offenses[0].escalated_to` is required"),
+    ("escalated-to-unknown", _set("re_offenses", [{"artifact": "CLAUDE.md", "escalated_to": "memory"}]),
      "`re_offenses[0].escalated_to` must be one of"),
-    ("lesson-missing", _set("re_offenses", [{"escalated_to": "hook"}]), "`re_offenses[0].lesson` is required"),
-    ("rejected-lessons-string", _set("rejected_lessons", "stale-port"), "`rejected_lessons` must be a list"),
-    ("trimmed-string", _set("maintenance.trimmed", "yes"), "`maintenance.trimmed` must be true or false"),
-    ("process-issue-missing", _drop("process_issue"), "`process_issue` is required"),
-    ("effectiveness-count-string", _set("effectiveness.prevented", "3"), "`effectiveness.prevented`"),
-    ("output-chars-negative", _set("output_chars", -1), "`output_chars` must be a non-negative integer"),
 ]
 
 
@@ -463,6 +477,25 @@ def test_an_off_shape_codify_record_is_refused(tmp_path: Path, case: str, edit, 
     edit(record)
     _assert_refused(_run(json.dumps(record), tmp_path / "retro", ledger=CODIFY), CODIFY, fragment,
                     tmp_path / "retro")
+
+
+# requirement: run-ledgers / Run records are checked when written
+def test_the_old_codify_record_is_refused_naming_each_new_field(tmp_path: Path) -> None:
+    r = _run(json.dumps(_old_codify_record()), tmp_path / "retro", ledger=CODIFY)
+    for fragment in ("`applied` is required", "`re_offenses[0].artifact` is required"):
+        _assert_refused(r, CODIFY, fragment, tmp_path / "retro")
+
+
+@pytest.mark.parametrize("edit", [
+    _set("applied", []), _set("re_offenses", []),
+    _set("applied", [{"target": "t", "rung": rung} for rung in log_run_shapes.RUNGS]),
+    _set("ts", "2026-10-08T12:15:00Z"), _set("scope", "a key no reader names is kept"),
+], ids=["nothing-applied", "no-re-offenses", "every-rung", "ts-date-time", "extra-key"])
+def test_a_codify_record_may_be_empty_or_carry_extra_keys(tmp_path: Path, edit) -> None:
+    record = _codify_record()
+    edit(record)
+    r = _run(json.dumps(record), tmp_path / "retro", ledger=CODIFY)
+    assert r.returncode == 0, r.stderr
 
 
 @pytest.mark.parametrize("edit", [

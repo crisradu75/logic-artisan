@@ -531,6 +531,11 @@ def test_this_repos_ledgers_pass_the_writers_check() -> None:
     # with the one stated exception, a spec-to-pr Test or Revise phase that never
     # carried a rounds pair (`_history_gaps`). A record this repo writes from now
     # on is held to the pair by the writer itself.
+    #
+    # A codify record that still carries `suggestions` predates the shape
+    # slim-codify-learnings introduced. It cannot be mapped — the old record
+    # counted fixes and never named their targets — so it stays as history, and
+    # only a record in the new shape is held to it.
     for name in ("spec-to-pr-runs.jsonl", "codify-runs.jsonl"):
         path = _REPO / "cla.io" / "retro" / name
         if not path.exists():
@@ -538,6 +543,8 @@ def test_this_repos_ledgers_pass_the_writers_check() -> None:
         for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if line.strip():
                 rec = json.loads(line)
+                if name == "codify-runs.jsonl" and "suggestions" in rec:
+                    continue
                 problems = set(log_run.shape_problems(rec, log_run.SHAPES[name]))
                 if name == "spec-to-pr-runs.jsonl":
                     problems -= _history_gaps(rec, rec)

@@ -14,7 +14,7 @@ portable:
 - **Skills** (`/cla:<name>`) — the workflows. Each one carries a change through a phase of its
   life: capture → decide → specify → build → review → learn. You invoke them by slash command;
   all but `multi-lite`, `multi-pr`, `cla-init`, `save-permissions`, `codify-learnings`,
-  `codify-retro`, `spec-to-pr-retro` and `right-model` — which set
+  `spec-to-pr-retro` and `right-model` — which set
   `disable-model-invocation: true` (the first two open and merge PRs unattended; the rest are run
   deliberately and kept out of the always-loaded listing) — can also be triggered by describing
   what you want in natural language.
@@ -306,8 +306,9 @@ ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the c
   /cla:codify-learnings
   ```
 
-- **`codify-retro`** and **`spec-to-pr-retro`** — meta-loops. Run periodically, they review recent
-  runs of `codify-learnings` / `spec-to-pr` from the ledgers and improve the loop itself.
+- **`spec-to-pr-retro`** — a meta-loop. Run periodically, it reviews recent `spec-to-pr` runs from
+  the ledger and improves the orchestrator. `codify-learnings` needs no retro of its own: it checks
+  each session failure against the rules earlier runs wrote, and escalates a rule that failed again.
 
 The discipline throughout: log every run now, build the analyzer only once the ledger justifies it
 (several `*-retro` skills are deliberately not built yet — see issue #174).
@@ -439,10 +440,10 @@ Contributing to the harness rather than using it? The extra rules:
   repo stay neutral stubs — this is the source, not a consumer.
 
 - **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself), with one Node
-  exception noted above. Scripts carrying copies of the same helper (the two retro aggregators,
+  exception noted above. Scripts carrying copies of the same helper (the spec-to-pr retro aggregator,
   `lib/log_run.py`, `lib/ledger_summary.py`) are kept in step by hand;
   `plugin-tests/tests/consistency/test_ledger_dir_agrees.py` checks that the ledger writer and
-  every reader of it (both aggregators and `lib/ledger_summary.py`) resolve the same directory,
+  every reader of it (the aggregator and `lib/ledger_summary.py`) resolve the same directory,
   run from a subdirectory of the repo.
 
 - **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
@@ -670,7 +671,7 @@ discovery for every consumer.
 | Stop re-approving the same permissions | `save-permissions` |
 | Get a whole-repo health review | `project-review` |
 | Capture this session's lessons | `codify-learnings` |
-| Tune the loops themselves | `codify-retro`, `spec-to-pr-retro` |
+| Tune the spec-to-pr loop | `spec-to-pr-retro` |
 | Set up CLA in a new repo | marketplace install → `cla-init` → `sync-context` |
 | Pull newer CLA core into a repo | `/plugin marketplace update` |
 | Report a defect in the portable core | `report-upstream` |

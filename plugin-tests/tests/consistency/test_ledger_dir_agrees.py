@@ -1,8 +1,8 @@
 """The ledger writer and every reader of it must resolve the same directory.
 
-`lib/log_run.py` writes a run record, and three programs read one back, each with
-its own copy of the directory resolver: `spec_to_pr_aggregate.py`,
-`codify_aggregate.py` and `lib/ledger_summary.py`. If a copy disagrees with the
+`lib/log_run.py` writes a run record, and two programs read one back, each with
+its own copy of the directory resolver: `spec_to_pr_aggregate.py` and
+`lib/ledger_summary.py`. If a copy disagrees with the
 writer, that reader finds nothing and reports zero records, which reads as a cold
 start. So this runs the writer and each reader as programs, the way a skill does,
 and checks the reader sees the record the writer just appended. Both run from a
@@ -30,10 +30,6 @@ _READERS = {
         _PLUGIN / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py",
         "spec-to-pr-runs.jsonl", (), "runs_analyzed",
     ),
-    "codify_aggregate": (
-        _PLUGIN / "skills" / "codify-retro" / "scripts" / "codify_aggregate.py",
-        "codify-runs.jsonl", (), "runs_analyzed",
-    ),
     "ledger_summary": (
         _PLUGIN / "lib" / "ledger_summary.py",
         "lite-pr-runs.jsonl", ("--ledger", "lite-pr-runs.jsonl"), "records",
@@ -41,19 +37,12 @@ _READERS = {
 }
 
 
-# A record the writer accepts for each ledger it checks the shape of; any other
-# ledger takes the bare probe.
+# A record the writer accepts for each shape-checked ledger a reader here reads;
+# any other ledger takes the bare probe.
 _RECORDS = {
     "spec-to-pr-runs.jsonl": {
         "ts": "2026-10-08T00:00:00Z", "change": "probe", "mode": "description",
         "phases": [{"name": "Propose", "status": "ok"}],
-    },
-    "codify-runs.jsonl": {
-        "ts": "2026-10-08", "scope": "repo-wide",
-        "suggestions": {"proposed": 0, "applied": 0, "rejected": 0},
-        "memory": {"proposed": 0, "applied": 0}, "re_offenses": [], "rejected_lessons": [],
-        "maintenance": {"failure_modes_bullets": 0, "live_log_entries": 0, "trimmed": False},
-        "process_issue": False,
     },
 }
 

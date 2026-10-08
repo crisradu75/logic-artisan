@@ -79,10 +79,10 @@ shaped-decision `.md` files created by `shape-decision`/`multi-spec`).
 ### 2. Retro ledgers (0-byte — an empty file is a valid empty JSONL ledger; NO `[]` or placeholder line)
 
 ```bash
-# Seeded: one ledger per loop with a RETRO skill reading it, appended via the
-# shared lib/log_run.py (which takes the ledger filename as its argument):
+# Seeded: the two ledgers whose record shape lib/log_run.py checks, appended via
+# that shared writer (which takes the ledger filename as its argument):
 #   spec-to-pr-runs     read by /cla:spec-to-pr-retro
-#   codify-runs         read by /cla:codify-retro
+#   codify-runs         read by lib/ledger_summary.py
 # Not seeded — log_run.py creates each on its first append:
 #   lite-pr-runs, shape-decision-runs, feedback-runs
 #                       read by lib/ledger_summary.py, named in each skill

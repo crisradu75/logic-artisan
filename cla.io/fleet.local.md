@@ -1,9 +1,9 @@
 # fleet — the repos whose cla ledgers this machine can read
 
-Read as data by `_fleet_roots()`, which has THREE copies — both retro aggregators and
-`.claude/plugins/cla/lib/ledger_summary.py`, the reader the per-skill ledger sections point
-at. No script pins the copies together any more, so a fix to one must be made in all
-three by hand. One repo ROOT per `- ` bullet; an inline
+Read as data by `_fleet_roots()`, which has TWO copies — the spec-to-pr retro aggregator
+and `.claude/plugins/cla/lib/ledger_summary.py`, the reader the per-skill ledger sections
+point at. No script pins the copies together any more, so a fix to one must be made in
+both by hand. One repo ROOT per `- ` bullet; an inline
 `# comment` and surrounding backticks are stripped. This is a `*.local.md` overlay in the
 repo's own `cla.io/` tree, outside the distributed plugin — **each machine curates its
 own, and it is never synced.**
@@ -19,8 +19,8 @@ list lived nowhere. It had to be retyped from memory every time, and a path that
 to nothing contributes silently, which is the *same* sample-size error the fleet mode
 exists to remove. `--fleet` reads this file instead.
 
-Roots, not ledger paths, so one list serves both aggregators and both of codify's ledger
-kinds. Each caller appends the ledger filename it already knows.
+Roots, not ledger paths, so one list serves both readers and every ledger they read.
+Each caller appends the ledger filename it already knows.
 
 ## Not every repo listed here has data
 

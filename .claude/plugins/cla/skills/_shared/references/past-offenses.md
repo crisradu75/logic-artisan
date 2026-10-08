@@ -5,8 +5,8 @@ graduates when it keeps failing. The dated, repo-specific incident writeups that
 have been folded into `cla.io/overlays/spec-to-pr.md` (Decision B, `cla-skill-context-extraction`) — read
 that file for the concrete "why" behind any given rule; this file stays generic.
 
-**Enforcement tiers.** spec-to-pr's guardrails sit at four enforcement tiers (this vocabulary is shared
-with `codify-learnings`'s escalation ladder), weakest → strongest: **Instructional → Structural →
+**Enforcement tiers.** spec-to-pr's guardrails sit at four enforcement tiers (the same ascent
+`codify-learnings`'s escalation ladder climbs), weakest → strongest: **Instructional → Structural →
 Prompted → Mechanical**. Knowing a guardrail's tier tells you how it graduates when it keeps failing:
 
 - **Instructional** — the prose rules in `SKILL.md` itself (e.g. autonomy-gate wording, "verify before

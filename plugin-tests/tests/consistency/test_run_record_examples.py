@@ -24,8 +24,8 @@ _SKILLS = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / 
 EXAMPLES = [
     ("spec-to-pr-runs.jsonl", _SKILLS / "_shared" / "references" / "run-log-schema.md",
      re.compile(r"spec-to-pr-runs\.jsonl <<'JSON'\n(.*?)\nJSON\n", re.S)),
-    ("codify-runs.jsonl", _SKILLS / "codify-learnings" / "references" / "steps.md",
-     re.compile(r"## Step 7 ledger schema\n.*?```json\n(.*?)\n```", re.S)),
+    ("codify-runs.jsonl", _SKILLS / "codify-learnings" / "SKILL.md",
+     re.compile(r"## Step 5 — Log\n.*?```json\n(.*?)\n```", re.S)),
 ]
 
 

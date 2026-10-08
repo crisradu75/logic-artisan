@@ -49,6 +49,11 @@ canonical Revise agent ids (S3), and the rounds pair required on a Test or Revis
 that ran (Choice 1). The object-walk mutant writes a newline into the source
 through `\n` in its REPLACEMENT, never its anchor, so it holds on either checkout.
 
+**The last five are the codify shape slim-codify-learnings introduced:** a rung
+list that loses one or regains a retired artifact type, applied fixes whose
+entries go unchecked, a re-offense keyed by slug again (the 78-distinct-slugs
+defect), and a record with no date.
+
 And one honest limit, recorded rather than chased:
 `test_nothing_is_written_when_the_record_is_rejected` is a real test but is not
 independently pinnable — no single-token edit makes a rejected record write
@@ -311,6 +316,42 @@ MUTANTS = [
         SCRIPT,
         'ROUNDS_REQUIRED_ON = ("Test", "Revise")',
         'ROUNDS_REQUIRED_ON = ("Test",)',
+        TARGETS,
+    ),
+    # --- the codify shape (slim-codify-learnings) -------------------------------
+    (
+        "the rung list loses a rung the ladder has, refusing a real record",
+        SCRIPT,
+        'RUNGS = ("checklist", "doc", "hook", "script")',
+        'RUNGS = ("checklist", "doc", "hook")',
+        TARGETS,
+    ),
+    (
+        "a retired artifact-type rung (`claude_md`) is accepted again",
+        SCRIPT,
+        'RUNGS = ("checklist", "doc", "hook", "script")',
+        'RUNGS = ("checklist", "doc", "hook", "script", "claude_md")',
+        TARGETS,
+    ),
+    (
+        "an applied fix may be anything, so one with no target passes",
+        SCRIPT,
+        '         "applied": ("list", _obj({"target": TEXT, "rung": _one_of(*RUNGS)})),',
+        '         "applied": ("list", _leaf(lambda v: True, "anything")),',
+        TARGETS,
+    ),
+    (
+        "a re-offense keyed by slug passes: `artifact` becomes optional",
+        SCRIPT,
+        '"re_offenses": ("list", _obj({"artifact": TEXT, "escalated_to": _one_of(*RUNGS)}))},',
+        '"re_offenses": ("list", _obj({"escalated_to": _one_of(*RUNGS)}, {"artifact": TEXT}))},',
+        TARGETS,
+    ),
+    (
+        "a codify record with no date passes",
+        SCRIPT,
+        '        {"ts": TS_OR_DATE,',
+        '        {',
         TARGETS,
     ),
     (

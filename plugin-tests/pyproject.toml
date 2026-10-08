@@ -12,8 +12,8 @@
 #
 # `conftest.py` is the only duplicate, and pytest special-cases it — one per
 # directory is legal and expected. (The other historical duplicate,
-# `test_aggregate.py`, was renamed to `test_codify_aggregate.py` /
-# `test_spec_to_pr_aggregate.py` by change `decouple-skills-from-dev-assets`.)
+# `test_aggregate.py`, was renamed to `test_spec_to_pr_aggregate.py` and a
+# since-deleted `test_codify_aggregate.py` by change `decouple-skills-from-dev-assets`.)
 # With the collision set empty, one scope is viable.
 #
 # Note for anyone re-deriving this: do NOT take the reason from the deleted
@@ -55,7 +55,6 @@ pythonpath = [
   "../.claude/plugins/cla/lib",
   "../.claude/plugins/cla/skills/_shared/scripts",
   "../.claude/plugins/cla/skills/annotate/scripts",
-  "../.claude/plugins/cla/skills/codify-retro/scripts",
   "../.claude/plugins/cla/skills/new-worktree/scripts",
   "../.claude/plugins/cla/skills/spec-to-pr/scripts",
   "../.claude/plugins/cla/skills/spec-to-pr-retro/scripts",
