@@ -404,17 +404,25 @@ def _capped(name: str, hit: bool) -> dict:
     return _phase(name, rounds_used=3 if hit else 1, rounds_cap=3)
 
 
-# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
+# requirement: run-ledgers / Handoff suggests a retro on repeated trouble
 def test_nudge_on_three_revise_cap_hits_in_the_last_five(tmp_path: Path) -> None:
     records = [_rec(phases=[_capped("Revise", hit)])
                for hit in (False, False, True, True, False, True, False)]
     out = _nudge(tmp_path, records)
     assert out.count("\n") == 1
-    assert "Revise hit its round cap and still warned in 3 of the last 5 runs" in out
+    assert "Revise hit its round cap and still warned or failed in 3 of the last 5 runs" in out
     assert "/cla:spec-to-pr-retro" in out
 
 
-# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
+# requirement: run-ledgers / Handoff suggests a retro on repeated trouble
+def test_nudge_counts_a_revise_that_failed_at_its_cap(tmp_path: Path) -> None:
+    records = [_rec(phases=[_phase("Revise", "fail", reason=f"open {i}", rounds_used=2,
+                                   rounds_cap=2)]) for i in range(3)]
+    assert "Revise hit its round cap and still warned or failed in 3 of the last 3 runs" \
+        in _nudge(tmp_path, records)
+
+
+# requirement: run-ledgers / Handoff suggests a retro on repeated trouble
 def test_no_nudge_when_revise_reaches_its_cap_cleanly(tmp_path: Path) -> None:
     # Round 2 is routine: five clean Revise phases at the cap are not trouble.
     records = [_rec(phases=[_capped("Revise", False)]) for _ in range(5)]
@@ -435,7 +443,7 @@ def test_nudge_on_three_test_cap_hits(tmp_path: Path) -> None:
     assert "Test hit its round cap in 3 of the last 3 runs" in out
 
 
-# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
+# requirement: run-ledgers / Handoff suggests a retro on repeated trouble
 def test_no_nudge_on_two_cap_hits_or_cap_one(tmp_path: Path) -> None:
     records = [_rec(phases=[_capped("Revise", h), _capped("Test", h)])
                for h in (True, True, False, False, False)]
@@ -453,7 +461,7 @@ def test_old_cap_hits_outside_the_last_five_do_not_nudge(tmp_path: Path) -> None
     assert _nudge(tmp_path, records) == ""
 
 
-# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
+# requirement: run-ledgers / Handoff suggests a retro on repeated trouble
 def test_nudge_on_a_warn_reason_repeated_in_two_runs(tmp_path: Path) -> None:
     records = [
         _rec(phases=[_phase("Ship", "warn", reason="push refused")]),
@@ -511,7 +519,7 @@ def test_nudge_reads_only_this_repos_ledger(tmp_path: Path) -> None:
     assert r.returncode == 2  # argparse: mutually exclusive
 
 
-# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
+# requirement: run-ledgers / Handoff suggests a retro on repeated trouble
 def test_handoff_prints_the_nudge_after_appending_the_record() -> None:
     command = "spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --nudge"
     for prose in (_SKILLS / "spec-to-pr" / "references" / "handoff.md",

@@ -203,6 +203,13 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "the nudge line names only warn, though a Revise that failed at its cap counts too",
+        SCRIPT,
+        '            still = " and still warned or failed" if name in RESIDUE_PHASES else ""',
+        '            still = " and still warned" if name in RESIDUE_PHASES else ""',
+        TARGETS,
+    ),
+    (
         "two cap hits nudge",
         SCRIPT,
         "NUDGE_CAP_HITS = 3",

@@ -347,7 +347,7 @@ def nudge(records: list[dict]) -> str | None:
         hits = sum(any(p["name"] == name and _cap_hit(p) for p in rec["phases"])
                    for rec in recent)
         if hits >= NUDGE_CAP_HITS:
-            still = " and still warned" if name in RESIDUE_PHASES else ""
+            still = " and still warned or failed" if name in RESIDUE_PHASES else ""
             why.append(f"{name} hit its round cap{still} in {hits} of the last {len(recent)} runs")
     seen = Counter(r for rec in recent for r in set(_reasons(rec)) if r not in PLACEHOLDER_REASONS)
     for reason, count in seen.most_common():

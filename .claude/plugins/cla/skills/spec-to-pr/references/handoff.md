@@ -85,7 +85,7 @@ After the terminal report has been printed, serialize the in-context phase outco
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --nudge
 ```
 
-It prints one line suggesting `/cla:spec-to-pr-retro`, or nothing; print what it prints, verbatim, after the terminal report. It reads this repo's last 5 records and speaks when Test used its whole round cap (a cap above 1) in 3 of them, or Revise did and still ended `warn` in 3 — round 2 is routine, findings left open at the cap are not — or the same warn reason appears in 2. It never fails, never blocks, and changes nothing about the run's status.
+It prints one line suggesting `/cla:spec-to-pr-retro`, or nothing; print what it prints, verbatim, after the terminal report. It reads this repo's last 5 records and speaks when Test used its whole round cap (a cap above 1) in 3 of them, or Revise did and still ended `warn` or `fail` in 3 — round 2 is routine, findings left open at the cap are not — or the same warn reason appears in 2. It never fails, never blocks, and changes nothing about the run's status.
 
 ## 6. Commit the run-log line to the feature branch (INVARIANT — so it ships with the PR, never dangles)
 
