@@ -76,7 +76,7 @@ atomic against a concurrent run.
 - `reason` — on every `warn` / `fail` phase: the retro's only signal into *why*, grouped by exact text.
 - `rounds_used` / `rounds_cap` — always as a pair. Required on Test and Revise whenever their status
   is not `skip`; optional on Review. A phase that used its whole cap, with a cap above 1, is a cap
-  exhaustion.
+  exhaustion — on Revise, whose round 2 is routine, only when it also ended `warn` or `fail`.
 - `report_chars` (optional, any phase) — characters in that phase's printed report: a verbosity
   proxy, not token spend. Omit rather than estimate.
 - Review: `size_gate` and `verdict` whenever the checklist ran, and `verified_claims_count`.
@@ -96,7 +96,7 @@ atomic against a concurrent run.
   triage. `sibling_instance` is, of that `found`, how many were a defect the previous round's fix
   introduced or a sibling the fix missed (`revise.md`'s round-≥2 question): `0` on round 1, and
   `null` — not `0` — on a round that was never asked or whose enumeration stayed uncited. The
-  retro computes the `--pr-rounds` reversal condition in `revise.md` from it.
+  retro's round-2 yield reads `round` and `found`.
 - `asks` — every user ask in the run, by header and chosen label. `deferred_to_todo` — items
   persisted to `TODO.md`.
 - `cost` — measured wall-clock minutes, the session model, sub-agent dispatches (the real cost

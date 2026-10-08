@@ -1,6 +1,6 @@
 ---
 name: spec-to-pr-retro
-description: "Review recent /cla:spec-to-pr runs across the fleet's spec-to-pr ledgers (warn reasons, round-cap exhaustion, per-agent Revise yield, ask answers, the --pr-rounds reversal check) and propose edits to the orchestrator. Run with /cla:spec-to-pr-retro."
+description: "Review recent /cla:spec-to-pr runs across the fleet's spec-to-pr ledgers (warn reasons, round-cap exhaustion, per-agent Revise yield, ask answers, Revise round-2 yield) and propose edits to the orchestrator. Run with /cla:spec-to-pr-retro."
 argument-hint: "[N (last N runs per ledger, default 10)]"
 # Slash-command only (a periodic retro over many runs): keeps this description out of the
 # always-loaded skill listing. Nothing invokes it programmatically.
@@ -23,10 +23,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
 
 - `ledgers`, `runs_analyzed`, `window`: the sample. `found: false` is a repo with no ledger yet; `skipped_records` counts lines it could not read (unmigrated or damaged). Under five runs is an anecdote: say so and stop.
 - `warn_reasons`: a reason that recurs is one fix to make. Never rank `warn_reasons_unrecorded`.
-- `cap_exhaustion.<phase>`: `hit/total` at or above 30% means the default cap is too low.
+- `cap_exhaustion.<phase>`: `hit/total` at or above 30% means the default cap is too low. Revise's `hit` counts only runs that ended at the cap still `warn`, since its round 2 is routine.
 - `revise_findings.<agent>`: `found/runs` far below `code-reviewer`'s marks a trigger to narrow. `phantom/found` at or above 0.4 over five or more runs: demote that agent one tier, or narrow it. Never demote `code-reviewer` or `silent-failure-hunter`; spot-check two of their runs instead. `found` is Critical and Important together.
 - `asks`: one answer chosen 80% of the time or more should become the default, with no prompt.
-- `findings_by_round_reversal`: `condition_met: true` means the `--pr-rounds` reversal condition in spec-to-pr's Revise reference holds. Propose revisiting that default, citing the counts and `chain_proxy`.
+- `round_2_yield`: of the changes that ran a Revise round 2 (automatic after a fix commit), how many found a Critical or Important there. Under half, over eight or more changes, means round 2 has stopped paying: propose `--pr-rounds 1` as the default, citing the counts.
 
 ## Report
 

@@ -164,6 +164,11 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
   same change, with the evidence above.
 - **D8b — Narrow `comment-analyzer`'s Revise trigger** to diffs that add or change substantial
   comments, docstrings or prose files; skip it on code-only diffs.
+  *Implemented as (D8a, D8b):* `revise.md` captured `PREV_FIX_SHA` after the fix commit, which made
+  `PREV_FIX_SHA..HEAD` empty; it is now captured just before it. The retro's reversal check became
+  `round_2_yield`, over the `--limit` window like every other metric. With round 2 routine, Revise
+  counts as cap exhaustion (retro and nudge) only when it ended at its cap `warn` or `fail`; on
+  interoga-ro's ledger the nudge's replay over every prefix fell from 31 of 62 firing to 0.
 - **D9 — Stop logging `lite-pr`, `shape-decision` and `feedback`.** Delete
   `lib/ledger_summary.py` and its tests. With D1 and D7 the fleet resolver drops to one copy,
   and `check_script_drift.py`'s fleet group goes.

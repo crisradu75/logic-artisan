@@ -20,7 +20,7 @@ import spec_to_pr_aggregate as agg
 
 
 def test_every_phase_the_aggregator_reads_is_one_the_writer_accepts() -> None:
-    named = {*agg.CAPPED_PHASES, *agg.NUDGE_PHASES, agg.FINDINGS_PHASE}
+    named = {*agg.CAPPED_PHASES, *agg.NUDGE_PHASES, *agg.RESIDUE_PHASES, agg.FINDINGS_PHASE}
     assert named <= set(log_run.SPEC_TO_PR_PHASES), named - set(log_run.SPEC_TO_PR_PHASES)
 
 
@@ -30,6 +30,8 @@ def test_the_phases_that_must_carry_a_rounds_pair_are_all_counted() -> None:
     # a phase that may omit it would go unseen.
     assert set(log_run.ROUNDS_REQUIRED_ON) <= set(agg.CAPPED_PHASES)
     assert set(agg.NUDGE_PHASES) <= set(log_run.ROUNDS_REQUIRED_ON)
+    # A phase whose cap hit needs residue must be one the cap metrics count.
+    assert set(agg.RESIDUE_PHASES) <= set(agg.CAPPED_PHASES)
 
 
 def test_the_statuses_read_for_a_reason_are_the_ones_the_writer_requires_it_on() -> None:

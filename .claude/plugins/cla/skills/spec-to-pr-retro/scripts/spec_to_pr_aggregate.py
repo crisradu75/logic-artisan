@@ -25,17 +25,16 @@ Output, one JSON object on stdout:
                                           # counted apart and never ranked
       "cap_exhaustion": {"review"|"test"|"revise": {"hit": int, "total": int}},
                                           # total: that phase ran with a cap above 1;
-                                          # hit: it used the whole cap
+                                          # hit: it used the whole cap (Revise: and
+                                          # still ended warn or fail, see `_cap_hit`)
       "revise_findings": {<agent>: {"found": int, "phantom": int, "runs": int}},
                                           # from routing.revise_findings_by_tier;
                                           # found is Critical+Important
       "asks": [{"header": str, "choices": {<choice>: int}}],
-      "findings_by_round_reversal": {...} # see `reversal_check`
+      "round_2_yield": {...}              # see `round_2_yield`
     }
 
-Every metric but the reversal check covers the --limit window. The reversal
-check reads every record of every ledger, because its condition is a cumulative
-count, not a recent rate.
+Every metric covers the --limit window; `--limit 0` reads every record.
 
 `--nudge` prints one line or nothing: this repo's ledger only, last 5 records.
 spec-to-pr's Handoff runs it after appending its record.
@@ -145,13 +144,14 @@ CAPPED_PHASES = ("Review", "Test", "Revise")
 NUDGE_PHASES = ("Revise", "Test")
 FINDINGS_PHASE = "Revise"
 REASON_STATUSES = ("warn", "fail")
+# Revise runs a second round whenever its first committed fixes, so reaching its
+# cap is its normal path. It counts as exhausted only when it also ended warn or
+# fail: the record's spelling for findings left open at the cap.
+RESIDUE_PHASES = ("Revise",)
 # The placeholder `migrate_run_records.py` writes as the reason of a warn/fail
 # phase whose record kept none. Ranked with real reasons it would top the list.
 UNRECORDED_REASON = "reason not recorded (migrated record)"
 
-# The `--pr-rounds` reversal condition in spec-to-pr's Revise reference.
-REVERSAL_MIN_CHANGES = 8
-REVERSAL_MIN_CHAINS = 2
 CHAIN_PROXY = ("ledger + the date in `ts`: a record carries no chain id, so one "
                "chain spanning several days counts as several chains, and two "
                "chains run on one day in one repo count as one")
@@ -231,10 +231,16 @@ def _load(path: Path) -> tuple[list[dict], int]:
 
 
 def _cap_hit(phase: dict) -> bool:
-    """A phase that used its whole cap, with room to loop. A cap of 1 reached is
-    a single pass, not exhaustion."""
+    """A phase that used its whole cap, with room to loop.
+
+    A cap of 1 reached is a single pass, not exhaustion. A Revise that reached
+    its cap and ended `ok` took its routine second round; see RESIDUE_PHASES.
+    `>=`, because the writer does not refuse `rounds_used` above `rounds_cap`.
+    """
     cap = phase.get("rounds_cap", 0)
-    return cap > 1 and phase.get("rounds_used") == cap
+    if not (cap > 1 and phase.get("rounds_used", 0) >= cap):
+        return False
+    return phase["name"] not in RESIDUE_PHASES or phase["status"] in REASON_STATUSES
 
 
 def _reasons(rec: dict) -> list[str]:
@@ -280,13 +286,15 @@ def aggregate(records: list[dict]) -> dict:
     }
 
 
-def reversal_check(records: list[tuple[str, dict]]) -> dict:
-    """Revise's `--pr-rounds` reversal condition, computed outright.
+def round_2_yield(records: list[tuple[str, dict]]) -> dict:
+    """How often Revise's second round still finds something.
 
-    A change counts when its Revise `findings_by_round` holds a round >= 2, and
-    surfaces when such a round found at least one Critical or Important. Changes
-    are distinct (ledger, change) pairs, so a re-run change counts once. `records`
-    is (ledger, record) over every record read.
+    Round 2 runs whenever round 1 committed fixes (spec-to-pr's Revise
+    reference); this is the health check on that default. A change counts when
+    its Revise `findings_by_round` holds a round >= 2, and surfaces when such a
+    round found at least one Critical or Important. Changes are distinct
+    (ledger, change) pairs, so a re-run change counts once. `records` is
+    (ledger, record) over the window.
     """
     changes: set[tuple[str, str]] = set()
     surfaced: set[tuple[str, str]] = set()
@@ -303,14 +311,9 @@ def reversal_check(records: list[tuple[str, dict]]) -> dict:
             surfaced.add(key)
     return {
         "changes_with_round_2": len(changes),
-        "min_changes": REVERSAL_MIN_CHANGES,
         "surfaced_critical_or_important": len(surfaced),
         "chains": len(chains),
-        "min_chains": REVERSAL_MIN_CHAINS,
         "chain_proxy": CHAIN_PROXY,
-        "condition_met": (len(changes) >= REVERSAL_MIN_CHANGES
-                          and len(chains) >= REVERSAL_MIN_CHAINS
-                          and 2 * len(surfaced) > len(changes)),
     }
 
 
@@ -322,7 +325,8 @@ def nudge(records: list[dict]) -> str | None:
         hits = sum(any(p["name"] == name and _cap_hit(p) for p in rec["phases"])
                    for rec in recent)
         if hits >= NUDGE_CAP_HITS:
-            why.append(f"{name} hit its round cap in {hits} of the last {len(recent)} runs")
+            still = " and still warned" if name in RESIDUE_PHASES else ""
+            why.append(f"{name} hit its round cap{still} in {hits} of the last {len(recent)} runs")
     seen = Counter(r for rec in recent for r in set(_reasons(rec)) if r != UNRECORDED_REASON)
     for reason, count in seen.most_common():
         if count >= NUDGE_SAME_REASON:
@@ -388,8 +392,7 @@ def main() -> int:
         print(f"aggregate: reading this repo's ledger only — {fallback}", file=sys.stderr)
 
     ledgers: list[dict] = []
-    window: list[dict] = []
-    everything: list[tuple[str, dict]] = []
+    window: list[tuple[str, dict]] = []
     skipped = 0
     seen: set[Path] = set()
     for path in paths:
@@ -401,8 +404,8 @@ def main() -> int:
         if not path.exists():
             print(f"aggregate: no ledger at {path}; contributing 0 runs", file=sys.stderr)
         skipped += bad
-        everything += [(str(path), rec) for rec in records]
-        window += records[-args.limit:] if args.limit > 0 else records
+        kept = records[-args.limit:] if args.limit > 0 else records
+        window += [(str(path), rec) for rec in kept]
         ledgers.append({"path": str(path), "found": path.exists(),
                         "records": len(records), "skipped": bad})
 
@@ -410,9 +413,9 @@ def main() -> int:
     if fallback:
         result["fallback"] = fallback
     result["ledgers"] = ledgers
-    result.update(aggregate(window))
+    result.update(aggregate([rec for _, rec in window]))
     result["skipped_records"] = skipped
-    result["findings_by_round_reversal"] = reversal_check(everything)
+    result["round_2_yield"] = round_2_yield(window)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

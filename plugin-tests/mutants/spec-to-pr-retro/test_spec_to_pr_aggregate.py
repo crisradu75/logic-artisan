@@ -4,18 +4,15 @@ The aggregator's output is what a retro proposes orchestrator changes FROM, and
 its `--nudge` line is what sends a user to the retro at all. So the mutants are
 the edits that would change a number a reader acts on without anything looking
 wrong: a threshold off by one, a window that silently widens, a placeholder
-counted as a real reason, a reversal check that reads only the recent window.
+counted as a real reason, a routine Revise round 2 counted as cap exhaustion.
 
 **NONE OF THE SHARED-COPY FUNCTIONS IS MUTATED HERE.** `_git_toplevel`,
 `_runs_dir` and `_fleet_roots` are copies of `lib/` code; the directory resolver
 is mutated in `mutants/consistency/test_ledger_dir_agrees.py`, and the phase and
 status constants in `mutants/consistency/test_run_record_values_agree.py`.
 
-**DELIBERATELY NOT A MUTANT:** `used == cap` -> `used >= cap` in `_cap_hit`. The
-writer does not refuse `rounds_used > rounds_cap`, but no real run can use more
-rounds than its cap, so the two expressions agree on every record a correct
-producer writes. A fixture with `used > cap` would pin behaviour for an input that
-cannot occur — mutating the input, not the guard, has nothing honest to mutate.
+`_cap_hit` uses `>=` because the writer accepts `rounds_used > rounds_cap`; the
+tests write such a record, so `==` is a killable mutant here.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/spec-to-pr-retro/test_spec_to_pr_aggregate.py
 """
@@ -65,8 +62,8 @@ MUTANTS = [
     (
         "--limit stops applying, so the window is the whole history",
         SCRIPT,
-        "        window += records[-args.limit:] if args.limit > 0 else records",
-        "        window += records",
+        "        kept = records[-args.limit:] if args.limit > 0 else records",
+        "        kept = records",
         TARGETS,
     ),
     # --- window metrics -----------------------------------------------------
@@ -94,8 +91,36 @@ MUTANTS = [
     (
         "a cap of 1 reached counts as exhaustion",
         SCRIPT,
-        '    return cap > 1 and phase.get("rounds_used") == cap',
-        '    return cap > 0 and phase.get("rounds_used") == cap',
+        '    if not (cap > 1 and phase.get("rounds_used", 0) >= cap):',
+        '    if not (cap > 0 and phase.get("rounds_used", 0) >= cap):',
+        TARGETS,
+    ),
+    (
+        "more rounds than the cap, which the writer accepts, stops counting as a hit",
+        SCRIPT,
+        '    if not (cap > 1 and phase.get("rounds_used", 0) >= cap):',
+        '    if not (cap > 1 and phase.get("rounds_used", 0) == cap):',
+        TARGETS,
+    ),
+    (
+        "Revise's routine round 2 counts as exhaustion",
+        SCRIPT,
+        '    return phase["name"] not in RESIDUE_PHASES or phase["status"] in REASON_STATUSES',
+        "    return True",
+        TARGETS,
+    ),
+    (
+        "Test needs a warn too, so a clean Test that used every round stops counting",
+        SCRIPT,
+        '    return phase["name"] not in RESIDUE_PHASES or phase["status"] in REASON_STATUSES',
+        '    return phase["status"] in REASON_STATUSES',
+        TARGETS,
+    ),
+    (
+        "a Revise that failed at its cap is not counted as leaving findings open",
+        SCRIPT,
+        '    return phase["name"] not in RESIDUE_PHASES or phase["status"] in REASON_STATUSES',
+        '    return phase["name"] not in RESIDUE_PHASES or phase["status"] == "warn"',
         TARGETS,
     ),
     (
@@ -105,14 +130,7 @@ MUTANTS = [
         '            findings[agent]["runs"] += 0',
         TARGETS,
     ),
-    # --- the reversal check -------------------------------------------------
-    (
-        "the reversal check reads only the --limit window, not every record",
-        SCRIPT,
-        "        everything += [(str(path), rec) for rec in records]",
-        "        everything += [(str(path), rec) for rec in records[-args.limit:]]",
-        TARGETS,
-    ),
+    # --- round-2 yield -----------------------------------------------------
     (
         "a round-1-only change counts as one where a round 2 ran",
         SCRIPT,
@@ -139,27 +157,6 @@ MUTANTS = [
         SCRIPT,
         '        chains.add((ledger, rec["ts"][:10]))',
         '        chains.add(rec["ts"][:10])',
-        TARGETS,
-    ),
-    (
-        "a tie counts as a majority",
-        SCRIPT,
-        "                          and 2 * len(surfaced) > len(changes)),",
-        "                          and 2 * len(surfaced) >= len(changes)),",
-        TARGETS,
-    ),
-    (
-        "seven changes satisfy the eight-change floor",
-        SCRIPT,
-        "REVERSAL_MIN_CHANGES = 8",
-        "REVERSAL_MIN_CHANGES = 7",
-        TARGETS,
-    ),
-    (
-        "one chain satisfies the two-chain floor",
-        SCRIPT,
-        "REVERSAL_MIN_CHAINS = 2",
-        "REVERSAL_MIN_CHAINS = 1",
         TARGETS,
     ),
     # --- the nudge ----------------------------------------------------------

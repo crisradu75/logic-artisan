@@ -1,5 +1,5 @@
 """Tests for spec_to_pr_aggregate.py — every field it emits, the fleet default and
-its fallback, skipped lines, the findings_by_round reversal check, and --nudge.
+its fallback, skipped lines, the round-2 yield, and --nudge.
 
 The script runs as a program, the way the retro skill and spec-to-pr's Handoff
 invoke it, so every test goes through a subprocess.
@@ -7,6 +7,7 @@ invoke it, so every test goes through a subprocess.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import subprocess
@@ -29,12 +30,13 @@ def _phase(name: str, status: str = "ok", **fields) -> dict:
     return {"name": name, "status": status, **fields}
 
 
-def _revise(rounds: list[tuple[int, int]], used: int | None = None, cap: int = 2) -> dict:
+def _revise(rounds: list[tuple[int, int]], used: int | None = None, cap: int = 2,
+            status: str = "ok", **fields) -> dict:
     """A Revise phase whose findings_by_round holds (round, found) pairs."""
-    return _phase("Revise", rounds_used=used if used is not None else len(rounds),
+    return _phase("Revise", status, rounds_used=used if used is not None else len(rounds),
                   rounds_cap=cap,
                   findings_by_round=[{"round": r, "found": f, "sibling_instance": 0}
-                                     for r, f in rounds])
+                                     for r, f in rounds], **fields)
 
 
 def _write(path: Path, records: list, raw_lines: list[str] = ()) -> Path:
@@ -75,7 +77,7 @@ def test_emits_exactly_the_kept_fields(tmp_path: Path) -> None:
     assert set(out) == {
         "source", "ledgers", "runs_analyzed", "window", "skipped_records",
         "warn_reasons", "warn_reasons_unrecorded", "cap_exhaustion",
-        "revise_findings", "asks", "findings_by_round_reversal",
+        "revise_findings", "asks", "round_2_yield",
     }
 
 
@@ -125,7 +127,7 @@ def test_cap_exhaustion_counts_only_phases_with_room_to_loop(tmp_path: Path) -> 
     log = _write(tmp_path / "l.jsonl", [
         _rec(phases=[_phase("Review", rounds_used=1, rounds_cap=1),   # single pass
                      _phase("Test", rounds_used=3, rounds_cap=3),     # hit
-                     _revise([(1, 2), (2, 1)])]),                     # hit
+                     _revise([(1, 2), (2, 1)], status="warn", reason="open")]),  # hit
         _rec(phases=[_phase("Review", rounds_used=2, rounds_cap=2),   # hit
                      _phase("Test", rounds_used=1, rounds_cap=3),
                      _revise([(1, 0)])]),
@@ -137,6 +139,24 @@ def test_cap_exhaustion_counts_only_phases_with_room_to_loop(tmp_path: Path) -> 
         "test": {"hit": 1, "total": 2},
         "revise": {"hit": 1, "total": 2},
     }
+
+
+def test_revise_at_its_cap_counts_only_with_findings_left_open(tmp_path: Path) -> None:
+    # Round 2 runs after every fix commit, so a clean Revise at its cap is its
+    # normal path; a warn or fail there is the record's spelling for residue.
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(phases=[_revise([(1, 2), (2, 1)])]),                                 # clean
+        _rec(phases=[_revise([(1, 2), (2, 1)], status="warn", reason="open")]),   # hit
+        _rec(phases=[_revise([(1, 2), (2, 1)], status="fail", reason="open")]),   # hit
+        _rec(phases=[_revise([(1, 2)], status="warn", reason="push failed")]),    # below cap
+        # The writer accepts more rounds than the cap; that still reached it.
+        _rec(phases=[_revise([(1, 1), (2, 1), (3, 1)], status="warn", reason="open")]),
+        # Only Revise needs the warn: Test reaching its cap is exhaustion either way.
+        _rec(phases=[_phase("Test", rounds_used=4, rounds_cap=3)]),
+    ])
+    out, _ = _log(log)
+    assert out["cap_exhaustion"]["revise"] == {"hit": 3, "total": 5}
+    assert out["cap_exhaustion"]["test"] == {"hit": 1, "total": 1}
 
 
 def test_revise_findings_sum_per_agent(tmp_path: Path) -> None:
@@ -173,7 +193,7 @@ def test_asks_tally_choices_per_header(tmp_path: Path) -> None:
 
 # --- skipped lines -----------------------------------------------------------
 
-# requirement: run-ledgers / The spec-to-pr retro summary
+# requirement: run-ledgers / Summarising recent spec-to-pr runs
 def test_unreadable_lines_are_skipped_named_and_counted(tmp_path: Path) -> None:
     log = _write(tmp_path / "l.jsonl", [
         _rec(phases=[_phase("Ship", "warn", reason="kept")]),
@@ -204,7 +224,7 @@ def test_a_record_without_ts_or_change_is_skipped(tmp_path: Path) -> None:
 
 # --- which ledgers: --log, the fleet default, the fallback ---------------------
 
-# requirement: run-ledgers / The spec-to-pr retro summary
+# requirement: run-ledgers / Summarising recent spec-to-pr runs
 def test_log_names_every_ledger_and_marks_a_missing_one(tmp_path: Path) -> None:
     real = _write(tmp_path / "a.jsonl", [_rec()])
     out, err = _log(real, tmp_path / "missing.jsonl", real)
@@ -228,7 +248,7 @@ def _fleet_repo(tmp_path: Path, bullets: list[str] | None) -> Path:
     return retro
 
 
-# requirement: run-ledgers / The spec-to-pr retro summary
+# requirement: run-ledgers / Summarising recent spec-to-pr runs
 def test_default_reads_every_root_in_the_fleet_file(tmp_path: Path) -> None:
     other = tmp_path / "other"
     _write(other / "cla.io" / "retro" / "spec-to-pr-runs.jsonl",
@@ -259,7 +279,7 @@ def test_a_fleet_file_with_no_bullets_falls_back(tmp_path: Path) -> None:
     assert out["runs_analyzed"] == 1
 
 
-# requirement: run-ledgers / The spec-to-pr retro summary
+# requirement: run-ledgers / Summarising recent spec-to-pr runs
 def test_a_fleet_file_whose_roots_do_not_exist_here_falls_back(tmp_path: Path) -> None:
     # The fleet file holds per-machine absolute paths: another machine's list
     # resolves to nothing here, and reading nothing would look like a cold start.
@@ -275,11 +295,11 @@ def test_an_unresolvable_repo_root_fails_rather_than_guessing(tmp_path: Path) ->
     assert "CLAUDE_RETRO_DIR" in r.stderr
 
 
-# --- the findings_by_round reversal check ----------------------------------
+# --- round-2 yield ---------------------------------------------------------
 
-def _reversal(tmp_path: Path, records: list, name: str = "l.jsonl") -> dict:
-    out, _ = _log(_write(tmp_path / name, records), limit=1)
-    return out["findings_by_round_reversal"]
+def _yield(tmp_path: Path, records: list, limit: int = 10, name: str = "l.jsonl") -> dict:
+    out, _ = _log(_write(tmp_path / name, records), limit=limit)
+    return out["round_2_yield"]
 
 
 def _changes(n: int, surfaced: int, days: list[str]) -> list[dict]:
@@ -290,83 +310,103 @@ def _changes(n: int, surfaced: int, days: list[str]) -> list[dict]:
             for i in range(n)]
 
 
-# requirement: run-ledgers / The spec-to-pr retro summary
-def test_reversal_met(tmp_path: Path) -> None:
-    # _reversal passes --limit 1: the check reads every record, not the window.
-    check = _reversal(tmp_path, _changes(8, 5, ["2026-09-01", "2026-09-02"]))
-    assert check["changes_with_round_2"] == 8
-    assert check["surfaced_critical_or_important"] == 5
-    assert check["chains"] == 2
-    assert (check["min_changes"], check["min_chains"]) == (8, 2)
-    assert check["condition_met"] is True
+# requirement: run-ledgers / Summarising recent spec-to-pr runs
+def test_round_2_yield_counts_changes_and_the_ones_that_surfaced(tmp_path: Path) -> None:
+    out = _yield(tmp_path, _changes(5, 3, ["2026-09-01", "2026-09-02"]))
+    assert out["changes_with_round_2"] == 5
+    assert out["surfaced_critical_or_important"] == 3
+    assert out["chains"] == 2
+    assert set(out) == {"changes_with_round_2", "surfaced_critical_or_important",
+                        "chains", "chain_proxy"}
 
 
-def test_reversal_not_met_below_eight_changes(tmp_path: Path) -> None:
-    check = _reversal(tmp_path, _changes(7, 7, ["2026-09-01", "2026-09-02"]))
-    assert check["condition_met"] is False
+# requirement: run-ledgers / Summarising recent spec-to-pr runs
+def test_round_2_yield_covers_the_window_like_every_other_metric(tmp_path: Path) -> None:
+    # Six older changes that surfaced, then two recent ones that did not.
+    records = _changes(6, 6, ["2026-09-01"]) + [
+        _rec(change=f"late{i}", ts="2026-09-05T12:00:00Z", phases=[_revise([(1, 3), (2, 0)])])
+        for i in range(2)]
+    out = _yield(tmp_path, records, limit=3)
+    assert (out["changes_with_round_2"], out["surfaced_critical_or_important"]) == (3, 1)
+    out = _yield(tmp_path, records, limit=0)
+    assert (out["changes_with_round_2"], out["surfaced_critical_or_important"]) == (8, 6)
 
 
-def test_reversal_not_met_on_one_chain(tmp_path: Path) -> None:
-    check = _reversal(tmp_path, _changes(10, 10, ["2026-09-01"]))
-    assert check["chains"] == 1
-    assert check["condition_met"] is False
-
-
-def test_reversal_needs_a_strict_majority(tmp_path: Path) -> None:
-    check = _reversal(tmp_path, _changes(8, 4, ["2026-09-01", "2026-09-02"]))
-    assert check["surfaced_critical_or_important"] == 4
-    assert check["condition_met"] is False
-
-
-def test_reversal_counts_only_changes_where_a_round_2_ran(tmp_path: Path) -> None:
-    records = _changes(8, 8, ["2026-09-01", "2026-09-02"]) + [
+def test_round_2_yield_counts_only_changes_where_a_round_2_ran(tmp_path: Path) -> None:
+    records = _changes(4, 4, ["2026-09-01", "2026-09-02"]) + [
         # Round 1 only, round 2 on another phase, and a rerun of c0: none adds a change.
         _rec(change="single", phases=[_revise([(1, 9)])]),
         _rec(change="elsewhere", phases=[_phase("Test", rounds_used=1, rounds_cap=3),
                                          _phase("Propose")]),
         _rec(change="c0", ts="2026-09-03T00:00:00Z", phases=[_revise([(1, 1), (2, 0)])]),
     ]
-    check = _reversal(tmp_path, records)
-    assert check["changes_with_round_2"] == 8
-    assert check["surfaced_critical_or_important"] == 8
-    assert check["chains"] == 3  # the rerun ran on a third date
+    out = _yield(tmp_path, records)
+    assert out["changes_with_round_2"] == 4
+    assert out["surfaced_critical_or_important"] == 4
+    assert out["chains"] == 3  # the rerun ran on a third date
 
 
-def test_reversal_chain_proxy_is_ledger_and_date(tmp_path: Path) -> None:
+def test_round_2_yield_chain_proxy_is_ledger_and_date(tmp_path: Path) -> None:
     # One date in two repos is two chains; the proxy is stated in the output.
     a = _write(tmp_path / "a" / "l.jsonl", _changes(4, 4, ["2026-09-01"]))
     b = _write(tmp_path / "b" / "l.jsonl", _changes(4, 4, ["2026-09-01"]))
     out, _ = _log(a, b)
-    check = out["findings_by_round_reversal"]
+    check = out["round_2_yield"]
     assert check["changes_with_round_2"] == 8  # c0..c3 in each repo are different changes
     assert check["chains"] == 2
-    assert check["condition_met"] is True
     assert "ledger" in check["chain_proxy"] and "date" in check["chain_proxy"]
 
 
 # --- --nudge -----------------------------------------------------------------
 
-def _nudge(tmp_path: Path, records: list, raw_lines: list[str] = ()) -> str:
+def _nudge_call(tmp_path: Path, records: list, raw_lines: list[str] = ()):
     retro = tmp_path / "cla.io" / "retro"
     _write(retro / "spec-to-pr-runs.jsonl", records, raw_lines)
     r = _call("--nudge", env=_env(retro))
     assert r.returncode == 0, r.stderr
-    return r.stdout
+    return r
+
+
+def _nudge(tmp_path: Path, records: list, raw_lines: list[str] = ()) -> str:
+    return _nudge_call(tmp_path, records, raw_lines).stdout
+
+
+_REASONS = itertools.count()
 
 
 def _capped(name: str, hit: bool) -> dict:
-    cap = 2 if name == "Revise" else 3
-    return _phase(name, rounds_used=cap if hit else 1, rounds_cap=cap)
+    """A phase at its cap when `hit` — for Revise, also still warning, each with
+    its own reason so the repeated-reason trigger stays out of it."""
+    if name == "Revise":
+        return _phase(name, "warn" if hit else "ok", rounds_used=2, rounds_cap=2,
+                      **({"reason": f"open {next(_REASONS)}"} if hit else {}))
+    return _phase(name, rounds_used=3 if hit else 1, rounds_cap=3)
 
 
-# requirement: run-ledgers / Handoff suggests a retro
+# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
 def test_nudge_on_three_revise_cap_hits_in_the_last_five(tmp_path: Path) -> None:
     records = [_rec(phases=[_capped("Revise", hit)])
                for hit in (False, False, True, True, False, True, False)]
     out = _nudge(tmp_path, records)
     assert out.count("\n") == 1
-    assert "Revise hit its round cap in 3 of the last 5 runs" in out
+    assert "Revise hit its round cap and still warned in 3 of the last 5 runs" in out
     assert "/cla:spec-to-pr-retro" in out
+
+
+# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
+def test_no_nudge_when_revise_reaches_its_cap_cleanly(tmp_path: Path) -> None:
+    # Round 2 is routine: five clean Revise phases at the cap are not trouble.
+    records = [_rec(phases=[_capped("Revise", False)]) for _ in range(5)]
+    assert _nudge(tmp_path, records) == ""
+    # A warn below the cap is not a cap hit either.
+    below = [_rec(phases=[_phase("Revise", "warn", reason=f"r{i}", rounds_used=1,
+                                 rounds_cap=2)]) for i in range(5)]
+    assert _nudge(tmp_path, below) == ""
+
+
+def test_nudge_counts_more_rounds_than_the_cap_as_a_hit(tmp_path: Path) -> None:
+    records = [_rec(phases=[_phase("Test", rounds_used=4, rounds_cap=3)]) for _ in range(3)]
+    assert "Test hit its round cap in 3 of the last 3 runs" in _nudge(tmp_path, records)
 
 
 def test_nudge_on_three_test_cap_hits(tmp_path: Path) -> None:
@@ -374,13 +414,15 @@ def test_nudge_on_three_test_cap_hits(tmp_path: Path) -> None:
     assert "Test hit its round cap in 3 of the last 3 runs" in out
 
 
-# requirement: run-ledgers / Handoff suggests a retro
+# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
 def test_no_nudge_on_two_cap_hits_or_cap_one(tmp_path: Path) -> None:
     records = [_rec(phases=[_capped("Revise", h), _capped("Test", h)])
                for h in (True, True, False, False, False)]
     assert _nudge(tmp_path, records) == ""
-    # A cap of 1 used is a single pass, not exhaustion.
-    single = [_rec(phases=[_phase("Revise", rounds_used=1, rounds_cap=1)]) for _ in range(5)]
+    # A cap of 1 used is a single pass, not exhaustion — even on a Revise that warned.
+    single = [_rec(phases=[_phase("Test", rounds_used=1, rounds_cap=1),
+                           _phase("Revise", "warn", reason=f"r{i}", rounds_used=1, rounds_cap=1)])
+              for i in range(5)]
     assert _nudge(tmp_path, single) == ""
 
 
@@ -390,7 +432,7 @@ def test_old_cap_hits_outside_the_last_five_do_not_nudge(tmp_path: Path) -> None
     assert _nudge(tmp_path, records) == ""
 
 
-# requirement: run-ledgers / Handoff suggests a retro
+# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
 def test_nudge_on_a_warn_reason_repeated_in_two_runs(tmp_path: Path) -> None:
     records = [
         _rec(phases=[_phase("Ship", "warn", reason="push refused")]),
@@ -433,7 +475,7 @@ def test_nudge_reads_only_this_repos_ledger(tmp_path: Path) -> None:
     assert r.returncode == 2  # argparse: mutually exclusive
 
 
-# requirement: run-ledgers / Handoff suggests a retro
+# requirement: run-ledgers / Handoff suggests a retro on recurring trouble
 def test_handoff_prints_the_nudge_after_appending_the_record() -> None:
     command = "spec-to-pr-retro/scripts/spec_to_pr_aggregate.py --nudge"
     for prose in (_SKILLS / "spec-to-pr" / "references" / "handoff.md",

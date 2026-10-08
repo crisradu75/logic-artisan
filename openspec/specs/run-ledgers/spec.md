@@ -48,9 +48,9 @@ The writer SHALL refuse a spec-to-pr or codify-learnings run record whose fields
 - **WHEN** a skill's corrected record is refused again
 - **THEN** the skill reports that the record was not written and its run still finishes
 
-### Requirement: The spec-to-pr retro summary
+### Requirement: Summarising recent spec-to-pr runs
 
-`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the repo's fleet file lists or, when none of them exists on the machine, only the repo's own ledger and saying so, naming each ledger read, counting a record it cannot read as skipped instead of failing, and stating whether the `--pr-rounds` reversal condition holds over every record read.
+`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the repo's fleet file lists or, when none of them exists on the machine, only the repo's own ledger and saying so, naming each ledger read, counting a record it cannot read as skipped instead of failing, and reporting how many of those runs' changes had a second pull request review round and how many of those found a Critical or Important finding in it.
 
 #### Scenario: One unreadable record
 
@@ -62,19 +62,24 @@ The writer SHALL refuse a spec-to-pr or codify-learnings run record whose fields
 - **WHEN** the fleet file is missing or lists no repo that exists on the machine
 - **THEN** the summary reads only the repo's own ledger and says why
 
-#### Scenario: The reversal condition holds
+#### Scenario: Second-round yield
 
-- **WHEN** at least eight changes across at least two chains ran a second pull request review round, and on most of them that round found a Critical or Important finding
-- **THEN** the summary states that the condition is met
+- **WHEN** three changes in the summarised runs had a second pull request review round and two of those rounds found a Critical or Important finding
+- **THEN** the summary reports three such changes, two of which found one
 
-### Requirement: Handoff suggests a retro
+### Requirement: Handoff suggests a retro on recurring trouble
 
-After recording its run, `/cla:spec-to-pr` SHALL print one line suggesting `/cla:spec-to-pr-retro` when, among the repo's last five run records, the test or pull request review phase used its whole round cap in at least three, or one warning reason appears in at least two, and SHALL print nothing otherwise, never blocking the run.
+After recording its run, `/cla:spec-to-pr` SHALL print one line suggesting `/cla:spec-to-pr-retro` when, among the repo's last five run records, the test phase used its whole round cap in at least three, the pull request review phase ended at its round cap with a warning in at least three, or one warning reason appears in at least two, and SHALL print nothing otherwise, never blocking the run.
 
-#### Scenario: Revise keeps exhausting its cap
+#### Scenario: Revise keeps ending at its cap with a warning
 
-- **WHEN** the pull request review phase used its whole round cap in three of the last five runs
+- **WHEN** the pull request review phase ended at its round cap with a warning in three of the last five runs
 - **THEN** Handoff prints one line naming that and suggesting the retro
+
+#### Scenario: Revise reaches its cap cleanly
+
+- **WHEN** the pull request review phase used its whole round cap in each of the last five runs and never warned
+- **THEN** Handoff prints nothing for it
 
 #### Scenario: A quiet ledger
 

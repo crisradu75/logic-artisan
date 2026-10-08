@@ -78,4 +78,11 @@ MUTANTS = [
         'NO_REASON = "reason not recorded (migrated)"',
         TARGETS,
     ),
+    (
+        "the residue rule names a phase the cap metrics do not count",
+        AGG,
+        'RESIDUE_PHASES = ("Revise",)',
+        'RESIDUE_PHASES = ("Revise", "Ship")',
+        TARGETS,
+    ),
 ]
