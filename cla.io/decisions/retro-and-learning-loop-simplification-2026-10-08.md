@@ -185,7 +185,9 @@ estimates — working state, not retro data).
 5. **retire-unread-ledgers** — D9, D10, D11. After 2 and 3, which remove two of the resolver
    copies.
 
-Released with the companion doc as 2.0.0, after its P5 guard change lands first. Estimate, not measured: retro and
+Released as part of 2.0.0, in the program order stated in
+`plugin-surface-simplification-2026-10-08.md` "Delivery" (its P5 and the spec-level doc land
+first). Estimate, not measured: retro and
 learning prose from about 15k words to about 3k; ledger code from about 2,160 lines to roughly
 600–700. Re-measure with `wc` and `plugin-tests/scripts/measure_load.py` when the changes land.
 

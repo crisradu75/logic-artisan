@@ -183,15 +183,19 @@ of them carries `findings_by_round`, so the Revise evidence in the companion doc
 
 ## Delivery
 
-- **Same PR as the companion doc**, as a separate decision doc.
+- **Same PR as the two companion docs**, as a separate decision doc. The program's order across
+  all three docs is stated here once.
 - **Order.**
   1. **P5 first.** It removes the guards that pin the wording P1 and P6 rewrite, so those
      changes stop fighting the tests.
-  2. **The companion doc's chain** (validated run records, slim codify-learnings, slim
-     spec-to-pr-retro, revise defaults, retire unread ledgers).
-  3. **This doc's chain:** P1 (with P1a, P4b), P6, P3 + P4 (overlays and `cla-setup` touch the
+  2. **`spec-level-and-style-2026-10-08.md`:** its rule changes (S1–S6), then the S7 rewrite of
+     this repo's live specs — so every later change is authored at the new level.
+  3. **`retro-and-learning-loop-simplification-2026-10-08.md`'s chain** (validated run records,
+     slim codify-learnings, slim spec-to-pr-retro, revise defaults, retire unread ledgers).
+  4. **This doc's chain:** P1 (with P1a, P4b), P6, P3 + P4 (overlays and `cla-setup` touch the
      same files), P4a, P7 + P7a.
-- **One release, 2.0.0**, at the end of both chains. This supersedes the companion doc's "one
-  minor release": the `cla-setup` rename makes the combined program a major.
-- **After the release:** P6a consumer CLAUDE.md PRs, and the companion doc's orphan-ledger
-  cleanup via `cla-setup`.
+- **One release, 2.0.0**, at the end of all of it. This supersedes the retro doc's "one minor
+  release": the `cla-setup` rename makes the combined program a major.
+- **After the release:** one PR per consuming repo — `cla-setup` (spec rules, orphan ledgers),
+  the retro doc's D3a record migration where old-shape rows exist, and the P6a CLAUDE.md
+  trims.
