@@ -112,12 +112,14 @@ def test_every_overlay_here_is_one_the_plugin_reads():
 
 
 # A clause that sends a reader to an overlay when a fact is missing elsewhere, in
-# the two spellings the plugin used: "falls back to `cla.io/overlays/x.md`" and
-# "`cla.io/overlays/x.md` when that file is absent". Matched over whitespace-joined
-# text, since a clause wrapped across two lines is still one clause.
+# the three spellings the plugin used: "falls back to `cla.io/overlays/x.md`",
+# "`cla.io/overlays/x.md` when that file is absent", and "(`cla.io/project-facts.md`
+# or the overlay)". Matched over whitespace-joined text, since a clause wrapped
+# across two lines is still one clause.
 _FALLBACK = re.compile(
     r"fall(?:s|ing)? back to (?:the |this |its )?(?:project )?(?:overlay|`cla\.io/overlays)"
-    r"|cla\.io/overlays/[a-z0-9.-]+\.md`? when that file is absent",
+    r"|cla\.io/overlays/[a-z0-9.-]+\.md`? when that file is absent"
+    r"|project-facts\.md`?,? or (?:from |in )?(?:the|its|this skill's) overlay\b",
     re.IGNORECASE,
 )
 _MANDATORY = re.compile(r"injection is mandatory", re.IGNORECASE)
@@ -136,6 +138,37 @@ def test_no_shipped_text_makes_an_overlay_a_fallback_or_mandatory():
         hits += [f"{p.relative_to(_PLUGIN_ROOT)}: {m.group(0)!r}"
                  for pattern in (_FALLBACK, _MANDATORY) for m in pattern.finditer(text)]
     assert not hits, f"overlay used as a fact fallback or called mandatory: {hits}"
+
+
+# The one sentence every skill that reads a fact from the facts file carries for a
+# repo set up before overlays went rules-only: the fact may still sit in the overlay.
+_TRANSITIONAL = (
+    'If `cla.io/project-facts.md` lacks a fact this skill needs and this skill\'s overlay exists, '
+    'the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it".'
+)
+# Skills that name the facts file without reading a fact from it in the session:
+# cla-setup writes it, report-upstream and shape-decision only route or suggest,
+# and multi-spec names it only in a brief for a dispatched agent.
+_NO_TRANSITIONAL = {"cla-setup", "report-upstream", "shape-decision", "multi-spec", "_shared"}
+
+
+# requirement: repo-context / Optional per-skill overlays
+def test_every_skill_reading_the_facts_file_says_how_to_move_an_old_fact():
+    """A skill reads a fact only from the facts file, so in a repo whose old overlay
+    still holds it the fact is silently missing. The shared line turns that into an
+    instruction the user can act on."""
+    readers = sorted({p.relative_to(_SKILLS).parts[0] for p in _SKILLS.rglob("*.md")
+                      if "cla.io/project-facts.md" in p.read_text(encoding="utf-8")})
+    assert len(readers) >= 8, readers
+    missing = []
+    for skill in readers:
+        if skill in _NO_TRANSITIONAL:
+            continue
+        text = " ".join(" ".join(p.read_text(encoding="utf-8").split())
+                        for p in (_SKILLS / skill).rglob("*.md"))
+        if _TRANSITIONAL not in text:
+            missing.append(skill)
+    assert not missing, f"{missing} read the facts file but never say how to move a fact from an old overlay"
 
 
 def test_the_staleness_guard_scans_this_repos_overlays():

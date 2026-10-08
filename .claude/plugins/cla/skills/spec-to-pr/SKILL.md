@@ -145,7 +145,7 @@ For each round:
 
 Cap: `--test-rounds N` (default `3`).
 
-**The gates are this repo's lint, build/typecheck and test commands**, read from `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape"; run `/cla:cla-setup` when it is missing or stale). `cla.io/overlays/spec-to-pr.md`, if present, adds rules specific to this skill in this repo. Run at the workspace root they already fan out across every app and package. `--test-cmd` replaces discovery with a literal command.
+**The gates are this repo's lint, build/typecheck and test commands**, read from `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape"; run `/cla:cla-setup` when it is missing or stale). `cla.io/overlays/spec-to-pr.md`, if present, adds rules specific to this skill in this repo. If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". Run at the workspace root they already fan out across every app and package. `--test-cmd` replaces discovery with a literal command.
 
 **Which gates to run.** Take the changed paths from `git diff --name-only <base-branch>...HEAD`. **`smoke`** is the lint command (cheap, fails fast); **`full`** is build/typecheck (the primary gate), then tests. Run whichever exist.
 

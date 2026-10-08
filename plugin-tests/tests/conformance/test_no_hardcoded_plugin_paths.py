@@ -158,9 +158,9 @@ def test_the_scan_is_not_vacuous():
     # Re-measured with this file's own `__main__`, which is why it has one::
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 100  .json 3  .md 69  .mjs 1  .py 27  placeholder-refs 182 in 51 files
+    #     scanned 101  .json 3  .md 70  .mjs 1  .py 27  placeholder-refs 183 in 51 files
     #
-    # The real count is 100. Pinned near it, not
+    # The real count is 101. Pinned near it, not
     # comfortably below it, matching the rule `test_subprocess_encoding.py`
     # states for its own floor: move it to the new real count when something is
     # deliberately added or deleted, never to a number chosen to be safe from
@@ -190,8 +190,9 @@ def test_the_scan_is_not_vacuous():
     # `lib/ledger_summary.py`, the deliberate deletion the rule above expects,
     # and from 101 to 100 when slim-spec-to-pr merged `archive-preflight.md`
     # into `archive.md`, and from 100 to 99 when cla-setup-and-optional-overlays
-    # merged two skills' `SKILL.md` files into one.
-    assert len(files) >= 99, f"scan set collapsed to {len(files)} files"
+    # merged two skills' `SKILL.md` files into one, and from 99 to 100 when
+    # cla-setup-review-fixes added `_shared/references/terminology-format.md`.
+    assert len(files) >= 100, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
@@ -318,7 +319,7 @@ def test_the_replacement_is_actually_in_use():
     # line would be a second copy that `_PRINTER_LINE` cannot see:
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 100  .json 3  .md 69  .mjs 1  .py 27  placeholder-refs 182 in 51 files
+    #     scanned 101  .json 3  .md 70  .mjs 1  .py 27  placeholder-refs 183 in 51 files
     #
     # The file-count version sat at 34 under a comment claiming 36 while the real
     # figure was 48 — fourteen of headroom, found by running that printer for the

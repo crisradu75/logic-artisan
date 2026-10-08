@@ -8,7 +8,7 @@ argument-hint: "[description | (empty)]"
 
 Sibling to `/cla:spec-to-pr` for changes that don't need OpenSpec's artifacts or its multi-round PR-review loop. There is no formal routing rule between the two and no mid-flight escalation path — if a change turns out bigger than expected once you're inside Implement, stop and reassess manually (re-plan, split the change, or switch to `/cla:spec-to-pr`) rather than expecting an automatic handoff.
 
-**Where this repo's facts and rules live.** Commands, paths and file sets come from `cla.io/project-facts.md` only (run `/cla:cla-setup` when it is missing or stale). `cla.io/overlays/lite-pr.md`, if present, adds rules specific to this skill in this repo; apply them alongside the steps below.
+**Where this repo's facts and rules live.** Commands, paths and file sets come from `cla.io/project-facts.md` only (run `/cla:cla-setup` when it is missing or stale). If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". `cla.io/overlays/lite-pr.md`, if present, adds rules specific to this skill in this repo; apply them alongside the steps below.
 
 ## Mode detection
 
@@ -31,7 +31,7 @@ Skip when the description is already concrete and unambiguous (a clear single ch
 Produce a plan directly in the conversation as plain text — do NOT call `EnterPlanMode`/`ExitPlanMode`. `ExitPlanMode` is itself a user-approval gate, and lite-pr is continuous by design (see Autonomy below): post the plan for visibility, then proceed — don't hold it open for approval. The plan MUST explicitly list, alongside the code files to change:
 
 - which `openspec/specs/<capability>/spec.md` file(s) need updating (or note "new capability — no existing spec" / "no outcome or interface change — no spec update needed").
-- if the change touches this repo's own core calculation-engine formulas, whether every doc/spec this repo names as needing to stay in lockstep with those formulas needs updating too — see `cla.io/project-facts.md` ("Cross-file lockstep doc sets") for the exact file set; a formula/knob change shipped without all of them is a silent spec violation, not just stale docs.
+- if the change touches this repo's own core calculation-engine formulas, whether every doc/spec this repo names as needing to stay in lockstep with those formulas needs updating too — see the lockstep set of files `cla.io/project-facts.md` lists for them, under whatever heading; a formula/knob change shipped without all of them is a silent spec violation, not just stale docs.
 - which test file(s) need adding/updating, and under which workspace package/app they live — see `cla.io/project-facts.md` ("Test-file locations").
 
 No plan is written to disk. The plan lives in the conversation; its durable record is the doc updates it produces during Implement. Unlike `/cla:spec-to-pr`, nothing is created here that later needs archiving or deleting.

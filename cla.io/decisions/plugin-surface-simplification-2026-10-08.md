@@ -150,6 +150,9 @@ of them carries `findings_by_round`, so the Revise evidence in the companion doc
   scaffolds `cla.io/` when missing and populates or refreshes the facts. `/cla:cla-init` and
   `/cla:sync-context` go away, which changes commands consumers type — the reason this
   program releases as 2.0.0.
+  *Implemented as:* `cla-setup` is slash-command only (`disable-model-invocation: true`).
+  `sync-context` could be invoked by the model; setup is now a deliberate run, and a skill that
+  finds a fact missing tells the user to run it.
 - **P4a — Delete `project-review`'s `mechanical-checks.mjs` and its Node suite.** The pre-PR
   gate becomes pytest only; CLAUDE.md's "configured by 1 of 4" row and the `node --test` lines
   go.

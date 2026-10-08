@@ -86,7 +86,7 @@ For each candidate in the confirmed order:
    3. **The full Test gate is green on `head_sha`.** Every merge needs this. `/cla:lite-pr` ran its gate before its own review fixes were committed, and step 7's enforcement round re-ran only narrow tests. Run `/cla:lite-pr`'s full Test gate: smoke, then full, the commands its Test phase reads from `cla.io/project-facts.md`.
       - Green → continue.
       - Red → do not merge; the reason is `full gate red: <failing check>`. Do not re-run it hoping for green. A flaky gate is a finding for the user, not a retry.
-      - `cla.io/project-facts.md` names no test commands and the PR changes source-affecting paths (as `/cla:lite-pr`'s Test phase defines them) → do not merge; the reason is `full gate unavailable`. `/cla:lite-pr` treats this case as a warning. A merge cannot, because nothing would have tested the merged code.
+      - `cla.io/project-facts.md` names no test commands and the PR changes source-affecting paths (as `/cla:lite-pr`'s Test phase defines them) → do not merge; the reason is `full gate unavailable`. `/cla:lite-pr` treats this case as a warning. A merge cannot, because nothing would have tested the merged code. If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it".
       - The PR changes no source-affecting paths → there is nothing to gate. Record `gate skipped: no source-affecting paths` beside the status and continue.
    4. **Remote checks have finished.** Run `gh pr checks <captured-pr-number> --json name,bucket`. Read the result in context:
       - JSON output → each check's `bucket` is `pass`, `fail`, `pending`, `skipping`, or `cancel`.

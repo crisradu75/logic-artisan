@@ -66,7 +66,7 @@ Non-zero exit → resolve an in-progress op (exit 2) per Step 1 of `${CLAUDE_PLU
 
 **Starting-branch check.** `git_state.py` does NOT inspect the working tree at all — its `no_in_progress_op` field means only that no rebase/cherry-pick/merge is mid-flight. Uncommitted *files* need a separate `git status --porcelain`, and neither check flags "the current branch simply isn't `<base-branch>`." Separately check `git rev-parse --abbrev-ref HEAD`: if it's not `<base-branch>` and carries one or more local commits not yet on `<base-branch>` (`git log <base-branch>..HEAD --oneline`) that are unrelated to any in-scope change, treat that branch as pre-existing state outside this run's scope — do NOT merge, rebase, or push it as part of the chain. Simply `git checkout <base-branch> && git pull` before Phase 1 discovery, leaving the other branch untouched for the user to handle separately. Untracked in-scope change directories under `openspec/changes/` survive a branch checkout (they're untracked, not branch-scoped) — a quick `git status --porcelain` after the checkout confirms they're still present.
 
-Then, from the repo root, `git check-ignore -q --no-index cla.io/retro/multi-pr-run-notes-x.md`. Non-zero → stop: "run /cla:cla-setup first (run notes would be visible to git)".
+Then, from the repo root, `git check-ignore -q --no-index cla.io/retro/multi-pr-run-notes-x.md`. Non-zero → stop: "run /cla:cla-setup first (run notes would be visible to git)". Any ignore source counts here: this run only needs git to ignore the notes on this machine, while `/cla:cla-setup` checks for the repo's own `.gitignore` line.
 
 ## Phase 1: Discover + sequence + pre-flight gate
 

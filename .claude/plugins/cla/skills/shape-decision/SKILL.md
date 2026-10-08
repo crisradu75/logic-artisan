@@ -62,7 +62,7 @@ Follow this protocol strictly:
 While asking or discussing a question, watch for a term the user's answer disambiguates, sharpens, or resolves a conflict on — most decisions don't have one (build tooling, workflow ordering, file locations rarely hinge on internal-naming disambiguation). When one does:
 
 - **Check the user's phrasing against `cla.io/terminology.md`** (read once at grounding, per Getting Started step 2) — a term used inconsistently with an existing entry is worth surfacing as a clarifying question ("your terminology file defines X as Y — is that still what you mean here?") rather than silently drifting.
-- **Write the resolution inline, the moment it resolves** — do not batch it to the end of the session or fold it into the Decision Summary. Follow the entry format `${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/SKILL.md` documents ("The terminology file") — do not re-derive or paraphrase it here, since `cla-setup` is that format's single owner. Create `cla.io/terminology.md` lazily if it doesn't exist yet.
+- **Write the resolution inline, the moment it resolves** — do not batch it to the end of the session or fold it into the Decision Summary. Follow the entry format in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/terminology-format.md` — do not re-derive or paraphrase it here. Create `cla.io/terminology.md` lazily if it doesn't exist yet.
 - **Only terms specific to this repo's own product/codebase belong** — a general programming or process concept doesn't, even if the conversation uses it a lot.
 - **This is a side-effect, not a goal.** Don't force a term into the file looking for something to write — most runs of this skill won't touch it at all.
 

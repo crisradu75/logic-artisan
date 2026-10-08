@@ -49,10 +49,8 @@ If this errors (not inside a git working tree), stop and tell the user to run fr
 - **Create only what is missing.** A partly set-up repo ends fully set up with every pre-existing
   piece byte-for-byte unchanged: a `.jsonl` with history or a filled `notes.md` is ALWAYS skipped,
   even though the seed content differs.
-- **A change to an existing file needs the user's yes, every time:** item 5's rules update, item 6's
-  deletion of retired ledgers, item 7's untracking of tracked run notes, and Part 2's writes to
-  `cla.io/` files. The one unasked edit is item 7's: it appends one line to `.gitignore` when no
-  line there already ignores the run notes, and changes nothing else in it.
+- **A change to an existing file needs the user's yes, every time**; each item says where it asks.
+  The one unasked edit is item 7's appended `.gitignore` line.
 - **Overlays are optional, and this skill never creates one.** `cla.io/overlays/<skill>.md` holds a
   repo's skill-specific rules when it has some; a skill without one runs on its generic procedure
   and `cla.io/project-facts.md`.
@@ -74,12 +72,7 @@ shaped-decision `.md` files created by `shape-decision`/`multi-spec`).
 ### 2. Retro ledger (0-byte — an empty file is a valid empty JSONL ledger; NO `[]` or placeholder line)
 
 ```bash
-# The only ledger lib/log_run.py accepts, appended via that shared writer
-# (which takes the ledger filename as its argument and refuses any other):
-#   spec-to-pr-runs     read by /cla:spec-to-pr-retro
-# Every other ledger was retired because nothing read it (item 6 lists them). If
-# you add one, give it a shape in log_run.py and a reader in the same change: an
-# unread ledger is exhaust, not data.
+# The one ledger lib/log_run.py accepts; /cla:spec-to-pr-retro reads it.
 for f in spec-to-pr-runs; do
   [ -e "$ROOT/cla.io/retro/$f.jsonl" ] || : > "$ROOT/cla.io/retro/$f.jsonl"
 done
@@ -222,18 +215,24 @@ done
 ### 7. Ignore the chains' run notes — `.gitignore`
 
 `/cla:multi-lite` and `/cla:multi-pr` keep their run notes as local working state that nothing
-commits, and refuse to start while git would see them. This adds the ignore line unless git already
-ignores the notes (any equivalent pattern, CRLF or trailing spaces included), creating the file if
-needed. The check ignores this machine's global excludes file (`core.excludesFile`): a pattern there
-hides the notes here but not in any other clone, so it does not count as the repo's line.
+commits, and refuse to start while git would see them. This adds the ignore line unless a
+`.gitignore` in the repo already ignores the notes (any equivalent pattern, CRLF or trailing spaces
+included), creating the file if needed. Only a `.gitignore` counts: this machine's global excludes
+and the clone's `.git/info/exclude` hide the notes here but not in any other clone.
 
 ```bash
 : "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
 line='cla.io/retro/*-run-notes-*.md'
 probe='cla.io/retro/multi-lite-run-notes-x.md'
-if git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -q --no-index "$probe"; then
+# The deciding pattern, as <source>:<line>:<pattern>; global excludes switched off.
+match="$(git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -v --no-index "$probe")" || match=''
+case "${match%%:*}" in
+  .gitignore|*/.gitignore) from_repo=1 ;;
+  *) from_repo=0 ;;
+esac
+if [ "$from_repo" = 1 ] && git -C "$ROOT" check-ignore -q --no-index "$probe"; then
   echo "exists (skipped): .gitignore run-notes line"
-elif match="$(git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -v --no-index "$probe")"; then
+elif [ "$from_repo" = 1 ]; then
   # Matched but not ignored: a ! pattern un-ignores the notes on purpose.
   echo "un-ignored (left as is): $match"
 else
@@ -267,14 +266,16 @@ git -C "$ROOT" ls-files -- 'cla.io/retro/*-run-notes-*.md' | sed 's/^/tracked ru
 
 ### Where a fact goes
 
-- **`cla.io/project-facts.md` is the only home for a fact** — every command (install, dev, build,
-  lint, test), path, port, workspace member, file map and env file a skill reads. A skill looks
-  there and nowhere else, so a fact kept anywhere else is a fact no skill finds.
+- **`cla.io/project-facts.md` holds the repo's facts** — every command (install, dev, build, lint,
+  test), path, port, workspace member, file map and env file the skills read. A skill looks there
+  for them and nowhere else.
 - **`cla.io/overlays/<skill>.md`, when present, holds only that skill's own rules** — a check, a
-  limit or a preference that applies to one skill in this repo. Optional; a skill without one runs
-  on its generic procedure.
-- **A dated incident goes to `cla.io/lessons-learned/`**, where `/cla:codify-learnings` searches for
-  re-offenses. One that would happen in any repo goes upstream through `/cla:report-upstream`.
+  limit or a preference for one skill in this repo — **with any path or command only that rule
+  uses** (where codify-learnings finds memory, the files a review-change check opens). Optional; a
+  skill without one runs on its generic procedure.
+- **A dated incident's story goes to `cla.io/lessons-learned/`, and any rule it states stays in the
+  overlay** as one or two lines, since most skills never read the lessons log. One that would
+  happen in any repo goes upstream through `/cla:report-upstream`.
 - **Machine-read `*.local.md` files stay where they are and are never reshaped here:**
   `cla.io/overlays/branch-prefix.local.md` (spec-to-pr's branch prefix),
   `cla.io/project-tokens.local.md` (the token guard's list) and `cla.io/fleet.local.md` (this
@@ -314,24 +315,9 @@ list.
 
 ### The terminology file (`cla.io/terminology.md`)
 
-A second, distinct file — `cla.io/terminology.md` — holds canonical **internal naming
-disambiguation**, not mechanical facts: one-sentence definitions for concepts specific to this repo's
-own codebase or product, each naming any rejected alias terms to avoid. It never holds mechanical
-facts (that is `project-facts.md`'s job) or external/regulatory/business-reference knowledge (a repo's
-own glossary of that kind, if one exists, is untouched).
-
-Entry format:
-
-```
-**Term**: one-sentence definition — what it IS, not what it does.
-_Avoid_: rejected-alias-1, rejected-alias-2
-```
-
-**This skill owns the format above and the light reconciliation in item 11 — not the file's
-content.** The file is written **inline**, in-session, by whichever skill resolves a term
-(`shape-decision` first), because a disambiguation belongs to the moment it was resolved. It is
-created **lazily** by the first skill that needs it — never pre-scaffolded here — and its absence is
-never an error: a skill reading it uses the file's term when present and its own judgement otherwise.
+What it holds and its entry format are in
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/terminology-format.md`. Other skills write it
+inline as terms resolve; this skill never creates it and only reconciles it (item 11).
 
 ### 8. Read the repo
 
@@ -346,10 +332,18 @@ makes it portable.
 
 - `cla.io/project-facts.md`, if present (a **reconcile**, not a from-scratch write).
 - Every `cla.io/overlays/*.md` except the `*.local.md` files (glob generically — never a hardcoded
-  skill list). Sort each line into one of four kinds: a **fact** (a command, path, port, install
-  step, env file — anything the list above covers), a **skill-specific rule**, a **dated incident**,
-  or **template scaffolding** (headings and HTML comments only, no content). In a repo that has not
-  migrated yet, overlays may still sit at
+  skill list). Sort each line into one of five kinds:
+  - **fact** — a command, path, port, install step or env file (anything the list above covers),
+    unless only a rule in this overlay uses it;
+  - **rule** — what this one skill must do here, with any path or command only that rule uses;
+  - **incident** — a dated story. Pull out every rule it states for this repo ("Rule here: …",
+    "before trusting X, check Y", "always pass …") and sort that as a rule; the rest is story;
+  - **duplicate** — a rule the plugin or the repo's `CLAUDE.md` already states (say where);
+  - **scaffolding** — headings, HTML comments, and the old pointer that sent readers to the
+    retired `sync-context` skill for repo-wide facts.
+
+  When unsure whether a line is a rule, call it one: a rule moved to the log is lost to every skill
+  that does not read it. In a repo that has not migrated yet, overlays may still sit at
   `${CLAUDE_PLUGIN_ROOT}/skills/*/references/project-context.md`; glob that too and say which you
   found.
 - `cla.io/project-tokens.local.md`, if present, for the conformance guard's current token list.
@@ -361,14 +355,14 @@ makes it portable.
    repo's facts file, maintained by `/cla:cla-setup` and checked by
    `${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/check_fact_paths.py`. Fold in every fact line
    item 9 found in an overlay, under its section.
-2. **Each overlay's change.** Remove the fact lines just folded in; where a fact sits inside a
-   sentence that also states a rule, rewrite the sentence to keep the rule and point at the facts
-   file rather than deleting it. Move each dated incident to
-   `cla.io/lessons-learned/lessons-learned.md`, appended at the end under a heading naming the
-   overlay it came from (the log is newest-first, and these predate it); name any that would happen
-   in any repo as a candidate for `/cla:report-upstream`. Keep the skill-specific rules as written.
-   An overlay left with nothing but headings and comments — including one that never had more —
-   is proposed for **deletion**: an absent overlay and an empty one mean the same thing, and the
+2. **Each overlay's change.** Remove the facts just folded in; where a fact sits inside a sentence
+   that also states a rule, rewrite the sentence to keep the rule and point at the facts file.
+   Keep every rule as written, and each rule pulled out of an incident as one or two lines under
+   a dated heading. Move the incident's story to `cla.io/lessons-learned/lessons-learned.md`,
+   appended at the end under a heading naming the overlay it came from (the log is newest-first,
+   and these predate it); name any that would happen in any repo as a candidate for
+   `/cla:report-upstream`. Drop duplicates and scaffolding. An overlay left with no rule is
+   proposed for **deletion**: an absent overlay and an empty one mean the same thing, and the
    empty one invites facts back in.
 3. **Legacy-location overlays are never edited.** One at
    `${CLAUDE_PLUGIN_ROOT}/skills/*/references/project-context.md` sits in the read-only plugin
@@ -395,8 +389,9 @@ Show the user, in order:
 
 1. Whether `cla.io/project-facts.md` was absent (created) or present (reconciled).
 2. The drafted `cla.io/project-facts.md` — in full when new or heavily changed, else as a diff.
-3. Each overlay change from item 10, file by file: lines moved to the facts file, incidents moved to
-   the lessons log, files proposed for deletion.
+3. Each overlay change from item 10, file by file: rules kept, lines moved to the facts file,
+   stories moved to the lessons log, duplicates dropped (and where they are stated), files proposed
+   for deletion.
 4. Migration recommendations for legacy-location overlays.
 5. Proposed `project-tokens.local.md` additions, each with its one-line justification.
 6. Any `cla.io/terminology.md` reconciliation from item 11.
@@ -413,40 +408,17 @@ recommendation, never written. A declined proposal leaves its file untouched.
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/check_fact_paths.py
 ```
 
-It MUST exit 0, and the two non-zero codes mean different things — do not collapse them, because the
-remedy differs and only one of them names a path to fix:
-
-| Exit | Meaning | What to do |
-|---|---|---|
-| `0` | No stale path. | Done. |
-| `1` | Stale paths found, each named with its file and line. | The write just made introduced or left them. Fix every path the checker names and re-run until it exits 0. |
-| `2` | The checker could not look — an unresolvable repo root, an unreadable input, or a scan that extracted nothing. | **No path is named, so there is nothing to "fix" by editing the facts file.** Read the stderr reason and resolve *that* (pass `--repo-root`, fix the unreadable file). Never treat a 2 as a clean pass, and never re-run hoping for a 1. |
-
-**Beyond this one run, the repo owns when the checker runs.** An installed plugin is a read-only
-cache with no test gate over it, and nothing in the plugin schedules this script. If the repo wants
-the check standing, it wires the command above into its own gate (test command, pre-commit hook, CI
-step) and reads the exit code by the table above. A gate that still wires the plugin's old
-`conformance-checks/tests` directory (the `0.x`-era shape, gone since `1.0.0`) either fails on a
-missing directory or passes while checking nothing: say so in the report and recommend this program
-instead.
+It MUST exit 0. Exit 1 names each stale path: fix every one and re-run. Exit 2 means it could not
+look (stderr says why): fix that, and never read a 2 as a pass. Nothing in the plugin runs it
+again; a repo that wants it standing wires it into its own gate. A gate still wiring the `0.x`
+`conformance-checks/tests` directory checks nothing: say so and recommend this program.
 
 ## Report
 
-One summary at the end:
-
-- **Part 1:** each directory, ledger and seed file as `created` or `exists (skipped)`. For
-  `openspec/config.yaml`: `created`, `rules current`, the `+`/`-` lines and whether the user agreed,
-  or `not written` followed by the `rules:` block to paste; add the OpenSpec version line when it is
-  older than 1.14.1. Each retired ledger `deleted` or `kept`, or that none is present. The run-notes
-  line `created`, `exists (skipped)` or `un-ignored`, and each tracked notes file `untracked` or
-  `kept tracked`, or that none is tracked.
-- **Part 2:** `cla.io/project-facts.md` created or updated (which sections changed); each overlay
-  trimmed or deleted and where its lines went; `project-tokens.local.md` entries added (or none);
-  terminology fixes applied (or none); every declined proposal, named.
-- **The staleness checker's exit code.** Not 0 → name every stale path it reported; this run is the
-  only place that check happens, so a report that omits it loses it.
-- **Every legacy-location migration recommendation** — the only findings this skill deliberately
-  does not act on.
+One summary at the end, item by item: each target's outcome in the words its item uses, each
+overlay's lines and where they went (kept, facts file, lessons log, dropped), every declined
+proposal, the checker's exit code with every stale path it named, and every legacy-location
+recommendation.
 
 ## Non-goals
 
@@ -458,4 +430,4 @@ One summary at the end:
 - Does **NOT** write anything in Part 2 without the user's yes.
 - Does **NOT** parse a stack-specific config format with a hardcoded parser — it reads and reasons
   about whatever this repo actually has.
-- Does **NOT** author `cla.io/terminology.md` entries — only the format and item 11's reconciliation.
+- Does **NOT** author `cla.io/terminology.md` entries — only item 11's reconciliation.

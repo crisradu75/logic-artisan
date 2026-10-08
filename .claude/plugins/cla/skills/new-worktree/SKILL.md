@@ -77,7 +77,7 @@ memory `worktree-isolation-file-paths`.)
    separate tool calls (not chained with `&&`, not sequential turns). This is the
    only other round-trip; do not precede it with a separate `git worktree list` call
    to locate the main checkout — resolve it inline, in the copy command itself:**
-   - This repo's own dependency-install command (offline-preferring where the package manager supports it) at the new worktree's root, from `cla.io/project-facts.md` ("Dev / build / test commands"). Run only the root install the facts name — don't also run a separate install inside a sub-app whose own lockfile/install has been consolidated away (the "Workspace shape" section lists the members).
+   - This repo's own dependency-install command (offline-preferring where the package manager supports it) at the new worktree's root, from `cla.io/project-facts.md` ("Dev / build / test commands"). Run only the root install the facts name — don't also run a separate install inside a sub-app whose own lockfile/install has been consolidated away (the "Workspace shape" section lists the members). If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it".
    - Copy this repo's own gitignored env file(s) (`cla.io/project-facts.md`, "Env files", for the exact path(s)) from the main checkout into the new worktree, resolving the main checkout path inline (don't spend a tool
      call discovering it first — but don't use `git rev-parse --show-toplevel` or
      `$CLAUDE_PROJECT_DIR` for this either: verified live, `CLAUDE_PROJECT_DIR` is

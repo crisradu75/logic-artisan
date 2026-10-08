@@ -27,10 +27,12 @@ distinguishes a by-path load from an ambient one.
 Mutant 3 keeps the pair honest: it proves the imported guard is actually
 interrogated, not merely imported.
 
-Mutants 4-7 mutate the INPUT, since the two newer checks agree with any rule on a
+Mutants 4-9 mutate the INPUT, since the newer checks agree with any rule on a
 correct tree: a shipped skill that stops naming the overlay this repo keeps for it
-(an orphan), and the three ways a shipped file could make an overlay a fact
-fallback or a mandatory input again, one of them wrapped across a line break.
+(an orphan), the four ways a shipped file could make an overlay a fact fallback or
+a mandatory input again (one wrapped across a line break, one the "(facts file or
+the overlay)" shape a review found), and a skill that drops the line telling the
+user how to move a fact left in an old overlay.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_overlays_are_reachable.py
 """
@@ -111,6 +113,20 @@ MUTANTS = [
         SKILLS / "spec-to-pr" / "SKILL.md",
         '"Workspace shape"; run `/cla:cla-setup` when it is missing or stale)',
         '"Workspace shape"; `cla.io/overlays/spec-to-pr.md`\nwhen that file is absent)',
+        TARGETS,
+    ),
+    (
+        "codify-learnings reads commands from the facts file or the overlay again",
+        SKILLS / "codify-learnings" / "references" / "routing.md",
+        "(in\n  `cla.io/project-facts.md`), a typecheck",
+        "(`cla.io/project-facts.md`\n  or the overlay), a typecheck",
+        TARGETS,
+    ),
+    (
+        "new-worktree stops saying how to move an install command left in an old overlay",
+        SKILLS / "new-worktree" / "SKILL.md",
+        ' tell the user "run /cla:cla-setup to move it".',
+        "",
         TARGETS,
     ),
     (

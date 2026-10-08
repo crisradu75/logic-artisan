@@ -65,8 +65,8 @@ Prompts for Step 1, not destinations. Each names a failure that is easy to live 
 noticing.
 
 - **Done without proof.** Was a change declared done, or a count or diagnosis stated, without the
-  command that shows it — the repo's own build, lint and test commands (`cla.io/project-facts.md`
-  or the overlay), a typecheck right after a bulk edit, a clean environment rather than a dev box?
+  command that shows it — the repo's own build, lint and test commands (in
+  `cla.io/project-facts.md`), a typecheck right after a bulk edit, a clean environment rather than a dev box?
 - **Not asked for.** Did you do work the user did not ask for, or carry out a plan other than the
   one you announced?
 - **Secondary source first.** Did you reason from a docstring, memory, a summary or a peer repo's

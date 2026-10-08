@@ -5,7 +5,8 @@ they are local, lets a notes-less multi-lite resume look mergeable or a notes-le
 multi-pr resume run on, drops a chain's refusal to start while its notes are not
 ignored, stops this repo ignoring new notes, breaks cla-setup's ignore-line block
 (re-appends on every run, misses an equivalent line, lets this machine's global excludes
-stand in for the repo's line, overrides a deliberate un-ignore,
+or the clone's .git/info/exclude stand in for the repo's line, misses a nested .gitignore,
+overrides a deliberate un-ignore,
 probes a file the line does not cover, clobbers the file, glues the line onto an
 unterminated last line), or breaks its tracked-notes offer (lists untracked or
 non-notes files, deletes the working copy, drops the warning). One more lets
@@ -87,35 +88,42 @@ MUTANTS = [
     (
         "cla-setup appends the line on every run",
         CLA_SETUP,
-        'if git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -q --no-index "$probe"; then',
-        "if false; then",
+        "  .gitignore|*/.gitignore) from_repo=1 ;;",
+        "  .gitignore|*/.gitignore) from_repo=0 ;;",
         TARGETS,
     ),
     (
         "cla-setup is back to an exact-line grep, so a CRLF or equivalent line is missed",
         CLA_SETUP,
-        'if git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -q --no-index "$probe"; then',
+        'if [ "$from_repo" = 1 ] && git -C "$ROOT" check-ignore -q --no-index "$probe"; then',
         'if [ -e "$ROOT/.gitignore" ] && grep -qxF -- "$line" "$ROOT/.gitignore"; then',
         TARGETS,
     ),
     (
         "cla-setup lets this machine's global excludes stand in for the repo's line",
         CLA_SETUP,
-        'if git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -q --no-index "$probe"; then',
-        'if git -C "$ROOT" check-ignore -q --no-index "$probe"; then',
+        'match="$(git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -v --no-index "$probe")"',
+        'match="$(git -C "$ROOT" check-ignore -v --no-index "$probe")"',
         TARGETS,
     ),
     (
-        "cla-setup reads a global excludes match as a deliberate un-ignore",
+        "cla-setup lets the clone's .git/info/exclude stand in for the repo's line",
         CLA_SETUP,
-        'elif match="$(git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -v --no-index "$probe")"; then',
-        'elif match="$(git -C "$ROOT" check-ignore -v --no-index "$probe")"; then',
+        "  .gitignore|*/.gitignore) from_repo=1 ;;",
+        "  ?*) from_repo=1 ;;",
+        TARGETS,
+    ),
+    (
+        "cla-setup misses a line in a nested .gitignore",
+        CLA_SETUP,
+        "  .gitignore|*/.gitignore) from_repo=1 ;;",
+        "  .gitignore) from_repo=1 ;;",
         TARGETS,
     ),
     (
         "cla-setup appends the line over a deliberate un-ignore",
         CLA_SETUP,
-        'elif match="$(git -C "$ROOT" -c core.excludesFile=/dev/null check-ignore -v --no-index "$probe")"; then',
+        'elif [ "$from_repo" = 1 ]; then',
         "elif false; then",
         TARGETS,
     ),

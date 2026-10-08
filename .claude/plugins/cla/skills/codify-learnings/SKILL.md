@@ -15,7 +15,7 @@ A rule that already existed and failed again is the most important thing this sk
 Before Step 1, read `references/routing.md` — the ladder, where each kind of lesson lives, the
 plugin-writability check, and the failure prompts. This repo's verification commands are in
 `cla.io/project-facts.md`; `cla.io/overlays/codify-learnings.md`, if present, says where memory
-lives and adds this skill's own rules here. `$ARGUMENTS`, if set,
+lives and adds this skill's own rules here. If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". `$ARGUMENTS`, if set,
 narrows the focus; the review still covers the whole session.
 
 ## Step 1 — List the session's failures

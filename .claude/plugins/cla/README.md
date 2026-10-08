@@ -179,8 +179,8 @@ the facts) → install the `pre-push` hook (see *Guardrails*).
 
 **Coming from 1.x?** The `cla-init` and `sync-context` skills were merged into `/cla:cla-setup`. Run
 it once: it reports what your `cla.io/` is missing, proposes moving facts out of overlays into
-`project-facts.md` and dated incidents into `cla.io/lessons-learned/`, and proposes deleting overlays
-that hold nothing but template headings.
+`project-facts.md` and the stories of dated incidents into `cla.io/lessons-learned/` (any rule they
+state stays in the overlay), and proposes deleting overlays left with no rule.
 
 The marketplace install is the only route in. `update-cla`, the old pull-based file-sync updater,
 has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can delete that too.
