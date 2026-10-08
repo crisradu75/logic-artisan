@@ -1062,7 +1062,7 @@ def test_comments_and_backticks_are_stripped_from_a_root(tmp_path: Path) -> None
 
 def test_a_missing_fleet_file_refuses_rather_than_analysing_nothing(
         tmp_path: Path) -> None:
-    """`runs_analyzed: 0` is what both retro skills teach the reader to treat as a
+    """`runs_analyzed: 0` is what the retro skill teaches the reader to treat as a
     cold start, so a typo'd fleet path must not produce it."""
     r = _run_fleet(tmp_path / "nope.md")
     assert r.returncode == 1

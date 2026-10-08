@@ -39,13 +39,14 @@ memory index (skip it if the overlay does not say where it is and you cannot fin
 lessons log. Grep with the failure's keywords — never read the log whole:
 
 ```bash
-grep -n -i '<keyword>' cla.io/lessons-learned/lessons-learned.md
+grep -rn -i '<keyword>' cla.io/lessons-learned/
 ```
 
 - **A hit is a re-offense**: the rule existed and did not hold. Key it by that artifact's path or
-  hook name (`CLAUDE.md`, `hooks/block-cd-in-bash.py`), never by a slug you made up; a hit in the
-  lessons log points at where an earlier fix landed, and that artifact is the key. Its fix goes
-  **one rung above** that artifact (reference, "The ladder").
+  hook name (`CLAUDE.md`, `hooks/block-cd-in-bash.py`), never by a slug you made up. In the
+  lessons log only an APPLIED line names an artifact, and that artifact is the key; any other log
+  hit is context, not a re-offense. Its fix goes **one rung above** that artifact (reference,
+  "The ladder").
 - **No hit is a new lesson**: it enters at the lowest rung that would have prevented it.
 
 ## Step 3 — Propose at most three fixes
@@ -92,7 +93,7 @@ Apply each accepted fix with the tool it needs; for one going upstream, invoke
 ## Step 5 — Log
 
 **Lessons log.** Prepend one entry of at most 150 words to `cla.io/lessons-learned/lessons-learned.md`,
-directly under its title (create the file with a `# Lessons learned` title if it is missing; read
+above its first `## ` entry (create the file with a `# Lessons learned` title if it is missing; read
 only its first lines). Newest first, entries separated by `---`:
 
 ```
@@ -126,7 +127,7 @@ Build it from this example, which the writer accepts as written:
   refusal, or any other failure: say the line was not written, and finish — a missing ledger line
   never blocks the run.
 
-The ledger and the log are tracked files; commit them with the applied fixes.
+The ledger and the log are tracked files; include them when the applied fixes are committed.
 
 Close with one line: fixes proposed, applied and rejected, and each re-offense with the rung it
 went to.

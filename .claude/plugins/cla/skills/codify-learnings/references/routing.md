@@ -10,7 +10,7 @@ the plugin can be edited here, and the prompts that catch failures a skim would 
 | `checklist` | a prompt under "Failure prompts" below | retro time only — no work session reads it |
 | `doc` | memory, a `CLAUDE.md`, `cla.io/overlays/<skill>.md`, a `SKILL.md` | every session that loads it; advisory |
 | `hook` | a hook, `.claude/settings.json` | every matching tool call; enforced |
-| `script` | a script or config change | every run; the failure becomes impossible |
+| `script` | a script, or build/lint/test config | every run; the failure becomes impossible |
 
 - **A lesson lands where work sessions load it** — `doc` or higher. `checklist` is only for a check
   that can be made at retro time and never mid-session.

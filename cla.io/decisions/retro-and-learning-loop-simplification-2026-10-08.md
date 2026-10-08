@@ -136,6 +136,12 @@ Sizes (`wc -w`, `wc -l`): retro skills 1,940 + 1,772 words; `retro-skeleton.md` 
   Removed: the gate's long rules and apply counts, the prevented / not-exercised tally,
   Step 3.5, the size-maintenance step, full-log reads (grep instead), the log-only summary
   sections.
+
+  *Implemented as:* memory fixes count against the cap of three (the old exemption let 152 of
+  152 memory items through). Rungs are `checklist`, `doc`, `hook`, `script`: memory, CLAUDE.md,
+  an overlay and a SKILL.md share the `doc` rung, as the old reference already treated them;
+  `.claude/settings.json` sits with `hook`. `failure-modes.md` became a section of the one
+  reference.
 - **D5 — Memory is for personal preferences only.** Repo lessons go to the repo's CLAUDE.md or
   `cla.io/overlays/`, so git, cloud sessions and reviewers see them.
 - **D6 — Shrink `failure-modes.md` to about 15 bullets.** Keep the highest-yield prompts;
