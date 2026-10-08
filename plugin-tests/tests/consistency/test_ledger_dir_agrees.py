@@ -41,6 +41,23 @@ _READERS = {
 }
 
 
+# A record the writer accepts for each ledger it checks the shape of; any other
+# ledger takes the bare probe.
+_RECORDS = {
+    "spec-to-pr-runs.jsonl": {
+        "ts": "2026-10-08T00:00:00Z", "change": "probe", "mode": "description",
+        "phases": [{"name": "Propose", "status": "ok"}],
+    },
+    "codify-runs.jsonl": {
+        "ts": "2026-10-08", "scope": "repo-wide",
+        "suggestions": {"proposed": 0, "applied": 0, "rejected": 0},
+        "memory": {"proposed": 0, "applied": 0}, "re_offenses": [], "rejected_lessons": [],
+        "maintenance": {"failure_modes_bullets": 0, "live_log_entries": 0, "trimmed": False},
+        "process_issue": False,
+    },
+}
+
+
 def _run(script: Path, cwd: Path, env: dict, *args: str, stdin: str = "") -> str:
     proc = subprocess.run(
         [sys.executable, str(script), *args], input=stdin, cwd=cwd, env=env,
@@ -63,7 +80,7 @@ def test_the_reader_finds_what_the_writer_wrote(tmp_path, monkeypatch, override,
         monkeypatch.setenv("CLAUDE_RETRO_DIR", str(tmp_path / "elsewhere"))
     env = dict(os.environ)
 
-    record = json.dumps({"ts": "2026-10-08T00:00:00Z", "change": "probe"})
+    record = json.dumps(_RECORDS.get(ledger, {"ts": "2026-10-08T00:00:00Z", "change": "probe"}))
     written = Path(_run(_WRITER, sub, env, ledger, stdin=record).strip())
     expected = (tmp_path / "elsewhere") if override else (repo / "cla.io" / "retro")
     assert written.parent.resolve() == expected.resolve(), (

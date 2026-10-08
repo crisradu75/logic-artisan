@@ -16,7 +16,7 @@ If nothing misfired, write one line to that effect in the log's `### Codify-proc
 
 ## Step 7 ledger schema
 
-Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB):
+Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB). `log_run.py` checks this shape — it is defined once, in that file's `SHAPES` — and refuses a record that does not match with one line naming the field. Every key below is required except `effectiveness`, `output_chars` and a re-offense's `failing_artifact`; `re_offenses` and `rejected_lessons` are lists even when empty, counts are integers, and `trimmed` / `process_issue` are `true` / `false`:
 
 ```json
 {
@@ -51,7 +51,7 @@ Record schema (counts-only — NO prose; the script rejects records ≥ 4 KiB):
   `lessons-learned.md` (the Step 6 rolling-log entry). A verbosity proxy `/cla:codify-retro` trends
   over time — a climbing mean signals the report template itself is ballooning, not a full
   session-token-spend measure. Count the appended entry text only; omit rather than estimate.
-- This step is best-effort: if `log_run.py` exits non-zero (malformed record, write failure), note it and continue — a missing ledger line never blocks the run. Do NOT halt.
+- This step is best-effort. If `log_run.py` refuses the record, fix the field its one-line message names and pipe it again, **once**. If it is refused again, or fails for any other reason (write failure, the size ceiling), note it and continue — a missing ledger line never blocks the run. Do NOT halt.
 
 ## Prefer-fixes trigger examples
 

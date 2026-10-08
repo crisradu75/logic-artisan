@@ -46,9 +46,18 @@ one append is lost).
 The record is COUNTS-ONLY (no prose) — prose lives in the skill's own report.
 The 4 KiB ceiling below is what enforces that in practice.
 
+SHAPES. `SHAPES` below is the one definition of what a `spec-to-pr-runs` and a
+`codify-runs` record look like — required keys AND value shapes, because the
+defect that motivated it (`phases` written as an object instead of a list) keeps
+the key present and only a value check sees it. Producers are prose a model
+follows, and in long sessions it wrote records from memory: `date` for `ts`, a
+dict for `phases`. A refused record prints ONE line naming the field and
+nothing is written. Any other ledger name gets only the name and size checks.
+
 A caller MUST NOT halt if this script fails — a missing log line is infinitely
-preferable to a halted workflow at the end of a successful run. Callers ignore
-a non-zero exit and continue.
+preferable to a halted workflow at the end of a successful run. On a shape
+refusal the caller fixes the field named and retries once; on any other
+failure, or a second refusal, it notes the line and continues.
 """
 
 from __future__ import annotations
@@ -58,12 +67,175 @@ import os
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # A ledger name is a bare filename, never a path. Without this an argument like
 # `../../etc/thing.jsonl` would write outside the ledger dir — the caller is a
 # model assembling a command line, so the check is not hypothetical.
 _LEDGER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$")
+
+
+# --------------------------------------------------------------------------- #
+# Record shapes
+# --------------------------------------------------------------------------- #
+# A shape is one of four tuples:
+#   ("leaf", test, what)              test(value) -> bool; `what` goes in the refusal
+#   ("list", item_shape)
+#   ("map", value_shape, rule)        an object with free keys, every value one shape
+#   ("obj", required, optional, rule) dicts of key -> shape; rule(obj) -> refusal|None
+# Keys not named are allowed and kept: a shape says what readers rely on, not
+# everything a producer may add.
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$")
+
+
+def _iso(value: object, *, date_ok: bool) -> bool:
+    """An ISO-8601 date-time with a zone (or, when `date_ok`, a bare date) that
+    also names a real instant — the pattern alone accepts month 13."""
+    if not isinstance(value, str):
+        return False
+    if not (_DATETIME_RE.match(value) or (date_ok and _DATE_RE.match(value))):
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def _leaf(test, what: str) -> tuple:
+    return ("leaf", test, what)
+
+
+def _one_of(*values: str) -> tuple:
+    return _leaf(lambda v: v in values, "one of " + ", ".join(f'"{v}"' for v in values))
+
+
+def _obj(required: dict | None = None, optional: dict | None = None, rule=None) -> tuple:
+    return ("obj", required or {}, optional or {}, rule)
+
+
+COUNT = _leaf(lambda v: type(v) is int and v >= 0, "a non-negative integer")
+BOOL = _leaf(lambda v: type(v) is bool, "true or false")
+TEXT = _leaf(lambda v: isinstance(v, str) and v.strip() != "", "a non-empty string")
+TS = _leaf(lambda v: _iso(v, date_ok=False),
+           'an ISO-8601 date-time with a zone, e.g. "2026-05-28T14:32:11Z"')
+TS_OR_DATE = _leaf(lambda v: _iso(v, date_ok=True),
+                   'an ISO-8601 date or date-time, e.g. "2026-05-28"')
+COUNT_OR_NULL = _leaf(lambda v: v is None or (type(v) is int and v >= 0),
+                      "a non-negative integer or null")
+
+SPEC_TO_PR_PHASES = ("Precheck", "Propose", "Review", "Implement", "Test", "Ship",
+                     "Revise", "Archive", "Handoff")
+REVISE_AGENTS = ("code-reviewer", "silent-failure-hunter", "pr-test-analyzer",
+                 "comment-analyzer", "type-design-analyzer", "plugin-dev:skill-reviewer")
+RUNGS = ("checklist", "memory", "claude_md", "skill_md", "hook", "script")
+
+
+def _phase_rule(phase: dict) -> str | None:
+    name = phase["name"]
+    if phase["status"] in ("warn", "fail") and "reason" not in phase:
+        return f"`reason` is required on a {phase['status']} phase ({name})"
+    if ("rounds_used" in phase) != ("rounds_cap" in phase):
+        return f"`rounds_used` and `rounds_cap` go together ({name})"
+    if name == "Review" and "size_gate" in phase:
+        if (phase["size_gate"] == "large") != bool(phase.get("agents")):
+            return ("`agents` must list the Review agents that ran in large mode, "
+                    "and be omitted or [] in small mode (Review)")
+    return None
+
+
+def _findings_rule(by_agent: dict) -> str | None:
+    for agent in by_agent:
+        if agent not in REVISE_AGENTS:
+            return (f"`routing.revise_findings_by_tier` key {agent!r} must be one of "
+                    + ", ".join(REVISE_AGENTS))
+    return None
+
+
+_PHASE = _obj(
+    {"name": _one_of(*SPEC_TO_PR_PHASES), "status": _one_of("ok", "warn", "skip", "fail")},
+    {"reason": TEXT, "rounds_used": COUNT, "rounds_cap": COUNT, "report_chars": COUNT,
+     "size_gate": _one_of("small", "large"),
+     "verdict": _one_of("READY", "FIX FIRST", "RETHINK"),
+     "verified_claims_count": COUNT,
+     "agents": ("list", TEXT),
+     "version_bumped": BOOL,
+     "findings_by_round": ("list", _obj(
+         {"round": COUNT, "found": COUNT, "sibling_instance": COUNT_OR_NULL}))},
+    _phase_rule,
+)
+
+SHAPES: dict[str, tuple] = {
+    "spec-to-pr-runs.jsonl": _obj(
+        {"ts": TS, "change": TEXT,
+         "mode": _one_of("description", "explore-result", "existing-change"),
+         "phases": ("list", _PHASE)},
+        {"args": _obj(optional={"review_rounds": COUNT, "test_rounds": COUNT,
+                                "pr_rounds": COUNT, "auto": BOOL}),
+         "asks": ("list", _obj({"header": TEXT, "choice": TEXT})),
+         "deferred_to_todo": COUNT,
+         "routing": _obj(optional={
+             "revise_findings_by_tier": ("map", _obj({"found": COUNT, "phantom": COUNT}),
+                                         _findings_rule)})},
+    ),
+    "codify-runs.jsonl": _obj(
+        {"ts": TS_OR_DATE, "scope": TEXT,
+         "suggestions": _obj({"proposed": COUNT, "applied": COUNT, "rejected": COUNT}),
+         "memory": _obj({"proposed": COUNT, "applied": COUNT}),
+         "re_offenses": ("list", _obj({"lesson": TEXT, "escalated_to": _one_of(*RUNGS)},
+                                      {"failing_artifact": TEXT})),
+         "rejected_lessons": ("list", TEXT),
+         "maintenance": _obj({"failure_modes_bullets": COUNT, "live_log_entries": COUNT,
+                              "trimmed": BOOL}),
+         "process_issue": BOOL},
+        {"effectiveness": _obj({"prevented": COUNT, "re_offended": COUNT,
+                                "not_exercised": COUNT}),
+         "output_chars": COUNT},
+    ),
+}
+
+
+def _shown(value: object) -> str:
+    text = json.dumps(value)
+    return text if len(text) <= 40 else text[:37] + "..."
+
+
+def shape_problem(value: object, shape: tuple, path: str = "") -> str | None:
+    """The first way `value` departs from `shape`, as one line naming the field,
+    or None when it conforms."""
+    kind = shape[0]
+    here = f"`{path}`" if path else "the record"
+    if kind == "leaf":
+        return None if shape[1](value) else f"{here} must be {shape[2]}, got {_shown(value)}"
+    if kind == "list":
+        if not isinstance(value, list):
+            return f"{here} must be a list, got {_shown(value)}"
+        for i, item in enumerate(value):
+            problem = shape_problem(item, shape[1], f"{path}[{i}]")
+            if problem:
+                return problem
+        return None
+    if not isinstance(value, dict):
+        return f"{here} must be an object, got {_shown(value)}"
+    if kind == "map":  # free keys, one value shape, then a rule over the keys
+        for key, item in value.items():
+            problem = shape_problem(item, shape[1], f"{path}.{key}")
+            if problem:
+                return problem
+        return shape[2](value)
+    _, required, optional, rule = shape
+    for key in required:
+        if key not in value:
+            return f"`{path + '.' if path else ''}{key}` is required"
+    for key, sub in {**required, **optional}.items():
+        if key in value:
+            problem = shape_problem(value[key], sub, f"{path + '.' if path else ''}{key}")
+            if problem:
+                return problem
+    return rule(value) if rule else None
 
 
 def _git_toplevel() -> Path | None:
@@ -141,6 +313,11 @@ def main(argv: list[str] | None = None) -> int:
     if not isinstance(record, dict):
         print("log_run: top-level JSON must be an object", file=sys.stderr)
         return 1
+    if ledger in SHAPES:
+        problem = shape_problem(record, SHAPES[ledger])
+        if problem:
+            print(f"log_run: {ledger} record refused: {problem}", file=sys.stderr)
+            return 1
 
     try:
         log_path = _runs_dir() / ledger

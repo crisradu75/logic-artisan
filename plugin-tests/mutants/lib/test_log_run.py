@@ -30,6 +30,18 @@ message mutant (mutant 5) pins the same test without writing anything.
     ASCII, and the ledger write goes through `sys.stdin.buffer` and an explicit
     `encode("utf-8")`, never the reconfigured streams.
 
+**Mutants 8 onward are the record-shape check.** Mutant 9 is the dropped
+2026-09-05 proposal's own failure, restored on purpose: a check that sees the
+`phases` KEY and not its VALUE accepts `phases` written as an object, which is the
+drift that motivated the check. The rest each loosen one rule the fleet's real
+records broke — a date where a date-time belongs, `true` where a count belongs, a
+warn with no reason, half a rounds pair, a large Review with no agents — or one of
+the four places the walker descends (list items, map values, optional keys, an
+object's rule).
+
+**DELIBERATELY NOT A MUTANT, for the shapes:** `_shown`'s 40-character cut. No
+test reads back a value that long, and the refusal names the field either way.
+
 And one honest limit, recorded rather than chased:
 `test_nothing_is_written_when_the_record_is_rejected` is a real test but is not
 independently pinnable — no single-token edit makes a rejected record write
@@ -119,6 +131,113 @@ MUTANTS = [
         SCRIPT,
         "ensure_ascii=False",
         "ensure_ascii=True",
+        TARGETS,
+    ),
+    (
+        "the shape check is computed and ignored, so every off-shape record is "
+        "appended as before",
+        SCRIPT,
+        "        problem = shape_problem(record, SHAPES[ledger])",
+        "        problem = None",
+        TARGETS,
+    ),
+    (
+        # The 2026-09-05 proposal's defect: key presence, not value shape.
+        "`phases` is checked for presence only, so a dict-shaped `phases` passes",
+        SCRIPT,
+        '         "phases": ("list", _PHASE)},',
+        '         "phases": _leaf(lambda v: v is not None, "present")},',
+        TARGETS,
+    ),
+    (
+        "a spec-to-pr `ts` may be a bare date, the shape chain runs wrote as `date`",
+        SCRIPT,
+        "TS = _leaf(lambda v: _iso(v, date_ok=False),",
+        "TS = _leaf(lambda v: _iso(v, date_ok=True),",
+        TARGETS,
+    ),
+    (
+        "a date-time without a zone passes, so the window sorts local times as UTC",
+        SCRIPT,
+        r'(Z|[+-]\d{2}:\d{2})$")',
+        r'(Z|[+-]\d{2}:\d{2})?$")',
+        TARGETS,
+    ),
+    (
+        "the pattern alone decides a `ts`, so month 13 day 40 is a valid time",
+        SCRIPT,
+        '        datetime.fromisoformat(value.replace("Z", "+00:00"))',
+        "        pass",
+        TARGETS,
+    ),
+    (
+        "`true` passes as a count — Python's bool is an int",
+        SCRIPT,
+        'COUNT = _leaf(lambda v: type(v) is int and v >= 0, "a non-negative integer")',
+        'COUNT = _leaf(lambda v: isinstance(v, int) and v >= 0, "a non-negative integer")',
+        TARGETS,
+    ),
+    (
+        "a negative count passes",
+        SCRIPT,
+        'COUNT = _leaf(lambda v: type(v) is int and v >= 0, "a non-negative integer")',
+        'COUNT = _leaf(lambda v: type(v) is int, "a non-negative integer")',
+        TARGETS,
+    ),
+    (
+        "a warn or fail phase may omit its reason, the one field the retro groups by",
+        SCRIPT,
+        '    if phase["status"] in ("warn", "fail") and "reason" not in phase:',
+        '    if phase["status"] in ("warn",) and "reason" not in phase:',
+        TARGETS,
+    ),
+    (
+        "only `rounds_used` without `rounds_cap` is caught; the other half slips",
+        SCRIPT,
+        '    if ("rounds_used" in phase) != ("rounds_cap" in phase):',
+        '    if "rounds_used" in phase and "rounds_cap" not in phase:',
+        TARGETS,
+    ),
+    (
+        "only `large` with no agents is caught; `small` listing agents slips",
+        SCRIPT,
+        '        if (phase["size_gate"] == "large") != bool(phase.get("agents")):',
+        '        if phase["size_gate"] == "large" and not phase.get("agents"):',
+        TARGETS,
+    ),
+    (
+        "list items are never checked, so a phase entry may be anything",
+        SCRIPT,
+        "        for i, item in enumerate(value):",
+        "        for i, item in enumerate(value[:0]):",
+        TARGETS,
+    ),
+    (
+        "a map's key rule is skipped, so legacy `opus` / `code_reviewer` keys pass",
+        SCRIPT,
+        "        return shape[2](value)",
+        "        return None",
+        TARGETS,
+    ),
+    (
+        "optional keys are never checked once present",
+        SCRIPT,
+        "    for key, sub in {**required, **optional}.items():",
+        "    for key, sub in required.items():",
+        TARGETS,
+    ),
+    (
+        "an object's rule is skipped, so every cross-field check goes quiet",
+        SCRIPT,
+        "    return rule(value) if rule else None",
+        "    return None",
+        TARGETS,
+    ),
+    (
+        "the agent list loses an id it must accept, refusing a real record",
+        SCRIPT,
+        '                 "comment-analyzer", "type-design-analyzer", "plugin-dev:skill-reviewer")',
+        '                 "comment-analyzer", "type-design-analyzer")',
         TARGETS,
     ),
 ]
