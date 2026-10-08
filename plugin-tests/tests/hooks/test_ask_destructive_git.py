@@ -391,6 +391,7 @@ def test_a_force_push_mentioned_inside_a_quoted_string_does_not_prompt(monkeypat
 # --------------------------------------------------------------------------- #
 
 
+# requirement: guard-hooks / Destructive git commands ask first
 def test_override_env_var_silences_the_prompt(monkeypatch, capsys):
     monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "1")
     assert _run("git push --force origin feature/x", monkeypatch, capsys) is None

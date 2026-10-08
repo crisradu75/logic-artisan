@@ -41,6 +41,7 @@ git fetch origin
 git status -sb
 pytest plugin-tests -q -n auto --dist loadfile
 node --test plugin-tests/node/mechanical-checks.test.mjs
+openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 ```
 
@@ -51,6 +52,7 @@ python3 .claude/skills/release/scripts/check_shipped_tree.py
 | Up to date with `origin` | Tagging a stale local branch publishes a tree that is not what `main` holds. |
 | `pytest plugin-tests -q -n auto --dist loadfile` fully green | There is no CI. This run, plus the Node run below, is the whole gate that exists. |
 | `node --test plugin-tests/node/mechanical-checks.test.mjs` fully green | the pytest gate does not reach it — `norecursedirs` excludes `node` — so a broken `mechanical-checks.mjs`, a SHIPPED file, ships behind an all-green pytest run without this line. Not hypothetical: commit `ee3e359` on `extract-dev-tree-from-plugin` fixed this suite failing with `ERR_MODULE_NOT_FOUND` while pytest stayed green throughout. |
+| `openspec validate --specs --strict` passes with no warning | It is the third command in CLAUDE.md's "Before opening a PR" gate, so the OpenSpec CLI is now a release precondition: without it on `PATH` this step fails and no tag is cut. |
 | The work is reviewed and merged | See the invariant above. |
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 
@@ -104,6 +106,7 @@ default branch never moves:
 git checkout -b release/<new>
 pytest plugin-tests -q -n auto --dist loadfile
 node --test plugin-tests/node/mechanical-checks.test.mjs
+openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
 git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude-plugin/marketplace.json CLAUDE.md
 git commit -m "release: <new>"

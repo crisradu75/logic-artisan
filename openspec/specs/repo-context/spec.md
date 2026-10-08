@@ -20,23 +20,23 @@ Where a repo keeps the facts and records the plugin's skills read and write, and
 - **WHEN** `/cla:cla-init` runs where some of the tree exists
 - **THEN** every existing file is left as it was and only the missing pieces are created
 
-### Requirement: cla-init seeds OpenSpec authoring rules without clobbering
+### Requirement: Seeding a repo's OpenSpec authoring rules
 
-cla-init SHALL create `openspec/config.yaml` with the shipped `rules:` block when `openspec/` has no config, and otherwise SHALL list each shipped rule the existing config lacks, leaving that file unchanged unless the user agrees to update it.
+`/cla:cla-init` SHALL create `openspec/config.yaml` with the shipped `rules:` block when `openspec/` has no config, and otherwise SHALL list each shipped rule the existing config lacks, leaving that file unchanged unless the user agrees to update it.
 
 #### Scenario: No config.yaml
 
-- **WHEN** cla-init runs in a repo with `openspec/` and neither `openspec/config.yaml` nor `openspec/config.yml`
-- **THEN** it creates the file with the rules block and reports `created`
+- **WHEN** `/cla:cla-init` runs in a repo with `openspec/` and neither `openspec/config.yaml` nor `openspec/config.yml`
+- **THEN** it creates `openspec/config.yaml` holding the shipped rules block
 
 #### Scenario: An existing config.yaml or config.yml
 
-- **WHEN** cla-init runs in a repo whose `openspec/config.yaml` or `openspec/config.yml` exists
+- **WHEN** `/cla:cla-init` runs in a repo whose `openspec/config.yaml` or `openspec/config.yml` exists
 - **THEN** no new config file is created, the existing one is unchanged, and each shipped rule it lacks is listed as missing or outdated
 
 #### Scenario: The user agrees to update the rules
 
-- **WHEN** cla-init has listed missing or outdated rules and the user agrees to update them
+- **WHEN** `/cla:cla-init` has listed missing or outdated rules and the user agrees to update them
 - **THEN** the listed rules are added to the existing config and the repo's own rules stay
 
 ### Requirement: Shared repo facts

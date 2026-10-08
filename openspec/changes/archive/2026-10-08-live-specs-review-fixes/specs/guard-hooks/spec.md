@@ -1,20 +1,4 @@
-# guard-hooks Specification
-
-## Purpose
-
-The safety checks the plugin applies to an agent's tool calls and to git pushes in a repo that installs it.
-
-## Requirements
-
-### Requirement: Guard hooks load with the plugin
-
-Loading the plugin SHALL turn on its guard hooks in every session, with no settings change in the repo and no warning at session start.
-
-#### Scenario: A session starts with the plugin installed
-
-- **WHEN** a session starts in a repo with the plugin installed
-- **THEN** the guard hooks run on matching tool calls
-- **AND** no hook configuration warning is printed
+## MODIFIED Requirements
 
 ### Requirement: Unsafe commands are blocked
 
@@ -49,6 +33,8 @@ The guard hooks SHALL ask the user before a force-push, a hard reset, a forced b
 - **WHEN** an agent runs `git checkout <path>` with no uncommitted changes to lose
 - **THEN** no prompt is shown
 
+## ADDED Requirements
+
 ### Requirement: Risky actions warn
 
 The guard hooks SHALL warn, without blocking, when a write replaces a tracked file with a much shorter one, `gh pr merge --delete-branch` would delete a branch that other open pull requests are based on, a commit may pick up a stray scratch file in the repo root, a Python or shell comment carries a date, or a heredoc holds an escape the shell would change.
@@ -63,16 +49,10 @@ The guard hooks SHALL warn, without blocking, when a write replaces a tracked fi
 - **WHEN** an agent runs `gh pr merge --delete-branch` on a pull request whose branch another open pull request is based on
 - **THEN** the merge goes ahead with a warning that the other pull request will be closed
 
-### Requirement: Direct pushes to main are refused
+## REMOVED Requirements
 
-The plugin SHALL ship a git `pre-push` hook that, once copied into a clone's `.git/hooks/`, refuses any push that updates or deletes `main` or `master` on the remote, from any tool, unless `ALLOW_PUSH_TO_MAIN=1` is set.
+### Requirement: Risky edits warn
 
-#### Scenario: Pushing to main
+**Reason**: Its stacked-merge trigger was worded as any merge into a shared base, while the warning fires only on `gh pr merge --delete-branch`, and the heading named edits where two triggers are commands.
 
-- **WHEN** a push from a clone with the hook installed would update the remote's `main`
-- **THEN** git refuses the push and suggests a branch and a pull request
-
-#### Scenario: An emergency override
-
-- **WHEN** the push is run with `ALLOW_PUSH_TO_MAIN=1`
-- **THEN** the push goes through
+**Migration**: Restated as guard-hooks / Risky actions warn.

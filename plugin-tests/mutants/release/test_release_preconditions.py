@@ -12,7 +12,7 @@ this batch is the evidence that the guard can fail.
 
 ANCHORING NOTES, both learned by the preflight refusing.
 
-1. The two gate commands appear THREE times each in `SKILL.md` — the precondition
+1. The gate commands appear THREE times each in `SKILL.md` — the precondition
    table, Step 1's runnable block, and Step 3's re-run block — so a bare command
    anchor is ambiguous and `mutate.py` refuses it. That ambiguity is not
    incidental: it is the same repetition that let the guard be satisfied by the
@@ -51,6 +51,29 @@ MUTANTS = [
             ]
         ),
         _NL.join(["git status -sb", "pytest plugin-tests -q -n auto --dist loadfile"]),
+        TARGETS,
+    ),
+    (
+        # The third gate command, added when the live specs were held to the
+        # OpenSpec length limit: a release must not tag a tree whose live specs
+        # fail `--strict`.
+        "the strict OpenSpec validation is dropped from Step 1's runnable preconditions",
+        SKILL,
+        _NL.join(
+            [
+                "git status -sb",
+                "pytest plugin-tests -q -n auto --dist loadfile",
+                "node --test plugin-tests/node/mechanical-checks.test.mjs",
+                "openspec validate --specs --strict",
+            ]
+        ),
+        _NL.join(
+            [
+                "git status -sb",
+                "pytest plugin-tests -q -n auto --dist loadfile",
+                "node --test plugin-tests/node/mechanical-checks.test.mjs",
+            ]
+        ),
         TARGETS,
     ),
     (

@@ -16,14 +16,19 @@ What the plugin promises when one change goes from a description to a reviewed, 
 - **THEN** a pull request is opened holding the change's code, tests and updated live specs
 - **AND** it is left open for the user to merge
 
-### Requirement: Round caps and a dry run
+### Requirement: Options for one change's run
 
-`/cla:spec-to-pr` SHALL accept `--review-rounds N` for the review before implementation, `--test-rounds N` for test-fix rounds, `--pr-rounds N` for review rounds on the pull request, `--gate-on-push` to pause before pushing, and `--dry-run` to run every check while writing nothing.
+`/cla:spec-to-pr` SHALL accept `--review-rounds N`, `--test-rounds N` and `--pr-rounds N` to cap the review before implementation, the test-fix rounds and the pull request review rounds, `--skip-review` to skip the pull request review, `--gate-on-push` or `--interactive` to pause before pushing, `--pr-base <branch>` to build on and open against another branch, `--narrow` for narrower permission rules, and `--dry-run` to run every check while writing nothing.
 
 #### Scenario: Skipping the pull request review
 
 - **WHEN** a user runs `/cla:spec-to-pr` with `--pr-rounds 0`
 - **THEN** no review round runs on the opened pull request
+
+#### Scenario: A dry run
+
+- **WHEN** a user runs `/cla:spec-to-pr` with `--dry-run`
+- **THEN** every check runs and no commit, push, pull request or file edit is made
 
 ### Requirement: Resuming a partly done change
 
@@ -68,7 +73,7 @@ A `/cla:spec-to-pr` run SHALL end with a report of each phase's outcome and ever
 
 ### Requirement: Specs follow the repo's authoring rules
 
-Skills that write or review an OpenSpec change SHALL apply the `rules:` block in the repo's `openspec/config.yaml`, which the plugin seeds to keep each spec to outcomes and interfaces, each requirement to one sentence of at most 500 characters with at most 3 scenarios, and each spec to at most 8 requirements.
+Skills that write or review an OpenSpec change SHALL apply the `rules:` block in the repo's `openspec/config.yaml`, which the plugin seeds from its shipped `rules:` block to keep specs to outcomes and interfaces in short requirements.
 
 #### Scenario: A requirement describing internal steps
 

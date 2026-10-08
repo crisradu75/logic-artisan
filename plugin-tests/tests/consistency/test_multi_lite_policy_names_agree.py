@@ -66,7 +66,6 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-# requirement: change-chains / Running a batch of small changes
 def test_every_policy_file_names_both_policies():
     missing = {
         path.name: sorted(POLICIES - _policy_tokens(_read(path)))
@@ -144,7 +143,7 @@ def test_resume_reads_only_columns_the_ledger_declares():
     assert "`merge_commit`" in _section(loop, *_STEP_3)
 
 
-# requirement: change-chains / What a small-change chain merges
+# requirement: small-change-chains / What a small-change chain merges
 def test_resume_without_recorded_findings_is_never_clean():
     """`/cla:lite-pr` keeps deferred findings only in context. A resumed step 7
     that found none recorded would otherwise match "`deferred` is `0`" by
@@ -158,6 +157,7 @@ def test_resume_without_recorded_findings_is_never_clean():
         assert "`review: clean`" not in arm
 
 
+# requirement: small-change-chains / A resumed small-change chain never merges unchecked commits
 def test_resume_never_merges_a_moved_head():
     """Commits pushed after `head_sha` was recorded were not tested or reviewed by
     the run. The moved-head arm must stop the row, and must come before every arm
@@ -227,7 +227,7 @@ def test_step_8a_does_not_swap_what_the_two_policies_merge():
     assert "only if" in arm["merge-dependencies-only"]
 
 
-# requirement: change-chains / What a small-change chain merges
+# requirement: small-change-chains / What a small-change chain merges
 def test_every_merge_runs_the_full_gate_first():
     """`/cla:lite-pr` commits its review fixes after its own Test phase, so the
     full gate at 8b is the only full run a merged head gets — and a gate with

@@ -43,7 +43,9 @@ _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cl
 # keys on the procedure rather than on a section title a skill may not use.
 _GATE_ANCHOR = "confirm it FAILS"
 
-# The clause the spec requires alongside it. This is the actionable half: a site
+# The clause every site must carry alongside it. The rule is
+# `_shared/references/test-quality-gates.md`, "How planting goes wrong"; this
+# test holds each site to it. This is the actionable half: a site
 # may say a great deal about mutants and still never tell the reader to read the
 # assertion that killed one.
 _REQUIRED_CLAUSE = "read the assertion that killed the mutant"
@@ -86,12 +88,13 @@ def test_the_discovery_is_not_vacuous() -> None:
     ids=lambda p: str(p.relative_to(_PLUGIN_ROOT)),
 )
 def test_every_gate_site_carries_the_killed_mutant_clause(path: Path) -> None:
-    """The spec's "A caught breakage is not enough"."""
+    """A caught breakage is not enough: each site tells its reader to read the
+    assertion that killed the mutant."""
     body = path.read_text(encoding="utf-8")
     assert _REQUIRED_CLAUSE in body, (
         f"{path.relative_to(_PLUGIN_ROOT)} states the mutation gate but omits "
         f"the killed-mutant clause ({_REQUIRED_CLAUSE!r}). A site without it "
-        f"briefs its reader that a killed mutant is self-certifying, which the "
-        f'spec\'s "A review fix is proven by breaking it" requirement forbids. Add the '
+        f"briefs its reader that a killed mutant is self-certifying, which "
+        f'test-quality-gates.md "How planting goes wrong" forbids. Add the '
         f"clause here rather than removing this site from the gate."
     )

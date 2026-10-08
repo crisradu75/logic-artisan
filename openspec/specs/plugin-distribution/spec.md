@@ -8,7 +8,7 @@ How a repo installs the `cla` plugin, what a release contains, and how releases 
 
 ### Requirement: Installing a pinned release
 
-The plugin SHALL install into a repo with `claude plugin marketplace add crisradu75/logic-artisan` followed by `claude plugin install cla@cris-logic-artisan`, giving the release the marketplace pins to an exact `cla--v<version>` tag, and a newer release on `/plugin marketplace update`.
+The plugin SHALL install into a repo with `claude plugin marketplace add crisradu75/logic-artisan` followed by `claude plugin install cla@cris-logic-artisan --scope project`, giving the release the marketplace pins to an exact `cla--v<version>` tag, and a newer release on `/plugin marketplace update`.
 
 #### Scenario: A fresh install
 

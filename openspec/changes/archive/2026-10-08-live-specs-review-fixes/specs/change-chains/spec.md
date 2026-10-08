@@ -1,19 +1,4 @@
-# change-chains Specification
-
-## Purpose
-
-What the plugin promises when a batch of changes from one decisions doc is proposed, run and merged without a person in the loop.
-
-## Requirements
-
-### Requirement: Proposing a batch of changes
-
-`/cla:multi-spec [decisions-file]` SHALL turn a decisions file, by default the newest under `cla.io/decisions/`, into a batch of OpenSpec change proposals committed one change at a time, reviewed together and opened as one pull request, without implementing them.
-
-#### Scenario: A decisions file with three decisions
-
-- **WHEN** a user runs `/cla:multi-spec` on a decisions file describing three changes
-- **THEN** one pull request opens holding three reviewed change proposals and no implementation
+## ADDED Requirements
 
 ### Requirement: Running a batch of OpenSpec changes in dependency order
 
@@ -53,15 +38,6 @@ What the plugin promises when a batch of changes from one decisions doc is propo
 - **THEN** no later change starts
 - **AND** the report names each change in the batch as shipped, halted with its reason, or never attempted
 
-### Requirement: Shared environment state merges first
-
-A change that migrates a shared environment, seeds shared data or provisions shared infrastructure SHALL be merged before the next change in its chain starts, even when nothing depends on its code, and when it cannot be merged every later change SHALL be skipped.
-
-#### Scenario: A migration with no code dependents
-
-- **WHEN** a chain holds a change that applies a database migration and nothing depends on its code
-- **THEN** it is merged before the next change starts
-
 ### Requirement: A later change is held to what an earlier one owes it
 
 When an earlier change in a `/cla:multi-pr` chain adds a field or behaviour for a later change, the later change's review SHALL report each such obligation the later change ignores, and the later change SHALL not count as ready while one is ignored.
@@ -71,11 +47,34 @@ When an earlier change in a `/cla:multi-pr` chain adds a field or behaviour for 
 - **WHEN** a later change's artifacts never mention a field an earlier change added for it
 - **THEN** its review reports the ignored obligation and the change is not ready
 
-### Requirement: An unattended chain keeps running
+## REMOVED Requirements
 
-A chain confirmed at its start SHALL keep running without the user until every change is done, skipped or stopped with a reported reason, asking the user only about a blocker it cannot resolve itself.
+### Requirement: Running a batch of OpenSpec changes
 
-#### Scenario: Between two changes
+**Reason**: Its second scenario relied on a default merge policy no requirement defined, and merging is now its own requirement.
 
-- **WHEN** one change finishes and another is still to run
-- **THEN** the chain starts the next change without waiting for the user
+**Migration**: Restated as change-chains / Running a batch of OpenSpec changes in dependency order; merging is change-chains / What an OpenSpec change chain merges.
+
+### Requirement: Running a batch of small changes
+
+**Reason**: change-chains is full; the small-change chain's requirements move to their own capability.
+
+**Migration**: Restated unchanged as small-change-chains / Running a batch of small changes.
+
+### Requirement: What a small-change chain merges
+
+**Reason**: Moved to its own capability, restoring the promises the outcome-level rewrite dropped: findings that cannot be recounted count as open, a pre-confirmed run that names no policy gets the narrower one, and a resumed run never merges an unchecked head.
+
+**Migration**: Restated as small-change-chains / What a small-change chain merges and small-change-chains / A resumed small-change chain never merges unchecked commits.
+
+### Requirement: A failure stops only what depends on it
+
+**Reason**: It joined two opposite behaviours under one heading: a small-change chain skips only the failed change's dependents, while an OpenSpec change chain stops every later change.
+
+**Migration**: Split into change-chains / A failed OpenSpec change stops the chain and small-change-chains / A failed small change skips its dependents.
+
+### Requirement: Obligations reach the change that owes them
+
+**Reason**: It named the internal hand-off between two skills rather than the outcome.
+
+**Migration**: Restated as change-chains / A later change is held to what an earlier one owes it.

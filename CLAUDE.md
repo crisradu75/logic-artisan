@@ -248,7 +248,7 @@ and paying them anyway is not caution, it is waste with the shape of rigour. The
 | Editing one skill or area | `pytest plugin-tests/tests/<area> -n auto --dist loadfile`, **once** |
 | Fixing a defect a review found | that area, plus a mutation batch over what the fix touches |
 | Adding a new script, skill, or hook | the five checks above, in full |
-| Before opening a PR | `pytest plugin-tests -q -n auto --dist loadfile` and `node --test plugin-tests/node/mechanical-checks.test.mjs`, each once |
+| Before opening a PR | `pytest plugin-tests -q -n auto --dist loadfile`, `node --test plugin-tests/node/mechanical-checks.test.mjs` and `openspec validate --specs --strict`, each once |
 
 **A green run does not get more true by being repeated.** Re-running a suite to see whether
 a failure recurs is the one case that justifies it — and then the finding is the flake, so
@@ -265,11 +265,10 @@ node --test plugin-tests/node/mechanical-checks.test.mjs
 
 ### No CI — verification is local, by design
 
-This repo runs **no GitHub Actions and no CI of any kind**, deliberately. Two local commands are
-the whole verification story: `pytest plugin-tests -q -n auto --dist loadfile` for the suite, and
-`node --test` for the one Node suite it does not reach. Run both once before opening a PR. **They
-are the shipping gate, not
-the edit loop** — while iterating, run the one area you are changing; see the table above.
+This repo runs **no GitHub Actions and no CI of any kind**, deliberately. Three local commands are
+the whole verification story: `pytest plugin-tests -q -n auto --dist loadfile` for the suite,
+`node --test` for the one Node suite it does not reach, and `openspec validate --specs --strict` for
+the live specs. Run each once before opening a PR. **They are the shipping gate, not the edit loop** — while iterating, run the one area you are changing; see the table above.
 
 Do not add a workflow. If a change seems to need one, raise it rather than adding it.
 

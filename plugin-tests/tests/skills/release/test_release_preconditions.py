@@ -144,9 +144,10 @@ def test_the_skill_states_the_never_move_invariant():
 
 def test_the_precondition_block_names_every_command_the_documented_gate_runs():
     """CLAUDE.md's "Before opening a PR" row is this repo's own statement of what
-    the shipping gate consists of — currently two commands, `pytest plugin-tests`
-    and the `node --test` run `pytest` cannot reach (`norecursedirs` excludes
-    `node`). The deleted `run_tests.py` used to fold both into one 13-entry run,
+    the shipping gate consists of — currently three commands, `pytest plugin-tests`,
+    the `node --test` run `pytest` cannot reach (`norecursedirs` excludes
+    `node`), and `openspec validate --specs --strict` over the live specs. The
+    deleted `run_tests.py` used to fold the first two into one 13-entry run,
     so cutting it over to this skill's two-command precondition list silently
     dropped Node coverage from the tag gate: `check_shipped_tree.py` ships
     `project-review/scripts/mechanical-checks.mjs`, and nothing in the

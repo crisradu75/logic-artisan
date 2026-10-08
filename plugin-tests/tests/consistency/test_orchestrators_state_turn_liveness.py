@@ -70,7 +70,7 @@ _DISCRIMINATOR = "pending event"
 _NOT_A_MECHANISM = "is not a mechanism"
 _MARKERS = (_MECHANICAL, _DISCRIMINATOR, _NOT_A_MECHANISM)
 
-# The exhaustive-set clause the spec pins. Stated identically by every family
+# The exhaustive-set clause this file pins. Stated identically by every family
 # member so no two assert differently-sized sets.
 _EXHAUSTIVE = "exactly two cases"
 
@@ -210,7 +210,7 @@ def test_every_family_skill_states_the_turn_liveness_rule():
 
 
 def test_every_family_skill_names_the_same_two_exit_cases():
-    """The spec pins the exhaustive set at exactly two. A drift back to three —
+    """The skill files pin the exhaustive set at exactly two. A drift back to three —
     the defect this change repaired in multi-pr and multi-lite, where the added
     third case was satisfiable by writing a paragraph — passed every other
     assertion here."""
