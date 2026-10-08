@@ -143,8 +143,8 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The root list narrowed. `hooks/` is 14 of 103 files, so this one IS
-        # visible to the floor (89 < 102) — unlike `lib` and `output-styles`,
+        # The root list narrowed. `hooks/` is 13 of 102 files, so this one IS
+        # visible to the floor (89 < 101) — unlike `lib` and `output-styles`,
         # which are not, and which mutants 1-2 cover a different way.
         #
         # THE ASYMMETRY IS NO LONGER LEFT STANDING. This comment used to end
@@ -186,26 +186,23 @@ MUTANTS = [
     #
     # These are the exact edits the block at the bottom of this file used to
     # record as unkillable. `REQUIRED_ROOTS` is what kills them; the floor is
-    # not, and mutant 7 is the one that shows it. Measured against the re-pinned
-    # floor of `>= 102`:
+    # not, and both show it. Measured against the floor of `>= 101`:
     #
-    #     drop `output-styles`  102 files  clears the floor exactly
-    #     drop `lib`            101 files  fails the floor by one
+    #     drop `output-styles`  101 files  clears the floor exactly
+    #     drop `lib`            101 files  clears the floor exactly
     #
-    # That asymmetry is an accident of today's file counts and is the argument
-    # for the separate list: the floor's stated rule is to be lowered on every
-    # deliberate deletion, and one lowering puts `lib` where `output-styles`
-    # already is, while `REQUIRED_ROOTS` keeps failing either way.
+    # Against the earlier floor of `>= 102`, dropping `lib` (two files then)
+    # failed it by one. This comment called that asymmetry an accident of the
+    # file counts and predicted one lowering would put `lib` where
+    # `output-styles` was; deleting `lib/ledger_summary.py` did exactly that,
+    # and `REQUIRED_ROOTS` keeps failing either way.
     #
     # BOTH ARE SCOPED TO `test_every_required_root_is_actually_reached`, so each
     # kill attributes to `REQUIRED_ROOTS` and to nothing else. This paragraph
     # used to end "mutant 7 is killed by REQUIRED_ROOTS alone, and mutant 8
     # currently dies twice over" — measured against the whole file that is now
-    # false in both halves: 7 dies twice (the root check and the recorded
-    # counts) and 8 dies three times (those two plus the floor). The asymmetry
-    # above is still real and still the argument; it is just no longer
-    # something the batch DEMONSTRATES, so it is stated as a measurement rather
-    # than implied by a kill.
+    # false: measured against the whole file, each dies twice (the root check
+    # and the recorded counts), and neither reaches the floor.
     (
         "the one-file root is dropped from the scan, which no count can see",
         GUARD,
@@ -214,8 +211,7 @@ MUTANTS = [
         _ROOTS_REACHED,
     ),
     (
-        "the two-file root is dropped from the scan, taking lib/log_run.py and "
-        "lib/ledger_summary.py out of it",
+        "the `lib` root is dropped from the scan, taking lib/log_run.py out of it",
         GUARD,
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks", "lib")',
         'SCANNED_ROOTS = ("skills", "agents", "output-styles", "hooks")',
@@ -249,10 +245,10 @@ MUTANTS = [
         # hand-pinned because a floor that re-derives itself asserts nothing.
         "a recorded measurement in the guard's own comments goes stale again",
         GUARD,
-        "    #     scanned 103  .json 3  .md 71  .mjs 1  .py 28  placeholder-refs 208 in 53 files"
+        "    #     scanned 102  .json 3  .md 71  .mjs 1  .py 27  placeholder-refs 202 in 52 files"
         + _NL
         + "    #" + _NL
-        + "    # The real count is 103. Pinned near it, not",
+        + "    # The real count is 102. Pinned near it, not",
         "    #     scanned 99  .json 3  .md 67  .mjs 1  .py 28  placeholder-refs 217 in 48 files"
         + _NL
         + "    #" + _NL

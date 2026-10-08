@@ -32,6 +32,11 @@ Output, one JSON object on stdout:
                                           # found is Critical+Important
       "asks": [{"header": str, "choices": {<choice>: int}}],
       "asks_unrecorded": int,             # asks the migration kept no header for
+      "flags": {"recorded": int,          # runs whose record carries `flags`
+                "runs": {<flag>: int}},   # of those, how many used each flag
+      "diagnose_escalations": {"recorded": int,  # runs carrying the count
+                               "runs": int,      # of those, runs with one or more
+                               "total": int},    # escalations summed
       "round_2_yield": {...}              # see `round_2_yield`
     }
 
@@ -103,10 +108,9 @@ _FLEET_FILE = "fleet.local.md"
 def _fleet_roots(path: Path) -> list[Path]:
     """Repo roots listed in the fleet file, one per `- ` bullet.
 
-    A copy of `lib/ledger_summary.py`'s, kept in step by hand. Format follows
-    `cla.io/project-tokens.local.md`: one item per `- ` bullet, inline `#`
-    comments and surrounding backticks stripped. It holds repo ROOTS rather than
-    ledger paths, so one file serves both readers.
+    Format follows `cla.io/project-tokens.local.md`: one item per `- ` bullet,
+    inline `#` comments and surrounding backticks stripped. It holds repo ROOTS
+    rather than ledger paths, so a reader of another ledger could share it.
 
     Raises on a missing or contentless file; this reader's default run catches
     that and falls back to the local ledger, saying why.
@@ -203,6 +207,11 @@ def _unreadable(rec: object) -> str | None:
             isinstance(a, dict) and isinstance(a.get("header"), str)
             and isinstance(a.get("choice"), str) for a in asks)):
         return "`asks`"
+    flags = rec.get("flags", [])
+    if not (isinstance(flags, list) and all(isinstance(f, str) for f in flags)):
+        return "`flags`"
+    if "escalated_to_diagnose" in rec and not _is_int(rec["escalated_to_diagnose"]):
+        return "`escalated_to_diagnose`"
     routing = rec.get("routing", {})
     if not isinstance(routing, dict):
         return "`routing`"
@@ -274,7 +283,17 @@ def aggregate(records: list[dict]) -> dict:
     findings: dict[str, dict[str, int]] = defaultdict(
         lambda: {"found": 0, "phantom": 0, "runs": 0})
     asks: dict[str, Counter] = defaultdict(Counter)
+    flags: Counter = Counter()
+    flags_recorded = 0
+    diagnose = {"recorded": 0, "runs": 0, "total": 0}
     for rec in records:
+        if "flags" in rec:  # absent on records written before the field existed
+            flags_recorded += 1
+            flags.update(set(rec["flags"]))
+        if "escalated_to_diagnose" in rec:
+            diagnose["recorded"] += 1
+            diagnose["runs"] += rec["escalated_to_diagnose"] > 0
+            diagnose["total"] += rec["escalated_to_diagnose"]
         for reason in _reasons(rec):
             if reason in PLACEHOLDER_REASONS:
                 unrecorded += 1
@@ -305,6 +324,9 @@ def aggregate(records: list[dict]) -> dict:
         "revise_findings": {agent: dict(c) for agent, c in sorted(findings.items())},
         "asks": [{"header": h, "choices": dict(c)} for h, c in asks.items()],
         "asks_unrecorded": asks_unrecorded,
+        "flags": {"recorded": flags_recorded,
+                  "runs": dict(sorted(flags.items(), key=lambda kv: (-kv[1], kv[0])))},
+        "diagnose_escalations": diagnose,
     }
 
 

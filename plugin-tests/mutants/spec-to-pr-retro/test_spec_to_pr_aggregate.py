@@ -6,10 +6,12 @@ the edits that would change a number a reader acts on without anything looking
 wrong: a threshold off by one, a window that silently widens, a placeholder
 counted as a real reason, a routine Revise round 2 counted as cap exhaustion.
 
-**NONE OF THE SHARED-COPY FUNCTIONS IS MUTATED HERE.** `_git_toplevel`,
-`_runs_dir` and `_fleet_roots` are copies of `lib/` code; the directory resolver
-is mutated in `mutants/consistency/test_ledger_dir_agrees.py`, and the phase and
-status constants in `mutants/consistency/test_run_record_values_agree.py`.
+**NEITHER SHARED-COPY FUNCTION IS MUTATED HERE.** `_git_toplevel` and
+`_runs_dir` are copies of `lib/log_run.py`'s; the directory resolver is mutated
+in `mutants/consistency/test_ledger_dir_agrees.py`, and the phase and status
+constants in `mutants/consistency/test_run_record_values_agree.py`. `_fleet_roots`
+is no copy any more — its twin went with the generic ledger reader — so its two
+parsing rules are mutated below.
 
 `_cap_hit` uses `>=` because the writer accepts `rounds_used > rounds_cap`; the
 tests write such a record, so `==` is a killable mutant here.
@@ -235,6 +237,64 @@ MUTANTS = [
         SCRIPT,
         "    seen = Counter(r for rec in recent for r in set(_reasons(rec)) if r not in PLACEHOLDER_REASONS)",
         "    seen = Counter(r for rec in recent for r in set(_reasons(rec)))",
+        TARGETS,
+    ),
+    # --- the fleet file, now read here only -----------------------------------
+    (
+        "an inline `#` comment is read as part of the repo root",
+        SCRIPT,
+        '        item = line[2:].split("#", 1)[0].strip().strip("`").strip()',
+        '        item = line[2:].strip().strip("`").strip()',
+        TARGETS,
+    ),
+    (
+        "a root in backticks is read with its backticks",
+        SCRIPT,
+        '        item = line[2:].split("#", 1)[0].strip().strip("`").strip()',
+        '        item = line[2:].split("#", 1)[0].strip()',
+        TARGETS,
+    ),
+    # --- flags and diagnose escalations ------------------------------------
+    (
+        "a run naming one flag twice counts as two runs using it",
+        SCRIPT,
+        '            flags.update(set(rec["flags"]))',
+        '            flags.update(rec["flags"])',
+        TARGETS,
+    ),
+    (
+        "a record written before `flags` existed counts as a run with no flags",
+        SCRIPT,
+        '        if "flags" in rec:  # absent on records written before the field existed',
+        "        if True:",
+        TARGETS,
+    ),
+    (
+        "flags tied on count come out in file order, not by name",
+        SCRIPT,
+        "                  \"runs\": dict(sorted(flags.items(), key=lambda kv: (-kv[1], kv[0])))},",
+        "                  \"runs\": dict(flags.most_common())},",
+        TARGETS,
+    ),
+    (
+        "a run with zero escalations counts as a run that escalated",
+        SCRIPT,
+        '            diagnose["runs"] += rec["escalated_to_diagnose"] > 0',
+        '            diagnose["runs"] += 1',
+        TARGETS,
+    ),
+    (
+        "a diagnose count that is not a count is read rather than skipped",
+        SCRIPT,
+        '    if "escalated_to_diagnose" in rec and not _is_int(rec["escalated_to_diagnose"]):',
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "a flag that is not a string is read rather than skipped",
+        SCRIPT,
+        "    if not (isinstance(flags, list) and all(isinstance(f, str) for f in flags)):",
+        "    if not isinstance(flags, list):",
         TARGETS,
     ),
 ]

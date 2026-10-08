@@ -1,24 +1,4 @@
-# run-ledgers Specification
-
-## Purpose
-
-The run records skills append under a repo's `cla.io/retro/`, and the retro reports read from them.
-
-## Requirements
-
-### Requirement: Ledger files
-
-Skills that record their runs SHALL append one JSON object per line to a ledger in the repo's `cla.io/retro/` directory, or in the directory `CLAUDE_RETRO_DIR` names, and a record that is not a single JSON object SHALL be refused, leaving the ledger unchanged.
-
-#### Scenario: A run is recorded
-
-- **WHEN** a skill records a run
-- **THEN** the ledger gains exactly one line holding that run's JSON object
-
-#### Scenario: A broken record
-
-- **WHEN** a skill hands the writer something that is not a JSON object
-- **THEN** the writer refuses it and the ledger is unchanged
+## MODIFIED Requirements
 
 ### Requirement: The spec-to-pr run record
 
@@ -34,43 +14,14 @@ Each `/cla:spec-to-pr` run SHALL append one record to `cla.io/retro/spec-to-pr-r
 - **WHEN** a run is invoked with `--inherits` and `--pr-rounds 1`
 - **THEN** its record lists both flag names, without their values
 
-### Requirement: Summarising recent spec-to-pr runs
+## REMOVED Requirements
 
-`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the repo's fleet file lists or, when none of them exists on the machine, only the repo's own ledger and saying so, naming each ledger read, counting a record it cannot read as skipped instead of failing, and reporting how many of those runs' changes had a second pull request review round and how many of those found a Critical or Important finding in it.
+### Requirement: Run records are checked when written
 
-#### Scenario: One unreadable record
+**Reason**: Rewritten as "Only checked run records are written": the writer now also refuses a ledger with no record shape, which this requirement's scenario said it accepted.
+**Migration**: A skill writing any ledger other than the two gets a refusal line and finishes its run; `/cla:cla-init` offers to delete the retired files.
 
-- **WHEN** a ledger holds one record with a field of the wrong shape
-- **THEN** the summary covers every other record and counts the skipped one
-
-#### Scenario: No fleet on this machine
-
-- **WHEN** the fleet file is missing or lists no repo that exists on the machine
-- **THEN** the summary reads only the repo's own ledger and says why
-
-#### Scenario: Second-round yield
-
-- **WHEN** three changes in the summarised runs had a second pull request review round and two of those rounds found a Critical or Important finding
-- **THEN** the summary reports three such changes, two of which found one
-
-### Requirement: Handoff suggests a retro on repeated trouble
-
-After recording its run, `/cla:spec-to-pr` SHALL print one line suggesting `/cla:spec-to-pr-retro` when, among the repo's last five run records, the test phase used its whole round cap in at least three, the pull request review phase ended at its round cap with a warning or failure in at least three, or one warning reason appears in at least two, and SHALL print nothing otherwise, never blocking the run.
-
-#### Scenario: Revise keeps ending at its cap with a warning or failure
-
-- **WHEN** the pull request review phase ended at its round cap with a warning or failure in three of the last five runs
-- **THEN** Handoff prints one line naming that and suggesting the retro
-
-#### Scenario: Revise reaches its cap cleanly
-
-- **WHEN** the pull request review phase used its whole round cap in each of the last five runs and never warned or failed
-- **THEN** Handoff prints nothing for it
-
-#### Scenario: A quiet ledger
-
-- **WHEN** no phase hit its cap in three of the last five runs and no warning reason repeats
-- **THEN** Handoff prints nothing extra and the run ends as before
+## ADDED Requirements
 
 ### Requirement: Only checked run records are written
 

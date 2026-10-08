@@ -29,9 +29,14 @@ EXAMPLES = [
 ]
 
 
+# requirement: run-ledgers / The spec-to-pr run record
 @pytest.mark.parametrize("ledger, path, fence", EXAMPLES, ids=[e[0] for e in EXAMPLES])
 def test_the_example_is_a_record_the_writer_accepts(ledger: str, path: Path, fence) -> None:
     found = fence.findall(path.read_text(encoding="utf-8"))
     assert len(found) == 1, f"{path.name}: expected one example, found {len(found)}"
     record = json.loads(found[0])
     assert log_run.shape_problems(record, log_run.SHAPES[ledger]) == []
+    # The example carries every field the record defines, so a model copying it
+    # leaves none out: an optional field missing from the example is one no run writes.
+    shape = log_run.SHAPES[ledger]
+    assert set(record) == set(shape[1]) | set(shape[2])

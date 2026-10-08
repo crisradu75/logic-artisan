@@ -1,14 +1,14 @@
 """Mutation batch for test_log_run.py.
 
 CLAUDE.md's script table justifies `log_run.py` as "the one ledger writer:
-validates the record, enforces the 4 KiB atomic-append ceiling, refuses a
-path-shaped ledger argument". Those are three separable claims and this batch
+validates the record, enforces the 4 KiB atomic-append ceiling, refuses any
+ledger name but its two". Those are three separable claims and this batch
 breaks each of them, because each fails silently in a different way: a wrong
 ledger name splits a history nobody reads back, an oversize record interleaves
-bytes inside one line under concurrency, and a path-shaped argument writes
-outside the ledger directory entirely.
+bytes inside one line under concurrency, and a name outside the two starts a
+file nothing reads, or writes outside the ledger directory entirely.
 
-**Mutant 5 is inside `_runs_dir`**, whose logic has copies in three other files.
+**Mutant 5 is inside `_runs_dir`**, whose logic has a copy in the aggregator.
 It edits only an error message, which the writer/reader agreement test
 (`tests/consistency/test_ledger_dir_agrees.py`) does not read, and `TARGETS` is
 the single guard file, so the kill attributes to this guard.
@@ -35,24 +35,26 @@ message mutant (mutant 5) pins the same test without writing anything.
 `phases` KEY and not its VALUE accepts `phases` written as an object, which is the
 drift that motivated the check. The rest each loosen one rule the fleet's real
 records broke — a date where a date-time belongs, `true` where a count belongs, a
-warn with no reason, half a rounds pair, a large Review with no agents — or one of
-the four places the walker descends (list items, map values, optional keys, an
-object's rule).
+warn with no reason, half a rounds pair — or one of the four places the walker
+descends (list items, map values, optional keys, an object's rule).
 
 **DELIBERATELY NOT A MUTANT, for the shapes:** `_shown`'s 40-character cut. No
 test reads back a value that long, and the refusal names the field either way.
 
-**Mutants 23 onward are the review findings on C1:** the Review pair held only on
-an `ok` Review (B1), every problem on the one line (S1) — at the join, in the object
-walk, and in the findings key rule — the rule gated on conforming required keys,
-canonical Revise agent ids (S3), and the rounds pair required on a Test or Revise
-that ran (Choice 1). The object-walk mutant writes a newline into the source
-through `\n` in its REPLACEMENT, never its anchor, so it holds on either checkout.
+**The mutants after the C1 marker are its review findings:** every problem on the
+one line (S1) — at the join, in the object walk, and in the findings key rule —
+the rule gated on conforming required keys, and the rounds pair required on a
+Test or Revise that ran (Choice 1). The object-walk mutant writes a newline into
+the source through `\n` in its REPLACEMENT, never its anchor, so it holds on
+either checkout. (The Review-pair and Revise-agents mutants went with those
+fields, in retire-unread-ledgers.)
 
-**The last five are the codify shape slim-codify-learnings introduced:** a rung
+**Then the codify shape slim-codify-learnings introduced:** a rung
 list that loses one or regains a retired artifact type, applied fixes whose
 entries go unchecked, a re-offense keyed by slug again (the 78-distinct-slugs
-defect), and a record with no date.
+defect), and a record with no date. **The last four are the fields
+retire-unread-ledgers added:** a flag spelled two ways, or with its value, would
+split one flag's count, and a diagnose count that is not a count reads as zero.
 
 And one honest limit, recorded rather than chased:
 `test_nothing_is_written_when_the_record_is_rejected` is a real test but is not
@@ -106,14 +108,14 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # The traversal the constant exists to stop. Narrow on purpose:
-        # `../escape.jsonl` and `.hidden.jsonl` are still refused by the FIRST
-        # character class, so the kill names the separator case specifically.
-        "the ledger-name pattern admits path separators, so a model-assembled "
-        "argument writes outside the ledger directory",
+        # The old contract: any `.jsonl` name passes the name check. The record
+        # then has no shape to check against, so the run dies on a traceback
+        # instead of the one line naming the ledgers it may use.
+        "any `.jsonl` name passes the ledger check, so a retired or misspelled "
+        "ledger gets past the refusal",
         SCRIPT,
-        r"[A-Za-z0-9][A-Za-z0-9._-]*\.jsonl$",
-        r"[A-Za-z0-9][A-Za-z0-9._\-/\\]*\.jsonl$",
+        "    if ledger not in SHAPES:",
+        '    if ledger not in SHAPES and not ledger.endswith(".jsonl"):',
         TARGETS,
     ),
     (
@@ -149,8 +151,8 @@ MUTANTS = [
         "the shape check is computed and ignored, so every off-shape record is "
         "appended as before",
         SCRIPT,
-        "        problem = shape_problem(record, SHAPES[ledger])",
-        "        problem = None",
+        "    problem = shape_problem(record, SHAPES[ledger])",
+        "    problem = None",
         TARGETS,
     ),
     (
@@ -211,13 +213,6 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "only `large` with no agents is caught; `small` listing agents slips",
-        SCRIPT,
-        '        if (phase["size_gate"] == "large") != bool(phase.get("agents")):',
-        '        if phase["size_gate"] == "large" and not phase.get("agents"):',
-        TARGETS,
-    ),
-    (
         "list items are never checked, so a phase entry may be anything",
         SCRIPT,
         "        return [problem for i, item in enumerate(value)",
@@ -253,15 +248,6 @@ MUTANTS = [
         TARGETS,
     ),
     # --- review findings on C1 ------------------------------------------------
-    (
-        # B1. The honest warn record — gate large, nothing dispatched, a reason —
-        # refused, so the run must either invent agents or write no line.
-        "the Review pair check runs on every status, refusing a truthful warn",
-        SCRIPT,
-        '    if name == "Review" and status == "ok" and "size_gate" in phase:',
-        '    if name == "Review" and "size_gate" in phase:',
-        TARGETS,
-    ),
     (
         # S1. The refusal names the first problem only; the one retry fixes it
         # and is refused again on the next.
@@ -299,15 +285,6 @@ MUTANTS = [
         SCRIPT,
         "    bad = [agent for agent in by_agent if agent not in REVISE_AGENTS]",
         "    bad = [agent for agent in by_agent if agent not in REVISE_AGENTS][:1]",
-        TARGETS,
-    ),
-    (
-        # S3. `pr-review-toolkit:code-reviewer` and `orchestrator-inline` pass,
-        # and the retro counts dispatches under ids yield is never keyed by.
-        "Revise `agents` stop being checked against the canonical ids",
-        SCRIPT,
-        '    if name == "Revise" and isinstance(phase.get("agents"), list):',
-        '    if False and isinstance(phase.get("agents"), list):',
         TARGETS,
     ),
     (
@@ -359,6 +336,35 @@ MUTANTS = [
         SCRIPT,
         '    elif "rounds_used" not in phase and name in ROUNDS_REQUIRED_ON and status != "skip":',
         '    elif "rounds_used" not in phase and name in ROUNDS_REQUIRED_ON:',
+        TARGETS,
+    ),
+    # --- the fields retire-unread-ledgers added -------------------------------
+    (
+        "a flag without its leading dashes passes, counted apart from the same flag",
+        SCRIPT,
+        'FLAG = _leaf(lambda v: isinstance(v, str) and len(v) > 2 and v.startswith("--")',
+        'FLAG = _leaf(lambda v: isinstance(v, str) and len(v) > 2',
+        TARGETS,
+    ),
+    (
+        "a flag may carry its value after `=`, one flag per value",
+        SCRIPT,
+        '             and "=" not in v and not any(c.isspace() for c in v),',
+        "             and not any(c.isspace() for c in v),",
+        TARGETS,
+    ),
+    (
+        "a flag may carry its value after a space, one flag per value",
+        SCRIPT,
+        '             and "=" not in v and not any(c.isspace() for c in v),',
+        '             and "=" not in v,',
+        TARGETS,
+    ),
+    (
+        "the diagnose count may be anything, and a string reads as no escalation",
+        SCRIPT,
+        '         "escalated_to_diagnose": COUNT,',
+        '         "escalated_to_diagnose": TEXT,',
         TARGETS,
     ),
 ]

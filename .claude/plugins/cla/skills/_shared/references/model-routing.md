@@ -130,8 +130,6 @@ On an **Opus session this rule is a no-op** — the inline model already is Opus
 detection is from the session-model line in the environment context. Revise triage itself is NOT
 escalated (it is adjudication over already-structured findings — Sonnet handles it).
 
-Record whether it fired in the run log (`routing.escalate_up_fired`, see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`).
-
 ## Why the bug-hunters are never demoted (phantom-finding economics)
 
 `code-reviewer` and `silent-failure-hunter` stay `opus` even in the cost-conscious routing because a

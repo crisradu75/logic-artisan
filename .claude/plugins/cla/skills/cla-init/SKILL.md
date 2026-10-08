@@ -1,6 +1,6 @@
 ---
 name: cla-init
-description: "Idempotent, never-clobber scaffolder for a repo's cla.io/ tree, empty ledgers, overlay stubs and OpenSpec authoring rules. Creates only what is missing; changes an existing OpenSpec config's rules only on the user's yes to the shown diff. Run with /cla:cla-init."
+description: "Idempotent, never-clobber scaffolder for a repo's cla.io/ tree, empty ledgers, overlay stubs and OpenSpec authoring rules. Creates only what is missing; changes an existing OpenSpec config's rules, or deletes retired run ledgers, only on the user's yes. Run with /cla:cla-init."
 argument-hint: "(no args — scaffolds the current repo)"
 allowed-tools: Bash, Read, Edit, Grep, Glob
 # Slash-command only (once per repo, at onboarding): keeps this description out of the
@@ -50,8 +50,9 @@ the plugin's standard repo-state resolution seam is git-based.
 
 - **Skip anything that exists — via a guarded idiom, never a bare redirect.** For every directory and
   every seed/stub file, check existence FIRST; if present, skip it untouched (no truncate, no
-  overwrite, no re-seed, no merge) and report `exists (skipped)`. The one exception is item 6's
-  rules update to an existing OpenSpec config, made only on the user's yes.
+  overwrite, no re-seed, no merge) and report `exists (skipped)`. The two exceptions are item 6's
+  rules update to an existing OpenSpec config and item 7's deletion of retired ledgers, each made
+  only on the user's yes.
 - **The guard is load-bearing.** A bare `> "$f"` or `cat > "$f"` truncates an existing file and defeats
   never-clobber. ALWAYS guard with `[ -e "$f" ] ||`. Pinned idioms:
   - directory → `mkdir -p "$dir"` (idempotent by construction)
@@ -79,17 +80,14 @@ shaped-decision `.md` files created by `shape-decision`/`multi-spec`).
 ### 2. Retro ledgers (0-byte — an empty file is a valid empty JSONL ledger; NO `[]` or placeholder line)
 
 ```bash
-# Seeded: the two ledgers whose record shape lib/log_run.py checks, appended via
-# that shared writer (which takes the ledger filename as its argument):
+# The only two ledgers lib/log_run.py accepts, appended via that shared writer
+# (which takes the ledger filename as its argument and refuses any other):
 #   spec-to-pr-runs     read by /cla:spec-to-pr-retro
-#   codify-runs         read by lib/ledger_summary.py
-# Not seeded — log_run.py creates each on its first append:
-#   lite-pr-runs, shape-decision-runs, feedback-runs
-#                       read by lib/ledger_summary.py, named in each skill
-#
-# There were four more (multi-pr, multi-spec, multi-lite, project-review). No
-# skill pointed a reader at them, so they were deleted. If you add a ledger, name
-# its reader in the same change — an unread ledger is exhaust, not data.
+#   codify-runs         /cla:codify-learnings' applied fixes and re-offenses;
+#                       no script reads it back
+# Every other ledger was retired because nothing read it (item 7 lists them). If
+# you add one, give it a shape in log_run.py and a reader in the same change: an
+# unread ledger is exhaust, not data.
 for f in spec-to-pr-runs codify-runs; do
   [ -e "$ROOT/cla.io/retro/$f.jsonl" ] || : > "$ROOT/cla.io/retro/$f.jsonl"
 done
@@ -276,12 +274,32 @@ fi
 Each item that contains `: ` stays double-quoted, or YAML reads it as a mapping and OpenSpec drops
 that artifact's rules.
 
+### 7. Retired ledgers — `cla.io/retro/`
+
+Ledgers a skill once wrote and nothing writes or reads any more. A repo onboarded earlier still
+holds them, and no install removes them. This block only lists the ones present:
+
+```bash
+: "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
+for f in commit-provenance right-model-runs multi-pr-runs multi-spec-runs multi-lite-runs \
+         project-review-runs lite-pr-runs shape-decision-runs feedback-runs; do
+  if [ -e "$ROOT/cla.io/retro/$f.jsonl" ]; then echo "retired ledger: cla.io/retro/$f.jsonl"; fi
+done
+```
+
+- Nothing printed → say none is present.
+- Lines printed → show them and ask once whether to delete those files. Only on an explicit yes,
+  `rm -- <each listed path>` (exactly the listed paths, nothing else under `cla.io/retro/`), and
+  report each `deleted`; on anything else report each `kept` and leave it. The deletion is left
+  uncommitted, like every other change this skill makes.
+
 ## Report
 
 At the end, print a per-target summary — each directory, ledger, seed, and stub as `created` or
 `exists (skipped)` — so a re-run is transparently a no-op on already-present pieces. For
 `openspec/config.yaml`, report `created`, `rules current`, the `+`/`-` lines, or `not written`
 followed by the `rules:` block to paste. Add the OpenSpec version line when it is older than 1.14.1.
+For item 7, report each retired ledger `deleted` or `kept`, or that none is present.
 
 ## Non-goals (pinned — never do these)
 

@@ -1,11 +1,8 @@
 # fleet — the repos whose cla ledgers this machine can read
 
-Read as data by `_fleet_roots()`, which has TWO copies — the spec-to-pr retro aggregator,
-which reads this file by default, and `.claude/plugins/cla/lib/ledger_summary.py`, the reader
-the per-skill ledger sections point at, which reads it under `--fleet`. No script pins the
-copies together any more, so a fix to one must be made in both by hand. One repo ROOT per `- `
-bullet; an inline
-`# comment` and surrounding backticks are stripped. This is a `*.local.md` overlay in the
+Read as data by `_fleet_roots()` in the spec-to-pr retro aggregator, which reads this file
+by default — its one reader since the generic ledger reader was deleted. One repo ROOT per
+`- ` bullet; an inline `# comment` and surrounding backticks are stripped. This is a `*.local.md` overlay in the
 repo's own `cla.io/` tree, outside the distributed plugin — **each machine curates its
 own, and it is never synced.**
 
@@ -23,8 +20,7 @@ to nothing contributes silently, which is the *same* sample-size error the fleet
 exists to remove. The retro aggregator reads this file by default, and falls back to this
 repo's own ledger, saying so, when none of the roots below exists on the machine it runs on.
 
-Roots, not ledger paths, so one list serves both readers and every ledger they read.
-Each caller appends the ledger filename it already knows.
+Roots, not ledger paths: the reader appends the ledger filename it already knows.
 
 ## Not every repo listed here has data
 

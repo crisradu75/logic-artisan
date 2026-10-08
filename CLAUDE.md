@@ -126,8 +126,7 @@ subdirectory names, so the batches are never collected as tests. A batch is opti
 has one, it carries the guard's name.
 
 **`lib/` is the odd one out in the plugin**: not a skill (no `SKILL.md`) and not a guard hook. It
-holds `log_run.py`, the one ledger writer every retro-logging skill invokes as a program,
-and `ledger_summary.py`, the generic reader those skills point at for reading one back.
+holds `log_run.py`, the one ledger writer the two run-logging skills invoke as a program.
 
 Of the four portable guards that police the fact/procedure split, **two reach consuming repos and
 two do not, and the difference is where they live.** No project token in synced core
@@ -337,7 +336,6 @@ The published plugin — everything here ships to a consuming repo:
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
   hooks/                       guard hooks + hooks.json wiring
   lib/log_run.py               the one ledger writer, invoked as a program
-  lib/ledger_summary.py        the generic ledger reader, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill)
   skills/<name>/
@@ -378,8 +376,7 @@ matching every existing row (`_shared/scripts/git_state.py`, `spec-to-pr-retro/s
 | Script | Why prose can't do it |
 |---|---|
 | `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
-| `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses a path-shaped ledger argument. |
-| `lib/ledger_summary.py` | Reads ANY ledger by deriving the shape from the records rather than being configured with it — see `summarise_field` for which types report what, and do not restate the branch list here; it was restated once and dropped two branches immediately. Exists because five ledgers had no reader and bespoke aggregators for each was a plan nobody was going to execute. |
+| `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses any ledger name but its two. |
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
 | `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |

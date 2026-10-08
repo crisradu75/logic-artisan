@@ -91,7 +91,7 @@ The routable dispatches (Implement/Revise agents) follow `${CLAUDE_PLUGIN_ROOT}/
 - **Propose authoring** (description / explore-result modes): dispatch the proposal/design/tasks authoring to an `opus` `Agent`, then continue inline.
 - **RETHINK-borderline Review verdict**: when the inline review lands at the FIX-FIRST/RETHINK boundary, second it with an `opus` `Agent` fed the context brief before committing to the verdict.
 
-On an **Opus session this is a no-op** (inline already is Opus). No flag — read the session model from the environment context. Record whether it fired in the run log (`routing.escalate_up_fired`, Handoff step 5). Full rationale + table: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`.
+On an **Opus session this is a no-op** (inline already is Opus). No flag — read the session model from the environment context. Full rationale + table: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`.
 
 ### Ticked-but-open tasks: the withdrawn scan
 

@@ -1,8 +1,8 @@
 """Mutation batch for test_ledger_dir_agrees.py.
 
-Breaks the directory resolver on each side of the writer/readers contract, once
+Breaks the directory resolver on each side of the writer/reader contract, once
 for the git-root path and once for the `CLAUDE_RETRO_DIR` override, so each
-parametrized case has to fire on its own and every reader is covered. The
+parametrized case has to fire on its own. The
 working-directory mutants prove the test runs from a subdirectory: from the
 repo root, a resolver that used `Path.cwd()` would agree with git and survive.
 
@@ -16,7 +16,6 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 WRITER = PLUGIN / "lib" / "log_run.py"
 READERS = {
     "spec_to_pr_aggregate": PLUGIN / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py",
-    "ledger_summary": PLUGIN / "lib" / "ledger_summary.py",
 }
 TARGETS = [DEV / "tests" / "consistency" / "test_ledger_dir_agrees.py"]
 

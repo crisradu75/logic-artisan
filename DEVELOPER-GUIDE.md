@@ -310,8 +310,10 @@ ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the c
   the ledger and improves the orchestrator. `codify-learnings` needs no retro of its own: it checks
   each session failure against the rules earlier runs wrote, and escalates a rule that failed again.
 
-The discipline throughout: log every run now, build the analyzer only once the ledger justifies it
-(several `*-retro` skills are deliberately not built yet — see issue #174).
+The discipline throughout: a ledger earns its place by a reader. `lib/log_run.py` accepts two —
+`spec-to-pr-runs`, which `spec-to-pr-retro` reads, and `codify-runs`, which `codify-learnings`
+writes beside the fixes it applies and no script reads yet. The ledgers retired for having no
+reader are listed by `cla-init`, which offers to delete the ones a repo still holds.
 
 Three utilities worth knowing at any phase:
 
@@ -440,11 +442,10 @@ Contributing to the harness rather than using it? The extra rules:
   repo stay neutral stubs — this is the source, not a consumer.
 
 - **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself), with one Node
-  exception noted above. Scripts carrying copies of the same helper (the spec-to-pr retro aggregator,
-  `lib/log_run.py`, `lib/ledger_summary.py`) are kept in step by hand;
-  `plugin-tests/tests/consistency/test_ledger_dir_agrees.py` checks that the ledger writer and
-  every reader of it (the aggregator and `lib/ledger_summary.py`) resolve the same directory,
-  run from a subdirectory of the repo.
+  exception noted above. The spec-to-pr retro aggregator carries a copy of `lib/log_run.py`'s
+  ledger-directory resolver, kept in step by hand;
+  `plugin-tests/tests/consistency/test_ledger_dir_agrees.py` checks that the writer and the
+  aggregator resolve the same directory, run from a subdirectory of the repo.
 
 - **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
   covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work

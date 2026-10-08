@@ -2,10 +2,12 @@
 
 The mutants put back into each example the kinds of value a template carries and
 a record cannot: the alternatives-as-one-string `mode` the review found, a
-placeholder where a count belongs, a retired agent name in Revise `agents`, and,
-in the codify example, a rung from the retired artifact-type list and a re-offense
-keyed by slug instead of artifact. Each is a record the writer refuses, so a
-recipe that says "build from the example" would spend its one retry on it.
+placeholder where a count belongs, a flag carrying its value, and, in the codify
+example, a rung from the retired artifact-type list and a re-offense keyed by slug
+instead of artifact. Each is a record the writer refuses, so a recipe that says
+"build from the example" would spend its one retry on it. The last two leave a
+field out of the example, or put back one the record dropped: a field the example
+lacks is one no run copies, and one it keeps is one every run writes for nobody.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_run_record_examples.py
 """
@@ -27,10 +29,10 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "the spec-to-pr example's Revise names an agent by its dispatch form",
+        "the spec-to-pr example's flag carries its value",
         SCHEMA,
-        '     "agents": ["code-reviewer", "silent-failure-hunter"],',
-        '     "agents": ["pr-review-toolkit:code-reviewer", "silent-failure-hunter"],',
+        '  "flags": ["--inherits", "--pr-rounds"],',
+        '  "flags": ["--inherits", "--pr-rounds 1"],',
         TARGETS,
     ),
     (
@@ -52,6 +54,20 @@ MUTANTS = [
         CODIFY,
         '[{"artifact": "CLAUDE.md", "escalated_to": "hook"}]',
         '[{"lesson": "stale-port", "escalated_to": "hook"}]',
+        TARGETS,
+    ),
+    (
+        "the spec-to-pr example leaves out the diagnose count",
+        SCHEMA,
+        '  "escalated_to_diagnose": 0,\n',
+        "",
+        TARGETS,
+    ),
+    (
+        "the spec-to-pr example carries a field the record dropped",
+        SCHEMA,
+        '  "escalated_to_diagnose": 0,\n',
+        '  "escalated_to_diagnose": 0,\n  "deferred_to_todo": 0,\n',
         TARGETS,
     ),
 ]

@@ -26,9 +26,6 @@ ledger; each is mapped mechanically, never guessed:
   * `change_name` -> `change`.
   * `asks` as `{"count": n, "choices": [...]}` or a bare count -> a list of
     `{header, choice}`, with "(not recorded)" for what the record did not keep.
-  * Revise `agents`: the `pr-review-toolkit:` prefix is stripped to the bare id;
-    an entry that is still no canonical agent (a retired name, `orchestrator-inline`
-    lifted from a round-2 list) moves to `agents_unmapped` on the phase.
   * `routing.revise_findings_by_tier`: a canonical agent whose value counts by
     severity only, `{"critical": n, "important": n, "suggestion": n}` with zeros
     omitted, becomes `{"found": critical + important, "phantom": 0}` — the record
@@ -39,10 +36,6 @@ ledger; each is mapped mechanically, never guessed:
     moves to `routing.revise_findings_unmapped`; `code_reviewer`-style keys are
     re-spelled. When nothing is left the key is dropped: absent reads as no data,
     while `{}` would read as a Revise that found nothing.
-  * an `ok` Review whose `size_gate` is outside small/large, or `large` with no
-    agents listed (the two cannot both be true) -> moved to `size_gate_unmapped`
-    on that phase. A warn Review keeps the pair: that is how a run records agents
-    it could not dispatch.
 
 ONE GAP IS LEFT, on purpose. The writer requires `rounds_used`/`rounds_cap` on a
 Test or Revise phase that ran; a record written before that rule carried no pair,
@@ -79,7 +72,6 @@ AGENT_FINDINGS_SHAPE = SHAPE[2]["routing"][2]["revise_findings_by_tier"][1]
 NOT_RECORDED = "(not recorded)"
 NO_REASON = "reason not recorded (migrated record)"
 PARTIAL_REASON = "partial (migrated record)"
-TOOLKIT_PREFIX = "pr-review-toolkit:"
 _SEVERITY_ONLY = {"critical", "important", "suggestion"}
 # See "ONE GAP IS LEFT" above. Matched against the writer's own refusal clause, so a
 # reworded clause stops matching and the record reports as unmappable — loud, not lax.
@@ -87,8 +79,7 @@ _HISTORY_GAP = re.compile(r"^`rounds_used` and `rounds_cap` are required on a (T
                           r"phase that was not skipped \((ok|warn|fail)\)$")
 _CANONICAL = {name.lower(): name for name in log_run.SPEC_TO_PR_PHASES}
 _CAP_KEY = {"Review": "review_rounds", "Test": "test_rounds", "Revise": "pr_rounds"}
-_LIFT = ("rounds_used", "rounds_cap", "size_gate", "verdict", "verified_claims_count",
-         "agents", "version_bumped", "findings_by_round", "report_chars", "reason")
+_LIFT = ("rounds_used", "rounds_cap", "findings_by_round", "reason")
 
 
 def remaining_problems(rec: dict) -> list[str]:
@@ -108,13 +99,6 @@ def _side_fields(side: dict, name: str) -> dict:
         out["rounds_used"] = side["rounds"]
     if "reason" not in out and "warn_reason" in side:
         out["reason"] = side["warn_reason"]
-    if name == "Revise" and "agents" not in out:
-        merged: list = []
-        for key in ("agents_round1", "agents_round2", "agents_dispatched"):
-            if isinstance(side.get(key), list):
-                merged += [a for a in side[key] if a not in merged]
-        if merged:
-            out["agents"] = merged
     return out
 
 
@@ -174,47 +158,7 @@ def _phase_list(rec: dict, notes: list[str]) -> list | None:
         if entry.get("status") in ("warn", "fail") and "reason" not in entry:
             entry["reason"] = NO_REASON
             notes.append(f"{name} {entry['status']} given a reason")
-        # After the status is final: only an `ok` Review must agree with itself.
-        if name == "Review" and "size_gate" in entry and (
-                entry["size_gate"] not in log_run.SIZE_GATES
-                or (entry.get("status") == "ok"
-                    and (entry["size_gate"] == "large") != bool(entry.get("agents")))):
-            entry["size_gate_unmapped"] = entry.pop("size_gate")
-            notes.append("Review size_gate moved aside")
-        if name == "Revise":
-            _revise_agents(entry, notes)
     return entries
-
-
-def _revise_agents(entry: dict, notes: list[str]) -> None:
-    """Revise `agents` by canonical id: prefix stripped, anything else set aside."""
-    agents = entry.get("agents")
-    if not isinstance(agents, list):
-        return
-    kept: list = []
-    aside: list = []
-    stripped = 0
-    for agent in agents:
-        bare = agent
-        if isinstance(agent, str) and agent.startswith(TOOLKIT_PREFIX):
-            bare = agent[len(TOOLKIT_PREFIX):]
-        if isinstance(bare, str) and bare in log_run.REVISE_AGENTS:
-            stripped += bare != agent
-            if bare not in kept:
-                kept.append(bare)
-        else:
-            aside.append(agent)
-    if kept == agents:
-        return
-    if stripped:
-        notes.append(f"Revise agents: {TOOLKIT_PREFIX} prefix stripped")
-    if aside:
-        entry["agents_unmapped"] = aside
-        notes.append(f"Revise agents: {len(aside)} non-agent entries moved aside")
-    if kept or not aside:
-        entry["agents"] = kept
-    else:
-        del entry["agents"]  # nothing canonical was dispatched on record: no data, not none
 
 
 def _asks(value: object) -> list | None:

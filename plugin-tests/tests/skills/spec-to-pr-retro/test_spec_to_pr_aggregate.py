@@ -37,8 +37,7 @@ def _revise(rounds: list[tuple[int, int]], used: int | None = None, cap: int = 2
     """A Revise phase whose findings_by_round holds (round, found) pairs."""
     return _phase("Revise", status, rounds_used=used if used is not None else len(rounds),
                   rounds_cap=cap,
-                  findings_by_round=[{"round": r, "found": f, "sibling_instance": 0}
-                                     for r, f in rounds], **fields)
+                  findings_by_round=[{"round": r, "found": f} for r, f in rounds], **fields)
 
 
 def _write(path: Path, records: list, raw_lines: list[str] = ()) -> Path:
@@ -79,7 +78,8 @@ def test_emits_exactly_the_kept_fields(tmp_path: Path) -> None:
     assert set(out) == {
         "source", "ledgers", "runs_analyzed", "window", "skipped_records",
         "warn_reasons", "warn_reasons_unrecorded", "cap_exhaustion",
-        "revise_findings", "asks", "asks_unrecorded", "round_2_yield",
+        "revise_findings", "asks", "asks_unrecorded", "flags", "diagnose_escalations",
+        "round_2_yield",
     }
 
 
@@ -201,6 +201,42 @@ def test_asks_tally_choices_per_header(tmp_path: Path) -> None:
     assert out["asks_unrecorded"] == 2
 
 
+# requirement: run-ledgers / Summarising flag use and diagnose escalations
+def test_flags_count_the_runs_using_each_over_the_runs_that_record_them(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(flags=["--inherits", "--pr-rounds"]),
+        _rec(flags=["--inherits", "--inherits"]),  # one run, one use
+        _rec(flags=["--auto"]),
+        _rec(flags=[]),
+        _rec(),  # written before the field existed: not a run without flags
+    ])
+    out, _ = _log(log)
+    assert out["flags"]["recorded"] == 4
+    # Most used first, ties by name.
+    assert list(out["flags"]["runs"].items()) == [
+        ("--inherits", 2), ("--auto", 1), ("--pr-rounds", 1)]
+
+
+# requirement: run-ledgers / Summarising flag use and diagnose escalations
+def test_diagnose_escalations_count_runs_and_escalations(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(escalated_to_diagnose=2), _rec(escalated_to_diagnose=0),
+        _rec(escalated_to_diagnose=1), _rec(),
+    ])
+    out, _ = _log(log)
+    assert out["diagnose_escalations"] == {"recorded": 3, "runs": 2, "total": 3}
+
+
+def test_flags_and_escalations_cover_the_window(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [
+        _rec(flags=["--auto"], escalated_to_diagnose=4),
+        _rec(flags=["--inherits"], escalated_to_diagnose=1),
+    ])
+    out, _ = _log(log, limit=1)
+    assert out["flags"] == {"recorded": 1, "runs": {"--inherits": 1}}
+    assert out["diagnose_escalations"] == {"recorded": 1, "runs": 1, "total": 1}
+
+
 # --- skipped lines -----------------------------------------------------------
 
 # requirement: run-ledgers / Summarising recent spec-to-pr runs
@@ -210,15 +246,21 @@ def test_unreadable_lines_are_skipped_named_and_counted(tmp_path: Path) -> None:
         _rec(phases={"review": "ok"}),                              # old dict shape
         _rec(phases=[_revise([(1, 1)], used=True)]),                # bool count
         _rec(routing={"revise_findings_by_tier": {"opus": 3}}),     # not per agent
+        _rec(flags="--auto"),                                       # not a list
+        _rec(flags=[1]),                                            # not a name
+        _rec(escalated_to_diagnose="1"),                            # not a count
+        _rec(escalated_to_diagnose=True),                           # bool, not a count
     ], raw_lines=["{not json", "[1, 2]"])
     out, err = _log(log)
     assert out["runs_analyzed"] == 1
     assert out["warn_reasons"] == [{"reason": "kept", "count": 1}]
-    assert out["skipped_records"] == 5
-    assert out["ledgers"][0]["skipped"] == 5
+    assert out["skipped_records"] == 9
+    assert out["ledgers"][0]["skipped"] == 9
     for line, field in [(2, "`phases`"), (3, "`rounds_used`"),
-                        (4, "`routing.revise_findings_by_tier`"), (5, "not JSON"),
-                        (6, "not a JSON object")]:
+                        (4, "`routing.revise_findings_by_tier`"), (5, "`flags`"),
+                        (6, "`flags`"), (7, "`escalated_to_diagnose`"),
+                        (8, "`escalated_to_diagnose`"), (9, "not JSON"),
+                        (10, "not a JSON object")]:
         assert f"line {line} skipped: {field}" in err
 
 

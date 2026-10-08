@@ -11,11 +11,12 @@ the NEWEST commit in a line's history instead of the oldest dates a run by the
 last edit to its line, which in one real ledger is a docs commit three weeks
 after the run.
 
-**Mutants 16 onward are the review findings on C1:** a warn Review keeps its gate
-(B1), Revise agents by canonical id with the rest kept aside (S3), a findings map
+**The mutants after the marker are the review findings on C1:** a findings map
 emptied by the move dropped rather than left `{}`, and per-agent severity counts
 mapped to `found` only where the record leaves no doubt (S4), the one history gap
 excused and nothing wider (Choice 1), and a junk `ts` giving way to `started` (d).
+The Review-gate and Revise-agents mappings went when the record dropped those
+fields.
 
 **DELIBERATELY NOT MUTANTS:**
 
@@ -89,13 +90,6 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "round-2 agents are dropped from Revise's dispatch list",
-        SCRIPT,
-        '        for key in ("agents_round1", "agents_round2", "agents_dispatched"):',
-        '        for key in ("agents_round1", "agents_dispatched"):',
-        TARGETS,
-    ),
-    (
         "`rounds` is not read as `rounds_used`, so chain records lose every round count",
         SCRIPT,
         '    if "rounds_used" not in out and "rounds" in side:',
@@ -103,18 +97,11 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "a side-block value is lifted without checking it, so `FIX_FIRST` makes the "
-        "whole record unmappable",
+        "a side-block value is lifted without checking it, so a count where a list "
+        "belongs makes the whole record unmappable",
         SCRIPT,
         "                if key not in entry and _field_ok(key, value):",
         "                if key not in entry:",
-        TARGETS,
-    ),
-    (
-        "an ok Review gate that contradicts its agents is left in place",
-        SCRIPT,
-        '                    and (entry["size_gate"] == "large") != bool(entry.get("agents")))):',
-        "                    and False)):",
         TARGETS,
     ),
     (
@@ -146,37 +133,6 @@ MUTANTS = [
         TARGETS,
     ),
     # --- review findings on C1 ------------------------------------------------
-    (
-        # B1 mirrored: the truthful warn record loses the gate it reported.
-        "a warn Review's gate is moved aside as if it contradicted itself",
-        SCRIPT,
-        '                or (entry.get("status") == "ok"',
-        '                or (entry.get("status") != "skip"',
-        TARGETS,
-    ),
-    (
-        # S3. `pr-review-toolkit:code-reviewer` survives into a record the writer
-        # now refuses, so every such line reports as unmappable.
-        "the `pr-review-toolkit:` prefix is not stripped",
-        SCRIPT,
-        '            bare = agent[len(TOOLKIT_PREFIX):]',
-        "            bare = agent",
-        TARGETS,
-    ),
-    (
-        "a non-agent Revise entry is dropped instead of kept beside the phase",
-        SCRIPT,
-        '        entry["agents_unmapped"] = aside',
-        "        pass",
-        TARGETS,
-    ),
-    (
-        "a Revise list with nothing canonical left becomes `[]`, saying no agent ran",
-        SCRIPT,
-        "    if kept or not aside:",
-        "    if True:",
-        TARGETS,
-    ),
     (
         # S4. `{}` left behind reads as "Revise found nothing".
         "a findings map emptied by the move is left as `{}` instead of dropped",

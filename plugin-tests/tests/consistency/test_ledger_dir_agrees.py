@@ -1,10 +1,9 @@
-"""The ledger writer and every reader of it must resolve the same directory.
+"""The ledger writer and its reader must resolve the same directory.
 
-`lib/log_run.py` writes a run record, and two programs read one back, each with
-its own copy of the directory resolver: `spec_to_pr_aggregate.py` and
-`lib/ledger_summary.py`. If a copy disagrees with the
-writer, that reader finds nothing and reports zero records, which reads as a cold
-start. So this runs the writer and each reader as programs, the way a skill does,
+`lib/log_run.py` writes a run record, and `spec_to_pr_aggregate.py` reads one
+back with its own copy of the directory resolver. If the copy disagrees with the
+writer, the reader finds nothing and reports zero records, which reads as a cold
+start. So this runs the writer and the reader as programs, the way a skill does,
 and checks the reader sees the record the writer just appended. Both run from a
 subdirectory of the repo, so a resolver that used the working directory instead
 of the git root would miss. The filename half of the contract is
@@ -30,15 +29,10 @@ _READERS = {
         _PLUGIN / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py",
         "spec-to-pr-runs.jsonl", (), "runs_analyzed",
     ),
-    "ledger_summary": (
-        _PLUGIN / "lib" / "ledger_summary.py",
-        "lite-pr-runs.jsonl", ("--ledger", "lite-pr-runs.jsonl"), "records",
-    ),
 }
 
 
-# A record the writer accepts for each shape-checked ledger a reader here reads;
-# any other ledger takes the bare probe.
+# A record the writer accepts, for each ledger a reader here reads.
 _RECORDS = {
     "spec-to-pr-runs.jsonl": {
         "ts": "2026-10-08T00:00:00Z", "change": "probe", "mode": "description",
@@ -69,7 +63,7 @@ def test_the_reader_finds_what_the_writer_wrote(tmp_path, monkeypatch, override,
         monkeypatch.setenv("CLAUDE_RETRO_DIR", str(tmp_path / "elsewhere"))
     env = dict(os.environ)
 
-    record = json.dumps(_RECORDS.get(ledger, {"ts": "2026-10-08T00:00:00Z", "change": "probe"}))
+    record = json.dumps(_RECORDS[ledger])
     written = Path(_run(_WRITER, sub, env, ledger, stdin=record).strip())
     expected = (tmp_path / "elsewhere") if override else (repo / "cla.io" / "retro")
     assert written.parent.resolve() == expected.resolve(), (

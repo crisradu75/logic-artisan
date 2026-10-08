@@ -1,19 +1,17 @@
 """Mutation batch for test_ledger_names_agree.py.
 
 The guard claims the ledger filename a skill WRITES cannot drift from the one its
-retro skill READS without a test going red. The failure it exists for is silent
-in a way worth restating: `log_run.py` validates only the SHAPE of the argument,
-so a misspelled name is written happily to a brand-new file, the reader then finds
-nothing, and the retro skill instructs the model to read `runs_analyzed: 0` as
-"the loop has not run yet". Three silences in a row and the history is gone.
+retro skill READS, from the two `log_run.py` accepts, or from the two cla-init
+seeds, without a test going red. `log_run.py` refuses a misspelled name, but only
+at the end of a run, where the refusal is non-fatal and easy to miss; the reader
+then reports `runs_analyzed: 0`, which reads as "the loop has not run yet".
 
 **Both halves of the one remaining contract.** The contract spans two languages —
 prose on the writer side, a Python constant on the reader side — so one mutant
 breaks the spec-to-pr writer and one its reader. Two more break the guard's own
 extraction, because a guard that cannot read either side reports agreement
-between two things it never found. The codify ledger lost its retro reader with
-`codify-retro`; its writer's spelling is still pinned, by the cla-init scan's
-non-vacuity set, and the first mutant proves that.
+between two things it never found. The codify ledger has no reader; its writer's
+spelling is pinned against `SHAPES`, and the first mutant proves that.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_ledger_names_agree.py
 """
@@ -28,6 +26,7 @@ CODIFY_SKILL = PLUGIN / "skills" / "codify-learnings" / "SKILL.md"
 SCHEMA = PLUGIN / "skills" / "_shared" / "references" / "run-log-schema.md"
 S2P_READER = PLUGIN / "skills" / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py"
 CLA_INIT = PLUGIN / "skills" / "cla-init" / "SKILL.md"
+FEEDBACK_SKILL = PLUGIN / "skills" / "feedback" / "SKILL.md"
 
 # Scoped to the ONE guard file: a target red for any other reason reports every
 # mutant "killed" and proves nothing.
@@ -35,12 +34,10 @@ TARGETS = [GUARD]
 
 MUTANTS = [
     (
-        # A singular/plural slip in prose is exactly the typo `log_run.py`'s
-        # shape validation accepts: it matches the filename pattern, so the write
-        # succeeds into a new file and nothing anywhere reports a problem. With
-        # no codify reader left, the cla-init scan's non-vacuity set is what
-        # names the ledger codify-learnings must write.
-        "the codify writer's prose names a ledger cla-init does not seed",
+        # A singular/plural slip in prose: `log_run.py` refuses it, at the end
+        # of every run, and the run finishes anyway. With no codify reader, the
+        # scan against `SHAPES` is what names the ledger codify-learnings writes.
+        "the codify writer's prose names a ledger the writer does not accept",
         CODIFY_SKILL,
         "log_run.py codify-runs.jsonl",
         "log_run.py codify-run.jsonl",
@@ -105,12 +102,21 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Mutates the INPUT, not the guard: drop one ledger from cla-init's list
-        # and the scan must name it as missing.
-        "cla-init's ledger list drops a ledger a skill still writes",
+        # Mutates the INPUT, not the guard: cla-init stops seeding a ledger the
+        # writer accepts, and the seed scan must name the gap.
+        "cla-init's seed loop drops a ledger a skill still writes",
         CLA_INIT,
-        "#   lite-pr-runs, shape-decision-runs, feedback-runs\n",
-        "#   shape-decision-runs, feedback-runs\n",
+        "for f in spec-to-pr-runs codify-runs; do",
+        "for f in spec-to-pr-runs; do",
+        TARGETS,
+    ),
+    (
+        # Mutates the INPUT: a skill writes a retired ledger again, which the
+        # writer would refuse at the end of every such run.
+        "a skill's prose writes a retired ledger again",
+        FEEDBACK_SKILL,
+        "## What this skill deliberately does not do\n",
+        "## What this skill deliberately does not do\n\n`log_run.py feedback-runs.jsonl`\n",
         TARGETS,
     ),
     (

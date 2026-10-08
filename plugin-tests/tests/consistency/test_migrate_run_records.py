@@ -112,30 +112,11 @@ MIXED_FINDINGS = {
         "comment-analyzer": {}}},
 }
 
-# A `started` date and nothing else to date it by; a date-only `ts`; a Review
-# size gate outside the two values; a large gate with no agents listed.
+# A `started` date and nothing else to date it by; a date-only `ts`.
 STARTED_ONLY = {"change": "change-f", "mode": "existing-change", "started": "2026-08-30",
                 "phases": [{"name": "Propose", "status": "ok"}]}
 DATE_ONLY_TS = {"ts": "2026-09-28", "change": "change-g", "mode": "existing-change",
                 "phases": [{"name": "Propose", "status": "ok"}]}
-MEDIUM_GATE = {"ts": "2026-09-20T08:00:00Z", "change": "change-h", "mode": "existing-change",
-               "phases": [{"name": "Review", "status": "ok", "rounds_used": 1, "rounds_cap": 1,
-                           "size_gate": "medium", "agents": ["design"]}]}
-LARGE_NO_AGENTS = {"ts": "2026-07-28T01:00:00Z", "change": "change-i", "mode": "existing-change",
-                   "phases": [{"name": "Review", "status": "ok", "rounds_used": 1, "rounds_cap": 1,
-                               "size_gate": "large", "agents": []}]}
-
-# Revise agents in the form passed to `Agent`, a retired name, and a duplicate once
-# the prefix is gone — a list record the first cut of the check accepted.
-PREFIXED_AGENTS = {
-    "ts": "2026-08-13T00:00:00Z", "change": "change-k", "mode": "description",
-    "phases": [{"name": "Test", "status": "ok", "rounds_used": 1, "rounds_cap": 3},
-               {"name": "Revise", "status": "ok", "rounds_used": 1, "rounds_cap": 2,
-                "agents": ["pr-review-toolkit:code-reviewer", "code-reviewer",
-                           "pr-review-toolkit:comment-analyzer", "skill-reviewer",
-                           "plugin-dev:skill-reviewer"]}],
-}
-
 # A chain-era round-2 list naming work the orchestrator did itself.
 ROUND_TWO_INLINE = {
     "change": "change-l", "mode": "existing-change", "date": "2026-09-14",
@@ -157,8 +138,8 @@ SEVERITY_PER_AGENT = {
         "comment-analyzer": {"critical": 2, "important": 2, "suggestion": 1, "phantom": 2}}},
 }
 
-# The honest record of a Review whose gate said large and whose agents could not be
-# dispatched — off-shape only in its `date`. The gate must survive the migration.
+# A Review carrying fields the record no longer has (a gate, its agents) — off-shape
+# only in its `date`. Those fields must pass through untouched.
 WARN_REVIEW_NO_AGENTS = {
     "change": "change-n", "mode": "existing-change", "date": "2026-08-31",
     "phases": [{"name": "Review", "status": "warn", "rounds_used": 1, "rounds_cap": 1,
@@ -172,9 +153,8 @@ JUNK_TS = {"ts": "yesterday", "change": "change-o", "mode": "existing-change",
 FORMS = {
     "dict-with-side-blocks": DICT_WITH_SIDE_BLOCKS, "dated-chain": DATED_CHAIN,
     "dict-values": DICT_VALUES, "phase-keyed": PHASE_KEYED, "mixed-findings": MIXED_FINDINGS,
-    "started-only": STARTED_ONLY, "date-only-ts": DATE_ONLY_TS, "medium-gate": MEDIUM_GATE,
-    "large-no-agents": LARGE_NO_AGENTS, "no-caps": NO_CAPS,
-    "prefixed-agents": PREFIXED_AGENTS, "round-two-inline": ROUND_TWO_INLINE,
+    "started-only": STARTED_ONLY, "date-only-ts": DATE_ONLY_TS, "no-caps": NO_CAPS,
+    "round-two-inline": ROUND_TWO_INLINE,
     "severity-per-agent": SEVERITY_PER_AGENT, "warn-review-no-agents": WARN_REVIEW_NO_AGENTS,
     "junk-ts": JUNK_TS,
 }
@@ -291,35 +271,42 @@ def test_a_dict_of_phases_becomes_the_list_in_its_own_order() -> None:
     review = _phase(new, "Review")
     # Lifted from the side block, with the cap from `caps`.
     assert review["rounds_used"] == 2 and review["rounds_cap"] == 1
-    assert review["size_gate"] == "large" and review["verdict"] == "RETHINK"
+    assert review["findings_by_round"] == DICT_WITH_SIDE_BLOCKS["review"]["findings_by_round"]
+    # Fields no reader uses are not lifted; the side block keeps them.
+    assert "size_gate" not in review and new["review"]["size_gate"] == "large"
     # A warn the record gave no reason for says so, rather than inventing one.
     assert review["reason"] == mig.NO_REASON
-    # Review's own findings_by_round lacks `sibling_instance`, so it stays in the side block.
-    assert "findings_by_round" not in review
     assert _phase(new, "Implement") == {"name": "Implement", "status": "warn",
                                         "reason": "partial (migrated record)"}
     assert _phase(new, "Test")["rounds_cap"] == 3
     revise = _phase(new, "Revise")
     assert revise["rounds_cap"] == 2
-    assert revise["agents"] == ["code-reviewer", "silent-failure-hunter"]
+    assert "agents" not in revise
     assert revise["findings_by_round"] == DICT_WITH_SIDE_BLOCKS["revise"]["findings_by_round"]
     assert _phase(new, "Archive") == {"name": "Archive", "status": "skip"}
     # No date anywhere in the record: the time the line entered git.
     assert new["ts"] == _RUN_TIME and next(iter(new)) == "ts"
 
 
-def test_a_chain_record_takes_its_date_rounds_and_both_rounds_of_agents() -> None:
+def test_a_chain_record_takes_its_date_and_rounds() -> None:
     new, notes = _migrate(DATED_CHAIN)
     assert new["ts"] == "2026-09-27T00:00:00Z" and "date" not in new
     assert list(new)[:3] == ["skill", "change", "ts"], "ts takes date's place"
     assert _phase(new, "Test")["rounds_used"] == 1
     revise = _phase(new, "Revise")
     assert (revise["rounds_used"], revise["rounds_cap"]) == (2, 2)
-    assert revise["agents"] == ["code-reviewer", "comment-analyzer", "pr-test-analyzer"]
-    # An off-list verdict is not lifted; it is still in the side block.
-    assert "verdict" not in _phase(new, "Review")
-    assert new["review"]["verdict"] == "FIX_FIRST"
+    assert revise["findings_by_round"] == DATED_CHAIN["revise"]["findings_by_round"]
     assert "ts from date (2026-09-27T00:00:00Z)" in notes
+
+
+def test_an_off_shape_side_block_value_stays_where_it_was() -> None:
+    # A value lifted unchecked would make the whole record unmappable.
+    rec = json.loads(json.dumps(DATED_CHAIN))
+    rec["revise"]["findings_by_round"] = 2
+    new, _ = _migrate(rec)
+    assert "findings_by_round" not in _phase(new, "Revise")
+    assert new["revise"]["findings_by_round"] == 2
+    assert mig.remaining_problems(new) == []
 
 
 def test_dict_values_keep_an_unpaired_round_count_beside_the_phase() -> None:
@@ -341,7 +328,6 @@ def test_a_round_count_with_no_cap_stays_in_its_side_block() -> None:
     for name in ("Review", "Revise"):
         assert not {k for k in _phase(new, name) if k.startswith("rounds")}, name
     assert new["review"]["rounds"] == 1 and new["revise"]["rounds"] == 1
-    assert _phase(new, "Review")["verdict"] == "FIX FIRST"
 
 
 def test_dict_asks_keep_their_choices() -> None:
@@ -385,32 +371,9 @@ def test_severity_counts_per_agent_become_found_unless_phantom_makes_them_ambigu
     assert "revise_findings_by_tier: 3 severity counts -> found" in notes
 
 
-def test_revise_agents_are_canonical_ids_and_the_rest_is_kept_aside() -> None:
-    new, notes = _migrate(PREFIXED_AGENTS)
-    revise = _phase(new, "Revise")
-    assert revise["agents"] == ["code-reviewer", "comment-analyzer", "plugin-dev:skill-reviewer"]
-    assert revise["agents_unmapped"] == ["skill-reviewer"]
-    assert "Revise agents: pr-review-toolkit: prefix stripped" in notes
-    # The chain era's round-2 list: merged, and the orchestrator's own label set aside.
-    revise = _phase(_migrate(ROUND_TWO_INLINE)[0], "Revise")
-    assert revise["agents"] == ["code-reviewer", "silent-failure-hunter"]
-    assert revise["agents_unmapped"] == ["orchestrator-inline"]
-    assert (revise["rounds_used"], revise["rounds_cap"]) == (2, 2)
-
-
-def test_revise_agents_with_nothing_canonical_are_dropped_not_emptied() -> None:
-    # `[]` would say no agent ran; the record says agents ran, just none by an id.
-    rec = json.loads(json.dumps(PREFIXED_AGENTS))
-    _phase(rec, "Revise")["agents"] = ["orchestrator-inline", "general-purpose-residue"]
-    revise = _phase(_migrate(rec)[0], "Revise")
-    assert "agents" not in revise
-    assert revise["agents_unmapped"] == ["orchestrator-inline", "general-purpose-residue"]
-
-
-def test_a_warn_review_keeps_a_gate_its_agents_did_not_follow() -> None:
+def test_fields_no_reader_uses_pass_through_untouched() -> None:
     review = _phase(_migrate(WARN_REVIEW_NO_AGENTS)[0], "Review")
-    assert (review["size_gate"], review["agents"]) == ("large", [])
-    assert "size_gate_unmapped" not in review
+    assert review == WARN_REVIEW_NO_AGENTS["phases"][0]
 
 
 def test_an_unreadable_ts_gives_way_to_the_records_own_date_and_is_kept() -> None:
@@ -425,14 +388,6 @@ def test_dates_come_from_the_record_before_git() -> None:
     assert new["ts"] == "2026-08-30T00:00:00Z" and new["started"] == "2026-08-30"
     new, _ = _migrate(DATE_ONLY_TS)
     assert new["ts"] == "2026-09-28T00:00:00Z"
-
-
-@pytest.mark.parametrize("form", ["medium-gate", "large-no-agents"])
-def test_a_size_gate_that_cannot_be_true_is_moved_aside(form: str) -> None:
-    new, _ = _migrate(FORMS[form])
-    review = _phase(new, "Review")
-    assert "size_gate" not in review
-    assert review["size_gate_unmapped"] == FORMS[form]["phases"][0]["size_gate"]
 
 
 # --------------------------------------------------------------------------- #
