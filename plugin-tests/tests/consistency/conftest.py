@@ -2,8 +2,7 @@
 
 `consistency-checks/` guards the repo that DEVELOPS the harness: that its
 overlays are reachable, that its token list is curated, that its `pre-push` hook
-is installed, that its sibling scripts have not drifted. Every one of those is a
-statement about this working tree.
+is installed. Every one of those is a statement about this working tree.
 
 The scope nevertheless ships inside the plugin package — `git-subdir` takes a
 whole directory and offers no exclude list — so a consuming repo that runs the

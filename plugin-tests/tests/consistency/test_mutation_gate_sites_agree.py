@@ -69,9 +69,8 @@ def _gate_sites() -> list[Path]:
 def test_the_discovery_is_not_vacuous() -> None:
     """A guard whose collection is empty passes while checking nothing.
 
-    This is the shape `test_guards_are_not_vacuous.py` catches statically for
-    an asserted-empty collection; here the collection is built by a filesystem
-    walk, so the floor has to be asserted against the population it really has.
+    The collection is built by a filesystem walk, so the floor has to be
+    asserted against the population it really has.
     """
     sites = _gate_sites()
     assert len(sites) >= _KNOWN_SITE_COUNT, (

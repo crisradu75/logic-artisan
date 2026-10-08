@@ -7,10 +7,8 @@ This guard has no code of its own to mutate: it reads two DOCUMENTS —
 Step 1 block — and asserts they agree. So the mutants break the documents, which
 is the real failure this guard exists to catch: the two drifting apart.
 
-It was itself shipped without a batch by the very review round that added it, and
-the meta-guard could not see that: `_guard_files()` was still globbing
-`tests/<area>` while this guard lives at `tests/skills/release/`. Both halves are
-fixed; this batch is the evidence that the guard can fail.
+It was itself shipped without a batch by the very review round that added it;
+this batch is the evidence that the guard can fail.
 
 ANCHORING NOTES, both learned by the preflight refusing.
 

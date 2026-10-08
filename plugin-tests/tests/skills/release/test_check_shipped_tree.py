@@ -172,8 +172,7 @@ def test_the_real_tree_passes_with_the_real_file_count():
 
 
 def test_the_allowlist_is_capped_and_every_entry_carries_a_reason():
-    """The pressure valve, bounded — the same convention `_EXEMPT` runs in
-    test_guards_have_mutant_batches.py.
+    """The pressure valve, bounded.
 
     The list was 14 when the convention landed. A fifteenth pattern lands by
     raising this cap in the SAME commit that adds the pattern and its reason;

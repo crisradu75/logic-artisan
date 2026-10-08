@@ -20,8 +20,8 @@ prologues. That survived a mutation run once, because the only executed test rea
 `hooks.PreToolUse[0]` and the only text test asserted a substring the other four
 copies still satisfied.
 
-WHAT IT DOES NOT COVER, stated because this file leaving `_PENDING_ADOPTION` must
-not read as the area being finished. `tests/hooks/test_hooks_wiring.py` also
+WHAT IT DOES NOT COVER, stated so this batch existing does not read as the area
+being finished. `tests/hooks/test_hooks_wiring.py` also
 polices the handler-timeout budget, and its own comments say what that budget
 cannot check: whether a `HOOK_WORST_CASE_SECONDS` entry matches the hook's REAL
 cost. No mutant can close that — the table is the only statement of the cost

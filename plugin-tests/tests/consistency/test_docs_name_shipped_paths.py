@@ -18,8 +18,7 @@ plugin README is the one a consuming repo receives.
 
 WHAT "SHIPPED" MEANS. `git ls-files` over the published directory — the
 marketplace `git-subdir` source publishes the tracked tree verbatim, with no
-exclusion field, the same derivation
-`tests/conformance/test_shipped_files_are_scanned.py` uses.
+exclusion field.
 
 THE HARD PART, AND THE FIRST VERSION OF THIS GUARD GOT IT WRONG. A bare
 reference — `conformance-checks/tests`, with no `<plugin>/` in front of it — is
@@ -93,8 +92,7 @@ _DOCS = {
 
 # Naming a retired path is sometimes the POINT — a migration note that does not
 # name what it is migrating from is useless to the repo carrying that wiring. So
-# this is the pressure valve, in the shape `test_shipped_files_are_scanned.py`'s
-# `EXEMPT` uses: keyed on (document, exact path), each with its reason, and
+# this is the pressure valve: keyed on (document, exact path), each with its reason, and
 # STALENESS CUTS BOTH WAYS — an entry whose document no longer names the path
 # fails too, so a note that gets deleted takes its exemption with it.
 #

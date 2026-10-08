@@ -26,8 +26,7 @@
 # `mutants/conformance/test_skill_lint.py` would collide with
 # `tests/conformance/test_skill_lint.py`. `testpaths` alone keeps them out,
 # exactly as it did in the twelve old scopes. The batch subdirectories mirror
-# the `tests/` ones because `test_guards_have_mutant_batches.py` maps guard to
-# batch positionally in both directions.
+# the `tests/` ones, so a guard's batch (when it has one) is found by name.
 #
 # `pythonpath` entries are resolved against rootdir, which is this file's own
 # directory. The `../` entries reach the scripts under test, which stay in the

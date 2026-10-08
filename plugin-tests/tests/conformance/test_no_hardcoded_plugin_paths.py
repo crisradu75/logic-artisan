@@ -55,13 +55,10 @@ SCANNED_SUFFIXES = (".md", ".py", ".mjs", ".json")
 # list is the independent source, so removing a suffix from `SCANNED_SUFFIXES`
 # now fails loudly here instead of shrinking the scan in silence.
 #
-# THAT THIS ASSERTION FIRES IS ESTABLISHED BY A COMMAND, NOT BY THE BATCH.
-# `plugin-tests/mutants/conformance/test_shipped_files_are_scanned.py` re-breaks
-# the `.mjs` case, but TWO guards fail on it (that batch entry says which), so a
-# kill there does not attribute itself here — the batch reports killed/survived
-# over a whole directory and cannot separate them. No single-edit mutant can:
-# isolating this needs a suffix with exactly one file that another scanner also
-# reaches, and no such suffix exists. So it is measured directly instead::
+# THAT THIS ASSERTION FIRES IS ESTABLISHED BY A COMMAND, NOT BY A BATCH. No
+# single-edit mutant isolates it: that needs a suffix with exactly one file that
+# another scanner also reaches, and no such suffix exists. So it is measured
+# directly instead::
 #
 #     $ python - <<'PY'
 #     import importlib.util, pathlib
@@ -111,9 +108,7 @@ def _scanned_files_by_root():
     throws away at the yield.
 
     Kept as the primitive rather than as a change to `_scanned_files`'s return
-    shape: `test_shipped_files_are_scanned.py` calls that function directly and
-    its own docstring says so, so widening it here would be the cross-directory
-    caller break CLAUDE.md's fifth check is about."""
+    shape, so `_scanned_files`'s callers are unaffected."""
     for root_name in SCANNED_ROOTS:
         root = _PLUGIN_ROOT / root_name
         if not root.is_dir():
@@ -205,9 +200,9 @@ def test_the_scan_is_not_vacuous():
     # one file against a margin of one, so dropping it lands exactly ON the
     # floor and passes it. `hooks/hooks.json` is the sharper case: it was
     # covered here and nowhere else until issue #190 widened the token scanner
-    # to `.json`, and once a second scanner reached it, the coverage guard in
-    # `test_shipped_files_are_scanned.py` stopped noticing THIS scanner losing
-    # it. Today the floor happens to catch a `.json` drop (103 - 3 = 100 < 102),
+    # to `.json`; once a second scanner reached it, losing it HERE became
+    # invisible to anything but this assertion. Today the floor happens to
+    # catch a `.json` drop (103 - 3 = 100 < 102),
     # but that is arithmetic, not a guarantee: the comment above prescribes
     # lowering the floor on a deliberate deletion, and a floor lowered to 96
     # hands the `.json` narrowing a green run. And this is not hypothetical:

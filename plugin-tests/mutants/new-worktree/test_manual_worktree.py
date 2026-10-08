@@ -22,10 +22,8 @@ succeed. A script that refused everything would pass mutant 1 and fail nothing â
 which is the "simpler form of the code is also correct" trap CLAUDE.md warns
 about, where the test defends the defect. Read them together.
 
-**`make_dir_alias` IS NOT MUTATED HERE**, though it lives in this guard. It is
-group 4 of `check_script_drift.py`'s sibling groups, so editing it reddens the
-drift guard too and the kill would not attribute itself to this guard. Same rule
-the aggregator batches follow for their shared resolvers.
+**`make_dir_alias` IS NOT MUTATED HERE.** It is a shared test fixture in
+`tests/conftest.py`, not part of the script under test.
 
 **DELIBERATELY NOT A MUTANT: `resolved = os.path.realpath(str(path))` ->
 `str(path)`.** It is the obvious mutant for the casing half of the script, and it

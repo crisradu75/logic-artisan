@@ -5,10 +5,11 @@ the expensive failures are the ones that make a producer bug look like a
 behavioural finding, or vice versa. Mutants 1, 2 and 6 are all that shape: each
 leaves a plausible report in which drift and signal have swapped places.
 
-**NONE OF THE DRIFT-PINNED FUNCTIONS IS MUTATED HERE.** `_git_toplevel`,
+**NONE OF THE SHARED-COPY FUNCTIONS IS MUTATED HERE.** `_git_toplevel`,
 `_runs_dir`, `_load_records`, `_coerce_int`, `_load_ledgers`, `_window` and
-`_fleet_roots` are byte-identical copies shared with `codify_aggregate.py` and
-`lib/`, policed by `check_script_drift.py`. Everything below is in this
+`_fleet_roots` are copies shared with `codify_aggregate.py` and `lib/`; the
+directory resolver is checked behaviourally by
+`tests/consistency/test_ledger_dir_agrees.py`. Everything below is in this
 aggregator's own code — `_normalize_agent`, `_tally_agents`, the Review pair
 check, the findings reader, the cap block and `RETIRED_AGENT_KEYS`.
 

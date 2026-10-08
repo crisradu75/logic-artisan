@@ -150,8 +150,8 @@ def _usable_int(value: object) -> bool:
 
     Deliberately not a call to `_coerce_int`: the probe runs before the sum over the
     same block, so reusing the coercing form would warn twice about one bad value.
-    `_coerce_int` is pinned across both aggregators by `check_script_drift.py` and
-    cannot grow a quiet mode, so the acceptance rule is mirrored here instead —
+    `_coerce_int` is shared in copy with the other aggregator and cannot grow a
+    quiet mode, so the acceptance rule is mirrored here instead —
     `bool` rejected explicitly, because in Python it is an `int`.
     """
     return isinstance(value, int) and not isinstance(value, bool)
@@ -247,11 +247,10 @@ def _fleet_roots(path: Path) -> list[Path]:
 def _default_log_path() -> Path:
     """This loop's ledger inside the dir the writer resolves.
 
-    `_runs_dir` above is byte-identical to `lib/log_run.py`'s — the producer of
-    the very file this reads — and a drift check compares the two so they
-    cannot drift apart. If they ever did, this reader would look somewhere the
-    writer never writes and report zero runs, which is indistinguishable from a
-    cold start.
+    `_runs_dir` above is a copy of `lib/log_run.py`'s — the producer of the very
+    file this reads. If the two ever disagreed, this reader would look somewhere
+    the writer never writes and report zero runs, which is indistinguishable
+    from a cold start.
     """
     return _runs_dir() / "codify-runs.jsonl"
 
@@ -358,9 +357,8 @@ def _window(timestamps: list[str]) -> dict:
     explicit offsets, so two instants on the same day in different zones can order
     wrongly; that is bounded inside a day, where argument order was unbounded.
 
-    Pinned across both aggregators by `check_script_drift.py`, and the reason it is
-    pinned is this function's own history: the sort landed in one sibling, the
-    other kept inverting, and nothing caught it but a reviewer.
+    Copied in both aggregators; keep the copies the same. The sort once landed in
+    one and not the other, and nothing caught it but a reviewer.
     """
     if not timestamps:
         return {"first_ts": None, "last_ts": None}
@@ -381,7 +379,7 @@ def _load_ledgers(log_paths: list[Path], limit: int,
     while still being echoed back, so a four-repo aggregate could claim five on the
     one stream nothing reads after the fact.
 
-    Pinned across both aggregators by `check_script_drift.py`.
+    Copied in both aggregators; keep the copies the same.
     """
     records: list[dict] = []
     skipped = 0

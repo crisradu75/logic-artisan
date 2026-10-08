@@ -14,9 +14,8 @@ to a brand-new file. The reader then finds nothing, and reports a cold start:
 as "the log doesn't exist yet — run the loop a few times first." Three silences
 in a row, and the run history is simply gone.
 
-`check_script_drift.py` guards the DIRECTORY half of this same contract across
-writer and readers. This guards the FILENAME half, which that check deliberately
-excludes.
+`test_ledger_dir_agrees.py` checks the DIRECTORY half of this same contract
+behaviourally. This guards the FILENAME half.
 """
 
 from __future__ import annotations

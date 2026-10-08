@@ -439,8 +439,10 @@ Contributing to the harness rather than using it? The extra rules:
   repo stay neutral stubs — this is the source, not a consumer.
 
 - **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself), with one Node
-  exception noted above. Same-named sibling scripts that must stay in lockstep are watched by
-  `plugin-tests/scripts/check_script_drift.py`.
+  exception noted above. Scripts carrying copies of the same helper (the two retro aggregators,
+  `lib/log_run.py`, `lib/ledger_summary.py`) are kept in step by hand;
+  `plugin-tests/tests/consistency/test_ledger_dir_agrees.py` checks that the ledger writer and
+  the spec-to-pr reader resolve the same directory.
 
 - **`CLAUDE.md` is the authoritative working-instructions file** — read it before a change; it
   covers the launchers, the scope layout, and the platform caveats in more depth. Deferred work
@@ -468,7 +470,8 @@ enforcer are gone — a skill has no scope of its own any more.)
    The token guard fails the suite if a repo name leaks into the body.
 
 Then update the counts: the skill tables in `CLAUDE.md` and the plugin README, and the cheat sheet
-below. `plugin-tests/tests/consistency/test_doc_facts.py` fails if you forget. A new skill's tests
+below. `plugin-tests/tests/consistency/test_doc_facts.py` fails if the plugin README's phase
+table misses the skill; nothing checks the counts. A new skill's tests
 go in `plugin-tests/tests/skills/<name>/`, not beside the skill.
 
 ## 12. Evidence behind CLAUDE.md's rules

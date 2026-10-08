@@ -6,10 +6,10 @@ below leaves a well-formed report carrying a different number, which is the whol
 reason this aggregator is a script and not a paragraph of prose: a wrong rate is
 indistinguishable from a right one at a glance.
 
-**NONE OF THE DRIFT-PINNED FUNCTIONS IS MUTATED HERE.** `_git_toplevel`,
+**NONE OF THE SHARED-COPY FUNCTIONS IS MUTATED HERE.** `_git_toplevel`,
 `_runs_dir`, `_load_records`, `_coerce_int`, `_load_ledgers`, `_window` and
-`_fleet_roots` are byte-identical copies shared with `spec_to_pr_aggregate.py` and
-`lib/`, policed by `check_script_drift.py`. Every mutant below is in logic unique
+`_fleet_roots` are copies shared with `spec_to_pr_aggregate.py` and `lib/`.
+Every mutant below is in logic unique
 to this aggregator — `_usable_int`, the effectiveness block, and `main`'s fleet
 suppression.
 
@@ -24,7 +24,7 @@ Neither changes the shape of the output.
 no path is never exercised; a malformed `maintenance.failure_modes_bullets` value
 has no test (only the whole-block-non-dict case); and unlike its spec-to-pr
 sibling this guard has no ledger-dedupe or out-of-order-window test, so those
-behaviours are pinned only by the sibling's tests plus the drift guard, not here.
+behaviours are pinned only by the sibling's tests, not here.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/codify-retro/test_codify_aggregate.py
 """

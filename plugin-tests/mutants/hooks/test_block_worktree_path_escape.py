@@ -29,9 +29,9 @@ Paths resolve from this file's own location, matching every other batch in this
 tree: a batch carrying an absolute developer path would leak a machine path into
 synced core and only work on the machine that wrote it.
 
-No anchor here spans a line break, so none of them need the CRLF-safe `_NL`
-join `test_shipped_files_are_scanned.py` uses — every `old` below is verified
-unique with `grep -c` against the raw file before being trusted here.
+No anchor here spans a line break, so none of them need a CRLF-safe `_NL`
+join — every `old` below is verified unique with `grep -c` against the raw file
+before being trusted here.
 
 COUNT NOTE: 7 MUTANTS ARE NOT 7 INDEPENDENT PIECES OF EVIDENCE. Review measured
 that mutants 2 (worktree detection) and 5 (in-worktree containment) have

@@ -122,8 +122,8 @@ their tests moved).
 Inside `plugin-tests/tests/` the old scope names survive as area directories: `conformance/`,
 `consistency/`, `launcher/`, `hooks/`, `lib/`, and `skills/<name>/` — 6 areas under `skills/`, one
 per skill that ships tests, plus `_shared/`. `mutants/` is a SIBLING of `tests/`, mirroring its
-subdirectory names, so the batches are never collected as tests and each guard maps to its batch by
-a one-step name substitution.
+subdirectory names, so the batches are never collected as tests. A batch is optional; when a guard
+has one, it carries the guard's name.
 
 **`lib/` is the odd one out in the plugin**: not a skill (no `SKILL.md`) and not a guard hook. It
 holds `log_run.py`, the one ledger writer every retro-logging skill invokes as a program,
@@ -313,13 +313,9 @@ everywhere) from *facts* (per-repo, never synced):
   which is why a file can be covered by one and not the other. **The suffix lists themselves are
   NOT written here**: read `SCANNED_SUFFIXES`/`REQUIRED_SUFFIXES` in that guard, and
   `_iter_scanned_source_files` in the checker. **Do not restate either
-  coverage split here.** `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py` now derives
-  them: `EXEMPT` holds every tracked file under the published directory that NO scanner opens, and
-  `TOKEN_EXEMPT` every remaining shipped file the two TOKEN scanners miss — no suffix rule, because
-  scoping it to `.md`/`.py` left four files satisfying neither map. Each entry carries a stated
-  reason, and an exemption whose file has since been deleted or picked up by a scanner fails too.
-  Read the two maps for the current lists; adding an unscanned file is now a decision someone writes
-  down rather than an accident.
+  coverage split here.** Some shipped files are reached by no scanner on purpose (the plugin's own
+  `README.md` names this repo and the plugin path), and nothing tracks which: a new kind of file
+  stays unscanned until someone widens a scanner to it.
 - **Overlays** — `cla.io/overlays/<skill>.md` plus any `*.local.md` files beside them: the
   destination repo's own facts and tuned checks. They live in the repo, not the plugin directory,
   so an install never reaches them. In *this* repo they are neutral stubs (this is the source, not
@@ -359,7 +355,6 @@ plugin-tests/                  the repo's ONE pytest scope
   mutate.py                    mutation checker: break a fix, confirm a test fails, restore
   tests/<area>/                conformance, consistency, launcher, hooks, lib, skills/<name>
   mutants/<area>/              mutation batches, mirroring tests/ — a sibling, never a child
-  scripts/check_script_drift.py
   scripts/measure_load.py
   node/mechanical-checks.test.mjs
 .claude/skills/release/        repo-local skill, invoked as /release (not /cla:release)
@@ -385,7 +380,6 @@ matching every existing row (`_shared/scripts/git_state.py`, `codify-retro/scrip
 | `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
 | `lib/log_run.py` | The one ledger writer: validates the record, enforces the 4 KiB atomic-append ceiling, refuses a path-shaped ledger argument. |
 | `lib/ledger_summary.py` | Reads ANY ledger by deriving the shape from the records rather than being configured with it — see `summarise_field` for which types report what, and do not restate the branch list here; it was restated once and dropped two branches immediately. Exists because five ledgers had no reader and bespoke aggregators for each was a plan nobody was going to execute. |
-| `plugin-tests/scripts/check_script_drift.py` *(dev tree)* | Compares the ledger-dir resolver across the writer and every reader of it, and the fleet repo-list resolver across its three copies. A divergence is silent — the retro reports zero runs, which reads as a cold start. |
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
 | `sync-context/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |

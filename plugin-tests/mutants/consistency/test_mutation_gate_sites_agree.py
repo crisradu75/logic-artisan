@@ -19,9 +19,7 @@ CRLF — measured on this tree, `lite-pr/SKILL.md` has CR=194 and LF=194 (`pytho
 over `read_bytes()`). `mutate.py` matches anchors against the decoded bytes, so a
 bare `\\n` in an anchor matches nothing, and its preflight then aborts the WHOLE
 batch rather than that one mutant. An earlier draft of this file spanned three
-lines that way and cost both gates: the batch mutated nothing and
-`test_guards_have_mutant_batches.py::_unresolvable_anchors` failed the
-consistency area.
+lines that way and the batch mutated nothing.
 
 **Why no mutant lowers `_KNOWN_SITE_COUNT`.** It could not be killed. Two sites
 really do state the gate, so `2 >= 0` and `2 >= 1` hold exactly as `2 >= 2` does

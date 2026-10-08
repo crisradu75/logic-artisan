@@ -76,8 +76,8 @@ dormant without an overlay file, so treat a skip line as a finding rather than n
   now covers measurement claims, not only diagnoses.
 - **2026-08-13 — two shipped guards asserted nothing.** One greped for a function's name
   instead of calling it; one lost its `problems.append` in an edit, leaving
-  `assert not []`. Both passed cleanly and were caught only by mutation. Now guarded by
-  `plugin-tests/tests/conformance/test_guards_are_not_vacuous.py`.
+  `assert not []`. Both passed cleanly and were caught only by mutation. (A static guard
+  for this, `test_guards_are_not_vacuous.py`, was later deleted with the meta guard tier.)
 - **2026-08-06 — a review sub-agent changed repository state.** A dispatched agent briefed
   "make NO edits" ran `git checkout` to read a branch and restored to `main` rather than the
   branch the session was on; four subsequent verification commands answered about the wrong

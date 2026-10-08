@@ -89,14 +89,11 @@ version lives in `CLAUDE.md`'s "Current release" line, pinned by
 Then re-run the suite — the two manifest tests and the doc-fact test are what confirm
 the three copies agree — and commit all three together:
 
-**If `test_every_batch_is_loadable_and_declares_real_targets` goes red here, it is a
-mutant batch anchored on the version literal, not a broken bump.** The anchor named in
-the failure no longer appears, `mutate.py` aborts that whole batch in preflight, and the
-guard reports it. Fix the batch, not the bump: anchor on the version-independent prefix
-and inject a digit, as `mutants/consistency/test_doc_facts.py` and
-`mutants/consistency/test_marketplace_manifest.py` both do. This step is the earliest
-point it can be caught — at step 1 the version has not moved, so the anchors still
-resolve — which is why it surfaces after the bump and before the tag.
+**A mutation batch anchored on the version literal breaks with every bump** — the anchor
+no longer appears and `mutate.py` refuses the whole batch in preflight. Nothing in the
+suite runs batches, so this shows up only when someone next runs one. Anchor on the
+version-independent prefix and inject a digit, as `mutants/consistency/test_doc_facts.py`
+and `mutants/consistency/test_marketplace_manifest.py` both do.
 
 **Branch BEFORE committing.** Step 1 put you on the default branch; committing there and
 branching afterwards leaves the local default branch carrying a commit `origin` does not

@@ -4,10 +4,9 @@ guard over destructive git operations, in `ask-destructive-git.py`.
 Run:
     python3 plugin-tests/mutate.py plugin-tests/mutants/hooks/test_ask_destructive_git.py
 
-WHY THE FIRST MUTANT IS THE ONE IT IS. `test_guards_have_mutant_batches.py`'s
-`_PENDING_ADOPTION` comment records that the batch proving `git branch -D`'s
-bare-flag detection was run from outside this repo and committed nowhere, so
-it "now exists nowhere". `_force_deletes_a_branch`'s fast path --
+WHY THE FIRST MUTANT IS THE ONE IT IS. The batch that first proved
+`git branch -D`'s bare-flag detection was run from outside this repo and
+committed nowhere. `_force_deletes_a_branch`'s fast path --
 `if "D" in clusters: return True` -- is that detection: `-D` is documented
 shorthand for `--delete --force` (`git-branch(1)`), and it is also the single
 most common way anyone actually types a force-delete. MUTANTS[0] below

@@ -89,7 +89,7 @@ MUTANTS = [
     ),
     (
         # Anchored on the function body rather than on the regex literal. The
-        # sibling guard `test_no_batch_hardcodes_an_absolute_path` USED TO read a
+        # since-deleted guard `test_no_batch_hardcodes_an_absolute_path` USED TO read a
         # colon followed by a backslash as a Windows drive path, and the
         # line-suffix pattern contains exactly that pair before its digit class —
         # so quoting the pattern here tripped the guard rather than mutating the

@@ -69,8 +69,6 @@ EXIT_CANNOT_RUN = 2
 
 # The allowlist. Every entry carries the reason it exists, and the reason is the
 # discipline rather than decoration: it is what makes a future addition arguable.
-# Modelled on `test_guards_have_mutant_batches.py`'s `_EXEMPT` block, which runs
-# the same convention with the same companion cap test.
 #
 # The list was FOURTEEN when this convention landed. A fifteenth pattern lands by
 # raising the cap in `test_check_shipped_tree.py` in the SAME commit that adds

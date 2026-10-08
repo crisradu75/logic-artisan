@@ -2,10 +2,8 @@
 
 Read as data by `_fleet_roots()`, which has THREE copies — both retro aggregators and
 `.claude/plugins/cla/lib/ledger_summary.py`, the reader the per-skill ledger sections point
-at. All three are byte-identical and pinned together by
-`plugin-tests/scripts/check_script_drift.py`. (The list said two for one commit, while the
-third copy sat unpinned — a fix landing in the aggregators and not the summariser would
-have left the guard green and the two tools reading different fleets from this one file.) One repo ROOT per `- ` bullet; an inline
+at. No script pins the copies together any more, so a fix to one must be made in all
+three by hand. One repo ROOT per `- ` bullet; an inline
 `# comment` and surrounding backticks are stripped. This is a `*.local.md` overlay in the
 repo's own `cla.io/` tree, outside the distributed plugin — **each machine curates its
 own, and it is never synced.**

@@ -8,15 +8,10 @@ ledger name splits a history nobody reads back, an oversize record interleaves
 bytes inside one line under concurrency, and a path-shaped argument writes
 outside the ledger directory entirely.
 
-**A NOTE ON THE DRIFT-PINNED FUNCTIONS, because mutant 5 is inside one.**
-`_git_toplevel` and `_runs_dir` are group 1 of `check_script_drift.py`'s sibling
-groups — byte-identical copies live in three other files — and
-`_normalize_constants` blanks only the DOCSTRING, so editing even an error
-message in them makes the copies compare unequal. That does not smear this batch,
-because `TARGETS` is the single guard file and the drift guard lives in
-`tests/consistency/`, which this batch never runs. Stated rather than left
-implicit: the reason mutant 5 is legitimate is the target scoping, not that the
-line is unpinned. Anything added here that widens `TARGETS` has to revisit it.
+**Mutant 5 is inside `_runs_dir`**, whose logic has copies in three other files.
+It edits only an error message, which the writer/reader agreement test
+(`tests/consistency/test_ledger_dir_agrees.py`) does not read, and `TARGETS` is
+the single guard file, so the kill attributes to this guard.
 
 **One candidate was rejected for a SIDE EFFECT rather than for being unkillable.**
 Defeating `if not path.is_absolute():` makes the child write

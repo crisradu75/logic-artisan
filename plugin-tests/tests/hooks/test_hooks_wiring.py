@@ -141,9 +141,8 @@ def classify_keys(keys, recognised, required):
     Returns `(unknown, missing)` — keys the loader would warn about, and required
     keys that are absent.
 
-    A PURE FUNCTION, separated from the file-reading above for the same reason
-    `split_coverage` is in `tests/conformance/test_shipped_files_are_scanned.py`:
-    the real `hooks.json` only ever exhibits the clean branch, so nothing that
+    A PURE FUNCTION, separated from the file-reading above because the real
+    `hooks.json` only ever exhibits the clean branch, so nothing that
     reads it can show that the rule reacts to the cases it exists for. In
     particular, narrowing `_LOADER_TOP_LEVEL_KEYS` back to the two-key set this
     guard shipped with is INVISIBLE against the real file — it declares neither

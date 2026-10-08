@@ -10,13 +10,9 @@ to the approach — the child observed the change, the verdict came back, and
 `git status` was clean afterwards, so the byte-exact restore holds under
 self-mutation too.
 
-This is the difference from the two meta-guards at `_EXEMPT`'s head. A batch for
-`test_guards_have_mutant_batches.py` would assert that the pairing checker checks
-pairing — the batch mechanism IS its subject, so there is nothing outside to
-observe. Here the subject is an ordinary script that happens to be the runner;
+The subject is an ordinary script that happens to be the runner;
 `test_mutate.py` drives it as a SUBPROCESS against sandbox scopes in `tmp_path`,
-so the observation is genuinely external. `test_mutate.py` therefore comes OFF the
-grandfather list rather than being reclassified as a meta-guard.
+so the observation is genuinely external.
 
 **What these mutants target.** `mutate.py` exists to refuse to manufacture
 confidence, and its docstring records four false-kill shapes a review found in the

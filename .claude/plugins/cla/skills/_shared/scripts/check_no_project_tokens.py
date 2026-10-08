@@ -310,20 +310,8 @@ def find_violations(skills_root: Path, report_root: Path, tokens: list[str]):
 # five roots that actually ship.
 #
 # SOME shipped files fall outside both scanners above. Which ones is NOT written
-# here, and neither is the suffix rule that decides it. Both were — as a list and
-# a count, "counted, not estimated" — and both went stale while nothing noticed,
-# in this comment and in the source repo's own CLAUDE.md. Checking a hand-written
-# list once is not a mechanism; the next rename falsifies it silently, because a
-# file no scanner opens returns exactly what a clean file returns. The `.md`/`.py`
-# phrasing this comment used to carry is the worked example: it survived the
-# widening to `.json` and was wrong twice over, since the map it describes has no
-# suffix rule at all.
-#
-# The canonical-source repo's `TOKEN_EXEMPT` map, in
-# `plugin-tests/tests/conformance/test_shipped_files_are_scanned.py`, derives the
-# split instead: every shipped file must be reached by a scanner above or carry a
-# stated reason there, and an exemption whose file was deleted or has since been
-# picked up fails too. Read that map for the current list, and
+# here: a hand-written list goes stale on the next rename, because a file no
+# scanner opens returns exactly what a clean file returns. Read
 # `_iter_scanned_source_files` below for the current suffix rule.
 #
 # A deliberate path-parsing fixture stays scannable by carrying the

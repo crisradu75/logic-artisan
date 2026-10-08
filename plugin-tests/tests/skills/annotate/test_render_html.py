@@ -398,9 +398,7 @@ def _copies_under(root, name):
     put a checkout there, so the walk broke whenever anyone worked the way the
     repo tells them to.
 
-    Adding `worktrees` to the name list is the fix NOT taken, and the reasoning
-    is already written down one directory over, in `tests/consistency/
-    test_doc_facts.py` (see `_is_nested_checkout` and the comment above it).
+    Adding `worktrees` to the name list is the fix NOT taken.
     `manual_worktree.py` exposes `--worktree-dir`, so the default placement is an
     input rather than a law: a worktree at `.worktrees/`, at `wt/`, or reached
     through a directory junction is still a second checkout and would still be
