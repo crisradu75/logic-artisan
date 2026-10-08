@@ -79,6 +79,27 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "the migration's `partial` placeholder and the reader's copy drift apart",
+        MIG,
+        'PARTIAL_REASON = "partial (migrated record)"',
+        'PARTIAL_REASON = "partial (migrated)"',
+        TARGETS,
+    ),
+    (
+        "the reader stops setting the `partial` placeholder apart",
+        AGG,
+        "PLACEHOLDER_REASONS = (UNRECORDED_REASON, PARTIAL_REASON)",
+        "PLACEHOLDER_REASONS = (UNRECORDED_REASON,)",
+        TARGETS,
+    ),
+    (
+        "the migration's ask placeholder and the reader's copy drift apart",
+        AGG,
+        'NOT_RECORDED = "(not recorded)"',
+        'NOT_RECORDED = "(unrecorded)"',
+        TARGETS,
+    ),
+    (
         "the residue rule names a phase the cap metrics do not count",
         AGG,
         'RESIDUE_PHASES = ("Revise",)',

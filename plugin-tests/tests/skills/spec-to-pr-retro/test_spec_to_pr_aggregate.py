@@ -17,6 +17,8 @@ from pathlib import Path
 _SKILLS = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills"
 SCRIPT = _SKILLS / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py"
 PLACEHOLDER = "reason not recorded (migrated record)"
+PARTIAL = "partial (migrated record)"
+NOT_RECORDED = "(not recorded)"
 
 
 def _rec(change: str = "c", ts: str = "2026-10-01T10:00:00Z", phases: list | None = None,
@@ -77,7 +79,7 @@ def test_emits_exactly_the_kept_fields(tmp_path: Path) -> None:
     assert set(out) == {
         "source", "ledgers", "runs_analyzed", "window", "skipped_records",
         "warn_reasons", "warn_reasons_unrecorded", "cap_exhaustion",
-        "revise_findings", "asks", "round_2_yield",
+        "revise_findings", "asks", "asks_unrecorded", "round_2_yield",
     }
 
 
@@ -101,19 +103,22 @@ def test_limit_applies_per_ledger(tmp_path: Path) -> None:
     assert out["runs_analyzed"] == 8
 
 
-def test_warn_reasons_rank_real_reasons_and_count_the_placeholder_apart(tmp_path: Path) -> None:
+def test_warn_reasons_rank_real_reasons_and_count_the_placeholders_apart(tmp_path: Path) -> None:
     log = _write(tmp_path / "l.jsonl", [
         _rec(phases=[_phase("Test", "warn", reason="flaky", rounds_used=1, rounds_cap=3),
                      _phase("Revise", "fail", reason=PLACEHOLDER, rounds_used=1, rounds_cap=2)]),
         _rec(phases=[_phase("Test", "warn", reason="flaky", rounds_used=1, rounds_cap=3)]),
         _rec(phases=[_phase("Ship", "fail", reason="push refused")]),
+        # The migration's other placeholder: a `partial` phase that kept no reason.
+        _rec(phases=[_phase("Implement", "warn", reason=PARTIAL),
+                     _phase("Ship", "warn", reason=PARTIAL)]),
         # A reason on an ok or skip phase is not a warn reason.
         _rec(phases=[_phase("Archive", "skip", reason="nothing to archive")]),
     ])
     out, _ = _log(log)
     assert out["warn_reasons"] == [{"reason": "flaky", "count": 2},
                                    {"reason": "push refused", "count": 1}]
-    assert out["warn_reasons_unrecorded"] == 1
+    assert out["warn_reasons_unrecorded"] == 3
 
 
 def test_warn_reasons_keep_the_top_ten(tmp_path: Path) -> None:
@@ -183,12 +188,17 @@ def test_asks_tally_choices_per_header(tmp_path: Path) -> None:
                    {"header": "Scope", "choice": "Full"}]),
         _rec(asks=[{"header": "Tree", "choice": "Commit first"}]),
         _rec(asks=[{"header": "Tree", "choice": "Stash — then go"}]),
+        # The migration's placeholder header lumps different questions together,
+        # with or without a recorded choice: counted apart, never tallied.
+        _rec(asks=[{"header": NOT_RECORDED, "choice": "Full"},
+                   {"header": NOT_RECORDED, "choice": NOT_RECORDED}]),
     ])
     out, _ = _log(log)
     assert {a["header"]: a["choices"] for a in out["asks"]} == {
         "Tree": {"Commit first": 2, "Stash — then go": 1},
         "Scope": {"Full": 1},
     }
+    assert out["asks_unrecorded"] == 2
 
 
 # --- skipped lines -----------------------------------------------------------
@@ -210,6 +220,17 @@ def test_unreadable_lines_are_skipped_named_and_counted(tmp_path: Path) -> None:
                         (4, "`routing.revise_findings_by_tier`"), (5, "not JSON"),
                         (6, "not a JSON object")]:
         assert f"line {line} skipped: {field}" in err
+
+
+def test_a_line_that_is_not_utf8_is_skipped_not_fatal(tmp_path: Path) -> None:
+    log = _write(tmp_path / "l.jsonl", [_rec(change="a")])
+    with log.open("ab") as fh:
+        fh.write(b'{"change": "caf\xe9"}\n')  # Latin-1, not UTF-8
+        fh.write((json.dumps(_rec(change="b")) + "\n").encode("utf-8"))
+    out, err = _log(log)
+    assert out["runs_analyzed"] == 2
+    assert out["skipped_records"] == 1
+    assert "line 2 skipped: not UTF-8" in err
 
 
 def test_a_record_without_ts_or_change_is_skipped(tmp_path: Path) -> None:
@@ -443,11 +464,13 @@ def test_nudge_on_a_warn_reason_repeated_in_two_runs(tmp_path: Path) -> None:
     assert 'warn reason "push refused" recurred in 2 of the last 3 runs' in out
 
 
-def test_no_nudge_on_one_run_repeating_a_reason_or_on_the_placeholder(tmp_path: Path) -> None:
+def test_no_nudge_on_one_run_repeating_a_reason_or_on_the_placeholders(tmp_path: Path) -> None:
     records = [
         _rec(phases=[_phase("Ship", "warn", reason="same"), _phase("Archive", "warn", reason="same")]),
         _rec(phases=[_phase("Ship", "warn", reason=PLACEHOLDER)]),
         _rec(phases=[_phase("Ship", "warn", reason=PLACEHOLDER)]),
+        _rec(phases=[_phase("Ship", "warn", reason=PARTIAL)]),
+        _rec(phases=[_phase("Ship", "warn", reason=PARTIAL)]),
     ]
     assert _nudge(tmp_path, records) == ""
 
@@ -460,8 +483,21 @@ def test_nudge_joins_every_trigger_into_one_line(tmp_path: Path) -> None:
     assert "Revise hit" in out and 'warn reason "r"' in out
 
 
-def test_nudge_skips_unreadable_lines_and_never_fails(tmp_path: Path) -> None:
-    assert _nudge(tmp_path, [_rec()], raw_lines=["{broken"]) == ""
+def test_nudge_skips_unreadable_lines_quietly_and_never_fails(tmp_path: Path) -> None:
+    # Handoff prints the nudge verbatim: a skipped line is the retro's to name.
+    r = _nudge_call(tmp_path, [_rec()], raw_lines=["{broken", "[1]"])
+    assert (r.stdout, r.stderr) == ("", "")
+    # Skipped lines do not count toward the last five.
+    hits = [_rec(phases=[_capped("Test", True)]) for _ in range(3)]
+    r = _nudge_call(tmp_path, hits, raw_lines=["{broken"] * 4)
+    assert "in 3 of the last 3 runs" in r.stdout and r.stderr == ""
+    # A line that is not UTF-8 is one more skipped line.
+    log = tmp_path / "cla.io" / "retro" / "spec-to-pr-runs.jsonl"
+    with log.open("ab") as fh:
+        fh.write(b'{"change": "caf\xe9"}\n')
+    r = _call("--nudge", env=_env(log.parent))
+    assert (r.returncode, r.stderr) == (0, "")
+    assert "in 3 of the last 3 runs" in r.stdout
     # No ledger at all: nothing printed, exit 0.
     r = _call("--nudge", env=_env(tmp_path / "nowhere"))
     assert (r.returncode, r.stdout) == (0, "")

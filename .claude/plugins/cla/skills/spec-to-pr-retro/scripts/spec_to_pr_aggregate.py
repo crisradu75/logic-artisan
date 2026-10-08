@@ -21,7 +21,7 @@ Output, one JSON object on stdout:
       "skipped_records": int,             # lines not read: not JSON, not an object,
                                           # or a field this reads has the wrong shape
       "warn_reasons": [{"reason": str, "count": int}],   # warn/fail, top 10
-      "warn_reasons_unrecorded": int,     # the migration's placeholder reason,
+      "warn_reasons_unrecorded": int,     # the migration's placeholder reasons,
                                           # counted apart and never ranked
       "cap_exhaustion": {"review"|"test"|"revise": {"hit": int, "total": int}},
                                           # total: that phase ran with a cap above 1;
@@ -31,13 +31,15 @@ Output, one JSON object on stdout:
                                           # from routing.revise_findings_by_tier;
                                           # found is Critical+Important
       "asks": [{"header": str, "choices": {<choice>: int}}],
+      "asks_unrecorded": int,             # asks the migration kept no header for
       "round_2_yield": {...}              # see `round_2_yield`
     }
 
 Every metric covers the --limit window; `--limit 0` reads every record.
 
 `--nudge` prints one line or nothing: this repo's ledger only, last 5 records.
-spec-to-pr's Handoff runs it after appending its record.
+spec-to-pr's Handoff runs it after appending its record, so it names no
+skipped line.
 
 Records are checked when written (`lib/log_run.py`), so this reader keeps no
 drift buckets. A line it cannot read is skipped, named on stderr, and counted.
@@ -112,8 +114,8 @@ def _fleet_roots(path: Path) -> list[Path]:
     if not path.exists():
         raise FileNotFoundError(
             f"no fleet file at {path}. Create it with one repo root per `- ` "
-            f"bullet, e.g. `- /path/to/another-repo`, or pass explicit paths "
-            f"instead of --fleet"
+            f"bullet, e.g. `- /path/to/another-repo`, or name the ledgers with "
+            f"--log"
         )
     roots: list[Path] = []
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -148,9 +150,13 @@ REASON_STATUSES = ("warn", "fail")
 # cap is its normal path. It counts as exhausted only when it also ended warn or
 # fail: the record's spelling for findings left open at the cap.
 RESIDUE_PHASES = ("Revise",)
-# The placeholder `migrate_run_records.py` writes as the reason of a warn/fail
-# phase whose record kept none. Ranked with real reasons it would top the list.
+# Placeholders `migrate_run_records.py` writes where an old record kept no
+# value: the reason of a warn/fail phase, the reason of a `partial` phase, and an
+# ask's header. Ranked with real values they would top the list.
 UNRECORDED_REASON = "reason not recorded (migrated record)"
+PARTIAL_REASON = "partial (migrated record)"
+PLACEHOLDER_REASONS = (UNRECORDED_REASON, PARTIAL_REASON)
+NOT_RECORDED = "(not recorded)"
 
 CHAIN_PROXY = ("ledger + the date in `ts`: a record carries no chain id, so one "
                "chain spanning several days counts as several chains, and two "
@@ -208,22 +214,33 @@ def _unreadable(rec: object) -> str | None:
     return None
 
 
-def _load(path: Path) -> tuple[list[dict], int]:
-    """Every readable record in one ledger, in file order, and the skip count."""
+def _load(path: Path, quiet: bool = False) -> tuple[list[dict], int]:
+    """Every readable record in one ledger, in file order, and the skip count.
+
+    Each skipped line is named on stderr unless `quiet`. Read as bytes, so one
+    line that is not UTF-8 is skipped like any other rather than ending the run.
+    """
     records: list[dict] = []
     skipped = 0
-    with path.open(encoding="utf-8") as fh:
-        for lineno, line in enumerate(fh, 1):
-            if not line.strip():
-                continue
+    with path.open("rb") as fh:
+        for lineno, raw in enumerate(fh, 1):
+            rec = None
             try:
-                rec = json.loads(line)
-            except json.JSONDecodeError as e:
-                problem = f"not JSON ({e.msg})"
+                line = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                problem = "not UTF-8"
             else:
-                problem = _unreadable(rec)
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError as e:
+                    problem = f"not JSON ({e.msg})"
+                else:
+                    problem = _unreadable(rec)
             if problem:
-                print(f"aggregate: {path} line {lineno} skipped: {problem}", file=sys.stderr)
+                if not quiet:
+                    print(f"aggregate: {path} line {lineno} skipped: {problem}", file=sys.stderr)
                 skipped += 1
                 continue
             records.append(rec)
@@ -252,13 +269,14 @@ def aggregate(records: list[dict]) -> dict:
     """The window metrics over the records given."""
     warn_reasons: Counter = Counter()
     unrecorded = 0
+    asks_unrecorded = 0
     caps = {name: {"hit": 0, "total": 0} for name in CAPPED_PHASES}
     findings: dict[str, dict[str, int]] = defaultdict(
         lambda: {"found": 0, "phantom": 0, "runs": 0})
     asks: dict[str, Counter] = defaultdict(Counter)
     for rec in records:
         for reason in _reasons(rec):
-            if reason == UNRECORDED_REASON:
+            if reason in PLACEHOLDER_REASONS:
                 unrecorded += 1
             else:
                 warn_reasons[reason] += 1
@@ -272,7 +290,10 @@ def aggregate(records: list[dict]) -> dict:
             findings[agent]["phantom"] += counts["phantom"]
             findings[agent]["runs"] += 1
         for ask in rec.get("asks", []):
-            asks[ask["header"]][ask["choice"]] += 1
+            if ask["header"] == NOT_RECORDED:  # one header for every question
+                asks_unrecorded += 1
+            else:
+                asks[ask["header"]][ask["choice"]] += 1
     stamps = sorted(rec["ts"] for rec in records)
     return {
         "runs_analyzed": len(records),
@@ -283,6 +304,7 @@ def aggregate(records: list[dict]) -> dict:
         "cap_exhaustion": {name.lower(): counts for name, counts in caps.items()},
         "revise_findings": {agent: dict(c) for agent, c in sorted(findings.items())},
         "asks": [{"header": h, "choices": dict(c)} for h, c in asks.items()],
+        "asks_unrecorded": asks_unrecorded,
     }
 
 
@@ -327,7 +349,7 @@ def nudge(records: list[dict]) -> str | None:
         if hits >= NUDGE_CAP_HITS:
             still = " and still warned" if name in RESIDUE_PHASES else ""
             why.append(f"{name} hit its round cap{still} in {hits} of the last {len(recent)} runs")
-    seen = Counter(r for rec in recent for r in set(_reasons(rec)) if r != UNRECORDED_REASON)
+    seen = Counter(r for rec in recent for r in set(_reasons(rec)) if r not in PLACEHOLDER_REASONS)
     for reason, count in seen.most_common():
         if count >= NUDGE_SAME_REASON:
             short = reason if len(reason) <= 80 else reason[:77] + "..."
@@ -375,7 +397,7 @@ def main() -> int:
     if args.nudge:
         try:
             path = _default_log_path()
-            line = nudge(_load(path)[0]) if path.exists() else None
+            line = nudge(_load(path, quiet=True)[0]) if path.exists() else None
         except (OSError, ValueError, RuntimeError) as e:
             print(f"aggregate: no nudge ({e})", file=sys.stderr)
             return 0

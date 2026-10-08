@@ -114,8 +114,8 @@ def _fleet_roots(path: Path) -> list[Path]:
     if not path.exists():
         raise FileNotFoundError(
             f"no fleet file at {path}. Create it with one repo root per `- ` "
-            f"bullet, e.g. `- /path/to/another-repo`, or pass explicit paths "
-            f"instead of --fleet"
+            f"bullet, e.g. `- /path/to/another-repo`, or name the ledgers with "
+            f"--log"
         )
     roots: list[Path] = []
     for raw in path.read_text(encoding="utf-8").splitlines():

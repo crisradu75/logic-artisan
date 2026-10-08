@@ -15,10 +15,11 @@ what each field MEANS; where the two disagree, the code is right.
 
 **Every field earns its place by a reader.** Add a field only when something reads it. The
 aggregator reads `ts`, `change`, each phase's `status`, `reason` and rounds pair, Revise's
-`findings_by_round`, `asks`, and `routing.revise_findings_by_tier`; `mode` and `args` identify the
-run for a human. The rest — the Review fields, `version_bumped`, `report_chars`,
-`deferred_to_todo`, `cost`, and the other `routing` keys — no aggregator reads; they serve someone
-reading one run's record by hand. The check refuses a wrong shape, not a missing optional field —
+`findings_by_round` (`round` and `found`), `asks`, and `routing.revise_findings_by_tier`; `mode`
+and `args` identify the run for a human. The rest — the Review fields, Revise's `agents`,
+`findings_by_round`'s `sibling_instance`, `version_bumped`, `report_chars`, `deferred_to_todo`,
+`cost`, and the other `routing` keys — no aggregator reads; they serve someone reading one run's
+record by hand. The check refuses a wrong shape, not a missing optional field —
 leaving one out passes, and silently costs the retro that signal.
 
 ## Invocation

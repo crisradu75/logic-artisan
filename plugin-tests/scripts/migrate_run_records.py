@@ -74,10 +74,11 @@ LEDGER = "spec-to-pr-runs.jsonl"
 SHAPE = log_run.SHAPES[LEDGER]
 PHASE_SHAPE = SHAPE[1]["phases"][1]
 AGENT_FINDINGS_SHAPE = SHAPE[2]["routing"][2]["revise_findings_by_tier"][1]
+# The retro's aggregator holds a copy of each placeholder below to count it apart
+# from real values; a consistency test keeps each pair equal.
 NOT_RECORDED = "(not recorded)"
-# The retro's aggregator holds a copy of this string to count it apart from real
-# reasons; a consistency test keeps the two equal.
 NO_REASON = "reason not recorded (migrated record)"
+PARTIAL_REASON = "partial (migrated record)"
 TOOLKIT_PREFIX = "pr-review-toolkit:"
 _SEVERITY_ONLY = {"critical", "important", "suggestion"}
 # See "ONE GAP IS LEFT" above. Matched against the writer's own refusal clause, so a
@@ -168,7 +169,7 @@ def _phase_list(rec: dict, notes: list[str]) -> list | None:
                         entry[key + "_unmapped"] = entry.pop(key)
         if entry.get("status") == "partial":
             entry["status"] = "warn"
-            entry.setdefault("reason", "partial (migrated record)")
+            entry.setdefault("reason", PARTIAL_REASON)
             notes.append(f"{name} status partial -> warn")
         if entry.get("status") in ("warn", "fail") and "reason" not in entry:
             entry["reason"] = NO_REASON

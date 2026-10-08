@@ -8,8 +8,8 @@ copies, and this test keeps them inside what the writer accepts. A phase name th
 reader matches and the writer refuses is a metric no record can feed, and it reads
 as zero, not as broken.
 
-The aggregator holds the migration's placeholder reason for the same cause, and
-the last test keeps that pair equal too.
+The aggregator holds the migration's placeholders for the same cause, and the
+last test keeps each pair equal too.
 """
 
 from __future__ import annotations
@@ -44,5 +44,8 @@ def test_the_statuses_read_for_a_reason_are_the_ones_the_writer_requires_it_on()
     assert list(agg.REASON_STATUSES) == requiring
 
 
-def test_the_migration_placeholder_is_the_one_the_aggregator_sets_apart() -> None:
+def test_the_migration_placeholders_are_the_ones_the_aggregator_sets_apart() -> None:
     assert agg.UNRECORDED_REASON == mig.NO_REASON
+    assert agg.PARTIAL_REASON == mig.PARTIAL_REASON
+    assert set(agg.PLACEHOLDER_REASONS) == {mig.NO_REASON, mig.PARTIAL_REASON}
+    assert agg.NOT_RECORDED == mig.NOT_RECORDED
