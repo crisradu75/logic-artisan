@@ -20,7 +20,8 @@ three-valued exit contract and the report-all loop, not just the pattern list:
      single cleanup into as many release attempts as there are files.
   5. the conftest.py leaf-name exclusion neutered — the one dev-asset shape whose
      name is otherwise a legal script name.
-  6. the test_*.py / *_test.py leaf-shape exclusion widened to never match — the
+  6. the scripts pattern re-admitting `.mjs` — skill scripts are Python only.
+  7. the test_*.py / *_test.py leaf-shape exclusion widened to never match — the
      hole a review measured directly: `skills/foo/scripts/test_foo.py`,
      `hooks/test_x.py`, and `lib/test_x.py` all returned ALLOW before this
      exclusion existed, because a pytest module is exactly a denylist shape and
@@ -62,6 +63,13 @@ MUTANTS = [
         SCAN,
         r'(r"skills/[^/]+/scripts/[^/.]+\.py",',
         r'(r"skills/[^/]+/scripts/[^/]+\.py",',
+        TARGETS,
+    ),
+    (
+        "the scripts pattern accepts .mjs again, so a Node script ships",
+        SCAN,
+        r'(r"skills/[^/]+/scripts/[^/.]+\.py",',
+        r'(r"skills/[^/]+/scripts/[^/.]+\.(?:py|mjs)",',
         TARGETS,
     ),
     (

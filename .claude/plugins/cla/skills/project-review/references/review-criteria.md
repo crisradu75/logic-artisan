@@ -101,7 +101,7 @@ Evaluation rubric for a CTO-level review of this repo's workspace. Each dimensio
 - **Testing reality**: grade against whether the repo's own suites actually cover each component's core invariants and edge cases.
 - **Multi-tenant safety net** (if applicable): does the isolation test suite actually assert cross-tenant isolation (tenant A cannot read/write tenant B's rows)? This is typically the highest-stakes correctness property in a multi-tenant repo — a hole here is a data-leak, not a cosmetic bug.
 - **Smoke/e2e currency**: do the repo's own smoke/e2e scripts still match the current UI (selectors, strings, flow)? Would they pass today?
-- **Build/lint/test as the safety net**: clean (from Mechanical Facts)? Is the type surface strong enough to catch domain misuse across package boundaries?
+- **Build/lint/test as the safety net**: clean (from Baseline Facts)? Is the type surface strong enough to catch domain misuse across package boundaries?
 - **Core-logic edge cases**: empty/degenerate input, all-excluded selection, zero/negative input, a zero-denominator division guard — handled, or a crash?
 - **Input validation**: do intake forms guard required inputs before proceeding?
 - **Honesty of any demo/prototype component**: is it clear which data is mock, and are any intentional simulated-latency delays documented as fake work? Is any gap between an intended-testing spec and reality acknowledged?

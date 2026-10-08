@@ -5,7 +5,7 @@ any agent's prompt — `SKILL.md` keeps only the dispatch invariant (all five in
 routing) inline; this file is the actual prompt content.
 
 Each agent receives: (1) the Project Snapshot (Step 1, template in `references/aggregate-and-log.md`),
-(2) the Mechanical Facts table (Step 0, `references/baseline-checks.md`), (3) the relevant dimension
+(2) the Baseline Facts table (Step 0, `references/baseline-checks.md`), (3) the relevant dimension
 criteria from `references/review-criteria.md`, (4) the standard instructions below.
 
 **Filling `<inject:>` placeholders.** The orchestrator replaces each one before dispatch, from
@@ -23,7 +23,7 @@ files.
 >
 > **Finding caps:** At most **3 strengths** and **5 gaps**. Prioritize the most impactful.
 >
-> **Pre-verified facts:** The Mechanical Facts table already verified workspace build/lint/test, including any cross-file invariants this repo's own tests enforce. Do NOT re-check these — focus on qualitative judgment.
+> **Pre-verified facts:** The Baseline Facts table already verified workspace build/lint/test, including any cross-file invariants this repo's own tests enforce. Do NOT re-check these — focus on qualitative judgment.
 >
 > **Context:** <inject: this repo's own one-paragraph product/component summary + its test-surface summary (unit suites, smoke/e2e scripts, any DB-isolation suite)>.
 >
@@ -62,7 +62,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 ### Agent 1: Vision & Clarity
 
-> **Review criteria:** {Dimension 1 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 1 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
 > **Start by reading:** <inject: this repo's top-level docs to read for a vision/clarity pass>.
 >
@@ -76,7 +76,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 ### Agent 2: Structure & Organization
 
-> **Review criteria:** {Dimension 2 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 2 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
 > **Start by reading:** <inject: this repo's workspace-config files to read for a structure pass (workspace manifest, root package manifest, lint config, each package's manifest)>. Use Glob to survey each app's and package's source tree.
 >
@@ -90,7 +90,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 ### Agent 3: Requirements & Specifications
 
-> **Review criteria:** {Dimension 3 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 3 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
 > **Start by reading:** sample 3 specs under `openspec/specs/` spanning products — <inject: this repo's own recommended sample-spec picks (one per major product/component)>. List `openspec/changes/`.
 >
@@ -103,7 +103,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 ### Agent 4: Architecture & Design
 
-> **Review criteria:** {Dimension 4 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 4 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
 > **Start by reading:** <inject: this repo's own core-engine, data-gateway, app-entrypoint, backend-route/adapter, and RLS/data-client files to read for an architecture pass>.
 >
@@ -119,7 +119,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 
 ### Agent 5: Validation & Quality Assurance
 
-> **Review criteria:** {Dimension 5 from review-criteria.md}   **Snapshot:** {Step 1}   **Mechanical facts:** {Step 0}
+> **Review criteria:** {Dimension 5 from review-criteria.md}   **Snapshot:** {Step 1}   **Baseline facts:** {Step 0}
 >
 > **Start by reading:** <inject: this repo's own core-engine test file, smoke/e2e script paths, RLS/DB test directory, and the testing-strategy spec>, then the core engine source and the primary intake-form component for edge-case/validation logic.
 >
@@ -127,7 +127,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 > 1. Unit-suite coverage — does the core engine's test suite cover its core invariants (budget integrity, identity/consistency checks, calibration, any minimum-floor logic) and edge cases? Do the other packages/apps have meaningful suites?
 > 2. Multi-tenant safety net (if applicable) — does the DB-level isolation test suite actually assert cross-tenant isolation (tenant A cannot read tenant B's rows)? Where present, this is the highest-stakes correctness property in the repo.
 > 3. Smoke/e2e currency — do the repo's own smoke/e2e scripts still match the current UI (selectors, strings, flow)? Would they pass today? (Note: edit-time drift may already be guarded by a hook — check for one — but currency of the *whole flow* is still a judgment call.)
-> 4. Build + lint + test as the safety net — clean (from Mechanical Facts)? Is the type surface strong enough to catch domain misuse across package boundaries?
+> 4. Build + lint + test as the safety net — clean (from Baseline Facts)? Is the type surface strong enough to catch domain misuse across package boundaries?
 > 5. Engine edge cases — empty/degenerate input, all-excluded selection, zero/negative budget, a zero-denominator division guard: handled, or `NaN`/crash? <inject: the grep recipe for this repo's own division-guard pattern>.
 > 6. Input validation — does the primary intake form guard its required inputs before proceeding? Do other create/edit forms validate?
 > 7. Honesty of the demo (if the product is a demo/prototype) — is it clear which data is mock, and are any intentional simulated-latency delays documented as fake work? Is any gap between a testing-strategy spec and reality acknowledged?

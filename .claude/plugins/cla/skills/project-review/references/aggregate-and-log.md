@@ -1,7 +1,7 @@
-# Project Review — Snapshot, Aggregation, Report Template, and Retro Log
+# Project Review — Snapshot, Aggregation and Report Template
 
 **Mandatory read** for Step 1 (before building the Project Snapshot) and Step 3 (before printing the
-report or appending the retro-log line). `SKILL.md` keeps only the verdict rubric inline; this file is
+report). `SKILL.md` keeps only the verdict rubric inline; this file is
 the full recipe for everything else in those two steps.
 
 ## Step 1 — Project Snapshot template
@@ -19,7 +19,7 @@ Active OpenSpec changes: {count from ls openspec/changes/ excluding archive/}   
 Build: {PASS/FAIL}   Lint: {PASS/FAIL}   Tests: {PASS/FAIL}
 ```
 
-This snapshot + the Mechanical Facts table (`references/baseline-checks.md`) = the complete brief
+This snapshot + the Baseline Facts table (`references/baseline-checks.md`) = the complete brief
 every agent receives. Do NOT read full file contents to paste into agent prompts — agents read
 specific files themselves.
 

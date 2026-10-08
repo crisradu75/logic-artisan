@@ -84,6 +84,9 @@ def _run(repo: Path) -> subprocess.CompletedProcess:
                      id="pytest-module-as-script"),
         pytest.param("hooks/test_dispatch.py",
                      id="pytest-module-in-hooks"),
+        # Skill scripts are Python only since the one Node script was deleted.
+        pytest.param("skills/annotate/scripts/helper.mjs",
+                     id="non-python-script"),
     ],
 )
 def test_a_planted_dev_asset_is_refused_and_named(tmp_path, planted):
@@ -214,5 +217,6 @@ def test_a_compound_extension_cannot_pass_as_a_script_or_a_reference():
     added; `[^/]+` swallowed the `.test` segment."""
     assert not cst.is_allowed("skills/annotate/scripts/helper.test.py")
     assert cst.is_allowed("skills/annotate/scripts/helper.py")
+    assert not cst.is_allowed("skills/annotate/scripts/helper.mjs")
     assert not cst.is_allowed("skills/annotate/references/notes.draft.md")
     assert cst.is_allowed("skills/annotate/references/notes.md")

@@ -20,17 +20,17 @@ Run a comprehensive CTO-level review of this repo. Spine: **Step 0 build, lint a
 
 This step MUST complete before Step 2's dispatch — every agent receives its output as pre-verified input. **Read `references/baseline-checks.md` first** for the full checklist: what each check means, where its exact commands live (`cla.io/project-facts.md`), and how to interpret PASS/FAIL/SKIP. This stub carries only the ordering invariant.
 
-Print any FAIL immediately (`[Project Review] ⚠ {check}: {details}`), then collect everything into the **Mechanical Facts** table (format in the reference). Announce: `[Project Review] Baseline checks complete — {n} PASS, {m} FAIL`
+Print any FAIL immediately (`[Project Review] ⚠ {check}: {details}`), then collect everything into the **Baseline Facts** table (format in the reference). Announce: `[Project Review] Baseline checks complete — {n} PASS, {m} FAIL`
 
 ## Step 1: Collect project snapshot
 
-Build a compact **Project Snapshot** that, together with the Mechanical Facts table, is the complete brief every agent receives — do NOT read full file contents to paste into agent prompts; agents read specific files themselves. **Read `references/aggregate-and-log.md` first** for the full snapshot template and its `cla.io/project-facts.md` sourcing.
+Build a compact **Project Snapshot** that, together with the Baseline Facts table, is the complete brief every agent receives — do NOT read full file contents to paste into agent prompts; agents read specific files themselves. **Read `references/aggregate-and-log.md` first** for the full snapshot template and its `cla.io/project-facts.md` sourcing.
 
 Announce: `[Project Review] Launching 5 review agents...`
 
 ## Step 2: Launch five review agents in parallel
 
-**Dispatch all FIVE agents concurrently, in a single message, via the Agent tool** (`general-purpose` unless a more specific agent fits) — this is the core dispatch invariant of this step; do not stagger or sequence them. **Read `references/review-agents.md` first** for the full prompt text (the standard instructions every agent gets, plus each of the five dimension-specific prompts) and construct each agent's prompt from it before dispatching. Read `references/review-criteria.md` for the grading rubric. Each agent receives: (1) the Project Snapshot, (2) the Mechanical Facts table, (3) the relevant dimension criteria, (4) the standard instructions from the reference.
+**Dispatch all FIVE agents concurrently, in a single message, via the Agent tool** (`general-purpose` unless a more specific agent fits) — this is the core dispatch invariant of this step; do not stagger or sequence them. **Read `references/review-agents.md` first** for the full prompt text (the standard instructions every agent gets, plus each of the five dimension-specific prompts) and construct each agent's prompt from it before dispatching. Read `references/review-criteria.md` for the grading rubric. Each agent receives: (1) the Project Snapshot, (2) the Baseline Facts table, (3) the relevant dimension criteria, (4) the standard instructions from the reference.
 
 **Model routing (pass an explicit `model:` per agent) — per the shared `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` "Review-agent dispatch" section:**
 - **Agent 1 (Vision & Clarity) and Agent 4 (Architecture & Design) → `model: "opus"`** — the two premise-level dimensions (does the product story hold; is the architecture sound), where a cheaper model's miss is the expensive "the whole design is wrong" class.
@@ -54,10 +54,10 @@ The report is the whole output — this skill persists no state across runs.
 
 ## References
 
-- `references/baseline-checks.md` — Step 0's full checklist: what each check verifies, exact commands, PASS/FAIL/SKIP interpretation, and the Mechanical Facts table format (mandatory-read from the Step 0 stub)
+- `references/baseline-checks.md` — Step 0's full checklist: what each check verifies, exact commands, PASS/FAIL/SKIP interpretation, and the Baseline Facts table format (mandatory-read from the Step 0 stub)
 - `references/review-agents.md` — Step 2's full per-agent dispatch prompts: the standard instructions plus all five dimension prompts (mandatory-read from the Step 2 stub)
 - `references/review-criteria.md` — the portable grading rubric (signals + grade definitions) per dimension
-- `references/aggregate-and-log.md` — Step 1's snapshot template plus Step 3's dedup/merge/report-template/retro-log-append recipe (mandatory-read from the Step 1 and Step 3 stubs)
+- `references/aggregate-and-log.md` — Step 1's snapshot template plus Step 3's dedup/merge/report-template recipe (mandatory-read from the Step 1 and Step 3 stubs)
 - `cla.io/overlays/project-review.md`, if present — review rules specific to this repo (read by the orchestrator; dispatched agents never load it themselves)
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md` — the shared model/effort routing table (Step 2's "Review-agent dispatch" section is the single source of truth for this skill's per-agent model)
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md` — the thin-orchestrator standing disciplines this skill follows (delegation, I/O hygiene, batching, structured output)

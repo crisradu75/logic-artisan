@@ -60,8 +60,9 @@ TARGETS = [GUARD]
 # interesting ones here. Measured, applying each mutant to a scratch copy and
 # recording which tests go red:
 #
-#     mutant 3 (.mjs dropped)          scan_is_not_vacuous + recorded_counts
-#     (mutant 3 now drops `.json`; `.mjs` was deleted on 2026-10-08)
+#     mutant 3 (.json dropped)         scan_is_not_vacuous + recorded_counts
+#                                      + replacement_is_actually_in_use
+#     (re-measured 2026-10-08, after the one `.mjs` was deleted)
 #     mutant 7 (output-styles dropped) required_root_is_reached + recorded_counts
 #     mutant 8 (lib dropped)           required_root_is_reached + recorded_counts
 #                                      + scan_is_not_vacuous
@@ -288,37 +289,16 @@ MUTANTS = [
 #
 # Where each one landed, re-derived rather than remembered:
 #
-#   * the scan floor's drift is fixed: `>= 102` against a real 103, a margin of
-#     one, which is what that file's own rule asks for.
-#   * `>= 210` was examined and deliberately NOT moved — its gap is the rule,
-#     not drift. Only its recorded count was stale (217 against a real 235) and
-#     that is now corrected.
-#   * the `.json` parenthetical is true again, because the floor moved under
-#     it. Re-run with the guard's own recorded experiment against `>= 102`:
-#
-#     drop  files  >=102?  missing-required
-#    .json    100   False  ['.json']
-#     .mjs    102    True  ['.mjs']
-#      .py     73   False  ['.py']
-#      .md     34   False  ['.md']
-#     None    103    True  []
-#
-# The `.mjs` row is still the load-bearing one: it clears the floor exactly, so
-# `REQUIRED_SUFFIXES` is the only thing that catches it. That is the argument
-# the second list was added to make, and it does not depend on where the floor
-# happens to sit.
-#
-# Since then the floor moved to `>= 101` against a real 102, when the
-# commit-provenance hook was deleted from `hooks/`. The table above is shifted
-# by one file throughout; its shape, and the `.mjs` row's role, are unchanged.
-# It moved again, to `>= 100` against a real 101, when slim-spec-to-pr merged
-# `archive-preflight.md` into `archive.md`; the placeholder floor moved to
-# `>= 178` against a real 182 in the same change. And to `>= 99` against a real
-# 100 when cla-setup-and-optional-overlays merged two skills into one `SKILL.md`.
-# And to `>= 100` against a real 101 when cla-setup-review-fixes added
-# `_shared/references/terminology-format.md`. And to `>= 99` against a real 100
-# when delete-mechanical-checks deleted the one `.mjs`, which also retired the
-# `.mjs` row's role: every row of the table is now under the floor.
+#   * the scan floor is `>= 99` against a real 100, a margin of one, which is
+#     what that file's own rule asks for. It has moved with every file the
+#     plugin gained or lost; `git log -p` on the guard has each step.
+#   * `>= 172` against a real 176 is the placeholder floor; its gap is the rule,
+#     not drift.
+#   * there is no longer a suffix whose loss clears the scan floor. The `.mjs`
+#     row did, which is why `REQUIRED_SUFFIXES` was added; the one `.mjs` was
+#     deleted on 2026-10-08, so dropping any declared suffix now also breaks
+#     the floor, and mutant 3 is no longer attributable to `REQUIRED_SUFFIXES`
+#     alone.
 #
 # THE RECORDS ABOVE ARE NOW CHECKED, not trusted. The guard carries
 # `test_the_recorded_counts_are_the_real_ones`, which re-runs its printer and
