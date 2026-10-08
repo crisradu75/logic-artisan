@@ -34,7 +34,8 @@ Names used below:
    name. Non-zero → stop.
 4. **Start on a clean, current `<base-branch>`, in the primary clone.** If HEAD is on another
    branch that carries local commits unrelated to this run, leave that branch alone. Then
-   `git checkout <base-branch>`, then `git pull` — two commands, never `&&`.
+   `git checkout <base-branch>`, then `git pull` — two commands, never `&&`. A failed pull halts
+   the run: every item would branch off a stale base.
 
 **Primary clone by default.** A linked worktree cannot check out `<base-branch>`, because the
 primary clone holds it. If another live session contends for the primary clone, pivot to a
@@ -60,12 +61,18 @@ The skill's own file says what else the override skips and what it never skips.
 
 ## Record the head
 
-The moment an item's PR opens, read its head with `gh pr view <pr> --json headRefOid`. Write
-`branch`, `pr_number` and `head_sha` to the item's row in the run notes.
+Whenever the skill the chain runs hands back an open PR, read its head with
+`gh pr view <pr> --json headRefOid`. Write `branch`, `pr_number` and `head_sha` to the item's row
+in the run notes. That is the first hand-back, and every later call to that skill on the same item,
+since the skill may have pushed.
 
-`head_sha` is the commit the item's review and full test gate must cover. **Nothing updates it
-except a fix the orchestrator itself commits to `<branch>`,** and only once all three checks below
-pass, each value compared in context (not piped through `grep`/`awk`):
+**Before calling the skill again on an item that already has a `head_sha`** (a resume), compare
+`headRefOid` with it first. A different head means someone else pushed: do not call the skill, and
+the reason is `head moved since review`.
+
+`head_sha` is the commit the item's review and full test gate must cover. **Between hand-backs,
+nothing updates it except a fix the orchestrator itself commits to `<branch>`,** and only once all
+three checks below pass, each value compared in context (not piped through `grep`/`awk`):
 
 - `git rev-parse HEAD` must differ from the row's current `head_sha`. The same value means no commit was made (a hook rejected it, or nothing was staged).
 - `git status --porcelain -- . ':(exclude)cla.io/retro'` must be empty. Anything listed is part of
@@ -84,7 +91,9 @@ user's to review and merge by hand.
 ## Pre-merge checks (every merge)
 
 Run them in this order. The local gate runs before GitHub's merge state is read, because the gate
-takes minutes and remote checks are usually still running right after a push. A skill may run checks
+takes minutes and remote checks are usually still running right after a push. So a PR that turns
+out `DIRTY` at step 5 has run the gate once already, and runs it again on the resolved tree; that
+costs less than reading a merge state before the remote checks have settled. A skill may run checks
 of its own before these.
 
 1. **The PR is open on the recorded head.** Run `gh pr view <pr> --json state,headRefOid`. `state`
@@ -119,9 +128,10 @@ of its own before these.
      the reason is `checks not readable`. `gh pr checks` exits 1 both for no checks and for a
      failure, so only the message tells them apart.
 5. **`mergeStateStatus` allows the merge.** Run `gh pr view <pr> --json mergeStateStatus`.
-   - `CLEAN`, `HAS_HOOKS`, or `BEHIND` → proceed. `BEHIND` means the base gained commits after this branch was cut, so the merged tree was never tested as a whole; record `behind base: merged tree not tested` beside the status so the final report names it.
-   - `DIRTY` → the reason is `conflicts`. Never rebase or force-push to clear it: that changes the
-     code that was tested and reviewed.
+   - `CLEAN`, `HAS_HOOKS`, or `BEHIND` → proceed. `BEHIND` means the base gained commits after this branch was cut, so the merged tree was never tested as a whole. Squash applies onto the current base, so GitHub can still merge it; branch protection that requires an up-to-date branch reports `BLOCKED` instead. Record `behind base: merged tree not tested` beside the status so the skill's final report names it.
+   - `DIRTY` → the reason is `conflicts`. Never rebase or force-push to clear it: that rewrites the
+     code that was tested and reviewed. Whether to resolve it with a merge commit is the skill's
+     call; its own file says.
    - `UNSTABLE` → the reason is `checks not green`.
    - `BLOCKED` → the reason is `blocked by branch protection`.
    - `DRAFT` → the reason is `draft`.
@@ -148,13 +158,16 @@ branch-force-delete checks. Export neither; prefixing this one command keeps the
 **An exit code of 0 does not prove a merge.** On a branch that requires a merge queue, `gh pr merge` exits 0 after only adding the PR to the queue, or after turning on auto-merge while required checks are pending. Confirm it:
 
 1. Run `gh pr view <pr> --json state,mergeCommit,autoMergeRequest`. `state` must be `MERGED`. Otherwise:
-   - `autoMergeRequest` is set, or the PR is in a merge queue → the reason is `queued: merges later outside this run`. It is not merged now, so it does not count as merged; the final report says plainly that it will merge on its own. Do not disable it: the repo chose it.
+   - `autoMergeRequest` is set, or the PR is in a merge queue → the reason is `queued: merges later outside this run`. It is not merged now, so it does not count as merged; the skill's final report says plainly that it will merge on its own. Do not disable it: the repo chose it.
    - Anything else → the reason is `merge not confirmed (state <state>)`.
 2. `MERGED` is the fact. Write `status: merged` and `merge_commit: <mergeCommit.oid>` to the row now.
 3. Bring the local base up to date. In the primary clone: `git checkout <base-branch>`, then
-   `git pull`. In a worktree, which cannot check out `<base-branch>`: `git fetch origin <base-branch>`.
-   A failure here is not a merge failure: record `base not updated` beside the merged status and
-   continue; the next item's own base step pulls again.
+   `git pull`, then confirm `git log --oneline -1` shows `merge_commit`. In a worktree, which cannot
+   check out `<base-branch>`: `git fetch origin <base-branch>`, then
+   `git log --oneline -1 origin/<base-branch>`. A failure here is not a merge failure: record
+   `base not updated` beside the merged status and continue. The next item pulls again before it
+   starts, and **a pull that fails there halts the run**, since every later item would branch off a
+   stale base.
 
 **In a worktree, the local `<base-branch>` ref goes stale after every merge.** Compare and diff
 against `origin/<base-branch>`, after a fetch, never the local ref; a stale ref silently pads a diff
@@ -162,8 +175,8 @@ with every earlier item's files.
 
 **Leave the local feature branch.** No force or history-rewriting git mid-chain (`git branch -D`,
 `git push --force`, `git reset --hard`): `ask-destructive-git.py` prompts on each, and an unattended
-prompt stalls the chain until a human returns. Never set `ALLOW_DESTRUCTIVE_GIT=1` to get one
-through.
+prompt stalls the chain until a human returns. `ALLOW_PR_MERGE=1` does not cover `branch -D`, by
+design. Never set `ALLOW_DESTRUCTIVE_GIT=1` to get one through.
 
 ### If `gh pr merge` exits non-zero
 

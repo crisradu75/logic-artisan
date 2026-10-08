@@ -17,13 +17,20 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-_SKILLS = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "skills"
+_ROOT = Path(__file__).resolve().parents[3]
+_SKILLS = _ROOT / ".claude" / "plugins" / "cla" / "skills"
+_README = _ROOT / ".claude" / "plugins" / "cla" / "README.md"
+_GUIDE = _ROOT / "DEVELOPER-GUIDE.md"
 _SHARED = _SKILLS / "_shared" / "references" / "chain-merge.md"
 _LITE = _SKILLS / "multi-lite"
 _PR = _SKILLS / "multi-pr"
 _LITE_LOOP = _LITE / "references" / "candidate-loop.md"
 _PR_LOOP = _PR / "references" / "change-loop.md"
 _POINTER = "skills/_shared/references/chain-merge.md"
+# Words naming a deleted multi-pr policy. `stack(ed|ing)` but not the hook's own
+# name, `warn-stacked-pr-merge`, which the scan strips first.
+_DELETED_POLICY = re.compile(r"stack(?:ed|ing)|open all|open-all|5-alt|--pr-base", re.I)
+_HOOK_NAME = "warn-stacked-pr-merge"
 # A real merge command, not prose naming one: the env prefix and the subcommand.
 _MERGE_COMMAND = re.compile(r"ALLOW_PR_MERGE=1 gh pr merge\b")
 
@@ -85,6 +92,39 @@ def test_multi_pr_merges_only_the_checked_head() -> None:
     assert "`head_sha`" in step_3 and 'chain-merge.md` "Record the head"' in step_3
     step_1 = _between(loop, "1. **Resume check.**", "2. **Capture a real start timestamp**")
     assert "a moved head is never merged" in step_1
+    assert "neither is one with no recorded `head_sha`" in step_1
+    # A resumed, not-yet-archived change compares its head before spec-to-pr runs again.
+    assert "`head moved since review`" in step_1
+
+
+# requirement: change-chains / An OpenSpec change chain merges only a later change's prerequisite, on the head it checked
+def test_multi_pr_step_4_checks_its_commit_and_records_the_head() -> None:
+    """A fix multi-pr commits, and a spec-to-pr re-run, both move the head. Step 4
+    must prove the commit and record the head again, or the merge refuses it."""
+    step_4 = _between(_read(_PR_LOOP), "4. **No-unresolved-issues enforcement", "4a. **Record the obligations")
+    assert 'chain-merge.md` "Record the head"' in step_4
+    assert "which make it the new `head_sha`" in step_4
+    failed = next(line for line in step_4.splitlines() if "A failed check leaves the finding unresolved" in line)
+    assert "`fix not committed`" in failed and "`push not verified`" in failed
+    assert "Tier A halt" in failed and "left open" in failed
+    step_3 = _between(_read(_PR_LOOP), "3. **Record the head", "4. **No-unresolved-issues enforcement")
+    assert "Record the head again after every later `/cla:spec-to-pr` call" in step_3
+    shared = _between(_read(_SHARED), "## Record the head", "## Pre-merge checks (every merge)")
+    assert "Whenever the skill the chain runs hands back an open PR" in shared
+
+
+# requirement: change-chains / Running a batch of OpenSpec changes in dependency order
+def test_a_multi_pr_resume_merges_only_an_enforced_change() -> None:
+    """A session that died between step 3 and step 4b recorded a head but never
+    fixed its findings. A resume must not merge that head."""
+    loop = _read(_PR_LOOP)
+    step_1 = _between(loop, "1. **Resume check.**", "2. **Capture a real start timestamp**")
+    assert "**but only when its row's `status` is `enforced`**" in step_1
+    assert "**Never infer them fixed.**" in step_1
+    assert "The reason is `findings lost on resume`: a change a later one needs merged is a Tier A halt" in step_1
+    step_4b = _between(loop, "4b. **Validate the live spec set", "5. **Merge")
+    assert "**Passing → write `status: enforced` to this change's row.**" in step_4b
+    assert "`enforced` (step 4b passed)" in _read(_PR / "SKILL.md")
 
 
 # requirement: change-chains / An OpenSpec change chain merges only a later change's prerequisite, on the head it checked
@@ -96,13 +136,61 @@ def test_multi_pr_halts_when_a_needed_merge_fails() -> None:
     assert "leave its PR open" in neither
 
 
+def _deleted_policy_words(text: str) -> list[str]:
+    return sorted({m.group(0).lower() for m in _DELETED_POLICY.finditer(text.replace(_HOOK_NAME, ""))})
+
+
 def test_multi_pr_keeps_no_stacked_or_open_all_policy() -> None:
-    """P7a deleted both. A leftover mention reads as a live option to the orchestrator."""
-    leftovers = {
-        f"{p.relative_to(_SKILLS)}": sorted({m.group(0).lower() for m in
-                                             re.finditer(r"stacked|open all|open-all|5-alt|--pr-base", _read(p), re.I)})
-        for p in sorted(_PR.rglob("*.md"))
-    }
-    leftovers = {k: v for k, v in leftovers.items() if v}
+    """P7a deleted both. A leftover mention reads as a live option to the
+    orchestrator, or as a promise to the user in the README or the guide."""
+    texts = {f"{p.relative_to(_SKILLS)}": _read(p) for p in sorted(_PR.rglob("*.md"))}
+    assert len(texts) >= 4
+    texts["README.md"] = _read(_README)
+    texts["DEVELOPER-GUIDE.md §6"] = _between(_read(_GUIDE), "## 6. Batches:", "## 7. Parallel and safe:")
+    leftovers = {name: words for name, text in texts.items() if (words := _deleted_policy_words(text))}
     assert not leftovers, f"multi-pr still names a deleted policy: {leftovers}"
-    assert len(list(_PR.rglob("*.md"))) >= 4
+
+
+def test_the_deleted_policy_scanner_is_not_vacuous() -> None:
+    assert _deleted_policy_words("or stacking PRs on their parents") == ["stacking"]
+    assert _deleted_policy_words("under `multi-pr`'s stacked policy") == ["stacked"]
+    assert _deleted_policy_words("`warn-stacked-pr-merge` warns") == []
+
+
+def test_the_shared_file_keeps_the_rules_the_move_dropped() -> None:
+    """Rules each chain carried before the move, which a review found missing."""
+    shared = _read(_SHARED)
+    bootstrap = _between(shared, "## Bootstrap (once, before the chain starts)", "**Primary clone by default.**")
+    assert "A failed pull halts" in bootstrap
+    landed = _between(shared, "## Merge, then confirm it landed", "## A fix needed after a merge")
+    assert "**a pull that fails there halts the run**" in landed
+    assert "confirm `git log --oneline -1` shows `merge_commit`" in landed
+    assert "`ALLOW_PR_MERGE=1` does not cover `branch -D`" in landed
+    checks = _between(shared, "## Pre-merge checks (every merge)", "## Merge, then confirm it landed")
+    behind = next(line for line in checks.splitlines() if "`BEHIND` → proceed" in line)
+    assert "reports `BLOCKED` instead" in behind and "the skill's final report" in behind
+    assert "runs it again on the resolved tree" in checks
+    dirty = next(line for line in checks.splitlines() if "`DIRTY` →" in line)
+    assert "Never rebase or force-push" in dirty
+
+
+def test_multi_pr_reports_every_note_and_open_reason() -> None:
+    report = _read(_PR / "references" / "cleanup.md").split("\n5. ", 1)[1]
+    for note in ("`behind base: merged tree not tested`", "`gate skipped: no source-affecting paths`",
+                 "`base not updated`", "`queued: merges later outside this run`",
+                 "`conflicts resolved, not re-reviewed`", "`findings lost on resume`", "**Left open**"):
+        assert note in report, f"cleanup step 5 does not report {note}"
+    conflicts = next(line for line in _read(_PR_LOOP).splitlines() if "**The reason is `conflicts`**" in line)
+    assert "gated but not re-reviewed" in conflicts and "`conflicts resolved, not re-reviewed`" in conflicts
+    row = "`change | branch | pr_number | head_sha | status | merge_commit | notes`"
+    assert row in _read(_PR / "SKILL.md")
+
+
+def test_landing_a_hand_built_stack_lives_in_spec_to_pr() -> None:
+    refs = _SKILLS / "spec-to-pr" / "references"
+    landing = _read(refs / "branch-and-pr-base.md").split("## Landing a stack", 1)[1]
+    assert "`gh pr edit <child> --base <base-branch>` — retarget the child FIRST" in landing
+    assert "GitHub CLOSED the dependent PR" in landing
+    assert "`git rebase --onto origin/<base-branch> <parent-tip-sha> <child-branch>`" in landing
+    assert "`git push --force-with-lease`" in landing
+    assert '`branch-and-pr-base.md`, "Landing a stack"' in _read(refs / "handoff.md")

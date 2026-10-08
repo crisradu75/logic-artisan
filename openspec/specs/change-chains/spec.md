@@ -29,6 +29,11 @@ What the plugin promises when a batch of changes from one decisions doc is propo
 - **WHEN** one change in the batch depends on another
 - **THEN** the change it depends on runs first
 
+#### Scenario: Resuming before a change's findings were fixed
+
+- **WHEN** a resumed chain cannot show that a change's Critical and Important findings were fixed, and a later change needs it merged
+- **THEN** it is not merged and no later change starts
+
 ### Requirement: A failed OpenSpec change stops the chain
 
 `/cla:multi-pr` SHALL stop before any later change when a change fails to open or archive its pull request or leaves the live specs failing validation, and SHALL report each change in the batch as shipped, halted with its reason, or never attempted.
