@@ -1006,3 +1006,180 @@ def test_no_script_inside_the_frame_threw(hpage):
         ".__claFrameErrors === undefined"
         " || document.getElementById('cla-frame').contentWindow"
         ".__claFrameErrors.length === 0")
+
+
+# ======================================================================
+# The change page: several files in tabs, counterpart cards between blocks.
+#
+# Two questions here have no string to grep for: whether a counterpart that
+# opens moves the margin notes below it along with their blocks, and whether a
+# heading's CSS-drawn group label stays out of the text the browser reads.
+# ======================================================================
+
+import render_change                                            # noqa: E402
+
+# A task long enough that its counterpart card clamps to two lines, so opening
+# the card has a height to gain.
+CHANGE_TASK = ("Remove `src/legacy/sync-engine/` with `git rm -r`, then walk every "
+               "caller that imported it, rewrite each import to the new module, "
+               "delete the compatibility shim the engine left behind, and confirm "
+               "that nothing outside the tests still names the engine's package, "
+               "its entry point or the configuration key that switched it on.")
+
+CHANGE_FILES = {
+    "proposal.md": """# Proposal
+
+## Why
+
+The sync engine is dead code.
+
+## What Changes
+
+- Delete `src/legacy/sync-engine/` entirely
+
+## Impact
+
+- Consumers stop receiving updates from the engine, which nobody has run in a year.
+""",
+    "tasks.md": "# Tasks\n\n## 1. Delete\n\n- [ ] 1.1 %s\n" % CHANGE_TASK,
+    "specs/cla-plugin/spec.md": """# Spec Delta
+
+## MODIFIED Requirements
+
+### Requirement: Project-data scaffolding
+
+The setup SHALL write one facts file.
+
+#### Scenario: A fresh repo
+- **WHEN** setup runs
+- **THEN** one file is written
+""",
+}
+
+
+@pytest.fixture(scope="module")
+def served_change(tmp_path_factory):
+    """The real change renderer and the real server, with one note seeded on the
+    proposal's Impact bullet — below the promise whose counterpart card opens."""
+    root = tmp_path_factory.mktemp("browser-change")
+    (root / ".git").mkdir()
+    d = root / "openspec" / "changes" / "demo"
+    for rel, text in CHANGE_FILES.items():
+        (d / rel).parent.mkdir(parents=True, exist_ok=True)
+        (d / rel).write_text(text, encoding="utf-8")
+    pages = tmp_path_factory.mktemp("pages-change")
+    page = pages / "change-demo.html"
+    _out, _model, ctxs = render_change.build(str(d), str(root), str(page))
+
+    key = store.doc_key(str(d), str(root))
+    blocks = ctxs["proposal"].blocks
+    blk = [b for b, t in blocks.items() if t.startswith("Consumers stop")][0]
+    needle = "nobody has run"
+    text = blocks[blk]
+    off = text.index(needle)
+    corpus = store.path_for(str(d), str(root))
+    os.makedirs(os.path.dirname(corpus), exist_ok=True)
+    with open(corpus, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps({
+            "id": "c1", "doc": key, "file": "proposal", "blk": blk, "sec": "Impact",
+            "line": 1, "off": off, "text": needle, "before": text[max(0, off - 60):off],
+            "after": text[off + len(needle):off + len(needle) + 60],
+            "note": "Is a year right?", "at": "2026-10-09T10:00:00"}) + "\n")
+
+    # Its own Handler subclass, never the shared class — see served_html.
+    _root, _doc, _page = str(root), str(d), str(page)
+
+    class ChangeHandler(annotate_server.Handler):
+        out_path = corpus
+        doc_path = _doc
+        doc_key = key
+        root = _root
+        page_path = _page
+        is_change = True
+
+    srv = ThreadingHTTPServer(
+        ("127.0.0.1", 0), partial(ChangeHandler, directory=str(pages)))
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    yield {"url": "http://127.0.0.1:%d/change-demo.html" % srv.server_address[1],
+           "ctxs": ctxs}
+    srv.shutdown()
+    srv.server_close()
+    thread.join(timeout=10)
+
+
+@pytest.fixture
+def cpage(browser, served_change):
+    p = browser.new_page(viewport={"width": 1440, "height": 900})
+    errors = []
+    p.on("pageerror", lambda e: errors.append(str(e)))
+    p.goto(served_change["url"])
+    p.wait_for_function("() => typeof syncMargin === 'function'")
+    yield p
+    assert errors == [], "the page threw: %s" % errors
+    p.close()
+
+
+def test_the_change_page_opens_on_the_overview(cpage):
+    assert cpage.evaluate("""() => [...document.querySelectorAll('.pane')]
+        .filter(p => getComputedStyle(p).display !== 'none')
+        .map(p => p.dataset.pane)""") == ["__overview__"]
+
+
+def test_expanding_a_counterpart_keeps_every_note_level_with_its_block(cpage):
+    """Opening a card grows it by several lines and moves every block below
+    it. A margin note's top is an absolute pixel, so unless the toggle re-lays
+    the margin out, the note is left beside the wrong line with its tie still
+    drawn solid."""
+    cpage.click('.tab[data-tab="proposal"]')
+    cpage.wait_for_selector('#gutter .mnote[data-cmt="c1"]')
+
+    def measure():
+        return cpage.evaluate("""() => {
+            const n = document.querySelector('#gutter .mnote[data-cmt="c1"]');
+            const m = document.querySelector('mark.cmt-hl[data-cmt="c1"]');
+            const cf = document.querySelector('[data-pane="proposal"] .cf');
+            return {drift: n.getBoundingClientRect().top - m.getBoundingClientRect().top,
+                    mark: m.getBoundingClientRect().top + window.scrollY,
+                    card: cf.getBoundingClientRect().height,
+                    open: cf.classList.contains('open'),
+                    expanded: cf.querySelector('.cf-x').getAttribute('aria-expanded')};
+        }""")
+
+    before = measure()
+    assert not before["open"] and before["expanded"] == "false"
+    cpage.click('[data-pane="proposal"] .cf .cf-x')
+    cpage.wait_for_timeout(300)
+    after = measure()
+    assert after["open"] and after["expanded"] == "true"
+    assert after["card"] > before["card"] + 10, "the card did not grow: %s -> %s" % (
+        before["card"], after["card"])
+    assert after["mark"] > before["mark"] + 10, "the block below did not move"
+    assert abs(after["drift"] - before["drift"]) <= 2, (
+        "the note drifted %.1fpx from its block" % (after["drift"] - before["drift"]))
+
+    # And back, from the keyboard.
+    cpage.focus('[data-pane="proposal"] .cf .cf-x')
+    cpage.keyboard.press("Enter")
+    cpage.wait_for_timeout(300)
+    back = measure()
+    assert not back["open"]
+    assert abs(back["drift"] - before["drift"]) <= 2
+
+
+def test_a_badged_heading_reports_the_same_text_as_python(cpage, served_change):
+    """The group label is drawn by `::before` from an attribute. The page's
+    own blockText() — what every annotation offset is counted against — must
+    read the heading exactly as the Python side does, label and all absent."""
+    ctx = served_change["ctxs"]["spec-cla-plugin"]
+    blk = [b for b, t in ctx.blocks.items() if t == "Requirement: Project-data scaffolding"][0]
+    cpage.click('.tab[data-tab="spec-cla-plugin"]')
+    got = cpage.evaluate("""(blk) => {
+        const h = document.querySelector('[data-blk="' + CSS.escape(blk) + '"]');
+        return {text: blockText(h),
+                label: getComputedStyle(h, '::before').content,
+                shown: getComputedStyle(h, '::before').display};
+    }""", blk)
+    assert " ".join(got["text"].split()) == " ".join(ctx.blocks[blk].split())
+    assert got["label"] == '"MODIFIED"'
+    assert got["shown"] != "none"
