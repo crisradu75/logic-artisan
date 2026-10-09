@@ -98,7 +98,15 @@ PATH_RE = re.compile(
     r"|(?:[\w.\-]+/){2,}[\w.\-]*")
 IDENT_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.\-]+)`")
 BACKTICK_RE = re.compile(r"`([^`]+)`")
-TASK_RE = re.compile(r"^\s*[-*]\s*\[( |x|X)\]\s*(\d+(?:\.\d+)*)?\s*(.*)$")
+# Any box with at most one mark in it is a task: OpenSpec counts a box holding
+# only `x` (either case, any spacing) as done and every other mark — `[~]`,
+# `[-]`, an empty `[]` — as unfinished. Not followed by `(`, because
+# `- [x](link)` is a link, and a box of one character at most, because `- [docs]`
+# is a word in brackets.
+TASK_RE = re.compile(r"^\s*[-*]\s*\[(\s*\S?\s*)\](?!\()\s*(\d+(?:\.\d+)*)?\s*(.*)$")
+
+# tasks.md may end in plain bullets the workflow tracks nowhere.
+UNTRACKED_TASK_SECTIONS = ("workflow follow-up",)
 BULLET_RE = re.compile(r"^\s{0,3}[-*]\s+(.*)$")
 DECISION_RE = re.compile(r"^\s{0,3}(\d+)\.\s+(.*)$")
 REQ_RE = re.compile(r"^###\s+Requirement:\s*(.+?)\s*$")
@@ -167,12 +175,17 @@ def change_files(change_dir):
         p = os.path.join(change_dir, name)
         if os.path.isfile(p):
             out.append((key, key, p))
+    # A capability is a PATH, and may have several segments: `identity/user-auth`
+    # lives at specs/identity/user-auth/spec.md. Walked to any depth, and the
+    # path is posix-joined so the key is the same on every platform.
     specs = os.path.join(change_dir, "specs")
-    if os.path.isdir(specs):
-        for cap in sorted(os.listdir(specs)):
-            p = os.path.join(specs, cap, "spec.md")
-            if os.path.isfile(p):
-                out.append(("spec-" + cap, "spec · " + cap, p))
+    found = []
+    for dirpath, _dirs, names in os.walk(specs):
+        if "spec.md" in names and os.path.abspath(dirpath) != os.path.abspath(specs):
+            cap = os.path.relpath(dirpath, specs).replace(os.sep, "/")
+            found.append((cap, os.path.join(dirpath, "spec.md")))
+    for cap, p in sorted(found):
+        out.append(("spec-" + cap, "spec · " + cap, p))
     return out
 
 
@@ -254,19 +267,24 @@ def capabilities(text):
 
 
 def tasks(text):
-    """Every `- [ ] N.N ...` item, with its checkbox state and its `## N.` group."""
+    """Every `- [ ] N.N ...` item, with its checkbox state and its `## N.` group.
+
+    Done means the box holds only `x`, as OpenSpec counts it; any other mark is
+    a task not yet done, never a line that is not a task."""
     out, group = [], ""
     for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
         h = re.match(r"^##\s+(.+?)\s*$", line)
         if h:
             group = strip_md(h.group(1))
             continue
+        if group.lower() in UNTRACKED_TASK_SECTIONS:
+            continue
         m = TASK_RE.match(line)
         if not m:
             continue
         num = m.group(2) or str(len(out) + 1)
         out.append(_claim("tasks", "task", num, m.group(3), n,
-                          done=m.group(1).lower() == "x", group=group))
+                          done=m.group(1).strip().lower() == "x", group=group))
     return out
 
 
@@ -653,11 +671,13 @@ def _disambiguate(claims):
 def _mentions(text, name):
     """Whether `text` names the capability `name` anywhere, as a whole word.
 
-    A whole word means no letter, digit, underscore or hyphen on either side, so
-    `cla-plugin-extra` and `old-cla-plugin` do not mention `cla-plugin`. Case is
+    A whole word means no letter, digit, underscore, hyphen or slash on either
+    side, so `cla-plugin-extra` and `old-cla-plugin` do not mention `cla-plugin`,
+    and `identity/user-auth` does not mention a capability called `user-auth` —
+    a capability is a path, and a slash joins two segments of one. Case is
     ignored, because prose capitalises a name that a heading spells in lower case.
     """
-    pattern = r"(?<![\w-])" + re.escape(name) + r"(?![\w-])"
+    pattern = r"(?<![\w/-])" + re.escape(name) + r"(?![\w/-])"
     return re.search(pattern, text or "", re.I) is not None
 
 

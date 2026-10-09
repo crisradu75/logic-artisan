@@ -317,6 +317,22 @@ def test_a_longer_name_containing_the_capability_is_not_a_mention():
         assert "no proposal capability names" in rows[0]["why"], line
 
 
+def test_a_segment_of_a_nested_capability_path_is_not_a_mention():
+    """A capability is a path: `identity/user-auth` names one capability, and
+    the `user-auth` inside it is not a second one."""
+    prop = _impact_only("`identity/user-auth`: login gains a requirement")
+    m = OC.build("demo", {"proposal": prop, "spec-user-auth": SPEC_ONLY,
+                          "spec-identity/user-auth": SPEC_ONLY})
+    rows = {r["name"]: r for r in m["coverage"]["capabilities"]}
+    assert rows["identity/user-auth"]["mentioned"] and rows["identity/user-auth"]["why"] == ""
+    assert not rows["user-auth"]["mentioned"]
+    assert "no proposal capability names" in rows["user-auth"]["why"]
+    # And the other way round: the path's last segment is not the path's parent.
+    m = OC.build("demo", {"proposal": _impact_only("`identity/user-auth` changes"),
+                          "spec-identity": SPEC_ONLY})
+    assert not m["coverage"]["capabilities"][0]["mentioned"]
+
+
 def test_a_mention_adds_no_link():
     # A mention clears the coverage flag and nothing more: it is not a citation,
     # so it must not produce the strong link a `## Capabilities` bullet does.
@@ -472,6 +488,57 @@ def test_files_come_back_in_the_fixed_order(tmp_path):
     # Never directory order: a reader should know where a tab is before looking.
     assert [k for k, _l, _p in OC.change_files(str(d))] == [
         "proposal", "design", "tasks", "spec-alpha", "spec-beta"]
+
+
+def test_a_nested_capability_path_gets_its_own_file(tmp_path):
+    """OpenSpec 1.14 capability paths may have several segments, and the delta
+    lives at specs/<path>/spec.md. Listing one level only gave it no tab."""
+    d = tmp_path / "c"
+    (d / "specs" / "identity" / "user-auth").mkdir(parents=True)
+    (d / "specs" / "billing").mkdir(parents=True)
+    (d / "proposal.md").write_text("# Proposal\n", encoding="utf-8")
+    for cap in ("identity/user-auth", "billing"):
+        (d / "specs" / cap / "spec.md").write_text("# Spec Delta\n", encoding="utf-8")
+    got = [(k, label) for k, label, _p in OC.change_files(str(d))]
+    assert got == [("proposal", "proposal"), ("spec-billing", "spec · billing"),
+                   ("spec-identity/user-auth", "spec · identity/user-auth")]
+
+
+TASKS_114 = """# Tasks
+
+## 1. Markers
+
+- [ ] 1.1 Not started
+- [x] 1.2 Done, lower case
+- [X] 1.3 Done, upper case
+- [ x] 1.4 Done, with a space before the mark
+- [~] 1.5 In progress
+- [-] 1.6 Dropped
+- [] 1.7 An empty box
+- [docs](notes.md) is a link, not a task
+- [1](notes.md) is a one-character link, not a task
+- [README] is a word in brackets, not a task
+
+## Workflow follow-up
+
+- Archive the change once it merges
+- [ ] Not tracked either, though it carries a box
+"""
+
+
+def test_a_box_holding_only_x_is_done_and_every_other_mark_is_unfinished():
+    """OpenSpec 1.14 counts a box holding only `x`, either case and any
+    spacing, as done; `[~]`, `[-]` and `[]` are unfinished tasks. The old
+    pattern dropped all four out of the total, and missed `[ x]` as done."""
+    got = {c["num"]: c["done"] for c in OC.tasks(TASKS_114)}
+    assert got == {"1.1": False, "1.2": True, "1.3": True, "1.4": True,
+                   "1.5": False, "1.6": False, "1.7": False}
+
+
+def test_workflow_follow_up_bullets_are_never_tasks():
+    assert not [c for c in OC.tasks(TASKS_114) if c["group"] == "Workflow follow-up"]
+    st = OC.build("demo", {"proposal": PROPOSAL, "tasks": TASKS_114})["coverage"]["stats"]
+    assert (st["tasks_done"], st["tasks"]) == (3, 7)
 
 
 def test_an_absent_design_file_is_simply_absent(tmp_path):

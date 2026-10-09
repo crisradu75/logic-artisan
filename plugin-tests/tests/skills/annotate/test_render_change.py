@@ -303,6 +303,18 @@ def test_build_refuses_a_directory_that_is_not_a_change(tmp_path):
     assert not issubclass(RC.ChangeUnreadable, SystemExit)
 
 
+def test_a_nested_capability_delta_gets_its_own_tab(change, tmp_path):
+    nested = os.path.join(change["dir"], "specs", "identity", "user-auth")
+    os.makedirs(nested)
+    with open(os.path.join(nested, "spec.md"), "w", encoding="utf-8") as fh:
+        fh.write(SPEC)
+    path, _model, ctxs = RC.build(change["dir"], change["root"], str(tmp_path / "n.html"))
+    html_str = io.open(path, encoding="utf-8").read()
+    assert 'data-tab="spec-identity/user-auth"' in html_str
+    assert "spec · identity/user-auth" in html_str
+    assert all(b.startswith("spec-identity/user-auth:") for b in ctxs["spec-identity/user-auth"].blocks)
+
+
 def test_find_change_accepts_a_directory_path(change):
     assert OC.find_change(change["dir"], change["root"]) == change["dir"]
 

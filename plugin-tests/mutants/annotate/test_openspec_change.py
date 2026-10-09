@@ -20,14 +20,58 @@ MUTANTS = [
 
     ("a longer name ending in the capability counts as a mention of it",
      OC,
-     '    pattern = r"(?<![\\w-])" + re.escape(name) + r"(?![\\w-])"',
-     '    pattern = re.escape(name) + r"(?![\\w-])"',
+     '    pattern = r"(?<![\\w/-])" + re.escape(name) + r"(?![\\w/-])"',
+     '    pattern = re.escape(name) + r"(?![\\w/-])"',
      TESTS),
 
     ("a longer name starting with the capability counts as a mention of it",
      OC,
-     '    pattern = r"(?<![\\w-])" + re.escape(name) + r"(?![\\w-])"',
-     '    pattern = r"(?<![\\w-])" + re.escape(name)',
+     '    pattern = r"(?<![\\w/-])" + re.escape(name) + r"(?![\\w/-])"',
+     '    pattern = r"(?<![\\w/-])" + re.escape(name)',
+     TESTS),
+
+    ("the last segment of a capability path counts as a mention of another one",
+     OC,
+     '    pattern = r"(?<![\\w/-])" + re.escape(name) + r"(?![\\w/-])"',
+     '    pattern = r"(?<![\\w-])" + re.escape(name) + r"(?![\\w/-])"',
+     TESTS),
+
+    ("the first segment of a capability path counts as a mention of another one",
+     OC,
+     '    pattern = r"(?<![\\w/-])" + re.escape(name) + r"(?![\\w/-])"',
+     '    pattern = r"(?<![\\w/-])" + re.escape(name) + r"(?![\\w-])"',
+     TESTS),
+
+    # ------------------------------------------------ OpenSpec 1.14 shapes
+    ("a nested capability path gets no file, as before",
+     OC,
+     '        if "spec.md" in names and os.path.abspath(dirpath) != os.path.abspath(specs):',
+     '        if "spec.md" in names and os.path.dirname(os.path.abspath(dirpath))'
+     ' == os.path.abspath(specs):',
+     TESTS),
+
+    ("a box with a space before its x is not done",
+     OC,
+     '                          done=m.group(1).strip().lower() == "x", group=group))',
+     '                          done=m.group(1).lower() == "x", group=group))',
+     TESTS),
+
+    ("only [ ], [x] and [X] are tasks again",
+     OC,
+     'TASK_RE = re.compile(r"^\\s*[-*]\\s*\\[(\\s*\\S?\\s*)\\](?!\\()',
+     'TASK_RE = re.compile(r"^\\s*[-*]\\s*\\[( |x|X)\\](?!\\()',
+     TESTS),
+
+    ("a bullet opening with a link reads as a task",
+     OC,
+     'TASK_RE = re.compile(r"^\\s*[-*]\\s*\\[(\\s*\\S?\\s*)\\](?!\\()',
+     'TASK_RE = re.compile(r"^\\s*[-*]\\s*\\[(\\s*\\S?\\s*)\\]',
+     TESTS),
+
+    ("a box under Workflow follow-up is counted as a task",
+     OC,
+     "        if group.lower() in UNTRACKED_TASK_SECTIONS:",
+     "        if False:",
      TESTS),
 
     ("a mention only counts in the exact case the heading spells",
