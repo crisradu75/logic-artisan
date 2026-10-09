@@ -89,6 +89,12 @@ An archived change is annotatable too, and is found by its bare id even though
 the directory carries a date prefix. Both scripts take the id, the directory, or
 a path — pass what the user said and read what comes back.
 
+The page opens on a derived overview of the change, not on the proposal. Each
+MODIFIED requirement shows a word diff against its main spec. **On an archived
+change it shows "no base", which does not mean "unchanged"**: archiving wrote the
+change's text into the main spec, so the text it replaced is gone. Never report
+an archived requirement as unmodified on the strength of that note.
+
 ## 2. Render, then serve
 
 ```bash
@@ -183,6 +189,10 @@ that command before relying on the tab, and say what it reported.
 
 **A page reporting `Nothing to check` means no `## What Changes` bullets were
 parsed**, not that the change is clean. Say which it is.
+
+A spec delta counts as named when the proposal mentions its capability anywhere,
+under `## Impact` as much as `## Capabilities`; only a delta the proposal never
+mentions is flagged.
 
 **Never restate a coverage row as a defect in the change.** Say "no task names
 this bullet's file", which is what was measured, rather than "this is not

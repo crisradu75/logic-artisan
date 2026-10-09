@@ -179,9 +179,17 @@ through.
 ```
 
 A change opens as one page with proposal, design, tasks and spec deltas in tabs, each passage's
-counterpart inlined beneath the block it answers to — tabs alone show one side at a time — plus a
-derived coverage view of which claims nothing names. Read that view as a reading aid rather than a
-verdict: an uncovered row means no task names that bullet's file, not that the work is missing.
+counterpart inlined beneath the block it answers to (two lines until clicked) — tabs alone show one
+side at a time — plus a derived coverage view of which claims nothing names. Read that view as a
+reading aid rather than a verdict: an uncovered row means no task names that bullet's file, not that
+the work is missing.
+
+The page opens on a derived overview: the proposal's why, each promise with its coverage bucket and
+any **BREAKING** mark, the requirements each capability adds, modifies, removes or renames, and how
+many tasks are done. In a spec delta each requirement heading carries its group, a REMOVED one is
+greyed out, and a MODIFIED one shows a word diff against the main spec beside the change. An archived
+change shows "no base" instead: archiving wrote its text into the main spec, so the text it replaced
+is gone, which is not the same as unchanged.
 
 It never writes to what you are annotating; the page is served read-only and a test pins that across
 a full annotate-and-rebuild cycle. Say "read my annotations" in a later session to pick the comments

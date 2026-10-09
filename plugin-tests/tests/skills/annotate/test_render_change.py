@@ -513,6 +513,7 @@ def _section_html(html_str, blk):
     return html_str[start:html_str.index("</section>", i)]
 
 
+# requirement: annotate / Reviewing a change shows how each requirement changes the current spec
 def test_each_requirement_heading_carries_its_group(grouped):
     html_str = body_of(grouped["html"])
     for title, group in (("A fresh rule", "ADDED"), ("Project-data scaffolding", "MODIFIED"),
@@ -532,6 +533,7 @@ def test_a_labelled_heading_reads_the_same_text_as_before(grouped):
         assert block_text(html_str, blk) == " ".join(ctx.blocks[blk].split())
 
 
+# requirement: annotate / Reviewing a change shows how each requirement changes the current spec
 def test_a_removed_requirement_and_its_scenarios_are_set_apart(grouped):
     html_str = body_of(grouped["html"])
     ctx = grouped["ctxs"]["spec-cla-plugin"]
@@ -601,6 +603,7 @@ def _req_heading(ctxs):
     return [b for b, t in ctx.blocks.items() if t == "Requirement: Project-data scaffolding"][0]
 
 
+# requirement: annotate / Reviewing a change shows how each requirement changes the current spec
 def test_a_modified_requirement_shows_its_diff_under_its_heading(change, tmp_path):
     _main_spec(change, MAIN_SPEC.encode("utf-8"))
     html_str, _model, ctxs = _rebuild(change, tmp_path)
@@ -631,6 +634,7 @@ def test_an_unreadable_main_spec_still_builds_and_says_so(change, tmp_path):
     assert "could not be read: not valid UTF-8" in html_str
 
 
+# requirement: annotate / Reviewing a change shows how each requirement changes the current spec
 def test_an_archived_change_shows_no_base_rather_than_unchanged(tmp_path):
     (tmp_path / ".git").mkdir()
     d = tmp_path / "openspec" / "changes" / "archive" / "2026-01-01-demo"

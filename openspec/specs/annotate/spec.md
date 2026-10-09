@@ -20,6 +20,30 @@ What `/cla:annotate` promises a reader: their document shown as written on a loc
 - **WHEN** a user runs `/cla:annotate` with a change id
 - **THEN** the change's files open together on one page
 
+#### Scenario: A change opens on its overview
+
+- **WHEN** a change's page opens
+- **THEN** it first shows an overview of the change: what it promises, the requirements it adds, modifies or removes, and how many tasks are done
+
+### Requirement: Reviewing a change shows how each requirement changes the current spec
+
+On a change's page, each requirement in its spec changes SHALL say whether it is added, modified or removed, a modified one SHALL show the words it changes in the current spec, a removed one SHALL be set apart from the live ones, and where there is no current text to compare against the page SHALL say so rather than show the requirement as unchanged.
+
+#### Scenario: A modified requirement
+
+- **WHEN** a change modifies a requirement whose current text differs
+- **THEN** the words it removes and adds are shown under its heading
+
+#### Scenario: An archived change
+
+- **WHEN** the change has been archived
+- **THEN** each modified requirement says there is no current text to compare it with, not that it is unchanged
+
+#### Scenario: A removed requirement
+
+- **WHEN** a change removes a requirement
+- **THEN** its heading is labelled removed and its text is set apart from the live requirements, with its reason still readable
+
 ### Requirement: The document is shown as written and never changed
 
 Annotating SHALL never change the source document and SHALL show an HTML document with its own styling and layout, adding only the annotation layer, and telling the reader when a document cannot be shown that way.
