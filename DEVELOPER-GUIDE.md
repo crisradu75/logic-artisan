@@ -19,8 +19,8 @@ portable:
   deliberately and kept out of the always-loaded listing) — can also be triggered by describing
   what you want in natural language.
 - **Guard hooks** — always-on guardrails wired automatically when the plugin loads. They block,
-  ask, or warn on risky tool calls (a push to main, an `rm -rf`, a commit that would collide with
-  another session). You don't invoke them; they fire when a convention is about to be broken.
+  ask, or warn on risky tool calls (a force-push, an `rm -rf`, a `cd` that would persist across
+  calls). You don't invoke them; they fire when a convention is about to be broken.
 - **Helper agents** (`doc-sweeper`, `fact-gatherer`) — mechanical grep/verify workers the ship and
   review skills delegate to. You rarely call them directly.
 
@@ -30,7 +30,7 @@ The split that everything obeys: **procedure is portable, facts are per-repo.**
   and is identical in every repo that uses CLA.
 - Your repo's facts live in `cla.io/project-facts.md`, the one home for every command, path, port,
   install step and env file a skill reads. The rest of the repo-root `cla.io/` tree holds decisions,
-  feedback, retro ledgers and the lessons log, plus optional per-skill overlays
+  feedback, the run ledger and the lessons log, plus optional per-skill overlays
   (`cla.io/overlays/<skill>.md`) for a rule that applies to one skill in this repo and the
   machine-read `*.local.md` files. All of it sits in the repo, not the plugin directory, so
   installing or updating the plugin never touches it.
@@ -293,8 +293,8 @@ instead. The guards encode the harness's conventions; routing around them defeat
 
 ## 9. The learning loops and `cla.io/`
 
-Every run leaves state behind in the repo-root `cla.io/` tree — decisions, feedback docs, retro
-ledgers (`retro/*-runs.jsonl`), lessons learned, and (in a consuming repo) the consolidated
+Every run leaves state behind in the repo-root `cla.io/` tree — decisions, feedback docs, the run
+ledger (`retro/spec-to-pr-runs.jsonl`), lessons learned, and (in a consuming repo) the consolidated
 `project-facts.md`. That state feeds the `[loop]` skills:
 
 - **`codify-learnings`** — run it at the end of a session worth learning from. It reviews the
@@ -362,8 +362,15 @@ destination repo:
 3. **`/cla:cla-setup`** — create whatever is missing of the `cla.io/` tree (never overwriting),
    seed the OpenSpec authoring rules, then populate `cla.io/project-facts.md` with the repo's facts:
    workspace members, install/dev/build/test commands, ports, affected-file map, test locations,
-   env files. Safe to re-run; it changes an existing file only on your yes. Re-run it whenever a
-   skill reports missing or stale facts.
+   env files. It also lists retired ledgers and offers to delete them, and adds a `.gitignore` line
+   so `multi-lite`/`multi-pr` run notes stay out of git. Safe to re-run; apart from that
+   `.gitignore` line it changes an existing file only on your yes. Re-run it whenever a skill
+   reports missing or stale facts.
+4. **Install the push guard**, once per clone (section 8): a plugin cannot write to `.git/hooks`.
+
+   ```bash
+   cp <plugin>/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+   ```
 
 Overlays are optional: add `cla.io/overlays/<skill>.md` only when one skill needs a rule specific to
 this repo. Pick up newer releases with `/plugin marketplace update`; `cla.io/` is untouched by an
@@ -437,8 +444,8 @@ and why each script exists.
 - **Keep facts out of the synced core.** A conformance guard fails if a project-specific token or an
   absolute developer path leaks into `skills/`, `agents/`, `hooks/`, `output-styles/` or `lib/`. It
   is a program (`skills/_shared/scripts/check_no_project_tokens.py`), not a test, precisely so it
-  also runs in a consuming repo, which has no pytest gate over its plugin cache. Overlays in this
-  repo stay neutral stubs — this is the source, not a consumer.
+  also runs in a consuming repo, which has no pytest gate over its plugin cache. This repo's own
+  `cla.io/` facts and overlays are its own, like any consumer's, and never ship.
 
 - **Scripts are stdlib-only Python** (no third-party deps beyond pytest itself). The spec-to-pr retro aggregator
   carries a copy of `lib/log_run.py`'s ledger-directory resolver, kept in step by hand;
@@ -539,7 +546,7 @@ this repo and the plugin path), and nothing tracks which.
 ### Every script, and why it exists
 
 A script earns its place only by doing something a direct command plus a sentence of prose
-cannot do reliably. Seven that failed that bar were deleted; these are the survivors, and the
+cannot do reliably. Scripts that failed that bar were deleted; these are the survivors, and the
 rule going in is the rule going out — **if a script here can't be justified in one line, it
 isn't a survivor.** (Guard hooks are listed in section 8.)
 
@@ -566,7 +573,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `annotate/scripts/sweep_changes.py` | Runs the link detector over a corpus of real changes and reports the coverage split — the command behind every threshold in `openspec_change.py`, and how a consuming repo re-measures before trusting the coverage tab. |
 | `annotate/scripts/render_change.py` | Lays a change's files into one annotatable page, binding each claim to its block one-match-or-none and keeping injected counterparts outside the blocks whose offsets they would corrupt. |
 | `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
-| `_shared/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across four skills. |
+| `_shared/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across five skills. |
 | `spec-to-pr/scripts/_git_common.py` | Repo root plus the `branch-prefix.local.md` overlay contract, for `probe_state.py`. |
 
 ### Adding a skill

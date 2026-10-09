@@ -152,7 +152,8 @@ CLA is portable because it separates *procedure* (generic, synced everywhere) fr
   A skill reads its overlay only if it is there; no skill needs one. Facts never go in an overlay.
   They live in YOUR repo, not in the plugin: the installed plugin tree is a read-only, version-keyed
   cache, so anything stored there would be unwritable and would vanish on the next update.
-- **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, `retro/` run ledgers,
+- **`cla.io/`** (repo root) — all per-repo state: `decisions/`, `feedback/`, the run ledger
+  `retro/spec-to-pr-runs.jsonl`,
   `lessons-learned/`, and **`project-facts.md`** — the one home for every command, path, port,
   install step and env file a skill reads. A **staleness guard**
   (`skills/cla-setup/scripts/check_fact_paths.py`, also a program) fails
@@ -179,7 +180,23 @@ the facts) → install the `pre-push` hook (see *Guardrails*).
 **Coming from 1.x?** The `cla-init` and `sync-context` skills were merged into `/cla:cla-setup`. Run
 it once: it reports what your `cla.io/` is missing, proposes moving facts out of overlays into
 `project-facts.md` and the stories of dated incidents into `cla.io/lessons-learned/` (any rule they
-state stays in the overlay), and proposes deleting overlays left with no rule.
+state stays in the overlay), and proposes deleting overlays left with no rule. The same run:
+
+- lists the retired ledgers it finds (`codify-runs.jsonl` among them; only `spec-to-pr-runs.jsonl`
+  is still written) and deletes them on your yes;
+- adds a `.gitignore` line for the `multi-lite`/`multi-pr` run notes, which are now local working
+  state, and offers to untrack any notes files git already tracks. Both chainers refuse to start
+  until git ignores their notes.
+
+Also gone: `codify-retro` (`codify-learnings` now escalates a rule that failed again), and
+`multi-pr`'s choice of merge policy. It has one now: merge only what a later change needs, and
+leave the rest open.
+
+`log_run.py` now refuses a `spec-to-pr` run record of the wrong shape, and `spec-to-pr-retro` skips
+an old-shape record it cannot read and names it. To rewrite old records once, run the migration
+script from a clone of the source repo (it does not ship):
+`python3 <clone>/plugin-tests/scripts/migrate_run_records.py cla.io/retro/spec-to-pr-runs.jsonl --dry-run`,
+then again without `--dry-run`.
 
 The marketplace install is the only route in. `update-cla`, the old pull-based file-sync updater,
 has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can delete that too.
@@ -248,7 +265,7 @@ to install.
   .claude-plugin/plugin.json   manifest
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers)
   hooks/                       guard hooks + hooks.json wiring, and git/pre-push
-  lib/                         log_run.py — the one retro-ledger writer
+  lib/                         log_run.py — writes the one run ledger, spec-to-pr-runs.jsonl
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/<name>/               (references/ scripts/ present as each skill needs)
     SKILL.md                   the skill (portable procedure)
