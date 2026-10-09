@@ -12,6 +12,15 @@ PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 CHANGE = PLUGIN / "skills" / "annotate" / "scripts" / "render_change.py"
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_render_change.py"]
 
+
+def _a(text):
+    """A multi-line anchor carrying render_change.py's own line separator: the
+    file may be CRLF on disk in a clone with `core.autocrlf` on (see mutate.py,
+    KEEP `\\n` OUT OF AN ANCHOR)."""
+    nl = "\r\n" if b"\r\n" in CHANGE.read_bytes() else "\n"
+    return text.replace("\n", nl)
+
+
 MUTANTS = [
     ("the shell substitution goes back to a silent no-op",
      CHANGE,
@@ -96,8 +105,68 @@ MUTANTS = [
     # ------------------------------------------------ requirement diffs
     ("a diff card lands inside its heading, so its words count into the block",
      CHANGE,
-     '        bodies[c["file"]] = after_block(bodies[c["file"]], blk, diff_markup(rec))',
-     '        bodies[c["file"]] = inside_block(bodies[c["file"]], blk, diff_markup(rec))',
+     '        bodies[c["file"]] = after_block(bodies[c["file"]], blk, card)',
+     '        bodies[c["file"]] = inside_block(bodies[c["file"]], blk, card)',
+     TESTS),
+
+    ("a diff that cannot be placed vanishes",
+     CHANGE,
+     '            _unplaced(model, c, "diff", why)',
+     "            pass",
+     TESTS),
+
+    ("a label that cannot be placed vanishes",
+     CHANGE,
+     '            _unplaced(model, c, "label", why)',
+     "            pass",
+     TESTS),
+
+    ("the coverage pane stops listing what could not be placed",
+     CHANGE,
+     _a('    unplaced = model.get("unplaced", [])\n    if unplaced:\n        out.append('),
+     _a('    unplaced = []\n    if unplaced:\n        out.append('),
+     TESTS),
+
+    ("a heading closed with ### is never found",
+     CHANGE,
+     '    name = OC.strip_md(OC._norm_name(claim.get("raw") or claim["text"]))',
+     '    name = claim["text"]',
+     TESTS),
+
+    ("a repeated heading is reported as not found",
+     CHANGE,
+     '    return None, "heading not found" if not hits else "heading not unique"',
+     '    return None, "heading not found"',
+     TESTS),
+
+    ("an unchanged requirement is called unchanged again",
+     CHANGE,
+     '        "same": "no word-level difference from %s" % spec,',
+     '        "same": "unchanged · the same text as %s" % spec,',
+     TESTS),
+
+    ("a diff note names the repo's path instead of the file it read",
+     CHANGE,
+     "    p = os.path.abspath(main_spec_path(specs_dir, cap))",
+     '    p = os.path.abspath(os.path.join(root, "openspec", "specs", cap, "spec.md"))',
+     TESTS),
+
+    ("a change folder outside changes/ borrows the repo's main specs",
+     CHANGE,
+     _a("    else:\n        return None\n    return os.path.join(os.sep.join(base) or os.sep, \"specs\")"),
+     _a("    else:\n        base = real[:-2]\n    return os.path.join(os.sep.join(base) or os.sep, \"specs\")"),
+     TESTS),
+
+    ("a change folder with no main specs gets a note that does not say why",
+     CHANGE,
+     '        return "no base · " + NO_SPECS_DIR',
+     '        return "no base"',
+     TESTS),
+
+    ("an archive folder spelled in another case is missed where the OS folds case",
+     CHANGE,
+     "    return os.path.normcase(os.path.normpath(os.path.abspath(change_dir))).split(os.sep)",
+     "    return os.path.normpath(os.path.abspath(change_dir)).split(os.sep)",
      TESTS),
 
     ("an archived change is never recognised as archived",
@@ -114,8 +183,8 @@ MUTANTS = [
 
     ("an archived change's main specs folder is read from the wrong level",
      CHANGE,
-     "        base = parts[:-3]",
-     "        base = parts[:-2]",
+     "        base = real[:-3]",
+     "        base = real[:-2]",
      TESTS),
 
     ("a main spec that is not UTF-8 fails the whole build",
@@ -145,9 +214,69 @@ MUTANTS = [
 
     ("a skip_specs change shows an empty requirements table instead of saying so",
      CHANGE,
-     '    if ov["skip_specs"]:',
+     '    if ov["skip_specs"] and not ov["reqs"]:',
      "    if False:",
      TESTS),
+
+    ("skip_specs beside real deltas says nothing about the conflict",
+     CHANGE,
+     '    elif ov["skip_specs"]:',
+     "    elif False:",
+     TESTS),
+
+    ("skip_specs hides the requirements table even when there are deltas",
+     CHANGE,
+     '    if ov["reqs"]:',
+     '    if ov["reqs"] and not ov["skip_specs"]:',
+     TESTS),
+
+    ("a capability of unknown status is shown as modified",
+     CHANGE,
+     '            kind = ov["status"].get(cap, "unknown")',
+     '            kind = "new" if ov["status"].get(cap) == "new" else "modified"',
+     TESTS),
+
+    ("a missing ## Why leaves the overview silent",
+     CHANGE,
+     '        out.append(none("nothing parsed · the proposal has no ## Why section"))',
+     "        pass",
+     TESTS),
+
+    ("no promises leaves the overview silent",
+     CHANGE,
+     '        out.append(none("nothing parsed · no top-level bullets under the proposal\'s "',
+     '        out.append(("" ',
+     TESTS),
+
+    ("a change with no tasks.md shows 0 of 0 done",
+     CHANGE,
+     '    if not ov["tasks_file"]:',
+     "    if False:",
+     TESTS),
+
+    ("a cut promise carries no ellipsis",
+     CHANGE,
+     '    return text if len(text) <= n else text[:n].rstrip() + "…"',
+     "    return text[:n]",
+     TESTS),
+
+    ("the overview rail goes back to links that lead nowhere",
+     CHANGE,
+     "                 '<a class=\"rail-item\" href=\"#%s\" data-depth=\"0\"><span class=\"rail-main\">'",
+     "                 '<a class=\"rail-item\" href=\"#\" data-x=\"%s\" data-depth=\"0\"><span class=\"rail-main\">'",
+     TESTS),
+
+    ("the dark coverage badge goes back to white text on the lighter red",
+     CHANGE,
+     ':root[data-theme="dark"] .tab-n-cov,:root[data-theme="dark"] .tab-cov.on .tab-n-cov{color:var(--paper)}',
+     ':root[data-theme="dark"] .tab-n-cov,:root[data-theme="dark"] .tab-cov.on .tab-n-cov{color:#fff}',
+     TESTS + [DEV / "tests" / "skills" / "annotate" / "test_render_doc.py"]),
+
+    ("an inserted word goes back to a teal too light to read on its wash",
+     CHANGE,
+     ".rd-ins{color:var(--accent);background:var(--accent-wash);",
+     ".rd-ins{color:var(--accent-2);background:var(--accent-wash);",
+     TESTS + [DEV / "tests" / "skills" / "annotate" / "test_render_doc.py"]),
 
     ("the .openspec.yaml flag is never read",
      CHANGE,

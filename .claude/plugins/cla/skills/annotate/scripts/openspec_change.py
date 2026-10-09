@@ -98,15 +98,15 @@ PATH_RE = re.compile(
     r"|(?:[\w.\-]+/){2,}[\w.\-]*")
 IDENT_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.\-]+)`")
 BACKTICK_RE = re.compile(r"`([^`]+)`")
-# Any box with at most one mark in it is a task: OpenSpec counts a box holding
-# only `x` (either case, any spacing) as done and every other mark — `[~]`,
-# `[-]`, an empty `[]` — as unfinished. Not followed by `(`, because
-# `- [x](link)` is a link, and a box of one character at most, because `- [docs]`
-# is a word in brackets.
-TASK_RE = re.compile(r"^\s*[-*]\s*\[(\s*\S?\s*)\](?!\()\s*(\d+(?:\.\d+)*)?\s*(.*)$")
-
-# tasks.md may end in plain bullets the workflow tracks nowhere.
-UNTRACKED_TASK_SECTIONS = ("workflow follow-up",)
+# OpenSpec 1.14.1's own task line (`TASK_LINE_PATTERN` in
+# dist/utils/task-progress.js), so this page counts exactly the tasks
+# `openspec status` and `archive` count: any CommonMark list marker (`-`, `*`,
+# `+`, `1.`, `1)`), a box holding at most one mark, and a box that a `(` or `[`
+# does not follow — `- [A](url)` and `- [1][ref]` are links — unless the box is
+# whitespace only. Done means the mark, lower-cased, is `x`. Every line counts,
+# wherever it sits. Only the optional task number on the tail is ours.
+TASK_RE = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s*\[(?:\s*([^\]\s]?)\s*\](?![(\[])|\s+\])"
+                     r"\s*(\d+(?:\.\d+)*)?\s*(.*)")
 BULLET_RE = re.compile(r"^\s{0,3}[-*]\s+(.*)$")
 DECISION_RE = re.compile(r"^\s{0,3}(\d+)\.\s+(.*)$")
 REQ_RE = re.compile(r"^###\s+Requirement:\s*(.+?)\s*$")
@@ -140,6 +140,18 @@ def sections_of(text):
 
 
 # ---------------------------------------------------------------- discovery
+
+
+class ChangeUnreadable(Exception):
+    """This change cannot be rendered. A real exception rather than SystemExit,
+    which is a BaseException: raised inside the server's worker thread it was
+    caught by nothing — `_render` catches OSError, `ThreadingMixIn` catches
+    Exception — and `threading` swallowed it in silence. The reader saw the
+    browser's generic "Failed to fetch", identical to a dead server, while the
+    one sentence saying what to fix was constructed and thrown into a void.
+
+    Defined here, where discovery can raise it, and re-exported by
+    render_change, whose name the server catches."""
 
 
 def find_change(target, root):
@@ -178,9 +190,25 @@ def change_files(change_dir):
     # A capability is a PATH, and may have several segments: `identity/user-auth`
     # lives at specs/identity/user-auth/spec.md. Walked to any depth, and the
     # path is posix-joined so the key is the same on every platform.
+    #
+    # A folder that cannot be listed is refused, never skipped: a delta silently
+    # left out of the page is a tab the reader never knows to look for. Linked
+    # folders are followed, as a checkout may link a capability in, and each real
+    # folder is visited once so a link cycle ends.
     specs = os.path.join(change_dir, "specs")
     found = []
-    for dirpath, _dirs, names in os.walk(specs):
+
+    def refuse(err):
+        raise ChangeUnreadable("cannot list %s: %s" % (err.filename, err.strerror or err))
+
+    seen = set()
+    walk = os.walk(specs, onerror=refuse, followlinks=True) if os.path.isdir(specs) else ()
+    for dirpath, dirs, names in walk:
+        real = os.path.realpath(dirpath)
+        if real in seen:
+            dirs[:] = []
+            continue
+        seen.add(real)
         if "spec.md" in names and os.path.abspath(dirpath) != os.path.abspath(specs):
             cap = os.path.relpath(dirpath, specs).replace(os.sep, "/")
             found.append((cap, os.path.join(dirpath, "spec.md")))
@@ -267,24 +295,22 @@ def capabilities(text):
 
 
 def tasks(text):
-    """Every `- [ ] N.N ...` item, with its checkbox state and its `## N.` group.
-
-    Done means the box holds only `x`, as OpenSpec counts it; any other mark is
-    a task not yet done, never a line that is not a task."""
+    """Every task line `TASK_RE` matches, with its done state and its `## N.`
+    group. A line counts as a task here exactly when OpenSpec 1.14.1 counts it,
+    and is done exactly when OpenSpec calls it done: the mark is `x` in either
+    case. Every other mark is a task not yet done."""
     out, group = [], ""
     for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
         h = re.match(r"^##\s+(.+?)\s*$", line)
         if h:
             group = strip_md(h.group(1))
             continue
-        if group.lower() in UNTRACKED_TASK_SECTIONS:
-            continue
         m = TASK_RE.match(line)
         if not m:
             continue
         num = m.group(2) or str(len(out) + 1)
         out.append(_claim("tasks", "task", num, m.group(3), n,
-                          done=m.group(1).strip().lower() == "x", group=group))
+                          done=(m.group(1) or "").lower() == "x", group=group))
     return out
 
 
@@ -502,7 +528,9 @@ def detect_links(claims, caps=()):
         if cap not in cap_names:
             continue
         for other in claims:
-            if other["kind"] in ("promise",) and cap in (other.get("raw") or "").lower():
+            # A whole-word mention, as capability_coverage counts one: a
+            # substring test linked `cla-plugin-extra` promises to `cla-plugin`.
+            if other["kind"] in ("promise",) and _mentions(other.get("raw") or "", cap):
                 add(other["id"], c["id"], cap, "reference")
 
     # 4. a requirement's title quoted in a task
@@ -698,7 +726,7 @@ def capability_coverage(caps, texts, claims):
     A delta counts as named when the proposal MENTIONS its capability anywhere,
     not only under `## Capabilities`. Most proposals list what they touch under
     `## Impact` instead, and flagging every delta there turned the tab's badge red
-    on nearly every change. A mention clears the flag and nothing more: it adds no
+    on most changes. A mention clears the flag and nothing more: it adds no
     row of its own and no link, because naming a capability in passing is not a
     citation.
     """
@@ -743,9 +771,13 @@ DIFF_STATES = ("archived", "no-main-spec", "unreadable", "not-in-main", "same", 
 
 
 def _norm_name(name):
-    """A requirement header as OpenSpec matches a MODIFIED one to the main
-    spec: whitespace-insensitive, and otherwise exact — case included."""
-    return " ".join(name.split())
+    """A requirement name as OpenSpec 1.14.1 matches it
+    (`normalizeRequirementName` in dist/core/parsers/requirement-blocks.js): a
+    closing run of `#` that follows a space or tab is dropped, as an ATX heading
+    renders without it, and the ends are trimmed. Nothing else is folded — case
+    and inner spacing both count — so a header that differs in either is a
+    different requirement, and OpenSpec's archive refuses it."""
+    return re.sub(r"[ \t]+#+[ \t]*$", "", name).strip()
 
 
 def _body_words(lines):
@@ -770,21 +802,26 @@ def _body_at(lines, start):
 
 def requirement_bodies(text):
     """`{normalised name: (name, body words)}` for every `### Requirement:` in a
-    spec. The first one wins if a name repeats, which a valid spec never does."""
+    spec. If a name repeats, the LAST one wins, as it does when OpenSpec builds
+    its own name-to-block map (`specs-apply.js`)."""
     lines = (text or "").replace("\r\n", "\n").split("\n")
     out = {}
     for i, line in enumerate(lines):
         m = REQ_RE.match(line)
         if m:
-            out.setdefault(_norm_name(m.group(1)), (m.group(1), _body_words(_body_at(lines, i))))
+            out[_norm_name(m.group(1))] = (m.group(1), _body_words(_body_at(lines, i)))
     return out
 
 
 def _word_ops(base, new):
     """[(tag, words)] with tag `eq`, `del` or `ins`, and `gap` carrying the number
-    of unchanged words a long run collapsed. `autojunk=False`, because the
-    heuristic treats any word in more than 1% of a 200-word body — "the",
-    "SHALL" — as junk and then matches around it."""
+    of unchanged words a long run collapsed. A run is collapsed only when it is
+    longer than DIFF_COLLAPSE and at least two words would be hidden; a gap
+    hiding one word costs more to read than the word.
+
+    `autojunk=False`: with it on, difflib treats every word that makes up more
+    than 1% of a sequence of 200 words or more — "the", "SHALL" — as junk, and
+    the diff then aligns around those words instead of through them."""
     sm = difflib.SequenceMatcher(None, base, new, autojunk=False)
     codes = sm.get_opcodes()
     ops = []
@@ -792,11 +829,11 @@ def _word_ops(base, new):
         if tag == "equal":
             run = base[i1:i2]
             first, last = k == 0, k == len(codes) - 1
-            if len(run) <= DIFF_COLLAPSE:
-                ops.append(("eq", run))
-                continue
             head = [] if first else run[:DIFF_CONTEXT]
             tail = [] if last else run[-DIFF_CONTEXT:]
+            if len(run) <= DIFF_COLLAPSE or len(run) - len(head) - len(tail) < 2:
+                ops.append(("eq", run))
+                continue
             if head:
                 ops.append(("eq", head))
             ops.append(("gap", len(run) - len(head) - len(tail)))
@@ -854,7 +891,10 @@ def requirement_diffs(claims, texts, main_specs, archived):
 # ---------------------------------------------------------------- overview
 
 
-RENAME_RE = re.compile(r"^\s*[-*]\s*(?:\*\*)?(FROM|TO)(?:\*\*)?\s*:", re.I)
+# OpenSpec 1.14.1's FROM/TO line (`parseRenamedPairs` in
+# dist/core/parsers/requirement-blocks.js): an optional `-`, `*` or `+`, the
+# keyword in capitals, and a requirement header, backticked or not.
+RENAME_RE = re.compile(r"^\s*[-*+]?\s*(FROM|TO):\s*`?###\s*Requirement:\s*(.+?)`?\s*$")
 
 # The bucket a promise lands in, in the order the overview lists them.
 PROMISE_BUCKETS = ("uncovered", "unchecked", "covered")
@@ -878,22 +918,29 @@ def overview(model, texts):
     """The change's shape, derived from what `build` already parsed: no file is
     read and nothing new is inferred.
 
-    `{why, promises: [(claim, bucket)], breaking: {claim id}, reqs: {cap:
-    {group: n}}, renamed: {cap: n}, new: {cap: bool}, tasks: (done, total),
-    skip_specs}`.
+    `{why, why_state, promises: [(claim, bucket)], breaking: {claim id}, reqs:
+    {cap: {group: n}}, renamed: {cap: n}, status: {cap: str}, tasks: (done,
+    total), tasks_file, skip_specs}`.
 
-    `why` is the first paragraph of the proposal's `## Why`. `breaking` holds
-    the promises OpenSpec's schema marks with **BREAKING**. `renamed` counts
-    FROM/TO pairs under `## RENAMED Requirements`, which `requirements()` never
-    sees because they are bullets, not headings. A capability is `new` when the
-    proposal lists it under `### New Capabilities`, its delta opens with
-    `## Purpose` (the schema's mark of a new capability), or it has no main
-    spec; otherwise it is modified.
+    `why` is the first paragraph of the proposal's `## Why`, and `why_state`
+    says whether there was one: `found`, `empty` or `missing`. `tasks_file` says
+    whether the change has a tasks.md at all, so "no tasks" can say which kind
+    of nothing it is. `breaking` holds the promises carrying the word
+    **BREAKING**, the schema's mark. `renamed` counts FROM/TO pairs under
+    `## RENAMED Requirements` — a FROM followed by a TO, as OpenSpec pairs them
+    — which `requirements()` never sees because they are bullets.
+
+    A capability's `status` is `new` when the proposal lists it under
+    `### New Capabilities`, its delta opens with `## Purpose` (the schema's
+    mark of a new capability), or it has no main spec; `modified` when its main
+    spec was read; and `unknown` otherwise — an archived change's main specs
+    are never read, and an unreadable one says nothing either way.
     """
-    why = ""
+    why, why_state = "", "missing"
     for title, lines in sections_of(texts.get("proposal", "")).items():
         if title.lower() == "why":
             why = _first_paragraph(lines)
+            why_state = "found" if why else "empty"
             break
 
     cov = model["coverage"]
@@ -908,42 +955,57 @@ def overview(model, texts):
     for key in sorted(k for k in texts if k.startswith("spec-")):
         cap = key[len("spec-"):]
         reqs[cap] = {g: 0 for g in ("ADDED", "MODIFIED", "REMOVED")}
-        froms = tos = 0
+        pairs = 0
         for title, lines in sections_of(texts[key]).items():
             if title.upper() != "RENAMED REQUIREMENTS":
                 continue
+            pending = False
             for _n, line in lines:
                 m = RENAME_RE.match(line)
-                if m:
-                    froms += m.group(1).upper() == "FROM"
-                    tos += m.group(1).upper() == "TO"
-        renamed[cap] = min(froms, tos)
+                if not m:
+                    continue
+                if m.group(1) == "FROM":
+                    pending = True
+                elif pending:
+                    pairs, pending = pairs + 1, False
+        renamed[cap] = pairs
     for c in model["claims"]:
         if c["kind"] == "requirement" and c.get("group") in ("ADDED", "MODIFIED", "REMOVED"):
             reqs[c["file"][len("spec-"):]][c["group"]] += 1
 
     listed_new = {c["name"] for c in model["capabilities"] if c["new"]}
     main = model.get("main_spec", {})
-    new = {}
+    status = {}
     for cap in reqs:
         has_purpose = any(t.lower() == "purpose"
                           for t in sections_of(texts.get("spec-" + cap, "")))
-        new[cap] = cap in listed_new or has_purpose or main.get(cap) == "absent"
+        if cap in listed_new or has_purpose or main.get(cap) == "absent":
+            status[cap] = "new"
+        elif main.get(cap) == "present":
+            status[cap] = "modified"
+        else:
+            status[cap] = "unknown"
 
     breaking = {c["id"] for c in model["claims"]
                 if c["kind"] == "promise" and BREAKING_RE.search(c.get("raw") or "")}
 
     st = cov["stats"]
-    return {"why": why, "promises": promises_, "breaking": breaking, "reqs": reqs,
-            "renamed": renamed, "new": new, "tasks": (st["tasks_done"], st["tasks"]),
+    return {"why": why, "why_state": why_state, "promises": promises_,
+            "breaking": breaking, "reqs": reqs, "renamed": renamed, "status": status,
+            "tasks": (st["tasks_done"], st["tasks"]), "tasks_file": "tasks" in texts,
             "skip_specs": bool(model.get("skip_specs"))}
 
 
 def skip_specs_set(yaml_text):
     """Whether a change's `.openspec.yaml` sets `skip_specs: true` — the
-    schema's mark of a change that deliberately has no spec deltas. One
-    top-level key is all that is read, so no YAML parser is needed."""
-    return bool(re.search(r"(?mi)^skip_specs\s*:\s*[\"']?(?:true|yes|on)[\"']?\s*(?:#.*)?$",
+    schema's mark of a change that deliberately has no spec deltas. OpenSpec
+    reads it with a YAML 1.2 parser into a boolean, so only an unquoted `true`
+    (`True` and `TRUE` are the same boolean) counts: `yes` and `on` are
+    strings in YAML 1.2, and a quoted "true" is a string too. One top-level key
+    is all that is read, so no YAML parser is needed. OpenSpec also ignores the
+    flag when the file is not valid change metadata; that is not checked
+    here."""
+    return bool(re.search(r"(?m)^skip_specs[ \t]*:[ \t]*(?:true|True|TRUE)[ \t]*(?:#.*)?$",
                           yaml_text or ""))
 
 

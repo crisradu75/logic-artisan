@@ -326,13 +326,9 @@ render();
 """
 
 
-class ChangeUnreadable(Exception):
-    """This change cannot be rendered. A real exception rather than SystemExit,
-    which is a BaseException: raised inside the server's worker thread it was
-    caught by nothing — `_render` catches OSError, `ThreadingMixIn` catches
-    Exception — and `threading` swallowed it in silence. The reader saw the
-    browser's generic "Failed to fetch", identical to a dead server, while the
-    one sentence saying what to fix was constructed and thrown into a void."""
+# The one class, defined where discovery raises it (see its docstring); the
+# server catches it under this name.
+ChangeUnreadable = OC.ChangeUnreadable
 
 
 def esc_attr(s):
@@ -406,17 +402,42 @@ def _blocks_in_section(html_str, sec_id):
 REQ_GROUPS = ("ADDED", "MODIFIED", "REMOVED")
 
 
-def heading_blk(ctx, claim):
-    """The block of a requirement's own `### Requirement:` heading, or None.
+def heading_lookup(ctx, claim):
+    """`(block, None)` for a requirement's own `### Requirement:` heading, or
+    `(None, why)` when it cannot be placed: `"heading not found"` or
+    `"heading not unique"`.
 
-    Matched on the whole heading text, one match or none — the rule
-    `bind_claims` keeps. `bind_claims` matches on a substring, which can land on
-    a paragraph quoting the title; a label on that paragraph would mark the
-    wrong passage as the requirement.
+    Matched on the whole text of a block, one match or none. `bind_claims`
+    matches on a substring instead, and a substring can land on a paragraph
+    that quotes the title; a label there would mark the wrong passage as the
+    requirement. The name is normalised as OpenSpec normalises it first, so a
+    closing `###` that the rendered heading drops does not stop the match.
     """
-    want = " ".join(("Requirement: " + claim["text"]).split())
+    if ctx is None:
+        return None, "heading not found"
+    name = OC.strip_md(OC._norm_name(claim.get("raw") or claim["text"]))
+    want = " ".join(("Requirement: " + name).split())
     hits = [b for b, t in ctx.blocks.items() if " ".join(t.split()) == want]
-    return hits[0] if len(hits) == 1 else None
+    if len(hits) == 1:
+        return hits[0], None
+    return None, "heading not found" if not hits else "heading not unique"
+
+
+def heading_blk(ctx, claim):
+    """The heading block `heading_lookup` finds, or None."""
+    return heading_lookup(ctx, claim)[0]
+
+
+def _unplaced(model, claim, what, why):
+    """Record that a requirement's label or diff could not be put on the page,
+    so the coverage pane can list it rather than it vanishing."""
+    rows = model.setdefault("unplaced", [])
+    for row in rows:
+        if row["claim"]["id"] == claim["id"]:
+            if what not in row["what"]:
+                row["what"].append(what)
+            return
+    rows.append({"claim": claim, "what": [what], "why": why})
 
 
 def mark_groups(model, bodies, ctxs):
@@ -425,17 +446,20 @@ def mark_groups(model, bodies, ctxs):
 
     The label is an attribute the stylesheet draws with `::before`, so the
     heading's text — what every annotation offset is counted against — does not
-    change. A REMOVED requirement's own section and every section below it, down
-    to the next heading of level 3 or above, are marked `req-removed`; its
-    `Reason` and `Migration` blocks are found within those sections, never by
-    text, because changes repeat the same reason word for word.
+    change. A REMOVED requirement's own section, and each section below it whose
+    heading is deeper than level 3 (its scenarios), are marked `req-removed`.
+    Its `Reason` and `Migration` blocks are the blocks in those sections whose
+    text starts with either word — found within the sections, never by
+    searching the page, because changes repeat the same reason word for word.
+    A heading that cannot be placed is recorded in `model["unplaced"]`.
     """
     for c in model["claims"]:
         if c["kind"] != "requirement" or c.get("group") not in REQ_GROUPS:
             continue
         ctx, f = ctxs.get(c["file"]), c["file"]
-        blk = heading_blk(ctx, c) if ctx else None
+        blk, why = heading_lookup(ctx, c)
         if not blk:
+            _unplaced(model, c, "label", why)
             continue
         bodies[f] = add_attr(bodies[f], blk, "data-group", c["group"])
         if c["group"] != "REMOVED":
@@ -614,9 +638,16 @@ def counterparts(model, bodies, ctxs, labels):
     return bodies
 
 
+def _path_parts(change_dir):
+    """The folder's path split into parts, case-folded where the file system
+    folds case (`os.path.normcase`: Windows), so `Changes\\Archive` is
+    `changes/archive` there and nowhere else."""
+    return os.path.normcase(os.path.normpath(os.path.abspath(change_dir))).split(os.sep)
+
+
 def is_archived(change_dir):
     """Whether the change sits in `openspec/changes/archive/`."""
-    parts = os.path.normpath(os.path.abspath(change_dir)).split(os.sep)
+    parts = _path_parts(change_dir)
     return len(parts) >= 3 and parts[-2] == "archive" and parts[-3] == "changes"
 
 
@@ -631,20 +662,27 @@ def read_skip_specs(change_dir):
         return False
 
 
-def main_specs_dir(change_dir, root):
-    """The main specs folder that belongs to this change: derived from the
-    change folder, never from the repo root, because a change may live in a
-    store of its own. `<x>/openspec/changes/<id>` and
+def main_specs_dir(change_dir):
+    """The main specs folder that belongs to this change, or None.
+
+    Derived from the change folder, never from the repo root, because a change
+    may live in a store of its own: `<x>/openspec/changes/<id>` and
     `<x>/openspec/changes/archive/<id>` both answer `<x>/openspec/specs`. A
-    change folder in neither place falls back to the repo's own."""
-    parts = os.path.normpath(os.path.abspath(change_dir)).split(os.sep)
+    change folder in neither place has no main specs folder, and answers None
+    rather than borrowing the repo's, which may belong to another store."""
+    real = os.path.normpath(os.path.abspath(change_dir)).split(os.sep)
+    parts = _path_parts(change_dir)
     if is_archived(change_dir):
-        base = parts[:-3]
+        base = real[:-3]
     elif len(parts) >= 2 and parts[-2] == "changes":
-        base = parts[:-2]
+        base = real[:-2]
     else:
-        return os.path.join(root, "openspec", "specs")
+        return None
     return os.path.join(os.sep.join(base) or os.sep, "specs")
+
+
+NO_SPECS_DIR = ("this change folder is not under openspec/changes/ or "
+                "openspec/changes/archive/, so it has no main specs to compare against")
 
 
 def main_spec_path(specs_dir, cap):
@@ -679,26 +717,34 @@ def read_main_specs(specs_dir, caps):
     return out
 
 
-def _diff_note(rec):
-    spec = "openspec/specs/%s/spec.md" % rec["cap"]
+def _diff_note(rec, spec):
+    """The note for a requirement with no word diff. `spec` is the path of the
+    main spec this requirement was compared against — or would have been — as
+    the reader should look for it; None when the change has no specs folder."""
+    if spec is None:
+        return "no base · " + NO_SPECS_DIR
     return {
         "archived": "no base · this change is archived, and archiving wrote its "
                     "text into %s, so the text it replaced is gone. Not the same "
                     "as unchanged." % spec,
         "no-main-spec": "no base · %s does not exist" % spec,
         "unreadable": "no base · %s could not be read: %s" % (spec, rec["why"]),
-        "not-in-main": "no base · %s has no requirement with this name" % spec,
-        "same": "unchanged · the same text as %s" % spec,
+        "not-in-main": "no base · %s has no requirement with this exact name" % spec,
+        # Only what was measured: the same words in the same order. Markup,
+        # list markers and line breaks are not compared.
+        "same": "no word-level difference from %s" % spec,
     }[rec["state"]]
 
 
-def diff_markup(rec):
-    """One requirement's card: its word diff against the main spec, or the note
-    saying why there is none. `rd-del`/`rd-ins`, not `<del>`/`<ins>`, which the
-    document's own markdown already uses."""
-    if rec["state"] != "diff":
+def diff_markup(rec, spec):
+    """One requirement's card: its word diff against the main spec at `spec`,
+    or the note saying why there is none. The words compared are the body as a
+    reader sees it — markup and list markers off — from below the heading
+    through its last scenario. `rd-del`/`rd-ins`, not `<del>`/`<ins>`, which
+    the document's own markdown already uses."""
+    if rec["state"] != "diff" or spec is None:
         return ('<div class="rd rd-note"><span class="rd-h">%s</span></div>'
-                % html.escape(_diff_note(rec), quote=False))
+                % html.escape(_diff_note(rec, spec), quote=False))
     parts = []
     for tag, words in rec["ops"]:
         if tag == "gap":
@@ -708,22 +754,42 @@ def diff_markup(rec):
         text = html.escape(" ".join(words), quote=False)
         parts.append(text if tag == "eq" else
                      '<span class="rd-%s">%s</span>' % (tag, text))
-    return ('<div class="rd"><span class="rd-h">changes against '
-            'openspec/specs/%s/spec.md</span><p class="rd-t">%s</p></div>'
-            % (html.escape(rec["cap"], quote=False), " ".join(parts)))
+    return ('<div class="rd"><span class="rd-h">changes against %s</span>'
+            '<p class="rd-t">%s</p></div>'
+            % (html.escape(spec, quote=False), " ".join(parts)))
 
 
-def diff_cards(model, bodies, ctxs):
+def spec_label(specs_dir, root, cap):
+    """The main spec's path as the note names it: relative to the repo root
+    when it is inside it, in full otherwise, with forward slashes. None when
+    there is no specs folder."""
+    if specs_dir is None:
+        return None
+    p = os.path.abspath(main_spec_path(specs_dir, cap))
+    try:
+        rel = os.path.relpath(p, os.path.abspath(root)) if root else p
+    except ValueError:                       # another drive, on Windows
+        rel = p
+    if rel.startswith(".."):
+        rel = p
+    return rel.replace(os.sep, "/")
+
+
+def diff_cards(model, bodies, ctxs, specs_dir=None, root=None):
     """Put each MODIFIED requirement's diff card under its heading — a sibling,
-    placed with `after_block`, for the reason `counterparts` gives."""
+    placed with `after_block`, never inside the heading's block. A heading that
+    cannot be placed is recorded in `model["unplaced"]`."""
     by_id = {c["id"]: c for c in model["claims"]}
     for cid, rec in model.get("diffs", {}).items():
         c = by_id.get(cid)
-        ctx = ctxs.get(c["file"]) if c else None
-        blk = heading_blk(ctx, c) if ctx else None
-        if not blk:
+        if not c:
             continue
-        bodies[c["file"]] = after_block(bodies[c["file"]], blk, diff_markup(rec))
+        blk, why = heading_lookup(ctxs.get(c["file"]), c)
+        if not blk:
+            _unplaced(model, c, "diff", why)
+            continue
+        card = diff_markup(rec, spec_label(specs_dir, root, rec["cap"]))
+        bodies[c["file"]] = after_block(bodies[c["file"]], blk, card)
     return bodies
 
 
@@ -734,33 +800,50 @@ BUCKET_LABELS = {"covered": "covered", "uncovered": "uncovered",
 def overview_pane(ov, labels):
     """The change's shape on one screen. Plain HTML with no `data-blk`, like the
     coverage pane, so nothing in it can be annotated; data only, no prose about
-    the page. A promise links back to its bullet through `cov-go`, the coverage
-    pane's own link, so the one click handler serves both."""
+    the page. Where a part of the change gave nothing to show, the pane says
+    "nothing parsed" and what it looked for, because an empty heading reads as
+    an empty change. A promise links back to its bullet through `cov-go`, the
+    coverage pane's own link, so the one click handler serves both."""
     out = ['<h1 style="margin-top:1.4rem">Overview</h1>']
+    def none(text):
+        return '<p class="ov-none">%s</p>' % html.escape(text, quote=False)
+
     if ov["why"]:
         out.append('<p class="ov-why">%s</p>' % html.escape(ov["why"], quote=False))
+    elif ov["why_state"] == "empty":
+        out.append(none("nothing parsed · the proposal's ## Why section is empty"))
+    else:
+        out.append(none("nothing parsed · the proposal has no ## Why section"))
 
-    out.append('<div class="ov"><h2>Promises — %d</h2>' % len(ov["promises"]))
+    out.append('<div class="ov"><h2 id="ov-promises">Promises — %d</h2>' % len(ov["promises"]))
     if ov["promises"]:
         out.append('<ul class="ov-list">')
         for c, bucket in ov["promises"]:
             chips = '<span class="ov-chip ov-%s">%s</span>' % (bucket, BUCKET_LABELS[bucket])
             if c["id"] in ov["breaking"]:
                 chips += '<span class="ov-chip ov-breaking">breaking</span>'
-            text = html.escape(c["text"][:300], quote=False)
+            text = html.escape(_clip(c["text"], PROMISE_CLIP), quote=False)
             link = ('<span class="cov-go" data-go-blk="%s">%s</span>'
                     % (esc_attr(c["blk"]), text) if c.get("blk")
                     else '<span class="cov-dead">%s</span>' % text)
             out.append('<li class="ov-p">%s %s</li>' % (chips, link))
         out.append("</ul>")
+    else:
+        out.append(none("nothing parsed · no top-level bullets under the proposal's "
+                        "## What Changes"))
     out.append("</div>")
 
-    out.append('<div class="ov"><h2>Requirements</h2>')
-    if ov["skip_specs"]:
-        out.append('<p class="ov-none">no spec changes (skip_specs)</p>')
+    out.append('<div class="ov"><h2 id="ov-requirements">Requirements</h2>')
+    if ov["skip_specs"] and not ov["reqs"]:
+        out.append(none("no spec changes (skip_specs)"))
+    elif ov["skip_specs"]:
+        # Shown, never hidden behind the flag: OpenSpec's own validate refuses
+        # this combination, and the reader needs to see both halves of it.
+        out.append(none("conflict · .openspec.yaml sets skip_specs, but this change "
+                        "has spec deltas"))
     elif not ov["reqs"]:
-        out.append('<p class="ov-none">no spec deltas</p>')
-    else:
+        out.append(none("no spec deltas"))
+    if ov["reqs"]:
         groups = ["ADDED", "MODIFIED", "REMOVED"]
         renamed = any(ov["renamed"].values())
         head = "".join("<th>%s</th>" % g.lower() for g in groups)
@@ -772,18 +855,33 @@ def overview_pane(ov, labels):
             cells = "".join('<td class="ov-n">%d</td>' % counts[g] for g in groups)
             if renamed:
                 cells += '<td class="ov-n">%d</td>' % ov["renamed"].get(cap, 0)
-            kind = "new" if ov["new"].get(cap) else "modified"
+            kind = ov["status"].get(cap, "unknown")
             out.append('<tr><td><code>%s</code></td><td><span class="ov-chip ov-%s">%s</span>'
                        '</td>%s</tr>' % (html.escape(cap, quote=False), kind, kind, cells))
         out.append("</tbody></table></div>")
     out.append("</div>")
 
     done, total = ov["tasks"]
-    pct = (100.0 * done / total) if total else 0
-    out.append('<div class="ov"><h2>Tasks</h2><p class="ov-tasks"><span class="ov-n">%d of %d '
-               'done</span><span class="ov-bar"><i style="width:%.1f%%"></i></span></p></div>'
-               % (done, total, pct))
+    out.append('<div class="ov"><h2 id="ov-tasks">Tasks</h2>')
+    if not ov["tasks_file"]:
+        out.append(none("nothing parsed · this change has no tasks.md"))
+    elif not total:
+        out.append(none("nothing parsed · tasks.md holds no task lines (a list item "
+                        "starting with a checkbox, such as - [ ])"))
+    else:
+        out.append('<p class="ov-tasks"><span class="ov-n">%d of %d done</span>'
+                   '<span class="ov-bar"><i style="width:%.1f%%"></i></span></p>'
+                   % (done, total, 100.0 * done / total))
+    out.append("</div>")
     return "".join(out)
+
+
+PROMISE_CLIP = 300
+
+
+def _clip(text, n):
+    """`text` cut to `n` characters, with an ellipsis when anything was cut."""
+    return text if len(text) <= n else text[:n].rstrip() + "…"
 
 
 def coverage_pane(model, labels):
@@ -849,6 +947,23 @@ def coverage_pane(model, labels):
                        '<p class="cov-claim">%s</p><span class="cov-why">%s</span></div>'
                        % (html.escape(c["name"]), html.escape(c["why"])))
         out.append("</div>")
+
+    # A requirement whose label or diff could not be put beside its heading is
+    # listed here, never dropped: the page would otherwise show it as an
+    # ordinary passage and say nothing.
+    unplaced = model.get("unplaced", [])
+    if unplaced:
+        out.append('<div class="cov cov-grey"><h2>Not placed — %d</h2>' % len(unplaced))
+        for row in unplaced:
+            c = row["claim"]
+            out.append('<div class="cov-row"><span class="cov-src">%s · requirement</span>'
+                       '<p class="cov-claim">%s</p><span class="cov-why">its %s could not '
+                       'be placed: %s</span></div>'
+                       % (html.escape(labels.get(c["file"], c["file"])),
+                          html.escape(c["text"]),
+                          " and ".join(sorted(row["what"], key=("label", "diff").index)),
+                          html.escape(row["why"])))
+        out.append("</div>")
     return "".join(out)
 
 
@@ -894,14 +1009,16 @@ def build(change_dir, root=None, out=None):
     archived = is_archived(change_dir)
     caps = [k[len("spec-"):] for k in texts if k.startswith("spec-")]
     # An archived change is never compared — see OC.requirement_diffs — so its
-    # main specs are not even read.
-    main_specs = ({} if archived
-                  else read_main_specs(main_specs_dir(change_dir, root), caps))
+    # main specs are not even read; nor is anything for a change folder that has
+    # no main specs folder, whose notes then say why.
+    specs_dir = main_specs_dir(change_dir)
+    main_specs = ({} if archived or specs_dir is None
+                  else read_main_specs(specs_dir, caps))
     model = OC.build(change_dir, texts, main_specs, archived,
                      skip_specs=read_skip_specs(change_dir))
     bind_claims(model, ctxs)
     bodies = counterparts(model, bodies, ctxs, labels)
-    bodies = diff_cards(model, bodies, ctxs)
+    bodies = diff_cards(model, bodies, ctxs, specs_dir, root)
     bodies = mark_groups(model, bodies, ctxs)
 
     change_key = store.doc_key(change_dir, root)
@@ -918,13 +1035,15 @@ def build(change_dir, root=None, out=None):
     done, total = ov["tasks"]
     rails = ['<div class="rail-wrap on" data-rail="__overview__"><p class="rail-h">overview</p>'
              + "".join(
-                 '<a class="rail-item" href="#" data-depth="0"><span class="rail-main">'
+                 # Each entry jumps to its heading in the overview pane.
+                 '<a class="rail-item" href="#%s" data-depth="0"><span class="rail-main">'
                  '<span class="rail-title">%s</span></span><span class="rail-meta">'
-                 '<span class="rail-n">%s</span></span></a>' % (name, n)
-                 for name, n in (("Promises", len(ov["promises"])),
-                                 ("Requirements", sum(sum(g.values())
-                                                      for g in ov["reqs"].values())),
-                                 ("Tasks", "%d/%d" % (done, total))))
+                 '<span class="rail-n">%s</span></span></a>' % (anchor, name, n)
+                 for anchor, name, n in (
+                     ("ov-promises", "Promises", len(ov["promises"])),
+                     ("ov-requirements", "Requirements",
+                      sum(sum(g.values()) for g in ov["reqs"].values())),
+                     ("ov-tasks", "Tasks", "%d/%d" % (done, total))))
              + "</div>"]
     for key, label, _p in files:
         tabs.append('<button class="tab" data-tab="%s">%s'
@@ -1042,6 +1161,11 @@ def main(argv=None):
         # cannot click back to, and knowing how many there are is how they judge
         # whether the tab is trustworthy on this change.
         print("          %d claim(s) could not be bound to a block" % len(unbound))
+    unplaced = model.get("unplaced", [])
+    if unplaced:
+        print("          %d requirement(s) whose label or diff could not be placed: %s"
+              % (len(unplaced), ", ".join("%s (%s)" % (r["claim"]["text"], r["why"])
+                                          for r in unplaced[:5])))
     return 0
 
 

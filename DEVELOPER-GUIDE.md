@@ -187,9 +187,9 @@ the work is missing.
 The page opens on a derived overview: the proposal's why, each promise with its coverage bucket and
 any **BREAKING** mark, the requirements each capability adds, modifies, removes or renames, and how
 many tasks are done. In a spec delta each requirement heading carries its group, a REMOVED one is
-greyed out, and a MODIFIED one shows a word diff against the main spec beside the change. An archived
-change shows "no base" instead: archiving wrote its text into the main spec, so the text it replaced
-is gone, which is not the same as unchanged.
+muted and struck through, and a MODIFIED one shows a word diff against the main spec in the same
+`openspec/` folder as the change. An archived change shows "no base" instead: archiving wrote its
+text into the main spec, so the text it replaced is gone, which is not the same as unchanged.
 
 It never writes to what you are annotating; the page is served read-only and a test pins that across
 a full annotate-and-rebuild cycle. Say "read my annotations" in a later session to pick the comments
@@ -578,7 +578,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `annotate/scripts/render_html.py` | Instruments an author's own HTML in place — attributes spliced at source offsets, so stripping them returns the original bytes and the document under review stays the document under review. Refuses a file whose markup already uses those attributes, because that collision mis-anchors every annotation in the element and is invisible on the page. |
 | `annotate/scripts/annotate_server.py` | Serves the page on loopback, validates each record before it reaches the file, and opens a chrome-less browser window. |
 | `annotate/scripts/openspec_change.py` | Extracts a change's claims and the links between them, with thresholds measured over 355 real changes rather than reasoned about — the first cut left 83% of promises falsely uncovered. |
-| `annotate/scripts/sweep_changes.py` | Runs the link detector over a corpus of real changes and reports the coverage split — the command behind every threshold in `openspec_change.py`, and how a consuming repo re-measures before trusting the coverage tab. |
+| `annotate/scripts/sweep_changes.py` | Runs the link detector over a corpus of real changes and reports the coverage split — the command behind every coverage threshold in `openspec_change.py`, and how a consuming repo re-measures before trusting the coverage tab. |
 | `annotate/scripts/render_change.py` | Lays a change's files into one annotatable page, binding each claim to its block one-match-or-none and keeping injected counterparts outside the blocks whose offsets they would corrupt. |
 | `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
 | `_shared/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across five skills. |

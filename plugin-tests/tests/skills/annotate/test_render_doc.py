@@ -901,11 +901,69 @@ def test_the_danger_colour_clears_wcag_aa_on_every_surface(doc_page, change_page
         for ground in ("--paper", "--ground", "--sunk"):
             r = _ratio(danger.group(1), p[ground])
             assert r >= 4.5, "%s --danger on %s is %.2f:1" % (selector, ground, r)
-        # The coverage badge is the other way round: the paper on --danger in
-        # dark mode, white in light mode.
-        on = "#FFFFFF" if selector == ":root" else p["--paper"]
-        r = _ratio(on, danger.group(1))
-        assert r >= 4.5, "%s the coverage badge's text on --danger is %.2f:1" % (selector, r)
+
+
+def _decl(css, selector, prop):
+    """The value the LAST rule naming `selector` (as one item of its selector
+    list) gives `prop`, or None — the cascade's answer for equal specificity."""
+    found = None
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        if selector in [s.strip() for s in m.group(1).split(",")]:
+            v = re.search(r"(?:^|;)\s*%s:([^;]+)" % re.escape(prop), m.group(2))
+            if v:
+                found = v.group(1).strip()
+    return found
+
+
+# Each pair the change page draws as text on a fill: the selector, and what the
+# stylesheet says about its colour and its ground. Read from the stylesheet, so
+# a changed colour is measured rather than restated here.
+CHANGE_TEXT_PAIRS = (
+    ".tab-n-cov",                          # the coverage badge
+    ".ov-new",                             # a new capability's chip
+    ".ov-breaking",                        # a BREAKING promise's chip
+    ".ov-uncovered",                       # an uncovered promise's chip
+    'h3[data-group="ADDED"]::before',      # the ADDED label
+    'h3[data-group="REMOVED"]::before',    # the REMOVED label
+    ".rd-ins",                             # an inserted word
+    ".rd-del",                             # a deleted word
+)
+
+
+@pytest.mark.parametrize("pair", CHANGE_TEXT_PAIRS)
+def test_every_coloured_label_on_the_change_page_clears_wcag_aa(doc_page, change_page, pair):
+    """Text on a fill is read as text, so each one answers to 4.5:1 in both
+    themes. A rule with no background sits on the pane, which is --paper."""
+    doc_css = "".join(re.findall(r"<style>(.*?)</style>", doc_page, flags=re.S))
+    css = "".join(re.findall(r"<style>(.*?)</style>", change_page, flags=re.S))
+    for theme in (":root", ':root[data-theme="dark"]'):
+        block = re.search(re.escape(theme) + r"\{([^}]*)\}", doc_css).group(1)
+        p = dict(re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", block))
+        p["--danger"] = re.search(re.escape(theme) + r"\{--danger:(#[0-9A-Fa-f]{6})\}",
+                                  css).group(1)
+
+        def value(prop):
+            v = None
+            if theme != ":root":
+                v = _decl(css, theme + " " + pair, prop)
+            return v or _decl(css, pair, prop)
+
+        def resolve(v, default):
+            if not v or v == "transparent":
+                return p[default]
+            m = re.fullmatch(r"var\((--[a-z0-9-]+)\)", v)
+            if m:
+                return p[m.group(1)]
+            if re.fullmatch(r"#[0-9A-Fa-f]{3}", v):
+                return "#" + "".join(ch * 2 for ch in v[1:])
+            assert re.fullmatch(r"#[0-9A-Fa-f]{6}", v), "%s: unreadable colour %r" % (pair, v)
+            return v
+
+        ink = resolve(value("color"), "--ink")
+        ground = resolve(value("background"), "--paper")
+        r = _ratio(ink, ground)
+        assert r >= 4.5, "%s %s: %s on %s is %.2f:1" % (theme, pair, ink, ground, r)
 
 
 def test_the_favicon_carries_the_same_two_accents_as_the_stylesheet(doc_page):

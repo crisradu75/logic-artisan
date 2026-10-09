@@ -210,9 +210,17 @@ MUTANTS = [
      'h3[data-group]::before{content:"";',
      TESTS),
 
-    ("the change page opens on the proposal again",
+    # Which pane opens first is read from the source, in test_render_change.py,
+    # and its mutant lives in that batch.
+    ("a drag that selects text in a card toggles it",
      CHANGE,
-     "    panes = ['<div class=\"pane on\" data-pane=\"__overview__\"><div class=\"col\">%s</div></div>'",
-     "    panes = ['<div class=\"pane\" data-pane=\"__overview__\"><div class=\"col\">%s</div></div>'",
+     "  if (sel && !sel.isCollapsed) return;",
+     "  if (false) return;",
+     TESTS),
+
+    ("following open-in-tab also toggles the card",
+     CHANGE,
+     "  if (!cf || e.target.closest('.cf-go')) return;",
+     "  if (!cf) return;",
      TESTS),
 ]

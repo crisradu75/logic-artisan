@@ -1120,10 +1120,37 @@ def cpage(browser, served_change):
     p.close()
 
 
-def test_the_change_page_opens_on_the_overview(cpage):
-    assert cpage.evaluate("""() => [...document.querySelectorAll('.pane')]
-        .filter(p => getComputedStyle(p).display !== 'none')
-        .map(p => p.dataset.pane)""") == ["__overview__"]
+def _card_state(cpage):
+    return cpage.evaluate("""() => {
+        const cf = document.querySelector('[data-pane="proposal"] .cf');
+        return {open: cf.classList.contains('open'),
+                pane: [...document.querySelectorAll('.pane')]
+                  .filter(p => getComputedStyle(p).display !== 'none')
+                  .map(p => p.dataset.pane)};
+    }""")
+
+
+def test_a_drag_that_selects_text_in_a_card_does_not_toggle_it(cpage):
+    """A drag ends in a click. The reader was selecting, and a card changing
+    size under the selection would move the text out from under the pointer."""
+    cpage.click('.tab[data-tab="proposal"]')
+    box = cpage.locator('[data-pane="proposal"] .cf .cf-x').first.bounding_box()
+    y = box["y"] + 8
+    cpage.mouse.move(box["x"] + 4, y)
+    cpage.mouse.down()
+    cpage.mouse.move(box["x"] + 120, y, steps=8)
+    cpage.mouse.up()
+    assert cpage.evaluate("() => !getSelection().isCollapsed"), "the drag selected nothing"
+    assert not _card_state(cpage)["open"]
+
+
+def test_open_in_tab_follows_the_link_and_leaves_the_card_alone(cpage):
+    cpage.click('.tab[data-tab="proposal"]')
+    cpage.click('[data-pane="proposal"] .cf .cf-go')
+    cpage.wait_for_timeout(200)
+    state = _card_state(cpage)
+    assert state["pane"] == ["tasks"], "the link did not open its counterpart's tab"
+    assert not state["open"], "following the link also toggled the card"
 
 
 def test_expanding_a_counterpart_keeps_every_note_level_with_its_block(cpage):

@@ -186,21 +186,37 @@ def test_one_tab_per_file_in_the_fixed_order_plus_coverage(built):
                      "__coverage__"]
 
 
+def _classes_by(html_str, tag, attr):
+    """`{attr value: set of classes}` for every `<tag class=… attr=…>`, whatever
+    else the tag carries and in whatever order the classes are written."""
+    out = {}
+    for m in re.finditer(r"<%s\b([^>]*)>" % tag, html_str):
+        a = m.group(1)
+        v = re.search(r'\b%s="([^"]+)"' % re.escape(attr), a)
+        c = re.search(r'\bclass="([^"]*)"', a)
+        if v:
+            out[v.group(1)] = set(c.group(1).split()) if c else set()
+    return out
+
+
 def test_the_coverage_tab_is_dressed_as_derived_not_as_a_file(built):
     # A reader who takes it for a file goes looking for it on disk.
-    assert 'class="tab tab-cov"' in built["html"]
+    tabs = _classes_by(body_of(built["html"]), "button", "data-tab")
+    assert {"tab", "tab-cov"} <= tabs["__coverage__"]
+    assert {"tab", "tab-cov", "tab-ov"} <= tabs["__overview__"]
     assert "tab-gap" in built["html"]
-    assert 'class="tab tab-cov tab-ov on" data-tab="__overview__"' in built["html"]
 
 
 # requirement: annotate / Opening a document for annotation
 def test_the_page_opens_on_the_overview(built):
-    html_str = built["html"]
-    assert html_str.count('class="pane on"') == 1
-    assert '<div class="pane on" data-pane="__overview__">' in html_str
-    assert html_str.count('class="rail-wrap on"') == 1
-    assert '<div class="rail-wrap on" data-rail="__overview__">' in html_str
-    assert not re.search(r'<button class="tab on"', html_str), "a file tab starts open"
+    """Read from the page source: which pane, rail and tab carry `on` when the
+    page loads. Nothing else is shown until a tab is clicked."""
+    body = body_of(built["html"])
+    for tag, attr in (("div", "data-pane"), ("div", "data-rail"), ("button", "data-tab")):
+        on = [k for k, cls in _classes_by(body, tag, attr).items() if "on" in cls]
+        assert on == ["__overview__"], (attr, on)
+    css = "".join(re.findall(r"<style>(.*?)</style>", built["html"], flags=re.S))
+    assert ".pane{display:none}" in css and ".pane.on{display:block}" in css
 
 
 def _overview_pane(html_str):
@@ -222,16 +238,38 @@ def test_every_overview_link_lands_on_a_block(built):
         assert 'data-blk="%s"' % blk in built["html"], blk
 
 
+def _promise_rows(pane):
+    """`{promise text start: set of chip classes}` from the overview's list."""
+    out = {}
+    for li in re.findall(r'<li class="ov-p">(.*?)</li>', pane, flags=re.S):
+        chips = set(re.findall(r'class="ov-chip (ov-[\w-]+)"', li))
+        text = re.sub(r"<[^>]+>", " ", li).split()
+        words = [w for w in text if w.lower() not in
+                 ("covered", "uncovered", "not", "checkable", "breaking")]
+        out[" ".join(words[:3])] = chips
+    return out
+
+
+def _cap_status(pane):
+    """`{capability: status chip}` from the overview's requirements table."""
+    return dict(re.findall(r'<code>([^<]+)</code></td><td><span class="ov-chip ov-[\w-]+">'
+                           r'([\w-]+)</span>', pane))
+
+
 def test_the_overview_chips_carry_each_promises_bucket(built):
     pane = _overview_pane(body_of(built["html"]))
-    assert re.search(r'<span class="ov-chip ov-covered">covered</span> '
-                     r'<span class="cov-go"[^>]*>Delete src/legacy/sync-engine/', pane)
-    assert re.search(r'<span class="ov-chip ov-unchecked">not checkable</span> '
-                     r'<span class="cov-go"[^>]*>A warm-ink palette', pane)
-    assert "ov-breaking" not in pane
+    rows = _promise_rows(pane)
+    assert rows["Delete src/legacy/sync-engine/ entirely"] == {"ov-covered"}
+    assert rows["A warm-ink palette"] == {"ov-unchecked"}
     assert "<th>renamed</th>" not in pane, "a renamed column with nothing in it"
-    assert re.search(r"<code>cla-plugin</code></td><td><span class=\"ov-chip ov-new\">new", pane), \
+    assert _cap_status(pane) == {"cla-plugin": "new"}, \
         "no main spec in this fixture, so the capability reads as new"
+    # Each rail entry jumps to a heading that is there.
+    rail = built["html"].split('data-rail="__overview__"', 1)[1].split("</div>", 1)[0]
+    anchors = re.findall(r'href="#([^"]+)"', rail)
+    assert anchors == ["ov-promises", "ov-requirements", "ov-tasks"]
+    for a in anchors:
+        assert 'id="%s"' % a in pane, a
 
 
 def test_a_breaking_promise_and_a_rename_show_in_the_overview(change, tmp_path):
@@ -245,8 +283,9 @@ def test_a_breaking_promise_and_a_rename_show_in_the_overview(change, tmp_path):
                  "- TO: `### Requirement: B`\n")
     html_str, _m, _c = _rebuild(change, tmp_path, "brk.html")
     pane = _overview_pane(body_of(html_str))
-    assert ('<span class="ov-chip ov-covered">covered</span>'
-            '<span class="ov-chip ov-breaking">breaking</span>') in pane
+    rows = _promise_rows(pane)
+    assert rows["Delete src/legacy/sync-engine/ entirely"] == {"ov-covered", "ov-breaking"}
+    assert rows["A warm-ink palette"] == {"ov-unchecked"}
     assert "<th>renamed</th>" in pane
 
 
@@ -258,6 +297,52 @@ def test_skip_specs_shows_in_the_overview_and_quiets_coverage(change, tmp_path):
     html_str, model, _c = _rebuild(change, tmp_path, "skip.html")
     assert "no spec changes (skip_specs)" in _overview_pane(body_of(html_str))
     assert not [r for r in model["coverage"]["capabilities"] if r["why"]]
+
+
+def test_skip_specs_beside_real_deltas_shows_both_and_says_they_conflict(change, tmp_path):
+    """OpenSpec's validate refuses this combination. Hiding the deltas behind
+    the flag would show the reader an empty change that is not empty."""
+    with open(os.path.join(change["dir"], ".openspec.yaml"), "w", encoding="utf-8") as fh:
+        fh.write("schema: spec-driven\nskip_specs: true\n")
+    html_str, _m, _c = _rebuild(change, tmp_path, "conflict.html")
+    pane = _overview_pane(body_of(html_str))
+    assert "conflict · .openspec.yaml sets skip_specs, but this change has spec deltas" in pane
+    assert _cap_status(pane) == {"cla-plugin": "new"}
+    assert "no spec changes (skip_specs)" not in pane
+
+
+def test_the_overview_says_nothing_parsed_and_what_it_looked_for(change, tmp_path):
+    """An empty heading reads as an empty change. Each part that gave nothing
+    says so, and names what was looked for."""
+    with open(os.path.join(change["dir"], "proposal.md"), "w", encoding="utf-8") as fh:
+        fh.write("# Proposal\n\n## Impact\n\n- `cla-plugin`: changes\n")
+    os.remove(os.path.join(change["dir"], "tasks.md"))
+    html_str, _m, _c = _rebuild(change, tmp_path, "empty.html")
+    pane = _overview_pane(body_of(html_str))
+    assert "nothing parsed · the proposal has no ## Why section" in pane
+    assert "nothing parsed · no top-level bullets under the proposal&#x27;s ## What Changes" \
+        in pane or "nothing parsed · no top-level bullets under the proposal's ## What Changes" \
+        in pane
+    assert "nothing parsed · this change has no tasks.md" in pane
+    with open(os.path.join(change["dir"], "proposal.md"), "w", encoding="utf-8") as fh:
+        fh.write("# Proposal\n\n## Why\n\n## What Changes\n\n- one\n")
+    with open(os.path.join(change["dir"], "tasks.md"), "w", encoding="utf-8") as fh:
+        fh.write("# Tasks\n\n## 1. Work\n\nNo boxes here.\n")
+    html_str, _m, _c = _rebuild(change, tmp_path, "empty2.html")
+    pane = _overview_pane(body_of(html_str))
+    assert "## Why section is empty" in pane
+    assert "nothing parsed · tasks.md holds no task lines" in pane
+
+
+def test_a_promise_cut_short_says_so(change, tmp_path):
+    long = "- Delete `src/legacy/sync-engine/` " + "and more words " * 40 + "\n"
+    prop = PROPOSAL.replace("- Delete `src/legacy/sync-engine/` entirely\n", long)
+    with open(os.path.join(change["dir"], "proposal.md"), "w", encoding="utf-8") as fh:
+        fh.write(prop)
+    html_str, _m, _c = _rebuild(change, tmp_path, "long.html")
+    li = [x for x in re.findall(r'<li class="ov-p">(.*?)</li>', _overview_pane(body_of(html_str)))
+          if "sync-engine" in x][0]
+    assert re.search(r"…</span>$", li)
 
 
 def test_each_file_gets_its_own_rail(built):
@@ -519,8 +604,8 @@ def test_each_requirement_heading_carries_its_group(grouped):
     for title, group in (("A fresh rule", "ADDED"), ("Project-data scaffolding", "MODIFIED"),
                          ("Old rule one", "REMOVED"), ("Old rule two", "REMOVED")):
         assert 'data-group="%s"' % group in _open_tag(html_str, _heading(grouped, title)), title
-    css = "".join(re.findall(r"<style>(.*?)</style>", grouped["html"], flags=re.S))
-    assert "h3[data-group]::before{content:attr(data-group);" in css
+    # That the label is DRAWN is a question for a browser: the computed
+    # `::before` content is checked in test_page_in_a_browser.py.
 
 
 def test_a_labelled_heading_reads_the_same_text_as_before(grouped):
@@ -652,6 +737,9 @@ def test_an_archived_change_shows_no_base_rather_than_unchanged(tmp_path):
     assert [r["state"] for r in model["diffs"].values()] == ["archived"]
     assert "no base · this change is archived" in html_str
     assert "unchanged · " not in html_str
+    # Its main specs are never read, so whether the capability was new or
+    # modified is not known — and the chip says that, not "modified".
+    assert _cap_status(_overview_pane(body_of(html_str))) == {"cla-plugin": "unknown"}
 
 
 def test_the_main_spec_is_found_beside_the_change_not_at_the_repo_root(tmp_path):
@@ -674,9 +762,77 @@ def test_the_main_spec_is_found_beside_the_change_not_at_the_repo_root(tmp_path)
     html_str = io.open(path, encoding="utf-8").read()
     assert [r["state"] for r in model["diffs"].values()] == ["diff"]
     assert '<span class="rd-del">Old words here.</span>' in html_str
-    assert RC.main_specs_dir(str(d / "x" / ".."), str(repo)) == str(store_dir / "specs")
+    # The card names the file it actually read, not the repo-relative guess.
+    assert "changes against %s" % (store_dir / "specs" / "cla-plugin" / "spec.md").as_posix() \
+        in html_str
+    assert RC.main_specs_dir(str(d / "x" / "..")) == str(store_dir / "specs")
     arch = store_dir / "changes" / "archive" / "2026-01-01-demo"
-    assert RC.main_specs_dir(str(arch), str(repo)) == str(store_dir / "specs")
+    assert RC.main_specs_dir(str(arch)) == str(store_dir / "specs")
+
+
+def test_a_change_folder_outside_changes_has_no_main_specs(tmp_path):
+    """Neither openspec/changes/<id> nor its archive: there is no main specs
+    folder that belongs to it, and borrowing the repo's would compare against
+    a spec from another store."""
+    (tmp_path / ".git").mkdir()
+    d = tmp_path / "loose" / "demo"
+    (d / "specs" / "cla-plugin").mkdir(parents=True)
+    (d / "proposal.md").write_text(PROPOSAL, encoding="utf-8")
+    (d / "specs" / "cla-plugin" / "spec.md").write_text(SPEC, encoding="utf-8")
+    (tmp_path / "openspec" / "specs" / "cla-plugin").mkdir(parents=True)
+    (tmp_path / "openspec" / "specs" / "cla-plugin" / "spec.md").write_text(
+        MAIN_SPEC, encoding="utf-8")
+    assert RC.main_specs_dir(str(d)) is None
+    path, model, _c = RC.build(str(d), str(tmp_path), str(tmp_path / "loose.html"))
+    html_str = io.open(path, encoding="utf-8").read()
+    assert [r["state"] for r in model["diffs"].values()] == ["no-main-spec"]
+    assert "no base · this change folder is not under openspec/changes/" in html_str
+    assert "Old words here" not in html_str
+
+
+def test_the_archive_folder_is_recognised_in_any_case_where_the_os_folds_case(tmp_path):
+    d = tmp_path / "openspec" / "Changes" / "Archive" / "2026-01-01-demo"
+    expected = os.path.normcase("Changes") == os.path.normcase("changes")
+    assert RC.is_archived(str(d)) is expected
+    if expected:
+        assert RC.main_specs_dir(str(d)) == str(tmp_path / "openspec" / "specs")
+
+
+def test_an_unchanged_requirement_claims_only_what_was_compared(change, tmp_path):
+    _main_spec(change, MAIN_SPEC.replace("Old words here.", "Text.").encode("utf-8"))
+    html_str, model, _c = _rebuild(change, tmp_path, "same.html")
+    assert [r["state"] for r in model["diffs"].values()] == ["same"]
+    assert "no word-level difference from openspec/specs/cla-plugin/spec.md" in html_str
+    assert "unchanged" not in body_of(html_str).split('data-pane="spec-cla-plugin"', 1)[1]
+
+
+def test_a_requirement_that_cannot_be_placed_is_listed_not_dropped(change, tmp_path):
+    """Two headings with one name: neither can carry the label or the diff
+    without guessing, so both go to the coverage pane with the reason."""
+    twice = SPEC + "\n### Requirement: Project-data scaffolding\n\nAgain.\n"
+    with open(os.path.join(change["dir"], "specs", "cla-plugin", "spec.md"), "w",
+              encoding="utf-8") as fh:
+        fh.write(twice)
+    _main_spec(change, MAIN_SPEC.encode("utf-8"))
+    html_str, model, _c = _rebuild(change, tmp_path, "unplaced.html")
+    rows = model["unplaced"]
+    assert {r["why"] for r in rows} == {"heading not unique"}
+    assert all(set(r["what"]) == {"label", "diff"} for r in rows)
+    cov = html_str.rsplit('data-pane="__coverage__"', 1)[1]
+    assert "Not placed — 2" in cov
+    assert "its label and diff could not be placed: heading not unique" in cov
+    assert 'data-group="MODIFIED"' not in body_of(html_str)
+
+
+def test_a_heading_with_a_closing_hash_run_still_carries_its_label(change, tmp_path):
+    closed = SPEC.replace("### Requirement: Project-data scaffolding",
+                          "### Requirement: Project-data scaffolding ###")
+    with open(os.path.join(change["dir"], "specs", "cla-plugin", "spec.md"), "w",
+              encoding="utf-8") as fh:
+        fh.write(closed)
+    html_str, model, _c = _rebuild(change, tmp_path, "closed.html")
+    assert 'data-group="MODIFIED"' in body_of(html_str)
+    assert not model.get("unplaced")
 
 
 def test_an_active_change_is_not_archived(change):

@@ -90,7 +90,8 @@ the directory carries a date prefix. Both scripts take the id, the directory, or
 a path — pass what the user said and read what comes back.
 
 The page opens on a derived overview of the change, not on the proposal. Each
-MODIFIED requirement shows a word diff against its main spec. **On an archived
+MODIFIED requirement shows a word diff against its main spec, or a note naming
+why there is none and the path it looked at. **On an archived
 change it shows "no base", which does not mean "unchanged"**: archiving wrote the
 change's text into the main spec, so the text it replaced is gone. Never report
 an archived requirement as unmodified on the strength of that note.
@@ -179,7 +180,7 @@ groups, and only the first is a finding:
   **51% of proposal bullets land here** — design and product bullets are prose,
   and prose is not a link. Never present these as gaps.
 - **Covered** — a task names the same file, or cites the bullet outright (22%).
-- **Not done** — a task whose box is unticked. Its own group, never added to
+- **Not done** — a task whose box holds anything but `x`. Its own group, never added to
   Uncovered: an unstarted change has every task open, and reporting that as
   "18 uncovered" is the overclaim the whole tab exists to prevent.
 
