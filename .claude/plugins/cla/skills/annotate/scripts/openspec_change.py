@@ -737,7 +737,9 @@ DIFF_STATES = ("archived", "no-main-spec", "unreadable", "not-in-main", "same", 
 
 
 def _norm_name(name):
-    return " ".join(strip_md(name).lower().split())
+    """A requirement header as OpenSpec matches a MODIFIED one to the main
+    spec: whitespace-insensitive, and otherwise exact — case included."""
+    return " ".join(name.split())
 
 
 def _body_words(lines):

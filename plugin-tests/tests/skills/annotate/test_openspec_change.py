@@ -454,6 +454,27 @@ def test_an_archived_change_is_never_compared():
         assert _diffs(main, archived=True)[0]["state"] == "archived"
 
 
+def test_a_modified_header_matches_the_main_spec_ignoring_whitespace_only():
+    """OpenSpec matches a MODIFIED header to the main spec whitespace-
+    insensitively and otherwise exactly, so a header in another case is a
+    different requirement."""
+    spaced = MAIN_SPEC.replace("### Requirement: Project-data scaffolding",
+                               "### Requirement:   Project-data   scaffolding ")
+    assert _diffs({"cla-plugin": spaced})[0]["state"] == "diff"
+    cased = MAIN_SPEC.replace("Project-data scaffolding", "Project-Data Scaffolding")
+    assert _diffs({"cla-plugin": cased})[0]["state"] == "not-in-main"
+
+
+def test_the_diff_covers_every_scenario_of_the_requirement():
+    """A MODIFIED block carries the full updated requirement, scenarios
+    included, so a changed scenario is a changed requirement."""
+    same = MAIN_SPEC.replace("two facts files", "one facts file")
+    rec = _diffs({"cla-plugin": same.replace("one file is written",
+                                             "a file is written")})[0]
+    assert rec["state"] == "diff"
+    assert ("del", ["a"]) in rec["ops"] and ("ins", ["one"]) in rec["ops"]
+
+
 def test_no_main_specs_means_no_diffs():
     assert OC.build("demo", TEXTS)["diffs"] == {}
 

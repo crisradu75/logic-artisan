@@ -99,6 +99,24 @@ MUTANTS = [
      "            if True:",
      TESTS),
 
+    ("a MODIFIED header matches the main spec in any case",
+     OC,
+     '    return " ".join(name.split())',
+     '    return " ".join(name.lower().split())',
+     TESTS),
+
+    ("a MODIFIED header matches the main spec only with identical spacing",
+     OC,
+     '    return " ".join(name.split())',
+     "    return name",
+     TESTS),
+
+    ("a requirement's diff stops at its first scenario",
+     OC,
+     '_BODY_END_RE = re.compile(r"^#{2,3}\\s")',
+     '_BODY_END_RE = re.compile(r"^#{2,4}\\s")',
+     TESTS),
+
     ("an unreadable main spec is treated as text",
      OC,
      "        if not isinstance(base_text, str):",

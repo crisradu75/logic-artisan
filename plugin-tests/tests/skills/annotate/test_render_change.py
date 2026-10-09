@@ -582,6 +582,31 @@ def test_an_archived_change_shows_no_base_rather_than_unchanged(tmp_path):
     assert "unchanged · " not in html_str
 
 
+def test_the_main_spec_is_found_beside_the_change_not_at_the_repo_root(tmp_path):
+    """A change may live in a store of its own. Its main specs are the ones in
+    the same `openspec/` folder as the change, whatever the repo root is."""
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    store_dir = tmp_path / "store" / "openspec"
+    d = store_dir / "changes" / "demo"
+    (d / "specs" / "cla-plugin").mkdir(parents=True)
+    (d / "proposal.md").write_text(PROPOSAL, encoding="utf-8")
+    (d / "specs" / "cla-plugin" / "spec.md").write_text(SPEC, encoding="utf-8")
+    (store_dir / "specs" / "cla-plugin").mkdir(parents=True)
+    (store_dir / "specs" / "cla-plugin" / "spec.md").write_text(MAIN_SPEC, encoding="utf-8")
+    # A decoy at the repo root, which must not be the one read.
+    (repo / "openspec" / "specs" / "cla-plugin").mkdir(parents=True)
+    (repo / "openspec" / "specs" / "cla-plugin" / "spec.md").write_text(
+        MAIN_SPEC.replace("Old words here.", "Decoy."), encoding="utf-8")
+    path, model, _c = RC.build(str(d), str(repo), str(tmp_path / "s.html"))
+    html_str = io.open(path, encoding="utf-8").read()
+    assert [r["state"] for r in model["diffs"].values()] == ["diff"]
+    assert '<span class="rd-del">Old words here.</span>' in html_str
+    assert RC.main_specs_dir(str(d / "x" / ".."), str(repo)) == str(store_dir / "specs")
+    arch = store_dir / "changes" / "archive" / "2026-01-01-demo"
+    assert RC.main_specs_dir(str(arch), str(repo)) == str(store_dir / "specs")
+
+
 def test_an_active_change_is_not_archived(change):
     assert not RC.is_archived(change["dir"])
 

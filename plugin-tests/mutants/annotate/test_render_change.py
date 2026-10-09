@@ -106,6 +106,18 @@ MUTANTS = [
      "    return False",
      TESTS),
 
+    ("an active change's main specs are read from the repo root, not beside it",
+     CHANGE,
+     '    elif len(parts) >= 2 and parts[-2] == "changes":',
+     "    elif False:",
+     TESTS),
+
+    ("an archived change's main specs folder is read from the wrong level",
+     CHANGE,
+     "        base = parts[:-3]",
+     "        base = parts[:-2]",
+     TESTS),
+
     ("a main spec that is not UTF-8 fails the whole build",
      CHANGE,
      "        except UnicodeDecodeError as e:",

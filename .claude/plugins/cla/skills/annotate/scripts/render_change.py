@@ -601,11 +601,28 @@ def is_archived(change_dir):
     return len(parts) >= 3 and parts[-2] == "archive" and parts[-3] == "changes"
 
 
-def main_spec_path(root, cap):
-    return os.path.join(root, "openspec", "specs", cap, "spec.md")
+def main_specs_dir(change_dir, root):
+    """The main specs folder that belongs to this change: derived from the
+    change folder, never from the repo root, because a change may live in a
+    store of its own. `<x>/openspec/changes/<id>` and
+    `<x>/openspec/changes/archive/<id>` both answer `<x>/openspec/specs`. A
+    change folder in neither place falls back to the repo's own."""
+    parts = os.path.normpath(os.path.abspath(change_dir)).split(os.sep)
+    if is_archived(change_dir):
+        base = parts[:-3]
+    elif len(parts) >= 2 and parts[-2] == "changes":
+        base = parts[:-2]
+    else:
+        return os.path.join(root, "openspec", "specs")
+    return os.path.join(os.sep.join(base) or os.sep, "specs")
 
 
-def read_main_specs(root, caps):
+def main_spec_path(specs_dir, cap):
+    # A capability is a path, posix-spelled in its key.
+    return os.path.join(specs_dir, *cap.split("/"), "spec.md")
+
+
+def read_main_specs(specs_dir, caps):
     """`{capability: text}` for each main spec, None where there is none, and the
     exception where one exists and cannot be read.
 
@@ -618,7 +635,7 @@ def read_main_specs(root, caps):
     """
     out = {}
     for cap in caps:
-        p = main_spec_path(root, cap)
+        p = main_spec_path(specs_dir, cap)
         if not os.path.isfile(p):
             out[cap] = None
             continue
@@ -789,7 +806,8 @@ def build(change_dir, root=None, out=None):
     caps = [k[len("spec-"):] for k in texts if k.startswith("spec-")]
     # An archived change is never compared — see OC.requirement_diffs — so its
     # main specs are not even read.
-    main_specs = {} if archived else read_main_specs(root, caps)
+    main_specs = ({} if archived
+                  else read_main_specs(main_specs_dir(change_dir, root), caps))
     model = OC.build(change_dir, texts, main_specs, archived)
     bind_claims(model, ctxs)
     bodies = counterparts(model, bodies, ctxs, labels)
