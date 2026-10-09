@@ -747,6 +747,49 @@ looks at: correcting one return path of a function commonly breaks another, whic
 `lint_profile` traded a silent no-op on the default path for the identical no-op on the overlay
 path.
 
+### Mutation runs only for guards and checkers: the PR behind the rule
+
+Check 4 used to require a mutation batch for every review fix. It now requires one only in a guard
+hook or a checker, once per PR, after the last fix. Every other fix needs one test that fails
+without it, shown by breaking the fix by hand.
+
+**The rule's wording before this change.** Check 4: "Break the fix and confirm a test fails:
+`python3 plugin-tests/mutate.py <batch.py>`". The table row for a review fix: "that area, plus a
+mutation batch over what the fix touches". The clean-run bullet: "Plant bugs in everything the fix
+touches, not only the line it meant to fix."
+
+The evidence is PR #320 ("annotate: make the change page readable for a human reviewer", merged
+2026-10-09, merge commit `ca3b13a`). Every number below is from its body (`gh pr view 320`) or from
+`git show 18bb37c`. Most of its code is the annotate change page, which renders documents. That
+code is not a guard or a checker.
+
+- **Review found the defects.** The first review round had 2 critical and 11 important findings.
+  The second had 3 important findings. The fixes follow OpenSpec 1.14.1's own `dist/` code. The PR
+  body credits no defect to a mutation run.
+- **Mutation runs found 2 test gaps.** Each was a mutant that survived and got a new test: the
+  "listed under New Capabilities" rule at the first push, and an "unknown" capability shown as
+  "modified" in the first fix round.
+- **One killed mutant protected a wrong behaviour.** The batch at the first push held "a MODIFIED
+  header matches the main spec only with identical spacing", which replaced
+  `" ".join(name.split())` with `return name`. A test killed it, and that run reported 26 of 26
+  killed. The simpler form was the right one: OpenSpec's `normalizeRequirementName` counts inner
+  spacing. Review found it as critical 1. This is the false reassurance "A killed mutant" below
+  describes. `git show 18bb37c -- plugin-tests/mutants/annotate/test_openspec_change.py` shows the
+  mutant replaced.
+- **The batches were re-run in each round.** They ran serially, as `mutate.py` must. The runs
+  covered 78 mutants at the first push, 111 after the first fix round and 135 after the second.
+
+So outside the guards and checkers, each round paid for serial batch runs. Against 16 review
+findings, the runs found 2 test gaps, and they reported one wrong test as a pass. A guard is
+different: a broken one fails silently, and a planted bug is the cheap way to see it fail.
+
+The stories behind check 4 and the clean-run, survivor and concurrent-run rules are all about
+guards or checkers. That is why the rule keeps mutation runs for them. (The "A killed mutant" case
+came from a consuming repo; its rule applies whenever a batch runs.) `1cf09da` and `0027bc7` ("A
+clean mutation run") changed two guard hooks since deleted, warn-lint-on-edit and
+block-direct-push-to-main. `lint_profile` (check 4) was in warn-lint-on-edit. `check_labels_agree` ("A survivor") is a consistency guard test, and
+`check_script_drift` ("Concurrent mutation runs") was a guard, since deleted.
+
 ### Check 5: the escape that produced it
 
 Check 5 is check 4's second-branch problem one level up: there, the other branch is inside the
