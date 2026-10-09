@@ -60,3 +60,96 @@ def _make_dir_alias(link: Path, real: Path) -> None:
 def make_dir_alias():
     """The directory-alias helper above, as a fixture: `make_dir_alias(link, real)`."""
     return _make_dir_alias
+
+
+# ---------------------------------------------------------------- the temp dir
+#
+# Code under test writes to the system temp dir on its own: `render_doc.page_dir`
+# puts every rendered page under `<temp>/cla-annotate/<hash of the repo root>`,
+# and a test's repo root is a fresh tmp path each time, so every such test left
+# a new folder in the developer's real %TEMP% — 817 in one day of gate and
+# mutation runs. The fix is not per test: the whole run's temp dir is pointed at
+# a pytest-managed one, in process and for every subprocess.
+
+TEMP_ENV = ("TMP", "TEMP", "TMPDIR")
+
+# What the code under test creates directly under the temp dir. Watched in the
+# REAL temp dir for the whole run; anything new there is a leak.
+WATCHED_TEMP_ENTRIES = ("cla-annotate", "cla-annotate-profile")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _temp_dir_inside_the_run(tmp_path_factory):
+    """Point `tempfile` and the TMP/TEMP/TMPDIR variables at a dir pytest owns.
+
+    Session-scoped and autouse, so it is in force before any test or fixture
+    runs; under xdist each worker has its own session, so each gets its own
+    dir. `tempfile.tempdir` covers this process; the variables cover every
+    subprocess a test starts, which inherit `os.environ`. pytest's own
+    basetemp is already resolved by the `mktemp` call below, so tmp_path keeps
+    working exactly as before.
+    """
+    import tempfile
+    redirected = str(tmp_path_factory.mktemp("systemp"))
+    saved_dir = tempfile.tempdir
+    saved_env = {k: os.environ.get(k) for k in TEMP_ENV}
+    tempfile.tempdir = redirected
+    for k in TEMP_ENV:
+        os.environ[k] = redirected
+    yield redirected
+    tempfile.tempdir = saved_dir
+    for k, v in saved_env.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
+def _watched_entries(temp_root):
+    out = set()
+    for name in WATCHED_TEMP_ENTRIES:
+        p = os.path.join(temp_root, name)
+        if not os.path.isdir(p):
+            continue
+        if name == "cla-annotate":
+            out |= {os.path.join(name, e) for e in os.listdir(p)}
+        else:
+            out.add(name)
+    return out
+
+
+def pytest_sessionstart(session):
+    """Snapshot the REAL temp dir's watched entries before any test runs. Under
+    xdist this runs in the controller, which runs no tests and so never
+    redirects; the workers' snapshots are never read."""
+    import tempfile
+    real = tempfile.gettempdir()
+    session.config._cla_real_temp = (real, _watched_entries(real))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the run if the real temp dir gained a watched entry.
+
+    Checked once, in the process that owns the whole run: the controller under
+    xdist, the only process otherwise. Another pytest run on the same machine
+    writing there at the same time would also trip it; the message names the
+    entries, so that case is easy to tell apart.
+    """
+    if hasattr(session.config, "workerinput"):
+        return
+    snap = getattr(session.config, "_cla_real_temp", None)
+    if snap is None:
+        return
+    real, before = snap
+    leaked = sorted(_watched_entries(real) - before)
+    if leaked:
+        tr = session.config.pluginmanager.get_plugin("terminalreporter")
+        msg = ("TEMP LEAK: this run created %d entr%s in the real temp dir %s, "
+               "outside the run's own: %s"
+               % (len(leaked), "y" if len(leaked) == 1 else "ies", real,
+                  ", ".join(leaked[:10])))
+        if tr is not None:
+            tr.write_line(msg, red=True)
+        else:
+            print(msg)
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
