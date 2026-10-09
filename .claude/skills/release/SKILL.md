@@ -52,6 +52,7 @@ python3 .claude/skills/release/scripts/check_shipped_tree.py
 | `pytest plugin-tests -q -n auto --dist loadfile` fully green | There is no CI. This run, plus the spec validation below, is the whole gate that exists. |
 | `openspec validate --specs --strict` passes with no warning | It is the second command in CLAUDE.md's "Before opening a PR" gate, so the OpenSpec CLI is now a release precondition: without it on `PATH` this step fails and no tag is cut. |
 | The work is reviewed and merged | See the invariant above. |
+| The docs match the code since the last tag | Re-check every count and present-tense claim in `README.md`, `DEVELOPER-GUIDE.md` and `.claude/plugins/cla/README.md` against `git log <last-tag>..HEAD`, and fix them in a PR first. 2.0.0 shipped saying "21 workflow skills" and "neutral stub" overlays, and a docs PR had to follow it. |
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
 
 Resolve the default branch, never assume it: `git symbolic-ref --quiet refs/remotes/origin/HEAD`
@@ -123,6 +124,13 @@ git checkout <default-branch> && git pull --ff-only
 
 Pass `--body`: without it `gh pr create` opens an interactive editor, which in a
 non-interactive session is a hang two steps before an irreversible action.
+
+**Merge only from a session that can push the tag.** The merge publishes the new `ref`, and
+until Step 4's tag reaches `origin` that `ref` names a tag that does not exist, so
+`/plugin marketplace update` fails in every consuming repo. A cloud session's credentials
+push only its own branch, and a tag push there returns HTTP 403 — which is how 2.0.0 sat
+merged and untagged until the owner pushed the tag by hand. In such a session, open the PR
+and stop: hand the owner the merge and Step 4's commands.
 
 **Why a PR and not `git push`.** `hooks/git/pre-push` refuses a direct push to the default
 branch. The hook's message names an `ALLOW_PUSH_TO_MAIN=1` override, and it is not the

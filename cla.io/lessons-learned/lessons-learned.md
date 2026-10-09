@@ -2,6 +2,14 @@
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
 
+## 2026-10-09 — codify-learnings
+- APPLIED 1. Merge a release PR only from a session that can push the tag (`.claude/skills/release/SKILL.md`, doc)
+- APPLIED 2. Docs match the code since the last tag, as a release precondition (`.claude/skills/release/SKILL.md`, doc)
+- APPLIED 3. Ignore `.claude/worktrees/` (`.gitignore`, script)
+- Re-offense: none
+
+---
+
 ## Lessons learned — 2026-08-29 — scope: repo-wide (issue triage → `lite-pr` → PR #186 `ask-destructive-git` working-tree discards; 4 review rounds; merged as `a274027`)
 
 ### Session summary
