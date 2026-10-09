@@ -5,3 +5,6 @@ __pycache__/
 
 # multi-lite / multi-pr run notes: local working state, never committed
 cla.io/retro/*-run-notes-*.md
+
+# agent and /cla:new-worktree copies of the repo: never committed
+.claude/worktrees/
