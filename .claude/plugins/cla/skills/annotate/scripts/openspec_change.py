@@ -649,31 +649,53 @@ def _disambiguate(claims):
     return claims
 
 
+def _mentions(text, name):
+    """Whether `text` names the capability `name` anywhere, as a whole word.
+
+    A whole word means no letter, digit, underscore or hyphen on either side, so
+    `cla-plugin-extra` and `old-cla-plugin` do not mention `cla-plugin`. Case is
+    ignored, because prose capitalises a name that a heading spells in lower case.
+    """
+    pattern = r"(?<![\w-])" + re.escape(name) + r"(?![\w-])"
+    return re.search(pattern, text or "", re.I) is not None
+
+
 def capability_coverage(caps, texts, claims):
     """The spec side of coverage, asked at the level the proposal speaks at.
 
     Two failures are real and both are cheap to detect: a capability the proposal
-    names with no delta file to change it, and a delta file no capability names.
-    Either one means the proposal and the specs disagree about what this change
-    touches, which is worth more than ten per-requirement warnings.
+    names with no delta file to change it, and a delta file the proposal never
+    names. Either one means the proposal and the specs disagree about what this
+    change touches, which is worth more than ten per-requirement warnings.
+
+    A delta counts as named when the proposal MENTIONS its capability anywhere,
+    not only under `## Capabilities`. Most proposals list what they touch under
+    `## Impact` instead, and flagging every delta there turned the tab's badge red
+    on nearly every change. A mention clears the flag and nothing more: it adds no
+    row of its own and no link, because naming a capability in passing is not a
+    citation.
     """
     delta_keys = {k[len("spec-"):] for k in texts if k.startswith("spec-")}
     named = {c["name"] for c in caps}
+    proposal = texts.get("proposal", "")
     reqs = {}
     for c in claims:
         if c["kind"] == "requirement":
             reqs.setdefault(c["file"][len("spec-"):], []).append(c)
     rows = []
     for cap in sorted(named | delta_keys):
+        mentioned = _mentions(proposal, cap)
         rows.append({
             "name": cap,
             "named": cap in named,
+            "mentioned": mentioned,
             "delta": cap in delta_keys,
             "requirements": reqs.get(cap, []),
             "why": ("named in the proposal, but no specs/%s/spec.md" % cap
                     if cap not in delta_keys else
-                    "has a spec delta that no proposal capability names"
-                    if cap not in named else ""),
+                    "has a spec delta that no proposal capability names, and the "
+                    "proposal never mentions it"
+                    if cap not in named and not mentioned else ""),
         })
     return rows
 

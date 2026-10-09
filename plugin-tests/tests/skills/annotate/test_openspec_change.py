@@ -272,6 +272,64 @@ def test_capability_coverage_flags_a_named_capability_with_no_delta():
     assert "no specs/cla-plugin/spec.md" in row["why"]
 
 
+SPEC_ONLY = """# Delta: cla-plugin
+
+## MODIFIED Requirements
+
+### Requirement: Project-data scaffolding
+
+Text.
+"""
+
+
+def _impact_only(impact_line):
+    """A proposal with no `## Capabilities` section: the capability, if it is
+    named at all, is named under `## Impact` — the shape most proposals use."""
+    return ("# P\n\n## Why\n\nBecause.\n\n## What Changes\n\n- Rework the thing\n\n"
+            "## Impact\n\n- %s\n" % impact_line)
+
+
+def _cap_row(prop, name="cla-plugin"):
+    m = OC.build("demo", {"proposal": prop, "spec-cla-plugin": SPEC_ONLY})
+    return m, [r for r in m["coverage"]["capabilities"] if r["name"] == name]
+
+
+def test_a_capability_backticked_under_impact_counts_as_named():
+    _m, rows = _cap_row(_impact_only("`cla-plugin`: one requirement modified"))
+    assert len(rows) == 1
+    assert rows[0]["mentioned"] and not rows[0]["named"] and rows[0]["delta"]
+    assert rows[0]["why"] == ""
+
+
+def test_a_bare_mention_in_another_case_counts_as_named():
+    _m, rows = _cap_row(_impact_only("The CLA-Plugin spec loses one scenario"))
+    assert rows[0]["mentioned"]
+    assert rows[0]["why"] == ""
+
+
+def test_a_longer_name_containing_the_capability_is_not_a_mention():
+    # Both sides: a suffix and a prefix. Either one alone leaves the other
+    # boundary free to break without a test noticing.
+    for line in ("`cla-plugin-extra` gains a requirement",
+                 "`old-cla-plugin` gains a requirement"):
+        _m, rows = _cap_row(_impact_only(line))
+        assert not rows[0]["mentioned"], line
+        assert "no proposal capability names" in rows[0]["why"], line
+
+
+def test_a_mention_adds_no_link():
+    # A mention clears the coverage flag and nothing more: it is not a citation,
+    # so it must not produce the strong link a `## Capabilities` bullet does.
+    m, _rows = _cap_row(_impact_only("`cla-plugin`: one requirement modified"))
+    assert not [l for l in m["links"]
+                if any(i.startswith("spec-cla-plugin:") for i in (l["src"], l["dst"]))]
+
+
+def test_a_mention_with_no_delta_adds_no_row():
+    m = OC.build("demo", {"proposal": _impact_only("`other-cap` is untouched")})
+    assert m["coverage"]["capabilities"] == []
+
+
 def test_stats_report_what_was_read(model):
     st = model["coverage"]["stats"]
     assert st["files"] == 4 and st["promises"] == 3
