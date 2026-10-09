@@ -180,22 +180,90 @@ def test_one_tab_per_file_in_the_fixed_order_plus_coverage(built):
     tabs = re.findall(r'<button class="tab(?: on)?" data-tab="([^"]+)"', built["html"])
     assert tabs == ["proposal", "design", "tasks", "spec-cla-plugin"]
     assert 'data-tab="__coverage__"' in built["html"]
+    # The overview comes first, before every file.
+    every = re.findall(r'<button class="tab[^"]*" data-tab="([^"]+)"', built["html"])
+    assert every == ["__overview__", "proposal", "design", "tasks", "spec-cla-plugin",
+                     "__coverage__"]
 
 
 def test_the_coverage_tab_is_dressed_as_derived_not_as_a_file(built):
     # A reader who takes it for a file goes looking for it on disk.
     assert 'class="tab tab-cov"' in built["html"]
     assert "tab-gap" in built["html"]
+    assert 'class="tab tab-cov tab-ov on" data-tab="__overview__"' in built["html"]
 
 
-def test_only_the_first_pane_and_rail_start_visible(built):
-    assert built["html"].count('class="pane on"') == 1
-    assert built["html"].count('class="rail-wrap on"') == 1
+# requirement: annotate / Opening a document for annotation
+def test_the_page_opens_on_the_overview(built):
+    html_str = built["html"]
+    assert html_str.count('class="pane on"') == 1
+    assert '<div class="pane on" data-pane="__overview__">' in html_str
+    assert html_str.count('class="rail-wrap on"') == 1
+    assert '<div class="rail-wrap on" data-rail="__overview__">' in html_str
+    assert not re.search(r'<button class="tab on"', html_str), "a file tab starts open"
+
+
+def _overview_pane(html_str):
+    pane = html_str.split('data-pane="__overview__">', 1)[1]
+    return pane[:pane.index('<div class="pane" data-pane=')]
+
+
+def test_nothing_in_the_overview_can_be_annotated(built):
+    """Derived data, like the coverage pane: a block in it would be an
+    annotation target with no source line behind it."""
+    assert "data-blk=" not in _overview_pane(body_of(built["html"]))
+
+
+def test_every_overview_link_lands_on_a_block(built):
+    pane = _overview_pane(body_of(built["html"]))
+    targets = re.findall(r'class="cov-go" data-go-blk="([^"]+)"', pane)
+    assert targets, "no promise in the overview links back"
+    for blk in targets:
+        assert 'data-blk="%s"' % blk in built["html"], blk
+
+
+def test_the_overview_chips_carry_each_promises_bucket(built):
+    pane = _overview_pane(body_of(built["html"]))
+    assert re.search(r'<span class="ov-chip ov-covered">covered</span> '
+                     r'<span class="cov-go"[^>]*>Delete src/legacy/sync-engine/', pane)
+    assert re.search(r'<span class="ov-chip ov-unchecked">not checkable</span> '
+                     r'<span class="cov-go"[^>]*>A warm-ink palette', pane)
+    assert "ov-breaking" not in pane
+    assert "<th>renamed</th>" not in pane, "a renamed column with nothing in it"
+    assert re.search(r"<code>cla-plugin</code></td><td><span class=\"ov-chip ov-new\">new", pane), \
+        "no main spec in this fixture, so the capability reads as new"
+
+
+def test_a_breaking_promise_and_a_rename_show_in_the_overview(change, tmp_path):
+    prop = PROPOSAL.replace("- Delete `src/legacy/sync-engine/` entirely",
+                            "- **BREAKING** Delete `src/legacy/sync-engine/` entirely")
+    with open(os.path.join(change["dir"], "proposal.md"), "w", encoding="utf-8") as fh:
+        fh.write(prop)
+    with open(os.path.join(change["dir"], "specs", "cla-plugin", "spec.md"), "w",
+              encoding="utf-8") as fh:
+        fh.write(SPEC + "\n## RENAMED Requirements\n\n- FROM: `### Requirement: A`\n"
+                 "- TO: `### Requirement: B`\n")
+    html_str, _m, _c = _rebuild(change, tmp_path, "brk.html")
+    pane = _overview_pane(body_of(html_str))
+    assert ('<span class="ov-chip ov-covered">covered</span>'
+            '<span class="ov-chip ov-breaking">breaking</span>') in pane
+    assert "<th>renamed</th>" in pane
+
+
+def test_skip_specs_shows_in_the_overview_and_quiets_coverage(change, tmp_path):
+    import shutil
+    shutil.rmtree(os.path.join(change["dir"], "specs"))
+    with open(os.path.join(change["dir"], ".openspec.yaml"), "w", encoding="utf-8") as fh:
+        fh.write("schema: spec-driven\nskip_specs: true\n")
+    html_str, model, _c = _rebuild(change, tmp_path, "skip.html")
+    assert "no spec changes (skip_specs)" in _overview_pane(body_of(html_str))
+    assert not [r for r in model["coverage"]["capabilities"] if r["why"]]
 
 
 def test_each_file_gets_its_own_rail(built):
     rails = re.findall(r'data-rail="([^"]+)"', built["html"])
-    assert set(rails) == {"proposal", "design", "tasks", "spec-cla-plugin", "__coverage__"}
+    assert set(rails) == {"__overview__", "proposal", "design", "tasks", "spec-cla-plugin",
+                          "__coverage__"}
 
 
 def test_the_page_is_self_contained(built):

@@ -117,6 +117,55 @@ MUTANTS = [
      '_BODY_END_RE = re.compile(r"^#{2,4}\\s")',
      TESTS),
 
+    # ------------------------------------------------ overview
+    ("every promise is reported covered whatever coverage found",
+     OC,
+     '            bucket[row["claim"]["id"]] = name',
+     '            bucket[row["claim"]["id"]] = "covered"',
+     TESTS),
+
+    ("a **BREAKING** promise is never marked",
+     OC,
+     'BREAKING_RE = re.compile(r"\\bBREAKING\\b")',
+     'BREAKING_RE = re.compile(r"\\bNEVER_MARKED\\b")',
+     TESTS),
+
+    ("a delta opening with ## Purpose does not make its capability new",
+     OC,
+     '        has_purpose = any(t.lower() == "purpose"',
+     '        has_purpose = any(t.lower() == "no such section"',
+     TESTS),
+
+    ("a capability listed under New Capabilities is not new",
+     OC,
+     '        new[cap] = cap in listed_new or has_purpose or main.get(cap) == "absent"',
+     '        new[cap] = has_purpose or main.get(cap) == "absent"',
+     TESTS),
+
+    ("a capability with no main spec is not new",
+     OC,
+     '        new[cap] = cap in listed_new or has_purpose or main.get(cap) == "absent"',
+     "        new[cap] = cap in listed_new or has_purpose",
+     TESTS),
+
+    ("a ## Purpose heading leaves the group before it open",
+     OC,
+     '        if re.match(r"^##\\s", line):',
+     "        if False:",
+     TESTS),
+
+    ("skip_specs no longer quiets a missing delta",
+     OC,
+     "    if skip_specs:",
+     "    if False:",
+     TESTS),
+
+    ("a commented-out or nested skip_specs counts as set",
+     OC,
+     '    return bool(re.search(r"(?mi)^skip_specs',
+     '    return bool(re.search(r"(?mi)skip_specs',
+     TESTS),
+
     ("an unreadable main spec is treated as text",
      OC,
      "        if not isinstance(base_text, str):",

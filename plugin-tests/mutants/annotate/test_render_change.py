@@ -130,6 +130,37 @@ MUTANTS = [
      ':root[data-theme="dark"]{--danger:#E5534B}',
      TESTS + [DEV / "tests" / "skills" / "annotate" / "test_render_doc.py"]),
 
+    # ------------------------------------------------ overview
+    ("the page no longer opens on the overview",
+     CHANGE,
+     "    panes = ['<div class=\"pane on\" data-pane=\"__overview__\"><div class=\"col\">%s</div></div>'",
+     "    panes = ['<div class=\"pane\" data-pane=\"__overview__\"><div class=\"col\">%s</div></div>'",
+     TESTS),
+
+    ("a breaking promise shows no chip",
+     CHANGE,
+     '            if c["id"] in ov["breaking"]:',
+     "            if False:",
+     TESTS),
+
+    ("a skip_specs change shows an empty requirements table instead of saying so",
+     CHANGE,
+     '    if ov["skip_specs"]:',
+     "    if False:",
+     TESTS),
+
+    ("the .openspec.yaml flag is never read",
+     CHANGE,
+     "            return OC.skip_specs_set(fh.read())",
+     "            return False",
+     TESTS),
+
+    ("the renamed column shows when nothing was renamed",
+     CHANGE,
+     '        renamed = any(ov["renamed"].values())',
+     "        renamed = True",
+     TESTS),
+
     # ------------------------------------------------ requirement groups
     ("a requirement heading never gets its group label",
      CHANGE,

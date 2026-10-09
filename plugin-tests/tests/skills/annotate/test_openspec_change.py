@@ -479,6 +479,165 @@ def test_no_main_specs_means_no_diffs():
     assert OC.build("demo", TEXTS)["diffs"] == {}
 
 
+# ---------------------------------------------------------------- overview
+
+
+# The OpenSpec 1.14 templates' shapes: a proposal with New and Modified
+# Capabilities, a new capability's delta opening with `## Purpose`, a RENAMED
+# group of FROM/TO bullets.
+OV_PROPOSAL = """# Proposal
+
+## Why
+
+Reviewers compare requirements by eye. That is slow.
+
+A second paragraph that is not the why's first.
+
+## What Changes
+
+- **BREAKING** — rename `src/auth/login.py` and drop the old entry point
+- A calmer palette for the login page
+
+## Capabilities
+
+### New Capabilities
+
+- `identity/user-auth`: signing in
+
+### Modified Capabilities
+
+- `billing`: invoices name the signed-in user
+
+## Impact
+
+- `audit-log` gains nothing
+"""
+
+OV_NEW_DELTA = """# Spec Delta
+
+## Purpose
+
+Signing in to the product, and what a session may do once it exists.
+
+## ADDED Requirements
+
+### Requirement: Signing in
+
+The product SHALL let a user sign in.
+
+#### Scenario: A known user
+- **WHEN** a known user signs in
+- **THEN** a session starts
+"""
+
+OV_MODIFIED_DELTA = """# Spec Delta
+
+## MODIFIED Requirements
+
+### Requirement: Invoices
+
+Invoices SHALL name the user.
+
+#### Scenario: An invoice
+- **WHEN** an invoice is made
+- **THEN** it names the user
+
+## REMOVED Requirements
+
+### Requirement: Paper invoices
+
+**Reason**: Nobody prints them.
+**Migration**: None.
+
+## RENAMED Requirements
+
+- FROM: `### Requirement: Bills`
+- TO: `### Requirement: Invoices`
+"""
+
+OV_TASKS = """# Tasks
+
+## 1. Auth
+
+- [x] 1.1 Rename `src/auth/login.py`
+- [ ] 1.2 Write the palette
+"""
+
+OV_TEXTS = {"proposal": OV_PROPOSAL, "tasks": OV_TASKS,
+            "spec-identity/user-auth": OV_NEW_DELTA, "spec-billing": OV_MODIFIED_DELTA}
+
+
+def _ov(main_specs=None, texts=OV_TEXTS, **kw):
+    return OC.overview(OC.build("demo", texts, main_specs, **kw), texts)
+
+
+def test_the_overview_why_is_the_first_paragraph_of_why():
+    assert _ov()["why"] == "Reviewers compare requirements by eye. That is slow."
+
+
+def test_each_promise_carries_the_bucket_coverage_put_it_in():
+    got = [(c["num"], b) for c, b in _ov()["promises"]]
+    assert got == [("p1", "covered"), ("p2", "unchecked")]
+
+
+def test_a_breaking_promise_is_marked():
+    ov = _ov()
+    ids = {c["num"]: c["id"] for c, _b in ov["promises"]}
+    assert ov["breaking"] == {ids["p1"]}
+
+
+def test_the_overview_counts_requirements_by_group_and_renames_by_pair():
+    ov = _ov()
+    assert ov["reqs"] == {"billing": {"ADDED": 0, "MODIFIED": 1, "REMOVED": 1},
+                          "identity/user-auth": {"ADDED": 1, "MODIFIED": 0, "REMOVED": 0}}
+    assert ov["renamed"] == {"billing": 1, "identity/user-auth": 0}
+    assert ov["tasks"] == (1, 2)
+
+
+def test_a_capability_is_new_when_listed_new_or_opening_with_purpose_or_without_a_main_spec():
+    main = {"billing": "# billing\n\n## Requirements\n", "identity/user-auth": "# x\n"}
+    assert _ov(main)["new"] == {"billing": False, "identity/user-auth": True}
+    # Not listed under New Capabilities, but its delta opens with `## Purpose`.
+    prop = OV_PROPOSAL.replace("### New Capabilities\n\n- `identity/user-auth`: signing in\n", "")
+    texts = dict(OV_TEXTS, proposal=prop)
+    assert _ov(main, texts)["new"]["identity/user-auth"] is True
+    # Neither listed nor opening with Purpose: new only because no main spec exists.
+    texts["spec-identity/user-auth"] = OV_NEW_DELTA.replace(
+        "## Purpose\n\nSigning in to the product, and what a session may do once it exists.\n\n", "")
+    assert _ov(main, texts)["new"]["identity/user-auth"] is False
+    assert _ov(dict(main, **{"identity/user-auth": None}), texts)["new"]["identity/user-auth"] is True
+    # A capability whose main spec was never looked up is not called new for it.
+    assert _ov({}, texts)["new"]["identity/user-auth"] is False
+    # Listed under New Capabilities, no Purpose, a main spec present: the listing
+    # alone makes it new.
+    texts["proposal"] = OV_PROPOSAL
+    assert _ov(main, texts)["new"]["identity/user-auth"] is True
+
+
+def test_purpose_is_not_a_requirement_group():
+    delta = ("# Spec Delta\n\n## REMOVED Requirements\n\n### Requirement: Old\n\n"
+             "**Reason**: Gone.\n\n## Purpose\n\n### Requirement: Stray\n\nText.\n")
+    groups = {c["text"]: c["group"] for c in OC.requirements(delta, "spec-x")}
+    assert groups == {"Old": "REMOVED", "Stray": ""}
+
+
+def test_skip_specs_quiets_the_missing_delta_and_says_so():
+    texts = {"proposal": OV_PROPOSAL, "tasks": OV_TASKS}
+    m = OC.build("demo", texts, skip_specs=True)
+    assert [r["why"] for r in m["coverage"]["capabilities"]] == ["", ""]
+    assert OC.overview(m, texts)["skip_specs"] is True
+    flagged = OC.build("demo", texts)["coverage"]["capabilities"]
+    assert all("no specs/" in r["why"] for r in flagged)
+
+
+def test_skip_specs_is_read_from_the_top_level_key_only():
+    assert OC.skip_specs_set("schema: spec-driven\nskip_specs: true\n")
+    assert OC.skip_specs_set("skip_specs: True  # no deltas\n")
+    assert not OC.skip_specs_set("schema: spec-driven\nskip_specs: false\n")
+    assert not OC.skip_specs_set("# skip_specs: true\n")
+    assert not OC.skip_specs_set("other:\n  skip_specs: true\n")
+
+
 def test_stats_report_what_was_read(model):
     st = model["coverage"]["stats"]
     assert st["files"] == 4 and st["promises"] == 3

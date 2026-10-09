@@ -163,7 +163,26 @@ h3[data-group="REMOVED"]::before{border-color:var(--danger);color:var(--danger)}
 @keyframes flash{0%{background:var(--accent-wash)}100%{background:transparent}}
 .flash{animation:flash 1.6s ease-out}
 
-.pane[data-pane="__coverage__"] .col{padding-left:0}
+.pane[data-pane="__coverage__"] .col,.pane[data-pane="__overview__"] .col{padding-left:0}
+.ov-why{font-size:1.02rem;line-height:1.6;color:var(--ink-2);margin:0 0 1.4rem}
+.ov h2{font-size:1.05rem;margin:1.9rem 0 .8rem;padding:0;border:0;
+ font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;text-transform:uppercase}
+.ov-list{list-style:none;padding:0;margin:0}
+.ov-p{margin:0 0 .55rem;line-height:1.5;font-size:.92rem}
+.ov-chip{display:inline-block;font-family:ui-monospace,Menlo,Consolas,monospace;
+ font-size:0.69rem;letter-spacing:.08em;text-transform:uppercase;line-height:1.2;
+ padding:.1rem .4rem;border-radius:2px;border:1px solid var(--rule);color:var(--muted);
+ margin-right:.35rem;vertical-align:.1em;white-space:nowrap}
+.ov-covered,.ov-modified{border-color:var(--accent);color:var(--accent)}
+.ov-new{border-color:var(--accent);background:var(--accent);color:var(--paper)}
+.ov-uncovered{border-color:var(--danger);color:var(--danger)}
+.ov-breaking{border-color:var(--danger);background:var(--danger);color:var(--paper)}
+.ov-none{color:var(--muted);font-size:.9rem;margin:0}
+.ov-reqs td,.ov-reqs th{padding:.3rem .7rem .3rem 0;text-align:left}
+.ov-n{font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,Consolas,monospace}
+.ov-tasks{display:flex;align-items:center;gap:.8rem;margin:0}
+.ov-bar{flex:1;max-width:18rem;height:4px;background:var(--hair);border-radius:2px;overflow:hidden}
+.ov-bar i{display:block;height:100%;background:var(--accent-2)}
 .cov-prov{margin:0 0 .9rem;font-family:ui-monospace,Menlo,Consolas,monospace;
  font-size:.78rem;letter-spacing:.03em;color:var(--muted)}
 .cov-note{color:var(--muted);font-size:.82rem;line-height:1.6;margin:.4rem 0 1.6rem}
@@ -601,6 +620,17 @@ def is_archived(change_dir):
     return len(parts) >= 3 and parts[-2] == "archive" and parts[-3] == "changes"
 
 
+def read_skip_specs(change_dir):
+    """The change's `skip_specs` flag from its `.openspec.yaml`. A file that is
+    absent or unreadable sets nothing: the flag only ever quiets a finding, so
+    losing it shows the reader more, never less."""
+    try:
+        with open(os.path.join(change_dir, ".openspec.yaml"), "r", encoding="utf-8") as fh:
+            return OC.skip_specs_set(fh.read())
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 def main_specs_dir(change_dir, root):
     """The main specs folder that belongs to this change: derived from the
     change folder, never from the repo root, because a change may live in a
@@ -695,6 +725,65 @@ def diff_cards(model, bodies, ctxs):
             continue
         bodies[c["file"]] = after_block(bodies[c["file"]], blk, diff_markup(rec))
     return bodies
+
+
+BUCKET_LABELS = {"covered": "covered", "uncovered": "uncovered",
+                 "unchecked": "not checkable"}
+
+
+def overview_pane(ov, labels):
+    """The change's shape on one screen. Plain HTML with no `data-blk`, like the
+    coverage pane, so nothing in it can be annotated; data only, no prose about
+    the page. A promise links back to its bullet through `cov-go`, the coverage
+    pane's own link, so the one click handler serves both."""
+    out = ['<h1 style="margin-top:1.4rem">Overview</h1>']
+    if ov["why"]:
+        out.append('<p class="ov-why">%s</p>' % html.escape(ov["why"], quote=False))
+
+    out.append('<div class="ov"><h2>Promises — %d</h2>' % len(ov["promises"]))
+    if ov["promises"]:
+        out.append('<ul class="ov-list">')
+        for c, bucket in ov["promises"]:
+            chips = '<span class="ov-chip ov-%s">%s</span>' % (bucket, BUCKET_LABELS[bucket])
+            if c["id"] in ov["breaking"]:
+                chips += '<span class="ov-chip ov-breaking">breaking</span>'
+            text = html.escape(c["text"][:300], quote=False)
+            link = ('<span class="cov-go" data-go-blk="%s">%s</span>'
+                    % (esc_attr(c["blk"]), text) if c.get("blk")
+                    else '<span class="cov-dead">%s</span>' % text)
+            out.append('<li class="ov-p">%s %s</li>' % (chips, link))
+        out.append("</ul>")
+    out.append("</div>")
+
+    out.append('<div class="ov"><h2>Requirements</h2>')
+    if ov["skip_specs"]:
+        out.append('<p class="ov-none">no spec changes (skip_specs)</p>')
+    elif not ov["reqs"]:
+        out.append('<p class="ov-none">no spec deltas</p>')
+    else:
+        groups = ["ADDED", "MODIFIED", "REMOVED"]
+        renamed = any(ov["renamed"].values())
+        head = "".join("<th>%s</th>" % g.lower() for g in groups)
+        if renamed:
+            head += "<th>renamed</th>"
+        out.append('<div class="tw"><table class="ov-reqs"><thead><tr><th>capability</th>'
+                   '<th></th>%s</tr></thead><tbody>' % head)
+        for cap, counts in ov["reqs"].items():
+            cells = "".join('<td class="ov-n">%d</td>' % counts[g] for g in groups)
+            if renamed:
+                cells += '<td class="ov-n">%d</td>' % ov["renamed"].get(cap, 0)
+            kind = "new" if ov["new"].get(cap) else "modified"
+            out.append('<tr><td><code>%s</code></td><td><span class="ov-chip ov-%s">%s</span>'
+                       '</td>%s</tr>' % (html.escape(cap, quote=False), kind, kind, cells))
+        out.append("</tbody></table></div>")
+    out.append("</div>")
+
+    done, total = ov["tasks"]
+    pct = (100.0 * done / total) if total else 0
+    out.append('<div class="ov"><h2>Tasks</h2><p class="ov-tasks"><span class="ov-n">%d of %d '
+               'done</span><span class="ov-bar"><i style="width:%.1f%%"></i></span></p></div>'
+               % (done, total, pct))
+    return "".join(out)
 
 
 def coverage_pane(model, labels):
@@ -808,7 +897,8 @@ def build(change_dir, root=None, out=None):
     # main specs are not even read.
     main_specs = ({} if archived
                   else read_main_specs(main_specs_dir(change_dir, root), caps))
-    model = OC.build(change_dir, texts, main_specs, archived)
+    model = OC.build(change_dir, texts, main_specs, archived,
+                     skip_specs=read_skip_specs(change_dir))
     bind_claims(model, ctxs)
     bodies = counterparts(model, bodies, ctxs, labels)
     bodies = diff_cards(model, bodies, ctxs)
@@ -817,16 +907,33 @@ def build(change_dir, root=None, out=None):
     change_key = store.doc_key(change_dir, root)
     total_words = sum(len(t.split()) for c in ctxs.values() for t in c.blocks.values())
 
-    tabs, panes, rails = [], [], []
-    for i, (key, label, _p) in enumerate(files):
-        on = " on" if i == 0 else ""
-        tabs.append('<button class="tab%s" data-tab="%s">%s'
+    # The page opens on the overview, a derived tab dressed like coverage: the
+    # change's shape before any one file of it.
+    ov = OC.overview(model, texts)
+    tabs = ['<button class="tab tab-cov tab-ov on" data-tab="__overview__">'
+            '<span class="cov-glyph">≡</span>overview</button>'
+            '<span class="tab-gap"></span>']
+    panes = ['<div class="pane on" data-pane="__overview__"><div class="col">%s</div></div>'
+             % overview_pane(ov, labels)]
+    done, total = ov["tasks"]
+    rails = ['<div class="rail-wrap on" data-rail="__overview__"><p class="rail-h">overview</p>'
+             + "".join(
+                 '<a class="rail-item" href="#" data-depth="0"><span class="rail-main">'
+                 '<span class="rail-title">%s</span></span><span class="rail-meta">'
+                 '<span class="rail-n">%s</span></span></a>' % (name, n)
+                 for name, n in (("Promises", len(ov["promises"])),
+                                 ("Requirements", sum(sum(g.values())
+                                                      for g in ov["reqs"].values())),
+                                 ("Tasks", "%d/%d" % (done, total))))
+             + "</div>"]
+    for key, label, _p in files:
+        tabs.append('<button class="tab" data-tab="%s">%s'
                     '<span class="tab-n" style="visibility:hidden">0</span></button>'
-                    % (on, esc_attr(key), html.escape(label)))
-        panes.append('<div class="pane%s" data-pane="%s"><div class="col">%s</div></div>'
-                     % (on, esc_attr(key), bodies[key]))
-        rails.append('<div class="rail-wrap%s" data-rail="%s"><p class="rail-h">%s</p>%s</div>'
-                     % (on, esc_attr(key), html.escape(label), R.rail(ctxs[key].sections)))
+                    % (esc_attr(key), html.escape(label)))
+        panes.append('<div class="pane" data-pane="%s"><div class="col">%s</div></div>'
+                     % (esc_attr(key), bodies[key]))
+        rails.append('<div class="rail-wrap" data-rail="%s"><p class="rail-h">%s</p>%s</div>'
+                     % (esc_attr(key), html.escape(label), R.rail(ctxs[key].sections)))
 
     cov = model["coverage"]
     bad = len(cov["uncovered"]) + len([c for c in cov["capabilities"] if c["why"]])

@@ -291,12 +291,18 @@ def tasks(text):
 def requirements(text, file_key):
     """`### Requirement: X` headings, tagged with the ADDED/MODIFIED/REMOVED
     group they sit under. A REMOVED requirement still needs a task — deleting a
-    requirement is work — so it is a claim like any other."""
+    requirement is work — so it is a claim like any other.
+
+    Any other `##` heading ends the group: a new capability's delta opens with
+    `## Purpose`, which is not a group, and a heading under one is in none."""
     out, group = [], ""
     for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
         g = REQ_GROUP_RE.match(line)
         if g:
             group = g.group(1)
+            continue
+        if re.match(r"^##\s", line):
+            group = ""
             continue
         m = REQ_RE.match(line)
         if m:
@@ -845,10 +851,108 @@ def requirement_diffs(claims, texts, main_specs, archived):
     return out
 
 
-def build(change_dir, texts, main_specs=None, archived=False):
+# ---------------------------------------------------------------- overview
+
+
+RENAME_RE = re.compile(r"^\s*[-*]\s*(?:\*\*)?(FROM|TO)(?:\*\*)?\s*:", re.I)
+
+# The bucket a promise lands in, in the order the overview lists them.
+PROMISE_BUCKETS = ("uncovered", "unchecked", "covered")
+
+
+def _first_paragraph(lines):
+    para = []
+    for _n, line in lines:
+        if not line.strip():
+            if para:
+                break
+            continue
+        para.append(line.strip())
+    return strip_md(" ".join(para))
+
+
+BREAKING_RE = re.compile(r"\bBREAKING\b")
+
+
+def overview(model, texts):
+    """The change's shape, derived from what `build` already parsed: no file is
+    read and nothing new is inferred.
+
+    `{why, promises: [(claim, bucket)], breaking: {claim id}, reqs: {cap:
+    {group: n}}, renamed: {cap: n}, new: {cap: bool}, tasks: (done, total),
+    skip_specs}`.
+
+    `why` is the first paragraph of the proposal's `## Why`. `breaking` holds
+    the promises OpenSpec's schema marks with **BREAKING**. `renamed` counts
+    FROM/TO pairs under `## RENAMED Requirements`, which `requirements()` never
+    sees because they are bullets, not headings. A capability is `new` when the
+    proposal lists it under `### New Capabilities`, its delta opens with
+    `## Purpose` (the schema's mark of a new capability), or it has no main
+    spec; otherwise it is modified.
+    """
+    why = ""
+    for title, lines in sections_of(texts.get("proposal", "")).items():
+        if title.lower() == "why":
+            why = _first_paragraph(lines)
+            break
+
+    cov = model["coverage"]
+    bucket = {}
+    for name in PROMISE_BUCKETS:
+        for row in cov.get(name, []):
+            bucket[row["claim"]["id"]] = name
+    promises_ = [(c, bucket.get(c["id"], "unchecked"))
+                 for c in model["claims"] if c["kind"] == "promise"]
+
+    reqs, renamed = {}, {}
+    for key in sorted(k for k in texts if k.startswith("spec-")):
+        cap = key[len("spec-"):]
+        reqs[cap] = {g: 0 for g in ("ADDED", "MODIFIED", "REMOVED")}
+        froms = tos = 0
+        for title, lines in sections_of(texts[key]).items():
+            if title.upper() != "RENAMED REQUIREMENTS":
+                continue
+            for _n, line in lines:
+                m = RENAME_RE.match(line)
+                if m:
+                    froms += m.group(1).upper() == "FROM"
+                    tos += m.group(1).upper() == "TO"
+        renamed[cap] = min(froms, tos)
+    for c in model["claims"]:
+        if c["kind"] == "requirement" and c.get("group") in ("ADDED", "MODIFIED", "REMOVED"):
+            reqs[c["file"][len("spec-"):]][c["group"]] += 1
+
+    listed_new = {c["name"] for c in model["capabilities"] if c["new"]}
+    main = model.get("main_spec", {})
+    new = {}
+    for cap in reqs:
+        has_purpose = any(t.lower() == "purpose"
+                          for t in sections_of(texts.get("spec-" + cap, "")))
+        new[cap] = cap in listed_new or has_purpose or main.get(cap) == "absent"
+
+    breaking = {c["id"] for c in model["claims"]
+                if c["kind"] == "promise" and BREAKING_RE.search(c.get("raw") or "")}
+
+    st = cov["stats"]
+    return {"why": why, "promises": promises_, "breaking": breaking, "reqs": reqs,
+            "renamed": renamed, "new": new, "tasks": (st["tasks_done"], st["tasks"]),
+            "skip_specs": bool(model.get("skip_specs"))}
+
+
+def skip_specs_set(yaml_text):
+    """Whether a change's `.openspec.yaml` sets `skip_specs: true` — the
+    schema's mark of a change that deliberately has no spec deltas. One
+    top-level key is all that is read, so no YAML parser is needed."""
+    return bool(re.search(r"(?mi)^skip_specs\s*:\s*[\"']?(?:true|yes|on)[\"']?\s*(?:#.*)?$",
+                          yaml_text or ""))
+
+
+def build(change_dir, texts, main_specs=None, archived=False, skip_specs=False):
     """Everything the page needs. `texts` maps a file key to its raw markdown;
     `main_specs`, when given, maps a capability to its main spec's text (see
-    `requirement_diffs`), and only then are MODIFIED requirements diffed."""
+    `requirement_diffs`), and only then are MODIFIED requirements diffed.
+    `skip_specs` is the change's `.openspec.yaml` flag: with it set, a
+    capability the proposal names is not flagged for having no delta."""
     caps = capabilities(texts.get("proposal", ""))
     claims = []
     claims += promises(texts.get("proposal", ""))
@@ -863,10 +967,20 @@ def build(change_dir, texts, main_specs=None, archived=False):
     links, stats = detect_links(claims, caps)
     cov = coverage(claims, links)
     cov["capabilities"] = capability_coverage(caps, texts, claims)
+    if skip_specs:
+        for row in cov["capabilities"]:
+            if not row["delta"]:
+                row["why"] = ""
     cov["stats"].update(stats)
     cov["stats"]["change"] = os.path.basename(change_dir)
     cov["stats"]["files"] = len(texts)
     diffs = ({} if main_specs is None
              else requirement_diffs(claims, texts, main_specs, archived))
+    # What is known about each main spec, for the overview's new/modified mark.
+    # Only capabilities that were looked up appear: an archived change's main
+    # specs are never read, and "not looked up" must not read as "absent".
+    main_spec = {cap: ("absent" if v is None else "present" if isinstance(v, str)
+                       else "unreadable")
+                 for cap, v in (main_specs or {}).items()}
     return {"claims": claims, "links": links, "capabilities": caps, "coverage": cov,
-            "diffs": diffs}
+            "diffs": diffs, "main_spec": main_spec, "skip_specs": bool(skip_specs)}
