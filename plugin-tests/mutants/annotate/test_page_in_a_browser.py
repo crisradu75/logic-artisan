@@ -11,6 +11,7 @@ from pathlib import Path
 DEV = Path(__file__).resolve().parents[2]                 # <repo>/plugin-tests
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 DOC = PLUGIN / "skills" / "annotate" / "scripts" / "render_doc.py"
+CHANGE = PLUGIN / "skills" / "annotate" / "scripts" / "render_change.py"
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_page_in_a_browser.py"]
 
 # `core.autocrlf` is on in this clone, so a target file may be CRLF on disk while
@@ -182,5 +183,44 @@ MUTANTS = [
      DOC,
      _a("  el.textContent = msg;\n  el.hidden = false;"),
      _a("  el.textContent = msg;\n  el.hidden = true;"),
+     TESTS),
+
+    # ------------------------------------------------ the change page
+    ("opening a counterpart leaves the margin notes where they were",
+     CHANGE,
+     "  syncMargin();                        // one counterpart just grew or shrank",
+     "  /* nothing */",
+     TESTS),
+
+    ("a click on a counterpart no longer opens it",
+     CHANGE,
+     "  if (sel && !sel.isCollapsed) return;",
+     "  return;",
+     TESTS),
+
+    ("Enter on a counterpart no longer toggles it",
+     CHANGE,
+     "  if (e.key !== 'Enter' && e.key !== ' ') return;",
+     "  return;",
+     TESTS),
+
+    ("a requirement heading's group label is no longer drawn",
+     CHANGE,
+     "h3[data-group]::before{content:attr(data-group);",
+     'h3[data-group]::before{content:"";',
+     TESTS),
+
+    # Which pane opens first is read from the source, in test_render_change.py,
+    # and its mutant lives in that batch.
+    ("a drag that selects text in a card toggles it",
+     CHANGE,
+     "  if (sel && !sel.isCollapsed) return;",
+     "  if (false) return;",
+     TESTS),
+
+    ("following open-in-tab also toggles the card",
+     CHANGE,
+     "  if (!cf || e.target.closest('.cf-go')) return;",
+     "  if (!cf) return;",
      TESTS),
 ]

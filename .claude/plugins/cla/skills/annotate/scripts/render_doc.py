@@ -56,7 +56,10 @@ INJECTED_CLASSES = ("cmt-sup", "gut")
 MAX_INLINE_IMAGE_BYTES = 2 * 1024 * 1024
 
 FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([^`]*)$")
-HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
+# A closing run of `#` ends an ATX heading only after a space or tab, as in
+# CommonMark and in OpenSpec's own requirement names: `### Uses C#` is the
+# heading "Uses C#", and `### Foo ###` is "Foo".
+HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\s+(.*?)(?:[ \t]+#+)?[ \t]*$")
 HR_RE = re.compile(r"^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$")
 QUOTE_RE = re.compile(r"^ {0,3}>")
 LIST_RE = re.compile(r"^(\s*)([-*+]|\d{1,9}[.)])[ \t]+(.*)$")
@@ -2537,6 +2540,11 @@ def build(doc_path, root=None, out=None):
 
 
 def main(argv=None):
+    # It prints lost anchors and warnings quoting document text; see
+    # render_html.use_utf8_stdout. A call-site import, for the reason given at
+    # the html branch below.
+    import render_html
+    render_html.use_utf8_stdout()
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("document",
                     help="the .md, .txt, .html or .htm file to render")

@@ -137,6 +137,33 @@ def test_headings_paragraphs_and_rules():
     assert body.count("<p ") == 2
 
 
+def test_a_closing_hash_run_ends_a_heading_only_after_a_space():
+    """CommonMark, and OpenSpec's requirement names: `### Uses C#` is the
+    heading "Uses C#", `## Foo ##` is "Foo". Stripping every trailing `#` cut
+    the language's name off a heading."""
+    for src, want in (("### Uses C#\n", "Uses C#"), ("## Foo ##\n", "Foo"),
+                      ("## Foo\t#  \n", "Foo"), ("# F#  \n", "F#")):
+        _body, ctx = render(src)
+        assert list(ctx.blocks.values()) == [want], src
+
+
+def test_an_annotation_on_a_heading_that_gains_its_hash_is_still_found(tmp_path):
+    """The one place the closing-run fix changes text a corpus may hold: a
+    heading ending in `#` with no space used to read without it. The old text is
+    a prefix of the new, so an annotation written against it still anchors, and
+    the anchor check — which names any record it cannot find — names none."""
+    import json
+    _body, ctx = render("### Uses C#\n")
+    blk = list(ctx.blocks)[0]
+    corpus = tmp_path / "c.jsonl"
+    corpus.write_text(json.dumps({
+        "id": "a1", "doc": "d", "blk": blk, "sec": "", "line": 1, "off": 0,
+        "text": "Uses C", "before": "", "after": "", "note": "n",
+        "at": "2026-10-09T10:00:00"}) + "\n", encoding="utf-8")
+    checked, lost, _problems, fatal = render_doc.check_anchors(ctx, str(corpus))
+    assert (checked, lost, fatal) == (1, [], None)
+
+
 def test_nested_lists_nest():
     body, _ = render("- a\n  - b\n    - c\n- d\n")
     assert body.count("<ul>") == 3
@@ -879,6 +906,125 @@ def test_the_muted_and_mark_colours_clear_wcag_aa_on_every_surface(doc_page):
             for ground in ("--paper", "--ground", "--sunk"):
                 r = _ratio(p[ink], p[ground])
                 assert r >= 4.5, "%s %s on %s is %.2f:1" % (selector, ink, ground, r)
+
+
+def test_the_danger_colour_clears_wcag_aa_on_every_surface(doc_page, change_page):
+    """The change page reads --danger as TEXT — a deleted word in a requirement's
+    diff, a REMOVED label — so it answers to the same 4.5:1 as --muted. It is
+    declared in the change page's own `:root{--danger:…}` lines, after
+    render_doc's palette, so it needs its own parse: the shared `palette()` above
+    finds the first `:root{` block, which is render_doc's."""
+    doc_css = "".join(re.findall(r"<style>(.*?)</style>", doc_page, flags=re.S))
+    css = "".join(re.findall(r"<style>(.*?)</style>", change_page, flags=re.S))
+
+    def palette(selector):
+        block = re.search(re.escape(selector) + r"\{([^}]*)\}", doc_css).group(1)
+        return dict(re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", block))
+
+    for selector in (":root", ':root[data-theme="dark"]'):
+        danger = re.search(re.escape(selector) + r"\{--danger:(#[0-9A-Fa-f]{6})\}", css)
+        assert danger, "no %s{--danger:…} on the change page" % selector
+        p = palette(selector)
+        for ground in ("--paper", "--ground", "--sunk"):
+            r = _ratio(danger.group(1), p[ground])
+            assert r >= 4.5, "%s --danger on %s is %.2f:1" % (selector, ground, r)
+
+
+def _rules(css):
+    """`[(selector list, declarations)]` in source order, with comments and
+    every `@media` block dropped: a rule that applies only at one width is not
+    the rule a label is drawn with on a desktop page."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    out, i = [], 0
+    while True:
+        at = css.find("@media", i)
+        if at < 0:
+            break
+        start = css.index("{", at)
+        depth, j = 1, start + 1
+        while depth:
+            depth += {"{": 1, "}": -1}.get(css[j], 0)
+            j += 1
+        css = css[:at] + css[j:]
+        i = at
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        out.append(([s.strip() for s in m.group(1).split(",")], m.group(2)))
+    return out
+
+
+def _value(rules, chain, props):
+    """The value `chain` resolves for any of `props`: the selectors are listed
+    from the most general to the most specific, a later one wins over an
+    earlier one, and within one selector the last rule in the file wins."""
+    best = (-1, None)
+    for selectors, body in rules:
+        for rank, sel in enumerate(chain):
+            if sel not in selectors:
+                continue
+            for prop in props:
+                for v in re.findall(r"(?:^|;)\s*%s:([^;]+)" % re.escape(prop), body):
+                    if rank >= best[0]:
+                        best = (rank, v.strip())
+    return best[1]
+
+
+# Each label the change page draws as text on a fill, as the chain of selectors
+# that style it, most general first. Read from the stylesheet, so a changed
+# colour is measured rather than restated here.
+CHANGE_TEXT_PAIRS = (
+    (".tab-n-cov",),                                            # the coverage badge
+    (".ov-chip", ".ov-new"),                                    # a new capability
+    (".ov-chip", ".ov-modified"),                               # a modified capability
+    (".ov-chip", ".ov-covered"),                                # a covered promise
+    (".ov-chip", ".ov-uncovered"),                              # an uncovered promise
+    (".ov-chip", ".ov-breaking"),                               # a BREAKING promise
+    ("h3[data-group]::before",),                                # the MODIFIED label
+    ("h3[data-group]::before", 'h3[data-group="ADDED"]::before'),
+    ("h3[data-group]::before", 'h3[data-group="REMOVED"]::before'),
+    (".rd-ins",),                                               # an inserted word
+    (".rd-del",),                                               # a deleted word
+)
+
+
+@pytest.mark.parametrize("chain", CHANGE_TEXT_PAIRS, ids=lambda c: c[-1])
+def test_every_coloured_label_on_the_change_page_clears_wcag_aa(doc_page, change_page, chain):
+    """Text on a fill is read as text, so each one answers to 4.5:1 in both
+    themes. A label with no background of its own sits on the pane, --paper."""
+    doc_css = "".join(re.findall(r"<style>(.*?)</style>", doc_page, flags=re.S))
+    css = "".join(re.findall(r"<style>(.*?)</style>", change_page, flags=re.S))
+    rules = _rules(css)
+    for theme in (":root", ':root[data-theme="dark"]'):
+        block = re.search(re.escape(theme) + r"\{([^}]*)\}", doc_css).group(1)
+        p = dict(re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", block))
+        p["--danger"] = re.search(re.escape(theme) + r"\{--danger:(#[0-9A-Fa-f]{6})\}",
+                                  css).group(1)
+        full = list(chain)
+        if theme != ":root":
+            full += [theme + " " + s for s in chain]
+
+        def resolve(v, default):
+            if not v or v == "transparent":
+                return p[default]
+            m = re.fullmatch(r"var\((--[a-z0-9-]+)\)", v)
+            if m:
+                return p[m.group(1)]
+            if re.fullmatch(r"#[0-9A-Fa-f]{3}", v):
+                return "#" + "".join(ch * 2 for ch in v[1:])
+            assert re.fullmatch(r"#[0-9A-Fa-f]{6}", v), "%s: unreadable colour %r" % (chain, v)
+            return v
+
+        ink = resolve(_value(rules, full, ("color",)), "--ink")
+        ground = resolve(_value(rules, full, ("background", "background-color")), "--paper")
+        r = _ratio(ink, ground)
+        assert r >= 4.5, "%s %s: %s on %s is %.2f:1" % (theme, chain[-1], ink, ground, r)
+
+
+def test_the_requirement_group_label_is_drawn_from_its_attribute(change_page):
+    """The label is CSS generated content, read from `data-group`: it never
+    enters the heading's text. The browser suite checks the computed value;
+    this checks the rule is there to compute it from."""
+    rules = _rules("".join(re.findall(r"<style>(.*?)</style>", change_page, flags=re.S)))
+    assert _value(rules, ("h3[data-group]::before",), ("content",)) == "attr(data-group)"
 
 
 def test_the_favicon_carries_the_same_two_accents_as_the_stylesheet(doc_page):

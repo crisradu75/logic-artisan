@@ -26,7 +26,9 @@ would disagree the first time either was touched.
 import argparse
 import html
 import io
+import itertools
 import os
+import re
 import sys
 
 import annotations_store as store
@@ -54,7 +56,7 @@ CHANGE_CSS = """
 .tab-n{font-variant-numeric:tabular-nums;background:var(--mark-wash);color:var(--mark);
  border-radius:999px;padding:.02rem .34rem;font-size:0.69rem;min-width:1rem;text-align:center}
 :root{--danger:#B3261E}
-:root[data-theme="dark"]{--danger:#E5534B}
+:root[data-theme="dark"]{--danger:#E85D55}
 .tab-gap{flex:none;width:1px;align-self:center;height:1.1rem;background:var(--rule);margin:0 .7rem}
 .tab-cov{border:1px dashed var(--accent-2)!important;border-radius:999px!important;
  color:var(--accent);background:var(--accent-wash);padding:.34rem .75rem;
@@ -64,6 +66,11 @@ CHANGE_CSS = """
  border-color:var(--accent)!important;color:var(--paper);box-shadow:none}
 .cov-glyph{font-size:.72rem;line-height:1;opacity:.85}
 .tab-n-cov,.tab-cov.on .tab-n-cov{background:var(--danger);color:#fff}
+/* Dark --danger is light enough to read as TEXT on every dark surface, so white
+   on it falls short of 4.5:1 and the dark paper does not. The command that
+   measures both is the test:
+     python3 -m pytest plugin-tests/tests/skills/annotate/test_render_doc.py -k wcag */
+:root[data-theme="dark"] .tab-n-cov,:root[data-theme="dark"] .tab-cov.on .tab-n-cov{color:var(--paper)}
 .rail-n-danger{color:var(--danger)}
 .pane{display:none}
 .pane.on{display:block}
@@ -112,6 +119,12 @@ CHANGE_CSS = """
 .cf-go{float:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  color:var(--accent);cursor:pointer;opacity:.75}
 .cf-go:hover{opacity:1;text-decoration:underline}
+/* Two lines until asked. Unclamped, a card is about as tall as the bullet it
+   answers, and a proposal with a card under every bullet reads twice as long. */
+.cf-x{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+ cursor:pointer}
+.cf.open .cf-x{display:block}
+.cf-x:focus-visible{outline-offset:1px}
 body.nocf .cf{display:none}
 .peek{position:absolute;z-index:97;width:min(30rem,92vw);background:var(--paper);
  border:1px solid var(--accent);border-left:3px solid var(--accent);border-radius:3px;
@@ -119,10 +132,58 @@ body.nocf .cf{display:none}
  color:var(--ink-2)}
 .peek-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:.35rem}
+/* A requirement's group, drawn from an attribute rather than written into the
+   heading: generated content is not in textContent, so the heading's text — what
+   annotation offsets count against — is unchanged. Teal, never --mark, which
+   means "annotated" everywhere on this page. */
+h3[data-group]::before{content:attr(data-group);display:inline-block;vertical-align:.14em;
+ margin-right:.6rem;padding:.1rem .42rem;border:1px solid var(--accent);border-radius:2px;
+ font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;font-weight:400;
+ letter-spacing:.12em;line-height:1.2;color:var(--accent);background:transparent}
+h3[data-group="ADDED"]::before{background:var(--accent);color:var(--paper)}
+h3[data-group="REMOVED"]::before{border-color:var(--danger);color:var(--danger)}
+/* Colour, not opacity: a faded passage still has to be read, and selected. */
+.req-removed,.req-removed h3,.req-removed h4,.req-removed h5,.req-removed h6,
+.req-removed strong,.req-removed code{color:var(--muted)}
+.req-removed h3{text-decoration:line-through;text-decoration-thickness:1px}
+.req-removed .rm-why{color:var(--ink-2);border-left:2px solid var(--danger);padding-left:.7rem}
+.req-removed .rm-why strong{color:var(--ink-2)}
+/* A MODIFIED requirement's diff against the main spec: a sibling under its
+   heading, like a counterpart, so none of its words are counted into a block.
+   --danger is read as TEXT here, so it answers to the same 4.5:1 as --muted. */
+.rd{margin:.2rem 0 1rem;border-left:2px solid var(--rule);padding:.35rem .7rem;
+ font-size:.86rem;line-height:1.55;color:var(--ink-2)}
+.rd-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
+ letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:.2rem}
+.rd-note .rd-h{margin:0;text-transform:none;letter-spacing:.02em}
+.rd-t{margin:0}
+.rd-del{color:var(--danger);text-decoration:line-through;text-decoration-thickness:1px}
+.rd-ins{color:var(--accent);background:var(--accent-wash);text-decoration:underline;
+ text-decoration-thickness:1px;text-underline-offset:2px;border-radius:2px;padding:0 .1em}
+.rd-gap{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.72rem;color:var(--muted)}
 @keyframes flash{0%{background:var(--accent-wash)}100%{background:transparent}}
 .flash{animation:flash 1.6s ease-out}
 
-.pane[data-pane="__coverage__"] .col{padding-left:0}
+.pane[data-pane="__coverage__"] .col,.pane[data-pane="__overview__"] .col{padding-left:0}
+.ov-why{font-size:1.02rem;line-height:1.6;color:var(--ink-2);margin:0 0 1.4rem}
+.ov h2{font-size:1.05rem;margin:1.9rem 0 .8rem;padding:0;border:0;
+ font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.1em;text-transform:uppercase}
+.ov-list{list-style:none;padding:0;margin:0}
+.ov-p{margin:0 0 .55rem;line-height:1.5;font-size:.92rem}
+.ov-chip{display:inline-block;font-family:ui-monospace,Menlo,Consolas,monospace;
+ font-size:0.69rem;letter-spacing:.08em;text-transform:uppercase;line-height:1.2;
+ padding:.1rem .4rem;border-radius:2px;border:1px solid var(--rule);color:var(--muted);
+ margin-right:.35rem;vertical-align:.1em;white-space:nowrap}
+.ov-covered,.ov-modified{border-color:var(--accent);color:var(--accent)}
+.ov-new{border-color:var(--accent);background:var(--accent);color:var(--paper)}
+.ov-uncovered{border-color:var(--danger);color:var(--danger)}
+.ov-breaking{border-color:var(--danger);background:var(--danger);color:var(--paper)}
+.ov-none{color:var(--muted);font-size:.9rem;margin:0}
+.ov-reqs td,.ov-reqs th{padding:.3rem .7rem .3rem 0;text-align:left}
+.ov-n{font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,Consolas,monospace}
+.ov-tasks{display:flex;align-items:center;gap:.8rem;margin:0}
+.ov-bar{flex:1;max-width:18rem;height:4px;background:var(--hair);border-radius:2px;overflow:hidden}
+.ov-bar i{display:block;height:100%;background:var(--accent-2)}
 .cov-prov{margin:0 0 .9rem;font-family:ui-monospace,Menlo,Consolas,monospace;
  font-size:.78rem;letter-spacing:.03em;color:var(--muted)}
 .cov-note{color:var(--muted);font-size:.82rem;line-height:1.6;margin:.4rem 0 1.6rem}
@@ -196,6 +257,32 @@ cfBtn.onclick = () => {
   syncMargin();                        // every counterpart just left the flow
 };
 
+/* A counterpart opens to its full text on a click, Enter or Space. Its height
+   changes, so every block below it moves — the same reason as showTab. */
+function toggleCf(cf) {
+  const open = !cf.classList.contains('open');
+  cf.classList.toggle('open', open);
+  const x = cf.querySelector('.cf-x');
+  if (x) x.setAttribute('aria-expanded', String(open));
+  syncMargin();                        // one counterpart just grew or shrank
+}
+document.addEventListener('click', e => {
+  const cf = e.target.closest('.cf');
+  if (!cf || e.target.closest('.cf-go')) return;
+  // A drag that selected text inside the card ends in a click; that reader was
+  // selecting, not asking for the card to change size under the selection.
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) return;
+  toggleCf(cf);
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const x = e.target.closest && e.target.closest('.cf-x');
+  if (!x) return;
+  e.preventDefault();
+  toggleCf(x.closest('.cf'));
+});
+
 let peek = null;
 function closePeek() { if (peek) { peek.remove(); peek = null; } }
 document.addEventListener('mouseover', e => {
@@ -240,13 +327,9 @@ render();
 """
 
 
-class ChangeUnreadable(Exception):
-    """This change cannot be rendered. A real exception rather than SystemExit,
-    which is a BaseException: raised inside the server's worker thread it was
-    caught by nothing — `_render` catches OSError, `ThreadingMixIn` catches
-    Exception — and `threading` swallowed it in silence. The reader saw the
-    browser's generic "Failed to fetch", identical to a dead server, while the
-    one sentence saying what to fix was constructed and thrown into a void."""
+# The one class, defined where discovery raises it (see its docstring); the
+# server catches it under this name.
+ChangeUnreadable = OC.ChangeUnreadable
 
 
 def esc_attr(s):
@@ -268,6 +351,140 @@ def add_class(html_str, blk, cls):
                 + re.sub(r'\bclass="', 'class="%s ' % cls, m.group(2), count=1)
                 + html_str[m.end(2):])
     return html_str[:m.end(1)] + ' class="%s"' % cls + html_str[m.end(1):]
+
+
+def add_attr(html_str, blk, name, value):
+    """Set the attribute `name` on the block's opening tag, replacing any value
+    it already has there. A second copy of an attribute is not an update — HTML
+    keeps the first and drops the rest — which is the trap `add_class` above
+    names for `class`."""
+    import re
+    m = re.search(r'<(\w+)([^>]*)\bdata-blk="%s"([^>]*)>' % re.escape(blk), html_str)
+    if not m:
+        return html_str
+    attr = '%s="%s"' % (name, esc_attr(value))
+    tag = m.group(0)
+    old = re.search(r'\s%s="[^"]*"' % re.escape(name), tag)
+    if old:
+        tag = tag[:old.start()] + " " + attr + tag[old.end():]
+    else:
+        tag = "<%s %s%s" % (m.group(1), attr, tag[1 + len(m.group(1)):])
+    return html_str[:m.start()] + tag + html_str[m.end():]
+
+
+def section_class(html_str, sec_id, cls):
+    """Add `cls` to the `<section>` render_doc opened for `sec_id`."""
+    import re
+    m = re.search(r'<section class="([^"]*)" data-sec-id="%s">' % re.escape(sec_id), html_str)
+    if not m:
+        return html_str
+    return html_str[:m.end(1)] + " " + cls + html_str[m.end(1):]
+
+
+def _section_of_heading(html_str, blk):
+    """The id of the section a heading block opens, or None. render_doc emits
+    the `<section>` tag immediately before the heading that starts it."""
+    import re
+    m = re.search(r'<section class="[^"]*" data-sec-id="([^"]+)"><h\d\b[^>]*\bdata-blk="%s"'
+                  % re.escape(blk), html_str)
+    return m.group(1) if m else None
+
+
+def _blocks_in_section(html_str, sec_id):
+    """Every block id inside one section, in page order."""
+    import re
+    m = re.search(r'<section class="[^"]*" data-sec-id="%s">' % re.escape(sec_id), html_str)
+    if not m:
+        return []
+    end = html_str.find("</section>", m.end())
+    return re.findall(r'\bdata-blk="([^"]+)"', html_str[m.end():end if end >= 0 else None])
+
+
+REQ_GROUPS = ("ADDED", "MODIFIED", "REMOVED")
+
+
+def heading_lookup(ctx, claim):
+    """`(block, None)` for a requirement's own `### Requirement:` heading, or
+    `(None, why)` when it cannot be placed: `"heading not found"` or
+    `"heading not unique"`.
+
+    Matched on the whole text of a block, one match or none. `bind_claims`
+    matches on a substring instead, and a substring can land on a paragraph
+    that quotes the title; a label there would mark the wrong passage as the
+    requirement. The name is normalised as OpenSpec normalises it first, so a
+    closing `###` that the rendered heading drops does not stop the match.
+    """
+    if ctx is None:
+        return None, "heading not found"
+    name = " ".join(OC.strip_md(OC._norm_name(claim.get("raw") or claim["text"])).split())
+
+    def is_heading(text):
+        # The word in any case, as OpenSpec's header pattern accepts it.
+        m = re.match(r"(?i)requirement:\s*(.*)$", " ".join(text.split()))
+        return bool(m) and m.group(1) == name
+
+    hits = [b for b, t in ctx.blocks.items() if is_heading(t)]
+    if len(hits) == 1:
+        return hits[0], None
+    return None, "heading not found" if not hits else "heading not unique"
+
+
+def heading_blk(ctx, claim):
+    """The heading block `heading_lookup` finds, or None."""
+    return heading_lookup(ctx, claim)[0]
+
+
+def _unplaced(model, claim, what, why):
+    """Record that a requirement's label or diff could not be put on the page,
+    so the coverage pane can list it rather than it vanishing."""
+    rows = model.setdefault("unplaced", [])
+    for row in rows:
+        if row["claim"]["id"] == claim["id"]:
+            if what not in row["what"]:
+                row["what"].append(what)
+            return
+    rows.append({"claim": claim, "what": [what], "why": why})
+
+
+def mark_groups(model, bodies, ctxs):
+    """Label each requirement heading with its ADDED, MODIFIED or REMOVED group,
+    and set a REMOVED requirement's sections apart from the live ones.
+
+    The label is an attribute the stylesheet draws with `::before`, so the
+    heading's text — what every annotation offset is counted against — does not
+    change. A REMOVED requirement's own section, and each section directly below
+    it until the next heading of level 3 or above (its scenarios), are marked
+    `req-removed`.
+    Its `Reason` and `Migration` blocks are the blocks in those sections whose
+    text starts with either word — found within the sections, never by
+    searching the page, because changes repeat the same reason word for word.
+    A heading that cannot be placed is recorded in `model["unplaced"]`.
+    """
+    for c in model["claims"]:
+        if c["kind"] != "requirement" or c.get("group") not in REQ_GROUPS:
+            continue
+        ctx, f = ctxs.get(c["file"]), c["file"]
+        blk, why = heading_lookup(ctx, c)
+        if not blk:
+            _unplaced(model, c, "label", why)
+            continue
+        bodies[f] = add_attr(bodies[f], blk, "data-group", c["group"])
+        if c["group"] != "REMOVED":
+            continue
+        sid = _section_of_heading(bodies[f], blk)
+        ids = [s["id"] for s in ctx.sections]
+        if sid not in ids:
+            continue
+        i = ids.index(sid)
+        removed = [sid] + [s["id"] for s in
+                           itertools.takewhile(lambda s: s["level"] > 3,
+                                               ctx.sections[i + 1:])]
+        for s in removed:
+            bodies[f] = section_class(bodies[f], s, "req-removed")
+            for b in _blocks_in_section(bodies[f], s):
+                if ctx.blocks.get(b, "").lstrip().startswith(("Reason", "Migration")):
+                    bodies[f] = add_class(bodies[f], b, "rm-why")
+    return bodies
 
 
 def _outermost_block(html_str, blk):
@@ -414,7 +631,8 @@ def counterparts(model, bodies, ctxs, labels):
             cards += ('<span class="cf%s"><span class="cf-h">%s '
                       '<span class="cf-why">%s %s</span>'
                       '<span class="cf-go" data-go-blk="%s">open in tab →</span>'
-                      '</span>%s</span>'
+                      '</span><span class="cf-x" role="button" tabindex="0" '
+                      'aria-expanded="false">%s</span></span>'
                       % (" weak" if weak else "", esc_attr(label),
                          link["kind"], esc_attr(link["why"][:60]),
                          esc_attr(other["blk"]), excerpt))
@@ -425,6 +643,253 @@ def counterparts(model, bodies, ctxs, labels):
         bodies[f] = inside_block(bodies[f], c["blk"], '<span class="gut">%s</span>' % marks)
         bodies[f] = after_block(bodies[f], c["blk"], cards)
     return bodies
+
+
+def _path_parts(change_dir):
+    """The folder's path split into parts, case-folded by `os.path.normcase`,
+    which folds case on Windows only — so `Changes\\Archive` is
+    `changes/archive` on Windows and stays as written elsewhere, including on a
+    case-insensitive macOS volume."""
+    return os.path.normcase(os.path.normpath(os.path.abspath(change_dir))).split(os.sep)
+
+
+def is_archived(change_dir):
+    """Whether the change sits in `openspec/changes/archive/`."""
+    parts = _path_parts(change_dir)
+    return len(parts) >= 3 and parts[-2] == "archive" and parts[-3] == "changes"
+
+
+def read_skip_specs(change_dir):
+    """The change's `skip_specs` flag from its `.openspec.yaml`. A file that is
+    absent or unreadable sets nothing: the flag only ever quiets a finding, so
+    losing it shows the reader more, never less."""
+    try:
+        with open(os.path.join(change_dir, ".openspec.yaml"), "r", encoding="utf-8") as fh:
+            return OC.skip_specs_set(fh.read())
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def main_specs_dir(change_dir):
+    """The main specs folder that belongs to this change, or None.
+
+    Derived from the change folder, never from the repo root, because a change
+    may live in a store of its own: `<x>/openspec/changes/<id>` and
+    `<x>/openspec/changes/archive/<id>` both answer `<x>/openspec/specs`. A
+    change folder in neither place has no main specs folder, and answers None
+    rather than borrowing the repo's, which may belong to another store."""
+    real = os.path.normpath(os.path.abspath(change_dir)).split(os.sep)
+    parts = _path_parts(change_dir)
+    if is_archived(change_dir):
+        base = real[:-3]
+    elif len(parts) >= 2 and parts[-2] == "changes":
+        base = real[:-2]
+    else:
+        return None
+    return os.path.join(os.sep.join(base) or os.sep, "specs")
+
+
+NO_SPECS_DIR = ("this change folder is not under openspec/changes/ or "
+                "openspec/changes/archive/, so it has no main specs to compare against")
+
+
+def main_spec_path(specs_dir, cap):
+    # A capability is a path, posix-spelled in its key.
+    return os.path.join(specs_dir, *cap.split("/"), "spec.md")
+
+
+def read_main_specs(specs_dir, caps):
+    """`{capability: text}` for each main spec, None where there is none, and the
+    exception where one exists and cannot be read.
+
+    A main spec that cannot be read becomes a note on its requirement rather
+    than a failed build: the change's own files are what the page is for, and
+    the server's rebuild only reports OSError, UnicodeDecodeError and
+    ChangeUnreadable — anything else would reach the reader as "Failed to
+    fetch". Main specs are never added to the page's files, so they never
+    become tabs and never count toward "N files".
+    """
+    out = {}
+    for cap in caps:
+        p = main_spec_path(specs_dir, cap)
+        if not os.path.isfile(p):
+            out[cap] = None
+            continue
+        try:
+            with open(p, "r", encoding="utf-8") as fh:
+                out[cap] = fh.read()
+        except UnicodeDecodeError as e:
+            out[cap] = ValueError("not valid UTF-8 (%s at byte %d)" % (e.reason, e.start))
+        except OSError as e:
+            out[cap] = e
+    return out
+
+
+def _diff_note(rec, spec):
+    """The note for a requirement with no word diff. `spec` is the path of the
+    main spec this requirement was compared against — or would have been — as
+    the reader should look for it; None when the change has no specs folder."""
+    if spec is None:
+        return "no base · " + NO_SPECS_DIR
+    return {
+        "archived": "no base · this change is archived, and archiving wrote its "
+                    "text into %s, so the text it replaced is gone. Not the same "
+                    "as unchanged." % spec,
+        "no-main-spec": "no base · %s does not exist" % spec,
+        "unreadable": "no base · %s could not be read: %s" % (spec, rec["why"]),
+        "not-in-main": "no base · %s has no requirement with this exact name" % spec,
+        # Only what was measured: the same words in the same order. Markup,
+        # list markers and line breaks are not compared.
+        "same": "no word-level difference from %s" % spec,
+    }[rec["state"]]
+
+
+def diff_markup(rec, spec):
+    """One requirement's card: its word diff against the main spec at `spec`,
+    or the note saying why there is none. The words compared are the body as a
+    reader sees it — markup and list markers off — from below the heading
+    through its last scenario. `rd-del`/`rd-ins`, not `<del>`/`<ins>`, which
+    the document's own markdown already uses."""
+    if rec["state"] != "diff" or spec is None:
+        return ('<div class="rd rd-note"><span class="rd-h">%s</span></div>'
+                % html.escape(_diff_note(rec, spec), quote=False))
+    parts = []
+    for tag, words in rec["ops"]:
+        if tag == "gap":
+            parts.append('<span class="rd-gap">… %d unchanged word%s …</span>'
+                         % (words, "" if words == 1 else "s"))
+            continue
+        text = html.escape(" ".join(words), quote=False)
+        parts.append(text if tag == "eq" else
+                     '<span class="rd-%s">%s</span>' % (tag, text))
+    return ('<div class="rd"><span class="rd-h">changes against %s</span>'
+            '<p class="rd-t">%s</p></div>'
+            % (html.escape(spec, quote=False), " ".join(parts)))
+
+
+def spec_label(specs_dir, root, cap):
+    """The main spec's path as the note names it: relative to the repo root
+    when it is inside it, in full otherwise, with forward slashes. None when
+    there is no specs folder."""
+    if specs_dir is None:
+        return None
+    p = os.path.abspath(main_spec_path(specs_dir, cap))
+    try:
+        rel = os.path.relpath(p, os.path.abspath(root)) if root else p
+    except ValueError:                       # another drive, on Windows
+        rel = p
+    if rel.startswith(".."):
+        rel = p
+    return rel.replace(os.sep, "/")
+
+
+def diff_cards(model, bodies, ctxs, specs_dir=None, root=None):
+    """Put each MODIFIED requirement's diff card under its heading — a sibling,
+    placed with `after_block`, never inside the heading's block. A heading that
+    cannot be placed is recorded in `model["unplaced"]`."""
+    by_id = {c["id"]: c for c in model["claims"]}
+    for cid, rec in model.get("diffs", {}).items():
+        c = by_id.get(cid)
+        if not c:
+            continue
+        blk, why = heading_lookup(ctxs.get(c["file"]), c)
+        if not blk:
+            _unplaced(model, c, "diff", why)
+            continue
+        card = diff_markup(rec, spec_label(specs_dir, root, rec["cap"]))
+        bodies[c["file"]] = after_block(bodies[c["file"]], blk, card)
+    return bodies
+
+
+BUCKET_LABELS = {"covered": "covered", "uncovered": "uncovered",
+                 "unchecked": "not checkable"}
+
+
+def overview_pane(ov, labels):
+    """The change's shape on one screen. Plain HTML with no `data-blk`, like the
+    coverage pane, so nothing in it can be annotated; data only, no prose about
+    the page. Where a part of the change gave nothing to show, the pane says
+    "nothing parsed" and what it looked for, because an empty heading reads as
+    an empty change. A promise links back to its bullet through `cov-go`, the
+    coverage pane's own link, so the one click handler serves both."""
+    out = ['<h1 style="margin-top:1.4rem">Overview</h1>']
+    def none(text):
+        return '<p class="ov-none">%s</p>' % html.escape(text, quote=False)
+
+    if ov["why"]:
+        out.append('<p class="ov-why">%s</p>' % html.escape(ov["why"], quote=False))
+    elif ov["why_state"] == "empty":
+        out.append(none("nothing parsed · the proposal's ## Why section is empty"))
+    else:
+        out.append(none("nothing parsed · the proposal has no ## Why section"))
+
+    out.append('<div class="ov"><h2 id="ov-promises">Promises — %d</h2>' % len(ov["promises"]))
+    if ov["promises"]:
+        out.append('<ul class="ov-list">')
+        for c, bucket in ov["promises"]:
+            chips = '<span class="ov-chip ov-%s">%s</span>' % (bucket, BUCKET_LABELS[bucket])
+            if c["id"] in ov["breaking"]:
+                chips += '<span class="ov-chip ov-breaking">breaking</span>'
+            text = html.escape(_clip(c["text"], PROMISE_CLIP), quote=False)
+            link = ('<span class="cov-go" data-go-blk="%s">%s</span>'
+                    % (esc_attr(c["blk"]), text) if c.get("blk")
+                    else '<span class="cov-dead">%s</span>' % text)
+            out.append('<li class="ov-p">%s %s</li>' % (chips, link))
+        out.append("</ul>")
+    else:
+        out.append(none("nothing parsed · no top-level bullets under the proposal's "
+                        "## What Changes"))
+    out.append("</div>")
+
+    out.append('<div class="ov"><h2 id="ov-requirements">Requirements</h2>')
+    if ov["skip_specs"] and not ov["reqs"]:
+        out.append(none("no spec changes (skip_specs)"))
+    elif ov["skip_specs"]:
+        # Shown, never hidden behind the flag: OpenSpec's own validate refuses
+        # this combination, and the reader needs to see both halves of it.
+        out.append(none("conflict · .openspec.yaml sets skip_specs, but this change "
+                        "has spec deltas"))
+    elif not ov["reqs"]:
+        out.append(none("no spec deltas"))
+    if ov["reqs"]:
+        groups = ["ADDED", "MODIFIED", "REMOVED"]
+        renamed = any(ov["renamed"].values())
+        head = "".join("<th>%s</th>" % g.lower() for g in groups)
+        if renamed:
+            head += "<th>renamed</th>"
+        out.append('<div class="tw"><table class="ov-reqs"><thead><tr><th>capability</th>'
+                   '<th></th>%s</tr></thead><tbody>' % head)
+        for cap, counts in ov["reqs"].items():
+            cells = "".join('<td class="ov-n">%d</td>' % counts[g] for g in groups)
+            if renamed:
+                cells += '<td class="ov-n">%d</td>' % ov["renamed"].get(cap, 0)
+            kind = ov["status"].get(cap, "unknown")
+            out.append('<tr><td><code>%s</code></td><td><span class="ov-chip ov-%s">%s</span>'
+                       '</td>%s</tr>' % (html.escape(cap, quote=False), kind, kind, cells))
+        out.append("</tbody></table></div>")
+    out.append("</div>")
+
+    done, total = ov["tasks"]
+    out.append('<div class="ov"><h2 id="ov-tasks">Tasks</h2>')
+    if not ov["tasks_file"]:
+        out.append(none("nothing parsed · this change has no tasks.md"))
+    elif not total:
+        out.append(none("nothing parsed · tasks.md holds no task lines (a list item "
+                        "starting with a checkbox, such as - [ ])"))
+    else:
+        out.append('<p class="ov-tasks"><span class="ov-n">%d of %d done</span>'
+                   '<span class="ov-bar"><i style="width:%.1f%%"></i></span></p>'
+                   % (done, total, 100.0 * done / total))
+    out.append("</div>")
+    return "".join(out)
+
+
+PROMISE_CLIP = 300
+
+
+def _clip(text, n):
+    """`text` cut to `n` characters, with an ellipsis when anything was cut."""
+    return text if len(text) <= n else text[:n].rstrip() + "…"
 
 
 def coverage_pane(model, labels):
@@ -490,6 +955,23 @@ def coverage_pane(model, labels):
                        '<p class="cov-claim">%s</p><span class="cov-why">%s</span></div>'
                        % (html.escape(c["name"]), html.escape(c["why"])))
         out.append("</div>")
+
+    # A requirement whose label or diff could not be put beside its heading is
+    # listed here, never dropped: the page would otherwise show it as an
+    # ordinary passage and say nothing.
+    unplaced = model.get("unplaced", [])
+    if unplaced:
+        out.append('<div class="cov cov-grey"><h2>Not placed — %d</h2>' % len(unplaced))
+        for row in unplaced:
+            c = row["claim"]
+            out.append('<div class="cov-row"><span class="cov-src">%s · requirement</span>'
+                       '<p class="cov-claim">%s</p><span class="cov-why">its %s could not '
+                       'be placed: %s</span></div>'
+                       % (html.escape(labels.get(c["file"], c["file"])),
+                          html.escape(c["text"]),
+                          " and ".join(sorted(row["what"], key=("label", "diff").index)),
+                          html.escape(row["why"])))
+        out.append("</div>")
     return "".join(out)
 
 
@@ -532,23 +1014,53 @@ def build(change_dir, root=None, out=None):
         bodies[key], ctxs[key] = R.render_document(
             texts[key], os.path.dirname(path), prefix=key + ":")
 
-    model = OC.build(change_dir, texts)
+    archived = is_archived(change_dir)
+    caps = [k[len("spec-"):] for k in texts if k.startswith("spec-")]
+    # An archived change is never compared — see OC.requirement_diffs — so its
+    # main specs are not even read; nor is anything for a change folder that has
+    # no main specs folder, whose notes then say why.
+    specs_dir = main_specs_dir(change_dir)
+    main_specs = ({} if archived or specs_dir is None
+                  else read_main_specs(specs_dir, caps))
+    model = OC.build(change_dir, texts, main_specs, archived,
+                     skip_specs=read_skip_specs(change_dir))
     bind_claims(model, ctxs)
     bodies = counterparts(model, bodies, ctxs, labels)
+    bodies = diff_cards(model, bodies, ctxs, specs_dir, root)
+    bodies = mark_groups(model, bodies, ctxs)
 
     change_key = store.doc_key(change_dir, root)
     total_words = sum(len(t.split()) for c in ctxs.values() for t in c.blocks.values())
 
-    tabs, panes, rails = [], [], []
-    for i, (key, label, _p) in enumerate(files):
-        on = " on" if i == 0 else ""
-        tabs.append('<button class="tab%s" data-tab="%s">%s'
+    # The page opens on the overview, a derived tab dressed like coverage: the
+    # change's shape before any one file of it.
+    ov = OC.overview(model, texts)
+    tabs = ['<button class="tab tab-cov tab-ov on" data-tab="__overview__">'
+            '<span class="cov-glyph">≡</span>overview</button>'
+            '<span class="tab-gap"></span>']
+    panes = ['<div class="pane on" data-pane="__overview__"><div class="col">%s</div></div>'
+             % overview_pane(ov, labels)]
+    done, total = ov["tasks"]
+    rails = ['<div class="rail-wrap on" data-rail="__overview__"><p class="rail-h">overview</p>'
+             + "".join(
+                 # Each entry jumps to its heading in the overview pane.
+                 '<a class="rail-item" href="#%s" data-depth="0"><span class="rail-main">'
+                 '<span class="rail-title">%s</span></span><span class="rail-meta">'
+                 '<span class="rail-n">%s</span></span></a>' % (anchor, name, n)
+                 for anchor, name, n in (
+                     ("ov-promises", "Promises", len(ov["promises"])),
+                     ("ov-requirements", "Requirements",
+                      sum(sum(g.values()) for g in ov["reqs"].values())),
+                     ("ov-tasks", "Tasks", "%d/%d" % (done, total))))
+             + "</div>"]
+    for key, label, _p in files:
+        tabs.append('<button class="tab" data-tab="%s">%s'
                     '<span class="tab-n" style="visibility:hidden">0</span></button>'
-                    % (on, esc_attr(key), html.escape(label)))
-        panes.append('<div class="pane%s" data-pane="%s"><div class="col">%s</div></div>'
-                     % (on, esc_attr(key), bodies[key]))
-        rails.append('<div class="rail-wrap%s" data-rail="%s"><p class="rail-h">%s</p>%s</div>'
-                     % (on, esc_attr(key), html.escape(label), R.rail(ctxs[key].sections)))
+                    % (esc_attr(key), html.escape(label)))
+        panes.append('<div class="pane" data-pane="%s"><div class="col">%s</div></div>'
+                     % (esc_attr(key), bodies[key]))
+        rails.append('<div class="rail-wrap" data-rail="%s"><p class="rail-h">%s</p>%s</div>'
+                     % (esc_attr(key), html.escape(label), R.rail(ctxs[key].sections)))
 
     cov = model["coverage"]
     bad = len(cov["uncovered"]) + len([c for c in cov["capabilities"] if c["why"]])
@@ -614,6 +1126,11 @@ def build(change_dir, root=None, out=None):
 
 
 def main(argv=None):
+    # This prints requirement names and claim text. On Windows a piped stdout
+    # is the locale codepage, and one `ț` in a heading raised
+    # UnicodeEncodeError after the page was already written.
+    import render_html
+    render_html.use_utf8_stdout()
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("change", help="a change id, or the path to its directory")
     ap.add_argument("--root", help="repo root (default: resolved from git)")
@@ -657,6 +1174,11 @@ def main(argv=None):
         # cannot click back to, and knowing how many there are is how they judge
         # whether the tab is trustworthy on this change.
         print("          %d claim(s) could not be bound to a block" % len(unbound))
+    unplaced = model.get("unplaced", [])
+    if unplaced:
+        print("          %d requirement(s) whose label or diff could not be placed: %s"
+              % (len(unplaced), ", ".join("%s (%s)" % (r["claim"]["text"], r["why"])
+                                          for r in unplaced[:5])))
     return 0
 
 

@@ -60,3 +60,46 @@ def _make_dir_alias(link: Path, real: Path) -> None:
 def make_dir_alias():
     """The directory-alias helper above, as a fixture: `make_dir_alias(link, real)`."""
     return _make_dir_alias
+
+
+# ---------------------------------------------------------------- the temp dir
+#
+# Code under test writes to the system temp dir on its own: `render_doc.page_dir`
+# puts every rendered page under `<temp>/cla-annotate/<hash of the repo root>`,
+# and a test's repo root is a fresh tmp path each time, so every such test left
+# a new folder in the developer's real temp dir. The fix is not per test: the
+# whole run's temp dir is pointed at a pytest-managed one, in process and for
+# every subprocess. tests/skills/annotate/test_temp_dir_isolation.py checks
+# that the redirect is in force — it asserts where temp paths resolve, so no
+# other process writing to the real temp dir can fail it.
+
+TEMP_ENV = ("TMP", "TEMP", "TMPDIR")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def run_temp_dir(tmp_path_factory):
+    """Point `tempfile` and the TMP/TEMP/TMPDIR variables at a dir pytest owns,
+    and yield that dir.
+
+    Session-scoped and autouse, so it is in force before any test or fixture
+    runs; under xdist each worker has its own session, so each gets its own
+    dir. `tempfile.tempdir` covers this process; the variables cover every
+    subprocess a test starts with the inherited environment. pytest's own
+    basetemp is already resolved by the `mktemp` call below, so tmp_path keeps
+    working exactly as before.
+    """
+    import tempfile
+    redirected = str(tmp_path_factory.mktemp("systemp"))
+    saved_dir = tempfile.tempdir
+    saved_env = {k: os.environ.get(k) for k in TEMP_ENV}
+    tempfile.tempdir = redirected
+    for k in TEMP_ENV:
+        os.environ[k] = redirected
+    yield redirected
+    tempfile.tempdir = saved_dir
+    for k, v in saved_env.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+

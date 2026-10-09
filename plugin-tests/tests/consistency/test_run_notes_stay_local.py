@@ -107,7 +107,11 @@ def test_this_repo_ignores_new_run_notes() -> None:
 
 _needs_bash = pytest.mark.skipif(_BASH is None, reason="bash is not installed")
 # Hermetic: a user's global excludes file must not decide what these repos ignore.
-_GIT_ENV = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+# Built per call, never at import: the suite's conftest points TMP/TEMP/TMPDIR
+# at the run's own dir once the session starts, after this module is imported,
+# and a snapshot taken here would hand every git subprocess the real temp dir.
+def _git_env() -> dict[str, str]:
+    return {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
 
 
 def _block(marker: str) -> str:
@@ -120,7 +124,7 @@ def _bash(script: str, root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [_BASH, "-c", script], cwd=root,
         # Forward slashes: a POSIX shell reads `C:\...` backslashes as escapes.
-        env={**_GIT_ENV, "ROOT": str(root).replace("\\", "/")},
+        env={**_git_env(), "ROOT": str(root).replace("\\", "/")},
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
     )
 
@@ -132,7 +136,7 @@ def _run(root: Path, marker: str = "run-notes line") -> str:
 
 
 def _git(root: Path, *args: str) -> str:
-    return subprocess.run(["git", *args], cwd=root, env=_GIT_ENV, check=True,
+    return subprocess.run(["git", *args], cwd=root, env=_git_env(), check=True,
                           capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
 
 
@@ -145,7 +149,7 @@ def _repo(tmp_path: Path, gitignore: bytes | None = None) -> Path:
 
 def _ignored(root: Path, path: str) -> bool:
     out = subprocess.run(["git", "check-ignore", "-q", "--no-index", path], cwd=root,
-                         env=_GIT_ENV, capture_output=True)
+                         env=_git_env(), capture_output=True)
     return out.returncode == 0
 
 
@@ -202,11 +206,11 @@ def _global_excludes_env(tmp_path: Path, where: str) -> dict[str, str]:
         excludes.write_text(f"{_LINE}\n", encoding="utf-8")
         gitconfig = home / "gitconfig"
         gitconfig.write_text(f"[core]\n\texcludesFile = {excludes.as_posix()}\n", encoding="utf-8")
-        return {**_GIT_ENV, "GIT_CONFIG_GLOBAL": str(gitconfig)}
+        return {**_git_env(), "GIT_CONFIG_GLOBAL": str(gitconfig)}
     ignore = home / "xdg" / "git" / "ignore"
     ignore.parent.mkdir(parents=True)
     ignore.write_text(f"{_LINE}\n", encoding="utf-8")
-    return {**_GIT_ENV, "XDG_CONFIG_HOME": str(home / "xdg")}
+    return {**_git_env(), "XDG_CONFIG_HOME": str(home / "xdg")}
 
 
 # requirement: repo-context / Setting up a repo's cla.io tree

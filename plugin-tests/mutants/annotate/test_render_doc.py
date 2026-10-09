@@ -209,4 +209,16 @@ MUTANTS = [
      " body.cmt .scrim{opacity:0;pointer-events:none}",
      " body.cmt .scrim{opacity:1}",
      TESTS),
+
+    ("a closing # run with no space before it is stripped from a heading again",
+     DOC,
+     'HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\\s+(.*?)(?:[ \\t]+#+)?[ \\t]*$")',
+     'HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\\s+(.*?)\\s*#*\\s*$")',
+     TESTS + [DEV / "tests" / "skills" / "annotate" / "test_render_change.py"]),
+
+    ("render_doc's CLI prints document text through the locale codepage",
+     DOC,
+     "    render_html.use_utf8_stdout()",
+     "    pass",
+     [DEV / "tests" / "skills" / "annotate" / "test_render_change.py"]),
 ]

@@ -272,6 +272,467 @@ def test_capability_coverage_flags_a_named_capability_with_no_delta():
     assert "no specs/cla-plugin/spec.md" in row["why"]
 
 
+SPEC_ONLY = """# Delta: cla-plugin
+
+## MODIFIED Requirements
+
+### Requirement: Project-data scaffolding
+
+Text.
+"""
+
+
+def _impact_only(impact_line):
+    """A proposal with no `## Capabilities` section: the capability, if it is
+    named at all, is named under `## Impact` — the shape most proposals use."""
+    return ("# P\n\n## Why\n\nBecause.\n\n## What Changes\n\n- Rework the thing\n\n"
+            "## Impact\n\n- %s\n" % impact_line)
+
+
+def _cap_row(prop, name="cla-plugin"):
+    m = OC.build("demo", {"proposal": prop, "spec-cla-plugin": SPEC_ONLY})
+    return m, [r for r in m["coverage"]["capabilities"] if r["name"] == name]
+
+
+def test_a_capability_backticked_under_impact_counts_as_named():
+    _m, rows = _cap_row(_impact_only("`cla-plugin`: one requirement modified"))
+    assert len(rows) == 1
+    assert rows[0]["mentioned"] and not rows[0]["named"] and rows[0]["delta"]
+    assert rows[0]["why"] == ""
+
+
+def test_a_bare_mention_in_another_case_counts_as_named():
+    _m, rows = _cap_row(_impact_only("The CLA-Plugin spec loses one scenario"))
+    assert rows[0]["mentioned"]
+    assert rows[0]["why"] == ""
+
+
+def test_a_longer_name_containing_the_capability_is_not_a_mention():
+    # Both sides: a suffix and a prefix. Either one alone leaves the other
+    # boundary free to break without a test noticing.
+    for line in ("`cla-plugin-extra` gains a requirement",
+                 "`old-cla-plugin` gains a requirement"):
+        _m, rows = _cap_row(_impact_only(line))
+        assert not rows[0]["mentioned"], line
+        assert "no proposal capability names" in rows[0]["why"], line
+
+
+def test_a_segment_of_a_nested_capability_path_is_not_a_mention():
+    """A capability is a path: `identity/user-auth` names one capability, and
+    the `user-auth` inside it is not a second one."""
+    prop = _impact_only("`identity/user-auth`: login gains a requirement")
+    m = OC.build("demo", {"proposal": prop, "spec-user-auth": SPEC_ONLY,
+                          "spec-identity/user-auth": SPEC_ONLY})
+    rows = {r["name"]: r for r in m["coverage"]["capabilities"]}
+    assert rows["identity/user-auth"]["mentioned"] and rows["identity/user-auth"]["why"] == ""
+    assert not rows["user-auth"]["mentioned"]
+    assert "no proposal capability names" in rows["user-auth"]["why"]
+    # And the other way round: the path's last segment is not the path's parent.
+    m = OC.build("demo", {"proposal": _impact_only("`identity/user-auth` changes"),
+                          "spec-identity": SPEC_ONLY})
+    assert not m["coverage"]["capabilities"][0]["mentioned"]
+
+
+def test_a_mention_adds_no_link():
+    # A mention clears the coverage flag and nothing more: it is not a citation,
+    # so it must not produce the strong link a `## Capabilities` bullet does.
+    m, _rows = _cap_row(_impact_only("`cla-plugin`: one requirement modified"))
+    assert not [l for l in m["links"]
+                if any(i.startswith("spec-cla-plugin:") for i in (l["src"], l["dst"]))]
+
+
+def test_a_mention_with_no_delta_adds_no_row():
+    m = OC.build("demo", {"proposal": _impact_only("`other-cap` is untouched")})
+    assert m["coverage"]["capabilities"] == []
+
+
+# ---------------------------------------------------------------- requirement diffs
+
+
+DIFF_DELTA = """# Delta: cla-plugin
+
+## ADDED Requirements
+
+### Requirement: Something new
+
+The page SHALL do a new thing.
+
+## MODIFIED Requirements
+
+### Requirement: Project-data scaffolding
+
+The setup SHALL write one facts file and SHALL ask before overwriting it.
+
+#### Scenario: A fresh repo
+
+- **WHEN** setup runs
+- **THEN** one file is written
+
+## REMOVED Requirements
+
+### Requirement: Sync provenance lockfile
+
+**Reason**: Gone.
+"""
+
+MAIN_SPEC = """# cla-plugin Specification
+
+## Requirements
+
+### Requirement: Project-data scaffolding
+
+The setup SHALL write two facts files and SHALL ask before overwriting it.
+
+#### Scenario: A fresh repo
+
+- **WHEN** setup runs
+- **THEN** one file is written
+
+### Requirement: Sync provenance lockfile
+
+Old.
+"""
+
+
+def _diffs(main_specs, archived=False, delta=DIFF_DELTA):
+    m = OC.build("demo", {"proposal": PROPOSAL, "spec-cla-plugin": delta},
+                 main_specs, archived)
+    return list(m["diffs"].values())
+
+
+def test_only_a_modified_requirement_gets_a_diff():
+    recs = _diffs({"cla-plugin": MAIN_SPEC})
+    assert len(recs) == 1 and recs[0]["cap"] == "cla-plugin"
+
+
+def test_a_changed_word_shows_as_a_deletion_and_an_insertion():
+    rec = _diffs({"cla-plugin": MAIN_SPEC})[0]
+    assert rec["state"] == "diff"
+    assert ("del", ["two"]) in rec["ops"] and ("ins", ["one"]) in rec["ops"]
+    assert ("del", ["files"]) in rec["ops"] and ("ins", ["file"]) in rec["ops"]
+    # The deletion is the MAIN spec's word: base and new are not interchangeable.
+    assert ("del", ["one"]) not in rec["ops"]
+
+
+def test_an_unchanged_requirement_is_reported_same():
+    same = MAIN_SPEC.replace("two facts files", "one facts file")
+    rec = _diffs({"cla-plugin": same})[0]
+    assert rec["state"] == "same" and rec["ops"] == []
+
+
+def test_a_long_unchanged_run_collapses_to_context_either_side():
+    words = " ".join("w%d" % i for i in range(40))
+    base = "## Requirements\n\n### Requirement: Project-data scaffolding\n\nA %s Z\n" % words
+    new = "## MODIFIED Requirements\n\n### Requirement: Project-data scaffolding\n\nB %s Y\n" % words
+    rec = _diffs({"cla-plugin": base}, delta=new)[0]
+    tags = [t for t, _w in rec["ops"]]
+    assert tags == ["del", "ins", "eq", "gap", "eq", "del", "ins"]
+    assert rec["ops"][2][1] == ["w0", "w1", "w2", "w3", "w4", "w5"]
+    assert rec["ops"][3][1] == 28
+    assert rec["ops"][4][1] == ["w34", "w35", "w36", "w37", "w38", "w39"]
+
+
+def test_a_gap_never_hides_a_single_word():
+    """Thirteen unchanged words between two changes would collapse to six, a gap
+    of one, and six — the gap costs more to read than the word it hides."""
+    words = " ".join("w%d" % i for i in range(13))
+    base = "## Requirements\n\n### Requirement: Project-data scaffolding\n\nA %s Z\n" % words
+    new = "## MODIFIED Requirements\n\n### Requirement: Project-data scaffolding\n\nB %s Y\n" % words
+    rec = _diffs({"cla-plugin": base}, delta=new)[0]
+    assert "gap" not in [t for t, _w in rec["ops"]]
+    words = " ".join("w%d" % i for i in range(14))
+    base = base.replace(base[base.index("A "):], "A %s Z\n" % words)
+    new = new.replace(new[new.index("B "):], "B %s Y\n" % words)
+    rec = _diffs({"cla-plugin": base}, delta=new)[0]
+    assert ("gap", 2) in rec["ops"]
+
+
+def test_a_capability_link_needs_a_whole_word_mention():
+    """Step 3 of detect_links ties a promise to the requirements of a capability
+    it names. A substring test tied a promise about `cla-plugin-extra` to every
+    `cla-plugin` requirement."""
+    prop = PROPOSAL.replace("- A warm-ink palette with a single amber accent and restrained "
+                            "typography", "- Retire the cla-plugin-extra bundle")
+    m = OC.build("demo", {"proposal": prop, "spec-cla-plugin": SPEC})
+    p = [c for c in m["claims"] if c["kind"] == "promise" and "extra" in c["text"]][0]
+    assert not [l for l in m["links"] if p["id"] in (l["src"], l["dst"])
+                and l["kind"] == "reference"]
+    plain = prop.replace("cla-plugin-extra", "cla-plugin")
+    m = OC.build("demo", {"proposal": plain, "spec-cla-plugin": SPEC})
+    p = [c for c in m["claims"] if c["kind"] == "promise" and "Retire" in c["text"]][0]
+    assert [l for l in m["links"] if p["id"] in (l["src"], l["dst"])
+            and l["kind"] == "reference"]
+
+
+def test_no_main_spec_and_no_matching_requirement_are_their_own_states():
+    assert _diffs({})[0]["state"] == "no-main-spec"
+    assert _diffs({"cla-plugin": None})[0]["state"] == "no-main-spec"
+    other = MAIN_SPEC.replace("Project-data scaffolding", "Something else")
+    assert _diffs({"cla-plugin": other})[0]["state"] == "not-in-main"
+
+
+def test_an_unreadable_main_spec_is_reported_not_raised():
+    rec = _diffs({"cla-plugin": ValueError("not valid UTF-8")})[0]
+    assert rec["state"] == "unreadable" and "UTF-8" in rec["why"]
+
+
+def test_an_archived_change_is_never_compared():
+    """Archiving wrote the new text into the main spec, so a comparison would
+    report every requirement unchanged — which is false. `archived` is checked
+    before anything else."""
+    same = MAIN_SPEC.replace("two facts files", "one facts file")
+    for main in ({"cla-plugin": same}, {"cla-plugin": MAIN_SPEC}, {},
+                 {"cla-plugin": ValueError("x")}):
+        assert _diffs(main, archived=True)[0]["state"] == "archived"
+
+
+def test_a_modified_header_matches_the_main_spec_as_openspec_matches_it():
+    """OpenSpec 1.14.1 (`normalizeRequirementName`) drops a closing `#` run that
+    follows a space or tab and trims the ends — nothing else. Inner spacing and
+    case both count, so either difference is a different requirement, and the
+    page must say so rather than show a diff archive would refuse to apply."""
+    closed = MAIN_SPEC.replace("### Requirement: Project-data scaffolding",
+                               "### Requirement: Project-data scaffolding ###")
+    assert _diffs({"cla-plugin": closed})[0]["state"] == "diff"
+    outer = MAIN_SPEC.replace("### Requirement: Project-data scaffolding",
+                              "### Requirement:   Project-data scaffolding  ")
+    assert _diffs({"cla-plugin": outer})[0]["state"] == "diff"
+    inner = MAIN_SPEC.replace("Project-data scaffolding", "Project-data   scaffolding")
+    assert _diffs({"cla-plugin": inner})[0]["state"] == "not-in-main"
+    cased = MAIN_SPEC.replace("Project-data scaffolding", "Project-Data Scaffolding")
+    assert _diffs({"cla-plugin": cased})[0]["state"] == "not-in-main"
+    # A `#` with no space before it is part of the name, as `C#` is.
+    assert OC._norm_name("Use C#") == "Use C#"
+    assert OC._norm_name("Foo ###") == "Foo" and OC._norm_name("Foo\t## ") == "Foo"
+
+
+def test_a_repeated_main_spec_requirement_compares_against_the_last_copy():
+    """OpenSpec builds its name-to-block map with Map.set, so the last copy of a
+    repeated name is the one a MODIFIED block replaces."""
+    twice = MAIN_SPEC + ("\n### Requirement: Project-data scaffolding\n\n"
+                         "The setup SHALL write one facts file and SHALL ask before "
+                         "overwriting it.\n\n#### Scenario: A fresh repo\n\n"
+                         "- **WHEN** setup runs\n- **THEN** one file is written\n")
+    assert _diffs({"cla-plugin": twice})[0]["state"] == "same"
+
+
+def test_the_diff_covers_every_scenario_of_the_requirement():
+    """A MODIFIED block carries the full updated requirement, scenarios
+    included, so a changed scenario is a changed requirement."""
+    same = MAIN_SPEC.replace("two facts files", "one facts file")
+    rec = _diffs({"cla-plugin": same.replace("one file is written",
+                                             "a file is written")})[0]
+    assert rec["state"] == "diff"
+    assert ("del", ["a"]) in rec["ops"] and ("ins", ["one"]) in rec["ops"]
+
+
+def test_no_main_specs_means_no_diffs():
+    assert OC.build("demo", TEXTS)["diffs"] == {}
+
+
+# ---------------------------------------------------------------- overview
+
+
+# The OpenSpec 1.14 templates' shapes: a proposal with New and Modified
+# Capabilities, a new capability's delta opening with `## Purpose`, a RENAMED
+# group of FROM/TO bullets.
+OV_PROPOSAL = """# Proposal
+
+## Why
+
+Reviewers compare requirements by eye. That is slow.
+
+A second paragraph that is not the why's first.
+
+## What Changes
+
+- **BREAKING** — rename `src/auth/login.py` and drop the old entry point
+- A calmer palette for the login page
+
+## Capabilities
+
+### New Capabilities
+
+- `identity/user-auth`: signing in
+
+### Modified Capabilities
+
+- `billing`: invoices name the signed-in user
+
+## Impact
+
+- `audit-log` gains nothing
+"""
+
+OV_NEW_DELTA = """# Spec Delta
+
+## Purpose
+
+Signing in to the product, and what a session may do once it exists.
+
+## ADDED Requirements
+
+### Requirement: Signing in
+
+The product SHALL let a user sign in.
+
+#### Scenario: A known user
+- **WHEN** a known user signs in
+- **THEN** a session starts
+"""
+
+OV_MODIFIED_DELTA = """# Spec Delta
+
+## MODIFIED Requirements
+
+### Requirement: Invoices
+
+Invoices SHALL name the user.
+
+#### Scenario: An invoice
+- **WHEN** an invoice is made
+- **THEN** it names the user
+
+## REMOVED Requirements
+
+### Requirement: Paper invoices
+
+**Reason**: Nobody prints them.
+**Migration**: None.
+
+## RENAMED Requirements
+
+- FROM: `### Requirement: Bills`
+- TO: `### Requirement: Invoices`
+"""
+
+OV_TASKS = """# Tasks
+
+## 1. Auth
+
+- [x] 1.1 Rename `src/auth/login.py`
+- [ ] 1.2 Write the palette
+"""
+
+OV_TEXTS = {"proposal": OV_PROPOSAL, "tasks": OV_TASKS,
+            "spec-identity/user-auth": OV_NEW_DELTA, "spec-billing": OV_MODIFIED_DELTA}
+
+
+def _ov(main_specs=None, texts=OV_TEXTS, **kw):
+    return OC.overview(OC.build("demo", texts, main_specs, **kw), texts)
+
+
+def test_the_overview_why_is_the_first_paragraph_of_why():
+    assert _ov()["why"] == "Reviewers compare requirements by eye. That is slow."
+
+
+def test_each_promise_carries_the_bucket_coverage_put_it_in():
+    got = [(c["num"], b) for c, b in _ov()["promises"]]
+    assert got == [("p1", "covered"), ("p2", "unchecked")]
+
+
+def test_a_breaking_promise_is_marked():
+    ov = _ov()
+    ids = {c["num"]: c["id"] for c, _b in ov["promises"]}
+    assert ov["breaking"] == {ids["p1"]}
+
+
+def test_the_overview_counts_requirements_by_group_and_renames_by_pair():
+    ov = _ov()
+    assert ov["reqs"] == {"billing": {"ADDED": 0, "MODIFIED": 1, "REMOVED": 1},
+                          "identity/user-auth": {"ADDED": 1, "MODIFIED": 0, "REMOVED": 0}}
+    assert ov["renamed"] == {"billing": 1, "identity/user-auth": 0}
+    assert ov["tasks"] == (1, 2)
+
+
+def test_a_capability_is_new_modified_or_unknown():
+    main = {"billing": "# billing\n\n## Requirements\n", "identity/user-auth": "# x\n"}
+    assert _ov(main)["status"] == {"billing": "modified", "identity/user-auth": "new"}
+    # Not listed under New Capabilities, but its delta opens with `## Purpose`.
+    prop = OV_PROPOSAL.replace("### New Capabilities\n\n- `identity/user-auth`: signing in\n", "")
+    texts = dict(OV_TEXTS, proposal=prop)
+    assert _ov(main, texts)["status"]["identity/user-auth"] == "new"
+    # Neither listed nor opening with Purpose: new only because no main spec exists.
+    texts["spec-identity/user-auth"] = OV_NEW_DELTA.replace(
+        "## Purpose\n\nSigning in to the product, and what a session may do once it exists.\n\n", "")
+    assert _ov(main, texts)["status"]["identity/user-auth"] == "modified"
+    assert _ov(dict(main, **{"identity/user-auth": None}), texts)["status"][
+        "identity/user-auth"] == "new"
+    # A main spec never looked up (an archived change), or one that could not be
+    # read, says nothing either way: unknown, never "modified".
+    assert _ov({}, texts)["status"]["identity/user-auth"] == "unknown"
+    unreadable = dict(main, **{"identity/user-auth": ValueError("x")})
+    assert _ov(unreadable, texts)["status"]["identity/user-auth"] == "unknown"
+    # Listed under New Capabilities, no Purpose, a main spec present: the listing
+    # alone makes it new.
+    texts["proposal"] = OV_PROPOSAL
+    assert _ov(main, texts)["status"]["identity/user-auth"] == "new"
+
+
+def test_the_overview_says_which_parts_gave_nothing():
+    """An empty heading reads as an empty change, so the overview records which
+    kind of nothing it found."""
+    assert _ov()["why_state"] == "found" and _ov()["tasks_file"] is True
+    no_why = OV_PROPOSAL.replace("## Why\n", "## Motivation\n")
+    assert _ov(texts=dict(OV_TEXTS, proposal=no_why))["why_state"] == "missing"
+    empty = OV_PROPOSAL.replace("Reviewers compare requirements by eye. That is slow.\n\n"
+                                "A second paragraph that is not the why's first.\n", "")
+    assert _ov(texts=dict(OV_TEXTS, proposal=empty))["why_state"] == "empty"
+    no_tasks = {k: v for k, v in OV_TEXTS.items() if k != "tasks"}
+    assert _ov(texts=no_tasks)["tasks_file"] is False
+
+
+def test_a_rename_counts_only_a_from_followed_by_a_to():
+    """OpenSpec pairs a FROM with the next TO and reports the rest as unpaired;
+    counting FROMs and TOs separately called two lone lines a pair."""
+    delta = ("# Spec Delta\n\n## RENAMED Requirements\n\n"
+             "- TO: `### Requirement: Orphan`\n"
+             "- FROM: `### Requirement: A`\n- TO: `### Requirement: B`\n"
+             "* FROM: `### Requirement: C`\n")
+    texts = {"proposal": OV_PROPOSAL, "spec-billing": delta}
+    assert _ov(texts=texts)["renamed"] == {"billing": 1}
+    # A pair shown in a fence is an example, and a FROM left open at the end
+    # of one copy of the section never pairs with a TO in the next.
+    delta += ("\n```\n- FROM: `### Requirement: D`\n- TO: `### Requirement: E`\n```\n"
+              "\n## RENAMED Requirements\n\n- TO: `### Requirement: F`\n")
+    assert _ov(texts=dict(texts, **{"spec-billing": delta}))["renamed"] == {"billing": 1}
+
+
+def test_a_fenced_purpose_does_not_make_a_capability_new():
+    main = {"billing": "# billing\n\n## Requirements\n"}
+    delta = ("# Spec Delta\n\n```\n## Purpose\n```\n\n## MODIFIED Requirements\n\n"
+             "### Requirement: Invoices\n\nText.\n")
+    texts = {"proposal": OV_PROPOSAL, "spec-billing": delta}
+    assert _ov(main, texts)["status"]["billing"] == "modified"
+
+
+def test_purpose_is_not_a_requirement_group():
+    delta = ("# Spec Delta\n\n## REMOVED Requirements\n\n### Requirement: Old\n\n"
+             "**Reason**: Gone.\n\n## Purpose\n\n### Requirement: Stray\n\nText.\n")
+    groups = {c["text"]: c["group"] for c in OC.requirements(delta, "spec-x")}
+    assert groups == {"Old": "REMOVED", "Stray": ""}
+
+
+def test_skip_specs_quiets_the_missing_delta_and_says_so():
+    texts = {"proposal": OV_PROPOSAL, "tasks": OV_TASKS}
+    m = OC.build("demo", texts, skip_specs=True)
+    assert [r["why"] for r in m["coverage"]["capabilities"]] == ["", ""]
+    assert OC.overview(m, texts)["skip_specs"] is True
+    flagged = OC.build("demo", texts)["coverage"]["capabilities"]
+    assert all("no specs/" in r["why"] for r in flagged)
+
+
+def test_skip_specs_is_read_from_the_top_level_key_only():
+    assert OC.skip_specs_set("schema: spec-driven\nskip_specs: true\n")
+    assert OC.skip_specs_set("skip_specs: True  # no deltas\n")
+    assert not OC.skip_specs_set("schema: spec-driven\nskip_specs: false\n")
+    assert not OC.skip_specs_set("# skip_specs: true\n")
+    assert not OC.skip_specs_set("other:\n  skip_specs: true\n")
+    # YAML 1.2, which OpenSpec parses with: `yes` and a quoted "true" are strings.
+    assert not OC.skip_specs_set("skip_specs: yes\n")
+    assert not OC.skip_specs_set('skip_specs: "true"\n')
+
+
 def test_stats_report_what_was_read(model):
     st = model["coverage"]["stats"]
     assert st["files"] == 4 and st["promises"] == 3
@@ -302,6 +763,156 @@ def test_files_come_back_in_the_fixed_order(tmp_path):
     # Never directory order: a reader should know where a tab is before looking.
     assert [k for k, _l, _p in OC.change_files(str(d))] == [
         "proposal", "design", "tasks", "spec-alpha", "spec-beta"]
+
+
+def test_a_nested_capability_path_gets_its_own_file(tmp_path):
+    """OpenSpec 1.14 capability paths may have several segments, and the delta
+    lives at specs/<path>/spec.md. Listing one level only gave it no tab."""
+    d = tmp_path / "c"
+    (d / "specs" / "identity" / "user-auth").mkdir(parents=True)
+    (d / "specs" / "billing").mkdir(parents=True)
+    (d / "proposal.md").write_text("# Proposal\n", encoding="utf-8")
+    for cap in ("identity/user-auth", "billing"):
+        (d / "specs" / cap / "spec.md").write_text("# Spec Delta\n", encoding="utf-8")
+    got = [(k, label) for k, label, _p in OC.change_files(str(d))]
+    assert got == [("proposal", "proposal"), ("spec-billing", "spec · billing"),
+                   ("spec-identity/user-auth", "spec · identity/user-auth")]
+
+
+def test_a_specs_folder_that_cannot_be_listed_is_refused(tmp_path, monkeypatch):
+    """Skipped, it would be a delta silently missing from the page: a tab the
+    reader never knows to look for."""
+    import os
+    d = tmp_path / "c"
+    (d / "specs" / "locked").mkdir(parents=True)
+    (d / "proposal.md").write_text("# Proposal\n", encoding="utf-8")
+    real = os.scandir
+    locked = str(d / "specs" / "locked")
+
+    def scandir(path="."):
+        if os.path.abspath(str(path)) == os.path.abspath(locked):
+            raise PermissionError(13, "Permission denied", str(path))
+        return real(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+    with pytest.raises(OC.ChangeUnreadable) as e:
+        OC.change_files(str(d))
+    assert "locked" in str(e.value)
+
+
+def test_linked_folders_add_no_tab_of_their_own(tmp_path):
+    """Links are followed only inside specs/, each real folder once: a link
+    to a folder already there is a copy, a link back up is a cycle, and a link
+    out of specs/ leads to something that is not this change's."""
+    import os
+    d = tmp_path / "c"
+    billing = d / "specs" / "billing"
+    billing.mkdir(parents=True)
+    (billing / "spec.md").write_text("# Spec Delta\n", encoding="utf-8")
+    (d / "proposal.md").write_text("# Proposal\n", encoding="utf-8")
+    outside = tmp_path / "elsewhere" / "payments"
+    outside.mkdir(parents=True)
+    (outside / "spec.md").write_text("# Spec Delta\n", encoding="utf-8")
+
+    def link(src, dst):
+        try:
+            os.symlink(src, dst, target_is_directory=True)
+        except (OSError, NotImplementedError) as e:
+            # Windows without the symlink privilege: a junction is a linked
+            # folder too, needs no privilege, and os.walk descends into it.
+            if os.name != "nt":
+                pytest.skip("directory symlinks not permitted here: %s" % e)
+            import _winapi
+            _winapi.CreateJunction(src, dst)
+
+    link(str(billing), str(d / "specs" / "alias"))         # a copy, named first
+    link(str(d / "specs"), str(billing / "loop"))           # a cycle
+    link(str(outside), str(d / "specs" / "payments"))       # out of specs/
+    keys = [k for k, _l, _p in OC.change_files(str(d))]
+    assert keys == ["proposal", "spec-billing"]
+
+
+TASKS_114 = """# Tasks
+
+## 1. Markers
+
+- [ ] 1.1 Not started
+- [x] 1.2 Done, lower case
+- [X] 1.3 Done, upper case
+- [ x] 1.4 Done, with a space before the mark
+- [~] 1.5 In progress
+- [-] 1.6 Dropped
+- [] 1.7 An empty box
++ [ ] 1.8 A plus-sign list item
+1. [x] 1.9 An ordered item with a dot
+2) [ ] 2.1 An ordered item with a parenthesis
+- [ ](notes.md) A whitespace-only box still counts, link or not
+- [](notes.md) is an empty link, not a task
+- [docs](notes.md) is a link, not a task
+- [1](notes.md) is a one-character link, not a task
+- [A][ref] is a reference link, not a task
+- [README] is a word in brackets, not a task
+
+## Workflow follow-up
+
+- Archive the change once it merges
+- [ ] 3.1 A box here counts too, as OpenSpec counts every box wherever it sits
+"""
+
+
+def test_a_task_is_what_openspec_counts_as_one():
+    """OpenSpec 1.14.1's TASK_LINE_PATTERN (dist/utils/task-progress.js): any
+    CommonMark list marker, a box holding at most one mark, not followed by a
+    link's `(` or `[` unless the box is whitespace only. Done means the mark is
+    `x` in either case; `[~]`, `[-]` and `[]` are unfinished tasks."""
+    got = {c["num"]: c["done"] for c in OC.tasks(TASKS_114)}
+    assert got == {"1.1": False, "1.2": True, "1.3": True, "1.4": True,
+                   "1.5": False, "1.6": False, "1.7": False, "1.8": False,
+                   # The `- [ ](notes.md)` line: its tail starts with the link
+                   # target, not a number, so it takes its ordinal, 11.
+                   "1.9": True, "2.1": False, "11": False, "3.1": False}
+
+
+def test_a_byte_order_mark_does_not_hide_the_first_task():
+    """OpenSpec's `\\s` matches U+FEFF, so a tasks.md saved with a BOM still
+    counts its first line; Python's `\\s` does not, so the mark is dropped."""
+    got = [(c["num"], c["done"])
+           for c in OC.tasks(chr(0xFEFF) + "- [x] 1.1 First\n- [ ] 1.2 Next\n")]
+    assert got == [("1.1", True), ("1.2", False)]
+
+
+def test_a_fenced_box_still_counts_as_openspec_counts_it():
+    text = "# Tasks\n\n```\n- [ ] 1.1 shown in an example\n```\n"
+    assert [c["num"] for c in OC.tasks(text)] == ["1.1"]
+
+
+def test_requirement_headers_are_read_as_openspec_reads_them():
+    delta = ("# Spec Delta\n\n## Modified Requirements\n\n"
+             "### requirement: Lower case word\n\nText.\n\n"
+             "###Requirement: No space\n\nText.\n\n"
+             "```markdown\n### Requirement: Inside a fence\n## REMOVED Requirements\n```\n\n"
+             "### Requirement: After the fence\n\nText.\n")
+    got = {c["text"]: c["group"] for c in OC.requirements(delta, "spec-x")}
+    assert got == {"Lower case word": "MODIFIED", "No space": "MODIFIED",
+                   "After the fence": "MODIFIED"}
+
+
+def test_a_main_spec_is_read_only_under_requirements_and_outside_fences():
+    main = ("# x Specification\n\n## Purpose\n\n### Requirement: In the purpose\n\nNo.\n\n"
+            "## Requirements\n\n### Requirement: Real\n\nYes it is.\n\n"
+            "### Notes\n\nStill the same block.\n\n"
+            "```\n### Requirement: Fenced\n## Not a heading\n```\n\nAnd still.\n\n"
+            "## Appendix\n\n### Requirement: After\n\nNo.\n")
+    bodies = OC.requirement_bodies(main)
+    assert list(bodies) == ["Real"]
+    words = bodies["Real"][1]
+    # Through the `### Notes` heading and the fence, as OpenSpec's block runs.
+    assert "Still" in words and "still." in words and "Fenced" in words
+
+
+def test_every_box_counts_wherever_it_sits():
+    st = OC.build("demo", {"proposal": PROPOSAL, "tasks": TASKS_114})["coverage"]["stats"]
+    assert (st["tasks_done"], st["tasks"]) == (4, 12)
 
 
 def test_an_absent_design_file_is_simply_absent(tmp_path):

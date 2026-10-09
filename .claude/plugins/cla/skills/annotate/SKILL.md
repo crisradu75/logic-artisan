@@ -89,6 +89,14 @@ An archived change is annotatable too, and is found by its bare id even though
 the directory carries a date prefix. Both scripts take the id, the directory, or
 a path — pass what the user said and read what comes back.
 
+The page opens on a derived overview of the change, not on the proposal. Each
+MODIFIED requirement shows a word diff against its main spec, or a note saying
+why there is none — naming the main spec's path, or saying the change folder
+has no main specs folder at all. **On an archived
+change it shows "no base", which does not mean "unchanged"**: archiving wrote the
+change's text into the main spec, so the text it replaced is gone. Never report
+an archived requirement as unmodified on the strength of that note.
+
 ## 2. Render, then serve
 
 ```bash
@@ -173,7 +181,7 @@ groups, and only the first is a finding:
   **51% of proposal bullets land here** — design and product bullets are prose,
   and prose is not a link. Never present these as gaps.
 - **Covered** — a task names the same file, or cites the bullet outright (22%).
-- **Not done** — a task whose box is unticked. Its own group, never added to
+- **Not done** — a task whose box holds anything but `x` or `X`. Its own group, never added to
   Uncovered: an unstarted change has every task open, and reporting that as
   "18 uncovered" is the overclaim the whole tab exists to prevent.
 
@@ -183,6 +191,10 @@ that command before relying on the tab, and say what it reported.
 
 **A page reporting `Nothing to check` means no `## What Changes` bullets were
 parsed**, not that the change is clean. Say which it is.
+
+A spec delta counts as named when the proposal mentions its capability anywhere,
+under `## Impact` as much as `## Capabilities`; only a delta the proposal never
+mentions is flagged.
 
 **Never restate a coverage row as a defect in the change.** Say "no task names
 this bullet's file", which is what was measured, rather than "this is not
