@@ -81,21 +81,20 @@ plugin-tests/                  the plugin's tests — one pytest scope, NOT publ
 .claude/plugins/cla/           everything below here IS published, and nothing else is
   .claude-plugin/plugin.json   manifest
   README.md                    the harness's scope + capabilities, by life-cycle phase
-  skills/                      21 workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
+  skills/                      the workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
   skills/_shared/              references + scripts that several skills share (not a skill)
   agents/                      helper agents (doc-sweeper, fact-gatherer)
   hooks/                       always-on guard hooks (blocks, asks, warns) + dispatchers
-  lib/log_run.py               the one retro-ledger writer, invoked as a program
+  lib/log_run.py               writes the one run ledger (spec-to-pr-runs.jsonl), invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
 ```
 
 ## Canonical vs. per-repo
 
-This repo carries **portable procedure only**. Every project-specific overlay
-(`cla.io/overlays/<skill>.md`, `*.local.md`) here is a **neutral stub** — a destination repo
-fills in its own facts, and no install ever overwrites them — they live in the repo, outside the
-plugin directory. Per-repo state (`cla.io/` decisions, feedback, retro logs) is never part of the
-distributed core. A conformance guard
+The plugin carries **portable procedure only**. This repo's own `cla.io/` facts and overlays are
+its own, like any consumer's: they live in the repo, outside the plugin directory, and never ship.
+Overlays are optional, and nothing seeds one. Per-repo state (`cla.io/` decisions, feedback, retro
+logs) is never part of the distributed core. A conformance guard
 (`skills/_shared/scripts/check_no_project_tokens.py`) fails if a project-specific token or a
 hardcoded developer path leaks into the synced core. It is a program rather than a test, so it
 also runs in a consuming repo, which has no pytest gate over its plugin cache.
@@ -106,13 +105,15 @@ There is **no CI, by design** — the two local commands below are the whole ver
 and the only gate before a merge:
 
 ```bash
-pytest plugin-tests -q -n auto --dist loadfile             # every pytest scope (1 today)
+pytest plugin-tests -q -n auto --dist loadfile             # the whole suite
 openspec validate --specs --strict                         # the live specs
 ```
 
 `-n auto --dist loadfile` needs `pytest-xdist` (`pip install pytest-xdist`); without it, drop both
-flags and the same run takes about 2.8x as long. `--dist loadfile` is not tuning — see CLAUDE.md,
-"The parallel gate", for why plain `-n auto` is the trap and what makes a parallel run trustworthy.
+flags. Measured 2026-10-09 on `e445a77`, a 4-core Linux machine, Python 3.13:
+`python3 -m pytest plugin-tests -q` took 70.3s and
+`python3 -m pytest plugin-tests -q -n auto --dist loadfile` 24.1s, each 1820 passed, 12 skipped.
+`--dist loadfile` is not tuning — see CLAUDE.md, "The parallel gate", for why plain `-n auto` is the trap and what makes a parallel run trustworthy.
 
 The plugin's tests deliberately live outside the plugin: `.claude/plugins/cla/` is published whole
 to consuming repos and carries only assets a consumer can use. Run part of the suite with

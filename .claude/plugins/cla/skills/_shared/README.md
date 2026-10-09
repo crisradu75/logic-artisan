@@ -32,17 +32,21 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `test-quality-gates.md` | the rest of that doctrine, for a gate: floors, alarm volume, planting; read only when authoring or proving a gate |
 | `plugin-root.md` | the full rule for resolving `${CLAUDE_PLUGIN_ROOT}` in a `references/` file; six skills carry the short form |
 | `skill-authoring.md` | plugin-wide doctrine for writing a skill: progressive disclosure + completion criteria |
+| `chain-merge.md` | the bootstrap and merge procedure `multi-lite` and `multi-pr` share: record the head, pre-merge checks, merge with `--match-head-commit` |
+| `terminology-format.md` | the entry format for `cla.io/terminology.md`: `shape-decision` writes entries, `cla-setup` reconciles them |
 
 ## `scripts/`
 
-One script lives here on the same rule: `git_state.py` returns a single deterministic exit code for
-"an in-progress rebase / cherry-pick / merge exists", and four skills check it at every commit
-boundary. It is stdlib-only and imports nothing local.
+Two scripts live here. `git_state.py` is here on the same rule: it returns a single deterministic
+exit code for "an in-progress rebase / cherry-pick / merge exists", and five skills check it at every
+commit boundary. `check_no_project_tokens.py` belongs to no single skill because it checks the whole
+plugin tree. Both are stdlib-only and import nothing local.
 
-Its tests do **not** sit beside it. The plugin ships only what a consuming repo can use, so every
-test lives outside the published tree, in the canonical source repo's own development tree — this
-script's are at `plugin-tests/tests/skills/_shared/test_git_state.py` there. The script moves alone;
-there is no sibling `tests/` or `pyproject.toml` to move with it.
+Their tests do **not** sit beside them. The plugin ships only what a consuming repo can use, so every
+test lives outside the published tree, in the canonical source repo's own development tree —
+`git_state.py`'s are at `plugin-tests/tests/skills/_shared/test_git_state.py` there, and
+`check_no_project_tokens.py`'s under `plugin-tests/tests/conformance/`. The scripts move alone;
+there is no sibling `tests/` or `pyproject.toml` to move with them.
 
 ## How to reference one
 
