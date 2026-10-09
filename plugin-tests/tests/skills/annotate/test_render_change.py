@@ -491,15 +491,28 @@ def test_add_attr_replaces_rather_than_duplicates():
     assert out.count("data-group=") == 1 and 'data-group="REMOVED"' in out
 
 
-@pytest.mark.parametrize("control", ["showTab", "cf-toggle"])
+def test_a_counterpart_is_clamped_to_two_lines_until_opened(built):
+    css = "".join(re.findall(r"<style>(.*?)</style>", built["html"], flags=re.S))
+    assert (".cf-x{display:-webkit-box;-webkit-box-orient:vertical;"
+            "-webkit-line-clamp:2;") in css
+    assert ".cf.open .cf-x{display:block}" in css
+    body = body_of(built["html"])
+    cards = len(re.findall(r'<span class="cf(?: weak)?">', body))
+    assert cards, "no counterpart in the fixture — the test would prove nothing"
+    assert body.count('<span class="cf-x" role="button" tabindex="0" '
+                      'aria-expanded="false">') == cards
+
+
+@pytest.mark.parametrize("control", ["showTab", "cf-toggle", "toggleCf"])
 def test_every_flow_changing_control_here_relays_the_margin(built, control):
     """Switching tabs swaps one whole document for another and hiding the
     counterparts moves a pane by hundreds of pixels — measured at 871px on a real
-    change. A margin top is an absolute pixel computed once, so both have to
-    re-lay-out the notes or every tie points at the wrong line."""
+    change. Opening one counterpart moves every block below it. A margin top is
+    an absolute pixel computed once, so each has to re-lay-out the notes or
+    every tie points at the wrong line."""
     script = "".join(re.findall(r"<script>(.*?)</script>", built["html"], flags=re.S))
-    if control == "showTab":
-        block = script[script.index("function showTab("):]
+    if control in ("showTab", "toggleCf"):
+        block = script[script.index("function %s(" % control):]
         block = block[:block.index("\n}")]
     else:
         block = script[script.index("cfBtn.onclick"):]

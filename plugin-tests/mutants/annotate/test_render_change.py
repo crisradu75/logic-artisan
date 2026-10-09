@@ -74,6 +74,25 @@ MUTANTS = [
      ".cf-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.56rem;",
      TESTS + [DEV / "tests" / "skills" / "annotate" / "test_render_doc.py"]),
 
+    # ------------------------------------------------ counterpart clamp
+    ("opening a counterpart stops re-laying-out the margin",
+     CHANGE,
+     "  syncMargin();                        // one counterpart just grew or shrank",
+     "  /* nothing */",
+     TESTS),
+
+    ("opening a counterpart re-lays-out the margin only in a branch that never runs",
+     CHANGE,
+     "  syncMargin();                        // one counterpart just grew or shrank",
+     "  if (false) syncMargin();",
+     TESTS),
+
+    ("a counterpart is no longer clamped to two lines",
+     CHANGE,
+     "-webkit-line-clamp:2;overflow:hidden;",
+     "-webkit-line-clamp:none;overflow:hidden;",
+     TESTS),
+
     # ------------------------------------------------ requirement groups
     ("a requirement heading never gets its group label",
      CHANGE,

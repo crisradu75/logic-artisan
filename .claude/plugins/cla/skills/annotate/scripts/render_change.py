@@ -113,6 +113,12 @@ CHANGE_CSS = """
 .cf-go{float:right;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  color:var(--accent);cursor:pointer;opacity:.75}
 .cf-go:hover{opacity:1;text-decoration:underline}
+/* Two lines until asked. Unclamped, a card is about as tall as the bullet it
+   answers, and a proposal with a card under every bullet reads twice as long. */
+.cf-x{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
+ cursor:pointer}
+.cf.open .cf-x{display:block}
+.cf-x:focus-visible{outline-offset:1px}
 body.nocf .cf{display:none}
 .peek{position:absolute;z-index:97;width:min(30rem,92vw);background:var(--paper);
  border:1px solid var(--accent);border-left:3px solid var(--accent);border-radius:3px;
@@ -212,6 +218,32 @@ cfBtn.onclick = () => {
   document.body.classList.toggle('nocf', !on);
   syncMargin();                        // every counterpart just left the flow
 };
+
+/* A counterpart opens to its full text on a click, Enter or Space. Its height
+   changes, so every block below it moves — the same reason as showTab. */
+function toggleCf(cf) {
+  const open = !cf.classList.contains('open');
+  cf.classList.toggle('open', open);
+  const x = cf.querySelector('.cf-x');
+  if (x) x.setAttribute('aria-expanded', String(open));
+  syncMargin();                        // one counterpart just grew or shrank
+}
+document.addEventListener('click', e => {
+  const cf = e.target.closest('.cf');
+  if (!cf || e.target.closest('.cf-go')) return;
+  // A drag that selected text inside the card ends in a click; that reader was
+  // selecting, not asking for the card to change size under the selection.
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) return;
+  toggleCf(cf);
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const x = e.target.closest && e.target.closest('.cf-x');
+  if (!x) return;
+  e.preventDefault();
+  toggleCf(x.closest('.cf'));
+});
 
 let peek = null;
 function closePeek() { if (peek) { peek.remove(); peek = null; } }
@@ -531,7 +563,8 @@ def counterparts(model, bodies, ctxs, labels):
             cards += ('<span class="cf%s"><span class="cf-h">%s '
                       '<span class="cf-why">%s %s</span>'
                       '<span class="cf-go" data-go-blk="%s">open in tab →</span>'
-                      '</span>%s</span>'
+                      '</span><span class="cf-x" role="button" tabindex="0" '
+                      'aria-expanded="false">%s</span></span>'
                       % (" weak" if weak else "", esc_attr(label),
                          link["kind"], esc_attr(link["why"][:60]),
                          esc_attr(other["blk"]), excerpt))
