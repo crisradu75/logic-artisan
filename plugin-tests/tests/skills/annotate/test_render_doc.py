@@ -881,6 +881,33 @@ def test_the_muted_and_mark_colours_clear_wcag_aa_on_every_surface(doc_page):
                 assert r >= 4.5, "%s %s on %s is %.2f:1" % (selector, ink, ground, r)
 
 
+def test_the_danger_colour_clears_wcag_aa_on_every_surface(doc_page, change_page):
+    """The change page reads --danger as TEXT — a deleted word in a requirement's
+    diff, a REMOVED label — so it answers to the same 4.5:1 as --muted. It is
+    declared in the change page's own `:root{--danger:…}` lines, after
+    render_doc's palette, so it needs its own parse: the shared `palette()` above
+    finds the first `:root{` block, which is render_doc's."""
+    doc_css = "".join(re.findall(r"<style>(.*?)</style>", doc_page, flags=re.S))
+    css = "".join(re.findall(r"<style>(.*?)</style>", change_page, flags=re.S))
+
+    def palette(selector):
+        block = re.search(re.escape(selector) + r"\{([^}]*)\}", doc_css).group(1)
+        return dict(re.findall(r"(--[a-z0-9-]+):(#[0-9A-Fa-f]{6})", block))
+
+    for selector in (":root", ':root[data-theme="dark"]'):
+        danger = re.search(re.escape(selector) + r"\{--danger:(#[0-9A-Fa-f]{6})\}", css)
+        assert danger, "no %s{--danger:…} on the change page" % selector
+        p = palette(selector)
+        for ground in ("--paper", "--ground", "--sunk"):
+            r = _ratio(danger.group(1), p[ground])
+            assert r >= 4.5, "%s --danger on %s is %.2f:1" % (selector, ground, r)
+        # The coverage badge is the other way round: the paper on --danger in
+        # dark mode, white in light mode.
+        on = "#FFFFFF" if selector == ":root" else p["--paper"]
+        r = _ratio(on, danger.group(1))
+        assert r >= 4.5, "%s the coverage badge's text on --danger is %.2f:1" % (selector, r)
+
+
 def test_the_favicon_carries_the_same_two_accents_as_the_stylesheet(doc_page):
     """The favicon is base64'd into a data URI and never sees a CSS variable, so
     its two fills are hand-copied. `.b` was left at the old --mark when --mark

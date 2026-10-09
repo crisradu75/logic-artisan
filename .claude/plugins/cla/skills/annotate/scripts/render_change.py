@@ -55,7 +55,7 @@ CHANGE_CSS = """
 .tab-n{font-variant-numeric:tabular-nums;background:var(--mark-wash);color:var(--mark);
  border-radius:999px;padding:.02rem .34rem;font-size:0.69rem;min-width:1rem;text-align:center}
 :root{--danger:#B3261E}
-:root[data-theme="dark"]{--danger:#E5534B}
+:root[data-theme="dark"]{--danger:#E85D55}
 .tab-gap{flex:none;width:1px;align-self:center;height:1.1rem;background:var(--rule);margin:0 .7rem}
 .tab-cov{border:1px dashed var(--accent-2)!important;border-radius:999px!important;
  color:var(--accent);background:var(--accent-wash);padding:.34rem .75rem;
@@ -65,6 +65,11 @@ CHANGE_CSS = """
  border-color:var(--accent)!important;color:var(--paper);box-shadow:none}
 .cov-glyph{font-size:.72rem;line-height:1;opacity:.85}
 .tab-n-cov,.tab-cov.on .tab-n-cov{background:var(--danger);color:#fff}
+/* Dark --danger is light enough to read as TEXT on every dark surface, so white
+   on it falls short of 4.5:1 and the dark paper does not. The command that
+   measures both is the test:
+     python3 -m pytest plugin-tests/tests/skills/annotate/test_render_doc.py -k wcag */
+:root[data-theme="dark"] .tab-n-cov,:root[data-theme="dark"] .tab-cov.on .tab-n-cov{color:var(--paper)}
 .rail-n-danger{color:var(--danger)}
 .pane{display:none}
 .pane.on{display:block}
@@ -142,6 +147,19 @@ h3[data-group="REMOVED"]::before{border-color:var(--danger);color:var(--danger)}
 .req-removed h3{text-decoration:line-through;text-decoration-thickness:1px}
 .req-removed .rm-why{color:var(--ink-2);border-left:2px solid var(--danger);padding-left:.7rem}
 .req-removed .rm-why strong{color:var(--ink-2)}
+/* A MODIFIED requirement's diff against the main spec: a sibling under its
+   heading, like a counterpart, so none of its words are counted into a block.
+   --danger is read as TEXT here, so it answers to the same 4.5:1 as --muted. */
+.rd{margin:.2rem 0 1rem;border-left:2px solid var(--rule);padding:.35rem .7rem;
+ font-size:.86rem;line-height:1.55;color:var(--ink-2)}
+.rd-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
+ letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:.2rem}
+.rd-note .rd-h{margin:0;text-transform:none;letter-spacing:.02em}
+.rd-t{margin:0}
+.rd-del{color:var(--danger);text-decoration:line-through;text-decoration-thickness:1px}
+.rd-ins{color:var(--accent);background:var(--accent-wash);text-decoration:underline;
+ text-decoration-thickness:1px;text-underline-offset:2px;border-radius:2px;padding:0 .1em}
+.rd-gap{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.72rem;color:var(--muted)}
 @keyframes flash{0%{background:var(--accent-wash)}100%{background:transparent}}
 .flash{animation:flash 1.6s ease-out}
 
@@ -577,6 +595,91 @@ def counterparts(model, bodies, ctxs, labels):
     return bodies
 
 
+def is_archived(change_dir):
+    """Whether the change sits in `openspec/changes/archive/`."""
+    parts = os.path.normpath(os.path.abspath(change_dir)).split(os.sep)
+    return len(parts) >= 3 and parts[-2] == "archive" and parts[-3] == "changes"
+
+
+def main_spec_path(root, cap):
+    return os.path.join(root, "openspec", "specs", cap, "spec.md")
+
+
+def read_main_specs(root, caps):
+    """`{capability: text}` for each main spec, None where there is none, and the
+    exception where one exists and cannot be read.
+
+    A main spec that cannot be read becomes a note on its requirement rather
+    than a failed build: the change's own files are what the page is for, and
+    the server's rebuild only reports OSError, UnicodeDecodeError and
+    ChangeUnreadable — anything else would reach the reader as "Failed to
+    fetch". Main specs are never added to the page's files, so they never
+    become tabs and never count toward "N files".
+    """
+    out = {}
+    for cap in caps:
+        p = main_spec_path(root, cap)
+        if not os.path.isfile(p):
+            out[cap] = None
+            continue
+        try:
+            with open(p, "r", encoding="utf-8") as fh:
+                out[cap] = fh.read()
+        except UnicodeDecodeError as e:
+            out[cap] = ValueError("not valid UTF-8 (%s at byte %d)" % (e.reason, e.start))
+        except OSError as e:
+            out[cap] = e
+    return out
+
+
+def _diff_note(rec):
+    spec = "openspec/specs/%s/spec.md" % rec["cap"]
+    return {
+        "archived": "no base · this change is archived, and archiving wrote its "
+                    "text into %s, so the text it replaced is gone. Not the same "
+                    "as unchanged." % spec,
+        "no-main-spec": "no base · %s does not exist" % spec,
+        "unreadable": "no base · %s could not be read: %s" % (spec, rec["why"]),
+        "not-in-main": "no base · %s has no requirement with this name" % spec,
+        "same": "unchanged · the same text as %s" % spec,
+    }[rec["state"]]
+
+
+def diff_markup(rec):
+    """One requirement's card: its word diff against the main spec, or the note
+    saying why there is none. `rd-del`/`rd-ins`, not `<del>`/`<ins>`, which the
+    document's own markdown already uses."""
+    if rec["state"] != "diff":
+        return ('<div class="rd rd-note"><span class="rd-h">%s</span></div>'
+                % html.escape(_diff_note(rec), quote=False))
+    parts = []
+    for tag, words in rec["ops"]:
+        if tag == "gap":
+            parts.append('<span class="rd-gap">… %d unchanged word%s …</span>'
+                         % (words, "" if words == 1 else "s"))
+            continue
+        text = html.escape(" ".join(words), quote=False)
+        parts.append(text if tag == "eq" else
+                     '<span class="rd-%s">%s</span>' % (tag, text))
+    return ('<div class="rd"><span class="rd-h">changes against '
+            'openspec/specs/%s/spec.md</span><p class="rd-t">%s</p></div>'
+            % (html.escape(rec["cap"], quote=False), " ".join(parts)))
+
+
+def diff_cards(model, bodies, ctxs):
+    """Put each MODIFIED requirement's diff card under its heading — a sibling,
+    placed with `after_block`, for the reason `counterparts` gives."""
+    by_id = {c["id"]: c for c in model["claims"]}
+    for cid, rec in model.get("diffs", {}).items():
+        c = by_id.get(cid)
+        ctx = ctxs.get(c["file"]) if c else None
+        blk = heading_blk(ctx, c) if ctx else None
+        if not blk:
+            continue
+        bodies[c["file"]] = after_block(bodies[c["file"]], blk, diff_markup(rec))
+    return bodies
+
+
 def coverage_pane(model, labels):
     cov = model["coverage"]
     st = cov["stats"]
@@ -682,9 +785,15 @@ def build(change_dir, root=None, out=None):
         bodies[key], ctxs[key] = R.render_document(
             texts[key], os.path.dirname(path), prefix=key + ":")
 
-    model = OC.build(change_dir, texts)
+    archived = is_archived(change_dir)
+    caps = [k[len("spec-"):] for k in texts if k.startswith("spec-")]
+    # An archived change is never compared — see OC.requirement_diffs — so its
+    # main specs are not even read.
+    main_specs = {} if archived else read_main_specs(root, caps)
+    model = OC.build(change_dir, texts, main_specs, archived)
     bind_claims(model, ctxs)
     bodies = counterparts(model, bodies, ctxs, labels)
+    bodies = diff_cards(model, bodies, ctxs)
     bodies = mark_groups(model, bodies, ctxs)
 
     change_key = store.doc_key(change_dir, root)

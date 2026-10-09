@@ -52,6 +52,7 @@ Every row states what was looked for, because the reader is the one who can tell
 the difference. Re-measure with `sweep_changes.py` before trusting any of this in
 a repo whose changes are written differently.
 """
+import difflib
 import os
 import re
 
@@ -700,8 +701,132 @@ def capability_coverage(caps, texts, claims):
     return rows
 
 
-def build(change_dir, texts):
-    """Everything the page needs. `texts` maps a file key to its raw markdown."""
+# ---------------------------------------------------------------- requirement diffs
+
+
+# A body runs to the next requirement or group heading. Scenarios are `####`, so
+# they stay inside the requirement they belong to.
+_BODY_END_RE = re.compile(r"^#{2,3}\s")
+
+# Unchanged runs longer than this collapse, keeping DIFF_CONTEXT words on each
+# side that faces a change.
+DIFF_COLLAPSE = 12
+DIFF_CONTEXT = 6
+
+DIFF_STATES = ("archived", "no-main-spec", "unreadable", "not-in-main", "same", "diff")
+
+
+def _norm_name(name):
+    return " ".join(strip_md(name).lower().split())
+
+
+def _body_words(lines):
+    """The words of a requirement body as a reader sees them: list markers and
+    scenario hashes off, inline markup stripped."""
+    out = []
+    for line in lines:
+        line = re.sub(r"^\s*(?:#{1,6}\s+|[-*]\s+)", "", line)
+        out += strip_md(line).split()
+    return out
+
+
+def _body_at(lines, start):
+    """The lines after the heading on line index `start`, to the next `##`/`###`."""
+    body = []
+    for line in lines[start + 1:]:
+        if _BODY_END_RE.match(line):
+            break
+        body.append(line)
+    return body
+
+
+def requirement_bodies(text):
+    """`{normalised name: (name, body words)}` for every `### Requirement:` in a
+    spec. The first one wins if a name repeats, which a valid spec never does."""
+    lines = (text or "").replace("\r\n", "\n").split("\n")
+    out = {}
+    for i, line in enumerate(lines):
+        m = REQ_RE.match(line)
+        if m:
+            out.setdefault(_norm_name(m.group(1)), (m.group(1), _body_words(_body_at(lines, i))))
+    return out
+
+
+def _word_ops(base, new):
+    """[(tag, words)] with tag `eq`, `del` or `ins`, and `gap` carrying the number
+    of unchanged words a long run collapsed. `autojunk=False`, because the
+    heuristic treats any word in more than 1% of a 200-word body — "the",
+    "SHALL" — as junk and then matches around it."""
+    sm = difflib.SequenceMatcher(None, base, new, autojunk=False)
+    codes = sm.get_opcodes()
+    ops = []
+    for k, (tag, i1, i2, j1, j2) in enumerate(codes):
+        if tag == "equal":
+            run = base[i1:i2]
+            first, last = k == 0, k == len(codes) - 1
+            if len(run) <= DIFF_COLLAPSE:
+                ops.append(("eq", run))
+                continue
+            head = [] if first else run[:DIFF_CONTEXT]
+            tail = [] if last else run[-DIFF_CONTEXT:]
+            if head:
+                ops.append(("eq", head))
+            ops.append(("gap", len(run) - len(head) - len(tail)))
+            if tail:
+                ops.append(("eq", tail))
+            continue
+        if tag in ("delete", "replace"):
+            ops.append(("del", base[i1:i2]))
+        if tag in ("insert", "replace"):
+            ops.append(("ins", new[j1:j2]))
+    return ops
+
+
+def requirement_diffs(claims, texts, main_specs, archived):
+    """`{claim id: {"state", "ops", "cap", "why"}}` for every MODIFIED
+    requirement: how its new text differs from the main spec's.
+
+    Reads no files — `main_specs` maps a capability to its main spec's text, to
+    None when there is none, or to the exception that stopped it being read.
+    `archived` wins over everything: archiving writes a change's requirements
+    into the main spec, so for an archived change the main spec already holds
+    the NEW text and comparing against it would report every requirement
+    unchanged, which is false.
+    """
+    out = {}
+    for c in claims:
+        if c["kind"] != "requirement" or c.get("group") != "MODIFIED":
+            continue
+        cap = c["file"][len("spec-"):]
+        rec = {"state": "", "ops": [], "cap": cap, "why": ""}
+        out[c["id"]] = rec
+        if archived:
+            rec["state"] = "archived"
+            continue
+        base_text = main_specs.get(cap)
+        if base_text is None:
+            rec["state"] = "no-main-spec"
+            continue
+        if not isinstance(base_text, str):
+            rec["state"], rec["why"] = "unreadable", str(base_text)
+            continue
+        base = requirement_bodies(base_text).get(_norm_name(c["raw"]))
+        if base is None:
+            rec["state"] = "not-in-main"
+            continue
+        lines = texts.get(c["file"], "").replace("\r\n", "\n").split("\n")
+        new = _body_words(_body_at(lines, c["line"] - 1))
+        if base[1] == new:
+            rec["state"] = "same"
+            continue
+        rec["state"], rec["ops"] = "diff", _word_ops(base[1], new)
+    return out
+
+
+def build(change_dir, texts, main_specs=None, archived=False):
+    """Everything the page needs. `texts` maps a file key to its raw markdown;
+    `main_specs`, when given, maps a capability to its main spec's text (see
+    `requirement_diffs`), and only then are MODIFIED requirements diffed."""
     caps = capabilities(texts.get("proposal", ""))
     claims = []
     claims += promises(texts.get("proposal", ""))
@@ -719,4 +844,7 @@ def build(change_dir, texts):
     cov["stats"].update(stats)
     cov["stats"]["change"] = os.path.basename(change_dir)
     cov["stats"]["files"] = len(texts)
-    return {"claims": claims, "links": links, "capabilities": caps, "coverage": cov}
+    diffs = ({} if main_specs is None
+             else requirement_diffs(claims, texts, main_specs, archived))
+    return {"claims": claims, "links": links, "capabilities": caps, "coverage": cov,
+            "diffs": diffs}

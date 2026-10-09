@@ -93,6 +93,31 @@ MUTANTS = [
      "-webkit-line-clamp:none;overflow:hidden;",
      TESTS),
 
+    # ------------------------------------------------ requirement diffs
+    ("a diff card lands inside its heading, so its words count into the block",
+     CHANGE,
+     '        bodies[c["file"]] = after_block(bodies[c["file"]], blk, diff_markup(rec))',
+     '        bodies[c["file"]] = inside_block(bodies[c["file"]], blk, diff_markup(rec))',
+     TESTS),
+
+    ("an archived change is never recognised as archived",
+     CHANGE,
+     '    return len(parts) >= 3 and parts[-2] == "archive" and parts[-3] == "changes"',
+     "    return False",
+     TESTS),
+
+    ("a main spec that is not UTF-8 fails the whole build",
+     CHANGE,
+     "        except UnicodeDecodeError as e:",
+     "        except KeyError as e:",
+     TESTS),
+
+    ("dark-mode --danger goes back to a red that fails AA on the drawer's ground",
+     CHANGE,
+     ':root[data-theme="dark"]{--danger:#E85D55}',
+     ':root[data-theme="dark"]{--danger:#E5534B}',
+     TESTS + [DEV / "tests" / "skills" / "annotate" / "test_render_doc.py"]),
+
     # ------------------------------------------------ requirement groups
     ("a requirement heading never gets its group label",
      CHANGE,

@@ -330,6 +330,118 @@ def test_a_mention_with_no_delta_adds_no_row():
     assert m["coverage"]["capabilities"] == []
 
 
+# ---------------------------------------------------------------- requirement diffs
+
+
+DIFF_DELTA = """# Delta: cla-plugin
+
+## ADDED Requirements
+
+### Requirement: Something new
+
+The page SHALL do a new thing.
+
+## MODIFIED Requirements
+
+### Requirement: Project-data scaffolding
+
+The setup SHALL write one facts file and SHALL ask before overwriting it.
+
+#### Scenario: A fresh repo
+
+- **WHEN** setup runs
+- **THEN** one file is written
+
+## REMOVED Requirements
+
+### Requirement: Sync provenance lockfile
+
+**Reason**: Gone.
+"""
+
+MAIN_SPEC = """# cla-plugin Specification
+
+## Requirements
+
+### Requirement: Project-data scaffolding
+
+The setup SHALL write two facts files and SHALL ask before overwriting it.
+
+#### Scenario: A fresh repo
+
+- **WHEN** setup runs
+- **THEN** one file is written
+
+### Requirement: Sync provenance lockfile
+
+Old.
+"""
+
+
+def _diffs(main_specs, archived=False, delta=DIFF_DELTA):
+    m = OC.build("demo", {"proposal": PROPOSAL, "spec-cla-plugin": delta},
+                 main_specs, archived)
+    return list(m["diffs"].values())
+
+
+def test_only_a_modified_requirement_gets_a_diff():
+    recs = _diffs({"cla-plugin": MAIN_SPEC})
+    assert len(recs) == 1 and recs[0]["cap"] == "cla-plugin"
+
+
+def test_a_changed_word_shows_as_a_deletion_and_an_insertion():
+    rec = _diffs({"cla-plugin": MAIN_SPEC})[0]
+    assert rec["state"] == "diff"
+    assert ("del", ["two"]) in rec["ops"] and ("ins", ["one"]) in rec["ops"]
+    assert ("del", ["files"]) in rec["ops"] and ("ins", ["file"]) in rec["ops"]
+    # The deletion is the MAIN spec's word: base and new are not interchangeable.
+    assert ("del", ["one"]) not in rec["ops"]
+
+
+def test_an_unchanged_requirement_is_reported_same():
+    same = MAIN_SPEC.replace("two facts files", "one facts file")
+    rec = _diffs({"cla-plugin": same})[0]
+    assert rec["state"] == "same" and rec["ops"] == []
+
+
+def test_a_long_unchanged_run_collapses_to_context_either_side():
+    words = " ".join("w%d" % i for i in range(40))
+    base = "## Requirements\n\n### Requirement: Project-data scaffolding\n\nA %s Z\n" % words
+    new = "## MODIFIED Requirements\n\n### Requirement: Project-data scaffolding\n\nB %s Y\n" % words
+    rec = _diffs({"cla-plugin": base}, delta=new)[0]
+    tags = [t for t, _w in rec["ops"]]
+    assert tags == ["del", "ins", "eq", "gap", "eq", "del", "ins"]
+    assert rec["ops"][2][1] == ["w0", "w1", "w2", "w3", "w4", "w5"]
+    assert rec["ops"][3][1] == 28
+    assert rec["ops"][4][1] == ["w34", "w35", "w36", "w37", "w38", "w39"]
+
+
+def test_no_main_spec_and_no_matching_requirement_are_their_own_states():
+    assert _diffs({})[0]["state"] == "no-main-spec"
+    assert _diffs({"cla-plugin": None})[0]["state"] == "no-main-spec"
+    other = MAIN_SPEC.replace("Project-data scaffolding", "Something else")
+    assert _diffs({"cla-plugin": other})[0]["state"] == "not-in-main"
+
+
+def test_an_unreadable_main_spec_is_reported_not_raised():
+    rec = _diffs({"cla-plugin": ValueError("not valid UTF-8")})[0]
+    assert rec["state"] == "unreadable" and "UTF-8" in rec["why"]
+
+
+def test_an_archived_change_is_never_compared():
+    """Archiving wrote the new text into the main spec, so a comparison would
+    report every requirement unchanged — which is false. `archived` is checked
+    before anything else."""
+    same = MAIN_SPEC.replace("two facts files", "one facts file")
+    for main in ({"cla-plugin": same}, {"cla-plugin": MAIN_SPEC}, {},
+                 {"cla-plugin": ValueError("x")}):
+        assert _diffs(main, archived=True)[0]["state"] == "archived"
+
+
+def test_no_main_specs_means_no_diffs():
+    assert OC.build("demo", TEXTS)["diffs"] == {}
+
+
 def test_stats_report_what_was_read(model):
     st = model["coverage"]["stats"]
     assert st["files"] == 4 and st["promises"] == 3

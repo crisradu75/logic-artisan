@@ -35,4 +35,29 @@ MUTANTS = [
      '    return re.search(pattern, text or "", re.I) is not None',
      '    return re.search(pattern, text or "", 0) is not None',
      TESTS),
+
+    # ------------------------------------------------ requirement diffs
+    ("a diff deletes the new words and inserts the main spec's",
+     OC,
+     '        rec["state"], rec["ops"] = "diff", _word_ops(base[1], new)',
+     '        rec["state"], rec["ops"] = "diff", _word_ops(new, base[1])',
+     TESTS),
+
+    ("an archived change is compared against the main spec it already wrote",
+     OC,
+     "        if archived:",
+     "        if False:",
+     TESTS),
+
+    ("a long unchanged run is never collapsed",
+     OC,
+     "            if len(run) <= DIFF_COLLAPSE:",
+     "            if True:",
+     TESTS),
+
+    ("an unreadable main spec is treated as text",
+     OC,
+     "        if not isinstance(base_text, str):",
+     "        if False:",
+     TESTS),
 ]

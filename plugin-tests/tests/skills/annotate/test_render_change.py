@@ -491,6 +491,89 @@ def test_add_attr_replaces_rather_than_duplicates():
     assert out.count("data-group=") == 1 and 'data-group="REMOVED"' in out
 
 
+# ---------------------------------------------------------------- requirement diffs
+
+
+MAIN_SPEC = """# cla-plugin Specification
+
+## Requirements
+
+### Requirement: Project-data scaffolding
+
+Old words here.
+"""
+
+
+def _main_spec(change, data):
+    d = os.path.join(change["root"], "openspec", "specs", "cla-plugin")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "spec.md"), "wb") as fh:
+        fh.write(data)
+
+
+def _rebuild(change, tmp_path, name="diff.html"):
+    path, model, ctxs = RC.build(change["dir"], change["root"], str(tmp_path / name))
+    return io.open(path, encoding="utf-8").read(), model, ctxs
+
+
+def _req_heading(ctxs):
+    ctx = ctxs["spec-cla-plugin"]
+    return [b for b, t in ctx.blocks.items() if t == "Requirement: Project-data scaffolding"][0]
+
+
+def test_a_modified_requirement_shows_its_diff_under_its_heading(change, tmp_path):
+    _main_spec(change, MAIN_SPEC.encode("utf-8"))
+    html_str, _model, ctxs = _rebuild(change, tmp_path)
+    body = body_of(html_str)
+    blk = _req_heading(ctxs)
+    # Directly after the heading, as a sibling of it.
+    after = body[body.index('data-blk="%s"' % blk):]
+    after = after[after.index("</h3>") + len("</h3>"):]
+    assert after.startswith('<div class="rd">'), after[:120]
+    card = after[:after.index("</div>")]
+    assert '<span class="rd-del">Old words here.</span>' in card
+    assert '<span class="rd-ins">Text.</span>' in card
+    assert block_text(body, blk) == " ".join(ctxs["spec-cla-plugin"].blocks[blk].split())
+
+
+def test_a_main_spec_is_not_a_tab_and_not_a_file(change, tmp_path):
+    _main_spec(change, MAIN_SPEC.encode("utf-8"))
+    html_str, _model, _ctxs = _rebuild(change, tmp_path)
+    assert re.search(r"4 files · \d+ blocks", html_str)
+    assert "Old words here" not in "".join(re.findall(r'data-tab="[^"]+"', html_str))
+
+
+def test_an_unreadable_main_spec_still_builds_and_says_so(change, tmp_path):
+    _main_spec(change, b"## Requirements\n\n\xff\xfe broken\n")
+    html_str, model, _ctxs = _rebuild(change, tmp_path)
+    assert [r["state"] for r in model["diffs"].values()] == ["unreadable"]
+    assert '<div class="rd rd-note">' in html_str
+    assert "could not be read: not valid UTF-8" in html_str
+
+
+def test_an_archived_change_shows_no_base_rather_than_unchanged(tmp_path):
+    (tmp_path / ".git").mkdir()
+    d = tmp_path / "openspec" / "changes" / "archive" / "2026-01-01-demo"
+    (d / "specs" / "cla-plugin").mkdir(parents=True)
+    (d / "proposal.md").write_text(PROPOSAL, encoding="utf-8")
+    (d / "specs" / "cla-plugin" / "spec.md").write_text(SPEC, encoding="utf-8")
+    # The main spec holds the archived change's own text, as archiving leaves it.
+    main = tmp_path / "openspec" / "specs" / "cla-plugin"
+    main.mkdir(parents=True)
+    (main / "spec.md").write_text(SPEC.replace("## MODIFIED Requirements", "## Requirements"),
+                                  encoding="utf-8")
+    assert RC.is_archived(str(d))
+    path, model, _c = RC.build(str(d), str(tmp_path), str(tmp_path / "a.html"))
+    html_str = io.open(path, encoding="utf-8").read()
+    assert [r["state"] for r in model["diffs"].values()] == ["archived"]
+    assert "no base · this change is archived" in html_str
+    assert "unchanged · " not in html_str
+
+
+def test_an_active_change_is_not_archived(change):
+    assert not RC.is_archived(change["dir"])
+
+
 def test_a_counterpart_is_clamped_to_two_lines_until_opened(built):
     css = "".join(re.findall(r"<style>(.*?)</style>", built["html"], flags=re.S))
     assert (".cf-x{display:-webkit-box;-webkit-box-orient:vertical;"
