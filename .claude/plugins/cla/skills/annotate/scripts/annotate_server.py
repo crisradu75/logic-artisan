@@ -638,7 +638,20 @@ def open_app_window(url, profile_dir):
     return None
 
 
+def profile_dir(pages):
+    """The app window's browser profile: beside `pages`, never inside it.
+    `pages` is the HTTP document root, and SimpleHTTPRequestHandler serves that
+    tree with directory listings and no hidden-file filter, so a profile in it
+    put the window's cookies, local storage and history up for fetching."""
+    return os.path.join(os.path.dirname(pages.rstrip("\\/")) or pages,
+                        "cla-annotate-profile")
+
+
 def main(argv=None):
+    # It prints document names, rebuild summaries and lost anchors; see
+    # render_html.use_utf8_stdout.
+    import render_html
+    render_html.use_utf8_stdout()
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("document",
                     help="a .md/.txt file, an OpenSpec change directory, or a change id")
@@ -737,11 +750,7 @@ def main(argv=None):
     print("stop with ctrl-c")
 
     if not a.no_open:
-        # Outside `pages`, which is the HTTP document root: SimpleHTTPRequestHandler
-        # serves that tree with directory listings and no hidden-file filter, so
-        # the app window's cookies, local storage and history were fetchable.
-        prof = os.path.join(os.path.dirname(pages.rstrip("\\/")) or pages,
-                            "cla-annotate-profile")
+        prof = profile_dir(pages)
 
         def launch():
             if not a.tab and open_app_window(url, prof):

@@ -28,6 +28,7 @@ import html
 import io
 import itertools
 import os
+import re
 import sys
 
 import annotations_store as store
@@ -415,9 +416,14 @@ def heading_lookup(ctx, claim):
     """
     if ctx is None:
         return None, "heading not found"
-    name = OC.strip_md(OC._norm_name(claim.get("raw") or claim["text"]))
-    want = " ".join(("Requirement: " + name).split())
-    hits = [b for b, t in ctx.blocks.items() if " ".join(t.split()) == want]
+    name = " ".join(OC.strip_md(OC._norm_name(claim.get("raw") or claim["text"])).split())
+
+    def is_heading(text):
+        # The word in any case, as OpenSpec's header pattern accepts it.
+        m = re.match(r"(?i)requirement:\s*(.*)$", " ".join(text.split()))
+        return bool(m) and m.group(1) == name
+
+    hits = [b for b, t in ctx.blocks.items() if is_heading(t)]
     if len(hits) == 1:
         return hits[0], None
     return None, "heading not found" if not hits else "heading not unique"
@@ -446,8 +452,9 @@ def mark_groups(model, bodies, ctxs):
 
     The label is an attribute the stylesheet draws with `::before`, so the
     heading's text — what every annotation offset is counted against — does not
-    change. A REMOVED requirement's own section, and each section below it whose
-    heading is deeper than level 3 (its scenarios), are marked `req-removed`.
+    change. A REMOVED requirement's own section, and each section directly below
+    it until the next heading of level 3 or above (its scenarios), are marked
+    `req-removed`.
     Its `Reason` and `Migration` blocks are the blocks in those sections whose
     text starts with either word — found within the sections, never by
     searching the page, because changes repeat the same reason word for word.
@@ -639,9 +646,10 @@ def counterparts(model, bodies, ctxs, labels):
 
 
 def _path_parts(change_dir):
-    """The folder's path split into parts, case-folded where the file system
-    folds case (`os.path.normcase`: Windows), so `Changes\\Archive` is
-    `changes/archive` there and nowhere else."""
+    """The folder's path split into parts, case-folded by `os.path.normcase`,
+    which folds case on Windows only — so `Changes\\Archive` is
+    `changes/archive` on Windows and stays as written elsewhere, including on a
+    case-insensitive macOS volume."""
     return os.path.normcase(os.path.normpath(os.path.abspath(change_dir))).split(os.sep)
 
 
@@ -1118,6 +1126,11 @@ def build(change_dir, root=None, out=None):
 
 
 def main(argv=None):
+    # This prints requirement names and claim text. On Windows a piped stdout
+    # is the locale codepage, and one `ț` in a heading raised
+    # UnicodeEncodeError after the page was already written.
+    import render_html
+    render_html.use_utf8_stdout()
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("change", help="a change id, or the path to its directory")
     ap.add_argument("--root", help="repo root (default: resolved from git)")

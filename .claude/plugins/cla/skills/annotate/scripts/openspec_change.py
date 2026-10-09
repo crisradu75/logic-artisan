@@ -100,7 +100,7 @@ IDENT_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.\-]+)`")
 BACKTICK_RE = re.compile(r"`([^`]+)`")
 # OpenSpec 1.14.1's own task line (`TASK_LINE_PATTERN` in
 # dist/utils/task-progress.js), so this page counts exactly the tasks
-# `openspec status` and `archive` count: any CommonMark list marker (`-`, `*`,
+# `openspec list` and `archive` count: any CommonMark list marker (`-`, `*`,
 # `+`, `1.`, `1)`), a box holding at most one mark, and a box that a `(` or `[`
 # does not follow — `- [A](url)` and `- [1][ref]` are links — unless the box is
 # whitespace only. Done means the mark, lower-cased, is `x`. Every line counts,
@@ -109,8 +109,38 @@ TASK_RE = re.compile(r"^\s*(?:[-*+]|\d{1,9}[.)])\s*\[(?:\s*([^\]\s]?)\s*\](?![(\
                      r"\s*(\d+(?:\.\d+)*)?\s*(.*)")
 BULLET_RE = re.compile(r"^\s{0,3}[-*]\s+(.*)$")
 DECISION_RE = re.compile(r"^\s{0,3}(\d+)\.\s+(.*)$")
-REQ_RE = re.compile(r"^###\s+Requirement:\s*(.+?)\s*$")
-REQ_GROUP_RE = re.compile(r"^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$")
+# OpenSpec 1.14.1's requirement header (REQUIREMENT_HEADER_REGEX in
+# dist/core/parsers/requirement-blocks.js): `###`, optional space, the word in
+# any case. Its group headings are matched case-insensitively too.
+REQ_RE = re.compile(r"^###\s*Requirement:\s*(.+?)\s*$", re.I)
+REQ_GROUP_RE = re.compile(r"^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$", re.I)
+_FENCE_OPEN_RE = re.compile(r"^\s*(`{3,}|~{3,})")
+_FENCE_CLOSE_RE = re.compile(r"^\s*(`{3,}|~{3,})\s*$")
+
+
+def fence_mask(lines):
+    """True for each line inside a fenced code block, fence lines included —
+    OpenSpec's `buildCodeFenceMask` (dist/core/parsers/code-fence.js). A
+    requirement or group heading shown inside an example is not one."""
+    mask, active = [False] * len(lines), None
+    for i, line in enumerate(lines):
+        if active is None:
+            m = _FENCE_OPEN_RE.match(line)
+            if m:
+                active = (m.group(1)[0], len(m.group(1)))
+                mask[i] = True
+            continue
+        mask[i] = True
+        m = _FENCE_CLOSE_RE.match(line)
+        if m and m.group(1)[0] == active[0] and len(m.group(1)) >= active[1]:
+            active = None
+    return mask
+
+
+def _lines(text):
+    """A markdown file's lines as OpenSpec reads them: a leading byte-order mark
+    dropped, every line ending normalised."""
+    return (text or "").lstrip(chr(0xFEFF)).replace("\r\n", "\n").replace("\r", "\n").split("\n")
 DECISION_REF_RE = re.compile(r"\b(?:design\s+)?decision\s+(\d+)\b", re.I)
 TASK_REF_RE = re.compile(r"\btask\s+(\d+(?:\.\d+)+)\b", re.I)
 
@@ -180,6 +210,20 @@ def find_change(target, root):
     return None
 
 
+def _inside(path, root):
+    """Whether `path` is `root` or below it. Paths on two drives are not."""
+    try:
+        return os.path.commonpath([path, root]) == root
+    except ValueError:
+        return False
+
+
+def _is_link(path):
+    """A symlink or a Windows junction: anything whose real path is elsewhere."""
+    return (os.path.normcase(os.path.realpath(path))
+            != os.path.normcase(os.path.abspath(path)))
+
+
 def change_files(change_dir):
     """[(key, label, absolute path)] in the fixed order, existing files only."""
     out = []
@@ -193,7 +237,7 @@ def change_files(change_dir):
     #
     # A folder that cannot be listed is refused, never skipped: a delta silently
     # left out of the page is a tab the reader never knows to look for. Linked
-    # folders are followed, as a checkout may link a capability in, and each real
+    # folders are followed only while they resolve inside specs/, and each real
     # folder is visited once so a link cycle ends.
     specs = os.path.join(change_dir, "specs")
     found = []
@@ -203,12 +247,18 @@ def change_files(change_dir):
 
     seen = set()
     walk = os.walk(specs, onerror=refuse, followlinks=True) if os.path.isdir(specs) else ()
+    root_real = os.path.normcase(os.path.realpath(specs))
     for dirpath, dirs, names in walk:
-        real = os.path.realpath(dirpath)
-        if real in seen:
+        real = os.path.normcase(os.path.realpath(dirpath))
+        # A link that leads out of specs/ is not part of this change: its
+        # folder may hold another change's deltas, or anything else.
+        if real in seen or not _inside(real, root_real):
             dirs[:] = []
             continue
         seen.add(real)
+        # Real folders before linked ones, so a link to a folder already under
+        # specs/ is the copy that gets skipped, never the folder's own name.
+        dirs.sort(key=lambda n: (_is_link(os.path.join(dirpath, n)), n))
         if "spec.md" in names and os.path.abspath(dirpath) != os.path.abspath(specs):
             cap = os.path.relpath(dirpath, specs).replace(os.sep, "/")
             found.append((cap, os.path.join(dirpath, "spec.md")))
@@ -298,9 +348,13 @@ def tasks(text):
     """Every task line `TASK_RE` matches, with its done state and its `## N.`
     group. A line counts as a task here exactly when OpenSpec 1.14.1 counts it,
     and is done exactly when OpenSpec calls it done: the mark is `x` in either
-    case. Every other mark is a task not yet done."""
+    case. Every other mark is a task not yet done.
+
+    A leading byte-order mark is dropped first: OpenSpec's `\\s` matches it, so
+    a first task line behind one still counts there. Lines inside a code fence
+    count, as they do in OpenSpec (dist/utils/task-progress.js)."""
     out, group = [], ""
-    for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+    for n, line in enumerate(_lines(text), 1):
         h = re.match(r"^##\s+(.+?)\s*$", line)
         if h:
             group = strip_md(h.group(1))
@@ -320,12 +374,18 @@ def requirements(text, file_key):
     requirement is work — so it is a claim like any other.
 
     Any other `##` heading ends the group: a new capability's delta opens with
-    `## Purpose`, which is not a group, and a heading under one is in none."""
+    `## Purpose`, which is not a group, and a heading under one is in none.
+    Lines inside a code fence are skipped, as OpenSpec skips them: a heading
+    shown in an example is not a requirement."""
     out, group = [], ""
-    for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+    lines = _lines(text)
+    mask = fence_mask(lines)
+    for n, line in enumerate(lines, 1):
+        if mask[n - 1]:
+            continue
         g = REQ_GROUP_RE.match(line)
         if g:
-            group = g.group(1)
+            group = g.group(1).upper()
             continue
         if re.match(r"^##\s", line):
             group = ""
@@ -726,7 +786,7 @@ def capability_coverage(caps, texts, claims):
     A delta counts as named when the proposal MENTIONS its capability anywhere,
     not only under `## Capabilities`. Most proposals list what they touch under
     `## Impact` instead, and flagging every delta there turned the tab's badge red
-    on most changes. A mention clears the flag and nothing more: it adds no
+    on changes that named every capability they touched. A mention clears the flag and nothing more: it adds no
     row of its own and no link, because naming a capability in passing is not a
     citation.
     """
@@ -758,9 +818,11 @@ def capability_coverage(caps, texts, claims):
 # ---------------------------------------------------------------- requirement diffs
 
 
-# A body runs to the next requirement or group heading. Scenarios are `####`, so
-# they stay inside the requirement they belong to.
-_BODY_END_RE = re.compile(r"^#{2,3}\s")
+# A `##` heading ends a requirement block, as it ends OpenSpec's (`^##\s+`, which
+# a `###` or `####` heading does not match). Scenarios and other deeper headings
+# stay inside the requirement they belong to.
+_BODY_END_RE = re.compile(r"^##\s+")
+_REQUIREMENTS_SECTION_RE = re.compile(r"^##\s+Requirements\s*$", re.I)
 
 # Unchanged runs longer than this collapse, keeping DIFF_CONTEXT words on each
 # side that faces a change.
@@ -790,26 +852,37 @@ def _body_words(lines):
     return out
 
 
-def _body_at(lines, start):
-    """The lines after the heading on line index `start`, to the next `##`/`###`."""
+def _body_at(lines, start, mask):
+    """The lines after the heading on line index `start`, up to the next
+    requirement header or `##` heading outside a code fence — where OpenSpec
+    ends a requirement block. A `###` heading of another kind, and anything in
+    a fence, stays inside the block."""
     body = []
-    for line in lines[start + 1:]:
-        if _BODY_END_RE.match(line):
+    for i in range(start + 1, len(lines)):
+        if not mask[i] and (REQ_RE.match(lines[i]) or _BODY_END_RE.match(lines[i])):
             break
-        body.append(line)
+        body.append(lines[i])
     return body
 
 
 def requirement_bodies(text):
-    """`{normalised name: (name, body words)}` for every `### Requirement:` in a
-    spec. If a name repeats, the LAST one wins, as it does when OpenSpec builds
-    its own name-to-block map (`specs-apply.js`)."""
-    lines = (text or "").replace("\r\n", "\n").split("\n")
-    out = {}
+    """`{normalised name: (name, body words)}` for every requirement in a main
+    spec, read as OpenSpec reads one (`extractRequirementsSection`): only under
+    `## Requirements`, never from a code fence, each block ending at the next
+    requirement or `##` heading. If a name repeats, the LAST one wins, as it
+    does when OpenSpec builds its name-to-block map (`specs-apply.js`)."""
+    lines = _lines(text)
+    mask = fence_mask(lines)
+    out, inside = {}, False
     for i, line in enumerate(lines):
-        m = REQ_RE.match(line)
+        if mask[i]:                     # a fenced line is an example, never a heading
+            continue
+        if _BODY_END_RE.match(line):
+            inside = bool(_REQUIREMENTS_SECTION_RE.match(line))
+            continue
+        m = REQ_RE.match(line) if inside else None
         if m:
-            out[_norm_name(m.group(1))] = (m.group(1), _body_words(_body_at(lines, i)))
+            out[_norm_name(m.group(1))] = (m.group(1), _body_words(_body_at(lines, i, mask)))
     return out
 
 
@@ -819,8 +892,9 @@ def _word_ops(base, new):
     longer than DIFF_COLLAPSE and at least two words would be hidden; a gap
     hiding one word costs more to read than the word.
 
-    `autojunk=False`: with it on, difflib treats every word that makes up more
-    than 1% of a sequence of 200 words or more — "the", "SHALL" — as junk, and
+    `autojunk=False`: with it on, once the NEW body is 200 words or more,
+    difflib treats every word that makes up more than 1% of it — "the",
+    "SHALL" — as junk, and
     the diff then aligns around those words instead of through them."""
     sm = difflib.SequenceMatcher(None, base, new, autojunk=False)
     codes = sm.get_opcodes()
@@ -879,8 +953,8 @@ def requirement_diffs(claims, texts, main_specs, archived):
         if base is None:
             rec["state"] = "not-in-main"
             continue
-        lines = texts.get(c["file"], "").replace("\r\n", "\n").split("\n")
-        new = _body_words(_body_at(lines, c["line"] - 1))
+        lines = _lines(texts.get(c["file"], ""))
+        new = _body_words(_body_at(lines, c["line"] - 1, fence_mask(lines)))
         if base[1] == new:
             rec["state"] = "same"
             continue
@@ -914,6 +988,26 @@ def _first_paragraph(lines):
 BREAKING_RE = re.compile(r"\bBREAKING\b")
 
 
+def _delta_sections(text):
+    """`[(title, lines)]` for each `##` section of a delta, one entry per
+    occurrence and in file order, with fenced lines left out — as OpenSpec's
+    `splitTopLevelSections` and `parseRenamedPairs` read it. A RENAMED pair is
+    therefore read within one copy of its section, and a `## Purpose` or a
+    FROM/TO shown in an example does not count."""
+    lines = _lines(text)
+    mask = fence_mask(lines)
+    out = []
+    for i, line in enumerate(lines):
+        if mask[i]:
+            continue
+        m = re.match(r"^##\s+(.+)$", line)
+        if m:
+            out.append((m.group(1).strip(), []))
+        elif out:
+            out[-1][1].append(line)
+    return out
+
+
 def overview(model, texts):
     """The change's shape, derived from what `build` already parsed: no file is
     read and nothing new is inferred.
@@ -927,14 +1021,17 @@ def overview(model, texts):
     whether the change has a tasks.md at all, so "no tasks" can say which kind
     of nothing it is. `breaking` holds the promises carrying the word
     **BREAKING**, the schema's mark. `renamed` counts FROM/TO pairs under
-    `## RENAMED Requirements` — a FROM followed by a TO, as OpenSpec pairs them
-    — which `requirements()` never sees because they are bullets.
+    `## RENAMED Requirements` — a FROM followed by a TO within one copy of the
+    section, fenced lines skipped, as OpenSpec pairs them — which
+    `requirements()` never sees because they are bullets. A delta's
+    `## Purpose` is found the same way, outside fences.
 
     A capability's `status` is `new` when the proposal lists it under
     `### New Capabilities`, its delta opens with `## Purpose` (the schema's
     mark of a new capability), or it has no main spec; `modified` when its main
     spec was read; and `unknown` otherwise — an archived change's main specs
-    are never read, and an unreadable one says nothing either way.
+    are never read, nor are those of a change folder outside `changes/`, and
+    an unreadable one says nothing either way.
     """
     why, why_state = "", "missing"
     for title, lines in sections_of(texts.get("proposal", "")).items():
@@ -956,11 +1053,11 @@ def overview(model, texts):
         cap = key[len("spec-"):]
         reqs[cap] = {g: 0 for g in ("ADDED", "MODIFIED", "REMOVED")}
         pairs = 0
-        for title, lines in sections_of(texts[key]).items():
+        for title, lines in _delta_sections(texts[key]):
             if title.upper() != "RENAMED REQUIREMENTS":
                 continue
             pending = False
-            for _n, line in lines:
+            for line in lines:
                 m = RENAME_RE.match(line)
                 if not m:
                     continue
@@ -978,7 +1075,7 @@ def overview(model, texts):
     status = {}
     for cap in reqs:
         has_purpose = any(t.lower() == "purpose"
-                          for t in sections_of(texts.get("spec-" + cap, "")))
+                          for t, _l in _delta_sections(texts.get("spec-" + cap, "")))
         if cap in listed_new or has_purpose or main.get(cap) == "absent":
             status[cap] = "new"
         elif main.get(cap) == "present":

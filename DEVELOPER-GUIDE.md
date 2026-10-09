@@ -187,7 +187,7 @@ the work is missing.
 The page opens on a derived overview: the proposal's why, each promise with its coverage bucket and
 any **BREAKING** mark, the requirements each capability adds, modifies, removes or renames, and how
 many tasks are done. In a spec delta each requirement heading carries its group, a REMOVED one is
-muted and struck through, and a MODIFIED one shows a word diff against the main spec in the same
+muted, its heading struck through, and a MODIFIED one shows a word diff against the main spec in the same
 `openspec/` folder as the change. An archived change shows "no base" instead: archiving wrote its
 text into the main spec, so the text it replaced is gone, which is not the same as unchanged.
 

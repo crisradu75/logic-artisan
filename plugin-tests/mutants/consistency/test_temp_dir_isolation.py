@@ -1,29 +1,28 @@
-"""Mutants for the suite-wide temp-dir isolation in plugin-tests/tests/conftest.py.
-
-The guard is a session-finish check, not a test: it fails the run when the REAL
-temp dir gained a `cla-annotate` entry. The target below renders pages with no
-`out=`, so with the redirect gone they land in the real temp dir and the guard
-has to say so.
+"""Mutants for the suite-wide temp-dir redirect in plugin-tests/tests/conftest.py.
 
     python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_temp_dir_isolation.py
 
-A killed mutant here HAS leaked: it leaves page folders in the real
-%TEMP%/cla-annotate, which is the bug being planted. Delete what the run's
-message names afterwards.
+The covering tests assert where temp paths resolve — in this process and in a
+subprocess — so no other process on the machine can make them fail. A killed
+mutant here may still have leaked: with the redirect gone, the target's
+rendering tests write page folders into the real temp dir's cla-annotate.
 """
 from pathlib import Path
 
 DEV = Path(__file__).resolve().parents[2]                 # <repo>/plugin-tests
 CONFTEST = DEV / "tests" / "conftest.py"
-TESTS = [DEV / "tests" / "skills" / "annotate" / "test_render_change.py"]
+TESTS = [DEV / "tests" / "skills" / "annotate" / "test_temp_dir_isolation.py"]
 
 MUTANTS = [
-    ("the run's temp dir is no longer redirected in process",
+    ("this process's temp dir is no longer redirected",
      CONFTEST,
      "    tempfile.tempdir = redirected",
      "    pass",
      TESTS),
+
+    ("a subprocess's temp dir is no longer redirected",
+     CONFTEST,
+     "        os.environ[k] = redirected",
+     "        pass",
+     TESTS),
 ]
-# No mutant disables the guard on its own: with the redirect in force nothing
-# leaks, so a disabled guard and a working one cannot be told apart. The mutant
-# above is the guard's test — it only dies if the guard reports the leak.

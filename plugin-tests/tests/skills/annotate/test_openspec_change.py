@@ -691,6 +691,19 @@ def test_a_rename_counts_only_a_from_followed_by_a_to():
              "* FROM: `### Requirement: C`\n")
     texts = {"proposal": OV_PROPOSAL, "spec-billing": delta}
     assert _ov(texts=texts)["renamed"] == {"billing": 1}
+    # A pair shown in a fence is an example, and a FROM left open at the end
+    # of one copy of the section never pairs with a TO in the next.
+    delta += ("\n```\n- FROM: `### Requirement: D`\n- TO: `### Requirement: E`\n```\n"
+              "\n## RENAMED Requirements\n\n- TO: `### Requirement: F`\n")
+    assert _ov(texts=dict(texts, **{"spec-billing": delta}))["renamed"] == {"billing": 1}
+
+
+def test_a_fenced_purpose_does_not_make_a_capability_new():
+    main = {"billing": "# billing\n\n## Requirements\n"}
+    delta = ("# Spec Delta\n\n```\n## Purpose\n```\n\n## MODIFIED Requirements\n\n"
+             "### Requirement: Invoices\n\nText.\n")
+    texts = {"proposal": OV_PROPOSAL, "spec-billing": delta}
+    assert _ov(main, texts)["status"]["billing"] == "modified"
 
 
 def test_purpose_is_not_a_requirement_group():
@@ -787,14 +800,20 @@ def test_a_specs_folder_that_cannot_be_listed_is_refused(tmp_path, monkeypatch):
     assert "locked" in str(e.value)
 
 
-def test_a_linked_capability_folder_is_followed_once(tmp_path):
+def test_linked_folders_add_no_tab_of_their_own(tmp_path):
+    """Links are followed only inside specs/, each real folder once: a link
+    to a folder already there is a copy, a link back up is a cycle, and a link
+    out of specs/ leads to something that is not this change's."""
     import os
     d = tmp_path / "c"
-    (d / "specs").mkdir(parents=True)
+    billing = d / "specs" / "billing"
+    billing.mkdir(parents=True)
+    (billing / "spec.md").write_text("# Spec Delta\n", encoding="utf-8")
     (d / "proposal.md").write_text("# Proposal\n", encoding="utf-8")
-    target = tmp_path / "elsewhere" / "billing"
-    target.mkdir(parents=True)
-    (target / "spec.md").write_text("# Spec Delta\n", encoding="utf-8")
+    outside = tmp_path / "elsewhere" / "payments"
+    outside.mkdir(parents=True)
+    (outside / "spec.md").write_text("# Spec Delta\n", encoding="utf-8")
+
     def link(src, dst):
         try:
             os.symlink(src, dst, target_is_directory=True)
@@ -806,9 +825,9 @@ def test_a_linked_capability_folder_is_followed_once(tmp_path):
             import _winapi
             _winapi.CreateJunction(src, dst)
 
-    link(str(target), str(d / "specs" / "billing"))
-    # A link back up makes a cycle; the walk has to end.
-    link(str(d / "specs"), str(target / "loop"))
+    link(str(billing), str(d / "specs" / "alias"))         # a copy, named first
+    link(str(d / "specs"), str(billing / "loop"))           # a cycle
+    link(str(outside), str(d / "specs" / "payments"))       # out of specs/
     keys = [k for k, _l, _p in OC.change_files(str(d))]
     assert keys == ["proposal", "spec-billing"]
 
@@ -828,6 +847,7 @@ TASKS_114 = """# Tasks
 1. [x] 1.9 An ordered item with a dot
 2) [ ] 2.1 An ordered item with a parenthesis
 - [ ](notes.md) A whitespace-only box still counts, link or not
+- [](notes.md) is an empty link, not a task
 - [docs](notes.md) is a link, not a task
 - [1](notes.md) is a one-character link, not a task
 - [A][ref] is a reference link, not a task
@@ -851,6 +871,43 @@ def test_a_task_is_what_openspec_counts_as_one():
                    # The `- [ ](notes.md)` line: its tail starts with the link
                    # target, not a number, so it takes its ordinal, 11.
                    "1.9": True, "2.1": False, "11": False, "3.1": False}
+
+
+def test_a_byte_order_mark_does_not_hide_the_first_task():
+    """OpenSpec's `\\s` matches U+FEFF, so a tasks.md saved with a BOM still
+    counts its first line; Python's `\\s` does not, so the mark is dropped."""
+    got = [(c["num"], c["done"])
+           for c in OC.tasks(chr(0xFEFF) + "- [x] 1.1 First\n- [ ] 1.2 Next\n")]
+    assert got == [("1.1", True), ("1.2", False)]
+
+
+def test_a_fenced_box_still_counts_as_openspec_counts_it():
+    text = "# Tasks\n\n```\n- [ ] 1.1 shown in an example\n```\n"
+    assert [c["num"] for c in OC.tasks(text)] == ["1.1"]
+
+
+def test_requirement_headers_are_read_as_openspec_reads_them():
+    delta = ("# Spec Delta\n\n## Modified Requirements\n\n"
+             "### requirement: Lower case word\n\nText.\n\n"
+             "###Requirement: No space\n\nText.\n\n"
+             "```markdown\n### Requirement: Inside a fence\n## REMOVED Requirements\n```\n\n"
+             "### Requirement: After the fence\n\nText.\n")
+    got = {c["text"]: c["group"] for c in OC.requirements(delta, "spec-x")}
+    assert got == {"Lower case word": "MODIFIED", "No space": "MODIFIED",
+                   "After the fence": "MODIFIED"}
+
+
+def test_a_main_spec_is_read_only_under_requirements_and_outside_fences():
+    main = ("# x Specification\n\n## Purpose\n\n### Requirement: In the purpose\n\nNo.\n\n"
+            "## Requirements\n\n### Requirement: Real\n\nYes it is.\n\n"
+            "### Notes\n\nStill the same block.\n\n"
+            "```\n### Requirement: Fenced\n## Not a heading\n```\n\nAnd still.\n\n"
+            "## Appendix\n\n### Requirement: After\n\nNo.\n")
+    bodies = OC.requirement_bodies(main)
+    assert list(bodies) == ["Real"]
+    words = bodies["Real"][1]
+    # Through the `### Notes` heading and the fence, as OpenSpec's block runs.
+    assert "Still" in words and "still." in words and "Fenced" in words
 
 
 def test_every_box_counts_wherever_it_sits():

@@ -10,6 +10,13 @@ OC = PLUGIN / "skills" / "annotate" / "scripts" / "openspec_change.py"
 TESTS = [DEV / "tests" / "skills" / "annotate" / "test_openspec_change.py",
          DEV / "tests" / "skills" / "annotate" / "test_review_findings.py"]
 
+def _a(text):
+    """A multi-line anchor carrying openspec_change.py's own line separator,
+    which is CRLF on disk in a clone with `core.autocrlf` on."""
+    nl = "\r\n" if b"\r\n" in OC.read_bytes() else "\n"
+    return text.replace("\n", nl)
+
+
 MUTANTS = [
     # ------------------------------------------------ a capability mentioned
     ("a capability the proposal mentions is never counted as named",
@@ -58,8 +65,80 @@ MUTANTS = [
 
     ("a link cycle under specs/ is walked again and again",
      OC,
+     "        if real in seen or not _inside(real, root_real):",
+     "        if not _inside(real, root_real):",
+     TESTS),
+
+    ("a link out of specs/ adds another change's delta as a tab",
+     OC,
+     "        if real in seen or not _inside(real, root_real):",
      "        if real in seen:",
+     TESTS),
+
+    ("a link to a folder under specs/ takes the tab's name from the folder",
+     OC,
+     "        dirs.sort(key=lambda n: (_is_link(os.path.join(dirpath, n)), n))",
+     "        dirs.sort()",
+     TESTS),
+
+    ("a byte-order mark hides the first line",
+     OC,
+     '    return (text or "").lstrip(chr(0xFEFF)).replace(',
+     '    return (text or "").replace(',
+     TESTS),
+
+    ("a requirement header in lower case is not one",
+     OC,
+     'REQ_RE = re.compile(r"^###\\s*Requirement:\\s*(.+?)\\s*$", re.I)',
+     'REQ_RE = re.compile(r"^###\\s*Requirement:\\s*(.+?)\\s*$")',
+     TESTS),
+
+    ("a requirement header needs a space after ###",
+     OC,
+     'REQ_RE = re.compile(r"^###\\s*Requirement:\\s*(.+?)\\s*$", re.I)',
+     'REQ_RE = re.compile(r"^###\\s+Requirement:\\s*(.+?)\\s*$", re.I)',
+     TESTS),
+
+    ("a group heading in another case keeps its own spelling",
+     OC,
+     "            group = g.group(1).upper()",
+     "            group = g.group(1)",
+     TESTS),
+
+    ("a requirement shown in a delta's code fence is read as one",
+     OC,
+     "        if mask[n - 1]:",
      "        if False:",
+     TESTS),
+
+    ("a requirement shown in a main spec's code fence is read as one",
+     OC,
+     "        if mask[i]:                     # a fenced line is an example, never a heading",
+     "        if False:",
+     TESTS),
+
+    ("a main spec's requirements are read from every section",
+     OC,
+     "            inside = bool(_REQUIREMENTS_SECTION_RE.match(line))",
+     "            inside = True",
+     TESTS),
+
+    ("a ## shown in a fence ends the requirement block",
+     OC,
+     "        if not mask[i] and (REQ_RE.match(lines[i]) or _BODY_END_RE.match(lines[i])):",
+     "        if REQ_RE.match(lines[i]) or _BODY_END_RE.match(lines[i]):",
+     TESTS),
+
+    ("a ### heading of another kind ends the requirement block",
+     OC,
+     '_BODY_END_RE = re.compile(r"^##\\s+")',
+     '_BODY_END_RE = re.compile(r"^###?\\s+")',
+     TESTS),
+
+    ("a FROM/TO or ## Purpose shown in a fence counts",
+     OC,
+     _a("    out = []\n    for i, line in enumerate(lines):\n        if mask[i]:\n            continue"),
+     _a("    out = []\n    for i, line in enumerate(lines):\n        if False:\n            continue"),
      TESTS),
 
     ("only an upper-case X is done",
@@ -149,14 +228,14 @@ MUTANTS = [
 
     ("a repeated main-spec requirement compares against the first copy",
      OC,
-     "            out[_norm_name(m.group(1))] = (m.group(1), _body_words(_body_at(lines, i)))",
-     "            out.setdefault(_norm_name(m.group(1)), (m.group(1), _body_words(_body_at(lines, i))))",
+     "            out[_norm_name(m.group(1))] = (m.group(1), _body_words(_body_at(lines, i, mask)))",
+     "            out.setdefault(_norm_name(m.group(1)), (m.group(1), _body_words(_body_at(lines, i, mask))))",
      TESTS),
 
     ("a requirement's diff stops at its first scenario",
      OC,
-     '_BODY_END_RE = re.compile(r"^#{2,3}\\s")',
-     '_BODY_END_RE = re.compile(r"^#{2,4}\\s")',
+     '_BODY_END_RE = re.compile(r"^##\\s+")',
+     '_BODY_END_RE = re.compile(r"^#{2,4}\\s+")',
      TESTS),
 
     # ------------------------------------------------ overview

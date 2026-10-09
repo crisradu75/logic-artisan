@@ -8,7 +8,7 @@ What `/cla:annotate` promises a reader: their document shown as written on a loc
 
 ### Requirement: Opening a document for annotation
 
-`/cla:annotate <path or change id>` SHALL open a Markdown, plain-text or HTML document, or every file of an OpenSpec change on one page that opens first on an overview of the change, in a browser page served only on the local machine, where the reader selects passages and comments on them.
+`/cla:annotate <path or change id>` SHALL open a Markdown, plain-text or HTML document, or every file of an OpenSpec change on one page that opens on an overview of the change, served only on the local machine, where the reader selects passages and comments on them.
 
 #### Scenario: A Markdown document
 

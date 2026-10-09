@@ -824,6 +824,64 @@ def test_a_requirement_that_cannot_be_placed_is_listed_not_dropped(change, tmp_p
     assert 'data-group="MODIFIED"' not in body_of(html_str)
 
 
+def test_a_requirement_ending_in_a_hash_keeps_it_and_its_label(change, tmp_path):
+    """`### Requirement: Uses C#` is the requirement "Uses C#": a closing `#`
+    run counts only after a space or tab. Stripping it rendered "Uses C" and
+    reported the label and the diff as "heading not found"."""
+    spec = SPEC.replace("Project-data scaffolding", "Uses C#")
+    with open(os.path.join(change["dir"], "specs", "cla-plugin", "spec.md"), "w",
+              encoding="utf-8") as fh:
+        fh.write(spec)
+    html_str, model, ctxs = _rebuild(change, tmp_path, "csharp.html")
+    assert "Requirement: Uses C#" in ctxs["spec-cla-plugin"].blocks.values()
+    assert 'data-group="MODIFIED"' in body_of(html_str)
+    assert not model.get("unplaced")
+
+
+def test_a_lower_case_requirement_header_is_labelled_too(change, tmp_path):
+    spec = SPEC.replace("### Requirement: Project-data", "### requirement: Project-data")
+    with open(os.path.join(change["dir"], "specs", "cla-plugin", "spec.md"), "w",
+              encoding="utf-8") as fh:
+        fh.write(spec)
+    html_str, model, _c = _rebuild(change, tmp_path, "lower.html")
+    assert 'data-group="MODIFIED"' in body_of(html_str)
+    assert not model.get("unplaced")
+
+
+def test_the_cli_prints_a_non_ascii_requirement_through_a_pipe(change, tmp_path):
+    """A piped stdout on Windows is the locale codepage, and printing `ț` there
+    raised UnicodeEncodeError after the page was written. Run as the skill runs
+    it: a subprocess, stdout piped, no UTF-8 override in the environment."""
+    import subprocess
+    import sys
+    twice = SPEC + "\n### Requirement: Project-data scaffolding\n\nAgain.\n"
+    twice = twice.replace("Project-data scaffolding", "Ștergerea datelor ț")
+    with open(os.path.join(change["dir"], "specs", "cla-plugin", "spec.md"), "w",
+              encoding="utf-8") as fh:
+        fh.write(twice)
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONIOENCODING", "PYTHONUTF8")}
+    script = os.path.join(os.path.dirname(RC.__file__), "render_change.py")
+    r = subprocess.run([sys.executable, script, change["dir"], "--root", change["root"],
+                        "--out", str(tmp_path / "cli.html")],
+                       capture_output=True, env=env)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+    assert "Ștergerea datelor ț" in r.stdout.decode("utf-8"), r.stdout
+
+
+def test_every_annotate_cli_makes_its_output_utf8_first():
+    """Each entry point that prints document text reconfigures stdout before
+    printing anything; the subprocess test above proves it for one of them."""
+    import annotate_server
+    import inspect
+    import render_html
+    import sweep_changes
+    for mod in (RC, R, annotate_server, sweep_changes, render_html):
+        src = inspect.getsource(mod.main)
+        head = src[:src.index("argparse.ArgumentParser")]
+        assert "use_utf8_stdout()" in head, mod.__name__
+
+
 def test_a_heading_with_a_closing_hash_run_still_carries_its_label(change, tmp_path):
     closed = SPEC.replace("### Requirement: Project-data scaffolding",
                           "### Requirement: Project-data scaffolding ###")

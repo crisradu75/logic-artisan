@@ -55,6 +55,9 @@ def measure(change_dir):
 
 
 def main(argv=None):
+    # It prints change names and promise text; see render_html.use_utf8_stdout.
+    import render_html
+    render_html.use_utf8_stdout()
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("roots", nargs="*", default=["."],
                     help="repo roots to sweep (default: the current directory)")
