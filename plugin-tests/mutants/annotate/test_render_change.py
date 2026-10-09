@@ -73,4 +73,29 @@ MUTANTS = [
      ".cf-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;",
      ".cf-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.56rem;",
      TESTS + [DEV / "tests" / "skills" / "annotate" / "test_render_doc.py"]),
+
+    # ------------------------------------------------ requirement groups
+    ("a requirement heading never gets its group label",
+     CHANGE,
+     "    attr = '%s=\"%s\"' % (name, esc_attr(value))",
+     "    return html_str",
+     TESTS),
+
+    ("a removed requirement's sections are never set apart",
+     CHANGE,
+     '    return html_str[:m.end(1)] + " " + cls + html_str[m.end(1):]',
+     "    return html_str",
+     TESTS),
+
+    ("a removed requirement's span runs past the next group heading",
+     CHANGE,
+     '                           itertools.takewhile(lambda s: s["level"] > 3,',
+     '                           itertools.takewhile(lambda s: s["level"] > 1,',
+     TESTS),
+
+    ("a removed requirement's Reason block is never marked",
+     CHANGE,
+     '                    bodies[f] = add_class(bodies[f], b, "rm-why")',
+     "                    pass",
+     TESTS),
 ]

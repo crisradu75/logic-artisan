@@ -360,6 +360,137 @@ def test_the_panes_and_the_margin_share_one_reading_grid(built):
     assert ".wrap>.panes{min-width:0}" in css
 
 
+# ---------------------------------------------------------------- requirement groups
+
+
+# The ADDED group comes LAST, straight after the removed ones, as it does in real
+# changes: that is where a removed span that does not stop at the next group
+# heading would swallow a live requirement.
+GROUPED_SPEC = """# Delta: cla-plugin — demo
+
+## MODIFIED Requirements
+
+### Requirement: Project-data scaffolding
+
+Text.
+
+## REMOVED Requirements
+
+### Requirement: Old rule one
+
+**Reason**: Folded into another rule.
+**Migration**: Nothing to do.
+
+### Requirement: Old rule two
+
+**Reason**: Folded into another rule.
+
+#### Scenario: A scenario of the removed rule
+
+- **WHEN** it ran
+- **THEN** it did
+
+## ADDED Requirements
+
+### Requirement: A fresh rule
+
+Reason enough to add it is stated here, but this block is live text.
+
+#### Scenario: It applies
+
+- **WHEN** it runs
+- **THEN** it works
+"""
+
+
+@pytest.fixture
+def grouped(change, tmp_path):
+    spec = os.path.join(change["dir"], "specs", "cla-plugin", "spec.md")
+    with open(spec, "w", encoding="utf-8") as fh:
+        fh.write(GROUPED_SPEC)
+    out = str(tmp_path / "grouped.html")
+    path, model, ctxs = RC.build(change["dir"], change["root"], out)
+    return {"html": io.open(path, encoding="utf-8").read(), "model": model, "ctxs": ctxs}
+
+
+def _heading(grouped, title):
+    ctx = grouped["ctxs"]["spec-cla-plugin"]
+    hits = [b for b, t in ctx.blocks.items() if t == "Requirement: " + title]
+    assert len(hits) == 1, title
+    return hits[0]
+
+
+def _open_tag(html_str, blk):
+    m = re.search(r'<\w+[^>]*\bdata-blk="%s"[^>]*>' % re.escape(blk), html_str)
+    assert m, blk
+    return m.group(0)
+
+
+def _section_html(html_str, blk):
+    """The `<section>` holding a block, opening tag included."""
+    i = html_str.index('data-blk="%s"' % blk)
+    start = html_str.rindex("<section ", 0, i)
+    return html_str[start:html_str.index("</section>", i)]
+
+
+def test_each_requirement_heading_carries_its_group(grouped):
+    html_str = body_of(grouped["html"])
+    for title, group in (("A fresh rule", "ADDED"), ("Project-data scaffolding", "MODIFIED"),
+                         ("Old rule one", "REMOVED"), ("Old rule two", "REMOVED")):
+        assert 'data-group="%s"' % group in _open_tag(html_str, _heading(grouped, title)), title
+    css = "".join(re.findall(r"<style>(.*?)</style>", grouped["html"], flags=re.S))
+    assert "h3[data-group]::before{content:attr(data-group);" in css
+
+
+def test_a_labelled_heading_reads_the_same_text_as_before(grouped):
+    """The label is drawn by CSS from an attribute. Written into the heading, its
+    word would be counted into every offset measured against that block."""
+    html_str = body_of(grouped["html"])
+    ctx = grouped["ctxs"]["spec-cla-plugin"]
+    for title in ("A fresh rule", "Project-data scaffolding", "Old rule one", "Old rule two"):
+        blk = _heading(grouped, title)
+        assert block_text(html_str, blk) == " ".join(ctx.blocks[blk].split())
+
+
+def test_a_removed_requirement_and_its_scenarios_are_set_apart(grouped):
+    html_str = body_of(grouped["html"])
+    ctx = grouped["ctxs"]["spec-cla-plugin"]
+    two = _section_html(html_str, _heading(grouped, "Old rule two"))
+    assert 'class="sec req-removed"' in two
+    # Its scenario is a level-4 section of its own, and is just as removed.
+    scen = [b for b, t in ctx.blocks.items() if t == "Scenario: A scenario of the removed rule"][0]
+    assert 'class="sec req-removed"' in _section_html(html_str, scen)
+    # The live requirements are not.
+    for title in ("A fresh rule", "Project-data scaffolding"):
+        assert "req-removed" not in _section_html(html_str, _heading(grouped, title)), title
+
+
+def test_the_reason_block_of_every_removed_requirement_is_marked(grouped):
+    """Found by section, never by text: both removed requirements give the same
+    reason word for word, and a text match would mark one or neither."""
+    html_str = body_of(grouped["html"])
+    ctx = grouped["ctxs"]["spec-cla-plugin"]
+    reasons = [b for b, t in ctx.blocks.items() if t.startswith("Reason: Folded")]
+    assert len(reasons) == 2
+    for b in reasons:
+        assert "rm-why" in _open_tag(html_str, b)
+        assert block_text(html_str, b) == " ".join(ctx.blocks[b].split())
+    # A live requirement's paragraph that happens to start with the word is not.
+    live = [b for b, t in ctx.blocks.items() if t.startswith("Reason enough")][0]
+    assert "rm-why" not in _open_tag(html_str, live)
+
+
+def test_the_group_label_is_not_injected_text():
+    # It is an attribute, so nothing has to be stripped before text is read.
+    assert not any("group" in c for c in R.INJECTED_CLASSES)
+
+
+def test_add_attr_replaces_rather_than_duplicates():
+    html_str = '<h3 data-group="ADDED" data-blk="x:b1" id="h">T</h3>'
+    out = RC.add_attr(html_str, "x:b1", "data-group", "REMOVED")
+    assert out.count("data-group=") == 1 and 'data-group="REMOVED"' in out
+
+
 @pytest.mark.parametrize("control", ["showTab", "cf-toggle"])
 def test_every_flow_changing_control_here_relays_the_margin(built, control):
     """Switching tabs swaps one whole document for another and hiding the

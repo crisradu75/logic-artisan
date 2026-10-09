@@ -26,6 +26,7 @@ would disagree the first time either was touched.
 import argparse
 import html
 import io
+import itertools
 import os
 import sys
 
@@ -119,6 +120,22 @@ body.nocf .cf{display:none}
  color:var(--ink-2)}
 .peek-h{display:block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;
  letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:.35rem}
+/* A requirement's group, drawn from an attribute rather than written into the
+   heading: generated content is not in textContent, so the heading's text — what
+   annotation offsets count against — is unchanged. Teal, never --mark, which
+   means "annotated" everywhere on this page. */
+h3[data-group]::before{content:attr(data-group);display:inline-block;vertical-align:.14em;
+ margin-right:.6rem;padding:.1rem .42rem;border:1px solid var(--accent);border-radius:2px;
+ font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.69rem;font-weight:400;
+ letter-spacing:.12em;line-height:1.2;color:var(--accent);background:transparent}
+h3[data-group="ADDED"]::before{background:var(--accent);color:var(--paper)}
+h3[data-group="REMOVED"]::before{border-color:var(--danger);color:var(--danger)}
+/* Colour, not opacity: a faded passage still has to be read, and selected. */
+.req-removed,.req-removed h3,.req-removed h4,.req-removed h5,.req-removed h6,
+.req-removed strong,.req-removed code{color:var(--muted)}
+.req-removed h3{text-decoration:line-through;text-decoration-thickness:1px}
+.req-removed .rm-why{color:var(--ink-2);border-left:2px solid var(--danger);padding-left:.7rem}
+.req-removed .rm-why strong{color:var(--ink-2)}
 @keyframes flash{0%{background:var(--accent-wash)}100%{background:transparent}}
 .flash{animation:flash 1.6s ease-out}
 
@@ -268,6 +285,106 @@ def add_class(html_str, blk, cls):
                 + re.sub(r'\bclass="', 'class="%s ' % cls, m.group(2), count=1)
                 + html_str[m.end(2):])
     return html_str[:m.end(1)] + ' class="%s"' % cls + html_str[m.end(1):]
+
+
+def add_attr(html_str, blk, name, value):
+    """Set the attribute `name` on the block's opening tag, replacing any value
+    it already has there. A second copy of an attribute is not an update — HTML
+    keeps the first and drops the rest — which is the trap `add_class` above
+    names for `class`."""
+    import re
+    m = re.search(r'<(\w+)([^>]*)\bdata-blk="%s"([^>]*)>' % re.escape(blk), html_str)
+    if not m:
+        return html_str
+    attr = '%s="%s"' % (name, esc_attr(value))
+    tag = m.group(0)
+    old = re.search(r'\s%s="[^"]*"' % re.escape(name), tag)
+    if old:
+        tag = tag[:old.start()] + " " + attr + tag[old.end():]
+    else:
+        tag = "<%s %s%s" % (m.group(1), attr, tag[1 + len(m.group(1)):])
+    return html_str[:m.start()] + tag + html_str[m.end():]
+
+
+def section_class(html_str, sec_id, cls):
+    """Add `cls` to the `<section>` render_doc opened for `sec_id`."""
+    import re
+    m = re.search(r'<section class="([^"]*)" data-sec-id="%s">' % re.escape(sec_id), html_str)
+    if not m:
+        return html_str
+    return html_str[:m.end(1)] + " " + cls + html_str[m.end(1):]
+
+
+def _section_of_heading(html_str, blk):
+    """The id of the section a heading block opens, or None. render_doc emits
+    the `<section>` tag immediately before the heading that starts it."""
+    import re
+    m = re.search(r'<section class="[^"]*" data-sec-id="([^"]+)"><h\d\b[^>]*\bdata-blk="%s"'
+                  % re.escape(blk), html_str)
+    return m.group(1) if m else None
+
+
+def _blocks_in_section(html_str, sec_id):
+    """Every block id inside one section, in page order."""
+    import re
+    m = re.search(r'<section class="[^"]*" data-sec-id="%s">' % re.escape(sec_id), html_str)
+    if not m:
+        return []
+    end = html_str.find("</section>", m.end())
+    return re.findall(r'\bdata-blk="([^"]+)"', html_str[m.end():end if end >= 0 else None])
+
+
+REQ_GROUPS = ("ADDED", "MODIFIED", "REMOVED")
+
+
+def heading_blk(ctx, claim):
+    """The block of a requirement's own `### Requirement:` heading, or None.
+
+    Matched on the whole heading text, one match or none — the rule
+    `bind_claims` keeps. `bind_claims` matches on a substring, which can land on
+    a paragraph quoting the title; a label on that paragraph would mark the
+    wrong passage as the requirement.
+    """
+    want = " ".join(("Requirement: " + claim["text"]).split())
+    hits = [b for b, t in ctx.blocks.items() if " ".join(t.split()) == want]
+    return hits[0] if len(hits) == 1 else None
+
+
+def mark_groups(model, bodies, ctxs):
+    """Label each requirement heading with its ADDED, MODIFIED or REMOVED group,
+    and set a REMOVED requirement's sections apart from the live ones.
+
+    The label is an attribute the stylesheet draws with `::before`, so the
+    heading's text — what every annotation offset is counted against — does not
+    change. A REMOVED requirement's own section and every section below it, down
+    to the next heading of level 3 or above, are marked `req-removed`; its
+    `Reason` and `Migration` blocks are found within those sections, never by
+    text, because changes repeat the same reason word for word.
+    """
+    for c in model["claims"]:
+        if c["kind"] != "requirement" or c.get("group") not in REQ_GROUPS:
+            continue
+        ctx, f = ctxs.get(c["file"]), c["file"]
+        blk = heading_blk(ctx, c) if ctx else None
+        if not blk:
+            continue
+        bodies[f] = add_attr(bodies[f], blk, "data-group", c["group"])
+        if c["group"] != "REMOVED":
+            continue
+        sid = _section_of_heading(bodies[f], blk)
+        ids = [s["id"] for s in ctx.sections]
+        if sid not in ids:
+            continue
+        i = ids.index(sid)
+        removed = [sid] + [s["id"] for s in
+                           itertools.takewhile(lambda s: s["level"] > 3,
+                                               ctx.sections[i + 1:])]
+        for s in removed:
+            bodies[f] = section_class(bodies[f], s, "req-removed")
+            for b in _blocks_in_section(bodies[f], s):
+                if ctx.blocks.get(b, "").lstrip().startswith(("Reason", "Migration")):
+                    bodies[f] = add_class(bodies[f], b, "rm-why")
+    return bodies
 
 
 def _outermost_block(html_str, blk):
@@ -535,6 +652,7 @@ def build(change_dir, root=None, out=None):
     model = OC.build(change_dir, texts)
     bind_claims(model, ctxs)
     bodies = counterparts(model, bodies, ctxs, labels)
+    bodies = mark_groups(model, bodies, ctxs)
 
     change_key = store.doc_key(change_dir, root)
     total_words = sum(len(t.split()) for c in ctxs.values() for t in c.blocks.values())
