@@ -17,6 +17,14 @@ prompts, agent definitions). Unsure means high. A prose-dominant diff (the mecha
 `revise.md:25`) is high risk and keeps the Opus `plugin-dev:skill-reviewer` alongside the
 bug-hunters. `spec-to-pr`, `lite-pr` and the chains cite the table.
 
+**Orchestration-skill rules (decision 13).** `multi-pr`, `multi-lite` and `multi-spec` each carry,
+by citing one shared reference and not by copying it: an explicit `model:` on every `Agent`
+dispatch; complete first briefs with reports of about 300 words; touched tests while iterating, the
+full suite once on the final commit, the orchestrator re-verifying that commit; one PR at a time
+per area; a handoff file when the orchestrating chat grows long; high-risk implementers on Opus;
+the debris check as one command in the Test phase (nothing created outside the test framework's
+temp dir). Brief 2's rules file cites the same reference, so the text lives once.
+
 **Spec amended.** `openspec/specs/change-workflow/spec.md:11` (second review "unless `--pr-rounds`
 allows only one round", i.e. round 2 whenever round 1 committed fixes) and scenario `:19-22`.
 Rewrite as MODIFIED-via-REMOVED+ADDED per `openspec/config.yaml:24`.
@@ -36,8 +44,9 @@ it), `spec-to-pr-retro/SKILL.md:27`, and `lite-pr/SKILL.md:148` (its reviewer se
 - `openspec validate --specs --strict` passes; the pytest gate passes.
 
 **Files likely touched.** `model-routing.md`, `spec-to-pr/references/revise.md`,
-`spec-to-pr/SKILL.md`, `lite-pr/SKILL.md`, `spec-to-pr-retro/SKILL.md`, the chain skills that name
-review rounds, the `change-workflow` spec, and any test pinning round-2 wording.
+`spec-to-pr/SKILL.md`, `lite-pr/SKILL.md`, `spec-to-pr-retro/SKILL.md`, `multi-pr`, `multi-lite`
+and `multi-spec` (their SKILL.md plus the references that name review rounds), the shared
+economy reference, the `change-workflow` spec, and any test pinning round-2 wording.
 
 ## Brief 2 — Consumer economy rules file (decisions 2, 13, 6's dispatch rule)
 
