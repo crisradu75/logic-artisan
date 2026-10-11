@@ -40,7 +40,7 @@ always supplies the exact list).
 | Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
 | Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
 | Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff) | medium | `Workflow` `agent()` |
-| Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet | medium | `Workflow` `agent()` |
+| Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; opus for `plugin-dev:skill-reviewer` on a prose-dominant diff | medium | `Workflow` `agent()` |
 | Revise R1 — `comment-analyzer` | sonnet | medium | `Workflow` `agent()` |
 | Implement big-mechanical delegate (sized trigger — see SKILL.md Implement) | sonnet | inherited | `Agent(model:)` |
 | Revise round ≥2 (scoped fix-diff) | the same reviewers and tiers as round 1 for the diff's risk, per "Review sizing by risk" below | inherited | `Agent(model:)` |
@@ -64,9 +64,15 @@ read a per-repo list. A diff is high risk when it shows any of these signals:
 **Unsure means high.** A prose-dominant diff is high risk, because prose that steers an agent ships
 like code. It also keeps `plugin-dev:skill-reviewer` on Opus, alongside the two bug-hunters.
 
+**Prose-dominant** means more changed lines in `.md` files under `skills/` than in every other file,
+counted as `revise.md` describes. A docs-only diff outside `skills/` is not prose-dominant.
+
 **The PR-body line.** The pull-request body carries one line: `Risk: <level> — <reason>; reviewers: <list>.`
 It stays on one line, so a grep over PR bodies can audit the call. Round 1 reads this line. It raises
 the level to high if the diff shows a signal the line missed.
+
+**A missing line means high.** If the line is missing, unreadable or names an unknown level, treat the
+diff as high risk. The run records that as a Handoff Issue, and `lite-pr` records it in its report.
 
 | Risk | Reviewers | Model |
 |---|---|---|
@@ -74,12 +80,14 @@ the level to high if the diff shows a signal the line missed.
 | Low risk, code | `code-reviewer` | Sonnet |
 | High risk | `code-reviewer` + `silent-failure-hunter` | Opus |
 
-**Round 2** runs only after round 1 fixed a Critical finding, and only while the `--pr-rounds` cap
-allows. Round 2 reviews the fix diff with the same reviewers.
+On a prose-dominant diff, add `plugin-dev:skill-reviewer` on Opus to the high-risk reviewers.
+
+**Round 2** runs only after round 1 fixed a Critical finding (or a re-entry for still-open findings),
+and only while the `--pr-rounds` cap allows. Round 2 reviews the fix diff with the same reviewers.
 
 ### Artifact-class override — a prose-dominant diff promotes the prose reviewer
 
-The table above tiers by **reviewer archetype**: bug-hunters get opus because a missed bug ships,
+The routing table tiers by **reviewer archetype**: bug-hunters get opus on high-risk diffs because a missed bug ships,
 rubric-appliers get sonnet because the rubric carries the judgment. That split silently assumes the
 artifact under review is *code*.
 
@@ -88,10 +96,10 @@ nothing compiles it: no typechecker, no test that executes the prose, and a wron
 reaches every consuming repo on the next release. For that diff `plugin-dev:skill-reviewer`
 occupies the position `code-reviewer` holds for a Python diff. A prose-dominant diff is high risk.
 
-**The rule lives where dispatch is decided**, not here — see the *prose-dominant diff* row in
-`${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/revise.md`, which carries the trigger, the
-`git diff --numstat` recipe that makes it mechanically decidable and the opus tier. This section is
-the rationale only; the numbers are in that one table, per this file's own no-forking rule.
+**The counting recipe lives where dispatch is decided**, not here — see the *prose-dominant diff* row in
+`${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/revise.md`, which carries the
+`git diff --numstat` recipe that makes it mechanically decidable. This section is
+the rationale only; the recipe is in that one row, per this file's own no-forking rule.
 
 All six Revise agents are dispatched by their full registered `subagent_type` (`pr-review-toolkit:code-reviewer`,
 `pr-review-toolkit:silent-failure-hunter`, `pr-review-toolkit:pr-test-analyzer`,
@@ -164,8 +172,8 @@ a misleading "fix" commit and a follow-up revert. On a high-risk diff the saving
 bug-hunter get eaten by that triage overhead, and a missed bug there is costly.
 
 A low-risk diff accepts a Sonnet reviewer. A miss there is cheap, so the weaker reviewer is the
-right trade. Rubric checks (`pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer`)
-and comment nits (`comment-analyzer`) run on sonnet. The
+right trade. Rubric checks (`pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer`;
+the last runs on opus on a prose-dominant diff) and comment nits (`comment-analyzer`) run on sonnet. The
 `routing.revise_findings_by_tier` telemetry (found vs phantom **per agent**, see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`)
 is the standing check on this bet; `/cla:spec-to-pr-retro` flags a phantom rate concentrated on any one
 agent, including the sonnet-routed ones, relative to the opus bug-hunters.

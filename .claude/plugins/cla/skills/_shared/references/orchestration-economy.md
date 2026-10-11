@@ -15,9 +15,9 @@ some without dropping quality.
 5. **Hand off a long chat.** When the orchestrating chat grows long, write a handoff file and
    continue in a fresh session instead of carrying the old context.
 6. **Put high-risk implementers on Opus.** A task is high risk when it shows a signal from "Review
-   sizing by risk" in `model-routing.md`: writes or deletes of data, money or scoring, auth,
-   guard hooks, concurrency, or changes to agent instructions. Other implementers use Sonnet.
-7. **Check for debris in the Test phase.** Before the final test run, save the output of
-   `git status --porcelain --ignored --untracked-files=all`. Run it again after, and diff the two.
-   Any new line is debris, so report it. Ignored caches and virtualenvs that were already present
-   show in both lists and cancel out.
+   sizing by risk" in `model-routing.md`. Other implementers use Sonnet.
+7. **Check for debris when the chain runs tests.** Before the final test run, save the output of
+   `git status --porcelain --ignored --untracked-files=all` outside the repo, in a scratch or temp
+   directory. Run it again after, and diff the two. Any new line is debris, so report it. Ignored
+   caches and virtualenvs that were already present show in both lists and cancel out. A missing
+   before snapshot means the check did not run, so warn.

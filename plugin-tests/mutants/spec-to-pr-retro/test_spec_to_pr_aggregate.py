@@ -4,7 +4,7 @@ The aggregator's output is what a retro proposes orchestrator changes FROM, and
 its `--nudge` line is what sends a user to the retro at all. So the mutants are
 the edits that would change a number a reader acts on without anything looking
 wrong: a threshold off by one, a window that silently widens, a placeholder
-counted as a real reason, a routine Revise round 2 counted as cap exhaustion.
+counted as a real reason, a clean Revise round 2 counted as cap exhaustion.
 
 **NEITHER SHARED-COPY FUNCTION IS MUTATED HERE.** `_git_toplevel` and
 `_runs_dir` are copies of `lib/log_run.py`'s; the directory resolver is mutated
@@ -140,7 +140,7 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "Revise's routine round 2 counts as exhaustion",
+        "Revise's clean round 2 counts as exhaustion",
         SCRIPT,
         '    return phase["name"] not in RESIDUE_PHASES or phase["status"] in REASON_STATUSES',
         "    return True",

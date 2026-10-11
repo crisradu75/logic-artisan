@@ -49,7 +49,7 @@ These rules apply across every phase.
 |---|---|
 | `--review-rounds N` | Review — the change's **artifacts**, before Implement. Default 1. |
 | `--test-rounds N` | Test fix rounds. Default 3. |
-| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 fixed a Critical; `1` opts out; `0` skips Revise. |
+| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 fixed a Critical; `1` opts out; `0` skips Revise. A re-entry for still-open findings also runs. |
 | `--skip-review` | Skips Revise, as does the user saying "no review". |
 | `--gate-on-push`, `--interactive` | Pause before push and PR open ("Autonomy gate"). |
 | `--pr-base <branch>`, `--inherits '<entries>'` | See "Placeholders". |
@@ -92,7 +92,7 @@ Before any workflow step, compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/referenc
 | Handoff, optional | `docs: TODO.md` |
 | Handoff, run log | `chore: spec-to-pr run log` (feature branch only) |
 | PR body (Ship) | one line — `Closes openspec/changes/<name>/. Checks: <the checks that ran>. Risk: <level> — <reason>; reviewers: <list>.` |
-| PR body update (Handoff, only when issues exist) | one line, or one short Markdown file via `--body-file` |
+| PR body update (Handoff, only when issues exist) | one line with the `Risk:` clause kept, or one short Markdown file via `--body-file` that keeps it |
 
 Subjects only; no commit bodies, Test-plan checklists or restated proposals. **One exception:** a commit asserting a measurement carries one `Measured-by: <command> — <claim>` trailer per claim in its last paragraph (`references/ship.md` §2b). No per-phase logs: the only run log is Handoff's record, and resume reads repo state.
 

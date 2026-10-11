@@ -27,8 +27,8 @@ From your working memory of each phase, as rendered Markdown in the assistant tu
 ## 2. Mirror the issues into the PR body
 
 Skip when there are no issues and no rejected remedies.
-- **Few short issues:** one line — `gh pr edit <#> --body "Closes openspec/changes/<name>/. Checks: <the checks that ran>. Known issues: <comma-separated brief list>."`.
-- **Long or multi-line:** write `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run): the original one-liner plus a `## Known issues` section, one bullet per issue, then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`.
+- **Few short issues:** one line — `gh pr edit <#> --body "Closes openspec/changes/<name>/. Checks: <the checks that ran>. Risk: <level> — <reason>; reviewers: <list>. Known issues: <comma-separated brief list>."`.
+- **Long or multi-line:** write `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run): the original one-liner, keeping its `Risk:` clause, plus a `## Known issues` section, one bullet per issue, then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`.
 
 **Mirror "Rejected remedies, still open" first** — one line per finding with the delegate's reason. It is the most severe thing the body carries.
 
