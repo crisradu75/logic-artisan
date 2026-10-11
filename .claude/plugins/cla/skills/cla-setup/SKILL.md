@@ -1,6 +1,6 @@
 ---
 name: cla-setup
-description: "Set up or refresh a repo for the cla plugin: create whatever is missing of cla.io/ without overwriting anything, seed OpenSpec authoring rules, and populate or reconcile cla.io/project-facts.md from the repo's own manifests. Changes existing files only on the user's yes. Run with /cla:cla-setup."
+description: "Set up or refresh a repo for the cla plugin: create whatever is missing of cla.io/ without overwriting anything there, seed OpenSpec authoring rules, write the economy rules file .claude/rules/cla-economy.md (replaced whole on every run), and populate or reconcile cla.io/project-facts.md from the repo's own manifests. Changes any other existing file only on the user's yes. Run with /cla:cla-setup."
 argument-hint: "(no args — sets up the current repo)"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob, AskUserQuestion
 # Slash-command only: run deliberately, at onboarding and when facts go stale. Keeps this
@@ -14,14 +14,15 @@ One skill for a repo's own `cla` data, in two parts:
 
 - **Part 1, structure** — create whatever is missing of the `cla.io/` tree, the run ledger, the
   feedback inbox and lessons log, and the OpenSpec authoring rules; report retired ledgers and keep
-  the chains' run notes out of git. Creates only what is missing.
+  the chains' run notes out of git, and write the economy rules file. Creates only what is missing,
+  except that rules file, which it replaces whole.
 - **Part 2, facts** — read the repo's own manifests and write or reconcile `cla.io/project-facts.md`,
   the one home for every command, path, port, install step and env file the other skills read.
   Proposes first, writes only on the user's yes, then runs the staleness checker.
 
 Run it once at onboarding (marketplace install → `/cla:cla-setup` → install the `pre-push` hook) and
 again whenever a skill reports missing or stale facts. A re-run on a set-up repo changes nothing
-without a yes. It replaces the former `cla-init` and `sync-context` skills, which no longer exist.
+without a yes, except that it replaces the economy rules file with the plugin's current text. It replaces the former `cla-init` and `sync-context` skills, which no longer exist.
 
 The plugin itself (`SKILL.md` bodies, agents, hooks) arrives with the install and is never touched
 here: it is a read-only cache.
@@ -39,7 +40,7 @@ If this errors (not inside a git working tree), stop and tell the user to run fr
 ## Never-clobber contract
 
 - **Skip anything that exists — via a guarded idiom, never a bare redirect.** For every directory and
-  seed file in Part 1, check existence FIRST; if present, skip it untouched (no truncate, no
+  seed file in Part 1 (the rules file of item 7a is the one exception, replaced whole), check existence FIRST; if present, skip it untouched (no truncate, no
   overwrite, no re-seed, no merge) and report `exists (skipped)`.
 - **The guard is load-bearing.** A bare `> "$f"` or `cat > "$f"` truncates an existing file and defeats
   never-clobber. ALWAYS guard with `[ -e "$f" ] ||`. Pinned idioms:
@@ -47,18 +48,20 @@ If this errors (not inside a git working tree), stop and tell the user to run fr
   - 0-byte ledger → `[ -e "$f" ] || : > "$f"`
   - seed file with content → `[ -e "$f" ] || cat > "$f" <<'EOF'` … `EOF`
 - **Create only what is missing.** A partly set-up repo ends fully set up with every pre-existing
-  piece byte-for-byte unchanged: a `.jsonl` with history or a filled `notes.md` is ALWAYS skipped,
-  even though the seed content differs.
+  piece byte-for-byte unchanged, the rules file aside: a `.jsonl` with history or a filled
+  `notes.md` is ALWAYS skipped, even though the seed content differs.
 - **A change to an existing file needs the user's yes, every time**; each item says where it asks.
-  The one unasked edit is item 7's appended `.gitignore` line.
+  The unasked writes are item 7's appended `.gitignore` line and item 7a's rules file, which the
+  plugin owns whole and replaces on every run.
 - **Overlays are optional, and this skill never creates one.** `cla.io/overlays/<skill>.md` holds a
   repo's skill-specific rules when it has some; a skill without one runs on its generic procedure
   and `cla.io/project-facts.md`.
-- **Report `created` vs `exists (skipped)` per target**, so a re-run is transparently a no-op.
+- **Report `created` vs `exists (skipped)` per target**, so a re-run is transparently a no-op. The
+  rules file reports `created`, `replaced` or `unchanged` instead.
 
 ## Part 1 — Structure
 
-All paths relative to `$ROOT`. Every item is create-if-absent per the contract above.
+All paths relative to `$ROOT`. Every item except 7a is create-if-absent per the contract above.
 
 ### 1. `cla.io/` directories
 
@@ -100,7 +103,7 @@ EOF
 
 ### 5. OpenSpec authoring rules — `openspec/config.yaml`
 
-The one path outside `cla.io/` and `.gitignore` this skill writes, and it is still project data. OpenSpec injects a
+The one path outside `cla.io/`, `.gitignore` and the rules file of item 7a this skill writes, and it is still project data. OpenSpec injects a
 config's `rules:` into every artifact's authoring instructions, so the block below is how OpenSpec's
 own stock limits reach every CLA authoring run.
 
@@ -261,6 +264,51 @@ git -C "$ROOT" ls-files -- 'cla.io/retro/*-run-notes-*.md' | sed 's/^/tracked ru
   disk), and report each `untracked`; on anything else report each `kept tracked`. Left
   uncommitted, like item 6.
 
+### 7a. The economy rules file — `.claude/rules/cla-economy.md`
+
+An agent working in this repo outside any skill reads the repo's own `CLAUDE.md` and
+`.claude/rules/*.md` and nothing from the plugin. A rules file with no `paths:` frontmatter loads at
+launch with the same priority as `.claude/CLAUDE.md`, so this file gets the cost rules to that
+agent. The plugin owns the file whole: it is written fresh on every run with no prompt, so a hand
+edit is replaced (the repo's own rules go in its `CLAUDE.md`). The file is committed in the repo,
+and an upgrade that changes it shows as an ordinary diff. This skill never touches `CLAUDE.md`.
+
+The text is `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/economy-rules-file.md` with two sources
+inlined at its markers: `orchestration-economy.md` whole, and the span of `model-routing.md`
+between its `review-sizing` begin and end comments. Every source is read through `tr -d '\r'`, so a
+CRLF checkout and an LF one write the same bytes. The block prints `created`, `replaced` (existing
+content differed) or `unchanged`, and writes only when the text differs. It stops with an error
+before writing if a source is missing or empty.
+
+```bash
+: "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
+PLUGIN="${CLAUDE_PLUGIN_ROOT}"
+[ -n "$PLUGIN" ] || { echo ".claude/rules/cla-economy.md: NOT written, plugin root unresolved"; exit 1; }
+REF="$PLUGIN/skills/_shared/references"
+RULES_FILE="$ROOT/.claude/rules/cla-economy.md"
+FRAME="$(tr -d '\r' < "$REF/economy-rules-file.md")"
+COST="$(tr -d '\r' < "$REF/orchestration-economy.md")"
+SIZING="$(tr -d '\r' < "$REF/model-routing.md" | awk '/review-sizing:end -->/{f=0} f{print} /review-sizing:begin -->/{f=1}')"
+if [ -z "$FRAME" ] || [ -z "$COST" ] || [ -z "$SIZING" ]; then
+  echo ".claude/rules/cla-economy.md: NOT written, a source is missing or empty under $REF"
+  exit 1
+fi
+NEW="$(printf '%s\n' "$FRAME" | while IFS= read -r line; do
+  case "$line" in
+    '<!-- include: cost-rules -->') printf '%s\n' "$COST" ;;
+    '<!-- include: review-sizing -->') printf '%s\n' "$SIZING" ;;
+    *) printf '%s\n' "$line" ;;
+  esac
+done)"
+mkdir -p "$ROOT/.claude/rules"
+if [ ! -e "$RULES_FILE" ]; then
+  printf '%s\n' "$NEW" > "$RULES_FILE" && echo ".claude/rules/cla-economy.md: created"
+elif [ "$(tr -d '\r' < "$RULES_FILE")" = "$NEW" ]; then
+  echo ".claude/rules/cla-economy.md: unchanged"
+else
+  printf '%s\n' "$NEW" > "$RULES_FILE" && echo ".claude/rules/cla-economy.md: replaced"
+fi
+```
 
 ## Part 2 — Facts
 

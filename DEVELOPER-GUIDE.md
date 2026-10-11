@@ -367,12 +367,14 @@ destination repo:
    > "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
    > so. If both spellings are genuinely in use, install from each.
 
-3. **`/cla:cla-setup`** — create whatever is missing of the `cla.io/` tree (never overwriting),
-   seed the OpenSpec authoring rules, then populate `cla.io/project-facts.md` with the repo's facts:
+3. **`/cla:cla-setup`** — create whatever is missing of the `cla.io/` tree (never overwriting
+   anything there), seed the OpenSpec authoring rules, write the economy rules file
+   `.claude/rules/cla-economy.md` (the plugin owns it and replaces it whole on every run, so an
+   agent outside any skill still reads the cost rules), then populate `cla.io/project-facts.md` with the repo's facts:
    workspace members, install/dev/build/test commands, ports, affected-file map, test locations,
    env files. It also lists retired ledgers and offers to delete them, and adds a `.gitignore` line
    so `multi-lite`/`multi-pr` run notes stay out of git. Safe to re-run; apart from that
-   `.gitignore` line it changes an existing file only on your yes. Re-run it whenever a skill
+   `.gitignore` line and the rules file it changes an existing file only on your yes. Re-run it whenever a skill
    reports missing or stale facts.
 4. **Install the push guard**, once per clone (section 8): a plugin cannot write to `.git/hooks`.
 

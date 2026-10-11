@@ -22,6 +22,7 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 |---|---|
 | `model-routing.md` | the single routing table — which model each dispatched agent runs at — and the one review-sizing table (reviewers by risk) |
 | `orchestration-economy.md` | the cost rules the chain skills (`multi-lite`, `multi-pr`, `multi-spec`) follow when they dispatch agents and run tests |
+| `economy-rules-file.md` | the text `cla-setup` writes to a repo's `.claude/rules/cla-economy.md`: model by task and the quality floor, with the cost rules and the review-sizing section inlined from their sources |
 | `runtime-rules.md` | the thin-orchestrator disciplines (delegation, I/O hygiene, batching) |
 | `bash-discipline.md` | hard rules for emitted bash shape |
 | `base-branch-resolution.md` | how to resolve this repo's default branch, never assume it |

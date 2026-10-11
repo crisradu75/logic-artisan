@@ -46,10 +46,10 @@ always supplies the exact list).
 | Revise round ≥2 (scoped fix-diff) | the same reviewers and tiers as round 1, at round 1's final level (never lower), per "Review sizing by risk" below | inherited | `Agent(model:)` |
 | Ship / Archive / Handoff / prechecks / Test runs | inline, unchanged | — | no dispatch |
 
+<!-- economy-rules-file:review-sizing:begin -->
 ## Review sizing by risk
 
-This section holds the ONE review-sizing table. Every skill that reviews a pull request cites this
-section by name. None copies a row.
+This section holds the ONE review-sizing table. Nothing else copies a row.
 
 **The risk call.** The agent that opens the pull request judges the risk from the diff. It does not
 read a per-repo list. A diff is high risk when it shows any of these signals:
@@ -62,17 +62,20 @@ read a per-repo list. A diff is high risk when it shows any of these signals:
 - changes to agent instructions (skills, prompts and agent definitions)
 
 **Unsure means high.** A prose-dominant diff is high risk, because prose that steers an agent ships
-like code. It also keeps `plugin-dev:skill-reviewer` on Opus, alongside the two bug-hunters.
+like code. It also puts the skill reviewer (`plugin-dev:skill-reviewer`, where installed) on Opus,
+alongside the two bug-hunters.
 
-**Prose-dominant** means more changed lines in `.md` files under `skills/` than in every other file,
-counted as `revise.md` describes. A docs-only diff outside `skills/` is not prose-dominant.
+**Prose-dominant** means more changed lines in files that steer an agent (skill, prompt and
+agent-definition files, such as `.md` files under `skills/`) than in every other file, counted per
+file with `git diff --numstat`. Files that steer an agent count wherever they live; a README or
+docs-tree diff outside `skills/` is not prose-dominant.
 
 **The PR-body line.** The pull-request body carries one line: `Risk: <level> — <reason>; reviewers: <list>.`
 It stays on one line, so a grep over PR bodies can audit the call. Round 1 reads this line. It raises
 the level to high if the diff shows a signal the line missed.
 
 **A missing line means high.** If the line is missing, unreadable or names an unknown level, treat the
-diff as high risk. The run records that as a Handoff Issue, and `lite-pr` records it in its report.
+diff as high risk. Say so in your report.
 
 | Risk | Reviewers | Model |
 |---|---|---|
@@ -80,10 +83,12 @@ diff as high risk. The run records that as a Handoff Issue, and `lite-pr` record
 | Low risk, code | `code-reviewer` | Sonnet |
 | High risk | `code-reviewer` + `silent-failure-hunter` | Opus |
 
-On a prose-dominant diff, add `plugin-dev:skill-reviewer` on Opus to the high-risk reviewers.
+On a prose-dominant diff, add the skill reviewer (`plugin-dev:skill-reviewer`, where installed) on
+Opus to the high-risk reviewers.
 
 **Round 2** runs only after round 1 fixed a Critical finding (or a re-entry for still-open findings),
-and only while the `--pr-rounds` cap allows. Round 2 reviews the fix diff with the same reviewers, at round 1's final level, never lower.
+and only while the round cap allows. Round 2 reviews the fix diff with the same reviewers, at round 1's final level, never lower.
+<!-- economy-rules-file:review-sizing:end -->
 
 ### Artifact-class override — a prose-dominant diff promotes the prose reviewer
 
