@@ -130,14 +130,14 @@ MUTANTS = [
     (
         "the sizing section drops the missing-line-means-high rule",
         ROUTING,
-        "diff as high risk. The run records that as a Handoff Issue",
-        "diff as low risk. The run records that as a Handoff Issue",
+        "diff as high risk. Say so in your report.",
+        "diff as low risk. Say so in your report.",
         TARGETS,
     ),
     (
         "revise.md stops citing the missing-line-means-high rule",
         REVISE,
-        "treat the diff as high risk and record a Handoff Issue, as \"A missing line means high\" in that section says. ",
+        "treat the diff as high risk (\"A missing line means high\" in that section) and record a Handoff Issue, which `handoff.md` always lists for it. ",
         "",
         TARGETS,
     ),
@@ -151,8 +151,8 @@ MUTANTS = [
     (
         "the sizing section brings back round 2 after any fix commit",
         ROUTING,
-        "Round 2 reviews the fix diff with the same reviewers,",
-        "Round 2 runs whenever round 1 committed fixes. Round 2 reviews the fix diff with the same reviewers,",
+        "fix diff with the same reviewers, at round 1's final level",
+        "fix diff. Round 2 runs whenever round 1 committed fixes, with the same reviewers, at round 1's final level",
         TARGETS,
     ),
     (
@@ -172,7 +172,7 @@ MUTANTS = [
     (
         "the sizing section stops defining prose-dominant",
         ROUTING,
-        "A docs-only diff outside `skills/` is not prose-dominant.",
+        "docs-tree diff outside `skills/` is not prose-dominant.",
         "",
         TARGETS,
     ),
@@ -200,21 +200,21 @@ MUTANTS = [
     (
         "multi-pr stops citing the orchestration reference",
         MULTI_PR,
-        " Cost rules for dispatch, tests and debris: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/orchestration-economy.md`.",
+        " Cost rules for dispatch, tests and debris: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/orchestration-economy.md`",
         "",
         TARGETS,
     ),
     (
         "multi-lite stops citing the orchestration reference",
         MULTI_LITE,
-        " Cost rules for dispatch, tests and debris: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/orchestration-economy.md`.",
+        " Cost rules for dispatch, tests and debris: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/orchestration-economy.md`",
         "",
         TARGETS,
     ),
     (
         "multi-spec stops citing the orchestration reference",
         MULTI_SPEC,
-        " Cost rules for dispatch, tests and debris: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/orchestration-economy.md`.",
+        " Cost rules for dispatch, tests and debris: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/orchestration-economy.md`",
         "",
         TARGETS,
     ),

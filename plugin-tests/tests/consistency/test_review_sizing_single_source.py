@@ -16,6 +16,7 @@ _ROOT = Path(__file__).resolve().parents[3]
 _SKILLS = _ROOT / ".claude" / "plugins" / "cla" / "skills"
 _ROUTING = _SKILLS / "_shared" / "references" / "model-routing.md"
 _ECONOMY = _SKILLS / "_shared" / "references" / "orchestration-economy.md"
+_ECONOMY_RULES_FILE = _SKILLS / "_shared" / "references" / "economy-rules-file.md"
 _REVISE = _SKILLS / "spec-to-pr" / "references" / "revise.md"
 _SHIP = _SKILLS / "spec-to-pr" / "references" / "ship.md"
 _S2P = _SKILLS / "spec-to-pr" / "SKILL.md"
@@ -168,6 +169,7 @@ def test_other_skills_cite_the_table_and_carry_no_row() -> None:
         "multi-spec/SKILL.md": _CHAINS["multi-spec"],
         "multi-spec/references/review-gate.md": _REVIEW_GATE,
         "multi-pr/references/discover-and-gate.md": _DISCOVER_AND_GATE,
+        "_shared/references/economy-rules-file.md": _ECONOMY_RULES_FILE,
     }.items():
         assert not _TABLE_ROW.search(_read(path)), f"{name} carries a sizing-table row of its own"
     assert "plugin-dev:skill-reviewer" in _read(_LITE_PR), "lite-pr lost its skill-reviewer trigger"
@@ -185,8 +187,9 @@ def test_the_row_scanner_is_not_vacuous() -> None:
     assert _OLD_ROUND_2.search("Round 2 runs whenever round 1 committed fixes")
 
 
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 def test_the_orchestration_rules_live_once_and_all_three_chains_cite_them() -> None:
-    assert _ECONOMY.is_file()
+    assert _ECONOMY.is_file() and _ECONOMY_RULES_FILE.is_file()
     economy = _read(_ECONOMY)
     assert "git status --porcelain --ignored --untracked-files=all" in economy
     assert "explicit `model:`" in economy

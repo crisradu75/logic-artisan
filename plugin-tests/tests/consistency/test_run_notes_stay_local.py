@@ -153,7 +153,7 @@ def _ignored(root: Path, path: str) -> bool:
     return out.returncode == 0
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 def test_cla_setup_creates_the_ignore_line_and_a_rerun_keeps_it(tmp_path: Path) -> None:
     root = _repo(tmp_path)
@@ -167,7 +167,7 @@ def test_cla_setup_creates_the_ignore_line_and_a_rerun_keeps_it(tmp_path: Path) 
     assert gitignore.read_bytes() == f"{_LINE}\n".encode()
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 def test_cla_setup_appends_to_an_existing_gitignore_without_changing_it(tmp_path: Path) -> None:
     # No trailing newline, and a line that only contains the pattern.
@@ -177,7 +177,7 @@ def test_cla_setup_appends_to_an_existing_gitignore_without_changing_it(tmp_path
     assert (root / ".gitignore").read_bytes() == f"{before}\n{_LINE}\n".encode()
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 @pytest.mark.parametrize("before", [
     f"node_modules/\r\n{_LINE}\r\n",        # CRLF
@@ -213,7 +213,7 @@ def _global_excludes_env(tmp_path: Path, where: str) -> dict[str, str]:
     return {**_git_env(), "XDG_CONFIG_HOME": str(home / "xdg")}
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 @pytest.mark.parametrize("where", ["config", "config-gitignore", "xdg"])
 def test_cla_setup_writes_the_line_when_only_global_excludes_ignore_the_notes(tmp_path: Path, where: str) -> None:
@@ -238,7 +238,7 @@ def test_cla_setup_writes_the_line_when_only_global_excludes_ignore_the_notes(tm
     assert (root / ".gitignore").read_bytes() == f"node_modules/\n{_LINE}\n".encode()
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 def test_cla_setup_writes_the_line_when_only_the_clones_exclude_file_ignores_the_notes(tmp_path: Path) -> None:
     # `.git/info/exclude` belongs to this clone, not the repo, so it is not the repo's line.
@@ -251,7 +251,7 @@ def test_cla_setup_writes_the_line_when_only_the_clones_exclude_file_ignores_the
     assert _run(root) == "exists (skipped): .gitignore run-notes line"
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 def test_cla_setup_takes_a_line_in_a_nested_gitignore(tmp_path: Path) -> None:
     root = _repo(tmp_path)
@@ -261,7 +261,7 @@ def test_cla_setup_takes_a_line_in_a_nested_gitignore(tmp_path: Path) -> None:
     assert not (root / ".gitignore").exists()
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 def test_cla_setup_leaves_a_deliberate_un_ignore_alone(tmp_path: Path) -> None:
     before = f"{_LINE}\n!cla.io/retro/multi-lite-run-notes-*.md\n"
@@ -297,7 +297,7 @@ def _listed(root: Path) -> list[str]:
     return [line.removeprefix(prefix) for line in lines]
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 def test_cla_setup_lists_tracked_notes_and_changes_nothing_without_a_yes(tmp_path: Path) -> None:
     root = _repo(tmp_path)
@@ -311,7 +311,7 @@ def test_cla_setup_lists_tracked_notes_and_changes_nothing_without_a_yes(tmp_pat
     assert "loses its working copies on its next pull (history keeps them)" in item_7
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree
+# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 def test_cla_setup_untracks_exactly_the_listed_notes_on_a_yes(tmp_path: Path) -> None:
     root = _repo(tmp_path)

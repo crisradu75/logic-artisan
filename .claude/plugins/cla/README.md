@@ -46,7 +46,7 @@ and invoked bare as `/release`.
 
 | Phase | Skill | Invoked by | What it does |
 |---|---|---|---|
-| **0. Bootstrap** (per repo; re-run when facts go stale) | `cla-setup` | **you only** | Create whatever is missing of `cla.io/`, seed OpenSpec authoring rules, and populate or reconcile `cla.io/project-facts.md` — the repo's facts (members, commands, ports, file maps) |
+| **0. Bootstrap** (per repo; re-run when facts go stale) | `cla-setup` | **you only** | Create whatever is missing of `cla.io/`, seed OpenSpec authoring rules, write `.claude/rules/cla-economy.md` (the plugin owns it and replaces it on every run), and populate or reconcile `cla.io/project-facts.md` — the repo's facts (members, commands, ports, file maps) |
 | | `save-permissions` | **you only** | Persist tool permissions granted this session to `.claude/settings.local.json` |
 | **1. Discover & shape** | `feedback` | you or Claude | Capture rough notes one at a time → a dated, grounded triage doc under `cla.io/feedback/` |
 | | `shape-decision` | you or Claude | Walk a decision option-by-option with pros/cons + a recommended pick |
@@ -174,8 +174,8 @@ fails or lands somewhere the next update discards. A fix that belongs in the har
 **`/cla:report-upstream`**, which files it as an issue against the canonical source. A fact that
 belongs to your repo goes in `cla.io/`.
 
-**Onboarding a fresh repo:** install (above) → `/cla:cla-setup` (scaffold `cla.io/` and populate
-the facts) → install the `pre-push` hook (see *Guardrails*).
+**Onboarding a fresh repo:** install (above) → `/cla:cla-setup` (scaffold `cla.io/`, write the economy rules file
+`.claude/rules/cla-economy.md` and populate the facts) → install the `pre-push` hook (see *Guardrails*).
 
 **Coming from 1.x?** The `cla-init` and `sync-context` skills were merged into `/cla:cla-setup`. Run
 it once: it reports what your `cla.io/` is missing, proposes moving facts out of overlays into
