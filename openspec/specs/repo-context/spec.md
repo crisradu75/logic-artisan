@@ -95,25 +95,6 @@ A skill SHALL read the repo's commands, paths, ports, install steps and env file
 - **WHEN** `cla.io/retro/` holds the codify-learnings ledger
 - **THEN** `/cla:cla-setup` lists it as a retired ledger
 
-### Requirement: Setting up a repo's cla.io tree
-
-`/cla:cla-setup` SHALL create whatever is missing of a repo's `cla.io/` tree (the `decisions/`, `feedback/`, `retro/` and `lessons-learned/` directories, the empty run ledger, and the feedback notes and lessons files) and the `.gitignore` line that keeps chain run notes untracked, SHALL create no overlay, and SHALL change no existing file except to append that line when no `.gitignore` in the repo ignores the notes.
-
-#### Scenario: A fresh repo
-
-- **WHEN** `/cla:cla-setup` runs in a repo with no `cla.io/` directory and no `.gitignore`
-- **THEN** it creates the directories, the empty ledger, the seeded files and a `.gitignore` holding the run-notes line, and no overlay
-
-#### Scenario: A repo already set up
-
-- **WHEN** `/cla:cla-setup` runs where some of the tree exists and `.gitignore` already holds the run-notes line
-- **THEN** every existing file is left as it was and only the missing pieces are created
-
-#### Scenario: Only this clone or machine ignores the notes
-
-- **WHEN** the user's global git excludes or the clone's own exclude file ignores the run notes but no `.gitignore` in the repo does
-- **THEN** `/cla:cla-setup` appends the line to `.gitignore` and leaves every other line as it was
-
 ### Requirement: Repo facts and overlay rules on setup
 
 `/cla:cla-setup` SHALL propose the repo's facts (install, build, test and dev commands, ports, workspace members, and paths) for `cla.io/project-facts.md` from its manifests, config and overlays, SHALL keep in each overlay every rule it states, with any path or command only that rule uses, moving only an incident's story to the lessons log, and SHALL write a file, delete an overlay left with no rule, or add a token-list entry only on the user's yes.
@@ -132,3 +113,22 @@ A skill SHALL read the repo's commands, paths, ports, install steps and env file
 
 - **WHEN** an overlay's dated incident states a rule for this repo
 - **THEN** the proposal keeps that rule in the overlay in a line or two and moves only the story to the lessons log
+
+### Requirement: Setting up a repo's cla.io tree and economy rules file
+
+`/cla:cla-setup` SHALL create whatever is missing of a repo's `cla.io/` tree and the `.gitignore` line that keeps chain run notes untracked, SHALL write `.claude/rules/cla-economy.md` whole on every run and report `created`, `replaced` (existing content differed) or `unchanged`, SHALL create no overlay, and SHALL change no other existing file except to append that line when no `.gitignore` in the repo ignores the notes.
+
+#### Scenario: A fresh repo
+
+- **WHEN** `/cla:cla-setup` runs in a repo with no `cla.io/` directory, no `.gitignore` and no `.claude/rules/cla-economy.md`
+- **THEN** it creates the directories, the empty ledger, the seeded files, the rules file and a `.gitignore` holding the run-notes line, and no overlay
+
+#### Scenario: A repo already set up with a rules file that differs
+
+- **WHEN** `/cla:cla-setup` runs where some of the tree exists, `.gitignore` already holds the run-notes line, and the rules file differs from the fresh text
+- **THEN** it replaces the rules file and reports `replaced`, and every other existing file is left as it was
+
+#### Scenario: Only this clone or machine ignores the notes
+
+- **WHEN** the user's global git excludes or the clone's own exclude file ignores the run notes but no `.gitignore` in the repo does
+- **THEN** `/cla:cla-setup` appends the line to `.gitignore` and leaves every other line as it was
