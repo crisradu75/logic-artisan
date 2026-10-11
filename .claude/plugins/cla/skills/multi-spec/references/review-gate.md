@@ -34,7 +34,7 @@ Record each change's grade in the batch report.
 
 ## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large)
 
-Same model routing as `review-change/references/dispatch.md` (the checklist's Step 4), per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s "Review-agent dispatch" table:
+Same model routing as `review-change/references/dispatch.md` (the checklist's Step 4), per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s "Review-agent dispatch" table. This is a review of specs before any code exists, so there is no diff or `Risk:` line to size by:
 
 - **Agent 1 (Design Reviewer) → `opus`**
 - **Agents 2 & 3 (Task Reviewer, Spec & Codebase Reviewer) → `sonnet`**

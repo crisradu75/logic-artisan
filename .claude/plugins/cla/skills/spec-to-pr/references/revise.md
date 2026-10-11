@@ -2,35 +2,33 @@
 
 The Revise phase's procedure. Why its rules are shaped as they are: `design-tradeoffs.md` "Revise".
 
-Cap: `--pr-rounds N` (default `2`). Round 2 runs whenever round 1 committed fixes, scoped to that fix diff; `--pr-rounds 1` opts out, `0` skips Revise.
+Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 fixed a Critical finding and the cap allows it, scoped to that fix diff (or a re-entry for still-open findings); `--pr-rounds 1` opts out, `0` skips Revise.
 
 ## Dispatch mechanism by round (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`)
 
 - **Round 1** runs as ONE `Workflow` fan-out (per-call effort, schema-forced findings).
-- **Round N ≥ 2** dispatches directly via `Agent`, each agent one model tier down except the never-demoted set.
+- **Round N ≥ 2** dispatches directly via `Agent`, with the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for round 1's final level. A later round never uses a lower level than round 1.
 
 Never chain through `Skill(pr-review-toolkit:review-pr)`; dispatch its agents yourself.
 
 ## Round 1 — agent selection + routing
 
-Pick by the diff's content. Model and effort per `model-routing.md`; the **diff slice** column is what each agent is given — the two bug-hunters get the full diff, the narrow agents a filtered slice:
+Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for that level. If the diff shows a risk signal the line missed, raise the level to high, and rewrite the PR body's `Risk:` clause to the raised level (`gh pr edit --body`, keeping the rest of the one-liner). If the line is missing, unreadable or names an unknown level, treat the diff as high risk and record a Handoff Issue, as "A missing line means high" in that section says. The rows below add the narrow agents; the **diff slice** column is what each agent is given — the main reviewers get the full diff, the narrow agents a filtered slice:
 
 | Diff contains | Dispatch | Model | Effort | Diff slice passed |
 |---|---|---|---|---|
-| logic / behavior code | `code-reviewer`, `silent-failure-hunter` | opus | medium | **full diff** |
+| logic / behavior code | `code-reviewer`, plus `silent-failure-hunter` on high risk | per the review-sizing table | medium | **full diff** |
 | a new **exported** type carrying a **non-trivial invariant** — a discriminated union, a branded/opaque type, a field-pair where one gates the other's validity (e.g. a `reliable` flag next to the value it qualifies), a closed-set narrowing — NOT merely any changed type annotation or a plain data-shape DTO | + `type-design-analyzer` | sonnet | medium | new/changed typed signatures + their files |
-| a **substantial block** of added or changed comment, docstring or `.md` prose (a multi-paragraph rationale or a new `.md` section, not a single sentence), OR a comment asserting a **load-bearing decision or invariant** (a "why this and not that") — never when no comment, docstring or `.md` hunk changed | + `comment-analyzer` | haiku | low | comment/docstring/`.md` hunks only |
+| a **substantial block** of added or changed comment, docstring or `.md` prose (a multi-paragraph rationale or a new `.md` section, not a single sentence), OR a comment asserting a **load-bearing decision or invariant** (a "why this and not that") — never when no comment, docstring or `.md` hunk changed | + `comment-analyzer` | its "Routing table" row in `model-routing.md`, at any risk level | medium | comment/docstring/`.md` hunks only |
 | new tests | + `pr-test-analyzer` | sonnet | medium | test files + the code-under-test they exercise |
 | a `${CLAUDE_PLUGIN_ROOT}/skills/*/SKILL.md` **frontmatter** (`description` / `argument-hint`) changed, OR a **new** skill/SKILL.md created, OR a new command under `.claude/commands/` created | + `plugin-dev:skill-reviewer` | sonnet | medium | the SKILL.md file. A body-only prose edit does not qualify **under this row** — see the prose-dominant row below. |
-| **prose-dominant diff** — more changed lines in `SKILL.md` / `references/*.md` than in executable files. Decide it mechanically: `git diff --numstat <base>...HEAD`, summing changed lines of `*.md` under `skills/` against everything else | + `plugin-dev:skill-reviewer` | **opus — never demoted** | medium | the changed `.md` files |
-| docs / config only (no logic) | `code-reviewer`, plus `comment-analyzer` **only if** the docs edit meets its row above — a one-line doc/config-value tweak gets `code-reviewer` alone | per rows above | per rows above | per rows above |
+| **prose-dominant diff** — more changed lines in `.md` files under `skills/` than in every other file. Decide it mechanically: `git diff --numstat <base>...HEAD`, summing changed lines of `*.md` under `skills/` against everything else | + `plugin-dev:skill-reviewer` | opus (a prose-dominant diff is high risk) | medium | the changed `.md` files |
+| docs / config only (no logic) | the reviewer the review-sizing table gives for that level, plus `comment-analyzer` if the docs edit meets its row above | per the review-sizing table | per rows above | per rows above |
 | ambiguous / mixed / can't tell | `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`; also `type-design-analyzer` when the diff has any new typed signatures (`class `, `Protocol`, `TypedDict`, `dataclass`, `def .*->.*:`), and `comment-analyzer` only on its own row's trigger | per rows above | per rows above | the full diff when scoping is unclear |
 
 **Row precedence.** Use the specific rows first. The ambiguous row is for a diff you genuinely *can't* classify, not one that classifies cleanly below a row's bar: a plain-DTO type or a one-line comment gets no `type-design-analyzer` / `comment-analyzer`.
 
-**Dispatch every row the diff matches** — no budget-based reduction, no degraded mode. `code-reviewer` + `silent-failure-hunter` are the floor for any logic or behaviour code.
-
-**Never demoted, in ANY round:** `code-reviewer`, `silent-failure-hunter`, and a `plugin-dev:skill-reviewer` the prose-dominant row promoted to opus.
+**Dispatch every row the diff matches** — no budget-based reduction, no degraded mode. The review-sizing table sets the floor: `code-reviewer` for any logic or behaviour code, plus `silent-failure-hunter` on high risk.
 
 ## Round 1 — Workflow fan-out
 
@@ -64,14 +62,14 @@ return {findings, launched: DISPATCHES.length, reported: reported.length};
 
 ## Round N (N ≥ 2)
 
-Dispatch via `Agent`, each agent one tier down (`opus→sonnet`, `sonnet→haiku`, `haiku` stays) except the never-demoted set, which stays `opus`. Scope it to the diff the previous fix commit added, inlined into each prompt — do not make agents re-read it:
+Dispatch via `Agent`, with the same reviewers and models as round 1, at round 1's final level (never lower), per "Review sizing by risk" in `model-routing.md`. Do not re-judge risk from the smaller fix diff. Scope it to the diff the previous fix commit added, inlined into each prompt — do not make agents re-read it:
 
 ```
 PREV_FIX_SHA=$(git rev-parse HEAD)   # captured immediately BEFORE the round-(N-1) fix commit (step 3)
 git diff $PREV_FIX_SHA..HEAD          # NB: `git diff`, NOT `gh pr diff` — gh pr diff does not accept commit ranges
 ```
 
-On a resume, where the held SHA is lost, take `PREV_FIX_SHA` as the parent of the previous round's `fix: review round <N-1>` commit (`git rev-parse <that commit>^`). An empty `PREV_FIX_SHA` or an empty diff → a full PR review instead; never review nothing and call it clean.
+On a resume, if you cannot tell whether the previous round fixed a Critical, run the next round. Failing safe costs one round. Where the held SHA is lost, take `PREV_FIX_SHA` as the parent of the previous round's `fix: review round <N-1>` commit (`git rev-parse <that commit>^`). An empty `PREV_FIX_SHA` or an empty diff → a full PR review instead; never review nothing and call it clean.
 
 **Ask this round its own question, in each agent's prompt:**
 
@@ -146,7 +144,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
    **A remedy the ORCHESTRATOR specified gets one extra read**: re-reading its fix, also check it against the change's `design.md` rejected-alternatives content and confirm it reintroduces none.
    - **Capture the snapshot FIRST.** Before applying **any** fix this round, read `design.md`'s rejected-alternatives section and hold it in context for the round. Never `git show HEAD:<path>` — it fails wherever the change directory is not yet committed. A re-read after the fixes returns the post-edit file, which would judge a remedy that edited that section against itself. **A check with no snapshot has not run:** mark **Revise `warn`** and record under *Issues encountered* `rejected-alternatives check did not run (no snapshot captured) — N orchestrator-specified remedies unchecked`.
    - **No `design.md`** → no such document, so neither the check nor the marking binds; out of scope, not a breach.
-   - **A hit is a Critical on the fix itself.** Withdraw or re-specify the remedy; it does not stand on having resolved the original finding. Where the design's rejection is what now looks wrong, amend `design.md` explicitly.
+   - **A hit is a Critical on the fix itself.** Withdraw or re-specify the remedy; it does not stand on having resolved the original finding. Re-specifying a fix this way counts as fixing a Critical for the round-2 rule. Where the design's rejection is what now looks wrong, amend `design.md` explicitly.
    - **Mark it** `remedy: orchestrator-specified` on that finding's triage record. Where no later round reads the diff, the marks surface in the terminal report. **This control is weaker than an independent reader and raises no cap.**
 
    **Verify before applying any Critical claiming internal control flow** ("path X runs in context Y", "A happens before B", "Z is called from W"): read the surrounding flow first (1 Read) — agents build wrong mental models even from verbatim source. **A Critical claiming RUNTIME or DB semantics** (a race, constraint timing, an RPC return shape) checked by *running* a scratch harness needs a harness that structurally mirrors the real object — same columns and constraint shape, a genuinely non-unique grouping column where the real constraint is a partial/grouped unique index. When that is hard, defer to the change's own implementation test. See `review-change/references/checklist.md` "Empirical-verification fidelity".
@@ -204,7 +202,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
    - **Untriaged** — Critical/Important findings in no bucket.
    - **Open** — in a bucket but not closed. Applied and Deferred-Known-Issue are closed. **Remedy-Rejected citing the remedy is triaged and OPEN**; Remedy-Rejected citing a disproved defect is closed.
 
-   **Both 0** → status `ok` and exit the loop, **unless this round committed fixes and the cap allows another round** — then run it, scoped to that fix diff. When the last allowed round committed fixes, Revise still ends `ok`, and the Handoff report says in one line that those fixes were not reviewed again.
+   **Both 0** → status `ok` and exit the loop, **unless this round fixed a Critical and the cap allows another round** — then run it, scoped to that fix diff. A round whose fixes were all Important or lower does not trigger another. When any round committed fixes and no later round reviewed them, Revise still ends `ok`, and the Handoff report says in one line that those fixes were not reviewed again.
 
    **Open > 0** → decide by whether a re-attempt is still available:
    - **Some open finding still has its free re-attempt** AND the round budget allows → **re-enter the loop** with re-decided remedies for those findings.

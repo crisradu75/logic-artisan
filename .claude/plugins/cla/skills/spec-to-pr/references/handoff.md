@@ -10,7 +10,7 @@ From your working memory of each phase, as rendered Markdown in the assistant tu
 - PR URL + branch + mode + caps. When `<inherits>` was non-empty: one verdict line per supplied entry, `HONOURED` ones included, here ahead of the phase table, even on a resumed run that skipped Review.
 - Phases table: one row per phase — glyph (`✓` / `⚠` / `✗`), phase name, the one-line summary you held for it.
 - Counts at a glance: the ✓/⚠/✗ tally; Critical/Important/Suggestion remaining; failing test names, if any.
-- Issues encountered: every `warn`/`fail` outcome from any phase.
+- Issues encountered: every `warn`/`fail` outcome from any phase. Also, always when they apply: a missing or unreadable `Risk:` line treated as high, and each Revise round whose fixes were not reviewed again.
 - **Deferred Known Issues:** every Critical/Important Revise finding triaged Deferred-Known-Issue, each with its one-line rationale, **split into three named subsections, always, even when empty:**
 
   ```
@@ -27,8 +27,8 @@ From your working memory of each phase, as rendered Markdown in the assistant tu
 ## 2. Mirror the issues into the PR body
 
 Skip when there are no issues and no rejected remedies.
-- **Few short issues:** one line — `gh pr edit <#> --body "Closes openspec/changes/<name>/. Checks: <the checks that ran>. Known issues: <comma-separated brief list>."`.
-- **Long or multi-line:** write `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run): the original one-liner plus a `## Known issues` section, one bullet per issue, then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`.
+- **Few short issues:** one line — `gh pr edit <#> --body "Closes openspec/changes/<name>/. Checks: <the checks that ran>. Risk: <level> — <reason>; reviewers: <list>. Known issues: <comma-separated brief list>."`.
+- **Long or multi-line:** write `temp/spec-to-pr-issues-<change-name>.md` (one fixed file, overwritten on re-run): the original one-liner, keeping its `Risk:` clause, plus a `## Known issues` section, one bullet per issue, then `gh pr edit <#> --body-file temp/spec-to-pr-issues-<change-name>.md`.
 
 **Mirror "Rejected remedies, still open" first** — one line per finding with the delegate's reason. It is the most severe thing the body carries.
 

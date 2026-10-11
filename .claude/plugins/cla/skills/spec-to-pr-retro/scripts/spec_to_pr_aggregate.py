@@ -150,8 +150,8 @@ CAPPED_PHASES = ("Review", "Test", "Revise")
 NUDGE_PHASES = ("Revise", "Test")
 FINDINGS_PHASE = "Revise"
 REASON_STATUSES = ("warn", "fail")
-# Revise runs a second round whenever its first committed fixes, so reaching its
-# cap is its normal path. It counts as exhausted only when it also ended warn or
+# Revise runs a second round after its first fixed a Critical, so reaching its
+# cap is an expected path. It counts as exhausted only when it also ended warn or
 # fail: the record's spelling for findings left open at the cap.
 RESIDUE_PHASES = ("Revise",)
 # Placeholders `migrate_run_records.py` writes where an old record kept no
@@ -260,7 +260,7 @@ def _cap_hit(phase: dict) -> bool:
     """A phase that used its whole cap, with room to loop.
 
     A cap of 1 reached is a single pass, not exhaustion. A Revise that reached
-    its cap and ended `ok` took its routine second round; see RESIDUE_PHASES.
+    its cap and ended `ok` took its expected second round; see RESIDUE_PHASES.
     `>=`, because the writer does not refuse `rounds_used` above `rounds_cap`.
     """
     cap = phase.get("rounds_cap", 0)
@@ -333,7 +333,7 @@ def aggregate(records: list[dict]) -> dict:
 def round_2_yield(records: list[tuple[str, dict]]) -> dict:
     """How often Revise's second round still finds something.
 
-    Round 2 runs whenever round 1 committed fixes (spec-to-pr's Revise
+    Round 2 runs only after round 1 fixed a Critical (spec-to-pr's Revise
     reference); this is the health check on that default. A change counts when
     its Revise `findings_by_round` holds a round >= 2, and surfaces when such a
     round found at least one Critical or Important. Changes are distinct
