@@ -15,6 +15,8 @@ environment state (all edit files in this repo; no migration, seed or provisioni
 - `commands-first` edits `spec-to-pr` and chain prose that brief 1 also touches: land brief 1 first.
 - `reviewer-agents` edits `model-routing.md`, which brief 1 rewrites: land brief 1 first.
 - `lessons-archive` and `local-path-skip` have no dependency beyond `meter`.
+- `review-sizing-followups` edits files brief 1 rewrote: brief 1 has landed (PR #324).
+- `docs-refresh` runs last, after every other candidate and brief 2.
 Merge policy suggestion: `merge-each-clean`, so each candidate's tests run on the combined tree.
 
 ## Candidates
@@ -89,3 +91,38 @@ In `cla-setup/scripts/check_fact_paths.py`, `_keep_if_path` (`:358`) has no rule
 files such as `*.local.*`; a path naming one is skipped, not reported missing.
 Acceptance: a project-facts file naming `.claude/settings.local.json` that is absent exits 0; an
 absent ordinary path still exits 1; run the mutation batch for this checker once after the fix.
+Same checker, same PR: `_keep_if_path` (`:381-383`) skips any path whose first segment is not a
+tracked top-level name, so when a top-level directory is renamed, every path under its old name
+goes unreported. That falls short of "every repo path" in `repo-context` ("Checking recorded
+paths"). Report such a path as stale instead; the pinning tests in
+`plugin-tests/tests/conformance/test_project_facts_paths.py` (unknown top-level, repo-derived
+top-level set, untracked top-level, skip reasons) change with it.
+Added acceptance: a facts file naming `old/src/x.ts` after `old/` was renamed exits 1.
+
+### 9. review-sizing-followups — PR #324 review residue (risk-sized-review)
+depends_on: spec-to-pr brief 1 (landed as PR #324).
+Five small prose fixes left from the risk-sized-review review rounds:
+- `_shared/references/orchestration-economy.md` debris check: ignore interpreter caches
+  (`__pycache__/*.pyc`) in the before/after diff, and delete half-written `*.pyc.<pid>` files
+  that parallel workers leave.
+- `spec-to-pr/references/revise.md`: repeat the resume fail-safe (a resumed run that cannot tell
+  whether the previous round fixed a Critical runs the next round) at the exit gate.
+- `spec-to-pr/references/handoff.md` §2: the one-line body rewrite keeps the original one-liner
+  verbatim, so a stacked child keeps its "Stacked on #N." clause.
+- `_shared/references/model-routing.md` (rubric-checks paragraph) and the plugin `README.md`
+  skill-reviewer row: cite "Review sizing by risk" instead of restating skill-reviewer's model.
+- `model-routing.md`: give "as `revise.md` describes" its plugin-root path; split the new
+  sentences in `model-routing.md`, `revise.md` round-1 selection and `lite-pr` Review that run
+  past 25 words.
+Acceptance: `test_review_sizing_single_source.py` and its mutation batch still pass; a debris
+check on a clean run reports nothing.
+
+### 10. docs-refresh — repo docs match the program's end state (runs last)
+depends_on: every candidate above, and spec-to-pr brief 2.
+Update the repo's own docs for what the token-diet program changed: `README.md`,
+`DEVELOPER-GUIDE.md` (the developer guide, including §11 layout and script table) and root
+`CLAUDE.md` (rules and the release line only if a release landed). Cover: risk-sized review and
+the PR `Risk:` line, `orchestration-economy.md`, the consumer `.claude/rules/cla-economy.md`, the
+Sonnet launcher, the token meter, and any skill, script or agent added or removed.
+Acceptance: every shipped path the docs name exists (`test_docs_name_shipped_paths.py` passes);
+no doc still describes "never demoted" reviewers or round 2 after any fix.
