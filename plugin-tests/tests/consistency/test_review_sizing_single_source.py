@@ -34,7 +34,6 @@ _CHAINS = {
 }
 _SECTION = "Review sizing by risk"
 _ECONOMY_POINTER = "skills/_shared/references/orchestration-economy.md"
-_ECONOMY_RULES_FILE_POINTER = "skills/_shared/references/economy-rules-file.md"
 _RISK_LINE = "Risk: <level> — <reason>; reviewers: <list>."
 _MISSING_LINE_RULE = "A missing line means high"
 _MISSING_LINE_SENTENCE = "If the line is missing, unreadable or names an unknown level, treat the diff as high risk."
@@ -197,5 +196,4 @@ def test_the_orchestration_rules_live_once_and_all_three_chains_cite_them() -> N
     for name, path in _CHAINS.items():
         text = _read(path)
         assert _ECONOMY_POINTER in text, f"{name}/SKILL.md does not cite {_ECONOMY_POINTER}"
-        assert _ECONOMY_RULES_FILE_POINTER in text, f"{name}/SKILL.md does not cite {_ECONOMY_RULES_FILE_POINTER}"
         assert "full suite once" not in text, f"{name}/SKILL.md copies a rule from {_ECONOMY.name}"

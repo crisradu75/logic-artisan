@@ -49,7 +49,8 @@ always supplies the exact list).
 <!-- economy-rules-file:review-sizing:begin -->
 ## Review sizing by risk
 
-This section holds the ONE review-sizing table. Nothing else copies a row.
+This section holds the ONE review-sizing table. No other skill file copies a row. A round is one
+review pass over the pull request; round 1 is the first.
 
 **The risk call.** The agent that opens the pull request judges the risk from the diff. It does not
 read a per-repo list. A diff is high risk when it shows any of these signals:
@@ -66,13 +67,13 @@ like code. It also puts the skill reviewer (`plugin-dev:skill-reviewer`, where i
 alongside the two bug-hunters.
 
 **Prose-dominant** means more changed lines in files that steer an agent (skill, prompt and
-agent-definition files, such as `.md` files under `skills/`) than in every other file, counted per
-file with `git diff --numstat`. Files that steer an agent count wherever they live; a README or
+agent-definition files, such as `.md` files under `skills/`) than in every other file, counted by
+changed lines per file. Files that steer an agent count wherever they live; a README or
 docs-tree diff outside `skills/` is not prose-dominant.
 
 **The PR-body line.** The pull-request body carries one line: `Risk: <level> — <reason>; reviewers: <list>.`
-It stays on one line, so a grep over PR bodies can audit the call. Round 1 reads this line. It raises
-the level to high if the diff shows a signal the line missed.
+It stays on one line, so a grep over PR bodies can audit the call. The first review pass reads this
+line. It raises the level to high if the diff shows a signal the line missed.
 
 **A missing line means high.** If the line is missing, unreadable or names an unknown level, treat the
 diff as high risk. Say so in your report.
@@ -86,8 +87,9 @@ diff as high risk. Say so in your report.
 On a prose-dominant diff, add the skill reviewer (`plugin-dev:skill-reviewer`, where installed) on
 Opus to the high-risk reviewers.
 
-**Round 2** runs only after round 1 fixed a Critical finding (or a re-entry for still-open findings),
-and only while the round cap allows. Round 2 reviews the fix diff with the same reviewers, at round 1's final level, never lower.
+**A second review pass** (round 2) runs only after round 1 fixed a Critical finding (or a re-entry
+for still-open findings), and only while the repo's limit on review passes allows it. It reviews the
+fix diff with the same reviewers, at round 1's final level, never lower.
 <!-- economy-rules-file:review-sizing:end -->
 
 ### Artifact-class override — a prose-dominant diff promotes the prose reviewer
@@ -105,6 +107,7 @@ occupies the position `code-reviewer` holds for a Python diff. A prose-dominant 
 `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/revise.md`, which carries the
 `git diff --numstat` recipe that makes it mechanically decidable. This section is
 the rationale only; the recipe is in that one row, per this file's own no-forking rule.
+The definition (files that steer an agent, wherever they live) is the same in both places.
 
 All six Revise agents are dispatched by their full registered `subagent_type` (`pr-review-toolkit:code-reviewer`,
 `pr-review-toolkit:silent-failure-hunter`, `pr-review-toolkit:pr-test-analyzer`,

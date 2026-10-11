@@ -15,7 +15,7 @@ rule below saves some without dropping quality.
    continue in a fresh session instead of carrying the old context.
 6. **Put high-risk implementers on Opus.** A task is high risk when it shows one of the risk signals
    in the review-sizing rules. Other implementers use Sonnet.
-7. **Check for debris when the chain runs tests.** Before the final test run, save the output of
+7. **Check for debris when you run the tests.** Before the final test run, save the output of
    `git status --porcelain --ignored --untracked-files=all` outside the repo, in a scratch or temp
    directory. Run it again after, and diff the two. Any new line is debris, so report it. Ignored
    caches and virtualenvs that were already present show in both lists and cancel out. A missing

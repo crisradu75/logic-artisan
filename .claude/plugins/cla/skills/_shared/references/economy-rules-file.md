@@ -1,7 +1,7 @@
 # Economy rules
 
 Tokens are money. These rules keep an agent's cost down without dropping quality. They apply to any
-agent working in this repo, inside a skill or not. The setup step that wrote this file replaces it
+agent working in this repo, inside a skill or not. The setup step that wrote this file (`/cla:cla-setup`) replaces it
 on every run, so edit nothing here: a change belongs in the repo's own `CLAUDE.md`.
 
 ## Model by task
@@ -11,10 +11,12 @@ Pass an explicit `model:` on every dispatch, and pick it by the task.
 - **A cheap model (Haiku):** sweeps and mechanical work. That means doc sweeps, renames, version
   bumps, greps and inventories, and issue comments drafted from text already in hand.
 - **Sonnet:** the default for authoring, implementing a decided fix, writing and strengthening
-  tests, applying review findings, and small fix PRs.
-- **Opus:** only where judgement carries real risk. That means the one independent review of a
-  batch, money logic, writes to files a user owns, and score or gate changes, plus one focused
-  re-check when a fix round adds production code in those areas.
+  tests, applying review findings, and small fix PRs. Implementing a high-risk task is the
+  exception: it goes to Opus.
+- **Opus:** only where judgement carries real risk. That means the independent review of a
+  high-risk batch (the review-sizing table below sets each review's model), implementing a
+  high-risk task, money logic, writes to files a user owns, and score or gate changes, plus one
+  focused re-check when a fix round adds production code in those areas.
 
 ## Quality floor
 

@@ -137,7 +137,7 @@ MUTANTS = [
     (
         "revise.md stops citing the missing-line-means-high rule",
         REVISE,
-        "treat the diff as high risk and record a Handoff Issue, as \"A missing line means high\" in that section says. ",
+        "treat the diff as high risk (\"A missing line means high\" in that section) and record a Handoff Issue, which `handoff.md` always lists for it. ",
         "",
         TARGETS,
     ),
@@ -151,8 +151,8 @@ MUTANTS = [
     (
         "the sizing section brings back round 2 after any fix commit",
         ROUTING,
-        "Round 2 reviews the fix diff with the same reviewers,",
-        "Round 2 runs whenever round 1 committed fixes. Round 2 reviews the fix diff with the same reviewers,",
+        "fix diff with the same reviewers, at round 1's final level",
+        "fix diff. Round 2 runs whenever round 1 committed fixes, with the same reviewers, at round 1's final level",
         TARGETS,
     ),
     (

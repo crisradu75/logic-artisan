@@ -497,7 +497,7 @@ The published plugin — everything here ships to a consuming repo:
   lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill);
-                               `model-routing.md` holds the review-sizing table, `orchestration-economy.md` the chain cost rules
+                               `model-routing.md` holds the review-sizing table, `orchestration-economy.md` the chain cost rules, `economy-rules-file.md` the frame `/cla:cla-setup` renders into a repo's `.claude/rules/cla-economy.md`
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
     references/                supporting docs (portable; overlays live in cla.io/overlays/)
