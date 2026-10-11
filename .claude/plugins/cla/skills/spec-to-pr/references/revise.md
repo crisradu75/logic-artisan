@@ -7,22 +7,22 @@ Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 fixed a Crit
 ## Dispatch mechanism by round (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`)
 
 - **Round 1** runs as ONE `Workflow` fan-out (per-call effort, schema-forced findings).
-- **Round N ≥ 2** dispatches directly via `Agent`, with the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for the diff's risk.
+- **Round N ≥ 2** dispatches directly via `Agent`, with the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for round 1's final level. A later round never uses a lower level than round 1.
 
 Never chain through `Skill(pr-review-toolkit:review-pr)`; dispatch its agents yourself.
 
 ## Round 1 — agent selection + routing
 
-Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for that level. If the diff shows a risk signal the line missed, raise the level to high. If the line is missing, unreadable or names an unknown level, treat the diff as high risk and record a Handoff Issue, as "A missing line means high" in that section says. The rows below add the narrow agents; the **diff slice** column is what each agent is given — the main reviewers get the full diff, the narrow agents a filtered slice:
+Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for that level. If the diff shows a risk signal the line missed, raise the level to high, and rewrite the PR body's `Risk:` clause to the raised level (`gh pr edit --body`, keeping the rest of the one-liner). If the line is missing, unreadable or names an unknown level, treat the diff as high risk and record a Handoff Issue, as "A missing line means high" in that section says. The rows below add the narrow agents; the **diff slice** column is what each agent is given — the main reviewers get the full diff, the narrow agents a filtered slice:
 
 | Diff contains | Dispatch | Model | Effort | Diff slice passed |
 |---|---|---|---|---|
 | logic / behavior code | `code-reviewer`, plus `silent-failure-hunter` on high risk | per the review-sizing table | medium | **full diff** |
 | a new **exported** type carrying a **non-trivial invariant** — a discriminated union, a branded/opaque type, a field-pair where one gates the other's validity (e.g. a `reliable` flag next to the value it qualifies), a closed-set narrowing — NOT merely any changed type annotation or a plain data-shape DTO | + `type-design-analyzer` | sonnet | medium | new/changed typed signatures + their files |
-| a **substantial block** of added or changed comment, docstring or `.md` prose (a multi-paragraph rationale or a new `.md` section, not a single sentence), OR a comment asserting a **load-bearing decision or invariant** (a "why this and not that") — never when no comment, docstring or `.md` hunk changed | + `comment-analyzer` | per the review-sizing table | medium | comment/docstring/`.md` hunks only |
+| a **substantial block** of added or changed comment, docstring or `.md` prose (a multi-paragraph rationale or a new `.md` section, not a single sentence), OR a comment asserting a **load-bearing decision or invariant** (a "why this and not that") — never when no comment, docstring or `.md` hunk changed | + `comment-analyzer` | its "Routing table" row in `model-routing.md`, at any risk level | medium | comment/docstring/`.md` hunks only |
 | new tests | + `pr-test-analyzer` | sonnet | medium | test files + the code-under-test they exercise |
 | a `${CLAUDE_PLUGIN_ROOT}/skills/*/SKILL.md` **frontmatter** (`description` / `argument-hint`) changed, OR a **new** skill/SKILL.md created, OR a new command under `.claude/commands/` created | + `plugin-dev:skill-reviewer` | sonnet | medium | the SKILL.md file. A body-only prose edit does not qualify **under this row** — see the prose-dominant row below. |
-| **prose-dominant diff** — more changed lines in `SKILL.md` / `references/*.md` than in executable files. Decide it mechanically: `git diff --numstat <base>...HEAD`, summing changed lines of `*.md` under `skills/` against everything else | + `plugin-dev:skill-reviewer` | opus (a prose-dominant diff is high risk) | medium | the changed `.md` files |
+| **prose-dominant diff** — more changed lines in `.md` files under `skills/` than in every other file. Decide it mechanically: `git diff --numstat <base>...HEAD`, summing changed lines of `*.md` under `skills/` against everything else | + `plugin-dev:skill-reviewer` | opus (a prose-dominant diff is high risk) | medium | the changed `.md` files |
 | docs / config only (no logic) | the reviewer the review-sizing table gives for that level, plus `comment-analyzer` if the docs edit meets its row above | per the review-sizing table | per rows above | per rows above |
 | ambiguous / mixed / can't tell | `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`; also `type-design-analyzer` when the diff has any new typed signatures (`class `, `Protocol`, `TypedDict`, `dataclass`, `def .*->.*:`), and `comment-analyzer` only on its own row's trigger | per rows above | per rows above | the full diff when scoping is unclear |
 
@@ -62,7 +62,7 @@ return {findings, launched: DISPATCHES.length, reported: reported.length};
 
 ## Round N (N ≥ 2)
 
-Dispatch via `Agent`, with the same reviewers and models as round 1 for the diff's risk, per "Review sizing by risk" in `model-routing.md`. Scope it to the diff the previous fix commit added, inlined into each prompt — do not make agents re-read it:
+Dispatch via `Agent`, with the same reviewers and models as round 1, at round 1's final level (never lower), per "Review sizing by risk" in `model-routing.md`. Do not re-judge risk from the smaller fix diff. Scope it to the diff the previous fix commit added, inlined into each prompt — do not make agents re-read it:
 
 ```
 PREV_FIX_SHA=$(git rev-parse HEAD)   # captured immediately BEFORE the round-(N-1) fix commit (step 3)

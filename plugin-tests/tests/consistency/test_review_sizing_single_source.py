@@ -60,6 +60,19 @@ def _flags_row() -> str:
     return next(line for line in _read(_S2P).splitlines() if line.startswith("| `--pr-rounds N`"))
 
 
+def test_a_later_round_never_lowers_the_risk_level() -> None:
+    """Round 2 reviews only the small fix diff. Re-judged from that diff, a high-risk PR would
+    drop to one Sonnet reviewer, so every round-2 site pins round 1's final level instead."""
+    round_n = _between(_read(_REVISE), "## Round N (N ≥ 2)", "**Ask this round its own question")
+    assert "round 1's final level (never lower)" in round_n
+    assert "Do not re-judge risk from the smaller fix diff." in round_n
+    assert "never uses a lower level than round 1" in _read(_REVISE)
+    section = _read(_ROUTING).split(f"## {_SECTION}", 1)[1].split("\n## ", 1)[0]
+    assert "at round 1's final level, never lower" in " ".join(section.split())
+    selection = _between(_read(_REVISE), "## Round 1 — agent selection + routing", "## Round 1 — Workflow fan-out")
+    assert "rewrite the PR body's `Risk:` clause to the raised level" in selection
+
+
 # requirement: change-workflow / A change becomes a risk-reviewed pull request
 def test_round_2_runs_only_after_a_fixed_critical() -> None:
     """The cap sentence, the Flags row, the Revise stub and the exit gate all name a

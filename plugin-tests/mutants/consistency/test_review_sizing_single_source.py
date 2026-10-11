@@ -151,8 +151,8 @@ MUTANTS = [
     (
         "the sizing section brings back round 2 after any fix commit",
         ROUTING,
-        "Round 2 reviews the fix diff with the same reviewers.",
-        "Round 2 reviews the fix diff with the same reviewers. Round 2 runs whenever round 1 committed fixes.",
+        "Round 2 reviews the fix diff with the same reviewers,",
+        "Round 2 runs whenever round 1 committed fixes. Round 2 reviews the fix diff with the same reviewers,",
         TARGETS,
     ),
     (
@@ -230,6 +230,27 @@ MUTANTS = [
         ECONOMY,
         "git status --porcelain --ignored --untracked-files=all",
         "git status",
+        TARGETS,
+    ),
+    (
+        "round N re-judges risk from the smaller fix diff",
+        REVISE,
+        "with the same reviewers and models as round 1, at round 1's final level (never lower),",
+        "with the same reviewers and models as round 1, for the fix diff's own risk,",
+        TARGETS,
+    ),
+    (
+        "round 1 stops rewriting the Risk clause when it raises the level",
+        REVISE,
+        "raise the level to high, and rewrite the PR body's `Risk:` clause to the raised level",
+        "raise the level to high",
+        TARGETS,
+    ),
+    (
+        "the sizing section lets round 2 drop below round 1's level",
+        ROUTING,
+        "at round 1's final level, never lower.",
+        "for the fix diff's own risk.",
         TARGETS,
     ),
 ]

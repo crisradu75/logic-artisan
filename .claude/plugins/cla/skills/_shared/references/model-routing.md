@@ -43,7 +43,7 @@ always supplies the exact list).
 | Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; opus for `plugin-dev:skill-reviewer` on a prose-dominant diff | medium | `Workflow` `agent()` |
 | Revise R1 — `comment-analyzer` | sonnet | medium | `Workflow` `agent()` |
 | Implement big-mechanical delegate (sized trigger — see SKILL.md Implement) | sonnet | inherited | `Agent(model:)` |
-| Revise round ≥2 (scoped fix-diff) | the same reviewers and tiers as round 1 for the diff's risk, per "Review sizing by risk" below | inherited | `Agent(model:)` |
+| Revise round ≥2 (scoped fix-diff) | the same reviewers and tiers as round 1, at round 1's final level (never lower), per "Review sizing by risk" below | inherited | `Agent(model:)` |
 | Ship / Archive / Handoff / prechecks / Test runs | inline, unchanged | — | no dispatch |
 
 ## Review sizing by risk
@@ -83,7 +83,7 @@ diff as high risk. The run records that as a Handoff Issue, and `lite-pr` record
 On a prose-dominant diff, add `plugin-dev:skill-reviewer` on Opus to the high-risk reviewers.
 
 **Round 2** runs only after round 1 fixed a Critical finding (or a re-entry for still-open findings),
-and only while the `--pr-rounds` cap allows. Round 2 reviews the fix diff with the same reviewers.
+and only while the `--pr-rounds` cap allows. Round 2 reviews the fix diff with the same reviewers, at round 1's final level, never lower.
 
 ### Artifact-class override — a prose-dominant diff promotes the prose reviewer
 
