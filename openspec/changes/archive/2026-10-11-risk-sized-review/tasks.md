@@ -32,7 +32,7 @@ All paths are under `.claude/plugins/cla/` unless they start with `plugin-tests/
 
 ## 4. Specs
 
-- [ ] 4.1 Apply the delta in `specs/change-workflow/spec.md` (REMOVED "A change becomes an opened pull request", ADDED "A change becomes a risk-reviewed pull request") with `openspec archive` at the end of the run; confirm the live spec stays at 8 requirements.
+- [x] 4.1 Apply the delta in `specs/change-workflow/spec.md` (REMOVED "A change becomes an opened pull request", ADDED "A change becomes a risk-reviewed pull request") with `openspec archive` at the end of the run; confirm the live spec stays at 8 requirements. measured: archived; live change-workflow spec has 8 requirements.
 
 ## 5. Tests
 
@@ -44,6 +44,6 @@ All paths are under `.claude/plugins/cla/` unless they start with `plugin-tests/
 ## 6. Acceptance
 
 - [x] 6.1 `grep -rn "never demoted\|Never demote\|never demote" .claude/plugins/cla` finds nothing that contradicts the table. Also `grep -rniE "never-demot|never demot|exempt from demotion|round 2 runs whenever|whenever round 1 committed"` over `.claude/plugins/cla` and `plugin-tests`. Note the first grep misses hyphenated forms (`never-demoted`, `never-demote`) and `bug-hunters exempt`.
-- [ ] 6.2 A walk-through on this change's own diff: the PR body carries the risk line, and the review picks reviewers from the table (this diff is prose-dominant, so high).
-- [ ] 6.3 Run `pytest plugin-tests -q -n auto --dist loadfile` once on the final commit and compare pass and skip counts against a serial run; run `openspec validate --specs --strict`; run the debris check from `orchestration-economy.md` after the last test run.
+- [x] 6.2 A walk-through on this change's own diff: the PR body carries the risk line, and the review picks reviewers from the table (this diff is prose-dominant, so high). measured: PR #324 body carries the Risk line (high, prose-dominant); round 1 ran code-reviewer, silent-failure-hunter and skill-reviewer on Opus, round 2 the same three.
+- [x] 6.3 Run `pytest plugin-tests -q -n auto --dist loadfile` once on the final commit and compare pass and skip counts against a serial run; run `openspec validate --specs --strict`; run the debris check from `orchestration-economy.md` after the last test run. measured: parallel 1954 passed, 8 skipped; serial 1954 passed, 8 skipped; openspec validate --specs --strict 8 passed; debris diff showed only __pycache__ bytecode, two half-written .pyc temp files deleted.
 - [ ] 6.4 Version: adding a reference and changing review behaviour is a release decision for the owner (`/release`); do not bump or tag in this change.
