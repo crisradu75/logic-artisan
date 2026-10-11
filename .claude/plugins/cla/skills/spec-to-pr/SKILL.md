@@ -49,7 +49,7 @@ These rules apply across every phase.
 |---|---|
 | `--review-rounds N` | Review — the change's **artifacts**, before Implement. Default 1. |
 | `--test-rounds N` | Test fix rounds. Default 3. |
-| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs whenever round 1 committed fixes; `1` opts out; `0` skips Revise. |
+| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 fixed a Critical; `1` opts out; `0` skips Revise. |
 | `--skip-review` | Skips Revise, as does the user saying "no review". |
 | `--gate-on-push`, `--interactive` | Pause before push and PR open ("Autonomy gate"). |
 | `--pr-base <branch>`, `--inherits '<entries>'` | See "Placeholders". |
@@ -91,7 +91,7 @@ Before any workflow step, compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/referenc
 | Archive commit | `chore: archive <change-name>` |
 | Handoff, optional | `docs: TODO.md` |
 | Handoff, run log | `chore: spec-to-pr run log` (feature branch only) |
-| PR body (Ship) | one line — `Closes openspec/changes/<name>/. Checks: <the checks that ran>.` |
+| PR body (Ship) | one line — `Closes openspec/changes/<name>/. Checks: <the checks that ran>. Risk: <level> — <reason>; reviewers: <list>.` |
 | PR body update (Handoff, only when issues exist) | one line, or one short Markdown file via `--body-file` |
 
 Subjects only; no commit bodies, Test-plan checklists or restated proposals. **One exception:** a commit asserting a measurement carries one `Measured-by: <command> — <claim>` trailer per claim in its last paragraph (`references/ship.md` §2b). No per-phase logs: the only run log is Handoff's record, and resume reads repo state.
@@ -183,7 +183,7 @@ The exceptions:
 
 ### Revise — PR-review loop
 
-Cap: `--pr-rounds N` (default `2`): round 2 runs whenever round 1 committed fixes, scoped to that fix diff. **Read `references/revise.md` first** — agent selection, the round-1 `Workflow` fan-out, round 2's sibling-instance question, triage, fix delegation, the mutation gate, the commit and the exit gate. Gate rules: dispatch every row the diff matches, and `code-reviewer` and `silent-failure-hunter` are never demoted in any round; every Critical and Important is triaged, and counts as Applied only when the defect is shown gone; **the loop exits clean only when untriaged and open are both zero** — a remedy-rejected finding citing the remedy is triaged and still open; `git_state.py --expect-branch <branch>` before each `fix: review round <N>` commit. A non-zero `git push` exit → Revise `warn`, and Handoff says prominently that round-N fixes are local-only. Round ≥2 asks each agent whether the fix introduces its defect elsewhere: you name the resource, grant repo search, and the return cites the search it ran — an uncited enumeration is missing, not empty.
+Cap: `--pr-rounds N` (default `2`): round 2 runs only after round 1 fixed a Critical, scoped to that fix diff. **Read `references/revise.md` first** — agent selection, the round-1 `Workflow` fan-out, round 2's sibling-instance question, triage, fix delegation, the mutation gate, the commit and the exit gate. Gate rules: dispatch every row the diff matches, sized by the risk line in the PR body per "Review sizing by risk" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`; every Critical and Important is triaged, and counts as Applied only when the defect is shown gone; **the loop exits clean only when untriaged and open are both zero** — a remedy-rejected finding citing the remedy is triaged and still open; `git_state.py --expect-branch <branch>` before each `fix: review round <N>` commit. A non-zero `git push` exit → Revise `warn`, and Handoff says prominently that round-N fixes are local-only. Round ≥2 asks each agent whether the fix introduces its defect elsewhere: you name the resource, grant repo search, and the return cites the search it ran — an uncited enumeration is missing, not empty.
 
 ### Archive
 

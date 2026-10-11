@@ -494,7 +494,8 @@ The published plugin — everything here ships to a consuming repo:
   hooks/                       guard hooks + hooks.json wiring
   lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
-  skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill)
+  skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill);
+                               `model-routing.md` holds the review-sizing table, `orchestration-economy.md` the chain cost rules
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
     references/                supporting docs (portable; overlays live in cla.io/overlays/)

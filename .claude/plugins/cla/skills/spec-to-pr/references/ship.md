@@ -88,7 +88,7 @@ The first counts what you wrote, the second what git's parser sees. Equal passes
 
 Single-line body, no Markdown headers and no `\n#` (the `gh pr create --body` parser bug; a mid-line `#1234` is fine):
 ```
-gh pr create --title "feat: <change-name>" --body "Closes openspec/changes/<change-name>/. Checks: build + lint passed."
+gh pr create --title "feat: <change-name>" --body "Closes openspec/changes/<change-name>/. Checks: build + lint passed. Risk: <level> — <reason>; reviewers: <list>."
 ```
 
 **Stacked chains only** (`--pr-base` passed) — this REPLACES the command above. An explicit base is required, or GitHub opens the PR against the default branch with the whole parent chain in its diff. Two calls:
@@ -98,9 +98,9 @@ gh pr list --head <pr-base> --state open --json number --jq ".[0].number"
 ```
 
 ```
-gh pr create --base <pr-base> --title "feat: <change-name>" --body "Stacked on #<parent-PR-number>. Closes openspec/changes/<change-name>/. Checks: build + lint passed."
+gh pr create --base <pr-base> --title "feat: <change-name>" --body "Stacked on #<parent-PR-number>. Closes openspec/changes/<change-name>/. Checks: build + lint passed. Risk: <level> — <reason>; reviewers: <list>."
 ```
 
-The `Checks:` clause names the checks Test actually ran (`build + lint + test passed.`, `build + lint passed.`, `skipped (docs-only).`). No Summary section, no Test-plan checklist.
+The `Checks:` clause names the checks Test actually ran (`build + lint + test passed.`, `build + lint passed.`, `skipped (docs-only).`). The `Risk:` clause is your call from the diff: the level, the signal behind it, and the reviewers the review-sizing table gives for it. The table is "Review sizing by risk" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`. Unsure means high. Revise round 1 reads this clause. No Summary section, no Test-plan checklist.
 
 **Post-check:** `gh pr view --json url state` returns `OPEN` → ✓. A gh failure → ⚠, and Revise becomes `skip` (no PR to review).

@@ -39,12 +39,43 @@ always supplies the exact list).
 | Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding ONLY; triage never escalated) when session < Opus |
 | Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
 | Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
-| Revise R1 — `code-reviewer`, `silent-failure-hunter` | opus | medium | `Workflow` `agent()` — **never demoted** |
+| Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff) | medium | `Workflow` `agent()` |
 | Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet | medium | `Workflow` `agent()` |
-| Revise R1 — `comment-analyzer` | haiku | low | `Workflow` `agent()` |
+| Revise R1 — `comment-analyzer` | sonnet | medium | `Workflow` `agent()` |
 | Implement big-mechanical delegate (sized trigger — see SKILL.md Implement) | sonnet | inherited | `Agent(model:)` |
-| Revise round ≥2 (scoped fix-diff) | one tier down (opus→sonnet, sonnet→haiku, haiku stays haiku) — **bug-hunters exempt: `code-reviewer` + `silent-failure-hunter` stay opus in every round** | inherited | `Agent(model:)` |
+| Revise round ≥2 (scoped fix-diff) | the same reviewers and tiers as round 1 for the diff's risk, per "Review sizing by risk" below | inherited | `Agent(model:)` |
 | Ship / Archive / Handoff / prechecks / Test runs | inline, unchanged | — | no dispatch |
+
+## Review sizing by risk
+
+This section holds the ONE review-sizing table. Every skill that reviews a pull request cites this
+section by name. None copies a row.
+
+**The risk call.** The agent that opens the pull request judges the risk from the diff. It does not
+read a per-repo list. A diff is high risk when it shows any of these signals:
+
+- writes or deletes of files or data
+- money or scoring
+- auth or secrets
+- guard hooks and checkers
+- concurrency
+- changes to agent instructions (skills, prompts and agent definitions)
+
+**Unsure means high.** A prose-dominant diff is high risk, because prose that steers an agent ships
+like code. It also keeps `plugin-dev:skill-reviewer` on Opus, alongside the two bug-hunters.
+
+**The PR-body line.** The pull-request body carries one line: `Risk: <level> — <reason>; reviewers: <list>.`
+It stays on one line, so a grep over PR bodies can audit the call. Round 1 reads this line. It raises
+the level to high if the diff shows a signal the line missed.
+
+| Risk | Reviewers | Model |
+|---|---|---|
+| Low risk, docs | `comment-analyzer` | Sonnet |
+| Low risk, code | `code-reviewer` | Sonnet |
+| High risk | `code-reviewer` + `silent-failure-hunter` | Opus |
+
+**Round 2** runs only after round 1 fixed a Critical finding, and only while the `--pr-rounds` cap
+allows. Round 2 reviews the fix diff with the same reviewers.
 
 ### Artifact-class override — a prose-dominant diff promotes the prose reviewer
 
@@ -55,18 +86,12 @@ artifact under review is *code*.
 In a repo whose behaviour lives in markdown, it isn't. A `SKILL.md` edit ships like code and
 nothing compiles it: no typechecker, no test that executes the prose, and a wrong instruction
 reaches every consuming repo on the next release. For that diff `plugin-dev:skill-reviewer`
-occupies the position `code-reviewer` holds for a Python diff, and inherits the never-demote
-argument with it.
+occupies the position `code-reviewer` holds for a Python diff. A prose-dominant diff is high risk.
 
 **The rule lives where dispatch is decided**, not here — see the *prose-dominant diff* row in
 `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/revise.md`, which carries the trigger, the
-`git diff --numstat` recipe that makes it mechanically decidable, the opus tier, and the
-never-demote flag. This section is the rationale only; the numbers are in that one table, per this
-file's own no-forking rule.
-
-It is a promotion rule only. It never demotes `code-reviewer` or `silent-failure-hunter`, even on a
-pure-prose diff: a markdown change can still break a script path or a hook wiring, and those two
-are what notice.
+`git diff --numstat` recipe that makes it mechanically decidable and the opus tier. This section is
+the rationale only; the numbers are in that one table, per this file's own no-forking rule.
 
 All six Revise agents are dispatched by their full registered `subagent_type` (`pr-review-toolkit:code-reviewer`,
 `pr-review-toolkit:silent-failure-hunter`, `pr-review-toolkit:pr-test-analyzer`,
@@ -88,7 +113,7 @@ application" principle:
 | `project-review` Agent 1 (**Vision & Clarity**) + Agent 4 (**Architecture & Design**) — the two premise/judgment-heavy dimensions | opus | inherited | `Agent(model:)` |
 | `project-review` Agents 2, 3, 5 (**Structure**, **Requirements & Specs**, **Validation & QA**) — rubric-application over structure/specs/tests | sonnet | inherited | `Agent(model:)` |
 
-Rationale mirrors the never-demote-bug-hunters economics: the design/architecture/vision reviewers
+Rationale mirrors the high-risk bug-hunter economics (see "Why high-risk diffs keep the bug-hunters on Opus"): the design/architecture/vision reviewers
 catch the expensive "the premise itself is wrong" class, where a cheaper model's miss ships a bad
 design; the task/spec/structure/validation reviewers apply a well-specified rubric where sonnet is
 sufficient. **These dispatches are `Agent`-based, so effort is not dialable** (inherits the session —
@@ -130,16 +155,17 @@ On an **Opus session this rule is a no-op** — the inline model already is Opus
 detection is from the session-model line in the environment context. Revise triage itself is NOT
 escalated (it is adjudication over already-structured findings — Sonnet handles it).
 
-## Why the bug-hunters are never demoted (phantom-finding economics)
+## Why high-risk diffs keep the bug-hunters on Opus (phantom-finding economics)
 
-`code-reviewer` and `silent-failure-hunter` stay `opus` even in the cost-conscious routing because a
-cheaper model's failure mode here is *expensive*, not cheap: it emits more **phantom findings**
-(plausible-but-wrong bugs). Each phantom costs a main-loop verification Read at the session model
-plus, if it slips triage, a misleading "fix" commit and a follow-up revert. The savings from demoting
-a bug-hunter get eaten by the triage overhead it generates. So demote only where a miss is cheap —
-comment nits (`comment-analyzer` → haiku), rubric checks (`pr-test-analyzer`, `type-design-analyzer`,
-`plugin-dev:skill-reviewer` → sonnet) — never the two whose job is to find the bug that ships. The
+On a high-risk diff, `code-reviewer` and `silent-failure-hunter` run on `opus`. A cheaper model's
+failure mode here is *expensive*, not cheap: it emits more **phantom findings** (plausible-but-wrong
+bugs). Each phantom costs a main-loop verification Read at the session model plus, if it slips triage,
+a misleading "fix" commit and a follow-up revert. On a high-risk diff the savings from a cheaper
+bug-hunter get eaten by that triage overhead, and a missed bug there is costly.
+
+A low-risk diff accepts a Sonnet reviewer. A miss there is cheap, so the weaker reviewer is the
+right trade. Rubric checks (`pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer`)
+and comment nits (`comment-analyzer`) run on sonnet. The
 `routing.revise_findings_by_tier` telemetry (found vs phantom **per agent**, see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`)
 is the standing check on this bet; `/cla:spec-to-pr-retro` flags a phantom rate concentrated on any one
-agent — including the sonnet/haiku-routed ones (`comment-analyzer`, `pr-test-analyzer`,
-`type-design-analyzer`, `plugin-dev:skill-reviewer`) relative to the opus bug-hunters.
+agent, including the sonnet-routed ones, relative to the opus bug-hunters.
