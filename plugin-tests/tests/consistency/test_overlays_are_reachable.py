@@ -195,7 +195,11 @@ def test_the_staleness_guard_scans_this_repos_overlays():
     )
 
 
-def test_the_branch_prefix_reader_resolves_this_repos_overlay():
+def test_the_branch_prefix_reader_resolves_this_repos_overlay(monkeypatch):
+    # The reader asks git for the root of the CURRENT directory, so run it from
+    # the repo this file lives in. Without this the test passes only when pytest
+    # is launched from that same checkout, and fails from another clone or worktree.
+    monkeypatch.chdir(_REPO_ROOT)
     gc = _import_from(
         _PLUGIN_ROOT / "skills" / "spec-to-pr" / "scripts", "_git_common"
     )
@@ -208,10 +212,11 @@ def test_the_branch_prefix_reader_resolves_this_repos_overlay():
     assert resolved.resolve() == (_OVERLAYS / "branch-prefix.local.md").resolve()
 
 
-def test_the_branch_prefix_overlay_parses_rather_than_warning():
+def test_the_branch_prefix_overlay_parses_rather_than_warning(monkeypatch):
     """A file that EXISTS but yields no value degrades to the default with a
     warning on every run — the state this repo's stub was actually in before the
     overlay format was unified."""
+    monkeypatch.chdir(_REPO_ROOT)  # the reader resolves its root from the cwd
     gc = _import_from(
         _PLUGIN_ROOT / "skills" / "spec-to-pr" / "scripts", "_git_common"
     )
