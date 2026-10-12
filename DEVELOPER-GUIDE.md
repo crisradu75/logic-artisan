@@ -22,7 +22,9 @@ portable:
   ask, or warn on risky tool calls (a force-push, an `rm -rf`, a `cd` that would persist across
   calls). You don't invoke them; they fire when a convention is about to be broken.
 - **Helper agents** (`doc-sweeper`, `fact-gatherer`) — mechanical grep/verify workers the ship and
-  review skills delegate to. You rarely call them directly.
+  review skills delegate to. You rarely call them directly. **Reviewer agents** (`code-reviewer`,
+  `silent-failure-hunter`, `comment-analyzer`) are read-only PR reviewers with no shell; the
+  dispatching skill saves the diff to a file and names its path.
 
 The split that everything obeys: **procedure is portable, facts are per-repo.**
 
@@ -496,7 +498,7 @@ The published plugin — everything here ships to a consuming repo:
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
-  agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
+  agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to); code-reviewer, silent-failure-hunter, comment-analyzer (read-only PR reviewers)
   hooks/                       guard hooks + hooks.json wiring
   lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)

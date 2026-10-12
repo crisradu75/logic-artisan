@@ -16,7 +16,7 @@ reads as CLA being broken.
 | Dependency | Reached by | How hard |
 |---|---|---|
 | **OpenSpec** — the `opsx:*` / `openspec-*` skills **and** the `openspec` CLI | `spec-to-pr`, `multi-spec`, `multi-pr`, `review-change` | **Required** for the spec-scale path. The CLI is called directly — `validate`, `archive`, `status`. (`lite-pr` calls `openspec validate` once and documents skipping it in a repo not using OpenSpec, so it degrades rather than failing.) |
-| **`pr-review-toolkit`** — `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`, `type-design-analyzer` | every PR-review pass: `spec-to-pr`, `lite-pr` (and `multi-pr`/`multi-lite`, which chain them) | **Required.** The Revise phase names these agents directly and defines no fallback for their absence. |
+| **`pr-review-toolkit`** — `pr-test-analyzer`, `type-design-analyzer` | every PR-review pass that adds them: `spec-to-pr`, `lite-pr` (and `multi-pr`/`multi-lite`, which chain them) | **Required.** The Revise phase names these two agents directly and defines no fallback for their absence. CLA ships its own `code-reviewer`, `silent-failure-hunter` and `comment-analyzer`, so those three need no install. |
 | **`commit-commands`** | `lite-pr`'s commit/push/PR step, and `multi-lite`, which chains it | **Required for the lightweight path.** The spec-scale path commits directly and does not need it. |
 | **`plugin-dev`** — `skill-reviewer` | two rows of the Revise agent-selection table, plus `lite-pr`'s own agent picking | **Conditional.** Fires on a changed `SKILL.md` **frontmatter**, a new skill, a new command under `.claude/commands/`, or a prose-dominant diff — not on a body-only prose edit that is not prose-dominant. Its model follows "Review sizing by risk" in `model-routing.md`. |
 
@@ -60,7 +60,7 @@ and invoked bare as `/release`.
 | | `multi-pr` | **you only** | Chain several OpenSpec changes → PRs, merging each before its dependents |
 | **4. Review & assure** | `project-review` | you or Claude | CTO-level review of the whole repo: vision, structure, requirements, architecture, validation |
 | | `annotate` | you or Claude | Render a doc as a page, open it chrome-less, and collect the user's own comments against selected passages — read back and worked through here |
-| | (agents) | n/a — dispatched | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to |
+| | (agents) | n/a — dispatched | `doc-sweeper` + `fact-gatherer` do the mechanical grep/verify legwork the ship + review skills delegate to; `code-reviewer`, `silent-failure-hunter` + `comment-analyzer` are the read-only PR reviewers, which read the change from a diff file |
 | **5. Learn & improve** | `codify-learnings` | **you only** | Turn the current session's failures into up to three fixes — tools and hooks before docs — escalating any rule that failed again; log them `[loop]` |
 | | `spec-to-pr-retro` | **you only** | Meta-review recent `spec-to-pr` runs and improve the orchestrator `[loop]` |
 | | `report-upstream` | you or Claude | File a defect in CLA's own portable core as an issue against the canonical source |
@@ -263,7 +263,7 @@ to install.
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
-  agents/                      doc-sweeper, fact-gatherer (mechanical helpers)
+  agents/                      doc-sweeper, fact-gatherer (mechanical helpers); code-reviewer, silent-failure-hunter, comment-analyzer (read-only PR reviewers)
   hooks/                       guard hooks + hooks.json wiring, and git/pre-push
   lib/                         log_run.py — writes the one run ledger, spec-to-pr-runs.jsonl
   output-styles/               the project's writing convention (force-for-plugin: true)

@@ -25,12 +25,16 @@ creative-writing-shaped work, so there's no fit for it here.)
 |---|---|---|---|
 | `Agent(subagent_type, model:)` | yes (per call) | **no** (inherits session) | Implement delegate, Revise round ≥2, escalate-up dispatches, `fact-gatherer`/`doc-sweeper` dispatches |
 | `Workflow` `agent(prompt, {model, effort, agentType, schema})` | yes | **yes** (per call) | Revise round 1 fan-out ONLY |
-| `${CLAUDE_PLUGIN_ROOT}/agents/*.md` frontmatter | yes (`model:`) | **no** (no effort key exists) | our own `fact-gatherer` / `doc-sweeper` |
+| `${CLAUDE_PLUGIN_ROOT}/agents/*.md` frontmatter | yes (`model:`) | **no** (no effort key exists) | our own agents: `fact-gatherer`, `doc-sweeper`, `code-reviewer`, `silent-failure-hunter`, `comment-analyzer` |
 
-The two haiku agents we own (`fact-gatherer`, `doc-sweeper`) get model-only pinning via frontmatter
-plus a terse-output instruction in their body — they're read-only (`Read`/`Grep`/`Glob` only) and
-caller-scoped (they never guess a documentation surface or a symbol to check; the dispatching phase
-always supplies the exact list).
+The agents we own get model-only pinning via frontmatter plus an output instruction in their body.
+All five are read-only (`Read`/`Grep`/`Glob` only). The two haiku helpers (`fact-gatherer`,
+`doc-sweeper`) are caller-scoped: they never guess a documentation surface or a symbol to check;
+the dispatching phase always supplies the exact list. The three reviewers (`code-reviewer`,
+`silent-failure-hunter`, `comment-analyzer`) have no shell, so the dispatching phase writes the
+change to a diff file and names its path in the brief. Each reviewer file names its default model;
+a dispatch that passes `model:` overrides it, and the high-risk row below passes `model: opus` to
+`code-reviewer`, whose file names Sonnet.
 
 ## Routing table
 
@@ -39,9 +43,9 @@ always supplies the exact list).
 | Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding of RETHINK or Critical-bearing FIX FIRST ONLY; triage never escalated) when session < Opus |
 | Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
 | Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
-| Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff) | medium | `Workflow` `agent()` |
+| Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff: `code-reviewer` is dispatched with `model: opus`, overriding its file's sonnet) | medium | `Workflow` `agent()`; `${CLAUDE_PLUGIN_ROOT}/agents/code-reviewer.md`, `${CLAUDE_PLUGIN_ROOT}/agents/silent-failure-hunter.md` |
 | Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; `plugin-dev:skill-reviewer` on a prose-dominant diff per "Review sizing by risk" below | medium | `Workflow` `agent()` |
-| Revise R1 — `comment-analyzer` | sonnet | medium | `Workflow` `agent()` |
+| Revise R1 — `comment-analyzer` | sonnet | medium | `Workflow` `agent()`; `${CLAUDE_PLUGIN_ROOT}/agents/comment-analyzer.md` |
 | Implement big-mechanical delegate (sized trigger — see SKILL.md Implement) | sonnet | inherited | `Agent(model:)` |
 | Revise round ≥2 (scoped fix-diff) | round 1's reviewers and tiers, at its final level and never lower; see "Review sizing by risk" below | inherited | `Agent(model:)` |
 | Ship / Archive / Handoff / prechecks / Test runs | inline, unchanged | — | no dispatch |
@@ -109,9 +113,9 @@ occupies the position `code-reviewer` holds for a Python diff. A prose-dominant 
 the rationale only; the recipe is in that one row, per this file's own no-forking rule.
 The definition (files that steer an agent, wherever they live) is the same in both places.
 
-All six Revise agents are dispatched by their full registered `subagent_type` (`pr-review-toolkit:code-reviewer`,
-`pr-review-toolkit:silent-failure-hunter`, `pr-review-toolkit:pr-test-analyzer`,
-`pr-review-toolkit:type-design-analyzer`, `pr-review-toolkit:comment-analyzer`,
+All six Revise agents are dispatched by their full registered `subagent_type`: this plugin's three
+(`cla:code-reviewer`, `cla:silent-failure-hunter`, `cla:comment-analyzer`) and the others
+(`pr-review-toolkit:pr-test-analyzer`, `pr-review-toolkit:type-design-analyzer`,
 `plugin-dev:skill-reviewer`); the run-log ledger key stays the **bare** name for the first five (see
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`) since `plugin-dev:skill-reviewer` has no bare form.
 
