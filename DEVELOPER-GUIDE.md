@@ -517,6 +517,7 @@ plugin-tests/                  the repo's ONE pytest scope
   tests/<area>/                conformance, consistency, launcher, hooks, lib, skills/<name>
   mutants/<area>/              mutation batches, mirroring tests/ — a sibling, never a child
   scripts/measure_load.py
+  scripts/meter.py
   scripts/migrate_run_records.py
 .claude/skills/release/        repo-local skill, invoked as /release (not /cla:release)
   SKILL.md
@@ -570,6 +571,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
 | `lib/log_run.py` | The one ledger writer: validates the record against its shape, enforces the 4 KiB atomic-append ceiling, refuses every ledger name but `spec-to-pr-runs.jsonl`. |
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
+| `plugin-tests/scripts/meter.py` *(dev tree)* | Totals the tokens a session transcript's `usage` fields record, split by model and counting main chat and subagents together, so a token-diet change quotes measured spend instead of word counts; one API message appears once per content block in a transcript, and a plain sum counts it several times. |
 | `plugin-tests/scripts/migrate_run_records.py` *(dev tree)* | One-off rewrite of old-shape `spec-to-pr-runs.jsonl` records into the shape `log_run.py` enforces: every mapping comes from a shape found in a real ledger, a valid record is left untouched, and one that still fails is reported and left exactly as it was. |
 | `cla-setup/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
