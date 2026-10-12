@@ -1,3 +1,11 @@
+## Deferred from the former-top-level-names PR (check_fact_paths) — 2026-10-12
+
+**Suggestions** (low-priority PR-review residue):
+- [Suggestion] `check_fact_paths.py` `_former_top_level_names`: `rev-parse --is-shallow-repository` fails on git older than 2.15 and is reported as "not a git repository"; probe `rev-parse --git-dir` first.
+- [Suggestion] `_former_top_level_names`: a case-only rename (`Docs` to `docs`) on a case-insensitive filesystem yields a former name that matches nothing (fails safe).
+- [Suggestion] `_former_top_level_names`: the two git calls can spend up to 60s each on a huge history, on every run; consider one shared time budget.
+- [Suggestion] `agentic-air`: bare package-relative shorthand that starts with a once-top-level name (`src/index.ts`, `public/data/`) is now reported (3 new in legacy overlays); no generic rule separates it from a stale path.
+
 ## Deferred from PR #294 (lighter-openspec-packages) — 2026-10-07
 
 **Rejected remedies, still open** (findings whose proposed fix a delegate rejected with reasons; the defect is REAL and UNFIXED):
