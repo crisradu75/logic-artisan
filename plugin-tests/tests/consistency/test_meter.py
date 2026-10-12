@@ -57,6 +57,42 @@ def test_lines_without_usage_or_valid_json_are_skipped(tmp_path: Path) -> None:
     assert meter.collect([session])["opus"]["messages"] == 1
 
 
+def test_odd_records_are_skipped_or_filed_without_crashing(tmp_path: Path) -> None:
+    odd_usage = {"input_tokens": "7", "cache_creation_input_tokens": None, "cache_read_input_tokens": True, "output_tokens": 2.5}
+    lines = [
+        "[1]",
+        "null",
+        '"x"',
+        json.dumps({"message": {"id": "u", "model": "opus", "usage": "bad"}}),
+        json.dumps({"message": {"model": "opus", "usage": {"input_tokens": 1}}}),
+        json.dumps({"message": {"model": "opus", "usage": {"input_tokens": 1}}}),
+        json.dumps({"message": {"id": "n", "model": 5, "usage": odd_usage}}),
+        '{"message": {"id": "cut", "usage": {"input_tok',
+    ]
+    session = _write(tmp_path / "s.jsonl", lines)
+    assert meter.collect([session]) == {
+        "opus": {"input": 2, "cache_write": 0, "cache_read": 0, "output": 0, "messages": 2},
+        "<unknown>": {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "messages": 1},
+    }
+
+
+def test_an_empty_folder_exits_non_zero_with_empty_stdout(tmp_path: Path, capsys) -> None:
+    assert meter.main([str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "0 transcript file(s)" in captured.err
+
+
+def test_a_single_file_path_is_read_and_other_files_are_ignored(tmp_path: Path, capsys) -> None:
+    session = _write(tmp_path / "s.jsonl", [_record("a", "opus", 1, 2, 3, 4)])
+    _write(tmp_path / "other.txt", [_record("b", "opus", 100, 100, 100, 100)])
+    assert meter.transcript_files(tmp_path) == [session]
+    assert meter.main([str(session), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "opus": {"input": 1, "cache_write": 2, "cache_read": 3, "output": 4, "messages": 1},
+    }
+
+
 def test_a_transcript_without_usage_exits_non_zero_with_a_message(tmp_path: Path, capsys) -> None:
     _write(tmp_path / "s.jsonl", [json.dumps({"type": "user", "message": {"content": "hi"}})])
     assert meter.main([str(tmp_path)]) == 1
