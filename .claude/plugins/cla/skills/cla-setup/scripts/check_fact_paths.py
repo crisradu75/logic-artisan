@@ -55,6 +55,13 @@ COVERAGE LIMITS (read before trusting this guard blindly):
     ``extract_path_candidates`` for the exact extraction rule) rather than checked
     — so effective true-positive coverage is the concrete-path subset of what each
     file names, not everything it names.
+  - A path whose first segment is not a tracked top-level name is still checked
+    when it has the shape of a repo path (see ``_looks_like_repo_path``), so a
+    renamed top-level directory is reported. Such a token needs a file extension
+    or a trailing slash; ``old/src`` and ``read/write`` are skipped, since nothing
+    tells them from prose.
+  - A machine-local file (``*.local.*``, e.g. ``.claude/settings.local.json``) is
+    skipped, present or not: it is untracked by design and absent in a fresh clone.
   - The extraction heuristic is deliberately conservative: on any ambiguous token
     it skips rather than flags, because a false staleness failure trains people to
     ignore the guard (see ``design.md`` Decision E of ``cla-context-refresh``).
@@ -129,6 +136,24 @@ _MARKDOWN_LINK_SEAMS = ("](", "][")
 # when they wrap BOTH ends symmetrically, so a real trailing-glob `apps/*` (star at
 # one end only) is left intact and still skipped as a glob.
 _EMPHASIS_MARKERS = ("**", "__", "*", "_")
+
+# A machine-local file: a name with a `.local` part (`settings.local.json`,
+# `.env.local`). Matched per path segment; at least one character must precede
+# `.local`, so a directory named `local` is an ordinary path.
+_MACHINE_LOCAL_SEGMENT_RE = re.compile(r"[^/]\.local(?:\.|$)")
+
+# The shape of a repo path whose first segment is not a tracked top-level name
+# (see `_looks_like_repo_path`): a plain first segment, then one or more
+# path-safe segments, optionally ending in `/` — so a lone `name/` never
+# matches. Square brackets are allowed for a dynamic-route segment
+# (`apps/x/[id]/page.tsx`).
+_REPO_PATH_SHAPE_RE = re.compile(
+    r"^\.?[A-Za-z0-9_][A-Za-z0-9_\-]*"
+    r"(?:/[A-Za-z0-9_.\-@+\[\]]+)+/?$"
+)
+# A file extension: a dot then a letter-led alphanumeric tail (`.ts`, `.md`),
+# not a version number (`v1.2`).
+_FILE_EXTENSION_RE = re.compile(r"[^/]\.[A-Za-z][A-Za-z0-9]{0,7}$")
 
 # NOTE — bare single-segment filenames (a token with NO `/`, e.g. `README.md`,
 # `CLAUDE.md`) are deliberately NOT existence-checked. A bare filename reference is
@@ -355,14 +380,43 @@ def _top_level_names(repo_root: Path) -> set[str]:
     return {p.name for p in repo_root.iterdir()}
 
 
+def _looks_like_repo_path(token: str) -> bool:
+    """Whether a token whose first segment is NOT a tracked top-level name still
+    reads as a repo-relative path, so a vanished top-level directory is reported
+    instead of silently skipped.
+
+    The token must be built only from path-safe characters and start with a plain
+    (optionally dot-prefixed) name — which rejects an absolute path, ``./x``,
+    ``../x``, a host name (``example.com/a/b``), ``C:/x``, ``@scope/pkg`` and
+    ``$HOME/x`` — and carry one more signal: a file extension on the last segment
+    (``old/src/x.ts``), or a trailing slash (``old/src/``). What stays skipped is
+    prose joined by slashes, however many (``read/write``, ``Edit/Write/Bash``,
+    ``10/12/2026``), and a directory named without a trailing slash (``old/src``)
+    or alone (``old/``), none of which any check can tell from that prose. A skipped token costs a missed
+    finding; a flagged one costs a false alarm that trains people to ignore the
+    guard, so the shape errs toward skipping. The segment count is not a signal:
+    prose lists such as ``PASS/FAIL/SKIP`` run to three or more."""
+    if not _REPO_PATH_SHAPE_RE.match(token):
+        return False
+    segments = token.rstrip("/").split("/")
+    if segments[0] == ".git":
+        return False  # git's own state is never tracked, so it is absent by design
+    if _FILE_EXTENSION_RE.search(segments[-1]):
+        return True
+    return token.endswith("/")
+
+
 def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
     """Apply the pinned Decision-E keep/skip rule to an already-cleaned token;
     return the token if it should be checked, else ``None``.
 
-    Only a token WITH a ``/`` is treated as a repo-relative path — kept iff its
-    first segment names a real top-level entry (repo-derived), existence-checked at
-    that exact location. A bare single-segment token is never checked (see the
-    bare-filename NOTE near the module constants)."""
+    Only a token WITH a ``/`` is treated as a repo-relative path. It is skipped
+    when it is a URL, a glob or placeholder, a ``~`` path, markdown-link residue,
+    or a machine-local file (``*.local.*``). Otherwise it is kept, and
+    existence-checked at that exact location, when its first segment names a real
+    top-level entry (repo-derived) or, failing that, when it has the shape of a
+    repo path (``_looks_like_repo_path``). A bare single-segment token is never
+    checked (see the bare-filename NOTE near the module constants)."""
     if not token or "/" not in token:
         return None
     # Residue of a markdown link whose text is itself a path: `[docs/a.md](docs/a.md)`
@@ -378,10 +432,19 @@ def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
         return None
     if _looks_like_placeholder_or_glob(token):
         return None
-    first_segment = token.split("/", 1)[0]
-    if first_segment not in top_level_names:
+    # A machine-local file (`settings.local.json`) is untracked by design: it is
+    # absent in every fresh clone, so naming it is not a stale reference.
+    if any(_MACHINE_LOCAL_SEGMENT_RE.search(seg) for seg in token.split("/")):
         return None
-    return token
+    first_segment = token.split("/", 1)[0]
+    if first_segment in top_level_names:
+        return token
+    # The first segment names no tracked top-level entry. Either the token is not
+    # a repo path at all (prose such as `read/write`, an absolute path, a host
+    # name), or it is a repo path whose top-level directory was renamed or
+    # removed — which must be reported, or every path under the old name goes
+    # unchecked. Keep it only when its SHAPE says "path"; see `_looks_like_repo_path`.
+    return token if _looks_like_repo_path(token) else None
 
 
 def extract_path_candidates(line: str, top_level_names: set[str]) -> list[str]:
