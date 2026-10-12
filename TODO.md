@@ -34,9 +34,8 @@
 
 ## Deferred from PR #329 (lite-pr-lazy-load) — 2026-10-12
 
-**Deferred Important findings** (rule text was moved verbatim, so the wording predates this PR):
+**Deferred Important finding** (rule text was moved verbatim, so the wording predates this PR; the other deferred one, a bare `subagent-brief.md` path, was fixed in this PR):
 - [Important] `lite-pr/references/diagnose-escalation.md` / SKILL.md Test step 3: "Two rounds on the SAME stated cause" sits beside a one-fix-one-retry budget that halts at step 4, so it is unclear whether the escalation can fire before the halt. Pre-existing wording; needs a decision on the intended count.
-- [Important] `lite-pr/references/mutation-gate.md:17`: "briefed per `subagent-brief.md`" has no path; the file is `spec-to-pr/references/subagent-brief.md`. Pre-existing bare name.
 
 **Suggestions** (low-priority PR-review residue):
 - [Suggestion] `mutation-gate.md:7,27`: "a real fix here" and "two commits in this repo" read wrongly in a shipped file; say "in the CLA source repo".
