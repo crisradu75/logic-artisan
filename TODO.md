@@ -1,3 +1,11 @@
+## Deferred from PR #333 (local-path-skip) — 2026-10-12
+
+**Deferred-Known-Issues** (Important, deferred: needs a decision):
+- [Important] `check_fact_paths.py` `_looks_like_repo_path`: a two-segment `owner/name.js` (a GitHub repo name such as `vercel/next.js`) under an unknown top-level reads as a file and is reported when absent. It cannot be told from `old/app.js`; excluding `.js` would miss real renames.
+
+**Suggestions** (low-priority PR-review residue):
+- [Suggestion] `check_fact_paths.py`: prose such as `refs/heads/`, `README/CHANGELOG.md` and `localhost/index.html` is kept by the trailing-slash or extension signal; no test pins a MIME-style token (`application/vnd.api+json`).
+
 ## Deferred from PR #294 (lighter-openspec-packages) — 2026-10-07
 
 **Rejected remedies, still open** (findings whose proposed fix a delegate rejected with reasons; the defect is REAL and UNFIXED):

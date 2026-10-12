@@ -83,8 +83,8 @@ MUTANTS = [
         # `facts_file` variable no longer exists) reverts the fix.
         "the zero-candidates blocker is re-gated on the facts file specifically",
         CHECKER,
-        "    if checked == 0:",
-        "    if (repo_root / PROJECT_FACTS_RELPATH).is_file() and checked == 0:",
+        "    if checked == 0 and not stale:",
+        "    if (repo_root / PROJECT_FACTS_RELPATH).is_file() and checked == 0 and not stale:",
         TARGETS,
     ),
     (
@@ -132,8 +132,43 @@ MUTANTS = [
     (
         "a machine-local path is checked again, so an absent one reads stale",
         CHECKER,
-        '    if any(_MACHINE_LOCAL_SEGMENT_RE.search(seg) for seg in token.split("/")):',
-        "    if False:",
+        "                if _is_machine_local(candidate, tracked):",
+        "                if False:",
+        TARGETS,
+    ),
+    (
+        "a TRACKED machine-local-named file is skipped like an untracked one",
+        CHECKER,
+        "    return tracked is None or rel not in tracked",
+        "    return True",
+        TARGETS,
+    ),
+    (
+        "the machine-local test looks at every segment, not only the file name",
+        CHECKER,
+        '    if not _MACHINE_LOCAL_SEGMENT_RE.search(rel.rsplit("/", 1)[-1]):',
+        "    if not _MACHINE_LOCAL_SEGMENT_RE.search(rel):",
+        TARGETS,
+    ),
+    (
+        "git-ignored build output kept by shape reads stale",
+        CHECKER,
+        "                if not exists and not known and _git_ignored(repo_root, candidate):",
+        "                if False:",
+        TARGETS,
+    ),
+    (
+        "a git-ignored path under a RECOGNIZED top-level is skipped too",
+        CHECKER,
+        "                if not exists and not known and _git_ignored(repo_root, candidate):",
+        "                if not exists and _git_ignored(repo_root, candidate):",
+        TARGETS,
+    ),
+    (
+        "a shape-only keep counts toward the checked figure (zero-candidates guard weakened)",
+        CHECKER,
+        "                if known:",
+        "                if True:",
         TARGETS,
     ),
     (

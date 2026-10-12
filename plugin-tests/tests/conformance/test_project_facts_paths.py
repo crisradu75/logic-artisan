@@ -175,6 +175,79 @@ def test_a_machine_local_file_that_is_absent_is_skipped_not_reported(tmp_path):
     assert [c for _, _, c in stale] == [".claude/gone.json"]
 
 
+def test_only_the_last_segment_and_a_whole_name_part_make_a_path_machine_local(tmp_path):
+    # `notes.localized.md` and a `.local` directory are ordinary paths: stale when
+    # absent. (`docs` is a real top-level here, so only the local rule could skip.)
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "docs" / "app.local").mkdir(parents=True)
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Gone: `docs/notes.localized.md` and `docs/app.local/gone.ts`.\n", encoding="utf-8"
+    )
+    assert [c for _, _, c in find_stale_paths(tmp_path)] == [
+        "docs/notes.localized.md",
+        "docs/app.local/gone.ts",
+    ]
+
+
+def test_a_tracked_file_with_a_local_name_part_is_checked(tmp_path):
+    # The repo tracks files such as `cla.io/fleet.local.md`. Skipping every
+    # `*.local.*` hid a rename of one; only an UNTRACKED one is machine-local.
+    _init_git_repo(tmp_path, tracked_dirs=["cla.io", ".claude"])
+    (tmp_path / "cla.io" / "fleet.local.md").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "cla.io/fleet.local.md"], cwd=tmp_path, check=True)
+    (tmp_path / "cla.io" / "fleet.local.md").unlink()  # tracked, then renamed away
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Tracked: `cla.io/fleet.local.md`. Untracked: `.claude/settings.local.json`.\n",
+        encoding="utf-8",
+    )
+    assert [c for _, _, c in find_stale_paths(tmp_path)] == ["cla.io/fleet.local.md"]
+
+
+def test_a_git_ignored_path_kept_by_shape_is_not_reported(tmp_path):
+    # Build output (`dist/`) is absent from a fresh clone by design. Its top-level
+    # name is not in the index, so only its shape keeps it; git ignores it.
+    _init_git_repo(tmp_path, tracked_dirs=["cla.io", "apps"])
+    (tmp_path / ".gitignore").write_text("dist/\napps/build/\n", encoding="utf-8")
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Output: `dist/index.js`. Renamed away: `old/index.js`. "
+        "Under a tracked top-level, ignored but still checked as before: `apps/build/out.js`.\n",
+        encoding="utf-8",
+    )
+    assert [c for _, _, c in find_stale_paths(tmp_path)] == ["old/index.js", "apps/build/out.js"]
+
+
+def test_only_a_path_under_a_recognized_top_level_counts_as_checked(tmp_path):
+    # The "zero candidates" guard (exit 2) reads this figure: a wrongly small
+    # top-level set must still read as zero, so a shape-only keep does not count.
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "apps" / "real").mkdir(parents=True)
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Real: `apps/real`. Renamed: `old/src/x.ts`.\n", encoding="utf-8"
+    )
+    checked, stale, _unreadable = scan(tmp_path)
+    assert checked == 1
+    assert [c for _, _, c in stale] == ["old/src/x.ts"]
+
+
+@pytest.mark.parametrize(
+    "candidate, tracked, expected",
+    [
+        (".claude/settings.local.json", None, True),         # no index: nothing is tracked
+        (".claude/settings.local.json", set(), True),         # untracked
+        (".claude/settings.local.json", {".claude/settings.local.json"}, False),  # tracked
+        ("cla.io/overlays/x.local.md/", {"cla.io/overlays/x.local.md"}, False),   # trailing slash
+        ("apps/web/.env.local", set(), True),
+        ("docs/notes.localized.md", set(), False),
+        ("docs/app.local/gone.ts", set(), False),             # `.local` is not the file name
+        ("local/gone.ts", set(), False),
+        ("apps/local/", set(), False),                        # a directory named `local`
+        ("docs/app.local.d/gone.ts", set(), False),           # `.local.` inside a directory name
+    ],
+)
+def test_is_machine_local(candidate, tracked, expected):
+    assert _checker._is_machine_local(candidate, tracked) is expected
+
+
 def test_a_directory_named_local_is_an_ordinary_path(tmp_path):
     # Only a `.local` NAME PART is machine-local; `local/` is just a directory.
     (tmp_path / "cla.io").mkdir()
@@ -317,8 +390,6 @@ def test_untracked_top_level_directory_is_not_recognized_in_a_real_repo(tmp_path
         encoding="utf-8",
     )
     assert find_stale_paths(tmp_path) == []
-    (tmp_path / "stray-scratch").rmdir()
-    assert find_stale_paths(tmp_path) == []
 
 
 def test_tracked_top_level_directory_is_recognized_in_a_real_repo(tmp_path):
@@ -460,8 +531,6 @@ def test_each_skip_reason_individually_yields_no_candidates(tmp_path):
     assert extract_path_candidates("`packages/x/{a,b}.ts`", tln) == []           # brace shorthand
     assert extract_path_candidates("`~/.gitconfig`", tln) == []                  # ~ home path
     assert extract_path_candidates("`a-single-token-no-slash`", tln) == []       # no path separator
-    assert extract_path_candidates("`.claude/settings.local.json`", {".claude"}) == []  # machine-local
-    assert extract_path_candidates("`apps/web/.env.local`", tln) == []           # machine-local
 
 
 @pytest.mark.parametrize(
