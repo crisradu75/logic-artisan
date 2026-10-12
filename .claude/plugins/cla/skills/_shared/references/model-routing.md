@@ -40,10 +40,10 @@ always supplies the exact list).
 | Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
 | Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
 | Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff) | medium | `Workflow` `agent()` |
-| Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; opus for `plugin-dev:skill-reviewer` on a prose-dominant diff | medium | `Workflow` `agent()` |
+| Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; `plugin-dev:skill-reviewer` on a prose-dominant diff per "Review sizing by risk" below | medium | `Workflow` `agent()` |
 | Revise R1 — `comment-analyzer` | sonnet | medium | `Workflow` `agent()` |
 | Implement big-mechanical delegate (sized trigger — see SKILL.md Implement) | sonnet | inherited | `Agent(model:)` |
-| Revise round ≥2 (scoped fix-diff) | the same reviewers and tiers as round 1, at round 1's final level (never lower), per "Review sizing by risk" below | inherited | `Agent(model:)` |
+| Revise round ≥2 (scoped fix-diff) | round 1's reviewers and tiers, at its final level and never lower; see "Review sizing by risk" below | inherited | `Agent(model:)` |
 | Ship / Archive / Handoff / prechecks / Test runs | inline, unchanged | — | no dispatch |
 
 <!-- economy-rules-file:review-sizing:begin -->
@@ -180,8 +180,8 @@ a misleading "fix" commit and a follow-up revert. On a high-risk diff the saving
 bug-hunter get eaten by that triage overhead, and a missed bug there is costly.
 
 A low-risk diff accepts a Sonnet reviewer. A miss there is cheap, so the weaker reviewer is the
-right trade. Rubric checks (`pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer`;
-the last runs on opus on a prose-dominant diff) and comment nits (`comment-analyzer`) run on sonnet. The
+right trade. Rubric checks (`pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer`) and comment nits (`comment-analyzer`) run on sonnet. The skill reviewer's model
+on a prose-dominant diff comes from "Review sizing by risk" above. The
 `routing.revise_findings_by_tier` telemetry (found vs phantom **per agent**, see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`)
 is the standing check on this bet; `/cla:spec-to-pr-retro` flags a phantom rate concentrated on any one
 agent, including the sonnet-routed ones, relative to the opus bug-hunters.

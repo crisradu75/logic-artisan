@@ -59,3 +59,12 @@ Split out of PR #333 (local-path-skip). `check_fact_paths.py` `_keep_if_path` sk
 - [Suggestion] `lite-pr/SKILL.md`: the trailer-block rule is still stated in the Ship hand-off paragraph and in `measured-by.md`; the review-fix-weight pointer uses a relative path; the paragraph after Test step 3 is not indented under the numbered steps.
 - [Suggestion] `plugin-tests/tests/consistency/test_mutation_gate_sites_agree.py` docstring still names `lite-pr/SKILL.md` as the gate site.
 - [Suggestion] `spec-to-pr/references/archive.md:21`: the post-check names `<YYYY-MM-DD>`; if midnight passes between `openspec archive` and the check it gives a false warning. `ls -d openspec/changes/archive/*-<change-name>/proposal.md` avoids it (pre-existing).
+
+## Deferred from PR #334 (review-sizing-followups) - 2026-10-12
+
+**Suggestions** (low-priority PR-review residue):
+- [Suggestion] `lite-pr/SKILL.md` Review: "Route each per the same file" now sits two sentences after the file is named; name `model-routing.md` there.
+- [Suggestion] `model-routing.md` rubric-checks sentence says the skill reviewer runs on Sonnet, then the next sentence overrides it; add "except as noted next".
+- [Suggestion] `handoff.md:13` omits "names an unknown level" from the Risk-line fallback that `revise.md` covers.
+- [Suggestion] `orchestration-economy.md` debris rule: limit the ignore to `__pycache__` folders beside tracked `.py` files; no guard or mutant covers the new Handoff and resume sentences.
+- [Suggestion] `README.md` skill-reviewer row: the Sonnet case (frontmatter change or new skill) is not in the sizing table; point to lite-pr and `revise.md`.
