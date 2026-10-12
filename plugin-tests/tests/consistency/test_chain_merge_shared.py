@@ -194,3 +194,15 @@ def test_landing_a_hand_built_stack_lives_in_spec_to_pr() -> None:
     assert "`git rebase --onto origin/<base-branch> <parent-tip-sha> <child-branch>`" in landing
     assert "`git push --force-with-lease`" in landing
     assert '`branch-and-pr-base.md`, "Landing a stack"' in _read(refs / "handoff.md")
+
+
+def test_the_ci_wait_is_one_background_watch_under_a_watchdog_everywhere() -> None:
+    """Every file that states the remote-checks wait agrees: one background watch, no timeout pair."""
+    step_4 = _between(_read(_SHARED), "4. **Remote checks have finished.**", "5. **`mergeStateStatus`")
+    assert "`Bash(run_in_background: true)`" in step_4 and "--watch --interval 60" in step_4
+    assert "time.sleep(900)" in step_4 and "completion notification wakes the session" in step_4
+    assert step_4.count("`checks still pending`") == 2
+    stale = re.compile(r"450000|7\.5.minute|at most twice|--watch[^\n]*\n?[^\n]*`timeout`", re.I)
+    docs = [*_SKILLS.rglob("*.md"), _README, _GUIDE]
+    stale_hits = [str(p.relative_to(_ROOT)) for p in docs if stale.search(_read(p))]
+    assert not stale_hits, f"these files still state the old foreground two-call CI wait: {stale_hits}"

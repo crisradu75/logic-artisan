@@ -116,11 +116,19 @@ of its own before these.
 4. **Remote checks have finished.** Run `gh pr checks <pr> --json name,bucket` and read the result
    in context:
    - JSON output → each check's `bucket` is `pass`, `fail`, `pending`, `skipping`, or `cancel`.
-     - Any `pending` → run `gh pr checks <pr> --watch --interval 60` as a Bash call with the tool's
-       `timeout` set to 450000 ms, at most twice (15 minutes in all). Read its exit code before
-       anything else. A call that hit its timeout twice → the reason is `checks still pending`.
-       Any exit before the timeout → query the JSON once more and take the arms here; still
-       `pending` → the reason is `checks still pending`.
+     - Any `pending` → in one message, start `gh pr checks <pr> --watch --interval 60` as
+       `Bash(run_in_background: true)` and arm a 15-minute watchdog, `Bash(command: "python3 -c
+       \"import time; time.sleep(900)\"", run_in_background: true)` (covered by the
+       wildcards `Bash(gh *)` and `Bash(python3 *)` in `required-permissions.json`;
+       `multi-lite/SKILL.md` "Never end a turn with nothing in flight" says why `python3`). Do
+       not poll or loop: a completion notification wakes the session. When the watch's
+       notification arrives first, read its exit code before anything else; the exit code only
+       says the watch ended (it exits non-zero for a failing or still-pending check), so it is not
+       `checks not readable` by itself. Query the JSON once more and take the arms here; still
+       `pending` → the reason is `checks still pending`. When the watchdog's arrives first, stop
+       waiting: the reason is `checks still pending`. The 15 minutes is the watchdog's, not the
+       watch's: the watch has no deadline of its own. Ignore the other task's later notification
+       (or stop it with `TaskStop`).
      - Any `fail` or `cancel` → the reason is `checks not green`.
      - Only `pass` and `skipping` → continue.
    - The output says `no checks reported` → checks may not have registered for a head pushed
