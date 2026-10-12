@@ -42,3 +42,4 @@
 - [Suggestion] `mutation-gate.md:7,27`: "a real fix here" and "two commits in this repo" read wrongly in a shipped file; say "in the CLA source repo".
 - [Suggestion] `lite-pr/SKILL.md`: the trailer-block rule is still stated in the Ship hand-off paragraph and in `measured-by.md`; the review-fix-weight pointer uses a relative path; the paragraph after Test step 3 is not indented under the numbered steps.
 - [Suggestion] `plugin-tests/tests/consistency/test_mutation_gate_sites_agree.py` docstring still names `lite-pr/SKILL.md` as the gate site.
+- [Suggestion] `spec-to-pr/references/archive.md:21`: the post-check names `<YYYY-MM-DD>`; if midnight passes between `openspec archive` and the check it gives a false warning. `ls -d openspec/changes/archive/*-<change-name>/proposal.md` avoids it (pre-existing).
