@@ -95,6 +95,9 @@ openspec validate --specs --strict
   repo's own facts go in its own `cla.io/project-facts.md`; a rule for one skill in that repo goes
   in an optional `cla.io/overlays/<skill>.md`. A skill reads an overlay only if it is present, and
   nothing ships or seeds one.
+- **Quote a token cost from `plugin-tests/scripts/meter.py`, never from a word count.**
+  `plugin-tests/scripts/measure_load.py` counts words; `meter.py` totals the billed tokens a
+  transcript records, by model.
 - **Do not copy the checkers' lists of file types into any doc.** Read them in the code. A new kind
   of shipped file stays unchecked until someone adds it to a checker.
 

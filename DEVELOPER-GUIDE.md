@@ -90,7 +90,9 @@ The phases, in order — Explore → Plan → Implement → Test → Ship → Re
 3. **Implement** on a branch: code + `spec.md`/`CLAUDE.md`/tests kept in sync.
 4. **Test** — the flow's only stop point: an unresolved failure halts the run.
 5. **Ship** — commit, push, PR opened.
-6. **Review** — one automated PR-review pass on the opened PR, with a single fix round.
+6. **Review** — one automated PR-review pass on the opened PR, with a single fix round. Ship puts a
+   `Risk:` line in the PR body, and that line picks the reviewers and their models ("Review sizing
+   by risk" in `_shared/references/model-routing.md`).
 
 Note the order: the PR opens *before* the review pass, and one fix round is the whole budget —
 deeper multi-round review is `spec-to-pr`'s territory.
@@ -307,7 +309,9 @@ ledger (`retro/spec-to-pr-runs.jsonl`), lessons learned, and (in a consuming rep
 
 - **`codify-learnings`** — run it at the end of a session worth learning from. It reviews the
   conversation for reusable lessons and proposes concrete edits — to docs, skills, hooks, or
-  memory — interactively, then logs the fixes and re-offenses in `lessons-learned/`.
+  memory — interactively, then logs the fixes and re-offenses in `lessons-learned/`. The live log
+  stays under 6,000 words; its oldest entries move to `lessons-learned-archive.md` beside it,
+  which the skill's keyword grep also searches.
 
   ```
   /cla:codify-learnings
@@ -500,7 +504,8 @@ The published plugin — everything here ships to a consuming repo:
                                `model-routing.md` holds the review-sizing table, `orchestration-economy.md` the chain cost rules, `economy-rules-file.md` the frame `/cla:cla-setup` renders into a repo's `.claude/rules/cla-economy.md`
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
-    references/                supporting docs (portable; overlays live in cla.io/overlays/)
+    references/                supporting docs (portable; overlays live in cla.io/overlays/); `lite-pr/references/`
+                               holds `measured-by.md`, `mutation-gate.md` and `diagnose-escalation.md`, each read only when its trigger in `lite-pr/SKILL.md` fires, and `review-fix-weight.md`, a worked example
     scripts/                   deterministic helpers (stdlib Python)
 ```
 
@@ -573,9 +578,9 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
 | `plugin-tests/scripts/meter.py` *(dev tree)* | Totals the tokens a session transcript's `usage` fields record, split by model and counting main chat and subagents together, so a token-diet change quotes measured spend instead of word counts; one API message appears once per content block in a transcript, and a plain sum counts it several times. |
 | `plugin-tests/scripts/migrate_run_records.py` *(dev tree)* | One-off rewrite of old-shape `spec-to-pr-runs.jsonl` records into the shape `log_run.py` enforces: every mapping comes from a shape found in a real ledger, a valid record is left untouched, and one that still fails is reported and left exactly as it was. |
-| `cla-setup/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. |
+| `cla-setup/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. It skips an untracked machine-local `*.local.*` path, which a fresh clone lacks. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
-| `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's automatic round 2 still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
+| `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's round 2 (which runs only after round 1 fixed a Critical) still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 14-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
