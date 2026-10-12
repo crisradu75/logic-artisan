@@ -62,7 +62,7 @@ say so. "The cheaper tier might not meet the bar" is not a toss-up.
 change.** `spec-to-pr` routes every dispatched agent per
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`; `multi-spec` reuses it, and
 `multi-pr` never dispatches an `Agent` itself, only whole `spec-to-pr` runs. For those, escalating the session changes only the inline judgment moments
-(Propose authoring, a borderline Review verdict). Check the actual file before citing it.
+(Propose authoring, a RETHINK or Critical-bearing FIX FIRST Review verdict). Check the actual file before citing it.
 
 **One expensive turn does not need a session change.** When one judgment or diagnosis is the hard
 part, an in-prompt reasoning keyword raises effort for that turn alone, if the session supports one.

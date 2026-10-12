@@ -36,7 +36,7 @@ always supplies the exact list).
 
 | Dispatch | Model | Effort | Mechanism |
 |---|---|---|---|
-| Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding ONLY; triage never escalated) when session < Opus |
+| Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding of RETHINK or Critical-bearing FIX FIRST ONLY; triage never escalated) when session < Opus |
 | Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
 | Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
 | Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff) | medium | `Workflow` `agent()` |
@@ -142,7 +142,7 @@ abstract: a launcher pins a model, and a launcher's pin is a local decision that
 
 Read the session's own model rather than a documented default. **When the session is below Opus,
 budget for escalate-up as a per-run cost, not an occasional one:** a normal `spec-to-pr` run pays
-an extra opus `Agent` dispatch for Propose authoring and for each Agent-1-class review dispatch, on
+an extra opus `Agent` dispatch for Propose authoring and for each Agent-1-class review dispatch (plus a verdict second on RETHINK or a Critical-bearing FIX FIRST), on
 top of the session's own tier. That is the intended trade — the alternative is a design review at
 the cheaper tier — but it shows up on every run.
 
@@ -163,9 +163,13 @@ protected by dispatching *up*:
   authoring to `Agent(subagent_type: "claude", model: "opus")`, giving it the same description/context
   Propose would otherwise pass to `Skill(openspec-propose)` and instructing it to run that same skill
   (or produce equivalent artifacts) itself, then report back. Continue inline once it returns.
-- **RETHINK-borderline Review verdict**: when the inline review (executed via
-  `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md`) lands on a verdict at the FIX-FIRST/RETHINK
-  boundary, second it with an `opus` `Agent` fed the context brief before committing to the verdict.
+- **Review verdict seconding**: when the inline review (executed via
+  `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md`) lands on a **RETHINK** verdict, or on a
+  **FIX FIRST** verdict that carries at least one **Critical** finding, second it with one
+  `Agent(subagent_type: "claude", model: "opus")` fed the context brief, the verdict and the findings, before committing
+  to the verdict. The agent confirms or overturns the verdict and gives one short report. The trigger is the verdict
+  and its worst finding grade, never the session's own sense that the call was close. A plain FIX FIRST with only
+  Important or Suggestion findings, and a READY verdict, are not seconded.
 
 On an **Opus session this rule is a no-op** — the inline model already is Opus. There is no flag;
 detection is from the session-model line in the environment context. Revise triage itself is NOT
