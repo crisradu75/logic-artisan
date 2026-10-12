@@ -50,7 +50,11 @@ def test_test_phase_has_one_retry_budget_and_halt_follows_diagnose() -> None:
     assert "/cla:diagnose" in step3, "SKILL.md step 3 lost the escalation trigger"
     assert "after the `/cla:diagnose` path" in step4, "step 4 HALTs without the diagnose path before it"
     assert "after that one retry →" not in step4, "step 4 HALTs straight after the retry again"
-    assert "third edit" not in ref, "the reference still counts a third edit under the one budget"
+    assert "UNCOMMITTED in the working tree" in ref and "Ship commits them on the feature branch" in ref, (
+        "the reference lost the rule that a Test-phase diagnose leaves its fix uncommitted for Ship"
+    )
+    assert "leaves its fix uncommitted; Ship commits it" in step3, "step 3 lost the uncommitted-fix short form"
+    assert "third edit" not in ref,"the reference still counts a third edit under the one budget"
     assert "One fix and one retry on the SAME" in ref, (
         "diagnose-escalation.md does not name the same one-fix-one-retry trigger as step 3"
     )

@@ -34,7 +34,6 @@
 
 ## Deferred from PR #330 (one retry budget in lite-pr Test) — 2026-10-12
 
-- [Important] `diagnose/SKILL.md` Phase 6 commits its fix, but lite-pr's Test phase commits nothing and under `/cla:multi-lite` the agent sits on the base branch, so an escalated `diagnose` would commit onto the local base branch. The old two-round trigger never fired, so this was unreachable; it is now reachable. Needs a decision: have `diagnose` leave the fix uncommitted when called from a Test phase, or have multi-lite put the candidate on its branch first.
 - [Suggestion] `lite-pr/SKILL.md` paragraph after Test step 4: "the second hypothesis is better-informed than the first" and "halt at step 4" for a symptom fix predate the one-budget wording; a retry that fails on a different cause halts without a diagnose step (confirm that is intended).
 
 ## Deferred from PR #329 (lite-pr-lazy-load) — 2026-10-12
