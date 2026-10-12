@@ -43,12 +43,14 @@ def test_test_phase_has_one_retry_budget_and_halt_follows_diagnose() -> None:
     skill = (_LITE_PR / "SKILL.md").read_text(encoding="utf-8")
     ref = (_LITE_PR / "references" / "diagnose-escalation.md").read_text(encoding="utf-8")
     for name, text in [("SKILL.md", skill), ("diagnose-escalation.md", ref)]:
-        assert "Two rounds on the SAME" not in text, f"{name} states a two-round budget again"
+        assert "two rounds on the same" not in text.lower(), f"{name} states a two-round budget again"
     step3 = next(line for line in skill.splitlines() if line.startswith("3. Any failure"))
     step4 = next(line for line in skill.splitlines() if line.startswith("4. Still failing"))
     assert "one fix, one retry" in step3, "SKILL.md step 3 lost the one-fix-one-retry budget"
     assert "/cla:diagnose" in step3, "SKILL.md step 3 lost the escalation trigger"
-    assert "/cla:diagnose" in step4, "step 4 HALTs without naming the diagnose path before it"
+    assert "after the `/cla:diagnose` path" in step4, "step 4 HALTs without the diagnose path before it"
+    assert "after that one retry →" not in step4, "step 4 HALTs straight after the retry again"
+    assert "third edit" not in ref, "the reference still counts a third edit under the one budget"
     assert "One fix and one retry on the SAME" in ref, (
         "diagnose-escalation.md does not name the same one-fix-one-retry trigger as step 3"
     )
