@@ -330,7 +330,7 @@ Three utilities worth knowing at any phase:
   `.claude/settings.local.json`, so the next session doesn't re-prompt.
 - **`diagnose`** — find a failure's cause rather than guessing at fixes: build a deterministic
   pass/fail loop, rank falsifiable hypotheses before touching anything, write the regression test
-  before the fix. Both Test phases escalate to it after two rounds spent on one stated cause.
+  before the fix. Both Test phases escalate to it on one stated cause: spec-to-pr after two rounds, lite-pr after one fix and one retry.
 
 ## 10. Adopting CLA in another repo
 
