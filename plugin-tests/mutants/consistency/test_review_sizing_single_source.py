@@ -137,7 +137,7 @@ MUTANTS = [
     (
         "revise.md stops citing the missing-line-means-high rule",
         REVISE,
-        "treat the diff as high risk (\"A missing line means high\" in that section). Record a Handoff Issue for it, which `handoff.md` always lists. ",
+        "treat the diff as high risk (\"A missing line means high\" in that section). In that case record a Handoff Issue, which `handoff.md` always lists. ",
         "",
         TARGETS,
     ),
@@ -242,7 +242,7 @@ MUTANTS = [
     (
         "round 1 stops rewriting the Risk clause when it raises the level",
         REVISE,
-        "raise the level to high. Then rewrite the PR body's `Risk:` clause to the raised level",
+        "raise the level to high. If you raised it, rewrite the PR body's `Risk:` clause to the raised level",
         "raise the level to high.",
         TARGETS,
     ),

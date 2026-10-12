@@ -40,7 +40,7 @@ always supplies the exact list).
 | Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
 | Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
 | Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff) | medium | `Workflow` `agent()` |
-| Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; opus for `plugin-dev:skill-reviewer` on a prose-dominant diff | medium | `Workflow` `agent()` |
+| Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; `plugin-dev:skill-reviewer` on a prose-dominant diff per "Review sizing by risk" below | medium | `Workflow` `agent()` |
 | Revise R1 — `comment-analyzer` | sonnet | medium | `Workflow` `agent()` |
 | Implement big-mechanical delegate (sized trigger — see SKILL.md Implement) | sonnet | inherited | `Agent(model:)` |
 | Revise round ≥2 (scoped fix-diff) | round 1's reviewers and tiers, at its final level and never lower; see "Review sizing by risk" below | inherited | `Agent(model:)` |

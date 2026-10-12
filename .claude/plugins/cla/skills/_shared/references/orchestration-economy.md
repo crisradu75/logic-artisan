@@ -19,5 +19,5 @@ rule below saves some without dropping quality.
    `git status --porcelain --ignored --untracked-files=all` outside the repo, in a scratch or temp
    directory. Run it again after, and diff the two. Any new line is debris, so report it. Ignored
    caches and virtualenvs that were already present show in both lists and cancel out. Ignore interpreter
-   caches (`__pycache__/*.pyc`) in the diff, and delete the half-written `*.pyc.<pid>` files that
+   caches (`__pycache__/*.pyc`) in the diff, and delete the half-written `*.pyc.<digits>` files under `__pycache__/` that
    parallel workers leave. A missing before snapshot means the check did not run, so warn.

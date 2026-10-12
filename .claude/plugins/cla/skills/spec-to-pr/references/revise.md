@@ -13,7 +13,7 @@ Never chain through `Skill(pr-review-toolkit:review-pr)`; dispatch its agents yo
 
 ## Round 1 — agent selection + routing
 
-Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for that level. If the diff shows a risk signal the line missed, raise the level to high. Then rewrite the PR body's `Risk:` clause to the raised level (`gh pr edit --body`, keeping the rest of the one-liner). If the line is missing, unreadable or names an unknown level, treat the diff as high risk ("A missing line means high" in that section). Record a Handoff Issue for it, which `handoff.md` always lists. The rows below add the narrow agents. The **diff slice** column is what each agent is given — the main reviewers get the full diff, the narrow agents a filtered slice:
+Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for that level. If the diff shows a risk signal the line missed, raise the level to high. If you raised it, rewrite the PR body's `Risk:` clause to the raised level (`gh pr edit --body`, keeping the rest of the one-liner). If the line is missing, unreadable or names an unknown level, treat the diff as high risk ("A missing line means high" in that section). In that case record a Handoff Issue, which `handoff.md` always lists. The rows below add the narrow agents. The **diff slice** column is what each agent is given — the main reviewers get the full diff, the narrow agents a filtered slice:
 
 | Diff contains | Dispatch | Model | Effort | Diff slice passed |
 |---|---|---|---|---|
@@ -202,7 +202,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
    - **Untriaged** — Critical/Important findings in no bucket.
    - **Open** — in a bucket but not closed. Applied and Deferred-Known-Issue are closed. **Remedy-Rejected citing the remedy is triaged and OPEN**; Remedy-Rejected citing a disproved defect is closed.
 
-   **Both 0** → status `ok` and exit the loop, **unless this round fixed a Critical and the cap allows another round** — then run it, scoped to that fix diff. On a resume, if you cannot tell whether this round fixed a Critical, run the next round: failing safe costs one round. A round whose fixes were all Important or lower does not trigger another. When any round committed fixes and no later round reviewed them, Revise still ends `ok`, and the Handoff report says in one line that those fixes were not reviewed again.
+   **Both 0** → status `ok` and exit the loop, **unless this round fixed a Critical and the cap allows another round** — then run it, scoped to that fix diff. On a resume, if you cannot tell whether this round fixed a Critical, run the next round if the cap allows: failing safe costs one round. A round whose fixes were all Important or lower does not trigger another. When any round committed fixes and no later round reviewed them, Revise still ends `ok`, and the Handoff report says in one line that those fixes were not reviewed again.
 
    **Open > 0** → decide by whether a re-attempt is still available:
    - **Some open finding still has its free re-attempt** AND the round budget allows → **re-enter the loop** with re-decided remedies for those findings.
