@@ -34,7 +34,8 @@ the dispatching phase always supplies the exact list. The three reviewers (`code
 `silent-failure-hunter`, `comment-analyzer`) have no shell, so the dispatching phase writes the
 change to a diff file and names its path in the brief. Each reviewer file names its default model;
 a dispatch that passes `model:` overrides it, and the high-risk row below passes `model: opus` to
-`code-reviewer`, whose file names Sonnet.
+`code-reviewer`, whose file names Sonnet. The override was verified live in both the `Workflow`
+`agent()` path and the `Agent` tool: each ran only on the model passed.
 
 ## Routing table
 

@@ -2,7 +2,7 @@
 
 ## 1. Verify contracts
 
-- [ ] 1.1 Not run: no `Workflow` tool was available to the implementing session, and the new agents register only at the next session start. No doc settles this; verify by running one `Workflow` `agent()` with `agentType: "cla:code-reviewer"` and `model: "opus"`, and one without `model`, and read each model from its transcript. Done when design Context records both; if `model` does not override, stop before 3.3.
+- [x] 1.1 Verified live 2026-10-13: `Workflow` `agent()` with `model: "opus"` ran on opus only; with no model, sonnet only (the control); the `Agent` tool with `model: "opus"` ran on opus only (read with `meter.py`). Original note, not run: no `Workflow` tool was available to the implementing session, and the new agents register only at the next session start. No doc settles this; verify by running one `Workflow` `agent()` with `agentType: "cla:code-reviewer"` and `model: "opus"`, and one without `model`, and read each model from its transcript. Done when design Context records both; if `model` does not override, stop before 3.3.
 
 ## 2. Agents and their test
 
@@ -18,7 +18,7 @@
 - [x] 3.4 Add a mutation batch for the 3.3 consistency test under `plugin-tests/mutants/consistency/`. Run it once and read each killing test. Done when every mutant is killed.
 - [x] 3.5 Point Revise's dispatch list, `model-routing.md`'s dispatch-name paragraph and lite-pr at `cla:<name>` for the three reviewers. Done when a grep for `pr-review-toolkit:code-reviewer`, `:silent-failure-hunter` or `:comment-analyzer` in shipped files returns nothing.
 - [x] 3.6 Update each text listing the agents or the `pr-review-toolkit:` dispatch form: plugin README (dependency row, phase table, layout), root README and DEVELOPER-GUIDE layouts, `model-routing.md`'s "two haiku agents", `run-log-schema.md`, the `log_run.py` key comment. Done when none is stale.
-- [ ] 3.7 Add the line `manual: A reviewer reads the change from a diff file: needs a live review round`. Done when one lite-pr review round shows each brief naming a diff file, and `git status` is clean afterwards.
+- [x] 3.7 Verified live 2026-10-13: all three reviewers read the scratchpad diff file; a Git Bash `mktemp` path (`/tmp/...`) was not readable by `Read` on Windows, so the docs now name the scratchpad. Original: add the line `manual: A reviewer reads the change from a diff file: needs a live review round`. Done when one lite-pr review round shows each brief naming a diff file, and `git status` is clean afterwards.
 
 manual: A reviewer reads the change from a diff file: needs a live review round
 

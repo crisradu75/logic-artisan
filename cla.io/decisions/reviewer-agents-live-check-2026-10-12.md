@@ -31,7 +31,22 @@ Run this in a FRESH Claude Code session started with `./cla`. The three new agen
   say so in `model-routing.md`.
 - Override fails in `Workflow` only: the high-risk row must use the `Agent` tool, or ship a second
   Opus file; ask the user which (the user chose "one file, Opus per call" earlier on the assumption it works).
-- A reviewer cannot read the diff file: fix `revise.md:37` and `:69` (`$DIFF_FILE` is undefined there) and the
-  `mktemp` wording, in `revise.md`, `lite-pr/SKILL.md:144`, `subagent-brief.md:121`.
+- A reviewer cannot read the diff file: fix `revise.md:37` and `:69` (`$DIFF_FILE` is undefined only at `:69`) and the
+  `mktemp` wording, in `revise.md` and `lite-pr/SKILL.md:144`. (`subagent-brief.md:121` never mentions `mktemp`;
+  it only says "outside the working tree".)
 
 Suggested path: `/cla:lite-pr` for the doc change, `/cla:spec-to-pr` only if the Opus file has to be added.
+
+## Outcome (2026-10-13)
+
+Three dispatches of `cla:code-reviewer` (file says `model: sonnet`) on a diff file in the session scratchpad,
+models read with `python plugin-tests/scripts/meter.py <transcript>`:
+
+- `Workflow` `agent()` with `model: "opus"`: claude-opus-5-5 only (6 messages).
+- `Workflow` `agent()` with no model (control): claude-sonnet-5-5 only (2 messages).
+- `Agent` tool with `model: "opus"`: claude-opus-5-5 only (5 messages).
+
+So the override works in both paths, and 1.1 and 3.7 are ticked. All three reviewers (Read, Grep, Glob only) read
+the scratchpad diff file. All three got "File does not exist." from `Read` on the Git Bash `mktemp` path
+`/tmp/tmp.YpojiMYNVX`, so on Windows a `/tmp/...` path cannot be handed to a shell-less reviewer. `cygpath -w`
+converts it to a Windows path, but that was not tested with `Read`. The docs now name the session scratchpad.
