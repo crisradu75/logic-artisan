@@ -116,9 +116,11 @@ of its own before these.
 4. **Remote checks have finished.** Run `gh pr checks <pr> --json name,bucket` and read the result
    in context:
    - JSON output → each check's `bucket` is `pass`, `fail`, `pending`, `skipping`, or `cancel`.
-     - Any `pending` → run `timeout 900 gh pr checks <pr> --watch --interval 60` as a background
-       Bash call (the foreground limit is 10 minutes). Exit 124, the 15-minute bound → the reason
-       is `checks still pending`. Any other exit → query the JSON again and take the arms here.
+     - Any `pending` → run `gh pr checks <pr> --watch --interval 60` as a Bash call with the tool's
+       `timeout` set to 450000 ms, at most twice (15 minutes in all). Read its exit code before
+       anything else. A call that hit its timeout twice → the reason is `checks still pending`.
+       Any exit before the timeout → query the JSON once more and take the arms here; still
+       `pending` → the reason is `checks still pending`.
      - Any `fail` or `cancel` → the reason is `checks not green`.
      - Only `pass` and `skipping` → continue.
    - The output says `no checks reported` → checks may not have registered for a head pushed
