@@ -444,7 +444,7 @@ makes it portable.
    Keep every rule as written, and each rule pulled out of an incident as one or two lines under
    a dated heading. Move the incident's story to `cla.io/lessons-learned/lessons-learned.md`,
    appended at the end under a heading naming the overlay it came from (the log is newest-first,
-   and these predate it); name any that would happen in any repo as a candidate for
+   and these predate it; then apply the log's 6,000-word rule from `codify-learnings` Step 5); name any that would happen in any repo as a candidate for
    `/cla:report-upstream`. Drop duplicates and scaffolding. An overlay left with no rule is
    proposed for **deletion**: an absent overlay and an empty one mean the same thing, and the
    empty one invites facts back in.

@@ -1,6 +1,6 @@
 # Lessons learned — archive
 
-Older entries moved from the live log `lessons-learned.md`, newest first.
+Older entries moved from the live log `lessons-learned.md`, in log order.
 
 
 ## Lessons learned - scope: repo-wide (`hooks/`, `consistency-checks/`, `run_tests.py`, `CLAUDE.md`, `TODO.md`)

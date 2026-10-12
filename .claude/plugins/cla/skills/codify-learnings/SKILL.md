@@ -112,8 +112,9 @@ The log is a tracked file; include it when the applied fixes are committed.
 **Keep the live log under 6,000 words (`wc -w`).** When the prepend takes it over, move its oldest
 entries, whole and unedited, from the bottom to the top of the entries in
 `cla.io/lessons-learned/lessons-learned-archive.md` (create it with a `# Lessons learned — archive`
-title and a line saying it holds older entries moved from the live log, newest first), until the live
-log is under 6,000 words again.
+title and a line saying it holds older entries moved from the live log, in log order), until the live
+log is under 6,000 words again. Keep one `---` line between entries in both files, none left at the
+end of the live log. Count `grep -c '^## '` over both files before and after; the total must match.
 
 Close with one line: fixes proposed, applied and rejected, and each re-offense with the rung it
 went to.
