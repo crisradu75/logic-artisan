@@ -1,3 +1,9 @@
+## Deferred from PR #346 (reviewer-agents live check) — 2026-10-13
+
+**Suggestions** (low-priority PR-review residue):
+- [Suggestion] `spec-to-pr/references/revise.md` round-N snippet: the `PREV_FIX_SHA` comment says the SHA is captured BEFORE the round-(N-1) fix commit, but the line runs `git rev-parse HEAD` inside the diff block (older than this PR).
+- [Suggestion] `cla.io/decisions/reviewer-agents-live-check-2026-10-12.md` Outcome: it does not say whether all three reviewers got the same `mktemp` path.
+
 ## Deferred from PR #344 (reviewer-agents) — 2026-10-12
 
 **Suggestions** (low-priority PR-review residue):
