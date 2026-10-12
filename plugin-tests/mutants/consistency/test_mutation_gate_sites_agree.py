@@ -4,7 +4,7 @@ The guard claims that no site stating the mutation gate can drop the
 killed-mutant clause without a test going red.
 
 **Provenance.** Mutant 1 is historical in substance: it restores
-`lite-pr/SKILL.md` to the state it was actually in before this change — stating
+`lite-pr/references/mutation-gate.md` (the gate's lite-pr site, moved there from SKILL.md's step 2b) to the state it was actually in before this change — stating
 the gate with no killed-mutant clause — which is the exact tree issue #193
 described while naming only the other site. Mutant 2 restores the same defect at
 the other site. They are two mutants rather than one because that is what shows
@@ -15,7 +15,7 @@ constants, both places a weaker draft was available and tempting.
 
 **Anchors stay inside one line, deliberately.** `.gitattributes` pins no `eol`
 for `.md` or `.py`, so with `core.autocrlf=true` these targets are on disk with
-CRLF — measured on this tree, `lite-pr/SKILL.md` has CR=194 and LF=194 (`python`
+CRLF — measured before the gate text moved out of it, `lite-pr/SKILL.md` had CR=194 and LF=194 (`python`
 over `read_bytes()`). `mutate.py` matches anchors against the decoded bytes, so a
 bare `\\n` in an anchor matches nothing, and its preflight then aborts the WHOLE
 batch rather than that one mutant. An earlier draft of this file spanned three
@@ -48,7 +48,7 @@ DEV = Path(__file__).resolve().parents[2]
 PLUGIN = DEV.parent / ".claude" / "plugins" / "cla"
 
 GUARD = DEV / "tests" / "consistency" / "test_mutation_gate_sites_agree.py"
-LITE_PR = PLUGIN / "skills" / "lite-pr" / "SKILL.md"
+LITE_PR = PLUGIN / "skills" / "lite-pr" / "references" / "mutation-gate.md"
 REVISE = PLUGIN / "skills" / "spec-to-pr" / "references" / "revise.md"
 MULTI_LITE_LOOP = PLUGIN / "skills" / "multi-lite" / "references" / "candidate-loop.md"
 
