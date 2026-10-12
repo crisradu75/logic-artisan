@@ -215,6 +215,21 @@ def test_an_earlier_wording_with_trailing_whitespace_is_still_listed(tmp_path: P
 
 # requirement: repo-context / OpenSpec authoring rules on setup
 @_needs_bash
+@pytest.mark.parametrize("quote", ['"', "'"])
+@pytest.mark.parametrize("trailing", ["", " "])
+def test_a_quoted_copy_of_an_earlier_wording_is_still_listed(tmp_path: Path, quote: str, trailing: str):
+    # The shipped retired line is unquoted; a repo may carry the same text inside quotes.
+    old_rule = _retired("Keep it to one page. Point")
+    assert old_rule.startswith("- ") and not old_rule[2:].startswith(('"', "'"))
+    quoted = f"- {quote}{old_rule[2:]}{quote}"
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes() + f"    {quoted}{trailing}\n".encode("utf-8"))
+    assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
 def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     yml = tmp_path / "openspec" / "config.yml"
     yml.parent.mkdir()

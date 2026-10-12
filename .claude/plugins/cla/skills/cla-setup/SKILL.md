@@ -178,12 +178,18 @@ elif [ ! -d "$ROOT/openspec" ]; then
 else
   OLD="$CFG"; [ -e "$OLD" ] || OLD="$ROOT/openspec/config.yml"
   HAVE="$(tr -d '\r' < "$OLD" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  # The same lines with one pair of surrounding quotes dropped, so a retired rule the file
+  # carries inside quotes still matches.
+  unquote() { sed "s/^- \"\\(.*\\)\"\$/- \\1/; s/^- '\\(.*\\)'\$/- \\1/"; }
+  HAVEQ="$(printf '%s\n' "$HAVE" | unquote)"
   # $1 block, $2 mark, $3 = 1 lists the block's lines the file has, 0 those it lacks.
   rule_lines() {
     printf '%s\n' "$1" | while IFS= read -r line; do
       case "$line" in
         "  "[a-z]*:) KEY="${line#  }" ;;
         "    - "*) HAS=0; printf '%s\n' "$HAVE" | grep -Fxq -- "${line#    }" && HAS=1
+          [ "$3" = 1 ] && [ "$HAS" = 0 ] && printf '%s\n' "$HAVEQ" |
+            grep -Fxq -- "$(printf '%s\n' "${line#    }" | unquote)" && HAS=1
           [ "$HAS" = "$3" ] && printf '%s %s %s\n' "$2" "$KEY" "${line#    }" ;;
       esac
     done
