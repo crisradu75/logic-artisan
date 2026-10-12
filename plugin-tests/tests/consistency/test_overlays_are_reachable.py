@@ -200,7 +200,7 @@ def test_the_branch_prefix_reader_resolves_this_repos_overlay(monkeypatch):
     # the repo this file lives in. Without this the test passes only when pytest
     # is launched from that same checkout, and fails from another clone or worktree.
     monkeypatch.chdir(_REPO_ROOT)
-    gc =_import_from(
+    gc = _import_from(
         _PLUGIN_ROOT / "skills" / "spec-to-pr" / "scripts", "_git_common"
     )
     resolved = gc.overlay_path()
