@@ -31,6 +31,8 @@ PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 DEV = Path(__file__).resolve().parents[2]
 CHECKER = PLUGIN / "skills" / "cla-setup" / "scripts" / "check_fact_paths.py"
 TARGETS = [DEV / "tests" / "conformance"]
+# The checker's own line ending, so an anchor spanning two lines matches on any checkout.
+_NL = "\r\n" if b"\r\n" in CHECKER.read_bytes() else "\n"
 
 MUTANTS = [
     (
@@ -174,6 +176,167 @@ MUTANTS = [
         CHECKER,
         '    if _tracked_paths(repo_root) is None and (repo_root / ".git").exists():',
         "    if False:",
+        TARGETS,
+    ),
+    # --- renamed or removed top-level directories (`_former_top_level_names`) ---
+    (
+        "the history walk sees only deletions, not the old side of a rename",
+        CHECKER,
+        '"log", "--relative", "--diff-filter=D", "--no-renames",',
+        '"log", "--relative", "--diff-filter=D",',
+        TARGETS,
+    ),
+    # No mutant drops `--diff-filter=D` from the log query: with the subtraction of
+    # the current names and the staged-deletion query, listing every change returns
+    # the same set (only the output size differs), so no test could tell.
+    (
+        "a rename or removal staged but not yet committed is not read",
+        CHECKER,
+        '    deleted = log.stdout.split("\\0") + staged.stdout.split("\\0")',
+        '    deleted = log.stdout.split("\\0")',
+        TARGETS,
+    ),
+    (
+        "the history walk prints paths from the git top level, not the checked directory",
+        CHECKER,
+        '"log", "--relative", "--diff-filter=D",',
+        '"log", "--diff-filter=D",',
+        TARGETS,
+    ),
+    (
+        "the staged-deletion query prints paths from the git top level",
+        CHECKER,
+        '"diff", "--cached", "--relative", "--diff-filter=D",',
+        '"diff", "--cached", "--diff-filter=D",',
+        TARGETS,
+    ),
+    (
+        "a failed staged diff reads as no staged deletions",
+        CHECKER,
+        "    if staged.returncode != 0:",
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "a deleted top-level FILE counts as a former directory name",
+        CHECKER,
+        '    names = {p.split("/", 1)[0] for p in deleted if "/" in p}',
+        '    names = {p.split("/", 1)[0] for p in deleted if p}',
+        TARGETS,
+    ),
+    (
+        "a name that is a top-level entry now is also treated as former",
+        CHECKER,
+        "    return names - top_level_names, \"\"",
+        "    return names, \"\"",
+        TARGETS,
+    ),
+    (
+        "a failed `git log` reads as an empty history instead of an unavailable one",
+        CHECKER,
+        "    if log.returncode != 0:",
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "a shallow clone is trusted as full history",
+        CHECKER,
+        '        if shallow.stdout.strip() == "true":',
+        "        if False:",
+        TARGETS,
+    ),
+    (
+        "a directory that is not a git repo is not told apart from one",
+        CHECKER,
+        "        if shallow.returncode != 0:",
+        "        if False:",
+        TARGETS,
+    ),
+    (
+        "git failing to run raises out of the checker",
+        CHECKER,
+        "    except (OSError, subprocess.SubprocessError) as exc:",
+        "    except ZeroDivisionError as exc:",
+        TARGETS,
+    ),
+    (
+        "an unavailable history is no longer reported on stderr",
+        CHECKER,
+        "    if former_names is None:" + _NL + "        print(",
+        "    if False:" + _NL + "        print(",
+        TARGETS,
+    ),
+    (
+        "an unavailable history is reported as a failed run",
+        CHECKER,
+        "    checked, stale, unreadable = scan(repo_root, former_names or set())",
+        "    if former_names is None:" + _NL + "        return EXIT_STALE" + _NL
+        + "    checked, stale, unreadable = scan(repo_root, former_names or set())",
+        TARGETS,
+    ),
+    (
+        "main stops handing the former names to the scan",
+        CHECKER,
+        "    checked, stale, unreadable = scan(repo_root, former_names or set())",
+        "    checked, stale, unreadable = scan(repo_root, set())",
+        TARGETS,
+    ),
+    (
+        "scan stops handing the former names to the extraction",
+        CHECKER,
+        "            for candidate in extract_path_candidates(line, top_level_names, former_names):",
+        "            for candidate in extract_path_candidates(line, top_level_names):",
+        TARGETS,
+    ),
+    (
+        "extraction stops handing the former names to the keep rule (second pass)",
+        CHECKER,
+        "        cleaned = _clean_candidate(raw)" + _NL + "        kept = _keep_if_path(cleaned, top_level_names, former_names)",
+        "        cleaned = _clean_candidate(raw)" + _NL + "        kept = _keep_if_path(cleaned, top_level_names)",
+        TARGETS,
+    ),
+    (
+        "extraction stops handing the former names to the keep rule (backtick pass)",
+        CHECKER,
+        "        cleaned = _clean_candidate(match.group(1))" + _NL + "        kept = _keep_if_path(cleaned, top_level_names, former_names)",
+        "        cleaned = _clean_candidate(match.group(1))" + _NL + "        kept = _keep_if_path(cleaned, top_level_names)",
+        TARGETS,
+    ),
+    (
+        "scan called alone no longer derives the former names",
+        CHECKER,
+        "    if former_names is None:" + _NL
+        + "        former_names = _former_top_level_names(repo_root, top_level_names)[0] or set()",
+        "    if former_names is None:" + _NL + "        former_names = set()",
+        TARGETS,
+    ),
+    (
+        "a never-top-level first segment is checked too (the shape-only rule that failed 3 repos)",
+        CHECKER,
+        "        if first_segment not in former_names:" + _NL + "            return None",
+        "        if False:" + _NL + "            return None",
+        TARGETS,
+    ),
+    (
+        "a bare former directory (`docs/`) is reported",
+        CHECKER,
+        '        if not token.split("/", 1)[1].strip("/") or "\\\\" in token:',
+        '        if "\\\\" in token:',
+        TARGETS,
+    ),
+    (
+        "a grep pattern under a former directory is reported",
+        CHECKER,
+        '        if not token.split("/", 1)[1].strip("/") or "\\\\" in token:',
+        '        if not token.split("/", 1)[1].strip("/"):',
+        TARGETS,
+    ),
+    (
+        "every non-top-level first segment is rejected, former names included",
+        CHECKER,
+        "    if first_segment not in top_level_names:" + _NL + "        # A name that was",
+        "    if True:" + _NL + "        return None" + _NL
+        + "    if first_segment not in top_level_names:" + _NL + "        # A name that was",
         TARGETS,
     ),
 ]

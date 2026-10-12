@@ -59,6 +59,15 @@ COVERAGE LIMITS (read before trusting this guard blindly):
     ``.claude/settings.local.json``) that git does NOT track is skipped, present or
     not: it is absent from a fresh clone. A TRACKED ``*.local.*`` file, or a
     tracked directory with such a name, is an ordinary path and is checked.
+  - A path is checked only when its first segment is a tracked top-level name now,
+    or was one at an earlier commit and is gone (a renamed or removed directory;
+    see ``_former_top_level_names``). A first segment that never was a top-level
+    name of this repo (plugin-relative shorthand, ``owner/name.js``) is skipped.
+    A path under a FORMER name needs something after the first slash, so a bare
+    ``docs/`` (a branch prefix) is not reported; shorthand that is relative to a
+    package but happens to start with a once-top-level name (``src/index.ts``)
+    still is. With no usable history (shallow clone, not a git repo, no commits) only the
+    first test applies, and stderr says so.
   - The extraction heuristic is deliberately conservative: on any ambiguous token
     it skips rather than flags, because a false staleness failure trains people to
     ignore the guard (see ``design.md`` Decision E of ``cla-context-refresh``).
@@ -364,6 +373,70 @@ def _top_level_names(repo_root: Path) -> set[str]:
     return {p.name for p in repo_root.iterdir()}
 
 
+def _former_top_level_names(
+    repo_root: Path, top_level_names: set[str]
+) -> tuple[set[str] | None, str]:
+    """Top-level directory names that were tracked at some EARLIER commit and are
+    not tracked now, plus a reason string ("" on success).
+
+    A path under such a name (`old/src/x.ts`, after `old/` was renamed or removed)
+    is a stale reference, but `_keep_if_path` would skip it: nothing tracked now
+    starts with `old`. History is what tells it from plugin-relative shorthand
+    (`skills/x/y.py`) or an `owner/name.js` repo name, whose first segment was
+    never a top-level name of THIS repo and which must stay skipped.
+
+    Walks the history for DELETED paths, `git log --diff-filter=D --no-renames
+    --name-only`. `--no-renames` turns the old side of every rename into a
+    deletion, so one query covers a renamed directory and a removed one. The
+    alternative, `--diff-filter=R`, was rejected: it sees only renames git's
+    similarity guess pairs up, so it misses a directory that was simply deleted
+    (equally stale) and a rename whose files changed too much to pair. Only
+    names with a `/` count: a deleted top-level FILE can never be the first
+    segment of a path token. A rename staged but not yet committed has no commit
+    to find, so the staged deletions (`git diff --cached`) count too. Both
+    queries use `--relative`: `repo_root` may be a subdirectory of a larger
+    repo, and git would otherwise print paths from its top level. A deletion
+    made only inside a merge commit is not seen (it fails safe: unreported).
+
+    `(None, reason)` means history cannot answer: not a git repo, a shallow
+    clone (its oldest commits are missing, so a rename may sit in the cut-off
+    part), no commits yet, git unavailable, or a walk that timed out. The caller
+    degrades to the pre-history behaviour and says so; this never raises."""
+    try:
+        shallow = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10, env=_clean_git_env(),
+        )
+        if shallow.returncode != 0:
+            return None, "not a git repository"
+        if shallow.stdout.strip() == "true":
+            return None, "shallow clone"
+        log = subprocess.run(
+            ["git", "-c", "core.quotePath=false", "log", "--relative", "--diff-filter=D", "--no-renames",
+             "--name-only", "--format=", "-z"],
+            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=60, env=_clean_git_env(),
+        )
+        # A rename or removal staged but not yet committed has no commit to find,
+        # and it is the usual moment this guard runs: right after `git mv`.
+        staged = subprocess.run(
+            ["git", "-c", "core.quotePath=false", "diff", "--cached", "--relative", "--diff-filter=D",
+             "--no-renames", "--name-only", "-z"],
+            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=60, env=_clean_git_env(),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"git could not be run ({type(exc).__name__})"
+    if log.returncode != 0:
+        return None, "git log failed (no commits yet?)"
+    if staged.returncode != 0:
+        return None, "git diff --cached failed"
+    deleted = log.stdout.split("\0") + staged.stdout.split("\0")
+    names = {p.split("/", 1)[0] for p in deleted if "/" in p}
+    return names - top_level_names, ""
+
+
 def _tracked_paths(repo_root: Path) -> set[str] | None:
     """Every path in the git index, or ``None`` when git cannot say."""
     try:
@@ -394,14 +467,18 @@ def _is_machine_local(candidate: str, tracked: set[str] | None) -> bool:
     return rel not in tracked and not any(p.startswith(rel + "/") for p in tracked)
 
 
-def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
+def _keep_if_path(
+    token: str, top_level_names: set[str], former_names: frozenset[str] | set[str] = frozenset()
+) -> str | None:
     """Apply the pinned Decision-E keep/skip rule to an already-cleaned token;
     return the token if it should be checked, else ``None``.
 
     Only a token WITH a ``/`` is treated as a repo-relative path — kept iff its
-    first segment names a real top-level entry (repo-derived), existence-checked at
-    that exact location. A bare single-segment token is never checked (see the
-    bare-filename NOTE near the module constants)."""
+    first segment names a real top-level entry (repo-derived), or a top-level
+    name that existed at an earlier commit and is gone now (``former_names``, see
+    ``_former_top_level_names``), existence-checked at that exact location. A
+    bare single-segment token is never checked (see the bare-filename NOTE near
+    the module constants)."""
     if not token or "/" not in token:
         return None
     # Residue of a markdown link whose text is itself a path: `[docs/a.md](docs/a.md)`
@@ -419,11 +496,20 @@ def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
         return None
     first_segment = token.split("/", 1)[0]
     if first_segment not in top_level_names:
-        return None
+        # A name that was top-level once is a weaker signal than one that is now,
+        # so it must also look like a path INTO that directory: something after
+        # the first slash (`docs/` alone is a branch prefix, `src/` a generic
+        # word), and no backslash (`src/a\|src/b` is a grep pattern).
+        if first_segment not in former_names:
+            return None
+        if not token.split("/", 1)[1].strip("/") or "\\" in token:
+            return None
     return token
 
 
-def extract_path_candidates(line: str, top_level_names: set[str]) -> list[str]:
+def extract_path_candidates(
+    line: str, top_level_names: set[str], former_names: frozenset[str] | set[str] = frozenset()
+) -> list[str]:
     """Return every repo-relative path candidate on ``line`` per the pinned
     Decision-E rule, kept file-or-directory-existence-checkable.
 
@@ -443,14 +529,14 @@ def extract_path_candidates(line: str, top_level_names: set[str]) -> list[str]:
     candidates: list[str] = []
     for match in _BACKTICK_SPAN_RE.finditer(line):
         cleaned = _clean_candidate(match.group(1))
-        kept = _keep_if_path(cleaned, top_level_names)
+        kept = _keep_if_path(cleaned, top_level_names, former_names)
         if kept:
             candidates.append(kept)
     for raw in line.split():
         if "`" in raw:
             continue  # handled by Pass A above
         cleaned = _clean_candidate(raw)
-        kept = _keep_if_path(cleaned, top_level_names)
+        kept = _keep_if_path(cleaned, top_level_names, former_names)
         if kept:
             candidates.append(kept)
     return candidates
@@ -481,13 +567,19 @@ def _iter_scanned_files(repo_root: Path):
                 yield path
 
 
-def scan(repo_root: Path):
+def scan(repo_root: Path, former_names: set[str] | None = None):
     """Scan the facts file (if present) + all overlays and return
-    ``(checked_count, stale)`` — ``checked_count`` is the total number of path
+    ``(checked_count, stale, unreadable)`` — ``checked_count`` is the total number of path
     candidates existence-checked (so a caller can assert the scan wasn't a silent
     no-op), ``stale`` is ``(rel_path, line_number, candidate)`` for every candidate
-    that does not resolve on disk (as a file OR a directory)."""
+    that does not resolve on disk (as a file OR a directory).
+
+    ``former_names`` is the set from ``_former_top_level_names``; ``main`` passes
+    it so it can report an unavailable history. ``None`` asks ``scan`` to derive
+    it, with an unavailable history reading as an empty set."""
     top_level_names = _top_level_names(repo_root)
+    if former_names is None:
+        former_names = _former_top_level_names(repo_root, top_level_names)[0] or set()
     tracked = _tracked_paths(repo_root)
     checked = 0
     stale: list[tuple[str, int, str]] = []
@@ -504,7 +596,7 @@ def scan(repo_root: Path):
             unreadable.append((rel, f"{type(exc).__name__}: {exc}"))
             continue
         for lineno, line in enumerate(text.splitlines(), start=1):
-            for candidate in extract_path_candidates(line, top_level_names):
+            for candidate in extract_path_candidates(line, top_level_names, former_names):
                 if _is_machine_local(candidate, tracked):
                     continue
                 checked += 1
@@ -643,7 +735,20 @@ def main(argv: list[str] | None = None) -> int:
             "will be skipped as machine-local, tracked or not"
         )
 
-    checked, stale, unreadable = scan(repo_root)
+    # Names that were top-level at an earlier commit and are gone now, so a path
+    # under a renamed or removed top-level directory is still reported. When
+    # history cannot say, carry on as before (such a path is skipped) and say so.
+    former_names, why_no_history = _former_top_level_names(
+        repo_root, _top_level_names(repo_root)
+    )
+    if former_names is None:
+        print(
+            f"{_PROG}: git history is unavailable ({why_no_history}) — a path under a "
+            "renamed or removed top-level directory will not be reported",
+            file=sys.stderr,
+        )
+
+    checked, stale, unreadable = scan(repo_root, former_names or set())
 
     # An input that EXISTS but cannot be read. Reporting it as "clean" would be
     # the vacuous-pass bug; reporting it as "stale paths found" would send the

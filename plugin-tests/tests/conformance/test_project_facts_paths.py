@@ -767,6 +767,211 @@ def test_iterdir_fallback_inside_a_real_git_repo_is_reported(monkeypatch, tmp_pa
 
 
 # --------------------------------------------------------------------------- #
+# A path under a top-level directory that was renamed or removed
+# --------------------------------------------------------------------------- #
+#
+# `_keep_if_path` skips a path whose first segment is no tracked top-level name,
+# so `old/src/x.ts` went unreported once `old/` was renamed. Git history tells that
+# apart from plugin-relative shorthand (`skills/x/y.py`) or a repo name
+# (`owner/name.js`), whose first segment was never a top-level name here.
+
+_former_top_level_names = _checker._former_top_level_names
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+
+def _history_repo(tmp_path: Path, facts_body: str) -> Path:
+    """A real repo whose history holds a top-level `old/` (renamed to `newer/`),
+    a top-level `gone/` (deleted outright) and a top-level FILE `stale.txt`
+    (deleted), with `apps/` and `cla.io/` still tracked."""
+    _init_git_repo(tmp_path, tracked_dirs=["apps", "cla.io", "old", "gone"])
+    (tmp_path / "stale.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "apps" / "dead.txt").write_text("x", encoding="utf-8")
+    _git(tmp_path, "add", "stale.txt", "apps/dead.txt")
+    _git(tmp_path, "commit", "-q", "-m", "add a top-level file and a file under apps")
+    _git(tmp_path, "mv", "old", "newer")
+    # `apps/dead.txt` is deleted but `apps/` stays: a still-live name must not count as former.
+    _git(tmp_path, "rm", "-q", "-r", "gone", "stale.txt", "apps/dead.txt")
+    (tmp_path / "cla.io" / "project-facts.md").write_text(facts_body, encoding="utf-8")
+    _git(tmp_path, "add", "cla.io/project-facts.md")
+    _git(tmp_path, "commit", "-q", "-m", "rename old, remove gone")
+    return tmp_path
+
+
+# requirement: repo-context / Checking recorded paths
+def test_a_path_under_a_renamed_top_level_directory_is_reported(tmp_path):
+    repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`. Old: `old/placeholder.txt`.\n")
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_STALE, result.stdout + result.stderr
+    assert "cla.io/project-facts.md:1  stale path 'old/placeholder.txt'" in result.stdout
+    assert "git history is unavailable" not in result.stderr
+
+
+# requirement: repo-context / Checking recorded paths
+def test_a_path_under_a_deleted_top_level_directory_is_reported(tmp_path):
+    # A rename-only query (`--diff-filter=R`) would miss this: nothing was renamed.
+    repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`. Gone: `gone/placeholder.txt`.\n")
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_STALE, result.stdout + result.stderr
+    assert "stale path 'gone/placeholder.txt'" in result.stdout
+
+
+# requirement: repo-context / Checking recorded paths
+@pytest.mark.parametrize(
+    "token",
+    [
+        "skills/cla-setup/scripts/x.py",  # plugin-relative shorthand
+        "owner/name.js",                  # a repo name, not a path
+        "_shared/references/x.md",
+    ],
+)
+def test_a_first_segment_that_never_was_a_top_level_name_is_still_skipped(tmp_path, token):
+    repo = _history_repo(tmp_path, f"Real: `apps/placeholder.txt`. Shorthand: `{token}`.\n")
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+    assert token not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "old/",                       # nothing after the first slash: a bare word such as a branch prefix
+        "old/a\\|old/b",              # a grep pattern
+        "gone/{a,b}.ts",              # brace shorthand is still a placeholder
+        "newer/placeholder.txt",      # a current top-level name that does exist
+        "stale.txt/x",                # a deleted top-level FILE never was a directory
+    ],
+)
+def test_a_path_under_a_former_name_is_skipped_unless_it_looks_like_a_path_into_it(tmp_path, token):
+    repo = _history_repo(tmp_path, f"Real: `apps/placeholder.txt`. Other: `{token}`.\n")
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+
+
+def test_a_path_under_a_former_name_that_exists_on_disk_again_is_not_reported(tmp_path):
+    # Untracked, so absent from the index, but present: a rename the user undid.
+    repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`. Back: `old/placeholder.txt`.\n")
+    (repo / "old").mkdir()
+    (repo / "old" / "placeholder.txt").write_text("x", encoding="utf-8")
+    assert _run_cli("--repo-root", str(repo)).returncode == EXIT_CLEAN
+
+
+def test_a_bare_non_backtick_path_under_a_renamed_directory_is_reported(tmp_path):
+    repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`. See old/placeholder.txt for it.\n")
+    assert find_stale_paths(repo) == [("cla.io/project-facts.md", 1, "old/placeholder.txt")]
+
+
+def test_a_rename_staged_but_not_committed_is_reported(tmp_path):
+    # The usual moment this guard runs is right after `git mv`, before the commit.
+    _init_git_repo(tmp_path, tracked_dirs=["apps", "cla.io", "old"])
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Real: `apps/placeholder.txt`. Old: `old/placeholder.txt`.\n", encoding="utf-8"
+    )
+    _git(tmp_path, "mv", "old", "newer")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_STALE, result.stdout + result.stderr
+    assert "stale path 'old/placeholder.txt'" in result.stdout
+
+
+def test_former_top_level_names_lists_only_directories_that_are_gone(tmp_path):
+    repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`.\n")
+    names, reason = _former_top_level_names(repo, _top_level_names(repo))
+    assert (names, reason) == ({"old", "gone"}, "")
+
+
+# requirement: repo-context / Checking recorded paths
+def test_the_zero_candidates_exit_two_still_holds_when_history_names_former_directories(tmp_path):
+    # Only never-top-level shorthand is named, so nothing is extracted: "I could not
+    # look" stays exit 2 and is not turned into a clean pass by the history rule.
+    repo = _history_repo(tmp_path, "Only shorthand: `skills/x/y.py` and `owner/name.js`.\n")
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert "zero path candidates" in result.stderr
+
+
+# requirement: repo-context / Checking recorded paths
+def test_a_shallow_clone_degrades_to_the_current_layout_and_says_so_on_stderr(tmp_path):
+    (tmp_path / "source").mkdir()
+    source = _history_repo(
+        tmp_path / "source", "Real: `apps/placeholder.txt`. Old: `old/placeholder.txt`.\n"
+    )
+    shallow = tmp_path / "shallow"
+    subprocess.run(
+        ["git", "clone", "-q", "--depth", "1", source.as_uri(), str(shallow)],
+        check=True, capture_output=True,
+    )
+    assert (shallow / ".git" / "shallow").exists()
+    result = _run_cli("--repo-root", str(shallow))
+    # The renamed path goes unreported, as before this rule, and stderr says why.
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+    assert "git history is unavailable (shallow clone)" in result.stderr
+
+
+def test_a_directory_that_is_not_a_git_repo_degrades_and_says_so_on_stderr(tmp_path):
+    _seed_repo(tmp_path, "Real: `apps/real`. Old: `old/placeholder.txt`.\n")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+    assert "git history is unavailable (not a git repository)" in result.stderr
+
+
+def test_a_repo_with_no_commits_degrades_and_says_so_on_stderr(tmp_path):
+    _seed_repo(tmp_path, "Real: `apps/real`.\n")
+    _git(tmp_path, "init", "-q")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+    assert "git history is unavailable (git log failed" in result.stderr
+
+
+def test_a_repo_root_nested_in_a_larger_repo_sees_only_its_own_top_level_names(tmp_path):
+    # git prints paths from ITS top level; the parent's deleted `old/` must not
+    # become a former name of the subdirectory being checked.
+    parent = _history_repo(tmp_path, "unused\n")
+    sub = parent / "apps" / "sub"
+    (sub / "cla.io").mkdir(parents=True)
+    (sub / "real").mkdir()
+    (sub / "real" / "f.txt").write_text("x", encoding="utf-8")
+    (sub / "cla.io" / "project-facts.md").write_text(
+        "Real: `real/f.txt`. Parent's old name: `old/placeholder.txt`.\n", encoding="utf-8"
+    )
+    _git(parent, "add", "apps/sub")
+    (parent / "stagedgone").mkdir()
+    (parent / "stagedgone" / "x.txt").write_text("x", encoding="utf-8")
+    _git(parent, "add", "stagedgone")
+    _git(parent, "commit", "-q", "-m", "add sub")
+    _git(parent, "rm", "-q", "-r", "stagedgone")  # staged, not committed: a parent-level name
+    names, reason = _former_top_level_names(sub, _top_level_names(sub))
+    assert (names, reason) == (set(), "")
+    assert _run_cli("--repo-root", str(sub)).returncode == EXIT_CLEAN
+
+
+def test_a_failing_staged_diff_degrades_instead_of_reading_as_no_staged_deletions(monkeypatch, tmp_path):
+    repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`.\n")
+    real_run = subprocess.run
+
+    def fail_the_diff(argv, *args, **kwargs):
+        if "diff" in argv:
+            return subprocess.CompletedProcess(argv, 1, "", "boom")
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr(_checker.subprocess, "run", fail_the_diff)
+    names, reason = _former_top_level_names(repo, _top_level_names(repo))
+    assert names is None
+    assert "git diff --cached failed" in reason
+
+
+def test_git_that_cannot_be_run_degrades_instead_of_raising(monkeypatch, tmp_path):
+    def boom(*args, **kwargs):
+        raise OSError("no git here")
+
+    monkeypatch.setattr(_checker.subprocess, "run", boom)
+    names, reason = _former_top_level_names(tmp_path, set())
+    assert names is None
+    assert "git could not be run" in reason
+
+
+# --------------------------------------------------------------------------- #
 # CRITICAL-1 — nothing actually INVOKES this program anywhere in the repo
 # --------------------------------------------------------------------------- #
 #
