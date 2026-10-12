@@ -55,6 +55,10 @@ COVERAGE LIMITS (read before trusting this guard blindly):
     ``extract_path_candidates`` for the exact extraction rule) rather than checked
     — so effective true-positive coverage is the concrete-path subset of what each
     file names, not everything it names.
+  - A machine-local file (last segment with a ``.local`` name part, e.g.
+    ``.claude/settings.local.json``) that git does NOT track is skipped, present or
+    not: it is absent from a fresh clone. A TRACKED ``*.local.*`` file, or a
+    tracked directory with such a name, is an ordinary path and is checked.
   - The extraction heuristic is deliberately conservative: on any ambiguous token
     it skips rather than flags, because a false staleness failure trains people to
     ignore the guard (see ``design.md`` Decision E of ``cla-context-refresh``).
@@ -129,6 +133,11 @@ _MARKDOWN_LINK_SEAMS = ("](", "][")
 # when they wrap BOTH ends symmetrically, so a real trailing-glob `apps/*` (star at
 # one end only) is left intact and still skipped as a glob.
 _EMPHASIS_MARKERS = ("**", "__", "*", "_")
+
+# A machine-local file: a name with a `.local` part (`settings.local.json`,
+# `.env.local`). Matched on the last path segment; at least one character must
+# precede `.local`, so a directory named `local` is an ordinary path.
+_MACHINE_LOCAL_SEGMENT_RE = re.compile(r"[^/]\.local(?:\.|$)")
 
 # NOTE — bare single-segment filenames (a token with NO `/`, e.g. `README.md`,
 # `CLAUDE.md`) are deliberately NOT existence-checked. A bare filename reference is
@@ -355,6 +364,36 @@ def _top_level_names(repo_root: Path) -> set[str]:
     return {p.name for p in repo_root.iterdir()}
 
 
+def _tracked_paths(repo_root: Path) -> set[str] | None:
+    """Every path in the git index, or ``None`` when git cannot say."""
+    try:
+        result = subprocess.run(
+            ["git", "-c", "core.quotePath=false", "ls-files", "-z", "--cached", "--"],
+            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+            env=_clean_git_env(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return {p for p in result.stdout.split("\0") if p}
+
+
+def _is_machine_local(candidate: str, tracked: set[str] | None) -> bool:
+    """A file whose last segment has a ``.local`` name part (``settings.local.json``)
+    and which git does NOT track. Such a file is absent from a fresh clone, so
+    naming it is not a stale reference. A TRACKED ``*.local.*`` file is an
+    ordinary path: if it was renamed, the reference is stale. With no index
+    (``tracked`` is ``None``) nothing is tracked."""
+    rel = candidate.rstrip("/")
+    if not _MACHINE_LOCAL_SEGMENT_RE.search(rel.rsplit("/", 1)[-1]):
+        return False
+    if tracked is None:
+        return True
+    # `ls-files` lists files only: a tracked directory is tracked when a file sits under it.
+    return rel not in tracked and not any(p.startswith(rel + "/") for p in tracked)
+
+
 def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
     """Apply the pinned Decision-E keep/skip rule to an already-cleaned token;
     return the token if it should be checked, else ``None``.
@@ -449,6 +488,7 @@ def scan(repo_root: Path):
     no-op), ``stale`` is ``(rel_path, line_number, candidate)`` for every candidate
     that does not resolve on disk (as a file OR a directory)."""
     top_level_names = _top_level_names(repo_root)
+    tracked = _tracked_paths(repo_root)
     checked = 0
     stale: list[tuple[str, int, str]] = []
     unreadable: list[tuple[str, str]] = []
@@ -465,6 +505,8 @@ def scan(repo_root: Path):
             continue
         for lineno, line in enumerate(text.splitlines(), start=1):
             for candidate in extract_path_candidates(line, top_level_names):
+                if _is_machine_local(candidate, tracked):
+                    continue
                 checked += 1
                 if not (repo_root / candidate).exists():
                     stale.append((rel, lineno, candidate))
@@ -589,6 +631,16 @@ def main(argv: list[str] | None = None) -> int:
             "ls-files` could not be used to list tracked top-level entries — "
             "falling back to a live directory listing, which can vary between "
             "checkouts of the same commit (see _tracked_top_level_names)"
+        )
+
+    # The same warning for the index of tracked FILES, which the machine-local rule
+    # reads: if it is unavailable every `*.local.*` path reads as untracked and is
+    # skipped, so a rename of a tracked one goes unreported.
+    if _tracked_paths(repo_root) is None and (repo_root / ".git").exists():
+        print(
+            f"{_PROG}: {repo_root} looks like a git repository but `git "
+            "ls-files` could not list tracked files — every `*.local.*` path "
+            "will be skipped as machine-local, tracked or not"
         )
 
     checked, stale, unreadable = scan(repo_root)

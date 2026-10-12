@@ -128,6 +128,79 @@ def test_url_glob_placeholder_and_unknown_top_level_segment_are_not_flagged(tmp_
     assert find_stale_paths(tmp_path) == []
 
 
+# requirement: repo-context / Checking recorded paths
+def test_a_machine_local_file_that_is_absent_is_skipped_not_reported(tmp_path):
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Per-machine settings: `.claude/settings.local.json`, "
+        "`cla.io/overlays/branch-prefix.local.md`. "
+        "Real: `.claude`. Stale: `.claude/gone.json`.\n",
+        encoding="utf-8",
+    )
+    stale = find_stale_paths(tmp_path)
+    assert [c for _, _, c in stale] == [".claude/gone.json"]
+
+
+def test_only_the_last_segment_and_a_whole_name_part_make_a_path_machine_local(tmp_path):
+    # `notes.localized.md` and a `.local` directory are ordinary paths: stale when
+    # absent. (`docs` is a real top-level here, so only the local rule could skip.)
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "docs" / "app.local").mkdir(parents=True)
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Gone: `docs/notes.localized.md` and `docs/app.local/gone.ts`.\n", encoding="utf-8"
+    )
+    assert [c for _, _, c in find_stale_paths(tmp_path)] == [
+        "docs/notes.localized.md",
+        "docs/app.local/gone.ts",
+    ]
+
+
+def test_a_tracked_file_with_a_local_name_part_is_checked(tmp_path):
+    # The repo tracks files such as `cla.io/fleet.local.md`. Skipping every
+    # `*.local.*` hid a rename of one; only an UNTRACKED one is machine-local.
+    _init_git_repo(tmp_path, tracked_dirs=["cla.io", ".claude"])
+    (tmp_path / "cla.io" / "fleet.local.md").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "cla.io/fleet.local.md"], cwd=tmp_path, check=True)
+    (tmp_path / "cla.io" / "fleet.local.md").unlink()  # tracked, then renamed away
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Tracked: `cla.io/fleet.local.md`. Untracked: `.claude/settings.local.json`.\n",
+        encoding="utf-8",
+    )
+    assert [c for _, _, c in find_stale_paths(tmp_path)] == ["cla.io/fleet.local.md"]
+
+
+@pytest.mark.parametrize(
+    "candidate, tracked, expected",
+    [
+        (".claude/settings.local.json", None, True),         # no index: nothing is tracked
+        (".claude/settings.local.json", set(), True),         # untracked
+        (".claude/settings.local.json", {".claude/settings.local.json"}, False),  # tracked
+        ("cla.io/overlays/x.local.md/", {"cla.io/overlays/x.local.md"}, False),   # trailing slash
+        ("apps/web/.env.local", set(), True),
+        ("docs/notes.localized.md", set(), False),
+        ("docs/app.local/gone.ts", set(), False),             # `.local` is not the file name
+        ("docs/app.local.d/gone.ts", set(), False),           # `.local.` inside a directory name
+        ("local/gone.ts", set(), False),
+        ("apps/local/", set(), False),                        # a directory named `local`
+        ("cla.io/x.local/", {"cla.io/x.local/f.md"}, False),  # a tracked directory
+        ("cla.io/x.local/", {"cla.io/y.md"}, True),           # an untracked one
+    ],
+)
+def test_is_machine_local(candidate, tracked, expected):
+    assert _checker._is_machine_local(candidate, tracked) is expected
+
+
+def test_a_directory_named_local_is_an_ordinary_path(tmp_path):
+    # Only a `.local` NAME PART is machine-local; `local/` is just a directory.
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "local").mkdir()
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Gone: `local/gone.ts`.\n", encoding="utf-8"
+    )
+    assert [c for _, _, c in find_stale_paths(tmp_path)] == ["local/gone.ts"]
+
+
 def test_trailing_line_col_and_wrapping_punctuation_resolved_correctly(tmp_path):
     (tmp_path / "cla.io").mkdir()
     (tmp_path / "packages" / "engine" / "src").mkdir(parents=True)
@@ -554,6 +627,33 @@ def test_cli_exits_one_and_names_the_stale_path(tmp_path):
     result = _run_cli("--repo-root", str(tmp_path))
     assert result.returncode == EXIT_STALE, result.stdout + result.stderr
     assert "apps/retired/main.ts" in result.stdout
+
+
+# requirement: repo-context / Checking recorded paths
+def test_cli_exits_clean_on_an_absent_machine_local_path_and_one_on_an_ordinary_one(tmp_path):
+    # Same file, one line each: the machine-local path is absent and skipped, the
+    # ordinary path is absent and reported. The second half is what stops the skip
+    # from being a blanket exemption.
+    _seed_repo(tmp_path, "Real: `apps/real`. Local: `.claude/settings.local.json`.\n")
+    (tmp_path / ".claude").mkdir()  # a real top-level dir, so only the `.local` rule can skip
+    local_only = _run_cli("--repo-root", str(tmp_path))
+    assert local_only.returncode == EXIT_CLEAN, local_only.stdout + local_only.stderr
+    assert "settings.local.json" not in local_only.stdout
+
+    _seed_repo(tmp_path, "Real: `apps/real`. Ordinary: `.claude/settings.json`.\n")
+    ordinary = _run_cli("--repo-root", str(tmp_path))
+    assert ordinary.returncode == EXIT_STALE, ordinary.stdout + ordinary.stderr
+    assert ".claude/settings.json" in ordinary.stdout
+
+
+def test_a_missing_tracked_file_index_is_reported_in_a_git_repo(monkeypatch, tmp_path, capsys):
+    _init_git_repo(tmp_path, ["apps"])
+    (tmp_path / "apps" / "real").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "cla.io" / "project-facts.md").write_text("Real: `apps/real`.\n", encoding="utf-8")
+    monkeypatch.setattr(_checker, "_tracked_paths", lambda repo_root: None)
+    assert main(["--repo-root", str(tmp_path)]) == EXIT_CLEAN
+    assert "could not list tracked files" in capsys.readouterr().out
 
 
 def test_cli_reports_every_stale_path_not_only_the_first(tmp_path):

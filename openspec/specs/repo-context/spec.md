@@ -24,6 +24,11 @@ The plugin SHALL ship a checker a consuming repo runs as `python3 <path>` that n
 - **WHEN** the facts file names a directory that was since renamed
 - **THEN** the checker reports that file, line and path and exits 1
 
+#### Scenario: A machine-local file
+
+- **WHEN** the facts file names a machine-local file such as `.claude/settings.local.json` that git does not track and that is absent from this clone
+- **THEN** the checker does not report it
+
 ### Requirement: Checking the plugin text for repo names
 
 The plugin SHALL ship a checker a consuming repo runs as `python3 <path>` that reports, with path, token, line and excerpt, every place the installed plugin's text holds a token from `cla.io/project-tokens.local.md` or a developer's absolute path, exiting 0 when clean, 1 on a match, and 2 when it cannot run.
