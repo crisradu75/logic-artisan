@@ -31,3 +31,13 @@
 
 **Suggestions** (low-priority PR-review residue):
 - [Suggestion] `test_artifact_caps_agree.py`: assert the tasks rules in the tasks block specifically, check "one page" gone from config.yaml too, and give the `next()` lookups a clear failure message.
+
+## Deferred from PR #329 (lite-pr-lazy-load) — 2026-10-12
+
+**Deferred Important finding** (rule text was moved verbatim, so the wording predates this PR; the other deferred one, a bare `subagent-brief.md` path, was fixed in this PR):
+- [Important] `lite-pr/references/diagnose-escalation.md` / SKILL.md Test step 3: "Two rounds on the SAME stated cause" sits beside a one-fix-one-retry budget that halts at step 4, so it is unclear whether the escalation can fire before the halt. Pre-existing wording; needs a decision on the intended count.
+
+**Suggestions** (low-priority PR-review residue):
+- [Suggestion] `mutation-gate.md:7,27`: "a real fix here" and "two commits in this repo" read wrongly in a shipped file; say "in the CLA source repo".
+- [Suggestion] `lite-pr/SKILL.md`: the trailer-block rule is still stated in the Ship hand-off paragraph and in `measured-by.md`; the review-fix-weight pointer uses a relative path; the paragraph after Test step 3 is not indented under the numbered steps.
+- [Suggestion] `plugin-tests/tests/consistency/test_mutation_gate_sites_agree.py` docstring still names `lite-pr/SKILL.md` as the gate site.

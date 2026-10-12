@@ -10,6 +10,14 @@ Sibling to `/cla:spec-to-pr` for changes that don't need OpenSpec's artifacts or
 
 **Where this repo's facts and rules live.** Commands, paths and file sets come from `cla.io/project-facts.md` only (run `/cla:cla-setup` when it is missing or stale). If `cla.io/project-facts.md` lacks a fact this skill needs and this skill's overlay exists, the overlay may still hold it from before the move: tell the user "run /cla:cla-setup to move it". `cla.io/overlays/lite-pr.md`, if present, adds rules specific to this skill in this repo; apply them alongside the steps below.
 
+**Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a
+`references/` file opened with `Read` carries it literally, and it is not an environment variable in
+Bash — an unset variable silently runs the command against `/skills/...`. Before running a command
+that contains the literal text, replace it with the plugin root: the `Base directory for this skill`
+path with `/skills/<name>` removed, or the absolute path of any plugin file you have read, cut
+at `.../plugins/cla`. If neither works, say so and stop. Detail:
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/plugin-root.md`.
+
 ## Mode detection
 
 Parse `$ARGUMENTS`:
@@ -95,7 +103,7 @@ Then, smoke tier first, then full:
 
 1. Run every `smoke` command. All pass (or smoke empty) → run every `full` command in order (`build`, then `test`).
 2. All pass across both tiers → proceed to Ship.
-3. Any failure (in either tier) → **state the cause in one sentence before editing** (a restatement of the symptom is not a cause; read the actual failure output, since a typecheck error or assertion diff *is* the diagnosis), apply one fix via `Edit`, re-run from the failing tier once. **Two rounds on the SAME stated cause with the gate still red → stop editing and escalate to `/cla:diagnose`** — that repetition is the signal the hypothesis is wrong, and it fires while budget remains rather than after a warn ships. `diagnose` builds a deterministic pass/fail loop and ranks falsifiable hypotheses before touching anything, which is the step a third edit skips. **How to escalate depends on whether anyone is there to answer, and this run has two callers.** Invoked by the user → *offer* it, and hand the failure back if they decline. Invoked by `/cla:multi-lite` — a long unattended run whose whole point is that the user can walk away, with no mid-chain pauses — → invoke `Skill(cla:diagnose)` directly and say in the invocation that it runs unattended; never put a question mid-chain to a user who is not there. Either way `diagnose` reports its ranked hypotheses, so the reasoning survives for the user who reads the run afterwards. **Its outcome feeds back here, and it does NOT buy a fresh retry.** A confirmed cause with its fix applied → re-run the failing tier once: green proceeds to Ship, still red falls to step 4. A `diagnose` that stops instead — no buildable loop, or no correct seam — goes straight to step 4 carrying that finding (and the `cla.io/feedback/` note, where it wrote one), never another edit round. Saying this matters most on the unattended arm: without it the nearest applicable rule is step 4's HALT, so a candidate `diagnose` had just FIXED would halt anyway, and `/cla:multi-lite` would quarantine it along with everything downstream of it.
+3. Any failure (in either tier) → **state the cause in one sentence before editing** (a restatement of the symptom is not a cause; read the actual failure output, since a typecheck error or assertion diff *is* the diagnosis), apply one fix via `Edit`, re-run from the failing tier once. **Two rounds on the SAME stated cause with the gate still red → stop editing and escalate to `/cla:diagnose`** — read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/diagnose-escalation.md` at that point, before you offer or invoke it: it holds how to escalate attended versus unattended and where its outcome feeds back. (Short form: user present, offer it; under `/cla:multi-lite`, invoke it and never ask.)
 **Test quality is an Implement-phase concern** — see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality.md`. If a red gate here forces a test edit, the same rules apply to the edit.
 
 4. Still failing after that one retry → **HALT.** Report the failing check(s) and stop — do not proceed to Ship.
@@ -121,19 +129,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/git_state.py
 
 Exit 0 → proceed. Any non-zero exit → halt and surface via `AskUserQuestion` — same contract as `/cla:spec-to-pr`: never infer "probably fine" on a non-zero exit. This bare invocation passes no `--expect-branch` (lite-pr's feature branch doesn't exist until `commit-push-pr` runs), so a non-zero exit means an in-progress rebase/cherry-pick from another session (exit 2) or an unresolvable/corrupt git state (exit 1) — not a branch mismatch. Resolving an exit-2 in-progress op: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/conflict-resolution.md`. If another session is active in this same clone, prefer running lite-pr from an isolated worktree (`/cla:new-worktree`) in the first place — a shared-clone `git commit` mid-flow is a real collision risk here, not a hypothetical one.
 
-**Then, before handing off: every measurement this change asserts names the command that produced it.** This stop is where the change's claims are assembled into a message, which is why the obligation is discharged here rather than while an edit is being typed — a rule that fires at the keyboard fires hundreds of tool calls before the claim is written down. For each measurement the change asserts — a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact — one trailer line goes at the end of the commit message:
-
-```
-Measured-by: <the exact command, runnable as written> — <the claim it produced>
-```
-
-The command is a real invocation, not "the test suite" and not an elided one; the point of the trailer is that a reader can re-run it. You wrote the claims, so finding them needs no scanner. A claim you cannot pair with a runnable command has two exits and both are edits: **run the command now, or delete the claim** and restate it as the reasoning it actually is ("expected", "by inspection", "should"). There is no third exit in which the claim ships and the command is owed. A change asserting no measurement carries no trailer — never `Measured-by: none`, which certifies a check nobody ran while reading as evidence that one happened. **A measurement is evidence about the tree and conditions that produced it, and nothing else.** Three shapes break that, and each reads as settled fact. A pair asserting sameness — "unchanged", "same counts", "no regression" — must come from one tree, and the trailer must name it; measured on two, the pair asserts a third claim, that conditions matched, with no command behind it. A number measured earlier and restated as current is the same defect with one run missing. A number true under the conditions it ran on — one platform, one shell, one edition — is not true generally until someone runs the others. Three exits, all edits: run the comparison now, restate the numbers as two independent observations, or name the conditions. A before/after delta is the case this does not forbid — it is two trees by construction, so name both, and the claim is about the change rather than either number. The same obligation covers any measurement written into the PR body.
-
-**Session-attribution lines go in the same block as the trailers, with no blank line between them.** `Co-Authored-By:` and `Claude-Session:` sit directly under the last `Measured-by:` line, inside one `-m`. Git parses trailers from the last paragraph only, and that paragraph must be `key: value` lines throughout. Anything else in it — a blank line, a line of prose, a bare `Closes #199` — puts every `Measured-by:` line outside the trailer block. Then `git log --pretty='%(trailers:key=Measured-by,valueonly=true,unfold=true)'` returns nothing.
-
-**Check that it parsed, before the push.** `git log -1 --format=%B | grep -c '^Measured-by:'` and `git log -1 --format='%(trailers:key=Measured-by,valueonly=true,unfold=true)' | grep -c .` must agree — what you wrote against what git's parser sees. Equal passes, including `0` and `0` for a change asserting no measurement. Different means the block is split: `git commit --amend` before pushing. Measured on a controlled pair, a blank line before the attribution lines took three written trailers to **0** parsed. `git log --grep` does not notice — it scans the whole message — so this command is the only thing that reports it.
-
-**The trigger is a claim this change asserts, not a check that ran.** The standing pre-ship gates — the test suite, the linters, the conformance scripts every commit runs anyway — are not claims the change puts into the diff or the message, so they earn no trailer. Trailering them turns the block into fixed boilerplate on every commit, and a block that is identical every time stops being read, which costs exactly what this step was added to buy.
+**Before the commit message is written: does this change assert a measurement** (a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact, or a sameness claim such as "unchanged" or "no regression", in the commit message or the PR body)? Then read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/measured-by.md` first and follow it: the `Measured-by:` trailer rules, the trailer-block layout and the parse check to run before the push. Unsure whether a sentence is a measurement: read it.
 
 Then hand off entirely:
 
@@ -153,32 +149,9 @@ One pass. Then:
 
 1. Triage every Critical/Important finding: apply a fix via `Edit`/`Write`, or record a one-line deferred rationale if it's genuinely out of scope.
 2. Before staging, re-read the diff for each applied fix, and grep the SAME FILE for other call sites that consume the same untrusted/unguarded input the fix just guarded (e.g. a fix added an `isinstance` check before one `.get()` on parsed JSON — grep that file for every other `.get()`/attribute access on data from the same untrusted source). A vaguer "check sibling instances aren't affected" self-prompt is easy to satisfy without actually grepping; naming the concrete technique isn't. This is a quick self-read, NOT a re-dispatch of the review agents — one `Read`/`Grep` call, not another agent round.
-2b. **Mutation gate (required before the commit in step 3).** A fix for a Critical/Important
-   finding is a change like any other and earns the same evidence the original code needed —
-   "the reviewer's finding is now handled" is not that evidence. Break **what the fix
-   touches**, not only what it targets: correcting one return path routinely breaks another, which
-   is how a real fix here once traded a silent no-op on the default path for the identical no-op on
-   the overlay path. Do each one by hand: edit the code so the defect is back, run the affected
-   test, confirm it FAILS, then restore the edit exactly — a test that still passes has not been
-   shown to catch anything, and an unrestored edit ships the defect. Stage the fix first (`git add
-   <path>`), then restore each mutant with `git checkout -- <path>`. Unstaged, that checkout
-   discards the fix along with the mutant, and so does `git stash`. Re-stage after every further
-   edit to the fix, or the next restore reverts that edit. The `ask-destructive-git` hook prompts
-   before this checkout, because the mutated file differs from the index. Unattended, take the
-   other route. Back up the fixed file, before any mutant, to the session scratchpad. Copy it
-   back after each mutant. Never put a backup anywhere else outside the checkout. A delegate
-   briefed per `subagent-brief.md` follows that brief's own mutation route instead. It mutates a
-   scratchpad copy, never the live file. Its result is not verified against the live tree. The
-   orchestrator treats it as unverified and runs the mutant itself before committing. **A test that DOES fail is
-   not thereby correct: read the assertion that killed the mutant and confirm it states the
-   behaviour you want.** A test written from a wrong mental model kills mutants exactly as
-   reliably as a right one, and the green result reads as confirmation. Worst where the mutant
-   is the *simpler* form of the code: if the simpler form is right, the test defending the
-   original is defending the bug. Full rule and the case that produced it:
-   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality-gates.md`, "How planting goes wrong".
-   Fix a surviving mutant, or name it in the final report with a reason. A clean
-   run is evidence about the mutants you thought of and nothing else — two commits in this repo each
-   recorded "three mutations checked, all caught" and each shipped a critical a later review found.
+2b. **Mutation gate (required before the commit in step 3).** When step 1 applied any Critical/Important fix,
+   read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/mutation-gate.md` before staging and follow it in full; the fix
+   commit does not ship without it.
 3. Stage the fixed files, commit (`fix: address review findings`), push.
 4. Do NOT re-dispatch the review agents afterward — no re-verification loop (step 2's self-read is deliberately lighter than that).
 5. **Say how big the fix commit is against the reviewed change, and that it is unreviewed.** One line in the final report: the fix commit's insertions versus the reviewed commit's, and the plain statement that nobody has read the fixes. If step 1 committed no fixes, say that instead in one line — the comparison is undefined and inventing a number is worse than omitting it.
