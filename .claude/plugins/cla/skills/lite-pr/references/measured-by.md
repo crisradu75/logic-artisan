@@ -1,4 +1,4 @@
-# Measured-by trailers (moved from the Ship phase of SKILL.md)
+# Measured-by trailers (moved from the Ship phase of SKILL.md; "this stop" is Ship's git_state pre-commit check, "handing off" is Skill(commit-commands:commit-push-pr))
 
 **Then, before handing off: every measurement this change asserts names the command that produced it.** This stop is where the change's claims are assembled into a message, which is why the obligation is discharged here rather than while an edit is being typed — a rule that fires at the keyboard fires hundreds of tool calls before the claim is written down. For each measurement the change asserts — a count, a coverage figure, "measured", "verified", "zero X", any number offered as fact — one trailer line goes at the end of the commit message:
 

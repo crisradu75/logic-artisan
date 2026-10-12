@@ -1,4 +1,4 @@
-# Mutation gate for review fixes (moved from Review step 2b of SKILL.md)
+# Mutation gate for review fixes (moved from Review step 2b of SKILL.md; "step 3" is SKILL.md's Review step 3, the fix commit)
 
 2b. **Mutation gate (required before the commit in step 3).** A fix for a Critical/Important
    finding is a change like any other and earns the same evidence the original code needed —
