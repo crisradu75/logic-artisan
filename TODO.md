@@ -68,3 +68,4 @@ Split out of PR #333 (local-path-skip). `check_fact_paths.py` `_keep_if_path` sk
 - [Suggestion] `handoff.md:13` omits "names an unknown level" from the Risk-line fallback that `revise.md` covers.
 - [Suggestion] `orchestration-economy.md` debris rule: limit the ignore to `__pycache__` folders beside tracked `.py` files; no guard or mutant covers the new Handoff and resume sentences.
 - [Suggestion] `README.md` skill-reviewer row: the Sonnet case (frontmatter change or new skill) is not in the sizing table; point to lite-pr and `revise.md`.
+- [Suggestion] `DEVELOPER-GUIDE.md` `check_fact_paths.py` row restates `_is_machine_local` (`check_fact_paths.py:382`) as prose; consider pointing to the function instead.

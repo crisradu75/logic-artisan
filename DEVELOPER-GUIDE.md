@@ -505,7 +505,7 @@ The published plugin — everything here ships to a consuming repo:
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
     references/                supporting docs (portable; overlays live in cla.io/overlays/); `lite-pr/references/`
-                               holds `measured-by.md`, `mutation-gate.md` and `diagnose-escalation.md`, each read only when its trigger in `lite-pr/SKILL.md` fires
+                               holds `measured-by.md`, `mutation-gate.md` and `diagnose-escalation.md`, each read only when its trigger in `lite-pr/SKILL.md` fires, and `review-fix-weight.md`, a worked example
     scripts/                   deterministic helpers (stdlib Python)
 ```
 
