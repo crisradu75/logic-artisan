@@ -177,7 +177,7 @@ elif [ ! -d "$ROOT/openspec" ]; then
   printf '%s\n' "$RULES"
 else
   OLD="$CFG"; [ -e "$OLD" ] || OLD="$ROOT/openspec/config.yml"
-  HAVE="$(tr -d '\r' < "$OLD" | sed 's/^[[:space:]]*//')"
+  HAVE="$(tr -d '\r' < "$OLD" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   # $1 block, $2 mark, $3 = 1 lists the block's lines the file has, 0 those it lacks.
   rule_lines() {
     printf '%s\n' "$1" | while IFS= read -r line; do

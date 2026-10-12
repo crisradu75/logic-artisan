@@ -30,5 +30,4 @@
 ## Deferred from PR #328 (caps-and-tasks) — 2026-10-12
 
 **Suggestions** (low-priority PR-review residue):
-- [Suggestion] `cla-setup/SKILL.md` seed script: an earlier cap wording matches only as an exact line, so a quoted copy or one with a trailing space is not listed for removal and the old and new caps would sit side by side after an update (the exact-line match predates this PR).
 - [Suggestion] `test_artifact_caps_agree.py`: assert the tasks rules in the tasks block specifically, check "one page" gone from config.yaml too, and give the `next()` lookups a clear failure message.

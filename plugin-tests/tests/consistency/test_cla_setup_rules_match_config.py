@@ -204,6 +204,17 @@ def test_an_earlier_cap_wording_is_listed_for_removal(tmp_path: Path, fragment: 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
 @_needs_bash
+@pytest.mark.parametrize("trailing", [" ", "\t", "  \r"])
+def test_an_earlier_wording_with_trailing_whitespace_is_still_listed(tmp_path: Path, trailing: str):
+    old_rule = _retired("Keep it to one page. Point")
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes() + f"    {old_rule}{trailing}\n".encode("utf-8"))
+    assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
 def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     yml = tmp_path / "openspec" / "config.yml"
     yml.parent.mkdir()
