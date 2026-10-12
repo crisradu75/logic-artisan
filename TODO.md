@@ -1,19 +1,3 @@
-## Renamed top-level paths are not reported stale (needs a rule that tells plugin-relative shorthand from a renamed directory; idea: git rename history) — 2026-10-12
-
-Split out of PR #333 (local-path-skip). `check_fact_paths.py` `_keep_if_path` skips any path whose first segment is not a tracked top-level name, so when a top-level directory is renamed, a path under its old name (`old/src/x.ts`) goes unreported. That falls short of "every repo path" in the `repo-context` requirement "Checking recorded paths".
-
-**Why the PR dropped it.** No generic shape rule separates a renamed directory from a plugin-relative reference. The versions tried:
-- A path-shape rule (path-safe characters, plain first segment, then a file extension or a trailing slash) kept 278 more tokens than main over this repo's own markdown, most of them plugin-relative shorthand such as `skills/cla-setup/scripts/x.py` and `_shared/references/x.md`. Requiring three or more segments for an extension cut that to 181 and kept two-segment repo names such as `vercel/next.js` out. Without a segment count, prose lists (`Edit/Write/Bash`, `PASS/FAIL/SKIP`) also matched.
-- Build output (`dist/index.js`, `node_modules/.bin/`) needed a `git check-ignore` exemption.
-- A wrong root or a wrongly small top-level set made the "zero candidates" exit-2 guard unreliable once shape-only paths counted.
-
-**Evidence from three other repos** (read-only copies of tracked layout, facts file and overlays, run with main's checker and with the shape rule; the 3-segment rule):
-- claude-plugins: main exit 0, shape rule exit 1: `skills/cla-setup/scripts/check_fact_paths.py` (`cla.io/project-facts.md:5`), `skills/savefile/SKILL.md` (`cla.io/overlays/review-change.md:269`). Both plugin-relative.
-- market-distiller-mcp: main exit 0, shape rule exit 1: `skills/_shared/scripts/check_no_project_tokens.py`, `skills/cla-setup/scripts/check_fact_paths.py` (`project-facts.md:76-77`), and `yahoo_news/earnings/dividends/quote/indicators.py` (`overlays/project-review.md:52`, brace shorthand written out as a list).
-- interoga-ro: main exit 1 (`docs/mission.md`), shape rule exit 1 with four more: `skills/cla-setup/scripts/check_fact_paths.py`, `ux/mvp-mock/` and `ux/brand/` (`project-facts.md:174`; `ux/` is not in the repo, so these are genuine stale references main misses), and `landing/exemplu/` (`project-facts.md:278`; possibly a URL route in prose).
-
-**Idea.** Use git rename history (`git log --diff-filter=R --name-status`) to report a path only when its first segment was a tracked top-level name at some earlier commit. That separates `ux/mvp-mock/` (once tracked) from `skills/x/y.py` (never a top-level name of this repo), at the cost of a history walk.
-
 ## Deferred from PR #294 (lighter-openspec-packages) — 2026-10-07
 
 **Rejected remedies, still open** (findings whose proposed fix a delegate rejected with reasons; the defect is REAL and UNFIXED):
