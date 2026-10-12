@@ -14,5 +14,5 @@ prefer the one whose slug matches this repo's path (`C--code-logic-artisan`).
 A change is not "done" until the gate in `cla.io/project-facts.md` passes. A skipped test has not
 run, so treat a skip line as a finding rather than noise.
 
-Earlier incidents from this file: `cla.io/lessons-learned/lessons-learned.md`, "2026-10-08 —
+Earlier incidents from this file: `cla.io/lessons-learned/lessons-learned-archive.md`, "2026-10-08 —
 incidents moved out of the overlays by cla-setup".

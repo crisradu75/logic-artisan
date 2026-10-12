@@ -43,6 +43,9 @@ lessons log. Grep with the failure's keywords — never read the log whole:
 grep -rn -i '<keyword>' cla.io/lessons-learned/
 ```
 
+This one grep also searches `cla.io/lessons-learned/lessons-learned-archive.md`, where older entries
+live; never read either file whole.
+
 - **A hit is a re-offense**: the rule existed and did not hold. Key it by that artifact's path or
   hook name (`CLAUDE.md`, `hooks/block-cd-in-bash.py`), never by a slug you made up. In the
   lessons log only an APPLIED line names an artifact, and that artifact is the key; any other log
@@ -105,6 +108,12 @@ only its first lines). Newest first, entries separated by `---`:
 ```
 
 The log is a tracked file; include it when the applied fixes are committed.
+
+**Keep the live log under 6,000 words (`wc -w`).** When the prepend takes it over, move its oldest
+entries, whole and unedited, from the bottom to the top of the entries in
+`cla.io/lessons-learned/lessons-learned-archive.md` (create it with a `# Lessons learned — archive`
+title and a line saying it holds older entries moved from the live log, newest first), until the live
+log is under 6,000 words again.
 
 Close with one line: fixes proposed, applied and rejected, and each re-offense with the rung it
 went to.
