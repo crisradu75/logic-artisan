@@ -55,24 +55,10 @@ COVERAGE LIMITS (read before trusting this guard blindly):
     ``extract_path_candidates`` for the exact extraction rule) rather than checked
     — so effective true-positive coverage is the concrete-path subset of what each
     file names, not everything it names.
-  - A path whose first segment is not a tracked top-level name is still checked
-    when it has the shape of a repo path (see ``_looks_like_repo_path``), so a
-    renamed top-level directory is reported. Such a token needs a trailing slash,
-    or a file extension and three or more segments (``old/src/x.ts``); ``old/src``,
-    ``read/write`` and the two-segment ``old/x.ts`` are skipped, since nothing
-    tells them from prose or from a repo name like ``vercel/next.js``. Also
-    skipped, and so still unreported after a rename: a
-    last segment with no extension (``old/Makefile``) or one over eight characters,
-    a first segment with a dot (``my.pkg/a.ts``), and a character outside
-    ``A-Za-z0-9_.-@+[]`` (``old/app/(group)/page.tsx``, ``old/café/x.md``). A kept path that git ignores (``dist/x.js``) is
-    skipped when absent.
   - A machine-local file (last segment with a ``.local`` name part, e.g.
     ``.claude/settings.local.json``) that git does NOT track is skipped, present or
-    not: it is absent from a fresh clone. A TRACKED ``*.local.*`` file is an
-    ordinary path and is checked. Only a path under a recognized top-level name
-    counts toward the "path candidates checked" figure, so a wrongly small
-    top-level set reads as zero candidates and exits 2, even when shape-only
-    paths were also found missing (they are then unverified, not reported).
+    not: it is absent from a fresh clone. A TRACKED ``*.local.*`` file, or a
+    tracked directory with such a name, is an ordinary path and is checked.
   - The extraction heuristic is deliberately conservative: on any ambiguous token
     it skips rather than flags, because a false staleness failure trains people to
     ignore the guard (see ``design.md`` Decision E of ``cla-context-refresh``).
@@ -149,22 +135,9 @@ _MARKDOWN_LINK_SEAMS = ("](", "][")
 _EMPHASIS_MARKERS = ("**", "__", "*", "_")
 
 # A machine-local file: a name with a `.local` part (`settings.local.json`,
-# `.env.local`). Matched per path segment; at least one character must precede
-# `.local`, so a directory named `local` is an ordinary path.
+# `.env.local`). Matched on the last path segment; at least one character must
+# precede `.local`, so a directory named `local` is an ordinary path.
 _MACHINE_LOCAL_SEGMENT_RE = re.compile(r"[^/]\.local(?:\.|$)")
-
-# The shape of a repo path whose first segment is not a tracked top-level name
-# (see `_looks_like_repo_path`): a plain first segment, then one or more
-# path-safe segments, optionally ending in `/` — so a lone `name/` never
-# matches. Square brackets are allowed for a dynamic-route segment
-# (`apps/x/[id]/page.tsx`).
-_REPO_PATH_SHAPE_RE = re.compile(
-    r"^\.?[A-Za-z0-9_][A-Za-z0-9_\-]*"
-    r"(?:/[A-Za-z0-9_.\-@+\[\]]+)+/?$"
-)
-# A file extension: a dot then a letter-led alphanumeric tail (`.ts`, `.md`),
-# not a version number (`v1.2`).
-_FILE_EXTENSION_RE = re.compile(r"[^/]\.[A-Za-z][A-Za-z0-9]{0,7}$")
 
 # NOTE — bare single-segment filenames (a token with NO `/`, e.g. `README.md`,
 # `CLAUDE.md`) are deliberately NOT existence-checked. A bare filename reference is
@@ -406,19 +379,6 @@ def _tracked_paths(repo_root: Path) -> set[str] | None:
     return {p for p in result.stdout.split("\0") if p}
 
 
-def _git_ignored(repo_root: Path, rel: str) -> bool:
-    """Whether git ignores ``rel`` (build output such as ``dist/``: absent from a
-    fresh clone by design). ``False`` when git cannot say."""
-    try:
-        result = subprocess.run(
-            ["git", "check-ignore", "-q", "--", rel],
-            cwd=repo_root, capture_output=True, timeout=10, env=_clean_git_env(),
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return result.returncode == 0
-
-
 def _is_machine_local(candidate: str, tracked: set[str] | None) -> bool:
     """A file whose last segment has a ``.local`` name part (``settings.local.json``)
     and which git does NOT track. Such a file is absent from a fresh clone, so
@@ -434,45 +394,14 @@ def _is_machine_local(candidate: str, tracked: set[str] | None) -> bool:
     return rel not in tracked and not any(p.startswith(rel + "/") for p in tracked)
 
 
-def _looks_like_repo_path(token: str) -> bool:
-    """Whether a token whose first segment is NOT a tracked top-level name still
-    reads as a repo-relative path, so a vanished top-level directory is reported
-    instead of silently skipped.
-
-    The token must be built only from path-safe characters and start with a plain
-    (optionally dot-prefixed) name — which rejects an absolute path, ``./x``,
-    ``../x``, a host name (``example.com/a/b``), ``C:/x``, ``@scope/pkg`` and
-    ``$HOME/x`` — and carry one more signal: a trailing slash (``old/src/``), or a
-    file extension on the last segment of a token with at least three segments
-    (``old/src/x.ts``). What stays skipped is prose joined by slashes
-    (``read/write``, ``Edit/Write/Bash``, ``10/12/2026``), a two-segment file
-    (``old/x.ts``, which cannot be told from a GitHub repo name such as
-    ``vercel/next.js``), and a directory named without a trailing slash
-    (``old/src``) or alone (``old/``). A skipped token costs a missed finding; a
-    flagged one costs a false alarm that trains people to ignore the guard, so
-    the shape errs toward skipping."""
-    if not _REPO_PATH_SHAPE_RE.match(token):
-        return False
-    segments = token.rstrip("/").split("/")
-    if segments[0] == ".git":
-        return False  # git's own state is never tracked, so it is absent by design
-    if token.endswith("/"):
-        return True
-    return len(segments) >= 3 and bool(_FILE_EXTENSION_RE.search(segments[-1]))
-
-
 def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
     """Apply the pinned Decision-E keep/skip rule to an already-cleaned token;
     return the token if it should be checked, else ``None``.
 
-    Only a token WITH a ``/`` is treated as a repo-relative path. It is skipped
-    when it is a URL, a glob or placeholder, a ``~`` path or markdown-link residue.
-    (A machine-local file is skipped later, in ``scan``, because that needs the
-    git index.) Otherwise it is kept, and
-    existence-checked at that exact location, when its first segment names a real
-    top-level entry (repo-derived) or, failing that, when it has the shape of a
-    repo path (``_looks_like_repo_path``). A bare single-segment token is never
-    checked (see the bare-filename NOTE near the module constants)."""
+    Only a token WITH a ``/`` is treated as a repo-relative path — kept iff its
+    first segment names a real top-level entry (repo-derived), existence-checked at
+    that exact location. A bare single-segment token is never checked (see the
+    bare-filename NOTE near the module constants)."""
     if not token or "/" not in token:
         return None
     # Residue of a markdown link whose text is itself a path: `[docs/a.md](docs/a.md)`
@@ -489,14 +418,9 @@ def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
     if _looks_like_placeholder_or_glob(token):
         return None
     first_segment = token.split("/", 1)[0]
-    if first_segment in top_level_names:
-        return token
-    # The first segment names no tracked top-level entry. Either the token is not
-    # a repo path at all (prose such as `read/write`, an absolute path, a host
-    # name), or it is a repo path whose top-level directory was renamed or
-    # removed — which must be reported, or every path under the old name goes
-    # unchecked. Keep it only when its SHAPE says "path"; see `_looks_like_repo_path`.
-    return token if _looks_like_repo_path(token) else None
+    if first_segment not in top_level_names:
+        return None
+    return token
 
 
 def extract_path_candidates(line: str, top_level_names: set[str]) -> list[str]:
@@ -583,18 +507,8 @@ def scan(repo_root: Path):
             for candidate in extract_path_candidates(line, top_level_names):
                 if _is_machine_local(candidate, tracked):
                     continue
-                known = candidate.split("/", 1)[0] in top_level_names
-                exists = (repo_root / candidate).exists()
-                # A path kept by shape alone (its top-level name is not in the
-                # index) may be git-ignored build output, absent from a fresh clone.
-                if not exists and not known and _git_ignored(repo_root, candidate):
-                    continue
-                # Only a path under a recognized top-level name counts toward
-                # `checked`: that count is the "did extraction work" signal, and a
-                # wrongly small top-level set must still read as zero.
-                if known:
-                    checked += 1
-                if not exists:
+                checked += 1
+                if not (repo_root / candidate).exists():
                     stale.append((rel, lineno, candidate))
     return checked, stale, unreadable
 
@@ -761,15 +675,11 @@ def main(argv: list[str] | None = None) -> int:
     # scanned means the extraction broke (wrong root shrinking the top-level set,
     # a heuristic regression) — "could not look", not "nothing to report".
     if checked == 0:
-        # `checked` counts only paths under a recognized top-level name, so it is
-        # also zero when that set came out wrongly small; any path kept by shape
-        # alone would then read as stale. Those are unverified, not findings.
-        unverified = f" ({len(stale)} shape-only path(s) unverified)" if stale else ""
         print(
             f"{_PROG}: {len(scanned_files)} file(s) scanned but zero path "
-            "candidates under a recognized top-level name were extracted — the "
-            "path-extraction heuristic or repo-root resolution is broken (the "
-            f"guard would silently check nothing){unverified}",
+            "candidates were extracted — the path-extraction heuristic or "
+            "repo-root resolution is broken (the guard would silently check "
+            "nothing)",
             file=sys.stderr,
         )
         return EXIT_CANNOT_RUN  # branch: extraction yielded nothing

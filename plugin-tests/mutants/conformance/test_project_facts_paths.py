@@ -88,27 +88,6 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "shape-only stale paths turn a wrongly-rooted run (zero recognized) into exit 1",
-        CHECKER,
-        "    if checked == 0:",
-        "    if checked == 0 and not stale:",
-        TARGETS,
-    ),
-    (
-        "a tracked directory with a `.local` name is skipped as machine-local",
-        CHECKER,
-        '    return rel not in tracked and not any(p.startswith(rel + "/") for p in tracked)',
-        "    return rel not in tracked",
-        TARGETS,
-    ),
-    (
-        "the missing-index warning stops being printed",
-        CHECKER,
-        '    if _tracked_paths(repo_root) is None and (repo_root / ".git").exists():',
-        "    if False:",
-        TARGETS,
-    ),
-    (
         # Anchored on the function body rather than on the regex literal. The
         # since-deleted guard `test_no_batch_hardcodes_an_absolute_path` USED TO read a
         # colon followed by a backslash as a Windows drive path, and the
@@ -147,9 +126,7 @@ MUTANTS = [
         "            raise",
         TARGETS,
     ),
-    # --- machine-local skip and renamed-top-level report (`_keep_if_path`) ---
-    # Each breaks one line of the two rules; a survivor would mean the rule has a
-    # line no test needs.
+    # --- machine-local skip (`_is_machine_local`, `scan`) ---
     (
         "a machine-local path is checked again, so an absent one reads stale",
         CHECKER,
@@ -165,31 +142,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "a tracked directory with a `.local` name is skipped as machine-local",
+        CHECKER,
+        '    return rel not in tracked and not any(p.startswith(rel + "/") for p in tracked)',
+        "    return rel not in tracked",
+        TARGETS,
+    ),
+    (
         "the machine-local test looks at every segment, not only the file name",
         CHECKER,
         '    if not _MACHINE_LOCAL_SEGMENT_RE.search(rel.rsplit("/", 1)[-1]):',
         "    if not _MACHINE_LOCAL_SEGMENT_RE.search(rel):",
-        TARGETS,
-    ),
-    (
-        "git-ignored build output kept by shape reads stale",
-        CHECKER,
-        "                if not exists and not known and _git_ignored(repo_root, candidate):",
-        "                if False:",
-        TARGETS,
-    ),
-    (
-        "a git-ignored path under a RECOGNIZED top-level is skipped too",
-        CHECKER,
-        "                if not exists and not known and _git_ignored(repo_root, candidate):",
-        "                if not exists and _git_ignored(repo_root, candidate):",
-        TARGETS,
-    ),
-    (
-        "a shape-only keep counts toward the checked figure (zero-candidates guard weakened)",
-        CHECKER,
-        "                if known:",
-        "                if True:",
         TARGETS,
     ),
     (
@@ -200,80 +163,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "a path under a renamed top-level directory is skipped again",
+        "a `.localized` name counts as machine-local (the tail of the pattern is dropped)",
         CHECKER,
-        "    return token if _looks_like_repo_path(token) else None",
-        "    return None",
+        '_MACHINE_LOCAL_SEGMENT_RE = re.compile(r"[^/]\\.local(?:\\.|$)")',
+        '_MACHINE_LOCAL_SEGMENT_RE = re.compile(r"[^/]\\.local")',
         TARGETS,
     ),
     (
-        "a known top-level name is no longer enough to keep a token",
+        "the missing-index warning stops being printed",
         CHECKER,
-        "    if first_segment in top_level_names:",
+        '    if _tracked_paths(repo_root) is None and (repo_root / ".git").exists():',
         "    if False:",
-        TARGETS,
-    ),
-    (
-        "git's own state (`.git/...`) is reported as a stale path",
-        CHECKER,
-        '    if segments[0] == ".git":',
-        "    if False:",
-        TARGETS,
-    ),
-    (
-        "a file extension no longer marks an unknown-top-level token as a path",
-        CHECKER,
-        "    return len(segments) >= 3 and bool(_FILE_EXTENSION_RE.search(segments[-1]))",
-        "    return False",
-        TARGETS,
-    ),
-    (
-        "a two-segment file under an unknown top-level (`vercel/next.js`) is reported",
-        CHECKER,
-        "    return len(segments) >= 3 and bool(_FILE_EXTENSION_RE.search(segments[-1]))",
-        "    return len(segments) >= 2 and bool(_FILE_EXTENSION_RE.search(segments[-1]))",
-        TARGETS,
-    ),
-    (
-        "a version number counts as a file extension",
-        CHECKER,
-        r'_FILE_EXTENSION_RE = re.compile(r"[^/]\.[A-Za-z][A-Za-z0-9]{0,7}$")',
-        r'_FILE_EXTENSION_RE = re.compile(r"[^/]\.[A-Za-z0-9]{1,8}$")',
-        TARGETS,
-    ),
-    (
-        "a trailing slash no longer marks an unknown-top-level directory",
-        CHECKER,
-        '    if token.endswith("/"):',
-        "    if False:",
-        TARGETS,
-    ),
-    (
-        "a lone `name/` (a branch prefix) counts as a directory path",
-        CHECKER,
-        r'    r"(?:/[A-Za-z0-9_.\-@+\[\]]+)+/?$"',
-        r'    r"(?:/[A-Za-z0-9_.\-@+\[\]]*)+/?$"',
-        TARGETS,
-    ),
-    (
-        "a host name (dot inside the first segment) reads as a repo path",
-        CHECKER,
-        r'    r"^\.?[A-Za-z0-9_][A-Za-z0-9_\-]*"',
-        r'    r"^\.?[A-Za-z0-9_][A-Za-z0-9_.\-]*"',
-        TARGETS,
-    ),
-    (
-        "a leading `@`/`$` is allowed in the first segment (npm package, variable)",
-        CHECKER,
-        r'    r"^\.?[A-Za-z0-9_][A-Za-z0-9_\-]*"',
-        r'    r"^[.@$]?[A-Za-z0-9_][A-Za-z0-9_\-]*"',
-        TARGETS,
-    ),
-    (
-        "the path-safe character set is dropped, so any token shape is a path",
-        CHECKER,
-        r'    r"(?:/[A-Za-z0-9_.\-@+\[\]]+)+/?$"',
-        r'    r"(?:/[^/]*)+/?$"',
         TARGETS,
     ),
 ]

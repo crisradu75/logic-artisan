@@ -24,14 +24,9 @@ The plugin SHALL ship a checker a consuming repo runs as `python3 <path>` that n
 - **WHEN** the facts file names a directory that was since renamed
 - **THEN** the checker reports that file, line and path and exits 1
 
-#### Scenario: A path under a renamed top-level directory
-
-- **WHEN** the facts file names `old/src/x.ts` next to a path that still exists, and the repo's top-level directory `old/` was since renamed
-- **THEN** the checker reports that file, line and path and exits 1
-
 #### Scenario: A machine-local file
 
-- **WHEN** the facts file names a machine-local file such as `.claude/settings.local.json` that is absent from this clone
+- **WHEN** the facts file names a machine-local file such as `.claude/settings.local.json` that git does not track and that is absent from this clone
 - **THEN** the checker does not report it
 
 ### Requirement: Checking the plugin text for repo names
