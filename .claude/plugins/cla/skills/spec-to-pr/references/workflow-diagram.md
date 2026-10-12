@@ -32,7 +32,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             ┌──────────────────────┐
             │  REVIEW              │   cap: --review-rounds (default 1)
             │  (inline; Agent for  │   ✓ READY / ⚠ FIX FIRST after cap
-            │   large changes)     │   sub-Opus + RETHINK-borderline → opus 2nd opinion
+            │   large changes)     │   sub-Opus + RETHINK or Critical FIX FIRST → opus 2nd
             │     ↓                │
             │  APPLY REVIEW FIXES  │   ✓ all-applied / ⚠ partial
             │  (Edit/Write loop)   │
