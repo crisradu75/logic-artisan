@@ -1,3 +1,12 @@
+## Deferred from PR #344 (reviewer-agents) — 2026-10-12
+
+**Suggestions** (low-priority PR-review residue):
+- [Suggestion] `spec-to-pr/references/revise.md:69`: the round-N snippet redirects into `"$DIFF_FILE"` but nothing defines it, and round 1 (`:37`) gives no command to save the diff; add a `DIFF_FILE=<scratchpad>/...` line.
+- [Suggestion] `revise.md:37`, `lite-pr/SKILL.md:144`, `subagent-brief.md:121`: the `mktemp` fallback returns a `/tmp/...` path in Git Bash on Windows that `Read` may not resolve (unrun); prefer the scratchpad or convert with `cygpath -w`.
+- [Suggestion] `plugin-tests/tests/conformance/test_agent_definitions.py:56`: the forbidden-tool check is exact and case-sensitive, so `["bash"]` or a `"*"` entry passes the guard.
+- [Suggestion] `test_agent_definitions.py:21`: nothing ties each reviewer's `model:` to the model the sizing table names, so `silent-failure-hunter` changing from opus to haiku would still pass.
+- [Open, from tasks.md] Task 1.1: whether a Workflow `agent()` call's `model` overrides the agent file's model is unverified. Run it in the first live review round before relying on `model: opus` for the high-risk row. Task 3.7: a live review round reading a diff file is still to do.
+
 ## Deferred from the former-top-level-names PR (check_fact_paths) — 2026-10-12
 
 **Suggestions** (low-priority PR-review residue):
