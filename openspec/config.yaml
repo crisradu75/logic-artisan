@@ -13,10 +13,10 @@ schema: spec-driven
 # the two in step.
 rules:
   proposal:
-    - Keep it to one page. Point to the specs and design instead of restating them.
+    - Keep it to about 400 words. Point to the specs and design instead of restating them.
   design:
     - Write design.md only when a stock trigger applies (a cross-cutting change, a new dependency or data model, security, performance or migration complexity, or real ambiguity), and name the trigger.
-    - "Keep it to one page: for each decision, the choice, one line of why, and one line per rejected alternative. No history or transcripts."
+    - "Keep it to about 800 words: for each decision, the choice, one line of why, and one line per rejected alternative. No history or transcripts."
     - Never restate the proposal or the specs.
   specs:
     - "Specify only outcomes a user or owner would recognise, and interfaces others depend on: a CLI flag, a file or ledger format a consumer reads, an API contract. Leave implementation choices to the implementer; put a detail a reviewer must agree on, such as a security parameter or a data model, in design.md. Internal steps are not spec material."
@@ -27,3 +27,4 @@ rules:
   tasks:
     - "Give each requirement this change adds or modifies a test task whose test carries a `requirement: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. Scenarios are examples, not one test each."
     - "Cite headings, not line numbers. A `measured:` note gives the value; the command that produced it goes in the commit message."
+    - "Keep each task to about 40 words, stating one behaviour with an acceptance criterion a test or a command can check, and no file path with a line number. An out-of-scope note per task is allowed."

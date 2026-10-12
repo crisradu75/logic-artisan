@@ -47,7 +47,7 @@ Parallel batch 2 — After reading artifacts, run ALL verification checks simult
 
 0d. **Idempotency / already-done check** — For every "create `<path>`" or "add X to Y" task, check whether `<path>` already exists or `X` is already in `Y`. If already present, the task should be rewritten as "verify" rather than "add". (E.g. proposing to "add" a data entry that is already present in this repo's committed dataset roster.)
 
-0e. **Line-number drift check** — For every task citing "line N" in a target file, read lines around that number and confirm the referenced construct is actually there. If drifted, the report quotes the current line number.
+0e. **Task-names-a-line check** — Any task that names a line (`file.py:12`, "line N", a line range) is an **Important** finding: a line number is stale by the time it is read. The remedy cites the heading, symbol or construct instead. Read the cited lines only to name that construct in the report.
 
 0f–0i. **Repo-specific high-yield checks** — reserved for the domain checks `cla.io/overlays/review-change.md` lists when the repo has one (for example i18n key parity, a styling convention, a dataset's shape, seed-data coverage). Where it lists them they are as high-yield as 0a–0e; where it does not, there is nothing to run.
 
@@ -62,7 +62,7 @@ Parallel batch 2 — After reading artifacts, run ALL verification checks simult
 These are unlettered on purpose: they read the artifacts, not the code. Each one that fires is an **Important** finding, except the dropped-scenario case under Spec validity and the marker case under Requirement proof. The orchestrator runs them, and Agents 2 and 3 carry them.
 
 - **Spec validity.** Run `openspec validate <change> --strict`. Any error is a finding, and so is an `Archive would refuse this delta` line, which exits 0. A MODIFIED block that drops a scenario the live requirement still has is **Critical**: archive would delete it.
-- **Size.** A proposal over one page; a design.md over one page; any artifact that restates the proposal or the specs instead of pointing to them. The remedy is the cut.
+- **Size.** A proposal over about 400 words; a design.md over about 800; a task over about 40 words, or one that states more than one behaviour or no acceptance criterion a test or a command can check; any artifact that restates the proposal or the specs instead of pointing to them. The remedy is the cut.
 - **Spec level.** Apply `openspec/config.yaml` `rules.specs` to every requirement the change adds or modifies, MODIFIED ones included. A code name, file path or skill-internal rule in a spec is a finding unless it is the interface, and so is anything else those rules exclude. The remedy moves the detail to design.md, tasks or code, or cuts it.
 - **Invented requirement.** A requirement that describes no observable behaviour change, such as a refactor, tooling or docs change written as a SHALL. Remedy: drop it and set `skip_specs: true` in `.openspec.yaml`.
 - **Requirement proof.** Each requirement the change adds or modifies needs a tasks.md test task that names it, or a tasks.md line `manual: <heading>: <reason>`. A requirement with neither is the finding. Scenarios are examples and need no test of their own. A test task that does not name the `requirement: <spec> / <heading>` comment its test will carry is a **Suggestion**, not a blocker.
