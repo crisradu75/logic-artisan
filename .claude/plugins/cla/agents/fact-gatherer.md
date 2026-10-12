@@ -1,6 +1,6 @@
 ---
 name: fact-gatherer
-description: "Read-only mechanical verification of artifact claims about code (grep symbols, read references, check file:line claims), returning a pass/fail table. Cannot run commands; the caller judges failures. Used by spec-to-pr Review on large changes for checklist checks 0a-0h."
+description: "Read-only mechanical verification of artifact claims about code (grep symbols, read references, read what a cited file:line points at), returning a pass/fail table. Cannot run commands; the caller judges failures. Used by spec-to-pr Review on large changes for checklist checks 0a-0h."
 model: haiku
 color: cyan
 tools: ["Read", "Grep", "Glob"]

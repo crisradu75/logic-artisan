@@ -26,3 +26,9 @@
 - [Suggestion] `plugin-tests/scripts/meter.py:59-60`: an unreadable transcript raises a traceback instead of the documented exit 1 with a stderr message.
 - [Suggestion] `plugin-tests/scripts/meter.py:53-56`: a resumed or forked session that replays history into a new file double-counts those messages; say so in the docstring.
 - [Suggestion] `plugin-tests/tests/consistency/test_meter.py`: add a same-id same-model case across two files; assert per-model rows and sort order in the table; compare `--json` to the full literal dict.
+
+## Deferred from PR #328 (caps-and-tasks) — 2026-10-12
+
+**Suggestions** (low-priority PR-review residue):
+- [Suggestion] `cla-setup/SKILL.md` seed script: an earlier cap wording matches only as an exact line, so a quoted copy or one with a trailing space is not listed for removal and the old and new caps would sit side by side after an update (the exact-line match predates this PR).
+- [Suggestion] `test_artifact_caps_agree.py`: assert the tasks rules in the tasks block specifically, check "one page" gone from config.yaml too, and give the `next()` lookups a clear failure message.

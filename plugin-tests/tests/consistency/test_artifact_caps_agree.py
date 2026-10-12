@@ -48,6 +48,14 @@ def test_the_checklist_flags_a_task_that_names_a_line():
     assert "**Important**" in line
 
 
+def test_the_offloaded_checks_leave_the_line_citation_finding_to_the_orchestrator():
+    # fact-gatherer returns a tick for a cited line that is correct; the 0e finding
+    # must not depend on that row failing.
+    offload = next(ln for ln in _checklist().splitlines() if ln.startswith("**Cost offload"))
+    assert "the citation itself is a 0e finding" in offload
+    assert "confirm a file/line claim" not in offload
+
+
 def test_the_checklist_flags_each_over_cap_artifact():
     size = next(ln for ln in _checklist().splitlines() if ln.startswith("- **Size.**"))
     assert "proposal over about 400 words" in size

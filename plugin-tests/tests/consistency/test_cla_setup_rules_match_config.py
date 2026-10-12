@@ -190,6 +190,20 @@ def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
 
 # requirement: repo-context / OpenSpec authoring rules on setup
 @_needs_bash
+@pytest.mark.parametrize(
+    "fragment, artifact",
+    [("Keep it to one page. Point", "proposal"), ("Keep it to one page: for each", "design")],
+)
+def test_an_earlier_cap_wording_is_listed_for_removal(tmp_path: Path, fragment: str, artifact: str):
+    old_rule = _retired(fragment)
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes() + f"    {old_rule}\n".encode("utf-8"))
+    assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), f"- {artifact}: " + old_rule]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
 def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     yml = tmp_path / "openspec" / "config.yml"
     yml.parent.mkdir()
