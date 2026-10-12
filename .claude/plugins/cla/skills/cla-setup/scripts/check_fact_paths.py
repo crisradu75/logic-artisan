@@ -57,21 +57,22 @@ COVERAGE LIMITS (read before trusting this guard blindly):
     file names, not everything it names.
   - A path whose first segment is not a tracked top-level name is still checked
     when it has the shape of a repo path (see ``_looks_like_repo_path``), so a
-    renamed top-level directory is reported. Such a token needs a file extension
-    or a trailing slash; ``old/src`` and ``read/write`` are skipped, since nothing
-    tells them from prose. Also skipped, and so still unreported after a rename: a
+    renamed top-level directory is reported. Such a token needs a trailing slash,
+    or a file extension and three or more segments (``old/src/x.ts``); ``old/src``,
+    ``read/write`` and the two-segment ``old/x.ts`` are skipped, since nothing
+    tells them from prose or from a repo name like ``vercel/next.js``. Also
+    skipped, and so still unreported after a rename: a
     last segment with no extension (``old/Makefile``) or one over eight characters,
     a first segment with a dot (``my.pkg/a.ts``), and a character outside
-    ``A-Za-z0-9_.-@+[]`` (``old/app/(group)/page.tsx``, ``old/café/x.md``). A
-    two-segment ``owner/name.js`` (a GitHub repo name) cannot be told from a file
-    and is reported when absent. A kept path that git ignores (``dist/x.js``) is
+    ``A-Za-z0-9_.-@+[]`` (``old/app/(group)/page.tsx``, ``old/café/x.md``). A kept path that git ignores (``dist/x.js``) is
     skipped when absent.
   - A machine-local file (last segment with a ``.local`` name part, e.g.
     ``.claude/settings.local.json``) that git does NOT track is skipped, present or
     not: it is absent from a fresh clone. A TRACKED ``*.local.*`` file is an
     ordinary path and is checked. Only a path under a recognized top-level name
     counts toward the "path candidates checked" figure, so a wrongly small
-    top-level set still reads as zero candidates (exit 2).
+    top-level set reads as zero candidates and exits 2, even when shape-only
+    paths were also found missing (they are then unverified, not reported).
   - The extraction heuristic is deliberately conservative: on any ambiguous token
     it skips rather than flags, because a false staleness failure trains people to
     ignore the guard (see ``design.md`` Decision E of ``cla-context-refresh``).
@@ -427,7 +428,10 @@ def _is_machine_local(candidate: str, tracked: set[str] | None) -> bool:
     rel = candidate.rstrip("/")
     if not _MACHINE_LOCAL_SEGMENT_RE.search(rel.rsplit("/", 1)[-1]):
         return False
-    return tracked is None or rel not in tracked
+    if tracked is None:
+        return True
+    # `ls-files` lists files only: a tracked directory is tracked when a file sits under it.
+    return rel not in tracked and not any(p.startswith(rel + "/") for p in tracked)
 
 
 def _looks_like_repo_path(token: str) -> bool:
@@ -438,22 +442,23 @@ def _looks_like_repo_path(token: str) -> bool:
     The token must be built only from path-safe characters and start with a plain
     (optionally dot-prefixed) name — which rejects an absolute path, ``./x``,
     ``../x``, a host name (``example.com/a/b``), ``C:/x``, ``@scope/pkg`` and
-    ``$HOME/x`` — and carry one more signal: a file extension on the last segment
-    (``old/src/x.ts``), or a trailing slash (``old/src/``). What stays skipped is
-    prose joined by slashes, however many (``read/write``, ``Edit/Write/Bash``,
-    ``10/12/2026``), and a directory named without a trailing slash (``old/src``)
-    or alone (``old/``), none of which any check can tell from that prose. A skipped token costs a missed
-    finding; a flagged one costs a false alarm that trains people to ignore the
-    guard, so the shape errs toward skipping. The segment count is not a signal:
-    prose lists such as ``PASS/FAIL/SKIP`` run to three or more."""
+    ``$HOME/x`` — and carry one more signal: a trailing slash (``old/src/``), or a
+    file extension on the last segment of a token with at least three segments
+    (``old/src/x.ts``). What stays skipped is prose joined by slashes
+    (``read/write``, ``Edit/Write/Bash``, ``10/12/2026``), a two-segment file
+    (``old/x.ts``, which cannot be told from a GitHub repo name such as
+    ``vercel/next.js``), and a directory named without a trailing slash
+    (``old/src``) or alone (``old/``). A skipped token costs a missed finding; a
+    flagged one costs a false alarm that trains people to ignore the guard, so
+    the shape errs toward skipping."""
     if not _REPO_PATH_SHAPE_RE.match(token):
         return False
     segments = token.rstrip("/").split("/")
     if segments[0] == ".git":
         return False  # git's own state is never tracked, so it is absent by design
-    if _FILE_EXTENSION_RE.search(segments[-1]):
+    if token.endswith("/"):
         return True
-    return token.endswith("/")
+    return len(segments) >= 3 and bool(_FILE_EXTENSION_RE.search(segments[-1]))
 
 
 def _keep_if_path(token: str, top_level_names: set[str]) -> str | None:
@@ -714,6 +719,16 @@ def main(argv: list[str] | None = None) -> int:
             "checkouts of the same commit (see _tracked_top_level_names)"
         )
 
+    # The same warning for the index of tracked FILES, which the machine-local rule
+    # reads: if it is unavailable every `*.local.*` path reads as untracked and is
+    # skipped, so a rename of a tracked one goes unreported.
+    if _tracked_paths(repo_root) is None and (repo_root / ".git").exists():
+        print(
+            f"{_PROG}: {repo_root} looks like a git repository but `git "
+            "ls-files` could not list tracked files — every `*.local.*` path "
+            "will be skipped as machine-local, tracked or not"
+        )
+
     checked, stale, unreadable = scan(repo_root)
 
     # An input that EXISTS but cannot be read. Reporting it as "clean" would be
@@ -745,12 +760,16 @@ def main(argv: list[str] | None = None) -> int:
     # overlay-only path instead of the facts-file path. Zero-checked-with-something-
     # scanned means the extraction broke (wrong root shrinking the top-level set,
     # a heuristic regression) — "could not look", not "nothing to report".
-    if checked == 0 and not stale:
+    if checked == 0:
+        # `checked` counts only paths under a recognized top-level name, so it is
+        # also zero when that set came out wrongly small; any path kept by shape
+        # alone would then read as stale. Those are unverified, not findings.
+        unverified = f" ({len(stale)} shape-only path(s) unverified)" if stale else ""
         print(
             f"{_PROG}: {len(scanned_files)} file(s) scanned but zero path "
-            "candidates were extracted — the path-extraction heuristic or "
-            "repo-root resolution is broken (the guard would silently check "
-            "nothing)",
+            "candidates under a recognized top-level name were extracted — the "
+            "path-extraction heuristic or repo-root resolution is broken (the "
+            f"guard would silently check nothing){unverified}",
             file=sys.stderr,
         )
         return EXIT_CANNOT_RUN  # branch: extraction yielded nothing

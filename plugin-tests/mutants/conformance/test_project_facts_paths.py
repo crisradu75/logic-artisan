@@ -83,8 +83,29 @@ MUTANTS = [
         # `facts_file` variable no longer exists) reverts the fix.
         "the zero-candidates blocker is re-gated on the facts file specifically",
         CHECKER,
+        "    if checked == 0:",
+        "    if (repo_root / PROJECT_FACTS_RELPATH).is_file() and checked == 0:",
+        TARGETS,
+    ),
+    (
+        "shape-only stale paths turn a wrongly-rooted run (zero recognized) into exit 1",
+        CHECKER,
+        "    if checked == 0:",
         "    if checked == 0 and not stale:",
-        "    if (repo_root / PROJECT_FACTS_RELPATH).is_file() and checked == 0 and not stale:",
+        TARGETS,
+    ),
+    (
+        "a tracked directory with a `.local` name is skipped as machine-local",
+        CHECKER,
+        '    return rel not in tracked and not any(p.startswith(rel + "/") for p in tracked)',
+        "    return rel not in tracked",
+        TARGETS,
+    ),
+    (
+        "the missing-index warning stops being printed",
+        CHECKER,
+        '    if _tracked_paths(repo_root) is None and (repo_root / ".git").exists():',
+        "    if False:",
         TARGETS,
     ),
     (
@@ -139,8 +160,8 @@ MUTANTS = [
     (
         "a TRACKED machine-local-named file is skipped like an untracked one",
         CHECKER,
-        "    return tracked is None or rel not in tracked",
-        "    return True",
+        "    if tracked is None:",
+        "    if True:",
         TARGETS,
     ),
     (
@@ -202,8 +223,15 @@ MUTANTS = [
     (
         "a file extension no longer marks an unknown-top-level token as a path",
         CHECKER,
-        "    if _FILE_EXTENSION_RE.search(segments[-1]):",
-        "    if False:",
+        "    return len(segments) >= 3 and bool(_FILE_EXTENSION_RE.search(segments[-1]))",
+        "    return False",
+        TARGETS,
+    ),
+    (
+        "a two-segment file under an unknown top-level (`vercel/next.js`) is reported",
+        CHECKER,
+        "    return len(segments) >= 3 and bool(_FILE_EXTENSION_RE.search(segments[-1]))",
+        "    return len(segments) >= 2 and bool(_FILE_EXTENSION_RE.search(segments[-1]))",
         TARGETS,
     ),
     (
@@ -216,8 +244,8 @@ MUTANTS = [
     (
         "a trailing slash no longer marks an unknown-top-level directory",
         CHECKER,
-        '    return token.endswith("/")',
-        "    return False",
+        '    if token.endswith("/"):',
+        "    if False:",
         TARGETS,
     ),
     (

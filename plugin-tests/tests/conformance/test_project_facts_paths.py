@@ -138,15 +138,12 @@ def test_a_path_under_a_renamed_top_level_directory_is_reported(tmp_path):
     (tmp_path / "new" / "src" / "x.ts").write_text("x", encoding="utf-8")
     (tmp_path / "cla.io" / "project-facts.md").write_text(
         "The entry point is `old/src/x.ts`; the old tree is `old/src/`; "
-        "and `references/project-context.md` is named from a skill folder.\n",
+        "`references/project-context.md` and `vercel/next.js` are two-segment "
+        "names, skipped because they read as prose or a repo name.\n",
         encoding="utf-8",
     )
     stale = find_stale_paths(tmp_path)
-    assert [c for _, _, c in stale] == [
-        "old/src/x.ts",
-        "old/src/",
-        "references/project-context.md",
-    ]
+    assert [c for _, _, c in stale] == ["old/src/x.ts", "old/src/"]
 
 
 def test_a_path_shaped_token_under_a_missing_top_level_exists_check_passes(tmp_path):
@@ -209,11 +206,11 @@ def test_a_git_ignored_path_kept_by_shape_is_not_reported(tmp_path):
     _init_git_repo(tmp_path, tracked_dirs=["cla.io", "apps"])
     (tmp_path / ".gitignore").write_text("dist/\napps/build/\n", encoding="utf-8")
     (tmp_path / "cla.io" / "project-facts.md").write_text(
-        "Output: `dist/index.js`. Renamed away: `old/index.js`. "
+        "Output: `dist/js/index.js`. Renamed away: `old/js/index.js`. "
         "Under a tracked top-level, ignored but still checked as before: `apps/build/out.js`.\n",
         encoding="utf-8",
     )
-    assert [c for _, _, c in find_stale_paths(tmp_path)] == ["old/index.js", "apps/build/out.js"]
+    assert [c for _, _, c in find_stale_paths(tmp_path)] == ["old/js/index.js", "apps/build/out.js"]
 
 
 def test_only_a_path_under_a_recognized_top_level_counts_as_checked(tmp_path):
@@ -241,6 +238,8 @@ def test_only_a_path_under_a_recognized_top_level_counts_as_checked(tmp_path):
         ("docs/app.local/gone.ts", set(), False),             # `.local` is not the file name
         ("local/gone.ts", set(), False),
         ("apps/local/", set(), False),                        # a directory named `local`
+        ("cla.io/x.local/", {"cla.io/x.local/f.md"}, False),  # a tracked directory
+        ("cla.io/x.local/", {"cla.io/y.md"}, True),           # an untracked one
         ("docs/app.local.d/gone.ts", set(), False),           # `.local.` inside a directory name
     ],
 )
@@ -541,7 +540,11 @@ def test_each_skip_reason_individually_yields_no_candidates(tmp_path):
         "PASS/FAIL/SKIP",
         "feature/",                       # a lone `name/` (a branch prefix)
         "old/src",                        # directory with no slash or extension: ambiguous
-        "old/v1.2",                       # a version, not a file extension
+        "old/src/v1.2",                     # a version, not a file extension
+        "vercel/next.js",                 # a GitHub repo name, two segments
+        "mrdoob/three.js",
+        "old/x.md",                       # a two-segment file: indistinguishable from the above
+        "references/project-context.md",
         "/usr/local/bin/tool.py",         # absolute path
         "C:/tools/run.exe",               # a drive path
         "example.com/docs/a.md",          # host name first
@@ -563,7 +566,7 @@ def test_a_token_that_is_not_a_repo_path_is_skipped(token):
 
 
 @pytest.mark.parametrize(
-    "token", ["old/src/x.ts", "old/src/", "old/x.md", ".old/hooks/x.py", "old/apps/[id]/page.tsx"]
+    "token", ["old/src/x.ts", "old/src/", ".old/hooks/x.py", "old/apps/[id]/page.tsx"]
 )
 def test_a_path_shaped_token_under_an_unknown_top_level_is_kept(token):
     assert extract_path_candidates(f"`{token}`", {"apps"}) == [token], token
@@ -738,6 +741,37 @@ def test_cli_exits_clean_on_an_absent_machine_local_path_and_one_on_an_ordinary_
     ordinary = _run_cli("--repo-root", str(tmp_path))
     assert ordinary.returncode == EXIT_STALE, ordinary.stdout + ordinary.stderr
     assert ".claude/settings.json" in ordinary.stdout
+
+
+def test_cli_exits_two_when_only_shape_kept_paths_were_found(tmp_path):
+    # No path sits under a recognized top-level name (a wrongly small set, e.g. a
+    # wrong root): the shape-only paths cannot be verified, so this is "could not
+    # look" (2), not "stale paths found" (1).
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "cla.io" / "project-facts.md").write_text(
+        "Only: `old/src/x.ts`.\n", encoding="utf-8"
+    )
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert "unverified" in result.stderr
+
+
+def test_a_missing_tracked_file_index_is_reported_in_a_git_repo(monkeypatch, tmp_path, capsys):
+    _init_git_repo(tmp_path, ["apps"])
+    (tmp_path / "apps" / "real").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "cla.io").mkdir()
+    (tmp_path / "cla.io" / "project-facts.md").write_text("Real: `apps/real`.\n", encoding="utf-8")
+    monkeypatch.setattr(_checker, "_tracked_paths", lambda repo_root: None)
+    assert main(["--repo-root", str(tmp_path)]) == EXIT_CLEAN
+    assert "could not list tracked files" in capsys.readouterr().out
+
+
+def test_cli_exits_clean_on_a_github_repo_name_that_ends_in_js(tmp_path):
+    # `vercel/next.js` is prose naming a project, not a repo file: two segments
+    # under an unknown top-level are never reported.
+    _seed_repo(tmp_path, "Real: `apps/real`. Built on vercel/next.js and `mrdoob/three.js`.\n")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
 
 
 # requirement: repo-context / Checking recorded paths

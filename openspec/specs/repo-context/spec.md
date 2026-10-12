@@ -26,7 +26,7 @@ The plugin SHALL ship a checker a consuming repo runs as `python3 <path>` that n
 
 #### Scenario: A path under a renamed top-level directory
 
-- **WHEN** the facts file names `old/src/x.ts` and the repo's top-level directory `old/` was since renamed
+- **WHEN** the facts file names `old/src/x.ts` next to a path that still exists, and the repo's top-level directory `old/` was since renamed
 - **THEN** the checker reports that file, line and path and exits 1
 
 #### Scenario: A machine-local file
