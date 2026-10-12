@@ -116,7 +116,10 @@ shared, process-wide state: git's HEAD is per-clone, so one agent switching bran
 the ground under the orchestrator and every sibling in the same fan-out — and it leaves no
 diff to notice it by. Nor does a well-behaved agent undo it: it *restores* to the branch it
 assumes was the baseline, usually `main` rather than the branch the session was on. Spell
-out the forbidden verbs, and for a diff review name the read-only way to get it:
+out the forbidden verbs. For a diff review, a reviewer with no shell (`code-reviewer`,
+`silent-failure-hunter`, `comment-analyzer`) is given a diff file instead: you save the diff
+(`git diff <base>...<branch> -- <paths>`) outside the working tree and name its absolute path in
+the brief. A reviewer that does hold a shell gets the read-only way to read it:
 
 > Read the diff with `git diff <base>...<branch>`, and a committed file with
 > `git show <ref>:<path>`. Do NOT run `git checkout`, `switch`, `stash`, `branch`, or
@@ -175,7 +178,8 @@ list, name the shape you will consume.
 
 Keep briefs trimmed: pass the sections the task actually references, not the whole
 document. For a diff review, describe the diff by **file + symbol + focus question**
-and let the agent read the hunks itself rather than pasting raw diff text inline.
+and name the absolute path of a diff file you saved outside the working tree (delete it when the
+round ends), rather than pasting raw diff text inline.
 
 ### 5. Done when — a condition you will check, with evidence
 

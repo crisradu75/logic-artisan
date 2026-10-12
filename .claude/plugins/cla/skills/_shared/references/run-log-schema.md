@@ -65,7 +65,7 @@ append stays atomic against a concurrent run.
 - `asks` — every user ask in the run, by header and chosen label.
 - `routing.revise_findings_by_tier` — per Revise agent dispatched, by canonical id:
   `code-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `comment-analyzer`,
-  `type-design-analyzer` (bare — not the `pr-review-toolkit:` form you pass to `Agent`) and
+  `type-design-analyzer` (bare — not the `cla:` or `pr-review-toolkit:` form you pass to `Agent`) and
   `plugin-dev:skill-reviewer` (prefixed; it has no bare form); the check refuses any other key.
   `found` = Critical+Important findings it surfaced — Suggestions excluded — and `phantom` = how
   many of those triage disproved. It credits a finding to every agent that raised it, so its

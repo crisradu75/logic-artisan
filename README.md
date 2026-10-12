@@ -83,7 +83,7 @@ plugin-tests/                  the plugin's tests — one pytest scope, NOT publ
   README.md                    the harness's scope + capabilities, by life-cycle phase
   skills/                      the workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
   skills/_shared/              references + scripts that several skills share (not a skill)
-  agents/                      helper agents (doc-sweeper, fact-gatherer)
+  agents/                      helper agents (doc-sweeper, fact-gatherer) and PR reviewers (code-reviewer, silent-failure-hunter, comment-analyzer)
   hooks/                       always-on guard hooks (blocks, asks, warns) + dispatchers
   lib/log_run.py               writes the one run ledger (spec-to-pr-runs.jsonl), invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
