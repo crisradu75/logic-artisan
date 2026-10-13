@@ -253,6 +253,13 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "a failed shallow probe is blamed on an old git",
+        CHECKER,
+        "        if probe.returncode != 0:",
+        "        if False:",
+        TARGETS,
+    ),
+    (
         "a git too old to know the shallow flag is read as a full clone",
         CHECKER,
         '        if shallow != "false":',

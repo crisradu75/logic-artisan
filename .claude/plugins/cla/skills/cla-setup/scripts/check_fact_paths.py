@@ -402,11 +402,11 @@ def _former_top_level_names(
     repo, and git would otherwise print paths from its top level. A deletion
     made only inside a merge commit is not seen (it fails safe: unreported).
 
-    Two limits fail safe, leaving a stale path unreported. A case-only rename
-    (`Docs` to `docs`) gives a former name that differs from the live one only
-    in case. In a repo whose shorthand names a path inside a package (`src/x.ts`
-    meaning `<package>/src/x.ts`), a former top-level `src/` makes that
-    shorthand read as stale; no rule here tells the two apart.
+    Two known limits. A case-only rename (`Docs` to `docs`) gives a former name
+    that differs from the live one only in case; a path under it fails safe
+    (unreported). A former top-level `src/` falsely reports package shorthand
+    (`src/x.ts` meaning `<package>/src/x.ts`) as stale; no rule here tells that
+    shorthand from a stale path.
 
     `(None, reason)` means history cannot answer: not a git repo, a shallow
     clone (its oldest commits are missing, so a rename may sit in the cut-off
@@ -428,7 +428,10 @@ def _former_top_level_names(
             return None, "not a git repository"
         # Git before 2.15 does not know this flag: rev-parse echoes it back and
         # exits 0. Only a literal true or false is an answer.
-        shallow = git("rev-parse", "--is-shallow-repository").stdout.strip()
+        probe = git("rev-parse", "--is-shallow-repository")
+        if probe.returncode != 0:
+            return None, f"git rev-parse --is-shallow-repository failed (rc={probe.returncode})"
+        shallow = probe.stdout.strip()
         if shallow == "true":
             return None, "shallow clone"
         if shallow != "false":

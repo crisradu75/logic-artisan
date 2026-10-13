@@ -140,11 +140,16 @@ def _implement_done(change_name: str) -> bool:
     # "ready"), yet OpenSpec applies it once every `applyRequires` artifact is
     # done. A missing or empty list is not ready: `all([])` would say it is.
     required = data.get("applyRequires")
-    if not isinstance(required, list) or not required:
+    artifacts = data.get("artifacts")
+    if ("applyRequires" in data and not isinstance(required, list)) or \
+            ("artifacts" in data and not isinstance(artifacts, list)):
+        print("openspec status JSON has an applyRequires or artifacts value that is "
+              "not a list; treating as not-complete", file=sys.stderr)
+        return False
+    if not required:
         return False
     # Only string ids are read, so a malformed entry cannot raise `TypeError`.
-    artifacts = data.get("artifacts")
-    if not isinstance(artifacts, list):
+    if artifacts is None:
         artifacts = []
     status = {a["id"]: a.get("status") for a in artifacts
               if isinstance(a, dict) and isinstance(a.get("id"), str)}

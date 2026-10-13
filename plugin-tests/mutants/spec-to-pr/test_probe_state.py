@@ -128,8 +128,8 @@ MUTANTS = [
         "a missing or empty applyRequires reads as ready, so a resume skips "
         "Implement for a change whose artifacts were never checked",
         SCRIPT,
-        "    if not isinstance(required, list) or not required:",
-        "    if not isinstance(required, list):",
+        "    if not required:",
+        "    if required is None:",
         TARGETS,
     ),
     (
@@ -152,8 +152,23 @@ MUTANTS = [
         "a non-list applyRequires is walked as a sequence, so the string "
         "\"tasks\" reads as ready when one-letter artifacts are done",
         SCRIPT,
-        "    if not isinstance(required, list) or not required:",
-        "    if not required:",
+        '    if ("applyRequires" in data and not isinstance(required, list)) or \\',
+        "    if False or \\",
+        TARGETS,
+    ),
+    (
+        "a non-list artifacts value is read silently, so an openspec format "
+        "change reads as not-done with nothing on stderr",
+        SCRIPT,
+        '            ("artifacts" in data and not isinstance(artifacts, list)):',
+        "            False:",
+        TARGETS,
+    ),
+    (
+        "openspec output with isComplete but no applyRequires warns as unrecognised",
+        SCRIPT,
+        '    if "isComplete" not in data and "applyRequires" not in data:',
+        '    if "isComplete" not in data or "applyRequires" not in data:',
         TARGETS,
     ),
     (

@@ -48,6 +48,21 @@ def test_a_copy_without_a_model_keeps_the_model_an_earlier_copy_gave(tmp_path: P
     }
 
 
+def test_a_later_copy_with_a_model_names_an_earlier_model_less_one(tmp_path: Path) -> None:
+    no_model = json.dumps({"message": {"id": "m1", "usage": {"output_tokens": 5}}})
+    session = _write(tmp_path / "s.jsonl", [no_model, _record("m1", "opus", 2, 0, 0, 40)])
+    assert list(meter.collect([session])) == ["opus"]
+
+
+def test_one_unreadable_transcript_fails_the_run_instead_of_undercounting(tmp_path: Path, capsys) -> None:
+    _write(tmp_path / "a.jsonl", [_record("m1", "opus", 1, 1, 1, 1)])
+    (tmp_path / "b.jsonl").mkdir()
+    assert meter.main([str(tmp_path)]) == 1
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert "meter: cannot read a transcript:" in out.err
+
+
 def test_a_copy_without_a_model_and_no_earlier_copy_is_unknown(tmp_path: Path) -> None:
     no_model = json.dumps({"message": {"id": "m1", "usage": {"output_tokens": 40}}})
     session = _write(tmp_path / "s.jsonl", [no_model])

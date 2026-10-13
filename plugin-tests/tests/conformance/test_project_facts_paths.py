@@ -988,6 +988,21 @@ def test_a_git_that_echoes_the_shallow_flag_back_degrades_instead_of_reading_ful
     assert "git too old" in reason
 
 
+def test_a_failed_shallow_probe_is_not_blamed_on_an_old_git(monkeypatch, tmp_path):
+    repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`.\n")
+    real_run = subprocess.run
+
+    def broken(argv, *args, **kwargs):
+        if "--is-shallow-repository" in argv:
+            return subprocess.CompletedProcess(argv, 128, "", "fatal: boom")
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr(_checker.subprocess, "run", broken)
+    names, reason = _former_top_level_names(repo, _top_level_names(repo))
+    assert names is None
+    assert reason == "git rev-parse --is-shallow-repository failed (rc=128)"
+
+
 def test_the_git_calls_share_one_time_budget(monkeypatch, tmp_path):
     repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`.\n")
     real_run = subprocess.run
@@ -1009,12 +1024,13 @@ def test_the_git_calls_share_one_time_budget(monkeypatch, tmp_path):
     assert timeouts["diff"] == _checker._HISTORY_BUDGET_SECONDS - 50
 
 
-def test_a_git_call_past_the_budget_degrades_and_names_the_budget(monkeypatch, tmp_path):
+@pytest.mark.parametrize("verb", ["log", "diff"])
+def test_a_git_call_past_the_budget_degrades_and_names_the_budget(monkeypatch, tmp_path, verb):
     repo = _history_repo(tmp_path, "Real: `apps/placeholder.txt`.\n")
     real_run = subprocess.run
 
     def hung_log(argv, *args, **kwargs):
-        if "log" in argv:
+        if verb in argv:
             raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
         return real_run(argv, *args, **kwargs)
 
