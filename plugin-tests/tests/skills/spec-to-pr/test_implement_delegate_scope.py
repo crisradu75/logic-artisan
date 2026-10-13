@@ -39,6 +39,7 @@ def test_a_grep_alone_is_not_the_check():
     rule = _rule()
     assert "a file it names without a path" in rule
     assert "is a miss, not a pass" in rule
+    assert "any `design.md` section you inline" in rule
 
 
 def test_a_path_kept_out_on_purpose_is_held_not_deferred():
@@ -46,15 +47,26 @@ def test_a_path_kept_out_on_purpose_is_held_not_deferred():
     rule = _rule()
     assert "mark every task that names it `held by orchestrator`" in rule
     assert "Held is not `deferred-to-TODO`" in rule
-    assert "finish each held task yourself before the Post-check" in rule
+    assert "finish each held task yourself before the Post-check." in rule
+    # Implement runs one delegate: no second dispatch may own a held task.
+    assert "sibling" not in rule
     assert '"every task not held is ticked"' in rule
 
 
 def test_a_held_task_is_not_a_contract_firing_in_either_rule():
     assert "is not a contract firing" in _rule()
     text = _REF.read_text(encoding="utf-8")
-    firing = next(line for line in text.splitlines() if line.startswith("**Contract firings leave a trace.**"))
+    firing = next((line for line in text.splitlines() if line.startswith("**Contract firings leave a trace.**")), None)
+    assert firing is not None, "implement-delegate.md lost its Contract-firings rule"
     assert "(a task the brief marked `held by orchestrator` is not one)" in firing
+
+
+def test_the_neighbouring_rules_count_a_held_task_as_handed_back():
+    lines = _rules_section().splitlines()
+    enumeration = next(line for line in lines if line.startswith("- **Full-task enumeration.**"))
+    assert "`held by orchestrator` per the next rule, or a task already recorded `deferred-to-TODO` at Propose" in enumeration
+    evidence = next(line for line in lines if line.startswith("- **Evidence-based terminal contract.**"))
+    assert "less any tasks the brief marked held" in evidence
 
 
 def test_skill_md_summary_names_the_scope_check():
