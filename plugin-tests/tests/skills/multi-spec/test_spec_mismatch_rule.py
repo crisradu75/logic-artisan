@@ -22,5 +22,12 @@ _RULE = (
 
 # requirement: change-workflow / Specs follow the repo's authoring rules
 def test_a_spec_code_mismatch_is_fixed_in_the_same_change():
-    missing = [str(p.relative_to(_REPO)) for p in _FILES if _RULE not in p.read_text(encoding="utf-8")]
+    missing = []
+    for p in _FILES:
+        text = p.read_text(encoding="utf-8")
+        start = text.index("\n  specs:\n")
+        # The specs list runs to the next artifact key, `  tasks:`.
+        specs = text[start : text.index("\n  tasks:\n", start)]
+        if _RULE not in specs:
+            missing.append(str(p.relative_to(_REPO)))
     assert missing == []
