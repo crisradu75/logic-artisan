@@ -55,6 +55,32 @@ def test_test_phase_has_one_retry_budget_and_halt_follows_diagnose() -> None:
     )
     assert "leaves its fix uncommitted; Ship commits it" in step3, "step 3 lost the uncommitted-fix short form"
     assert "third edit" not in ref,"the reference still counts a third edit under the one budget"
-    assert "One fix and one retry on the SAME" in ref, (
+    assert "One fix and one retry with the gate still red, on the same stated cause or a new one" in ref, (
         "diagnose-escalation.md does not name the same one-fix-one-retry trigger as step 3"
+    )
+
+
+def test_a_retry_failing_on_a_new_cause_reaches_diagnose_before_the_halt() -> None:
+    """#350: a retry that failed on a DIFFERENT cause used to HALT with no diagnose step,
+    though a failure that appears right after a fix is most often the fix itself. Both
+    causes now take the same path: diagnose first, then step 4's HALT if still red."""
+    skill = (_LITE_PR / "SKILL.md").read_text(encoding="utf-8")
+    step3 = next(line for line in skill.splitlines() if line.startswith("3. Any failure"))
+    step4 = next(line for line in skill.splitlines() if line.startswith("4. Still failing"))
+    assert "on the same stated cause or a new one → stop editing and escalate to `/cla:diagnose`" in step3, (
+        "step 3 no longer sends a new-cause failure to diagnose"
+    )
+    assert step4.startswith("4. Still failing after the `/cla:diagnose` path in step 3"), (
+        "step 4 HALTs on something other than the diagnose path again"
+    )
+    assert "cause" not in step4.split("(")[0], "step 4 HALTs a failure by its cause again, skipping diagnose"
+    ref = (_LITE_PR / "references" / "diagnose-escalation.md").read_text(encoding="utf-8")
+    assert "Hand `diagnose` the retry's failure output, not the original one" in ref, (
+        "on a new cause, diagnose may be handed the original failure and stop without a root cause"
+    )
+    assert "On a new cause, also name the fix just applied as the first suspect" in ref, (
+        "the fix is named first suspect on every failure, steering a same-cause diagnose wrong"
+    )
+    assert "a red re-run after `diagnose` goes to step 4's HALT" in skill, (
+        "nothing stops a red re-run after diagnose from going back into diagnose"
     )

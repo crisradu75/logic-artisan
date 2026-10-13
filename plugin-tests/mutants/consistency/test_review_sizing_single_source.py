@@ -109,8 +109,8 @@ MUTANTS = [
     (
         "multi-spec's review gate copies a sizing-table row",
         REVIEW_GATE,
-        "## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large)",
-        "| High risk | `code-reviewer` | Opus |\n## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large)",
+        "## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large or the batch total `e` is 25 or more)",
+        "| High risk | `code-reviewer` | Opus |\n## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large or the batch total `e` is 25 or more)",
         TARGETS,
     ),
     (
