@@ -19,6 +19,7 @@ _AGENTS = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / 
 _MODELS = ("haiku", "sonnet", "opus")
 _FORBIDDEN_TOOLS = ("Edit", "Write", "NotebookEdit", "Bash")
 _REVIEWERS = ("code-reviewer", "silent-failure-hunter", "comment-analyzer")
+_ROUTING = _AGENTS.parent / "skills" / "_shared" / "references" / "model-routing.md"
 
 
 def _frontmatter(text: str) -> dict[str, str] | None:
@@ -53,7 +54,11 @@ def problems(text: str) -> list[str]:
     if not isinstance(tools, list) or not tools:
         found.append("`tools` must be a non-empty list")
     else:
-        found += [f"`tools` includes {t}" for t in _FORBIDDEN_TOOLS if t in tools]
+        # Tool names compare case-insensitively, and "*" grants every tool, the forbidden ones included.
+        named = {str(t).strip().lower() for t in tools}
+        found += [f"`tools` includes {t}" for t in _FORBIDDEN_TOOLS if t.lower() in named]
+        if "*" in named:
+            found.append("`tools` includes *, which grants every tool")
     return found
 
 
@@ -85,6 +90,9 @@ def test_the_baseline_fixture_is_clean() -> None:
         ("NotebookEdit tool", _GOOD.replace('"Glob"', '"Glob", "NotebookEdit"'),
          "`tools` includes NotebookEdit"),
         ("Bash tool", _GOOD.replace('"Glob"', '"Glob", "Bash"'), "`tools` includes Bash"),
+        ("lower-case bash", _GOOD.replace('"Glob"', '"Glob", "bash"'), "`tools` includes Bash"),
+        ("upper-case WRITE", _GOOD.replace('"Glob"', '"Glob", "WRITE"'), "`tools` includes Write"),
+        ("wildcard tool", _GOOD.replace('"Glob"', '"Glob", "*"'), "`tools` includes *"),
     ],
 )
 def test_a_broken_agent_file_is_reported(label: str, text: str, expect: str) -> None:
@@ -103,3 +111,30 @@ def test_each_reviewer_is_shipped(name: str) -> None:
     path = _AGENTS / f"{name}.md"
     assert path.is_file(), f"{path.name} is not shipped"
     assert (_frontmatter(path.read_text(encoding="utf-8")) or {}).get("name") == name
+
+
+def _sizing_rows() -> list[tuple[str, str]]:
+    """(reviewers cell, model cell) for each row of the review-sizing table, low risk first."""
+    rows = []
+    for line in _ROUTING.read_text(encoding="utf-8").splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) == 3 and cells[0].lower().startswith(("low risk", "high risk")):
+            rows.append((cells[1], cells[2].lower()))
+    return rows
+
+
+def test_the_sizing_table_is_read() -> None:
+    assert len(_sizing_rows()) == 3, f"expected 3 review-sizing rows in model-routing.md, got {_sizing_rows()}"
+
+
+# requirement: review-agents / The plugin ships its own read-only reviewers
+@pytest.mark.parametrize("name", _REVIEWERS)
+def test_each_reviewers_model_is_its_lowest_sizing_row(name: str) -> None:
+    """An agent file's `model:` is its default. It must be the model of the lowest-risk row
+    that names it; a higher row raises it per dispatch. Otherwise a reviewer drifting from
+    opus to haiku in its own file would pass every other check."""
+    expected = next(model for cell, model in _sizing_rows() if f"`{name}`" in cell)
+    fields = _frontmatter((_AGENTS / f"{name}.md").read_text(encoding="utf-8")) or {}
+    assert fields.get("model") == expected, (
+        f"{name}.md runs on {fields.get('model')!r}, but its lowest sizing row names {expected!r}"
+    )

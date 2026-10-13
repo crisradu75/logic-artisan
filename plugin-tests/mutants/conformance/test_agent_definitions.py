@@ -21,6 +21,27 @@ TARGETS = [GUARD]
 TOOLS = '_FORBIDDEN_TOOLS = ("Edit", "Write", "NotebookEdit", "Bash")'
 
 MUTANTS = [
+    (
+        "a reviewer gains a lower-case bash tool",
+        CODE_REVIEWER,
+        'tools: ["Read", "Grep", "Glob"]',
+        'tools: ["Read", "Grep", "Glob", "bash"]',
+        TARGETS,
+    ),
+    (
+        "silent-failure-hunter drifts from opus to haiku",
+        HUNTER,
+        "model: opus",
+        "model: haiku",
+        TARGETS,
+    ),
+    (
+        "the guard stops reading a wildcard tool as every tool",
+        GUARD,
+        '        if "*" in named:',
+        '        if False:',
+        TARGETS,
+    ),
     ("the guard stops forbidding Edit", GUARD, TOOLS,
      '_FORBIDDEN_TOOLS = ("Write", "NotebookEdit", "Bash")', TARGETS),
     ("the guard stops forbidding Write", GUARD, TOOLS,

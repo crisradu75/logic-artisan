@@ -201,8 +201,21 @@ def test_the_ci_wait_is_one_background_watch_under_a_watchdog_everywhere() -> No
     step_4 = _between(_read(_SHARED), "4. **Remote checks have finished.**", "5. **`mergeStateStatus`")
     assert "`Bash(run_in_background: true)`" in step_4 and "--watch --interval 60" in step_4
     assert "time.sleep(900)" in step_4 and "completion notification wakes the session" in step_4
-    assert step_4.count("`checks still pending`") == 2
-    stale = re.compile(r"450000|7\.5.minute|at most twice|--watch[^\n]*\n?[^\n]*`timeout`", re.I)
-    docs = [*_SKILLS.rglob("*.md"), _README, _GUIDE]
+    flat = " ".join(step_4.split())
+    assert "Run `gh pr checks <pr> --json name,bucket` and read the result" in flat, (
+        "step 4 no longer reads the remote checks before it waits"
+    )
+    assert "still `pending` → the reason is `checks still pending`" in flat, (
+        "the watch-finished arm no longer names a still-pending check"
+    )
+    assert "When the watchdog's arrives first, stop waiting: the reason is `checks still pending`" in flat, (
+        "the watchdog arm no longer names a still-pending check"
+    )
+    # "at most twice" only in the old timeout sentence ("`timeout` set to 450000 ms, at most
+    # twice"): bare, it flagged unrelated prose such as a bounded review loop.
+    stale = re.compile(
+        r"450000|7\.5.minute|`timeout`[^.\n]*at most twice|--watch[^\n]*\n?[^\n]*`timeout`", re.I
+    )
+    docs = [*_SKILLS.rglob("*.md"), _README, _GUIDE, *(_ROOT / "openspec" / "specs").rglob("*.md")]
     stale_hits = [str(p.relative_to(_ROOT)) for p in docs if stale.search(_read(p))]
     assert not stale_hits, f"these files still state the old foreground two-call CI wait: {stale_hits}"

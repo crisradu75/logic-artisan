@@ -7,6 +7,10 @@ the seed script's report on an existing config, including which lines it would
 remove; or puts a third copy of the spec rules in a skill.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_cla_setup_rules_match_config.py
+
+Not planted: removing `tr -d '\r'` from the HAVE line. Since f7f5ee9 the same line's
+`s/[[:space:]]*$//` also strips a trailing CR, so no config, CRLF or not, can tell the two
+apart; the mutant could never fail a test.
 """
 
 from pathlib import Path
@@ -27,6 +31,20 @@ _TASKS_RULE = (
 )
 
 MUTANTS = [
+    (
+        "the misread check stops seeing a YAML comment marker",
+        GUARD,
+        'return ": " in item or item.endswith(":") or " #" in item',
+        'return ": " in item or item.endswith(":")',
+        TARGETS,
+    ),
+    (
+        "the misread check stops seeing a trailing colon",
+        GUARD,
+        'return ": " in item or item.endswith(":") or " #" in item',
+        'return ": " in item or " #" in item',
+        TARGETS,
+    ),
     (
         "cla-setup stops checking config.yml, so a seeded config.yaml hides the user's file",
         SKILL,
@@ -67,7 +85,7 @@ MUTANTS = [
         f"    - {_TASKS_RULE}",
         # Only the quoting test: the equality test would kill this one too,
         # which would prove nothing about the quoting check.
-        [f"{GUARD}::test_an_item_with_a_colon_is_quoted"],
+        [f"{GUARD}::test_an_item_yaml_would_misread_is_quoted"],
     ),
     (
         "the seed writes no blank line after the schema",
@@ -79,16 +97,9 @@ MUTANTS = [
     (
         "the comparison stops ignoring indentation, so every rule reads as outdated",
         SKILL,
-        "| sed 's/^[[:space:]]*//')\"",
-        "| cat)\"",
+        "| sed 's/^[[:space:]]*//; s/[[:space:]]*$//')\"",
+        "| sed 's/[[:space:]]*$//')\"",
         [f"{GUARD}::test_a_config_with_every_rule_is_reported_current"],
-    ),
-    (
-        "the comparison stops stripping CR, so a CRLF config reads as all outdated",
-        SKILL,
-        "HAVE=\"$(tr -d '\\r' < \"$OLD\"",
-        "HAVE=\"$(cat < \"$OLD\"",
-        [f"{GUARD}::test_an_outdated_rule_is_listed_and_the_file_left_alone"],
     ),
     (
         "the report stops naming the artifact a missing rule belongs under",

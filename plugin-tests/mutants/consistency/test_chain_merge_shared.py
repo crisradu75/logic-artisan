@@ -27,6 +27,20 @@ TARGETS = [GUARD]
 
 MUTANTS = [
     (
+        "a live spec states the old timeout wait",
+        DEV.parent / "openspec" / "specs" / "change-workflow" / "spec.md",
+        "## Purpose",
+        "## Purpose\n\nWait with `timeout` 450000.",
+        TARGETS,
+    ),
+    (
+        "the watchdog arm stops naming a still-pending check",
+        SHARED,
+        "waiting: the reason is `checks still pending`.",
+        "waiting: the reason is `checks not readable`.",
+        TARGETS,
+    ),
+    (
         "multi-pr's merge step stops sending the merge through the shared file",
         PR_LOOP,
         "exactly as `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/chain-merge.md` states,",

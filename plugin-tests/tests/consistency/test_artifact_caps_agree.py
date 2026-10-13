@@ -29,6 +29,13 @@ def _checklist() -> str:
     return _CHECKLIST.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
+def _line(text: str, prefix: str, where: str) -> str:
+    """The one line starting with `prefix`, or a failure that names what is missing."""
+    found = [ln for ln in text.splitlines() if ln.startswith(prefix)]
+    assert found, f"{where}: no line starts with {prefix!r}; was it renamed or removed?"
+    return found[0]
+
+
 def test_the_rules_state_each_cap():
     assert "about 400 words" in _rules("proposal")
     assert "about 800 words" in _rules("design")
@@ -36,13 +43,16 @@ def test_the_rules_state_each_cap():
     assert "about 40 words" in tasks
     assert "one behaviour" in tasks
     assert "no file path with a line number" in tasks
+    assert "one page" not in _CONFIG.read_text(encoding="utf-8").lower(), (
+        "openspec/config.yaml still states the retired 'one page' cap"
+    )
 
 
 def test_the_checklist_flags_a_task_that_names_a_line():
     text = _checklist()
     # `0e` was the line-number drift check, which read the cited line to confirm it.
     assert "Line-number drift" not in text
-    line = next(ln for ln in text.splitlines() if ln.startswith("0e. "))
+    line = _line(text, "0e. ", "review-change checklist")
     assert "names a line" in line
     assert "`file.py:12`" in line
     assert "**Important**" in line
@@ -51,13 +61,13 @@ def test_the_checklist_flags_a_task_that_names_a_line():
 def test_the_offloaded_checks_leave_the_line_citation_finding_to_the_orchestrator():
     # fact-gatherer returns a tick for a cited line that is correct; the 0e finding
     # must not depend on that row failing.
-    offload = next(ln for ln in _checklist().splitlines() if ln.startswith("**Cost offload"))
+    offload = _line(_checklist(), "**Cost offload", "review-change checklist")
     assert "the citation itself is a 0e finding" in offload
     assert "confirm a file/line claim" not in offload
 
 
 def test_the_checklist_flags_each_over_cap_artifact():
-    size = next(ln for ln in _checklist().splitlines() if ln.startswith("- **Size.**"))
+    size = _line(_checklist(), "- **Size.**", "review-change checklist")
     assert "proposal over about 400 words" in size
     assert "design.md over about 800" in size
     assert "task over about 40 words" in size

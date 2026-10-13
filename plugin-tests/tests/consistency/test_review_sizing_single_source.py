@@ -235,3 +235,13 @@ def test_the_orchestration_rules_live_once_and_all_three_chains_cite_them() -> N
         text = _read(path)
         assert _ECONOMY_POINTER in text, f"{name}/SKILL.md does not cite {_ECONOMY_POINTER}"
         assert "full suite once" not in text, f"{name}/SKILL.md copies a rule from {_ECONOMY.name}"
+
+
+def test_the_economy_rules_keep_the_long_chat_handoff() -> None:
+    """Rule 5 is the only place a chain is told to stop carrying a long context. A silent
+    rewrite that drops the handoff file or the fresh session would pass every other test."""
+    rule = " ".join(_read(_ECONOMY).split())
+    assert (
+        "5. **Hand off a long chat.** When the orchestrating chat grows long, write a handoff file and "
+        "continue in a fresh session instead of carrying the old context."
+    ) in rule
