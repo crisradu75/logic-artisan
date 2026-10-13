@@ -80,7 +80,7 @@ def test_a_cite_whose_lines_moved_is_drifted_with_the_new_number(chain):
         "drifted\ttasks.md:1\tsrc/app.py:4\tsrc/app.py:6",
         "drifted\ttasks.md:1\tsrc/app.py:6-7\tsrc/app.py:8-9",
     ]
-    assert "2 cite(s): ok 0, drifted 2, gone 0, ambiguous 0, unchecked 0" in err
+    assert "2 cite(s): ok 0, unchanged 0, drifted 2, gone 0, ambiguous 0, unchecked 0" in err
 
 
 # requirement: change-chains / A later change's code references are rechecked after earlier merges
@@ -192,9 +192,9 @@ def test_a_cite_of_a_file_no_merge_touched_is_not_read(chain, monkeypatch):
     read = []
     real = check_cite_drift._file_at
     monkeypatch.setattr(check_cite_drift, "_file_at", lambda r, ref, p: read.append(p) or real(r, ref, p))
-    report, counts, code = check_cite_drift.check(repo, change, start, "HEAD", fix=False)
-    assert (report, code, read) == ([], check_cite_drift.EXIT_CLEAN, [])
-    assert counts["ok"] == 1
+    report, counts, code, fixed = check_cite_drift.check(repo, change, start, "HEAD", fix=False)
+    assert (report, code, read, fixed) == ([], check_cite_drift.EXIT_CLEAN, [], {})
+    assert counts["unchanged"] == 1 and counts["ok"] == 0
 
 
 @pytest.mark.parametrize(
@@ -223,7 +223,7 @@ def test_a_bare_filename_in_a_subdirectory_is_not_matched_to_it(chain):
     _merge_sibling(repo, ["new a", *SRC])
     code, rows, err = _run(change, "--since", start)
     assert (code, rows) == (check_cite_drift.EXIT_CLEAN, [])
-    assert "1 cite(s): ok 1," in err  # `app.py` is not a path any merge changed
+    assert "1 cite(s): ok 0, unchanged 1," in err  # `app.py` is not a path any merge changed
 
 
 def test_a_cite_of_blank_lines_is_unchecked(chain):
@@ -254,7 +254,8 @@ def test_list_prints_every_cite_exactly(chain):
     _write(change / "tasks.md", ["- [ ] `src/app.py:3` and src/app.py:30", "./setup.py:1"])
     _write(change / "design.md", ["src/app.py:4-6."])
     code, rows, _ = _run(change, "--list")
-    assert (code, rows) == (0, ["src/app.py:3", "src/app.py:30", "./setup.py:1", "src/app.py:4-6"])
+    assert (code, rows) == (0, ["src/app.py:3", "src/app.py:30", "setup.py:1", "src/app.py:4-6"])
+    assert "4 cite(s) in" in _run(change, "--list")[2]
 
 
 @pytest.mark.parametrize("since", ["0" * 40, "no-such-ref"])
@@ -306,3 +307,82 @@ def test_outside_a_git_repo_cannot_run(tmp_path, monkeypatch):
     code, _, err = _run(tmp_path, "--since", "HEAD")
     assert code == check_cite_drift.EXIT_CANNOT_RUN
     assert "not inside a git repository" in err
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ("src/app.py:4,6", []),
+        ("src/app.py:4\u20136", []),
+        ("src\\app.py:4", []),
+        ("src/app.py:4-x", []),
+        ("see src/app.py:4, then", ["src/app.py:4"]),
+        ("src/app.py:4-6.", ["src/app.py:4-6"]),
+    ],
+    ids=["comma-list", "en-dash-range", "backslash-path", "dash-not-range", "comma-then-word", "range"],
+)
+def test_a_cite_that_would_be_half_rewritten_is_not_matched(text, found):
+    """`--fix` on `:4,6` or `:4–6` would move the first number and leave the second stale."""
+    assert [m.group(0) for m in check_cite_drift.CITE.finditer(text)] == found
+
+
+def test_a_failure_while_judging_a_later_artifact_writes_nothing(chain, monkeypatch, capsys):
+    repo, start, change = chain
+    _write(change / "tasks.md", ["- [ ] Edit `src/app.py:4`"])
+    _write(change / "design.md", ["See src/other.py:1"])
+    _write(repo / "src" / "other.py", ["zero", "alpha", "beta"])
+    _merge_sibling(repo, ["new a", *SRC])
+    real = check_cite_drift._git
+
+    def broken_show(r, *args):
+        if args[0] == "show" and args[1].endswith(":src/other.py"):
+            return subprocess.CompletedProcess(args, 128, "", "fatal: bad object")
+        return real(r, *args)
+
+    monkeypatch.setattr(check_cite_drift, "_git", broken_show)
+    assert check_cite_drift.main([str(change), "--since", start, "--fix"]) == check_cite_drift.EXIT_CANNOT_RUN
+    assert (change / "tasks.md").read_text(encoding="utf-8") == "- [ ] Edit `src/app.py:4`\n"
+
+
+def test_a_failed_write_still_prints_the_rows_and_names_what_was_written(chain, monkeypatch, capsys):
+    repo, start, change = chain
+    _write(change / "tasks.md", ["- [ ] Edit `src/app.py:4`"])
+    _write(change / "design.md", ["See src/app.py:5 and src/other.py:1"])
+    _merge_sibling(repo, ["new a", *SRC], other=False)
+    real = check_cite_drift.os.replace
+
+    def fail_on_design(src, dst):
+        if Path(dst).name == "design.md":
+            raise PermissionError("read-only")
+        return real(src, dst)
+
+    monkeypatch.setattr(check_cite_drift.os, "replace", fail_on_design)
+    assert check_cite_drift.main([str(change), "--since", start, "--fix"]) == check_cite_drift.EXIT_CANNOT_RUN
+    out = capsys.readouterr()
+    assert "gone\tdesign.md:1\tsrc/other.py:1" in out.out
+    assert "cannot write" in out.err and "already written: tasks.md" in out.err
+    assert not list(change.glob("*.tmp"))
+
+
+def test_a_crlf_start_and_lf_merge_still_match(chain):
+    repo, start, change = chain
+    (repo / "src" / "app.py").write_bytes(b"x\r\ny\r\nz\r\n")
+    _git(repo, "commit", "-q", "-am", "crlf start")
+    crlf_start = _git(repo, "rev-parse", "HEAD")
+    _write(change / "tasks.md", ["- [ ] Edit `src/app.py:2`"])
+    (repo / "src" / "app.py").write_bytes(b"new\nx\ny\nz\n")
+    _git(repo, "commit", "-q", "-am", "lf insert")
+    assert _run(change, "--since", crlf_start)[1] == ["drifted\ttasks.md:1\tsrc/app.py:2\tsrc/app.py:3"]
+
+
+@pytest.mark.parametrize("flags", [[], ["--list", "--since", "HEAD"]], ids=["neither", "both"])
+def test_exactly_one_of_list_and_since_is_required(chain, flags):
+    _, _, change = chain
+    assert _run(change, *flags)[0] == 2
+
+
+def test_list_on_a_change_with_no_artifacts_cannot_run(chain):
+    _, _, change = chain
+    code, rows, err = _run(change, "--list")
+    assert (code, rows) == (check_cite_drift.EXIT_CANNOT_RUN, [])
+    assert "no tasks.md or design.md" in err

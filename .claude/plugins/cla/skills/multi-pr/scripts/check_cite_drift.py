@@ -18,21 +18,27 @@ Cite numbers are read as start-commit line numbers. After `--fix` they are not,
 so never run `--fix` twice over the same artifacts.
 
 A cite is a repo-relative path with a file extension, optionally led by `./`,
-then `:N` or `:N-M`. Not recognised, so never counted: `#L12`, `:12,14`, an
-en-dash range, a path with no extension, spaces or brackets, a backslash path.
-Matching is by text, so a short generic line (`}`) can still read `ok` when an
-identical line sits at the cited place.
+then `:N` or `:N-M`. Not recognised, so never counted or rewritten: `#L12`,
+`:12,14`, an en-dash range `:12–14`, a backslash path, a path with no
+extension. A path with a space or bracket is read from just after it, so
+`my dir/a.py:4` is counted as `dir/a.py:4`. Matching is by text, so a short
+generic line (`}`) can still read `ok` when an identical line sits at the
+cited place.
 
-`--fix` rewrites each drifted cite in place, after every cite is judged. It
-never touches gone, ambiguous or unchecked cites.
+A cite whose file no merge changed counts as `unchanged`: it was not compared.
 
-`--list` prints every cite the artifacts hold, one per line, and judges nothing.
+`--fix` rewrites each drifted cite in place. Every cite is judged and every
+row printed before any file is written, and each file is replaced whole, so a
+failed write names the files already written.
+
+`--list` prints every cite the artifacts hold, one per line with any leading
+`./` removed, plus a count on stderr. It judges nothing.
 
 Output, one tab-separated row per cite that is not `ok`:
     <status>  <artifact>:<artifact line>  <cite>  [<new cite> | <reason>]
 and a count summary on stderr.
 
-Exit 0: nothing left to judge (every cite ok or unchecked, or drifted and fixed).
+Exit 0: nothing left to judge (every cite ok, unchanged or unchecked, or drifted and fixed).
 Exit 1: a gone or ambiguous cite, or a drifted one without --fix.
 Exit 2: the check could not run (not a git repo, an unknown commit, no
 artifacts, an unreadable artifact or object, a failed write).
@@ -44,6 +50,7 @@ artifacts, an unreadable artifact or object, a failed write).
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -52,11 +59,13 @@ from pathlib import Path
 
 ARTIFACTS = ("tasks.md", "design.md")
 EXIT_CLEAN, EXIT_DRIFT, EXIT_CANNOT_RUN = 0, 1, 2
-STATUSES = ("ok", "drifted", "gone", "ambiguous", "unchecked")
+STATUSES = ("ok", "unchanged", "drifted", "gone", "ambiguous", "unchecked")
 
-# A path with a file extension (a leading `./` matches as a directory), then `:N` or `:N-M`. The lookbehind keeps it from
-# starting inside a longer token; the lookahead keeps `:12` from matching `:123`.
-CITE = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*[\w.-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?(?![\d-])")
+# A path with a file extension (a leading `./` matches as a directory), then `:N` or
+# `:N-M`. The lookbehind keeps it from starting inside a longer token or after a
+# backslash. The lookahead keeps `:12` from matching `:123`, and refuses a cite that
+# goes on as `,14` or `–14`: half of it would be rewritten and the rest left stale.
+CITE = re.compile(r"(?<![\w./\\-])((?:[\w.-]+/)*[\w.-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?(?![\d-]|[,\u2013]\d)")
 
 
 class CannotRun(Exception):
@@ -126,10 +135,12 @@ def _artifacts(change_dir: Path) -> list[Path]:
 
 
 def list_cites(change_dir: Path) -> list[str]:
-    return [m.group(0) for a in _artifacts(change_dir) for m in CITE.finditer(_read(a))]
+    return [m.group(0).removeprefix("./") for a in _artifacts(change_dir) for m in CITE.finditer(_read(a))]
 
 
-def check(repo: Path, change_dir: Path, since: str, ref: str, fix: bool) -> tuple[list[str], Counter, int]:
+def check(repo: Path, change_dir: Path, since: str, ref: str, fix: bool
+          ) -> tuple[list[str], Counter, int, dict[Path, str]]:
+    """(rows, counts, exit code, {artifact: fixed text}). Writes nothing."""
     for commit in (since, ref):
         if _git(repo, "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}").returncode != 0:
             raise CannotRun(f"unknown commit: {commit}")
@@ -154,7 +165,7 @@ def check(repo: Path, change_dir: Path, since: str, ref: str, fix: bool) -> tupl
                 path = match.group(1).removeprefix("./")
                 end = int(match.group(3)) if match.group(3) else start
                 if path not in changed:
-                    counts["ok"] += 1
+                    counts["unchanged"] += 1
                     return cite
                 for key in ((since, path), (ref, path)):
                     if key not in cache:
@@ -177,13 +188,23 @@ def check(repo: Path, change_dir: Path, since: str, ref: str, fix: bool) -> tupl
             out_lines.append(CITE.sub(replace, line))
         if fix and "".join(out_lines) != text:
             fixed[artifact] = "".join(out_lines)
-    # Every cite is judged before any file is written, so a failure leaves no half-fixed change.
+    return report, counts, EXIT_DRIFT if needs_judging else EXIT_CLEAN, fixed
+
+
+def write_fixes(fixed: dict[Path, str]) -> None:
+    """Replace each artifact whole. A failure names the files already written."""
+    written: list[str] = []
     for artifact, content in fixed.items():
+        temp = artifact.with_name(artifact.name + ".cite-drift.tmp")
         try:
-            artifact.write_bytes(content.encode("utf-8"))
+            temp.write_bytes(content.encode("utf-8"))
+            os.replace(temp, artifact)
         except OSError as exc:
-            raise CannotRun(f"cannot write {artifact}: {exc}") from exc
-    return report, counts, EXIT_DRIFT if needs_judging else EXIT_CLEAN
+            temp.unlink(missing_ok=True)
+            raise CannotRun(
+                f"cannot write {artifact}: {exc}; already written: {', '.join(written) or 'none'}"
+            ) from exc
+        written.append(artifact.name)
 
 
 def summary(counts: Counter) -> str:
@@ -204,19 +225,27 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.list:
-            for cite in list_cites(args.change_dir):
+            cites = list_cites(args.change_dir)
+            for cite in cites:
                 print(cite)
+            print(f"check_cite_drift: {len(cites)} cite(s) in {args.change_dir}", file=sys.stderr)
             return EXIT_CLEAN
         top = _git(Path.cwd(), "rev-parse", "--show-toplevel")
         if top.returncode != 0:
             raise CannotRun("not inside a git repository")
-        report, counts, code = check(Path(top.stdout.strip()), args.change_dir, args.since, args.ref, args.fix)
+        report, counts, code, fixed = check(Path(top.stdout.strip()), args.change_dir, args.since, args.ref, args.fix)
     except CannotRun as exc:
         print(f"check_cite_drift: {exc}", file=sys.stderr)
         return EXIT_CANNOT_RUN
+    # Rows go out before any write, so a failed write still leaves the judgement on record.
     for row in report:
-        print(row)
+        print(row, flush=True)
     print(summary(counts), file=sys.stderr)
+    try:
+        write_fixes(fixed)
+    except CannotRun as exc:
+        print(f"check_cite_drift: {exc}", file=sys.stderr)
+        return EXIT_CANNOT_RUN
     return code
 
 

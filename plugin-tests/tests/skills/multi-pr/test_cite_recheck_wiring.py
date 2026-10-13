@@ -24,6 +24,8 @@ def _step(number: int) -> str:
 
 def test_step_2_runs_the_script_against_the_chain_start_commit_after_re_positioning():
     step = _step(2)
+    assert "Skip it only when the chain-start `<sha>` equals `origin/<base-branch>`" in step
+    assert "Do not skip by position" in step
     assert "check_cite_drift.py --since <sha> --ref origin/<base-branch> --fix openspec/changes/<name>" in step
     assert step.index("**Re-position HEAD first.**") < step.index("**Recheck cites, after re-positioning HEAD")
 
@@ -33,6 +35,10 @@ def test_the_recheck_never_runs_twice_on_one_change():
     step = _step(2)
     assert "**Never run it twice on one change.**" in step
     assert "reuse its rows for `--inherits` and do not run the script" in step
+    assert "grep **every** `cla.io/retro/multi-pr-run-notes-*.md` for this change's `cite recheck:` record" in step
+    assert "write `cite recheck: started <sha>` in this change's row, then run" in step
+    assert "`cite recheck: unchecked — interrupted`" in step
+    assert step.index("Replace the `started` record") < step.index("**before** invoking `/cla:spec-to-pr`")
     loop = _read("references/change-loop.md")
     assert "never from a new run of the script" in loop.split("## Resume behavior", 1)[1]
 
@@ -50,7 +56,8 @@ def test_the_inherits_entry_has_no_semicolon_and_keys_on_the_path():
 
 def test_a_check_that_did_not_run_cleanly_is_recorded_and_never_rebased_on_today():
     step = _step(2)
-    assert "**Exit 1 with no `gone` or `ambiguous` row, or exit 2:**" in step
+    assert "**Exit 2:** the check did not run cleanly" in step
+    assert "Rows printed before a failed write are still handed on" in step
     assert "`cite recheck: unchecked — no chain start`" in step
     assert "Never substitute today's `origin/<base-branch>`" in step
 
@@ -58,13 +65,18 @@ def test_a_check_that_did_not_run_cleanly_is_recorded_and_never_rebased_on_today
 def test_step_3_confirms_each_handed_on_cite_is_gone():
     step = _step(3)
     assert "check_cite_drift.py --list <change-dir>" in step
-    assert "still listed is a Tier B finding" in step
+    assert "`openspec/changes/archive/<date>-<name>/`" in step
+    assert "**A non-zero exit** means the confirmation did not run" in step
+    assert "never read its empty output as \"all gone\"" in step
+    assert "still listed** is a Tier B finding" in step
+    assert "edited in place" in step
 
 
 def test_the_chain_start_commit_is_keyed_by_change_and_kept_on_resume():
     gate = _read("references/discover-and-gate.md")
     assert "`<sha> — <change>, <change>, …`" in gate
-    assert "a `## Chain start` line naming any change in this run" in gate
+    assert "a `## Chain start` line naming every change in this run" in gate
+    assert "use the one in the most recent notes file" in gate
     assert "reuse that `<sha>` and write no new line" in gate
 
 
