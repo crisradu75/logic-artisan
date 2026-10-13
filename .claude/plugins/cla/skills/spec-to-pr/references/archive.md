@@ -18,7 +18,7 @@ Directly, not through `Skill(openspec-archive-change)`:
 ```
 openspec archive <change-name> --yes
 ```
-Post-check: `ls -d openspec/changes/archive/*-<change-name>/proposal.md` succeeds, `ls openspec/changes/<change-name>/proposal.md` fails. ✓ on both; ⚠ on either false, `openspec archive`'s stderr to the Handoff Issues section. Its unticked-task warning under `--yes` is expected, not blocking.
+Post-check: `ls -d openspec/changes/archive/????-??-??-<change-name>/proposal.md` succeeds, `ls openspec/changes/<change-name>/proposal.md` fails. ✓ on both; ⚠ on either false, `openspec archive`'s stderr to the Handoff Issues section. Its unticked-task warning under `--yes` is expected, not blocking.
 
 ## 3. Commit the file moves and the spec sync
 
