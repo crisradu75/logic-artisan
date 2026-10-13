@@ -11,6 +11,14 @@ These shapes defeat the project's Bash permission allowlist matching, or write w
 - ❌ **Writing outside the checkout:** `> ../run.log`, `cp <file> ../<file>.bak`. Write captured command output, logs and scratch copies to the session scratchpad. With no scratchpad, use an in-repo directory the repo gitignores, such as `temp/`. Nothing here makes `temp/` ignored, so run `git check-ignore -q temp/` first. If it is not ignored, write nothing there and report it. Never write them anywhere else outside the checkout. Never write to `..`, which in a consuming repo holds the user's other projects.
 - ❌ **`git add -A` (or `git add .`).** Always path-scope every staging call. Failure mode: an Archive-phase `git add -A` can sweep untracked files left by a parallel Claude session's in-progress cherry-pick into the archive commit, shipping unrelated content. Even when `git status --porcelain` shows nothing unrelated at the START of the run, an external session can mutate the working tree mid-flow; path-scoped staging makes this impossible.
 
+## Working on a worktree you are not in
+
+`cd` is blocked, so `git_state.py`, `git`, `openspec`, test runners and anything reading `process.cwd()` run against the session's checkout, not the worktree the change lives in.
+
+- **Move the session into the worktree.** Call `EnterWorktree` with `path: <abs-worktree-path>`, or launch Claude in the worktree. Every command then runs there, and `git_state.py` needs no extra flag. From a session already in another worktree, `path` must be under `.claude/worktrees/` of the same repo; otherwise launch Claude in the target worktree. Do not use `/cla:new-worktree` or `EnterWorktree` with `name` for this: both create a new worktree, by default from the remote's default branch, which does not hold the change.
+- **`--repo-root` is only for a commit-only step that stays outside.** Pass `--repo-root <abs-worktree-path>` only together with `--expect-branch <branch>`. Without `--expect-branch`, the script skips the branch check and exits 0 on any branch. Every staging and commit call it guards must then use `git -C` with the same absolute path. Such a step runs no gate and edits no file: `openspec`, tests and `Edit`/`Write` without an absolute worktree path all act on the session's checkout, which does not hold the change (`${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/concurrent-runs.md`). Enter the worktree for those.
+- **Never add `--repo-root` to silence an exit 3** when the commit itself runs in the session's checkout. That exit is right: the commit would land on the wrong branch.
+
 ## Mandated alternatives
 
 - ✅ Single-line `git commit -m "<message>"` for trivial commits, or `git commit -F <message-file>` for a multi-paragraph one.
