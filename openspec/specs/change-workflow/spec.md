@@ -45,7 +45,7 @@ A `/cla:spec-to-pr` run SHALL end with a report of each phase's outcome and ever
 
 ### Requirement: A small change without OpenSpec
 
-`/cla:lite-pr` SHALL take a small change from a description to an opened pull request with its docs and tests, one test pass and one review round with a single fix round, writing no OpenSpec change and editing a live spec only when an outcome or interface changes.
+`/cla:lite-pr` SHALL take a small change from a description to an opened pull request with its docs and tests, one test pass and one review round with a single fix round (two at high risk), writing no OpenSpec change and editing a live spec only when an outcome or interface changes.
 
 #### Scenario: A small fix
 

@@ -77,7 +77,8 @@ Check it worked: type `/cla:` and the skill list should autocomplete.
 
 `lite-pr` is the lightweight end-to-end path for a small, well-understood change — the one to
 reach for first. It implements, keeps docs and tests in sync, opens a PR, then runs one automated
-PR-review pass with a single fix round. It never merges.
+PR-review pass with a single fix round, plus a second pass on the fix diff of a high-risk fix. It never
+merges.
 
 ```
 /cla:lite-pr Rename the `retry_count` config key to `max_retries`, keeping a
@@ -92,7 +93,8 @@ The phases, in order — Explore → Plan → Implement → Test → Ship → Re
 3. **Implement** on a branch: code + `spec.md`/`CLAUDE.md`/tests kept in sync.
 4. **Test** — the flow's only stop point: an unresolved failure halts the run.
 5. **Ship** — commit, push, PR opened.
-6. **Review** — one automated PR-review pass on the opened PR, with a single fix round. Ship puts a
+6. **Review** — one automated PR-review pass on the opened PR, with a single fix round; a high-risk
+   fix gets one more pass on its diff. Ship puts a
    `Risk:` line in the PR body, and that line picks the reviewers and their models ("Review sizing
    by risk" in `_shared/references/model-routing.md`).
 

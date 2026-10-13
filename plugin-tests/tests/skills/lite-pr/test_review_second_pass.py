@@ -26,7 +26,7 @@ def _review_step(prefix: str) -> str:
 def test_a_high_risk_fix_gets_one_more_pass_over_its_diff():
     step = _review_step("4. **A second pass only for a high-risk fix.**")
     assert "When this Review ran at high risk and step 1 fixed a Critical or Important finding" in step
-    assert "the same reviewers once more, at the same models" in step
+    assert "the same sizing-table reviewers once more, at the same models" in step
     assert "over the fix commit's diff only" in step
 
 
@@ -34,7 +34,7 @@ def test_high_risk_is_the_level_the_review_used_not_the_literal_line():
     """lite-pr raises a missed level and treats a missing line as high without rewriting the
     PR body, so a trigger on the literal line would skip the second pass on those PRs."""
     step = _review_step("4. **A second pass only for a high-risk fix.**")
-    assert "the `Risk:` line said high, you raised it, or the line was missing" in step
+    assert "the `Risk:` line said high, you raised it, or the line was missing, unreadable or named an unknown level" in step
 
 
 def test_the_second_pass_is_the_last():
@@ -45,6 +45,17 @@ def test_the_second_pass_is_the_last():
     )
     text = _SKILL.read_text(encoding="utf-8")
     assert "one pass, plus one pass over the fix diff of a high-risk change; never a third." in text
+    assert "(a second, on the fix diff, for a high-risk fix)" in text.split("\n---", 1)[0], (
+        "lite-pr's description still promises a single fix round at every risk"
+    )
+
+
+def test_multi_lite_settles_a_finding_on_the_combined_fix_diff():
+    """With two fix commits, a fix in the first can be reworked in the second. Counting a finding
+    settled because one commit touched it would let a backed-out fix pass as done."""
+    loop = (_SKILL.parents[1] / "multi-lite" / "references" / "candidate-loop.md").read_text(encoding="utf-8")
+    assert "the combined fix diff (the first fix commit's parent to the PR head) contains a change that addresses it" in loop
+    assert "already-spent one —" not in loop, "multi-lite still says lite-pr spends a single fix round"
 
 
 def test_the_report_names_the_last_unreviewed_fix_commit():

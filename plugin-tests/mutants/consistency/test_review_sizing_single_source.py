@@ -53,7 +53,7 @@ MUTANTS = [
     (
         "revise.md brings back round 2 after any fix commit",
         REVISE,
-        "Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it,",
+        "Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it.",
         "Round 2 runs whenever round 1 committed fixes,",
         TARGETS,
     ),
@@ -81,8 +81,8 @@ MUTANTS = [
     (
         "revise.md drops round 2 after a high-risk Important fix",
         REVISE,
-        "Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it,",
-        "Round 2 runs only after round 1 fixed a Critical finding and the cap allows it,",
+        "Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it.",
+        "Round 2 runs only after round 1 fixed a Critical finding and the cap allows it.",
         TARGETS,
     ),
     (
@@ -102,8 +102,15 @@ MUTANTS = [
     (
         "the sizing section drops round 2 after a high-risk Important fix",
         ROUTING,
-        "fixed a Critical finding, or an Important\none on a high-risk pull request, judged at round 1's final level (or a re-entry for still-open\nfindings),",
+        "fixed a Critical finding, or an Important\none on a high-risk pull request, judged at round 1's final level, after any raise or missing-line default (or a re-entry for still-open\nfindings),",
         "fixed a Critical finding (or a re-entry for still-open\nfindings),",
+        TARGETS,
+    ),
+    (
+        "revise.md's cap sentence judges risk by the literal Risk line again",
+        REVISE,
+        "(high at round 1's final level), and the cap allows it.",
+        "(its `Risk:` line), and the cap allows it.",
         TARGETS,
     ),
     (

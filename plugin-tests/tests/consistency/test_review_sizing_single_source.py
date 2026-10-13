@@ -127,6 +127,9 @@ def test_high_risk_means_round_1s_final_level_not_the_literal_line() -> None:
 def test_the_spec_states_both_round_2_triggers() -> None:
     spec = _read(_ROOT / "openspec" / "specs" / "change-workflow" / "spec.md")
     assert "a second review only after a fixed Critical or high-risk Important" in spec
+    assert "one review round with a single fix round (two at high risk)" in spec, (
+        "the lite-pr requirement still promises a single fix round at every risk"
+    )
     assert "- **WHEN** the first review round on a low-risk pull request fixes Important or lesser findings and no Critical one" in spec
     assert "- **WHEN** the first review round fixes a Critical finding, or an Important one on a high-risk pull request," in spec
 
@@ -177,7 +180,7 @@ def test_model_routing_holds_the_one_sizing_table() -> None:
     assert "Unsure means high" in section
     assert (
         "only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request, "
-        "judged at round 1's final level"
+        "judged at round 1's final level, after any raise or missing-line default"
     ) in " ".join(section.split())
     assert "Prose-dominant" in section and "outside `skills/` is not prose-dominant" in " ".join(section.split())
 

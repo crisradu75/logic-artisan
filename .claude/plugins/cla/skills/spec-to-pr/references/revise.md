@@ -2,7 +2,7 @@
 
 The Revise phase's procedure. Why its rules are shaped as they are: `design-tradeoffs.md` "Revise".
 
-Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it, scoped to that fix diff (or a re-entry for still-open findings); `--pr-rounds 1` opts out, `0` skips Revise.
+Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it. It is scoped to that fix diff (or a re-entry for still-open findings). `--pr-rounds 1` opts out, `0` skips Revise.
 
 ## Dispatch mechanism by round (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`)
 
