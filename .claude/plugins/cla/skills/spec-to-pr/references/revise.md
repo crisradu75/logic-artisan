@@ -66,7 +66,7 @@ Dispatch via `Agent`, with the same reviewers and models as round 1, at round 1'
 
 ```
 DIFF_FILE=<scratchpad>/review-round-N.diff   # the session scratchpad, as in round 1
-PREV_FIX_SHA=$(git rev-parse HEAD)   # captured immediately BEFORE the round-(N-1) fix commit (step 3)
+# PREV_FIX_SHA: the value held in step 3 immediately BEFORE the round-(N-1) fix commit; do not re-run `git rev-parse HEAD` here, HEAD is now that fix commit
 git diff $PREV_FIX_SHA..HEAD > "$DIFF_FILE"   # NB: `git diff`, NOT `gh pr diff` — gh pr diff does not accept commit ranges
 ```
 

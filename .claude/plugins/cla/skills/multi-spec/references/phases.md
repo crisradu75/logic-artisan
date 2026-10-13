@@ -30,7 +30,7 @@ git push -u origin docs/propose-<batch-slug>
 ```
 **This is the first push to the new branch, so it MUST set the upstream (`-u`)** — `push.autoSetupRemote` is not assumed set, so a bare `git push` here would fail with "no upstream branch." Every push after this one is bare. On a resume where the branch already existed (steps 1–2 took the checkout path), only write+commit+push the plan here if it's missing — it's normally already committed from the original run.
 
-## Push post-check (shared procedure — Phase 2, every Phase 3 change, Phase 4, the run-log commit)
+## Push post-check (shared procedure — Phase 2, every Phase 3 change, Phase 4)
 
 A push's own 0 exit code is not sufficient evidence a commit reached the remote — a pre-push hook can rewrite/skip the commit and still exit 0; the session can drift onto the wrong branch and push that instead; a detached HEAD can push to a non-PR ref. This skill's entire value proposition is "a pushed commit survives a dead local disk" — an unverified push failure would silently reproduce the exact loss scenario the skill exists to prevent, which is worse than the loss itself because the orchestrator would report success.
 

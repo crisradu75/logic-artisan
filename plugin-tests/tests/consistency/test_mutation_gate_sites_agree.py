@@ -7,7 +7,7 @@ skill files are worded, so no live spec states it; without a guard it is enforce
 by nobody.
 
 **This is not a hypothetical drift.** The gate text lived in two shipped skills,
-`lite-pr/SKILL.md` and `spec-to-pr/references/revise.md`, and before the commit
+`lite-pr/references/mutation-gate.md` (moved out of `lite-pr/SKILL.md`) and `spec-to-pr/references/revise.md`, and before the commit
 that added the clause those two blocks were byte-identical except for one word
 (`final report` vs `Handoff report`). Issue #193 named only one of them. A rule
 added to the named site alone would have left the other briefing its reader

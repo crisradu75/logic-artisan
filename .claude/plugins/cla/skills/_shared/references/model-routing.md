@@ -189,7 +189,7 @@ a misleading "fix" commit and a follow-up revert. On a high-risk diff the saving
 bug-hunter get eaten by that triage overhead, and a missed bug there is costly.
 
 A low-risk diff accepts a Sonnet reviewer. A miss there is cheap, so the weaker reviewer is the
-right trade. Rubric checks (`pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer`) and comment nits (`comment-analyzer`) run on sonnet. The skill reviewer's model
+right trade. Rubric checks (`pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer`) and comment nits (`comment-analyzer`) run on sonnet, except as noted next. The skill reviewer's model
 on a prose-dominant diff comes from "Review sizing by risk" above. The
 `routing.revise_findings_by_tier` telemetry (found vs phantom **per agent**, see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`)
 is the standing check on this bet; `/cla:spec-to-pr-retro` flags a phantom rate concentrated on any one
