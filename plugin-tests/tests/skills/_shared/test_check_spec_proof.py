@@ -51,7 +51,7 @@ def _scn(name: str, then: str = "it works") -> str:
 
 
 def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True)
+    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def _write(root: Path, rel: str, text: str) -> None:
@@ -222,6 +222,7 @@ def test_archiving_a_delta_unchanged_asks_for_no_new_proof(repo, capsys):
 def test_without_a_default_branch_the_changed_rule_is_off_and_said(tmp_path, capsys):
     root = tmp_path / "plain"
     _write(root, SPEC, _spec_text(NEW_REQ))
+    _write(root, "tests/t.py", "x = 1")
     code = csp.main(["--root", str(root)])
     out = capsys.readouterr().out
     assert code == 0, out
@@ -234,6 +235,7 @@ def test_a_repo_with_no_commits_turns_the_rule_off_too(tmp_path, capsys):
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
     _write(root, SPEC, _spec_text(NEW_REQ))
+    _write(root, "tests/t.py", "x = 1")
     code = csp.main(["--root", str(root)])
     assert code == 0 and "rule is off" in capsys.readouterr().out
 
@@ -241,16 +243,16 @@ def test_a_repo_with_no_commits_turns_the_rule_off_too(tmp_path, capsys):
 # requirement: spec-proof / A checker reports requirements with no proof
 def test_the_script_runs_as_a_program_and_exits_nonzero(repo):
     _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), NEW_REQ))
-    r = subprocess.run([sys.executable, str(_SCRIPT), "--root", str(repo), "--base", "main"], capture_output=True, text=True, encoding="utf-8")
+    r = subprocess.run([sys.executable, str(_SCRIPT), "--root", str(repo), "--base", "main"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert r.returncode == 1 and "PROBLEM uncovered" in r.stdout
 
 
 # requirement: spec-proof / A checker reports requirements with no proof
 def test_the_checker_edits_nothing(repo, capsys):
     _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), NEW_REQ))
-    before = subprocess.run(["git", "status", "--porcelain", "--ignored", "-uall"], cwd=repo, capture_output=True, text=True).stdout
+    before = subprocess.run(["git", "status", "--porcelain", "--ignored", "-uall"], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     run(repo, capsys)
-    after = subprocess.run(["git", "status", "--porcelain", "--ignored", "-uall"], cwd=repo, capture_output=True, text=True).stdout
+    after = subprocess.run(["git", "status", "--porcelain", "--ignored", "-uall"], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
     assert before == after
 
 
@@ -539,3 +541,123 @@ def test_validate_failure_is_a_problem(repo, capsys, monkeypatch):
     )
     code, out, _ = run(repo, capsys, "--validate")
     assert code == 1 and "PROBLEM validate" in out and "bad spec" in out
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_an_unresolvable_explicit_base_exits_two_not_zero(repo, capsys):
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), NEW_REQ))
+    code = csp.main(["--root", str(repo), "--base", "mian"])
+    cap = capsys.readouterr()
+    assert code == 2 and "mian" in cap.err and not cap.out
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_base_with_no_common_history_exits_two(repo, capsys):
+    _git(repo, "checkout", "-q", "--orphan", "other")
+    _write(repo, "z.txt", "z")
+    _git(repo, "add", "z.txt")
+    _git(repo, "commit", "-q", "-m", "unrelated")
+    _git(repo, "checkout", "-q", "feat")
+    code = csp.main(["--root", str(repo), "--base", "other"])
+    assert code == 2 and "merge-base" in capsys.readouterr().err
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_root_below_the_repo_top_still_compares_with_the_base(repo, capsys):
+    sub = repo / "pkg"
+    _write(repo, "pkg/" + SPEC, _spec_text(("Old rule", "Old SHALL.")))
+    _write(repo, "pkg/tests/t.py", "x = 1")  # Old rule carries no marker: only an unchanged verdict spares it
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "pkg")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "feat")
+    _git(repo, "checkout", "-q", "-b", "feat3")
+    _write(repo, "pkg/" + SPEC, _spec_text(("Old rule", "Old SHALL."), NEW_REQ))
+    code = csp.main(["--root", str(sub), "--base", "main"])
+    out = capsys.readouterr().out
+    assert code == 1 and "alpha / New rule" in out and "alpha / Old rule" not in out
+    # A COMMITTED tasks.md is only seen through `git diff`, whose paths must be relative to the root.
+    _write(repo, "pkg/openspec/changes/c1/tasks.md", "manual: New rule: ok\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "tasks")
+    assert csp.main(["--root", str(sub), "--base", "main"]) == 0, capsys.readouterr().out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_specs_that_parse_to_nothing_exit_two(repo, capsys):
+    _write(repo, SPEC, "# alpha\n\n## Purpose\n\nx\n\n## Notes\n\n### Requirement: Hidden\n\nSHALL.\n")
+    code = csp.main(["--root", str(repo), "--base", "main"])
+    assert code == 2 and "no requirement parsed" in capsys.readouterr().err
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_requirements_heading_with_a_suffix_is_still_read(repo, capsys):
+    text = _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), NEW_REQ).replace("## Requirements", "## Requirements (v2)")
+    _write(repo, SPEC, text)
+    assert "alpha / New rule" in run(repo, capsys)[1]
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_test_file_in_another_encoding_is_still_scanned(repo, capsys):
+    (repo / "tests").mkdir(exist_ok=True)
+    (repo / "tests" / "test_latin.py").write_bytes("# caf\xe9\n# requirement: alpha / No such rule\n".encode("latin-1"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "PROBLEM dangling: tests/test_latin.py" in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_binary_file_is_skipped_and_named(repo, capsys):
+    (repo / "tests" / "blob.dat").write_bytes(b"\0\1\2# requirement: alpha / X\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0 and "skipped 1 binary, unreadable or oversize: tests/blob.dat" in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_tests_glob_that_matches_nothing_exits_two(repo, capsys):
+    code, _, err = run(repo, capsys, "--tests", "nope/*")
+    assert code == 2 and "matched nothing" in err
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+@pytest.mark.parametrize("line", ["# requirement: Alpha / Old rule", "# requirement: alpha/Old rule", "# requirement: my_spec / Old rule"])
+def test_a_marker_that_misses_the_format_is_reported_not_dropped(repo, capsys, line):
+    _write(repo, "tests/test_bad.py", line + "\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "looks like a marker" in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_repeat_inside_an_archived_delta_is_not_reported(repo, capsys):
+    _write(repo, FACTS, "- Test proof granularity: scenario\n")
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old case"))
+    _write(repo, "openspec/changes/archive/2026-01-01-c0/specs/beta/spec.md", _delta_text(added=[("A", _scn("Same")), ("B", _scn("Same"))]))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "archived with a repeat")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "feat")
+    _git(repo, "checkout", "-q", "-b", "next")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_byte_order_mark_does_not_hide_the_facts_line(repo, capsys):
+    (repo / "cla.io").mkdir()
+    (repo / FACTS).write_bytes(b"\xef\xbb\xbf- Test proof granularity: scenario\n")
+    assert "granularity: scenario" in run(repo, capsys)[1]
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+@pytest.mark.parametrize("line", ["1. Test proof granularity: scenario", "> - Test proof granularity: scenario"])
+def test_a_numbered_or_quoted_facts_line_is_malformed(repo, capsys, line):
+    _write(repo, FACTS, line + "\n")
+    assert run(repo, capsys)[0] == 2
+
+
+def test_an_unexpected_crash_exits_two_not_one(repo, capsys, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(csp, "check", boom)
+    code, _, err = run(repo, capsys)
+    assert code == 2 and "RuntimeError" in err

@@ -46,7 +46,15 @@ text file, skipping Markdown and other prose suffixes.
 ``--tests GLOB`` (repeatable) limits the scan to matching repo-relative paths.
 
 EXIT CODES: 0 clean; 1 problems found; 2 the checker could not do its job
-(bad arguments, no repo, malformed facts line, no specs).
+(bad arguments, no repo, malformed facts line, no specs or no unit parsed from
+them, an explicit ``--base`` that does not resolve, a base with no merge-base
+such as a shallow clone, no file scanned for markers, an unexpected crash).
+Only "no default branch exists at all" turns the changed-unit rule off with
+exit 0, and the output says so.
+
+KNOWN LIMIT. A ``manual:`` line names a heading, not a spec, so one line covers a
+changed unit of that heading in every spec of a touched change. That is the
+format the repo's tasks rule fixes; two specs sharing a heading need a rename.
 
 The unit tests live in the canonical source repo's development tree, at
 ``plugin-tests/tests/skills/_shared/test_check_spec_proof.py``; they are not
@@ -68,7 +76,7 @@ from pathlib import Path
 FACTS_RELPATH = "cla.io/project-facts.md"
 GRANULARITIES = ("requirement", "scenario")
 _FACT_STRICT = re.compile(r"^- Test proof granularity: (requirement|scenario)$")
-_FACT_LOOSE = re.compile(r"^\s*(?:[-*+]\s*)?[*_`]*test proof granularity", re.I)
+_FACT_LOOSE = re.compile(r"^[\s>]*(?:(?:[-*+]|\d+[.)])\s*)?[*_`]*test proof granularity", re.I)
 
 _H2 = re.compile(r"^##\s+(?!#)(.+?)\s*$")
 _H3 = re.compile(r"^###\s+(?!#)")
@@ -80,6 +88,9 @@ _FENCE = re.compile(r"^\s*(```|~~~)")
 _MARKER = re.compile(
     r"^\s*(?:#|//|--|;|%|/\*+|\*|<!--)\s*(requirement|scenario):\s+([a-z0-9][a-z0-9-]*) / (.+?)\s*(?:\*/|-->)?\s*$"
 )
+# A comment line that starts like a marker but misses the format (an upper-case or
+# underscored spec name, no spaces around the slash). Reported, never silently dropped.
+_MARKER_LOOSE = re.compile(r"^\s*(?:#|//|--|;|%|/\*+|\*|<!--)\s*(?:requirement|scenario):\s+\S+")
 _NOTE = re.compile(
     r"^\s*(?:[-*+]\s+)?(?:\[[ xX]\]\s+)?(?:\d+(?:\.\d+)*\.?\s+)?(manual|waiting):\s+(.+?)\s*$"
 )
@@ -155,7 +166,7 @@ def read_granularity(root: Path) -> tuple[str, str]:
     if not facts.is_file():
         return "requirement", "default (no facts file)"
     try:
-        lines = facts.read_text(encoding="utf-8").splitlines()
+        lines = facts.read_text(encoding="utf-8-sig").splitlines()  # -sig: a byte-order mark must not hide line 1
     except (OSError, UnicodeDecodeError) as exc:
         raise CheckerError(f"cannot read {FACTS_RELPATH}: {exc}") from exc
     found: list[tuple[int, str]] = []
@@ -198,7 +209,7 @@ def parse_units(text: str, mode: str, delta: bool) -> list[Unit]:
             m = _H2.match(line)
             if m:
                 title = m.group(1).strip().upper()
-                in_scope = title.startswith(("ADDED", "MODIFIED")) if delta else title == "REQUIREMENTS"
+                in_scope = title.startswith(("ADDED", "MODIFIED")) if delta else title.startswith("REQUIREMENTS")
                 cur_req = cur_scn = None
                 continue
             if in_scope:
@@ -245,7 +256,7 @@ def _spec_files(root: Path, mode: str) -> list[SpecFile]:
             )
     for f in files:
         try:
-            f.text = (root / f.rel).read_text(encoding="utf-8")
+            f.text = (root / f.rel).read_text(encoding="utf-8-sig")
         except (OSError, UnicodeDecodeError) as exc:
             raise CheckerError(f"cannot read {f.rel}: {exc}") from exc
         f.units = parse_units(f.text, mode, f.kind != "live")
@@ -267,12 +278,18 @@ def resolve_base(root: Path, explicit: str | None) -> tuple[str | None, str]:
         rc, out = _git(root, "merge-base", "HEAD", ref)
         if rc == 0 and out.strip():
             return out.strip(), f"merge-base with {ref}"
-    return None, "no default branch found" if not explicit else f"--base {explicit} not found"
+        # The branch exists but shares no history we can see (a shallow clone, an unborn HEAD):
+        # turning the rule off here would pass a branch nobody compared.
+        raise CheckerError(f"{ref} exists but git merge-base HEAD {ref} failed (a shallow clone?); fetch more history or pass --base")
+    if explicit:
+        raise CheckerError(f"--base {explicit} does not resolve to a commit")
+    return None, "no default branch found"
 
 
 def changed_paths(root: Path, base: str) -> set[str]:
     out = set()
-    for args in (("diff", "--name-only", "-z", base), ("ls-files", "-o", "--exclude-standard", "-z")):
+    # --relative keeps both lists relative to `root`, which may be a subfolder of the repo.
+    for args in (("diff", "--name-only", "--relative", "-z", base), ("ls-files", "-o", "--exclude-standard", "-z")):
         rc, text = _git(root, *args)
         if rc == 0:
             out |= {p for p in text.split("\0") if p}
@@ -280,7 +297,7 @@ def changed_paths(root: Path, base: str) -> set[str]:
 
 
 def _base_text(root: Path, base: str, rel: str) -> str | None:
-    rc, out = _git(root, "show", f"{base}:{rel}")
+    rc, out = _git(root, "show", f"{base}:./{rel}")
     return out if rc == 0 else None
 
 
@@ -311,8 +328,12 @@ def changed_units(root: Path, base: str, f: SpecFile, mode: str) -> list[Unit]:
     ]
 
 
-def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str, str]], int]:
-    """Return ([(kind, spec, heading, relpath)], files scanned)."""
+def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str, str]], int, list[str]]:
+    """Return ([(kind, spec, heading, relpath)], files scanned, files skipped).
+
+    A file is skipped only when it is binary (a NUL byte), unreadable or over the size
+    cap, and each is returned by name so the run can say so. Text in another encoding
+    is still scanned, with undecodable bytes replaced."""
     rc, out = _git(root, "ls-files", "-co", "--exclude-standard", "-z")
     if rc == 0:
         rels = [p for p in out.split("\0") if p]
@@ -322,6 +343,7 @@ def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str
             dns[:] = [d for d in dns if d not in {".git", "node_modules", "__pycache__", ".venv"}]
             rels += [(Path(dp) / fn).relative_to(root).as_posix() for fn in fns]
     found = []
+    skipped = []
     scanned = 0
     for rel in sorted(set(rels)):
         if Path(rel).suffix.lower() in _SKIP_SUFFIXES:
@@ -329,18 +351,23 @@ def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str
         if globs and not any(fnmatch.fnmatch(rel, g) for g in globs):
             continue
         p = root / rel
+        if not p.is_file():
+            continue
         try:
-            if not p.is_file() or p.stat().st_size > _MAX_BYTES:
-                continue
-            text = p.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+            raw = p.read_bytes() if p.stat().st_size <= _MAX_BYTES else None
+        except OSError:
+            raw = None
+        if raw is None or b"\0" in raw:
+            skipped.append(rel)
             continue
         scanned += 1
-        for line in text.splitlines():
+        for line in raw.decode("utf-8", errors="replace").splitlines():
             m = _MARKER.match(line)
             if m:
                 found.append((m.group(1), m.group(2), m.group(3), rel))
-    return found, scanned
+            elif _MARKER_LOOSE.match(line) and "<" not in line:
+                found.append(("malformed", "", line.strip(), rel))
+    return found, scanned, skipped
 
 
 def scan_notes(root: Path, known: set[str]) -> list[Note]:
@@ -354,7 +381,7 @@ def scan_notes(root: Path, known: set[str]) -> list[Note]:
         archived = p.parent.parent.name == "archive"
         change = ("archive/" if archived else "") + p.parent.name
         try:
-            lines = p.read_text(encoding="utf-8").splitlines()
+            lines = p.read_text(encoding="utf-8-sig").splitlines()
         except (OSError, UnicodeDecodeError) as exc:
             raise CheckerError(f"cannot read {p.relative_to(root).as_posix()}: {exc}") from exc
         for line in lines:
@@ -392,6 +419,12 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     if not files:
         raise CheckerError("no spec files found under openspec/specs or openspec/changes; a run that checks nothing must not pass")
 
+    if not any(f.units for f in files):
+        raise CheckerError(
+            f"{len(files)} spec file(s) found but no {mode} parsed from any of them; "
+            "check the '## Requirements' section and '### Requirement:' headings (an unclosed code fence hides the rest of a file)"
+        )
+
     # Universe a marker may name: live specs plus active deltas.
     universe: dict[str, set[str]] = {}
     for f in files:
@@ -400,6 +433,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     known = {h for hs in universe.values() for h in hs}
 
     for f in files:
+        if f.kind == "archived":
+            continue  # archives are not edited, so a repeat there could never be fixed
         seen: dict[str, int] = {}
         for u in f.units:
             seen[u.heading] = seen.get(u.heading, 0) + 1
@@ -407,10 +442,14 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
             if n > 1:
                 problems.append(f"PROBLEM repeated: {f.rel}: heading {h!r} appears {n} times")
 
-    markers, scanned = scan_markers(root, globs or [])
+    markers, scanned, skipped = scan_markers(root, globs or [])
+    if scanned == 0:
+        raise CheckerError("no file was scanned for markers" + (f" (--tests {' '.join(globs)} matched nothing)" if globs else ""))
     marked: set[tuple[str, str]] = set()
     for kind, spec, heading, rel in markers:
-        if kind == other:
+        if kind == "malformed":
+            problems.append(f"PROBLEM dangling: {rel}: {heading!r} looks like a marker but is not '{mode}: <spec> / <heading>' (lower-case spec name, spaces around the slash)")
+        elif kind == other:
             problems.append(f"PROBLEM dangling: {rel}: '{kind}: {spec} / {heading}' is a {kind} marker; this repo proves per {mode}")
         elif heading not in universe.get(spec, set()):
             problems.append(f"PROBLEM dangling: {rel}: '{kind}: {spec} / {heading}' names no {mode} in any live spec or active delta")
@@ -427,8 +466,13 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     base, base_note = (None, "")
     changed: dict[str, list[Unit]] | None = None
     touched: set[str] = set()
-    if _git(root, "rev-parse", "--git-dir")[0] == 0:
+    git_rc = _git(root, "rev-parse", "--git-dir")[0]
+    if git_rc == 127:
+        raise CheckerError("git is not installed or not on PATH")
+    if git_rc == 0:
         base, base_note = resolve_base(root, base_arg)
+    elif base_arg:
+        raise CheckerError(f"--base {base_arg} given but {root} is not a git repo")
     if base is not None:
         paths = changed_paths(root, base)
         changed = {f.rel: changed_units(root, base, f, mode) for f in files}
@@ -484,7 +528,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         f"specs: {len(files)} (live {kinds['live']}, active delta {kinds['active']}, archived delta {kinds['archived']})",
         f"{mode}s in live specs and active deltas: {len(all_units)}",
         f"changed {mode}s: " + (f"{n_changed} ({base_note})" if changed is not None else f"unknown, the changed-{mode} rule is off ({base_note or 'not a git repo'})"),
-        f"markers: {len(markers)} in {scanned} files scanned",
+        f"markers: {sum(1 for m in markers if m[0] != 'malformed')} in {scanned} files scanned"
+        + (f"; skipped {len(skipped)} binary, unreadable or oversize: {', '.join(skipped[:5])}" if skipped else ""),
         f"manual lines: {sum(1 for n in notes if n.kind == 'manual')} (prompt half: {sum(1 for n in notes if n.kind == 'manual' and n.prompt_half)})",
         f"waiting lines: {sum(1 for n in notes if n.kind == 'waiting')} (covering a changed {mode}: {covered_waiting})",
         f"repo-wide coverage (information only): {covered}/{len(all_units)}",
@@ -504,6 +549,9 @@ def main(argv: list[str] | None = None) -> int:
         code, lines = check(find_root(args.root), args.base, args.tests, args.validate)
     except CheckerError as exc:
         print(f"check_spec_proof: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001 - a crash must read as "could not run", never as "problems found"
+        print(f"check_spec_proof: unexpected {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     print("\n".join(lines))
     return code

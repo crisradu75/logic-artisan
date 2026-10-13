@@ -15,6 +15,6 @@
 
 ## 3. Gate
 
-- [ ] 3.1 Add a mutation batch under `plugin-tests/mutants/_shared/`; run it once over the changed checker lines and read each killing test. Done when every mutant is killed.
-- [ ] 3.2 Run the checker read-only on this repo's `openspec/` and `plugin-tests/`. Done when its output is recorded in the PR body.
+- [x] 3.1 Add a mutation batch under `plugin-tests/mutants/_shared/`; run it once over the changed checker lines and read each killing test. Done when every mutant is killed. measured: 40 of 40 killed.
+- [x] 3.2 Run the checker read-only on this repo's `openspec/` and `plugin-tests/`. Done when its output is recorded in the PR body.
 - [ ] 3.3 Run `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict` once each.
