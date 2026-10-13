@@ -56,6 +56,7 @@ pythonpath = [
   "../.claude/plugins/cla/skills/_shared/scripts",
   "../.claude/plugins/cla/skills/annotate/scripts",
   "../.claude/plugins/cla/skills/new-worktree/scripts",
+  "../.claude/plugins/cla/skills/multi-pr/scripts",
   "../.claude/plugins/cla/skills/spec-to-pr/scripts",
   "../.claude/plugins/cla/skills/spec-to-pr-retro/scripts",
 ]
