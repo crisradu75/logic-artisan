@@ -23,9 +23,11 @@ def _flat(path: Path) -> str:
 
 def _limit() -> int:
     """The single-change claim threshold, read from review-change's checklist."""
-    match = re.search(r"`e < (\d+)`", _CHECKLIST.read_text(encoding="utf-8"))
-    assert match, "review-change's checklist no longer states its claim threshold as `e < N`"
-    return int(match.group(1))
+    found = re.findall(r"`e < (\d+)`", _CHECKLIST.read_text(encoding="utf-8"))
+    assert len(found) == 1, (
+        f"expected review-change's checklist to state one claim threshold `e < N`, found {found}"
+    )
+    return int(found[0])
 
 
 def _step(text: str, heading: str) -> str:

@@ -78,3 +78,9 @@ def test_a_retry_failing_on_a_new_cause_reaches_diagnose_before_the_halt() -> No
     assert "Hand `diagnose` the retry's failure output, not the original one" in ref, (
         "on a new cause, diagnose may be handed the original failure and stop without a root cause"
     )
+    assert "On a new cause, also name the fix just applied as the first suspect" in ref, (
+        "the fix is named first suspect on every failure, steering a same-cause diagnose wrong"
+    )
+    assert "a red re-run after `diagnose` goes to step 4's HALT" in skill, (
+        "nothing stops a red re-run after diagnose from going back into diagnose"
+    )
