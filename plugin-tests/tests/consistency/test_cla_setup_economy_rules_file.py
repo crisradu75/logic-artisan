@@ -53,6 +53,8 @@ def _find_bash() -> str | None:
 
 
 _BASH = _find_bash()
+# A bash run is slow on Windows and parallel workers multiply it; keep generous headroom.
+_BASH_TIMEOUT = 120
 _GIT = shutil.which("git")
 _RULES = Path(".claude") / "rules" / "cla-economy.md"
 _BEGIN = "<!-- economy-rules-file:review-sizing:begin -->"
@@ -94,7 +96,7 @@ def _bash(script: str, root: Path) -> subprocess.CompletedProcess:
         env={**{k: v for k, v in os.environ.items() if k != "CLAUDE_PLUGIN_ROOT"},
              "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
              "ROOT": str(root).replace("\\", "/")},
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
     )
 
 

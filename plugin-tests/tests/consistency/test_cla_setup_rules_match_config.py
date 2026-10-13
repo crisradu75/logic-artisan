@@ -111,6 +111,8 @@ def test_no_skill_carries_a_third_copy_of_the_spec_rules():
 
 
 _BASH = shutil.which("bash")
+# A bash run is ~13 s alone on Windows; parallel workers multiply it, so 30 s flaked.
+_BASH_TIMEOUT = 120
 
 
 def _seed_script() -> str:
@@ -125,7 +127,7 @@ def _run_seed(root: Path) -> str:
         [_BASH, "-c", _seed_script()],
         # Forward slashes: a POSIX shell reads `C:\...` backslashes as escapes.
         env={**os.environ, "ROOT": str(root).replace("\\", "/")},
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
     )
     assert out.returncode == 0, out.stderr
     return out.stdout
