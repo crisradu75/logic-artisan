@@ -67,7 +67,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
             ┌─────────────────────┐
             │  REVISE             │   cap: --pr-rounds (default 2)
             │  R1 Workflow fan-out│   round 1: sliced per agent, sized by risk
-            │  R2+ Agent direct   │   round 2+: only after a fixed Critical, on its diff
+            │  R2+ Agent direct   │   round 2+: after a fixed Critical (or Important, high risk), on its diff
             │     ↓               │            (reviewers per model-routing.md)
             │  APPLY PR FIXES     │   commit as `fix: review round N`
             │     ↓               │   (via git add + git commit)

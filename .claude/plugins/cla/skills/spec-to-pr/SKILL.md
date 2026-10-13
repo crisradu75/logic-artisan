@@ -49,7 +49,7 @@ These rules apply across every phase.
 |---|---|
 | `--review-rounds N` | Review — the change's **artifacts**, before Implement. Default 1. |
 | `--test-rounds N` | Test fix rounds. Default 3. |
-| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 fixed a Critical; `1` opts out; `0` skips Revise. A re-entry for still-open findings also runs. |
+| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 fixed a Critical, or an Important on a high-risk PR; `1` opts out; `0` skips Revise. A re-entry for still-open findings also runs. |
 | `--skip-review` | Skips Revise, as does the user saying "no review". |
 | `--gate-on-push`, `--interactive` | Pause before push and PR open ("Autonomy gate"). |
 | `--pr-base <branch>`, `--inherits '<entries>'` | See "Placeholders". |
@@ -183,7 +183,7 @@ The exceptions:
 
 ### Revise — PR-review loop
 
-Cap: `--pr-rounds N` (default `2`): round 2 runs only after round 1 fixed a Critical, scoped to that fix diff. **Read `references/revise.md` first** — agent selection, the round-1 `Workflow` fan-out, round 2's sibling-instance question, triage, fix delegation, the mutation gate, the commit and the exit gate. Gate rules: dispatch every row the diff matches, sized by the risk line in the PR body per "Review sizing by risk" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`; every Critical and Important is triaged, and counts as Applied only when the defect is shown gone; **the loop exits clean only when untriaged and open are both zero** — a remedy-rejected finding citing the remedy is triaged and still open; `git_state.py --expect-branch <branch>` before each `fix: review round <N>` commit. A non-zero `git push` exit → Revise `warn`, and Handoff says prominently that round-N fixes are local-only. Round ≥2 asks each agent whether the fix introduces its defect elsewhere: you name the resource, grant repo search, and the return cites the search it ran — an uncited enumeration is missing, not empty.
+Cap: `--pr-rounds N` (default `2`): round 2 runs only after round 1 fixed a Critical, or an Important on a high-risk PR, scoped to that fix diff. **Read `references/revise.md` first** — agent selection, the round-1 `Workflow` fan-out, round 2's sibling-instance question, triage, fix delegation, the mutation gate, the commit and the exit gate. Gate rules: dispatch every row the diff matches, sized by the risk line in the PR body per "Review sizing by risk" in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`; every Critical and Important is triaged, and counts as Applied only when the defect is shown gone; **the loop exits clean only when untriaged and open are both zero** — a remedy-rejected finding citing the remedy is triaged and still open; `git_state.py --expect-branch <branch>` before each `fix: review round <N>` commit. A non-zero `git push` exit → Revise `warn`, and Handoff says prominently that round-N fixes are local-only. Round ≥2 asks each agent whether the fix introduces its defect elsewhere: you name the resource, grant repo search, and the return cites the search it ran — an uncited enumeration is missing, not empty.
 
 ### Archive
 

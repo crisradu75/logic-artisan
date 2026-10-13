@@ -56,7 +56,7 @@ append stays atomic against a concurrent run.
 - `reason` — on every `warn` / `fail` phase: the retro's only signal into *why*, grouped by exact text.
 - `rounds_used` / `rounds_cap` — always as a pair. Required on Test and Revise whenever their status
   is not `skip`; optional on Review. A phase that used its whole cap, with a cap above 1, is a cap
-  exhaustion — on Revise, whose round 2 follows a fixed Critical, only when it also ended `warn` or `fail`.
+  exhaustion — on Revise, whose round 2 follows a fixed Critical (or a fixed Important on a high-risk PR), only when it also ended `warn` or `fail`.
 - Revise: `findings_by_round` — one entry per round, built as each round closes, never
   reconstructed at Handoff. `found` is that round's deduplicated Critical+Important count after
   triage. The retro's round-2 yield reads it.

@@ -75,16 +75,22 @@ def test_a_later_round_never_lowers_the_risk_level() -> None:
 
 
 # requirement: change-workflow / A change becomes a risk-reviewed pull request
-def test_round_2_runs_only_after_a_fixed_critical() -> None:
-    """The cap sentence, the Flags row, the Revise stub and the exit gate all name a
-    fixed Critical as the one round-2 trigger. The old trigger, any round-1 fix commit, is gone."""
+def test_round_2_runs_only_after_a_fixed_critical_or_a_high_risk_important() -> None:
+    """The cap sentence, the Flags row, the Revise stub and the exit gate all name the two
+    round-2 triggers: a fixed Critical, or a fixed Important on a high-risk pull request
+    (decision 5, cla.io/decisions/open-issues-2026-10-13.md). The old trigger, any round-1
+    fix commit, is gone, and a low-risk Important fix still ends the loop."""
     revise = _read(_REVISE)
     cap = next(line for line in revise.splitlines() if line.startswith("Cap: `--pr-rounds N`"))
-    assert "only after round 1 fixed a Critical" in cap
+    assert "only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request" in cap
     gate = next(line for line in revise.splitlines() if "**Both 0**" in line)
-    assert "unless this round fixed a Critical and the cap allows another round" in gate
-    assert "only after round 1 fixed a Critical" in _flags_row()
-    assert "only after round 1 fixed a Critical" in _revise_stub()
+    assert (
+        "unless this round fixed a Critical, or an Important one on a high-risk pull request "
+        "(its `Risk:` line), and the cap allows another round"
+    ) in gate
+    assert "On a low-risk pull request, a round whose fixes were all Important or lower does not trigger another." in gate
+    assert "only after round 1 fixed a Critical, or an Important on a high-risk PR" in _flags_row()
+    assert "only after round 1 fixed a Critical, or an Important on a high-risk PR" in _revise_stub()
     scanned = {
         "revise.md": revise,
         "SKILL.md Flags row": _flags_row(),
@@ -143,7 +149,9 @@ def test_model_routing_holds_the_one_sizing_table() -> None:
     rows = _TABLE_ROW.findall(section)
     assert len(rows) == 3, f"the sizing section holds {len(rows)} reviewer rows, expected 3"
     assert "Unsure means high" in section
-    assert "only after round 1 fixed a Critical" in section
+    assert "only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request" in " ".join(
+        section.split()
+    )
     assert "Prose-dominant" in section and "outside `skills/` is not prose-dominant" in " ".join(section.split())
 
 
