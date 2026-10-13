@@ -27,9 +27,9 @@ Follow this protocol strictly:
 5. **Right-size the question count.** Scope questions to what's actually load-bearing for the decision — typically 3-8. Don't pad with questions that wouldn't change the outcome. For a genuinely high-stakes or multi-axis topic (e.g. spanning multiple apps/packages, hard to reverse once implemented, or with several independently-load-bearing constraints), the 3-8 range is a floor, not a cap — err on the side of asking one more question over silently skipping an axis that matters. Depth where it matters, not exhaustiveness for its own sake.
 6. **Track progress.** Show a compact progress line at the top of each question: `[3/~7]` (update the estimate as questions are added or removed).
 7. **Support revising earlier answers.** At any point the user can revise a prior answer — loosely matched ("actually, for Q2..." or "go back on the one about X" both work; no rigid syntax required). Update that answer, then re-apply the adaptive-flow rule to everything after it (drop questions it now makes redundant, insert new ones it raises). Mention this ability once, right after stating the topic and progress estimate, before question 1 — do not repeat it on every question.
-8. **Summarize at the end.** When all questions are answered, output a **Decision Summary** — a compact table of all decisions made, with the question, the chosen option, and its one-line rationale.
-9. **Look for a severe gap before offering to persist.** Spend one short paragraph trying to break the draft Decision Summary: a load-bearing axis nobody asked about, a decision that contradicts a fact you read, or a choice the code or data cannot hold as decided. Show the paragraph. A real gap becomes one more question; if you find none, say so in one line.
-10. **Offer to persist.** After the summary, ask one closing question — not another round — offering to write the exploration to a decisions file (see "Persisting the decision" below). Phrase it as a plain **y/n** prompt (e.g. "Write this to `cla.io/decisions/<file>`? (y/n)"), not a verbose or hedged offer. Do not write the file without an explicit affirmative.
+8. **Summarize at the end.** When all questions are answered, output a **Decision Summary** — a compact table of all decisions made, with the question, the chosen option, and its one-line rationale. Under the table, list every **Noted, not asked** line from Getting started steps 3 and 4, so a deferred concern stays visible.
+9. **Look for a severe gap before offering to persist.** Try to break the Decision Summary with three probes, and show one line for each, naming what you examined: a load-bearing axis nobody asked about, a decision that contradicts a fact you read, and a choice the code or data cannot hold as decided. A real gap becomes one more question: ask it, redraw the summary, then run this check again. Only after all three lines may you say that no gap was found.
+10. **Offer to persist.** After the gap check, ask one closing question — not another round — offering to write the exploration to a decisions file (see "Persisting the decision" below). Phrase it as a plain **y/n** prompt (e.g. "Write this to `cla.io/decisions/<file>`? (y/n)"), not a verbose or hedged offer. Do not write the file without an explicit affirmative.
 
 ## Getting started
 
@@ -38,7 +38,7 @@ Follow this protocol strictly:
 3. **When the topic adds a call to an outside service** (a vendor, an API, a model provider), check each of these: rate limits, timeout and retry, cost or usage caps, logging and personal data in request and response payloads, abuse and injection, and testing output that is not deterministic. Each one becomes a question, or a one-line note that it is accepted or deferred and why.
 4. **Map what this session already learned.** Every distinct concern that earlier research in this conversation surfaced (a file read, an agent's report) becomes a question, or a one-line "considered, not asked because …" note. A fact already in hand must not silently drop out of the question set.
 5. Formulate the question set per the "Right-size the question count" rule above.
-6. State the topic, the progress estimate, and the one-time revision-support note, then ask the first question.
+6. State the topic, the progress estimate, the Noted, not asked lines from steps 3 and 4, and the one-time revision-support note, then ask the first question. With no earlier research to map, say "Prior research: none."
 
 ## Format for each question
 
@@ -77,5 +77,5 @@ Keep the file lean enough to resume cold in a future session — do NOT include 
 
 - The topic (and what was inferred, if it was inferred rather than given)
 - Each question asked, the chosen option, and its one-line rationale
-- The final Decision Summary table
+- The final Decision Summary table, with its Noted, not asked lines
 - A short closing note on why the decision matters and what the natural next step is (e.g. "feeds into `/cla:spec-to-pr` or `/cla:lite-pr` for change X", or resolves a postponed item in this repo's own deferred-items tracker)
