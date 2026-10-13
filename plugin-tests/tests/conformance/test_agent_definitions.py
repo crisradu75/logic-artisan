@@ -17,7 +17,7 @@ import pytest
 
 _AGENTS = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "agents"
 _MODELS = ("haiku", "sonnet", "opus")
-_FORBIDDEN_TOOLS = ("Edit", "Write", "NotebookEdit", "Bash")
+_FORBIDDEN_TOOLS = ("Edit", "MultiEdit", "Write", "NotebookEdit", "Bash")
 _REVIEWERS = ("code-reviewer", "silent-failure-hunter", "comment-analyzer")
 _ROUTING = _AGENTS.parent / "skills" / "_shared" / "references" / "model-routing.md"
 
@@ -55,7 +55,8 @@ def problems(text: str) -> list[str]:
         found.append("`tools` must be a non-empty list")
     else:
         # Tool names compare case-insensitively, and "*" grants every tool, the forbidden ones included.
-        named = {str(t).strip().lower() for t in tools}
+        # A scoped entry such as "Bash(git:*)" still grants the tool, so compare the name before "(".
+        named = {str(t).split("(", 1)[0].strip().lower() for t in tools}
         found += [f"`tools` includes {t}" for t in _FORBIDDEN_TOOLS if t.lower() in named]
         if "*" in named:
             found.append("`tools` includes *, which grants every tool")
@@ -93,6 +94,8 @@ def test_the_baseline_fixture_is_clean() -> None:
         ("lower-case bash", _GOOD.replace('"Glob"', '"Glob", "bash"'), "`tools` includes Bash"),
         ("upper-case WRITE", _GOOD.replace('"Glob"', '"Glob", "WRITE"'), "`tools` includes Write"),
         ("wildcard tool", _GOOD.replace('"Glob"', '"Glob", "*"'), "`tools` includes *"),
+        ("scoped Bash", _GOOD.replace('"Glob"', '"Glob", "Bash(git:*)"'), "`tools` includes Bash"),
+        ("MultiEdit tool", _GOOD.replace('"Glob"', '"Glob", "MultiEdit"'), "`tools` includes MultiEdit"),
     ],
 )
 def test_a_broken_agent_file_is_reported(label: str, text: str, expect: str) -> None:
@@ -133,7 +136,8 @@ def test_each_reviewers_model_is_its_lowest_sizing_row(name: str) -> None:
     """An agent file's `model:` is its default. It must be the model of the lowest-risk row
     that names it; a higher row raises it per dispatch. Otherwise a reviewer drifting from
     opus to haiku in its own file would pass every other check."""
-    expected = next(model for cell, model in _sizing_rows() if f"`{name}`" in cell)
+    expected = next((model for cell, model in _sizing_rows() if f"`{name}`" in cell), None)
+    assert expected, f"no row of model-routing.md's review-sizing table names {name}"
     fields = _frontmatter((_AGENTS / f"{name}.md").read_text(encoding="utf-8")) or {}
     assert fields.get("model") == expected, (
         f"{name}.md runs on {fields.get('model')!r}, but its lowest sizing row names {expected!r}"

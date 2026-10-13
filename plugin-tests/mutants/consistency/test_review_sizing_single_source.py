@@ -109,8 +109,8 @@ MUTANTS = [
     (
         "the economy rules drop the long-chat handoff",
         ECONOMY,
-        "write a handoff file and\n   continue in a fresh session instead of carrying the old context.",
-        "keep going in the same\n   session.",
+        "write a handoff file and",
+        "keep going in the same session and",
         TARGETS,
     ),
     (

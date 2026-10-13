@@ -124,8 +124,10 @@ def test_json_output_is_the_collected_totals(tmp_path: Path, capsys) -> None:
 
 
 def test_the_same_id_and_model_in_two_files_counts_twice(tmp_path: Path) -> None:
-    """Message ids are keyed per file: a subagent transcript is its own conversation, so an id
-    repeated in another file is another message, never a duplicate to drop."""
+    """Pins current behaviour, not a claim that it is right: ids are keyed per file because
+    meter.py assumes they never repeat across files (a subagent transcript is its own
+    conversation). A resumed or forked session that copies history into a new file breaks
+    that assumption and is double-counted; #349 tracks it. Change this test with that fix."""
     _write(tmp_path / "main.jsonl", [_record("m1", "opus", 1, 2, 3, 4)])
     _write(tmp_path / "main" / "subagents" / "agent-x.jsonl", [_record("m1", "opus", 1, 2, 3, 4)])
     assert meter.collect(meter.transcript_files(tmp_path)) == {

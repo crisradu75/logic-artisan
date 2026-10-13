@@ -205,10 +205,10 @@ def test_the_ci_wait_is_one_background_watch_under_a_watchdog_everywhere() -> No
     assert "Run `gh pr checks <pr> --json name,bucket` and read the result" in flat, (
         "step 4 no longer reads the remote checks before it waits"
     )
-    assert "still `pending` → the reason is `checks still pending`" in flat, (
+    assert "`pending` → the reason is `checks still pending`" in flat, (
         "the watch-finished arm no longer names a still-pending check"
     )
-    assert "When the watchdog's arrives first, stop waiting: the reason is `checks still pending`" in flat, (
+    assert "stop waiting: the reason is `checks still pending`" in flat, (
         "the watchdog arm no longer names a still-pending check"
     )
     # "at most twice" only in the old timeout sentence ("`timeout` set to 450000 ms, at most
