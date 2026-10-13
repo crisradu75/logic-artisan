@@ -11,6 +11,14 @@ These shapes defeat the project's Bash permission allowlist matching, or write w
 - ❌ **Writing outside the checkout:** `> ../run.log`, `cp <file> ../<file>.bak`. Write captured command output, logs and scratch copies to the session scratchpad. With no scratchpad, use an in-repo directory the repo gitignores, such as `temp/`. Nothing here makes `temp/` ignored, so run `git check-ignore -q temp/` first. If it is not ignored, write nothing there and report it. Never write them anywhere else outside the checkout. Never write to `..`, which in a consuming repo holds the user's other projects.
 - ❌ **`git add -A` (or `git add .`).** Always path-scope every staging call. Failure mode: an Archive-phase `git add -A` can sweep untracked files left by a parallel Claude session's in-progress cherry-pick into the archive commit, shipping unrelated content. Even when `git status --porcelain` shows nothing unrelated at the START of the run, an external session can mutate the working tree mid-flow; path-scoped staging makes this impossible.
 
+## Working on a worktree you are not in
+
+`cd` is blocked, so a command that reads the shell's working directory runs against the session's checkout, not the worktree the change lives in.
+
+- **`git_state.py`:** pass `--repo-root <abs-worktree-path>` when the next git command targets that worktree with `git -C <abs-worktree-path>`. Without the flag, the script checks the session's checkout and exits 3 on a correct run.
+- **Never add `--repo-root` to silence an exit 3** when the commit itself runs in the session's checkout. That exit is right: the commit would land on the wrong branch.
+- **Commands with no directory option** (`openspec`, test runners, anything reading `process.cwd()`): move the session into the worktree first. Use `EnterWorktree` or `/cla:new-worktree`, or launch Claude in the worktree. On Windows, the PowerShell tool's `Push-Location <worktree>; <cmd>; Pop-Location` also works.
+
 ## Mandated alternatives
 
 - ✅ Single-line `git commit -m "<message>"` for trivial commits, or `git commit -F <message-file>` for a multi-paragraph one.
