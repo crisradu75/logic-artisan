@@ -25,6 +25,8 @@ import log_run
 _REPO = Path(__file__).resolve().parents[3]
 _SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
 _BASH = shutil.which("bash")
+# A bash run is ~13 s alone on Windows; parallel workers multiply it, so 30 s flaked.
+_BASH_TIMEOUT = 120
 
 RETIRED = ("codify-runs", "commit-provenance", "right-model-runs", "multi-pr-runs", "multi-spec-runs",
            "multi-lite-runs", "project-review-runs", "lite-pr-runs", "shape-decision-runs",
@@ -49,7 +51,7 @@ def _run(root: Path) -> list[str]:
         [_BASH, "-c", _script()],
         # Forward slashes: a POSIX shell reads `C:\...` backslashes as escapes.
         env={**os.environ, "ROOT": str(root).replace("\\", "/")},
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
     )
     assert out.returncode == 0, out.stderr
     return out.stdout.splitlines()

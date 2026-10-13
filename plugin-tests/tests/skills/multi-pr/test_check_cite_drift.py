@@ -9,6 +9,7 @@ sibling merge would, then check a change's cites against the result.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -64,7 +65,7 @@ def _merge_sibling(repo: Path, app: list[str] | None, other: bool = True) -> Non
 
 def _run(change: Path, *flags: str) -> tuple[int, list[str], str]:
     result = subprocess.run(
-        ["python3", str(SCRIPT), str(change), *flags],
+        [sys.executable, str(SCRIPT), str(change), *flags],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     return result.returncode, [r for r in result.stdout.splitlines() if r], result.stderr

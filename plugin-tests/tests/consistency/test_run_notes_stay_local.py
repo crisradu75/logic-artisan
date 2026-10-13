@@ -29,6 +29,8 @@ _PR = _SKILLS / "multi-pr"
 _CLA_SETUP = _SKILLS / "cla-setup" / "SKILL.md"
 _LINE = "cla.io/retro/*-run-notes-*.md"
 _BASH = shutil.which("bash")
+# A bash run is ~13 s alone on Windows; parallel workers multiply it, so 30 s flaked.
+_BASH_TIMEOUT = 120
 
 
 def _read(path: Path) -> str:
@@ -125,7 +127,7 @@ def _bash(script: str, root: Path) -> subprocess.CompletedProcess[str]:
         [_BASH, "-c", script], cwd=root,
         # Forward slashes: a POSIX shell reads `C:\...` backslashes as escapes.
         env={**_git_env(), "ROOT": str(root).replace("\\", "/")},
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
     )
 
 
@@ -231,7 +233,7 @@ def test_cla_setup_writes_the_line_when_only_global_excludes_ignore_the_notes(tm
     out = subprocess.run(
         [_BASH, "-c", _block("run-notes line")], cwd=root,
         env={**env, "ROOT": str(root).replace("\\", "/")},
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "created: .gitignore run-notes line"
