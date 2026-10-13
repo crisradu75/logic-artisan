@@ -340,4 +340,18 @@ MUTANTS = [
         'ROUND_TRIGGERS = ("critical", "reentry", "resume")',
         TARGETS,
     ),
+    (
+        "a later round without a trigger is accepted",
+        SCRIPT,
+        '    if entry["round"] >= 2 and "trigger" not in entry:',
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "a trigger on round 0 is accepted",
+        SCRIPT,
+        '    if entry["round"] <= 1 and "trigger" in entry:',
+        '    if entry["round"] == 1 and "trigger" in entry:',
+        TARGETS,
+    ),
 ]

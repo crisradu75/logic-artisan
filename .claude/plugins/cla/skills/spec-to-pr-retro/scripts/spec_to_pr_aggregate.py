@@ -200,7 +200,7 @@ def _unreadable(rec: object) -> str | None:
         rounds = phase.get("findings_by_round", [])
         if not (isinstance(rounds, list) and all(
                 isinstance(r, dict) and _is_int(r.get("round")) and _is_int(r.get("found"))
-                and isinstance(r.get("trigger", ""), str)
+                and ("trigger" not in r or r["trigger"] in ROUND_TRIGGERS)
                 for r in rounds)):
             return "`findings_by_round`"
     asks = rec.get("asks", [])
@@ -331,6 +331,11 @@ def aggregate(records: list[dict]) -> dict:
     }
 
 
+# What started a Revise round after the first: a copy of `lib/log_run.py`'s list,
+# kept equal by tests/consistency/test_run_record_values_agree.py.
+ROUND_TRIGGERS = ("critical", "high-important", "reentry", "resume")
+
+
 def round_2_yield(records: list[tuple[str, dict]]) -> dict:
     """How often Revise's second round still finds something.
 
@@ -362,7 +367,7 @@ def round_2_yield(records: list[tuple[str, dict]]) -> dict:
         if any(r["found"] >= 1 for r in later):
             surfaced.add(key)
         for r in later:
-            arm = by_trigger.setdefault(r.get("trigger") or "unrecorded", {"changes": set(), "surfaced": set()})
+            arm = by_trigger.setdefault(r.get("trigger", "unrecorded"), {"changes": set(), "surfaced": set()})
             arm["changes"].add(key)
             if r["found"] >= 1:
                 arm["surfaced"].add(key)

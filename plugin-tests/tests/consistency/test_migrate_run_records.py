@@ -184,14 +184,16 @@ def _carried_a_rounds_pair(old: dict, name: str) -> bool:
 
 
 def _history_gaps(new: dict, old: dict) -> set[str]:
-    """THE ONE EXCEPTION to "a migrated record passes the writer's check".
+    """THE TWO EXCEPTIONS to "a migrated record passes the writer's check".
 
     The writer requires `rounds_used`/`rounds_cap` on a Test or Revise phase that
     was not skipped. The migration never invents round counts, so a record that
-    never carried the pair keeps that one gap — and only that one, only on those
-    two phases, only where the phase holds neither half, and only where the
-    original record did not hold the pair either. Every clause this returns is
-    the writer's exact wording for one such phase; anything else stays a failure.
+    never carried the pair keeps that gap — only on those two phases, only where
+    the phase holds neither half, and only where the original record did not hold
+    the pair either. It also requires a `trigger` on every Revise round after the
+    first, which no record from before #357 carries; that gap is allowed only on a
+    round the original record also left without one. Every clause this returns is
+    the writer's exact wording for one such case; anything else stays a failure.
     """
     allowed = set()
     for phase in new["phases"]:
@@ -200,6 +202,15 @@ def _history_gaps(new: dict, old: dict) -> set[str]:
                 and not _carried_a_rounds_pair(old, phase["name"])):
             allowed.add(f"`rounds_used` and `rounds_cap` are required on a {phase['name']} "
                         f"phase that was not skipped ({phase['status']})")
+    old_phases = old.get("phases")
+    old_rounds = [r for p in (old_phases if isinstance(old_phases, list) else [])
+                  if isinstance(p, dict) for r in p.get("findings_by_round", []) if isinstance(r, dict)]
+    for phase in new["phases"]:
+        for entry in phase.get("findings_by_round", []):
+            if (entry.get("round", 0) >= 2 and "trigger" not in entry
+                    and not any(r.get("round") == entry["round"] and "trigger" in r for r in old_rounds)):
+                allowed.add(f"`trigger` is required on a round after the first (round {entry['round']}): "
+                            f"one of {', '.join(log_run.ROUND_TRIGGERS)}")
     return allowed
 
 
@@ -212,12 +223,15 @@ def test_every_fleet_form_maps_to_a_record_the_writer_accepts(form: str) -> None
     assert notes, "a migrated record says what changed"
 
 
-def test_the_history_gap_is_exactly_the_rounds_pair_and_nothing_wider() -> None:
+def test_the_history_gaps_are_exactly_the_rounds_pair_and_the_trigger_and_nothing_wider() -> None:
     # The forms that do keep the gap, and the clause they keep — so the exception
     # above is pinned to what it excuses, not merely allowed to be empty.
     gapped = {form: sorted(log_run.shape_problems(_migrate(rec)[0], _SHAPE))
               for form, rec in FORMS.items() if log_run.shape_problems(_migrate(rec)[0], _SHAPE)}
+    trigger = "`trigger` is required on a round after the first (round 2): one of critical, high-important, reentry, resume"
     assert gapped == {
+        "dated-chain": [trigger],
+        "dict-with-side-blocks": [trigger],
         "dict-values": [
             "`rounds_used` and `rounds_cap` are required on a Revise phase that was not skipped (warn)",
             "`rounds_used` and `rounds_cap` are required on a Test phase that was not skipped (ok)"],
@@ -238,6 +252,10 @@ def test_the_history_gap_is_exactly_the_rounds_pair_and_nothing_wider() -> None:
     # is any other refusal riding along with it.
     rec["phases"].append({"name": "Ship", "status": "warn"})
     assert mig.remaining_problems(rec) == ["`reason` is required on a warn phase (Ship)"]
+    # The trigger clause is excused for a round after the first only; the writer's
+    # round-1 refusal is a different clause and stays a failure.
+    assert mig._HISTORY_GAP.match(trigger)
+    assert not mig._HISTORY_GAP.match("`trigger` belongs only on a round after the first")
 
 
 # Fields a form renames or replaces; every other top-level field must survive as is.
@@ -423,7 +441,7 @@ def test_the_file_is_rewritten_once_and_then_left_alone(tmp_path: Path) -> None:
     lines = ledger.read_text(encoding="utf-8").splitlines(keepends=True)
     assert lines[0] == valid_text, "a line already in shape is left byte for byte"
     assert lines[2] == _line(UNMAPPABLE), "a line it cannot map is left byte for byte"
-    assert log_run.shape_problem(json.loads(lines[1]), _SHAPE) is None
+    assert mig.remaining_problems(json.loads(lines[1])) == []
     assert not list(tmp_path.glob("*.migrating"))
 
     after_first = ledger.read_bytes()

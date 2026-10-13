@@ -59,10 +59,11 @@ append stays atomic against a concurrent run.
   exhaustion — on Revise, whose round 2 follows a fixed Critical (or a fixed Important on a high-risk PR), only when it also ended `warn` or `fail`.
 - Revise: `findings_by_round` — one entry per round, built as each round closes, never
   reconstructed at Handoff. `found` is that round's deduplicated Critical+Important count after
-  triage. Every round after the first also carries `trigger`, what started it: `critical` (the
-  round before fixed a Critical, whatever else it fixed), `high-important` (only Important fixes, on
-  a high-risk PR), `reentry` (still-open findings re-attempted) or `resume` (a resume that could not
-  tell). Round 1 never carries it. The retro's round-2 yield reads both, split by `trigger`.
+  triage. Every round after the first also carries `trigger`, what started it, the first that
+  applies: `critical` (the round before fixed any Critical), `high-important` (it fixed an Important
+  on a high-risk PR), `reentry` (still-open findings re-attempted); `resume` only when a resume cannot
+  tell. Round 1 never carries it, and the check refuses a later round without it. The retro's
+  round-2 yield reads both, split by `trigger`.
 - `escalated_to_diagnose` — how many times the run escalated to `/cla:diagnose` (Test's
   same-cause rule, or anywhere else); `0` when it never did.
 - `asks` — every user ask in the run, by header and chosen label.

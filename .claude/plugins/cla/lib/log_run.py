@@ -137,10 +137,12 @@ REVISE_AGENTS = ("code-reviewer", "silent-failure-hunter", "pr-test-analyzer",
 # whenever they ran. Review loops too but is single-pass by default, and its pair
 # stays optional.
 ROUNDS_REQUIRED_ON = ("Test", "Revise")
-# Why a Revise round after the first ran. The retro splits round-2 yield by it, so a
-# weak arm cannot hide behind a strong one: `critical` (a fixed Critical, whatever
-# else was fixed), `high-important` (only Important fixes, on a high-risk PR),
-# `reentry` (still-open findings re-attempted), `resume` (a resume that could not tell).
+# Why a Revise round after the first ran, in precedence order: `critical` (the round
+# before fixed any Critical), else `high-important` (it fixed an Important on a
+# high-risk PR), else `reentry` (still-open findings re-attempted); `resume` only when
+# a resume cannot tell. The retro splits round-2 yield by it, so a weak arm cannot
+# hide behind a strong one. A spec-to-pr-retro copy of this list is kept equal by
+# tests/consistency/test_run_record_values_agree.py.
 ROUND_TRIGGERS = ("critical", "high-important", "reentry", "resume")
 
 
@@ -161,11 +163,13 @@ def _phase_rule(phase: dict) -> list[str]:
 
 
 def _round_rule(entry: dict) -> list[str]:
-    """Round 1 has no trigger. A later round without one is accepted, because no
-    record from before triggers existed can carry it; the retro counts it apart
-    as `unrecorded`, so a writer that drops it shows up there."""
+    """Round 1 has no trigger; every later round names one. Older records lack it,
+    and the migration's real-ledger check exempts exactly that clause."""
     if entry["round"] <= 1 and "trigger" in entry:
         return ["`trigger` belongs only on a round after the first"]
+    if entry["round"] >= 2 and "trigger" not in entry:
+        return [f"`trigger` is required on a round after the first (round {entry['round']}): "
+                f"one of {', '.join(ROUND_TRIGGERS)}"]
     return []
 
 

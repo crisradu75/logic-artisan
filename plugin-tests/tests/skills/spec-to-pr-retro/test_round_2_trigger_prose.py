@@ -28,13 +28,29 @@ def test_revise_records_the_trigger_on_every_later_round():
 
 def test_the_retro_judges_each_arm_apart():
     text = (_SKILLS / "spec-to-pr-retro" / "SKILL.md").read_text(encoding="utf-8")
-    assert "Judge each arm on its own, over eight or more changes in that arm" in text
-    assert "- `high-important` under half: that trigger has stopped paying; propose dropping it" in text
+    assert "An arm is **judged** once it holds eight or more changes" in text
+    assert "- `high-important` judged and under half: that trigger has stopped paying; propose dropping it" in text
     assert "propose nothing that would also remove the arm still paying" in text
-    assert "- Both under half: round 2 has stopped paying; propose `--pr-rounds 1` as the default." in text
+    assert "- Neither `critical` nor `high-important` judged: fall back to the totals." in text
+    assert "the arms can add up to more than the total" in text
 
 
 def test_the_schema_example_carries_a_trigger_on_round_2():
     schema = (_SKILLS / "_shared" / "references" / "run-log-schema.md").read_text(encoding="utf-8")
     assert '{"round": 2, "found": 1, "trigger": "critical"}' in schema
-    assert "Round 1 never carries it." in schema
+    assert "Round 1 never carries it, and the check refuses a later round without it." in schema
+
+
+def test_revise_states_the_trigger_precedence_and_forbids_dropping_it():
+    step = _line("spec-to-pr/references/revise.md", "4. **Record the round now:**")
+    assert "taking the first that applies: `critical` if the round before fixed any Critical; else `high-important`" in step
+    assert "never drop the field to clear a refusal" in step
+
+
+def test_every_writer_trigger_is_documented():
+    import log_run
+
+    schema = (_SKILLS / "_shared" / "references" / "run-log-schema.md").read_text(encoding="utf-8")
+    step = _line("spec-to-pr/references/revise.md", "4. **Record the round now:**")
+    for value in log_run.ROUND_TRIGGERS:
+        assert f"`{value}`" in schema and f"`{value}`" in step, value

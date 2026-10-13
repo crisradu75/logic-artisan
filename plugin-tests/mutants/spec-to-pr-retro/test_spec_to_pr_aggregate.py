@@ -300,7 +300,7 @@ MUTANTS = [
     (
         "round-2 yield stops splitting by trigger, so a weak arm hides in the total",
         SCRIPT,
-        '            arm = by_trigger.setdefault(r.get("trigger") or "unrecorded", {"changes": set(), "surfaced": set()})',
+        '            arm = by_trigger.setdefault(r.get("trigger", "unrecorded"), {"changes": set(), "surfaced": set()})',
         '            arm = by_trigger.setdefault("unrecorded", {"changes": set(), "surfaced": set()})',
         TARGETS,
     ),
@@ -312,10 +312,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "a trigger that is not a string is read rather than skipped",
+        "a trigger the writer would refuse is read rather than skipped",
         SCRIPT,
-        '                and isinstance(r.get("trigger", ""), str)\n',
+        '                and ("trigger" not in r or r["trigger"] in ROUND_TRIGGERS)\n',
         "",
+        TARGETS,
+    ),
+    (
+        "an unknown trigger string is read as its own arm",
+        SCRIPT,
+        '                and ("trigger" not in r or r["trigger"] in ROUND_TRIGGERS)',
+        '                and ("trigger" not in r or isinstance(r["trigger"], str))',
         TARGETS,
     ),
 ]

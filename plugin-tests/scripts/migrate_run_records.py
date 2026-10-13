@@ -37,10 +37,11 @@ ledger; each is mapped mechanically, never guessed:
     re-spelled. When nothing is left the key is dropped: absent reads as no data,
     while `{}` would read as a Revise that found nothing.
 
-ONE GAP IS LEFT, on purpose. The writer requires `rounds_used`/`rounds_cap` on a
-Test or Revise phase that ran; a record written before that rule carried no pair,
-and this script does not invent round counts. Such a record is migrated and keeps
-that gap — `remaining_problems` excludes it and nothing else.
+TWO GAPS ARE LEFT, on purpose. The writer requires `rounds_used`/`rounds_cap` on a
+Test or Revise phase that ran, and a `trigger` on every Revise round after the
+first; a record written before either rule carried neither, and this script does
+not invent round counts or triggers. Such a record is migrated and keeps those
+gaps — `remaining_problems` excludes them and nothing else.
 
 Every other field is kept. A record that already passes is not touched, so a second
 run changes nothing. A record that still fails after mapping is reported with the
@@ -73,10 +74,11 @@ NOT_RECORDED = "(not recorded)"
 NO_REASON = "reason not recorded (migrated record)"
 PARTIAL_REASON = "partial (migrated record)"
 _SEVERITY_ONLY = {"critical", "important", "suggestion"}
-# See "ONE GAP IS LEFT" above. Matched against the writer's own refusal clause, so a
+# See "TWO GAPS ARE LEFT" above. Matched against the writer's own refusal clause, so a
 # reworded clause stops matching and the record reports as unmappable — loud, not lax.
-_HISTORY_GAP = re.compile(r"^`rounds_used` and `rounds_cap` are required on a (Test|Revise) "
-                          r"phase that was not skipped \((ok|warn|fail)\)$")
+_HISTORY_GAP = re.compile(r"^(`rounds_used` and `rounds_cap` are required on a (Test|Revise) "
+                          r"phase that was not skipped \((ok|warn|fail)\)"
+                          r"|`trigger` is required on a round after the first \(round \d+\): .*)$")
 _CANONICAL = {name.lower(): name for name in log_run.SPEC_TO_PR_PHASES}
 _CAP_KEY = {"Review": "review_rounds", "Test": "test_rounds", "Revise": "pr_rounds"}
 _LIFT = ("rounds_used", "rounds_cap", "findings_by_round", "reason")
@@ -89,7 +91,8 @@ def remaining_problems(rec: dict) -> list[str]:
 
 def _field_ok(key: str, value: object) -> bool:
     shape = PHASE_SHAPE[2].get(key) or PHASE_SHAPE[1].get(key)
-    return shape is not None and log_run.shape_problem(value, shape) is None
+    return shape is not None and not [
+        p for p in log_run.shape_problems(value, shape) if not _HISTORY_GAP.match(p)]
 
 
 def _side_fields(side: dict, name: str) -> dict:
