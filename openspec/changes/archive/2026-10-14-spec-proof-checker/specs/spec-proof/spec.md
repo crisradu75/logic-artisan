@@ -45,7 +45,7 @@ A repo SHALL choose its proof granularity with the line `- Test proof granularit
 
 #### Scenario: A repo opts in to scenarios
 
-- **WHEN** the facts file says `scenario` and a changed scenario has no `scenario: <spec> / <heading>` marker
+- **WHEN** the facts file says `scenario` and a changed scenario has no per-scenario marker
 - **THEN** the checker reports that scenario
 
 #### Scenario: A malformed value
