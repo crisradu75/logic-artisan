@@ -25,12 +25,12 @@ Build ONE context brief covering all N changes (same table format as the checkli
 
 ## Step 3 — Size gate, per change
 
-Apply the checklist's Step 3 size gate to **each** change on its own counts. Then:
+Apply the checklist's Step 3 size gate to **each** change on its own counts. Then sum the claim count `e` across the batch: a batch of individually small changes can still make too many claims to review inline. Then:
 
-- **Every change grades small** → no dispatch. Review the batch inline: the per-change checks above, B1 across the batch, and the checklist's weight and proof checks, then go to Step 5.
-- **Any change grades large** → Step 4, one dispatch over the whole batch, so B1 still sees every change at once.
+- **Every change grades small and the batch's total `e` is under 25** → no dispatch. Review the batch inline: the per-change checks above, B1 across the batch, and the checklist's weight and proof checks, then go to Step 5.
+- **Any change grades large, or the batch's total `e` is 25 or more** → Step 4, one dispatch over the whole batch, so B1 still sees every change at once.
 
-Record each change's grade in the batch report.
+Record each change's grade and the batch's total `e` in the batch report.
 
 ## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large)
 
