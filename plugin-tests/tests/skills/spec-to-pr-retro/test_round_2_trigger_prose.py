@@ -21,7 +21,7 @@ def _line(rel: str, prefix: str) -> str:
 
 def test_revise_records_the_trigger_on_every_later_round():
     step = _line("spec-to-pr/references/revise.md", "4. **Record the round now:**")
-    for value in ("`critical`", "`high-important`", "`reentry`", "`resume`"):
+    for value in ("`critical`", "`high-important`", "`reentry`", "`unknown`"):
         assert value in step
     assert "On a round after the first, add `\"trigger\"`" in step
 
@@ -29,9 +29,11 @@ def test_revise_records_the_trigger_on_every_later_round():
 def test_the_retro_judges_each_arm_apart():
     text = (_SKILLS / "spec-to-pr-retro" / "SKILL.md").read_text(encoding="utf-8")
     assert "An arm is **judged** once it holds eight or more changes" in text
-    assert "- `high-important` judged and under half: that trigger has stopped paying; propose dropping it" in text
-    assert "propose nothing that would also remove the arm still paying" in text
-    assert "- Neither `critical` nor `high-important` judged: fall back to the totals." in text
+    assert "Take the first rule that matches; each gives exactly one action." in text
+    assert "1. `critical` and `high-important` both judged and both under half" in text
+    assert "2. `high-important` judged and under half: that trigger has stopped paying; propose dropping it" in text
+    assert "3. `critical` judged and under half: report it. Propose nothing" in text
+    assert "The totals are not a fallback" in text
     assert "the arms can add up to more than the total" in text
 
 
@@ -45,6 +47,11 @@ def test_revise_states_the_trigger_precedence_and_forbids_dropping_it():
     step = _line("spec-to-pr/references/revise.md", "4. **Record the round now:**")
     assert "taking the first that applies: `critical` if the round before fixed any Critical; else `high-important`" in step
     assert "never drop the field to clear a refusal" in step
+
+
+def test_handoff_answers_a_trigger_refusal_with_unknown_never_a_guess():
+    step = _line("spec-to-pr/references/handoff.md", "**`log_run.py` refuses a record off the shape**")
+    assert 'gets `"trigger": "unknown"` on that round: never guess `critical` or `high-important`' in step
 
 
 def test_every_writer_trigger_is_documented():

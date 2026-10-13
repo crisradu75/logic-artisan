@@ -228,7 +228,8 @@ def test_the_history_gaps_are_exactly_the_rounds_pair_and_the_trigger_and_nothin
     # above is pinned to what it excuses, not merely allowed to be empty.
     gapped = {form: sorted(log_run.shape_problems(_migrate(rec)[0], _SHAPE))
               for form, rec in FORMS.items() if log_run.shape_problems(_migrate(rec)[0], _SHAPE)}
-    trigger = "`trigger` is required on a round after the first (round 2): one of critical, high-important, reentry, resume"
+    trigger = ("`trigger` is required on a round after the first (round 2): one of "
+               + ", ".join(log_run.ROUND_TRIGGERS))
     assert gapped == {
         "dated-chain": [trigger],
         "dict-with-side-blocks": [trigger],
@@ -501,7 +502,7 @@ def test_a_missing_file_is_an_error(tmp_path: Path) -> None:
 def test_this_repos_ledger_passes_the_writers_check() -> None:
     # The migration's acceptance condition, held from here on: nothing in this
     # repo's spec-to-pr ledger is off-shape, so a reader needs no path for old
-    # shapes — with the one stated exception, a Test or Revise phase that never
+    # shapes — with the two stated exceptions (`_history_gaps`): a Test or Revise phase that never
     # carried a rounds pair (`_history_gaps`). A record this repo writes from now
     # on is held to the pair by the writer itself. The codify ledger is retired:
     # nothing writes it, so its history is held to nothing.

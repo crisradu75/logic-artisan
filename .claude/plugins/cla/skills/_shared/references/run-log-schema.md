@@ -61,7 +61,7 @@ append stays atomic against a concurrent run.
   reconstructed at Handoff. `found` is that round's deduplicated Critical+Important count after
   triage. Every round after the first also carries `trigger`, what started it, the first that
   applies: `critical` (the round before fixed any Critical), `high-important` (it fixed an Important
-  on a high-risk PR), `reentry` (still-open findings re-attempted); `resume` only when a resume cannot
+  on a high-risk PR), `reentry` (still-open findings re-attempted); `unknown` only when the run cannot
   tell. Round 1 never carries it, and the check refuses a later round without it. The retro's
   round-2 yield reads both, split by `trigger`.
 - `escalated_to_diagnose` — how many times the run escalated to `/cla:diagnose` (Test's

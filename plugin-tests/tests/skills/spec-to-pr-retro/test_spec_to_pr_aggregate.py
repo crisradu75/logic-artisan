@@ -420,13 +420,21 @@ def test_a_change_counts_once_under_each_trigger_its_later_rounds_carry(tmp_path
     assert out["surfaced_critical_or_important"] == 1
 
 
-@pytest.mark.parametrize("bad_value", [2, "", "important", "unrecorded"])
-def test_a_trigger_the_writer_would_refuse_makes_the_record_unreadable(tmp_path: Path, bad_value) -> None:
+@pytest.mark.parametrize("bad_value", [2, "", None])
+def test_a_trigger_that_is_not_a_non_empty_string_makes_the_record_unreadable(tmp_path: Path, bad_value) -> None:
     bad = _triggered("a", (2, 1, "critical"))
     bad["phases"][0]["findings_by_round"][1]["trigger"] = bad_value
     out, _ = _log(_write(tmp_path / "l.jsonl", [bad, _triggered("b", (2, 1, "critical"))]))
     assert out["round_2_yield"]["by_trigger"] == {"critical": {"changes": 1, "surfaced": 1}}
     assert out["ledgers"][0]["skipped"] == 1
+
+
+def test_a_trigger_this_reader_does_not_list_keeps_the_record_under_its_own_arm(tmp_path: Path) -> None:
+    """A ledger written by a newer plugin may carry a trigger this copy does not list.
+    Skipping the record would drop it from every metric, not only this one."""
+    out, _ = _log(_write(tmp_path / "l.jsonl", [_triggered("a", (2, 1, "later-value"))]))
+    assert out["round_2_yield"]["by_trigger"] == {"later-value": {"changes": 1, "surfaced": 1}}
+    assert out["ledgers"][0]["skipped"] == 0
 
 
 def test_a_change_with_one_triggered_and_one_untriggered_round_counts_in_both(tmp_path: Path) -> None:

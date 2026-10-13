@@ -200,7 +200,7 @@ def _unreadable(rec: object) -> str | None:
         rounds = phase.get("findings_by_round", [])
         if not (isinstance(rounds, list) and all(
                 isinstance(r, dict) and _is_int(r.get("round")) and _is_int(r.get("found"))
-                and ("trigger" not in r or r["trigger"] in ROUND_TRIGGERS)
+                and ("trigger" not in r or (isinstance(r["trigger"], str) and r["trigger"] != ""))
                 for r in rounds)):
             return "`findings_by_round`"
     asks = rec.get("asks", [])
@@ -332,8 +332,9 @@ def aggregate(records: list[dict]) -> dict:
 
 
 # What started a Revise round after the first: a copy of `lib/log_run.py`'s list,
-# kept equal by tests/consistency/test_run_record_values_agree.py.
-ROUND_TRIGGERS = ("critical", "high-important", "reentry", "resume")
+# kept equal by tests/consistency/test_run_record_values_agree.py. A record from a
+# newer plugin may carry a value not listed here; it is counted under its own arm.
+ROUND_TRIGGERS = ("critical", "high-important", "reentry", "unknown")
 
 
 def round_2_yield(records: list[tuple[str, dict]]) -> dict:

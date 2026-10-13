@@ -36,7 +36,7 @@ Each `/cla:spec-to-pr` run SHALL append one record to `cla.io/retro/spec-to-pr-r
 
 ### Requirement: Summarising recent spec-to-pr runs
 
-`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the fleet file lists or, when none of its repos exists, only the repo's own ledger and saying so, naming each ledger read, counting an unreadable record as skipped instead of failing, and reporting how many of those runs' changes had a second pull request review round and how many found a Critical or Important finding there, in total and by what started that round.
+`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the fleet file lists or, when the file is missing or none of its repos exists, only the repo's own ledger and saying so, naming each ledger read, counting an unreadable record as skipped, and reporting how many of those runs' changes had a second PR review round and how many found a Critical or Important finding there, in total and by what started that round.
 
 #### Scenario: One unreadable record
 

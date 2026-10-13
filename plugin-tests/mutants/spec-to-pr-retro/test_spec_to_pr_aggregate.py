@@ -312,17 +312,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "a trigger the writer would refuse is read rather than skipped",
+        "a trigger that is not a non-empty string is read rather than skipped",
         SCRIPT,
-        '                and ("trigger" not in r or r["trigger"] in ROUND_TRIGGERS)\n',
+        '                and ("trigger" not in r or (isinstance(r["trigger"], str) and r["trigger"] != ""))\n',
         "",
         TARGETS,
     ),
     (
-        "an unknown trigger string is read as its own arm",
+        "an empty trigger is read as its own arm",
         SCRIPT,
-        '                and ("trigger" not in r or r["trigger"] in ROUND_TRIGGERS)',
-        '                and ("trigger" not in r or isinstance(r["trigger"], str))',
+        '(isinstance(r["trigger"], str) and r["trigger"] != "")',
+        'isinstance(r["trigger"], str)',
         TARGETS,
     ),
 ]

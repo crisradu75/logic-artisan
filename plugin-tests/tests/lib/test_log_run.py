@@ -407,7 +407,7 @@ def _with_trigger(round_no: int, trigger) -> dict:
     return record
 
 
-@pytest.mark.parametrize("trigger", ["critical", "high-important", "reentry", "resume"])
+@pytest.mark.parametrize("trigger", ["critical", "high-important", "reentry", "unknown"])
 def test_a_later_round_may_name_what_started_it(tmp_path: Path, trigger: str) -> None:
     r = _run(json.dumps(_with_trigger(2, trigger)), tmp_path)
     assert r.returncode == 0, r.stderr

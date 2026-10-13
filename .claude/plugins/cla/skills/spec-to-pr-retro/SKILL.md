@@ -29,10 +29,13 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
 - `flags.runs`: how many runs used each flag, out of `flags.recorded` (older records carry no `flags`). Once `recorded` reaches about 30, a flag no run used is a candidate to delete; name it with the count.
 - `diagnose_escalations`: of the `recorded` runs, how many escalated to `/cla:diagnose`, and how often in all. It tells whether that escalation earns its place; report it, propose nothing from it alone.
 - `round_2_yield`: of the changes that ran a Revise round 2 or later (usually after a fixed Critical, or a fixed Important on a high-risk PR), how many found a Critical or Important there. `by_trigger` gives the same counts per trigger, over every later round. A change with rounds started by two triggers counts under both, so the arms can add up to more than the total. An arm is **judged** once it holds eight or more changes; cite its counts.
-  - `high-important` judged and under half: that trigger has stopped paying; propose dropping it, keeping round 2 after a fixed Critical.
-  - `critical` judged and under half: if `high-important` is judged and not under half, report it and propose nothing that would also remove the arm still paying. Otherwise propose `--pr-rounds 1` as the default, saying whether `high-important` was under half or not yet judged.
-  - Neither `critical` nor `high-important` judged: fall back to the totals. Under half over eight or more changes: propose `--pr-rounds 1`, saying the arms are not yet judged.
-  - `reentry` and `resume`: report them, propose nothing from them. `unrecorded` holds rounds from records written before triggers were logged; report its count.
+  Take the first rule that matches; each gives exactly one action.
+  1. `critical` and `high-important` both judged and both under half: round 2 has stopped paying; propose `--pr-rounds 1` as the default.
+  2. `high-important` judged and under half: that trigger has stopped paying; propose dropping it, keeping round 2 after a fixed Critical.
+  3. `critical` judged and under half: report it. Propose nothing, because `--pr-rounds 1` would also remove the `high-important` arm, which is paying or not yet judged.
+  4. Otherwise: report the counts and propose nothing. Say which arms are not yet judged. The totals are not a fallback: they include `reentry`, `unknown` and `unrecorded` rounds.
+
+  `reentry`, `unknown` and any value this list does not name: report them, propose nothing from them. `unrecorded` holds rounds from records written before triggers were logged; report its count.
 
 ## Report
 
