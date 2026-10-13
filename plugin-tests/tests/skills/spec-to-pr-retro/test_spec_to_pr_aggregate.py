@@ -241,7 +241,7 @@ def test_flags_and_escalations_cover_the_window(tmp_path: Path) -> None:
 
 # --- skipped lines -----------------------------------------------------------
 
-# requirement: run-ledgers / Summarising recent spec-to-pr runs
+# requirement: run-ledgers / Summarising recent spec-to-pr runs and their second rounds
 def test_unreadable_lines_are_skipped_named_and_counted(tmp_path: Path) -> None:
     log = _write(tmp_path / "l.jsonl", [
         _rec(phases=[_phase("Ship", "warn", reason="kept")]),
@@ -289,7 +289,7 @@ def test_a_record_without_ts_or_change_is_skipped(tmp_path: Path) -> None:
 
 # --- which ledgers: --log, the fleet default, the fallback ---------------------
 
-# requirement: run-ledgers / Summarising recent spec-to-pr runs
+# requirement: run-ledgers / Summarising recent spec-to-pr runs and their second rounds
 def test_log_names_every_ledger_and_marks_a_missing_one(tmp_path: Path) -> None:
     real = _write(tmp_path / "a.jsonl", [_rec()])
     out, err = _log(real, tmp_path / "missing.jsonl", real)
@@ -313,7 +313,7 @@ def _fleet_repo(tmp_path: Path, bullets: list[str] | None) -> Path:
     return retro
 
 
-# requirement: run-ledgers / Summarising recent spec-to-pr runs
+# requirement: run-ledgers / Summarising recent spec-to-pr runs and their second rounds
 def test_default_reads_every_root_in_the_fleet_file(tmp_path: Path) -> None:
     other = tmp_path / "other"
     _write(other / "cla.io" / "retro" / "spec-to-pr-runs.jsonl",
@@ -344,7 +344,7 @@ def test_a_fleet_file_with_no_bullets_falls_back(tmp_path: Path) -> None:
     assert out["runs_analyzed"] == 1
 
 
-# requirement: run-ledgers / Summarising recent spec-to-pr runs
+# requirement: run-ledgers / Summarising recent spec-to-pr runs and their second rounds
 def test_a_fleet_file_whose_roots_do_not_exist_here_falls_back(tmp_path: Path) -> None:
     # The fleet file holds per-machine absolute paths: another machine's list
     # resolves to nothing here, and reading nothing would look like a cold start.
@@ -375,7 +375,7 @@ def _changes(n: int, surfaced: int, days: list[str]) -> list[dict]:
             for i in range(n)]
 
 
-# requirement: run-ledgers / Summarising recent spec-to-pr runs
+# requirement: run-ledgers / Summarising recent spec-to-pr runs and their second rounds
 def test_round_2_yield_counts_changes_and_the_ones_that_surfaced(tmp_path: Path) -> None:
     out = _yield(tmp_path, _changes(5, 3, ["2026-09-01", "2026-09-02"]))
     assert out["changes_with_round_2"] == 5
@@ -395,7 +395,7 @@ def _triggered(change: str, *rounds: tuple[int, int, str]) -> dict:
     return _rec(change=change, phases=[phase])
 
 
-# requirement: run-ledgers / Summarising recent spec-to-pr runs
+# requirement: run-ledgers / Summarising recent spec-to-pr runs and their second rounds
 def test_round_2_yield_splits_by_what_started_the_round(tmp_path: Path) -> None:
     """Scenario: Second-round yield by what started the round."""
     out = _yield(tmp_path, [
@@ -464,7 +464,7 @@ def test_by_trigger_covers_the_window_like_the_totals(tmp_path: Path) -> None:
         "critical": {"changes": 2, "surfaced": 2}, "high-important": {"changes": 2, "surfaced": 0}}
 
 
-# requirement: run-ledgers / Summarising recent spec-to-pr runs
+# requirement: run-ledgers / Summarising recent spec-to-pr runs and their second rounds
 def test_round_2_yield_covers_the_window_like_every_other_metric(tmp_path: Path) -> None:
     # Six older changes that surfaced, then two recent ones that did not.
     records = _changes(6, 6, ["2026-09-01"]) + [

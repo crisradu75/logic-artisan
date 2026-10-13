@@ -661,3 +661,202 @@ def test_an_unexpected_crash_exits_two_not_one(repo, capsys, monkeypatch):
     monkeypatch.setattr(csp, "check", boom)
     code, _, err = run(repo, capsys)
     assert code == 2 and "RuntimeError" in err
+
+
+CONFIG = "openspec/config.yaml"
+
+
+def _config(root: Path, chars: str = "500 characters or fewer", scn: str = "at most 3 scenarios", reqs: str = "at most 8 requirements") -> None:
+    rule = "Write each requirement as one sentence of " + chars + ", with " + scn + ". A spec holds " + reqs + "."
+    _write(
+        root,
+        CONFIG,
+        "schema: spec-driven\n\nrules:\n  proposal:\n    - Keep it short, at most 2 scenarios of prose.\n  specs:\n    - \""
+        + rule
+        + "\"\n    - Another rule.\n  tasks:\n    - Keep tasks at most 99 requirements long.\n",
+    )
+
+
+def _fmt(root: Path, capsys) -> tuple[int, str]:
+    code, out, _ = run(root, capsys)
+    return code, "\n".join(line for line in out.splitlines() if line.startswith("PROBLEM format"))
+
+
+FOUR = ("Four", "SHALL.\n\n" + "\n\n".join(_scn(f"S{i}", then=f"t{i}") for i in range(4)))
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_requirement_with_too_many_scenarios_is_reported(repo, capsys):
+    _config(repo)
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), FOUR))
+    _write(repo, "tests/test_four.py", _marker("requirement", "alpha", "Four"))
+    code, fmt = _fmt(repo, capsys)
+    assert code == 1 and "alpha/spec.md" in fmt and "'Four' has 4 scenarios, the limit is 3" in fmt
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_repo_with_different_limits_is_held_to_its_own(repo, capsys):
+    _config(repo, scn="at most 5 scenarios")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), FOUR))
+    _write(repo, "tests/test_four.py", _marker("requirement", "alpha", "Four"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "scenarios 5" in out
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_long_statement_is_reported_and_scenario_text_does_not_count(repo, capsys):
+    _config(repo, chars="80 characters or fewer")
+    long_stmt = "word " * 30
+    ok = ("Fine", "Short SHALL.\n\n" + _scn("A", then="x " * 100))
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Long", long_stmt + "\n\n" + _scn("B")), ok))
+    _write(repo, "tests/test_m.py", _marker("requirement", "alpha", "Long") + _marker("requirement", "alpha", "Fine"))
+    code, fmt = _fmt(repo, capsys)
+    assert code == 1 and "'Long' states 149 characters" in fmt and "'Fine'" not in fmt
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_spec_with_too_many_requirements_is_reported(repo, capsys):
+    _config(repo, reqs="at most 2 requirements")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Two", "B."), ("Three", "C.")))
+    _write(repo, "tests/test_m.py", _marker("requirement", "alpha", "Two") + _marker("requirement", "alpha", "Three"))
+    code, fmt = _fmt(repo, capsys)
+    assert code == 1 and "3 requirements, the limit is 2" in fmt
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_delta_is_held_to_the_requirement_limits_but_an_archived_delta_is_not(repo, capsys):
+    _config(repo)
+    _write(repo, "openspec/changes/c1/specs/beta/spec.md", _delta_text(added=[FOUR]))
+    _write(repo, "openspec/changes/archive/2026-01-01-c0/specs/beta/spec.md", _delta_text(added=[FOUR]))
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: Four: ok\n")
+    code, fmt = _fmt(repo, capsys)
+    assert "openspec/changes/c1/specs/beta/spec.md" in fmt and "archive" not in fmt
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_limit_the_config_does_not_state_is_not_enforced_and_is_named(repo, capsys):
+    _config(repo, reqs="a modest number of requirements")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), FOUR))
+    _write(repo, "tests/test_four.py", _marker("requirement", "alpha", "Four"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "has 4 scenarios" in out
+    assert "not enforced, not found: requirements" in out
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_no_config_means_no_limits_and_the_output_says_so(repo, capsys):
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "not enforced, not found: chars, scenarios, requirements" in out
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_limits_come_from_the_specs_rules_only(repo):
+    # The fixture's proposal and tasks groups use the same words with other numbers.
+    _config(repo)
+    limits, missing = csp.read_format_limits(repo)
+    assert limits == {"chars": 500, "scenarios": 3, "requirements": 8} and not missing
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_this_repos_config_states_all_three_limits_and_its_specs_meet_them():
+    limits, missing = csp.read_format_limits(_REPO)
+    assert set(limits) == {"chars", "scenarios", "requirements"} and not missing
+    files = csp._spec_files(_REPO, "requirement")
+    assert csp.check_format(files, limits) == []
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_prose_that_starts_like_a_marker_is_not_one(repo, capsys):
+    prose = "# scenario: empty input returns []\n// requirement: must be positive\n * scenario: user not logged in\n"
+    _write(repo, "tests/test_prose.py", prose + "# requirement: <spec> / <heading>\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+@pytest.mark.parametrize(
+    "line",
+    ["<!-- requirement: Alpha / Old rule -->", "# Requirement: alpha / Old rule", "# requirement:alpha/Old rule", "<!-- requirement: alpha/Rejects <empty> input -->"],
+)
+def test_near_miss_markers_including_html_comments_are_reported(repo, capsys, line):
+    _write(repo, "web/page.html", line + "\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "looks like a marker" in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_utf16_test_file_is_scanned_not_skipped(repo, capsys):
+    (repo / "tests" / "t.ps1").write_bytes("# requirement: alpha / No such rule\r\n".encode("utf-16"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "PROBLEM dangling: tests/t.ps1" in out and "skipped" not in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_repo_git_refuses_is_an_error_not_a_non_repo(tmp_path, capsys):
+    root = tmp_path / "broken"
+    _write(root, SPEC, _spec_text(NEW_REQ))
+    _write(root, "tests/t.py", "x = 1")
+    (root / ".git").mkdir()  # git cannot read this, as with a dubious-ownership refusal
+    code = csp.main(["--root", str(root)])
+    assert code == 2 and "git refused" in capsys.readouterr().err
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_delta_with_requirements_under_no_delta_heading_is_reported(repo, capsys):
+    text = "# Spec Delta\n\n## Requirements\n\n### Requirement: Lost\n\nSHALL.\n"
+    _write(repo, "openspec/changes/c1/specs/beta/spec.md", text)
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "PROBLEM empty: openspec/changes/c1/specs/beta/spec.md" in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_removed_only_delta_is_not_empty(repo, capsys):
+    _write(repo, "openspec/changes/c1/specs/beta/spec.md", "## REMOVED Requirements\n\n### Requirement: Gone\n\n**Migration**: x\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_live_spec_with_no_unit_is_reported_even_when_others_parse(repo, capsys):
+    _write(repo, "openspec/specs/beta/spec.md", "# beta\n\n## Notes\n\n### Requirement: Hidden\n\nSHALL.\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "PROBLEM empty: openspec/specs/beta/spec.md" in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_archived_deltas_alone_do_not_satisfy_the_corpus_check(tmp_path, capsys):
+    root = tmp_path / "arch"
+    _write(root, "openspec/changes/archive/2026-01-01-c0/specs/beta/spec.md", _delta_text(added=[NEW_REQ]))
+    _write(root, "tests/t.py", "x = 1")
+    code = csp.main(["--root", str(root)])
+    assert code == 2 and "live spec or active delta" in capsys.readouterr().err
+
+
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_fetched_origin_with_no_local_commit_turns_the_rule_off(tmp_path, capsys):
+    src = tmp_path / "src"
+    src.mkdir()
+    _git(src, "init", "-q", "-b", "main")
+    _git(src, "config", "user.email", "t@example.com")
+    _git(src, "config", "user.name", "t")
+    _git(src, "config", "commit.gpgsign", "false")
+    _write(src, "a.txt", "a")
+    _git(src, "add", "-A")
+    _git(src, "commit", "-q", "-m", "a")
+    root = tmp_path / "unborn"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "work")
+    _git(root, "remote", "add", "origin", str(src))
+    _git(root, "fetch", "-q", "origin")
+    _write(root, SPEC, _spec_text(NEW_REQ))
+    _write(root, "tests/t.py", "x = 1")
+    code = csp.main(["--root", str(root)])
+    assert code == 0 and "no commit on HEAD yet" in capsys.readouterr().out
+
+
+def test_a_crash_prints_its_traceback(repo, capsys, monkeypatch):
+    monkeypatch.setattr(csp, "check", lambda *a, **k: 1 / 0)
+    code, _, err = run(repo, capsys)
+    assert code == 2 and "Traceback" in err and "ZeroDivisionError" in err

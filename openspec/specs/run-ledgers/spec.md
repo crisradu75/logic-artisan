@@ -34,30 +34,6 @@ Each `/cla:spec-to-pr` run SHALL append one record to `cla.io/retro/spec-to-pr-r
 - **WHEN** a run is invoked with `--inherits` and `--pr-rounds 1`
 - **THEN** its record lists both flag names, without their values
 
-### Requirement: Summarising recent spec-to-pr runs
-
-`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the fleet file lists or, when the file is missing or none of its repos exists, only the repo's own ledger and saying so, naming each ledger read, counting an unreadable record as skipped, and reporting how many of those runs' changes had a second PR review round and how many found a Critical or Important finding there, in total and by what started that round.
-
-#### Scenario: One unreadable record
-
-- **WHEN** a ledger holds one record with a field of the wrong shape
-- **THEN** the summary covers every other record and counts the skipped one
-
-#### Scenario: No fleet on this machine
-
-- **WHEN** the fleet file is missing or lists no repo that exists on the machine
-- **THEN** the summary reads only the repo's own ledger and says why
-
-#### Scenario: Second-round yield
-
-- **WHEN** three changes in the summarised runs had a second pull request review round and two of those rounds found a Critical or Important finding
-- **THEN** the summary reports three such changes, two of which found one
-
-#### Scenario: Second-round yield by what started the round
-
-- **WHEN** two second rounds followed a fixed Critical and found something, and two followed only Important fixes on a high-risk pull request and found nothing
-- **THEN** the summary reports each kind apart, so the empty kind is visible next to the one still finding defects
-
 ### Requirement: Handoff suggests a retro on repeated trouble
 
 After recording its run, `/cla:spec-to-pr` SHALL print one line suggesting `/cla:spec-to-pr-retro` when, among the repo's last five run records, the test phase used its whole round cap in at least three, the pull request review phase ended at its round cap with a warning or failure in at least three, or one warning reason appears in at least two, and SHALL print nothing otherwise, never blocking the run.
@@ -137,3 +113,22 @@ The writer SHALL append only to the spec-to-pr ledger, refusing a record for any
 
 - **WHEN** a chain is re-run on another machine, or after its notes file was deleted
 - **THEN** it reads each change's state from GitHub instead
+
+### Requirement: Summarising recent spec-to-pr runs and their second rounds
+
+`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the fleet file lists or, when the file is missing or none of its repos exists, only the repo's own ledger and saying so, naming each ledger read, counting an unreadable record as skipped, and reporting how many of those runs' changes had a second PR review round and how many found a Critical or Important finding there, in total and by what started that round.
+
+#### Scenario: One unreadable record
+
+- **WHEN** a ledger holds one record with a field of the wrong shape
+- **THEN** the summary covers every other record and counts the skipped one
+
+#### Scenario: No fleet on this machine
+
+- **WHEN** the fleet file is missing or lists no repo that exists on the machine
+- **THEN** the summary reads only the repo's own ledger and says why
+
+#### Scenario: Second-round yield, in total and by what started the round
+
+- **WHEN** three changes had a second pull request review round, two following a fixed Critical and finding something, one following only Important fixes on a high-risk pull request and finding nothing
+- **THEN** the summary reports three such changes, two of which found one, and reports each kind apart so the empty kind is visible next to the one still finding defects

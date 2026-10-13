@@ -36,6 +36,14 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
   - ``prompt-half``: a ``manual: ... (prompt half)`` line with no marker beside it.
   - ``waiting``: a ``waiting:`` line in an archived change, or beside a unit a
     marker or ``manual:`` line already proves.
+  - ``format``: a live spec or active delta over the limits in the repo's
+    ``openspec/config.yaml`` ``rules.specs`` (``read_format_limits`` reads the
+    numbers from that text, so nothing is copied here): a requirement statement
+    over N characters, a requirement with more than N scenarios, a spec with more
+    than N requirements. A limit the config does not state is not enforced, and the
+    ``format limits`` output line names it. Archives are not edited and are skipped.
+  - ``empty``: a live spec with no unit, or an active delta whose requirements sit
+    under no ADDED, MODIFIED, REMOVED or RENAMED heading.
   - ``validate``: only with ``--validate``; ``openspec validate --specs --strict``
     failed (skipped, and said so, when the CLI is absent).
 
@@ -70,6 +78,7 @@ import re
 import shutil
 import subprocess
 import sys
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -90,7 +99,11 @@ _MARKER = re.compile(
 )
 # A comment line that starts like a marker but misses the format (an upper-case or
 # underscored spec name, no spaces around the slash). Reported, never silently dropped.
-_MARKER_LOOSE = re.compile(r"^\s*(?:#|//|--|;|%|/\*+|\*|<!--)\s*(?:requirement|scenario):\s+\S+")
+# It needs a slash after the colon, so prose such as "# scenario: empty input" is not
+# mistaken for an attempted marker, and it is case-insensitive so "Requirement:" is caught.
+_MARKER_LOOSE = re.compile(r"^\s*(?:#|//|--|;|%|/\*+|\*|<!--)\s*(?:requirement|scenario):\s*\S[^/]*/\s*\S", re.I)
+_REQ_ANYWHERE = re.compile(r"(?m)^###\s+Requirement:")
+_DELTA_SECTION = re.compile(r"(?mi)^##\s+(?:ADDED|MODIFIED|REMOVED|RENAMED)\b")
 _NOTE = re.compile(
     r"^\s*(?:[-*+]\s+)?(?:\[[ xX]\]\s+)?(?:\d+(?:\.\d+)*\.?\s+)?(manual|waiting):\s+(.+?)\s*$"
 )
@@ -146,6 +159,12 @@ def _git(root: Path, *args: str) -> tuple[int, str]:
     return r.returncode, r.stdout
 
 
+def _under_git(path: Path) -> bool:
+    """True when a `.git` entry sits at `path` or above it. When git then refuses to answer
+    (dubious ownership), the run must stop rather than read the folder as a non-repo."""
+    return any((p / ".git").exists() for p in [path.resolve(), *path.resolve().parents])
+
+
 def find_root(explicit: str | None) -> Path:
     if explicit:
         root = Path(explicit).resolve()
@@ -155,6 +174,8 @@ def find_root(explicit: str | None) -> Path:
     rc, out = _git(Path.cwd(), "rev-parse", "--show-toplevel")
     if rc == 0 and out.strip():
         return Path(out.strip()).resolve()
+    if _under_git(Path.cwd()):
+        raise CheckerError(f"git refused this repo (exit {rc}; dubious ownership?): {Path.cwd()}")
     if (Path.cwd() / "openspec").is_dir():
         return Path.cwd().resolve()
     raise CheckerError("not inside a git repo and no openspec/ in the working directory; pass --root")
@@ -198,6 +219,14 @@ def parse_units(text: str, mode: str, delta: bool) -> list[Unit]:
     A requirement's body is everything under its heading, scenarios included, so
     a changed scenario changes its requirement. A scenario's body is its own lines.
     """
+    reqs = _blocks(text, delta)
+    if mode == "requirement":
+        return [Unit(h, _norm(body)) for h, body, _ in reqs]
+    return [Unit(h, _norm(sb)) for _, _, scns in reqs for h, sb in scns]
+
+
+def _blocks(text: str, delta: bool) -> list[tuple[str, list[str], list[tuple[str, list[str]]]]]:
+    """(heading, every line under it, [(scenario heading, its lines)]) per requirement."""
     reqs: list[tuple[str, list[str], list[tuple[str, list[str]]]]] = []
     in_scope = False
     cur_req = cur_scn = None
@@ -234,9 +263,64 @@ def parse_units(text: str, mode: str, delta: bool) -> list[Unit]:
             cur_req[1].append(line)
             if cur_scn is not None:
                 cur_scn[1].append(line)
-    if mode == "requirement":
-        return [Unit(h, _norm(body)) for h, body, _ in reqs]
-    return [Unit(h, _norm(sb)) for _, _, scns in reqs for h, sb in scns]
+    return reqs
+
+
+def read_format_limits(root: Path) -> tuple[dict[str, int], list[str]]:
+    """The spec format limits, read from the `rules.specs` text of openspec/config.yaml.
+
+    Nothing is copied into this script: the numbers come from the sentences the repo
+    wrote ("500 characters or fewer", "at most 3 scenarios", "at most 8 requirements").
+    Returns ({limit: number}, [names of limits not found]). No config file means no
+    limits found, and every name is returned as not enforced."""
+    names = {
+        "chars": r"(\d+)\s+characters\s+or\s+fewer",
+        "scenarios": r"at\s+most\s+(\d+)\s+scenarios",
+        "requirements": r"at\s+most\s+(\d+)\s+requirements",
+    }
+    cfg = root / "openspec" / "config.yaml"
+    try:
+        text = cfg.read_text(encoding="utf-8-sig") if cfg.is_file() else ""
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CheckerError(f"cannot read openspec/config.yaml: {exc}") from exc
+    # Only the `specs:` rules under `rules:` carry these limits; the other rule groups
+    # (proposal, design, tasks) may use the same words for other things.
+    m = re.search(r"(?m)^  specs:\s*\n((?:    .*\n?|\s*\n)+)", text)
+    block = m.group(1) if m else ""
+    found, missing = {}, []
+    for name, pat in names.items():
+        hit = re.search(pat, block)
+        if hit:
+            found[name] = int(hit.group(1))
+        else:
+            missing.append(name)
+    return found, missing
+
+
+def check_format(files: list["SpecFile"], limits: dict[str, int]) -> list[str]:
+    """PROBLEM lines for each live spec or active delta over the limits. Archives are not edited, so skipped."""
+    problems = []
+    for f in files:
+        if f.kind == "archived":
+            continue
+        reqs = _blocks(f.text, f.kind != "live")
+        if "requirements" in limits and len(reqs) > limits["requirements"]:
+            problems.append(f"PROBLEM format: {f.rel}: {len(reqs)} requirements, the limit is {limits['requirements']}")
+        for heading, body, scns in reqs:
+            if "scenarios" in limits and len(scns) > limits["scenarios"]:
+                problems.append(
+                    f"PROBLEM format: {f.rel}: requirement {heading!r} has {len(scns)} scenarios, the limit is {limits['scenarios']}"
+                )
+            if "chars" in limits:
+                statement = []
+                for line in body:
+                    if _SCN.match(line):
+                        break
+                    statement.append(line)
+                n = len(_norm(statement))
+                if n > limits["chars"]:
+                    problems.append(f"PROBLEM format: {f.rel}: requirement {heading!r} states {n} characters, the limit is {limits['chars']}")
+    return problems
 
 
 def _spec_files(root: Path, mode: str) -> list[SpecFile]:
@@ -271,6 +355,9 @@ def resolve_base(root: Path, explicit: str | None) -> tuple[str | None, str]:
         if rc == 0 and out.strip():
             candidates.append(out.strip().removeprefix("refs/remotes/"))
         candidates += ["origin/main", "origin/master", "main", "master"]
+    if not explicit and _git(root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")[0] != 0:
+        return None, "no commit on HEAD yet"
+    failed = []
     for ref in candidates:
         rc, _ = _git(root, "rev-parse", "--verify", "--quiet", ref + "^{commit}")
         if rc != 0:
@@ -278,9 +365,11 @@ def resolve_base(root: Path, explicit: str | None) -> tuple[str | None, str]:
         rc, out = _git(root, "merge-base", "HEAD", ref)
         if rc == 0 and out.strip():
             return out.strip(), f"merge-base with {ref}"
-        # The branch exists but shares no history we can see (a shallow clone, an unborn HEAD):
-        # turning the rule off here would pass a branch nobody compared.
-        raise CheckerError(f"{ref} exists but git merge-base HEAD {ref} failed (a shallow clone?); fetch more history or pass --base")
+        failed.append(ref)
+    if failed:
+        # A branch exists but shares no history we can see (a shallow clone): turning the
+        # rule off here would pass a branch nobody compared.
+        raise CheckerError(f"{failed[0]} exists but git merge-base HEAD {failed[0]} failed (a shallow clone?); fetch more history or pass --base")
     if explicit:
         raise CheckerError(f"--base {explicit} does not resolve to a commit")
     return None, "no default branch found"
@@ -357,15 +446,16 @@ def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str
             raw = p.read_bytes() if p.stat().st_size <= _MAX_BYTES else None
         except OSError:
             raw = None
-        if raw is None or b"\0" in raw:
+        utf16 = raw is not None and raw[:2] in (b"\xff\xfe", b"\xfe\xff")  # Windows PowerShell writes these
+        if raw is None or (b"\0" in raw and not utf16):
             skipped.append(rel)
             continue
         scanned += 1
-        for line in raw.decode("utf-8", errors="replace").splitlines():
+        for line in raw.decode("utf-16" if utf16 else "utf-8", errors="replace").splitlines():
             m = _MARKER.match(line)
             if m:
                 found.append((m.group(1), m.group(2), m.group(3), rel))
-            elif _MARKER_LOOSE.match(line) and "<" not in line:
+            elif _MARKER_LOOSE.match(line) and not line.split(":", 1)[1].lstrip().startswith("<"):
                 found.append(("malformed", "", line.strip(), rel))
     return found, scanned, skipped
 
@@ -419,9 +509,9 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     if not files:
         raise CheckerError("no spec files found under openspec/specs or openspec/changes; a run that checks nothing must not pass")
 
-    if not any(f.units for f in files):
+    if not any(f.units for f in files if f.kind != "archived"):
         raise CheckerError(
-            f"{len(files)} spec file(s) found but no {mode} parsed from any of them; "
+            f"{len(files)} spec file(s) found but no {mode} parsed from a live spec or active delta; "
             "check the '## Requirements' section and '### Requirement:' headings (an unclosed code fence hides the rest of a file)"
         )
 
@@ -441,6 +531,17 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         for h, n in sorted(seen.items()):
             if n > 1:
                 problems.append(f"PROBLEM repeated: {f.rel}: heading {h!r} appears {n} times")
+
+    for f in files:
+        # A delta that writes requirements under a heading OpenSpec does not read
+        # (`## Requirements` instead of `## ADDED Requirements`) yields nothing to check.
+        if f.kind == "active" and not f.units and _REQ_ANYWHERE.search(f.text) and not _DELTA_SECTION.search(f.text):
+            problems.append(f"PROBLEM empty: {f.rel}: requirements but no ADDED, MODIFIED, REMOVED or RENAMED section, so none is checked")
+        if f.kind == "live" and not f.units:
+            problems.append(f"PROBLEM empty: {f.rel}: a live spec with no {mode} parsed")
+
+    limits, unenforced = read_format_limits(root)
+    problems += check_format(files, limits)
 
     markers, scanned, skipped = scan_markers(root, globs or [])
     if scanned == 0:
@@ -471,6 +572,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         raise CheckerError("git is not installed or not on PATH")
     if git_rc == 0:
         base, base_note = resolve_base(root, base_arg)
+    elif _under_git(root):
+        raise CheckerError(f"git refused this repo (exit {git_rc}; dubious ownership?): {root}")
     elif base_arg:
         raise CheckerError(f"--base {base_arg} given but {root} is not a git repo")
     if base is not None:
@@ -533,6 +636,9 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         f"manual lines: {sum(1 for n in notes if n.kind == 'manual')} (prompt half: {sum(1 for n in notes if n.kind == 'manual' and n.prompt_half)})",
         f"waiting lines: {sum(1 for n in notes if n.kind == 'waiting')} (covering a changed {mode}: {covered_waiting})",
         f"repo-wide coverage (information only): {covered}/{len(all_units)}",
+        "format limits (from openspec/config.yaml): "
+        + (", ".join(f"{k} {v}" for k, v in limits.items()) or "none")
+        + (f"; not enforced, not found: {', '.join(unenforced)}" if unenforced else ""),
         f"problems: {len(problems)}",
     ]
     return (1 if problems else 0), problems + out
@@ -551,7 +657,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"check_spec_proof: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001 - a crash must read as "could not run", never as "problems found"
-        print(f"check_spec_proof: unexpected {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"check_spec_proof: unexpected {type(exc).__name__}: {exc}\n{traceback.format_exc()}", file=sys.stderr)
         return 2
     print("\n".join(lines))
     return code
