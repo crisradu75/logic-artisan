@@ -32,7 +32,7 @@ Apply the checklist's Step 3 size gate to **each** change on its own counts. The
 
 Record each change's grade and the batch's total `e` in the batch report.
 
-## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large)
+## Step 4 — Dispatch three agents, once, over the whole batch (when any change is large or the batch total `e` is 25 or more)
 
 Same model routing as `review-change/references/dispatch.md` (the checklist's Step 4), per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`'s "Review-agent dispatch" table. This is a review of specs before any code exists, so there is no diff or `Risk:` line to size by:
 

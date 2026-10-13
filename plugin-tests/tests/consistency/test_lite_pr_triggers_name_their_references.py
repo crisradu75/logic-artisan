@@ -70,4 +70,11 @@ def test_a_retry_failing_on_a_new_cause_reaches_diagnose_before_the_halt() -> No
     assert "on the same stated cause or a new one → stop editing and escalate to `/cla:diagnose`" in step3, (
         "step 3 no longer sends a new-cause failure to diagnose"
     )
-    assert "different cause" not in step4, "step 4 HALTs a new-cause failure without diagnose again"
+    assert step4.startswith("4. Still failing after the `/cla:diagnose` path in step 3"), (
+        "step 4 HALTs on something other than the diagnose path again"
+    )
+    assert "cause" not in step4.split("(")[0], "step 4 HALTs a failure by its cause again, skipping diagnose"
+    ref = (_LITE_PR / "references" / "diagnose-escalation.md").read_text(encoding="utf-8")
+    assert "Hand `diagnose` the retry's failure output, not the original one" in ref, (
+        "on a new cause, diagnose may be handed the original failure and stop without a root cause"
+    )

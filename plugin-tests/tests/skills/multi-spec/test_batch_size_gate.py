@@ -8,6 +8,7 @@ three-agent review at the same threshold one change uses: 25.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 _SKILLS = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills"
@@ -16,30 +17,44 @@ _SKILL = _SKILLS / "multi-spec" / "SKILL.md"
 _CHECKLIST = _SKILLS / "review-change" / "references" / "checklist.md"
 
 
-def _step3() -> str:
-    text = _GATE.read_text(encoding="utf-8")
-    start = text.index("## Step 3")
-    return text[start:text.index("\n## ", start + 1)]
+def _flat(path: Path) -> str:
+    return re.sub(r"\s+", " ", path.read_text(encoding="utf-8"))
 
 
-def test_inline_review_needs_every_change_small_and_a_small_batch_total():
-    step = _step3()
-    assert "- **Every change grades small and the batch's total `e` is under 25** → no dispatch." in step
-    assert "- **Any change grades large, or the batch's total `e` is 25 or more** → Step 4," in step
-    assert "Record each change's grade and the batch's total `e` in the batch report." in step
+def _limit() -> int:
+    """The single-change claim threshold, read from review-change's checklist."""
+    match = re.search(r"`e < (\d+)`", _CHECKLIST.read_text(encoding="utf-8"))
+    assert match, "review-change's checklist no longer states its claim threshold as `e < N`"
+    return int(match.group(1))
 
 
-def test_the_batch_threshold_is_the_single_change_threshold():
-    """The batch reuses the one-change claim limit; if that limit moves, this must too."""
-    assert "`e < 25`" in _CHECKLIST.read_text(encoding="utf-8"), (
-        "review-change's single-change claim threshold changed; update the batch threshold "
-        "in multi-spec's review-gate.md and SKILL.md to match"
+def _step(text: str, heading: str) -> str:
+    start = text.index(heading)
+    end = text.find("## Step", start + len(heading))
+    return text[start:] if end == -1 else text[start:end]
+
+
+def test_the_gate_uses_the_single_change_threshold_for_the_batch_total():
+    n = _limit()
+    step3 = _step(_flat(_GATE), "## Step 3")
+    assert f"Every change grades small and the batch's total `e` is under {n}" in step3
+    assert f"Any change grades large, or the batch's total `e` is {n} or more" in step3
+    assert "the batch's total `e` in the batch report" in step3
+
+
+def test_the_step4_heading_names_both_triggers():
+    n = _limit()
+    heading = next(
+        line for line in _GATE.read_text(encoding="utf-8").splitlines() if line.startswith("## Step 4")
+    )
+    assert f"batch total `e` is {n} or more" in heading, (
+        "Step 4's heading names only the per-change trigger, contradicting Step 3"
     )
 
 
 def test_the_skill_summary_states_the_batch_total():
-    text = _SKILL.read_text(encoding="utf-8")
-    assert "or the batch makes 25 or more claims in total, dispatch" in text
+    text = _flat(_SKILL)
+    assert f"or the batch makes {_limit()} or more claims in total, dispatch" in text
     assert "if all are small, review inline" not in text, (
         "the summary still says all-small means inline, ignoring the batch total"
     )
