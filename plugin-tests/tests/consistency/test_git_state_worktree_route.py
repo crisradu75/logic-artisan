@@ -31,14 +31,18 @@ def _section() -> str:
     return text[start:] if end == -1 else text[start:end]
 
 
-def _git_state_rules() -> dict[str, str]:
-    """Every hoisted bullet in a shipped SKILL.md that tells a run to verify git_state."""
-    rules = {}
-    for skill_md in sorted(_SKILLS.glob("*/SKILL.md")):
-        for line in skill_md.read_text(encoding="utf-8").splitlines():
-            if line.startswith("- **Verify `git_state"):
-                rules[skill_md.parent.name] = line
-    return rules
+def _git_state_rules() -> list[tuple[str, str]]:
+    """Every hoisted bullet in a shipped SKILL.md that tells a run to verify git_state.
+
+    A list, not a dict keyed by skill: a second bullet in one file must be checked too,
+    not overwritten by the first.
+    """
+    return [
+        (skill_md.parent.name, line)
+        for skill_md in sorted(_SKILLS.glob("*/SKILL.md"))
+        for line in skill_md.read_text(encoding="utf-8").splitlines()
+        if line.startswith("- **Verify `git_state")
+    ]
 
 
 def test_the_route_enters_the_existing_worktree():
@@ -63,17 +67,22 @@ def test_repo_root_is_bound_to_expect_branch_and_git_c():
     assert "**Never add `--repo-root` to silence an exit 3**" in body, (
         "the warning against silencing a real wrong-branch exit 3 is gone"
     )
-
-
-def test_the_rule_scan_is_not_vacuous():
-    rules = _git_state_rules()
-    assert {"spec-to-pr", "multi-pr", "multi-lite", "multi-spec"} <= set(rules), (
-        f"expected the four chain skills' git_state rules, found {sorted(rules)}"
+    assert "Such a step runs no gate and edits no file" in body, (
+        "the outside route no longer forbids gates and edits, which would act on the "
+        "session's checkout and read green on a tree without the change"
     )
 
 
+def test_the_rule_scan_is_not_vacuous():
+    skills = [skill for skill, _ in _git_state_rules()]
+    for chain in ("spec-to-pr", "multi-pr", "multi-lite", "multi-spec"):
+        assert skills.count(chain) == 1, (
+            f"expected one git_state rule in {chain}/SKILL.md, found {skills.count(chain)}"
+        )
+
+
 def test_every_git_state_rule_cites_the_route_and_shows_no_repo_root():
-    for skill, rule in _git_state_rules().items():
+    for skill, rule in _git_state_rules():
         assert "bash-discipline.md" in rule and _CITE in rule, (
             f"{skill}/SKILL.md's git_state rule does not cite the worktree route"
         )
@@ -81,3 +90,16 @@ def test_every_git_state_rule_cites_the_route_and_shows_no_repo_root():
             f"{skill}/SKILL.md's git_state rule shows --repo-root; its commits run in the "
             "session's checkout, so the flag would check a tree the commit does not touch"
         )
+
+
+def test_no_shipped_line_offers_repo_root_without_expect_branch():
+    """Anywhere in the shipped prose, `--repo-root` alone skips the branch check."""
+    offenders = [
+        f"{md.relative_to(_SKILLS)}:{n}"
+        for md in sorted(_SKILLS.rglob("*.md"))
+        for n, line in enumerate(md.read_text(encoding="utf-8").splitlines(), 1)
+        if "--repo-root" in line and "--expect-branch" not in line
+        # The one sanctioned mention without the pair is the warning against using it.
+        and "**Never add `--repo-root` to silence an exit 3**" not in line
+    ]
+    assert not offenders, f"--repo-root offered without --expect-branch at {offenders}"
