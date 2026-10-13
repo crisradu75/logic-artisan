@@ -13,11 +13,11 @@ These shapes defeat the project's Bash permission allowlist matching, or write w
 
 ## Working on a worktree you are not in
 
-`cd` is blocked, so a command that reads the shell's working directory runs against the session's checkout, not the worktree the change lives in.
+`cd` is blocked, so `git_state.py`, `git`, `openspec`, test runners and anything reading `process.cwd()` run against the session's checkout, not the worktree the change lives in.
 
-- **`git_state.py`:** pass `--repo-root <abs-worktree-path>` when the next git command targets that worktree with `git -C <abs-worktree-path>`. Without the flag, the script checks the session's checkout and exits 3 on a correct run.
+- **Move the session into the worktree.** Call `EnterWorktree` with `path: <abs-worktree-path>`, or launch Claude in the worktree. Every command then runs there, and `git_state.py` needs no extra flag. Do not use `/cla:new-worktree` or `EnterWorktree` with `name` for this: both create a new worktree from the default branch, which does not hold the change.
+- **`--repo-root` is only for a run that stays outside.** Pass `--repo-root <abs-worktree-path>` only together with `--expect-branch <branch>`. Without `--expect-branch`, the script skips the branch check and exits 0 on any branch. Every staging and commit call it guards must then use `git -C` with the same absolute path.
 - **Never add `--repo-root` to silence an exit 3** when the commit itself runs in the session's checkout. That exit is right: the commit would land on the wrong branch.
-- **Commands with no directory option** (`openspec`, test runners, anything reading `process.cwd()`): move the session into the worktree first. Use `EnterWorktree` or `/cla:new-worktree`, or launch Claude in the worktree. On Windows, the PowerShell tool's `Push-Location <worktree>; <cmd>; Pop-Location` also works.
 
 ## Mandated alternatives
 
