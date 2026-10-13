@@ -93,7 +93,8 @@ On a prose-dominant diff, add the skill reviewer (`plugin-dev:skill-reviewer`, w
 Opus to the high-risk reviewers.
 
 **A second review pass** (round 2) runs only after round 1 fixed a Critical finding, or an Important
-one on a high-risk pull request (or a re-entry for still-open findings), and only while the repo's limit on review passes allows it. It reviews the
+one on a high-risk pull request, judged at round 1's final level (or a re-entry for still-open
+findings), and only while the repo's limit on review passes allows it. It reviews the
 fix diff with the same reviewers, at round 1's final level, never lower.
 <!-- economy-rules-file:review-sizing:end -->
 

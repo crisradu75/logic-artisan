@@ -81,7 +81,7 @@ Re-invoking `/cla:multi-lite` on the same doc after an interruption picks up cle
 
 ## What this skill deliberately does not do
 
-- Does not reimplement Explore/Plan/Implement/Test/Ship/Review — that's `/cla:lite-pr`'s job, invoked as a sub-skill. It runs no `review-pr` pass of its own; it only *enforces* the deferred Critical/Important findings from `/cla:lite-pr`'s own single pass (Phase 3 step 7), with one bounded additional enforcement round.
+- Does not reimplement Explore/Plan/Implement/Test/Ship/Review — that's `/cla:lite-pr`'s job, invoked as a sub-skill. It runs no `review-pr` pass of its own; it only *enforces* the deferred Critical/Important findings from `/cla:lite-pr`'s own review passes (Phase 3 step 7), with one bounded additional enforcement round.
 - Does not merge anything the confirmed Phase 1 policy does not authorize. Under `merge-dependencies-only` an independent candidate's PR is left open for the user; under `merge-each-clean` it merges once clean. Neither policy merges a candidate that fails step 8's clean check.
 - Does not auto-rebase a conflicting PR. A rebase changes the code that was tested and reviewed, so a conflicting candidate is left open and flagged instead.
 - Does not group multiple candidates into one PR (that's `/cla:multi-spec`'s grouping model for OpenSpec changes) — one candidate, one `/cla:lite-pr`, one PR.

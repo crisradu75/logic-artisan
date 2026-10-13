@@ -25,9 +25,16 @@ def _review_step(prefix: str) -> str:
 
 def test_a_high_risk_fix_gets_one_more_pass_over_its_diff():
     step = _review_step("4. **A second pass only for a high-risk fix.**")
-    assert "When the PR's `Risk:` line is high and step 1 fixed a Critical or Important finding" in step
-    assert "`cla:code-reviewer` and `cla:silent-failure-hunter` on Opus once more" in step
+    assert "When this Review ran at high risk and step 1 fixed a Critical or Important finding" in step
+    assert "the same reviewers once more, at the same models" in step
     assert "over the fix commit's diff only" in step
+
+
+def test_high_risk_is_the_level_the_review_used_not_the_literal_line():
+    """lite-pr raises a missed level and treats a missing line as high without rewriting the
+    PR body, so a trigger on the literal line would skip the second pass on those PRs."""
+    step = _review_step("4. **A second pass only for a high-risk fix.**")
+    assert "the `Risk:` line said high, you raised it, or the line was missing" in step
 
 
 def test_the_second_pass_is_the_last():
@@ -43,3 +50,6 @@ def test_the_second_pass_is_the_last():
 def test_the_report_names_the_last_unreviewed_fix_commit():
     step = _review_step("5. **Say how big the last fix commit is against what the last pass reviewed")
     assert "nobody has read those fixes" in step
+    assert "If a second pass reviewed the fixes and committed none, say that the fixes were reviewed once more" in step, (
+        "a clean second pass is still reported as leaving the fixes unreviewed"
+    )

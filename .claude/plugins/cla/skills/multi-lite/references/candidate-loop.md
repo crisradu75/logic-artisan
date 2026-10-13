@@ -37,7 +37,7 @@ For each candidate in the confirmed order:
    **In the same write, record the deferred findings.** `/cla:lite-pr` keeps them only in context, so a resumed step 7 has nothing else to read them from.
 
    **Count from the review agents' own reports, not from `/cla:lite-pr`'s summary.** `/cla:lite-pr` runs inline through `Skill`, so every Critical/Important finding its review agents returned is in this context. Its final report is not required to list them, so a finding it deferred can be absent from the summary entirely. Take each Critical/Important finding the agents reported. It counts as settled only when both hold:
-   - `/cla:lite-pr`'s fix commit contains a change that addresses it, which you can name by file and hunk, and
+   - one of `/cla:lite-pr`'s fix commits contains a change that addresses it, which you can name by file and hunk, and
    - the report names no surviving mutant for that fix. A surviving mutant is a deliberately broken version of the fix that no test caught, so nobody has shown the fix works.
 
    Every other Critical/Important finding counts as deferred: one the report says was deferred, one with no matching change, and one with a surviving mutant.
@@ -46,7 +46,7 @@ For each candidate in the confirmed order:
 
    Every later step that needs to act on this PR (step 8's merge, a resume in step 2) keys off these recorded values — never a re-derived branch name or an "in-context" PR number.
 
-7. **Enforce `/cla:lite-pr`'s deferred review findings (the thin layer it doesn't do itself).** `/cla:lite-pr` opens the PR even when its Review phase *defers* Critical/Important findings — it never halts on them, and it has already spent its own single fix round before deferring. Work from the findings step 6 recorded in the ledger — the same list whether this is the first pass or a resume:
+7. **Enforce `/cla:lite-pr`'s deferred review findings (the thin layer it doesn't do itself).** `/cla:lite-pr` opens the PR even when its Review phase *defers* Critical/Important findings — it never halts on them, and it has already spent its own fix rounds (one, or two on a high-risk fix) before deferring. Work from the findings step 6 recorded in the ledger — the same list whether this is the first pass or a resume:
    - **`deferred` is empty** → step 6 could not determine the findings. Write `review: unresolved` with the reason `deferred findings not determinable`, and take the unresolved branch below.
    - **`deferred` is `0`** → no finding is unresolved. Write `review: clean` to its ledger row and go to step 8. (This review verdict is not a test verdict. `/cla:lite-pr`'s own review fixes were committed after its Test phase, so step 8b runs the full gate before any merge.)
    - **One or more deferred Critical/Important findings** → run **one additional enforcement round** on exactly those deferred findings (this is a round *on top of* `lite-pr`'s own already-spent one — not a re-run of it, and not a loop). For each finding: read it, apply the `Edit`, then re-run the narrow gate the finding was about plus the changed-file tests.
