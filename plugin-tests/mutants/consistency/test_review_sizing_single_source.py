@@ -107,6 +107,13 @@ MUTANTS = [
         TARGETS,
     ),
     (
+        "the economy rules drop the long-chat handoff",
+        ECONOMY,
+        "write a handoff file and",
+        "keep going in the same session and",
+        TARGETS,
+    ),
+    (
         "revise.md's cap sentence judges risk by the literal Risk line again",
         REVISE,
         "(high at round 1's final level), and the cap allows it.",

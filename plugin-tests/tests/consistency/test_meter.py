@@ -115,6 +115,34 @@ def test_the_table_total_equals_a_manual_sum_and_nothing_is_written(tmp_path: Pa
 
 
 def test_json_output_is_the_collected_totals(tmp_path: Path, capsys) -> None:
-    _write(tmp_path / "s.jsonl", [_record("a", "opus", 1, 2, 3, 4)])
+    _write(tmp_path / "s.jsonl", [_record("a", "opus", 1, 2, 3, 4), _record("b", "sonnet", 5, 6, 7, 8)])
     assert meter.main([str(tmp_path), "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["opus"]["output"] == 4
+    assert json.loads(capsys.readouterr().out) == {
+        "opus": {"input": 1, "cache_write": 2, "cache_read": 3, "output": 4, "messages": 1},
+        "sonnet": {"input": 5, "cache_write": 6, "cache_read": 7, "output": 8, "messages": 1},
+    }
+
+
+def test_the_same_id_and_model_in_two_files_counts_twice(tmp_path: Path) -> None:
+    """Pins current behaviour, not a claim that it is right: ids are keyed per file because
+    meter.py assumes they never repeat across files (a subagent transcript is its own
+    conversation). A resumed or forked session that copies history into a new file breaks
+    that assumption and is double-counted; #349 tracks it. Change this test with that fix."""
+    _write(tmp_path / "main.jsonl", [_record("m1", "opus", 1, 2, 3, 4)])
+    _write(tmp_path / "main" / "subagents" / "agent-x.jsonl", [_record("m1", "opus", 1, 2, 3, 4)])
+    assert meter.collect(meter.transcript_files(tmp_path)) == {
+        "opus": {"input": 2, "cache_write": 4, "cache_read": 6, "output": 8, "messages": 2},
+    }
+
+
+def test_the_table_has_one_row_per_model_sorted_by_name(tmp_path: Path, capsys) -> None:
+    _write(
+        tmp_path / "s.jsonl",
+        [_record("a", "sonnet", 5, 6, 7, 8), _record("b", "haiku", 1, 1, 1, 1), _record("c", "opus", 1, 2, 3, 4)],
+    )
+    assert meter.main([str(tmp_path)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    rows = [line.split() for line in lines[2:-1]]
+    assert [row[0] for row in rows] == ["haiku", "opus", "sonnet"], "model rows are missing or out of order"
+    assert rows[1][1:] == ["1", "2", "3", "4", "1"], "the opus row does not carry its own totals"
+    assert lines[-1].split()[0] == "TOTAL"

@@ -18,17 +18,52 @@ HUNTER = AGENTS / "silent-failure-hunter.md"
 DOC_SWEEPER = AGENTS / "doc-sweeper.md"
 
 TARGETS = [GUARD]
-TOOLS = '_FORBIDDEN_TOOLS = ("Edit", "Write", "NotebookEdit", "Bash")'
+TOOLS = '_FORBIDDEN_TOOLS = ("Edit", "MultiEdit", "Write", "NotebookEdit", "Bash")'
 
 MUTANTS = [
+    (
+        "the guard stops reading a scoped entry such as Bash(git:*) as the tool",
+        GUARD,
+        'named = {str(t).split("(", 1)[0].strip().lower() for t in tools}',
+        'named = {str(t).strip().lower() for t in tools}',
+        TARGETS,
+    ),
+    (
+        "MultiEdit drops off the forbidden list",
+        GUARD,
+        TOOLS,
+        '_FORBIDDEN_TOOLS = ("Edit", "Write", "NotebookEdit", "Bash")',
+        TARGETS,
+    ),
+    (
+        "a reviewer gains a lower-case bash tool",
+        CODE_REVIEWER,
+        'tools: ["Read", "Grep", "Glob"]',
+        'tools: ["Read", "Grep", "Glob", "bash"]',
+        TARGETS,
+    ),
+    (
+        "silent-failure-hunter drifts from opus to haiku",
+        HUNTER,
+        "model: opus",
+        "model: haiku",
+        TARGETS,
+    ),
+    (
+        "the guard stops reading a wildcard tool as every tool",
+        GUARD,
+        '        if "*" in named:',
+        '        if False:',
+        TARGETS,
+    ),
     ("the guard stops forbidding Edit", GUARD, TOOLS,
-     '_FORBIDDEN_TOOLS = ("Write", "NotebookEdit", "Bash")', TARGETS),
+     '_FORBIDDEN_TOOLS = ("MultiEdit", "Write", "NotebookEdit", "Bash")', TARGETS),
     ("the guard stops forbidding Write", GUARD, TOOLS,
-     '_FORBIDDEN_TOOLS = ("Edit", "NotebookEdit", "Bash")', TARGETS),
+     '_FORBIDDEN_TOOLS = ("Edit", "MultiEdit", "NotebookEdit", "Bash")', TARGETS),
     ("the guard stops forbidding NotebookEdit", GUARD, TOOLS,
-     '_FORBIDDEN_TOOLS = ("Edit", "Write", "Bash")', TARGETS),
+     '_FORBIDDEN_TOOLS = ("Edit", "MultiEdit", "Write", "Bash")', TARGETS),
     ("the guard stops forbidding Bash", GUARD, TOOLS,
-     '_FORBIDDEN_TOOLS = ("Edit", "Write", "NotebookEdit")', TARGETS),
+     '_FORBIDDEN_TOOLS = ("Edit", "MultiEdit", "Write", "NotebookEdit")', TARGETS),
     ("the guard accepts any model name", GUARD,
      'if fields.get("model") not in _MODELS:', 'if False:', TARGETS),
     ("the guard accepts an unknown model name", GUARD,

@@ -62,17 +62,34 @@ def test_the_seed_treats_config_yml_as_existing():
     assert '[ ! -e "$CFG" ] && [ ! -e "$ROOT/openspec/config.yml" ]' in text
 
 
-def test_an_item_with_a_colon_is_quoted():
-    # Unquoted, YAML reads "a: b" as a mapping and OpenSpec drops that
-    # artifact's rules (cla-setup/SKILL.md says so beside the block).
-    unquoted = [
-        line
-        for line in _skill_block().splitlines()
-        if line.lstrip().startswith("- ")
-        and ": " in line
-        and not line.lstrip()[2:].startswith('"')
-    ]
+def _misread_unquoted(line: str) -> bool:
+    """An unquoted list item YAML would not read as the plain string it looks like.
+
+    "a: b" or a trailing ":" makes a mapping, and OpenSpec then drops that artifact's
+    rules (cla-setup/SKILL.md says so beside the block). " #" starts a comment, so the
+    rest of the rule silently vanishes.
+    """
+    stripped = line.lstrip()
+    if not stripped.startswith("- "):
+        return False
+    item = stripped[2:].rstrip()
+    if item.startswith(('"', "'")):
+        return False
+    return ": " in item or item.endswith(":") or " #" in item
+
+
+def test_an_item_yaml_would_misread_is_quoted():
+    unquoted = [line for line in _skill_block().splitlines() if _misread_unquoted(line)]
     assert unquoted == []
+
+
+def test_the_misread_check_catches_each_shape():
+    assert _misread_unquoted("    - Keep it short: one line")
+    assert _misread_unquoted("    - Trailing colon:")
+    assert _misread_unquoted("    - A rule # and its tail")
+    assert not _misread_unquoted('    - "Quoted: fine # too"')
+    assert not _misread_unquoted("    - 'Single-quoted: fine'")
+    assert not _misread_unquoted("    - Plain rule with no traps")
 
 
 # Each limit as a restatement would spell it: "500 characters", "at most 3
