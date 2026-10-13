@@ -28,7 +28,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr-retro/scripts/spec_to_pr_aggrega
 - `asks`: one answer chosen 80% of the time or more should become the default, with no prompt.
 - `flags.runs`: how many runs used each flag, out of `flags.recorded` (older records carry no `flags`). Once `recorded` reaches about 30, a flag no run used is a candidate to delete; name it with the count.
 - `diagnose_escalations`: of the `recorded` runs, how many escalated to `/cla:diagnose`, and how often in all. It tells whether that escalation earns its place; report it, propose nothing from it alone.
-- `round_2_yield`: of the changes that ran a Revise round 2 (it runs only after a fixed Critical, or a fixed Important on a high-risk PR), how many found a Critical or Important there. Under half, over eight or more changes: round 2 has stopped paying; propose `--pr-rounds 1` as the default, citing the counts.
+- `round_2_yield`: of the changes that ran a Revise round 2 (it runs only after a fixed Critical, or a fixed Important on a high-risk PR), how many found a Critical or Important there. `by_trigger` splits that by what started the round. Judge each arm on its own, over eight or more changes in that arm, and cite its counts:
+  - `high-important` under half: that trigger has stopped paying; propose dropping it, keeping round 2 after a fixed Critical.
+  - `critical` under half while `high-important` is not: report it; propose nothing that would also remove the arm still paying.
+  - Both under half: round 2 has stopped paying; propose `--pr-rounds 1` as the default.
+  - `reentry`, `resume` and `unrecorded` (records from before triggers were logged): report them, propose nothing from them.
 
 ## Report
 

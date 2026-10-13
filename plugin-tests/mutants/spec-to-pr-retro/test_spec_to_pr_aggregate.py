@@ -297,4 +297,25 @@ MUTANTS = [
         "    if not isinstance(flags, list):",
         TARGETS,
     ),
+    (
+        "round-2 yield stops splitting by trigger, so a weak arm hides in the total",
+        SCRIPT,
+        '            arm = by_trigger.setdefault(r.get("trigger") or "unrecorded", {"changes": set(), "surfaced": set()})',
+        '            arm = by_trigger.setdefault("unrecorded", {"changes": set(), "surfaced": set()})',
+        TARGETS,
+    ),
+    (
+        "an arm counts a change as surfaced when another arm's round found something",
+        SCRIPT,
+        "            if r[\"found\"] >= 1:\n                arm[\"surfaced\"].add(key)",
+        "            if any(x[\"found\"] >= 1 for x in later):\n                arm[\"surfaced\"].add(key)",
+        TARGETS,
+    ),
+    (
+        "a trigger that is not a string is read rather than skipped",
+        SCRIPT,
+        '                and isinstance(r.get("trigger", ""), str)\n',
+        "",
+        TARGETS,
+    ),
 ]

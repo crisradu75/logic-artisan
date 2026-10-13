@@ -197,7 +197,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    Inspect the `git push` exit code in your own context (no `|| { ... }` compound). Non-zero → Revise `warn`, the failure to Handoff Issues, and a prominent warning that round-N fixes are local-only.
 
-4. **Record the round now:** append `{"round": N, "found": <this round's deduplicated Critical+Important count after triage>}` to Revise's `findings_by_round`. Handoff reads it; it is never reconstructed there.
+4. **Record the round now:** append `{"round": N, "found": <this round's deduplicated Critical+Important count after triage>}` to Revise's `findings_by_round`. On a round after the first, add `"trigger"`, what started it: `critical` when the round before fixed a Critical, `high-important` when it fixed only Important ones on a high-risk pull request, `reentry` for a re-entry on still-open findings, `resume` when a resume could not tell. The retro splits round-2 yield by it and counts a later round without one as `unrecorded`. Handoff reads it; it is never reconstructed there.
 
    **Exit gate — TWO counts, and both must be zero to exit clean.**
    - **Untriaged** — Critical/Important findings in no bucket.

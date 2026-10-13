@@ -319,4 +319,25 @@ MUTANTS = [
         '         "escalated_to_diagnose": TEXT,',
         TARGETS,
     ),
+    (
+        "a trigger on round 1 is accepted",
+        SCRIPT,
+        '    if entry["round"] <= 1 and "trigger" in entry:',
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "any trigger text is accepted",
+        SCRIPT,
+        '{"trigger": _one_of(*ROUND_TRIGGERS)}, _round_rule',
+        '{"trigger": TEXT}, _round_rule',
+        TARGETS,
+    ),
+    (
+        "the high-risk Important trigger is refused",
+        SCRIPT,
+        'ROUND_TRIGGERS = ("critical", "high-important", "reentry", "resume")',
+        'ROUND_TRIGGERS = ("critical", "reentry", "resume")',
+        TARGETS,
+    ),
 ]

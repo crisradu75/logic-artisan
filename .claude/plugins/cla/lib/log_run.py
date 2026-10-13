@@ -137,6 +137,11 @@ REVISE_AGENTS = ("code-reviewer", "silent-failure-hunter", "pr-test-analyzer",
 # whenever they ran. Review loops too but is single-pass by default, and its pair
 # stays optional.
 ROUNDS_REQUIRED_ON = ("Test", "Revise")
+# Why a Revise round after the first ran. The retro splits round-2 yield by it, so a
+# weak arm cannot hide behind a strong one: `critical` (a fixed Critical, whatever
+# else was fixed), `high-important` (only Important fixes, on a high-risk PR),
+# `reentry` (still-open findings re-attempted), `resume` (a resume that could not tell).
+ROUND_TRIGGERS = ("critical", "high-important", "reentry", "resume")
 
 
 def _phase_rule(phase: dict) -> list[str]:
@@ -153,6 +158,15 @@ def _phase_rule(phase: dict) -> list[str]:
         problems.append(f"`rounds_used` and `rounds_cap` are required on a {name} phase "
                         f"that was not skipped ({status})")
     return problems
+
+
+def _round_rule(entry: dict) -> list[str]:
+    """Round 1 has no trigger. A later round without one is accepted, because no
+    record from before triggers existed can carry it; the retro counts it apart
+    as `unrecorded`, so a writer that drops it shows up there."""
+    if entry["round"] <= 1 and "trigger" in entry:
+        return ["`trigger` belongs only on a round after the first"]
+    return []
 
 
 def _findings_rule(by_agent: dict) -> list[str]:
@@ -173,7 +187,8 @@ def _findings_rule(by_agent: dict) -> list[str]:
 _PHASE = _obj(
     {"name": _one_of(*SPEC_TO_PR_PHASES), "status": _one_of(*STATUSES)},
     {"reason": TEXT, "rounds_used": COUNT, "rounds_cap": COUNT,
-     "findings_by_round": ("list", _obj({"round": COUNT, "found": COUNT}))},
+     "findings_by_round": ("list", _obj({"round": COUNT, "found": COUNT},
+                                        {"trigger": _one_of(*ROUND_TRIGGERS)}, _round_rule))},
     _phase_rule,
 )
 

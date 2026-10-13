@@ -200,6 +200,7 @@ def _unreadable(rec: object) -> str | None:
         rounds = phase.get("findings_by_round", [])
         if not (isinstance(rounds, list) and all(
                 isinstance(r, dict) and _is_int(r.get("round")) and _is_int(r.get("found"))
+                and isinstance(r.get("trigger", ""), str)
                 for r in rounds)):
             return "`findings_by_round`"
     asks = rec.get("asks", [])
@@ -340,10 +341,16 @@ def round_2_yield(records: list[tuple[str, dict]]) -> dict:
     round found at least one Critical or Important. Changes are distinct
     (ledger, change) pairs, so a re-run change counts once. `records` is
     (ledger, record) over the window.
+
+    `by_trigger` splits the same counts by what started each later round, so a
+    weak arm cannot hide behind a strong one. A change counts once under every
+    trigger its later rounds carry; a round from before triggers were recorded
+    counts as `unrecorded`.
     """
     changes: set[tuple[str, str]] = set()
     surfaced: set[tuple[str, str]] = set()
     chains: set[tuple[str, str]] = set()
+    by_trigger: dict[str, dict[str, set]] = {}
     for ledger, rec in records:
         later = [r for p in rec["phases"] if p["name"] == FINDINGS_PHASE
                  for r in p.get("findings_by_round", []) if r["round"] >= 2]
@@ -354,9 +361,16 @@ def round_2_yield(records: list[tuple[str, dict]]) -> dict:
         chains.add((ledger, rec["ts"][:10]))
         if any(r["found"] >= 1 for r in later):
             surfaced.add(key)
+        for r in later:
+            arm = by_trigger.setdefault(r.get("trigger") or "unrecorded", {"changes": set(), "surfaced": set()})
+            arm["changes"].add(key)
+            if r["found"] >= 1:
+                arm["surfaced"].add(key)
     return {
         "changes_with_round_2": len(changes),
         "surfaced_critical_or_important": len(surfaced),
+        "by_trigger": {name: {"changes": len(arm["changes"]), "surfaced": len(arm["surfaced"])}
+                       for name, arm in sorted(by_trigger.items())},
         "chains": len(chains),
         "chain_proxy": CHAIN_PROXY,
     }

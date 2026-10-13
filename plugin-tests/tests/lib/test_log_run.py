@@ -396,6 +396,31 @@ def _assert_refused(r: subprocess.CompletedProcess[str], ledger: str, fragment: 
 
 
 # requirement: run-ledgers / Only checked spec-to-pr run records are written
+def _with_trigger(round_no: int, trigger) -> dict:
+    record = _spec_record()
+    _phase(record, "Revise")["findings_by_round"][round_no - 1]["trigger"] = trigger
+    return record
+
+
+@pytest.mark.parametrize("trigger", ["critical", "high-important", "reentry", "resume"])
+def test_a_later_round_may_name_what_started_it(tmp_path: Path, trigger: str) -> None:
+    r = _run(json.dumps(_with_trigger(2, trigger)), tmp_path)
+    assert r.returncode == 0, r.stderr
+
+
+@pytest.mark.parametrize(
+    ("round_no", "trigger", "fragment"),
+    [
+        (1, "critical", "`trigger` belongs only on a round after the first"),
+        (2, "important", "`phases[5].findings_by_round[1].trigger` must be one of"),
+        (2, 1, "`phases[5].findings_by_round[1].trigger` must be one of"),
+    ],
+    ids=["on-round-1", "unknown-value", "not-a-string"],
+)
+def test_a_wrong_trigger_is_refused(tmp_path: Path, round_no: int, trigger, fragment: str) -> None:
+    _assert_refused(_run(json.dumps(_with_trigger(round_no, trigger)), tmp_path), LEDGER, fragment, tmp_path)
+
+
 def test_a_conforming_record_is_appended_unchanged(tmp_path: Path) -> None:
     retro = tmp_path / "retro"
     r = _run(json.dumps(_spec_record()), retro, ledger=SPEC)

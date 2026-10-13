@@ -36,7 +36,7 @@ Each `/cla:spec-to-pr` run SHALL append one record to `cla.io/retro/spec-to-pr-r
 
 ### Requirement: Summarising recent spec-to-pr runs
 
-`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the repo's fleet file lists or, when none of them exists on the machine, only the repo's own ledger and saying so, naming each ledger read, counting a record it cannot read as skipped instead of failing, and reporting how many of those runs' changes had a second pull request review round and how many of those found a Critical or Important finding in it.
+`/cla:spec-to-pr-retro [N]` SHALL summarise the last N runs of each spec-to-pr ledger, 10 by default, reading every repo the fleet file lists or, when none exists on the machine, only the repo's own ledger and saying so, naming each ledger read, counting an unreadable record as skipped instead of failing, and reporting how many changes had a second pull request review round and how many found a Critical or Important finding there, in total and by what started that round.
 
 #### Scenario: One unreadable record
 
@@ -52,6 +52,11 @@ Each `/cla:spec-to-pr` run SHALL append one record to `cla.io/retro/spec-to-pr-r
 
 - **WHEN** three changes in the summarised runs had a second pull request review round and two of those rounds found a Critical or Important finding
 - **THEN** the summary reports three such changes, two of which found one
+
+#### Scenario: Second-round yield by what started the round
+
+- **WHEN** two second rounds followed a fixed Critical and found something, and two followed only Important fixes on a high-risk pull request and found nothing
+- **THEN** the summary reports each kind apart, so the empty kind is visible next to the one still finding defects
 
 ### Requirement: Handoff suggests a retro on repeated trouble
 

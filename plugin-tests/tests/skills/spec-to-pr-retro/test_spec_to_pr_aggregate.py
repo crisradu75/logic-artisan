@@ -380,7 +380,49 @@ def test_round_2_yield_counts_changes_and_the_ones_that_surfaced(tmp_path: Path)
     assert out["surfaced_critical_or_important"] == 3
     assert out["chains"] == 2
     assert set(out) == {"changes_with_round_2", "surfaced_critical_or_important",
-                        "chains", "chain_proxy"}
+                        "by_trigger", "chains", "chain_proxy"}
+    assert out["by_trigger"] == {"unrecorded": {"changes": 5, "surfaced": 3}}
+
+
+def _triggered(change: str, *rounds: tuple[int, int, str]) -> dict:
+    """A record whose Revise rounds after the first carry (round, found, trigger)."""
+    phase = _revise([(1, 3)])
+    phase["findings_by_round"] += [{"round": r, "found": f, "trigger": t} for r, f, t in rounds]
+    phase["rounds_used"] = 1 + len(rounds)
+    phase["rounds_cap"] = max(2, phase["rounds_used"])
+    return _rec(change=change, phases=[phase])
+
+
+# requirement: run-ledgers / Summarising recent spec-to-pr runs
+def test_round_2_yield_splits_by_what_started_the_round(tmp_path: Path) -> None:
+    """Scenario: Second-round yield by what started the round."""
+    out = _yield(tmp_path, [
+        _triggered("a", (2, 2, "critical")),
+        _triggered("b", (2, 1, "critical")),
+        _triggered("c", (2, 0, "high-important")),
+        _triggered("d", (2, 0, "high-important")),
+    ])
+    assert (out["changes_with_round_2"], out["surfaced_critical_or_important"]) == (4, 2)
+    assert out["by_trigger"] == {
+        "critical": {"changes": 2, "surfaced": 2},
+        "high-important": {"changes": 2, "surfaced": 0},
+    }
+
+
+def test_a_change_counts_once_under_each_trigger_its_later_rounds_carry(tmp_path: Path) -> None:
+    out = _yield(tmp_path, [_triggered("a", (2, 0, "critical"), (3, 1, "reentry"))])
+    assert out["by_trigger"] == {
+        "critical": {"changes": 1, "surfaced": 0},
+        "reentry": {"changes": 1, "surfaced": 1},
+    }
+    assert out["surfaced_critical_or_important"] == 1
+
+
+def test_a_non_string_trigger_makes_the_record_unreadable(tmp_path: Path) -> None:
+    bad = _triggered("a", (2, 1, "critical"))
+    bad["phases"][0]["findings_by_round"][1]["trigger"] = 2
+    out, _ = _log(_write(tmp_path / "l.jsonl", [bad, _triggered("b", (2, 1, "critical"))]))
+    assert out["round_2_yield"]["by_trigger"] == {"critical": {"changes": 1, "surfaced": 1}}
 
 
 # requirement: run-ledgers / Summarising recent spec-to-pr runs
