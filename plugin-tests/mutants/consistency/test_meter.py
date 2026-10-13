@@ -1,7 +1,8 @@
 """Mutation batch for test_meter.py.
 
 Each mutant breaks one behaviour the meter tests pin: per-file message keys, the
-table's per-model rows and their order, and the JSON totals.
+model a later copy inherits, the unreadable-file exit, the table's per-model rows
+and their order, and the JSON totals.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/consistency/test_meter.py
 """
@@ -18,8 +19,8 @@ MUTANTS = [
     (
         "message ids are merged across files",
         METER,
-        "messages[(str(file), message_id)] = (",
-        'messages[("", message_id)] = (',
+        "key = (str(file), message_id)",
+        'key = ("", message_id)',
         TARGETS,
     ),
     (
@@ -41,6 +42,27 @@ MUTANTS = [
         METER,
         'row["messages"] += 1',
         'row["messages"] += 0',
+        TARGETS,
+    ),
+    (
+        "a copy without a model is filed under <unknown> again",
+        METER,
+        'model = messages[key][0] if key in messages else "<unknown>"',
+        'model = "<unknown>"',
+        TARGETS,
+    ),
+    (
+        "a copy without a model takes no model even with no earlier copy",
+        METER,
+        'model = messages[key][0] if key in messages else "<unknown>"',
+        'model = messages[key][0] if key in messages else "opus"',
+        TARGETS,
+    ),
+    (
+        "an unreadable transcript raises instead of exiting 1",
+        METER,
+        "    except OSError as exc:\n        print(f\"meter: cannot read",
+        "    except ZeroDivisionError as exc:\n        print(f\"meter: cannot read",
         TARGETS,
     ),
 ]

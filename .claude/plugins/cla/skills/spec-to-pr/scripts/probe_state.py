@@ -127,17 +127,33 @@ def _implement_done(change_name: str) -> bool:
         print(f"openspec status emitted non-JSON output ({exc.msg}); treating as not-complete",
               file=sys.stderr)
         return False
+    if not isinstance(data, dict):
+        print("openspec status JSON is not an object; treating as not-complete", file=sys.stderr)
+        return False
     if data.get("isComplete"):
         return True
+    if "isComplete" not in data and "applyRequires" not in data:
+        print("openspec status JSON has neither isComplete nor applyRequires; "
+              "treating as not-complete", file=sys.stderr)
+        return False
     # A change with no design.md never reports `isComplete` (design stays
     # "ready"), yet OpenSpec applies it once every `applyRequires` artifact is
     # done. A missing or empty list is not ready: `all([])` would say it is.
     required = data.get("applyRequires")
-    if not isinstance(required, list) or not required:
+    artifacts = data.get("artifacts")
+    if ("applyRequires" in data and not isinstance(required, list)) or \
+            ("artifacts" in data and not isinstance(artifacts, list)):
+        print("openspec status JSON has an applyRequires or artifacts value that is "
+              "not a list; treating as not-complete", file=sys.stderr)
         return False
-    status = {a.get("id"): a.get("status")
-              for a in data.get("artifacts") or [] if isinstance(a, dict)}
-    return all(status.get(r) == "done" for r in required)
+    if not required:
+        return False
+    # Only string ids are read, so a malformed entry cannot raise `TypeError`.
+    if artifacts is None:
+        artifacts = []
+    status = {a["id"]: a.get("status") for a in artifacts
+              if isinstance(a, dict) and isinstance(a.get("id"), str)}
+    return all(isinstance(r, str) and status.get(r) == "done" for r in required)
 
 
 _base_branch_cache: str | None = None

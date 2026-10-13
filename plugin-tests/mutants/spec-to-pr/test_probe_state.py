@@ -128,16 +128,16 @@ MUTANTS = [
         "a missing or empty applyRequires reads as ready, so a resume skips "
         "Implement for a change whose artifacts were never checked",
         SCRIPT,
-        "    if not isinstance(required, list) or not required:",
-        "    if not isinstance(required, list):",
+        "    if not required:",
+        "    if required is None:",
         TARGETS,
     ),
     (
         "a required artifact that is only `ready` counts as done, so a change "
         "with unwritten tasks reads as ready to implement",
         SCRIPT,
-        '    return all(status.get(r) == "done" for r in required)',
-        '    return all(status.get(r) in ("done", "ready") for r in required)',
+        '    return all(isinstance(r, str) and status.get(r) == "done" for r in required)',
+        '    return all(isinstance(r, str) and status.get(r) in ("done", "ready") for r in required)',
         TARGETS,
     ),
     (
@@ -146,6 +146,64 @@ MUTANTS = [
         SCRIPT,
         "    required = data.get(\"applyRequires\")",
         "    required = None",
+        TARGETS,
+    ),
+    (
+        "a non-list applyRequires is walked as a sequence, so the string "
+        "\"tasks\" reads as ready when one-letter artifacts are done",
+        SCRIPT,
+        '    if ("applyRequires" in data and not isinstance(required, list)) or \\',
+        "    if False or \\",
+        TARGETS,
+    ),
+    (
+        "a non-list artifacts value is read silently, so an openspec format "
+        "change reads as not-done with nothing on stderr",
+        SCRIPT,
+        '            ("artifacts" in data and not isinstance(artifacts, list)):',
+        "            False:",
+        TARGETS,
+    ),
+    (
+        "openspec output with isComplete but no applyRequires warns as unrecognised",
+        SCRIPT,
+        '    if "isComplete" not in data and "applyRequires" not in data:',
+        '    if "isComplete" not in data or "applyRequires" not in data:',
+        TARGETS,
+    ),
+    (
+        "a required artifact absent from artifacts[] counts as done",
+        SCRIPT,
+        '    return all(isinstance(r, str) and status.get(r) == "done" for r in required)',
+        '    return all(isinstance(r, str) and status.get(r, "done") == "done" for r in required)',
+        TARGETS,
+    ),
+    (
+        "a non-string applyRequires entry is looked up and raises TypeError",
+        SCRIPT,
+        "    return all(isinstance(r, str) and status.get(r) == \"done\" for r in required)",
+        "    return all(status.get(r) == \"done\" for r in required)",
+        TARGETS,
+    ),
+    (
+        "a malformed artifact id is used as a key and raises TypeError",
+        SCRIPT,
+        '              if isinstance(a, dict) and isinstance(a.get("id"), str)}',
+        "              if isinstance(a, dict)}",
+        TARGETS,
+    ),
+    (
+        "status JSON with neither key is treated as not-complete without a warning",
+        SCRIPT,
+        '    if "isComplete" not in data and "applyRequires" not in data:',
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        "status JSON that is not an object raises instead of warning",
+        SCRIPT,
+        "    if not isinstance(data, dict):",
+        "    if False:",
         TARGETS,
     ),
     (

@@ -213,11 +213,55 @@ def test_implement_not_ready_when_a_required_artifact_is_not_done(tmp_repo: Path
 
 # requirement: change-workflow / Resuming a partly done change
 @pytest.mark.parametrize("apply_requires", [None, []], ids=["missing", "empty"])
-def test_implement_not_ready_without_apply_requires(tmp_repo: Path, monkeypatch, apply_requires):
+def test_implement_not_ready_without_apply_requires(tmp_repo: Path, monkeypatch, capsys, apply_requires):
     """Scenario: No applyRequires — `all([])` must not read as ready."""
     make_change(tmp_repo, "demo")
     result = _probe_with(monkeypatch, _status(apply_requires, _NO_DESIGN))
     assert result["implement"] is False
+    # `isComplete: false` is present, so this is a shape openspec prints: no warning.
+    assert "openspec status JSON" not in capsys.readouterr().err
+
+
+def test_implement_not_ready_when_a_required_artifact_is_absent(tmp_repo: Path, monkeypatch):
+    make_change(tmp_repo, "demo")
+    artifacts = [a for a in _NO_DESIGN if a["id"] != "tasks"]
+    result = _probe_with(monkeypatch, _status(["tasks"], artifacts))
+    assert result["implement"] is False
+
+
+def test_implement_not_ready_when_apply_requires_is_a_string(tmp_repo: Path, monkeypatch, capsys):
+    # `all(... for r in "tasks")` would walk the letters, none of which is an artifact id.
+    # A done artifact per letter shows the type check, not the lookup, rejects it.
+    make_change(tmp_repo, "demo")
+    artifacts = _NO_DESIGN + [{"id": c, "status": "done"} for c in "tasks"]
+    result = _probe_with(monkeypatch, _status("tasks", artifacts))
+    assert result["implement"] is False
+    assert "not a list" in capsys.readouterr().err
+
+
+def test_implement_not_ready_when_artifacts_is_not_a_list(tmp_repo: Path, monkeypatch, capsys):
+    make_change(tmp_repo, "demo")
+    result = _probe_with(monkeypatch, _status(["tasks"], {"tasks": {"id": "tasks", "status": "done"}}))
+    assert result["implement"] is False
+    assert "not a list" in capsys.readouterr().err
+
+
+def test_malformed_ids_are_skipped_without_raising(tmp_repo: Path, monkeypatch):
+    make_change(tmp_repo, "demo")
+    artifacts = [{"id": {"x": 1}, "status": "done"}, {"id": ["y"], "status": "done"}, *_NO_DESIGN]
+    result = _probe_with(monkeypatch, _status(["tasks", {"z": 1}], artifacts))
+    assert result["implement"] is False
+    result = _probe_with(monkeypatch, _status(["tasks"], artifacts))
+    assert result["implement"] is True
+
+
+@pytest.mark.parametrize("payload", [{"artifacts": _NO_DESIGN}, ["tasks"]], ids=["no-keys", "not-an-object"])
+def test_unrecognised_status_json_warns_on_stderr(tmp_repo: Path, monkeypatch, capsys, payload):
+    make_change(tmp_repo, "demo")
+    status = subprocess.CompletedProcess([], 0, json.dumps(payload), "")
+    result = _probe_with(monkeypatch, status)
+    assert result["implement"] is False
+    assert "openspec status JSON" in capsys.readouterr().err
 
 
 def test_branch_present_and_ahead(tmp_repo: Path, monkeypatch):
