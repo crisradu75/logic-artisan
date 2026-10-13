@@ -47,6 +47,6 @@ models read with `python plugin-tests/scripts/meter.py <transcript>`:
 - `Agent` tool with `model: "opus"`: claude-opus-5-5 only (5 messages).
 
 So the override works in both paths, and 1.1 and 3.7 are ticked. All three reviewers (Read, Grep, Glob only) read
-the scratchpad diff file. All three got "File does not exist." from `Read` on the Git Bash `mktemp` path
-`/tmp/tmp.YpojiMYNVX`, so on Windows a `/tmp/...` path cannot be handed to a shell-less reviewer. `cygpath -w`
+the scratchpad diff file. All three briefs named the same Git Bash `mktemp` path, `/tmp/tmp.YpojiMYNVX`, and all three got
+"File does not exist." from `Read` on it, so on Windows a `/tmp/...` path cannot be handed to a shell-less reviewer. `cygpath -w`
 converts it to a Windows path, but that was not tested with `Read`. The docs now name the session scratchpad.

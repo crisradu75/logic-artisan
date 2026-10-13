@@ -4,7 +4,7 @@
    finding is a change like any other and earns the same evidence the original code needed —
    "the reviewer's finding is now handled" is not that evidence. Break **what the fix
    touches**, not only what it targets: correcting one return path routinely breaks another, which
-   is how a real fix here once traded a silent no-op on the default path for the identical no-op on
+   is how a real fix in the CLA source repo once traded a silent no-op on the default path for the identical no-op on
    the overlay path. Do each one by hand: edit the code so the defect is back, run the affected
    test, confirm it FAILS, then restore the edit exactly — a test that still passes has not been
    shown to catch anything, and an unrestored edit ships the defect. Stage the fix first (`git add
@@ -24,5 +24,5 @@
    original is defending the bug. Full rule and the case that produced it:
    `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/test-quality-gates.md`, "How planting goes wrong".
    Fix a surviving mutant, or name it in the final report with a reason. A clean
-   run is evidence about the mutants you thought of and nothing else — two commits in this repo each
+   run is evidence about the mutants you thought of and nothing else — two commits in the CLA source repo each
    recorded "three mutations checked, all caught" and each shipped a critical a later review found.
