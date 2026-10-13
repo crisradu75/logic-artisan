@@ -51,7 +51,11 @@ An empty corpus (no spec files) exits 2: a misconfigured run must not pass.
 
 TEST FILES. A marker is a comment line in any tracked or untracked-unignored
 text file, skipping Markdown and other prose suffixes.
-``--tests GLOB`` (repeatable) limits the scan to matching repo-relative paths.
+``--tests GLOB`` (repeatable) limits the scan to matching repo-relative paths. A
+binary file is skipped and named in the output; a file over 2 MB (or unreadable) is
+an ``unchecked`` problem, since a bad marker in it could not be seen. Point
+``--tests`` at the test folders to leave generated files out. UTF-16 files are
+read.
 
 EXIT CODES: 0 clean; 1 problems found; 2 the checker could not do its job
 (bad arguments, no repo, malformed facts line, no specs or no unit parsed from
@@ -266,58 +270,129 @@ def _blocks(text: str, delta: bool) -> list[tuple[str, list[str], list[tuple[str
     return reqs
 
 
+_LIMIT_PATTERNS = {
+    "chars": r"(\d+)\s+characters\s+or\s+(?:fewer|less)",
+    "scenarios": r"(?:at\s+most|no\s+more\s+than|up\s+to)\s+(\d+)\s+scenarios",
+    "requirements": r"(?:at\s+most|no\s+more\s+than|up\s+to)\s+(\d+)\s+requirements",
+}
+_LIMIT_WORDS = {"chars": "characters", "scenarios": "scenarios", "requirements": "requirements"}
+_NUMBER_WORDS = r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+"
+
+
+def _specs_rules_block(text: str) -> str | None:
+    """The lines of `rules:` -> `specs:` in a config, at any indent and in either list style
+    (items deeper than the key, or at the key's own indent). None when there is no such key."""
+    lines = text.splitlines()
+    in_rules = False
+    rules_indent = 0
+    for i, line in enumerate(lines):
+        if not in_rules:
+            if re.match(r"^rules:\s*(?:#.*)?$", line):
+                in_rules, rules_indent = True, 0
+            continue
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent <= rules_indent:
+            return None  # left `rules:` without meeting `specs:`
+        if re.match(r"^specs:\s*(?:[|>][-+]?\s*)?(?:#.*)?$", stripped):
+            block = []
+            for nxt in lines[i + 1:]:
+                s = nxt.strip()
+                n_indent = len(nxt) - len(nxt.lstrip())
+                if s and not s.startswith("#"):
+                    if n_indent < indent or (n_indent == indent and not s.startswith("- ")):
+                        break
+                block.append(nxt)
+            return "\n".join(block)
+    return None
+
+
 def read_format_limits(root: Path) -> tuple[dict[str, int], list[str]]:
-    """The spec format limits, read from the `rules.specs` text of openspec/config.yaml.
+    """The spec format limits, read from the `rules.specs` text of openspec/config.yaml (or .yml).
 
     Nothing is copied into this script: the numbers come from the sentences the repo
     wrote ("500 characters or fewer", "at most 3 scenarios", "at most 8 requirements").
-    Returns ({limit: number}, [names of limits not found]). No config file means no
-    limits found, and every name is returned as not enforced."""
-    names = {
-        "chars": r"(\d+)\s+characters\s+or\s+fewer",
-        "scenarios": r"at\s+most\s+(\d+)\s+scenarios",
-        "requirements": r"at\s+most\s+(\d+)\s+requirements",
-    }
-    cfg = root / "openspec" / "config.yaml"
+    Returns ({limit: number}, [names of limits not found]). No config, or a config with no
+    `rules.specs`, means no limits and every name is returned as not enforced.
+
+    A `rules.specs` that exists but yields no limit at all, or that gives a number for a
+    limit in words this reader does not know ("at most three scenarios"), raises: a
+    guard that enforces nothing must not look like one that found nothing wrong."""
+    cfg = next((p for p in (root / "openspec" / "config.yaml", root / "openspec" / "config.yml") if p.is_file()), None)
     try:
-        text = cfg.read_text(encoding="utf-8-sig") if cfg.is_file() else ""
+        text = cfg.read_text(encoding="utf-8-sig") if cfg else ""
     except (OSError, UnicodeDecodeError) as exc:
-        raise CheckerError(f"cannot read openspec/config.yaml: {exc}") from exc
-    # Only the `specs:` rules under `rules:` carry these limits; the other rule groups
-    # (proposal, design, tasks) may use the same words for other things.
-    m = re.search(r"(?m)^  specs:\s*\n((?:    .*\n?|\s*\n)+)", text)
-    block = m.group(1) if m else ""
+        raise CheckerError(f"cannot read {cfg.name}: {exc}") from exc
+    block = _specs_rules_block(text)
+    if block is None:
+        return {}, list(_LIMIT_PATTERNS)
     found, missing = {}, []
-    for name, pat in names.items():
-        hit = re.search(pat, block)
+    for name, pat in _LIMIT_PATTERNS.items():
+        hit = re.search(pat, block, re.I)
         if hit:
             found[name] = int(hit.group(1))
         else:
             missing.append(name)
+            word = _LIMIT_WORDS[name]
+            if re.search(rf"(?i)\b(?:{_NUMBER_WORDS})\s+(?:\w+\s+)?{word}\b", block):
+                raise CheckerError(f"rules.specs in {cfg.name} gives a number for {word} in wording this checker does not read; use e.g. 'at most 3 scenarios', '500 characters or fewer'")
+    if not found:
+        raise CheckerError(f"rules.specs in {cfg.name} states none of the format limits this checker reads")
     return found, missing
 
 
+def _removed_headings(text: str) -> set[str]:
+    out, in_removed = set(), False
+    for line in text.splitlines():
+        m = _H2.match(line)
+        if m:
+            in_removed = m.group(1).strip().upper().startswith("REMOVED")
+        elif in_removed:
+            r = _REQ.match(line)
+            if r:
+                out.add(r.group(1))
+    return out
+
+
+def _statement(body: list[str]) -> str:
+    """A requirement's own sentence: its lines before the first `####` heading outside a fence."""
+    out, fence = [], False
+    for line in body:
+        if _FENCE.match(line):
+            fence = not fence
+        elif not fence and _H4.match(line):
+            break
+        out.append(line)
+    return _norm(out)
+
+
 def check_format(files: list["SpecFile"], limits: dict[str, int]) -> list[str]:
-    """PROBLEM lines for each live spec or active delta over the limits. Archives are not edited, so skipped."""
+    """PROBLEM lines for each live spec or active delta over the limits. Archives are not edited, so skipped.
+
+    A delta's requirement count is the size its spec would have after archiving: the live
+    spec's requirements, plus the delta's new headings, minus the ones it removes."""
     problems = []
+    live = {f.spec: f for f in files if f.kind == "live"}
     for f in files:
         if f.kind == "archived":
             continue
         reqs = _blocks(f.text, f.kind != "live")
-        if "requirements" in limits and len(reqs) > limits["requirements"]:
-            problems.append(f"PROBLEM format: {f.rel}: {len(reqs)} requirements, the limit is {limits['requirements']}")
+        if "requirements" in limits:
+            total = len(reqs)
+            if f.kind == "active":
+                base = {h for h, _, _ in _blocks(live[f.spec].text, False)} if f.spec in live else set()
+                total = len(base | {h for h, _, _ in reqs}) - len(base & _removed_headings(f.text))
+            if total > limits["requirements"]:
+                problems.append(f"PROBLEM format: {f.rel}: {total} requirements, the limit is {limits['requirements']}")
         for heading, body, scns in reqs:
             if "scenarios" in limits and len(scns) > limits["scenarios"]:
                 problems.append(
                     f"PROBLEM format: {f.rel}: requirement {heading!r} has {len(scns)} scenarios, the limit is {limits['scenarios']}"
                 )
             if "chars" in limits:
-                statement = []
-                for line in body:
-                    if _SCN.match(line):
-                        break
-                    statement.append(line)
-                n = len(_norm(statement))
+                n = len(_statement(body))
                 if n > limits["chars"]:
                     problems.append(f"PROBLEM format: {f.rel}: requirement {heading!r} states {n} characters, the limit is {limits['chars']}")
     return problems
@@ -432,7 +507,7 @@ def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str
             dns[:] = [d for d in dns if d not in {".git", "node_modules", "__pycache__", ".venv"}]
             rels += [(Path(dp) / fn).relative_to(root).as_posix() for fn in fns]
     found = []
-    skipped = []
+    skipped: list[tuple[str, str]] = []
     scanned = 0
     for rel in sorted(set(rels)):
         if Path(rel).suffix.lower() in _SKIP_SUFFIXES:
@@ -447,8 +522,11 @@ def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str
         except OSError:
             raw = None
         utf16 = raw is not None and raw[:2] in (b"\xff\xfe", b"\xfe\xff")  # Windows PowerShell writes these
-        if raw is None or (b"\0" in raw and not utf16):
-            skipped.append(rel)
+        if raw is None:
+            skipped.append((rel, "oversize or unreadable"))
+            continue
+        if b"\0" in raw and not utf16:
+            skipped.append((rel, "binary"))
             continue
         scanned += 1
         for line in raw.decode("utf-16" if utf16 else "utf-8", errors="replace").splitlines():
@@ -544,6 +622,11 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     problems += check_format(files, limits)
 
     markers, scanned, skipped = scan_markers(root, globs or [])
+    for rel, why in skipped:
+        if why != "binary":
+            # A marker inside could be dangling or malformed and nobody would know.
+            problems.append(f"PROBLEM unchecked: {rel}: {why}, so its markers were not checked")
+    skipped = [rel for rel, why in skipped if why == "binary"]
     if scanned == 0:
         raise CheckerError("no file was scanned for markers" + (f" (--tests {' '.join(globs)} matched nothing)" if globs else ""))
     marked: set[tuple[str, str]] = set()
@@ -632,7 +715,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         f"{mode}s in live specs and active deltas: {len(all_units)}",
         f"changed {mode}s: " + (f"{n_changed} ({base_note})" if changed is not None else f"unknown, the changed-{mode} rule is off ({base_note or 'not a git repo'})"),
         f"markers: {sum(1 for m in markers if m[0] != 'malformed')} in {scanned} files scanned"
-        + (f"; skipped {len(skipped)} binary, unreadable or oversize: {', '.join(skipped[:5])}" if skipped else ""),
+        + (f"; skipped {len(skipped)} binary: {', '.join(skipped[:5])}" if skipped else ""),
         f"manual lines: {sum(1 for n in notes if n.kind == 'manual')} (prompt half: {sum(1 for n in notes if n.kind == 'manual' and n.prompt_half)})",
         f"waiting lines: {sum(1 for n in notes if n.kind == 'waiting')} (covering a changed {mode}: {covered_waiting})",
         f"repo-wide coverage (information only): {covered}/{len(all_units)}",

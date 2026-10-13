@@ -609,7 +609,7 @@ def test_a_test_file_in_another_encoding_is_still_scanned(repo, capsys):
 def test_a_binary_file_is_skipped_and_named(repo, capsys):
     (repo / "tests" / "blob.dat").write_bytes(b"\0\1\2# requirement: alpha / X\n")
     code, out, _ = run(repo, capsys)
-    assert code == 0 and "skipped 1 binary, unreadable or oversize: tests/blob.dat" in out
+    assert code == 0 and "skipped 1 binary: tests/blob.dat" in out
 
 
 # requirement: spec-proof / A checker reports proof that points at nothing
@@ -860,3 +860,128 @@ def test_a_crash_prints_its_traceback(repo, capsys, monkeypatch):
     monkeypatch.setattr(csp, "check", lambda *a, **k: 1 / 0)
     code, _, err = run(repo, capsys)
     assert code == 2 and "Traceback" in err and "ZeroDivisionError" in err
+
+
+def _raw_config(root: Path, text: str) -> None:
+    _write(root, CONFIG, text)
+
+
+_RULE = "Each requirement is one sentence of 500 characters or fewer with at most 3 scenarios, and a spec holds at most 8 requirements."
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"rules:\n  specs:\n  - \"{_RULE}\"\n",  # list items at the key's own indent
+        f"rules:\n    specs:\n      - \"{_RULE}\"\n",  # four-space indent
+        f"rules:\n  specs: |\n    {_RULE}\n",  # block scalar
+        f"rules:\n  specs:  # format\n    - \"{_RULE}\"\n",
+        f"other:\n  specs:\n    - x\nrules:\n  specs:\n    - \"{_RULE}\"\n",  # an earlier `specs:` under another key
+        f"rules:\n  specs:\n    - \"At most 3 scenarios, 500 characters or less, no more than 8 requirements.\"\n",
+        f"rules:\r\n  specs:\r\n    - \"{_RULE}\"\r\n",
+    ],
+)
+def test_the_limits_are_read_from_any_valid_layout_of_rules_specs(repo, text):
+    _raw_config(repo, text)
+    assert csp.read_format_limits(repo) == ({"chars": 500, "scenarios": 3, "requirements": 8}, [])
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_yml_config_is_read_too(repo):
+    _write(repo, "openspec/config.yml", f"rules:\n  specs:\n    - \"{_RULE}\"\n")
+    assert csp.read_format_limits(repo)[0]["scenarios"] == 3
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_rules_without_a_specs_group_state_no_limits(repo):
+    _raw_config(repo, "rules:\n  tasks:\n    - at most 3 scenarios\n")
+    assert csp.read_format_limits(repo) == ({}, ["chars", "scenarios", "requirements"])
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+@pytest.mark.parametrize("sentence", ["Keep it plain.", "Each spec holds a modest number of requirements."])
+def test_a_specs_group_that_states_no_limit_is_an_error(repo, capsys, sentence):
+    _raw_config(repo, f"rules:\n  specs:\n    - \"{sentence}\"\n")
+    code = csp.main(["--root", str(repo), "--base", "main"])
+    assert code == 2 and "states none of the format limits" in capsys.readouterr().err
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_limit_given_in_words_the_reader_does_not_know_is_an_error(repo, capsys):
+    _raw_config(repo, "rules:\n  specs:\n    - \"500 characters or fewer, at most three scenarios, at most 8 requirements.\"\n")
+    code = csp.main(["--root", str(repo), "--base", "main"])
+    assert code == 2 and "scenarios in wording" in capsys.readouterr().err
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_delta_is_counted_with_the_live_spec_it_will_join(repo, capsys):
+    _config(repo, reqs="at most 2 requirements")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Second", "B.")))
+    _write(repo, "tests/test_m.py", _marker("requirement", "alpha", "Second"))
+    _write(repo, "openspec/changes/c1/specs/alpha/spec.md", _delta_text(added=[NEW_REQ]))
+    _write(repo, "tests/test_n.py", _marker("requirement", "alpha", "New rule"))
+    code, fmt = _fmt(repo, capsys)
+    assert code == 1 and "openspec/changes/c1/specs/alpha/spec.md: 3 requirements" in fmt
+    removal = "\n## REMOVED Requirements\n\n### Requirement: Second\n\n**Migration**: x\n"
+    _write(repo, "openspec/changes/c1/specs/alpha/spec.md", _delta_text(added=[NEW_REQ]) + removal)
+    assert _fmt(repo, capsys)[1] == ""
+    # A requirement the delta only MODIFIES does not grow the spec.
+    _write(repo, "openspec/changes/c1/specs/alpha/spec.md", _delta_text(modified=[("Second", "B, changed.")]))
+    assert _fmt(repo, capsys)[1] == ""
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_fence_in_a_statement_does_not_end_it_and_a_subsection_does(repo, capsys):
+    _config(repo, chars="60 characters or fewer")
+    fenced = "word " * 8 + "\n\n```\n#### Scenario: not one\n```\n\n" + "more " * 10 + "\n\n" + _scn("Real")
+    notes = "short.\n\n#### Notes\n\n" + "long " * 40 + "\n\n" + _scn("Real")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Fenced", fenced), ("Notes", notes)))
+    _write(repo, "tests/test_m.py", _marker("requirement", "alpha", "Fenced") + _marker("requirement", "alpha", "Notes"))
+    code, fmt = _fmt(repo, capsys)
+    assert "'Fenced' states" in fmt and "'Notes'" not in fmt
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_an_oversize_file_is_a_problem_not_a_quiet_skip(repo, capsys, monkeypatch):
+    monkeypatch.setattr(csp, "_MAX_BYTES", 100)
+    _write(repo, "tests/big.py", "# requirement: alpha / No such rule\n" + "x = 1\n" * 20)
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "PROBLEM unchecked: tests/big.py" in out
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_statement_exactly_at_the_limit_passes_and_one_over_is_reported(repo, capsys):
+    _config(repo, chars="80 characters or fewer")
+    at_limit = ("At limit", "a" * 80 + "\n\n" + _scn("A"))
+    over = ("Over", "a" * 81 + "\n\n" + _scn("B"))
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), at_limit, over))
+    _write(repo, "tests/test_m.py", _marker("requirement", "alpha", "At limit") + _marker("requirement", "alpha", "Over"))
+    code, fmt = _fmt(repo, capsys)
+    assert "'Over' states 81" in fmt and "'At limit'" not in fmt
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_spec_with_exactly_the_allowed_requirements_passes(repo, capsys):
+    _config(repo, reqs="at most 2 requirements")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Second", "B.")))
+    _write(repo, "tests/test_m.py", _marker("requirement", "alpha", "Second"))
+    assert _fmt(repo, capsys) == (0, "")
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_exactly_the_allowed_scenarios_pass(repo, capsys):
+    _config(repo, scn="at most 4 scenarios")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), FOUR))
+    _write(repo, "tests/test_four.py", _marker("requirement", "alpha", "Four"))
+    assert _fmt(repo, capsys) == (0, "")
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_git_refused_working_directory_is_an_error_when_no_root_is_given(tmp_path, capsys, monkeypatch):
+    root = tmp_path / "broken2"
+    _write(root, SPEC, _spec_text(NEW_REQ))
+    (root / ".git").mkdir()
+    monkeypatch.chdir(root)
+    code = csp.main([])
+    assert code == 2 and "git refused" in capsys.readouterr().err
