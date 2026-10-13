@@ -67,6 +67,20 @@ When an earlier change in a `/cla:multi-pr` chain adds a field or behaviour for 
 - **WHEN** a chain is resumed where its run notes are missing and a change still to run comes after another change in the chain
 - **THEN** the chain stops before that change and says how to go on
 
+### Requirement: A later change's code references are rechecked after earlier merges
+
+Before a later change in a `/cla:multi-pr` chain runs, the chain SHALL recheck each file-and-line reference in its tasks and design against the tree the earlier merges produced, SHALL correct each reference whose lines only moved, and SHALL hand each reference whose lines are gone or now ambiguous to that change's review to answer.
+
+#### Scenario: Cited lines that moved
+
+- **WHEN** an earlier merge moved the lines a later change cites
+- **THEN** the later change's references point at the new lines before its review starts
+
+#### Scenario: Cited lines that were removed
+
+- **WHEN** an earlier merge removed the lines a later change cites
+- **THEN** the later change's review must answer for that reference and does not count it as fixed while it still points at nothing
+
 ### Requirement: An unattended chain keeps running
 
 A chain confirmed at its start SHALL keep running without the user until every change is done, skipped or stopped with a reported reason, asking the user only about a blocker it cannot resolve itself.

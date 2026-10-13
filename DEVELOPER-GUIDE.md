@@ -594,6 +594,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `annotate/scripts/openspec_change.py` | Extracts a change's claims and the links between them, with thresholds measured over 355 real changes rather than reasoned about — the first cut left 83% of promises falsely uncovered. |
 | `annotate/scripts/sweep_changes.py` | Runs the link detector over a corpus of real changes and reports the coverage split — the command behind every coverage threshold in `openspec_change.py`, and how a consuming repo re-measures before trusting the coverage tab. |
 | `annotate/scripts/render_change.py` | Lays a change's files into one annotatable page, binding each claim to its block one-match-or-none and keeping injected counterparts outside the blocks whose offsets they would corrupt. |
+| `multi-pr/scripts/check_cite_drift.py` | Finds where each `path:line` cite in a later chain change now points, by reading the cited text at the chain-start commit and searching the merged tree for it. Prose can say "the cite moved" but cannot say where to, or that the text now occurs twice. |
 | `spec-to-pr/scripts/probe_state.py` | Resume detection across `openspec status`, `gh`, and `<base>..<branch>` ranges, with branch-resolution fallback. |
 | `_shared/scripts/git_state.py` | One deterministic exit code for "an in-progress rebase/cherry-pick/merge exists", checked at every commit boundary across five skills. |
 | `spec-to-pr/scripts/_git_common.py` | Repo root plus the `branch-prefix.local.md` overlay contract, for `probe_state.py`. |
