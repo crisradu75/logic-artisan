@@ -2,8 +2,8 @@
 
 `skills/_shared/references/model-routing.md` holds the one table that says which reviewers
 a pull request gets, by risk. Every skill that reviews cites that section by name and carries
-no row of its own, so the rows cannot drift. Round 2 runs only after a fixed Critical, and the
-PR body carries one `Risk:` line. The orchestration cost rules live once in
+no row of its own, so the rows cannot drift. Round 2 runs only after a fixed Critical, or a fixed
+Important on a high-risk PR, and the PR body carries one `Risk:` line. The orchestration cost rules live once in
 `orchestration-economy.md`, and all three chain skills cite it.
 """
 
@@ -75,16 +75,22 @@ def test_a_later_round_never_lowers_the_risk_level() -> None:
 
 
 # requirement: change-workflow / A change becomes a risk-reviewed pull request
-def test_round_2_runs_only_after_a_fixed_critical() -> None:
-    """The cap sentence, the Flags row, the Revise stub and the exit gate all name a
-    fixed Critical as the one round-2 trigger. The old trigger, any round-1 fix commit, is gone."""
+def test_round_2_runs_only_after_a_fixed_critical_or_a_high_risk_important() -> None:
+    """The cap sentence, the Flags row, the Revise stub and the exit gate all name the two
+    round-2 triggers: a fixed Critical, or a fixed Important on a high-risk pull request
+    (decision 5, cla.io/decisions/open-issues-2026-10-13.md). The old trigger, any round-1
+    fix commit, is gone, and a low-risk Important fix still ends the loop."""
     revise = _read(_REVISE)
     cap = next(line for line in revise.splitlines() if line.startswith("Cap: `--pr-rounds N`"))
-    assert "only after round 1 fixed a Critical" in cap
+    assert "only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request" in cap
     gate = next(line for line in revise.splitlines() if "**Both 0**" in line)
-    assert "unless this round fixed a Critical and the cap allows another round" in gate
-    assert "only after round 1 fixed a Critical" in _flags_row()
-    assert "only after round 1 fixed a Critical" in _revise_stub()
+    assert (
+        "unless this round fixed a Critical, or an Important one on a high-risk pull request "
+        "(high at round 1's final level), and the cap allows another round"
+    ) in gate
+    assert "On a low-risk pull request, a round whose fixes were all Important or lower does not trigger another." in gate
+    assert "only after round 1 fixed a Critical, or an Important on a high-risk PR" in _flags_row()
+    assert "only after round 1 fixed a Critical, or an Important on a high-risk PR" in _revise_stub()
     scanned = {
         "revise.md": revise,
         "SKILL.md Flags row": _flags_row(),
@@ -97,6 +103,35 @@ def test_round_2_runs_only_after_a_fixed_critical() -> None:
     }
     for name, text in scanned.items():
         assert not _OLD_ROUND_2.search(" ".join(text.split())), f"{name} still says round 2 follows any fix commit"
+    # Every other site that states the trigger names the high-risk Important arm, so none
+    # is left saying a Critical alone triggers round 2.
+    for name, text, arm in (
+        ("multi-pr discover-and-gate.md", _read(_DISCOVER_AND_GATE), "or a fixed Important on a high-risk PR"),
+        ("spec-to-pr-retro SKILL.md", _read(_RETRO), "or a fixed Important on a high-risk PR"),
+        ("run-log-schema.md", _read(_RUN_LOG_SCHEMA), "or a fixed Important on a high-risk PR"),
+        ("workflow-diagram.md", _read(_WORKFLOW_DIAGRAM), "after a fixed Critical (or Important, high risk)"),
+    ):
+        assert arm in " ".join(text.split()), f"{name} states round 2's trigger without the high-risk Important arm"
+
+
+# requirement: change-workflow / A change becomes a risk-reviewed pull request
+def test_high_risk_means_round_1s_final_level_not_the_literal_line() -> None:
+    """A missing Risk: line is treated as high but never written back, so a trigger that read
+    the literal line would skip round 2 on exactly the PRs judged riskiest."""
+    revise = _read(_REVISE)
+    assert revise.count("(high at round 1's final level)") == 2, "the cap and the exit gate must both judge the final level"
+    assert "(its `Risk:` line)" not in revise
+
+
+# requirement: change-workflow / A change becomes a risk-reviewed pull request
+def test_the_spec_states_both_round_2_triggers() -> None:
+    spec = _read(_ROOT / "openspec" / "specs" / "change-workflow" / "spec.md")
+    assert "a second review only after a fixed Critical or high-risk Important" in spec
+    assert "one review round with a single fix round (two at high risk)" in spec, (
+        "the lite-pr requirement still promises a single fix round at every risk"
+    )
+    assert "- **WHEN** the first review round on a low-risk pull request fixes Important or lesser findings and no Critical one" in spec
+    assert "- **WHEN** the first review round fixes a Critical finding, or an Important one on a high-risk pull request," in spec
 
 
 # requirement: change-workflow / A change becomes a risk-reviewed pull request
@@ -143,7 +178,10 @@ def test_model_routing_holds_the_one_sizing_table() -> None:
     rows = _TABLE_ROW.findall(section)
     assert len(rows) == 3, f"the sizing section holds {len(rows)} reviewer rows, expected 3"
     assert "Unsure means high" in section
-    assert "only after round 1 fixed a Critical" in section
+    assert (
+        "only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request, "
+        "judged at round 1's final level, after any raise or missing-line default"
+    ) in " ".join(section.split())
     assert "Prose-dominant" in section and "outside `skills/` is not prose-dominant" in " ".join(section.split())
 
 

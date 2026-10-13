@@ -45,7 +45,7 @@ A `/cla:spec-to-pr` run SHALL end with a report of each phase's outcome and ever
 
 ### Requirement: A small change without OpenSpec
 
-`/cla:lite-pr` SHALL take a small change from a description to an opened pull request with its docs and tests, one test pass and one review round with a single fix round, writing no OpenSpec change and editing a live spec only when an outcome or interface changes.
+`/cla:lite-pr` SHALL take a small change from a description to an opened pull request with its docs and tests, one test pass and one review round with a single fix round (two at high risk), writing no OpenSpec change and editing a live spec only when an outcome or interface changes.
 
 #### Scenario: A small fix
 
@@ -91,7 +91,7 @@ Each requirement a change adds or modifies SHALL be proven by a test carrying a 
 
 ### Requirement: A change becomes a risk-reviewed pull request
 
-`/cla:spec-to-pr` SHALL take a description, an existing change name, or nothing (using the conversation so far) and carry the change through its OpenSpec proposal, a review before implementation, implementation, tests, an opened pull request whose body states its risk, reason and reviewers, review fixes sized to that risk, a second review only after a fixed Critical finding unless `--pr-rounds` allows only one round, and archiving its specs on the same pull request, without merging or deploying.
+`/cla:spec-to-pr` SHALL take a description, an existing change name, or nothing (using the conversation so far) and carry the change through its OpenSpec proposal, a review before implementation, implementation, tests, an opened pull request whose body states its risk, reason and reviewers, review fixes sized to that risk, a second review only after a fixed Critical or high-risk Important unless `--pr-rounds` is 1, and archiving its specs on the same pull request, without merging or deploying.
 
 #### Scenario: From a description
 
@@ -100,12 +100,12 @@ Each requirement a change adds or modifies SHALL be proven by a test carrying a 
 - **AND** its body states the risk level, the reason and the reviewers chosen
 - **AND** it is left open for the user to merge
 
-#### Scenario: The first review fixed only lesser findings
+#### Scenario: A low-risk pull request's first review fixed only lesser findings
 
-- **WHEN** the first review round on the pull request fixes Important or lesser findings and no Critical one
+- **WHEN** the first review round on a low-risk pull request fixes Important or lesser findings and no Critical one
 - **THEN** no second round runs and the run ends
 
-#### Scenario: The first review fixed a Critical finding
+#### Scenario: The first review fixed a Critical finding, or an Important one at high risk
 
-- **WHEN** the first review round fixes a Critical finding and `--pr-rounds` allows a second round
+- **WHEN** the first review round fixes a Critical finding, or an Important one on a high-risk pull request, and `--pr-rounds` allows a second round
 - **THEN** a second round reviews those fixes before the run ends

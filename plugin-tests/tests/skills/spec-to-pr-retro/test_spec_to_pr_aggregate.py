@@ -147,7 +147,7 @@ def test_cap_exhaustion_counts_only_phases_with_room_to_loop(tmp_path: Path) -> 
 
 
 def test_revise_at_its_cap_counts_only_with_findings_left_open(tmp_path: Path) -> None:
-    # Round 2 runs only after a fixed Critical, so a clean Revise at its cap is
+    # Round 2 runs only after a fixed Critical (or a high-risk Important), so a clean Revise at its cap is
     # still a normal path; a warn or fail there is the record's spelling for residue.
     log = _write(tmp_path / "l.jsonl", [
         _rec(phases=[_revise([(1, 2), (2, 1)])]),                                 # clean
@@ -466,7 +466,7 @@ def test_nudge_counts_a_revise_that_failed_at_its_cap(tmp_path: Path) -> None:
 
 # requirement: run-ledgers / Handoff suggests a retro on repeated trouble
 def test_no_nudge_when_revise_reaches_its_cap_cleanly(tmp_path: Path) -> None:
-    # Round 2 follows a fixed Critical: five clean Revise phases at the cap are not trouble.
+    # Round 2 follows a fixed Critical or high-risk Important: five clean Revise phases at the cap are not trouble.
     records = [_rec(phases=[_capped("Revise", False)]) for _ in range(5)]
     assert _nudge(tmp_path, records) == ""
     # A warn below the cap is not a cap hit either.

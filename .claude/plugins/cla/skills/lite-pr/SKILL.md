@@ -1,6 +1,6 @@
 ---
 name: lite-pr
-description: "Lightweight end-to-end path for a small change without OpenSpec artifacts: plan, implement with docs and tests, one test pass, open the PR, one review round with a single fix round. Stops only on an unresolved test failure. Triggers: /cla:lite-pr, 'quick PR for X', 'small change, just ship it'."
+description: "Lightweight end-to-end path for a small change without OpenSpec artifacts: plan, implement with docs and tests, one test pass, open the PR, one review round with a single fix round (a second, on the fix diff, for a high-risk fix). Stops only on an unresolved test failure. Triggers: /cla:lite-pr, 'quick PR for X', 'small change, just ship it'."
 argument-hint: "[description | (empty)]"
 ---
 
@@ -145,7 +145,7 @@ No pause before this runs — continuous by design (see Autonomy below). Before 
 
 **Brief each one per `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md`** (scope / task / do-not-touch / report / done-when). These run in parallel over one working tree, which makes the do-not-touch slot load-bearing rather than ceremonial: two agents editing the same file overwrite each other with no merge and no warning. These are review agents, so the brief's own instruction is that they report findings and edit nothing — and where an agent type exists in `.claude/agents/`, prefer a `tools:` allowlist that makes that mechanically true instead of relying on the prose holding.
 
-One pass. Then:
+One pass, and a second only in the case step 4 names. Then:
 
 1. Triage every Critical/Important finding: apply a fix via `Edit`/`Write`, or record a one-line deferred rationale if it's genuinely out of scope.
 2. Before staging, re-read the diff for each applied fix, and grep the SAME FILE for other call sites that consume the same untrusted/unguarded input the fix just guarded (e.g. a fix added an `isinstance` check before one `.get()` on parsed JSON — grep that file for every other `.get()`/attribute access on data from the same untrusted source). A vaguer "check sibling instances aren't affected" self-prompt is easy to satisfy without actually grepping; naming the concrete technique isn't. This is a quick self-read, NOT a re-dispatch of the review agents — one `Read`/`Grep` call, not another agent round.
@@ -153,10 +153,10 @@ One pass. Then:
    read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/mutation-gate.md` before staging and follow it in full; the fix
    commit does not ship without it.
 3. Stage the fixed files, commit (`fix: address review findings`), push.
-4. Do NOT re-dispatch the review agents afterward — no re-verification loop (step 2's self-read is deliberately lighter than that).
-5. **Say how big the fix commit is against the reviewed change, and that it is unreviewed.** One line in the final report: the fix commit's insertions versus the reviewed commit's, and the plain statement that nobody has read the fixes. If step 1 committed no fixes, say that instead in one line — the comparison is undefined and inventing a number is worse than omitting it.
+4. **A second pass only for a high-risk fix.** When this Review ran at high risk and step 1 fixed a Critical or Important finding, dispatch the same sizing-table reviewers once more, at the same models, over the fix commit's diff only. Add a narrow agent only if the fix diff still meets its trigger. High risk here is the level the Review used: the `Risk:` line said high, you raised it, or the line was missing, unreadable or named an unknown level. Run steps 1–3 on what they find, then stop: there is no third pass. Otherwise do NOT re-dispatch the review agents — no re-verification loop (step 2's self-read is deliberately lighter than that).
+5. **Say how big the last fix commit is against what the last pass reviewed, and that it is unreviewed unless a second pass read it.** One line in the final report: the last fix commit's insertions versus the reviewed diff's, and the plain statement that nobody has read those fixes. If a second pass reviewed the fixes and committed none, say that the fixes were reviewed once more and nothing changed. If the first pass committed no fixes, say that instead in one line — the comparison is undefined and inventing a number is worse than omitting it.
 
-   A report line, not a new gate: it re-dispatches nothing and asks nothing. It exists because step 4 is a cost decision rather than a claim the fixes are sound, and a run ending "review complete, fixes applied" reads as though the whole diff was reviewed. It was not — the reviewed artifact is the commit the agents read. The one-pass default still stands; the full triage → fix → re-review loop is `/cla:spec-to-pr`'s Revise phase, and this line is what lets the user opt into a second look without this skill growing one. Worked example, with the run's own numbers: `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/review-fix-weight.md`.
+   A report line, not a new gate: it re-dispatches nothing and asks nothing. It exists because step 4 is a cost decision rather than a claim the fixes are sound, and a run ending "review complete, fixes applied" reads as though the whole diff was reviewed. It was not — the reviewed artifact is the commit the agents read. The default stays one pass, with step 4's second pass only for a high-risk fix; the full triage → fix → re-review loop is `/cla:spec-to-pr`'s Revise phase, and this line is what lets the user ask for another look beyond the one step 4 allows. Worked example, with the run's own numbers: `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/review-fix-weight.md`.
 
 This is a deliberate scope limit: a full triage → fix → re-review loop is `/cla:spec-to-pr`'s Revise phase, and rebuilding it here would reintroduce the cost this skill exists to avoid.
 
@@ -175,7 +175,7 @@ Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call
 (For anyone comparing the two workflows.)
 
 - No `proposal.md`/`design.md`/`tasks.md`, no delta specs, no `openspec/changes/` directory, no archive step.
-- No multi-round PR-review loop — one pass, one fix round, no re-verification.
+- No multi-round PR-review loop — one pass, plus one pass over the fix diff of a high-risk change; never a third.
 - No pre-push confirmation gate.
 
 ## References

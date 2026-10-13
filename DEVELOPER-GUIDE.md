@@ -77,7 +77,8 @@ Check it worked: type `/cla:` and the skill list should autocomplete.
 
 `lite-pr` is the lightweight end-to-end path for a small, well-understood change — the one to
 reach for first. It implements, keeps docs and tests in sync, opens a PR, then runs one automated
-PR-review pass with a single fix round. It never merges.
+PR-review pass with a single fix round, plus a second pass on the fix diff of a high-risk fix. It never
+merges.
 
 ```
 /cla:lite-pr Rename the `retry_count` config key to `max_retries`, keeping a
@@ -92,7 +93,8 @@ The phases, in order — Explore → Plan → Implement → Test → Ship → Re
 3. **Implement** on a branch: code + `spec.md`/`CLAUDE.md`/tests kept in sync.
 4. **Test** — the flow's only stop point: an unresolved failure halts the run.
 5. **Ship** — commit, push, PR opened.
-6. **Review** — one automated PR-review pass on the opened PR, with a single fix round. Ship puts a
+6. **Review** — one automated PR-review pass on the opened PR, with a single fix round; a high-risk
+   fix gets one more pass on its diff. Ship puts a
    `Risk:` line in the PR body, and that line picks the reviewers and their models ("Review sizing
    by risk" in `_shared/references/model-routing.md`).
 
@@ -582,7 +584,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `plugin-tests/scripts/migrate_run_records.py` *(dev tree)* | One-off rewrite of old-shape `spec-to-pr-runs.jsonl` records into the shape `log_run.py` enforces: every mapping comes from a shape found in a real ledger, a valid record is left untouched, and one that still fails is reported and left exactly as it was. |
 | `cla-setup/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. It skips a path `_is_machine_local` accepts (read the function for the rule). It also reports a path under a top-level directory that git history shows was renamed or removed, and skips one whose first part never was a top-level name here. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
-| `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's round 2 (which runs only after round 1 fixed a Critical) still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
+| `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's round 2 (which runs only after round 1 fixed a Critical, or an Important on a high-risk PR) still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 14-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
