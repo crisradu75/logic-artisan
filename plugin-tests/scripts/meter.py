@@ -11,12 +11,20 @@ so a session's `subagents/*.jsonl` files count with the main chat.
 
 A transcript writes one record per content block, so one API message appears
 several times with the same `message.id` and the same `usage`. Each message is
-counted once. If the copies disagree, the last one wins, since streaming
-finishes with the final output count.
+counted once. If the copies disagree, the last one's `usage` wins, since
+streaming finishes with the final output count. A copy with no `model` keeps the
+model an earlier copy gave.
+
+Each file is counted on its own: the same message id in two files counts twice.
+That is right for a subagent transcript, which is a separate conversation. It is
+wrong for a resumed or forked session that copied earlier history into a new
+file: those copied messages are counted once per file. Meter one file, or remove
+the copy, when the folder holds such a session.
 
 Columns: input (uncached), cache-write, cache-read and output tokens, plus the
 message count. Nothing is written except the table on stdout. Exit 1, with a
-message on stderr, when the path is missing or no message carries `usage`.
+message on stderr, when the path is missing, a transcript cannot be read, or no
+message carries `usage`.
 
     python3 plugin-tests/scripts/meter.py <transcript.jsonl | folder>
     python3 plugin-tests/scripts/meter.py <folder> --json
@@ -69,11 +77,11 @@ def collect(files: list[Path]) -> dict[str, dict[str, int]]:
                 if not isinstance(message_id, str):
                     anonymous += 1
                     message_id = f"<no-id-{anonymous}>"
+                key = (str(file), message_id)
                 model = message.get("model")
-                messages[(str(file), message_id)] = (
-                    model if isinstance(model, str) else "<unknown>",
-                    message["usage"],
-                )
+                if not isinstance(model, str):
+                    model = messages[key][0] if key in messages else "<unknown>"
+                messages[key] = (model, message["usage"])
     totals: dict[str, dict[str, int]] = {}
     for model, usage in messages.values():
         row = totals.setdefault(model, {name: 0 for name, _ in FIELDS} | {"messages": 0})
@@ -109,7 +117,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"meter: {args.path} does not exist", file=sys.stderr)
         return 1
     files = transcript_files(args.path)
-    totals = collect(files)
+    try:
+        totals = collect(files)
+    except OSError as exc:
+        print(f"meter: cannot read a transcript: {exc}", file=sys.stderr)
+        return 1
     if not totals:
         print(
             f"meter: no message with a `usage` field in {len(files)} transcript file(s) under {args.path}",

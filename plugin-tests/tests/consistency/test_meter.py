@@ -40,6 +40,29 @@ def test_the_last_copy_wins_when_copies_disagree(tmp_path: Path) -> None:
     assert meter.collect([session])["opus"]["output"] == 40
 
 
+def test_a_copy_without_a_model_keeps_the_model_an_earlier_copy_gave(tmp_path: Path) -> None:
+    no_model = json.dumps({"message": {"id": "m1", "usage": {"output_tokens": 40}}})
+    session = _write(tmp_path / "s.jsonl", [_record("m1", "opus", 2, 0, 0, 5), no_model])
+    assert meter.collect([session]) == {
+        "opus": {"input": 0, "cache_write": 0, "cache_read": 0, "output": 40, "messages": 1},
+    }
+
+
+def test_a_copy_without_a_model_and_no_earlier_copy_is_unknown(tmp_path: Path) -> None:
+    no_model = json.dumps({"message": {"id": "m1", "usage": {"output_tokens": 40}}})
+    session = _write(tmp_path / "s.jsonl", [no_model])
+    assert list(meter.collect([session])) == ["<unknown>"]
+
+
+def test_an_unreadable_transcript_exits_non_zero_with_a_message(tmp_path: Path, capsys) -> None:
+    # A directory named like a transcript: `rglob` lists it and `open` raises OSError.
+    (tmp_path / "broken.jsonl").mkdir()
+    assert meter.main([str(tmp_path)]) == 1
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert "meter: cannot read a transcript:" in out.err
+
+
 def test_totals_split_by_model_across_main_chat_and_subagents(tmp_path: Path) -> None:
     _write(tmp_path / "main.jsonl", [_record("a", "opus", 1, 2, 3, 4)])
     _write(tmp_path / "main" / "subagents" / "agent-x.jsonl", [_record("a", "sonnet", 10, 20, 30, 40)])
@@ -124,10 +147,9 @@ def test_json_output_is_the_collected_totals(tmp_path: Path, capsys) -> None:
 
 
 def test_the_same_id_and_model_in_two_files_counts_twice(tmp_path: Path) -> None:
-    """Pins current behaviour, not a claim that it is right: ids are keyed per file because
-    meter.py assumes they never repeat across files (a subagent transcript is its own
-    conversation). A resumed or forked session that copies history into a new file breaks
-    that assumption and is double-counted; #349 tracks it. Change this test with that fix."""
+    """Ids are keyed per file, because a subagent transcript is its own conversation.
+    A resumed or forked session that copies history into a new file is double-counted
+    by this rule; meter.py's docstring says so, and this test pins that it stays the rule."""
     _write(tmp_path / "main.jsonl", [_record("m1", "opus", 1, 2, 3, 4)])
     _write(tmp_path / "main" / "subagents" / "agent-x.jsonl", [_record("m1", "opus", 1, 2, 3, 4)])
     assert meter.collect(meter.transcript_files(tmp_path)) == {

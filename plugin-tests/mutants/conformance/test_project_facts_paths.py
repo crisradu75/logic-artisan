@@ -241,15 +241,36 @@ MUTANTS = [
     (
         "a shallow clone is trusted as full history",
         CHECKER,
-        '        if shallow.stdout.strip() == "true":',
+        '        if shallow == "true":',
         "        if False:",
         TARGETS,
     ),
     (
         "a directory that is not a git repo is not told apart from one",
         CHECKER,
-        "        if shallow.returncode != 0:",
+        '        if git("rev-parse", "--git-dir").returncode != 0:',
         "        if False:",
+        TARGETS,
+    ),
+    (
+        "a git too old to know the shallow flag is read as a full clone",
+        CHECKER,
+        '        if shallow != "false":',
+        "        if False:",
+        TARGETS,
+    ),
+    (
+        "each git call gets the whole budget, not what is left of it",
+        CHECKER,
+        "timeout=max(deadline - time.monotonic(), 0.001),",
+        "timeout=_HISTORY_BUDGET_SECONDS,",
+        TARGETS,
+    ),
+    (
+        "a git call past the budget is reported as git failing to run",
+        CHECKER,
+        "    except subprocess.TimeoutExpired:",
+        "    except ZeroDivisionError:",
         TARGETS,
     ),
     (

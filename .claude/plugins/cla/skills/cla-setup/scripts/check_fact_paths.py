@@ -96,6 +96,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 PROJECT_FACTS_RELPATH = Path("cla.io") / "project-facts.md"
@@ -373,6 +374,9 @@ def _top_level_names(repo_root: Path) -> set[str]:
     return {p.name for p in repo_root.iterdir()}
 
 
+_HISTORY_BUDGET_SECONDS = 60
+
+
 def _former_top_level_names(
     repo_root: Path, top_level_names: set[str]
 ) -> tuple[set[str] | None, str]:
@@ -398,34 +402,45 @@ def _former_top_level_names(
     repo, and git would otherwise print paths from its top level. A deletion
     made only inside a merge commit is not seen (it fails safe: unreported).
 
+    Two limits fail safe, leaving a stale path unreported. A case-only rename
+    (`Docs` to `docs`) gives a former name that differs from the live one only
+    in case. In a repo whose shorthand names a path inside a package (`src/x.ts`
+    meaning `<package>/src/x.ts`), a former top-level `src/` makes that
+    shorthand read as stale; no rule here tells the two apart.
+
     `(None, reason)` means history cannot answer: not a git repo, a shallow
     clone (its oldest commits are missing, so a rename may sit in the cut-off
-    part), no commits yet, git unavailable, or a walk that timed out. The caller
+    part), a git too old to say whether the clone is shallow, no commits yet,
+    git unavailable, or a walk that ran past the shared time budget. The caller
     degrades to the pre-history behaviour and says so; this never raises."""
+    # One budget for every git call, so a huge history costs at most this per run.
+    deadline = time.monotonic() + _HISTORY_BUDGET_SECONDS
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=max(deadline - time.monotonic(), 0.001), env=_clean_git_env(),
+        )
+
     try:
-        shallow = subprocess.run(
-            ["git", "rev-parse", "--is-shallow-repository"],
-            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=10, env=_clean_git_env(),
-        )
-        if shallow.returncode != 0:
+        if git("rev-parse", "--git-dir").returncode != 0:
             return None, "not a git repository"
-        if shallow.stdout.strip() == "true":
+        # Git before 2.15 does not know this flag: rev-parse echoes it back and
+        # exits 0. Only a literal true or false is an answer.
+        shallow = git("rev-parse", "--is-shallow-repository").stdout.strip()
+        if shallow == "true":
             return None, "shallow clone"
-        log = subprocess.run(
-            ["git", "-c", "core.quotePath=false", "log", "--relative", "--diff-filter=D", "--no-renames",
-             "--name-only", "--format=", "-z"],
-            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=60, env=_clean_git_env(),
-        )
+        if shallow != "false":
+            return None, "git too old to tell a shallow clone (needs 2.15+)"
+        log = git("-c", "core.quotePath=false", "log", "--relative", "--diff-filter=D", "--no-renames",
+                  "--name-only", "--format=", "-z")
         # A rename or removal staged but not yet committed has no commit to find,
         # and it is the usual moment this guard runs: right after `git mv`.
-        staged = subprocess.run(
-            ["git", "-c", "core.quotePath=false", "diff", "--cached", "--relative", "--diff-filter=D",
-             "--no-renames", "--name-only", "-z"],
-            cwd=repo_root, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=60, env=_clean_git_env(),
-        )
+        staged = git("-c", "core.quotePath=false", "diff", "--cached", "--relative", "--diff-filter=D",
+                     "--no-renames", "--name-only", "-z")
+    except subprocess.TimeoutExpired:
+        return None, f"git ran past its {_HISTORY_BUDGET_SECONDS}s budget"
     except (OSError, subprocess.SubprocessError) as exc:
         return None, f"git could not be run ({type(exc).__name__})"
     if log.returncode != 0:
