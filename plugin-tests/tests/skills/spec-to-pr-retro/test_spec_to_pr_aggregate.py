@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _SKILLS = Path(__file__).resolve().parents[4] / ".claude" / "plugins" / "cla" / "skills"
 SCRIPT = _SKILLS / "spec-to-pr-retro" / "scripts" / "spec_to_pr_aggregate.py"
 PLACEHOLDER = "reason not recorded (migrated record)"
@@ -380,7 +382,86 @@ def test_round_2_yield_counts_changes_and_the_ones_that_surfaced(tmp_path: Path)
     assert out["surfaced_critical_or_important"] == 3
     assert out["chains"] == 2
     assert set(out) == {"changes_with_round_2", "surfaced_critical_or_important",
-                        "chains", "chain_proxy"}
+                        "by_trigger", "chains", "chain_proxy"}
+    assert out["by_trigger"] == {"unrecorded": {"changes": 5, "surfaced": 3}}
+
+
+def _triggered(change: str, *rounds: tuple[int, int, str]) -> dict:
+    """A record whose Revise rounds after the first carry (round, found, trigger)."""
+    phase = _revise([(1, 3)])
+    phase["findings_by_round"] += [{"round": r, "found": f, "trigger": t} for r, f, t in rounds]
+    phase["rounds_used"] = 1 + len(rounds)
+    phase["rounds_cap"] = max(2, phase["rounds_used"])
+    return _rec(change=change, phases=[phase])
+
+
+# requirement: run-ledgers / Summarising recent spec-to-pr runs
+def test_round_2_yield_splits_by_what_started_the_round(tmp_path: Path) -> None:
+    """Scenario: Second-round yield by what started the round."""
+    out = _yield(tmp_path, [
+        _triggered("a", (2, 2, "critical")),
+        _triggered("b", (2, 1, "critical")),
+        _triggered("c", (2, 0, "high-important")),
+        _triggered("d", (2, 0, "high-important")),
+    ])
+    assert (out["changes_with_round_2"], out["surfaced_critical_or_important"]) == (4, 2)
+    assert out["by_trigger"] == {
+        "critical": {"changes": 2, "surfaced": 2},
+        "high-important": {"changes": 2, "surfaced": 0},
+    }
+
+
+def test_a_change_counts_once_under_each_trigger_its_later_rounds_carry(tmp_path: Path) -> None:
+    out = _yield(tmp_path, [_triggered("a", (2, 0, "critical"), (3, 1, "reentry"))])
+    assert out["by_trigger"] == {
+        "critical": {"changes": 1, "surfaced": 0},
+        "reentry": {"changes": 1, "surfaced": 1},
+    }
+    assert out["surfaced_critical_or_important"] == 1
+
+
+@pytest.mark.parametrize("bad_value", [2, "", None])
+def test_a_trigger_that_is_not_a_non_empty_string_makes_the_record_unreadable(tmp_path: Path, bad_value) -> None:
+    bad = _triggered("a", (2, 1, "critical"))
+    bad["phases"][0]["findings_by_round"][1]["trigger"] = bad_value
+    out, _ = _log(_write(tmp_path / "l.jsonl", [bad, _triggered("b", (2, 1, "critical"))]))
+    assert out["round_2_yield"]["by_trigger"] == {"critical": {"changes": 1, "surfaced": 1}}
+    assert out["ledgers"][0]["skipped"] == 1
+
+
+def test_a_trigger_this_reader_does_not_list_keeps_the_record_under_its_own_arm(tmp_path: Path) -> None:
+    """A ledger written by a newer plugin may carry a trigger this copy does not list.
+    Skipping the record would drop it from every metric, not only this one."""
+    out, _ = _log(_write(tmp_path / "l.jsonl", [_triggered("a", (2, 1, "later-value"))]))
+    assert out["round_2_yield"]["by_trigger"] == {"later-value": {"changes": 1, "surfaced": 1}}
+    assert out["ledgers"][0]["skipped"] == 0
+
+
+def test_a_change_with_one_triggered_and_one_untriggered_round_counts_in_both(tmp_path: Path) -> None:
+    rec = _triggered("a", (2, 1, "critical"))
+    rec["phases"][0]["findings_by_round"].append({"round": 3, "found": 0})
+    rec["phases"][0]["rounds_used"] = rec["phases"][0]["rounds_cap"] = 3
+    out = _yield(tmp_path, [rec])
+    assert out["by_trigger"] == {
+        "critical": {"changes": 1, "surfaced": 1},
+        "unrecorded": {"changes": 1, "surfaced": 0},
+    }
+
+
+def test_two_rounds_with_one_trigger_count_the_change_once(tmp_path: Path) -> None:
+    out = _yield(tmp_path, [_triggered("a", (2, 1, "critical"), (3, 0, "critical"))])
+    assert out["by_trigger"] == {"critical": {"changes": 1, "surfaced": 1}}
+
+
+def test_by_trigger_covers_the_window_like_the_totals(tmp_path: Path) -> None:
+    old = [_triggered(f"old{i}", (2, 1, "critical")) for i in range(2)]
+    for rec in old:
+        rec["ts"] = "2026-09-01T00:00:00Z"
+    new = [_triggered(f"new{i}", (2, 0, "high-important")) for i in range(2)]
+    assert _yield(tmp_path, old + new, limit=2)["by_trigger"] == {
+        "high-important": {"changes": 2, "surfaced": 0}}
+    assert _yield(tmp_path, old + new, limit=0, name="all.jsonl")["by_trigger"] == {
+        "critical": {"changes": 2, "surfaced": 2}, "high-important": {"changes": 2, "surfaced": 0}}
 
 
 # requirement: run-ledgers / Summarising recent spec-to-pr runs

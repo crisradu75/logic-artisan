@@ -179,8 +179,8 @@ MUTANTS = [
         # INPUT mutant below covers what the scope is for.
         "the gap pattern excuses the clause on any phase, not only Test and Revise",
         SCRIPT,
-        '_HISTORY_GAP = re.compile(r"^`rounds_used` and `rounds_cap` are required on a (Test|Revise) "',
-        '_HISTORY_GAP = re.compile(r"^`rounds_used` and `rounds_cap` are required on a (\\w+) "',
+        '_ROUNDS_GAP = (r"`rounds_used` and `rounds_cap` are required on a (Test|Revise) "',
+        '_ROUNDS_GAP = (r"`rounds_used` and `rounds_cap` are required on a (\\w+) "',
         TARGETS,
     ),
     (
@@ -213,6 +213,28 @@ MUTANTS = [
         SCRIPT,
         '                out["ts_unmapped"] = value',
         "                pass",
+        TARGETS,
+    ),
+    (
+        "the trigger gap is not excused, so old round-2 records read as unmappable",
+        SCRIPT,
+        '_HISTORY_GAP = re.compile(f"^({_ROUNDS_GAP}|{_TRIGGER_GAP})$")',
+        '_HISTORY_GAP = re.compile(f"^({_ROUNDS_GAP})$")',
+        TARGETS,
+    ),
+    (
+        "the trigger gap excuses any trigger clause, the round-1 refusal included",
+        SCRIPT,
+        '_TRIGGER_GAP = (r"`trigger` is required on a round after the first \\(round \\d+\\): "\n'
+        '                + re.escape("one of " + ", ".join(log_run.ROUND_TRIGGERS)))',
+        '_TRIGGER_GAP = r"`trigger` .*"',
+        TARGETS,
+    ),
+    (
+        "lifting findings_by_round ignores the history gap, so old rounds are dropped",
+        SCRIPT,
+        "    return shape is not None and not [\n        p for p in log_run.shape_problems(value, shape) if not _HISTORY_GAP.match(p)]",
+        "    return shape is not None and log_run.shape_problem(value, shape) is None",
         TARGETS,
     ),
 ]

@@ -69,7 +69,7 @@ Never name `openspec archive` (Archive did it).
 
 After the report, serialize the run as one JSON object and pipe it to `${CLAUDE_PLUGIN_ROOT}/lib/log_run.py` with `spec-to-pr-runs.jsonl` as its argument. **Build it from the example in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/run-log-schema.md`, re-read now — not from memory.** `flags` comes from the invocation, `escalated_to_diagnose` from the count Test kept, `routing.revise_findings_by_tier` from each Revise agent's triage outcome, and Revise's `findings_by_round` from the entries written as each round closed — never reconstructed here.
 
-**`log_run.py` refuses a record off the shape**, printing one line naming every field that is off. **Rebuild it from the example, fixing every field named, and pipe it again — once.** Refused again, or any other failure (disk, permissions, the 4 KiB ceiling) → the stderr line goes in Issues and the run finishes; it never marks the run `warn`.
+**`log_run.py` refuses a record off the shape**, printing one line naming every field that is off. **Rebuild it from the example, fixing every field named, and pipe it again — once.** A refusal naming a round's `trigger` gets `"trigger": "unknown"` on that round: never guess `critical` or `high-important`, and never drop the round. Refused again, or any other failure (disk, permissions, the 4 KiB ceiling) → the stderr line goes in Issues and the run finishes; it never marks the run `warn`.
 
 **Then print the retro nudge**, whether or not the append succeeded:
 

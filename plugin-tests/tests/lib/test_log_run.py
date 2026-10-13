@@ -254,7 +254,8 @@ def _spec_record() -> dict:
              "reason": "one flaky test re-run"},
             {"name": "Ship", "status": "ok"},
             {"name": "Revise", "status": "ok", "rounds_used": 2, "rounds_cap": 2,
-             "findings_by_round": [{"round": 1, "found": 3}, {"round": 2, "found": 1}]},
+             "findings_by_round": [{"round": 1, "found": 3},
+                                   {"round": 2, "found": 1, "trigger": "critical"}]},
             {"name": "Archive", "status": "ok"},
             {"name": "Handoff", "status": "ok"},
         ],
@@ -393,6 +394,47 @@ def _assert_refused(r: subprocess.CompletedProcess[str], ledger: str, fragment: 
     assert message.startswith(f"log_run: {ledger} record refused: "), message
     assert fragment in message, f"{fragment!r} not in {message!r}"
     assert not (retro / ledger).exists(), "a refused record must leave the ledger unchanged"
+
+
+def _with_trigger(round_no: int, trigger) -> dict:
+    """`_spec_record()` with round `round_no`'s trigger set (round 0 is added)."""
+    record = _spec_record()
+    rounds = _phase(record, "Revise")["findings_by_round"]
+    if round_no == 0:
+        rounds.insert(0, {"round": 0, "found": 0})
+    entry = next(r for r in rounds if r["round"] == round_no)
+    entry["trigger"] = trigger
+    return record
+
+
+@pytest.mark.parametrize("trigger", ["critical", "high-important", "reentry", "unknown"])
+def test_a_later_round_may_name_what_started_it(tmp_path: Path, trigger: str) -> None:
+    r = _run(json.dumps(_with_trigger(2, trigger)), tmp_path)
+    assert r.returncode == 0, r.stderr
+
+
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
+def test_a_later_round_without_a_trigger_is_refused(tmp_path: Path) -> None:
+    record = _spec_record()
+    del _phase(record, "Revise")["findings_by_round"][1]["trigger"]
+    _assert_refused(_run(json.dumps(record), tmp_path), LEDGER,
+                    "`trigger` is required on a round after the first (round 2)", tmp_path)
+
+
+# requirement: run-ledgers / Only checked spec-to-pr run records are written
+@pytest.mark.parametrize(
+    ("round_no", "trigger", "fragment"),
+    [
+        (1, "critical", "`trigger` belongs only on a round after the first"),
+        (0, "critical", "`trigger` belongs only on a round after the first"),
+        (2, "important", "`phases[5].findings_by_round[1].trigger` must be one of"),
+        (2, "", "`phases[5].findings_by_round[1].trigger` must be one of"),
+        (2, 1, "`phases[5].findings_by_round[1].trigger` must be one of"),
+    ],
+    ids=["on-round-1", "on-round-0", "unknown-value", "empty", "not-a-string"],
+)
+def test_a_wrong_trigger_is_refused(tmp_path: Path, round_no: int, trigger, fragment: str) -> None:
+    _assert_refused(_run(json.dumps(_with_trigger(round_no, trigger)), tmp_path), LEDGER, fragment, tmp_path)
 
 
 # requirement: run-ledgers / Only checked spec-to-pr run records are written

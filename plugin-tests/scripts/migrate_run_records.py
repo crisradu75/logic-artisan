@@ -37,10 +37,11 @@ ledger; each is mapped mechanically, never guessed:
     re-spelled. When nothing is left the key is dropped: absent reads as no data,
     while `{}` would read as a Revise that found nothing.
 
-ONE GAP IS LEFT, on purpose. The writer requires `rounds_used`/`rounds_cap` on a
-Test or Revise phase that ran; a record written before that rule carried no pair,
-and this script does not invent round counts. Such a record is migrated and keeps
-that gap — `remaining_problems` excludes it and nothing else.
+TWO GAPS ARE LEFT, on purpose. The writer requires `rounds_used`/`rounds_cap` on a
+Test or Revise phase that ran, and a `trigger` on every Revise round after the
+first; a record written before either rule carried neither, and this script does
+not invent round counts or triggers. Such a record is migrated and keeps those
+gaps — `remaining_problems` excludes them and nothing else.
 
 Every other field is kept. A record that already passes is not touched, so a second
 run changes nothing. A record that still fails after mapping is reported with the
@@ -73,23 +74,34 @@ NOT_RECORDED = "(not recorded)"
 NO_REASON = "reason not recorded (migrated record)"
 PARTIAL_REASON = "partial (migrated record)"
 _SEVERITY_ONLY = {"critical", "important", "suggestion"}
-# See "ONE GAP IS LEFT" above. Matched against the writer's own refusal clause, so a
+# See "TWO GAPS ARE LEFT" above. Matched against the writer's own refusal clause, so a
 # reworded clause stops matching and the record reports as unmappable — loud, not lax.
-_HISTORY_GAP = re.compile(r"^`rounds_used` and `rounds_cap` are required on a (Test|Revise) "
-                          r"phase that was not skipped \((ok|warn|fail)\)$")
+_ROUNDS_GAP = (r"`rounds_used` and `rounds_cap` are required on a (Test|Revise) "
+               r"phase that was not skipped \((ok|warn|fail)\)")
+_TRIGGER_GAP = (r"`trigger` is required on a round after the first \(round \d+\): "
+                + re.escape("one of " + ", ".join(log_run.ROUND_TRIGGERS)))
+_HISTORY_GAP = re.compile(f"^({_ROUNDS_GAP}|{_TRIGGER_GAP})$")
 _CANONICAL = {name.lower(): name for name in log_run.SPEC_TO_PR_PHASES}
 _CAP_KEY = {"Review": "review_rounds", "Test": "test_rounds", "Revise": "pr_rounds"}
 _LIFT = ("rounds_used", "rounds_cap", "findings_by_round", "reason")
 
 
+def _count_gaps(rec: dict, gaps: dict[str, int]) -> None:
+    """Add one to each history gap `rec` keeps, counted per gap so neither is misread."""
+    problems = log_run.shape_problems(rec, SHAPE)
+    gaps["rounds"] += any(re.match(f"^{_ROUNDS_GAP}$", p) for p in problems)
+    gaps["trigger"] += any(re.match(f"^{_TRIGGER_GAP}$", p) for p in problems)
+
+
 def remaining_problems(rec: dict) -> list[str]:
-    """The writer's refusals for `rec`, less the one gap history may keep."""
+    """The writer's refusals for `rec`, less the two gaps history may keep."""
     return [p for p in log_run.shape_problems(rec, SHAPE) if not _HISTORY_GAP.match(p)]
 
 
 def _field_ok(key: str, value: object) -> bool:
     shape = PHASE_SHAPE[2].get(key) or PHASE_SHAPE[1].get(key)
-    return shape is not None and log_run.shape_problem(value, shape) is None
+    return shape is not None and not [
+        p for p in log_run.shape_problems(value, shape) if not _HISTORY_GAP.match(p)]
 
 
 def _side_fields(side: dict, name: str) -> dict:
@@ -322,7 +334,8 @@ class _History:
 def run(ledger: Path, dry_run: bool, history_from: Path | None) -> int:
     lines = ledger.read_text(encoding="utf-8").splitlines(keepends=True)
     history = _History(history_from or ledger, lines)
-    out_lines, migrated, unmapped, valid, gaps = [], 0, 0, 0, 0
+    out_lines, migrated, unmapped, valid = [], 0, 0, 0
+    gaps = {"rounds": 0, "trigger": 0}
     for no, line in enumerate(lines, 1):
         if not line.strip():
             out_lines.append(line)
@@ -341,7 +354,7 @@ def run(ledger: Path, dry_run: bool, history_from: Path | None) -> int:
             continue
         if not remaining_problems(rec):
             valid += 1
-            gaps += log_run.shape_problem(rec, SHAPE) is not None
+            _count_gaps(rec, gaps)
             out_lines.append(line)
             continue
         new, notes = migrate(rec, lambda: history.first_seen(no))
@@ -354,11 +367,12 @@ def run(ledger: Path, dry_run: bool, history_from: Path | None) -> int:
             continue
         print(f"line {no} ({label}): " + "; ".join(notes))
         migrated += 1
-        gaps += log_run.shape_problem(new, SHAPE) is not None
+        _count_gaps(new, gaps)
         ending = "\n" if line.endswith("\n") else ""
         out_lines.append(json.dumps(new, separators=(",", ":"), ensure_ascii=False) + ending)
     print(f"{ledger}: {len(lines)} lines, {valid} already in shape, {migrated} migrated, "
-          f"{unmapped} cannot map, {gaps} keep the rounds-pair gap"
+          f"{unmapped} cannot map, {gaps['rounds']} keep the rounds-pair gap, "
+          f"{gaps['trigger']} keep the trigger gap"
           + (" (dry run, nothing written)" if dry_run else ""))
     if migrated and not dry_run:
         tmp = ledger.with_name(ledger.name + ".migrating")

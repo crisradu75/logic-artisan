@@ -49,3 +49,9 @@ def test_the_migration_placeholders_are_the_ones_the_aggregator_sets_apart() -> 
     assert agg.PARTIAL_REASON == mig.PARTIAL_REASON
     assert set(agg.PLACEHOLDER_REASONS) == {mig.NO_REASON, mig.PARTIAL_REASON}
     assert agg.NOT_RECORDED == mig.NOT_RECORDED
+
+
+def test_the_round_triggers_the_aggregator_accepts_are_the_writers() -> None:
+    # The reader refuses any other value, so a trigger the writer allows and the
+    # reader does not would make a valid record unreadable.
+    assert agg.ROUND_TRIGGERS == log_run.ROUND_TRIGGERS
