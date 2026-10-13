@@ -28,14 +28,17 @@ Follow this protocol strictly:
 6. **Track progress.** Show a compact progress line at the top of each question: `[3/~7]` (update the estimate as questions are added or removed).
 7. **Support revising earlier answers.** At any point the user can revise a prior answer — loosely matched ("actually, for Q2..." or "go back on the one about X" both work; no rigid syntax required). Update that answer, then re-apply the adaptive-flow rule to everything after it (drop questions it now makes redundant, insert new ones it raises). Mention this ability once, right after stating the topic and progress estimate, before question 1 — do not repeat it on every question.
 8. **Summarize at the end.** When all questions are answered, output a **Decision Summary** — a compact table of all decisions made, with the question, the chosen option, and its one-line rationale.
-9. **Offer to persist.** After the summary, ask one closing question — not another round — offering to write the exploration to a decisions file (see "Persisting the decision" below). Phrase it as a plain **y/n** prompt (e.g. "Write this to `cla.io/decisions/<file>`? (y/n)"), not a verbose or hedged offer. Do not write the file without an explicit affirmative.
+9. **Look for a severe gap before offering to persist.** Spend one short paragraph trying to break the draft Decision Summary: a load-bearing axis nobody asked about, a decision that contradicts a fact you read, or a choice the code or data cannot hold as decided. Show the paragraph. A real gap becomes one more question; if you find none, say so in one line.
+10. **Offer to persist.** After the summary, ask one closing question — not another round — offering to write the exploration to a decisions file (see "Persisting the decision" below). Phrase it as a plain **y/n** prompt (e.g. "Write this to `cla.io/decisions/<file>`? (y/n)"), not a verbose or hedged offer. Do not write the file without an explicit affirmative.
 
 ## Getting started
 
 1. Analyze the topic provided in the arguments (or inferred from context).
 2. **Ground the questions in this repo.** If the topic concerns product/engine behavior, do a quick read/grep before formulating questions so the options and pros/cons reflect real constraints instead of generic possibilities — state briefly what you checked. Useful starting points: the capability specs, the architecture/convention docs (`cla.io/project-facts.md` "Doc-sweep paths" lists them), and any deferred-items tracker — a topic may already have a parked decision worth surfacing as context rather than re-litigating from scratch. Skip the repo-grounding read for topics that are purely abstract or preference-based (personal tradeoffs, etc.) — **except** when the topic concerns naming: also read `cla.io/terminology.md` if present in that case (see "Domain-terminology capture" below for how it's used during the session), since a naming-shaped decision is exactly what that file exists to inform.
-3. Formulate the question set per the "Right-size the question count" rule above.
-4. State the topic, the progress estimate, and the one-time revision-support note, then ask the first question.
+3. **When the topic adds a call to an outside service** (a vendor, an API, a model provider), check each of these: rate limits, timeout and retry, cost or usage caps, logging and personal data in request and response payloads, abuse and injection, and testing output that is not deterministic. Each one becomes a question, or a one-line note that it is accepted or deferred and why.
+4. **Map what this session already learned.** Every distinct concern that earlier research in this conversation surfaced (a file read, an agent's report) becomes a question, or a one-line "considered, not asked because …" note. A fact already in hand must not silently drop out of the question set.
+5. Formulate the question set per the "Right-size the question count" rule above.
+6. State the topic, the progress estimate, and the one-time revision-support note, then ask the first question.
 
 ## Format for each question
 
