@@ -398,6 +398,12 @@ other repo-wide fact you find):
 - **Infrastructure** — local services a gate needs (a database stack, a container engine), the
   command that reports whether they are up, and whether the dev environment is shared across branches.
 - **Dataset / data locations** — any committed mock/reference dataset a core computation loads from.
+- **Test proof granularity** (a repo with `openspec/` only) — whether its tests prove each
+  requirement (the default) or each scenario. Ask the user once, with the default recommended, and
+  write exactly one line under a `## Test proof` heading: `- Test proof granularity: requirement`
+  or `- Test proof granularity: scenario`.
+  `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_spec_proof.py` reads that line and exits 2 on
+  any other form, so never reword or merge it. A reconcile keeps an existing line as written.
 - **Worktree convention** — where this repo puts worktrees, if it has a rule.
 
 **Keep it terse: one fact per line, under its `##` section.** Skills that cite a section read the

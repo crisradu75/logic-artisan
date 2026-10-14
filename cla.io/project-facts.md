@@ -20,6 +20,10 @@ repo: it has no product code.
 - Live specs: `openspec validate --specs --strict`.
 - Mutation batch (serial only): `python3 plugin-tests/mutate.py <batch.py>`.
 
+## Test proof
+
+- Test proof granularity: requirement
+
 ## Test-file locations
 
 - `plugin-tests/tests/<area>/` — areas `conformance`, `consistency`, `launcher`, `hooks`, `lib`, and `skills/<name>`.
