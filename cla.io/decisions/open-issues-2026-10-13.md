@@ -23,6 +23,7 @@
 | 5 | Second review round | After any Critical/Important fix on high risk; low risk unchanged |
 | 6 | Sonnet launcher | Parked, deferred in #322 |
 | 7 | Where the opt-in lives | `cla.io/project-facts.md`, set by cla-setup |
+| 8 | Review-change's three large-change reviewers (2026-10-14, #322) | Stay pasted prompts from `dispatch.md`, not fixed agents: repo content fills their placeholders each run, and they run only on Large changes |
 
 Noted, not asked: none.
 
