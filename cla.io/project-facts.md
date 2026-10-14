@@ -18,7 +18,7 @@ repo: it has no product code.
 - Serial fallback: `pytest plugin-tests`; trust a parallel run only when its pass and skip counts match a serial run of the same tree.
 - One area while iterating: `pytest plugin-tests/tests/<area> -n auto --dist loadfile`.
 - Live specs: `openspec validate --specs --strict`.
-- Mutation batch (serial only): `python3 plugin-tests/mutate.py <batch.py>`.
+- Mutation batch (opt-in: only when the owner asks or a guard hook is rewritten; serial only): `python3 plugin-tests/mutate.py <batch.py>`.
 
 ## Test proof
 
