@@ -66,10 +66,10 @@ openspec validate --specs --strict
   Some test folders skip themselves entirely, so the only sign one didn't run is a higher skip
   count. Re-check whenever you change which tests the command runs.
 - `pytest-xdist` is the one test-only dependency. Without it, use the serial form.
-- **`mutate.py` stays serial.** It reads pytest's exit code to tell whether a planted bug was
-  caught. Put speed flags like `-n` on the command line, never in pytest's `addopts` setting, which
-  every run picks up, `mutate.py`'s included.
-- **Never run `mutate.py` while a review agent reads the same tree.** It edits real files and puts
+- **When a mutation batch is run, `mutate.py` stays serial.** It reads pytest's exit code to tell
+  whether a planted bug was caught. Put speed flags like `-n` on the command line, never in
+  pytest's `addopts` setting, which every run picks up, `mutate.py`'s included.
+- **When a mutation batch is run, never run `mutate.py` while a review agent reads the same tree.** It edits real files and puts
   them back afterwards; an agent reading mid-run sees a broken file while `git status` shows
   nothing. Run one after the other, or run `mutate.py` in a copy.
 
@@ -115,25 +115,23 @@ A prose edit here ships like code, and nothing compiles it. Each check comes fro
    platform and shell it ran on. "Unchanged" must compare two runs on the same code. "Faster" must
    name both versions. Don't repeat an old number as if it were current.
 4. **Fixing a defect a review found?** Break the fix and confirm a test fails, then restore it. Do
-   this by hand, once per fix. In a guard hook or a checker, also run a mutation batch:
-   `python3 plugin-tests/mutate.py <batch.py>` (a batch is a Python file whose `MUTANTS` list holds
-   small deliberate bugs). Run it once per PR, over the guard or checker lines the PR changed,
-   after the last fix. A broken guard fails silently, so this is the only cheap sign. Guard hooks
-   are the files under `.claude/plugins/cla/hooks/`. Checkers are the `check_*.py` scripts under
-   `.claude/plugins/cla/skills/` and `.claude/skills/release/scripts/`. Checkers also include the
-   guard tests in `plugin-tests/tests/conformance/` and `plugin-tests/tests/consistency/`. Check
-   the function's other return paths too: fixing one often breaks another.
+   this by hand, once per fix. That is the whole floor. **A mutation batch is opt-in** (owner
+   decision, 2026-10-14): run `python3 plugin-tests/mutate.py <batch.py>` (a batch is a Python file
+   whose `MUTANTS` list holds small deliberate bugs) only when the owner asks for it, or when a
+   guard hook, a file under `.claude/plugins/cla/hooks/`, is rewritten. A checker or a guard test
+   does not trigger one. When a batch is run, run it once per PR, over the changed lines, after the
+   last fix. Check the function's other return paths too: fixing one often breaks another.
 5. **Changed a function's signature?** Grep for its callers across the whole repo and fix them in
    the same edit. The folder you are working in is not the whole blast radius.
 
-- **A clean mutation run (every planted bug caught) is not a reason to stop.** Plant bugs in
+- **When a batch is run, a clean mutation run (every planted bug caught) is not a reason to stop.** Plant bugs in
   every guard or checker line the PR changed, not only the line a fix meant to fix.
-- **A KILLED mutant is not a pass until you read the test that killed it.** A test built on a wrong
+- **When a batch is run, a KILLED mutant is not a pass until you read the test that killed it.** A test built on a wrong
   belief catches planted bugs just as reliably. Worst when the planted bug is a simpler form of the
   code. If the simpler code is actually right, the test is protecting the bug. Rule:
   `.claude/plugins/cla/skills/_shared/references/test-quality-gates.md`, "How planting goes
   wrong".
-- **A SURVIVOR is not automatically a finding.** Some planted bugs make no visible difference while
+- **When a batch is run, a SURVIVOR is not automatically a finding.** Some planted bugs make no visible difference while
   the files are correct. If no correct file can tell the real check from the broken one, add a bad
   input file instead of breaking the check. Never leave a planted bug no test can catch in a batch.
 - **A green run is not more true for being repeated.** Re-run only to test for a flake, and then fix
@@ -145,7 +143,7 @@ or a new component. A small addition to something already built and tested does 
 | | run |
 |---|---|
 | Editing one skill or area | `pytest plugin-tests/tests/<area> -n auto --dist loadfile`, **once** |
-| Fixing a defect a review found | that area; for a guard hook or checker, also one mutation batch over the PR's changed lines, run once after the last fix |
+| Fixing a defect a review found | that area, and break each fix by hand once; a mutation batch only when the owner asks or a guard hook is rewritten, run once after the last fix |
 | Adding a new script, skill, or hook | the five checks above, in full |
 | Before opening a PR | `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict`, each once |
 

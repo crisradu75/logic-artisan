@@ -444,7 +444,7 @@ and why each script exists.
   Both green is the only gate before a PR. Watch the skip count — a skipped guard has not run (one pre-push permission-bit test
   always skips on Windows), and the skip count is also how you check a parallel run against a
   serial one. `-n auto --dist loadfile` needs `pytest-xdist`; drop both flags without it. Use
-  `--dist loadfile` rather than plain `-n auto`, and run `mutate.py` serially — `CLAUDE.md` states
+  `--dist loadfile` rather than plain `-n auto`, and when a mutation batch is run, run `mutate.py` serially — `CLAUDE.md` states
   the rules, and section 12 has the measurements behind them.
 
 - **The plugin's tests do not live in the plugin.** `.claude/plugins/cla/` is published whole to
@@ -577,7 +577,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 
 | Script | Why prose can't do it |
 |---|---|
-| `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. |
+| `plugin-tests/mutate.py` *(dev tree)* | Breaks a fix, confirms a test fails, restores byte-exactly — a judgement no reading of the test can substitute for. Opt-in: run only when the owner asks or a guard hook is rewritten (section 12, "Mutation testing is opt-in"). |
 | `lib/log_run.py` | The one ledger writer: validates the record against its shape, enforces the 4 KiB atomic-append ceiling, refuses every ledger name but `spec-to-pr-runs.jsonl`. |
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
 | `plugin-tests/scripts/meter.py` *(dev tree)* | Totals the tokens a session transcript's `usage` fields record, split by model and counting main chat and subagents together, so a token-diet change quotes measured spend instead of word counts; one API message appears once per content block in a transcript, and a plain sum counts it several times. |
@@ -763,9 +763,30 @@ looks at: correcting one return path of a function commonly breaks another, whic
 `lint_profile` traded a silent no-op on the default path for the identical no-op on the overlay
 path.
 
-### Mutation runs only for guards and checkers: the PR behind the rule
+### Mutation testing is opt-in: the PR behind the rule
 
-Check 4 used to require a mutation batch for every review fix. It now requires one only in a guard
+Decided by the owner on 2026-10-14. A mutation batch (`mutate.py` planting bugs and confirming a
+test catches each) is no longer a required step anywhere. It runs only when the owner asks for it,
+or when a guard hook under `.claude/plugins/cla/hooks/` is rewritten. The floor that stays
+everywhere is breaking each review fix by hand once and confirming a test fails, then restoring it.
+The rules about reading the killing test and running `mutate.py` serially, never beside a reading
+agent, still apply whenever a batch is run. This supersedes the story below.
+
+The evidence is PR #365 ("feat: spec-proof-checker", merged as `f929ac2`). The facts about that PR
+below are from its body (`gh pr view 365`). Its body reports an earlier version of the batch run with 40 of 40
+killed. The batch was then extended to 67 mutants, and that run was stopped by the owner before it
+finished, on the decision that mutation testing is opt-in. The extended batch was never run to
+completion against the final code (`plugin-tests/mutants/_shared/test_check_spec_proof.py`). The
+review found its defects without it: round 1 found 5 and the single review over the whole diff
+found 7 Important, and each fix was broken by hand once with a test failing. The evidence for
+PR #320 in the superseded section below (from its own `gh pr view 320` figures) shows the same
+shape: 2 test gaps against 16 review findings. The owner's stated reason (2026-10-14, not from
+either PR body) was that each batch run is serial and blocks the agent for a long time, and that
+the cost is "prohibitively expensive as a validation process with no clear benefit".
+
+### Superseded: mutation runs only for guards and checkers: the PR behind the rule
+
+*Superseded by "Mutation testing is opt-in" above; kept for its evidence.* Check 4 used to require a mutation batch for every review fix. It now requires one only in a guard
 hook or a checker, once per PR, after the last fix. Every other fix needs one test that fails
 without it, shown by breaking the fix by hand.
 
