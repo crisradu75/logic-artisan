@@ -29,7 +29,7 @@ Never cut these to save tokens.
   redacted.
 - Real fixture first: capture a real response or input file before setting a threshold or marking
   a field optional. An inferred rule can fire on every healthy record.
-- Mirror-model contract tests run one way: a field that is optional upstream must be optional in
+- Mirror-model contract tests (a local model copied from an external schema) run one way: a field that is optional upstream must be optional in
   the local mirror, list elements and `X | None` included. Never strip optionality from both sides
   before comparing.
 - Debris check: after the final test run, nothing the tests created remains outside the test
