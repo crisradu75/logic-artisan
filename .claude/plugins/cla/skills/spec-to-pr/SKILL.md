@@ -162,7 +162,7 @@ Each round, smoke first: a smoke failure → diagnose and fix, decrement, re-run
 
 **Read `references/test-notes.md` before editing for an infra-dependent gate failure** (the failing file changes between identical runs, or stderr names the infra tool's own error). It also covers the optional browser smoke, never a hard gate.
 
-**External-API fixtures (a judgment call, not a scripted gate):** a change that adds or extends a call to an external HTTP API, whose tests use only stub mocks with an assumed response shape and no fixture captured against the real response, is an Important finding in Review or Revise.
+**External-API fixtures (a judgment call, not a scripted gate):** a change that adds or extends a call to an external HTTP API, whose tests use only stub mocks with an assumed response shape and no fixture captured against the real response, is an Important finding in Review or Revise. The same holds for a threshold or an optional marking set without a captured real input (`economy-rules-file.md`, quality floor).
 
 ### Autonomy gate
 
