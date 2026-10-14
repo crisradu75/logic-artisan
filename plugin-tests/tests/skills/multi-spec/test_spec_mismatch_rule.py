@@ -16,7 +16,7 @@ _FILES = [
 ]
 _RULE = (
     "Fix each code and spec mismatch found while writing specs in the same change, "
-    "with a regression test. File an issue only when the fix is blocked outside the repo."
+    "with a regression test. File an issue only when the fix is blocked outside the repo, for example in an upstream tool."
 )
 
 

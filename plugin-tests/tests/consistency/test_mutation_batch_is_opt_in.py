@@ -81,6 +81,9 @@ def test_batch_rules_apply_only_when_a_batch_is_run(rule: str) -> None:
     hits = [m.start() for m in re.finditer(re.escape(rule), _BODY)]
     assert hits, f"CLAUDE.md no longer states {rule!r}; the rule was dropped"
     for at in hits:
-        assert "When a mutation batch is run" in _BODY[max(0, at - 60) : at + len(rule)] or (
-            "When a batch is run" in _BODY[max(0, at - 60) : at + len(rule)]
+        # Anchor on the start of the bold list bullet the rule sits in, however long its lead-in.
+        bullet = _BODY.rfind("- **", 0, at)
+        assert bullet >= 0, f"{rule!r} is not inside a bold list bullet"
+        assert _BODY[bullet + 4 :].startswith(
+            ("When a mutation batch is run", "When a batch is run")
         ), f"{rule!r} is not worded as applying only when a batch is run"
