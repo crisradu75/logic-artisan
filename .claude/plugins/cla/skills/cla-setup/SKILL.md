@@ -179,24 +179,42 @@ elif [ ! -d "$ROOT/openspec" ]; then
 else
   OLD="$CFG"; [ -e "$OLD" ] || OLD="$ROOT/openspec/config.yml"
   HAVE="$(tr -d '\r' < "$OLD" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-  # The same lines with one pair of surrounding quotes dropped, so a retired rule the file
-  # carries inside quotes still matches.
-  unquote() { sed "s/^- \"\\(.*\\)\"\$/- \\1/; s/^- '\\(.*\\)'\$/- \\1/"; }
-  HAVEQ="$(printf '%s\n' "$HAVE" | unquote)"
-  # $1 block, $2 mark, $3 = 1 lists the block's lines the file has, 0 those it lacks.
-  rule_lines() {
-    printf '%s\n' "$1" | while IFS= read -r line; do
-      case "$line" in
-        "  "[a-z]*:) KEY="${line#  }" ;;
-        "    - "*) HAS=0; printf '%s\n' "$HAVE" | grep -Fxq -- "${line#    }" && HAS=1
-          [ "$3" = 1 ] && [ "$HAS" = 0 ] && printf '%s\n' "$HAVEQ" |
-            grep -Fxq -- "$(printf '%s\n' "${line#    }" | unquote)" && HAS=1
-          [ "$HAS" = "$3" ] && printf '%s %s %s\n' "$2" "$KEY" "${line#    }" ;;
-      esac
-    done
-  }
-  DIFF="$(rule_lines "$RULES" + 0; rule_lines "$RETIRED" - 1)"
-  if [ -z "$DIFF" ]; then
+  # One awk pass, not a process per rule. It lists the rules of RULES the file lacks (mark +),
+  # then the rules of RETIRED it carries (mark -), a retired one also when the file holds it
+  # inside one pair of quotes ("..." or '...'). The text goes in through the environment: awk -v
+  # would read the backslashes in it as escapes.
+  DIFF="$(CLA_HAVE="$HAVE" CLA_RULES="$RULES" CLA_RETIRED="$RETIRED" awk '
+    function unq(s,  n) {
+      n = length(s)
+      if (n >= 4 && substr(s, 1, 3) == "- \"" && substr(s, n, 1) == "\"") s = "- " substr(s, 4, n - 4)
+      n = length(s)
+      if (n >= 4 && substr(s, 1, 3) == "- \047" && substr(s, n, 1) == "\047") s = "- " substr(s, 4, n - 4)
+      return s
+    }
+    # want = 0 lists the block rules the file lacks; want = 1 those it has, quoted or not.
+    function rule_lines(block, mark, want,   n, a, i, line, key, rule, has) {
+      n = split(block, a, "\n")
+      for (i = 1; i <= n; i++) {
+        line = a[i]
+        if (line ~ /^  [a-z].*:$/) key = substr(line, 3)
+        else if (substr(line, 1, 6) == "    - ") {
+          rule = substr(line, 5)
+          has = (rule in H) ? 1 : 0
+          if (want == 1 && has == 0 && (unq(rule) in Q)) has = 1
+          if (has == want) print mark, key, rule
+        }
+      }
+    }
+    BEGIN {
+      n = split(ENVIRON["CLA_HAVE"], h, "\n")
+      for (i = 1; i <= n; i++) { H[h[i]] = 1; Q[unq(h[i])] = 1 }
+      rule_lines(ENVIRON["CLA_RULES"], "+", 0)
+      rule_lines(ENVIRON["CLA_RETIRED"], "-", 1)
+    }')"
+  AWKRC=$?
+  if [ "$AWKRC" -ne 0 ]; then
+    echo "openspec/${OLD##*/}: exists (skipped), rules NOT compared: awk failed (exit $AWKRC)"
+  elif [ -z "$DIFF" ]; then
     echo "openspec/${OLD##*/}: exists (skipped), rules current"
   else
     echo "openspec/${OLD##*/}: exists (skipped), missing or outdated rules (+ add, - remove):"
