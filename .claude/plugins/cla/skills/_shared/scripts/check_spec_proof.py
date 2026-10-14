@@ -43,7 +43,10 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     than N requirements. A limit the config does not state is not enforced, and the
     ``format limits`` output line names it. Archives are not edited and are skipped.
   - ``empty``: a live spec with no unit, or an active delta whose requirements sit
-    under no ADDED, MODIFIED, REMOVED or RENAMED heading.
+    under no ADDED, MODIFIED, REMOVED or RENAMED heading; in scenario mode, also a
+    requirement in a live spec or active delta with no ``#### Scenario:`` heading.
+  - ``fence``: a live spec or active delta with a code fence that is never closed
+    (everything after it is hidden from the checker).
   - ``validate``: only with ``--validate``; ``openspec validate --specs --strict``
     failed (skipped, and said so, when the CLI is absent).
 
@@ -268,6 +271,15 @@ def _blocks(text: str, delta: bool) -> list[tuple[str, list[str], list[tuple[str
             if cur_scn is not None:
                 cur_scn[1].append(line)
     return reqs
+
+
+def _unclosed_fence(text: str) -> bool:
+    """True when a code fence opens and the file ends before it closes (`_blocks` skips everything after it)."""
+    fence = False
+    for line in text.splitlines():
+        if _FENCE.match(line):
+            fence = not fence
+    return fence
 
 
 _LIMIT_PATTERNS = {
@@ -617,6 +629,14 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
             problems.append(f"PROBLEM empty: {f.rel}: requirements but no ADDED, MODIFIED, REMOVED or RENAMED section, so none is checked")
         if f.kind == "live" and not f.units:
             problems.append(f"PROBLEM empty: {f.rel}: a live spec with no {mode} parsed")
+        if f.kind != "archived":
+            if _unclosed_fence(f.text):
+                problems.append(f"PROBLEM fence: {f.rel}: a code fence is never closed, so the rest of the file is not read")
+            if mode == "scenario":
+                # In scenario mode a requirement with no scenario adds no unit, so nothing else would look at it.
+                for heading, _, scns in _blocks(f.text, f.kind != "live"):
+                    if not scns:
+                        problems.append(f"PROBLEM empty: {f.rel}: requirement {heading!r} has no '#### Scenario:' heading, so none is checked")
 
     limits, unenforced = read_format_limits(root)
     problems += check_format(files, limits)

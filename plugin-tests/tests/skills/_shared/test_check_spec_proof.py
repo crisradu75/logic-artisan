@@ -985,3 +985,36 @@ def test_a_git_refused_working_directory_is_an_error_when_no_root_is_given(tmp_p
     monkeypatch.chdir(root)
     code = csp.main([])
     assert code == 2 and "git refused" in capsys.readouterr().err
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_requirement_with_no_scenario_is_reported_in_scenario_mode(repo, capsys):
+    _write(repo, FACTS, "- Test proof granularity: scenario\n")
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old case"))
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Bare", "Bare SHALL.")))
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert f"PROBLEM empty: {SPEC}: requirement 'Bare' has no '#### Scenario:' heading" in out
+    assert "'Old rule'" not in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_scenario_free_requirement_is_fine_in_requirement_mode(repo, capsys):
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Bare", "Bare SHALL.")))
+    _write(repo, "tests/test_bare.py", _marker("requirement", "alpha", "Bare"))
+    assert run(repo, capsys)[0] == 0
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_an_unclosed_code_fence_is_reported_per_file(repo, capsys):
+    _write(repo, "openspec/specs/beta/spec.md", _spec_text(("Cut", "SHALL.\n\n```\nnever closed\n\n### Requirement: Hidden\n\nSHALL.")))
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert "PROBLEM fence: openspec/specs/beta/spec.md" in out
+    assert "PROBLEM fence: " + SPEC not in out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_closed_code_fence_is_not_reported(repo, capsys):
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n```\nx\n```\n\n" + _scn("Old case"))))
+    assert "PROBLEM fence" not in run(repo, capsys)[1]
