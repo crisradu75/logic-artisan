@@ -4,9 +4,13 @@ Leftover review suggestions (spec-proof-checker):
 
 - `manual: <heading>: <reason>` names a heading, not a spec, so one line covers a same-named changed requirement in every spec of a touched change. Fixing it needs a format change to the tasks rule; the limit is documented in the script docstring.
 
-Leftover review suggestions (cla-setup single-pass rules comparison):
+Leftover review suggestions (Purpose note in the spec checker):
 
-- The key line test `/^  [a-z].*:$/` in the awk pass, like the shell `case` it replaced, reads `[a-z]` under the current locale; pin `LC_ALL=C` on the awk call if a locale ever matches capitals. (The edit is in the awk pass of `cla-setup/SKILL.md`.)
+- A hard-wrapped `**Serves:**` line is not told apart from a paragraph break. Only the first Purpose line is the Serves line (`check_spec_proof.py:490`). A wrapped second line counts as a later sentence (`:498`).
+- An unpaired backtick can hide a sentence break in `count_sentences`. The code-span mask needs a pair (`check_spec_proof.py:439`), so one stray backtick can pair with a later one.
+- In other repos, notes repeat on every run for unchanged older specs. `purpose_notes` runs over every live spec, not only changed ones (`check_spec_proof.py:843`).
+- `check_spec_proof.py` crashes on a cp1252 console when a printed line has non-ASCII text. The final `print` at `check_spec_proof.py:861` sets no encoding. This predates the Purpose note.
+- The spec-proof spec has no requirement for the new `NOTE purpose:` behaviour. `openspec/specs/spec-proof/spec.md` does not mention it; the behaviour is in `check_spec_proof.py:475-505`.
 
 Leftover review suggestions (spec-proof empty check (sweep PR)):
 
