@@ -18,4 +18,4 @@
 ## 4. Docs
 
 - [x] 4.1 README install section: the two Copilot commands, "Copilot CLI only", "untested in a live Copilot CLI", and what the manifest offers (skills). Test that the README says so. DEVELOPER-GUIDE release history and rule story updated.
-- [ ] 4.2 Run `pytest plugin-tests -q -n auto --dist loadfile`, `openspec validate --specs --strict`, then `pytest plugin-tests -q`, once each on the final commit.
+- [x] 4.2 Run `pytest plugin-tests -q -n auto --dist loadfile`, `openspec validate --specs --strict`, then `pytest plugin-tests -q`, once each on the final commit.
