@@ -22,7 +22,8 @@ rule below saves some without dropping quality.
    caches (`__pycache__/*.pyc`) in the diff only for `__pycache__` folders beside tracked `.py` files, and delete the half-written `*.pyc.<digits>` files under `__pycache__/` that
    parallel workers leave. A missing before snapshot means the check did not run, so warn.
 8. **Give each parallel agent its own scratch folder.** Use `scratchpad/<change-name>/` and name it in
-   the brief. Agents that share a folder overwrite each other's files, such as a PR body.
+   the brief. Agents that share a folder overwrite each other's files, such as a PR body. Keep
+   `scratchpad/` in the repo's `.gitignore`, so rule 7's debris check stays quiet.
 9. **Give each parallel agent its own copy of a shared test environment.** Examples are a database
    or a port. Never make agents queue on a lock, because it serialises them. Remove the copies when
    the agents finish.
@@ -33,6 +34,6 @@ rule below saves some without dropping quality.
     edits a file that several areas share. Earlier PRs list the lines they need in their body.
     The last PR applies them, so no merge leaves the next PR conflicting.
 12. **Check GitHub for PR state.** Do not wait on an agent's report to learn whether a PR is open,
-    green or merged.
+    green or merged. Run `gh pr view` on the PR, because an agent's report can be stale.
 13. **Plan for an agent that cannot push.** A guard hook or a deleted shared file can block it.
     The agent reports and stops. The orchestrator then pushes the branch and opens the PR.

@@ -6,5 +6,8 @@ __pycache__/
 # multi-lite / multi-pr run notes: local working state, never committed
 cla.io/retro/*-run-notes-*.md
 
+# per-agent scratch folders (orchestration-economy rule 8): never committed
+/scratchpad/
+
 # agent and /cla:new-worktree copies of the repo: never committed
 .claude/worktrees/
