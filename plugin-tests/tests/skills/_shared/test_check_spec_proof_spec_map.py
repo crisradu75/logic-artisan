@@ -1,6 +1,6 @@
 """Tests for the spec map rule of check_spec_proof.py.
 
-A repo declares a spec map in `cla.io/project-facts.md`; the checker then reports a live spec no map
+A repo declares a spec map in `cla.io/project-facts.md`; the checker then reports a spec (live, or added by an open change) no map
 file links, a map link to no live spec, and a declared path that matches no file. With no
 declaration it prints nothing about a map. Each test builds a throwaway git repo under tmp_path.
 The marker strings the fixtures write are built as single-line f-strings so no line of THIS file
@@ -219,7 +219,6 @@ def test_what_counts_as_a_link(repo, capsys):
             "",
             "[b]: /openspec/specs/beta/",
             "- [site](https://example.com/openspec/specs/zzz/spec.md) and [readme](../README.md)",
-            "- [outside](../../openspec/specs/zzz/spec.md)",
             "- `[code](../openspec/specs/zzz/spec.md)`",
             "",
             "```",
@@ -275,26 +274,112 @@ def test_a_line_number_after_a_multi_line_comment_still_points_at_the_line(repo,
     assert code == 1 and f"{MAP}:8: link 'specs/gamma/spec.md'" in out
 
 
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize(
+    ("lines", "what", "at"),
+    [
+        ((ALPHA, "<!-- old links", BETA), "an HTML comment is never closed", 4),
+        ((ALPHA, "```", BETA), "a code fence is never closed", 4),
+    ],
+)
+def test_a_comment_or_fence_left_open_is_reported_where_it_began(repo, capsys, lines, what, at):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(*lines))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"PROBLEM spec-map: {MAP}:{at}: {what}" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_text_after_the_closer_of_a_comment_on_its_line_is_not_a_link(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("<!--", f"old --> {BETA}", ALPHA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/beta/spec.md is linked from no spec map" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_comment_marker_quoted_in_a_code_span_or_a_fence_opens_nothing(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("Write `<!--` to open a comment.", "```html", "<!--", "```", ALPHA, BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_fence_closes_only_on_a_bare_line_and_a_one_line_triple_backtick_span_opens_none(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("```", "```js", ALPHA, "```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    _write(repo, MAP, _map("```x```", ALPHA, BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_link_with_one_dot_dot_too_many_is_dangling_and_a_file_beside_the_specs_is_not(repo, capsys):
+    _declare(repo, "docs/map.md")
+    _write(repo, "openspec/specs/README.md", "readme\n")
+    _write(
+        repo,
+        "docs/map.md",
+        _map(
+            "- [alpha](../openspec/specs/alpha/spec.md) [beta](../openspec/specs/beta/spec.md)",
+            "- [readme](../openspec/specs/README.md)",
+            "- [too far](../../openspec/specs/alpha/spec.md)",
+        ),
+    )
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert "docs/map.md:5: link '../../openspec/specs/alpha/spec.md' points at no spec" in out
+    assert "README" not in out and "problems: 1" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_spec_held_live_and_by_an_active_change_is_named_by_its_live_file(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, "openspec/changes/c1/specs/alpha/spec.md", GAMMA_DELTA.replace("Requirement: G", "Requirement: A2"))
+    _write(repo, "tests/test_a2.py", _marker("alpha", "A2"))
+    _write(repo, MAP, _map(BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    assert "changes/c1" not in out
+
+
 # requirement: spec-map / A repo declares its spec map as a fact
 def test_a_star_stays_inside_one_folder_and_a_double_star_crosses_folders(repo, capsys):
-    _declare(repo, "docs/*.md", "wiki/**/map.md")
+    _declare(repo, "docs/*.md", "wiki/**/map.md", "notes/**")
+    _write(repo, "notes/deep/x.md", _map("nothing"))
     _write(repo, "docs/top.md", _map(ALPHA.replace("specs/", "../openspec/specs/")))
     _write(repo, "docs/deep/other.md", _map(BETA.replace("specs/", "../../openspec/specs/")))
     _write(repo, "wiki/map.md", _map("nothing"))
     _write(repo, "wiki/a/b/map.md", _map("nothing"))
     code, out, _ = run(repo, capsys)
     assert code == 1
-    assert "spec map: 3 file(s) from 2 declared path(s); 1 of 2 specs linked" in out
+    assert "spec map: 4 file(s) from 3 declared path(s); 1 of 2 specs linked" in out
     assert "openspec/specs/beta/spec.md is linked from no spec map" in out
 
 
 # requirement: spec-map / A repo declares its spec map as a fact
-@pytest.mark.parametrize("heading", ["### Spec map", "# Spec map", "## Spec map:", "## Spec maps", "## Spec-map", "   ## Spec map", "## Spec map ##"])
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "### Spec map", "# Spec map", "## Spec map:", "## Spec maps", "## Spec-map", "   ## Spec map", "## Spec map ##",
+        "## Spec  map", "## Spec_map", "## **Spec map**", "## Spec map.", "## Spec map",
+    ],
+)
 def test_a_heading_that_reads_as_the_declaration_in_another_form_exits_2(repo, capsys, heading):
     _write(repo, FACTS, f"{heading}\n\n- {MAP}\n")
     _write(repo, MAP, _map(ALPHA))
     code, out, err = run(repo, capsys)
     assert code == 2 and f"{FACTS}:1" in err and not out
+
+
+# requirement: spec-map / A repo declares its spec map as a fact
+def test_a_heading_shown_inside_a_fenced_example_in_the_facts_file_is_not_read(repo, capsys):
+    _write(repo, FACTS, "## Notes\n\n```markdown\n### Spec map\n\n- openspec/spec-map.md\n```\n")
+    code, out, err = run(repo, capsys)
+    assert code == 0 and "spec map" not in out.lower() and not err
 
 
 # requirement: spec-map / A repo declares its spec map as a fact

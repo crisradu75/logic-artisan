@@ -338,7 +338,7 @@ other repo-wide fact you find):
 - **Spec map** (a repo with `openspec/` only, and only if the user takes the offer in "The spec map
   scaffold") — the path or glob of the file that maps the repo's capabilities and workflows to its
   specs, one bullet per path under a `## Spec map` heading, any layout. `check_spec_proof.py` reads
-  it and exits 2 on a heading with no bullet or a line that is not a bullet. Never write the
+  it and exits 2 on a heading with no bullet, a line that is not a bullet, or a heading that reads as this one in another form (`### Spec map`). Never write the
   heading when there is no map, and never invent a path: a reconcile keeps an existing section as
   written.
 - **Worktree convention** — where this repo puts worktrees, if it has a rule.
@@ -362,13 +362,13 @@ This skill offers a default scaffold and never imposes one.
 
 - **When to offer.** `openspec/specs/` exists and the facts file has no `## Spec map` section.
   Offer once per run, with the recommended path `openspec/spec-map.md`. The user may name any
-  other path; a path that already exists is never overwritten, so ask for another.
+  other path inside the repo, never under the plugin tree; a path that already exists is never overwritten, so ask for another.
 - **On yes.** Write the scaffold below at the chosen path with `Write`, with one bullet under
-  "Specs not yet placed" per live spec (each link relative to the map's folder), and add the path
+  "Specs not yet placed" per spec under `openspec/specs/` and per spec an open change adds (each link to `openspec/specs/<name>/spec.md`, relative to the map's folder), and add the path
   under a `## Spec map` heading in the facts file. The map then passes `check_spec_proof.py` at
   once, and the user moves each spec into the workflow step it governs.
 - **On no.** Write no map and no heading. Say that the checker then reports nothing about a map.
-- **Declaring a map has a cost.** From then on `check_spec_proof.py` fails on a live spec no map
+- **Declaring a map has a cost.** From then on `check_spec_proof.py` fails on a spec (live, or added by a change in progress) no map
   file links and on a link to a spec that does not exist. Say so when offering.
 
 ````markdown

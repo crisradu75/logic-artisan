@@ -145,12 +145,16 @@ _NOTE = re.compile(
 PROMPT_HALF = "(prompt half)"
 
 _MAP_HEADING = re.compile(r"^##\s+Spec map\s*$", re.I)
-# Any heading that reads as "Spec map" but is not the exact form above (`### Spec map`, `## Spec map:`,
-# `## Spec maps`, `##  Spec-map ##`, an indented one). Reported, never silently read as no declaration.
-_MAP_HEADING_LOOSE = re.compile(r"^\s{0,3}#{1,6}\s+spec[ -]?maps?\s*[:#]*\s*$", re.I)
+# An ATX heading of any level (up to 3 spaces of indent, optional closing hashes). `_reads_as_map_heading`
+# uses it to find a heading that reads as "Spec map" but is not the exact form above (`### Spec map`,
+# `## Spec map:`, `## Spec  maps`, `## **Spec-map**`): reported, never silently read as no declaration.
+_ATX_HEADING = re.compile(r"^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$")
 _ANY_HEADING = re.compile(r"^#{1,6}\s")
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
-_FENCE_RUN = re.compile(r"^\s*(`{3,}|~{3,})")
+_HTML_COMMENT = re.compile(r"<!--.*?-->")
+# A fence opens on a run of 3 or more backticks (whose info string holds no backtick) or tildes, indented
+# at most 3 spaces, and closes on a bare run of the same character at least as long.
+_FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*$")
 _BULLET = re.compile(r"^[-*+]\s+(.+?)\s*$")
 _CODE_START = re.compile(r"^`([^`]+)`")
 # A Markdown link target: `](target)` inline, or `[label]: target` as a reference definition.
@@ -584,6 +588,16 @@ def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> l
     return notes
 
 
+def _reads_as_map_heading(line: str) -> bool:
+    """True for an ATX heading whose words are "spec map" (or "spec maps") once emphasis, underscores,
+    hyphens, non-breaking spaces and trailing punctuation are set aside."""
+    m = _ATX_HEADING.match(line)
+    if not m:
+        return False
+    words = re.sub(r"[\s_\-*`]+", " ", m.group(1)).strip(" .:").lower()
+    return words in ("spec map", "spec maps")
+
+
 def read_spec_map(root: Path) -> list[str] | None:
     """The paths or globs under `## Spec map` in the facts file, or None when the repo declares no map.
 
@@ -598,10 +612,15 @@ def read_spec_map(root: Path) -> list[str] | None:
     except (OSError, UnicodeDecodeError) as exc:
         raise CheckerError(f"cannot read {FACTS_RELPATH}: {exc}") from exc
     heads = []
+    fenced = False
     for n, line in enumerate(lines, 1):
-        if _MAP_HEADING.match(line.rstrip()):
+        if _FENCE.match(line):
+            fenced = not fenced
+        elif fenced:
+            continue
+        elif _MAP_HEADING.match(line.rstrip()):
             heads.append(n)
-        elif _MAP_HEADING_LOOSE.match(line):
+        elif _reads_as_map_heading(line):
             raise CheckerError(f"{FACTS_RELPATH}:{n}: {line.strip()!r} reads as the spec map heading but is not '## Spec map'; write it exactly so, or rename it")
     if not heads:
         return None
@@ -625,31 +644,45 @@ def read_spec_map(root: Path) -> list[str] | None:
     return patterns
 
 
-def map_links(text: str) -> list[tuple[int, str]]:
-    """(line number, target) for each Markdown link in `text` outside code fences, code spans and HTML comments.
+def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
+    """([(line number, target)], [(line number, problem)]) for the Markdown links in `text`.
 
-    A fence closes only on a line of the same character, at least as long as the one that opened it, so a
-    shorter fence quoted inside a longer one does not end it. A comment is blanked but keeps its newlines,
-    so the line numbers still point into the file."""
-    text = _HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text)
-    out: list[tuple[int, str]] = []
-    fence: tuple[str, int] | None = None
+    Links inside a code fence, a code span or an HTML comment are not links on the rendered page and are
+    not read. One pass, line by line, so a `<!--` quoted in a code span or fence opens nothing. A fence
+    closes only on a bare line of the same character at least as long as the opener. A fence or a
+    comment still open at the end hides the rest of the file, as on the page, and is returned as a
+    problem naming the line it began on: otherwise every later link would vanish with no word said."""
+    links: list[tuple[int, str]] = []
+    fence: tuple[str, int, int] | None = None  # (character, run length, line it opened on)
+    comment_from: int | None = None
     for n, line in enumerate(text.splitlines(), 1):
-        run = _FENCE_RUN.match(line)
-        if fence is None:
-            if run:
-                fence = (run.group(1)[0], len(run.group(1)))
-                continue
-        else:
-            if run and len(run.group(1)) >= fence[1] and set(line.strip()) == {fence[0]}:
+        if fence is not None:
+            close = _FENCE_CLOSE.match(line)
+            if close and close.group(1)[0] == fence[0] and len(close.group(1)) >= fence[1]:
                 fence = None
             continue
-        masked = _mask_code_spans(line)
+        if comment_from is not None:
+            if "-->" not in line:
+                continue
+            comment_from, line = None, ""  # what follows the closer on its line is raw HTML too
+        opener = _FENCE_OPEN.match(line)
+        if opener and not (opener.group(1)[0] == "`" and "`" in opener.group(2)):
+            fence = (opener.group(1)[0], len(opener.group(1)), n)
+            continue
+        masked = _HTML_COMMENT.sub("", _mask_code_spans(line))
+        start = masked.find("<!--")
+        if start >= 0:
+            masked, comment_from = masked[:start], n
         ref = _REF_DEF.match(masked)
         if ref:
-            out.append((n, ref.group(1)))
-        out += [(n, target) for target in _INLINE_LINK.findall(masked)]
-    return out
+            links.append((n, ref.group(1)))
+        links += [(n, target) for target in _INLINE_LINK.findall(masked)]
+    issues = []
+    if fence is not None:
+        issues.append((fence[2], "a code fence is never closed, so the rest of the map is not read"))
+    if comment_from is not None:
+        issues.append((comment_from, "an HTML comment is never closed, so the rest of the map is not read"))
+    return links, issues
 
 
 def _link_path(map_rel: str, target: str) -> str | None:
@@ -711,14 +744,20 @@ def check_spec_map(root: Path, specs: dict[str, str], patterns: list[str]) -> tu
             text = (root / rel).read_text(encoding="utf-8-sig")
         except (OSError, UnicodeDecodeError) as exc:
             raise CheckerError(f"cannot read the spec map {rel}: {exc}") from exc
-        for n, target in map_links(text):
+        links, issues = map_links(text)
+        problems += [f"PROBLEM spec-map: {rel}:{n}: {why}" for n, why in issues]
+        for n, target in links:
             path = _link_path(rel, target)
-            if path is None or not path.startswith("openspec/specs/"):
+            if path is None:
                 continue
-            m = _SPEC_LINK.match(path)
+            into_specs = path.startswith("openspec/specs/")
+            # A path that climbs out of the repo and names openspec/specs is a mistyped `..`, not another site.
+            if not into_specs and not (path.startswith("../") and "/openspec/specs/" in "/" + path):
+                continue
+            m = _SPEC_LINK.match(path) if into_specs else None
             if m and m.group(1) in specs:
                 linked.add(m.group(1))
-            elif m or not (root / path).exists():
+            elif not (into_specs and (root / path).is_file()):
                 problems.append(f"PROBLEM spec-map: {rel}:{n}: link {target!r} points at no spec")
     if maps:
         problems += [f"PROBLEM spec-map: {specs[name]} is linked from no spec map" for name in sorted(set(specs) - linked)]
@@ -985,7 +1024,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     if patterns is not None:
         spec_rels: dict[str, str] = {}
         for f in files:
-            if f.kind != "archived" and (f.spec not in spec_rels or f.kind == "live"):
+            if f.kind != "archived" and f.spec not in spec_rels:  # `files` lists live specs first, so a live file names its spec
                 spec_rels[f.spec] = f.rel
         map_problems, map_line = check_spec_map(root, spec_rels, patterns)
         problems += map_problems
