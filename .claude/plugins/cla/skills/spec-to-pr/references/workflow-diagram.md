@@ -41,7 +41,7 @@ Phase order (Precheck → Propose → Review → Implement → Test → Ship →
                        ▼
             ┌──────────────────────┐
             │  IMPLEMENT           │   post-check: openspec status --change <name> --json
-            │  apply-change skill  │   ✓ artifacts ready + all ticked + named tests exist / ⚠ gaps (big change → sonnet delegate)
+            │  apply-change skill  │   ✓ artifacts ready + all ticked + named tests exist + docs task ticked / ⚠ gaps (big change → sonnet delegate)
             └──────────┬───────────┘
                        │
                        ▼

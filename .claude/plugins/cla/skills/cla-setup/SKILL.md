@@ -315,8 +315,9 @@ other repo-wide fact you find):
 - **Ports** — every fixed local-dev port tied to a specific process, and what runs on it.
 - **Affected-file map** — the per-change-type file lists reviewers use to identify what a change of a
   given shape touches.
-- **Doc-sweep paths** — the fixed list of docs a change to application source should keep in sync
-  (root guidance doc, per-subapp guidance docs, README, docs tree, spec tree).
+- **Doc-sweep paths** — the fixed list of docs outside `openspec/` that any change should keep in
+  sync (root guidance doc, per-subapp guidance docs, README, docs tree). A change's docs task and
+  the Review and Revise docs checks read it.
 - **Cross-file lockstep doc sets** — any set of files that must be updated together whenever a specific
   piece of core logic changes.
 - **Test-file locations** — unit/integration/e2e/smoke test locations, including any excluded from the

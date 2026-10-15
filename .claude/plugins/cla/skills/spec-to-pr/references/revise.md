@@ -60,6 +60,16 @@ return {findings, launched: DISPATCHES.length, reported: reported.length};
 - An **empty `findings` array** from any agent is accepted at face value (`found: 0` for that agent); do not re-dispatch to fish for findings.
 - Triage, verification, fixes and commits stay in the main loop below; the Workflow only produces the findings list.
 
+## Docs currency (round 1, beside the reviewers)
+
+Only where the repo's `openspec/config.yaml` `rules.tasks` carries the docs rule (it names `docs and spec map:`). The diff reviewers read only the diff and a stale doc lies outside it, so you make this comparison yourself.
+
+1. Read the `docs and spec map:` line in the change's `tasks.md`, and the doc list (`cla.io/project-facts.md`, "Doc-sweep paths"). With no list, take the docs a reader of the repo would open for this change.
+2. List the names the diff alters: flags, commands, skill, script and file names, headings, counts, rules.
+3. Search every doc on that list (or the docs you picked) that the diff does not touch for those names, one search per doc; `doc-sweeper` (haiku) may run them from the doc list and the names. The tasks line adds no docs here; it tells you which ones its author excused with `none affected:`. A doc that still states the old behaviour is stale, including an excused one.
+
+Each stale doc is an Important finding (`docs: <path> still says <old>`) in this round's triage and in `findings_by_round`. Its fix is a doc edit with no test to break, so step 2b's mutation gate does not apply, and a round whose only fixes are doc edits does not trigger round 2. List it in Handoff's Issues section. `--pr-rounds 0` and `--skip-review` skip this check with Revise.
+
 ## Round N (N ≥ 2)
 
 Dispatch via `Agent`, with the same reviewers and models as round 1, at round 1's final level (never lower), per "Review sizing by risk" in `model-routing.md`. Do not re-judge risk from the smaller fix diff. Scope it to the diff the previous fix commit added. Save it to a diff file (as in round 1: the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), never in the tree), name that file's absolute path in each prompt instead of pasting the diff, and delete it when the round ends:

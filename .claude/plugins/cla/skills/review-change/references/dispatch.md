@@ -84,6 +84,7 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 > 7. **Idempotency** — Flag tasks that "create" a file/constant already present or "add" an entity already listed — rewrite as "verify".
 > 8. **i18n parity** — Any task that adds a translation key but updates only one language file (of the correct i18n layer) is incomplete; all must change.
 > 9. **Requirement proof** — Each requirement the delta specs add or modify needs a test task that names it or a tasks.md line `manual: <heading>: <reason>`; scenarios are examples and need no test of their own. A requirement with neither is **Important**. A test task that names no `requirement: <spec> / <heading>` marker is a **Suggestion**.
+> 10. **Docs task** — Only where the repo's `openspec/config.yaml` `rules.tasks` carries the docs rule (it names `docs and spec map:`): tasks.md needs one task whose text starts with `docs and spec map:` that names files, or `none affected:` with a reason, and it must not leave out a document on the repo's doc list (`cla.io/project-facts.md`, "Doc-sweep paths"; with no list, the docs a reader would open) that states what the proposal alters. A missing or empty task, a `none affected:` with no reason, or a left-out document is **Important**.
 >
 > Output format — one line per issue:
 > - [Critical/Important/Suggestion] Issue description
