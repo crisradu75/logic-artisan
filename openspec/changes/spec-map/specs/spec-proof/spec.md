@@ -2,11 +2,11 @@
 
 ### Requirement: A checker reports specs a declared map leaves out and links that point nowhere
 
-Once a repo declares a spec map, `check_spec_proof.py` SHALL report as problems, exiting non-zero, each live spec that no map file links, each map link that points at a spec that does not exist, and each declared path that matches no file.
+Once a repo declares a spec map, `check_spec_proof.py` SHALL report as problems, exiting non-zero, each spec, live or added by a change in progress, that no map file links, each map link that points at a spec that does not exist, and each declared path that matches no file.
 
 #### Scenario: A spec no map links
 
-- **WHEN** a map is declared and a live spec is linked from none of its files
+- **WHEN** a map is declared and a spec is linked from none of its files
 - **THEN** the checker names that spec and exits non-zero
 
 #### Scenario: A link to a missing spec

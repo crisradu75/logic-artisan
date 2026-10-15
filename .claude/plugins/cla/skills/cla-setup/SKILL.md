@@ -472,7 +472,7 @@ Show the user, in order:
 Ask for a yes (`AskUserQuestion` or a plain yes/no) before writing anything; on a request for
 changes, revise and ask again rather than applying part of it. On yes, write each confirmed file
 with `Write`/`Edit` and delete each confirmed overlay with `rm --`. **Every target must be repo
-content** — `cla.io/**`. A target that resolves inside the plugin tree is reported as a migration
+content** — `cla.io/**`, or the spec map path the user chose in "The spec map scaffold". A target that resolves inside the plugin tree is reported as a migration
 recommendation, never written. A declined proposal leaves its file untouched.
 
 **Then run the staleness checker against what was just written:**

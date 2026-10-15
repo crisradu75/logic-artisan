@@ -2,7 +2,7 @@
 
 ### Requirement: A repo declares its spec map as a fact
 
-A repo SHALL declare its spec map by listing one path or glob per bullet under a `## Spec map` heading in `cla.io/project-facts.md`, in any layout, so that with no such heading there is no map and no map check reports anything, and a heading that names no path exits non-zero.
+A repo SHALL declare its spec map by listing one path or glob per bullet under a `## Spec map` heading in `cla.io/project-facts.md`, in any layout, so that with no such heading there is no map and no map check reports anything, and a heading that names no path, or that reads as this heading in another form, exits non-zero.
 
 #### Scenario: A glob in a custom layout
 
@@ -14,9 +14,9 @@ A repo SHALL declare its spec map by listing one path or glob per bullet under a
 - **WHEN** the facts file has no `## Spec map` heading
 - **THEN** the checker prints no line about a map and its exit code is unchanged
 
-#### Scenario: A heading with no path
+#### Scenario: A heading the checker cannot read as a declaration
 
-- **WHEN** the `## Spec map` heading has no bullet under it
+- **WHEN** the `## Spec map` heading has no bullet under it, or the heading is written `### Spec map`
 - **THEN** the checker exits non-zero and names the line
 
 ### Requirement: Setup offers a three-layer spec map scaffold

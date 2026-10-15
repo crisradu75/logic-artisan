@@ -50,3 +50,10 @@ Leftover review suggestions (Copilot agents):
 
 - `sync_copilot_agents.py --write` never looks at `com.github.copilot/agents/` for copies whose Claude agent was renamed or removed; it prints "in step" and exits 0 while the consistency test fails. Have the script report or delete such files.
 - The model IDs in `MODEL_MAP` are checked against nothing but the script itself; GitHub renames models, and Copilot then silently uses the session model. Decide whether to re-read the supported-models table at each release.
+
+Leftover review suggestions (spec map):
+
+- `map_links` still counts a link that does not render as one: an escaped `\[x\](..)`, an image `![x](..)`, a line in an indented code block, and a link on a line with an unpaired backtick (`_mask_code_spans` then masks nothing). Skip those forms, or treat such a line as unreadable.
+- A reference definition `[b]: specs/beta/spec.md` that no `[text][b]` uses still counts as linking beta. Count a definition only when its label is used.
+- A declared glob that also matches a binary or non-UTF-8 file exits 2 with "cannot read the spec map". Match only `.md` files, or report the file as a PROBLEM line.
+- Retiring a whole spec may have a mirror trap (not checked): the spec stays live until archive, so a map link removed in the change would be reported as an unlinked spec, and one kept would dangle after archive. Decide how the rule should read a REMOVED capability.

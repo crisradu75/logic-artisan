@@ -56,20 +56,22 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     ends a sentence.
   - ``fence``: a live spec or active delta with a code fence that is never closed
     (everything after it is hidden from the checker).
-  - ``spec-map``: only once a repo declares a spec map (see SPEC MAP): a live spec no
-    map file links, a map link to a spec that does not exist, or a declared path that
-    matches no file.
+  - ``spec-map``: only once a repo declares a spec map (see SPEC MAP): a spec (live, or
+    added by an active change) that no map file links, a map link into ``openspec/specs/``
+    that names no spec and no file, or a declared path that matches no file.
   - ``validate``: only with ``--validate``; ``openspec validate --specs --strict``
     failed (skipped, and said so, when the CLI is absent).
 
 SPEC MAP. A repo that keeps a map from its capabilities and workflows to its specs
 declares it in ``cla.io/project-facts.md``: one path or glob per bullet under a
-``## Spec map`` heading, in any layout (matched like ``--tests``). No such heading means
-no map, and then the rule reports nothing and prints no line. A heading with no bullet,
-a second heading or a line that is not a bullet exits 2 and names the line. A link is a
-Markdown link (inline, or a reference definition) outside code fences, resolved against
-the map file's folder, that lands on ``openspec/specs/<name>`` or its ``spec.md``; other
-links are not read. See ``read_spec_map`` and ``check_spec_map``.
+``## Spec map`` heading, in any layout, matched against the tracked and untracked-unignored
+files (``*`` stays inside one folder, ``**/`` crosses folders, case counts). No such heading
+means no map, and then the rule reports nothing and prints no line. A heading with no
+bullet, a second heading, a line that is not a bullet, or a heading that reads as "spec
+map" in another form (``### Spec map``) exits 2 and names the line. A link is a Markdown
+link (inline, or a reference definition) outside code fences, code spans and HTML comments,
+resolved against the map file's folder, that lands on ``openspec/specs/<name>`` or its
+``spec.md``; other links are not read. See ``read_spec_map`` and ``check_spec_map``.
 
 An empty corpus (no spec files) exits 2: a misconfigured run must not pass.
 
@@ -143,7 +145,12 @@ _NOTE = re.compile(
 PROMPT_HALF = "(prompt half)"
 
 _MAP_HEADING = re.compile(r"^##\s+Spec map\s*$", re.I)
+# Any heading that reads as "Spec map" but is not the exact form above (`### Spec map`, `## Spec map:`,
+# `## Spec maps`, `##  Spec-map ##`, an indented one). Reported, never silently read as no declaration.
+_MAP_HEADING_LOOSE = re.compile(r"^\s{0,3}#{1,6}\s+spec[ -]?maps?\s*[:#]*\s*$", re.I)
 _ANY_HEADING = re.compile(r"^#{1,6}\s")
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+_FENCE_RUN = re.compile(r"^\s*(`{3,}|~{3,})")
 _BULLET = re.compile(r"^[-*+]\s+(.+?)\s*$")
 _CODE_START = re.compile(r"^`([^`]+)`")
 # A Markdown link target: `](target)` inline, or `[label]: target` as a reference definition.
@@ -590,7 +597,12 @@ def read_spec_map(root: Path) -> list[str] | None:
         lines = facts.read_text(encoding="utf-8-sig").splitlines()
     except (OSError, UnicodeDecodeError) as exc:
         raise CheckerError(f"cannot read {FACTS_RELPATH}: {exc}") from exc
-    heads = [n for n, line in enumerate(lines, 1) if _MAP_HEADING.match(line.rstrip())]
+    heads = []
+    for n, line in enumerate(lines, 1):
+        if _MAP_HEADING.match(line.rstrip()):
+            heads.append(n)
+        elif _MAP_HEADING_LOOSE.match(line):
+            raise CheckerError(f"{FACTS_RELPATH}:{n}: {line.strip()!r} reads as the spec map heading but is not '## Spec map'; write it exactly so, or rename it")
     if not heads:
         return None
     if len(heads) > 1:
@@ -614,14 +626,23 @@ def read_spec_map(root: Path) -> list[str] | None:
 
 
 def map_links(text: str) -> list[tuple[int, str]]:
-    """(line number, target) for each Markdown link in `text` outside code fences and code spans."""
+    """(line number, target) for each Markdown link in `text` outside code fences, code spans and HTML comments.
+
+    A fence closes only on a line of the same character, at least as long as the one that opened it, so a
+    shorter fence quoted inside a longer one does not end it. A comment is blanked but keeps its newlines,
+    so the line numbers still point into the file."""
+    text = _HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), text)
     out: list[tuple[int, str]] = []
-    fence = False
+    fence: tuple[str, int] | None = None
     for n, line in enumerate(text.splitlines(), 1):
-        if _FENCE.match(line):
-            fence = not fence
-            continue
-        if fence:
+        run = _FENCE_RUN.match(line)
+        if fence is None:
+            if run:
+                fence = (run.group(1)[0], len(run.group(1)))
+                continue
+        else:
+            if run and len(run.group(1)) >= fence[1] and set(line.strip()) == {fence[0]}:
+                fence = None
             continue
         masked = _mask_code_spans(line)
         ref = _REF_DEF.match(masked)
@@ -631,30 +652,56 @@ def map_links(text: str) -> list[tuple[int, str]]:
     return out
 
 
-def _linked_spec(map_rel: str, target: str) -> str | None:
-    """The spec name a link in the map file `map_rel` points at, or None when it points at no spec path.
+def _link_path(map_rel: str, target: str) -> str | None:
+    """The repo-relative path a link in the map file `map_rel` points at, or None for an empty target.
 
     The fragment and query are dropped, a relative target is resolved against the map file's folder and
-    a leading `/` means the repo root. A URL, or a path that leaves the repo, names no spec."""
+    a leading `/` means the repo root. A URL or a path that leaves the repo lands on no spec path."""
     target = re.split(r"[#?]", target.replace("\\", "/"), maxsplit=1)[0]
     if not target:
         return None
     joined = target.lstrip("/") if target.startswith("/") else posixpath.join(posixpath.dirname(map_rel), target)
-    m = _SPEC_LINK.match(posixpath.normpath(joined))
-    return m.group(1) if m else None
+    return posixpath.normpath(joined)
 
 
-def check_spec_map(root: Path, live: set[str], patterns: list[str]) -> tuple[list[str], str]:
+def _glob_regex(pattern: str) -> re.Pattern[str]:
+    """A repo-relative glob as a regex: `*` and `?` stay inside one folder, `**/` crosses folders, the rest is literal.
+
+    Not `fnmatch`, where `*` also crosses `/`: a map declared as `docs/*.md` would then take in every
+    nested file, and any link in one of them would count as the map linking that spec."""
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            out.append("[^/]")
+            i += 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("".join(out))
+
+
+def check_spec_map(root: Path, specs: dict[str, str], patterns: list[str]) -> tuple[list[str], str]:
     """PROBLEM lines for a declared spec map, and the one summary line that describes it.
 
-    `live` is the set of live spec names. Reports each declared pattern that matches no file, each link
-    in a map file that points at a spec not in `live`, and each live spec no map file links. With no map
-    file at all the last rule is skipped, since it would repeat every spec after the first problem."""
+    `specs` maps each spec name to the file that holds it: a live spec, or a spec only an active change
+    adds (so a change that adds a capability can link it before it is archived, and the map still passes
+    after). Reports each declared pattern that matches no file, each link into `openspec/specs/` that
+    names no spec and no existing file, and each spec no map file links. With no map file at all the last
+    rule is skipped, since it would repeat every spec after the first problem."""
     problems: list[str] = []
     listed = [rel for rel in _listed_files(root) if (root / rel).is_file()]
     maps: list[str] = []
     for pattern in patterns:
-        hits = [rel for rel in listed if fnmatch.fnmatchcase(rel, pattern)]
+        hits = [rel for rel in listed if _glob_regex(pattern).fullmatch(rel)]
         if not hits:
             problems.append(f"PROBLEM spec-map: declared path {pattern!r} in {FACTS_RELPATH} matches no file")
         maps += [rel for rel in hits if rel not in maps]
@@ -665,16 +712,17 @@ def check_spec_map(root: Path, live: set[str], patterns: list[str]) -> tuple[lis
         except (OSError, UnicodeDecodeError) as exc:
             raise CheckerError(f"cannot read the spec map {rel}: {exc}") from exc
         for n, target in map_links(text):
-            name = _linked_spec(rel, target)
-            if name is None:
+            path = _link_path(rel, target)
+            if path is None or not path.startswith("openspec/specs/"):
                 continue
-            if name in live:
-                linked.add(name)
-            else:
-                problems.append(f"PROBLEM spec-map: {rel}:{n}: link {target!r} points at no live spec")
+            m = _SPEC_LINK.match(path)
+            if m and m.group(1) in specs:
+                linked.add(m.group(1))
+            elif m or not (root / path).exists():
+                problems.append(f"PROBLEM spec-map: {rel}:{n}: link {target!r} points at no spec")
     if maps:
-        problems += [f"PROBLEM spec-map: openspec/specs/{name}/spec.md is linked from no spec map" for name in sorted(live - linked)]
-    summary = f"spec map: {len(maps)} file(s) from {len(patterns)} declared path(s); {len(linked)} of {len(live)} live specs linked"
+        problems += [f"PROBLEM spec-map: {specs[name]} is linked from no spec map" for name in sorted(set(specs) - linked)]
+    summary = f"spec map: {len(maps)} file(s) from {len(patterns)} declared path(s); {len(linked)} of {len(specs)} specs linked"
     return problems, summary
 
 
@@ -935,7 +983,11 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     map_line = None
     patterns = read_spec_map(root)  # None: no map declared, so the rule reports nothing and prints no line
     if patterns is not None:
-        map_problems, map_line = check_spec_map(root, {f.spec for f in files if f.kind == "live"}, patterns)
+        spec_rels: dict[str, str] = {}
+        for f in files:
+            if f.kind != "archived" and (f.spec not in spec_rels or f.kind == "live"):
+                spec_rels[f.spec] = f.rel
+        map_problems, map_line = check_spec_map(root, spec_rels, patterns)
         problems += map_problems
 
     markers, scanned, skipped = scan_markers(root, globs or [])

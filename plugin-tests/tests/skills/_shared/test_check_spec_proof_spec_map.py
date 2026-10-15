@@ -100,7 +100,7 @@ def test_a_glob_declares_every_file_it_matches_in_any_layout(repo, capsys):
     _write(repo, "docs/products/b/overview.md", _map("- [beta](../../../openspec/specs/beta/spec.md)"))
     code, out, _ = run(repo, capsys)
     assert code == 0, out
-    assert "spec map: 2 file(s) from 1 declared path(s); 2 of 2 live specs linked" in out
+    assert "spec map: 2 file(s) from 1 declared path(s); 2 of 2 specs linked" in out
 
 
 # requirement: spec-map / A repo declares its spec map as a fact
@@ -129,7 +129,7 @@ def test_bullet_forms_and_the_end_of_the_section(repo, capsys):
     _write(repo, MAP, _map(ALPHA, BETA))
     code, out, _ = run(repo, capsys)
     assert code == 0, out
-    assert "spec map: 1 file(s) from 2 declared path(s); 2 of 2 live specs linked" in out
+    assert "spec map: 1 file(s) from 2 declared path(s); 2 of 2 specs linked" in out
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
@@ -148,18 +148,36 @@ def test_a_map_link_to_a_missing_spec_is_reported_with_its_file_and_line(repo, c
     _write(repo, MAP, _map(ALPHA, BETA, "- [gamma](specs/gamma/spec.md)"))
     code, out, _ = run(repo, capsys)
     assert code == 1
-    assert f"PROBLEM spec-map: {MAP}:5: link 'specs/gamma/spec.md' points at no live spec" in out
+    assert f"PROBLEM spec-map: {MAP}:5: link 'specs/gamma/spec.md' points at no spec" in out
     assert "problems: 1" in out
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
-def test_a_link_to_a_spec_that_only_an_active_change_adds_is_dangling(repo, capsys):
+def test_a_mistyped_link_into_the_specs_folder_is_dangling_but_a_real_file_there_is_not(repo, capsys):
     _declare(repo, MAP)
-    _write(repo, "openspec/changes/c1/specs/gamma/spec.md", "## ADDED Requirements\n\n### Requirement: G\n\nSHALL.\n\n#### Scenario: S\n\n- **WHEN** x\n- **THEN** y\n")
+    _write(repo, "openspec/specs/alpha/notes.md", "notes\n")
+    _write(repo, MAP, _map(ALPHA, BETA, "- [typo](specs/alpha/specs.md)", "- [notes](specs/alpha/notes.md)"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert f"{MAP}:5: link 'specs/alpha/specs.md' points at no spec" in out
+    assert "notes.md" not in out and "problems: 1" in out
+
+
+GAMMA_DELTA = "## ADDED Requirements\n\n### Requirement: G\n\nSHALL.\n\n#### Scenario: S\n\n- **WHEN** x\n- **THEN** y\n"
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_spec_an_active_change_adds_must_be_linked_and_may_be_linked_before_it_is_archived(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, "openspec/changes/c1/specs/gamma/spec.md", GAMMA_DELTA)
     _write(repo, "tests/test_gamma.py", _marker("gamma", "G"))
+    _write(repo, MAP, _map(ALPHA, BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/changes/c1/specs/gamma/spec.md is linked from no spec map" in out
     _write(repo, MAP, _map(ALPHA, BETA, "- [gamma](specs/gamma/spec.md)"))
     code, out, _ = run(repo, capsys)
-    assert code == 1 and "points at no live spec" in out
+    assert code == 0, out
+    assert "3 of 3 specs linked" in out
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
@@ -211,7 +229,7 @@ def test_what_counts_as_a_link(repo, capsys):
     )
     code, out, _ = run(repo, capsys)
     assert code == 0, out
-    assert "2 of 2 live specs linked" in out
+    assert "2 of 2 specs linked" in out
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
@@ -224,9 +242,74 @@ def test_a_link_inside_a_code_fence_does_not_link_the_spec(repo, capsys):
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
-def test_this_repos_own_map_links_every_live_spec_and_only_live_specs():
+def test_a_shorter_fence_quoted_inside_a_longer_one_does_not_end_it(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("````markdown", "```", ALPHA, "```", "````", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_fence_of_one_character_is_not_closed_by_the_other(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("~~~", "```", ALPHA, "~~~", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize("comment", ["<!-- {a} -->", "<!--\n{a}\n-->"])
+def test_a_link_inside_an_html_comment_does_not_link_the_spec(repo, capsys, comment):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(ALPHA, comment.format(a=BETA)))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/beta/spec.md is linked from no spec map" in out
+    assert "alpha/spec.md is linked" not in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_line_number_after_a_multi_line_comment_still_points_at_the_line(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(ALPHA, BETA, "<!--", "x", "-->", "- [gamma](specs/gamma/spec.md)"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"{MAP}:8: link 'specs/gamma/spec.md'" in out
+
+
+# requirement: spec-map / A repo declares its spec map as a fact
+def test_a_star_stays_inside_one_folder_and_a_double_star_crosses_folders(repo, capsys):
+    _declare(repo, "docs/*.md", "wiki/**/map.md")
+    _write(repo, "docs/top.md", _map(ALPHA.replace("specs/", "../openspec/specs/")))
+    _write(repo, "docs/deep/other.md", _map(BETA.replace("specs/", "../../openspec/specs/")))
+    _write(repo, "wiki/map.md", _map("nothing"))
+    _write(repo, "wiki/a/b/map.md", _map("nothing"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert "spec map: 3 file(s) from 2 declared path(s); 1 of 2 specs linked" in out
+    assert "openspec/specs/beta/spec.md is linked from no spec map" in out
+
+
+# requirement: spec-map / A repo declares its spec map as a fact
+@pytest.mark.parametrize("heading", ["### Spec map", "# Spec map", "## Spec map:", "## Spec maps", "## Spec-map", "   ## Spec map", "## Spec map ##"])
+def test_a_heading_that_reads_as_the_declaration_in_another_form_exits_2(repo, capsys, heading):
+    _write(repo, FACTS, f"{heading}\n\n- {MAP}\n")
+    _write(repo, MAP, _map(ALPHA))
+    code, out, err = run(repo, capsys)
+    assert code == 2 and f"{FACTS}:1" in err and not out
+
+
+# requirement: spec-map / A repo declares its spec map as a fact
+def test_a_heading_that_only_mentions_the_map_is_not_a_declaration(repo, capsys):
+    _write(repo, FACTS, "## Spec map scaffold notes\n\n- anything\n")
+    code, out, err = run(repo, capsys)
+    assert code == 0 and "spec map" not in out.lower() and not err
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_this_repos_own_map_links_every_spec_and_only_specs():
     patterns = csp.read_spec_map(_REPO)
     assert patterns is not None
-    live = {p.parent.name for p in (_REPO / "openspec" / "specs").glob("*/spec.md")}
-    problems, _ = csp.check_spec_map(_REPO, live, patterns)
+    specs = {}
+    for p in sorted((_REPO / "openspec" / "specs").glob("*/spec.md")) + sorted((_REPO / "openspec" / "changes").glob("*/specs/*/spec.md")):
+        specs.setdefault(p.parent.name, p.relative_to(_REPO).as_posix())
+    problems, _ = csp.check_spec_map(_REPO, specs, patterns)
     assert problems == []

@@ -17,10 +17,10 @@ task, already merged) made the map one entry in every change's docs task.
 - `/cla:cla-setup` offers a default scaffold for a repo with `openspec/`. It writes only on a yes, at a
   path the user picks, and never seeds it silently.
 - `check_spec_proof.py` gains one rule inside the script. Once a map is declared it reports
-  `PROBLEM spec-map` (exit 1) for a live spec no map file links, a map link to a spec that does not
+  `PROBLEM spec-map` (exit 1) for a spec (live, or added by the change) no map file links, a map link to a spec that does not
   exist, and a declared path that matches no file. A malformed declaration exits 2. With no
   declaration the output does not change.
-- This repo declares `openspec/spec-map.md`, which links every live spec, and lists it in "Doc-sweep
+- This repo declares `openspec/spec-map.md`, which links every spec, and lists it in "Doc-sweep
   paths". The `check_spec_proof.py` row in DEVELOPER-GUIDE section 11 mentions the rule.
 
 ## Capabilities

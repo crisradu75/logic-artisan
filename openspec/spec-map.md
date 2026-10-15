@@ -1,7 +1,7 @@
 # Spec map
 
 How the plugin's capabilities, the workflows a user runs and the specs fit together. Links only: a
-rule lives in its spec, and a value lives in its config. `check_spec_proof.py` fails when a live spec
+rule lives in its spec, and a value lives in its config. `check_spec_proof.py` fails when a spec
 is linked from no workflow step here, or a link points at a spec that does not exist.
 
 ## Capabilities
@@ -21,6 +21,7 @@ is linked from no workflow step here, or a link points at a spec that does not e
 1. Install a pinned release under the `cla` namespace: [plugin-distribution](specs/plugin-distribution/spec.md)
 2. Load the guard hooks that block unsafe commands and direct pushes to the default branch: [guard-hooks](specs/guard-hooks/spec.md)
 3. Run setup to create the repo's facts, overlays and economy rules: [repo-context](specs/repo-context/spec.md)
+4. Take the offer of a spec map scaffold: [spec-map](specs/spec-map/spec.md)
 
 ### Take a change to a pull request
 
@@ -38,8 +39,8 @@ is linked from no workflow step here, or a link points at a spec that does not e
 
 ### Keep specs and docs true
 
-1. Declare the spec map and check that every spec is linked: [spec-proof](specs/spec-proof/spec.md)
-2. Check requirements, proof and format limits: [spec-proof](specs/spec-proof/spec.md)
+1. Declare a spec map in the repo's facts: [spec-map](specs/spec-map/spec.md)
+2. Check the map, requirements, proof and format limits: [spec-proof](specs/spec-proof/spec.md)
 3. Check repo docs against a change: [docs-currency](specs/docs-currency/spec.md)
 
 ### Annotate a document
