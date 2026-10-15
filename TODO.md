@@ -6,7 +6,7 @@ Leftover review suggestions (spec-proof-checker):
 
 Leftover review suggestions (cla-setup single-pass rules comparison):
 
-- The key line test `/^  [a-z].*:$/` in the awk pass, like the shell `case` it replaced, reads `[a-z]` under the current locale; pin `LC_ALL=C` on the awk call if a locale ever matches capitals. (The edit is in the awk pass of `cla-setup/SKILL.md`.)
+- The key line test `/^  [a-z].*:$/` in the awk pass, like the shell `case` it replaced, reads `[a-z]` under the current locale. Checked 2026-10-15: not reproduced. GNU Awk 5.4.0 (Git for Windows) matched `  foo:` and never `  Foo:` under all 766 locales `locale -a` lists. The shipped heredocs have no capital-initial key line, and rule lines start with four spaces, so they cannot match the test. Older gawk on older glibc may match capitals (from memory, not tested here); mawk and BSD awk are believed to compare bytes. Pin `LC_ALL=C` only if a real report shows it. (The test is in the awk pass of `cla-setup/SKILL.md`.)
 
 Leftover review suggestions (spec-proof empty check (sweep PR)):
 
