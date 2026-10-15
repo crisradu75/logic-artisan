@@ -632,8 +632,9 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         if f.kind != "archived":
             if _unclosed_fence(f.text):
                 problems.append(f"PROBLEM fence: {f.rel}: a code fence is never closed, so the rest of the file is not read")
-            if mode == "scenario":
+            if mode == "scenario" and not (f.kind == "live" and not f.units):
                 # In scenario mode a requirement with no scenario adds no unit, so nothing else would look at it.
+                # A live spec with no unit at all already got its one `empty` line above.
                 for heading, _, scns in _blocks(f.text, f.kind != "live"):
                     if not scns:
                         problems.append(f"PROBLEM empty: {f.rel}: requirement {heading!r} has no '#### Scenario:' heading, so none is checked")

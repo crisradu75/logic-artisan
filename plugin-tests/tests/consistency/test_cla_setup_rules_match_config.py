@@ -314,6 +314,18 @@ def test_a_config_over_200_kb_is_compared_right(tmp_path: Path):
 
 # requirement: repo-context / OpenSpec authoring rules on setup
 @_needs_bash
+def test_a_backslash_in_a_config_rule_line_is_read_as_typed(tmp_path: Path):
+    """The file comes in on stdin, so a literal backslash in a rule line must not be read as an escape."""
+    old_rule = _retired("Keep it to one page. Point")
+    own = ["    - A rule with a backslash \\n and \\\\ and C:\\temp\\new in it."]
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes() + ("\n".join([*own, f"    {old_rule}"]) + "\n").encode("utf-8"))
+    assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
 def test_a_failing_awk_is_reported_and_never_read_as_rules_current(tmp_path: Path):
     shim = tmp_path / "shim"
     shim.mkdir()
