@@ -2,6 +2,8 @@
 
 ## Purpose
 
+**Serves:** reviewers who read a document and comment on it.
+
 What `/cla:annotate` promises a reader: their document shown as written on a local page, comments saved beside the repo with the source line they point at, and the source never changed.
 
 ## Requirements

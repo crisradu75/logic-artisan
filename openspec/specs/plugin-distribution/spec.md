@@ -2,6 +2,8 @@
 
 ## Purpose
 
+**Serves:** repos that install the plugin and the maintainers who release it.
+
 How a repo installs the `cla` plugin, what a release contains, and how releases are published.
 
 ## Requirements

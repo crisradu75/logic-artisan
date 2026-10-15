@@ -1,6 +1,9 @@
 # spec-proof Specification
 
 ## Purpose
+
+**Serves:** maintainers who need each changed requirement tied to a test or a manual note.
+
 Defines the shipped checker that ties each changed requirement to its proof, and how a repo chooses whether proof is per requirement or per scenario.
 
 ## Requirements

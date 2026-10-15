@@ -2,6 +2,8 @@
 
 ## Purpose
 
+**Serves:** maintainers whose agents run commands and git pushes in a repo that installs the plugin.
+
 The safety checks the plugin applies to an agent's tool calls and to git pushes in a repo that installs it.
 
 ## Requirements

@@ -2,6 +2,8 @@
 
 ## Purpose
 
+**Serves:** maintainers who run a batch of changes from one decisions doc.
+
 What the plugin promises when a batch of changes from one decisions doc is proposed, run and merged without a person in the loop.
 
 ## Requirements

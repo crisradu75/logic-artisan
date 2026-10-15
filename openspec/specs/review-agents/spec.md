@@ -1,6 +1,9 @@
 # review-agents Specification
 
 ## Purpose
+
+**Serves:** maintainers who want pull-request reviews from the plugin's own reviewers.
+
 Defines the pull-request reviewers the plugin ships itself: what they may do, how they receive the change they review, and how review sizing names them.
 
 ## Requirements

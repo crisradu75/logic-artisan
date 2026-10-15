@@ -2,6 +2,8 @@
 
 ## Purpose
 
+**Serves:** maintainers who take one change from a description to an opened pull request.
+
 What the plugin promises when one change goes from a description to a reviewed, tested, opened pull request, and the authoring rules its specs follow.
 
 ## Requirements

@@ -1031,3 +1031,166 @@ def test_an_unclosed_code_fence_is_reported_per_file(repo, capsys):
 def test_a_closed_code_fence_is_not_reported(repo, capsys):
     _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n```\nx\n```\n\n" + _scn("Old case"))))
     assert "PROBLEM fence" not in run(repo, capsys)[1]
+
+
+# ---- purpose notes (advisory: a NOTE line, never a problem, never the exit code) ----
+
+
+def _with_purpose(root: Path, purpose: str) -> None:
+    text = _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")))
+    _write(root, SPEC, text.replace("Something.", purpose))
+
+
+def _purpose_out(root: Path, capsys, purpose: str) -> tuple[int, list[str]]:
+    _with_purpose(root, purpose)
+    code, out, _ = run(root, capsys)
+    return code, [l for l in out.splitlines() if l.startswith("NOTE purpose")]
+
+
+GOOD_PURPOSES = [
+    "**Serves:** maintainers.\n\nWhat the plugin promises.",
+    "**Serves:** maintainers.\nWhat the plugin promises.",
+    "**Serves:** the U.S. team at Acme Inc. and approx. 5 others.\n\nPromises one thing about No. 5 and `a. b` and https://x.io/a.b in a row...  still one.",
+]
+
+
+@pytest.mark.parametrize("purpose", GOOD_PURPOSES)
+def test_a_serves_line_and_one_sentence_gets_no_note(repo, capsys, purpose):
+    code, notes = _purpose_out(repo, capsys, purpose)
+    assert code == 0 and notes == []
+
+
+def test_a_purpose_with_no_serves_line_gets_a_note_and_still_exits_zero(repo, capsys):
+    code, notes = _purpose_out(repo, capsys, "What the plugin promises.")
+    assert code == 0
+    assert notes == [f"NOTE purpose: {SPEC}: Purpose does not open with a '**Serves:** <who or what it serves>' line"]
+
+
+@pytest.mark.parametrize("purpose", ["TBD", "tbd - created by archiving change x. Update Purpose after archive.", "**TBD**", "**Serves:** TBD\n\nTBD."])
+def test_a_tbd_purpose_gets_a_note(repo, capsys, purpose):
+    code, notes = _purpose_out(repo, capsys, purpose)
+    assert code == 0 and notes == [f"NOTE purpose: {SPEC}: Purpose is empty or TBD"]
+
+
+def test_an_empty_purpose_and_a_missing_purpose_get_a_note(repo, capsys):
+    text = _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")))
+    _write(repo, SPEC, text.replace("## Purpose\n\nSomething.\n", "## Purpose\n"))
+    assert f"NOTE purpose: {SPEC}: Purpose is empty or TBD" in run(repo, capsys)[1]
+    _write(repo, SPEC, text.replace("## Purpose\n\nSomething.\n\n", ""))
+    assert f"NOTE purpose: {SPEC}: has no '## Purpose' section" in run(repo, capsys)[1]
+
+
+def test_a_lower_case_purpose_heading_is_read(repo, capsys):
+    text = _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")))
+    _write(repo, SPEC, text.replace("## Purpose\n\nSomething.", "## purpose\n\n**Serves:** maintainers.\n\nOne sentence."))
+    assert [l for l in run(repo, capsys)[1].splitlines() if l.startswith("NOTE purpose")] == []
+
+
+def test_a_two_sentence_purpose_gets_a_note(repo, capsys):
+    code, notes = _purpose_out(repo, capsys, "**Serves:** maintainers.\n\nFirst thing. Second thing.")
+    assert code == 0
+    assert notes == [f"NOTE purpose: {SPEC}: Purpose has 2 sentences after the Serves line, expected one"]
+
+
+def test_a_serves_line_with_nothing_after_it_gets_a_note(repo, capsys):
+    notes = _purpose_out(repo, capsys, "**Serves:** maintainers.")[1]
+    assert notes == [f"NOTE purpose: {SPEC}: Purpose has no sentence after the Serves line"]
+
+
+def test_a_serves_line_holding_two_sentences_gets_a_note(repo, capsys):
+    notes = _purpose_out(repo, capsys, "**Serves:** maintainers. Also users.\n\nOne.")[1]
+    assert notes == [f"NOTE purpose: {SPEC}: the Serves line holds more than one sentence"]
+
+
+def test_an_empty_serves_line_gets_the_missing_serves_note(repo, capsys):
+    assert "does not open with" in _purpose_out(repo, capsys, "**Serves:**\n\nOne sentence.")[1][0]
+
+
+def test_a_purpose_in_an_active_delta_or_archive_is_not_noted(repo, capsys):
+    _write(repo, "openspec/changes/c1/specs/alpha/spec.md", _delta_text(added=[NEW_REQ]))
+    _write(repo, "tests/test_new.py", _marker("requirement", "alpha", "New rule"))
+    out = run(repo, capsys)[1]
+    _write(repo, "openspec/changes/archive/2026-01-01-c0/specs/alpha/spec.md", _delta_text(added=[NEW_REQ]))
+    out = run(repo, capsys)[1]
+    assert "NOTE purpose: openspec/changes" not in out
+
+
+def test_a_purpose_note_is_not_a_problem(repo, capsys):
+    _with_purpose(repo, "TBD")
+    code, out, _ = run(repo, capsys)
+    assert code == 0 and "PROBLEM" not in out and "problems: 0" in out
+
+
+@pytest.mark.parametrize(
+    "text, n",
+    [
+        ("", 0),
+        ("   ", 0),
+        ("One sentence.", 1),
+        ("No terminator", 1),
+        ("One. Two.", 2),
+        ("One! Two? Three.", 3),
+        # a second sentence may open with a code span, digit, quote, paren or bold
+        ("It does x. `check` runs it.", 2),
+        ("It does x. 3 more things follow.", 2),
+        ('It does x. "Quoted" things follow.', 2),
+        ("It does x. (Aside) things follow.", 2),
+        ("It does x. **Bold** things follow.", 2),
+        ("It does x. \u201cCurly\u201d things follow.", 2),
+        ('He said "stop." Then left.', 2),
+        # abbreviations are not boundaries
+        ("Built for the U.S. market.", 1),
+        ("Built for U.S. Customs and e.g. others.", 1),
+        ("Owned by Acme Inc. and Beta Ltd. together.", 1),
+        ("Costs approx. five euros.", 1),
+        ("It waits 5 ms. Then it retries.", 2),
+        ("Costs approx. 5 euros.", 1),
+        ("See No. 5 for this.", 1),
+        ("Dogs, cats, etc. and more.", 1),
+        # `No.` that is not before a digit ends a sentence
+        ("The answer is no. Next thing.", 2),
+        ("The answer is No. Next thing.", 2),
+        # urls, code spans and link targets
+        ("See https://example.com/a.b/c.html for it.", 1),
+        ("See https://example.com/a. Then more.", 2),
+        ("See www.example.com for it.", 1),
+        ("Run `a. b. c` now.", 1),
+        ("See [the doc](http://x.io/a. b) now.", 1),
+        # ellipses never end a sentence
+        ("Wait... and then more.", 1),
+        ("Wait\u2026 and then more.", 1),
+        ("Wait.... and then more.", 1),
+        # a period with no space after is not a boundary; a closing quote or paren is skipped over
+        ("Version 1.2 shipped.", 1),
+        ("It does x.) Then y.", 2),
+        ("It does **x.** Then y.", 2),
+    ],
+)
+def test_count_sentences(text, n):
+    assert csp.count_sentences(text) == n
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_lower_case_requirement_heading_cannot_dodge_the_requirement_count(repo, capsys):
+    _config(repo, reqs="at most 2 requirements")
+    reqs = [("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("B", "SHALL."), ("C", "SHALL.")]
+    text = _spec_text(*reqs).replace("### Requirement: B", "### requirement: B").replace("### Requirement: C", "### REQUIREMENT: C")
+    _write(repo, SPEC, text)
+    _write(repo, "tests/test_bc.py", _marker("requirement", "alpha", "B") + _marker("requirement", "alpha", "C"))
+    code, fmt = _fmt(repo, capsys)
+    assert code == 1 and "3 requirements, the limit is 2" in fmt
+
+
+# requirement: spec-proof / A checker reports specs over the repo's format limits
+def test_a_lower_case_scenario_heading_cannot_dodge_the_scenario_count(repo, capsys):
+    _config(repo)
+    four = FOUR[1].replace("#### Scenario:", "#### scenario:")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Four", four)))
+    _write(repo, "tests/test_four.py", _marker("requirement", "alpha", "Four"))
+    code, fmt = _fmt(repo, capsys)
+    assert code == 1 and "'Four' has 4 scenarios" in fmt
+
+
+def test_a_delta_with_lower_case_requirement_headings_under_no_section_is_reported(repo, capsys):
+    _write(repo, "openspec/changes/c1/specs/alpha/spec.md", "# d\n\n## Requirements\n\n### requirement: X\n\nSHALL.\n")
+    assert "PROBLEM empty: openspec/changes/c1/specs/alpha/spec.md" in run(repo, capsys)[1]
