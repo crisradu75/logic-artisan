@@ -18,23 +18,47 @@ import pytest
 _CLAUDE_MD = (Path(__file__).resolve().parents[3] / "CLAUDE.md").read_text(encoding="utf-8")
 
 
+_MARK = "\x00"
+
+
 def _flat(text: str) -> str:
-    """Collapse line wraps and list indentation so a phrase matches across them."""
-    return re.sub(r"\s+", " ", text)
+    """Collapse line wraps and list indentation so a phrase matches across them.
+
+    A real list marker (a hyphen or asterisk, then a space, at the start of a line after
+    optional indentation) is tagged with `_MARK` first, because flattening erases the line
+    starts that tell a marker from a spaced hyphen in the middle of a sentence.
+    """
+    return re.sub(r"\s+", " ", re.sub(r"(?m)^[ \t]*(?=[-*] )", _MARK, text))
 
 
 _BODY = _flat(_CLAUDE_MD)
 
 
 def _bullet_start(body: str, at: int) -> int:
-    """Index of the nearest list bullet before `at` (bold or not), or -1; flattened bullets follow a space."""
-    return body.rfind(" - ", 0, at) + 1 or -1
+    """Index of the nearest real list marker before `at` (bold or not), or -1."""
+    mark = body.rfind(_MARK, 0, at)
+    return -1 if mark < 0 else mark + 1
 
 
 def test_the_bullet_lookback_stops_at_a_plain_bullet() -> None:
-    body = "intro - **When a batch is run** a. - plain bullet with the rule here"
+    body = _flat("- **When a batch is run** a.\n- plain bullet with the rule here\n")
     assert not body.startswith("- **", _bullet_start(body, body.index("the rule")))
     assert body.startswith("- **", _bullet_start(body, body.index(" a. ")))
+
+
+def test_a_spaced_hyphen_mid_sentence_is_not_a_bullet() -> None:
+    body = _flat("- **When a batch is run** a rule that wraps\n  across lines - with a dash here.\n")
+    assert body.startswith("- **", _bullet_start(body, body.index("a dash here")))
+
+
+def test_an_indented_hyphen_or_asterisk_marker_is_a_bullet() -> None:
+    body = _flat("- **outer** text\n  * inner marker with the rule here\n")
+    assert body.startswith("* inner", _bullet_start(body, body.index("the rule")))
+
+
+def test_text_with_no_marker_has_no_bullet() -> None:
+    body = _flat("one line - with a dash and **bold** and the rule here\n")
+    assert _bullet_start(body, body.index("the rule")) == -1
 
 
 def _check_4() -> str:
