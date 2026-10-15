@@ -29,6 +29,7 @@ _SCRIPT = _REPO_ROOT / ".claude" / "skills" / "release" / "scripts" / "check_shi
 _CLEAN_TREE = (
     "README.md",
     ".claude-plugin/plugin.json",
+    "plugin.json",
     "agents/doc-sweeper.md",
     "hooks/hooks.json",
     "skills/annotate/SKILL.md",
@@ -179,13 +180,14 @@ def test_the_real_tree_passes_with_the_real_file_count():
 def test_the_allowlist_is_capped_and_every_entry_carries_a_reason():
     """The pressure valve, bounded.
 
-    The list was 14 when the convention landed. A fifteenth pattern lands by
-    raising this cap in the SAME commit that adds the pattern and its reason;
-    growth is allowed, growth nobody argued for is not."""
-    assert len(cst.ALLOWLIST) == 14, (
+    The list was 14 when the convention landed; the fifteenth, the Copilot root
+    manifest, raised this cap in the SAME commit that added the pattern and its
+    reason. Growth is allowed, growth nobody argued for is not."""
+    assert len(cst.ALLOWLIST) == 15, (
         f"the allowlist has {len(cst.ALLOWLIST)} patterns; it was 14 when the "
-        "convention landed. Adding one is fine — raise this cap in the same "
-        "commit, with the pattern's reason."
+        "convention landed and 15 once the Copilot root manifest was added. "
+        "Adding one is fine — raise this cap in the same commit, with the "
+        "pattern's reason."
     )
     for pattern, reason in cst.ALLOWLIST:
         assert isinstance(reason, str) and reason.strip(), (
@@ -202,6 +204,17 @@ def test_the_patterns_are_anchored_at_both_ends():
         assert rx.pattern.startswith("^") and rx.pattern.endswith("$"), (
             f"{rx.pattern!r} is not anchored at both ends"
         )
+
+
+# requirement: plugin-distribution / What a release contains
+def test_the_copilot_root_manifest_ships_but_only_at_the_plugin_root():
+    """`/release` refused the release before this pattern existed: a root
+    `plugin.json` matched nothing. The pattern must admit that one file and
+    nothing shaped like it (a nested copy, a backup, another root JSON file)."""
+    assert cst.is_allowed("plugin.json")
+    for stray in ("skills/annotate/plugin.json", "plugin.json.bak", "settings.json",
+                  "hooks/plugin.json", "mcp.json"):
+        assert not cst.is_allowed(stray), f"{stray!r} must not ship"
 
 
 def test_conftest_is_rejected_wherever_it_appears():

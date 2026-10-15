@@ -9,10 +9,11 @@ next fix had to become `0.9.1`.
 So the two facts the tag depends on are checked here rather than trusted to a
 careful reading:
 
-  1. The three copies of the version — `plugin.json`, the marketplace `ref`, and
-     `CLAUDE.md`'s release line — agree. `claude plugin tag` refuses when the
-     first two disagree, but it never sees the third, and a stale third copy is
-     exactly what shipped before.
+  1. The five copies of the version — the Claude `plugin.json`, the Copilot
+     root `plugin.json`, both marketplace `ref`s, and `CLAUDE.md`'s release
+     line — agree. `claude plugin tag` refuses when the Claude pair disagrees,
+     but it never sees the rest, and a stale third copy is exactly what shipped
+     before.
   2. The tag NAME the skill will cut matches the shape the tooling expects
      (`cla--v<version>`), derived from the manifests rather than hand-typed.
 
@@ -38,6 +39,10 @@ _PLUGIN_ROOT = _REPO_ROOT / ".claude" / "plugins" / "cla"
 
 _PLUGIN_JSON = _PLUGIN_ROOT / ".claude-plugin" / "plugin.json"
 _MARKETPLACE_JSON = _REPO_ROOT / ".claude-plugin" / "marketplace.json"
+# The GitHub Copilot CLI pair: an Agent Plugins 1.0 manifest at the plugin root
+# and a catalog under .github/plugin/. Both carry the release version too.
+_COPILOT_PLUGIN_JSON = _PLUGIN_ROOT / "plugin.json"
+_COPILOT_MARKETPLACE_JSON = _REPO_ROOT / ".github" / "plugin" / "marketplace.json"
 _SKILL_MD = _REPO_ROOT / ".claude" / "skills" / "release" / "SKILL.md"
 
 TAG_SHAPE = re.compile(r"^cla--v(\d+\.\d+\.\d+)$")
@@ -67,29 +72,64 @@ def test_the_tag_the_release_would_cut_has_the_expected_shape():
     )
 
 
-# requirement: plugin-distribution / Publishing a release
-def test_all_three_copies_of_the_version_agree():
-    """The precondition `claude plugin tag` cannot check: it compares two of the
-    three copies and never reads CLAUDE.md."""
-    version = _plugin_version()
+def _copilot_marketplace_ref() -> str:
+    catalog = json.loads(_COPILOT_MARKETPLACE_JSON.read_text(encoding="utf-8"))
+    entries = [p for p in catalog["plugins"] if p["name"] == "cla"]
+    assert len(entries) == 1, f"expected exactly one `cla` entry, found {len(entries)}"
+    return entries[0]["source"]["ref"]
+
+
+def _release_versions() -> dict[str, str]:
+    """The five places a release writes its version, keyed by file, each reduced
+    to the bare `x.y.z` so a single comparison covers manifests and tag refs."""
     claude_md = (_REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    match = re.search(r"\*\*Current release: `cla--v([0-9.]+)`", claude_md)
-    assert match, "CLAUDE.md no longer states a `**Current release: `cla--v<x>`**` line"
-    assert match.group(1) == version, (
-        f"CLAUDE.md says {match.group(1)}, plugin.json says {version} — the release "
-        "skill's step 3 bumps all three together for exactly this reason"
+    line = re.search(r"\*\*Current release: `cla--v([0-9.]+)`", claude_md)
+    assert line, "CLAUDE.md no longer states a `**Current release: `cla--v<x>`**` line"
+
+    def from_ref(ref: str) -> str:
+        match = TAG_SHAPE.match(ref)
+        # A ref that is not a release tag is reported as itself, so the
+        # disagreement message shows the bad value rather than a parse error.
+        return match.group(1) if match else ref
+
+    return {
+        ".claude-plugin/plugin.json": _plugin_version(),
+        "plugin.json (Copilot)": json.loads(
+            _COPILOT_PLUGIN_JSON.read_text(encoding="utf-8")
+        )["version"],
+        ".claude-plugin/marketplace.json": from_ref(_marketplace_ref()),
+        ".github/plugin/marketplace.json": from_ref(_copilot_marketplace_ref()),
+        "CLAUDE.md": line.group(1),
+    }
+
+
+# requirement: plugin-distribution / Publishing a release
+def test_every_copy_of_the_version_agrees():
+    """The precondition `claude plugin tag` cannot check: it compares two of the
+    five copies and never reads the Copilot pair or CLAUDE.md. Every copy is
+    named in the failure, so a half-finished bump shows which file it missed."""
+    versions = _release_versions()
+    assert len(set(versions.values())) == 1, (
+        f"the release version disagrees across its files: {versions} — the release "
+        "skill's step 3 bumps all five together for exactly this reason"
     )
 
 
 def test_the_skill_names_every_file_its_own_procedure_bumps():
-    """A release that edits two of the three files leaves the catalog advertising
+    """A release that edits four of the five files leaves a catalog advertising
     a version the prose contradicts. The skill's step 3 must keep naming all
-    three, so this fails if one is ever dropped from the procedure."""
+    five, so this fails if one is ever dropped from the procedure."""
     body = _SKILL_MD.read_text(encoding="utf-8")
-    for required in ("plugin.json", "marketplace.json", "CLAUDE.md"):
+    for required in (
+        ".claude-plugin/plugin.json",
+        ".claude/plugins/cla/plugin.json",
+        ".claude-plugin/marketplace.json",
+        ".github/plugin/marketplace.json",
+        "CLAUDE.md",
+    ):
         assert required in body, (
-            f"release/SKILL.md no longer names {required} — the three-file bump has "
-            "silently become a one-part bump"
+            f"release/SKILL.md no longer names {required} — the five-file bump has "
+            "silently become a partial bump"
         )
 
 

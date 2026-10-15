@@ -32,9 +32,12 @@ which never ships.
 
 - Use `/release` (it lives in this repo at `.claude/skills/release/` and does not ship). Cut a
   release only from `main`, only after the work is reviewed and merged.
-- **A release is a three-file edit in one commit:** `version` in
-  `.claude/plugins/cla/.claude-plugin/plugin.json`, the `ref` in `.claude-plugin/marketplace.json`,
-  and the release line below. A test fails when they disagree.
+- **A release is a five-file edit in one commit:** `version` in
+  `.claude/plugins/cla/.claude-plugin/plugin.json` and in the Copilot manifest
+  `.claude/plugins/cla/plugin.json`, the `ref` in `.claude-plugin/marketplace.json` and in the
+  Copilot catalog `.github/plugin/marketplace.json`, and the release line below. A test fails when
+  they disagree. `claude plugin tag` checks only the Claude pair, so the Copilot files are held by
+  that test alone.
 - Cut the tag with **`claude plugin tag .claude/plugins/cla`**. The path is required: without it the
   command looks for `plugin.json` at the repo root, where this repo keeps `marketplace.json`. The
   tag is `cla--v<version>`, and the command refuses unless `plugin.json` and `marketplace.json`

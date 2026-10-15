@@ -108,6 +108,11 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
      "Deterministic helpers a skill calls, all stdlib Python. Single-dot stem "
      "only — the wide form accepted a compound name (mechanical-checks.test.mjs "
      "then; helper.test.py now)."),
+    (r"plugin\.json",
+     "The GitHub Copilot CLI manifest, at the plugin root beside the Claude one. "
+     "Exactly one file, kept at the release version by the same test that pins "
+     ".claude-plugin/plugin.json. Appended as the fifteenth so the 13 and 14 "
+     "numbering the docs and tests cite does not shift."),
 )
 
 # The one shape whose name is otherwise a legal script name. A pytest fixture

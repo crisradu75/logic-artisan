@@ -588,7 +588,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `_shared/scripts/check_spec_proof.py` | Ties each requirement a branch adds or changes (or each scenario, when `cla.io/project-facts.md` opts in) to a test marker or `manual:` line, and flags markers naming nothing, repeated headings, an empty corpus and specs over the 500-character, 3-scenario and 8-requirement limits it reads from `rules.specs`, and notes (never fails on) a live spec whose Purpose is not a `**Serves:**` line plus one sentence. It needs the merge-base diff and a scan of every test file, which prose cannot do reliably and which a consuming repo (no pytest gate over the plugin) must run itself. |
 | `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's round 2 (which runs only after round 1 fixed a Critical, or an Important on a high-risk PR) still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
-| `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 14-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
+| `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 15-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
 | `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
 | `annotate/scripts/render_html.py` | Instruments an author's own HTML in place — attributes spliced at source offsets, so stripping them returns the original bytes and the document under review stays the document under review. Refuses a file whose markup already uses those attributes, because that collision mis-anchors every annotation in the element and is invisible on the page. |
@@ -930,26 +930,40 @@ and opt-in; its case is under "Why the Playwright suite earns its exception" abo
 
 ### Releasing: the history behind the rules
 
-The never-move-a-tag rule, the no-local-marketplace rule, and why a release is a three-file edit
+The never-move-a-tag rule, the no-local-marketplace rule, and why a release is a five-file edit
 are each told under "Release and distribution history" below.
 
 ## Release and distribution history
 
 Background a working session rarely needs, which is why it lives here rather than in `CLAUDE.md`.
-The operative rules — the three-file bump, the preconditions, the never-move invariant — are in
+The operative rules — the five-file bump, the preconditions, the never-move invariant — are in
 `/release`'s own SKILL.md (repo-local at `.claude/skills/release/`, not shipped, because a
 consuming repo has no catalog of its own to bump); this section is only the *why* behind them.
 
 **How the catalog publishes.** `.claude-plugin/marketplace.json` at the repo root publishes one
 plugin, `cla`, from `.claude/plugins/cla/` (`git-subdir` source, `url` + `path`, schema verified
 against the live docs). It pins an **exact release tag**, not a moving major tag, which is why a
-release is a deliberate three-file edit and why consumers pick a new release up only on
+release is a deliberate five-file edit and why consumers pick a new release up only on
 `/plugin marketplace update`. Consumers add the marketplace from the repo:
 
 ```bash
 claude plugin marketplace add crisradu75/logic-artisan
 claude plugin install cla@cris-logic-artisan --scope project
 ```
+
+**The Copilot CLI catalog and manifest (2026-10-16, Copilot CLI only, untested in a live Copilot CLI).**
+`.github/plugin/marketplace.json` publishes the same `cla` plugin to GitHub Copilot CLI, and
+`.claude/plugins/cla/plugin.json` is the Agent Plugins 1.0 manifest beside the Claude one. They exist
+because Copilot's docs list `github` and `url` sources and no `git-subdir`, so it cannot read the
+Claude catalog's entry. Each carries the release version, which is why a release is a five-file edit
+and why `plugin-tests/tests/skills/release/test_release_preconditions.py` checks all five (`claude
+plugin tag` sees only the Claude pair). The root manifest also needed a fifteenth allowlist pattern in
+`check_shipped_tree.py`, or `/release` refused it. Claude Code ignores the root manifest: a copy of the
+plugin whose root manifest had a different name still loaded as `cla` from `.claude-plugin/plugin.json`.
+Nothing was run in Copilot: the install line (`copilot plugin marketplace add
+crisradu75/logic-artisan`, then `copilot plugin install cla@cris-logic-artisan`) comes from the docs.
+The decisions are in `cla.io/decisions/copilot-cli-port-2026-10-16.md`; skills, agents and hooks are
+not ported yet (issue #302).
 
 **The versioning line.** The `0.9.x`/`0.10.x` validation line closed when a real task was run
 end-to-end through the plugin in a consuming repo — the gate `1.0.0` was waiting on. Versioning
