@@ -165,6 +165,6 @@ or a new component. A small addition to something already built and tested does 
   merging does not do it. Anything listed there that is not still in progress needs archiving.
 - **Deferred work goes in GitHub issues.** A root `TODO.md` holds leftover suggestions written by
   spec-to-pr's last step, not a backlog.
-- **On Windows the Bash tool fails on commands near 9 KB** (`unexpected EOF while looking for
-  matching quote`). Put a long script in a file and run it by path.
+- **On Windows a long Bash command can fail** with `unexpected EOF while looking for matching quote`.
+  Put a long script in a file and run it by path.
 - **Put `Closes #N` in the PR body.** A squash merge closes no issue without it.
