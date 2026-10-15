@@ -55,11 +55,13 @@ copilot plugin install cla@cris-logic-artisan
 ```
 
 What to expect, from GitHub's docs and not from a run: Copilot reads
-`.github/plugin/marketplace.json` and the Agent Plugins 1.0 `plugin.json` at the plugin root, and
-that manifest takes precedence over `.claude-plugin/plugin.json`. A 1.0 plugin offers Copilot its
-`skills/` directory and an `mcp.json`; agents and hooks load only from a `com.github.copilot/`
-directory, which CLA does not ship, so none of CLA's guard hooks or helper agents are wired for
-Copilot. Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`)
+`.github/plugin/marketplace.json` and, once a release carries it, the Agent Plugins 1.0
+`plugin.json` at the plugin root, which takes precedence over `.claude-plugin/plugin.json`. **The
+catalog pins `cla--v2.1.0`, a tag cut before that root manifest existed**, so until the next release
+the pin fetches a plugin without it, and Copilot would treat that as a legacy plugin instead. After
+that release, a 1.0 plugin offers Copilot its `skills/` directory and an `mcp.json`; agents and hooks
+load only from a `com.github.copilot/` directory, which CLA does not ship, so CLA's guard hooks and
+helper agents would not be wired for Copilot. Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`)
 is not ported, and whether skills answer to `/cla:<name>` in Copilot is unknown. Porting them is
 tracked under issue #302. The Claude Code install above is unchanged by any of this.
 

@@ -7,7 +7,7 @@ plugin at the version it says it publishes.
 This guard is almost entirely assertions about two JSON files, so the interesting
 question is not "does the assertion run" but "does each field actually matter" —
 and the release procedure makes that concrete. `CLAUDE.md` describes publishing as
-a deliberate three-file edit (plugin `version`, catalog `ref`, the release line),
+a deliberate five-file edit (both manifests' `version`, both catalogs' `ref`, the release line),
 with "a test fails when they disagree" as the thing that makes it safe. Mutants
 1-2 are that claim, broken from each end.
 

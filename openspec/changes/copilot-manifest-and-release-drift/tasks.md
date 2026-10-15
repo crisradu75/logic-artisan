@@ -7,7 +7,7 @@
 ## 2. The files
 
 - [x] 2.1 Add `.github/plugin/marketplace.json` and the root `plugin.json`; test that the catalog's `cla` entry is a `github` source with this repo, the plugin path and the current tag, and that the manifest uses only the Agent Plugins 1.0 fields with a valid name. Carry the comment `requirement: plugin-distribution / Installing from GitHub Copilot CLI`.
-- [x] 2.2 Show the Claude install is unchanged: `claude plugin validate` on the plugin directory and the catalog passes before and after, and a run with a differently named root manifest still loads the plugin as `cla`. measured: `claude plugin validate` passed on the plugin directory and the catalog before and after; a run with the root manifest renamed still listed the plugin as `cla` 2.1.0, with the same 19 skills and 6 agents as main.
+- [x] 2.2 Show the Claude install is unchanged: `claude plugin validate` on the plugin directory and the catalog passes before and after, and a run with a differently named root manifest still loads the plugin as `cla`. measured: `claude plugin validate` passed on the plugin directory and the catalog before and after; a run with the root manifest renamed still listed the plugin as `cla` 2.1.0, with the same 19 skills and 5 `cla` agents as main.
 
 ## 3. Release set
 

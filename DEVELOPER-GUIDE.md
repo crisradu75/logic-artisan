@@ -500,6 +500,7 @@ The published plugin — everything here ships to a consuming repo:
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
+  plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, untested in a live Copilot CLI
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to); code-reviewer, silent-failure-hunter, comment-analyzer (read-only PR reviewers)
   hooks/                       guard hooks + hooks.json wiring
   lib/log_run.py               the one ledger writer, invoked as a program
@@ -954,14 +955,17 @@ claude plugin install cla@cris-logic-artisan --scope project
 **The Copilot CLI catalog and manifest (2026-10-16, Copilot CLI only, untested in a live Copilot CLI).**
 `.github/plugin/marketplace.json` publishes the same `cla` plugin to GitHub Copilot CLI, and
 `.claude/plugins/cla/plugin.json` is the Agent Plugins 1.0 manifest beside the Claude one. They exist
-because Copilot's docs list `github` and `url` sources and no `git-subdir`, so it cannot read the
-Claude catalog's entry. Each carries the release version, which is why a release is a five-file edit
-and why `plugin-tests/tests/skills/release/test_release_preconditions.py` checks all five (`claude
-plugin tag` sees only the Claude pair). The root manifest also needed a fifteenth allowlist pattern in
-`check_shipped_tree.py`, or `/release` refused it. Claude Code ignores the root manifest: a copy of the
-plugin whose root manifest had a different name still loaded as `cla` from `.claude-plugin/plugin.json`.
-Nothing was run in Copilot: the install line (`copilot plugin marketplace add
-crisradu75/logic-artisan`, then `copilot plugin install cla@cris-logic-artisan`) comes from the docs.
+because Copilot's docs list `github` and `url` sources and no `git-subdir`, so the Claude catalog's
+entry is not documented as readable by it. Each carries the release version, which is why a release
+is a five-file edit and why `plugin-tests/tests/skills/release/test_release_preconditions.py` checks
+all five (a dry run of `claude plugin tag` with the Copilot pair left at an old version still passed,
+so it sees only the Claude pair). The root manifest also needed a fifteenth allowlist pattern in
+`check_shipped_tree.py`, or `/release` refused it. Claude Code did not take the plugin name from the
+root manifest: a copy whose root manifest had a different name still loaded as `cla` from
+`.claude-plugin/plugin.json`. The catalog's pin, `cla--v2.1.0`, predates the root manifest, so the
+Copilot behaviour described here begins with the next release. Nothing was run in Copilot: the
+install line (`copilot plugin marketplace add crisradu75/logic-artisan`, then `copilot plugin install
+cla@cris-logic-artisan`) comes from the docs.
 The decisions are in `cla.io/decisions/copilot-cli-port-2026-10-16.md`; skills, agents and hooks are
 not ported yet (issue #302).
 

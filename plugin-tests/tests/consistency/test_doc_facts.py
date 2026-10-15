@@ -2,7 +2,8 @@
 
 1. The release version: `CLAUDE.md`'s "Current release" line must name the
    version in `plugin.json` (which `test_marketplace_manifest.py` pins to the
-   marketplace `ref`). `/release` edits all three in one commit.
+   marketplace `ref`). `/release` edits the Claude pair, the Copilot pair and
+   that line in one commit.
 2. Every guard hook a doc names in backticks has a file under `hooks/`.
 3. Whether Claude may invoke a skill: a value that lives in each `SKILL.md`'s
    frontmatter (`disable-model-invocation`) and is restated in the plugin

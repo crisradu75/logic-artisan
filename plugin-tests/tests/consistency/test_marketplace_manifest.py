@@ -154,11 +154,9 @@ _AGENT_PLUGINS_FIELDS = frozenset({
     "$schema", "name", "version", "description", "author", "homepage",
     "repository", "license", "keywords", "extensions",
 })
-# Not Agent Plugins 1.0 fields: the docs say they are ignored, and a path field
-# here would suggest the manifest relocates components, which it cannot.
-_COMPONENT_PATH_FIELDS = ("agents", "skills", "hooks", "commands", "mcpServers", "lspServers")
 # 1-64 characters of a-z 0-9 - ., alphanumeric at both ends, no `--` or `..`.
-_AGENT_PLUGINS_NAME = re.compile(r"^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$")
+# Use `.fullmatch`: `$` alone would also accept a trailing newline.
+_AGENT_PLUGINS_NAME = re.compile(r"(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?")
 
 
 def _copilot_catalog() -> dict:
@@ -209,23 +207,32 @@ def test_the_copilot_root_manifest_uses_only_agent_plugins_1_0_fields():
         "without the exact Agent Plugins `$schema` Copilot reads this as a legacy "
         "manifest, which changes what loads"
     )
+    # The set is closed, so this also rejects the component path fields (`skills`,
+    # `hooks`, ...) that the docs say 1.0 does not have.
     unknown = set(data) - _AGENT_PLUGINS_FIELDS
     assert not unknown, f"fields outside the closed Agent Plugins 1.0 set: {sorted(unknown)}"
-    for field in _COMPONENT_PATH_FIELDS:
-        assert field not in data, f"{field!r} is a component path field, invalid in 1.0"
-    assert _AGENT_PLUGINS_NAME.match(data["name"]), f"invalid plugin name {data['name']!r}"
+    assert _AGENT_PLUGINS_NAME.fullmatch(data["name"]), f"invalid plugin name {data['name']!r}"
     assert data["name"] == json.loads(_PLUGIN_JSON.read_text(encoding="utf-8"))["name"], (
         "the two manifests must name the plugin identically"
     )
-    assert set(data.get("author", {})) <= {"name", "email", "url"}
+    # The spec makes a wrong type fatal (Copilot rejects the whole plugin), not a warning.
+    for field in ("name", "version", "description", "homepage", "repository", "license"):
+        assert isinstance(data.get(field, ""), str), f"{field!r} must be a string"
+    author = data.get("author", {})
+    assert isinstance(author, dict) and set(author) <= {"name", "email", "url"}
+    assert all(isinstance(v, str) for v in author.values()), "author values must be strings"
+    keywords = data.get("keywords", [])
+    assert isinstance(keywords, list) and all(isinstance(k, str) for k in keywords)
+    assert isinstance(data.get("extensions", {}), dict)
 
 
 def test_the_agent_plugins_name_rule_rejects_what_the_docs_reject():
     """The rule above is only as good as the regex that states it."""
-    for bad in ("My-Plugin", "-start", "end-", "has--double", "too..dots", "", "a" * 65):
-        assert not _AGENT_PLUGINS_NAME.match(bad), f"{bad!r} must be rejected"
+    for bad in ("My-Plugin", "-start", "end-", "has--double", "too..dots", "", "a" * 65,
+                "cla\n"):
+        assert not _AGENT_PLUGINS_NAME.fullmatch(bad), f"{bad!r} must be rejected"
     for good in ("cla", "acme.tools", "a", "a" * 64, "lint3r"):
-        assert _AGENT_PLUGINS_NAME.match(good), f"{good!r} must be accepted"
+        assert _AGENT_PLUGINS_NAME.fullmatch(good), f"{good!r} must be accepted"
 
 
 # requirement: plugin-distribution / Installing from GitHub Copilot CLI
@@ -238,17 +245,17 @@ def test_every_doc_offering_the_copilot_install_says_it_is_untested():
         "CLAUDE.md": _REPO_ROOT / "CLAUDE.md",
         "plugin README.md": _PLUGIN_ROOT / "README.md",
     }
-    offering = 0
-    for label, path in docs.items():
-        text = path.read_text(encoding="utf-8")
-        if "copilot plugin marketplace add" not in text:
+    # This checks that the two phrases appear somewhere in each doc that gives
+    # either install command, not that they sit next to the command.
+    commands = ("copilot plugin marketplace add", "copilot plugin install")
+    texts = {label: path.read_text(encoding="utf-8") for label, path in docs.items()}
+    assert any(c in texts["README.md"] for c in commands), (
+        "README.md no longer gives the Copilot install line"
+    )
+    for label, text in texts.items():
+        if not any(c in text for c in commands):
             continue
-        offering += 1
         assert "Copilot CLI only" in text, f"{label} offers the Copilot install without 'Copilot CLI only'"
         assert "untested in a live Copilot CLI" in text, (
             f"{label} offers the Copilot install without saying it is untested in a live Copilot CLI"
         )
-    assert "copilot plugin marketplace add" in docs["README.md"].read_text(encoding="utf-8"), (
-        "README.md no longer gives the Copilot install line"
-    )
-    assert offering >= 1

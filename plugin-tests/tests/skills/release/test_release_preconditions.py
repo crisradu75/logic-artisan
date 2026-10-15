@@ -12,8 +12,8 @@ careful reading:
   1. The five copies of the version — the Claude `plugin.json`, the Copilot
      root `plugin.json`, both marketplace `ref`s, and `CLAUDE.md`'s release
      line — agree. `claude plugin tag` refuses when the Claude pair disagrees,
-     but it never sees the rest, and a stale third copy is exactly what shipped
-     before.
+     but it never sees the rest, and a stale `CLAUDE.md` line is exactly what
+     shipped before.
   2. The tag NAME the skill will cut matches the shape the tooling expects
      (`cla--v<version>`), derived from the manifests rather than hand-typed.
 
@@ -120,6 +120,9 @@ def test_the_skill_names_every_file_its_own_procedure_bumps():
     a version the prose contradicts. The skill's step 3 must keep naming all
     five, so this fails if one is ever dropped from the procedure."""
     body = _SKILL_MD.read_text(encoding="utf-8")
+    # Only the numbered list: the `git add` line further down names the same
+    # paths, so a whole-file search passes with a numbered step deleted.
+    body = body.split("## Step 3", 1)[1].split("Then re-run the suite", 1)[0]
     for required in (
         ".claude-plugin/plugin.json",
         ".claude/plugins/cla/plugin.json",

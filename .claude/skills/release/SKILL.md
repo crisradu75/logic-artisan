@@ -184,7 +184,9 @@ merge being checked.
 ## Step 5 — Report
 
 State: the version cut, the five files bumped, the tag pushed and confirmed, and the
-one command a consumer runs to pick it up (`/plugin marketplace update`). If any
+one command a consumer runs to pick it up (`/plugin marketplace update` for Claude Code; for
+GitHub Copilot CLI, which is untested, `copilot plugin marketplace update` then
+`copilot plugin update cla`). If any
 precondition was waived — it should not have been — say so prominently.
 
 ## When NOT to use

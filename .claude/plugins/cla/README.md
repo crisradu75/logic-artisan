@@ -263,6 +263,7 @@ to install.
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
+  plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, untested in a live Copilot CLI
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers); code-reviewer, silent-failure-hunter, comment-analyzer (read-only PR reviewers)
   hooks/                       guard hooks + hooks.json wiring, and git/pre-push
   lib/                         log_run.py — writes the one run ledger, spec-to-pr-runs.jsonl

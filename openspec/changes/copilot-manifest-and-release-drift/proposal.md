@@ -14,7 +14,9 @@ output-style ports are out of scope.
   (repo, plugin path, `ref` = the current release tag).
 - Add the Agent Plugins 1.0 `plugin.json` at the plugin root, beside `.claude-plugin/plugin.json`.
   Per GitHub's docs it takes precedence for Copilot and offers only skills and MCP servers from its
-  fixed locations; Claude Code does not read it (shown by a run, see the tasks).
+  fixed locations; Claude Code did not take the plugin name from it in a run (see the tasks). The
+  catalog's pin, the current tag `cla--v2.1.0`, was cut before this manifest existed, so Copilot
+  sees the manifest only from the next release on.
 - `/release` (and CLAUDE.md's release section) edit five files in one commit instead of three, and
   its shipped-tree check allows the new root manifest, which it would otherwise refuse.
 - The existing version-agreement test checks the Claude manifest, the Copilot manifest, both catalogs'
