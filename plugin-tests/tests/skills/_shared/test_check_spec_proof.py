@@ -999,7 +999,7 @@ def test_a_requirement_with_no_scenario_is_reported_in_scenario_mode(repo, capsy
 
 
 # requirement: spec-proof / A checker reports proof that points at nothing
-def test_a_live_spec_with_only_a_bare_requirement_gets_one_empty_line_in_scenario_mode(repo, capsys):
+def test_a_live_spec_with_only_a_bare_requirement_gets_the_generic_line_and_names_it_in_scenario_mode(repo, capsys):
     _write(repo, FACTS, "- Test proof granularity: scenario\n")
     _write(repo, "tests/test_old.py", _marker("scenario", "beta", "Old case"))
     _write(repo, "openspec/specs/beta/spec.md", _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case"))))
@@ -1007,7 +1007,8 @@ def test_a_live_spec_with_only_a_bare_requirement_gets_one_empty_line_in_scenari
     code, out, _ = run(repo, capsys)
     assert code == 1
     assert [l for l in out.splitlines() if f"PROBLEM empty: {SPEC}" in l] == [
-        f"PROBLEM empty: {SPEC}: a live spec with no scenario parsed"
+        f"PROBLEM empty: {SPEC}: a live spec with no scenario parsed",
+        f"PROBLEM empty: {SPEC}: requirement 'Bare' has no '#### Scenario:' heading, so none is checked",
     ]
 
 
@@ -1121,6 +1122,202 @@ def test_a_purpose_note_is_not_a_problem(repo, capsys):
     assert code == 0 and "PROBLEM" not in out and "problems: 0" in out
 
 
+def _commit_on_base(root: Path, rel: str, text: str) -> None:
+    """Add a file to `main`, then bring the feature branch level with it, so the branch does not touch it."""
+    _git(root, "checkout", "-q", "main")
+    _write(root, rel, text)
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "base2")
+    _git(root, "checkout", "-q", "feat")
+    _git(root, "merge", "-q", "main")
+
+
+BETA = "openspec/specs/beta/spec.md"
+
+
+def _beta_text() -> str:
+    return _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case"))).replace("# alpha", "# beta")
+
+
+# requirement: spec-proof / A checker notes a touched spec's Purpose without failing the run
+def test_an_untouched_spec_with_a_plain_purpose_gets_no_note(repo, capsys):
+    _commit_on_base(repo, BETA, _beta_text())
+    _with_purpose(repo, "**Serves:** maintainers.\n\nOne sentence.")
+    code, out, _ = run(repo, capsys)
+    assert code == 0 and "NOTE purpose" not in out
+    assert "purpose notes: 1 live spec(s) the branch touches" in out
+
+
+# requirement: spec-proof / A checker notes a touched spec's Purpose without failing the run
+def test_a_spec_edited_on_the_branch_is_noted_and_its_untouched_neighbour_is_not(repo, capsys):
+    _commit_on_base(repo, BETA, _beta_text())
+    _with_purpose(repo, "What the plugin promises.")
+    code, out, _ = run(repo, capsys)
+    notes = [l for l in out.splitlines() if l.startswith("NOTE purpose")]
+    assert code == 0
+    assert notes == [f"NOTE purpose: {SPEC}: Purpose does not open with a '**Serves:** <who or what it serves>' line"]
+
+
+# requirement: spec-proof / A checker notes a touched spec's Purpose without failing the run
+@pytest.mark.parametrize(
+    "rel",
+    ["openspec/changes/c1/specs/beta/spec.md", "openspec/changes/archive/2026-01-01-c0/specs/beta/spec.md"],
+)
+def test_a_spec_named_by_a_delta_of_the_branch_is_noted(repo, capsys, rel):
+    _commit_on_base(repo, BETA, _beta_text())
+    _with_purpose(repo, "**Serves:** maintainers.\n\nOne sentence.")
+    _write(repo, rel, _delta_text(modified=[("Old rule", "Old SHALL, edited.\n\n" + _scn("Old case"))]))
+    _write(repo, "tests/test_old2.py", _marker("requirement", "beta", "Old rule"))
+    out = run(repo, capsys)[1]
+    assert f"NOTE purpose: {BETA}: Purpose does not open with" in out
+    assert f"NOTE purpose: {SPEC}" not in out
+
+
+# requirement: spec-proof / A checker notes a touched spec's Purpose without failing the run
+def test_every_live_spec_is_noted_when_there_is_no_base_to_compare_with(tmp_path, capsys):
+    root = tmp_path / "nogit"
+    _write(root, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case"))))
+    _write(root, "openspec/specs/beta/spec.md", _beta_text())
+    _write(root, "tests/test_old.py", _marker("requirement", "alpha", "Old rule") + _marker("requirement", "beta", "Old rule"))
+    code = csp.main(["--root", str(root)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert f"NOTE purpose: {SPEC}" in out and f"NOTE purpose: {BETA}" in out
+    assert "purpose notes: every live spec, since the touched specs are unknown" in out
+
+
+@pytest.mark.parametrize(
+    "path, name",
+    [
+        ("openspec/specs/alpha/spec.md", "alpha"),
+        ("openspec/changes/c1/specs/beta/spec.md", "beta"),
+        ("openspec/changes/archive/2026-01-01-c0/specs/gamma/spec.md", "gamma"),
+    ],
+)
+def test_spec_names_come_from_live_active_and_archived_paths(path, name):
+    assert csp._spec_names_in({path, "openspec/changes/c1/tasks.md", "README.md"}) == {name}
+
+
+# requirement: spec-proof / A checker notes a touched spec's Purpose without failing the run
+@pytest.mark.parametrize(
+    "purpose",
+    [
+        "**Serves:** maintainers who release the\nplugin and the repos that install it.\n\nWhat the plugin promises.",
+        "**Serves:** maintainers who release the\nplugin and the repos that\ninstall it.\n\nWhat the plugin promises\nin a wrapped line.",
+    ],
+)
+def test_a_hard_wrapped_serves_line_gets_no_note(repo, capsys, purpose):
+    code, notes = _purpose_out(repo, capsys, purpose)
+    assert code == 0 and notes == []
+
+
+def test_a_wrapped_serves_line_is_still_checked_for_extra_sentences(repo, capsys):
+    notes = _purpose_out(repo, capsys, "**Serves:** maintainers\nwho release it. Also users.\n\nOne.")[1]
+    assert notes == [f"NOTE purpose: {SPEC}: the Serves line holds more than one sentence"]
+    notes = _purpose_out(repo, capsys, "**Serves:** maintainers\nwho release it.\n\nOne. Two.")[1]
+    assert notes == [f"NOTE purpose: {SPEC}: Purpose has 2 sentences after the Serves line, expected one"]
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_live_spec_of_bare_requirements_names_each_one_in_scenario_mode(repo, capsys):
+    _write(repo, FACTS, "- Test proof granularity: scenario\n")
+    _write(repo, "tests/test_old.py", _marker("scenario", "beta", "Old case"))
+    _write(repo, "openspec/specs/beta/spec.md", _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case"))))
+    _write(repo, SPEC, _spec_text(("Bare one", "Bare SHALL."), ("Bare two", "Bare SHALL.")))
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert [l for l in out.splitlines() if f"PROBLEM empty: {SPEC}" in l] == [
+        f"PROBLEM empty: {SPEC}: a live spec with no scenario parsed",
+        f"PROBLEM empty: {SPEC}: requirement 'Bare one' has no '#### Scenario:' heading, so none is checked",
+        f"PROBLEM empty: {SPEC}: requirement 'Bare two' has no '#### Scenario:' heading, so none is checked",
+    ]
+
+
+def _stdout_in(monkeypatch, encoding: str):
+    import io
+
+    buf = io.BytesIO()
+    wrapper = io.TextIOWrapper(buf, encoding=encoding, errors="strict", newline="\n")
+    monkeypatch.setattr(sys, "stdout", wrapper)
+    return wrapper, buf
+
+
+def test_non_ascii_output_does_not_crash_a_cp1252_console(repo, monkeypatch):
+    heading = "Café ✓ done"
+    _write(repo, "tests/test_u.py", _marker("requirement", "alpha", heading))
+    wrapper, buf = _stdout_in(monkeypatch, "cp1252")
+    code = csp.main(["--root", str(repo), "--base", "main"])
+    wrapper.flush()
+    text = buf.getvalue().decode("cp1252")
+    assert code == 1  # the dangling marker is a PROBLEM; a crash would be an uncaught error
+    assert "Café \\u2713 done" in text and "problems: 1" in text
+
+
+def test_non_ascii_output_is_unchanged_on_a_utf8_console(repo, monkeypatch):
+    heading = "Café ✓ done"
+    _write(repo, "tests/test_u.py", _marker("requirement", "alpha", heading))
+    wrapper, buf = _stdout_in(monkeypatch, "utf-8")
+    csp.main(["--root", str(repo), "--base", "main"])
+    wrapper.flush()
+    assert "Café ✓ done" in buf.getvalue().decode("utf-8")
+
+
+def _deep_archived_path(root: Path) -> str:
+    """An archived delta path that fits the Windows 260-character limit under `root`, while `root` plus
+    the 41-character `<sha>:` prefix plus the path does not (what `git show` stats as a file name)."""
+    head, tail = "openspec/changes/archive/2026-01-01-", "/specs/alpha/spec.md"
+    pad = 235 - len(str(root)) - 1 - len(head) - len(tail)
+    if pad < 1:
+        pytest.skip("the temp folder path is too long to build the case")
+    return head + "p" * pad + tail
+
+
+def test_a_long_archive_path_in_a_deep_repo_reports_no_false_uncovered(repo, capsys):
+    # Unchanged since the base, so no unit is changed. Where git cannot read the base copy by the long
+    # path, the file was read as new and each of its units drew a false `uncovered`.
+    _commit_on_base(repo, _deep_archived_path(repo), _delta_text(added=[NEW_REQ]))
+    code, out, _ = run(repo, capsys)
+    assert code == 0 and "PROBLEM" not in out, out
+    assert "changed requirements: 0" in out
+
+
+def test_the_base_copy_is_none_only_for_a_path_absent_at_base(repo):
+    base = csp.resolve_base(repo, "main")[0]
+    assert "Old rule" in csp._base_text(repo, base, SPEC)
+    assert csp._base_text(repo, base, "openspec/specs/zzz/spec.md") is None
+
+
+def test_a_git_failure_reading_the_base_is_an_error_not_a_new_file(repo, monkeypatch):
+    monkeypatch.setattr(csp, "_git", lambda root, *args: (128, ""))
+    with pytest.raises(csp.CheckerError, match="cannot read"):
+        csp._base_text(repo, "0" * 40, SPEC)
+
+
+def test_a_path_git_lists_but_cannot_read_is_an_error_not_a_new_file(repo, monkeypatch, capsys):
+    # The long-path failure on Windows: cat-file fails although the path is in the tree.
+    real = csp._git
+
+    def fake(root, *args):
+        if args[0] == "cat-file":
+            return 128, ""
+        return real(root, *args)
+
+    monkeypatch.setattr(csp, "_git", fake)
+    base = csp.resolve_base(repo, "main")[0]
+    with pytest.raises(csp.CheckerError, match="cat-file exit 128, ls-tree exit 0"):
+        csp._base_text(repo, base, SPEC)
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL, edited.\n\n" + _scn("Old case"))))
+    assert run(repo, capsys)[0] == 2
+
+
+def test_a_failed_changed_path_list_is_an_error_not_an_empty_list(repo, monkeypatch):
+    real = csp._git
+    monkeypatch.setattr(csp, "_git", lambda root, *args: (128, "") if args[0] == "diff" else real(root, *args))
+    base = csp.resolve_base(repo, "main")[0]
+    with pytest.raises(csp.CheckerError, match="changed paths are unknown"):
+        csp.changed_paths(repo, base)
+
+
 @pytest.mark.parametrize(
     "text, n",
     [
@@ -1155,7 +1352,11 @@ def test_a_purpose_note_is_not_a_problem(repo, capsys):
         ("See https://example.com/a. Then more.", 2),
         ("See www.example.com for it.", 1),
         ("Run `a. b. c` now.", 1),
+        ("Run ``a ` b. c`` now.", 1),
         ("See [the doc](http://x.io/a. b) now.", 1),
+        # a backtick left unpaired must not pair with a later one and hide the break between them
+        ("A stray ` mark. Then `code` here.", 2),
+        ("Two spans `a. b` and `c. d` stay masked.", 1),
         # ellipses never end a sentence
         ("Wait... and then more.", 1),
         ("Wait\u2026 and then more.", 1),

@@ -4,17 +4,17 @@ Leftover review suggestions (spec-proof-checker):
 
 - `manual: <heading>: <reason>` names a heading, not a spec, so one line covers a same-named changed requirement in every spec of a touched change. Fixing it needs a format change to the tasks rule; the limit is documented in the script docstring.
 
-Leftover review suggestions (Purpose note in the spec checker):
+Leftover review suggestions (spec checker fixes, change spec-checker-purpose-note-fixes):
 
-- A hard-wrapped `**Serves:**` line is not told apart from a paragraph break. Only the first Purpose line is the Serves line (`check_spec_proof.py:490`). A wrapped second line counts as a later sentence (`:498`).
-- An unpaired backtick can hide a sentence break in `count_sentences`. The code-span mask needs a pair (`check_spec_proof.py:439`), so one stray backtick can pair with a later one.
-- In other repos, notes repeat on every run for unchanged older specs. `purpose_notes` runs over every live spec, not only changed ones (`check_spec_proof.py:843`).
-- `check_spec_proof.py` crashes on a cp1252 console when a printed line has non-ASCII text. The final `print` at `check_spec_proof.py:861` sets no encoding. This predates the Purpose note.
-- The spec-proof spec has no requirement for the new `NOTE purpose:` behaviour. `openspec/specs/spec-proof/spec.md` does not mention it; the behaviour is in `check_spec_proof.py:475-505`.
+- A Purpose shaped Serves line, sentence on the next line, blank line, more text gets "the Serves line holds more than one sentence" from `purpose_notes`, because the whole first paragraph is read as a wrapped Serves line. The real fault is the extra text after the sentence. Treat the paragraph as wrapped only when its first line does not already end a sentence.
+- In `_mask_code_spans`, one unpaired backtick drops every backtick and unmasks the spans that did pair, so a period inside a real span can count as a sentence break. Mask the pairs and drop only the leftover backtick, or document the over-count.
+- The `count_sentences` case "Run ``a ` b. c`` now." gives 1 under the old code-span pattern too, so it does not prove that only equal-length backtick runs pair. Replace it with a case the old pattern gets wrong.
+- The final `print` in `main` can still raise `OSError` (a closed pipe) outside the `try`, and `_console_safe` falls back to the raw text on an unknown encoding name. Both end as a traceback with exit 1. Return 2 and fall back to ASCII with `backslashreplace`.
+- `_git` drops stderr, so a `_base_text` failure names only exit codes. Return stderr from `_git` and put it in the message.
+- `test_a_long_archive_path_in_a_deep_repo_reports_no_false_uncovered` passes on Linux and macOS with or without the fix, and skips when the temp path is too long. The fake-git test beside it is the one that runs everywhere.
 
 Leftover review suggestions (spec-proof empty check (sweep PR)):
 
-- A live spec with several scenario-less requirements gets only the generic 'no scenario parsed' line. Per-requirement headings should appear too; the generic line is pinned at `plugin-tests/tests/skills/_shared/test_check_spec_proof.py:1010`.
 - `_bullet_start` in `plugin-tests/tests/consistency/test_mutation_batch_is_opt_in.py` counts any spaced hyphen as a bullet start. It should match only a real list marker.
 
 Leftover review suggestions (spec-writing rules):
