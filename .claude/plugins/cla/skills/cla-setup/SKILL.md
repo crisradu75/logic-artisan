@@ -124,6 +124,14 @@ own stock limits reach every CLA authoring run.
 drops a live scenario (verified on 1.14.1). When `openspec/` exists, run `openspec --version` and, if it
 is older than 1.14.1, say so in the report and recommend upgrading.
 
+**Run the block below from a file, not pasted into the Bash command.** It is too long to paste: on
+Windows the Bash tool hands the command to Git Bash as a `-c` argument, and a command near 9 KB was
+seen to fail there (`unexpected EOF while looking for matching quote`) while one near 6 KB ran. Save the
+block's lines, without the code fence, to a temp file outside the repo with the Write tool (the session
+scratch folder or the system temp folder), then run
+`ROOT="$(git rev-parse --show-toplevel)" bash <file>; rm -f <file>`, giving bash the path with forward
+slashes. The output is the same.
+
 ```bash
 : "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
 CFG="$ROOT/openspec/config.yaml"

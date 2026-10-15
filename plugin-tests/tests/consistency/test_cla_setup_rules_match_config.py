@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -122,12 +123,26 @@ def _seed_script() -> str:
     return match.group(1)
 
 
-def _run_seed(root: Path) -> str:
-    out = subprocess.run(
-        [_BASH, "-c", _seed_script()],
+def _bash_file(script: str, env: dict[str, str]) -> subprocess.CompletedProcess:
+    """Run a script as a file, `bash <path>`, never as `bash -c <script>`.
+
+    On Windows, Git Bash cuts a `-c` command off at about 8190 bytes, and the failure reads like a
+    bad rules sentence ("unexpected end of file"). A file has no such limit.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "seed.sh"
+        path.write_bytes(script.encode("utf-8"))
+        return subprocess.run(
+            [_BASH, path.as_posix()], env=env,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
+        )
+
+
+def _run_seed(root: Path, script: str | None = None) -> str:
+    out = _bash_file(
+        _seed_script() if script is None else script,
         # Forward slashes: a POSIX shell reads `C:\...` backslashes as escapes.
-        env={**os.environ, "ROOT": str(root).replace("\\", "/")},
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
+        {**os.environ, "ROOT": str(root).replace("\\", "/")},
     )
     assert out.returncode == 0, out.stderr
     return out.stdout
@@ -333,11 +348,10 @@ def test_a_failing_awk_is_reported_and_never_read_as_rules_current(tmp_path: Pat
     cfg = tmp_path / "openspec" / "config.yaml"
     cfg.parent.mkdir()
     cfg.write_bytes(_CONFIG.read_bytes())
-    out = subprocess.run(
-        [_BASH, "-c", _seed_script()],
-        env={**os.environ, "ROOT": str(tmp_path).replace("\\", "/"),
-             "PATH": shim.as_posix() + os.pathsep + os.environ["PATH"]},
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
+    out = _bash_file(
+        _seed_script(),
+        {**os.environ, "ROOT": str(tmp_path).replace("\\", "/"),
+         "PATH": shim.as_posix() + os.pathsep + os.environ["PATH"]},
     ).stdout
     assert "rules current" not in out
     assert "rules NOT compared: awk failed (exit 3)" in out
@@ -355,3 +369,17 @@ def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     assert all(line.startswith("+ ") for line in out[1:])
     assert not (tmp_path / "openspec" / "config.yaml").exists()
     assert yml.read_text(encoding="utf-8") == "schema: spec-driven\n"
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
+def test_a_seed_script_past_9000_bytes_still_runs(tmp_path: Path):
+    """Rules may grow: the harness must not cap the script near 8190 bytes (bash -c on Windows)."""
+    first, rest = _seed_script().split("\n", 1)
+    padded = first + "\n" + ("# " + "-" * 98 + "\n") * 100 + rest
+    assert len(padded.encode("utf-8")) > 9000
+    # The awk comparison sits at the end of the script, the part a cut-off command loses.
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes())
+    assert "openspec/config.yaml: exists (skipped), rules current" in _run_seed(tmp_path, padded)
