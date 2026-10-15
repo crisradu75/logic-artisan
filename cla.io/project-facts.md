@@ -29,6 +29,11 @@ repo: it has no product code.
 - `plugin-tests/tests/<area>/` — areas `conformance`, `consistency`, `launcher`, `hooks`, `lib`, and `skills/<name>`.
 - `plugin-tests/mutants/<area>/` — mutation batches, mirroring `tests/`, never collected.
 
+## Doc-sweep paths
+
+- Root `CLAUDE.md`, `README.md` and `DEVELOPER-GUIDE.md`.
+- `.claude/plugins/cla/README.md` — the plugin's own readme and phase table.
+
 ## Cross-file lockstep doc sets
 
 - Root `CLAUDE.md` — the commands, the release line, and the sentence naming the skills with `disable-model-invocation: true`.
