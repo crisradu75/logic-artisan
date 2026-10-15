@@ -36,3 +36,8 @@ Leftover review suggestions (Copilot manifest and release-drift check):
 - The "Installing from GitHub Copilot CLI" requirement joins the install line and the duty to disclose that it is untested. Two outcomes; split it if the disclosure outlives the first live test.
 - Tasks 2.1, 2.2, 3.1, 3.2 and 4.1 in the change run past the roughly 40-word task rule.
 - `test_every_doc_offering_the_copilot_install_says_it_is_untested` checks that two phrases appear somewhere in each doc, not next to the install command.
+
+Leftover review suggestions (session-traps PR, CLAUDE.md):
+
+- The `check_spec_proof.py` trap could also name `--root <worktree>`, which checks that worktree from any cwd (`.claude/plugins/cla/skills/_shared/scripts/check_spec_proof.py:848`).
+- The "closes no issue without it" trap is slightly too strong: a closing keyword in the squash commit message, or a sidebar link, also closes the issue. Say "without a closing keyword such as `Closes #N` in the PR body".
