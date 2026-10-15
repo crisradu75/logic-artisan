@@ -104,12 +104,12 @@ EOF
 ### 5. OpenSpec authoring rules — `openspec/config.yaml`
 
 The one path outside `cla.io/`, `.gitignore` and the rules file of item 7a this skill writes, and it is still project data. OpenSpec injects a
-config's `rules:` into every artifact's authoring instructions, so the block below is how OpenSpec's
+config's `rules:` into every artifact's authoring instructions, so the block the script holds is how OpenSpec's
 own stock limits reach every CLA authoring run.
 
 - `openspec/` exists and neither `openspec/config.yaml` nor `openspec/config.yml` does → seed
   `config.yaml` and report `created`.
-- Either file exists → leave it **byte-identical** and compare: the script below lists, under its
+- Either file exists → leave it **byte-identical** and compare: the script lists, under its
   artifact, each shipped rule the file does not carry word for word (`+`) and each earlier wording
   of a shipped rule it still carries (`-`), or reports the rules current. OpenSpec reads
   `config.yaml` first, so a new `config.yaml` would silently hide an existing `config.yml`.
@@ -124,113 +124,19 @@ own stock limits reach every CLA authoring run.
 drops a live scenario (verified on 1.14.1). When `openspec/` exists, run `openspec --version` and, if it
 is older than 1.14.1, say so in the report and recommend upgrading.
 
+Run the script, which holds the shipped `rules:` block and the earlier wordings, and report what it
+prints. Any non-zero exit, or output with no `openspec/...:` status line, means the config was
+not checked (exit 1: the script could not write or read it): say so, and never call the rules current.
+
 ```bash
 : "${ROOT:?ROOT unset: set it with the repo-root step at the top of this skill first}"
-CFG="$ROOT/openspec/config.yaml"
-RULES="$(cat <<'EOF'
-rules:
-  proposal:
-    - Keep it to about 400 words. Point to the specs and design instead of restating them.
-  design:
-    - Write design.md only when a stock trigger applies (a cross-cutting change, a new dependency or data model, security, performance or migration complexity, or real ambiguity), and name the trigger.
-    - "Keep it to about 800 words: for each decision, the choice, one line of why, and one line per rejected alternative. No history or transcripts."
-    - Never restate the proposal or the specs.
-  specs:
-    - "Specify only outcomes a user or owner would recognise, and interfaces others depend on: a CLI flag, a file or ledger format a consumer reads, an API contract. Leave implementation choices to the implementer; put a detail a reviewer must agree on, such as a security parameter or a data model, in design.md. Internal steps are not spec material."
-    - "Write each requirement, ADDED or MODIFIED, as one sentence of 500 characters or fewer in plain words, with at most 3 scenarios. No history, reasons, measurements, coined terms, file paths or code names, unless the name is the interface. A spec holds at most 8 requirements; when one is full, add a new capability rather than a ninth."
-    - "One outcome per requirement: a supporting SHALL clause that defines the outcome is fine, but a separate outcome becomes its own requirement or a scenario. Never squeeze a clause out to fit the limit; split the requirement instead, and when the spec already holds 8, put the second outcome in a new capability."
-    - "Money, security, personal data, honesty claims and accessibility are protected: a rewrite compresses their requirements and never drops them. A REMOVED entry paired with an ADDED rewrite of the same outcome is not a drop."
-    - "The Purpose of a new spec is a `**Serves:**` line naming who or what the capability serves, plus one plain sentence, with no file paths; for example `**Serves:** maintainers who release the plugin.` This is advisory: only a checker note, and older specs keep their plain Purpose until someone edits it. A delta cannot change a Purpose, so edit an existing Purpose directly in the main spec after the change is archived."
-    - "Name a configurable value by its config key as configured, never by a number; a default may appear in a scenario."
-    - "A MODIFIED block keeps every live scenario. To cut a live requirement's scenarios or bring it within these limits, list it under REMOVED and add the rewrite under ADDED with a new heading. This overrides OpenSpec's instruction to keep an existing requirement whole."
-    - "A change with no externally visible behaviour change (a refactor, tooling, docs, or a rule about how a skill file is worded) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
-    - "Fix each code and spec mismatch found while writing specs in the same change, with a regression test. File an issue only when the fix is blocked outside the repo, for example in an upstream tool."
-    - Read existing specs cheaply first (`openspec list --specs`, then `openspec show <id> --type spec --json --no-scenarios`), and read in full only the specs this change touches.
-  tasks:
-    - "Give each requirement this change adds or modifies a test task whose test carries a `requirement: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. Scenarios are examples, not one test each."
-    - "Cite headings, not line numbers. A `measured:` note gives the value; the command that produced it goes in the commit message."
-    - "Keep each task to about 40 words, stating one behaviour with an acceptance criterion a test or a command can check, and no file path with a line number. An out-of-scope note per task is allowed."
-EOF
-)"
-# Earlier wordings of shipped rules: the only lines the update may remove.
-RETIRED="$(cat <<'EOF'
-rules:
-  proposal:
-    - Keep it to one page. Point to the specs and design instead of restating them.
-  design:
-    - "Keep it to one page: for each decision, the choice, one line of why, and one line per rejected alternative. No history or transcripts."
-  specs:
-    - State one behaviour per ADDED requirement in 500 characters or fewer, and put the detail in scenarios.
-    - "State behaviour only, in plain words: one behaviour per ADDED requirement in 500 characters or fewer, with the detail in scenarios. No history, reasons, measurements or coined terms."
-    - "A change with no externally visible behaviour change (a refactor, tooling, docs) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
-    - "Keep every scenario heading unique within its spec, so `<spec> / <heading>` names exactly one scenario."
-  tasks:
-    - "Give each ADDED or MODIFIED scenario a test task, or a `manual: <reason>` note."
-    - "Give each scenario this change adds, or whose text it changes, a test task or a `manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block needs neither."
-    - "Give each scenario this change adds, or whose text it changes, a test task whose test carries a `scenario: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. A pure heading rename, or a scenario carried forward unchanged in a MODIFIED block, needs neither."
-EOF
-)"
-if [ -d "$ROOT/openspec" ] && [ ! -e "$CFG" ] && [ ! -e "$ROOT/openspec/config.yml" ]; then
-  if printf 'schema: spec-driven\n\n%s\n' "$RULES" > "$CFG"; then
-    echo "openspec/config.yaml: created"
-  else
-    echo "openspec/config.yaml: write FAILED; add this block by hand:"
-    printf '%s\n' "$RULES"
-  fi
-elif [ ! -d "$ROOT/openspec" ]; then
-  echo "openspec/config.yaml: not written, no openspec/ (run openspec init, then add this block):"
-  printf '%s\n' "$RULES"
-else
-  OLD="$CFG"; [ -e "$OLD" ] || OLD="$ROOT/openspec/config.yml"
-  HAVE="$(tr -d '\r' < "$OLD" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-  # One awk pass, not a process per rule. It lists the rules of RULES the file lacks (mark +),
-  # then the rules of RETIRED it carries (mark -), a retired one also when the file holds it
-  # inside one pair of quotes ("..." or '...'). The file comes in on stdin, which has no size limit
-  # (Windows caps the whole environment near 32K); the fixed rule text goes in through the
-  # environment, because awk -v would read the backslashes in it as escapes. The status of this
-  # pipeline is awk's, the last command.
-  DIFF="$(printf '%s\n' "$HAVE" | CLA_RULES="$RULES" CLA_RETIRED="$RETIRED" awk '
-    function unq(s,  n) {
-      n = length(s)
-      if (n >= 4 && substr(s, 1, 3) == "- \"" && substr(s, n, 1) == "\"") s = "- " substr(s, 4, n - 4)
-      n = length(s)
-      if (n >= 4 && substr(s, 1, 3) == "- \047" && substr(s, n, 1) == "\047") s = "- " substr(s, 4, n - 4)
-      return s
-    }
-    # want = 0 lists the block rules the file lacks; want = 1 those it has, quoted or not.
-    function rule_lines(block, mark, want,   n, a, i, line, key, rule, has) {
-      n = split(block, a, "\n")
-      for (i = 1; i <= n; i++) {
-        line = a[i]
-        if (line ~ /^  [a-z].*:$/) key = substr(line, 3)
-        else if (substr(line, 1, 6) == "    - ") {
-          rule = substr(line, 5)
-          has = (rule in H) ? 1 : 0
-          if (want == 1 && has == 0 && (unq(rule) in Q)) has = 1
-          if (has == want) print mark, key, rule
-        }
-      }
-    }
-    { H[$0] = 1; Q[unq($0)] = 1 }
-    END {
-      if (ENVIRON["CLA_RULES"] == "") exit 2
-      rule_lines(ENVIRON["CLA_RULES"], "+", 0)
-      rule_lines(ENVIRON["CLA_RETIRED"], "-", 1)
-    }')"
-  AWKRC=$?
-  if [ "$AWKRC" -ne 0 ]; then
-    echo "openspec/${OLD##*/}: exists (skipped), rules NOT compared: awk failed (exit $AWKRC)"
-  elif [ -z "$DIFF" ]; then
-    echo "openspec/${OLD##*/}: exists (skipped), rules current"
-  else
-    echo "openspec/${OLD##*/}: exists (skipped), missing or outdated rules (+ add, - remove):"
-    printf '%s\n' "$DIFF"
-  fi
-fi
+SEED="${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/seed_openspec_rules.py"
+[ -f "$SEED" ] || { echo "openspec/config.yaml: NOT checked, seed script not found at $SEED (plugin root unresolved?)"; exit 1; }
+python3 "$SEED" "$ROOT"
 ```
 
-Each item that contains `: ` stays double-quoted, or YAML reads it as a mapping and OpenSpec drops
-that artifact's rules.
+Each item in the script's `rules:` block that contains `: ` stays double-quoted, or YAML reads it as
+a mapping and OpenSpec drops that artifact's rules.
 
 ### 6. Retired ledgers — `cla.io/retro/`
 

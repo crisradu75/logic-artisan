@@ -71,8 +71,9 @@ def _live_specs() -> list[Path]:
 
 def _asks(path: Path) -> str:
     # cla-setup quotes the retired rules verbatim in its RETIRED list, so it can
-    # find and remove them from a consumer's config; that list asks for nothing.
-    return re.sub(r"\nRETIRED=\"\$\(cat <<'EOF'\n.*?\nEOF\n", "\n", _read(path), flags=re.S)
+    # find and remove them from a consumer's config. The list lives in a `.py`
+    # script, which this scan of `.md` files and specs never opens.
+    return _read(path)
 
 
 def test_the_retired_formats_are_gone():

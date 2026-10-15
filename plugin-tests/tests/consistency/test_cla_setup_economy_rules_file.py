@@ -63,7 +63,10 @@ _END = "<!-- economy-rules-file:review-sizing:end -->"
 _PLUGIN_ONLY = ("/cla:", "lite-pr", "multi-lite", "multi-pr", "multi-spec", "spec-to-pr", "Handoff Issue",
                 "revise.md", "model-routing.md", "orchestration-economy.md", "--pr-rounds")
 
-_needs_tools = pytest.mark.skipif(_BASH is None or _GIT is None, reason="bash and git are required")
+_needs_tools = pytest.mark.skipif(
+    _BASH is None or _GIT is None or shutil.which("python3") is None,
+    reason="bash, git and python3 are required (Part 1 item 5 runs a python3 script)",
+)
 
 
 def _skill_text() -> str:
@@ -77,9 +80,12 @@ def _block() -> str:
 
 
 def _plugin(dest: Path, crlf: bool = False, edit=None) -> Path:
-    """A copy of the three sources under `dest`, laid out as the block reads them."""
+    """A copy of the three sources, and the seed script item 5 runs, under `dest`, laid out as the blocks read them."""
     refs = dest / "skills" / "_shared" / "references"
     refs.mkdir(parents=True)
+    scripts = dest / "skills" / "cla-setup" / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copyfile(_SKILLS / "cla-setup" / "scripts" / "seed_openspec_rules.py", scripts / "seed_openspec_rules.py")
     for name in _SOURCES:
         text = (_REFS / name).read_bytes().decode("utf-8").replace("\r\n", "\n")
         if edit is not None:
