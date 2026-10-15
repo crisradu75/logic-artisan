@@ -64,6 +64,7 @@ RETIRED = r"""rules:
     - "State behaviour only, in plain words: one behaviour per ADDED requirement in 500 characters or fewer, with the detail in scenarios. No history, reasons, measurements or coined terms."
     - "A change with no externally visible behaviour change (a refactor, tooling, docs) sets `skip_specs: true` in its .openspec.yaml and writes no spec delta. Never invent a requirement to satisfy validation."
     - "Keep every scenario heading unique within its spec, so `<spec> / <heading>` names exactly one scenario."
+    - "Name a configurable value by its config key as configured, never by a number; a default may appear in a scenario."
   tasks:
     - "Give each ADDED or MODIFIED scenario a test task, or a `manual: <reason>` note."
     - "Give each scenario this change adds, or whose text it changes, a test task or a `manual: <reason>` note. A scenario carried forward unchanged in a MODIFIED block needs neither."

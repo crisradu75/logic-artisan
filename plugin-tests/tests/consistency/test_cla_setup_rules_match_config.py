@@ -206,6 +206,20 @@ def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
+def test_the_earlier_configurable_values_wording_is_listed_for_removal_and_the_new_one_added(tmp_path: Path):
+    # A repo seeded before the reword holds the old line where the shipped line now sits:
+    # the old line is listed to remove and the shipped line to add.
+    new_rule = next(i for i in _rule_items() if "config key, spelled exactly" in i)
+    old_rule = _retired("as configured, never by a number")
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes().replace(new_rule.encode("utf-8"), ("    " + old_rule).encode("utf-8")))
+    assert _run_seed(tmp_path).splitlines() == [
+        _HEADER.format("config.yaml"), "+ specs: " + new_rule.strip(), "- specs: " + old_rule,
+    ]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
 @pytest.mark.parametrize(
     "fragment, artifact",
     [("Keep it to one page. Point", "proposal"), ("Keep it to one page: for each", "design")],
