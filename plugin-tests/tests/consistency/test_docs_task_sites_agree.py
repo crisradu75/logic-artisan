@@ -25,7 +25,7 @@ _FACTS = _REPO / "cla.io" / "project-facts.md"
 
 TOKEN = "docs and spec map:"
 # What the checking sites say about the line itself, so a site that only mentions the rule in passing fails.
-LINE = f"line starting `{TOKEN}`"
+LINE = f"task whose text starts with `{TOKEN}`"
 EXCUSE = "none affected:"
 HEADING = "Doc-sweep paths"
 
