@@ -297,7 +297,12 @@ def test_the_rules_missing_are_listed_in_shipped_order_with_their_artifact(tmp_p
 # requirement: repo-context / OpenSpec authoring rules on setup
 @_needs_bash
 def test_a_config_over_200_kb_is_compared_right(tmp_path: Path):
-    """The config reaches awk on stdin: the environment has a size cap (about 128 KB per variable on Linux, 32K in total on Windows)."""
+    """A large config is compared right when it reaches awk on stdin.
+
+    The old environment-based snippet also passes this test on Windows (configs of 45 KB, 270 KB and
+    about 1.7 MB tried), so a failure of the old code is not shown here; Linux is untested. This
+    guards the stdin path, not a demonstrated bug.
+    """
     old_rule = _retired("Keep it to one page. Point")
     own = "".join(f"    - A rule of this repo's own, number {i}, padded out to make the file long.\n" for i in range(3000))
     cfg = tmp_path / "openspec" / "config.yaml"
