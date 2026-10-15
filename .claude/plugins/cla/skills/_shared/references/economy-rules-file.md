@@ -27,11 +27,21 @@ Never cut these to save tokens.
 - Real-file check: every reader or parser a change touches is also run read-only on copies of real
   input files, never writing to a user's folders. Fixtures copy the real layout with personal data
   redacted.
+- Real fixture first: capture a real response or input file before setting a threshold or marking
+  a field optional. An inferred rule can fire on every healthy record.
+- Mirror-model contract tests (a local model copied from an external schema) run one way: a field that is optional upstream must be optional in
+  the local mirror, list elements and `X | None` included. Never strip optionality from both sides
+  before comparing.
 - Debris check: after the final test run, nothing the tests created remains outside the test
   framework's temp directory. The debris rule below gives the command. A test that writes there is
   fixed in the same change.
 - A score- or gate-moving change ships only after the owner approves a before/after comparison on
   real inputs.
+- A change that claims not to move a score, ranking or gate proves it: run the old and new code on
+  the same inputs, including NaN, infinite and null ones, and compare the results.
+- A refactor of code that writes user files carries a byte-identical proof: extract the base
+  revision with `git archive`, run old and new code on identical copies of the fixtures, and assert
+  the same output bytes and exit codes.
 - When the work lands, remove merged worktrees, scratch copies of real files and temp debris, after
   one yes/no from the owner.
 
