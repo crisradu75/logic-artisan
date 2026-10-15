@@ -249,6 +249,90 @@ def test_a_quoted_copy_of_an_earlier_wording_is_still_listed(tmp_path: Path, quo
 
 # requirement: repo-context / OpenSpec authoring rules on setup
 @_needs_bash
+@pytest.mark.parametrize(
+    "shape",
+    [
+        '- "{}"',  # double quotes
+        "- '{}'",  # single quotes
+        "- \"'{}'\"",  # both pairs, dropped one after the other
+        "\t- {}\t",  # tab padding around the item
+    ],
+)
+def test_every_retired_wording_is_found_in_each_quoted_shape(tmp_path: Path, shape: str):
+    """The comparison is one awk pass over all rules, so each retired line must still be matched."""
+    retired = re.search(r"RETIRED=\"\$\(cat <<'EOF'\n(.*?)\nEOF\n", _SKILL.read_text(encoding="utf-8"), re.DOTALL)
+    assert retired, "cla-setup/SKILL.md: no RETIRED heredoc found"
+    key, expected, carried = "", [], []
+    for line in retired.group(1).splitlines():
+        if line.startswith("  ") and line.endswith(":") and not line.startswith("    "):
+            key = line.strip().rstrip(":")
+        elif line.startswith("    - "):
+            expected.append(f"- {key}: {line.strip()}")
+            body = line.strip()[2:]
+            # A line already quoted in the list is carried as it is; the shape wraps the plain ones.
+            carried.append("    " + (line.strip() if body.startswith('"') else shape.format(body)))
+    assert len(expected) >= 7, "the retired list lost its lines"
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes() + ("\n".join(carried) + "\n").encode("utf-8"))
+    assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), *expected]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
+def test_the_rules_missing_are_listed_in_shipped_order_with_their_artifact(tmp_path: Path):
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(b"rules:\n  specs:\n    - A rule of this repo's own.\n")
+    out = _run_seed(tmp_path).splitlines()
+    key, expected = "", []
+    for line in _skill_block().splitlines():
+        if line.startswith("  ") and line.endswith(":") and not line.startswith("    "):
+            key = line.strip().rstrip(":")
+        elif line.startswith("    - "):
+            expected.append(f"+ {key}: {line.strip()}")
+    assert out == [_HEADER.format("config.yaml"), *expected]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
+def test_a_config_over_200_kb_is_compared_right(tmp_path: Path):
+    """A large config is compared right when it reaches awk on stdin.
+
+    The old environment-based snippet also passes this test on Windows (configs of 45 KB, 270 KB and
+    about 1.7 MB tried), so a failure of the old code is not shown here; Linux is untested. This
+    guards the stdin path, not a demonstrated bug.
+    """
+    old_rule = _retired("Keep it to one page. Point")
+    own = "".join(f"    - A rule of this repo's own, number {i}, padded out to make the file long.\n" for i in range(3000))
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes() + own.encode("utf-8") + f"    {old_rule}\n".encode("utf-8"))
+    assert cfg.stat().st_size > 200_000
+    assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
+def test_a_failing_awk_is_reported_and_never_read_as_rules_current(tmp_path: Path):
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "awk").write_bytes(b"#!/bin/sh\nexit 3\n")
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes())
+    out = subprocess.run(
+        [_BASH, "-c", _seed_script()],
+        env={**os.environ, "ROOT": str(tmp_path).replace("\\", "/"),
+             "PATH": shim.as_posix() + os.pathsep + os.environ["PATH"]},
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
+    ).stdout
+    assert "rules current" not in out
+    assert "rules NOT compared: awk failed (exit 3)" in out
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
 def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     yml = tmp_path / "openspec" / "config.yml"
     yml.parent.mkdir()
