@@ -12,7 +12,7 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[4]
 _FILES = [
     _REPO / "openspec" / "config.yaml",
-    _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md",
+    _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "scripts" / "seed_openspec_rules.py",
 ]
 _RULE = (
     "Fix each code and spec mismatch found while writing specs in the same change, "

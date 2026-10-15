@@ -1,20 +1,21 @@
 """cla-setup seeds the `rules:` block this repo's own `openspec/config.yaml` carries.
 
-The block exists twice: once in `cla-setup/SKILL.md`, as the heredoc the seed
-item writes into a consuming repo's `openspec/config.yaml`, and once in this
-repo's `openspec/config.yaml`, where OpenSpec injects it into every authoring run
-here. The config file says "keep the two in step"; nothing else checks it. If one
-side is edited, this repo authors under one set of rules and every consumer
-under another, and both read fine on their own.
+The block exists twice: once in `cla-setup/scripts/seed_openspec_rules.py`, the
+script the seed item runs to write it into a consuming repo's
+`openspec/config.yaml`, and once in this repo's `openspec/config.yaml`, where
+OpenSpec injects it into every authoring run here. The config file says "keep the
+two in step"; nothing else checks it. If one side is edited, this repo authors
+under one set of rules and every consumer under another, and both read fine on
+their own.
 
 Scope, stated narrowly: this pins that the two blocks are identical, that an
 item containing `: ` is quoted, that no skill carries a third copy of the spec
-rules, and that the seed condition treats an existing `config.yml` as a config.
-It also runs the seed item, a bash block the model executes, against scratch
-repos: it seeds a missing config, and on an existing one it lists the shipped
-rules the file lacks (`+`) and the earlier wordings it still carries (`-`),
-never the repo's own lines, and leaves the file byte-identical. The update the
-user may then agree to is the model's own edit and is not run here.
+rules, and that the skill runs the script by its path and holds no copy of the
+block. It also runs the script against scratch repos: it seeds a missing
+config, and on an existing one (`config.yaml` or `config.yml`) it lists the
+shipped rules the file lacks (`+`) and the earlier wordings it still carries
+(`-`), never the repo's own lines, and leaves the file byte-identical. The
+update the user may then agree to is the model's own edit and is not run here.
 """
 
 from __future__ import annotations
@@ -23,21 +24,27 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
+import sys
 from pathlib import Path
 
 import pytest
 
 _REPO = Path(__file__).resolve().parents[3]
 _SKILL = _REPO / ".claude" / "plugins" / "cla" / "skills" / "cla-setup" / "SKILL.md"
+_SCRIPT = _SKILL.parent / "scripts" / "seed_openspec_rules.py"
 _CONFIG = _REPO / "openspec" / "config.yaml"
 
 
-def _skill_block() -> str:
-    text = _SKILL.read_text(encoding="utf-8")
-    match = re.search(r"RULES=\"\$\(cat <<'EOF'\n(.*?)\nEOF\n", text, re.DOTALL)
-    assert match, "cla-setup/SKILL.md: no RULES heredoc found"
-    return match.group(1).rstrip()
+def _script_constant(name: str) -> str:
+    # The text of a `NAME = r"""..."""` constant in the seed script, minus its closing newline.
+    text = _SCRIPT.read_text(encoding="utf-8")
+    match = re.search(rf'^{name} = r"""(.*?)\n""".rstrip\("\\n"\)$', text, re.DOTALL | re.MULTILINE)
+    assert match, f"seed_openspec_rules.py: no {name} constant found"
+    return match.group(1)
+
+
+def _shipped_block() -> str:
+    return _script_constant("RULES")
 
 
 def _config_block() -> str:
@@ -53,14 +60,20 @@ def _config_block() -> str:
 
 # requirement: change-workflow / Specs follow the repo's authoring rules
 def test_cla_setup_seeds_the_block_this_repo_carries():
-    assert _skill_block() == _config_block()
+    assert _shipped_block() == _config_block()
 
 
-def test_the_seed_treats_config_yml_as_existing():
-    # OpenSpec reads config.yaml before config.yml, so seeding config.yaml
-    # beside an existing config.yml would hide the user's file.
+_SKILL_CALL = 'SEED="${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/seed_openspec_rules.py"'
+
+
+def test_the_skill_runs_the_seed_script_by_path_and_holds_no_copy_of_the_rules():
+    # One source for the rules: the script. A copy in the skill would drift from it,
+    # and a command pasted into the Bash tool breaks past about 8 KB on Windows.
     text = _SKILL.read_text(encoding="utf-8")
-    assert '[ ! -e "$CFG" ] && [ ! -e "$ROOT/openspec/config.yml" ]' in text
+    assert _SCRIPT.is_file()
+    assert _SKILL_CALL in text
+    assert "RULES=" not in text and "RETIRED=" not in text
+    assert "rules:\n  proposal:" not in text.replace("\r\n", "\n")
 
 
 def _misread_unquoted(line: str) -> bool:
@@ -80,7 +93,7 @@ def _misread_unquoted(line: str) -> bool:
 
 
 def test_an_item_yaml_would_misread_is_quoted():
-    unquoted = [line for line in _skill_block().splitlines() if _misread_unquoted(line)]
+    unquoted = [line for line in _shipped_block().splitlines() if _misread_unquoted(line)]
     assert unquoted == []
 
 
@@ -105,77 +118,49 @@ def test_no_skill_carries_a_third_copy_of_the_spec_rules():
     copies = [
         str(p.relative_to(_REPO))
         for p in plugin.rglob("*.md")
-        if p != _SKILL and any(s in p.read_text(encoding="utf-8") for s in _LIMITS)
+        if any(s in p.read_text(encoding="utf-8") for s in _LIMITS)
     ]
     assert len(list(plugin.rglob("*.md"))) > 50, "the scan found too few files to mean anything"
     assert copies == [], f"skills restating `rules.specs`: {copies}"
 
 
-_BASH = shutil.which("bash")
-# A bash run is ~13 s alone on Windows; parallel workers multiply it, so 30 s flaked.
-_BASH_TIMEOUT = 120
-
-
-def _seed_script() -> str:
-    text = _SKILL.read_text(encoding="utf-8")
-    match = re.search(r"```bash\n(: \"\$\{ROOT:\?.*?RULES=\"\$\(cat <<'EOF'\n.*?)```", text, re.DOTALL)
-    assert match, "cla-setup/SKILL.md: no seed script found"
-    return match.group(1)
-
-
-def _bash_file(script: str, env: dict[str, str]) -> subprocess.CompletedProcess:
-    """Run a script as a file, `bash <path>`, never as `bash -c <script>`.
-
-    On Windows, Git Bash cuts a `-c` command off at about 8190 bytes, and the failure reads like a
-    bad rules sentence ("unexpected end of file"). A file has no such limit.
-    """
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "seed.sh"
-        path.write_bytes(script.encode("utf-8"))
-        return subprocess.run(
-            [_BASH, path.as_posix()], env=env,
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_BASH_TIMEOUT,
-        )
-
-
-def _run_seed(root: Path, script: str | None = None) -> str:
-    out = _bash_file(
-        _seed_script() if script is None else script,
-        # Forward slashes: a POSIX shell reads `C:\...` backslashes as escapes.
-        {**os.environ, "ROOT": str(root).replace("\\", "/")},
+def _seed(root: Path) -> subprocess.CompletedProcess:
+    """Run the seed script on a scratch repo, with the bytes it printed, undecoded."""
+    return subprocess.run(
+        [sys.executable, "-I", str(_SCRIPT), str(root)], capture_output=True, timeout=120,
     )
-    assert out.returncode == 0, out.stderr
-    return out.stdout
+
+
+def _run_seed(root: Path) -> str:
+    out = _seed(root)
+    assert out.returncode == 0, out.stderr.decode("utf-8", errors="replace")
+    return out.stdout.decode("utf-8")
 
 
 def _rule_items() -> list[str]:
-    return [line for line in _skill_block().splitlines() if line.startswith("    - ")]
+    return [line for line in _shipped_block().splitlines() if line.startswith("    - ")]
+
+
+def _retired_block() -> str:
+    return _script_constant("RETIRED")
 
 
 def _retired(fragment: str) -> str:
-    text = _SKILL.read_text(encoding="utf-8")
-    match = re.search(r"RETIRED=\"\$\(cat <<'EOF'\n(.*?)\nEOF\n", text, re.DOTALL)
-    assert match, "cla-setup/SKILL.md: no RETIRED heredoc found"
-    return next(line.strip() for line in match.group(1).splitlines() if fragment in line)
+    return next(line.strip() for line in _retired_block().splitlines() if fragment in line)
 
 
 _HEADER = "openspec/{}: exists (skipped), missing or outdated rules (+ add, - remove):"
 
 
-_needs_bash = pytest.mark.skipif(_BASH is None, reason="bash is not installed")
-
-
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 def test_the_seed_creates_a_missing_config(tmp_path: Path):
     (tmp_path / "openspec").mkdir()
     assert "openspec/config.yaml: created" in _run_seed(tmp_path)
     written = (tmp_path / "openspec" / "config.yaml").read_text(encoding="utf-8")
-    assert written == f"schema: spec-driven\n\n{_skill_block()}\n"
+    assert written == f"schema: spec-driven\n\n{_shipped_block()}\n"
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 def test_a_config_with_every_rule_is_reported_current(tmp_path: Path):
     cfg = tmp_path / "openspec" / "config.yaml"
     cfg.parent.mkdir()
@@ -186,7 +171,6 @@ def test_a_config_with_every_rule_is_reported_current(tmp_path: Path):
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 def test_an_outdated_rule_is_listed_and_the_file_left_alone(tmp_path: Path):
     items = _rule_items()
     tasks_rule = next(i for i in items if "requirement: <spec> / <heading>" in i)
@@ -213,7 +197,6 @@ def test_an_outdated_rule_is_listed_and_the_file_left_alone(tmp_path: Path):
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
     old_rule = _retired("Keep every scenario heading unique")
     cfg = tmp_path / "openspec" / "config.yaml"
@@ -223,7 +206,6 @@ def test_an_earlier_wording_alone_is_listed_for_removal(tmp_path: Path):
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 @pytest.mark.parametrize(
     "fragment, artifact",
     [("Keep it to one page. Point", "proposal"), ("Keep it to one page: for each", "design")],
@@ -237,7 +219,6 @@ def test_an_earlier_cap_wording_is_listed_for_removal(tmp_path: Path, fragment: 
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 @pytest.mark.parametrize("trailing", [" ", "\t", "  \r"])
 def test_an_earlier_wording_with_trailing_whitespace_is_still_listed(tmp_path: Path, trailing: str):
     old_rule = _retired("Keep it to one page. Point")
@@ -248,7 +229,6 @@ def test_an_earlier_wording_with_trailing_whitespace_is_still_listed(tmp_path: P
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 @pytest.mark.parametrize("quote", ['"', "'"])
 @pytest.mark.parametrize("trailing", ["", " "])
 def test_a_quoted_copy_of_an_earlier_wording_is_still_listed(tmp_path: Path, quote: str, trailing: str):
@@ -263,7 +243,6 @@ def test_a_quoted_copy_of_an_earlier_wording_is_still_listed(tmp_path: Path, quo
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 @pytest.mark.parametrize(
     "shape",
     [
@@ -274,11 +253,9 @@ def test_a_quoted_copy_of_an_earlier_wording_is_still_listed(tmp_path: Path, quo
     ],
 )
 def test_every_retired_wording_is_found_in_each_quoted_shape(tmp_path: Path, shape: str):
-    """The comparison is one awk pass over all rules, so each retired line must still be matched."""
-    retired = re.search(r"RETIRED=\"\$\(cat <<'EOF'\n(.*?)\nEOF\n", _SKILL.read_text(encoding="utf-8"), re.DOTALL)
-    assert retired, "cla-setup/SKILL.md: no RETIRED heredoc found"
+    """The comparison is one pass over all rules, so each retired line must still be matched."""
     key, expected, carried = "", [], []
-    for line in retired.group(1).splitlines():
+    for line in _retired_block().splitlines():
         if line.startswith("  ") and line.endswith(":") and not line.startswith("    "):
             key = line.strip().rstrip(":")
         elif line.startswith("    - "):
@@ -294,14 +271,13 @@ def test_every_retired_wording_is_found_in_each_quoted_shape(tmp_path: Path, sha
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 def test_the_rules_missing_are_listed_in_shipped_order_with_their_artifact(tmp_path: Path):
     cfg = tmp_path / "openspec" / "config.yaml"
     cfg.parent.mkdir()
     cfg.write_bytes(b"rules:\n  specs:\n    - A rule of this repo's own.\n")
     out = _run_seed(tmp_path).splitlines()
     key, expected = "", []
-    for line in _skill_block().splitlines():
+    for line in _shipped_block().splitlines():
         if line.startswith("  ") and line.endswith(":") and not line.startswith("    "):
             key = line.strip().rstrip(":")
         elif line.startswith("    - "):
@@ -310,14 +286,8 @@ def test_the_rules_missing_are_listed_in_shipped_order_with_their_artifact(tmp_p
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 def test_a_config_over_200_kb_is_compared_right(tmp_path: Path):
-    """A large config is compared right when it reaches awk on stdin.
-
-    The old environment-based snippet also passes this test on Windows (configs of 45 KB, 270 KB and
-    about 1.7 MB tried), so a failure of the old code is not shown here; Linux is untested. This
-    guards the stdin path, not a demonstrated bug.
-    """
+    """A large config is read whole and compared right (no size limit on the file)."""
     old_rule = _retired("Keep it to one page. Point")
     own = "".join(f"    - A rule of this repo's own, number {i}, padded out to make the file long.\n" for i in range(3000))
     cfg = tmp_path / "openspec" / "config.yaml"
@@ -328,9 +298,8 @@ def test_a_config_over_200_kb_is_compared_right(tmp_path: Path):
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
 def test_a_backslash_in_a_config_rule_line_is_read_as_typed(tmp_path: Path):
-    """The file comes in on stdin, so a literal backslash in a rule line must not be read as an escape."""
+    """A literal backslash in a rule line must not be read as an escape."""
     old_rule = _retired("Keep it to one page. Point")
     own = ["    - A rule with a backslash \\n and \\\\ and C:\\temp\\new in it."]
     cfg = tmp_path / "openspec" / "config.yaml"
@@ -340,25 +309,30 @@ def test_a_backslash_in_a_config_rule_line_is_read_as_typed(tmp_path: Path):
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
-def test_a_failing_awk_is_reported_and_never_read_as_rules_current(tmp_path: Path):
-    shim = tmp_path / "shim"
-    shim.mkdir()
-    (shim / "awk").write_bytes(b"#!/bin/sh\nexit 3\n")
-    cfg = tmp_path / "openspec" / "config.yaml"
-    cfg.parent.mkdir()
-    cfg.write_bytes(_CONFIG.read_bytes())
-    out = _bash_file(
-        _seed_script(),
-        {**os.environ, "ROOT": str(tmp_path).replace("\\", "/"),
-         "PATH": shim.as_posix() + os.pathsep + os.environ["PATH"]},
-    ).stdout
-    assert "rules current" not in out
-    assert "rules NOT compared: awk failed (exit 3)" in out
+def test_an_unreadable_config_is_reported_and_never_read_as_rules_current(tmp_path: Path):
+    # A directory named config.yaml exists but cannot be read as a file.
+    (tmp_path / "openspec" / "config.yaml").mkdir(parents=True)
+    out = _seed(tmp_path)
+    text = out.stdout.decode("utf-8")
+    assert out.returncode == 1
+    assert "rules current" not in text
+    assert "openspec/config.yaml: exists (skipped), rules NOT compared: cannot read it" in text
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
+def test_without_an_openspec_directory_nothing_is_created_and_the_block_is_printed(tmp_path: Path):
+    out = _run_seed(tmp_path)
+    assert out.startswith("openspec/config.yaml: not written, no openspec/")
+    assert out.rstrip("\n").endswith(_shipped_block().rstrip("\n"))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_the_seed_script_refuses_a_call_without_a_repo_root():
+    out = subprocess.run([sys.executable, "-I", str(_SCRIPT)], capture_output=True, timeout=120)
+    assert out.returncode == 2 and out.stdout == b""
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
 def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
     yml = tmp_path / "openspec" / "config.yml"
     yml.parent.mkdir()
@@ -372,14 +346,107 @@ def test_a_config_yml_is_compared_and_no_config_yaml_is_created(tmp_path: Path):
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
-@_needs_bash
-def test_a_seed_script_past_9000_bytes_still_runs(tmp_path: Path):
-    """Rules may grow: the harness must not cap the script near 8190 bytes (bash -c on Windows)."""
-    first, rest = _seed_script().split("\n", 1)
-    padded = first + "\n" + ("# " + "-" * 98 + "\n") * 100 + rest
-    assert len(padded.encode("utf-8")) > 9000
-    # The awk comparison sits at the end of the script, the part a cut-off command loses.
+def test_a_utf16_config_is_reported_unreadable_not_listed_as_missing_every_rule(tmp_path: Path):
+    # A PowerShell redirect writes UTF-16; read as UTF-8 it matches no rule.
     cfg = tmp_path / "openspec" / "config.yaml"
     cfg.parent.mkdir()
-    cfg.write_bytes(_CONFIG.read_bytes())
-    assert "openspec/config.yaml: exists (skipped), rules current" in _run_seed(tmp_path, padded)
+    original = _CONFIG.read_text(encoding="utf-8").encode("utf-16")
+    cfg.write_bytes(original)
+    out = _seed(tmp_path)
+    text = out.stdout.decode("utf-8")
+    assert out.returncode == 1 and "rules NOT compared: cannot read it (not UTF-8 text)" in text
+    assert "rules current" not in text and "\n+ " not in text
+    assert cfg.read_bytes() == original
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+def test_a_utf8_byte_order_mark_does_not_hide_a_current_config(tmp_path: Path):
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(b"\xef\xbb\xbf" + _CONFIG.read_bytes())
+    assert "exists (skipped), rules current" in _run_seed(tmp_path)
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+def test_a_write_that_fails_after_the_file_is_created_leaves_no_partial_config(tmp_path: Path, capfd, monkeypatch):
+    import builtins
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("seed_openspec_rules_under_test", _SCRIPT)
+    seed = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seed)
+    real_open = builtins.open
+
+    class _Failing:
+        def __init__(self, handle):
+            self._handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self._handle.close()
+
+        def write(self, _text):
+            self._handle.write("schema: spec")  # a partial write, then the disk fills
+            raise OSError("disk full")
+
+    seed.open = lambda *a, **k: _Failing(real_open(*a, **k))  # the module's own `open`, not the builtin
+    (tmp_path / "openspec").mkdir()
+    assert seed.main(["seed", str(tmp_path)]) == 1
+    out = capfd.readouterr().out
+    assert "write FAILED" in out and "created" not in out
+    assert not (tmp_path / "openspec" / "config.yaml").exists()
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+def test_an_existing_config_is_never_removed_when_the_create_is_refused(tmp_path: Path, monkeypatch):
+    # A dangling link, or a file made between the check and the create, reaches the create as "already
+    # there". Make the check say "absent" for a file that is present, and the create must refuse it.
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("seed_openspec_rules_under_test2", _SCRIPT)
+    seed = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seed)
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(b"mine\n")
+    real_exists = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda self: False if self == cfg else real_exists(self))
+    assert seed.main(["seed", str(tmp_path)]) == 1
+    monkeypatch.undo()
+    assert cfg.read_bytes() == b"mine\n"
+
+
+_bash = shutil.which("bash")
+
+
+def _skill_item_5_block() -> str:
+    text = _SKILL.read_text(encoding="utf-8").replace("\r\n", "\n")
+    match = re.search(r"```bash\n(: \"\$\{ROOT:\?[^`]*?seed_openspec_rules[^`]*?)```", text)
+    assert match, "cla-setup/SKILL.md: no item 5 block found"
+    return match.group(1)
+
+
+def _run_item_5(root: Path, plugin_root: str) -> subprocess.CompletedProcess:
+    script = _skill_item_5_block().replace("${CLAUDE_PLUGIN_ROOT}", plugin_root)
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PLUGIN_ROOT"}
+    return subprocess.run([_bash, "-c", script], env={**env, "ROOT": root.as_posix()},
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+
+
+_needs_bash = pytest.mark.skipif(_bash is None or shutil.which("python3") is None, reason="bash and python3 are required")
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
+def test_the_skills_command_runs_the_script_and_says_so_when_the_plugin_root_is_unresolved(tmp_path: Path):
+    (tmp_path / "openspec").mkdir()
+    plugin = _SKILL.parents[2].as_posix()
+    ok = _run_item_5(tmp_path, plugin)
+    assert ok.returncode == 0 and "openspec/config.yaml: created" in ok.stdout, ok.stderr
+    (tmp_path / "openspec" / "config.yaml").unlink()
+    # An unsubstituted `${CLAUDE_PLUGIN_ROOT}` expands to nothing in the shell.
+    lost = _run_item_5(tmp_path, "")
+    assert lost.returncode != 0 and "NOT checked, seed script not found" in lost.stdout
+    assert not (tmp_path / "openspec" / "config.yaml").exists()
