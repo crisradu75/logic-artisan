@@ -15,5 +15,5 @@
 
 ## 3. Proof and gates
 
-- [ ] 3.1 Run `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict` once each on the final commit.
+- [x] 3.1 Run `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict` once each on the final commit. measured on the archived tree: 2505 passed, 8 skipped; validate 12 passed, 0 failed.
 - [x] 3.2 docs and spec map: `cla.io/project-facts.md`, `DEVELOPER-GUIDE.md` section 11 row, `cla-setup/SKILL.md`, `openspec/spec-map.md`; none affected: root `CLAUDE.md`, `README.md`, plugin readme (none describes the checker's rules or the facts headings).
