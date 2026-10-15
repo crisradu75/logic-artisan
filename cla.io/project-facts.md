@@ -24,6 +24,10 @@ repo: it has no product code.
 
 - Test proof granularity: requirement
 
+## Spec map
+
+- `openspec/spec-map.md`
+
 ## Test-file locations
 
 - `plugin-tests/tests/<area>/` — areas `conformance`, `consistency`, `launcher`, `hooks`, `lib`, and `skills/<name>`.
@@ -33,6 +37,7 @@ repo: it has no product code.
 
 - Root `CLAUDE.md`, `README.md` and `DEVELOPER-GUIDE.md`.
 - `.claude/plugins/cla/README.md` — the plugin's own readme and phase table.
+- `openspec/spec-map.md` — the spec map (capabilities, workflows, the specs each step links).
 
 ## Cross-file lockstep doc sets
 
