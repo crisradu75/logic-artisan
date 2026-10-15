@@ -2,6 +2,8 @@
 
 ## Purpose
 
+**Serves:** the plugin's skills and the maintainers who rely on a repo's facts and records.
+
 Where a repo keeps the facts and records the plugin's skills read and write, and the skills and checkers that maintain them.
 
 ## Requirements

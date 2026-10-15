@@ -45,6 +45,10 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
   - ``empty``: a live spec with no unit, or an active delta whose requirements sit
     under no ADDED, MODIFIED, REMOVED or RENAMED heading; in scenario mode, also a
     requirement in a live spec or active delta with no ``#### Scenario:`` heading.
+  - ``purpose`` (a ``NOTE`` line, never a problem and never changes the exit code, since the
+    ``**Serves:**`` Purpose is advisory in the repo's spec rules): a live spec whose Purpose
+    is missing, ``TBD``, does not open with a ``**Serves:**`` line, or does not follow it
+    with exactly one sentence. See ``purpose_notes`` for what ends a sentence.
   - ``fence``: a live spec or active delta with a code fence that is never closed
     (everything after it is hidden from the checker).
   - ``validate``: only with ``--validate``; ``openspec validate --specs --strict``
@@ -96,8 +100,10 @@ _FACT_LOOSE = re.compile(r"^[\s>]*(?:(?:[-*+]|\d+[.)])\s*)?[*_`]*test proof gran
 
 _H2 = re.compile(r"^##\s+(?!#)(.+?)\s*$")
 _H3 = re.compile(r"^###\s+(?!#)")
-_REQ = re.compile(r"^###\s+Requirement:\s*(.+?)\s*$")
-_SCN = re.compile(r"^####\s+Scenario:\s*(.+?)\s*$")
+# OpenSpec reads the keyword case-insensitively, so `### requirement:` must not dodge the counts.
+_REQ = re.compile(r"^###\s+Requirement:\s*(.+?)\s*$", re.I)
+_SCN = re.compile(r"^####\s+Scenario:\s*(.+?)\s*$", re.I)
+_PURPOSE_H = re.compile(r"^##\s+Purpose\s*$", re.I)
 _H4 = re.compile(r"^####\s+(?!#)")
 _FENCE = re.compile(r"^\s*(```|~~~)")
 
@@ -109,7 +115,7 @@ _MARKER = re.compile(
 # It needs a slash after the colon, so prose such as "# scenario: empty input" is not
 # mistaken for an attempted marker, and it is case-insensitive so "Requirement:" is caught.
 _MARKER_LOOSE = re.compile(r"^\s*(?:#|//|--|;|%|/\*+|\*|<!--)\s*(?:requirement|scenario):\s*\S[^/]*/\s*\S", re.I)
-_REQ_ANYWHERE = re.compile(r"(?m)^###\s+Requirement:")
+_REQ_ANYWHERE = re.compile(r"(?mi)^###\s+Requirement:")
 _DELTA_SECTION = re.compile(r"(?mi)^##\s+(?:ADDED|MODIFIED|REMOVED|RENAMED)\b")
 _NOTE = re.compile(
     r"^\s*(?:[-*+]\s+)?(?:\[[ xX]\]\s+)?(?:\d+(?:\.\d+)*\.?\s+)?(manual|waiting):\s+(.+?)\s*$"
@@ -408,6 +414,95 @@ def check_format(files: list["SpecFile"], limits: dict[str, int]) -> list[str]:
                 if n > limits["chars"]:
                     problems.append(f"PROBLEM format: {f.rel}: requirement {heading!r} states {n} characters, the limit is {limits['chars']}")
     return problems
+
+
+_ABBREVIATIONS = {
+    "inc", "ltd", "corp", "approx", "etc", "vs", "cf", "dr", "mr", "mrs",
+    "fig", "vol", "dept", "nos",
+}
+# A sentence ends at ., ! or ? (plus any closing quote, bracket or emphasis mark) followed by
+# whitespace and then ANYTHING: the next sentence may open with a code span, digit, quote,
+# paren or bold, so no capital letter is required.
+_SENT_END = re.compile(r"([.!?])((?:[\"')\]”’]|\*\*|[*_])*)\s+(?=(\S))")
+_URL = re.compile(r"(?:https?://|www\.)\S*[^\s.,;:!?)\]]")
+
+
+def count_sentences(text: str) -> int:
+    """How many sentences `text` holds: 0 for blank text, else the boundaries found plus one.
+
+    A period is not a boundary after an abbreviation (`Inc.`, `approx.`, `etc.`), a dotted
+    initialism (`U.S.`, `e.g.`), or `No.` before a digit. A code span, a URL, a link target
+    and an ellipsis (`...` or the one-character form) are masked first, so a period inside
+    them never counts, and an ellipsis never ends a sentence. This errs toward fewer
+    boundaries: a missed second sentence is a missed note, a false one is noise."""
+    t = " ".join(text.split())
+    t = re.sub(r"`[^`]*`", "CODE", t)
+    t = re.sub(r"\]\([^)]*\)", "]", t)
+    t = _URL.sub("URL", t)
+    t = re.sub(r"\.{3,}|…", ",", t)
+    if not t:
+        return 0
+    boundaries = 0
+    for m in _SENT_END.finditer(t):
+        if m.group(1) == ".":
+            prev = re.search(r"(\S+)$", t[: m.start()])
+            word = re.sub(r"^[\"'(\[*_“‘]+", "", prev.group(1)) if prev else ""
+            if re.fullmatch(r"(?:[A-Za-z]\.)+[A-Za-z]", word) or word.lower() in _ABBREVIATIONS:
+                continue
+            if word.lower() == "no" and m.group(3).isdigit():
+                continue
+        boundaries += 1
+    return boundaries + 1
+
+
+def _purpose_lines(text: str) -> list[str] | None:
+    """The non-blank lines under `## Purpose` (any case), up to the next `##` heading. None if there is none."""
+    lines, found, fence = [], False, False
+    for line in text.splitlines():
+        if _FENCE.match(line):
+            fence = not fence
+        elif not fence:
+            if _PURPOSE_H.match(line):
+                found = True
+                continue
+            if found and _H2.match(line):
+                break
+        if found and line.strip():
+            lines.append(line.strip())
+    return lines if found else None
+
+
+def purpose_notes(files: list["SpecFile"]) -> list[str]:
+    """One NOTE line per live spec whose Purpose is not a `**Serves:**` line plus exactly one sentence.
+
+    Advisory: the repo's spec rules call this form advisory, so these are notes, never problems."""
+    notes = []
+    for f in files:
+        if f.kind != "live":
+            continue
+        lines = _purpose_lines(f.text)
+        why = None
+        if lines is None:
+            why = "has no '## Purpose' section"
+        elif not lines or re.match(r"(?i)tbd\b", lines[0].lstrip("*_ ")):
+            why = "Purpose is empty or TBD"
+        else:
+            m = re.match(r"\*\*Serves:\*\*\s*(.*)$", lines[0])
+            if m and re.match(r"(?i)\W*tbd\b", m.group(1)):
+                why = "Purpose is empty or TBD"
+            elif not m or not m.group(1).strip():
+                why = "Purpose does not open with a '**Serves:** <who or what it serves>' line"
+            elif count_sentences(m.group(1)) > 1:
+                why = "the Serves line holds more than one sentence"
+            else:
+                n = count_sentences(" ".join(lines[1:]))
+                if n == 0:
+                    why = "Purpose has no sentence after the Serves line"
+                elif n > 1:
+                    why = f"Purpose has {n} sentences after the Serves line, expected one"
+        if why:
+            notes.append(f"NOTE purpose: {f.rel}: {why}")
+    return notes
 
 
 def _spec_files(root: Path, mode: str) -> list[SpecFile]:
@@ -745,7 +840,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         + (f"; not enforced, not found: {', '.join(unenforced)}" if unenforced else ""),
         f"problems: {len(problems)}",
     ]
-    return (1 if problems else 0), problems + out
+    return (1 if problems else 0), problems + purpose_notes(files) + out
 
 
 def main(argv: list[str] | None = None) -> int:

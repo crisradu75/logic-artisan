@@ -2,6 +2,8 @@
 
 ## Purpose
 
+**Serves:** maintainers who read retro reports about past skill runs.
+
 The run records skills append under a repo's `cla.io/retro/`, and the retro reports read from them.
 
 ## Requirements

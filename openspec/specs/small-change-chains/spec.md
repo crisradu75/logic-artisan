@@ -2,6 +2,8 @@
 
 ## Purpose
 
+**Serves:** maintainers who run a batch of small changes from one doc.
+
 What the plugin promises when `/cla:multi-lite` runs and merges a batch of small changes from one doc without a person in the loop.
 
 ## Requirements
