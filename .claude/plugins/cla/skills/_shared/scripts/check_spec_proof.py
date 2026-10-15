@@ -44,11 +44,16 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     ``format limits`` output line names it. Archives are not edited and are skipped.
   - ``empty``: a live spec with no unit, or an active delta whose requirements sit
     under no ADDED, MODIFIED, REMOVED or RENAMED heading; in scenario mode, also a
-    requirement in a live spec or active delta with no ``#### Scenario:`` heading.
+    requirement in a live spec or active delta with no ``#### Scenario:`` heading (a live spec
+    with no scenario at all gets the generic line and one line per requirement).
   - ``purpose`` (a ``NOTE`` line, never a problem and never changes the exit code, since the
     ``**Serves:**`` Purpose is advisory in the repo's spec rules): a live spec whose Purpose
     is missing, ``TBD``, does not open with a ``**Serves:**`` line, or does not follow it
-    with exactly one sentence. See ``purpose_notes`` for what ends a sentence.
+    with exactly one sentence. Only a live spec the branch touches is noted (a changed or
+    untracked live spec file, or a delta of any change naming the spec); with no default branch
+    to compare with, every live spec is noted and the ``purpose notes`` output line says so.
+    See ``purpose_notes`` for what counts as the Serves line and ``count_sentences`` for what
+    ends a sentence.
   - ``fence``: a live spec or active delta with a code fence that is never closed
     (everything after it is hidden from the checker).
   - ``validate``: only with ``--validate``; ``openspec validate --specs --strict``
@@ -104,6 +109,8 @@ _H3 = re.compile(r"^###\s+(?!#)")
 _REQ = re.compile(r"^###\s+Requirement:\s*(.+?)\s*$", re.I)
 _SCN = re.compile(r"^####\s+Scenario:\s*(.+?)\s*$", re.I)
 _PURPOSE_H = re.compile(r"^##\s+Purpose\s*$", re.I)
+# A path of a live spec (group 1) or of a delta in an active or archived change (group 2), relative to the repo root.
+_SPEC_PATH = re.compile(r"^openspec/(?:specs/([^/]+)|changes/(?:archive/)?[^/]+/specs/([^/]+))/")
 _H4 = re.compile(r"^####\s+(?!#)")
 _FENCE = re.compile(r"^\s*(```|~~~)")
 
@@ -427,6 +434,18 @@ _SENT_END = re.compile(r"([.!?])((?:[\"')\]”’]|\*\*|[*_])*)\s+(?=(\S))")
 _URL = re.compile(r"(?:https?://|www\.)\S*[^\s.,;:!?)\]]")
 
 
+# A code span opens and closes with a backtick run of the same length (CommonMark).
+_CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)")
+
+
+def _mask_code_spans(t: str) -> str:
+    """Replace each code span with `CODE`. A backtick left unpaired would pair with a later one and hide
+    the text between them, sentence break included, so when any backtick is left over no span is masked
+    and every backtick is dropped. Two strays that pair with each other cannot be told from a span."""
+    masked = _CODE_SPAN.sub("CODE", t)
+    return t.replace("`", "") if "`" in masked else masked
+
+
 def count_sentences(text: str) -> int:
     """How many sentences `text` holds: 0 for blank text, else the boundaries found plus one.
 
@@ -435,8 +454,7 @@ def count_sentences(text: str) -> int:
     and an ellipsis (`...` or the one-character form) are masked first, so a period inside
     them never counts, and an ellipsis never ends a sentence. This errs toward fewer
     boundaries: a missed second sentence is a missed note, a false one is noise."""
-    t = " ".join(text.split())
-    t = re.sub(r"`[^`]*`", "CODE", t)
+    t = _mask_code_spans(" ".join(text.split()))
     t = re.sub(r"\]\([^)]*\)", "]", t)
     t = _URL.sub("URL", t)
     t = re.sub(r"\.{3,}|…", ",", t)
@@ -455,9 +473,12 @@ def count_sentences(text: str) -> int:
     return boundaries + 1
 
 
-def _purpose_lines(text: str) -> list[str] | None:
-    """The non-blank lines under `## Purpose` (any case), up to the next `##` heading. None if there is none."""
-    lines, found, fence = [], False, False
+def _purpose_paragraphs(text: str) -> list[list[str]] | None:
+    """The paragraphs (runs of non-blank lines, each line stripped) under `## Purpose` (any case),
+    up to the next `##` heading. None if there is no Purpose."""
+    paras: list[list[str]] = []
+    cur: list[str] = []
+    found, fence = False, False
     for line in text.splitlines():
         if _FENCE.match(line):
             fence = not fence
@@ -467,27 +488,55 @@ def _purpose_lines(text: str) -> list[str] | None:
                 continue
             if found and _H2.match(line):
                 break
-        if found and line.strip():
-            lines.append(line.strip())
-    return lines if found else None
+        if not found:
+            continue
+        if line.strip():
+            cur.append(line.strip())
+        elif cur:
+            paras.append(cur)
+            cur = []
+    if cur:
+        paras.append(cur)
+    return paras if found else None
 
 
-def purpose_notes(files: list["SpecFile"]) -> list[str]:
+def _spec_names_in(paths: set[str]) -> set[str]:
+    """The spec names whose live file, or whose delta in any change (active or archived), is among `paths`."""
+    out = set()
+    for p in paths:
+        m = _SPEC_PATH.match(p)
+        if m:
+            out.add(m.group(1) or m.group(2))
+    return out
+
+
+def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> list[str]:
     """One NOTE line per live spec whose Purpose is not a `**Serves:**` line plus exactly one sentence.
+
+    `touched` is the set of spec names the branch changes (`_spec_names_in`); only those are noted, so an
+    older spec the branch leaves alone does not repeat its note on every run. None means every live spec.
+
+    A blank line after the first paragraph makes that whole paragraph the Serves line, so a hard-wrapped
+    Serves line is one line. With no blank line the Purpose is one paragraph and its first line is the
+    Serves line, the rest being the sentence.
 
     Advisory: the repo's spec rules call this form advisory, so these are notes, never problems."""
     notes = []
     for f in files:
-        if f.kind != "live":
+        if f.kind != "live" or (touched is not None and f.spec not in touched):
             continue
-        lines = _purpose_lines(f.text)
+        paras =_purpose_paragraphs(f.text)
         why = None
-        if lines is None:
+        if paras is None:
             why = "has no '## Purpose' section"
-        elif not lines or re.match(r"(?i)tbd\b", lines[0].lstrip("*_ ")):
+        elif not paras or re.match(r"(?i)tbd\b", paras[0][0].lstrip("*_ ")):
             why = "Purpose is empty or TBD"
         else:
-            m = re.match(r"\*\*Serves:\*\*\s*(.*)$", lines[0])
+            if len(paras) > 1:
+                serves_lines, rest = paras[0], [ln for p in paras[1:] for ln in p]
+            else:
+                serves_lines, rest = paras[0][:1], paras[0][1:]
+            m = re.match(r"\*\*Serves:\*\*\s*(.*)$", " ".join(serves_lines))
             if m and re.match(r"(?i)\W*tbd\b", m.group(1)):
                 why = "Purpose is empty or TBD"
             elif not m or not m.group(1).strip():
@@ -495,7 +544,7 @@ def purpose_notes(files: list["SpecFile"]) -> list[str]:
             elif count_sentences(m.group(1)) > 1:
                 why = "the Serves line holds more than one sentence"
             else:
-                n = count_sentences(" ".join(lines[1:]))
+                n = count_sentences(" ".join(rest))
                 if n == 0:
                     why = "Purpose has no sentence after the Serves line"
                 elif n > 1:
@@ -562,14 +611,31 @@ def changed_paths(root: Path, base: str) -> set[str]:
     # --relative keeps both lists relative to `root`, which may be a subfolder of the repo.
     for args in (("diff", "--name-only", "--relative", "-z", base), ("ls-files", "-o", "--exclude-standard", "-z")):
         rc, text = _git(root, *args)
-        if rc == 0:
-            out |= {p for p in text.split("\0") if p}
+        if rc != 0:
+            # A skipped list would read as "nothing changed": no unit is changed and no spec is touched.
+            raise CheckerError(f"git {args[0]} failed (exit {rc}), so the changed paths are unknown")
+        out |= {p for p in text.split("\0") if p}
     return out
 
 
 def _base_text(root: Path, base: str, rel: str) -> str | None:
-    rc, out = _git(root, "show", f"{base}:./{rel}")
-    return out if rc == 0 else None
+    """The text of `rel` at `base`, or None when git confirms the path is not in that tree (a new file).
+
+    Any other failure raises: None means "new at base", so every unit of the file would count as changed.
+
+    `git show <rev>:<path>` is not used. Given an argument that is a valid revision, it also lstat()s the
+    argument as a file name, and on Windows that stat fails with "Filename too long" once the working
+    directory plus the argument pass 260 characters, which a deep clone and a long archive path do.
+    `cat-file blob` reads the object name without that file-name check."""
+    rc, out = _git(root, "cat-file", "blob", f"{base}:./{rel}")
+    if rc == 0:
+        return out
+    list_rc, listing = _git(root, "ls-tree", "--name-only", base, "--", rel)
+    if list_rc == 0 and not listing.strip():
+        return None
+    raise CheckerError(
+        f"cannot read {rel} at {base[:12]} (git cat-file exit {rc}, ls-tree exit {list_rc}); the changed-requirement rule cannot run"
+    )
 
 
 def _base_for(root: Path, base: str, f: SpecFile) -> str | None:
@@ -727,9 +793,10 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         if f.kind != "archived":
             if _unclosed_fence(f.text):
                 problems.append(f"PROBLEM fence: {f.rel}: a code fence is never closed, so the rest of the file is not read")
-            if mode == "scenario" and not (f.kind == "live" and not f.units):
+            if mode == "scenario":
                 # In scenario mode a requirement with no scenario adds no unit, so nothing else would look at it.
-                # A live spec with no unit at all already got its one `empty` line above.
+                # A live spec with no unit at all gets the generic `empty` line above AND one line per requirement,
+                # so the author sees which requirements to fix.
                 for heading, _, scns in _blocks(f.text, f.kind != "live"):
                     if not scns:
                         problems.append(f"PROBLEM empty: {f.rel}: requirement {heading!r} has no '#### Scenario:' heading, so none is checked")
@@ -766,6 +833,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     base, base_note = (None, "")
     changed: dict[str, list[Unit]] | None = None
     touched: set[str] = set()
+    touched_specs: set[str] | None = None  # None: no base, so no way to tell which specs the branch touches
     git_rc = _git(root, "rev-parse", "--git-dir")[0]
     if git_rc == 127:
         raise CheckerError("git is not installed or not on PATH")
@@ -777,7 +845,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         raise CheckerError(f"--base {base_arg} given but {root} is not a git repo")
     if base is not None:
         paths = changed_paths(root, base)
-        changed = {f.rel: changed_units(root, base, f, mode) for f in files}
+        touched_specs = _spec_names_in(paths)
+        changed ={f.rel: changed_units(root, base, f, mode) for f in files}
         for p in paths:
             m = re.match(r"openspec/changes/((?:archive/)?[^/]+)/", p)
             if m:
@@ -825,6 +894,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     all_units = [(f.spec, u.heading) for f in files if f.kind != "archived" for u in f.units]
     covered = sum(1 for s, h in all_units if (s, h) in marked or h in whole_manual)
     kinds = {k: sum(1 for f in files if f.kind == k) for k in ("live", "active", "archived")}
+    live_names = {f.spec for f in files if f.kind == "live"}
     out += [
         f"granularity: {mode} ({source})",
         f"specs: {len(files)} (live {kinds['live']}, active delta {kinds['active']}, archived delta {kinds['archived']})",
@@ -838,9 +908,28 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         "format limits (from openspec/config.yaml): "
         + (", ".join(f"{k} {v}" for k, v in limits.items()) or "none")
         + (f"; not enforced, not found: {', '.join(unenforced)}" if unenforced else ""),
+        "purpose notes: "
+        + (
+            f"{len(touched_specs & live_names)} live spec(s) the branch touches"
+            if touched_specs is not None
+            else f"every live spec, since the touched specs are unknown ({base_note or 'not a git repo'})"
+        ),
         f"problems: {len(problems)}",
     ]
-    return (1 if problems else 0), problems + purpose_notes(files) + out
+    return (1 if problems else 0), problems + purpose_notes(files, touched_specs) + out
+
+
+def _console_safe(text: str) -> str:
+    """`text` with any character the stdout encoding cannot hold written as a backslash escape.
+
+    A cp1252 Windows console cannot print most non-ASCII text, and the resulting UnicodeEncodeError
+    would escape `main` as a traceback with exit 1, which reads as "problems found". On a console that
+    can hold the text (UTF-8) the result is `text` itself."""
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        return text.encode(enc, errors="backslashreplace").decode(enc)
+    except LookupError:  # an encoding name Python does not know: leave the text for print to judge
+        return text
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -858,7 +947,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 - a crash must read as "could not run", never as "problems found"
         print(f"check_spec_proof: unexpected {type(exc).__name__}: {exc}\n{traceback.format_exc()}", file=sys.stderr)
         return 2
-    print("\n".join(lines))
+    print(_console_safe("\n".join(lines)))
     return code
 
 
