@@ -999,6 +999,19 @@ def test_a_requirement_with_no_scenario_is_reported_in_scenario_mode(repo, capsy
 
 
 # requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_live_spec_with_only_a_bare_requirement_gets_one_empty_line_in_scenario_mode(repo, capsys):
+    _write(repo, FACTS, "- Test proof granularity: scenario\n")
+    _write(repo, "tests/test_old.py", _marker("scenario", "beta", "Old case"))
+    _write(repo, "openspec/specs/beta/spec.md", _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case"))))
+    _write(repo, SPEC, _spec_text(("Bare", "Bare SHALL.")))
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert [l for l in out.splitlines() if f"PROBLEM empty: {SPEC}" in l] == [
+        f"PROBLEM empty: {SPEC}: a live spec with no scenario parsed"
+    ]
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
 def test_a_scenario_free_requirement_is_fine_in_requirement_mode(repo, capsys):
     _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Bare", "Bare SHALL.")))
     _write(repo, "tests/test_bare.py", _marker("requirement", "alpha", "Bare"))
