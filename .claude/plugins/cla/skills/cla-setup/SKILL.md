@@ -181,9 +181,11 @@ else
   HAVE="$(tr -d '\r' < "$OLD" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   # One awk pass, not a process per rule. It lists the rules of RULES the file lacks (mark +),
   # then the rules of RETIRED it carries (mark -), a retired one also when the file holds it
-  # inside one pair of quotes ("..." or '...'). The text goes in through the environment: awk -v
-  # would read the backslashes in it as escapes.
-  DIFF="$(CLA_HAVE="$HAVE" CLA_RULES="$RULES" CLA_RETIRED="$RETIRED" awk '
+  # inside one pair of quotes ("..." or '...'). The file comes in on stdin, which has no size limit
+  # (Windows caps the whole environment near 32K); the fixed rule text goes in through the
+  # environment, because awk -v would read the backslashes in it as escapes. The status of this
+  # pipeline is awk's, the last command.
+  DIFF="$(printf '%s\n' "$HAVE" | CLA_RULES="$RULES" CLA_RETIRED="$RETIRED" awk '
     function unq(s,  n) {
       n = length(s)
       if (n >= 4 && substr(s, 1, 3) == "- \"" && substr(s, n, 1) == "\"") s = "- " substr(s, 4, n - 4)
@@ -205,9 +207,9 @@ else
         }
       }
     }
-    BEGIN {
-      n = split(ENVIRON["CLA_HAVE"], h, "\n")
-      for (i = 1; i <= n; i++) { H[h[i]] = 1; Q[unq(h[i])] = 1 }
+    { H[$0] = 1; Q[unq($0)] = 1 }
+    END {
+      if (ENVIRON["CLA_RULES"] == "") exit 2
       rule_lines(ENVIRON["CLA_RULES"], "+", 0)
       rule_lines(ENVIRON["CLA_RETIRED"], "-", 1)
     }')"

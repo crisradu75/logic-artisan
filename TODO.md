@@ -13,4 +13,3 @@ Leftover review suggestions (cla-setup single-pass rules comparison):
 
 - The key line test `/^  [a-z].*:$/` in the awk pass, like the shell `case` it replaced, reads `[a-z]` under the current locale; pin `LC_ALL=C` on the awk call if a locale ever matches capitals.
 - No test puts a literal backslash in a config rule line, though that is why the text goes in through `ENVIRON` and not `awk -v`.
-- A config over the per-variable environment limit (about 128 KB on Linux) fails the awk start; this is now reported as `awk failed`, not read as current.

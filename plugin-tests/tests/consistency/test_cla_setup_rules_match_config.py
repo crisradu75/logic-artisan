@@ -296,6 +296,19 @@ def test_the_rules_missing_are_listed_in_shipped_order_with_their_artifact(tmp_p
 
 # requirement: repo-context / OpenSpec authoring rules on setup
 @_needs_bash
+def test_a_config_over_200_kb_is_compared_right(tmp_path: Path):
+    """The config reaches awk on stdin: the environment has a size cap (about 128 KB per variable on Linux, 32K in total on Windows)."""
+    old_rule = _retired("Keep it to one page. Point")
+    own = "".join(f"    - A rule of this repo's own, number {i}, padded out to make the file long.\n" for i in range(3000))
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes() + own.encode("utf-8") + f"    {old_rule}\n".encode("utf-8"))
+    assert cfg.stat().st_size > 200_000
+    assert _run_seed(tmp_path).splitlines() == [_HEADER.format("config.yaml"), "- proposal: " + old_rule]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
+@_needs_bash
 def test_a_failing_awk_is_reported_and_never_read_as_rules_current(tmp_path: Path):
     shim = tmp_path / "shim"
     shim.mkdir()
