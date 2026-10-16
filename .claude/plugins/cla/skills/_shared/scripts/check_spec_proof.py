@@ -3,7 +3,7 @@
 
 A repo's OpenSpec rules ask that each requirement a change adds or modifies is
 proven by a test carrying a comment line ``requirement: <spec> / <heading>``, or
-by a tasks.md line ``manual: <heading>: <reason>``. Nothing but a reviewer reads
+by a tasks.md line ``manual: <spec> / <heading>: <reason>``. Nothing but a reviewer reads
 that rule, and a consuming repo has no test gate over the plugin, so this is a
 program a repo runs, not a test::
 
@@ -57,21 +57,30 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
   - ``fence``: a live spec or active delta with a code fence that is never closed
     (everything after it is hidden from the checker).
   - ``spec-map``: only once a repo declares a spec map (see SPEC MAP): a spec (live, or
-    added by an active change) that no map file links, a map link into ``openspec/specs/``
-    that names no spec and no file, or a declared path that matches no file.
+    added by an active change, and not removed whole by one) that no map file links, a map
+    link into ``openspec/specs/`` that names no spec and no tracked or untracked-unignored file
+    of that exact case, a link to a spec an active change removes, or a declared path that
+    matches no Markdown file.
+  - ``manual`` (a ``NOTE`` line, never a problem): a ``manual: <heading>: <reason>`` line in a
+    change in progress. It still covers the heading in every spec of the change; the note
+    suggests ``manual: <spec> / <heading>: <reason>``, which covers one spec.
   - ``validate``: only with ``--validate``; ``openspec validate --specs --strict``
     failed (skipped, and said so, when the CLI is absent).
 
 SPEC MAP. A repo that keeps a map from its capabilities and workflows to its specs
 declares it in ``cla.io/project-facts.md``: one path or glob per bullet under a
 ``## Spec map`` heading, in any layout, matched against the tracked and untracked-unignored
-files (``*`` stays inside one folder, ``**/`` crosses folders, case counts). No such heading
-means no map, and then the rule reports nothing and prints no line. A heading with no
+``.md`` files (``*`` stays inside one folder, ``**/`` crosses folders, case counts). No such
+heading means no map, and then the rule reports nothing and prints no line. A heading with no
 bullet, a second heading, a line that is not a bullet, or a heading that reads as "spec
-map" in another form (``### Spec map``) exits 2 and names the line. A link is a Markdown
-link (inline, or a reference definition) outside code fences, code spans and HTML comments,
-resolved against the map file's folder, that lands on ``openspec/specs/<name>`` or its
-``spec.md``; other links are not read. See ``read_spec_map`` and ``check_spec_map``.
+map" in another form (``### Spec map``) exits 2 and names the line; so does a setext heading
+(``Spec maps`` over a ``---`` line) when no map was declared by the exact heading. A link is a Markdown link that renders: inline, or a reference definition
+whose label a link uses, and not an image, an escaped bracket, or anything inside a code fence
+(also in a block quote), an indented code block, a code span or an HTML comment. It is resolved
+against the map file's folder and lands on ``openspec/specs/<name>`` or its ``spec.md``; other
+links are not read. A spec an active change removes whole (every requirement REMOVED, none added
+or modified) needs no link, and a link to it is reported. See ``read_spec_map``, ``map_links``,
+``retired_specs`` and ``check_spec_map``.
 
 An empty corpus (no spec files) exits 2: a misconfigured run must not pass.
 
@@ -86,13 +95,16 @@ read.
 EXIT CODES: 0 clean; 1 problems found; 2 the checker could not do its job
 (bad arguments, no repo, malformed facts line, no specs or no unit parsed from
 them, an explicit ``--base`` that does not resolve, a base with no merge-base
-such as a shallow clone, no file scanned for markers, an unexpected crash).
+such as a shallow clone, no file scanned for markers, an unexpected crash, a report
+that could not be written to a closed pipe).
 Only "no default branch exists at all" turns the changed-unit rule off with
 exit 0, and the output says so.
 
-KNOWN LIMIT. A ``manual:`` line names a heading, not a spec, so one line covers a
-changed unit of that heading in every spec of a touched change. That is the
-format the repo's tasks rule fixes; two specs sharing a heading need a rename.
+THE ``manual:`` LINE. ``manual: <spec> / <heading>: <reason>`` covers that heading in that
+spec only. The older ``manual: <heading>: <reason>`` still counts, with its old meaning: it
+covers the heading in every spec of a touched change, so two specs sharing a heading were
+covered by one line. A repo with a change in progress that holds the older form keeps passing,
+and gets a ``NOTE`` suggesting the new one. ``waiting:`` lines read the same two forms.
 
 The unit tests live in the canonical source repo's development tree, at
 ``plugin-tests/tests/skills/_shared/test_check_spec_proof.py``; they are not
@@ -150,10 +162,10 @@ _MAP_HEADING = re.compile(r"^##\s+Spec map\s*$", re.I)
 # `## Spec map:`, `## Spec  maps`, `## **Spec-map**`): reported, never silently read as no declaration.
 _ATX_HEADING = re.compile(r"^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$")
 # For the backstop in `read_spec_map`: a line that, once indent, list markers and quote markers are set aside,
-# is an ATX "Spec map" heading, or the text of a setext one (followed by a `===` or `---` underline).
+# is an ATX "Spec map" heading, or the text of a setext one (followed by a `===` or `---` underline) in any of the
+# forms `_map_words` reads ("Spec maps", "Spec-map", "**Spec map**").
 _LINE_PREFIX = re.compile(r"^(?:\s+|>|[-*+]\s+|\d+[.)]\s+)+")
 _HEADING_LIKE = re.compile(r"^#{1,6}\s*spec\s+map\s*#*\s*$", re.I)
-_SETEXT_TEXT = re.compile(r"^spec\s+map\s*$", re.I)
 _SETEXT_UNDERLINE = re.compile(r"^(?:=+|-{2,})\s*$")
 _ANY_HEADING = re.compile(r"^#{1,6}\s")
 _HTML_COMMENT = re.compile(r"<!--.*?-->")
@@ -161,9 +173,8 @@ _HTML_COMMENT = re.compile(r"<!--.*?-->")
 _FENCE_LINE = re.compile(r"^([ \t]*)(`{3,}|~{3,})(.*)$")
 _BULLET = re.compile(r"^[-*+]\s+(.+?)\s*$")
 _CODE_START = re.compile(r"^`([^`]+)`")
-# A Markdown link target: `](target)` inline, or `[label]: target` as a reference definition.
-_INLINE_LINK = re.compile(r"\]\(\s*<?([^)\s>]+)")
-_REF_DEF = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)")
+# A reference definition `[label]: target` (group 1 is the label, group 2 the target). Inline targets are read by `_scan_links`.
+_REF_DEF = re.compile(r"^\s{0,3}\[([^\]]+)\]:\s*<?([^\s>]+)")
 # A repo-relative path that names a live spec directory or its spec.md (group 1 is the spec name).
 _SPEC_LINK = re.compile(r"^openspec/specs/([^/]+)(?:/spec\.md)?/?$")
 
@@ -200,21 +211,29 @@ class Note:
     change: str
     archived: bool
     prompt_half: bool
+    spec: str | None = None  # the spec a `<spec> / <heading>` line names; None for the older heading-only form
 
 
 class CheckerError(Exception):
     """The checker cannot do its job (exit 2)."""
 
 
-def _git(root: Path, *args: str) -> tuple[int, str]:
+def _git(root: Path, *args: str) -> tuple[int, str, str]:
+    """(exit code, stdout, stderr) of `git <args>` in `root`; 127 and the OS error when git cannot start."""
     try:
         r = subprocess.run(
             ["git", *args], cwd=root, capture_output=True, text=True,
             encoding="utf-8", errors="replace",
         )
-    except OSError:
-        return 127, ""
-    return r.returncode, r.stdout
+    except OSError as exc:
+        return 127, "", str(exc)
+    return r.returncode, r.stdout, r.stderr
+
+
+def _said(err: str) -> str:
+    """git's own words for a failure, as a suffix for an error message ('' when it said nothing)."""
+    err = " ".join(err.split())
+    return f"; git said: {err}" if err else ""
 
 
 def _under_git(path: Path) -> bool:
@@ -229,7 +248,7 @@ def find_root(explicit: str | None) -> Path:
         if not root.is_dir():
             raise CheckerError(f"--root {explicit} is not a directory")
         return root
-    rc, out = _git(Path.cwd(), "rev-parse", "--show-toplevel")
+    rc, out, _ = _git(Path.cwd(), "rev-parse", "--show-toplevel")
     if rc == 0 and out.strip():
         return Path(out.strip()).resolve()
     if _under_git(Path.cwd()):
@@ -476,10 +495,21 @@ _URL = re.compile(r"(?:https?://|www\.)\S*[^\s.,;:!?)\]]")
 _CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)")
 
 
+def _render_code_spans(t: str) -> str:
+    """Replace each code span with `CODE`, pairing backtick runs the way a Markdown page does: left to
+    right, each opener with the next run of the same length, so a backtick with no partner stays literal.
+    Used for links, where what renders matters."""
+    return _CODE_SPAN.sub("CODE", t)
+
+
 def _mask_code_spans(t: str) -> str:
-    """Replace each code span with `CODE`. A backtick left unpaired would pair with a later one and hide
-    the text between them, sentence break included, so when any backtick is left over no span is masked
-    and every backtick is dropped. Two strays that pair with each other cannot be told from a span."""
+    """Replace each code span with `CODE` for the sentence count. A page pairs a stray backtick with the
+    next one and hides the text between them, but an author who left one stray meant the later pair as the
+    span, so when any backtick is left unpaired no span is masked and every backtick is dropped. That
+    over-counts when a real span holds a period and a stray sits elsewhere in the text (`Run `a. b` and
+    ` more.` counts 2): a note that may say 'more than one sentence' for a text that has one. The other
+    choice, masking the pairs and dropping the leftover, under-counts the case the test pins instead
+    (`A stray ` mark. Then `code` here.`), and no rule tells the two apart."""
     masked = _CODE_SPAN.sub("CODE", t)
     return t.replace("`", "") if "`" in masked else masked
 
@@ -491,7 +521,8 @@ def count_sentences(text: str) -> int:
     initialism (`U.S.`, `e.g.`), or `No.` before a digit. A code span, a URL, a link target
     and an ellipsis (`...` or the one-character form) are masked first, so a period inside
     them never counts, and an ellipsis never ends a sentence. This errs toward fewer
-    boundaries: a missed second sentence is a missed note, a false one is noise."""
+    boundaries: a missed second sentence is a missed note, a false one is noise. The one known
+    exception is an unpaired backtick (see `_mask_code_spans`)."""
     t = _mask_code_spans(" ".join(text.split()))
     t = re.sub(r"\]\([^)]*\)", "]", t)
     t = _URL.sub("URL", t)
@@ -509,6 +540,12 @@ def count_sentences(text: str) -> int:
                 continue
         boundaries += 1
     return boundaries + 1
+
+
+def _ends_a_sentence(line: str) -> bool:
+    """True when `line` closes a sentence at its end, judged as `count_sentences` judges it: more text after
+    it would start another (so an abbreviation such as `Inc.` at the end of a wrapped line does not)."""
+    return count_sentences(line + " x") > 1
 
 
 def _purpose_paragraphs(text: str) -> list[list[str]] | None:
@@ -555,8 +592,9 @@ def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> l
     older spec the branch leaves alone does not repeat its note on every run. None means every live spec.
 
     A blank line after the first paragraph makes that whole paragraph the Serves line, so a hard-wrapped
-    Serves line is one line. With no blank line the Purpose is one paragraph and its first line is the
-    Serves line, the rest being the sentence.
+    Serves line is one line, unless its first line already ends a sentence: then that line alone is the
+    Serves line and the rest of the paragraph is text after it. With no blank line the Purpose is one
+    paragraph and its first line is the Serves line, the rest being the sentence.
 
     Advisory: the repo's spec rules call this form advisory, so these are notes, never problems."""
     notes = []
@@ -570,7 +608,11 @@ def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> l
         elif not paras or re.match(r"(?i)tbd\b", paras[0][0].lstrip("*_ ")):
             why = "Purpose is empty or TBD"
         else:
-            if len(paras) > 1:
+            if len(paras) > 1 and len(paras[0]) > 1 and _ends_a_sentence(paras[0][0]):
+                # The first line already closes the Serves sentence, so the next line is the sentence after it,
+                # and the paragraphs below are more text after that: not one long Serves line.
+                serves_lines, rest = paras[0][:1], paras[0][1:] + [ln for p in paras[1:] for ln in p]
+            elif len(paras) > 1:
                 serves_lines, rest = paras[0], [ln for p in paras[1:] for ln in p]
             else:
                 serves_lines, rest = paras[0][:1], paras[0][1:]
@@ -594,7 +636,22 @@ def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> l
 
 _ITEM = re.compile(r"^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)")
 
-Fence = tuple[str, int, int, int, bool]  # (character, run length, indent, line it opened on, inside a list item)
+# (character, run length, indent, line it opened on, inside a list item, inside a block quote)
+Fence = tuple[str, int, int, int, bool, bool]
+
+# One level of block quote marker: up to 3 spaces, `>`, and one optional space.
+_QUOTE_MARK = re.compile(r"^ {0,3}>[ \t]?")
+
+
+def _strip_quote(line: str) -> tuple[str, bool]:
+    """`line` without its block quote markers, and whether it had any. A line holds the content of the quote
+    it sits in, so the markers are set aside as a list marker is."""
+    quoted = False
+    while True:
+        m = _QUOTE_MARK.match(line)
+        if not m:
+            return line, quoted
+        line, quoted = line[m.end():], True
 
 
 # A line that starts a new block, so it cannot be a lazy continuation of a paragraph: an ATX heading, a
@@ -629,7 +686,16 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
     than the opener, so a more deeply indented run inside the fence is content. A fence opened inside a
     list item also ends at the first non-blank line indented less than its opener, as the item does on the
     page; a fence at the top level does not, since its content may sit less indented than its opener. A
-    fence left open at the end hides the rest of the file, as on the page."""
+    fence left open at the end hides the rest of the file, as on the page.
+    Block quote markers (`> `) are set aside before a line is read, so a fence opened inside a quote is a
+    fence; it ends where the quote does, at the first line with no marker, blank lines included. A line
+    inside a fence that was opened outside a quote is read whole, markers and all."""
+    in_quote_fence = fence is not None and fence[5]
+    core, quoted = _strip_quote(line)
+    if in_quote_fence and not quoted:
+        fence = None  # the quote holding the fence has ended, and the fence with it; read this line afresh
+    if fence is None or in_quote_fence:
+        line = core
     indent = len(line) - len(line.lstrip())
     if fence is not None and fence[4] and line.strip() and indent < fence[2]:
         fence = None  # the list item holding the fence has ended, and the fence with it; read this line afresh
@@ -657,7 +723,7 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
     lists.lazy = paragraph
     if m and not (m.group(2)[0] == "`" and "`" in m.group(3)):
         lists.lazy = False
-        return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n, bool(lists.cols)), True
+        return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n, bool(lists.cols), quoted), True
     return None, False
 
 
@@ -665,10 +731,13 @@ def _reads_as_map_heading(line: str) -> bool:
     """True for an ATX heading whose words are "spec map" (or "spec maps") once emphasis, underscores,
     hyphens, non-breaking spaces and trailing punctuation are set aside."""
     m = _ATX_HEADING.match(line)
-    if not m:
-        return False
-    words = re.sub(r"[\s_\-*`]+", " ", m.group(1)).strip(" .:").lower()
-    return words in ("spec map", "spec maps")
+    return bool(m) and _map_words(m.group(1))
+
+
+def _map_words(text: str) -> bool:
+    """True when `text` is the words "spec map" (or "spec maps") once emphasis, underscores, hyphens,
+    non-breaking spaces and trailing punctuation are set aside."""
+    return re.sub(r"[\s_\-*`]+", " ", text).strip(" .:").lower() in ("spec map", "spec maps")
 
 
 def _map_heading_like_lines(lines: list[str]) -> list[int]:
@@ -680,7 +749,7 @@ def _map_heading_like_lines(lines: list[str]) -> list[int]:
         core = _LINE_PREFIX.sub("", line)
         if _HEADING_LIKE.match(core):
             found.append(i + 1)
-        elif _SETEXT_TEXT.match(core) and i + 1 < len(lines) and _SETEXT_UNDERLINE.match(_LINE_PREFIX.sub("", lines[i + 1])):
+        elif _map_words(core) and i + 1 < len(lines) and _SETEXT_UNDERLINE.match(_LINE_PREFIX.sub("", lines[i + 1])):
             found.append(i + 1)
     return found
 
@@ -765,15 +834,83 @@ def read_spec_map(root: Path, notes: list[str] | None = None) -> list[str] | Non
     return patterns
 
 
+def _label_key(label: str) -> str:
+    """A reference label as the page matches it: case folded, runs of whitespace as one space."""
+    return " ".join(label.split()).casefold()
+
+
+def _indented_code(line: str, cols: list[int], lazy: bool) -> bool:
+    """True when `line` is a line of an indented code block, which renders no link.
+
+    That is a non-blank line at least 4 columns past the content column of the list item it sits in (`cols`,
+    as the line before it left them; column 0 outside a list), unless the line before it was paragraph text
+    (`lazy`), in which case it only continues that paragraph."""
+    if lazy or not line.strip():
+        return False
+    expanded = line.expandtabs(4)
+    indent = len(expanded) - len(expanded.lstrip(" "))
+    base = max((c for c in cols if c <= indent), default=0)
+    return indent - base >= 4
+
+
+_REF_LABEL = re.compile(r"\[((?:[^\[\]\\]|\\.)*)\]")
+_INLINE_TARGET = re.compile(r"\(\s*<?([^)\s>]+)")
+
+
+def _scan_links(masked: str) -> tuple[list[str], set[str]]:
+    """(targets of the inline links, labels the reference links use) on one line with its code spans and
+    comments already taken out.
+
+    Only what renders as a link counts. An escaped bracket (`\\[x\\](..)`) opens nothing, an image
+    (`![x](..)`) is not a link, and a `](..)` with no `[` before it is text. A reference link is
+    `[text][label]`, `[label][]` or `[label]`; whether the label is defined is for the caller."""
+    targets: list[str] = []
+    labels: set[str] = set()
+    openers: list[tuple[int, bool]] = []  # (position after the bracket, whether it opens an image)
+    i = 0
+    while i < len(masked):
+        c = masked[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "!" and masked[i + 1:i + 2] == "[":
+            openers.append((i + 2, True))
+            i += 2
+            continue
+        if c == "[":
+            openers.append((i + 1, False))
+        elif c == "]" and openers:
+            start, image = openers.pop()
+            nxt = masked[i + 1:i + 2]
+            if nxt == "(":
+                m = _INLINE_TARGET.match(masked, i + 1)
+                if m and not image:
+                    targets.append(m.group(1))
+            else:
+                m = _REF_LABEL.match(masked, i + 1) if nxt == "[" else None
+                if not image:
+                    label = m.group(1) if m and m.group(1).strip() else masked[start:i]
+                    labels.add(_label_key(label))
+                if m:  # the `[label]` after the text is not an opener of its own
+                    i = m.end()
+                    continue
+        i += 1
+    return targets, labels
+
+
 def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
     """([(line number, target)], [(line number, problem)]) for the Markdown links in `text`.
 
-    Links inside a code fence, a code span or an HTML comment are not links on the rendered page and are
-    not read. One pass, line by line, so a `<!--` quoted in a code span or fence opens nothing. A fence
+    Links inside a code fence, an indented code block, a code span or an HTML comment are not links on the
+    rendered page and are not read, nor are an image, an escaped `\\[x\\](..)` and a reference definition no link
+    uses. Block quote markers are set aside first. Code spans pair as on the page (see `_render_code_spans`).
+    One pass, line by line, so a `<!--` quoted in a code span or fence opens nothing. A fence
     closes only on a bare line of the same character at least as long as the opener. A fence or a
     comment still open at the end hides the rest of the file, as on the page, and is returned as a
     problem naming the line it began on: otherwise every later link would vanish with no word said."""
     links: list[tuple[int, str]] = []
+    defs: list[tuple[int, str, str]] = []  # (line, normalised label, target) of each reference definition
+    used: set[str] = set()  # normalised labels some `[text][label]`, `[label][]` or `[label]` uses
     fence = None
     lists = _Lists()
     comment_from: int | None = None
@@ -782,23 +919,33 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
             if "-->" not in line:
                 continue
             comment_from, line = None, ""  # what follows the closer on its line is raw HTML too
+        cols_before, lazy_before = list(lists.cols), lists.lazy
         fence, hidden = _fence_step(line, n, fence, lists)
         if hidden:
             continue
-        stripped = line.lstrip()
+        core, _ = _strip_quote(line)
+        if _indented_code(core, cols_before, lazy_before):
+            continue
+        stripped = core.lstrip()
         if stripped.startswith("<!--"):
             # A line that begins with a comment is an HTML block: all of it is raw HTML, up to the line holding `-->`.
             if "-->" not in stripped[4:]:
                 comment_from = n
             continue
-        masked = _HTML_COMMENT.sub("", _mask_code_spans(line))
+        masked = _HTML_COMMENT.sub("", _render_code_spans(core))
         start = masked.find("<!--")
         if start >= 0:
             masked, comment_from = masked[:start], n
         ref = _REF_DEF.match(masked)
         if ref:
-            links.append((n, ref.group(1)))
-        links += [(n, target) for target in _INLINE_LINK.findall(masked)]
+            defs.append((n, _label_key(ref.group(1)), ref.group(2)))
+            continue
+        targets, labels = _scan_links(masked)
+        links += [(n, target) for target in targets]
+        used |= labels
+    # A definition renders nothing until a link uses its label, so an unused one links no spec.
+    links += [(n, target) for n, label, target in defs if label in used]
+    links.sort(key=lambda link: link[0])
     issues = []
     if fence is not None:
         issues.append((fence[3], "a code fence is never closed, so the rest of the map is not read"))
@@ -844,21 +991,49 @@ def _glob_regex(pattern: str) -> re.Pattern[str]:
     return re.compile("".join(out))
 
 
-def check_spec_map(root: Path, specs: dict[str, str], patterns: list[str]) -> tuple[list[str], str]:
+_MAP_SUFFIXES = (".md", ".markdown")
+
+
+def retired_specs(files: list["SpecFile"]) -> dict[str, str]:
+    """{spec name: the change that removes it} for each live spec an active change removes whole.
+
+    Whole means the change's delta REMOVES every requirement the live spec holds (archive then deletes the
+    spec file), and no active change, this one included, adds or modifies one in it. Such a
+    spec is still a live file until the archive, but a map that keeps linking it would dangle after."""
+    live = {f.spec: f for f in files if f.kind == "live"}
+    kept = {f.spec for f in files if f.kind == "active" and f.units}
+    out: dict[str, str] = {}
+    for f in files:
+        if f.kind != "active" or f.spec not in live or f.spec in kept:  # `kept` holds this delta's own spec if it has units
+            continue
+        held = {h.strip() for h, _, _ in _blocks(live[f.spec].text, False)}
+        if held and held <= {h.strip() for h in _removed_headings(f.text)}:
+            out[f.spec] = f.change or ""
+    return out
+
+
+def check_spec_map(
+    root: Path, specs: dict[str, str], patterns: list[str], retiring: dict[str, str] | None = None
+) -> tuple[list[str], str]:
     """PROBLEM lines for a declared spec map, and the one summary line that describes it.
 
     `specs` maps each spec name to the file that holds it: a live spec, or a spec only an active change
     adds (so a change that adds a capability can link it before it is archived, and the map still passes
-    after). Reports each declared pattern that matches no file, each link into `openspec/specs/` that
-    names no spec and no existing file, and each spec no map file links. With no map file at all the last
-    rule is skipped, since it would repeat every spec after the first problem."""
+    after). `retiring` maps each spec an active change removes whole to that change (`retired_specs`); it is
+    not in `specs`, so the map need not link it, and a link to it is reported. Reports each declared pattern
+    that matches no Markdown file (a map is a `.md` file, so a glob that also takes in a binary is not
+    read as one), each link into `openspec/specs/` that names no spec and no file in the exact-case list
+    of tracked and untracked-unignored files, and each spec no map file links. With no map file at all the
+    last rule is skipped, since it would repeat every spec after the first problem."""
     problems: list[str] = []
+    retiring = retiring or {}
     listed = [rel for rel in _listed_files(root) if (root / rel).is_file()]
+    listed_set = set(listed)
     maps: list[str] = []
     for pattern in patterns:
-        hits = [rel for rel in listed if _glob_regex(pattern).fullmatch(rel)]
+        hits = [rel for rel in listed if rel.lower().endswith(_MAP_SUFFIXES) and _glob_regex(pattern).fullmatch(rel)]
         if not hits:
-            problems.append(f"PROBLEM spec-map: declared path {pattern!r} in {FACTS_RELPATH} matches no file")
+            problems.append(f"PROBLEM spec-map: declared path {pattern!r} in {FACTS_RELPATH} matches no file (only .md files are read as maps)")
         maps += [rel for rel in hits if rel not in maps]
     linked: set[str] = set()
     for rel in maps:
@@ -877,9 +1052,11 @@ def check_spec_map(root: Path, specs: dict[str, str], patterns: list[str]) -> tu
             if not into_specs and not (path.startswith("../") and "/openspec/specs/" in "/" + path):
                 continue
             m = _SPEC_LINK.match(path) if into_specs else None
-            if m and m.group(1) in specs:
+            if m and m.group(1) in retiring:
+                problems.append(f"PROBLEM spec-map: {rel}:{n}: link {target!r} points at spec {m.group(1)}, which change {retiring[m.group(1)]} removes")
+            elif m and m.group(1) in specs:
                 linked.add(m.group(1))
-            elif not (into_specs and (root / path).is_file()):
+            elif not (into_specs and path in listed_set):
                 problems.append(f"PROBLEM spec-map: {rel}:{n}: link {target!r} points at no spec")
     if maps:
         problems += [f"PROBLEM spec-map: {specs[name]} is linked from no spec map" for name in sorted(set(specs) - linked)]
@@ -915,7 +1092,7 @@ def resolve_base(root: Path, explicit: str | None) -> tuple[str | None, str]:
     """Return (merge-base sha or None, note)."""
     candidates = [explicit] if explicit else []
     if not explicit:
-        rc, out = _git(root, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+        rc, out, _ = _git(root, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
         if rc == 0 and out.strip():
             candidates.append(out.strip().removeprefix("refs/remotes/"))
         candidates += ["origin/main", "origin/master", "main", "master"]
@@ -923,10 +1100,10 @@ def resolve_base(root: Path, explicit: str | None) -> tuple[str | None, str]:
         return None, "no commit on HEAD yet"
     failed = []
     for ref in candidates:
-        rc, _ = _git(root, "rev-parse", "--verify", "--quiet", ref + "^{commit}")
+        rc, _, _ = _git(root, "rev-parse", "--verify", "--quiet", ref + "^{commit}")
         if rc != 0:
             continue
-        rc, out = _git(root, "merge-base", "HEAD", ref)
+        rc, out, _ = _git(root, "merge-base", "HEAD", ref)
         if rc == 0 and out.strip():
             return out.strip(), f"merge-base with {ref}"
         failed.append(ref)
@@ -943,10 +1120,10 @@ def changed_paths(root: Path, base: str) -> set[str]:
     out = set()
     # --relative keeps both lists relative to `root`, which may be a subfolder of the repo.
     for args in (("diff", "--name-only", "--relative", "-z", base), ("ls-files", "-o", "--exclude-standard", "-z")):
-        rc, text = _git(root, *args)
+        rc, text, err = _git(root, *args)
         if rc != 0:
             # A skipped list would read as "nothing changed": no unit is changed and no spec is touched.
-            raise CheckerError(f"git {args[0]} failed (exit {rc}), so the changed paths are unknown")
+            raise CheckerError(f"git {args[0]} failed (exit {rc}{_said(err)}), so the changed paths are unknown")
         out |= {p for p in text.split("\0") if p}
     return out
 
@@ -960,14 +1137,15 @@ def _base_text(root: Path, base: str, rel: str) -> str | None:
     argument as a file name, and on Windows that stat fails with "Filename too long" once the working
     directory plus the argument pass 260 characters, which a deep clone and a long archive path do.
     `cat-file blob` reads the object name without that file-name check."""
-    rc, out = _git(root, "cat-file", "blob", f"{base}:./{rel}")
+    rc, out, err = _git(root, "cat-file", "blob", f"{base}:./{rel}")
     if rc == 0:
         return out
-    list_rc, listing = _git(root, "ls-tree", "--name-only", base, "--", rel)
+    list_rc, listing, list_err = _git(root, "ls-tree", "--name-only", base, "--", rel)
     if list_rc == 0 and not listing.strip():
         return None
     raise CheckerError(
-        f"cannot read {rel} at {base[:12]} (git cat-file exit {rc}, ls-tree exit {list_rc}); the changed-requirement rule cannot run"
+        f"cannot read {rel} at {base[:12]} (git cat-file exit {rc}, ls-tree exit {list_rc}{_said(err or list_err)}); "
+        "the changed-requirement rule cannot run"
     )
 
 
@@ -1000,7 +1178,7 @@ def changed_units(root: Path, base: str, f: SpecFile, mode: str) -> list[Unit]:
 
 def _listed_files(root: Path) -> list[str]:
     """Repo-relative paths of the tracked and untracked-unignored files (a directory walk outside git), sorted."""
-    rc, out = _git(root, "ls-files", "-co", "--exclude-standard", "-z")
+    rc, out, _ = _git(root, "ls-files", "-co", "--exclude-standard", "-z")
     if rc == 0:
         return sorted({p for p in out.split("\0") if p})
     rels = []
@@ -1048,8 +1226,13 @@ def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str
     return found, scanned, skipped
 
 
-def scan_notes(root: Path, known: set[str]) -> list[Note]:
-    """manual:/waiting: lines of every change's tasks.md. A line naming no known heading keeps heading None."""
+def scan_notes(root: Path, known: set[str], universe: dict[str, set[str]] | None = None) -> list[Note]:
+    """manual:/waiting: lines of every change's tasks.md. A line naming no known heading keeps heading None.
+
+    A line is `<kind>: <spec> / <heading>: <reason>` (it covers that spec only: `universe` maps each spec to
+    its headings) or the older `<kind>: <heading>: <reason>` (every spec of its change). The first form is
+    tried first, and the longest name wins."""
+    universe = universe or {}
     notes = []
     changes = root / "openspec" / "changes"
     if not changes.is_dir():
@@ -1069,8 +1252,12 @@ def scan_notes(root: Path, known: set[str]) -> list[Note]:
             body = m.group(2)
             if body.startswith("<"):
                 continue  # a template placeholder in prose, not a note
-            heading = max((h for h in known if body.startswith(h + ": ")), key=len, default=None)
-            notes.append(Note(m.group(1), heading, body, change, archived, PROMPT_HALF in body))
+            named = [(s, h) for s, hs in universe.items() for h in hs if body.startswith(f"{s} / {h}: ")]
+            if named:
+                spec, heading = max(named, key=lambda pair: len(pair[0]) + len(pair[1]))
+            else:
+                spec, heading = None, max((h for h in known if body.startswith(h + ": ")), key=len, default=None)
+            notes.append(Note(m.group(1), heading, body, change, archived, PROMPT_HALF in body, spec))
     return notes
 
 
@@ -1145,11 +1332,13 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     map_notes: list[str] = []
     patterns = read_spec_map(root, map_notes)  # None: no map declared, so the rule reports nothing and prints no line
     if patterns is not None:
+        retiring = retired_specs(files)
         spec_rels: dict[str, str] = {}
         for f in files:
-            if f.kind != "archived" and f.spec not in spec_rels:  # `files` lists live specs first, so a live file names its spec
+            # `files` lists live specs first, so a live file names its spec; a spec a change removes whole is not one.
+            if f.kind != "archived" and f.spec not in spec_rels and f.spec not in retiring:
                 spec_rels[f.spec] = f.rel
-        map_problems, map_line = check_spec_map(root, spec_rels, patterns)
+        map_problems, map_line = check_spec_map(root, spec_rels, patterns, retiring)
         problems += map_problems
 
     markers, scanned, skipped = scan_markers(root, globs or [])
@@ -1171,7 +1360,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         else:
             marked.add((spec, heading))
 
-    notes = scan_notes(root, known)
+    notes = scan_notes(root, known, universe)
     for n in notes:
         if n.heading is None and not n.archived:
             problems.append(f"PROBLEM dangling: openspec/changes/{n.change}/tasks.md: '{n.kind}: {n.raw}' names no {mode} heading")
@@ -1200,10 +1389,11 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
             if m:
                 touched.add(m.group(1))
 
-    def notes_for(heading: str, change: str | None, kind: str) -> list[Note]:
+    def notes_for(heading: str, change: str | None, kind: str, spec: str) -> list[Note]:
+        # A line that names a spec covers that spec only; the older heading-only form covers every spec of its change.
         return [
             n for n in notes
-            if n.kind == kind and n.heading == heading
+            if n.kind == kind and n.heading == heading and n.spec in (None, spec)
             and ((n.change == change) if change else n.change in touched)
         ]
 
@@ -1217,30 +1407,46 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
                 where = f"{f.rel}: {f.spec} / {u.heading}"
                 if (f.spec, u.heading) in marked:
                     continue
-                manual = notes_for(u.heading, scope, "manual")
+                manual = notes_for(u.heading, scope, "manual", f.spec)
                 whole = [n for n in manual if not n.prompt_half]
                 if whole:
                     continue
                 if manual:
                     problems.append(f"PROBLEM prompt-half: {where}: '(prompt half)' manual line but no {mode} marker for the test half")
                     continue
-                if any(not n.archived for n in notes_for(u.heading, scope, "waiting")):
+                if any(not n.archived for n in notes_for(u.heading, scope, "waiting", f.spec)):
                     covered_waiting += 1
                     continue
-                problems.append(f"PROBLEM uncovered: {where}: changed {mode} has no '{mode}: {f.spec} / {u.heading}' marker and no 'manual: {u.heading}: <reason>' line")
+                problems.append(f"PROBLEM uncovered: {where}: changed {mode} has no '{mode}: {f.spec} / {u.heading}' marker and no 'manual: {f.spec} / {u.heading}: <reason>' line")
 
-    whole_manual = {n.heading for n in notes if n.kind == "manual" and not n.prompt_half and n.heading}
+    whole_manual = [n for n in notes if n.kind == "manual" and not n.prompt_half and n.heading]
+
+    def manual_proves(spec: str | None, heading: str) -> bool:
+        """Whether a whole manual line proves `heading` in `spec` (in any spec, when `spec` is None)."""
+        return any(n.heading == heading and (spec is None or n.spec in (None, spec)) for n in whole_manual)
+
     for n in notes:
         if n.kind == "waiting" and n.heading and not n.archived:
-            if n.heading in whole_manual or any((s, n.heading) in marked for s in universe):
+            in_specs = [n.spec] if n.spec else list(universe)
+            if manual_proves(n.spec, n.heading) or any((s, n.heading) in marked for s in in_specs):
                 problems.append(f"PROBLEM waiting: openspec/changes/{n.change}/tasks.md: {n.heading!r} is already proven, so it is no longer waiting")
+
+    manual_notes = []
+    for n in notes:
+        if n.kind == "manual" and not n.archived and n.spec is None and n.heading is not None:
+            holders = sorted(s for s, hs in universe.items() if n.heading in hs)
+            manual_notes.append(
+                f"NOTE manual: openspec/changes/{n.change}/tasks.md: 'manual: {n.heading}: ...' names only the heading, so it covers "
+                f"{n.heading!r} in every spec of the change; write 'manual: {holders[0] if len(holders) == 1 else '<spec>'} / {n.heading}: ...' "
+                "to cover one spec" + (f" (specs holding it: {', '.join(holders)})" if len(holders) > 1 else "")
+            )
 
     if validate:
         _validate(root, problems, out)
 
     # Counts (information only, never a gate).
     all_units = [(f.spec, u.heading) for f in files if f.kind != "archived" for u in f.units]
-    covered = sum(1 for s, h in all_units if (s, h) in marked or h in whole_manual)
+    covered = sum(1 for s, h in all_units if (s, h) in marked or manual_proves(s, h))
     kinds = {k: sum(1 for f in files if f.kind == k) for k in ("live", "active", "archived")}
     live_names = {f.spec for f in files if f.kind == "live"}
     out += [
@@ -1265,7 +1471,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         ),
         f"problems: {len(problems)}",
     ]
-    return (1 if problems else 0), problems + purpose_notes(files, touched_specs) + map_notes + out
+    return (1 if problems else 0), problems + purpose_notes(files, touched_specs) + manual_notes + map_notes + out
 
 
 def _console_safe(text: str) -> str:
@@ -1277,8 +1483,34 @@ def _console_safe(text: str) -> str:
     enc = getattr(sys.stdout, "encoding", None) or "utf-8"
     try:
         return text.encode(enc, errors="backslashreplace").decode(enc)
-    except LookupError:  # an encoding name Python does not know: leave the text for print to judge
-        return text
+    except LookupError:  # an encoding name Python does not know: ASCII holds any text once escaped
+        return text.encode("ascii", errors="backslashreplace").decode("ascii")
+
+
+def _report(text: str) -> bool:
+    """Print `text` to stdout. False when stdout cannot take it (a closed pipe, a full disk).
+
+    The failed handle is pointed at the null device first: left alone, Python flushes it again on exit,
+    prints a second traceback and replaces the exit code."""
+    try:
+        print(_console_safe(text))
+        sys.stdout.flush()
+    except (OSError, ValueError) as exc:  # ValueError: stdout was closed
+        try:
+            fd = sys.stdout.fileno()
+            null = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(null, fd)
+            finally:
+                os.close(null)
+        except (OSError, ValueError, AttributeError):  # no descriptor to redirect (a test double, a closed stream)
+            pass
+        try:
+            print(f"check_spec_proof: cannot write the report: {exc}", file=sys.stderr)
+        except OSError:
+            pass
+        return False
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1296,8 +1528,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 - a crash must read as "could not run", never as "problems found"
         print(f"check_spec_proof: unexpected {type(exc).__name__}: {exc}\n{traceback.format_exc()}", file=sys.stderr)
         return 2
-    print(_console_safe("\n".join(lines)))
-    return code
+    return code if _report("\n".join(lines)) else 2  # a report nobody could read must not read as "clean" or "problems found"
 
 
 if __name__ == "__main__":

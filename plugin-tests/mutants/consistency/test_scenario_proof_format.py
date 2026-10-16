@@ -91,7 +91,7 @@ MUTANTS = [
     (
         "a shipped reference keeps the old manual form",
         TEST_QUALITY,
-        "`manual: <heading>: <reason>` (`openspec/config.yaml` `rules.tasks`)",
+        "`manual: <spec> / <heading>: <reason>` (`openspec/config.yaml` `rules.tasks`)",
         "`manual: <reason>` (`openspec/config.yaml` `rules.tasks`)",
         TARGETS,
     ),

@@ -16,7 +16,7 @@ are proving one by planting what it should catch.
 
 **Which tests a change owes** is set elsewhere: each requirement a change adds or modifies gets a test
 task, whose test carries a `requirement: <spec> / <heading>` comment line above it, or a tasks.md line
-`manual: <heading>: <reason>` (`openspec/config.yaml` `rules.tasks`), and spec-to-pr's
+`manual: <spec> / <heading>: <reason>` (`openspec/config.yaml` `rules.tasks`), and spec-to-pr's
 Implement post-check greps for every test a ticked task names.
 
 ## No tautological assertion

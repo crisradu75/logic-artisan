@@ -126,7 +126,7 @@ MUTANTS = [
     (
         "a waiting line stops covering a changed requirement",
         SCRIPT,
-        '                if any(not n.archived for n in notes_for(u.heading, scope, "waiting")):',
+        '                if any(not n.archived for n in notes_for(u.heading, scope, "waiting", f.spec)):',
         "                if False:",
         TARGETS,
     ),

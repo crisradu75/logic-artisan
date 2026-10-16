@@ -1272,6 +1272,11 @@ def _deep_archived_path(root: Path) -> str:
     return head + "p" * pad + tail
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="only Windows' 260-character path limit makes `git show` fail on the long path, so elsewhere this passes with or "
+    "without the fix; test_a_path_git_lists_but_cannot_read_is_an_error_not_a_new_file below proves the fix on every platform",
+)
 def test_a_long_archive_path_in_a_deep_repo_reports_no_false_uncovered(repo, capsys):
     # Unchanged since the base, so no unit is changed. Where git cannot read the base copy by the long
     # path, the file was read as new and each of its units drew a false `uncovered`.
@@ -1288,7 +1293,7 @@ def test_the_base_copy_is_none_only_for_a_path_absent_at_base(repo):
 
 
 def test_a_git_failure_reading_the_base_is_an_error_not_a_new_file(repo, monkeypatch):
-    monkeypatch.setattr(csp, "_git", lambda root, *args: (128, ""))
+    monkeypatch.setattr(csp, "_git", lambda root, *args: (128, "", ""))
     with pytest.raises(csp.CheckerError, match="cannot read"):
         csp._base_text(repo, "0" * 40, SPEC)
 
@@ -1299,7 +1304,7 @@ def test_a_path_git_lists_but_cannot_read_is_an_error_not_a_new_file(repo, monke
 
     def fake(root, *args):
         if args[0] == "cat-file":
-            return 128, ""
+            return 128, "", ""
         return real(root, *args)
 
     monkeypatch.setattr(csp, "_git", fake)
@@ -1312,7 +1317,7 @@ def test_a_path_git_lists_but_cannot_read_is_an_error_not_a_new_file(repo, monke
 
 def test_a_failed_changed_path_list_is_an_error_not_an_empty_list(repo, monkeypatch):
     real = csp._git
-    monkeypatch.setattr(csp, "_git", lambda root, *args: (128, "") if args[0] == "diff" else real(root, *args))
+    monkeypatch.setattr(csp, "_git", lambda root, *args: (128, "", "") if args[0] == "diff" else real(root, *args))
     base = csp.resolve_base(repo, "main")[0]
     with pytest.raises(csp.CheckerError, match="changed paths are unknown"):
         csp.changed_paths(repo, base)
@@ -1352,7 +1357,8 @@ def test_a_failed_changed_path_list_is_an_error_not_an_empty_list(repo, monkeypa
         ("See https://example.com/a. Then more.", 2),
         ("See www.example.com for it.", 1),
         ("Run `a. b. c` now.", 1),
-        ("Run ``a ` b. c`` now.", 1),
+        # the pattern that matched any single-backtick pair read this as `` + `a. b` + `` and counted 2
+        ("Run ``a. b`` now.", 1),
         ("See [the doc](http://x.io/a. b) now.", 1),
         # a backtick left unpaired must not pair with a later one and hide the break between them
         ("A stray ` mark. Then `code` here.", 2),
@@ -1395,3 +1401,237 @@ def test_a_lower_case_scenario_heading_cannot_dodge_the_scenario_count(repo, cap
 def test_a_delta_with_lower_case_requirement_headings_under_no_section_is_reported(repo, capsys):
     _write(repo, "openspec/changes/c1/specs/alpha/spec.md", "# d\n\n## Requirements\n\n### requirement: X\n\nSHALL.\n")
     assert "PROBLEM empty: openspec/changes/c1/specs/alpha/spec.md" in run(repo, capsys)[1]
+
+
+# ---- the `manual: <spec> / <heading>` line, and the older heading-only form ----
+
+
+def _two_specs_share_a_heading(root: Path) -> None:
+    """Change c1 adds `New rule` to both alpha and beta, so one heading is changed in two specs."""
+    _write(root, "openspec/changes/c1/specs/alpha/spec.md", _delta_text(added=[NEW_REQ]))
+    _write(root, "openspec/changes/c1/specs/beta/spec.md", _delta_text(added=[NEW_REQ]))
+
+
+def _problems(out: str) -> list[str]:
+    return [l for l in out.splitlines() if l.startswith("PROBLEM")]
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+# requirement: spec-proof / A checker reports requirements with no proof
+def test_a_manual_line_naming_a_spec_covers_that_spec_only(repo, capsys):
+    _two_specs_share_a_heading(repo)
+    _write(repo, "openspec/changes/c1/tasks.md", "- [x] 1.1 manual: alpha / New rule: needs a live run\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert len(_problems(out)) == 1 and "PROBLEM uncovered" in out and "beta / New rule" in out
+    assert "alpha / New rule" not in out
+    # the suggestion in the message is the new form, with the spec named
+    assert "no 'manual: beta / New rule: <reason>' line" in out
+    _write(repo, "openspec/changes/c1/tasks.md", "- [x] 1.1 manual: alpha / New rule: a\n- [x] 1.2 manual: beta / New rule: b\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "NOTE manual" not in out and "manual lines: 2" in out
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_the_older_heading_only_line_still_covers_every_spec_of_its_change_and_draws_a_note(repo, capsys):
+    _two_specs_share_a_heading(repo)
+    _write(repo, "openspec/changes/c1/tasks.md", "- [x] 1.1 manual: New rule: needs a live run\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert _problems(out) == []
+    notes = [l for l in out.splitlines() if l.startswith("NOTE manual")]
+    assert notes == [
+        "NOTE manual: openspec/changes/c1/tasks.md: 'manual: New rule: ...' names only the heading, so it covers 'New rule' in every "
+        "spec of the change; write 'manual: <spec> / New rule: ...' to cover one spec (specs holding it: alpha, beta)"
+    ]
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_a_spec_named_line_for_a_heading_holding_a_colon_matches_the_longest_heading(repo, capsys):
+    # "Resume" is a prefix of the other heading, so only the longest match names the right requirement.
+    heading = "Resume: partly done"
+    _write(
+        repo,
+        SPEC,
+        _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Resume", "Short."), (heading, "SHALL.\n\n" + _scn("c"))),
+    )
+    _write(repo, "tests/test_short.py", _marker("requirement", "alpha", "Resume"))
+    _write(repo, "openspec/changes/c1/tasks.md", f"- [x] 1.1 manual: alpha / {heading}: a reason\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "NOTE manual" not in out
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_the_note_names_the_one_spec_that_holds_the_heading(repo, capsys):
+    _write(repo, "openspec/changes/c1/specs/beta/spec.md", _delta_text(added=[NEW_REQ]))
+    _write(repo, "openspec/changes/c1/tasks.md", "- [x] 1.1 manual: New rule: needs a live run\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "write 'manual: beta / New rule: ...' to cover one spec" in out and "specs holding it" not in out
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_an_older_line_in_an_archived_change_draws_no_note_since_an_archive_is_not_edited(repo, capsys):
+    _write(repo, "openspec/changes/archive/2026-01-01-c0/tasks.md", "manual: Old rule: long ago\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0 and "NOTE manual" not in out and "manual lines: 1" in out
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+@pytest.mark.parametrize(
+    "line", ["manual: gamma / New rule: x", "manual: alpha / No such rule: x", "manual: beta / Old rule: x"]
+)
+def test_a_line_naming_a_spec_or_heading_that_is_not_there_is_dangling(repo, capsys, line):
+    # beta holds New rule, not Old rule; gamma is no spec; alpha holds no `No such rule`.
+    _write(repo, "openspec/changes/c1/specs/beta/spec.md", _delta_text(added=[NEW_REQ]))
+    _write(repo, "openspec/changes/c1/tasks.md", f"- [x] 1.1 {line}\n- [x] 1.2 manual: beta / New rule: fine\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert _problems(out) == [f"PROBLEM dangling: openspec/changes/c1/tasks.md: '{line}' names no requirement heading"]
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_a_prompt_half_line_and_a_waiting_line_read_the_new_form_too(repo, capsys):
+    _two_specs_share_a_heading(repo)
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: alpha / New rule: the skill step (prompt half)\nwaiting: beta / New rule: later change\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    problems = _problems(out)
+    assert len(problems) == 1 and problems[0].startswith("PROBLEM prompt-half: openspec/changes/c1/specs/alpha/spec.md: alpha / New rule: ")
+    assert "waiting lines: 1 (covering a changed requirement: 1)" in out
+    _write(repo, "tests/test_new.py", _marker("requirement", "alpha", "New rule"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_a_manual_line_for_one_spec_does_not_make_another_spec_waiting_line_stale(repo, capsys):
+    _two_specs_share_a_heading(repo)
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: alpha / New rule: a\nwaiting: beta / New rule: later\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0 and "already proven" not in out, out
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: alpha / New rule: a\nwaiting: alpha / New rule: later\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "PROBLEM waiting" in out and "'New rule' is already proven" in out
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_repo_wide_coverage_counts_a_spec_named_line_for_its_spec_only(repo, capsys):
+    _two_specs_share_a_heading(repo)
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: alpha / New rule: a\n")
+    out = run(repo, capsys)[1]
+    assert "repo-wide coverage (information only): 2/3" in out
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: New rule: a\n")
+    assert "repo-wide coverage (information only): 3/3" in run(repo, capsys)[1]
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_a_scenario_heading_takes_the_new_form_in_scenario_mode(repo, capsys):
+    _write(repo, FACTS, "- Test proof granularity: scenario\n")
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), NEW_REQ))
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old case"))
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: beta / New case: wrong spec\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and any("PROBLEM dangling" in p for p in _problems(out))
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: alpha / New case: needs a live run\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# ---- purpose notes: where the Serves line ends ----
+
+
+# requirement: spec-proof / A checker notes a touched spec's Purpose without failing the run
+@pytest.mark.parametrize(
+    ("purpose", "expected"),
+    [
+        # the first line already ends the Serves sentence; the rest of that paragraph and the next are text after it
+        ("**Serves:** maintainers.\nOne sentence.\n\nMore text here.", "Purpose has 2 sentences after the Serves line, expected one"),
+        ("**Serves:** maintainers.\nOne sentence. Two.\n\nMore.", "Purpose has 3 sentences after the Serves line, expected one"),
+        # a hard-wrapped Serves line is still one line, also when it breaks after an abbreviation
+        ("**Serves:** maintainers who\nrelease the plugin.\n\nOne sentence.", None),
+        ("**Serves:** teams at Acme Inc.\nand friends.\n\nOne sentence.", None),
+        ("**Serves:** the U.S.\nteam.\n\nOne sentence.", None),
+        # a wrapped Serves line that holds two sentences is still reported
+        ("**Serves:** maintainers\nwho release. And others.\n\nOne sentence.", "the Serves line holds more than one sentence"),
+    ],
+)
+def test_text_after_a_serves_sentence_is_not_read_as_a_wrapped_serves_line(repo, capsys, purpose, expected):
+    code, notes = _purpose_out(repo, capsys, purpose)
+    assert code == 0
+    assert notes == ([] if expected is None else [f"NOTE purpose: {SPEC}: {expected}"])
+
+
+# ---- failure paths ----
+
+
+def test_git_returns_what_it_said_on_stderr(repo):
+    rc, out, err = csp._git(repo, "rev-parse", "--verify", "no-such-ref")
+    assert rc != 0 and out == "" and err.strip()
+
+
+def test_git_that_cannot_start_returns_127_and_the_os_error(repo, monkeypatch):
+    def boom(*a, **k):
+        raise OSError("no git here")
+
+    monkeypatch.setattr(csp.subprocess, "run", boom)
+    assert csp._git(repo, "status") == (127, "", "no git here")
+
+
+def test_a_git_failure_reading_the_base_quotes_what_git_said(repo):
+    # A base that is no object: git's own words are in the message beside the exit codes.
+    with pytest.raises(csp.CheckerError) as err:
+        csp._base_text(repo, "0" * 40, SPEC)
+    assert "git cat-file exit" in str(err.value) and "; git said: " in str(err.value)
+
+
+def test_a_failed_changed_path_list_quotes_what_git_said(repo, monkeypatch):
+    real = csp._git
+    monkeypatch.setattr(csp, "_git", lambda root, *args: (128, "", "fatal: bad\nrevision") if args[0] == "diff" else real(root, *args))
+    with pytest.raises(csp.CheckerError, match=r"git diff failed \(exit 128; git said: fatal: bad revision\)"):
+        csp.changed_paths(repo, csp.resolve_base(repo, "main")[0])
+
+
+class _ClosedPipe:
+    """A stdout whose reader has gone away (`| head`): every write and flush raises BrokenPipeError."""
+
+    encoding = "utf-8"
+
+    def write(self, text):
+        raise BrokenPipeError(32, "Broken pipe")
+
+    def flush(self):
+        raise BrokenPipeError(32, "Broken pipe")
+
+
+def test_a_report_that_cannot_be_written_exits_two_and_says_so_even_when_the_run_was_clean(repo, capsys, monkeypatch):
+    assert run(repo, capsys)[0] == 0
+    monkeypatch.setattr(sys, "stdout", _ClosedPipe())
+    code = csp.main(["--root", str(repo), "--base", "main"])
+    assert code == 2
+    assert "cannot write the report" in capsys.readouterr().err
+
+
+def test_a_report_that_cannot_be_written_exits_two_when_there_were_problems_too(repo, capsys, monkeypatch):
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), NEW_REQ))
+    monkeypatch.setattr(sys, "stdout", _ClosedPipe())
+    assert csp.main(["--root", str(repo), "--base", "main"]) == 2
+
+
+def test_a_report_to_a_closed_stdout_exits_two(repo, capsys, monkeypatch):
+    import io
+
+    closed = io.StringIO()
+    closed.close()
+    monkeypatch.setattr(sys, "stdout", closed)
+    assert csp.main(["--root", str(repo), "--base", "main"]) == 2
+
+
+def test_an_unknown_console_encoding_falls_back_to_ascii_escapes(monkeypatch):
+    class Odd:
+        encoding = "no-such-codec"
+
+    monkeypatch.setattr(sys, "stdout", Odd())
+    assert csp._console_safe("Café ✓ done") == "Caf\\xe9 \\u2713 done"

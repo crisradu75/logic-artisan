@@ -26,7 +26,10 @@ _DISPATCH = _SKILLS / "review-change" / "references" / "dispatch.md"
 _CONFIG = _REPO / "openspec" / "config.yaml"
 
 _MARKER = "`requirement: <spec> / <heading>`"
-_MANUAL = "`manual: <heading>: <reason>`"
+_MANUAL = "`manual: <spec> / <heading>: <reason>`"
+# The review checklist still words the line the older way, which the checker still accepts (it names the heading and
+# no spec); it moves to `_MANUAL` when the session that owns the review skill edits it.
+_MANUAL_OLD = "`manual: <heading>: <reason>`"
 
 
 def _read(path: Path) -> str:
@@ -52,7 +55,7 @@ def test_the_brief_applies_the_rules_instead_of_copying_them():
 
 # requirement: change-workflow / Each requirement names its proof
 def test_the_review_flags_a_requirement_with_no_proof():
-    assert f"or a tasks.md line {_MANUAL}. A requirement with neither is the finding." in _read(_CHECKLIST)
+    assert f"or a tasks.md line {_MANUAL_OLD}. A requirement with neither is the finding." in _read(_CHECKLIST)
     assert "A requirement with neither is **Important**." in _read(_DISPATCH)
 
 
