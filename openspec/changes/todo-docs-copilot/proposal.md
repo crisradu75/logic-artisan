@@ -9,8 +9,10 @@ which is why this is a change and not a lite PR.
 
 ## What Changes
 
-- Economy rules 8 and 12 (`orchestration-economy.md`): create `scratchpad/` before the before
-  snapshot; add `gh pr checks` for the green case. `_flat` in `test_mutation_batch_is_opt_in.py`
+- Economy rules 8 and 12 (`orchestration-economy.md`): rule 8 says to leave lines under
+  `scratchpad/` out of the debris diff (the TODO asked to create the folder first; git lists ignored
+  files singly and an empty folder not at all, so that would not keep the check quiet); rule 12 adds
+  `gh pr checks` for the green case. `_flat` in `test_mutation_batch_is_opt_in.py`
   skips fenced lines and thematic breaks, with a test.
 - The shipped root `plugin.json` description stops saying the Copilot install is untested (owner
   decision): a release tag is never moved, so a claim in it outlives the first live test. README,
@@ -24,7 +26,7 @@ which is why this is a change and not a lite PR.
   with `--write`.
 - `/release` gains a step that fetches GitHub's supported-models table for Copilot CLI and refuses
   when a `MODEL_MAP` ID is missing (owner decision). It is a stdlib script like the release skill's
-  other check; its tests read a saved table and make no network call.
+  other check; its tests build a page with the table's layout and make no network call.
 
 ## Dropped
 
@@ -37,7 +39,7 @@ which is why this is a change and not a lite PR.
 
 - `plugin-distribution`: "Installing from GitHub Copilot CLI" is removed and replaced by two
   requirements, "Listing for GitHub Copilot CLI" and "Disclosing the Copilot CLI install is
-  untested". The spec stays at 8 requirements.
+  untested". The spec goes from 7 to 8 requirements, the cap.
 
 ## Impact
 

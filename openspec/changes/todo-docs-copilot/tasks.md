@@ -2,7 +2,7 @@
 
 ## 1. Economy rules and the bullet test
 
-- [x] 1.1 In `orchestration-economy.md`, rule 8 says to create `scratchpad/` before the before snapshot and rule 12 names `gh pr checks` for the green case. Done when both phrases are present and the consistency tests pass.
+- [x] 1.1 In `orchestration-economy.md`, rule 8 says the debris diff leaves out lines under `scratchpad/` (git lists ignored files singly and an empty folder not at all, so creating it first would not keep the check quiet) and rule 12 names `gh pr checks` for the green case.
 - [x] 1.2 `_flat` in `test_mutation_batch_is_opt_in.py` tags no bullet marker inside a fenced block or on a thematic break (`* * *`, `- - -`). Test both, and that a bullet after the closing fence is still tagged.
 
 ## 2. Copilot install requirement

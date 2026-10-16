@@ -22,11 +22,13 @@ Exit 2 is load-bearing for the same reason as in `check_shipped_tree.py`: a page
 changed would otherwise read as "no ID is missing" over a table that was never read. A release
 that gets 2 stops and reports it; it does not go on without the check.
 
-The tests read a saved copy of the section and make no network call. Stdlib only.
+The tests build a page with the same layout and pass a fake fetch, so they make no network call.
+Stdlib only.
 """
 
 from __future__ import annotations
 
+import http.client
 import re
 import sys
 import urllib.request
@@ -77,13 +79,18 @@ def _model_map() -> dict[str, str]:
 
 
 def main(fetch=fetch_page, model_map: dict[str, str] | None = None) -> int:
-    ids = _model_map() if model_map is None else model_map
+    try:
+        ids = _model_map() if model_map is None else model_map
+    except (ImportError, AttributeError) as err:
+        print(f"cannot check: MODEL_MAP could not be read from sync_copilot_agents.py: {err}", file=sys.stderr)
+        return EXIT_CANNOT_RUN
     if not ids:
         print("cannot check: MODEL_MAP is empty", file=sys.stderr)
         return EXIT_CANNOT_RUN
     try:
         listed = supported_ids(fetch())
-    except (OSError, ValueError) as err:  # URLError and timeouts are OSError; bad bytes are ValueError
+    # URLError and timeouts are OSError, a cut-off body is HTTPException, bad bytes are ValueError.
+    except (OSError, http.client.HTTPException, ValueError) as err:
         print(f"cannot read GitHub's supported-models table at {TABLE_URL}: {err}", file=sys.stderr)
         return EXIT_CANNOT_RUN
     absent = missing_ids(ids, listed)

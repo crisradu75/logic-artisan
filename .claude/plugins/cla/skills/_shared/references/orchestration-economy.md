@@ -23,8 +23,9 @@ rule below saves some without dropping quality.
    parallel workers leave. A missing before snapshot means the check did not run, so warn.
 8. **Give each parallel agent its own scratch folder.** Use `scratchpad/<change-name>/` and name it in
    the brief. Agents that share a folder overwrite each other's files, such as a PR body. Keep
-   `scratchpad/` in the repo's `.gitignore`, and create the folder before rule 7's before snapshot:
-   the check lists ignored paths too, so the folder stays quiet only if it is already there.
+   `scratchpad/` in the repo's `.gitignore`. Rule 7's check lists ignored files one by one, and an
+   empty folder not at all, so the files agents write there show as new lines in the after list:
+   leave the lines under `scratchpad/` out of rule 7's diff.
 9. **Give each parallel agent its own copy of a shared test environment.** Examples are a database
    or a port. Never make agents queue on a lock, because it serialises them. Remove the copies when
    the agents finish.

@@ -1,7 +1,7 @@
 """`check_copilot_models.py` refuses a release whose Copilot model IDs are not in GitHub's table.
 
-Every test reads a saved copy of the page structure and passes a fake fetch: none makes a
-network call, so the suite is the same offline. The page layout below copies the rendered
+The tests build a page and pass a fake fetch: none makes a network call, so the suite is the
+same offline. The page layout below copies the rendered
 command reference (a heading with `id="supported-models"`, then a table whose first cell holds
 the ID in a code span), with another section's table before and after it, so a scan that read
 the whole page instead of the one section would pass the "missing" tests for the wrong reason.
@@ -12,6 +12,7 @@ only proves the release skill runs the script.
 
 from __future__ import annotations
 
+import http.client
 import re
 import urllib.error
 from pathlib import Path
@@ -90,6 +91,7 @@ def test_main_exits_1_naming_every_missing_id(capsys):
     [
         pytest.param(lambda: (_ for _ in ()).throw(urllib.error.URLError("offline")), id="offline"),
         pytest.param(lambda: (_ for _ in ()).throw(TimeoutError("slow")), id="timeout"),
+        pytest.param(lambda: (_ for _ in ()).throw(http.client.IncompleteRead(b"<ht")), id="cut-off body"),
         pytest.param(lambda: (_ for _ in ()).throw(UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad")), id="bad bytes"),
         pytest.param(_fetch("<html>layout changed</html>"), id="no section"),
         pytest.param(_fetch(_page()), id="section with no rows"),
@@ -103,6 +105,15 @@ def test_main_exits_2_when_the_table_cannot_be_read(fetch, capsys):
 def test_main_exits_2_on_an_empty_model_map(capsys):
     assert ccm.main(_fetch(_page("claude-sonnet-5.5")), {}) == ccm.EXIT_CANNOT_RUN
     assert "MODEL_MAP is empty" in capsys.readouterr().err
+
+
+def test_main_exits_2_when_the_model_map_cannot_be_imported(monkeypatch, capsys):
+    def broken():
+        raise ImportError("no module named sync_copilot_agents")
+
+    monkeypatch.setattr(ccm, "_model_map", broken)
+    assert ccm.main(_fetch(_page("claude-sonnet-5.5"))) == ccm.EXIT_CANNOT_RUN
+    assert "MODEL_MAP could not be read" in capsys.readouterr().err
 
 
 def test_the_default_map_is_the_one_the_agent_generator_writes():
