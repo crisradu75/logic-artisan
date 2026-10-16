@@ -151,10 +151,8 @@ _MAP_HEADING = re.compile(r"^##\s+Spec map\s*$", re.I)
 _ATX_HEADING = re.compile(r"^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$")
 _ANY_HEADING = re.compile(r"^#{1,6}\s")
 _HTML_COMMENT = re.compile(r"<!--.*?-->")
-# A fence opens on a run of 3 or more backticks (whose info string holds no backtick) or tildes, indented
-# at most 3 spaces, and closes on a bare run of the same character at least as long.
-_FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
-_FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*$")
+# A line that can open or close a fence: its indent, a run of 3 or more backticks or tildes, the rest.
+_FENCE_LINE = re.compile(r"^([ \t]*)(`{3,}|~{3,})(.*)$")
 _BULLET = re.compile(r"^[-*+]\s+(.+?)\s*$")
 _CODE_START = re.compile(r"^`([^`]+)`")
 # A Markdown link target: `](target)` inline, or `[label]: target` as a reference definition.
@@ -588,6 +586,26 @@ def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> l
     return notes
 
 
+def _fence_step(line: str, n: int, fence: tuple[str, int, int, int] | None) -> tuple[tuple[str, int, int, int] | None, bool]:
+    """Advance a code-fence tracker by one line: (new state, whether the line is a fence line or inside one).
+
+    The state is None outside a fence, else (character, run length, indent, line it opened on).
+    A fence opens on a run of 3 or more backticks (whose info string holds no backtick) or tildes at ANY
+    indent: a fence inside a list item sits 4 or more spaces in and still renders as a fence, so a cap of 3
+    would miss it and count a link shown in an example. It closes on a bare run of the same character at
+    least as long, indented at most 3 spaces deeper than the opener, so a more deeply indented run inside
+    the fence is content. A fence left open at the end hides the rest of the file, as on the page."""
+    m = _FENCE_LINE.match(line)
+    if fence is not None:
+        closes = m and m.group(2)[0] == fence[0] and len(m.group(2)) >= fence[1] and not m.group(3).strip()
+        if closes and len(m.group(1)) <= fence[2] + 3:
+            return None, True
+        return fence, True
+    if m and not (m.group(2)[0] == "`" and "`" in m.group(3)):
+        return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n), True
+    return None, False
+
+
 def _reads_as_map_heading(line: str) -> bool:
     """True for an ATX heading whose words are "spec map" (or "spec maps") once emphasis, underscores,
     hyphens, non-breaking spaces and trailing punctuation are set aside."""
@@ -612,16 +630,21 @@ def read_spec_map(root: Path) -> list[str] | None:
     except (OSError, UnicodeDecodeError) as exc:
         raise CheckerError(f"cannot read {FACTS_RELPATH}: {exc}") from exc
     heads = []
-    fenced = False
+    fence = None
     for n, line in enumerate(lines, 1):
-        if _FENCE.match(line):
-            fenced = not fenced
-        elif fenced:
+        fence, hidden = _fence_step(line, n, fence)
+        if hidden:
             continue
-        elif _MAP_HEADING.match(line.rstrip()):
+        if _MAP_HEADING.match(line.rstrip()):
             heads.append(n)
         elif _reads_as_map_heading(line):
             raise CheckerError(f"{FACTS_RELPATH}:{n}: {line.strip()!r} reads as the spec map heading but is not '## Spec map'; write it exactly so, or rename it")
+    if fence is not None:
+        # The fence swallowed the rest of the file. A file with no map heading after it declares no map and
+        # stays quiet; one with a heading after it has had its declaration hidden, which must not read as none.
+        for n in range(fence[3] + 1, len(lines) + 1):
+            if _MAP_HEADING.match(lines[n - 1].rstrip()) or _reads_as_map_heading(lines[n - 1]):
+                raise CheckerError(f"{FACTS_RELPATH}:{fence[3]}: a code fence is never closed, so the spec map heading on line {n} is not read; close the fence")
     if not heads:
         return None
     if len(heads) > 1:
@@ -653,21 +676,21 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
     comment still open at the end hides the rest of the file, as on the page, and is returned as a
     problem naming the line it began on: otherwise every later link would vanish with no word said."""
     links: list[tuple[int, str]] = []
-    fence: tuple[str, int, int] | None = None  # (character, run length, line it opened on)
+    fence = None
     comment_from: int | None = None
     for n, line in enumerate(text.splitlines(), 1):
-        if fence is not None:
-            close = _FENCE_CLOSE.match(line)
-            if close and close.group(1)[0] == fence[0] and len(close.group(1)) >= fence[1]:
-                fence = None
-            continue
-        if comment_from is not None:
+        if fence is None and comment_from is not None:
             if "-->" not in line:
                 continue
             comment_from, line = None, ""  # what follows the closer on its line is raw HTML too
-        opener = _FENCE_OPEN.match(line)
-        if opener and not (opener.group(1)[0] == "`" and "`" in opener.group(2)):
-            fence = (opener.group(1)[0], len(opener.group(1)), n)
+        fence, hidden = _fence_step(line, n, fence)
+        if hidden:
+            continue
+        stripped = line.lstrip()
+        if stripped.startswith("<!--"):
+            # A line that begins with a comment is an HTML block: all of it is raw HTML, up to the line holding `-->`.
+            if "-->" not in stripped[4:]:
+                comment_from = n
             continue
         masked = _HTML_COMMENT.sub("", _mask_code_spans(line))
         start = masked.find("<!--")
@@ -679,7 +702,7 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
         links += [(n, target) for target in _INLINE_LINK.findall(masked)]
     issues = []
     if fence is not None:
-        issues.append((fence[2], "a code fence is never closed, so the rest of the map is not read"))
+        issues.append((fence[3], "a code fence is never closed, so the rest of the map is not read"))
     if comment_from is not None:
         issues.append((comment_from, "an HTML comment is never closed, so the rest of the map is not read"))
     return links, issues

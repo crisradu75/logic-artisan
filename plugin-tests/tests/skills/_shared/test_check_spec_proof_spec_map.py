@@ -298,6 +298,51 @@ def test_text_after_the_closer_of_a_comment_on_its_line_is_not_a_link(repo, caps
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_line_that_begins_with_a_comment_is_all_raw_html_even_when_it_closes_on_that_line(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(f"<!-- old --> {ALPHA}", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    assert "never closed" not in out and "problems: 1" in out
+    # A comment in the middle of a line is inline HTML: a link after it is still a link.
+    _write(repo, MAP, _map(f"text <!-- old --> {ALPHA}", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_fence_inside_a_list_item_is_a_fence_and_a_deeper_run_inside_it_is_content(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("1. Step", "    ```", f"    {ALPHA}", "    ```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    assert "specs/beta/spec.md is linked" not in out and "never closed" not in out
+    _write(repo, MAP, _map("```", "        ```", ALPHA, "```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    assert "never closed" not in out
+
+
+# requirement: spec-map / A repo declares its spec map as a fact
+def test_a_fence_of_the_other_character_quoted_in_the_facts_file_does_not_hide_the_heading(repo, capsys):
+    _write(repo, FACTS, f"~~~\n```\n~~~\n\n## Spec map\n\n- {MAP}\n")
+    _write(repo, MAP, _map(ALPHA, BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "spec map: 1 file(s) from 1 declared path(s); 2 of 2 specs linked" in out
+
+
+# requirement: spec-map / A repo declares its spec map as a fact
+def test_a_fence_never_closed_above_the_heading_exits_2_but_one_with_no_heading_after_it_is_quiet(repo, capsys):
+    _write(repo, FACTS, f"```\n\n## Spec map\n\n- {MAP}\n")
+    code, out, err = run(repo, capsys)
+    assert code == 2 and f"{FACTS}:1: a code fence is never closed" in err and "line 3" in err and not out
+    _write(repo, FACTS, "```\n\nnotes only\n")
+    code, out, err = run(repo, capsys)
+    assert code == 0 and "spec map" not in out.lower() and not err
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
 def test_a_comment_marker_quoted_in_a_code_span_or_a_fence_opens_nothing(repo, capsys):
     _declare(repo, MAP)
     _write(repo, MAP, _map("Write `<!--` to open a comment.", "```html", "<!--", "```", ALPHA, BETA))
