@@ -49,7 +49,7 @@ These rules apply across every phase.
 |---|---|
 | `--review-rounds N` | Review — the change's **artifacts**, before Implement. Default 1. |
 | `--test-rounds N` | Test fix rounds. Default 3. |
-| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 fixed a Critical, or an Important on a high-risk PR; `1` opts out; `0` skips Revise. A re-entry for still-open findings also runs. |
+| `--pr-rounds N` | Revise — the **code** on the open PR, after Ship. Default 2; round 2 runs only after round 1 fixed a Critical, or an Important on a high-risk PR (a docs-currency fix is neither); `1` opts out; `0` skips Revise. A re-entry for still-open findings also runs. |
 | `--skip-review` | Skips Revise, as does the user saying "no review". |
 | `--gate-on-push`, `--interactive` | Pause before push and PR open ("Autonomy gate"). |
 | `--pr-base <branch>`, `--inherits '<entries>'` | See "Placeholders". |
