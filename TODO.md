@@ -35,3 +35,8 @@ Leftover review suggestions (spec map):
 - A map link to a file git ignores, or with the wrong case on Windows or macOS, passes the `is_file()` test in `check_spec_map` although the link is broken on GitHub. Check the path against the exact-case file list instead.
 - A fence inside a blockquote (`> ```) is not recognised as a fence by `_fence_step`, so a link shown in such an example counts as linking its spec. Strip the quote markers before matching, as the list marker is handled.
 - The fence tracker has three known corners, each of which misleads it only when it lines up with a fence never closed inside a list item and a later stray fence: a run-on line that begins with an inline code span (`` ```x``` ``) ends the item too early; a run-on line that begins with a number and a dot, such as `2026.`, ends the item too early because it reads as an ordered-list marker; an HTML comment at column 0 right after the item's paragraph text keeps the item open too long.
+
+Leftover review suggestions (todo-docs-copilot):
+
+- The scenario "The shipped manifest is read" in "Disclosing the Copilot CLI install is untested" documents the manifest carve-out but the SHALL sentence states no obligation for the manifest; its test (`test_the_shipped_copilot_manifest_does_not_say_the_install_is_untested`) is the only guard. Keep the scenario as documentation or move the check out of the spec.
+- `main()` in `.claude/skills/release/scripts/check_copilot_models.py` still lets a `TypeError` from `dict(MODEL_MAP)` or a `SyntaxError` from importing `sync_copilot_agents.py` escape as a traceback, which exits 1 and reads as "ID missing". Catch `Exception` around the map read and return 2.
