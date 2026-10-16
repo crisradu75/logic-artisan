@@ -17,7 +17,6 @@ Leftover review suggestions (docs task):
 
 - If change B rewords the docs task (`docs and spec map: ...`), add the old wording to `RETIRED` in `cla-setup/scripts/seed_openspec_rules.py`, so repos that seeded it are told to replace it.
 - `test_docs_task_sites_agree.py` proves the sites still say the words, not that a review reports a stale doc; that half is the `manual:` line in the archived tasks. A live check of one stale-doc review would close it.
-- The lite-pr Docs check has no gate on a repo's rules; it runs wherever the skill runs, with judgement when there is no doc list. Decide whether a repo with no list should skip it.
 
 Leftover review suggestions (orchestration economy and bullet fix sweep):
 

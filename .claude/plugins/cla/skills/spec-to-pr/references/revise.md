@@ -2,7 +2,7 @@
 
 The Revise phase's procedure. Why its rules are shaped as they are: `design-tradeoffs.md` "Revise".
 
-Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it. It is scoped to that fix diff (or a re-entry for still-open findings). `--pr-rounds 1` opts out, `0` skips Revise.
+Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 fixed a Critical finding, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows it. A docs-currency fix (see "Docs currency" below) does not count toward either trigger. It is scoped to that fix diff (or a re-entry for still-open findings). `--pr-rounds 1` opts out, `0` skips Revise.
 
 ## Dispatch mechanism by round (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`)
 
@@ -68,7 +68,7 @@ Only where the repo's `openspec/config.yaml` `rules.tasks` carries the docs rule
 2. List the names the diff alters: flags, commands, skill, script and file names, headings, counts, rules.
 3. Search every doc on that list (or the docs you picked) that the diff does not touch for those names, one search per doc; `doc-sweeper` (haiku) may run them from the doc list and the names. The tasks line adds no docs here; it tells you which ones its author excused with `none affected:`. A doc that still states the old behaviour is stale, including an excused one.
 
-Each stale doc is an Important finding (`docs: <path> still says <old>`) in this round's triage and in `findings_by_round`. Its fix is a doc edit with no test to break, so step 2b's mutation gate does not apply, and a round whose only fixes are doc edits does not trigger round 2. List it in Handoff's Issues section. `--pr-rounds 0` and `--skip-review` skip this check with Revise.
+Each stale doc is an Important finding (`docs: <path> still says <old>`) in this round's triage and in `findings_by_round`. Its fix is a doc edit with no test to break, so step 2b's mutation gate does not apply. Fixing one is a **docs-currency fix**, and it does not count toward round 2's triggers: a round whose only fixes are docs-currency fixes does not trigger round 2, while a round that also fixed anything else is judged by the normal rule on those other fixes, as if the doc edits were not there. List it in Handoff's Issues section. `--pr-rounds 0` and `--skip-review` skip this check with Revise.
 
 ## Round N (N ≥ 2)
 
@@ -207,13 +207,13 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    Inspect the `git push` exit code in your own context (no `|| { ... }` compound). Non-zero → Revise `warn`, the failure to Handoff Issues, and a prominent warning that round-N fixes are local-only.
 
-4. **Record the round now:** append `{"round": N, "found": <this round's deduplicated Critical+Important count after triage>}` to Revise's `findings_by_round`. On a round after the first, add `"trigger"`, what started it, taking the first that applies: `critical` if the round before fixed any Critical; else `high-important` if it fixed an Important on a high-risk pull request; else `reentry` (a re-entry on still-open findings). Use `unknown` only when you cannot tell, for example on a resume. The retro splits round-2 yield by it, and `log_run.py` refuses a later round without one: never drop the field to clear a refusal. Handoff reads it; it is never reconstructed there.
+4. **Record the round now:** append `{"round": N, "found": <this round's deduplicated Critical+Important count after triage>}` to Revise's `findings_by_round`. On a round after the first, add `"trigger"`, what started it, taking the first that applies: `critical` if the round before fixed any Critical; else `high-important` if it fixed an Important on a high-risk pull request (a docs-currency fix is not one); else `reentry` (a re-entry on still-open findings). Use `unknown` only when you cannot tell, for example on a resume. The retro splits round-2 yield by it, and `log_run.py` refuses a later round without one: never drop the field to clear a refusal. Handoff reads it; it is never reconstructed there.
 
    **Exit gate — TWO counts, and both must be zero to exit clean.**
    - **Untriaged** — Critical/Important findings in no bucket.
    - **Open** — in a bucket but not closed. Applied and Deferred-Known-Issue are closed. **Remedy-Rejected citing the remedy is triaged and OPEN**; Remedy-Rejected citing a disproved defect is closed.
 
-   **Both 0** → status `ok` and exit the loop, **unless this round fixed a Critical, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows another round** — then run it, scoped to that fix diff. On a resume, if you cannot tell whether this round fixed such a finding, run the next round if the cap allows: failing safe costs one round. On a low-risk pull request, a round whose fixes were all Important or lower does not trigger another. When any round committed fixes and no later round reviewed them, Revise still ends `ok`, and the Handoff report says in one line that those fixes were not reviewed again.
+   **Both 0** → status `ok` and exit the loop, **unless this round fixed a Critical, or an Important one on a high-risk pull request (high at round 1's final level), and the cap allows another round** — then run it, scoped to that fix diff. A docs-currency fix does not count here: a round whose only fixes were those does not trigger another, and a round that also fixed anything else is judged on those other fixes alone. On a resume, if you cannot tell whether this round fixed such a finding, run the next round if the cap allows: failing safe costs one round. On a low-risk pull request, a round whose fixes were all Important or lower does not trigger another. When any round committed fixes and no later round reviewed them, Revise still ends `ok`, and the Handoff report says in one line that those fixes were not reviewed again.
 
    **Open > 0** → decide by whether a re-attempt is still available:
    - **Some open finding still has its free re-attempt** AND the round budget allows → **re-enter the loop** with re-decided remedies for those findings.

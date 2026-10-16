@@ -87,6 +87,53 @@ def test_this_repos_doc_list_is_present_and_names_real_files():
         assert (_REPO / name).is_file(), f"the doc list names {name}, which is not a file"
 
 
+def _line(text: str, marker: str) -> str:
+    """The one line of `text` that holds `marker`, or an empty string when none does."""
+    return next((line for line in text.splitlines() if marker in line), "")
+
+
+def _round_2_sites() -> dict[str, str]:
+    """The text of each place that decides whether Revise or lite-pr runs a second review pass."""
+    revise = _read(_SKILLS / "spec-to-pr" / "references" / "revise.md")
+    stub = _read(_SKILLS / "spec-to-pr" / "SKILL.md").split("### Revise", 1)[-1].split("### Archive", 1)[0]
+    routing = _read(_SKILLS / "_shared" / "references" / "model-routing.md")
+    sizing = routing.split("A second review pass", 1)[-1].split("economy-rules-file:review-sizing:end", 1)[0]
+    return {
+        "revise.md cap": _line(revise, "Cap: `--pr-rounds N`"),
+        "revise.md docs currency": revise.split("## Docs currency", 1)[-1].split("## Round N", 1)[0],
+        "revise.md trigger record": _line(revise, "**Record the round now:**"),
+        "revise.md exit gate": _line(revise, "**Both 0**"),
+        "spec-to-pr SKILL.md Revise": stub,
+        "model-routing.md second pass": sizing,
+        "lite-pr step 4": _line(_read(_SKILLS / "lite-pr" / "SKILL.md"), "**A second pass only for a high-risk fix.**"),
+    }
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
+@pytest.mark.parametrize("site", sorted(_round_2_sites()))
+def test_every_second_pass_rule_sets_a_docs_currency_fix_aside(site: str):
+    # Fixing a stale doc has no test to break and earns no second pass. The carve-out is stated where the
+    # decision is made, so a site that drops the term would send a docs-only round to a second review.
+    text = _round_2_sites()[site]
+    assert "docs-currency fix" in text, f"{site} no longer names a docs-currency fix, so it does not set it aside"
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
+def test_the_implement_docs_check_diffs_against_pr_base():
+    # `<pr-base>` is the diff anchor for a stacked child; `<base-branch>` would count the parent's doc edits.
+    line = _line(_read(_SKILLS / "spec-to-pr" / "SKILL.md"), "**The docs task, where the repo's")
+    assert "git diff --name-only <pr-base>" in line and "git status --porcelain" in line
+    assert "git diff --name-only <base-branch>" not in line
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
+def test_the_second_pass_site_check_is_not_vacuous():
+    sites = _round_2_sites()
+    assert all(sites.values()), f"a second-pass site was not found: {[k for k, v in sites.items() if not v]}"
+    assert _line("one\ntwo marker here\nthree", "marker") == "two marker here"
+    assert _line("nothing", "marker") == ""
+
+
 # requirement: docs-currency / A change keeps the repo's docs current
 def test_the_site_check_is_not_vacuous():
     # A site that dropped the token must be reported, and a site that keeps it must not be.
