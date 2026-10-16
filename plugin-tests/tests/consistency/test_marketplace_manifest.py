@@ -14,6 +14,7 @@ repository root.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
@@ -132,3 +133,129 @@ def test_the_plugin_declares_its_own_repository():
         "plugin.json has no `repository`; /cla:report-upstream has nowhere to "
         "file and will stop and ask the user every time"
     )
+
+
+# ---------------------------------------------------------------------------
+# GitHub Copilot CLI: a catalog under .github/plugin/ and an Agent Plugins 1.0
+# manifest at the plugin root. NOT tested against a live Copilot CLI (none is
+# installed); these tests pin the shape GitHub's docs describe, so they catch a
+# typo or a drift, and say nothing about whether Copilot accepts the install.
+#
+# Sources, read raw from github/docs (content/copilot/reference/copilot-cli-
+# reference/cli-plugin-reference.md) and the agentplugins/agent-plugins-spec
+# repository (spec/1.0.0.md): the closed top-level field set, the `$schema`
+# value, the name rule, the catalog search order and the `github` source shape.
+# ---------------------------------------------------------------------------
+
+_COPILOT_CATALOG = _REPO_ROOT / ".github" / "plugin" / "marketplace.json"
+_COPILOT_PLUGIN_JSON = _PLUGIN_ROOT / "plugin.json"
+_AGENT_PLUGINS_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+_AGENT_PLUGINS_FIELDS = frozenset({
+    "$schema", "name", "version", "description", "author", "homepage",
+    "repository", "license", "keywords", "extensions",
+})
+# 1-64 characters of a-z 0-9 - ., alphanumeric at both ends, no `--` or `..`.
+# Use `.fullmatch`: `$` alone would also accept a trailing newline.
+_AGENT_PLUGINS_NAME = re.compile(r"(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?")
+
+
+def _copilot_catalog() -> dict:
+    return json.loads(_COPILOT_CATALOG.read_text(encoding="utf-8"))
+
+
+def _copilot_manifest() -> dict:
+    return json.loads(_COPILOT_PLUGIN_JSON.read_text(encoding="utf-8"))
+
+
+def _repo_slug() -> str:
+    """`owner/repo`, from the repository URL the Claude manifest already declares."""
+    url = json.loads(_PLUGIN_JSON.read_text(encoding="utf-8"))["repository"]
+    return url.removeprefix("https://github.com/").removesuffix(".git").strip("/")
+
+
+# requirement: plugin-distribution / Installing from GitHub Copilot CLI
+def test_the_copilot_catalog_names_this_plugin_with_a_github_source():
+    assert _COPILOT_CATALOG.is_file(), (
+        f"{_COPILOT_CATALOG} is missing; Copilot CLI checks .github/plugin/ for a "
+        "marketplace and finds none"
+    )
+    data = _copilot_catalog()
+    for field in ("name", "owner", "plugins"):
+        assert field in data, f"required field {field!r} missing"
+    assert data["name"] == _manifest()["name"], (
+        "the Copilot catalog must register under the same name as the Claude one, "
+        "so the install line is `cla@<that name>` for both"
+    )
+    assert isinstance(data["owner"], dict) and data["owner"].get("name")
+    entries = [e for e in data["plugins"] if e["name"] == "cla"]
+    assert len(entries) == 1, f"expected exactly one `cla` entry, found {len(entries)}"
+    src = entries[0]["source"]
+    assert isinstance(src, dict), "a relative-path source would not pin a release tag"
+    assert src.get("source") == "github", (
+        f"source type {src.get('source')!r}: Copilot CLI documents `github` and "
+        "`url`, not the `git-subdir` the Claude catalog uses"
+    )
+    assert src.get("repo") == _repo_slug()
+    assert src.get("path") == _PLUGIN_ROOT.relative_to(_REPO_ROOT).as_posix()
+    assert src.get("ref"), "no ref, so the entry would track the default branch"
+
+
+# requirement: plugin-distribution / Installing from GitHub Copilot CLI
+def test_the_copilot_root_manifest_uses_only_agent_plugins_1_0_fields():
+    data = _copilot_manifest()
+    assert data.get("$schema") == _AGENT_PLUGINS_SCHEMA, (
+        "without the exact Agent Plugins `$schema` Copilot reads this as a legacy "
+        "manifest, which changes what loads"
+    )
+    # The set is closed, so this also rejects the component path fields (`skills`,
+    # `hooks`, ...) that the docs say 1.0 does not have.
+    unknown = set(data) - _AGENT_PLUGINS_FIELDS
+    assert not unknown, f"fields outside the closed Agent Plugins 1.0 set: {sorted(unknown)}"
+    assert _AGENT_PLUGINS_NAME.fullmatch(data["name"]), f"invalid plugin name {data['name']!r}"
+    assert data["name"] == json.loads(_PLUGIN_JSON.read_text(encoding="utf-8"))["name"], (
+        "the two manifests must name the plugin identically"
+    )
+    # The spec makes a wrong type fatal (Copilot rejects the whole plugin), not a warning.
+    for field in ("name", "version", "description", "homepage", "repository", "license"):
+        assert isinstance(data.get(field, ""), str), f"{field!r} must be a string"
+    author = data.get("author", {})
+    assert isinstance(author, dict) and set(author) <= {"name", "email", "url"}
+    assert all(isinstance(v, str) for v in author.values()), "author values must be strings"
+    keywords = data.get("keywords", [])
+    assert isinstance(keywords, list) and all(isinstance(k, str) for k in keywords)
+    assert isinstance(data.get("extensions", {}), dict)
+
+
+def test_the_agent_plugins_name_rule_rejects_what_the_docs_reject():
+    """The rule above is only as good as the regex that states it."""
+    for bad in ("My-Plugin", "-start", "end-", "has--double", "too..dots", "", "a" * 65,
+                "cla\n"):
+        assert not _AGENT_PLUGINS_NAME.fullmatch(bad), f"{bad!r} must be rejected"
+    for good in ("cla", "acme.tools", "a", "a" * 64, "lint3r"):
+        assert _AGENT_PLUGINS_NAME.fullmatch(good), f"{good!r} must be accepted"
+
+
+# requirement: plugin-distribution / Installing from GitHub Copilot CLI
+def test_every_doc_offering_the_copilot_install_says_it_is_untested():
+    """The install was never run in a live Copilot CLI. A doc that gives the
+    command without saying so would read as a tested instruction."""
+    docs = {
+        "README.md": _REPO_ROOT / "README.md",
+        "DEVELOPER-GUIDE.md": _REPO_ROOT / "DEVELOPER-GUIDE.md",
+        "CLAUDE.md": _REPO_ROOT / "CLAUDE.md",
+        "plugin README.md": _PLUGIN_ROOT / "README.md",
+    }
+    # This checks that the two phrases appear somewhere in each doc that gives
+    # either install command, not that they sit next to the command.
+    commands = ("copilot plugin marketplace add", "copilot plugin install")
+    texts = {label: path.read_text(encoding="utf-8") for label, path in docs.items()}
+    assert any(c in texts["README.md"] for c in commands), (
+        "README.md no longer gives the Copilot install line"
+    )
+    for label, text in texts.items():
+        if not any(c in text for c in commands):
+            continue
+        assert "Copilot CLI only" in text, f"{label} offers the Copilot install without 'Copilot CLI only'"
+        assert "untested in a live Copilot CLI" in text, (
+            f"{label} offers the Copilot install without saying it is untested in a live Copilot CLI"
+        )

@@ -43,6 +43,28 @@ see the Windows note below for a way that can happen silently.
 Then, inside the repo: `/cla:cla-setup` (scaffold `cla.io/` and populate the repo's facts). Pick up later releases with `/plugin marketplace update`. Details:
 [Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo).
 
+### GitHub Copilot CLI (experimental, untested in a live Copilot CLI)
+
+**Copilot CLI only**: nothing here targets the Copilot app or the cloud agent. These two lines are written from GitHub's documentation and **have never been run: the
+install is untested in a live Copilot CLI** (it is not installed on the maintainer's machine), so
+expect it to need fixes.
+
+```bash
+copilot plugin marketplace add crisradu75/logic-artisan
+copilot plugin install cla@cris-logic-artisan
+```
+
+What to expect, from GitHub's docs and not from a run: Copilot reads
+`.github/plugin/marketplace.json` and, once a release carries it, the Agent Plugins 1.0
+`plugin.json` at the plugin root, which takes precedence over `.claude-plugin/plugin.json`. **The
+catalog pins `cla--v2.1.0`, a tag cut before that root manifest existed**, so until the next release
+the pin fetches a plugin without it, and Copilot would treat that as a legacy plugin instead. After
+that release, a 1.0 plugin offers Copilot its `skills/` directory and an `mcp.json`; agents and hooks
+load only from a `com.github.copilot/` directory, which CLA does not ship, so CLA's guard hooks and
+helper agents would not be wired for Copilot. Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`)
+is not ported, and whether skills answer to `/cla:<name>` in Copilot is unknown. Porting them is
+tracked under issue #302. The Claude Code install above is unchanged by any of this.
+
 ## Developing the harness (this repo only)
 
 Do NOT use the marketplace install here. The launchers at the repo root load the plugin live from

@@ -1,13 +1,13 @@
 ---
 name: release
-description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the plugin manifest, the marketplace catalog ref, and the CLAUDE.md release line in one commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /release or natural language like 'cut a release', 'publish a new version', 'tag 0.10.0', 'ship the plugin', 'bump the plugin version'."
+description: "Cut a new release of the cla plugin: verify the preconditions (on the default branch, clean tree, green test suite, work already reviewed and merged), bump the version in the two plugin manifests, the two marketplace catalog refs, and the CLAUDE.md release line in one commit, then cut the tag with `claude plugin tag`. Refuses rather than guesses when a precondition fails, and never moves a tag that has already been published. Triggers on /release or natural language like 'cut a release', 'publish a new version', 'tag 0.10.0', 'ship the plugin', 'bump the plugin version'."
 argument-hint: "[major|minor|patch|<explicit version>] (default: ask)"
 allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 ---
 
 # /release — publish a new version of the plugin
 
-Cutting a release is a **three-file edit plus a tag**, and getting either half wrong is
+Cutting a release is a **five-file edit plus a tag**, and getting either half wrong is
 expensive in a way ordinary mistakes are not: a published tag is what consumers have
 already fetched, so it can never be corrected in place. This skill exists because that
 procedure has been performed by hand on every release so far, and a hand-run procedure
@@ -74,20 +74,27 @@ it. Otherwise ask with `AskUserQuestion`, showing what changed since the last ta
 The pre-1.0 validation line is closed; how it closed is in DEVELOPER-GUIDE.md, "Release and
 distribution history".
 
-## Step 3 — The three-file edit, in one commit
+## Step 3 — The five-file edit, in one commit
 
-All three files must move together. A test fails when they disagree
-(`plugin-tests/tests/consistency/test_marketplace_manifest.py`), and a third copy of the
-version lives in `CLAUDE.md`'s "Current release" line, pinned by
-`plugin-tests/tests/consistency/test_doc_facts.py`.
+All five files must move together. One test fails when they disagree
+(`test_every_copy_of_the_version_agrees` in
+`plugin-tests/tests/skills/release/test_release_preconditions.py`, which names every file and
+the version it holds). The Claude pair is also pinned by
+`plugin-tests/tests/consistency/test_marketplace_manifest.py`, and `CLAUDE.md`'s "Current
+release" line by `plugin-tests/tests/consistency/test_doc_facts.py`. `claude plugin tag` in
+Step 4 compares only the Claude pair, so the two GitHub Copilot CLI files are held by the test alone.
 
 1. `.claude/plugins/cla/.claude-plugin/plugin.json` → `"version": "<new>"`
-2. `.claude-plugin/marketplace.json` (repo root) → the plugin entry's
+2. `.claude/plugins/cla/plugin.json` (the Copilot CLI manifest, at the plugin root) →
+   `"version": "<new>"`
+3. `.claude-plugin/marketplace.json` (repo root) → the plugin entry's
    `source.ref` → `"cla--v<new>"`
-3. `CLAUDE.md` → `**Current release: `cla--v<new>`.**`
+4. `.github/plugin/marketplace.json` (the Copilot CLI catalog) → the plugin entry's
+   `source.ref` → `"cla--v<new>"`
+5. `CLAUDE.md` → `**Current release: `cla--v<new>`.**`
 
-Then re-run the suite — the two manifest tests and the doc-fact test are what confirm
-the three copies agree — and commit all three together:
+Then re-run the suite — the version-agreement test, the two manifest tests and the doc-fact
+test are what confirm the five copies agree — and commit all five together:
 
 **A mutation batch anchored on the version literal breaks with every bump** — the anchor
 no longer appears and `mutate.py` refuses the whole batch in preflight. Nothing in the
@@ -105,7 +112,7 @@ git checkout -b release/<new>
 pytest plugin-tests -q -n auto --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
-git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude-plugin/marketplace.json CLAUDE.md
+git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude/plugins/cla/plugin.json .claude-plugin/marketplace.json .github/plugin/marketplace.json CLAUDE.md
 git commit -m "release: <new>"
 ```
 
@@ -176,14 +183,16 @@ merge being checked.
 
 ## Step 5 — Report
 
-State: the version cut, the three files bumped, the tag pushed and confirmed, and the
-one command a consumer runs to pick it up (`/plugin marketplace update`). If any
+State: the version cut, the five files bumped, the tag pushed and confirmed, and the
+one command a consumer runs to pick it up (`/plugin marketplace update` for Claude Code; for
+GitHub Copilot CLI, which is untested, `copilot plugin marketplace update` then
+`copilot plugin update cla`). If any
 precondition was waived — it should not have been — say so prominently.
 
 ## When NOT to use
 
 - To fix a release that is already published. Cut the next version instead.
 - To tag work sitting on a feature branch or an open PR.
-- To bump a version without releasing it: the three-file edit exists to be atomic with
+- To bump a version without releasing it: the five-file edit exists to be atomic with
   the tag, and splitting them is what leaves the catalog advertising a tag that does
   not exist.

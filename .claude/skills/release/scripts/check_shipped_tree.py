@@ -21,7 +21,8 @@ seven are precisely the drift this check was written to prevent — a denylist
 would have reported clean on it.
 
 The structural reason behind that measurement: what SHOULD ship is small, stable
-and enumerable (14 shapes covering ~101 files); what should not is unbounded.
+and enumerable (14 shapes covering ~101 files when this was measured; one shape has
+been added since); what should not is unbounded.
 
 WHY THE PATTERNS ARE NARROW. An earlier 11-pattern draft was measured against
 planted files and ACCEPTED FOUR dev-asset shapes a denylist catches:
@@ -70,8 +71,8 @@ EXIT_CANNOT_RUN = 2
 # The allowlist. Every entry carries the reason it exists, and the reason is the
 # discipline rather than decoration: it is what makes a future addition arguable.
 #
-# The list was FOURTEEN when this convention landed. A fifteenth pattern lands by
-# raising the cap in `test_check_shipped_tree.py` in the SAME commit that adds
+# The list was FOURTEEN when this convention landed, and is fifteen now. A new
+# pattern lands by raising the cap in `test_check_shipped_tree.py` in the SAME commit that adds
 # the pattern and its reason — the cap is not a prohibition on growth, it is a
 # prohibition on growth nobody argued for.
 ALLOWLIST: tuple[tuple[str, str], ...] = (
@@ -81,7 +82,7 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
      "Carries the eol=lf pin for hooks/*.sh INSIDE the published tree, where a "
      "git-subdir install can see it."),
     (r"\.claude-plugin/plugin\.json",
-     "The manifest. Exactly one file; the marketplace reads it."),
+     "The Claude Code manifest. Exactly one file; the marketplace reads it."),
     (r"agents/[^/]+\.md",
      "Mechanical helper agents other skills delegate to."),
     (r"output-styles/[^/]+\.md",
@@ -108,6 +109,10 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
      "Deterministic helpers a skill calls, all stdlib Python. Single-dot stem "
      "only — the wide form accepted a compound name (mechanical-checks.test.mjs "
      "then; helper.test.py now)."),
+    (r"plugin\.json",
+     "The GitHub Copilot CLI manifest, at the plugin root beside the Claude one. "
+     "Exactly one file, kept at the release version by the same test that pins "
+     ".claude-plugin/plugin.json."),
 )
 
 # The one shape whose name is otherwise a legal script name. A pytest fixture
@@ -118,7 +123,7 @@ EXCLUDED_LEAF_NAMES = frozenset({"conftest.py"})
 # A pytest MODULE is exactly a denylist shape: `skills/foo/scripts/test_foo.py`
 # matches pattern 14 (`skills/[^/]+/scripts/[^/.]+\.py`) just as
 # legitimately as a real helper does, and so do `hooks/test_x.py` and
-# `lib/test_x.py`. The docstring's whole claim — that these 14 patterns are
+# `lib/test_x.py`. The docstring's whole claim — that these (then 14) patterns are
 # narrow enough that nothing a denylist catches gets through — was false for
 # this one shape, so it is excluded by leaf shape here, the same way
 # `conftest.py` is excluded by leaf name above.
