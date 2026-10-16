@@ -95,11 +95,14 @@ def _line(text: str, marker: str) -> str:
 def _round_2_sites() -> dict[str, str]:
     """The text of each place that decides whether Revise or lite-pr runs a second review pass."""
     revise = _read(_SKILLS / "spec-to-pr" / "references" / "revise.md")
-    stub = _read(_SKILLS / "spec-to-pr" / "SKILL.md").split("### Revise", 1)[-1].split("### Archive", 1)[0]
+    skill = _read(_SKILLS / "spec-to-pr" / "SKILL.md")
+    stub = skill.split("### Revise", 1)[-1].split("### Archive", 1)[0]
     routing = _read(_SKILLS / "_shared" / "references" / "model-routing.md")
     sizing = routing.split("A second review pass", 1)[-1].split("economy-rules-file:review-sizing:end", 1)[0]
     return {
         "revise.md cap": _line(revise, "Cap: `--pr-rounds N`"),
+        "revise.md resume rule": _line(revise, "On a resume, if you cannot tell whether the previous round"),
+        "spec-to-pr SKILL.md flags row": _line(skill, "| `--pr-rounds N` |"),
         "revise.md docs currency": revise.split("## Docs currency", 1)[-1].split("## Round N", 1)[0],
         "revise.md trigger record": _line(revise, "**Record the round now:**"),
         "revise.md exit gate": _line(revise, "**Both 0**"),
@@ -116,6 +119,32 @@ def test_every_second_pass_rule_sets_a_docs_currency_fix_aside(site: str):
     # decision is made, so a site that drops the term would send a docs-only round to a second review.
     text = _round_2_sites()[site]
     assert "docs-currency fix" in text, f"{site} no longer names a docs-currency fix, so it does not set it aside"
+
+
+# Where a site says what happens to a round that fixed a stale doc and something else, it names these.
+_MIXED_CASE = {
+    "revise.md docs currency": ("other fixes", "Suggestion-level"),
+    "revise.md exit gate": ("other fixes", "Suggestion-level"),
+    "model-routing.md second pass": ("other fixes", "Suggestion-level"),
+    "lite-pr step 4": ("other fixes",),
+}
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
+@pytest.mark.parametrize("site", sorted(_MIXED_CASE))
+def test_a_round_with_other_fixes_is_judged_on_those_fixes_alone(site: str):
+    # The mixed case: a docs-currency fix beside a real fix. Only the real fix may trigger a second pass, and a
+    # Suggestion-level fix is not a real one, since only Critical and Important fixes trigger a round.
+    text = " ".join(_round_2_sites()[site].split())
+    missing = _missing(text, _MIXED_CASE[site])
+    assert missing == [], f"{site} no longer says {missing}, so the mixed case is unguarded"
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
+def test_lite_prs_docs_check_names_the_doc_list_heading():
+    # The Plan line names the list too, so the whole-file site check would pass if this paragraph stopped naming it.
+    check = _line(_read(_SKILLS / "lite-pr" / "SKILL.md"), "**Docs check, made by you")
+    assert HEADING in check, f"lite-pr's Docs check paragraph no longer names {HEADING!r}"
 
 
 # requirement: docs-currency / A change keeps the repo's docs current
