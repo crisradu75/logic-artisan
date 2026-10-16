@@ -127,6 +127,20 @@ def test_the_implement_docs_check_diffs_against_pr_base():
 
 
 # requirement: docs-currency / A change keeps the repo's docs current
+def test_no_spec_to_pr_diff_anchor_is_the_bare_base_branch():
+    # Test runs before Ship commits, and Revise diffs a branch that may be stacked on a parent. Both read `<pr-base>`.
+    skill = _read(_SKILLS / "spec-to-pr" / "SKILL.md")
+    gates = _line(skill, "**Which gates to run.**")
+    assert "git diff --name-only origin/<pr-base>" in gates and "git status --porcelain -uall" in gates
+    revise = _read(_SKILLS / "spec-to-pr" / "references" / "revise.md")
+    assert "git diff --numstat <pr-base>...HEAD" in revise
+    assert revise.count("git diff <pr-base>..<branch>") == 2
+    for name, text in (("SKILL.md", skill), ("revise.md", revise)):
+        found = re.findall(r"git diff[^`\n]*<base-branch>", text)
+        assert found == [], f"{name} still anchors a diff on <base-branch>: {found}"
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
 def test_the_second_pass_site_check_is_not_vacuous():
     sites = _round_2_sites()
     assert all(sites.values()), f"a second-pass site was not found: {[k for k, v in sites.items() if not v]}"
