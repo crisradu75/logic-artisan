@@ -133,8 +133,12 @@ def test_no_spec_to_pr_diff_anchor_is_the_bare_base_branch():
     gates = _line(skill, "**Which gates to run.**")
     assert "git diff --name-only $(git merge-base origin/<pr-base> HEAD)" in gates and "git status --porcelain -uall" in gates
     revise = _read(_SKILLS / "spec-to-pr" / "references" / "revise.md")
-    assert "git diff --numstat <pr-base>...HEAD" in revise
-    assert revise.count("git diff <pr-base>..<branch>") == 2
+    assert "git diff --numstat origin/<pr-base>...HEAD" in revise
+    # Every review-diff command in revise.md reads the remote base with a merge-base range; a local ref goes stale.
+    review_diffs = re.findall(r"git diff[^`\n]*?<branch>", revise)
+    assert review_diffs, "revise.md no longer shows the review diff command"
+    assert all(d.startswith("git diff origin/<pr-base>...<branch>") for d in review_diffs), review_diffs
+    assert "git diff origin/<pr-base>...HEAD" in _read(_SKILLS / "lite-pr" / "SKILL.md")
     for name, text in (("SKILL.md", skill), ("revise.md", revise)):
         found = re.findall(r"git diff[^`\n]*<base-branch>", text)
         assert found == [], f"{name} still anchors a diff on <base-branch>: {found}"

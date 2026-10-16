@@ -24,7 +24,9 @@ Leftover review suggestions (docs-task review gaps):
 - `model-routing.md` defines a docs-currency fix as "an edit that brings a stale doc up to date", broader than `revise.md` and lite-pr, where it is the fix of a stale-doc finding the docs check reported. Use one definition.
 - `test_docs_task_sites_agree.py` pins the term at each second-pass site, not the "other fixes alone" clause, so the mixed case is unguarded. The sites also do not say whether Suggestion-level fixes count as "other fixes".
 - lite-pr's Docs check ends "does not by itself earn step 4's second pass"; "does not count toward step 4's second pass" matches the mixed-case wording better, and `revise.md`'s "as if the doc edits were not there" is clearer than lite-pr step 4's parenthetical.
-- `revise.md`'s diff commands and prose-dominant count read the local `<pr-base>`, while `branch-and-pr-base.md` uses `origin/<pr-base>` and `spec-to-pr/SKILL.md` says a local base ref goes stale. Switch them to `origin/<pr-base>` and update the pin in `test_docs_task_sites_agree.py`.
+- `git merge-base` is not in `required-permissions-narrow.json`, so the Implement and Test path checks in `spec-to-pr/SKILL.md` may prompt in an unattended run.
+- The review-change prompts in `review-change/references/dispatch.md` say `git diff origin/<default-branch>...HEAD`, which on a stacked branch includes the parent's changes, and carry a "fill it in before sending" aside inside the quoted agent prompt. `subagent-brief.md` says `<branch>` where dispatch.md says `HEAD`.
+- lite-pr's Docs check paragraph no longer names `cla.io/project-facts.md` "Doc-sweep paths" beside "the doc list"; only the plan line does.
 
 Leftover review suggestions (orchestration economy and bullet fix sweep):
 
