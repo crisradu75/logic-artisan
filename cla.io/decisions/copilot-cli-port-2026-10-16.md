@@ -18,11 +18,11 @@ not raw pages; re-read a page before building on a single claim.
    release must keep it in step with `plugin.json` and `marketplace.json`, so the release-drift
    check covers it.
 
-Still open, to decide after the test install (step 1 below):
-- **Hooks:** port the guards, ship them Claude-only, or wait. A Copilot `preToolUse` timeout is
-  always fail-open, which weakens a fail-closed guard.
-- **Skill text:** branch shared skill text per client, or document Copilot as degraded for the
-  Agent- and AskUserQuestion-heavy skills (`spec-to-pr`, `multi-pr`, `multi-lite`).
+3. **Hooks (decided 2026-10-16: wait for a live test).** The guards stay Claude-only until someone
+   installs Copilot CLI and checks how they behave. A Copilot `preToolUse` timeout always lets the
+   command through, which would weaken a guard that is meant to block when it fails.
+4. **Skill text (decided 2026-10-16: wait for a live test).** No per-client wording and no list of
+   reduced features yet. Decide after the live test (step 1 below).
 
 ## What the research found
 

@@ -71,7 +71,7 @@ EXIT_CANNOT_RUN = 2
 # The allowlist. Every entry carries the reason it exists, and the reason is the
 # discipline rather than decoration: it is what makes a future addition arguable.
 #
-# The list was FOURTEEN when this convention landed, and is fifteen now. A new
+# The list was FOURTEEN when this convention landed, and is sixteen now. A new
 # pattern lands by raising the cap in `test_check_shipped_tree.py` in the SAME commit that adds
 # the pattern and its reason — the cap is not a prohibition on growth, it is a
 # prohibition on growth nobody argued for.
@@ -113,6 +113,10 @@ ALLOWLIST: tuple[tuple[str, str], ...] = (
      "The GitHub Copilot CLI manifest, at the plugin root beside the Claude one. "
      "Exactly one file, kept at the release version by the same test that pins "
      ".claude-plugin/plugin.json."),
+    (r"com\.github\.copilot/agents/[^/.]+\.agent\.md",
+     "The Copilot CLI copy of each helper agent, in the one directory an Agent Plugins "
+     "1.0 plugin keeps them. Generated from agents/ and held in step by a test. "
+     "Single-dot stem only, so a compound name cannot slip through."),
 )
 
 # The one shape whose name is otherwise a legal script name. A pytest fixture
