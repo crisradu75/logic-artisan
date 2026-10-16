@@ -59,6 +59,10 @@ pytest plugin-tests/tests/<area> -n auto --dist loadfile    # one area while ite
 openspec validate --specs --strict
 ```
 
+- **`check_spec_proof.py` checks the specs of the current directory, not of its own tree.** Run a
+  worktree's copy with that worktree as cwd (PowerShell `Push-Location`); `block-cd-in-bash`
+  blocks `cd` in Bash.
+
 ### The parallel gate
 
 - **Always pass `--dist loadfile`; plain `-n auto` is the trap.** Each annotate browser test file
@@ -161,3 +165,6 @@ or a new component. A small addition to something already built and tested does 
   merging does not do it. Anything listed there that is not still in progress needs archiving.
 - **Deferred work goes in GitHub issues.** A root `TODO.md` holds leftover suggestions written by
   spec-to-pr's last step, not a backlog.
+- **On Windows a long Bash command can fail** with `unexpected EOF while looking for matching quote`.
+  Put a long script in a file and run it by path.
+- **Put `Closes #N` in the PR body.** A squash merge closes no issue without it.
