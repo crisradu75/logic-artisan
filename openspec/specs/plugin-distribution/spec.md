@@ -69,20 +69,6 @@ In the source repo, `/release` SHALL bump the version in the Claude plugin manif
 - **WHEN** either manifest, either catalog or the release note names a version the others do not
 - **THEN** the test suite fails
 
-### Requirement: Installing from GitHub Copilot CLI
-
-The plugin SHALL be listed for GitHub Copilot CLI with `copilot plugin marketplace add crisradu75/logic-artisan` followed by `copilot plugin install cla@cris-logic-artisan`, pinned to the same exact release tag as the Claude Code install, and every document offering it SHALL say it covers Copilot CLI only and is untested in a live Copilot CLI.
-
-#### Scenario: Both installs pin one release
-
-- **WHEN** a release is published
-- **THEN** the Copilot catalog and the Claude catalog name the same release tag
-
-#### Scenario: A reader looks for the Copilot install
-
-- **WHEN** a reader opens the install instructions
-- **THEN** they say the Copilot install is Copilot CLI only and untested
-
 ### Requirement: Helper agents in GitHub Copilot CLI
 
 The plugin SHALL offer each of its helper agents to GitHub Copilot CLI with the same instructions, description and read-only tools as its Claude Code agent, and the test suite SHALL fail when a Copilot agent differs from its Claude Code agent in any of them.
@@ -101,3 +87,31 @@ The plugin SHALL offer each of its helper agents to GitHub Copilot CLI with the 
 
 - **WHEN** a Copilot agent's definition is read
 - **THEN** it grants only the tools for reading and searching files
+
+### Requirement: Listing for GitHub Copilot CLI
+
+The plugin SHALL be listed for GitHub Copilot CLI with `copilot plugin marketplace add crisradu75/logic-artisan` followed by `copilot plugin install cla@cris-logic-artisan`, pinned to the same exact release tag as the Claude Code install.
+
+#### Scenario: Both installs pin one release
+
+- **WHEN** a release is published
+- **THEN** the Copilot catalog and the Claude catalog name the same release tag
+
+### Requirement: Disclosing the Copilot CLI install is untested
+
+Every document offering the Copilot CLI install, except the manifest shipped inside a release tag, SHALL say, beside the install command, that it covers Copilot CLI only and is untested in a live Copilot CLI.
+
+#### Scenario: A reader looks for the Copilot install
+
+- **WHEN** a reader opens the install instructions
+- **THEN** they say the Copilot install is Copilot CLI only and untested
+
+#### Scenario: The disclosure sits in another section
+
+- **WHEN** a document gives the install command and says it is untested only in a different section
+- **THEN** the test suite fails
+
+#### Scenario: The shipped manifest is read
+
+- **WHEN** the description in the plugin's Copilot manifest is read
+- **THEN** it does not say the install is untested
