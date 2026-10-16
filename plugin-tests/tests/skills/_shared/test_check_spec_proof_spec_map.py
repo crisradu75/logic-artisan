@@ -306,6 +306,33 @@ def test_a_top_level_fence_opened_with_indent_keeps_its_less_indented_content(re
     assert "never closed" not in out and "problems: 1" in out
 
 
+# requirement: spec-map / A repo declares its spec map as a fact
+def test_a_lazy_continuation_line_keeps_its_list_item_open_so_the_fence_after_it_ends_with_the_item(repo, capsys):
+    _write(repo, FACTS, f"- example:\nlazy text\n  ```\n  foo\n## Spec map\n- {MAP}\n## Notes\n```text\nx\n```\n")
+    _write(repo, MAP, _map(ALPHA, BETA))
+    code, out, err = run(repo, capsys)
+    assert code == 0 and not err, out
+    assert "spec map: 1 file(s) from 1 declared path(s); 2 of 2 specs linked" in out and "NOTE" not in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_laziness_ends_at_a_blank_line_a_heading_and_a_fence_but_not_at_plain_text(repo, capsys):
+    _declare(repo, MAP)
+    # Plain text keeps the item open: the fence after it belongs to the item and ends at the less indented link.
+    _write(repo, MAP, _map("- step", "lazy text", "  ```", "  [g](specs/gamma/spec.md)", ALPHA, BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    # A blank line, then plain text, ends the item: the fence is top level, so it keeps its less indented link.
+    _write(repo, MAP, _map("- step", "", "para", "  ```", ALPHA, "```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    # A heading is a new block, not a continuation.
+    _write(repo, MAP, _map("- step", "text", "# Heading", "  ```", ALPHA, "```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    assert "never closed" not in out
+
+
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
 def test_a_list_that_has_ended_does_not_make_a_later_indented_fence_a_list_fence(repo, capsys):
     _declare(repo, MAP)

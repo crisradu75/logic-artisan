@@ -597,11 +597,31 @@ _ITEM = re.compile(r"^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)")
 Fence = tuple[str, int, int, int, bool]  # (character, run length, indent, line it opened on, inside a list item)
 
 
-def _fence_step(line: str, n: int, fence: Fence | None, items: list[int]) -> tuple[Fence | None, bool]:
+# A line that starts a new block, so it cannot be a lazy continuation of a paragraph: an ATX heading, a
+# thematic break, or a block quote. (A fence or a list marker is checked beside it.)
+_NEW_BLOCK = re.compile(r"^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|>)")
+
+
+class _Lists:
+    """What `_fence_step` remembers between lines about the list items still open.
+
+    `cols` holds the column where each open item's content begins. `lazy` is True when the last line was
+    paragraph text, so that a following plain line indented less than the item still belongs to it
+    (CommonMark's paragraph continuation text, "laziness")."""
+
+    def __init__(self) -> None:
+        self.cols: list[int] = []
+        self.lazy = False
+
+
+def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[Fence | None, bool]:
     """Advance a code-fence tracker by one line: (new state, whether the line is a fence line or inside one).
 
-    The state is None outside a fence. `items` is the caller's list, which this function keeps: the column
-    where the content of each list item still open begins.
+    The state is None outside a fence. `lists` is the caller's `_Lists`, which this function keeps.
+    List items follow the CommonMark rule: an item stays open while lines are indented to its content
+    column, and ends at a less indented line, EXCEPT that a plain line directly after paragraph text (no blank
+    line, not a heading, thematic break, quote, fence or list marker) is a lazy continuation of that paragraph
+    and leaves the item open. A blank line, a fence or a heading ends the laziness.
     A fence opens on a run of 3 or more backticks (whose info string holds no backtick) or tildes at ANY
     indent: a fence inside a list item sits 4 or more spaces in and still renders as a fence, so a cap of 3
     would miss it and count a link shown in an example. A list marker before the run (`- ```) counts as
@@ -613,23 +633,31 @@ def _fence_step(line: str, n: int, fence: Fence | None, items: list[int]) -> tup
     indent = len(line) - len(line.lstrip())
     if fence is not None and fence[4] and line.strip() and indent < fence[2]:
         fence = None  # the list item holding the fence has ended, and the fence with it; read this line afresh
+    paragraph = False  # whether this line is paragraph text, which a following plain line may continue lazily
     if fence is None and line.strip():
-        while items and items[-1] > indent:
-            items.pop()
+        core = line.lstrip()
         item = _ITEM.match(line)
+        starts_block = bool(_NEW_BLOCK.match(core) or _FENCE_LINE.match(line) or item)
+        if not (lists.lazy and not starts_block):
+            while lists.cols and lists.cols[-1] > indent:
+                lists.cols.pop()
         if item:
             gap = len(item.group(3))
             col = len(item.group(1)) + len(item.group(2)) + (gap if 0 < gap < 5 else 1)
-            items.append(col)
+            lists.cols.append(col)
             line = " " * col + line[item.end():]
+        paragraph = not _NEW_BLOCK.match(core) and not _FENCE_LINE.match(line) and bool(line.strip())
     m = _FENCE_LINE.match(line)
     if fence is not None:
+        lists.lazy = False
         closes = m and m.group(2)[0] == fence[0] and len(m.group(2)) >= fence[1] and not m.group(3).strip()
         if closes and len(m.group(1)) <= fence[2] + 3:
             return None, True
         return fence, True
+    lists.lazy = paragraph
     if m and not (m.group(2)[0] == "`" and "`" in m.group(3)):
-        return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n, bool(items)), True
+        lists.lazy = False
+        return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n, bool(lists.cols)), True
     return None, False
 
 
@@ -676,7 +704,7 @@ def read_spec_map(root: Path, notes: list[str] | None = None) -> list[str] | Non
         raise CheckerError(f"cannot read {FACTS_RELPATH}: {exc}") from exc
     heads = []
     fence = None
-    items: list[int] = []
+    lists = _Lists()
     in_comment = False
     hidden_lines = set()  # lines inside a fence or an HTML comment, which cannot declare anything
     for n, line in enumerate(lines, 1):
@@ -690,7 +718,7 @@ def read_spec_map(root: Path, notes: list[str] | None = None) -> list[str] | Non
                 in_comment = "-->" not in line
                 hidden_lines.add(n)
                 continue
-        fence, hidden = _fence_step(line, n, fence, items)
+        fence, hidden = _fence_step(line, n, fence, lists)
         if hidden:
             hidden_lines.add(n)
             continue
@@ -747,14 +775,14 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
     problem naming the line it began on: otherwise every later link would vanish with no word said."""
     links: list[tuple[int, str]] = []
     fence = None
-    items: list[int] = []
+    lists = _Lists()
     comment_from: int | None = None
     for n, line in enumerate(text.splitlines(), 1):
         if fence is None and comment_from is not None:
             if "-->" not in line:
                 continue
             comment_from, line = None, ""  # what follows the closer on its line is raw HTML too
-        fence, hidden = _fence_step(line, n, fence, items)
+        fence, hidden = _fence_step(line, n, fence, lists)
         if hidden:
             continue
         stripped = line.lstrip()
