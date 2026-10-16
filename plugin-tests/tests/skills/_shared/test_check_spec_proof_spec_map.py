@@ -591,3 +591,359 @@ def test_this_repos_own_map_links_every_spec_and_only_specs():
         specs.setdefault(p.parent.name, p.relative_to(_REPO).as_posix())
     problems, _ = csp.check_spec_map(_REPO, specs, patterns)
     assert problems == []
+
+
+# ---- a link counts only if it renders ----
+
+
+def _unlinked(out: str, name: str) -> bool:
+    return f"openspec/specs/{name}/spec.md is linked from no spec map" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize(
+    "lines",
+    [
+        [r"- \[alpha\](specs/alpha/spec.md)", BETA],
+        [r"- [alpha\](specs/alpha/spec.md)", BETA],
+        ["- ![alpha](specs/alpha/spec.md)", BETA],
+        # a code span holds the link, and a stray backtick elsewhere on the line must not unmask it
+        ["- a `[alpha](specs/alpha/spec.md)` and a stray ` here", BETA],
+        # an indented code block, after a blank line, also at the content column of a list item
+        ["    [alpha](specs/alpha/spec.md)", "", BETA],
+        ["- item", "", "      [alpha](specs/alpha/spec.md)", "", BETA],
+        ["\t[alpha](specs/alpha/spec.md)", "", BETA],
+        # a bracket pair with no opening bracket is text
+        ["- alpha](specs/alpha/spec.md)", BETA],
+        # a footnote definition is not a link definition, even when its text is a spec path
+        ["Text[^1].", "", "[^1]: specs/alpha/spec.md", BETA],
+        # link text wrapped over a blank line, or over a new list item, is two paragraphs or two items, not one link
+        ["- [alpha", "", "capability](specs/alpha/spec.md)", BETA],
+        ["- [alpha", "- capability](specs/alpha/spec.md)", BETA],
+        # a heading, a setext underline, a quote and an indented code block each end the paragraph that an open bracket began
+        ["# See [alpha", "capability](specs/alpha/spec.md)", BETA],
+        ["[alpha", "===", "capability](specs/alpha/spec.md)", BETA],
+        ["[alpha", "> capability](specs/alpha/spec.md)", BETA],
+        # a quote line at the margin ends the list item, so the indented line after it is a code block
+        ["- item", "> note", "", "    [alpha](specs/alpha/spec.md)", "", BETA],
+    ],
+)
+def test_a_link_that_does_not_render_does_not_link_the_spec(repo, capsys, lines):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(*lines))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "alpha") and not _unlinked(out, "beta"), out
+    assert "problems: 1" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize(
+    "lines",
+    [
+        # a stray backtick with no partner is literal, so a link beside it renders
+        ["- a stray ` here and [alpha](specs/alpha/spec.md)", BETA],
+        ["- [![badge](x.png)](specs/alpha/spec.md)", BETA],
+        # text a paragraph continues, and an item's own paragraph, are not code however far they are indented
+        ["para", "    [alpha](specs/alpha/spec.md)", "", BETA],
+        ["- item", "", "  [alpha](specs/alpha/spec.md)", "", BETA],
+        ["- item", "", "    [alpha](specs/alpha/spec.md)", "", BETA],
+        ["> [alpha](specs/alpha/spec.md)", "", BETA],
+        ["- [a `code` label](specs/alpha/spec.md)", BETA],
+        [r"- an escaped \[ bracket then [alpha](specs/alpha/spec.md)", BETA],
+        # link text hard-wrapped over two lines of one paragraph or one list item is one link
+        ["- [alpha", "  capability](specs/alpha/spec.md)", BETA],
+        ["[alpha", "capability](specs/alpha/spec.md)", "", BETA],
+        # a line that only starts like a definition (a footnote, prose, a trailing sentence) is a line with a link
+        ["[^1]: see " + ALPHA, BETA],
+        ["[Note]: see " + ALPHA, BETA],
+        # a quote inside a list item, or an item inside a quote, does not end the item the code-block test is measured from
+        ["- item", "  > note", "", "    [alpha](specs/alpha/spec.md)", "", BETA],
+        ["> - item", "> lazy text", ">", ">     [alpha](specs/alpha/spec.md)", "", BETA],
+        # an ordered item that does not start at 1 cannot interrupt a paragraph, so the wrapped link text goes on
+        ["[alpha", "2026. capability](specs/alpha/spec.md)", "", BETA],
+        # a title that runs onto the next line is still part of the definition
+        ["- [alpha][a]", "", '[a]: specs/alpha/spec.md "The alpha', 'spec"', BETA],
+        # an indented line right after a quoted paragraph continues it (lazily); it is not a code block
+        ["> note", "    [alpha](specs/alpha/spec.md)", "", BETA],
+        # a definition may carry a title
+        ["- [alpha][a]", "", '[a]: specs/alpha/spec.md "The alpha spec"', BETA],
+    ],
+)
+def test_a_link_that_renders_still_links_the_spec(repo, capsys, lines):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(*lines))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "2 of 2 specs linked" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_reference_definition_counts_only_when_a_link_uses_its_label(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("- [alpha][a]", "", "[a]: specs/alpha/spec.md", "[b]: specs/beta/spec.md", "[z]: specs/zzz/spec.md"))
+    code, out, _ = run(repo, capsys)
+    # beta's definition is unused, so beta is unlinked; the unused one naming no spec is not a dangling link
+    assert code == 1 and _unlinked(out, "beta") and not _unlinked(out, "alpha")
+    assert "points at no spec" not in out and "problems: 1" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize("use", ["- [Beta][B]", "- [b][]", "- [b]", "- [beta text][ b ]", "- ![b]", "- ![alt][b]"])
+def test_each_form_of_reference_link_uses_its_label(repo, capsys, use):
+    _declare(repo, MAP)
+    # an image reference shows a picture, so it does not use the label as a link
+    _write(repo, MAP, _map(ALPHA, "", use, "", "[b]: specs/beta/spec.md"))
+    code, out, _ = run(repo, capsys)
+    if use.startswith("- ![") :
+        assert code == 1 and _unlinked(out, "beta")
+    else:
+        assert code == 0, out
+        assert "2 of 2 specs linked" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_definition_after_its_use_and_inside_a_quote_counts(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(ALPHA, "- [beta][b]", "", "> [b]: specs/beta/spec.md"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_only_the_first_definition_of_a_label_counts(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("- [map][x]", "", "[x]: specs/alpha/spec.md", "[x]: specs/beta/spec.md"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "beta") and not _unlinked(out, "alpha"), out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_wrapped_link_to_a_missing_spec_is_reported_on_the_line_that_holds_its_target(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(ALPHA, BETA, "- [gamma", "  capability](specs/gamma/spec.md)"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"{MAP}:6: link 'specs/gamma/spec.md' points at no spec" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_an_image_inside_a_link_does_not_link_the_spec_its_picture_names(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("- [![pic](specs/beta/spec.md)](specs/alpha/spec.md)"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "beta") and not _unlinked(out, "alpha"), out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_problems_come_in_line_order_whether_the_link_is_inline_or_through_a_definition(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(ALPHA, BETA, "[g]: specs/gamma/spec.md", "", "- [g][g]", "- [h](specs/hhh/spec.md)"))
+    code, out, _ = run(repo, capsys)
+    lines = [l.split(": link")[0] for l in out.splitlines() if "points at no spec" in l]
+    assert code == 1 and lines == [f"PROBLEM spec-map: {MAP}:5", f"PROBLEM spec-map: {MAP}:8"], out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_dangling_link_through_a_used_definition_is_reported_on_the_definitions_line(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(ALPHA, BETA, "- [g][g]", "", "[g]: specs/gamma/spec.md"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"{MAP}:7: link 'specs/gamma/spec.md' points at no spec" in out
+
+
+# ---- a map is a Markdown file ----
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_glob_that_also_matches_a_binary_file_reads_only_the_markdown_ones(repo, capsys):
+    _declare(repo, "docs/*")
+    _write(repo, "docs/map.md", _map(ALPHA.replace("specs/", "../openspec/specs/"), BETA.replace("specs/", "../openspec/specs/")))
+    (repo / "docs" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\xff\xfe")
+    (repo / "docs" / "blob.bin").write_bytes(b"\x00\x01\xff\xfe\x80")
+    code, out, err = run(repo, capsys)
+    assert code == 0 and not err, (out, err)
+    assert "spec map: 1 file(s) from 1 declared path(s); 2 of 2 specs linked" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_glob_that_matches_only_files_that_are_not_markdown_is_reported(repo, capsys):
+    _declare(repo, "docs/*.png")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "logo.png").write_bytes(b"\x89PNG\x00")
+    code, out, err = run(repo, capsys)
+    assert code == 1 and not err
+    assert f"PROBLEM spec-map: declared path 'docs/*.png' in {FACTS} matches no file (only .md and .markdown files are read as maps)" in out
+
+
+# ---- a setext heading in another form ----
+
+
+# requirement: spec-map / A line that looks like the spec map heading is never silently ignored
+@pytest.mark.parametrize(
+    ("facts", "line"),
+    [
+        ("Spec maps\n=========\n\n- openspec/spec-map.md\n", 1),
+        ("# Facts\n\n**Spec map**\n---\n\n- openspec/spec-map.md\n", 3),
+        ("Spec-map\n--\n", 1),
+        ("> Spec_map.\n> ===\n", 1),
+    ],
+)
+def test_a_setext_heading_reading_as_the_declaration_in_another_form_exits_2(repo, capsys, facts, line):
+    _write(repo, FACTS, facts)
+    code, out, err = run(repo, capsys)
+    assert code == 2 and f"{FACTS}:{line}: looks like the 'Spec map' heading" in err and not out
+
+
+# requirement: spec-map / A line that looks like the spec map heading is never silently ignored
+def test_a_setext_variant_beside_a_real_declaration_stays_quiet_and_in_a_fence_is_a_note(repo, capsys):
+    _write(repo, FACTS, f"Spec maps\n===\n\n## Spec map\n\n- {MAP}\n")
+    _write(repo, MAP, _map(ALPHA, BETA))
+    assert run(repo, capsys)[0] == 0
+    _write(repo, FACTS, "```\nSpec maps\n---\n```\n")
+    code, out, err = run(repo, capsys)
+    assert code == 0 and not err and f"NOTE spec-map: {FACTS}:2: looks like the 'Spec map' heading" in out
+
+
+# ---- a link must name a file the repo lists, in the case it is listed ----
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_link_to_an_ignored_file_or_one_in_the_wrong_case_points_at_no_spec(repo, capsys):
+    _write(repo, ".gitignore", "openspec/specs/alpha/ignored.md\n")
+    _write(repo, "openspec/specs/alpha/ignored.md", "x\n")
+    _write(repo, "openspec/specs/alpha/notes.md", "x\n")
+    _declare(repo, MAP)
+    _write(
+        repo,
+        MAP,
+        _map(ALPHA, BETA, "- [ok](specs/alpha/notes.md)", "- [ign](specs/alpha/ignored.md)", "- [case](specs/alpha/NOTES.md)", "- [dir](specs/Alpha/spec.md)"),
+    )
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    problems = [l for l in out.splitlines() if l.startswith("PROBLEM")]
+    assert [p.split("link ")[1].split(" points")[0] for p in problems] == [
+        "'specs/alpha/ignored.md'", "'specs/alpha/NOTES.md'", "'specs/Alpha/spec.md'"
+    ]
+
+
+# ---- a fence inside a block quote ----
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize(
+    "lines",
+    [
+        ["> ```", "> " + ALPHA, "> ```", BETA],
+        ["> ```markdown", ">     " + ALPHA, "> ```", BETA],
+        ["> > ```", "> > " + ALPHA, "> > ```", BETA],
+    ],
+)
+def test_a_fence_in_a_block_quote_hides_the_links_in_it(repo, capsys, lines):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(*lines))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "alpha") and not _unlinked(out, "beta"), out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize("gap", ["", "text with no marker"])
+def test_a_fence_in_a_block_quote_ends_where_the_quote_does(repo, capsys, gap):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("> ```", "> code", gap, "- " + ALPHA, BETA))
+    code, out, err = run(repo, capsys)
+    assert code == 0, out  # the quote took its fence with it, so alpha's link after them renders
+    assert "2 of 2 specs linked" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_fence_left_open_in_a_block_quote_is_reported_where_it_began(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(ALPHA, BETA, "> ```", "> " + ALPHA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"PROBLEM spec-map: {MAP}:5: a code fence is never closed" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_quote_markers_inside_a_fence_that_was_not_opened_in_a_quote_are_content(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("```", "> ```", ALPHA, "```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "alpha") and not _unlinked(out, "beta"), out
+
+
+# ---- a spec a change in progress removes ----
+
+REMOVE_BETA = (
+    "## REMOVED Requirements\n\n### Requirement: beta rule\n\n**Reason**: folded elsewhere.\n**Migration**: None.\n"
+)
+
+
+def _remove_beta(repo: Path, delta: str = REMOVE_BETA, change: str = "c1") -> None:
+    _write(repo, f"openspec/changes/{change}/specs/beta/spec.md", delta)
+
+
+# requirement: spec-map / A spec a change in progress removes is gone for the map rule
+def test_a_spec_a_change_removes_whole_needs_no_map_link(repo, capsys):
+    _declare(repo, MAP)
+    _remove_beta(repo)
+    _write(repo, MAP, _map(ALPHA))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "spec map: 1 file(s) from 1 declared path(s); 1 of 1 specs linked" in out
+
+
+# requirement: spec-map / A spec a change in progress removes is gone for the map rule
+def test_a_map_link_to_a_spec_a_change_removes_whole_is_reported(repo, capsys):
+    _declare(repo, MAP)
+    _remove_beta(repo)
+    _write(repo, MAP, _map(ALPHA, BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1
+    assert f"PROBLEM spec-map: {MAP}:4: link 'specs/beta/spec.md' points at spec beta, which change c1 removes" in out
+    assert "problems: 1" in out
+
+
+# requirement: spec-map / A spec a change in progress removes is gone for the map rule
+def test_a_spec_a_change_trims_is_still_live_for_the_map_rule(repo, capsys):
+    # beta holds two requirements and the change removes one of them
+    two = _spec("beta", "beta rule") + "\n### Requirement: beta other\n\nSHALL.\n\n#### Scenario: S2\n\n- **WHEN** x\n- **THEN** y\n"
+    _write(repo, "openspec/specs/beta/spec.md", two)
+    _write(repo, "tests/test_beta_other.py", _marker("beta", "beta other"))
+    _declare(repo, MAP)
+    _remove_beta(repo)
+    _write(repo, MAP, _map(ALPHA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "beta"), out
+
+
+# requirement: spec-map / A spec a change in progress removes is gone for the map rule
+def test_a_spec_a_change_rewrites_is_still_live_for_the_map_rule(repo, capsys):
+    # every requirement removed and one added back under a new heading
+    added = "\n## ADDED Requirements\n\n### Requirement: beta again\n\nSHALL.\n\n#### Scenario: S\n\n- **WHEN** x\n- **THEN** y\n"
+    _declare(repo, MAP)
+    _remove_beta(repo, REMOVE_BETA + added)
+    _write(repo, "tests/test_beta_again.py", _marker("beta", "beta again"))
+    _write(repo, MAP, _map(ALPHA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "beta"), out
+
+
+# requirement: spec-map / A spec a change in progress removes is gone for the map rule
+def test_a_spec_with_no_requirement_is_never_read_as_removed_whole(repo, capsys):
+    # Nothing to remove is not everything removed: the empty spec stays in the map rule and is reported as before.
+    _write(repo, "openspec/specs/beta/spec.md", "# beta Specification\n\n## Purpose\n\nx\n\n## Requirements\n")
+    _declare(repo, MAP)
+    _remove_beta(repo)
+    _write(repo, MAP, _map(ALPHA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "beta"), out
+
+
+# requirement: spec-map / A spec a change in progress removes is gone for the map rule
+def test_another_change_that_modifies_the_spec_keeps_it_live(repo, capsys):
+    _declare(repo, MAP)
+    _remove_beta(repo)
+    _write(repo, "openspec/changes/c2/specs/beta/spec.md", "## MODIFIED Requirements\n\n### Requirement: beta rule\n\nSHALL, again.\n\n#### Scenario: Case\n\n- **WHEN** x\n- **THEN** it works\n")
+    _write(repo, "tests/test_beta3.py", _marker("beta", "beta rule"))
+    _write(repo, MAP, _map(ALPHA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "beta"), out

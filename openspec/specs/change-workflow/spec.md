@@ -79,7 +79,7 @@ Skills that write or review an OpenSpec change SHALL apply the `rules:` block in
 
 ### Requirement: Each requirement names its proof
 
-Each requirement a change adds or modifies SHALL be proven by a test carrying a `requirement: <spec> / <heading>` comment line, or by a tasks.md line `manual: <heading>: <reason>`, and `/cla:review-change` SHALL report a requirement with neither as an Important finding.
+Each requirement a change adds or modifies SHALL be proven by a test carrying a `requirement: <spec> / <heading>` comment line, or by a tasks.md line `manual: <spec> / <heading>: <reason>`, and `/cla:review-change` SHALL report a requirement with neither as an Important finding.
 
 #### Scenario: A requirement with no proof
 

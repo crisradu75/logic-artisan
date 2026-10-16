@@ -220,6 +220,19 @@ def test_the_earlier_configurable_values_wording_is_listed_for_removal_and_the_n
 
 
 # requirement: repo-context / OpenSpec authoring rules on setup
+def test_the_earlier_manual_line_wording_is_listed_for_removal_and_the_new_one_added(tmp_path: Path):
+    # A repo seeded before the `manual: <spec> / <heading>` reword holds the old tasks rule where the shipped one now sits.
+    new_rule = next(i for i in _rule_items() if "`manual: <spec> / <heading>: <reason>`. Scenarios are examples" in i)
+    old_rule = _retired("`manual: <heading>: <reason>`. Scenarios are examples")
+    cfg = tmp_path / "openspec" / "config.yaml"
+    cfg.parent.mkdir()
+    cfg.write_bytes(_CONFIG.read_bytes().replace(new_rule.encode("utf-8"), ("    " + old_rule).encode("utf-8")))
+    assert _run_seed(tmp_path).splitlines() == [
+        _HEADER.format("config.yaml"), "+ tasks: " + new_rule.strip(), "- tasks: " + old_rule,
+    ]
+
+
+# requirement: repo-context / OpenSpec authoring rules on setup
 @pytest.mark.parametrize(
     "fragment, artifact",
     [("Keep it to one page. Point", "proposal"), ("Keep it to one page: for each", "design")],

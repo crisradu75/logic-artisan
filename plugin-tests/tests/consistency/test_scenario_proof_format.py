@@ -3,7 +3,7 @@
 Proof is per requirement: scenarios are examples, not test contracts. A test
 claims a requirement with a comment line `requirement: <spec> / <heading>`
 above it; a hand-checked requirement is a tasks.md line
-`manual: <heading>: <reason>`. OpenSpec already refuses two requirements with
+`manual: <spec> / <heading>: <reason>`. OpenSpec already refuses two requirements with
 one heading in a spec, so `<spec> / <heading>` names one requirement. These
 tests pin that the seeded rules and the review say the same thing, that the
 retired forms (`manual: <reason>`, and the per-scenario `scenario:` marker) are
@@ -26,7 +26,7 @@ _DISPATCH = _SKILLS / "review-change" / "references" / "dispatch.md"
 _CONFIG = _REPO / "openspec" / "config.yaml"
 
 _MARKER = "`requirement: <spec> / <heading>`"
-_MANUAL = "`manual: <heading>: <reason>`"
+_MANUAL = "`manual: <spec> / <heading>: <reason>`"
 
 
 def _read(path: Path) -> str:

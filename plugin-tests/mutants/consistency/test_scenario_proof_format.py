@@ -63,7 +63,7 @@ MUTANTS = [
     (
         "the checklist reverts its proof check to the old manual form",
         CHECKLIST,
-        "or a tasks.md line `manual: <heading>: <reason>`. A requirement with neither is the finding.",
+        "or a tasks.md line `manual: <spec> / <heading>: <reason>`. A requirement with neither is the finding.",
         "or a `manual: <reason>` note. A requirement with neither is the finding.",
         TARGETS,
     ),
@@ -91,7 +91,7 @@ MUTANTS = [
     (
         "a shipped reference keeps the old manual form",
         TEST_QUALITY,
-        "`manual: <heading>: <reason>` (`openspec/config.yaml` `rules.tasks`)",
+        "`manual: <spec> / <heading>: <reason>` (`openspec/config.yaml` `rules.tasks`)",
         "`manual: <reason>` (`openspec/config.yaml` `rules.tasks`)",
         TARGETS,
     ),
