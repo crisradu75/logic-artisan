@@ -13,7 +13,7 @@
 ## 3. Checks
 
 - [x] 3.1 The Claude install is unchanged: `claude plugin validate` passes on the plugin and the catalog, and a `claude -p --plugin-dir` run lists the same 5 `cla:` agents. measured: validate exit 0 before and after; 22 agents and 66 skills listed on both trees.
-- [ ] 3.2 Run `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict`, once each on the final commit.
+- [x] 3.2 Run `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict`, once each on the final commit. measured: 2469 passed, 8 skipped; 11 specs valid (on the archive commit).
 
 ## 4. Docs
 
