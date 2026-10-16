@@ -175,7 +175,7 @@ _BULLET = re.compile(r"^[-*+]\s+(.+?)\s*$")
 _CODE_START = re.compile(r"^`([^`]+)`")
 # A reference definition `[label]: target` (group 1 is the label, group 2 the target). Inline targets are read by `_scan_links`.
 # It must fill the line (a destination and an optional title, nothing after): `[^1]: see [beta](..)` is prose with a link.
-_REF_DEF = re.compile(r"^\s{0,3}\[([^\]^][^\]]*)\]:\s*<?([^\s>]+)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*$")
+_REF_DEF = re.compile(r"^\s{0,3}\[([^\]^][^\]]*)\]:\s*<?([^\s>]+)>?(?:\s+[\"'(].*)?\s*$")
 # A repo-relative path that names a live spec directory or its spec.md (group 1 is the spec name).
 _SPEC_LINK = re.compile(r"^openspec/specs/([^/]+)(?:/spec\.md)?/?$")
 
@@ -666,11 +666,13 @@ class _Lists:
 
     `cols` holds the column where each open item's content begins. `lazy` is True when the last line was
     paragraph text, so that a following plain line indented less than the item still belongs to it
-    (CommonMark's paragraph continuation text, "laziness")."""
+    (CommonMark's paragraph continuation text, "laziness"). `in_quote` is True when the last line sat in a
+    block quote, so that only the line that opens the quote counts as the start of a block."""
 
     def __init__(self) -> None:
         self.cols: list[int] = []
         self.lazy = False
+        self.in_quote = False
 
 
 def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[Fence | None, bool]:
@@ -693,11 +695,15 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
     fence; it ends where the quote does, at the first line with no marker, blank lines included. A line
     inside a fence that was opened outside a quote is read whole, markers and all."""
     in_quote_fence = fence is not None and fence[5]
+    orig_indent = len(line) - len(line.lstrip())
     core, quoted = _strip_quote(line)
     if in_quote_fence and not quoted:
         fence = None  # the quote holding the fence has ended, and the fence with it; read this line afresh
+    entering = False  # whether this line opens a block quote (the line before it was not quoted)
     if fence is None or in_quote_fence:
         line = core
+        entering = quoted and not lists.in_quote
+        lists.in_quote = quoted
     indent = len(line) - len(line.lstrip())
     if fence is not None and fence[4] and line.strip() and indent < fence[2]:
         fence = None  # the list item holding the fence has ended, and the fence with it; read this line afresh
@@ -705,10 +711,11 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
     if fence is None and line.strip():
         core = line.lstrip()
         item = _ITEM.match(line)
-        # A quote line starts a block too; its `>` was set aside above, so `_NEW_BLOCK` no longer sees it.
-        starts_block = bool(quoted or _NEW_BLOCK.match(core) or _FENCE_LINE.match(line) or item)
+        # The line that opens a quote starts a block too; its `>` was set aside above, so `_NEW_BLOCK` no longer sees
+        # it, and it ends the list items that sit deeper than the `>` itself. The lines after it belong to the quote.
+        starts_block = bool(entering or _NEW_BLOCK.match(core) or _FENCE_LINE.match(line) or item)
         if not (lists.lazy and not starts_block):
-            while lists.cols and lists.cols[-1] > indent:
+            while lists.cols and lists.cols[-1] > (orig_indent if entering else indent):
                 lists.cols.pop()
         if item:
             gap = len(item.group(3))
@@ -920,6 +927,7 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
     links: list[tuple[int, str]] = []
     defs: dict[str, tuple[int, str]] = {}  # normalised label -> (line, target) of its first reference definition
     openers: list[tuple[int | None, bool]] = []  # the brackets open at the end of the last line of this paragraph
+    was_quoted = False  # whether the last line read sat in a block quote
     used: set[str] = set()  # normalised labels some `[text][label]`, `[label][]` or `[label]` uses
     fence = None
     lists = _Lists()
@@ -934,9 +942,13 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
         if hidden:
             openers.clear()
             continue
-        core, _ = _strip_quote(line)
+        core, quoted = _strip_quote(line)
         if _indented_code(core, cols_before, lazy_before):
+            was_quoted = quoted  # (no brackets can be open here: code never interrupts a paragraph, and a blank line cleared them)
             continue
+        if quoted and not was_quoted:
+            openers.clear()  # a quote starts here; the text before it was another block
+        was_quoted = quoted
         stripped = core.lstrip()
         if stripped.startswith("<!--"):
             openers.clear()
@@ -953,9 +965,16 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
             openers.clear()
             defs.setdefault(_label_key(ref.group(1)), (n, ref.group(2)))  # the first definition of a label is the one that counts
             continue
-        if not stripped.strip() or _NEW_BLOCK.match(stripped) or _ITEM.match(core):
-            openers.clear()  # a blank line, a heading, a rule, a quote marker or a new list item ends the paragraph
+        item = _ITEM.match(core)
+        # A new list item ends the paragraph before it, unless it is an ordered item that does not start at 1 or an
+        # empty one: those cannot interrupt a paragraph, so on the page the text goes on.
+        new_item = bool(item) and bool(core[item.end():].strip()) and (item.group(2) in ("-", "+", "*") or item.group(2)[:-1] == "1")
+        closes = bool(_NEW_BLOCK.match(stripped) or _SETEXT_UNDERLINE.match(stripped.strip()))  # a heading, a rule or an underline
+        if not stripped.strip() or closes or new_item:
+            openers.clear()  # a blank line, a heading, a rule, an underline or a new list item ends the paragraph
         targets, labels = _scan_links(masked, openers)
+        if closes:
+            openers.clear()  # a heading's own unclosed bracket ends with it
         links += [(n, target) for target in targets]
         used |= labels
     # A definition renders nothing until a link uses its label, so an unused one links no spec.

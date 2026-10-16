@@ -620,7 +620,11 @@ def _unlinked(out: str, name: str) -> bool:
         # link text wrapped over a blank line, or over a new list item, is two paragraphs or two items, not one link
         ["- [alpha", "", "capability](specs/alpha/spec.md)", BETA],
         ["- [alpha", "- capability](specs/alpha/spec.md)", BETA],
-        # a quote line ends the list item, so the indented line after it is a code block
+        # a heading, a setext underline, a quote and an indented code block each end the paragraph that an open bracket began
+        ["# See [alpha", "capability](specs/alpha/spec.md)", BETA],
+        ["[alpha", "===", "capability](specs/alpha/spec.md)", BETA],
+        ["[alpha", "> capability](specs/alpha/spec.md)", BETA],
+        # a quote line at the margin ends the list item, so the indented line after it is a code block
         ["- item", "> note", "", "    [alpha](specs/alpha/spec.md)", "", BETA],
     ],
 )
@@ -652,6 +656,13 @@ def test_a_link_that_does_not_render_does_not_link_the_spec(repo, capsys, lines)
         # a line that only starts like a definition (a footnote, prose, a trailing sentence) is a line with a link
         ["[^1]: see " + ALPHA, BETA],
         ["[Note]: see " + ALPHA, BETA],
+        # a quote inside a list item, or an item inside a quote, does not end the item the code-block test is measured from
+        ["- item", "  > note", "", "    [alpha](specs/alpha/spec.md)", "", BETA],
+        ["> - item", "> lazy text", ">", ">     [alpha](specs/alpha/spec.md)", "", BETA],
+        # an ordered item that does not start at 1 cannot interrupt a paragraph, so the wrapped link text goes on
+        ["[alpha", "2026. capability](specs/alpha/spec.md)", "", BETA],
+        # a title that runs onto the next line is still part of the definition
+        ["- [alpha][a]", "", '[a]: specs/alpha/spec.md "The alpha', 'spec"', BETA],
         # an indented line right after a quoted paragraph continues it (lazily); it is not a code block
         ["> note", "    [alpha](specs/alpha/spec.md)", "", BETA],
         # a definition may carry a title
