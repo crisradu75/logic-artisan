@@ -26,7 +26,7 @@ Every document offering the Copilot CLI install, except the manifest shipped ins
 #### Scenario: The shipped manifest is read
 
 - **WHEN** the description in the plugin's Copilot manifest is read
-- **THEN** it does not say the install is untested, so a tag never carries a stale claim
+- **THEN** it does not say the install is untested
 
 ## REMOVED Requirements
 
