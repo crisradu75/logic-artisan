@@ -3,7 +3,7 @@
 Proof is per requirement: scenarios are examples, not test contracts. A test
 claims a requirement with a comment line `requirement: <spec> / <heading>`
 above it; a hand-checked requirement is a tasks.md line
-`manual: <heading>: <reason>`. OpenSpec already refuses two requirements with
+`manual: <spec> / <heading>: <reason>`. OpenSpec already refuses two requirements with
 one heading in a spec, so `<spec> / <heading>` names one requirement. These
 tests pin that the seeded rules and the review say the same thing, that the
 retired forms (`manual: <reason>`, and the per-scenario `scenario:` marker) are
@@ -27,9 +27,6 @@ _CONFIG = _REPO / "openspec" / "config.yaml"
 
 _MARKER = "`requirement: <spec> / <heading>`"
 _MANUAL = "`manual: <spec> / <heading>: <reason>`"
-# The review checklist still words the line the older way, which the checker still accepts (it names the heading and
-# no spec); it moves to `_MANUAL` when the session that owns the review skill edits it.
-_MANUAL_OLD = "`manual: <heading>: <reason>`"
 
 
 def _read(path: Path) -> str:
@@ -55,7 +52,7 @@ def test_the_brief_applies_the_rules_instead_of_copying_them():
 
 # requirement: change-workflow / Each requirement names its proof
 def test_the_review_flags_a_requirement_with_no_proof():
-    assert f"or a tasks.md line {_MANUAL_OLD}. A requirement with neither is the finding." in _read(_CHECKLIST)
+    assert f"or a tasks.md line {_MANUAL}. A requirement with neither is the finding." in _read(_CHECKLIST)
     assert "A requirement with neither is **Important**." in _read(_DISPATCH)
 
 
