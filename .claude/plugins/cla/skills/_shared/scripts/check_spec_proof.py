@@ -149,6 +149,12 @@ _MAP_HEADING = re.compile(r"^##\s+Spec map\s*$", re.I)
 # uses it to find a heading that reads as "Spec map" but is not the exact form above (`### Spec map`,
 # `## Spec map:`, `## Spec  maps`, `## **Spec-map**`): reported, never silently read as no declaration.
 _ATX_HEADING = re.compile(r"^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$")
+# For the backstop in `read_spec_map`: a line that, once indent, list markers and quote markers are set aside,
+# is an ATX "Spec map" heading, or the text of a setext one (followed by a `===` or `---` underline).
+_LINE_PREFIX = re.compile(r"^(?:\s+|>|[-*+]\s+|\d+[.)]\s+)+")
+_HEADING_LIKE = re.compile(r"^#{1,6}\s*spec\s+map\s*#*\s*$", re.I)
+_SETEXT_TEXT = re.compile(r"^spec\s+map\s*$", re.I)
+_SETEXT_UNDERLINE = re.compile(r"^(?:=+|-{2,})\s*$")
 _ANY_HEADING = re.compile(r"^#{1,6}\s")
 _HTML_COMMENT = re.compile(r"<!--.*?-->")
 # A line that can open or close a fence: its indent, a run of 3 or more backticks or tildes, the rest.
@@ -594,8 +600,12 @@ def _fence_step(line: str, n: int, fence: tuple[str, int, int, int] | None) -> t
     indent: a fence inside a list item sits 4 or more spaces in and still renders as a fence, so a cap of 3
     would miss it and count a link shown in an example. It closes on a bare run of the same character at
     least as long, indented at most 3 spaces deeper than the opener, so a more deeply indented run inside
-    the fence is content. A fence left open at the end hides the rest of the file, as on the page."""
+    the fence is content. A fence opened inside a list item or quote also ends at the first non-blank line
+    indented less than its opener, as the container does on the page. A fence left open at the end hides
+    the rest of the file, as on the page."""
     m = _FENCE_LINE.match(line)
+    if fence is not None and line.strip() and len(line) - len(line.lstrip()) < fence[2]:
+        fence = None  # the list item or quote holding the fence has ended, and the fence with it; read this line afresh
     if fence is not None:
         closes = m and m.group(2)[0] == fence[0] and len(m.group(2)) >= fence[1] and not m.group(3).strip()
         if closes and len(m.group(1)) <= fence[2] + 3:
@@ -616,6 +626,19 @@ def _reads_as_map_heading(line: str) -> bool:
     return words in ("spec map", "spec maps")
 
 
+def _looks_like_map_heading(lines: list[str]) -> int | None:
+    """The 1-based number of the first line that looks like the "Spec map" heading, in any fence, comment,
+    list item or quote, or None. Prose that only says the words, inline code, and a longer heading
+    (`## Spec map notes`) do not look like it."""
+    for i, line in enumerate(lines):
+        core = _LINE_PREFIX.sub("", line)
+        if _HEADING_LIKE.match(core):
+            return i + 1
+        if _SETEXT_TEXT.match(core) and i + 1 < len(lines) and _SETEXT_UNDERLINE.match(_LINE_PREFIX.sub("", lines[i + 1])):
+            return i + 1
+    return None
+
+
 def read_spec_map(root: Path) -> list[str] | None:
     """The paths or globs under `## Spec map` in the facts file, or None when the repo declares no map.
 
@@ -631,7 +654,16 @@ def read_spec_map(root: Path) -> list[str] | None:
         raise CheckerError(f"cannot read {FACTS_RELPATH}: {exc}") from exc
     heads = []
     fence = None
+    in_comment = False
     for n, line in enumerate(lines, 1):
+        if fence is None:
+            # A heading inside an HTML comment is not a declaration. (A line that begins with a comment is raw HTML.)
+            if in_comment:
+                in_comment = "-->" not in line
+                continue
+            if line.lstrip().startswith("<!--"):
+                in_comment = "-->" not in line
+                continue
         fence, hidden = _fence_step(line, n, fence)
         if hidden:
             continue
@@ -646,6 +678,14 @@ def read_spec_map(root: Path) -> list[str] | None:
             if _MAP_HEADING.match(lines[n - 1].rstrip()) or _reads_as_map_heading(lines[n - 1]):
                 raise CheckerError(f"{FACTS_RELPATH}:{fence[3]}: a code fence is never closed, so the spec map heading on line {n} is not read; close the fence")
     if not heads:
+        # Backstop: the scans above can be fooled by Markdown a renderer reads differently from this line scan.
+        # A line that looks like the "Spec map" heading, with no declaration read, may be a declaration that was
+        # missed, and the guard going quiet is the one outcome this rule must not have. Prose that merely says
+        # the words does not trigger it. Fences and comments are searched too: that is where a fooled scan
+        # leaves the heading.
+        at = _looks_like_map_heading(lines)
+        if at is not None:
+            raise CheckerError(f"{FACTS_RELPATH}:{at}: looks like the 'Spec map' heading but was not read as a declaration; write it exactly as '## Spec map' outside any fence or comment")
         return None
     if len(heads) > 1:
         raise CheckerError(f"{FACTS_RELPATH}: '## Spec map' appears on lines {', '.join(map(str, heads))}; keep one")
