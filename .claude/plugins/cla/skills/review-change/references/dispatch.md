@@ -26,7 +26,7 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 >
 > You have been given the COMPLETE text of all change artifacts. Do NOT re-read these files — use only the content provided. You MAY read source files to verify claims.
 >
-> **Read only — never write to the working tree.** Do NOT edit, revert, or restore any file, and do NOT run `git checkout`, `checkout -- <path>`, `restore`, `reset`, `stash`, `switch`, or `branch`. The tree may hold uncommitted work in the exact files you are reviewing and you cannot tell, so a "temporary" revert destroys it silently and your report still reads as success. Read a committed state with `git show <ref>:<path>` or `git diff <base>...<branch>`. If a finding genuinely needs code mutated to verify it, copy the file to the session scratchpad, mutate the copy there, and say in your report that you did NOT verify against the live tree.
+> **Read only — never write to the working tree.** Do NOT edit, revert, or restore any file, and do NOT run `git checkout`, `checkout -- <path>`, `restore`, `reset`, `stash`, `switch`, or `branch`. The tree may hold uncommitted work in the exact files you are reviewing and you cannot tell, so a "temporary" revert destroys it silently and your report still reads as success. Read a committed state with `git show <ref>:<path>` or `git diff origin/<default-branch>...HEAD` (`<default-branch>` is this repo's default branch; fill it in before sending). If a finding genuinely needs code mutated to verify it, copy the file to the session scratchpad, mutate the copy there, and say in your report that you did NOT verify against the live tree.
 >
 > **Change:** <name>
 > **Affected area:** <the specific paths from Step 2>
@@ -59,7 +59,7 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 >
 > You have been given the COMPLETE text of all change artifacts. Do NOT re-read these files — use only the content provided. You MAY read source files to verify task feasibility.
 >
-> **Read only — never write to the working tree.** Do NOT edit, revert, or restore any file, and do NOT run `git checkout`, `checkout -- <path>`, `restore`, `reset`, `stash`, `switch`, or `branch`. The tree may hold uncommitted work in the exact files you are reviewing and you cannot tell, so a "temporary" revert destroys it silently and your report still reads as success. Read a committed state with `git show <ref>:<path>` or `git diff <base>...<branch>`. If a finding genuinely needs code mutated to verify it, copy the file to the session scratchpad, mutate the copy there, and say in your report that you did NOT verify against the live tree.
+> **Read only — never write to the working tree.** Do NOT edit, revert, or restore any file, and do NOT run `git checkout`, `checkout -- <path>`, `restore`, `reset`, `stash`, `switch`, or `branch`. The tree may hold uncommitted work in the exact files you are reviewing and you cannot tell, so a "temporary" revert destroys it silently and your report still reads as success. Read a committed state with `git show <ref>:<path>` or `git diff origin/<default-branch>...HEAD` (`<default-branch>` is this repo's default branch; fill it in before sending). If a finding genuinely needs code mutated to verify it, copy the file to the session scratchpad, mutate the copy there, and say in your report that you did NOT verify against the live tree.
 >
 > **Change:** <name>
 > **Affected area:** <the specific app/package + paths from Step 2>
@@ -95,7 +95,7 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 >
 > You have been given the COMPLETE text of all change artifacts. Do NOT re-read these files — use only the content provided. You MAY read source files to verify spec requirements against actual code.
 >
-> **Read only — never write to the working tree.** Do NOT edit, revert, or restore any file, and do NOT run `git checkout`, `checkout -- <path>`, `restore`, `reset`, `stash`, `switch`, or `branch`. The tree may hold uncommitted work in the exact files you are reviewing and you cannot tell, so a "temporary" revert destroys it silently and your report still reads as success. Read a committed state with `git show <ref>:<path>` or `git diff <base>...<branch>`. If a finding genuinely needs code mutated to verify it, copy the file to the session scratchpad, mutate the copy there, and say in your report that you did NOT verify against the live tree.
+> **Read only — never write to the working tree.** Do NOT edit, revert, or restore any file, and do NOT run `git checkout`, `checkout -- <path>`, `restore`, `reset`, `stash`, `switch`, or `branch`. The tree may hold uncommitted work in the exact files you are reviewing and you cannot tell, so a "temporary" revert destroys it silently and your report still reads as success. Read a committed state with `git show <ref>:<path>` or `git diff origin/<default-branch>...HEAD` (`<default-branch>` is this repo's default branch; fill it in before sending). If a finding genuinely needs code mutated to verify it, copy the file to the session scratchpad, mutate the copy there, and say in your report that you did NOT verify against the live tree.
 >
 > **Change:** <name>
 > **Affected area:** <the specific app/package + paths from Step 2>

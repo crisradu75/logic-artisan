@@ -118,10 +118,10 @@ diff to notice it by. Nor does a well-behaved agent undo it: it *restores* to th
 assumes was the baseline, usually `main` rather than the branch the session was on. Spell
 out the forbidden verbs. For a diff review, a reviewer with no shell (`code-reviewer`,
 `silent-failure-hunter`, `comment-analyzer`) is given a diff file instead: you save the diff
-(`git diff <base>...<branch> -- <paths>`) in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), outside the working tree, and name its absolute path in
+(`git diff origin/<pr-base>...<branch> -- <paths>`; `<pr-base>` is the branch the PR targets, as the calling skill defines it) in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), outside the working tree, and name its absolute path in
 the brief. A reviewer that does hold a shell gets the read-only way to read it:
 
-> Read the diff with `git diff <base>...<branch>`, and a committed file with
+> Read the diff with `git diff origin/<pr-base>...<branch>` (fill both names in before sending), and a committed file with
 > `git show <ref>:<path>`. Do NOT run `git checkout`, `switch`, `stash`, `branch`, or
 > `worktree add`, or anything else that mutates repository state. Do NOT run
 > `git checkout -- <path>`, `git restore`, or `git reset`, or edit or revert a file
