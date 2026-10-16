@@ -36,3 +36,8 @@ Leftover review suggestions (session-traps PR, CLAUDE.md):
 
 - The `check_spec_proof.py` trap could also name `--root <worktree>`, which checks that worktree from any cwd (`.claude/plugins/cla/skills/_shared/scripts/check_spec_proof.py:848`).
 - The "closes no issue without it" trap is slightly too strong: a closing keyword in the squash commit message, or a sidebar link, also closes the issue. Say "without a closing keyword such as `Closes #N` in the PR body".
+
+Leftover review suggestions (Copilot agents):
+
+- `sync_copilot_agents.py --write` never looks at `com.github.copilot/agents/` for copies whose Claude agent was renamed or removed; it prints "in step" and exits 0 while the consistency test fails. Have the script report or delete such files.
+- The model IDs in `MODEL_MAP` are checked against nothing but the script itself; GitHub renames models, and Copilot then silently uses the session model. Decide whether to re-read the supported-models table at each release.

@@ -21,8 +21,8 @@ seven are precisely the drift this check was written to prevent — a denylist
 would have reported clean on it.
 
 The structural reason behind that measurement: what SHOULD ship is small, stable
-and enumerable (14 shapes covering ~101 files when this was measured; one shape has
-been added since); what should not is unbounded.
+and enumerable (14 shapes covering ~101 files when this was measured; the list has
+grown since); what should not is unbounded.
 
 WHY THE PATTERNS ARE NARROW. An earlier 11-pattern draft was measured against
 planted files and ACCEPTED FOUR dev-asset shapes a denylist catches:

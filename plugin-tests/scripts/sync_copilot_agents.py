@@ -11,7 +11,7 @@ Claude files. This script writes the second copy, so the instructions are author
 - `model` is mapped to a Copilot model ID;
 - `color` is dropped (Copilot's frontmatter has no such field).
 
-Sources, read raw from github/docs and cited by the openspec change `copilot-agents`:
+Sources, read raw from github/docs:
 - https://docs.github.com/en/copilot/reference/custom-agents-configuration (`name`,
   `description`, `tools`, `model`, the tool alias table; unrecognized tool names are ignored)
 - https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference
@@ -20,8 +20,8 @@ Sources, read raw from github/docs and cited by the openspec change `copilot-age
   ("Supported models", and "A declared model ... that can't be honored falls back to the session's
   value instead of failing the dispatch")
 
-NOT TESTED in a live Copilot CLI (none is installed). The tests that call this module check only
-that each committed copy equals what `render` produces.
+NOT TESTED in a live Copilot CLI (none is installed). The tests that call this module check that
+each committed copy equals what `render` produces, plus the checks listed in that test file.
 
     python3 plugin-tests/scripts/sync_copilot_agents.py           # report copies that are out of step
     python3 plugin-tests/scripts/sync_copilot_agents.py --write   # regenerate them
@@ -88,6 +88,11 @@ def render(claude_text: str) -> str:
     """The Copilot agent text for one Claude Code agent file's text."""
     front, body = split_frontmatter(claude_text)
     out: list[str] = []
+    seen = {line.partition(":")[0] for line in front}
+    for required in ("tools", "model"):
+        if required not in seen:
+            # A missing `tools` means all tools in both products; a missing `model` loses the choice.
+            raise ValueError(f"the Claude agent has no {required!r} line; a copy would not mirror it")
     for line in front:
         key, sep, value = line.partition(":")
         if not sep:

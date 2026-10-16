@@ -59,7 +59,10 @@ def test_every_claude_agent_has_a_copilot_copy_and_no_copy_is_orphaned():
         f"no Copilot copy for {sorted(claude - copilot)}; run "
         "`python3 plugin-tests/scripts/sync_copilot_agents.py --write`"
     )
-    assert not copilot - claude, f"Copilot copies with no Claude agent: {sorted(copilot - claude)}"
+    assert not copilot - claude, (
+        f"Copilot copies with no Claude agent: {sorted(copilot - claude)}; delete those files "
+        "(`--write` does not remove them)"
+    )
     assert all(p.name.endswith(".agent.md") for p in _COPILOT.glob("*")), (
         "every file in the Copilot agents directory must be <name>.agent.md"
     )
@@ -114,7 +117,9 @@ def test_a_copilot_copy_grants_only_the_read_only_tools_its_claude_agent_has():
         )
 
 
-def test_each_copilot_model_is_the_documented_id_for_its_claude_alias():
+def test_each_copilot_model_matches_the_generators_model_map():
+    """The IDs themselves are from the CLI reference's supported-models table and are NOT
+    checked against it here; this pins that a copy carries the map's ID for its alias."""
     for name, text in _claude_agents().items():
         alias = _parts(text)[0]["model"]
         assert alias in sync.MODEL_MAP, f"{name}: model {alias!r} has no Copilot mapping"
@@ -132,6 +137,10 @@ def test_the_generator_refuses_what_it_cannot_map_instead_of_dropping_it():
                    base.replace("color: blue", "permissionMode: plan")):
         with pytest.raises(ValueError):
             sync.render(broken)
+    # A Claude agent with no `tools` line inherits every tool, and so would its copy.
+    for missing in (base.replace('tools: ["Read"]\n', ""), base.replace("model: sonnet\n", "")):
+        with pytest.raises(ValueError, match="no '(tools|model)' line"):
+            sync.render(missing)
     # A shell tool maps faithfully, so the read-only test above is what stops it shipping.
     assert sync.map_tools(["Read", "Bash", "Grep", "Glob"]) == ["read", "execute", "search"]
 
@@ -143,8 +152,11 @@ def test_the_install_docs_say_the_agents_are_offered_and_the_guard_hooks_do_not_
     for doc in ("README.md", "DEVELOPER-GUIDE.md"):
         text = (repo / doc).read_text(encoding="utf-8")
         assert "guard hooks do not run in Copilot" in text, f"{doc} must say the guard hooks do not run in Copilot"
-    readme = (repo / "README.md").read_text(encoding="utf-8")
-    assert "com.github.copilot/agents/" in readme and "untested in a live Copilot CLI" in readme
+    # Whitespace-joined, since the prose wraps lines. The agents paragraph names the directory and
+    # says so itself: it must carry its own "untested" sentence, not lean on the section heading.
+    readme = " ".join((repo / "README.md").read_text(encoding="utf-8").split())
+    paragraph = readme[readme.index("com.github.copilot/agents/"):]
+    assert "untested in a live Copilot CLI" in paragraph.split("guard hooks do not run")[0]
 
 
 # requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
