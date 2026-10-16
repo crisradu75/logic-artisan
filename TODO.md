@@ -50,3 +50,14 @@ Leftover review suggestions (Copilot agents):
 
 - `sync_copilot_agents.py --write` never looks at `com.github.copilot/agents/` for copies whose Claude agent was renamed or removed; it prints "in step" and exits 0 while the consistency test fails. Have the script report or delete such files.
 - The model IDs in `MODEL_MAP` are checked against nothing but the script itself; GitHub renames models, and Copilot then silently uses the session model. Decide whether to re-read the supported-models table at each release.
+
+Leftover review suggestions (spec map):
+
+- `map_links` still counts a link that does not render as one: an escaped `\[x\](..)`, an image `![x](..)`, a line in an indented code block, and a link on a line with an unpaired backtick (`_mask_code_spans` then masks nothing). Skip those forms, or treat such a line as unreadable.
+- A reference definition `[b]: specs/beta/spec.md` that no `[text][b]` uses still counts as linking beta. Count a definition only when its label is used.
+- A declared glob that also matches a binary or non-UTF-8 file exits 2 with "cannot read the spec map". Match only `.md` files, or report the file as a PROBLEM line.
+- Retiring a whole spec may have a mirror trap (not checked): the spec stays live until archive, so a map link removed in the change would be reported as an unlinked spec, and one kept would dangle after archive. Decide how the rule should read a REMOVED capability.
+- A setext heading (`Spec map` with a `---` underline) in the facts file is not read as the spec map heading or as a near miss, so the rule stays off without a word. Detect it as `_reads_as_map_heading` does for ATX headings.
+- A map link to a file git ignores, or with the wrong case on Windows or macOS, passes the `is_file()` test in `check_spec_map` although the link is broken on GitHub. Check the path against the exact-case file list instead.
+- A fence inside a blockquote (`> ```) is not recognised as a fence by `_fence_step`, so a link shown in such an example counts as linking its spec. Strip the quote markers before matching, as the list marker is handled.
+- The fence tracker has three known corners, each of which misleads it only when it lines up with a fence never closed inside a list item and a later stray fence: a run-on line that begins with an inline code span (`` ```x``` ``) ends the item too early; a run-on line that begins with a number and a dot, such as `2026.`, ends the item too early because it reads as an ordered-list marker; an HTML comment at column 0 right after the item's paragraph text keeps the item open too long.

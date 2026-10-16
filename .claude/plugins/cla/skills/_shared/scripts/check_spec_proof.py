@@ -56,8 +56,22 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     ends a sentence.
   - ``fence``: a live spec or active delta with a code fence that is never closed
     (everything after it is hidden from the checker).
+  - ``spec-map``: only once a repo declares a spec map (see SPEC MAP): a spec (live, or
+    added by an active change) that no map file links, a map link into ``openspec/specs/``
+    that names no spec and no file, or a declared path that matches no file.
   - ``validate``: only with ``--validate``; ``openspec validate --specs --strict``
     failed (skipped, and said so, when the CLI is absent).
+
+SPEC MAP. A repo that keeps a map from its capabilities and workflows to its specs
+declares it in ``cla.io/project-facts.md``: one path or glob per bullet under a
+``## Spec map`` heading, in any layout, matched against the tracked and untracked-unignored
+files (``*`` stays inside one folder, ``**/`` crosses folders, case counts). No such heading
+means no map, and then the rule reports nothing and prints no line. A heading with no
+bullet, a second heading, a line that is not a bullet, or a heading that reads as "spec
+map" in another form (``### Spec map``) exits 2 and names the line. A link is a Markdown
+link (inline, or a reference definition) outside code fences, code spans and HTML comments,
+resolved against the map file's folder, that lands on ``openspec/specs/<name>`` or its
+``spec.md``; other links are not read. See ``read_spec_map`` and ``check_spec_map``.
 
 An empty corpus (no spec files) exits 2: a misconfigured run must not pass.
 
@@ -90,6 +104,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -128,6 +143,29 @@ _NOTE = re.compile(
     r"^\s*(?:[-*+]\s+)?(?:\[[ xX]\]\s+)?(?:\d+(?:\.\d+)*\.?\s+)?(manual|waiting):\s+(.+?)\s*$"
 )
 PROMPT_HALF = "(prompt half)"
+
+_MAP_HEADING = re.compile(r"^##\s+Spec map\s*$", re.I)
+# An ATX heading of any level (up to 3 spaces of indent, optional closing hashes). `_reads_as_map_heading`
+# uses it to find a heading that reads as "Spec map" but is not the exact form above (`### Spec map`,
+# `## Spec map:`, `## Spec  maps`, `## **Spec-map**`): reported, never silently read as no declaration.
+_ATX_HEADING = re.compile(r"^ {0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$")
+# For the backstop in `read_spec_map`: a line that, once indent, list markers and quote markers are set aside,
+# is an ATX "Spec map" heading, or the text of a setext one (followed by a `===` or `---` underline).
+_LINE_PREFIX = re.compile(r"^(?:\s+|>|[-*+]\s+|\d+[.)]\s+)+")
+_HEADING_LIKE = re.compile(r"^#{1,6}\s*spec\s+map\s*#*\s*$", re.I)
+_SETEXT_TEXT = re.compile(r"^spec\s+map\s*$", re.I)
+_SETEXT_UNDERLINE = re.compile(r"^(?:=+|-{2,})\s*$")
+_ANY_HEADING = re.compile(r"^#{1,6}\s")
+_HTML_COMMENT = re.compile(r"<!--.*?-->")
+# A line that can open or close a fence: its indent, a run of 3 or more backticks or tildes, the rest.
+_FENCE_LINE = re.compile(r"^([ \t]*)(`{3,}|~{3,})(.*)$")
+_BULLET = re.compile(r"^[-*+]\s+(.+?)\s*$")
+_CODE_START = re.compile(r"^`([^`]+)`")
+# A Markdown link target: `](target)` inline, or `[label]: target` as a reference definition.
+_INLINE_LINK = re.compile(r"\]\(\s*<?([^)\s>]+)")
+_REF_DEF = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)")
+# A repo-relative path that names a live spec directory or its spec.md (group 1 is the spec name).
+_SPEC_LINK = re.compile(r"^openspec/specs/([^/]+)(?:/spec\.md)?/?$")
 
 # Prose and binary suffixes never hold a test marker; skipping them keeps a
 # documented example (a fenced `# requirement:` line in a guide) from counting.
@@ -554,6 +592,301 @@ def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> l
     return notes
 
 
+_ITEM = re.compile(r"^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)")
+
+Fence = tuple[str, int, int, int, bool]  # (character, run length, indent, line it opened on, inside a list item)
+
+
+# A line that starts a new block, so it cannot be a lazy continuation of a paragraph: an ATX heading, a
+# thematic break, or a block quote. (A fence or a list marker is checked beside it.)
+_NEW_BLOCK = re.compile(r"^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|>)")
+
+
+class _Lists:
+    """What `_fence_step` remembers between lines about the list items still open.
+
+    `cols` holds the column where each open item's content begins. `lazy` is True when the last line was
+    paragraph text, so that a following plain line indented less than the item still belongs to it
+    (CommonMark's paragraph continuation text, "laziness")."""
+
+    def __init__(self) -> None:
+        self.cols: list[int] = []
+        self.lazy = False
+
+
+def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[Fence | None, bool]:
+    """Advance a code-fence tracker by one line: (new state, whether the line is a fence line or inside one).
+
+    The state is None outside a fence. `lists` is the caller's `_Lists`, which this function keeps.
+    List items follow the CommonMark rule: an item stays open while lines are indented to its content
+    column, and ends at a less indented line, EXCEPT that a plain line directly after paragraph text (no blank
+    line, not a heading, thematic break, quote, fence or list marker) is a lazy continuation of that paragraph
+    and leaves the item open. A blank line, a fence or a heading ends the laziness.
+    A fence opens on a run of 3 or more backticks (whose info string holds no backtick) or tildes at ANY
+    indent: a fence inside a list item sits 4 or more spaces in and still renders as a fence, so a cap of 3
+    would miss it and count a link shown in an example. A list marker before the run (`- ```) counts as
+    indent. It closes on a bare run of the same character at least as long, indented at most 3 spaces deeper
+    than the opener, so a more deeply indented run inside the fence is content. A fence opened inside a
+    list item also ends at the first non-blank line indented less than its opener, as the item does on the
+    page; a fence at the top level does not, since its content may sit less indented than its opener. A
+    fence left open at the end hides the rest of the file, as on the page."""
+    indent = len(line) - len(line.lstrip())
+    if fence is not None and fence[4] and line.strip() and indent < fence[2]:
+        fence = None  # the list item holding the fence has ended, and the fence with it; read this line afresh
+    paragraph = False  # whether this line is paragraph text, which a following plain line may continue lazily
+    if fence is None and line.strip():
+        core = line.lstrip()
+        item = _ITEM.match(line)
+        starts_block = bool(_NEW_BLOCK.match(core) or _FENCE_LINE.match(line) or item)
+        if not (lists.lazy and not starts_block):
+            while lists.cols and lists.cols[-1] > indent:
+                lists.cols.pop()
+        if item:
+            gap = len(item.group(3))
+            col = len(item.group(1)) + len(item.group(2)) + (gap if 0 < gap < 5 else 1)
+            lists.cols.append(col)
+            line = " " * col + line[item.end():]
+        paragraph = not _NEW_BLOCK.match(core) and not _FENCE_LINE.match(line) and bool(line.strip())
+    m = _FENCE_LINE.match(line)
+    if fence is not None:
+        lists.lazy = False
+        closes = m and m.group(2)[0] == fence[0] and len(m.group(2)) >= fence[1] and not m.group(3).strip()
+        if closes and len(m.group(1)) <= fence[2] + 3:
+            return None, True
+        return fence, True
+    lists.lazy = paragraph
+    if m and not (m.group(2)[0] == "`" and "`" in m.group(3)):
+        lists.lazy = False
+        return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n, bool(lists.cols)), True
+    return None, False
+
+
+def _reads_as_map_heading(line: str) -> bool:
+    """True for an ATX heading whose words are "spec map" (or "spec maps") once emphasis, underscores,
+    hyphens, non-breaking spaces and trailing punctuation are set aside."""
+    m = _ATX_HEADING.match(line)
+    if not m:
+        return False
+    words = re.sub(r"[\s_\-*`]+", " ", m.group(1)).strip(" .:").lower()
+    return words in ("spec map", "spec maps")
+
+
+def _map_heading_like_lines(lines: list[str]) -> list[int]:
+    """The 1-based numbers of the lines that look like the "Spec map" heading, in any fence, comment, list
+    item or quote. Prose that only says the words, inline code, and a longer heading (`## Spec map notes`)
+    do not look like it."""
+    found = []
+    for i, line in enumerate(lines):
+        core = _LINE_PREFIX.sub("", line)
+        if _HEADING_LIKE.match(core):
+            found.append(i + 1)
+        elif _SETEXT_TEXT.match(core) and i + 1 < len(lines) and _SETEXT_UNDERLINE.match(_LINE_PREFIX.sub("", lines[i + 1])):
+            found.append(i + 1)
+    return found
+
+
+def read_spec_map(root: Path, notes: list[str] | None = None) -> list[str] | None:
+    """The paths or globs under `## Spec map` in the facts file, or None when the repo declares no map.
+
+    A bullet is `- <path or glob>`, or `` - `<path or glob>` `` followed by any prose. A heading with
+    no bullet, a second heading, or a line under it that is not a bullet raises: a declaration read
+    loosely would turn the rule off without a word.
+
+    With no declaration read, a line OUTSIDE any fence or comment that looks like the heading raises
+    too (`##Spec map`, `- ## Spec map`). The same line INSIDE a fence or comment, which is how a facts
+    file shows the format, is only a note: it is appended to `notes` when the caller passes a list."""
+    facts = root / FACTS_RELPATH
+    if not facts.is_file():
+        return None
+    try:
+        lines = facts.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CheckerError(f"cannot read {FACTS_RELPATH}: {exc}") from exc
+    heads = []
+    fence = None
+    lists = _Lists()
+    in_comment = False
+    hidden_lines = set()  # lines inside a fence or an HTML comment, which cannot declare anything
+    for n, line in enumerate(lines, 1):
+        if fence is None:
+            # A heading inside an HTML comment is not a declaration. (A line that begins with a comment is raw HTML.)
+            if in_comment:
+                in_comment = "-->" not in line
+                hidden_lines.add(n)
+                continue
+            if line.lstrip().startswith("<!--"):
+                in_comment = "-->" not in line
+                hidden_lines.add(n)
+                continue
+        fence, hidden = _fence_step(line, n, fence, lists)
+        if hidden:
+            hidden_lines.add(n)
+            continue
+        if _MAP_HEADING.match(line.rstrip()):
+            heads.append(n)
+        elif _reads_as_map_heading(line):
+            raise CheckerError(f"{FACTS_RELPATH}:{n}: {line.strip()!r} reads as the spec map heading but is not '## Spec map'; write it exactly so, or rename it")
+    if fence is not None:
+        # The fence swallowed the rest of the file. A file with no map heading after it declares no map and
+        # stays quiet; one with a heading after it has had its declaration hidden, which must not read as none.
+        for n in range(fence[3] + 1, len(lines) + 1):
+            if _MAP_HEADING.match(lines[n - 1].rstrip()) or _reads_as_map_heading(lines[n - 1]):
+                raise CheckerError(f"{FACTS_RELPATH}:{fence[3]}: a code fence is never closed, so the spec map heading on line {n} is not read; close the fence")
+    if not heads:
+        # Backstop: the scans above can be fooled by Markdown a renderer reads differently from this line scan.
+        # A line that looks like the "Spec map" heading, with no declaration read, may be a declaration that was
+        # missed, and the guard going quiet is the one outcome this rule must not have. Prose that merely says
+        # the words does not trigger it. Inside a fence or comment the line is most likely an example of the
+        # format, so it is a note and never fails the run.
+        like = _map_heading_like_lines(lines)
+        shown = [n for n in like if n not in hidden_lines]
+        if shown:
+            raise CheckerError(f"{FACTS_RELPATH}:{shown[0]}: looks like the 'Spec map' heading but was not read as a declaration; write it exactly as '## Spec map'")
+        if notes is not None:
+            notes += [f"NOTE spec-map: {FACTS_RELPATH}:{n}: looks like the 'Spec map' heading but sits inside a code fence or comment, so it is not read as a declaration" for n in like]
+        return None
+    if len(heads) > 1:
+        raise CheckerError(f"{FACTS_RELPATH}: '## Spec map' appears on lines {', '.join(map(str, heads))}; keep one")
+    patterns = []
+    for n in range(heads[0] + 1, len(lines) + 1):
+        line = lines[n - 1].strip()
+        if not line or (line.startswith("<!--") and line.endswith("-->")):
+            continue
+        if _ANY_HEADING.match(line):
+            break
+        m = _BULLET.match(line)
+        if not m:
+            raise CheckerError(f"{FACTS_RELPATH}:{n}: expected a '- <path or glob>' bullet under '## Spec map', got {line!r}")
+        code = _CODE_START.match(m.group(1))
+        pattern = (code.group(1) if code else m.group(1)).strip().replace("\\", "/")
+        patterns.append(pattern.removeprefix("./"))
+    if not patterns:
+        raise CheckerError(f"{FACTS_RELPATH}:{heads[0]}: '## Spec map' lists no path; add a '- <path or glob>' bullet or remove the heading")
+    return patterns
+
+
+def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
+    """([(line number, target)], [(line number, problem)]) for the Markdown links in `text`.
+
+    Links inside a code fence, a code span or an HTML comment are not links on the rendered page and are
+    not read. One pass, line by line, so a `<!--` quoted in a code span or fence opens nothing. A fence
+    closes only on a bare line of the same character at least as long as the opener. A fence or a
+    comment still open at the end hides the rest of the file, as on the page, and is returned as a
+    problem naming the line it began on: otherwise every later link would vanish with no word said."""
+    links: list[tuple[int, str]] = []
+    fence = None
+    lists = _Lists()
+    comment_from: int | None = None
+    for n, line in enumerate(text.splitlines(), 1):
+        if fence is None and comment_from is not None:
+            if "-->" not in line:
+                continue
+            comment_from, line = None, ""  # what follows the closer on its line is raw HTML too
+        fence, hidden = _fence_step(line, n, fence, lists)
+        if hidden:
+            continue
+        stripped = line.lstrip()
+        if stripped.startswith("<!--"):
+            # A line that begins with a comment is an HTML block: all of it is raw HTML, up to the line holding `-->`.
+            if "-->" not in stripped[4:]:
+                comment_from = n
+            continue
+        masked = _HTML_COMMENT.sub("", _mask_code_spans(line))
+        start = masked.find("<!--")
+        if start >= 0:
+            masked, comment_from = masked[:start], n
+        ref = _REF_DEF.match(masked)
+        if ref:
+            links.append((n, ref.group(1)))
+        links += [(n, target) for target in _INLINE_LINK.findall(masked)]
+    issues = []
+    if fence is not None:
+        issues.append((fence[3], "a code fence is never closed, so the rest of the map is not read"))
+    if comment_from is not None:
+        issues.append((comment_from, "an HTML comment is never closed, so the rest of the map is not read"))
+    return links, issues
+
+
+def _link_path(map_rel: str, target: str) -> str | None:
+    """The repo-relative path a link in the map file `map_rel` points at, or None for an empty target.
+
+    The fragment and query are dropped, a relative target is resolved against the map file's folder and
+    a leading `/` means the repo root. A URL or a path that leaves the repo lands on no spec path."""
+    target = re.split(r"[#?]", target.replace("\\", "/"), maxsplit=1)[0]
+    if not target:
+        return None
+    joined = target.lstrip("/") if target.startswith("/") else posixpath.join(posixpath.dirname(map_rel), target)
+    return posixpath.normpath(joined)
+
+
+def _glob_regex(pattern: str) -> re.Pattern[str]:
+    """A repo-relative glob as a regex: `*` and `?` stay inside one folder, `**/` crosses folders, the rest is literal.
+
+    Not `fnmatch`, where `*` also crosses `/`: a map declared as `docs/*.md` would then take in every
+    nested file, and any link in one of them would count as the map linking that spec."""
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            out.append("[^/]")
+            i += 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("".join(out))
+
+
+def check_spec_map(root: Path, specs: dict[str, str], patterns: list[str]) -> tuple[list[str], str]:
+    """PROBLEM lines for a declared spec map, and the one summary line that describes it.
+
+    `specs` maps each spec name to the file that holds it: a live spec, or a spec only an active change
+    adds (so a change that adds a capability can link it before it is archived, and the map still passes
+    after). Reports each declared pattern that matches no file, each link into `openspec/specs/` that
+    names no spec and no existing file, and each spec no map file links. With no map file at all the last
+    rule is skipped, since it would repeat every spec after the first problem."""
+    problems: list[str] = []
+    listed = [rel for rel in _listed_files(root) if (root / rel).is_file()]
+    maps: list[str] = []
+    for pattern in patterns:
+        hits = [rel for rel in listed if _glob_regex(pattern).fullmatch(rel)]
+        if not hits:
+            problems.append(f"PROBLEM spec-map: declared path {pattern!r} in {FACTS_RELPATH} matches no file")
+        maps += [rel for rel in hits if rel not in maps]
+    linked: set[str] = set()
+    for rel in maps:
+        try:
+            text = (root / rel).read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise CheckerError(f"cannot read the spec map {rel}: {exc}") from exc
+        links, issues = map_links(text)
+        problems += [f"PROBLEM spec-map: {rel}:{n}: {why}" for n, why in issues]
+        for n, target in links:
+            path = _link_path(rel, target)
+            if path is None:
+                continue
+            into_specs = path.startswith("openspec/specs/")
+            # A path that climbs out of the repo and names openspec/specs is a mistyped `..`, not another site.
+            if not into_specs and not (path.startswith("../") and "/openspec/specs/" in "/" + path):
+                continue
+            m = _SPEC_LINK.match(path) if into_specs else None
+            if m and m.group(1) in specs:
+                linked.add(m.group(1))
+            elif not (into_specs and (root / path).is_file()):
+                problems.append(f"PROBLEM spec-map: {rel}:{n}: link {target!r} points at no spec")
+    if maps:
+        problems += [f"PROBLEM spec-map: {specs[name]} is linked from no spec map" for name in sorted(set(specs) - linked)]
+    summary = f"spec map: {len(maps)} file(s) from {len(patterns)} declared path(s); {len(linked)} of {len(specs)} specs linked"
+    return problems, summary
+
+
 def _spec_files(root: Path, mode: str) -> list[SpecFile]:
     files: list[SpecFile] = []
     specs = root / "openspec" / "specs"
@@ -665,24 +998,28 @@ def changed_units(root: Path, base: str, f: SpecFile, mode: str) -> list[Unit]:
     ]
 
 
+def _listed_files(root: Path) -> list[str]:
+    """Repo-relative paths of the tracked and untracked-unignored files (a directory walk outside git), sorted."""
+    rc, out = _git(root, "ls-files", "-co", "--exclude-standard", "-z")
+    if rc == 0:
+        return sorted({p for p in out.split("\0") if p})
+    rels = []
+    for dp, dns, fns in os.walk(root):
+        dns[:] = [d for d in dns if d not in {".git", "node_modules", "__pycache__", ".venv"}]
+        rels += [(Path(dp) / fn).relative_to(root).as_posix() for fn in fns]
+    return sorted(set(rels))
+
+
 def scan_markers(root: Path, globs: list[str]) -> tuple[list[tuple[str, str, str, str]], int, list[str]]:
     """Return ([(kind, spec, heading, relpath)], files scanned, files skipped).
 
     A file is skipped only when it is binary (a NUL byte), unreadable or over the size
     cap, and each is returned by name so the run can say so. Text in another encoding
     is still scanned, with undecodable bytes replaced."""
-    rc, out = _git(root, "ls-files", "-co", "--exclude-standard", "-z")
-    if rc == 0:
-        rels = [p for p in out.split("\0") if p]
-    else:
-        rels = []
-        for dp, dns, fns in os.walk(root):
-            dns[:] = [d for d in dns if d not in {".git", "node_modules", "__pycache__", ".venv"}]
-            rels += [(Path(dp) / fn).relative_to(root).as_posix() for fn in fns]
     found = []
     skipped: list[tuple[str, str]] = []
     scanned = 0
-    for rel in sorted(set(rels)):
+    for rel in _listed_files(root):
         if Path(rel).suffix.lower() in _SKIP_SUFFIXES:
             continue
         if globs and not any(fnmatch.fnmatch(rel, g) for g in globs):
@@ -804,6 +1141,17 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     limits, unenforced = read_format_limits(root)
     problems += check_format(files, limits)
 
+    map_line = None
+    map_notes: list[str] = []
+    patterns = read_spec_map(root, map_notes)  # None: no map declared, so the rule reports nothing and prints no line
+    if patterns is not None:
+        spec_rels: dict[str, str] = {}
+        for f in files:
+            if f.kind != "archived" and f.spec not in spec_rels:  # `files` lists live specs first, so a live file names its spec
+                spec_rels[f.spec] = f.rel
+        map_problems, map_line = check_spec_map(root, spec_rels, patterns)
+        problems += map_problems
+
     markers, scanned, skipped = scan_markers(root, globs or [])
     for rel, why in skipped:
         if why != "binary":
@@ -908,6 +1256,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         "format limits (from openspec/config.yaml): "
         + (", ".join(f"{k} {v}" for k, v in limits.items()) or "none")
         + (f"; not enforced, not found: {', '.join(unenforced)}" if unenforced else ""),
+        *([map_line] if map_line else []),
         "purpose notes: "
         + (
             f"{len(touched_specs & live_names)} live spec(s) the branch touches"
@@ -916,7 +1265,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         ),
         f"problems: {len(problems)}",
     ]
-    return (1 if problems else 0), problems + purpose_notes(files, touched_specs) + out
+    return (1 if problems else 0), problems + purpose_notes(files, touched_specs) + map_notes + out
 
 
 def _console_safe(text: str) -> str:
