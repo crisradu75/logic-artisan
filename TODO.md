@@ -17,6 +17,15 @@ Leftover review suggestions (docs task):
 
 - If change B rewords the docs task (`docs and spec map: ...`), add the old wording to `RETIRED` in `cla-setup/scripts/seed_openspec_rules.py`, so repos that seeded it are told to replace it.
 
+Leftover review suggestions (docs-task review gaps fix):
+
+- `review-change/references/dispatch.md`: `git diff $(git merge-base origin/<default-branch> HEAD) HEAD` is the same diff as `origin/<default-branch>...HEAD`, which `subagent-brief.md` and `lite-pr/SKILL.md` still use, so two spellings of one diff sit side by side. The stacked case is fixed by the fill-in note, not by the command. The `$(...)` form also needs `git merge-base` allowed, which only `required-permissions-narrow.json` does, so a standalone review-change run may prompt. Pick one spelling. `review-change/references/checklist.md` (Rewrite) still uses the default branch's merge-base on a stacked change.
+- `dispatch.md` "Filling the placeholders": write "a diff from the merge-base with the default branch still includes the parent's changes", and "each read-only block's diff command" (it appears in all three prompts).
+- `subagent-brief.md` line 121 uses `<branch>` and the quoted block uses `HEAD`. That is right (the orchestrator runs the first, the reviewer the second) but unsaid; same for `revise.md` line 37.
+- `model-routing.md` second-pass paragraph: "the docs check" names no section (`revise.md` calls it "Docs currency", lite-pr "Docs check"), and "It reviews the fix diff" now reads as if "It" were "other fixes"; write "Round 2 reviews".
+- "a Suggestion-level fix is not one of those other fixes" (`revise.md`, `model-routing.md`) is a stipulation: such a fix is another fix that cannot trigger a round. Say "does not count as one of those other fixes". Likewise "(a docs-currency fix is neither)" in the Flags row and the resume rule should say "counts as neither", since a stale doc is an Important finding.
+- `lite-pr/SKILL.md` Docs check: the parenthetical `(`cla.io/project-facts.md`, "Doc-sweep paths", or the docs you picked)` reads as three alternatives; write "the "Doc-sweep paths" section of `cla.io/project-facts.md`, or the docs you picked". Step 4 does not repeat the Suggestion clause, because step 1 fixes only Critical and Important findings; say so or add the clause.
+
 Leftover review suggestions (orchestration economy and bullet fix sweep):
 
 - Rule 8 in `orchestration-economy.md` says an ignored `scratchpad/` keeps rule 7's debris check quiet. The check lists ignored paths too, so the folder stays quiet only if it exists before the before snapshot. Say to create it first.
