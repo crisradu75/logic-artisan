@@ -122,7 +122,7 @@ def test_every_second_pass_rule_sets_a_docs_currency_fix_aside(site: str):
 def test_the_implement_docs_check_diffs_against_pr_base():
     # `<pr-base>` is the diff anchor for a stacked child; `<base-branch>` would count the parent's doc edits.
     line = _line(_read(_SKILLS / "spec-to-pr" / "SKILL.md"), "**The docs task, where the repo's")
-    assert "git diff --name-only origin/<pr-base>" in line and "git status --porcelain" in line
+    assert "git diff --name-only $(git merge-base origin/<pr-base> HEAD)" in line and "git status --porcelain" in line
     assert "git diff --name-only <base-branch>" not in line
 
 
@@ -131,7 +131,7 @@ def test_no_spec_to_pr_diff_anchor_is_the_bare_base_branch():
     # Test runs before Ship commits, and Revise diffs a branch that may be stacked on a parent. Both read `<pr-base>`.
     skill = _read(_SKILLS / "spec-to-pr" / "SKILL.md")
     gates = _line(skill, "**Which gates to run.**")
-    assert "git diff --name-only origin/<pr-base>" in gates and "git status --porcelain -uall" in gates
+    assert "git diff --name-only $(git merge-base origin/<pr-base> HEAD)" in gates and "git status --porcelain -uall" in gates
     revise = _read(_SKILLS / "spec-to-pr" / "references" / "revise.md")
     assert "git diff --numstat <pr-base>...HEAD" in revise
     assert revise.count("git diff <pr-base>..<branch>") == 2

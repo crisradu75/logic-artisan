@@ -20,10 +20,11 @@ Leftover review suggestions (docs task):
 
 Leftover review suggestions (docs-task review gaps):
 
-- Two more statements of round 2's trigger carry no docs-currency carve-out and are not in `_round_2_sites`: the `--pr-rounds` row in the Flags table of `spec-to-pr/SKILL.md`, and the resume rule at `revise.md` line 83 (that one fails safe). Add the phrase or add them to the test.
+- Two more statements of round 2's trigger carry no docs-currency carve-out and are not in `_round_2_sites`: the `--pr-rounds` row in the Flags table of `spec-to-pr/SKILL.md`, and the resume rule in `revise.md` that opens "if you cannot tell whether the previous round fixed a Critical" (that one fails safe). Add the phrase or add them to the test.
 - `model-routing.md` defines a docs-currency fix as "an edit that brings a stale doc up to date", broader than `revise.md` and lite-pr, where it is the fix of a stale-doc finding the docs check reported. Use one definition.
 - `test_docs_task_sites_agree.py` pins the term at each second-pass site, not the "other fixes alone" clause, so the mixed case is unguarded. The sites also do not say whether Suggestion-level fixes count as "other fixes".
 - lite-pr's Docs check ends "does not by itself earn step 4's second pass"; "does not count toward step 4's second pass" matches the mixed-case wording better, and `revise.md`'s "as if the doc edits were not there" is clearer than lite-pr step 4's parenthetical.
+- `revise.md`'s diff commands and prose-dominant count read the local `<pr-base>`, while `branch-and-pr-base.md` uses `origin/<pr-base>` and `spec-to-pr/SKILL.md` says a local base ref goes stale. Switch them to `origin/<pr-base>` and update the pin in `test_docs_task_sites_agree.py`.
 
 Leftover review suggestions (orchestration economy and bullet fix sweep):
 
