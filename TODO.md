@@ -18,6 +18,13 @@ Leftover review suggestions (docs task):
 - If change B rewords the docs task (`docs and spec map: ...`), add the old wording to `RETIRED` in `cla-setup/scripts/seed_openspec_rules.py`, so repos that seeded it are told to replace it.
 - `test_docs_task_sites_agree.py` proves the sites still say the words, not that a review reports a stale doc; that half is the `manual:` line in the archived tasks. A live check of one stale-doc review would close it.
 
+Leftover review suggestions (docs-task review gaps):
+
+- Two more statements of round 2's trigger carry no docs-currency carve-out and are not in `_round_2_sites`: the `--pr-rounds` row in the Flags table of `spec-to-pr/SKILL.md`, and the resume rule at `revise.md` line 83 (that one fails safe). Add the phrase or add them to the test.
+- `model-routing.md` defines a docs-currency fix as "an edit that brings a stale doc up to date", broader than `revise.md` and lite-pr, where it is the fix of a stale-doc finding the docs check reported. Use one definition.
+- `test_docs_task_sites_agree.py` pins the term at each second-pass site, not the "other fixes alone" clause, so the mixed case is unguarded. The sites also do not say whether Suggestion-level fixes count as "other fixes".
+- lite-pr's Docs check ends "does not by itself earn step 4's second pass"; "does not count toward step 4's second pass" matches the mixed-case wording better, and `revise.md`'s "as if the doc edits were not there" is clearer than lite-pr step 4's parenthetical.
+
 Leftover review suggestions (orchestration economy and bullet fix sweep):
 
 - Rule 8 in `orchestration-economy.md` says an ignored `scratchpad/` keeps rule 7's debris check quiet. The check lists ignored paths too, so the folder stays quiet only if it exists before the before snapshot. Say to create it first.

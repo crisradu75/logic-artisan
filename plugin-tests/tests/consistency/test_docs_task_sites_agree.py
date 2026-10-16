@@ -122,7 +122,7 @@ def test_every_second_pass_rule_sets_a_docs_currency_fix_aside(site: str):
 def test_the_implement_docs_check_diffs_against_pr_base():
     # `<pr-base>` is the diff anchor for a stacked child; `<base-branch>` would count the parent's doc edits.
     line = _line(_read(_SKILLS / "spec-to-pr" / "SKILL.md"), "**The docs task, where the repo's")
-    assert "git diff --name-only <pr-base>" in line and "git status --porcelain" in line
+    assert "git diff --name-only origin/<pr-base>" in line and "git status --porcelain" in line
     assert "git diff --name-only <base-branch>" not in line
 
 
