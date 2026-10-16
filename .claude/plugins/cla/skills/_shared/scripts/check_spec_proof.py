@@ -70,7 +70,7 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
 SPEC MAP. A repo that keeps a map from its capabilities and workflows to its specs
 declares it in ``cla.io/project-facts.md``: one path or glob per bullet under a
 ``## Spec map`` heading, in any layout, matched against the tracked and untracked-unignored
-``.md`` files (``*`` stays inside one folder, ``**/`` crosses folders, case counts). No such
+Markdown files (``.md``, ``.markdown``) (``*`` stays inside one folder, ``**/`` crosses folders, case counts). No such
 heading means no map, and then the rule reports nothing and prints no line. A heading with no
 bullet, a second heading, a line that is not a bullet, or a heading that reads as "spec
 map" in another form (``### Spec map``) exits 2 and names the line; so does a setext heading
@@ -174,7 +174,8 @@ _FENCE_LINE = re.compile(r"^([ \t]*)(`{3,}|~{3,})(.*)$")
 _BULLET = re.compile(r"^[-*+]\s+(.+?)\s*$")
 _CODE_START = re.compile(r"^`([^`]+)`")
 # A reference definition `[label]: target` (group 1 is the label, group 2 the target). Inline targets are read by `_scan_links`.
-_REF_DEF = re.compile(r"^\s{0,3}\[([^\]]+)\]:\s*<?([^\s>]+)")
+# It must fill the line (a destination and an optional title, nothing after): `[^1]: see [beta](..)` is prose with a link.
+_REF_DEF = re.compile(r"^\s{0,3}\[([^\]^][^\]]*)\]:\s*<?([^\s>]+)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*$")
 # A repo-relative path that names a live spec directory or its spec.md (group 1 is the spec name).
 _SPEC_LINK = re.compile(r"^openspec/specs/([^/]+)(?:/spec\.md)?/?$")
 
@@ -498,7 +499,8 @@ _CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)")
 def _render_code_spans(t: str) -> str:
     """Replace each code span with `CODE`, pairing backtick runs the way a Markdown page does: left to
     right, each opener with the next run of the same length, so a backtick with no partner stays literal.
-    Used for links, where what renders matters."""
+    Used for links, where what renders matters. It pairs within one line: a span that runs over a line
+    break is not seen, so a backtick left open at the end of a line neither hides nor unhides a link."""
     return _CODE_SPAN.sub("CODE", t)
 
 
@@ -703,7 +705,8 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
     if fence is None and line.strip():
         core = line.lstrip()
         item = _ITEM.match(line)
-        starts_block = bool(_NEW_BLOCK.match(core) or _FENCE_LINE.match(line) or item)
+        # A quote line starts a block too; its `>` was set aside above, so `_NEW_BLOCK` no longer sees it.
+        starts_block = bool(quoted or _NEW_BLOCK.match(core) or _FENCE_LINE.match(line) or item)
         if not (lists.lazy and not starts_block):
             while lists.cols and lists.cols[-1] > indent:
                 lists.cols.pop()
@@ -857,16 +860,20 @@ _REF_LABEL = re.compile(r"\[((?:[^\[\]\\]|\\.)*)\]")
 _INLINE_TARGET = re.compile(r"\(\s*<?([^)\s>]+)")
 
 
-def _scan_links(masked: str) -> tuple[list[str], set[str]]:
+def _scan_links(masked: str, openers: list[tuple[int | None, bool]]) -> tuple[list[str], set[str]]:
     """(targets of the inline links, labels the reference links use) on one line with its code spans and
     comments already taken out.
 
     Only what renders as a link counts. An escaped bracket (`\\[x\\](..)`) opens nothing, an image
     (`![x](..)`) is not a link, and a `](..)` with no `[` before it is text. A reference link is
-    `[text][label]`, `[label][]` or `[label]`; whether the label is defined is for the caller."""
+    `[text][label]`, `[label][]` or `[label]`; whether the label is defined is for the caller.
+
+    `openers` holds the brackets still open: (position after the bracket, whether it opens an image). The
+    caller keeps the list from line to line of one paragraph, so link text wrapped over two lines is one link;
+    this function leaves the brackets it did not close in it, with the position gone (None), since the
+    position belongs to a line that is over. A reference whose label is that text cannot be read then."""
     targets: list[str] = []
     labels: set[str] = set()
-    openers: list[tuple[int, bool]] = []  # (position after the bracket, whether it opens an image)
     i = 0
     while i < len(masked):
         c = masked[i]
@@ -889,12 +896,14 @@ def _scan_links(masked: str) -> tuple[list[str], set[str]]:
             else:
                 m = _REF_LABEL.match(masked, i + 1) if nxt == "[" else None
                 if not image:
-                    label = m.group(1) if m and m.group(1).strip() else masked[start:i]
-                    labels.add(_label_key(label))
+                    label = m.group(1) if m and m.group(1).strip() else (masked[start:i] if start is not None else "")
+                    if label.strip():
+                        labels.add(_label_key(label))
                 if m:  # the `[label]` after the text is not an opener of its own
                     i = m.end()
                     continue
         i += 1
+    openers[:] = [(None, image) for _, image in openers]
     return targets, labels
 
 
@@ -903,13 +912,14 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
 
     Links inside a code fence, an indented code block, a code span or an HTML comment are not links on the
     rendered page and are not read, nor are an image, an escaped `\\[x\\](..)` and a reference definition no link
-    uses. Block quote markers are set aside first. Code spans pair as on the page (see `_render_code_spans`).
+    uses. Block quote markers are set aside first. Code spans pair as on the page, within a line (see `_render_code_spans`). Link text wrapped over several lines of one paragraph is one link.
     One pass, line by line, so a `<!--` quoted in a code span or fence opens nothing. A fence
     closes only on a bare line of the same character at least as long as the opener. A fence or a
     comment still open at the end hides the rest of the file, as on the page, and is returned as a
     problem naming the line it began on: otherwise every later link would vanish with no word said."""
     links: list[tuple[int, str]] = []
-    defs: list[tuple[int, str, str]] = []  # (line, normalised label, target) of each reference definition
+    defs: dict[str, tuple[int, str]] = {}  # normalised label -> (line, target) of its first reference definition
+    openers: list[tuple[int | None, bool]] = []  # the brackets open at the end of the last line of this paragraph
     used: set[str] = set()  # normalised labels some `[text][label]`, `[label][]` or `[label]` uses
     fence = None
     lists = _Lists()
@@ -922,12 +932,14 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
         cols_before, lazy_before = list(lists.cols), lists.lazy
         fence, hidden = _fence_step(line, n, fence, lists)
         if hidden:
+            openers.clear()
             continue
         core, _ = _strip_quote(line)
         if _indented_code(core, cols_before, lazy_before):
             continue
         stripped = core.lstrip()
         if stripped.startswith("<!--"):
+            openers.clear()
             # A line that begins with a comment is an HTML block: all of it is raw HTML, up to the line holding `-->`.
             if "-->" not in stripped[4:]:
                 comment_from = n
@@ -938,13 +950,16 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
             masked, comment_from = masked[:start], n
         ref = _REF_DEF.match(masked)
         if ref:
-            defs.append((n, _label_key(ref.group(1)), ref.group(2)))
+            openers.clear()
+            defs.setdefault(_label_key(ref.group(1)), (n, ref.group(2)))  # the first definition of a label is the one that counts
             continue
-        targets, labels = _scan_links(masked)
+        if not stripped.strip() or _NEW_BLOCK.match(stripped) or _ITEM.match(core):
+            openers.clear()  # a blank line, a heading, a rule, a quote marker or a new list item ends the paragraph
+        targets, labels = _scan_links(masked, openers)
         links += [(n, target) for target in targets]
         used |= labels
     # A definition renders nothing until a link uses its label, so an unused one links no spec.
-    links += [(n, target) for n, label, target in defs if label in used]
+    links += [(n, target) for label, (n, target) in defs.items() if label in used]
     links.sort(key=lambda link: link[0])
     issues = []
     if fence is not None:
@@ -1033,7 +1048,7 @@ def check_spec_map(
     for pattern in patterns:
         hits = [rel for rel in listed if rel.lower().endswith(_MAP_SUFFIXES) and _glob_regex(pattern).fullmatch(rel)]
         if not hits:
-            problems.append(f"PROBLEM spec-map: declared path {pattern!r} in {FACTS_RELPATH} matches no file (only .md files are read as maps)")
+            problems.append(f"PROBLEM spec-map: declared path {pattern!r} in {FACTS_RELPATH} matches no file (only .md and .markdown files are read as maps)")
         maps += [rel for rel in hits if rel not in maps]
     linked: set[str] = set()
     for rel in maps:
@@ -1425,16 +1440,33 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         """Whether a whole manual line proves `heading` in `spec` (in any spec, when `spec` is None)."""
         return any(n.heading == heading and (spec is None or n.spec in (None, spec)) for n in whole_manual)
 
+    def holders_of(change: str, heading: str) -> list[str]:
+        """The specs that hold `heading`: the ones the change's own deltas hold, else every spec."""
+        own = {f.spec for f in files if f.kind == "active" and f.change == change and any(u.heading == heading for u in f.units)}
+        return sorted(own or {s for s, hs in universe.items() if heading in hs})
+
     for n in notes:
         if n.kind == "waiting" and n.heading and not n.archived:
-            in_specs = [n.spec] if n.spec else list(universe)
-            if manual_proves(n.spec, n.heading) or any((s, n.heading) in marked for s in in_specs):
+            if n.spec:
+                proven = manual_proves(n.spec, n.heading) or (n.spec, n.heading) in marked
+            else:
+                # An older waiting line stands for the heading in every spec of its change. It is stale once a marker
+                # or an older manual line proves the heading anywhere, or spec-named manual lines prove it in each spec
+                # that holds it; one spec-named line leaves the others still waiting.
+                named = {m.spec for m in whole_manual if m.heading == n.heading and m.spec}
+                held = holders_of(n.change, n.heading)
+                proven = (
+                    any(m.heading == n.heading and m.spec is None for m in whole_manual)
+                    or any((s, n.heading) in marked for s in universe)
+                    or (bool(held) and set(held) <= named)
+                )
+            if proven:
                 problems.append(f"PROBLEM waiting: openspec/changes/{n.change}/tasks.md: {n.heading!r} is already proven, so it is no longer waiting")
 
     manual_notes = []
     for n in notes:
         if n.kind == "manual" and not n.archived and n.spec is None and n.heading is not None:
-            holders = sorted(s for s, hs in universe.items() if n.heading in hs)
+            holders = holders_of(n.change, n.heading)
             manual_notes.append(
                 f"NOTE manual: openspec/changes/{n.change}/tasks.md: 'manual: {n.heading}: ...' names only the heading, so it covers "
                 f"{n.heading!r} in every spec of the change; write 'manual: {holders[0] if len(holders) == 1 else '<spec>'} / {n.heading}: ...' "
@@ -1491,8 +1523,11 @@ def _report(text: str) -> bool:
     """Print `text` to stdout. False when stdout cannot take it (a closed pipe, a full disk).
 
     The failed handle is pointed at the null device first: left alone, Python flushes it again on exit,
-    prints a second traceback and replaces the exit code."""
+    prints a second traceback and replaces the exit code. With no stdout at all (descriptor 1 closed when the
+    process started, so `sys.stdout` is None) there is nothing to point anywhere, and the run says so."""
     try:
+        if sys.stdout is None:
+            raise OSError("standard output is closed")
         print(_console_safe(text))
         sys.stdout.flush()
     except (OSError, ValueError) as exc:  # ValueError: stdout was closed
@@ -1507,7 +1542,7 @@ def _report(text: str) -> bool:
             pass
         try:
             print(f"check_spec_proof: cannot write the report: {exc}", file=sys.stderr)
-        except OSError:
+        except (OSError, ValueError):  # stderr is gone too
             pass
         return False
     return True

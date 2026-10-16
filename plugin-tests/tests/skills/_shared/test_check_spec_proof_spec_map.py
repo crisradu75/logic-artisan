@@ -615,6 +615,13 @@ def _unlinked(out: str, name: str) -> bool:
         ["\t[alpha](specs/alpha/spec.md)", "", BETA],
         # a bracket pair with no opening bracket is text
         ["- alpha](specs/alpha/spec.md)", BETA],
+        # a footnote definition is not a link definition, even when its text is a spec path
+        ["Text[^1].", "", "[^1]: specs/alpha/spec.md", BETA],
+        # link text wrapped over a blank line, or over a new list item, is two paragraphs or two items, not one link
+        ["- [alpha", "", "capability](specs/alpha/spec.md)", BETA],
+        ["- [alpha", "- capability](specs/alpha/spec.md)", BETA],
+        # a quote line ends the list item, so the indented line after it is a code block
+        ["- item", "> note", "", "    [alpha](specs/alpha/spec.md)", "", BETA],
     ],
 )
 def test_a_link_that_does_not_render_does_not_link_the_spec(repo, capsys, lines):
@@ -639,6 +646,16 @@ def test_a_link_that_does_not_render_does_not_link_the_spec(repo, capsys, lines)
         ["> [alpha](specs/alpha/spec.md)", "", BETA],
         ["- [a `code` label](specs/alpha/spec.md)", BETA],
         [r"- an escaped \[ bracket then [alpha](specs/alpha/spec.md)", BETA],
+        # link text hard-wrapped over two lines of one paragraph or one list item is one link
+        ["- [alpha", "  capability](specs/alpha/spec.md)", BETA],
+        ["[alpha", "capability](specs/alpha/spec.md)", "", BETA],
+        # a line that only starts like a definition (a footnote, prose, a trailing sentence) is a line with a link
+        ["[^1]: see " + ALPHA, BETA],
+        ["[Note]: see " + ALPHA, BETA],
+        # an indented line right after a quoted paragraph continues it (lazily); it is not a code block
+        ["> note", "    [alpha](specs/alpha/spec.md)", "", BETA],
+        # a definition may carry a title
+        ["- [alpha][a]", "", '[a]: specs/alpha/spec.md "The alpha spec"', BETA],
     ],
 )
 def test_a_link_that_renders_still_links_the_spec(repo, capsys, lines):
@@ -679,6 +696,22 @@ def test_a_definition_after_its_use_and_inside_a_quote_counts(repo, capsys):
     _write(repo, MAP, _map(ALPHA, "- [beta][b]", "", "> [b]: specs/beta/spec.md"))
     code, out, _ = run(repo, capsys)
     assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_only_the_first_definition_of_a_label_counts(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("- [map][x]", "", "[x]: specs/alpha/spec.md", "[x]: specs/beta/spec.md"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and _unlinked(out, "beta") and not _unlinked(out, "alpha"), out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_wrapped_link_to_a_missing_spec_is_reported_on_the_line_that_holds_its_target(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map(ALPHA, BETA, "- [gamma", "  capability](specs/gamma/spec.md)"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"{MAP}:6: link 'specs/gamma/spec.md' points at no spec" in out
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
@@ -727,7 +760,7 @@ def test_a_glob_that_matches_only_files_that_are_not_markdown_is_reported(repo, 
     (repo / "docs" / "logo.png").write_bytes(b"\x89PNG\x00")
     code, out, err = run(repo, capsys)
     assert code == 1 and not err
-    assert f"PROBLEM spec-map: declared path 'docs/*.png' in {FACTS} matches no file (only .md files are read as maps)" in out
+    assert f"PROBLEM spec-map: declared path 'docs/*.png' in {FACTS} matches no file (only .md and .markdown files are read as maps)" in out
 
 
 # ---- a setext heading in another form ----

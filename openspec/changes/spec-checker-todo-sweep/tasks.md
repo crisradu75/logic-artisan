@@ -28,6 +28,6 @@
 ## 4. Ship
 
 - [x] 4.1 Remove exactly the fixed lines from `TODO.md`: the `manual:` line, the six spec checker fixes, the first docs-task line and the map lines but the fence-corner bullet. Done when `git diff TODO.md` shows only removals.
-- [ ] 4.2 Run `check_spec_proof.py --root` read-only on a clone of main and on copies of six real repos before the first edit and on the final commit. Done when the diff shows only added or changed `NOTE` lines and no changed `PROBLEM` line or exit code.
+- [ ] 4.2 Run `check_spec_proof.py --root` read-only on a clone of main and on copies of six real repos before the first edit and on the final commit. Done when the diff shows only added `NOTE` lines, and no `PROBLEM` line changes kind, file or line or exit code.
 - [ ] 4.3 Run `pytest plugin-tests -q -n auto --dist loadfile` and `openspec validate --specs --strict` once each on the final commit.
 - [ ] 4.4 docs and spec map: `test-quality.md` (the `manual:` form); none affected: root `CLAUDE.md`, `README.md`, the plugin readme and `openspec/spec-map.md` (none states the `manual:` form or the map rule's removed-spec case). `DEVELOPER-GUIDE.md` section 11, the review checklist and `spec-to-pr/SKILL.md` belong to another session and are reported, not edited.

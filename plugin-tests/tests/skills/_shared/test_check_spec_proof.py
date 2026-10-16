@@ -1518,6 +1518,28 @@ def test_a_manual_line_for_one_spec_does_not_make_another_spec_waiting_line_stal
 
 
 # requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_an_older_waiting_line_stays_while_one_spec_named_manual_line_leaves_a_spec_unproven(repo, capsys):
+    _two_specs_share_a_heading(repo)
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: alpha / New rule: a\nwaiting: New rule: later\n")
+    code, out, _ = run(repo, capsys)
+    # beta's New rule is still unproven, so the older waiting line (which stands for it) is not stale
+    assert "already proven" not in out and "PROBLEM uncovered" not in out, out
+    _write(repo, "openspec/changes/c1/tasks.md", "manual: alpha / New rule: a\nmanual: beta / New rule: b\nwaiting: New rule: later\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "PROBLEM waiting" in out and "'New rule' is already proven" in out
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
+def test_the_note_lists_only_the_specs_the_change_touches(repo, capsys):
+    # alpha holds `Old rule` live and the change adds it to beta: the change's note names beta alone
+    _write(repo, "openspec/changes/c1/specs/beta/spec.md", _delta_text(added=[("Old rule", "SHALL.\n\n" + _scn("c"))]))
+    _write(repo, "openspec/changes/c1/tasks.md", "- [x] 1.1 manual: Old rule: by hand\n")
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "write 'manual: beta / Old rule: ...' to cover one spec" in out and "specs holding it" not in out
+
+
+# requirement: spec-proof / A manual line names its spec, and the older form still counts
 def test_repo_wide_coverage_counts_a_spec_named_line_for_its_spec_only(repo, capsys):
     _two_specs_share_a_heading(repo)
     _write(repo, "openspec/changes/c1/tasks.md", "manual: alpha / New rule: a\n")
@@ -1617,6 +1639,23 @@ def test_a_report_that_cannot_be_written_exits_two_and_says_so_even_when_the_run
 def test_a_report_that_cannot_be_written_exits_two_when_there_were_problems_too(repo, capsys, monkeypatch):
     _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), NEW_REQ))
     monkeypatch.setattr(sys, "stdout", _ClosedPipe())
+    assert csp.main(["--root", str(repo), "--base", "main"]) == 2
+
+
+def test_a_report_with_no_stdout_at_all_exits_two_and_does_not_raise(repo, capsys, monkeypatch):
+    # `python check_spec_proof.py >&-`: descriptor 1 was closed at start, so sys.stdout is None.
+    monkeypatch.setattr(sys, "stdout", None)
+    assert csp.main(["--root", str(repo), "--base", "main"]) == 2
+    assert "cannot write the report: standard output is closed" in capsys.readouterr().err
+
+
+def test_a_report_to_a_closed_stdout_and_a_closed_stderr_still_exits_two(repo, monkeypatch):
+    import io
+
+    for name in ("stdout", "stderr"):
+        closed = io.StringIO()
+        closed.close()
+        monkeypatch.setattr(sys, name, closed)
     assert csp.main(["--root", str(repo), "--base", "main"]) == 2
 
 

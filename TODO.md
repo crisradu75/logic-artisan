@@ -16,3 +16,9 @@ Leftover review suggestions (todo-docs-copilot):
 
 - The scenario "The shipped manifest is read" in "Disclosing the Copilot CLI install is untested" documents the manifest carve-out but the SHALL sentence states no obligation for the manifest; its test (`test_the_shipped_copilot_manifest_does_not_say_the_install_is_untested`) is the only guard. Keep the scenario as documentation or move the check out of the spec.
 - `main()` in `.claude/skills/release/scripts/check_copilot_models.py` still lets a `TypeError` from `dict(MODEL_MAP)` or a `SyntaxError` from importing `sync_copilot_agents.py` escape as a traceback, which exits 1 and reads as "ID missing". Catch `Exception` around the map read and return 2.
+
+Leftover review suggestions (spec checker TODO sweep):
+
+- `_render_code_spans` pairs backticks within one line, but on the page a code span can run over the lines of a paragraph. A line with one stray backtick and a link still counts the link even when a backtick on the next line closes the span, and a span opened on the line before can hide a link that then draws a loud "linked from no spec map". Carry an unclosed run across the lines of a paragraph.
+- `fence[5]` in `_fence_step` is a bool, not the quote depth, so a fence opened at `> > ```` stays open through a following `> text` line, although on the page the inner quote ends there and takes its fence with it. Store the depth and end the fence when it drops.
+- The review checklist, `spec-to-pr/SKILL.md` Implement post-check, `dispatch.md` and `DEVELOPER-GUIDE.md` section 11 still show `manual: <heading>: <reason>` (still accepted, with a NOTE), and the section 11 row still says a spec "(live, or added by a change in progress)" with no mention of a spec a change removes. The `change-workflow` requirement "Each requirement names its proof" names the older form too. Update them together with `test_scenario_proof_format.py` (`_MANUAL_OLD`).
