@@ -59,3 +59,4 @@ Leftover review suggestions (spec map):
 - Retiring a whole spec may have a mirror trap (not checked): the spec stays live until archive, so a map link removed in the change would be reported as an unlinked spec, and one kept would dangle after archive. Decide how the rule should read a REMOVED capability.
 - A setext heading (`Spec map` with a `---` underline) in the facts file is not read as the spec map heading or as a near miss, so the rule stays off without a word. Detect it as `_reads_as_map_heading` does for ATX headings.
 - A map link to a file git ignores, or with the wrong case on Windows or macOS, passes the `is_file()` test in `check_spec_map` although the link is broken on GitHub. Check the path against the exact-case file list instead.
+- A fence inside a blockquote (`> ```) is not recognised as a fence by `_fence_step`, so a link shown in such an example counts as linking its spec. Strip the quote markers before matching, as the list marker is handled.

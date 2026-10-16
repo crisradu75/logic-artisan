@@ -592,27 +592,44 @@ def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> l
     return notes
 
 
-def _fence_step(line: str, n: int, fence: tuple[str, int, int, int] | None) -> tuple[tuple[str, int, int, int] | None, bool]:
+_ITEM = re.compile(r"^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)")
+
+Fence = tuple[str, int, int, int, bool]  # (character, run length, indent, line it opened on, inside a list item)
+
+
+def _fence_step(line: str, n: int, fence: Fence | None, items: list[int]) -> tuple[Fence | None, bool]:
     """Advance a code-fence tracker by one line: (new state, whether the line is a fence line or inside one).
 
-    The state is None outside a fence, else (character, run length, indent, line it opened on).
+    The state is None outside a fence. `items` is the caller's list, which this function keeps: the column
+    where the content of each list item still open begins.
     A fence opens on a run of 3 or more backticks (whose info string holds no backtick) or tildes at ANY
     indent: a fence inside a list item sits 4 or more spaces in and still renders as a fence, so a cap of 3
-    would miss it and count a link shown in an example. It closes on a bare run of the same character at
-    least as long, indented at most 3 spaces deeper than the opener, so a more deeply indented run inside
-    the fence is content. A fence opened inside a list item or quote also ends at the first non-blank line
-    indented less than its opener, as the container does on the page. A fence left open at the end hides
-    the rest of the file, as on the page."""
+    would miss it and count a link shown in an example. A list marker before the run (`- ```) counts as
+    indent. It closes on a bare run of the same character at least as long, indented at most 3 spaces deeper
+    than the opener, so a more deeply indented run inside the fence is content. A fence opened inside a
+    list item also ends at the first non-blank line indented less than its opener, as the item does on the
+    page; a fence at the top level does not, since its content may sit less indented than its opener. A
+    fence left open at the end hides the rest of the file, as on the page."""
+    indent = len(line) - len(line.lstrip())
+    if fence is not None and fence[4] and line.strip() and indent < fence[2]:
+        fence = None  # the list item holding the fence has ended, and the fence with it; read this line afresh
+    if fence is None and line.strip():
+        while items and items[-1] > indent:
+            items.pop()
+        item = _ITEM.match(line)
+        if item:
+            gap = len(item.group(3))
+            col = len(item.group(1)) + len(item.group(2)) + (gap if 0 < gap < 5 else 1)
+            items.append(col)
+            line = " " * col + line[item.end():]
     m = _FENCE_LINE.match(line)
-    if fence is not None and line.strip() and len(line) - len(line.lstrip()) < fence[2]:
-        fence = None  # the list item or quote holding the fence has ended, and the fence with it; read this line afresh
     if fence is not None:
         closes = m and m.group(2)[0] == fence[0] and len(m.group(2)) >= fence[1] and not m.group(3).strip()
         if closes and len(m.group(1)) <= fence[2] + 3:
             return None, True
         return fence, True
     if m and not (m.group(2)[0] == "`" and "`" in m.group(3)):
-        return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n), True
+        return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n, bool(items)), True
     return None, False
 
 
@@ -626,25 +643,30 @@ def _reads_as_map_heading(line: str) -> bool:
     return words in ("spec map", "spec maps")
 
 
-def _looks_like_map_heading(lines: list[str]) -> int | None:
-    """The 1-based number of the first line that looks like the "Spec map" heading, in any fence, comment,
-    list item or quote, or None. Prose that only says the words, inline code, and a longer heading
-    (`## Spec map notes`) do not look like it."""
+def _map_heading_like_lines(lines: list[str]) -> list[int]:
+    """The 1-based numbers of the lines that look like the "Spec map" heading, in any fence, comment, list
+    item or quote. Prose that only says the words, inline code, and a longer heading (`## Spec map notes`)
+    do not look like it."""
+    found = []
     for i, line in enumerate(lines):
         core = _LINE_PREFIX.sub("", line)
         if _HEADING_LIKE.match(core):
-            return i + 1
-        if _SETEXT_TEXT.match(core) and i + 1 < len(lines) and _SETEXT_UNDERLINE.match(_LINE_PREFIX.sub("", lines[i + 1])):
-            return i + 1
-    return None
+            found.append(i + 1)
+        elif _SETEXT_TEXT.match(core) and i + 1 < len(lines) and _SETEXT_UNDERLINE.match(_LINE_PREFIX.sub("", lines[i + 1])):
+            found.append(i + 1)
+    return found
 
 
-def read_spec_map(root: Path) -> list[str] | None:
+def read_spec_map(root: Path, notes: list[str] | None = None) -> list[str] | None:
     """The paths or globs under `## Spec map` in the facts file, or None when the repo declares no map.
 
     A bullet is `- <path or glob>`, or `` - `<path or glob>` `` followed by any prose. A heading with
     no bullet, a second heading, or a line under it that is not a bullet raises: a declaration read
-    loosely would turn the rule off without a word."""
+    loosely would turn the rule off without a word.
+
+    With no declaration read, a line OUTSIDE any fence or comment that looks like the heading raises
+    too (`##Spec map`, `- ## Spec map`). The same line INSIDE a fence or comment, which is how a facts
+    file shows the format, is only a note: it is appended to `notes` when the caller passes a list."""
     facts = root / FACTS_RELPATH
     if not facts.is_file():
         return None
@@ -654,18 +676,23 @@ def read_spec_map(root: Path) -> list[str] | None:
         raise CheckerError(f"cannot read {FACTS_RELPATH}: {exc}") from exc
     heads = []
     fence = None
+    items: list[int] = []
     in_comment = False
+    hidden_lines = set()  # lines inside a fence or an HTML comment, which cannot declare anything
     for n, line in enumerate(lines, 1):
         if fence is None:
             # A heading inside an HTML comment is not a declaration. (A line that begins with a comment is raw HTML.)
             if in_comment:
                 in_comment = "-->" not in line
+                hidden_lines.add(n)
                 continue
             if line.lstrip().startswith("<!--"):
                 in_comment = "-->" not in line
+                hidden_lines.add(n)
                 continue
-        fence, hidden = _fence_step(line, n, fence)
+        fence, hidden = _fence_step(line, n, fence, items)
         if hidden:
+            hidden_lines.add(n)
             continue
         if _MAP_HEADING.match(line.rstrip()):
             heads.append(n)
@@ -681,11 +708,14 @@ def read_spec_map(root: Path) -> list[str] | None:
         # Backstop: the scans above can be fooled by Markdown a renderer reads differently from this line scan.
         # A line that looks like the "Spec map" heading, with no declaration read, may be a declaration that was
         # missed, and the guard going quiet is the one outcome this rule must not have. Prose that merely says
-        # the words does not trigger it. Fences and comments are searched too: that is where a fooled scan
-        # leaves the heading.
-        at = _looks_like_map_heading(lines)
-        if at is not None:
-            raise CheckerError(f"{FACTS_RELPATH}:{at}: looks like the 'Spec map' heading but was not read as a declaration; write it exactly as '## Spec map' outside any fence or comment")
+        # the words does not trigger it. Inside a fence or comment the line is most likely an example of the
+        # format, so it is a note and never fails the run.
+        like = _map_heading_like_lines(lines)
+        shown = [n for n in like if n not in hidden_lines]
+        if shown:
+            raise CheckerError(f"{FACTS_RELPATH}:{shown[0]}: looks like the 'Spec map' heading but was not read as a declaration; write it exactly as '## Spec map'")
+        if notes is not None:
+            notes += [f"NOTE spec-map: {FACTS_RELPATH}:{n}: looks like the 'Spec map' heading but sits inside a code fence or comment, so it is not read as a declaration" for n in like]
         return None
     if len(heads) > 1:
         raise CheckerError(f"{FACTS_RELPATH}: '## Spec map' appears on lines {', '.join(map(str, heads))}; keep one")
@@ -717,13 +747,14 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
     problem naming the line it began on: otherwise every later link would vanish with no word said."""
     links: list[tuple[int, str]] = []
     fence = None
+    items: list[int] = []
     comment_from: int | None = None
     for n, line in enumerate(text.splitlines(), 1):
         if fence is None and comment_from is not None:
             if "-->" not in line:
                 continue
             comment_from, line = None, ""  # what follows the closer on its line is raw HTML too
-        fence, hidden = _fence_step(line, n, fence)
+        fence, hidden = _fence_step(line, n, fence, items)
         if hidden:
             continue
         stripped = line.lstrip()
@@ -1083,7 +1114,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
     problems += check_format(files, limits)
 
     map_line = None
-    patterns = read_spec_map(root)  # None: no map declared, so the rule reports nothing and prints no line
+    map_notes: list[str] = []
+    patterns = read_spec_map(root, map_notes)  # None: no map declared, so the rule reports nothing and prints no line
     if patterns is not None:
         spec_rels: dict[str, str] = {}
         for f in files:
@@ -1205,7 +1237,7 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         ),
         f"problems: {len(problems)}",
     ]
-    return (1 if problems else 0), problems + purpose_notes(files, touched_specs) + out
+    return (1 if problems else 0), problems + purpose_notes(files, touched_specs) + map_notes + out
 
 
 def _console_safe(text: str) -> str:

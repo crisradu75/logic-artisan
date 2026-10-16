@@ -298,6 +298,41 @@ def test_text_after_the_closer_of_a_comment_on_its_line_is_not_a_link(repo, caps
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_top_level_fence_opened_with_indent_keeps_its_less_indented_content(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("  ```", ALPHA, "```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    assert "never closed" not in out and "problems: 1" in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_list_that_has_ended_does_not_make_a_later_indented_fence_a_list_fence(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("- item", "", "A paragraph.", "", "  ```", ALPHA, "```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    assert "never closed" not in out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_fence_opened_on_the_line_of_a_list_marker_is_a_fence_in_that_item(repo, capsys):
+    _declare(repo, MAP)
+    _write(repo, MAP, _map("- ```text", f"  {ALPHA}", "  ```", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "openspec/specs/alpha/spec.md is linked from no spec map" in out
+    assert "never closed" not in out and "problems: 1" in out
+    # The item's content starts after the marker: a line indented less than that ends the item and its fence.
+    _write(repo, MAP, _map("- ```text", f" {ALPHA}", BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    # The item ends the fence: an unclosed one is cut at the first less indented line.
+    _write(repo, MAP, _map("1. step", "   ```", "   [g](specs/gamma/spec.md)", ALPHA, BETA))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
 def test_a_line_that_begins_with_a_comment_is_all_raw_html_even_when_it_closes_on_that_line(repo, capsys):
     _declare(repo, MAP)
     _write(repo, MAP, _map(f"<!-- old --> {ALPHA}", BETA))
@@ -420,34 +455,51 @@ def test_a_heading_that_reads_as_the_declaration_in_another_form_exits_2(repo, c
     assert code == 2 and f"{FACTS}:1" in err and not out
 
 
-# requirement: spec-map / A repo declares its spec map as a fact
-def test_a_heading_shown_inside_a_fenced_example_is_not_a_declaration_but_the_mention_stops_the_run(repo, capsys):
+# requirement: spec-map / A line that looks like the spec map heading is never silently ignored
+def test_a_heading_shown_in_a_fenced_example_with_a_bullet_below_it_is_still_only_a_note(repo, capsys):
     _write(repo, FACTS, "## Notes\n\n```markdown\n### Spec map\n\n- openspec/spec-map.md\n```\n")
     code, out, err = run(repo, capsys)
-    assert code == 2 and f"{FACTS}:4: looks like the 'Spec map' heading" in err and not out
+    assert code == 0 and not err, out
+    assert f"NOTE spec-map: {FACTS}:4: looks like the 'Spec map' heading but sits inside a code fence or comment" in out
+    assert "PROBLEM" not in out
 
 
-# requirement: spec-map / A repo declares its spec map as a fact
+# requirement: spec-map / A line that looks like the spec map heading is never silently ignored
+@pytest.mark.parametrize(
+    ("facts", "line"),
+    [
+        ("- ## Spec map\n- openspec/spec-map.md\n", 1),
+        ("> ## Spec map\n", 1),
+        ("1. ### SPEC  MAP ###\n", 1),
+        ("##Spec map\n\n- openspec/spec-map.md\n", 1),
+        ("# Facts\n\nSpec map\n========\n\n- openspec/spec-map.md\n", 3),
+        ("Spec map\n---\n", 1),
+    ],
+)
+def test_a_heading_outside_any_fence_or_comment_the_scan_did_not_read_exits_2_and_names_the_line(repo, capsys, facts, line):
+    _write(repo, FACTS, facts)
+    code, out, err = run(repo, capsys)
+    assert code == 2 and f"{FACTS}:{line}: looks like the 'Spec map' heading" in err and not out
+
+
+# requirement: spec-map / A line that looks like the spec map heading is never silently ignored
 @pytest.mark.parametrize(
     ("facts", "line"),
     [
         ("# Facts\n\n<!--\n## Spec map\n- openspec/spec-map.md\n-->\n", 4),
         ("# Facts\n\n```\n## Spec map\n```\n", 4),
         ("- item\n  ```\n  ## Spec map\n  ```\n", 3),
-        ("- ## Spec map\n- openspec/spec-map.md\n", 1),
-        ("> ## Spec map\n", 1),
-        ("1. ### SPEC  MAP ###\n", 1),
-        ("# Facts\n\nSpec map\n========\n\n- openspec/spec-map.md\n", 3),
-        ("Spec map\n---\n", 1),
+        ("# Facts\n\n```\nSpec map\n===\n```\n", 4),
     ],
 )
-def test_a_heading_the_scan_did_not_read_as_the_declaration_exits_2_and_names_the_line(repo, capsys, facts, line):
+def test_the_same_line_inside_a_fence_or_comment_is_a_note_and_never_fails_the_run(repo, capsys, facts, line):
     _write(repo, FACTS, facts)
     code, out, err = run(repo, capsys)
-    assert code == 2 and f"{FACTS}:{line}: looks like the 'Spec map' heading" in err and not out
+    assert code == 0 and not err, out
+    assert f"NOTE spec-map: {FACTS}:{line}: looks like the 'Spec map' heading" in out and "PROBLEM" not in out
 
 
-# requirement: spec-map / A repo declares its spec map as a fact
+# requirement: spec-map / A line that looks like the spec map heading is never silently ignored
 @pytest.mark.parametrize(
     "facts",
     [

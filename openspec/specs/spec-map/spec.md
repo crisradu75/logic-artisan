@@ -9,7 +9,7 @@ What the plugin promises about declaring that map in a repo's facts and the scaf
 
 ### Requirement: A repo declares its spec map as a fact
 
-A repo SHALL declare its spec map by listing one path or glob per bullet under a `## Spec map` heading in `cla.io/project-facts.md`, in any layout, so that with no such heading there is no map and no map check reports anything, and a heading that names no path, or that reads as this heading in another form, exits non-zero.
+A repo SHALL declare its spec map by listing one path or glob per bullet under a `## Spec map` heading in `cla.io/project-facts.md`, in any layout, so that a repo with no such heading, and no line that looks like it, has no map and sees no map output, and a heading that names no path exits non-zero.
 
 #### Scenario: A glob in a custom layout
 
@@ -18,13 +18,32 @@ A repo SHALL declare its spec map by listing one path or glob per bullet under a
 
 #### Scenario: No declaration
 
-- **WHEN** the facts file has no `## Spec map` heading
+- **WHEN** the facts file has no `## Spec map` heading and no line that looks like one
 - **THEN** the checker prints no line about a map and its exit code is unchanged
 
-#### Scenario: A heading the checker cannot read as a declaration
+#### Scenario: A heading with no path
 
-- **WHEN** the `## Spec map` heading has no bullet under it, or the heading is written `### Spec map`
+- **WHEN** the `## Spec map` heading has no bullet under it
 - **THEN** the checker exits non-zero and names the line
+
+### Requirement: A line that looks like the spec map heading is never silently ignored
+
+When no declaration was read, `check_spec_proof.py` SHALL exit non-zero naming the line for a line outside any code fence or comment that looks like the `## Spec map` heading, such as `### Spec map` or `##Spec map`, and SHALL print a note that leaves its exit code unchanged for such a line inside a fence or comment.
+
+#### Scenario: A near miss outside a fence
+
+- **WHEN** the facts file has `##Spec map` in its text and no `## Spec map` heading
+- **THEN** the checker exits non-zero and names the line
+
+#### Scenario: A heading shown as an example
+
+- **WHEN** the facts file shows `## Spec map` inside a code fence and declares no map
+- **THEN** the checker prints a note naming the line and its exit code is unchanged
+
+#### Scenario: Prose that only says the words
+
+- **WHEN** the facts file says "we have no spec map yet" in a sentence
+- **THEN** the checker prints nothing about a map
 
 ### Requirement: Setup offers a three-layer spec map scaffold
 
