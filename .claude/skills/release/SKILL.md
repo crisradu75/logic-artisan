@@ -42,6 +42,7 @@ git status -sb
 pytest plugin-tests -q -n auto --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
+python3 .claude/skills/release/scripts/check_copilot_models.py
 ```
 
 | Precondition | Why it is not negotiable |
@@ -54,6 +55,7 @@ python3 .claude/skills/release/scripts/check_shipped_tree.py
 | The work is reviewed and merged | See the invariant above. |
 | The docs match the code since the last tag | Re-check every count and present-tense claim in `README.md`, `DEVELOPER-GUIDE.md` and `.claude/plugins/cla/README.md` against `git log <last-tag>..HEAD`, and fix them in a PR first. 2.0.0 shipped saying "21 workflow skills" and "neutral stub" overlays, and a docs PR had to follow it. |
 | `check_shipped_tree.py` exits 0 | `git-subdir` has no exclusion field, so a stray dev asset in the plugin tree ships to every consumer — and a published tag is never moved. |
+| `check_copilot_models.py` exits 0 | It fetches GitHub's supported-models table for Copilot CLI and names every `MODEL_MAP` ID in `plugin-tests/scripts/sync_copilot_agents.py` that is missing from it. Copilot uses the session's model for an ID it no longer lists and reports nothing, and the tagged agent copies cannot be corrected afterwards. It needs the network: it exits 1 for a missing ID and exits 2 when the table cannot be read, and both refuse. Fix `MODEL_MAP` and regenerate the copies in a PR first, never as part of the release. |
 
 Resolve the default branch, never assume it: `git symbolic-ref --quiet refs/remotes/origin/HEAD`
 (take the segment after the last `/`); if unset, use whichever of `main` / `master`

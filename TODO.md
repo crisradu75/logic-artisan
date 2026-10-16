@@ -25,29 +25,6 @@ Leftover review suggestions (docs-task review gaps fix):
 - "a Suggestion-level fix is not one of those other fixes" (`revise.md`, `model-routing.md`) is a stipulation: such a fix is another fix that cannot trigger a round. Say "does not count as one of those other fixes". Likewise "(a docs-currency fix is neither)" in the Flags row and the resume rule should say "counts as neither", since a stale doc is an Important finding.
 - `lite-pr/SKILL.md` Docs check: the parenthetical `(`cla.io/project-facts.md`, "Doc-sweep paths", or the docs you picked)` reads as three alternatives; write "the "Doc-sweep paths" section of `cla.io/project-facts.md`, or the docs you picked". Step 4 does not repeat the Suggestion clause, because step 1 fixes only Critical and Important findings; say so or add the clause.
 
-Leftover review suggestions (orchestration economy and bullet fix sweep):
-
-- Rule 8 in `orchestration-economy.md` says an ignored `scratchpad/` keeps rule 7's debris check quiet. The check lists ignored paths too, so the folder stays quiet only if it exists before the before snapshot. Say to create it first.
-- Rule 12 in `orchestration-economy.md` names only `gh pr view`, which shows open or merged state but not whether checks are green. Add `gh pr checks` for the green case.
-- `_flat` in `plugin-tests/tests/consistency/test_mutation_batch_is_opt_in.py` also tags a `- ` or `* ` line inside a fenced code block and a `* * *` rule line as bullet markers. CLAUDE.md has neither today.
-
-Leftover review suggestions (Copilot manifest and release-drift check):
-
-- The words "untested in a live Copilot CLI" are hard-coded in the plugin-distribution spec, the docs test and five documents, and the root `plugin.json` description ships inside the release tag, which is never moved. When the install is first run in a real Copilot CLI, every one of these needs editing, and the tagged description stays stale. Consider keeping the claim out of the shipped manifest.
-- The "Installing from GitHub Copilot CLI" requirement joins the install line and the duty to disclose that it is untested. Two outcomes; split it if the disclosure outlives the first live test.
-- Tasks 2.1, 2.2, 3.1, 3.2 and 4.1 in the change run past the roughly 40-word task rule.
-- `test_every_doc_offering_the_copilot_install_says_it_is_untested` checks that two phrases appear somewhere in each doc, not next to the install command.
-
-Leftover review suggestions (session-traps PR, CLAUDE.md):
-
-- The `check_spec_proof.py` trap could also name `--root <worktree>`, which checks that worktree from any cwd (`.claude/plugins/cla/skills/_shared/scripts/check_spec_proof.py:848`).
-- The "closes no issue without it" trap is slightly too strong: a closing keyword in the squash commit message, or a sidebar link, also closes the issue. Say "without a closing keyword such as `Closes #N` in the PR body".
-
-Leftover review suggestions (Copilot agents):
-
-- `sync_copilot_agents.py --write` never looks at `com.github.copilot/agents/` for copies whose Claude agent was renamed or removed; it prints "in step" and exits 0 while the consistency test fails. Have the script report or delete such files.
-- The model IDs in `MODEL_MAP` are checked against nothing but the script itself; GitHub renames models, and Copilot then silently uses the session model. Decide whether to re-read the supported-models table at each release.
-
 Leftover review suggestions (spec map):
 
 - `map_links` still counts a link that does not render as one: an escaped `\[x\](..)`, an image `![x](..)`, a line in an indented code block, and a link on a line with an unpaired backtick (`_mask_code_spans` then masks nothing). Skip those forms, or treat such a line as unreadable.

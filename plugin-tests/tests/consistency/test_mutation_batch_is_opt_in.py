@@ -21,14 +21,33 @@ _CLAUDE_MD = (Path(__file__).resolve().parents[3] / "CLAUDE.md").read_text(encod
 _MARK = "\x00"
 
 
+_FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+_THEMATIC_BREAK = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
+_LIST_MARKER = re.compile(r"^[ \t]*(?=[-*] )")
+
+
 def _flat(text: str) -> str:
     """Collapse line wraps and list indentation so a phrase matches across them.
 
     A real list marker (a hyphen or asterisk, then a space, at the start of a line after
     optional indentation) is tagged with `_MARK` first, because flattening erases the line
-    starts that tell a marker from a spaced hyphen in the middle of a sentence.
+    starts that tell a marker from a spaced hyphen in the middle of a sentence. A line inside
+    a fenced code block, and a thematic break such as `* * *` or `- - -`, is not a marker.
     """
-    return re.sub(r"\s+", " ", re.sub(r"(?m)^[ \t]*(?=[-*] )", _MARK, text))
+    lines = []
+    fence = ""  # the opening fence's run of characters while inside a fenced block
+    for line in text.split("\n"):
+        run = _FENCE.match(line)
+        if fence:
+            if run and run.group(1)[0] == fence[0] and len(run.group(1)) >= len(fence) \
+                    and line.strip() == run.group(1):
+                fence = ""
+        elif run:
+            fence = run.group(1)
+        elif not _THEMATIC_BREAK.match(line):
+            line = _LIST_MARKER.sub(_MARK, line)
+        lines.append(line)
+    return re.sub(r"\s+", " ", "\n".join(lines))
 
 
 _BODY = _flat(_CLAUDE_MD)
@@ -54,6 +73,32 @@ def test_a_spaced_hyphen_mid_sentence_is_not_a_bullet() -> None:
 def test_an_indented_hyphen_or_asterisk_marker_is_a_bullet() -> None:
     body = _flat("- **outer** text\n  * inner marker with the rule here\n")
     assert body.startswith("* inner", _bullet_start(body, body.index("the rule")))
+
+
+def test_a_fenced_line_that_looks_like_a_bullet_is_not_one() -> None:
+    text = "- **outer** text\n```text\n- fenced item\n* another\n```\n- after\n"
+    body = _flat(text)
+    assert _bullet_start(body, body.index("fenced item")) == body.index("- **outer**")
+    assert _bullet_start(body, body.index("another")) == body.index("- **outer**")
+    assert body.startswith("- after", _bullet_start(body, body.index("after")))
+    # A tilde fence works the same way, and an indented fence inside a list item too.
+    body = _flat("- **outer**\n  ~~~\n  - fenced\n  ~~~\n")
+    assert _bullet_start(body, body.index("fenced")) == body.index("- **outer**")
+
+
+def test_a_longer_closing_fence_ends_the_block_and_a_shorter_one_does_not() -> None:
+    body = _flat("- **outer**\n````\n```\n- still fenced\n````\n- real\n")
+    assert _bullet_start(body, body.index("still fenced")) == body.index("- **outer**")
+    assert body.startswith("- real", _bullet_start(body, body.index("real")))
+
+
+def test_a_thematic_break_is_not_a_bullet() -> None:
+    for rule in ("* * *", "- - -", "  * * *", "***", "* * * *"):
+        body = _flat(f"- **outer** text\n{rule}\nthe rule here\n")
+        assert _bullet_start(body, body.index("the rule")) == body.index("- **outer**"), rule
+    # A hyphen item that only looks like the start of a rule is still an item.
+    body = _flat("- **outer** text\n- - nested\nthe rule here\n")
+    assert body.startswith("- - nested", _bullet_start(body, body.index("the rule")))
 
 
 def test_text_with_no_marker_has_no_bullet() -> None:

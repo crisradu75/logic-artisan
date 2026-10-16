@@ -23,8 +23,8 @@ Sources, read raw from github/docs:
 NOT TESTED in a live Copilot CLI (none is installed). The tests that call this module check that
 each committed copy equals what `render` produces, plus the checks listed in that test file.
 
-    python3 plugin-tests/scripts/sync_copilot_agents.py           # report copies that are out of step
-    python3 plugin-tests/scripts/sync_copilot_agents.py --write   # regenerate them
+    python3 plugin-tests/scripts/sync_copilot_agents.py           # report copies out of step or orphaned
+    python3 plugin-tests/scripts/sync_copilot_agents.py --write   # regenerate them, delete the orphans
 """
 
 from __future__ import annotations
@@ -125,8 +125,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--write", action="store_true", help="regenerate the Copilot copies")
     args = parser.parse_args(argv)
+    expected = expected_copies(CLAUDE_DIR)
     stale = []
-    for name, text in expected_copies().items():
+    for name, text in expected.items():
         target = COPILOT_DIR / name
         current = target.read_text(encoding="utf-8") if target.is_file() else None
         if current == text:
@@ -135,11 +136,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.write:
             COPILOT_DIR.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8", newline="\n")
-    if stale and not args.write:
-        print("out of step with agents/: " + ", ".join(stale), file=sys.stderr)
-        print("run with --write to regenerate", file=sys.stderr)
+    # A file whose Claude agent was renamed or removed would stay and fail the consistency test.
+    orphans = (
+        sorted(p.name for p in COPILOT_DIR.iterdir() if p.is_file() and p.name not in expected)
+        if COPILOT_DIR.is_dir() else []
+    )
+    if args.write:
+        for name in orphans:
+            (COPILOT_DIR / name).unlink()
+    elif stale or orphans:
+        if stale:
+            print("out of step with agents/: " + ", ".join(stale), file=sys.stderr)
+        if orphans:
+            print("no Claude agent for: " + ", ".join(orphans), file=sys.stderr)
+        print("run with --write to regenerate" + (" and delete" if orphans else ""), file=sys.stderr)
         return 1
-    print(("wrote " if args.write else "in step: ") + (", ".join(stale) or "all copies"))
+    removed = ("; deleted " + ", ".join(orphans)) if orphans else ""
+    print(("wrote " if args.write else "in step: ") + (", ".join(stale) or "all copies") + removed)
     return 0
 
 
