@@ -534,6 +534,7 @@ plugin-tests/                  the repo's ONE pytest scope
 .claude/skills/release/        repo-local skill, invoked as /release (not /cla:release)
   SKILL.md
   scripts/check_shipped_tree.py
+  scripts/check_copilot_models.py
 ```
 
 `pyproject.toml` sets `testpaths = ["tests"]`, `norecursedirs` (pytest's default list plus
@@ -593,6 +594,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's round 2 (which runs only after round 1 fixed a Critical, or an Important on a high-risk PR) still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 15-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
+| `.claude/skills/release/scripts/check_copilot_models.py` *(repo-local)* | Fetches GitHub's supported-models table for Copilot CLI and refuses the release when a `MODEL_MAP` ID is missing from it. A model GitHub renamed makes Copilot use the session model with no error, and nothing else reads the IDs against that list, so a sentence of prose in the skill would be skipped. It needs the network (exit 2 when the page cannot be read); its tests build a page with the table's layout. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
 | `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
 | `annotate/scripts/render_html.py` | Instruments an author's own HTML in place — attributes spliced at source offsets, so stripping them returns the original bytes and the document under review stays the document under review. Refuses a file whose markup already uses those attributes, because that collision mis-anchors every annotation in the element and is invisible on the page. |
@@ -966,9 +968,13 @@ so it sees only the Claude pair). The root manifest also needed a fifteenth allo
 `check_shipped_tree.py`, or `/release` refused it. Claude Code did not take the plugin name from the
 root manifest: a copy whose root manifest had a different name still loaded as `cla` from
 `.claude-plugin/plugin.json`. The catalog's pin, `cla--v2.1.0`, predates the root manifest, so the
-Copilot behaviour described here begins with the next release. Nothing was run in Copilot: the
-install line (`copilot plugin marketplace add crisradu75/logic-artisan`, then `copilot plugin install
-cla@cris-logic-artisan`) comes from the docs.
+Copilot behaviour described here begins with the next release. The root manifest's description does
+not say the install is untested (2026-10-16, owner decision): it ships inside the release tag, which
+is never moved, so the claim would outlive the first live test there. The README, this guide and the
+spec carry it, and the docs test requires it beside the install command, within one heading section.
+Nothing was run in Copilot: the
+install line (Copilot CLI only, untested in a live Copilot CLI: `copilot plugin marketplace add
+crisradu75/logic-artisan`, then `copilot plugin install cla@cris-logic-artisan`) comes from the docs.
 The decisions are in `cla.io/decisions/copilot-cli-port-2026-10-16.md`; skills and hooks are
 not ported yet (issue #302). **The guard hooks do not run in Copilot**: the owner decided on
 2026-10-16 to wait for a live test, because the decisions file records (from a docs summary, untested
@@ -985,7 +991,9 @@ its Claude agent. The root manifest needs no entry for them (the docs list no fi
 `tools: ["Read","Grep","Glob"]` becomes `["read","search"]` (the docs' primary aliases; the docs say the Claude
 names are accepted too, untested), `model` becomes a Copilot model ID from the CLI reference's supported-models
 table (the docs say an ID Copilot cannot honour falls back to the session model, so a stale ID loses the
-choice and does not break the agent), and `color` is dropped. The instruction text still names the
+choice and does not break the agent; `/release` therefore runs `check_copilot_models.py`, which refuses
+when a `MODEL_MAP` ID is not in that table), and `color` is dropped. The script also reports a copy
+whose Claude agent is gone, and `--write` deletes it. The instruction text still names the
 tools `Read`, `Grep` and `Glob` and the `offset` and `limit` read arguments; the docs say Copilot accepts the
 aliases (untested), but its own read tool may take different arguments. Claude Code did not load the copies: a
 `claude -p` run listed the same five `cla:` agents as main.

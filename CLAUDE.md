@@ -61,7 +61,7 @@ openspec validate --specs --strict
 
 - **`check_spec_proof.py` checks the specs of the current directory, not of its own tree.** Run a
   worktree's copy with that worktree as cwd (PowerShell `Push-Location`); `block-cd-in-bash`
-  blocks `cd` in Bash.
+  blocks `cd` in Bash. Or pass `--root <worktree>`, which checks that worktree from any cwd.
 
 ### The parallel gate
 
@@ -167,4 +167,5 @@ or a new component. A small addition to something already built and tested does 
   spec-to-pr's last step, not a backlog.
 - **On Windows a long Bash command can fail** with `unexpected EOF while looking for matching quote`.
   Put a long script in a file and run it by path.
-- **Put `Closes #N` in the PR body.** A squash merge closes no issue without it.
+- **Close an issue from the PR body.** A squash merge closes no issue without a closing keyword
+  such as `Closes #N` in the PR body.

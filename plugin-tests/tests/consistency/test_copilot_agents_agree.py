@@ -61,7 +61,7 @@ def test_every_claude_agent_has_a_copilot_copy_and_no_copy_is_orphaned():
     )
     assert not copilot - claude, (
         f"Copilot copies with no Claude agent: {sorted(copilot - claude)}; delete those files "
-        "(`--write` does not remove them)"
+        "(`python3 plugin-tests/scripts/sync_copilot_agents.py --write` removes them)"
     )
     assert all(p.name.endswith(".agent.md") for p in _COPILOT.glob("*")), (
         "every file in the Copilot agents directory must be <name>.agent.md"
@@ -143,6 +143,57 @@ def test_the_generator_refuses_what_it_cannot_map_instead_of_dropping_it():
             sync.render(missing)
     # A shell tool maps faithfully, so the read-only test above is what stops it shipping.
     assert sync.map_tools(["Read", "Bash", "Grep", "Glob"]) == ["read", "execute", "search"]
+
+
+_AGENT = '---\nname: a\ndescription: "d"\nmodel: sonnet\ntools: ["Read"]\n---\nBody\n'
+
+
+def _seed(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
+    """One Claude agent and its up-to-date copy in a throwaway pair of directories."""
+    claude, copilot = tmp_path / "agents", tmp_path / "copilot"
+    claude.mkdir()
+    copilot.mkdir()
+    (claude / "a.md").write_text(_AGENT, encoding="utf-8", newline="\n")
+    (copilot / "a.agent.md").write_text(sync.render(_AGENT), encoding="utf-8", newline="\n")
+    monkeypatch.setattr(sync, "CLAUDE_DIR", claude)
+    monkeypatch.setattr(sync, "COPILOT_DIR", copilot)
+    return claude, copilot
+
+
+def test_the_generator_reports_an_orphaned_copy_and_write_deletes_it(monkeypatch, tmp_path, capsys):
+    _, copilot = _seed(monkeypatch, tmp_path)
+    assert sync.main([]) == 0
+    (copilot / "gone.agent.md").write_text("x\n", encoding="utf-8")
+    (copilot / "stray.txt").write_text("x\n", encoding="utf-8")
+    capsys.readouterr()
+    assert sync.main([]) == 1
+    err = capsys.readouterr().err
+    assert "gone.agent.md" in err and "stray.txt" in err, err
+    assert (copilot / "gone.agent.md").exists(), "check mode must not delete anything"
+    assert sync.main(["--write"]) == 0
+    assert sorted(p.name for p in copilot.iterdir()) == ["a.agent.md"]
+    assert "deleted" in capsys.readouterr().out
+    assert sync.main([]) == 0
+
+
+def test_the_generator_fixes_a_stale_copy_and_an_orphan_in_one_write(monkeypatch, tmp_path):
+    _, copilot = _seed(monkeypatch, tmp_path)
+    (copilot / "a.agent.md").write_text("stale\n", encoding="utf-8")
+    (copilot / "old.agent.md").write_text("x\n", encoding="utf-8")
+    assert sync.main([]) == 1
+    assert sync.main(["--write"]) == 0
+    assert (copilot / "a.agent.md").read_text(encoding="utf-8") == sync.render(_AGENT)
+    assert not (copilot / "old.agent.md").exists()
+
+
+def test_the_generator_runs_when_the_copilot_directory_does_not_exist(monkeypatch, tmp_path):
+    _, copilot = _seed(monkeypatch, tmp_path)
+    for path in copilot.iterdir():
+        path.unlink()
+    copilot.rmdir()
+    assert sync.main([]) == 1
+    assert sync.main(["--write"]) == 0
+    assert (copilot / "a.agent.md").is_file()
 
 
 def test_the_install_docs_say_the_agents_are_offered_and_the_guard_hooks_do_not_run():
