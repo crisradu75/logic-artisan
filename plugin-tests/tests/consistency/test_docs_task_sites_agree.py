@@ -141,6 +141,19 @@ def test_no_spec_to_pr_diff_anchor_is_the_bare_base_branch():
 
 
 # requirement: docs-currency / A change keeps the repo's docs current
+def test_no_shipped_diff_command_uses_the_undefined_base_placeholder():
+    # `<base>` is defined nowhere, so an agent handed `git diff <base>...<branch>` has no branch to fill in.
+    found = [
+        f"{path.relative_to(_SKILLS)}: {m}"
+        for path in sorted(_SKILLS.rglob("*.md"))
+        for m in re.findall(r"git diff[^`\n]*<base>", _read(path))
+    ]
+    assert found == [], f"a diff command anchors on the undefined <base>: {found}"
+    # The check can fire: a line with the placeholder is found.
+    assert re.findall(r"git diff[^`\n]*<base>", "git diff <base>...<branch>")
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
 def test_the_second_pass_site_check_is_not_vacuous():
     sites = _round_2_sites()
     assert all(sites.values()), f"a second-pass site was not found: {[k for k, v in sites.items() if not v]}"
