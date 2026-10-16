@@ -502,6 +502,7 @@ The published plugin — everything here ships to a consuming repo:
   .claude-plugin/plugin.json   manifest
   plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, untested in a live Copilot CLI
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to); code-reviewer, silent-failure-hunter, comment-analyzer (read-only PR reviewers)
+  com.github.copilot/agents/   the same five agents for GitHub Copilot CLI, generated from agents/ (untested in a live Copilot CLI)
   hooks/                       guard hooks + hooks.json wiring
   lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
@@ -529,6 +530,7 @@ plugin-tests/                  the repo's ONE pytest scope
   scripts/measure_load.py
   scripts/meter.py
   scripts/migrate_run_records.py
+  scripts/sync_copilot_agents.py
 .claude/skills/release/        repo-local skill, invoked as /release (not /cla:release)
   SKILL.md
   scripts/check_shipped_tree.py
@@ -583,6 +585,7 @@ skill-relative path (`<skill>/scripts/...`, no leading `skills/`) for a script t
 | `plugin-tests/scripts/measure_load.py` *(dev tree)* | Counts the words each skill puts in front of the model (session listing, `SKILL.md`, reachable references, curated per-run profiles) so a token-cutting change quotes a measured before/after; fails when a profile entry is no longer named directly by the file it says forces the read. |
 | `plugin-tests/scripts/meter.py` *(dev tree)* | Totals the tokens a session transcript's `usage` fields record, split by model and counting main chat and subagents together, so a token-diet change quotes measured spend instead of word counts; one API message appears once per content block in a transcript, and a plain sum counts it several times. |
 | `plugin-tests/scripts/migrate_run_records.py` *(dev tree)* | One-off rewrite of old-shape `spec-to-pr-runs.jsonl` records into the shape `log_run.py` enforces: every mapping comes from a shape found in a real ledger, a valid record is left untouched, and one that still fails is reported and left exactly as it was. |
+| `plugin-tests/scripts/sync_copilot_agents.py` *(dev tree)* | Writes the Copilot CLI copy of each helper agent from its Claude Code agent: the body is copied unchanged and `tools` and `model` are mapped by documented tables and `color` is dropped, which is a rewrite of frontmatter that a sentence of prose would get wrong. The tests import it and fail when a committed copy differs. |
 | `cla-setup/scripts/check_fact_paths.py` | Existence-checks every repo-relative path the facts file and overlays name, in the *consuming* repo — which has no pytest gate over the plugin cache, so a checker filed as a test is unreachable there. It skips a path `_is_machine_local` accepts (read the function for the rule). It also reports a path under a top-level directory that git history shows was renamed or removed, and skips one whose first part never was a top-level name here. |
 | `cla-setup/scripts/seed_openspec_rules.py` | Seeds or compares the OpenSpec `rules:` block in the *consuming* repo's config. The block was an 8172-byte bash block in `SKILL.md`, and a Bash-tool command that long is cut off on Windows: in the Bash tool here, `echo "<padding>" | wc -c` of about 9.3 KB failed with `unexpected EOF while looking for matching quote` and of about 5.7 KB ran (issue #385), so the model could not paste a bigger block. The comparison (quoted and CRLF forms, artifact names, config left byte-identical) is also the part a model gets wrong when it improvises. The one place the rules text lives; a test pins it equal to this repo's own config. |
 | `_shared/scripts/check_no_project_tokens.py` | Four scans in one run over the consuming repo's install (prose tokens, source tokens, absolute developer paths, readability); the readability check is what stops the other three passing vacuously. |
@@ -966,8 +969,26 @@ root manifest: a copy whose root manifest had a different name still loaded as `
 Copilot behaviour described here begins with the next release. Nothing was run in Copilot: the
 install line (`copilot plugin marketplace add crisradu75/logic-artisan`, then `copilot plugin install
 cla@cris-logic-artisan`) comes from the docs.
-The decisions are in `cla.io/decisions/copilot-cli-port-2026-10-16.md`; skills, agents and hooks are
-not ported yet (issue #302).
+The decisions are in `cla.io/decisions/copilot-cli-port-2026-10-16.md`; skills and hooks are
+not ported yet (issue #302). **The guard hooks do not run in Copilot**: the owner decided on
+2026-10-16 to wait for a live test, because the decisions file records (from a docs summary, untested
+in a live Copilot CLI) that a Copilot `preToolUse` timeout always lets the command through, which would
+weaken a guard meant to block when it fails.
+
+**The Copilot CLI helper agents (2026-10-16, Copilot CLI only, untested in a live Copilot CLI).**
+GitHub's plugin reference says an Agent Plugins 1.0 plugin keeps Copilot custom agents in
+`com.github.copilot/agents/` and that the location cannot be configured, so Copilot cannot be pointed
+at `agents/`. The five Copilot copies there are generated by `plugin-tests/scripts/sync_copilot_agents.py`,
+and `test_copilot_agents_agree.py` fails when a copy's instructions, description or tools differ from
+its Claude agent. The root manifest needs no entry for them (the docs list no fields for its
+`com.github.copilot` extension), and `check_shipped_tree.py` took a sixteenth pattern. The mapping:
+`tools: ["Read","Grep","Glob"]` becomes `["read","search"]` (the docs' primary aliases; the docs say the Claude
+names are accepted too, untested), `model` becomes a Copilot model ID from the CLI reference's supported-models
+table (the docs say an ID Copilot cannot honour falls back to the session model, so a stale ID loses the
+choice and does not break the agent), and `color` is dropped. The instruction text still names the
+tools `Read`, `Grep` and `Glob` and the `offset` and `limit` read arguments; the docs say Copilot accepts the
+aliases (untested), but its own read tool may take different arguments. Claude Code did not load the copies: a
+`claude -p` run listed the same five `cla:` agents as main.
 
 **The versioning line.** The `0.9.x`/`0.10.x` validation line closed when a real task was run
 end-to-end through the plugin in a consuming repo — the gate `1.0.0` was waiting on. Versioning

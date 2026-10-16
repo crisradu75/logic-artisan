@@ -181,11 +181,13 @@ def test_the_allowlist_is_capped_and_every_entry_carries_a_reason():
     """The pressure valve, bounded.
 
     The list was 14 when the convention landed; the fifteenth, the Copilot root
-    manifest, raised this cap in the SAME commit that added the pattern and its
-    reason. Growth is allowed, growth nobody argued for is not."""
-    assert len(cst.ALLOWLIST) == 15, (
+    manifest, and the sixteenth, the Copilot agent copies, each raised this cap
+    in the SAME commit that added the pattern and its reason. Growth is allowed,
+    growth nobody argued for is not."""
+    assert len(cst.ALLOWLIST) == 16, (
         f"the allowlist has {len(cst.ALLOWLIST)} patterns; it was 14 when the "
-        "convention landed and 15 once the Copilot root manifest was added. "
+        "convention landed, 15 once the Copilot root manifest was added and 16 "
+        "once the Copilot agent copies were. "
         "Adding one is fine — raise this cap in the same commit, with the "
         "pattern's reason."
     )
@@ -214,6 +216,23 @@ def test_the_copilot_root_manifest_ships_but_only_at_the_plugin_root():
     assert cst.is_allowed("plugin.json")
     for stray in ("skills/annotate/plugin.json", "plugin.json.bak", "settings.json",
                   "hooks/plugin.json", "mcp.json"):
+        assert not cst.is_allowed(stray), f"{stray!r} must not ship"
+
+
+# requirement: plugin-distribution / What a release contains
+def test_the_copilot_agent_copies_ship_but_only_as_agent_files_in_their_directory():
+    """Without the pattern the Copilot copies matched nothing and `/release`
+    refused the release. It must admit `<name>.agent.md` in the one directory and
+    nothing shaped like it."""
+    assert cst.is_allowed("com.github.copilot/agents/code-reviewer.agent.md")
+    for stray in ("com.github.copilot/agents/code-reviewer.md",
+                  "com.github.copilot/agents/a.b.agent.md",
+                  "com.github.copilot/agents/sub/x.agent.md",
+                  "com.github.copilot/agents/x.agent.md.bak",
+                  "com.github.copilot/hooks/hooks.json",
+                  "com.github.copilot/commands/x.md",
+                  "agents/x.agent.md.bak",
+                  "com.github.copilot/agents/conftest.py"):
         assert not cst.is_allowed(stray), f"{stray!r} must not ship"
 
 

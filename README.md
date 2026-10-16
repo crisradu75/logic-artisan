@@ -60,8 +60,10 @@ What to expect, from GitHub's docs and not from a run: Copilot reads
 catalog pins `cla--v2.1.0`, a tag cut before that root manifest existed**, so until the next release
 the pin fetches a plugin without it, and Copilot would treat that as a legacy plugin instead. After
 that release, a 1.0 plugin offers Copilot its `skills/` directory and an `mcp.json`; agents and hooks
-load only from a `com.github.copilot/` directory, which CLA does not ship, so CLA's guard hooks and
-helper agents would not be wired for Copilot. Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`)
+load only from a `com.github.copilot/` directory. CLA ships its five helper agents there
+(`com.github.copilot/agents/`), generated from the Claude Code agents in `agents/` with the same
+instructions, read-only `read` and `search` tools and a Copilot model ID, and also untested in a live
+Copilot CLI. **CLA's guard hooks do not run in Copilot**: they ship Claude-only, and stay so until someone installs Copilot CLI and checks how they behave (decided 2026-10-16), because GitHub's hooks reference says a Copilot `preToolUse` timeout always lets the command through (read from the docs, untested in a live Copilot CLI). Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`)
 is not ported, and whether skills answer to `/cla:<name>` in Copilot is unknown. Porting them is
 tracked under issue #302. The Claude Code install above is unchanged by any of this.
 
