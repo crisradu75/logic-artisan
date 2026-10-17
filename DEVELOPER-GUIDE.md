@@ -456,7 +456,7 @@ and why each script exists.
 - **Bare `pytest` over the dev tree IS the gate** — the inversion of the old rule, which forbade it.
   There is one scope now, not twelve, because the split rested on a single module-basename collision
   that no longer exists. Inside `plugin-tests/tests/` the old scope names survive as areas
-  (`conformance/`, `consistency/`, `launcher/`, `hooks/`, `lib/`, and 5 skills with tests plus
+  (`conformance/`, `consistency/`, `launcher/`, `hooks/`, `lib/`, and one folder per skill with tests plus
   `_shared/` under `skills/`). Iterate on one with `pytest plugin-tests/tests/<area>`.
 
 - **Keep facts out of the synced core.** A conformance guard fails if a project-specific token or an
