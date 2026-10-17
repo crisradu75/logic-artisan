@@ -14,7 +14,7 @@
         "source": "github",
         "repo": "crisradu75/logic-artisan",
         "path": ".claude/plugins/cla",
-        "ref": "cla--v2.1.0"
+        "ref": "cla--v2.1.1"
       }
     }
   ]

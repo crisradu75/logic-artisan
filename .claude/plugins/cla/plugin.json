@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "cla",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Cris Logic Artisan, a dev-workflow harness (spec-to-pr, multi-pr, lite-pr, the review skills). For GitHub Copilot CLI the skills and the helper agents are offered.",
   "author": {
     "name": "Cris Radu"
