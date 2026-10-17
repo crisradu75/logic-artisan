@@ -93,6 +93,21 @@ Detection scope
   `git clean` run from a SUBDIRECTORY with no path operands, where the probe
   asks about the whole repository and so over-prompts on untracked files
   outside the directory clean would touch.
+- `git stash` (bare, `push`, `save`, or options only such as `-u`) while a merge,
+  cherry-pick or revert is in progress, i.e. `MERGE_HEAD`, `CHERRY_PICK_HEAD` or
+  `REVERT_HEAD` exists in the git dir. Stash saves the tree and resets it, and
+  that reset removes the in-progress marker: the next commit then has one parent
+  and one side of the merge is gone, with no conflict markers and a green suite
+  (issue #398: one side of about 47 files, noticed only because the test count
+  dropped). The prompt names the safe alternatives, `git show <ref>:<path>` and
+  a scratch worktree. Outside such a state stash is routine and stays silent, as
+  do `list`, `show`, `pop`, `apply`, `drop`, `clear`, `create`, `store` and
+  `branch`, none of which save-and-reset. The git dir comes from `git rev-parse
+  --absolute-git-dir` run in the command's directory (cwd, moved by each
+  `git -C <dir>`), so a linked worktree checks its own marker files. A stash
+  whose repository cannot be named (`--git-dir`, `GIT_DIR=`, `-C ~/x`, `-C $V`, a `-C` path that does not exist)
+  asks as unchecked. Any tail that is not a non-saving subcommand counts as
+  saving, so `git stash 2>&1` and `(git stash)` are covered.
 - `gh pr merge`, including behind global options and as `gh.exe`/`gh.cmd`. Not
   destructive in the same sense, but outward-facing and effectively
   irreversible, and the thing that fails there is AUTHORIZATION — which a hook
@@ -196,6 +211,19 @@ _TAIL = r"((?:\\\r?\n|[^&|;\n])*)"
 _PUSH = re.compile(_GIT_CMD + _SEP + _G + r"push\b" + _TAIL)
 _RESET = re.compile(_GIT_CMD + _SEP + _G + r"reset\b" + _TAIL)
 _BRANCH = re.compile(_GIT_CMD + _SEP + _G + r"branch\b" + _TAIL)
+# Group 1 is the global options (for `-C`), group 2 the tail.
+_STASH = re.compile(_GIT_CMD + _SEP + "(" + _G + r")stash\b" + _TAIL)
+_DASH_C = re.compile(r"(?<![\w-])-C" + _SEP + r"""("[^"]*"|'[^']*'|\S+)""")
+# These stash subcommands do not save-and-reset the tree. Anything else does,
+# including operand-less `git stash`, `push`, `save`, option-only forms, and a
+# tail the matcher cannot read (`2>&1`, `)`, `# note`): an allow-list of saving
+# shapes would stay silent on every shape nobody listed.
+_STASH_NON_SAVING = re.compile(
+    r"[\s\\]*(?:list|show|pop|apply|drop|clear|create|store|branch)\b"
+)
+# Env vars that point git at a repository other than the one at the cwd.
+_GIT_ENV_REPO = re.compile(r"(?:^|[\s;&|(])GIT_(?:DIR|WORK_TREE)=")
+_OPERATION_MARKERS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD")
 
 def _abbrev(word: str, floor: int) -> str:
     """Regex for any prefix of `word` at least `floor` characters long.
@@ -732,6 +760,65 @@ CLEAN_REASON = (
 )
 
 
+STASH_REASON = (
+    "`git stash` while a merge, cherry-pick or revert is in progress — the "
+    "stash resets the tree and drops MERGE_HEAD / CHERRY_PICK_HEAD / REVERT_HEAD, "
+    "so the next commit silently loses one side of the operation (no conflict "
+    "markers, tests can stay green). To look at another version of a file use "
+    "`git show <ref>:<path>`, or do the experiment in a scratch worktree"
+)
+
+STASH_UNCHECKED_REASON = (
+    "`git stash` whose safety check COULD NOT BE RUN — the hook could not tell "
+    "whether a merge, cherry-pick or revert is in progress, and a stash during "
+    "one drops MERGE_HEAD and loses a side of it"
+)
+
+
+def _stash_dirs(scanned: str, command: str, cwd: str) -> list[str | None]:
+    """Distinct directories a saving `git stash` in `command` would run in.
+
+    Each `git -C <dir>` moves the directory, relative to the one before it, the
+    way git applies repeated `-C`. `None` stands for a stash whose repository
+    this hook cannot name: `--git-dir`/`--work-tree` or `GIT_DIR=`. (A `-C`
+    value the shell expands names no real directory, which the probe reports as
+    "could not check" rather than as a refusal.)
+    """
+    dirs: list[str | None] = []
+    for m in _STASH.finditer(scanned):
+        if _STASH_NON_SAVING.match(m.group(2)):
+            continue
+        opts = command[m.start(1):m.end(1)]
+        d: str | None = cwd
+        if re.search(r"--(?:git-dir|work-tree)\b", opts) or _GIT_ENV_REPO.search(scanned):
+            d = None
+        else:
+            for c in _DASH_C.finditer(opts):
+                value = c.group(1).strip("'\"")
+                d = os.path.normpath(os.path.join(d, value))
+        if d not in dirs:
+            dirs.append(d)
+    return dirs
+
+
+def _operation_in_progress(directory: str) -> bool | None:
+    """True when a merge, cherry-pick or revert is in progress in `directory`.
+
+    `None` means the probe could not run (no git, or a hang past the timeout),
+    the same sentinel `_status_lines` uses. A refusal (not a repository) is
+    False: git is about to reject the stash the same way. But a directory that
+    does not exist is NOT a refusal we can trust: it may be a path the shell
+    would have translated (`/c/...` under Git Bash), so that is "could not check".
+    """
+    result = _run_git(directory, ["rev-parse", "--absolute-git-dir"])
+    if result is None:
+        return None
+    if result.returncode != 0:
+        return False if os.path.isdir(directory) else None
+    git_dir = result.stdout.strip()
+    return any(os.path.exists(os.path.join(git_dir, n)) for n in _OPERATION_MARKERS)
+
+
 def _reasons(command: str, cwd: str) -> list[str]:
     """Every destructive shape present in `command`, as human-readable causes.
 
@@ -784,6 +871,19 @@ def _reasons(command: str, cwd: str) -> list[str]:
     # un-prompt a force-push. Failing to check is the "could not run" case, and
     # that case asks.
     try:
+        # At most ONE probe: a command whose stashes run in more than one
+        # directory is asked about rather than probed once per directory, which
+        # keeps `HOOK_WORST_CASE_SECONDS` at its stated 4 x 3s.
+        stash_dirs = _stash_dirs(scanned, command, cwd)
+        if len(stash_dirs) > 1 or stash_dirs == [None]:
+            found.append(STASH_UNCHECKED_REASON)
+        elif stash_dirs:
+            in_progress = _operation_in_progress(stash_dirs[0])
+            if in_progress:
+                found.append(STASH_REASON)
+            elif in_progress is None:
+                found.append(STASH_UNCHECKED_REASON)
+
         discard_paths: list[str] = []
         discard_whole_tree = False
         # Accumulated per invocation and unioned, because the kinds at stake are
@@ -999,7 +1099,7 @@ def main() -> int:
     # "export" so the inline/environment distinction is explicit.
     #
     # `found == [MERGE_REASON]` depends on `_reasons()` always appending in
-    # the fixed order force-push, reset --hard, branch force-delete, working-tree
+    # the fixed order force-push, reset --hard, branch force-delete, stash, working-tree
     # discard (or the forced whole-tree one), clean, unchecked, merge — never in
     # the order the command text names them. Only one property is load-bearing:
     # MERGE STAYS LAST, and it does so structurally, because its check is the

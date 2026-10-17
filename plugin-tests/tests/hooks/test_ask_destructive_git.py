@@ -1336,8 +1336,8 @@ def _counting_probe(monkeypatch):
 def test_the_probe_count_stays_bounded_however_long_the_chain(
     dirty, monkeypatch, capsys
 ):
-    """`HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"] = 9.0` is DERIVED from
-    the claim that a hook run makes at most three probes, and feeds the
+    """`HOOK_WORST_CASE_SECONDS["ask-destructive-git.py"] = 12.0` is DERIVED from
+    the claim that a hook run makes at most four probes, and feeds the
     dispatcher's handler budget. Nothing else in the suite counts subprocesses,
     so a refactor to a per-invocation probe would make that entry a fiction with
     no red run anywhere."""
@@ -2028,3 +2028,214 @@ def test_an_abbreviated_dry_run_still_deletes_nothing(
     checkpoint stop being read."""
     (repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
     assert _run(command, monkeypatch, capsys, cwd=str(repo)) is None, command
+
+
+# --------------------------------------------------------------------------- #
+# `git stash` during a merge, cherry-pick or revert (issue #398)
+# --------------------------------------------------------------------------- #
+# Real repositories throughout: the hook's whole signal is whether a marker file
+# exists in the git dir, so a mocked probe would test the mock.
+
+
+def _commit_file(repo: Path, name: str, text: str, msg: str) -> None:
+    (repo / name).write_text(text, encoding="utf-8")
+    _git(repo, "add", name)
+    _git(repo, "commit", "-qm", msg)
+
+
+def _conflicted_merge(repo: Path) -> None:
+    """Leave `repo` mid-merge with a conflict, so MERGE_HEAD exists."""
+    _git(repo, "checkout", "-qb", "side")
+    _commit_file(repo, "tracked.txt", "side\n", "side")
+    _git(repo, "checkout", "-q", "main")
+    _commit_file(repo, "tracked.txt", "main\n", "main")
+    subprocess.run(["git", "-C", str(repo), "merge", "side"], capture_output=True)
+    assert (repo / ".git" / "MERGE_HEAD").exists()
+
+
+def _conflicted_pick(repo: Path, verb: str) -> None:
+    """Mid cherry-pick or revert, conflicted, so the matching marker exists."""
+    _git(repo, "checkout", "-qb", "side")
+    _commit_file(repo, "tracked.txt", "side\n", "side")
+    _git(repo, "checkout", "-q", "main")
+    _commit_file(repo, "tracked.txt", "main\n", "main")
+    target = "side" if verb == "cherry-pick" else "HEAD~1"
+    subprocess.run(["git", "-C", str(repo), verb, target], capture_output=True)
+    marker = "CHERRY_PICK_HEAD" if verb == "cherry-pick" else "REVERT_HEAD"
+    assert (repo / ".git" / marker).exists()
+
+
+_SAVING_STASHES = [
+    "git stash",
+    "git stash push",
+    "git stash push -m wip",
+    "git stash save wip",
+    "git stash -u",
+    "git stash --keep-index",
+    "git stash push -- tracked.txt",
+    "git -C {repo} stash",
+    "git stash && git stash pop",
+]
+
+
+# requirement: guard-hooks / Destructive git commands ask first
+@pytest.mark.parametrize("command", _SAVING_STASHES)
+def test_a_saving_stash_during_a_merge_asks(command, repo, monkeypatch, capsys):
+    _conflicted_merge(repo)
+    payload = _run(command.format(repo=repo), monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None, command
+    reason = _reason(payload)
+    assert "MERGE_HEAD" in reason
+    assert "git show <ref>:<path>" in reason and "scratch worktree" in reason
+
+
+@pytest.mark.parametrize("verb", ["cherry-pick", "revert"])
+def test_a_saving_stash_during_a_pick_or_revert_asks(verb, repo, monkeypatch, capsys):
+    _conflicted_pick(repo, verb)
+    payload = _run("git stash", monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None
+    assert "cherry-pick or revert" in _reason(payload)
+
+
+def test_a_stash_with_no_operation_in_progress_is_silent(repo, monkeypatch, capsys):
+    """Non-vacuity partner: the same commands, same repo, no marker file."""
+    (repo / "tracked.txt").write_text("dirty\n", encoding="utf-8")
+    for command in _SAVING_STASHES:
+        assert _run(command.format(repo=repo), monkeypatch, capsys, cwd=str(repo)) is None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git stash list",
+        "git stash show",
+        "git stash show -p stash@{0}",
+        "git stash pop",
+        "git stash apply",
+        "git stash drop",
+        "git stash clear",
+        "git stash create",
+        "git stash store abc123",
+        "git stash branch newbranch",
+        "git status && git stash list",
+        'echo "git stash"',
+    ],
+)
+def test_non_saving_stash_forms_stay_silent_during_a_merge(
+    command, repo, monkeypatch, capsys
+):
+    _conflicted_merge(repo)
+    assert _run(command, monkeypatch, capsys, cwd=str(repo)) is None, command
+
+
+def test_a_worktree_checks_its_own_marker(repo, tmp_path, monkeypatch, capsys):
+    """A linked worktree keeps MERGE_HEAD in `.git/worktrees/<name>/`, not in
+    the main `.git`. Each side must be judged on its own marker."""
+    wt = tmp_path / "wt"
+    _git(repo, "worktree", "add", "-q", "-b", "wtbranch", str(wt))
+    _commit_file(wt, "other.txt", "wt\n", "wt change")
+    _git(repo, "branch", "side", "main")
+    _git(repo, "checkout", "-q", "side")
+    _commit_file(repo, "other.txt", "side\n", "side change")
+    _git(repo, "checkout", "-q", "main")
+    subprocess.run(["git", "-C", str(wt), "merge", "side"], capture_output=True)
+    marker = subprocess.run(
+        ["git", "-C", str(wt), "rev-parse", "--absolute-git-dir"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    assert (Path(marker) / "MERGE_HEAD").exists()
+    assert not (repo / ".git" / "MERGE_HEAD").exists()
+    # The worktree is mid-merge, the main checkout is not.
+    assert _run("git stash", monkeypatch, capsys, cwd=str(wt)) is not None
+    assert _run("git stash", monkeypatch, capsys, cwd=str(repo)) is None
+    # `git -C` redirects the probe from either starting directory.
+    assert _run(f'git -C "{wt}" stash', monkeypatch, capsys, cwd=str(repo)) is not None
+    assert _run(f"git -C {repo} stash", monkeypatch, capsys, cwd=str(wt)) is None
+
+
+def test_a_relative_dash_c_resolves_against_the_cwd(repo, monkeypatch, capsys):
+    _conflicted_merge(repo)
+    (repo / "sub").mkdir()
+    assert _run("git -C .. stash", monkeypatch, capsys, cwd=str(repo / "sub")) is not None
+    assert _run("git -C . stash", monkeypatch, capsys, cwd=str(repo / "sub")) is not None
+
+
+def test_stashes_in_two_directories_ask_without_probing_each(
+    repo, tmp_path, monkeypatch, capsys
+):
+    """One probe at most keeps the stated worst case honest; two directories are
+    asked about rather than probed, because a missed one would be a bypass."""
+    other = tmp_path / "other"
+    other.mkdir()
+    calls = _counting_probe(monkeypatch)
+    payload = _run(f"git stash && git -C {other} stash", monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None
+    assert "COULD NOT BE RUN" in _reason(payload)
+    assert calls == []
+
+
+def test_a_stash_makes_exactly_one_probe(repo, monkeypatch, capsys):
+    calls = _counting_probe(monkeypatch)
+    _run("git stash && git stash push", monkeypatch, capsys, cwd=str(repo))
+    assert len(calls) == 1, calls
+
+
+def test_a_stash_probe_that_cannot_run_asks(repo, monkeypatch, capsys):
+    """Fail-closed on 'could not look', like the discard check: git missing or a
+    hang is not evidence that no merge is in progress."""
+    monkeypatch.setattr(hook, "_run_git", lambda cwd, args: None)
+    payload = _run("git stash", monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None
+    assert "COULD NOT BE RUN" in _reason(payload)
+
+
+def test_a_stash_probe_that_git_refuses_is_silent(repo, monkeypatch, capsys):
+    """Not a repository: git rejects the stash itself. Same rule as a refused
+    `git status` probe."""
+    monkeypatch.setattr(hook, "_run_git", lambda cwd, args: _completed(128, ""))
+    assert _run("git stash", monkeypatch, capsys, cwd=str(repo)) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git stash 2>&1",
+        "git stash >/dev/null",
+        "git stash 2>/dev/null",
+        "(git stash)",
+        "git stash # wip",
+        "git stash list 2>&1 && git stash 2>&1",
+    ],
+)
+def test_a_saving_stash_with_an_unreadable_tail_still_asks(
+    command, repo, monkeypatch, capsys
+):
+    _conflicted_merge(repo)
+    assert _run(command, monkeypatch, capsys, cwd=str(repo)) is not None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git -C ~/repo stash",
+        'git -C "$REPO" stash',
+        "git -C $HOME/repo stash",
+        "git --git-dir=/x/.git --work-tree=/x stash",
+        "GIT_DIR=/x/.git git stash",
+        "git -C /no/such/dir/at/all stash",
+    ],
+)
+def test_a_stash_whose_repository_cannot_be_named_asks_as_unchecked(
+    command, repo, monkeypatch, capsys
+):
+    """No merge is in progress anywhere here: the prompt is because the hook
+    cannot tell, not because it found one."""
+    payload = _run(command, monkeypatch, capsys, cwd=str(repo))
+    assert payload is not None, command
+    assert "COULD NOT BE RUN" in _reason(payload)
+
+
+def test_equivalent_directory_spellings_count_once(repo, monkeypatch, capsys):
+    calls = _counting_probe(monkeypatch)
+    _run("git stash && git -C . stash && git -C sub/.. stash", monkeypatch, capsys, cwd=str(repo))
+    assert len(calls) == 1, calls
