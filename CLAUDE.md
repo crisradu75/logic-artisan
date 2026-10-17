@@ -12,9 +12,11 @@ GitHub marketplace, to every repo that installs it. Tests and dev tools live in 
 which never ships.
 
 - **Start sessions with `./cla`** (`cla.cmd` on Windows). It runs `claude --plugin-dir
-  <repo>/.claude/plugins/cla --permission-mode auto --model opus --effort medium`, so you run the
+  <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium`, so you run the
   plugin you are editing. Plain `claude` gives you no `/cla:*` skills and no guard hooks.
   `--permission-mode auto` skips confirmations; the guard hooks are what stop a dangerous command.
+  The session runs Sonnet; the escalate-up rule in `model-routing.md` ("Escalate-up rule (session
+  below Opus)") sends the judgment-critical steps up to Opus.
 - **Install the push guard once per clone.** Direct pushes to main are blocked by a git hook, not a
   Claude Code hook, and a plugin cannot install it:
 

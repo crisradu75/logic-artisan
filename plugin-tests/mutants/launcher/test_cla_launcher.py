@@ -34,7 +34,7 @@ naming: `cla.cmd` has a real end-to-end parse test BECAUSE it shipped broken, an
 the same class of defect in `cla` would today be caught by nothing.
 
 **DELIBERATELY NOT MUTANTS:** any change to a flag's VALUE in either launcher —
-`--model opus` -> `--model sonnet`, `--permission-mode auto` -> `plan`.
+`--model sonnet` -> `--model opus`, `--permission-mode auto` -> `plan`.
 `test_both_cla_launchers_pass_the_same_flag_vector` compares a set of `--`-prefixed
 flag NAMES; values are invisible to it and nothing else reads them. Guaranteed
 survivors, and a real gap: `--permission-mode auto` is the safety-relevant choice
@@ -58,7 +58,7 @@ TARGETS = [DEV / "tests" / "launcher" / "test_cla_launcher.py"]
 # into a multi-line anchor without the other being re-checked.
 _EXEC_LINE = (
     'exec claude --plugin-dir "$plugin_dir" --permission-mode auto '
-    '--model opus --effort medium "$@"'
+    '--model sonnet --effort medium "$@"'
 )
 
 MUTANTS = [
@@ -86,7 +86,7 @@ MUTANTS = [
         "different sessions and `keep the two in sync` is a comment nobody enforces",
         POSIX,
         _EXEC_LINE,
-        'exec claude --plugin-dir "$plugin_dir" --permission-mode auto --model opus "$@"',
+        'exec claude --plugin-dir "$plugin_dir" --permission-mode auto --model sonnet "$@"',
         TARGETS,
     ),
     (
@@ -95,7 +95,7 @@ MUTANTS = [
         POSIX,
         _EXEC_LINE,
         'exec claude --plugin-dir "$plugin_dir" --permission-mode auto '
-        "--model opus --effort medium $*",
+        "--model sonnet --effort medium $*",
         TARGETS,
     ),
 ]
