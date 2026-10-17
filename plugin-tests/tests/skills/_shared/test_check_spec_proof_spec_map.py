@@ -964,7 +964,7 @@ _ITEM_FENCES = ("  ```", "[hidden](a.md)", "  ```", "[shown](b.md)")
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
-@pytest.mark.parametrize("run_on", ["```x``` more text", "2026. more text"])
+@pytest.mark.parametrize("run_on", ["```x``` more text", "  2026. more text"])
 def test_a_run_on_line_that_only_looks_like_a_fence_or_a_list_marker_keeps_its_item_open(run_on):
     targets, issues = _read("- step", run_on, *_ITEM_FENCES)
     assert targets == ["a.md"] and [i[1] for i in issues] == ["a code fence is never closed, so the rest of the map is not read"]
@@ -1010,3 +1010,10 @@ def test_a_stray_backtick_no_later_line_of_the_paragraph_closes_hides_nothing():
     assert _read("a ` [x](a.md)", "# heading `", "text")[0] == ["a.md"]
     assert _read("a ` [x](a.md)", "- item `")[0] == ["a.md"]
     assert _read("a ` [x](a.md)", "b `` c")[0] == ["a.md"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_numbered_line_less_indented_than_the_open_item_starts_a_list_of_its_own():
+    # On the page `2026.` at the margin is outside the item's paragraph, so it is a new list and the item is over.
+    targets, issues = _read("- step", "2026. more text", *_ITEM_FENCES)
+    assert targets == ["b.md"] and not issues

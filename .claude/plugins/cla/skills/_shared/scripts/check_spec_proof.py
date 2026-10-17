@@ -752,7 +752,8 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
     if fence is None and line.strip():
         core = line.lstrip()
         item = _ITEM.match(line)
-        if item and lists.lazy and not _interrupts_paragraph(line, item):
+        # (only on a line indented to the open item: a less indented marker is outside its paragraph, and starts a list)
+        if item and lists.lazy and (not lists.cols or indent >= lists.cols[-1]) and not _interrupts_paragraph(line, item):
             item = None  # `2026.` on a run-on line is text, not a list marker
         # The line that opens a quote starts a block too; its `>` was set aside above, so `_NEW_BLOCK` no longer sees
         # it, and it ends the list items that sit deeper than the `>` itself. The lines after it belong to the quote.
