@@ -2141,7 +2141,7 @@ def test_a_worktree_checks_its_own_marker(repo, tmp_path, monkeypatch, capsys):
     subprocess.run(["git", "-C", str(wt), "merge", "side"], capture_output=True)
     marker = subprocess.run(
         ["git", "-C", str(wt), "rev-parse", "--absolute-git-dir"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     ).stdout.strip()
     assert (Path(marker) / "MERGE_HEAD").exists()
     assert not (repo / ".git" / "MERGE_HEAD").exists()
