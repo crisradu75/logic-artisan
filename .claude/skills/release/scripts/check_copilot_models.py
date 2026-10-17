@@ -81,7 +81,7 @@ def _model_map() -> dict[str, str]:
 def main(fetch=fetch_page, model_map: dict[str, str] | None = None) -> int:
     try:
         ids = _model_map() if model_map is None else model_map
-    except (ImportError, AttributeError) as err:
+    except Exception as err:  # the import runs another script, so any failure there must exit 2, not trace back
         print(f"cannot check: MODEL_MAP could not be read from sync_copilot_agents.py: {err}", file=sys.stderr)
         return EXIT_CANNOT_RUN
     if not ids:

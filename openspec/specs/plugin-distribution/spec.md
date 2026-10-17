@@ -99,7 +99,7 @@ The plugin SHALL be listed for GitHub Copilot CLI with `copilot plugin marketpla
 
 ### Requirement: Disclosing the Copilot CLI install is untested
 
-Every document offering the Copilot CLI install, except the manifest shipped inside a release tag, SHALL say, beside the install command, that it covers Copilot CLI only and is untested in a live Copilot CLI.
+Every document offering the Copilot CLI install, except the manifest shipped inside a release tag, SHALL say, beside the install command, that it covers Copilot CLI only and is untested in a live Copilot CLI. The manifest shipped inside a release tag SHALL NOT say the install is untested.
 
 #### Scenario: A reader looks for the Copilot install
 
