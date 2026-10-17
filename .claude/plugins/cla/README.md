@@ -114,7 +114,8 @@ destructive-but-possibly-legitimate git/gh commands; `ALLOW_PR_MERGE=1` drops on
 confirmation, for the `multi-*` chainers' unattended runs). It also prompts on
 `git checkout <path>`, `git restore <path>`, a forced `git checkout -f`/`git switch -f`, and
 `git clean` — but only when they would actually destroy uncommitted work, so on a clean tree they
-stay silent.
+stay silent. A `git stash` that saves and resets the tree also prompts, but only while a merge,
+cherry-pick or revert is in progress, because it drops `MERGE_HEAD` and loses one side.
 
 **Warns:** `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard) ·
 `warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·

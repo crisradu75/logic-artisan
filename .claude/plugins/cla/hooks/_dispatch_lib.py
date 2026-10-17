@@ -167,8 +167,10 @@ HOOK_WORST_CASE_SECONDS: dict[str, float] = {
     # fallback both fall back to when git refuses a merged pathspec batch. Every
     # other check in that hook is pure text inspection, and the probes are
     # collected across all matching invocations rather than run per invocation,
-    # so a `&&` chain of six `git checkout`s is still one process.
-    "ask-destructive-git.py": 9.0,
+    # so a `&&` chain of six `git checkout`s is still one process. Plus one
+    # `git rev-parse --absolute-git-dir` for a saving `git stash` (4 x 3s): a
+    # command whose stashes span several directories is asked about, not probed.
+    "ask-destructive-git.py": 12.0,
     # 2 x _run_git(3s): combined `rev-parse` + `--show-toplevel`.
     "block-worktree-path-escape.py": 6.0,
     # 1 x `git status --porcelain`(4s) — walks the working tree, so it gets more
