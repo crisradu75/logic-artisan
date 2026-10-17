@@ -947,3 +947,73 @@ def test_another_change_that_modifies_the_spec_keeps_it_live(repo, capsys):
     _write(repo, MAP, _map(ALPHA))
     code, out, _ = run(repo, capsys)
     assert code == 1 and _unlinked(out, "beta"), out
+
+
+# ---- corners of the fence tracker and the code spans that run over lines ----
+
+
+def _read(*lines: str) -> tuple[list[str], list[tuple[int, str]]]:
+    links, issues = csp.map_links("\n".join(lines) + "\n")
+    return [target for _, target in links], issues
+
+
+# The three run-on lines below each belong to the list item before them. The fence after the item is then a
+# fence in the item: it ends at the first line less indented than itself, and the next fence is never closed.
+# A tracker that wrongly ended the item would read the first fence as top level and the second as closed.
+_ITEM_FENCES = ("  ```", "[hidden](a.md)", "  ```", "[shown](b.md)")
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize("run_on", ["```x``` more text", "  2026. more text"])
+def test_a_run_on_line_that_only_looks_like_a_fence_or_a_list_marker_keeps_its_item_open(run_on):
+    targets, issues = _read("- step", run_on, *_ITEM_FENCES)
+    assert targets == ["a.md"] and [i[1] for i in issues] == ["a code fence is never closed, so the rest of the map is not read"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_an_html_comment_right_after_an_items_paragraph_ends_the_item():
+    # The item is over, so the fence is top level: it keeps its less indented link, and the second one closes it.
+    targets, issues = _read("- step", "<!-- note -->", *_ITEM_FENCES)
+    assert targets == ["b.md"] and not issues
+
+
+# requirement: spec-map / A repo declares its spec map as a fact
+def test_an_html_comment_right_after_an_items_paragraph_ends_the_item_in_the_facts_file(tmp_path):
+    root = tmp_path / "r"
+    # With the item over, the fence is top level and never closed, and it swallows the heading after it.
+    _write(root, FACTS, "- step\n<!-- note -->\n  ```\n## Spec map\n- openspec/spec-map.md\n")
+    with pytest.raises(csp.CheckerError, match="never closed"):
+        csp.read_spec_map(root)
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_fence_opened_two_quotes_deep_ends_when_the_inner_quote_does():
+    targets, issues = _read("> > ```", "> > [hidden](a.md)", "> [shown](b.md)")
+    assert targets == ["b.md"] and not issues
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_code_span_left_open_on_one_line_and_closed_on_the_next_hides_the_link_between():
+    assert _read("a ` [x](a.md)", "b ` c")[0] == []
+    assert _read("a ``` [x](a.md)", "text", "b ``` c")[0] == []
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_code_span_closed_on_the_next_line_does_not_hide_the_link_after_it():
+    # The first backtick pairs with the one on the line below, so the pair after it on that line is not a span.
+    assert _read("a ` b", "c ` [x](a.md) ` d")[0] == ["a.md"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_stray_backtick_no_later_line_of_the_paragraph_closes_hides_nothing():
+    assert _read("a ` [x](a.md)", "", "b ` c")[0] == ["a.md"]
+    assert _read("a ` [x](a.md)", "# heading `", "text")[0] == ["a.md"]
+    assert _read("a ` [x](a.md)", "- item `")[0] == ["a.md"]
+    assert _read("a ` [x](a.md)", "b `` c")[0] == ["a.md"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_numbered_line_less_indented_than_the_open_item_starts_a_list_of_its_own():
+    # On the page `2026.` at the margin is outside the item's paragraph, so it is a new list and the item is over.
+    targets, issues = _read("- step", "2026. more text", *_ITEM_FENCES)
+    assert targets == ["b.md"] and not issues

@@ -116,6 +116,16 @@ def test_main_exits_2_when_the_model_map_cannot_be_imported(monkeypatch, capsys)
     assert "MODEL_MAP could not be read" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("error", [TypeError("not iterable"), SyntaxError("bad syntax")])
+def test_main_exits_2_on_any_error_reading_the_model_map(monkeypatch, capsys, error):
+    def broken():
+        raise error
+
+    monkeypatch.setattr(ccm, "_model_map", broken)
+    assert ccm.main(_fetch(_page("claude-sonnet-5.5"))) == ccm.EXIT_CANNOT_RUN
+    assert "MODEL_MAP could not be read" in capsys.readouterr().err
+
+
 def test_the_default_map_is_the_one_the_agent_generator_writes():
     import sync_copilot_agents
 

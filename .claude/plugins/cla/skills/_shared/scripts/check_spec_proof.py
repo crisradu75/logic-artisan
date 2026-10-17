@@ -496,12 +496,38 @@ _URL = re.compile(r"(?:https?://|www\.)\S*[^\s.,;:!?)\]]")
 _CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)")
 
 
-def _render_code_spans(t: str) -> str:
-    """Replace each code span with `CODE`, pairing backtick runs the way a Markdown page does: left to
-    right, each opener with the next run of the same length, so a backtick with no partner stays literal.
-    Used for links, where what renders matters. It pairs within one line: a span that runs over a line
-    break is not seen, so a backtick left open at the end of a line neither hides nor unhides a link."""
-    return _CODE_SPAN.sub("CODE", t)
+_BACKTICK_RUN = re.compile(r"(?<!`)`+(?!`)")
+
+
+def _render_code_spans(t: str, open_len: int = 0, later_closer=None) -> tuple[str, int]:
+    """(`t` with each code span replaced by `CODE`, the length of a backtick run left open at its end).
+
+    Backtick runs pair the way a Markdown page pairs them: left to right, each opener with the next run of
+    the same length, so a backtick with no partner stays literal. Used for links, where what renders matters.
+    A span can run over the lines of one paragraph, so the caller carries state from line to line:
+    `open_len` is the run a line before left open (0 for none), and the text of `t` up to the first run of
+    that length is inside the span. `later_closer(length)` says whether a later line of the paragraph holds
+    a run of that length; only then does an unpaired run on `t` open a span, which hides the rest of `t`.
+    With no `later_closer`, an unpaired run stays literal, as at the end of a paragraph."""
+    out, pos = "", 0
+    if open_len:
+        closer = next((m for m in _BACKTICK_RUN.finditer(t) if len(m.group()) == open_len), None)
+        if closer is None:
+            return "", open_len  # the whole line is inside the span
+        out, pos = "CODE", closer.end()
+    runs = [m for m in _BACKTICK_RUN.finditer(t, pos)]
+    i = 0
+    while i < len(runs):
+        length = len(runs[i].group())
+        partner = next((k for k in range(i + 1, len(runs)) if len(runs[k].group()) == length), None)
+        if partner is not None:
+            out += t[pos:runs[i].start()] + "CODE"
+            pos, i = runs[partner].end(), partner + 1
+        elif later_closer is not None and later_closer(length):
+            return out + t[pos:runs[i].start()] + "CODE", length
+        else:
+            i += 1
+    return out + t[pos:], 0
 
 
 def _mask_code_spans(t: str) -> str:
@@ -638,27 +664,41 @@ def purpose_notes(files: list["SpecFile"], touched: set[str] | None = None) -> l
 
 _ITEM = re.compile(r"^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)")
 
-# (character, run length, indent, line it opened on, inside a list item, inside a block quote)
-Fence = tuple[str, int, int, int, bool, bool]
+# (character, run length, indent, line it opened on, inside a list item, depth of block quote it opened in)
+Fence = tuple[str, int, int, int, bool, int]
 
 # One level of block quote marker: up to 3 spaces, `>`, and one optional space.
 _QUOTE_MARK = re.compile(r"^ {0,3}>[ \t]?")
 
 
-def _strip_quote(line: str) -> tuple[str, bool]:
-    """`line` without its block quote markers, and whether it had any. A line holds the content of the quote
-    it sits in, so the markers are set aside as a list marker is."""
-    quoted = False
+def _strip_quote(line: str) -> tuple[str, int]:
+    """`line` without its block quote markers, and how many it had (its quote depth, 0 outside a quote). A line
+    holds the content of the quote it sits in, so the markers are set aside as a list marker is."""
+    depth = 0
     while True:
         m = _QUOTE_MARK.match(line)
         if not m:
-            return line, quoted
-        line, quoted = line[m.end():], True
+            return line, depth
+        line, depth = line[m.end():], depth + 1
 
 
 # A line that starts a new block, so it cannot be a lazy continuation of a paragraph: an ATX heading, a
-# thematic break, or a block quote. (A fence or a list marker is checked beside it.)
-_NEW_BLOCK = re.compile(r"^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|>)")
+# thematic break, a block quote, or an HTML comment (which can interrupt a paragraph). (A fence or a list
+# marker is checked beside it.)
+_NEW_BLOCK = re.compile(r"^(?:#{1,6}(?:[ \t]|$)|(?:-[ \t]*){3,}$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$|>|<!--)")
+
+
+def _opens_fence(m: re.Match[str] | None) -> bool:
+    """True when `m`, a `_FENCE_LINE` match, opens a fence. A backtick run whose info string holds a backtick
+    does not: the line is a code span (`` ```x``` ``), which is paragraph text."""
+    return bool(m) and not (m.group(2)[0] == "`" and "`" in m.group(3))
+
+
+def _interrupts_paragraph(line: str, item: re.Match[str]) -> bool:
+    """True when the list item `item` matched on `line` can start inside a paragraph. A bullet can; an ordered
+    item only when it numbers from 1; an empty one never does. Otherwise (`2026.` at the start of a run-on
+    line) the text goes on."""
+    return bool(line[item.end():].strip()) and (item.group(2) in ("-", "+", "*") or item.group(2)[:-1] == "1")
 
 
 class _Lists:
@@ -693,17 +733,18 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
     fence left open at the end hides the rest of the file, as on the page.
     Block quote markers (`> `) are set aside before a line is read, so a fence opened inside a quote is a
     fence; it ends where the quote does, at the first line with no marker, blank lines included. A line
-    inside a fence that was opened outside a quote is read whole, markers and all."""
-    in_quote_fence = fence is not None and fence[5]
+    inside a fence that was opened outside a quote is read whole, markers and all. A fence opened at quote
+    depth 2 also ends at the first line of depth 1: the inner quote ended there and took its fence with it."""
+    in_quote_fence = fence is not None and fence[5] > 0
     orig_indent = len(line) - len(line.lstrip())
     core, quoted = _strip_quote(line)
-    if in_quote_fence and not quoted:
+    if in_quote_fence and quoted < fence[5]:
         fence = None  # the quote holding the fence has ended, and the fence with it; read this line afresh
     entering = False  # whether this line opens a block quote (the line before it was not quoted)
     if fence is None or in_quote_fence:
         line = core
-        entering = quoted and not lists.in_quote
-        lists.in_quote = quoted
+        entering = bool(quoted) and not lists.in_quote
+        lists.in_quote = bool(quoted)
     indent = len(line) - len(line.lstrip())
     if fence is not None and fence[4] and line.strip() and indent < fence[2]:
         fence = None  # the list item holding the fence has ended, and the fence with it; read this line afresh
@@ -711,9 +752,12 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
     if fence is None and line.strip():
         core = line.lstrip()
         item = _ITEM.match(line)
+        # (only on a line indented to the open item: a less indented marker is outside its paragraph, and starts a list)
+        if item and lists.lazy and (not lists.cols or indent >= lists.cols[-1]) and not _interrupts_paragraph(line, item):
+            item = None  # `2026.` on a run-on line is text, not a list marker
         # The line that opens a quote starts a block too; its `>` was set aside above, so `_NEW_BLOCK` no longer sees
         # it, and it ends the list items that sit deeper than the `>` itself. The lines after it belong to the quote.
-        starts_block = bool(entering or _NEW_BLOCK.match(core) or _FENCE_LINE.match(line) or item)
+        starts_block = bool(entering or _NEW_BLOCK.match(core) or _opens_fence(_FENCE_LINE.match(line)) or item)
         if not (lists.lazy and not starts_block):
             while lists.cols and lists.cols[-1] > (orig_indent if entering else indent):
                 lists.cols.pop()
@@ -722,7 +766,7 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
             col = len(item.group(1)) + len(item.group(2)) + (gap if 0 < gap < 5 else 1)
             lists.cols.append(col)
             line = " " * col + line[item.end():]
-        paragraph = not _NEW_BLOCK.match(core) and not _FENCE_LINE.match(line) and bool(line.strip())
+        paragraph = not _NEW_BLOCK.match(core) and not _opens_fence(_FENCE_LINE.match(line)) and bool(line.strip())
     m = _FENCE_LINE.match(line)
     if fence is not None:
         lists.lazy = False
@@ -731,7 +775,7 @@ def _fence_step(line: str, n: int, fence: Fence | None, lists: _Lists) -> tuple[
             return None, True
         return fence, True
     lists.lazy = paragraph
-    if m and not (m.group(2)[0] == "`" and "`" in m.group(3)):
+    if _opens_fence(m):
         lists.lazy = False
         return (m.group(2)[0], len(m.group(2)), len(m.group(1)), n, bool(lists.cols), quoted), True
     return None, False
@@ -794,6 +838,7 @@ def read_spec_map(root: Path, notes: list[str] | None = None) -> list[str] | Non
                 hidden_lines.add(n)
                 continue
             if line.lstrip().startswith("<!--"):
+                _fence_step(line, n, None, lists)  # the comment starts a block, which ends the list item before it
                 in_comment = "-->" not in line
                 hidden_lines.add(n)
                 continue
@@ -914,12 +959,40 @@ def _scan_links(masked: str, openers: list[tuple[int | None, bool]]) -> tuple[li
     return targets, labels
 
 
+def _ends_paragraph(core: str) -> bool:
+    """True when `core`, a line with its quote markers set aside, cannot continue the paragraph before it: a
+    blank line, a heading, a rule, an underline, a fence, an HTML comment or a list item that can interrupt."""
+    stripped = core.strip()
+    if not stripped or _NEW_BLOCK.match(core.lstrip()) or _SETEXT_UNDERLINE.match(stripped):
+        return True
+    if _opens_fence(_FENCE_LINE.match(core)):
+        return True
+    item = _ITEM.match(core)
+    return bool(item) and _interrupts_paragraph(core, item)
+
+
+def _later_closer_in(lines: list[str], n: int, depth: int):
+    """A function that says whether a run of backticks of a given length sits on a line after line `n`
+    (1-based) in the same paragraph, at quote depth `depth`: the lines up to the first one that ends the
+    paragraph (`_ends_paragraph`) or sits in another quote. `_render_code_spans` asks it before it lets an
+    unpaired run open a span over a line break."""
+    def later_closer(length: int) -> bool:
+        for line in lines[n:]:
+            core, d = _strip_quote(line)
+            if d != depth or _ends_paragraph(core):
+                return False
+            if any(len(m.group()) == length for m in _BACKTICK_RUN.finditer(core)):
+                return True
+        return False
+    return later_closer
+
+
 def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
     """([(line number, target)], [(line number, problem)]) for the Markdown links in `text`.
 
     Links inside a code fence, an indented code block, a code span or an HTML comment are not links on the
     rendered page and are not read, nor are an image, an escaped `\\[x\\](..)` and a reference definition no link
-    uses. Block quote markers are set aside first. Code spans pair as on the page, within a line (see `_render_code_spans`). Link text wrapped over several lines of one paragraph is one link.
+    uses. Block quote markers are set aside first. Code spans pair as on the page, and a span can run over the lines of one paragraph (see `_render_code_spans`). Link text wrapped over several lines of one paragraph is one link.
     One pass, line by line, so a `<!--` quoted in a code span or fence opens nothing. A fence
     closes only on a bare line of the same character at least as long as the opener. A fence or a
     comment still open at the end hides the rest of the file, as on the page, and is returned as a
@@ -932,7 +1005,9 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
     fence = None
     lists = _Lists()
     comment_from: int | None = None
-    for n, line in enumerate(text.splitlines(), 1):
+    all_lines = text.splitlines()
+    span_open = 0  # length of a backtick run left open on an earlier line of this paragraph, 0 for none
+    for n, line in enumerate(all_lines, 1):
         if fence is None and comment_from is not None:
             if "-->" not in line:
                 continue
@@ -941,6 +1016,7 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
         fence, hidden = _fence_step(line, n, fence, lists)
         if hidden:
             openers.clear()
+            span_open = 0
             continue
         core, quoted = _strip_quote(line)
         if _indented_code(core, cols_before, lazy_before):
@@ -956,7 +1032,12 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
             if "-->" not in stripped[4:]:
                 comment_from = n
             continue
-        masked = _HTML_COMMENT.sub("", _render_code_spans(core))
+        breaks = _ends_paragraph(core)
+        if breaks:
+            span_open = 0  # a span never runs over the end of its paragraph
+        later = None if _NEW_BLOCK.match(stripped) else _later_closer_in(all_lines, n, quoted)
+        rendered, span_open = _render_code_spans(core, span_open, later)
+        masked = _HTML_COMMENT.sub("", rendered)
         start = masked.find("<!--")
         if start >= 0:
             masked, comment_from = masked[:start], n
