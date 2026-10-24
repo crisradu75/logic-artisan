@@ -13,3 +13,9 @@ Leftover review suggestions (stash guard, issue 398):
 
 - In `ask-destructive-git.py`, give the stash block its own try/except. An exception from it (for example a ValueError from a NUL in a `-C` path) lands in the shared handler, which logs "the working-tree discard check raised" and skips the discard and clean checks. Append the stash unchecked reason and log "stash check raised" instead.
 - A command whose stashes run in several directories gets the "COULD NOT BE RUN" stash reason, although the check was skipped on purpose. Use a separate message that says to check each directory.
+
+Leftover review suggestions (PR for issue 408 prose cleanups):
+
+- In `skills/review-change/references/dispatch.md` (Task Reviewer, "more than 5 subtasks"), the parenthetical naming the Implement-phase delegation count sits inside a prompt the reviewer never needs it for; consider reducing it to "(per task)".
+- The "(by hand, not a `mutate.py` batch)" note on the three Mutation gate headings names a dev tool that does not ship; consider "not an automated mutation batch".
+- Same-kind repo-specific leftovers still in shipped prose (not in the approved six): `review-change/references/dispatch.md:41` and `project-review/references/review-agents.md:84,113,127` (allocation-math, apps/packages split), `review-change/references/checklist.md:44,76,105` (i18n JSON, allocation-math), `lite-pr/SKILL.md:69` ("Allocation math"), `spec-to-pr/references/precheck.md:15` and `ship.md:59-61` (apps/*, packages/*), `agents/doc-sweeper.md:20` and `agents/fact-gatherer.md:69-70` (example paths), `multi-spec/references/review-gate.md:45`.
