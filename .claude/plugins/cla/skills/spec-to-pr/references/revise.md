@@ -160,7 +160,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    **Verify before applying any Critical claiming internal control flow** ("path X runs in context Y", "A happens before B", "Z is called from W"): read the surrounding flow first (1 Read) — agents build wrong mental models even from verbatim source. **A Critical claiming RUNTIME or DB semantics** (a race, constraint timing, an RPC return shape) checked by *running* a scratch harness needs a harness that structurally mirrors the real object — same columns and constraint shape, a genuinely non-unique grouping column where the real constraint is a partial/grouped unique index. When that is hard, defer to the change's own implementation test. See `review-change/references/checklist.md` "Empirical-verification fidelity".
 
-2b. **Mutation gate (required before the commit in step 3).** A fix for a Critical/Important
+2b. **Mutation gate (by hand, not a `mutate.py` batch; required before the commit in step 3).** A fix for a Critical/Important
    finding earns the same evidence the original code needed — "the reviewer's finding is now
    handled" is not that evidence. Break **what the fix touches**, not only what it targets:
    correcting one return path routinely breaks another. Do each one by hand: edit the code so the

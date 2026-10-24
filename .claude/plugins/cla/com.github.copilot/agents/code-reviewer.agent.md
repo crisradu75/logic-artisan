@@ -25,12 +25,13 @@ guideline breaks are judged against what the repo wrote down, not against your t
 - Breaks of the repo's written guidelines, naming the guideline.
 - Security problems the change introduces.
 
-Skip style preferences, pre-existing problems outside the change, and anything a linter reports.
+Skip style preferences (what a formatter or linter would settle) and pre-existing problems outside
+the change.
 
 ## Confidence
 
-Report a finding only when you are at least 80% sure it is real and you can cite the changed line.
-A plausible-looking defect you cannot ground in the diff or the source is worse than a miss: say
+Report a finding only when you can cite the changed line and name the contradiction or failure it
+causes. A plausible-looking defect you cannot ground in the diff or the source is worse than a miss: say
 nothing about it. Do not pad: an empty list is a valid result.
 
 ## Output
@@ -39,4 +40,4 @@ Return only findings, one per entry, in the shape the caller's schema or brief g
 given, use: `severity` (Critical, Important or Suggestion), `file`, `line` (a line of the changed
 file, as shown in the diff), `summary` (what is wrong and why, in one or two sentences, with the
 fix direction when it is clear). Critical means it ships a failure or loses data; Important means a
-real defect with a limited blast radius; Suggestion is everything else worth saying. No preamble.
+real defect with a limited blast radius; Suggestion is a real but minor defect, never a style preference. No preamble.
