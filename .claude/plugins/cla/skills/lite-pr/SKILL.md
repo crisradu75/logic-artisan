@@ -39,7 +39,7 @@ Skip when the description is already concrete and unambiguous (a clear single ch
 Produce a plan directly in the conversation as plain text — do NOT call `EnterPlanMode`/`ExitPlanMode`. `ExitPlanMode` is itself a user-approval gate, and lite-pr is continuous by design (see Autonomy below): post the plan for visibility, then proceed — don't hold it open for approval. The plan MUST explicitly list, alongside the code files to change:
 
 - which `openspec/specs/<capability>/spec.md` file(s) need updating (or note "new capability — no existing spec" / "no outcome or interface change — no spec update needed").
-- if the change touches this repo's own core calculation-engine formulas, whether every doc/spec this repo names as needing to stay in lockstep with those formulas needs updating too — see the lockstep set of files `cla.io/project-facts.md` lists for them, under whatever heading; a formula/knob change shipped without all of them is a silent spec violation, not just stale docs.
+- if the change touches a formula or rule this repo keeps in lockstep with its docs and specs, whether every doc/spec in that lockstep set needs updating too — see the set of files `cla.io/project-facts.md` lists for it, under whatever heading; a change shipped without all of them is a silent spec violation, not just stale docs.
 - which test file(s) need adding/updating, and under which workspace package/app they live — see `cla.io/project-facts.md` ("Test-file locations").
 - which docs from `cla.io/project-facts.md` ("Doc-sweep paths"; with no list, the docs a reader of the repo would open) the change updates, or `none affected: <reason>`. Every plan has this line: the docs check has no skip rule (see the Review phase).
 
@@ -152,7 +152,7 @@ One pass, and a second only in the case step 4 names. Then:
 
 1. Triage every Critical/Important finding: apply a fix via `Edit`/`Write`, or record a one-line deferred rationale if it's genuinely out of scope.
 2. Before staging, re-read the diff for each applied fix, and grep the SAME FILE for other call sites that consume the same untrusted/unguarded input the fix just guarded (e.g. a fix added an `isinstance` check before one `.get()` on parsed JSON — grep that file for every other `.get()`/attribute access on data from the same untrusted source). A vaguer "check sibling instances aren't affected" self-prompt is easy to satisfy without actually grepping; naming the concrete technique isn't. This is a quick self-read, NOT a re-dispatch of the review agents — one `Read`/`Grep` call, not another agent round.
-2b. **Mutation gate (required before the commit in step 3).** When step 1 applied any Critical/Important fix,
+2b. **Mutation gate (by hand, not a `mutate.py` batch; required before the commit in step 3).** When step 1 applied any Critical/Important fix,
    read `${CLAUDE_PLUGIN_ROOT}/skills/lite-pr/references/mutation-gate.md` before staging and follow it in full; the fix
    commit does not ship without it.
 3. Stage the fixed files, commit (`fix: address review findings`), push.

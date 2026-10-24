@@ -70,13 +70,13 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 >
 > Check:
 > 1. **Task complexity (MOST IMPORTANT)** — Flag any task that:
->    - Has more than 5 subtasks
+>    - Has more than 5 subtasks in one task (a per-task limit, unlike the per-change count that triggers delegation in Implement)
 >    - Touches more than 3 files across different concerns (e.g. a data-layer change + a UI component + an i18n update all in one task, or a schema migration + an authorization policy + a UI form all in one task)
 >    - Mixes creation, deletion, and modification of different components
 >    - Requires generating large amounts of content in one task (e.g. populating a large dataset/seed from scratch)
 >    - Combines mechanical work with creative/judgment work
 >    For each flagged task, suggest a concrete split.
-> 2. **Implementability scope (MOST IMPORTANT)** — Classify each task as LLM-work or human-work. LLM-work = things an implementer agent can do with Read/Edit/Write/Bash in one session: writing/editing source files, editing config/data files, writing migrations, running the repo's own build/lint commands, running a scripted smoke test. Human-work = things requiring judgment the agent cannot substitute for: sourcing real figures from an external data provider, visually approving a chart's look, deciding a business weight/parameter, provisioning a real external cloud resource. Flag any task that is silently human-work as **Important** with a concrete recommendation. <inject: this repo's own mock-data-is-fine-but-say-so convention, if any>.
+> 2. **Implementability scope** — Classify each task as LLM-work or human-work. LLM-work = things an implementer agent can do with Read/Edit/Write/Bash in one session: writing/editing source files, editing config/data files, writing migrations, running the repo's own build/lint commands, running a scripted smoke test. Human-work = things requiring judgment the agent cannot substitute for: sourcing real figures from an external data provider, visually approving a chart's look, deciding a business weight/parameter, provisioning a real external cloud resource. Flag any task that is silently human-work as **Important** with a concrete recommendation. <inject: this repo's own mock-data-is-fine-but-say-so convention, if any>.
 > 3. **Task-design alignment** — Design elements with no task? Tasks with no design basis?
 > 4. **Missing tasks** — <inject: this repo's own list of commonly-forgotten companion tasks per affected area (dataset/array updates, prop threading, regenerated types, policy tests, doc updates)>.
 > 5. **Dependencies & ordering** — Is the ordering logical? (data-layer/migration before the code that reads it; data layer before the component that renders its output; i18n keys before/with the component that calls the translation function; a user-facing string change before any smoke-test update that asserts on it)

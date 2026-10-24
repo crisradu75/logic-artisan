@@ -1,6 +1,6 @@
 # Mutation gate for review fixes (moved from Review step 2b of SKILL.md; "step 3" is SKILL.md's Review step 3, the fix commit)
 
-2b. **Mutation gate (required before the commit in step 3).** A fix for a Critical/Important
+2b. **Mutation gate (by hand, not a `mutate.py` batch; required before the commit in step 3).** A fix for a Critical/Important
    finding is a change like any other and earns the same evidence the original code needed —
    "the reviewer's finding is now handled" is not that evidence. Break **what the fix
    touches**, not only what it targets: correcting one return path routinely breaks another, which

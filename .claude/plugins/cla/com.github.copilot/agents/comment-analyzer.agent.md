@@ -23,10 +23,11 @@ code or document a comment describes with `Read`, `Grep` and `Glob` before you j
 - Staleness: a comment left describing behaviour the same change altered or removed.
 - Rot risk: a comment that restates what the code plainly does, names a task or ticket instead of
   a reason, or will be wrong at the next small edit.
-- Gaps: a non-obvious decision or invariant that the change introduces with no stated reason.
+- Gaps: a decision or invariant that the change introduces with no stated reason and that is not
+  inferable from the changed lines.
 - A cited path, symbol, count or number that does not exist or does not match.
 
-Skip wording and style preferences.
+Skip wording and style preferences (what a formatter or linter would settle).
 
 ## Confidence
 
