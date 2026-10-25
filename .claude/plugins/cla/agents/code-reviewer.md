@@ -38,7 +38,6 @@ nothing about it. Do not pad: an empty list is a valid result.
 ## Output
 
 Return only findings, one per entry, in the shape the caller's schema or brief gives. When none is
-given, use: `severity` (Critical, Important or Suggestion), `file`, `line` (a line of the changed
-file, as shown in the diff), `summary` (what is wrong and why, in one or two sentences, with the
+given, use: `severity` (Critical, Important or Suggestion), `file`, `line` (the line number in the changed file after the change, which is the number after the `+` in the hunk header counted forward through the hunk, never a line counted inside the diff file; for a deleted line, give the line number in the old file and say so in the summary), `summary` (what is wrong and why, in one or two sentences, with the
 fix direction when it is clear). Critical means it ships a failure or loses data; Important means a
 real defect with a limited blast radius; Suggestion is a real but minor defect, never a style preference. No preamble.

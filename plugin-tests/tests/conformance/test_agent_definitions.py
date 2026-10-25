@@ -142,3 +142,22 @@ def test_each_reviewers_model_is_its_lowest_sizing_row(name: str) -> None:
     assert fields.get("model") == expected, (
         f"{name}.md runs on {fields.get('model')!r}, but its lowest sizing row names {expected!r}"
     )
+
+
+_COPILOT_AGENTS = _AGENTS.parent / "com.github.copilot" / "agents"
+_LINE_FIELD = (
+    "`line` (the line number in the changed file after the change, which is the number after the "
+    "`+` in the hunk header counted forward through the hunk, never a line counted inside the "
+    "diff file; for a deleted line, give the line number in the old file and say so in the summary)"
+)
+
+
+# requirement: review-agents / The plugin ships its own read-only reviewers
+@pytest.mark.parametrize("path", [p for n in _REVIEWERS for p in (
+    _AGENTS / f"{n}.md", _COPILOT_AGENTS / f"{n}.agent.md")], ids=lambda p: p.name)
+def test_each_reviewer_says_which_line_number_the_line_field_means(path: Path) -> None:
+    """A replay of 28 reviews found the old wording ("a line of the changed file, as shown in
+    the diff") read two ways, as a line counted inside the diff file or as a line of the changed
+    file. All six files, Claude and Copilot, must carry the one sentence that settles it."""
+    text = " ".join(path.read_text(encoding="utf-8").split())
+    assert _LINE_FIELD in text, f"{path.name} lacks the agreed `line` wording"
