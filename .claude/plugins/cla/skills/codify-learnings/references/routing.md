@@ -8,7 +8,7 @@ the plugin can be edited here, and the prompts that catch failures a skim would 
 | Rung | What lands there | Reach |
 |---|---|---|
 | `checklist` | a prompt under "Failure prompts" below | retro time only — no work session reads it |
-| `doc` | memory, a `CLAUDE.md`, `cla.io/project-facts.md`, `cla.io/overlays/<skill>.md`, a `SKILL.md` | every session that loads it; advisory |
+| `doc` | memory, an instruction file (`CLAUDE.md`, `AGENTS.md`), `cla.io/project-facts.md`, `cla.io/overlays/<skill>.md`, a `SKILL.md` | every session that loads it; advisory |
 | `hook` | a hook, `.claude/settings.json` | every matching tool call; enforced |
 | `script` | a script, or build/lint/test config | every run; the failure becomes impossible |
 
@@ -22,14 +22,15 @@ the plugin can be edited here, and the prompts that catch failures a skim would 
   (`exit 0` and a message) when it has legitimate exceptions the hook cannot tell apart.
 - **A `doc` rule that re-offends with nothing mechanical to enforce:** narrow the trigger (a
   sharper sibling failure earns its own rule), or graduate its one mechanical sub-case to a hook,
-  or move it to a home with better reach (memory ↔ `CLAUDE.md`). Log a move as a lateral, not a
+  or move it to a home with better reach (memory ↔ an instruction file). Log a move as a lateral, not a
   climb: the lesson has now failed at two artifacts.
 - **When a lesson graduates**, delete the lower-rung text it duplicates in the same fix — a prompt
-  below, a `CLAUDE.md` line, a memory entry — unless that text covers more than what graduated.
+  below, an instruction-file line, a memory entry — unless that text covers more than what graduated.
 
 ## Which home
 
-- **About this repo** → its `CLAUDE.md`; `cla.io/project-facts.md` when it is a fact a skill reads (a
+- **About this repo** → its instruction file, `CLAUDE.md` or `AGENTS.md`
+  (the shared `instruction-files.md` reference, linked from SKILL.md, says which, and to read both); `cla.io/project-facts.md` when it is a fact a skill reads (a
   command, a path); `cla.io/overlays/<skill>.md` when it is a rule about how one skill runs here.
   Git, cloud sessions and reviewers see all three.
 - **About how this user personally likes to work** → memory, and nothing else goes there. Memory
@@ -52,7 +53,7 @@ update — while reporting as applied.
 
 | Target | Writable | Read-only |
 |---|---|---|
-| `cla.io/**`, repo `CLAUDE.md`, `.claude/settings*.json`, memory | edit | edit |
+| `cla.io/**`, repo `CLAUDE.md` or `AGENTS.md`, `.claude/settings*.json`, memory | edit | edit |
 | a `SKILL.md`, `references/**`, `hooks/**`, `lib/**`, any plugin script | edit | `/cla:report-upstream` |
 
 Read-only never means dropping the lesson, and never means writing a portable fix into a local
@@ -96,5 +97,5 @@ noticing.
 - **Doc drift.** Did a change leave a doc, a `SKILL.md`, a table, a count or a path describing the
   old behaviour? Grep for the old name before calling it done.
 - **Not written down.** Did the user explain something, or did you find something by grepping,
-  that belongs in `CLAUDE.md` or a `SKILL.md`? Did the user state a working preference you will
+  that belongs in an instruction file or a `SKILL.md`? Did the user state a working preference you will
   need again (memory)?

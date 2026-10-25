@@ -208,13 +208,13 @@ git -C "$ROOT" ls-files -- 'cla.io/retro/*-run-notes-*.md' | sed 's/^/tracked ru
 
 ### 7a. The economy rules file — `.claude/rules/cla-economy.md`
 
-An agent working in this repo outside any skill reads the repo's own `CLAUDE.md` and
-`.claude/rules/*.md` and nothing from the plugin. A rules file with no `paths:` frontmatter loads at
+An agent working in this repo outside any skill reads the repo's own instruction files (`CLAUDE.md`, `AGENTS.md`)
+and `.claude/rules/*.md` and nothing from the plugin. A rules file with no `paths:` frontmatter loads at
 launch with the same priority as `.claude/CLAUDE.md`, so this file gets the cost rules to that
 agent. The plugin owns the file whole: it is compared on every run and replaced with no prompt when
 it differs, so a hand edit is replaced and the report says so (the repo's own rules go in its
-`CLAUDE.md`). The file is usually committed in the repo, so an upgrade that changes it shows as an
-ordinary diff; if `.claude/` is ignored it stays local. This skill never touches `CLAUDE.md`.
+instruction files; `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/instruction-files.md` says which). The file is usually committed in the repo, so an upgrade that changes it shows as an
+ordinary diff; if `.claude/` is ignored it stays local. This skill never touches `CLAUDE.md` or `AGENTS.md`.
 
 The text is `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/economy-rules-file.md` with two sources
 inlined at its markers: `orchestration-economy.md` whole, and the span of `model-routing.md`
@@ -279,7 +279,7 @@ elif tr -d '\r' < "$RULES_FILE" | cmp -s - "$TMP"; then
 else
   mv -f "$TMP" "$RULES_FILE" || { rm -f "$TMP"; fail "cannot move the new text into place"; }
   echo ".claude/rules/cla-economy.md: replaced"
-  echo "any local edits to .claude/rules/cla-economy.md were overwritten; the repo's own rules go in its CLAUDE.md"
+  echo "any local edits to .claude/rules/cla-economy.md were overwritten; the repo's own rules go in its own instruction files"
 fi
 ```
 
@@ -395,8 +395,9 @@ Links only: a rule lives in its spec, a value in its config.
 
 Read whatever this repo actually has — do not assume any particular stack. Typical sources: the
 workspace manifest, the root package/build manifest and its scripts, lint/test config, per-member
-manifests, dev-server configs for ports, `.env.example` files, the root guidance doc (e.g.
-`CLAUDE.md`) and any per-subapp guidance docs, `README.md`, and `openspec/specs/**` if the repo uses
+manifests, dev-server configs for ports, `.env.example` files, the root guidance docs (every instruction file that
+exists, `CLAUDE.md` and `AGENTS.md`; see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/instruction-files.md`)
+and any per-subapp guidance docs, `README.md`, and `openspec/specs/**` if the repo uses
 OpenSpec. This is deliberately an LLM read-and-reason pass, not a stack-specific parser — that is what
 makes it portable.
 
@@ -410,7 +411,7 @@ makes it portable.
   - **rule** — what this one skill must do here, with any path or command only that rule uses;
   - **incident** — a dated story. Pull out every rule it states for this repo ("Rule here: …",
     "before trusting X, check Y", "always pass …") and sort that as a rule; the rest is story;
-  - **duplicate** — a rule the plugin or the repo's `CLAUDE.md` already states (say where);
+  - **duplicate** — a rule the plugin or the repo's instruction files (`CLAUDE.md`, `AGENTS.md`) already state (say where);
   - **scaffolding** — headings, HTML comments, and the old pointer that sent readers to the
     retired `sync-context` skill for repo-wide facts.
 
@@ -500,8 +501,8 @@ recommendation.
 - Does **NOT** touch any plugin file (a `SKILL.md`, an agent, a hook). The plugin tree is a read-only
   cache.
 - Does **NOT** create overlays, and never writes a fact into one.
-- Does **NOT** touch `CLAUDE.md`: the economy rules file of item 7a is the plugin's own file, and
-  the repo's rules stay in `CLAUDE.md`.
+- Does **NOT** touch `CLAUDE.md` or `AGENTS.md`: the economy rules file of item 7a is the plugin's own file, and
+  the repo's rules stay in its instruction files.
 - Does **NOT** write anything in Part 2 without the user's yes.
 - Does **NOT** parse a stack-specific config format with a hardcoded parser — it reads and reasons
   about whatever this repo actually has.

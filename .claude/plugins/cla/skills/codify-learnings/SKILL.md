@@ -34,7 +34,8 @@ failures: say so, and go to Step 5 with empty lists.
 
 ## Step 2 — Check each against existing rules
 
-For each failure, search for a rule that should have prevented it: every `CLAUDE.md`,
+For each failure, search for a rule that should have prevented it: every instruction file (`CLAUDE.md` and `AGENTS.md`, root and nested; read all of them, see
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/instruction-files.md`),
 `cla.io/overlays/`, the hooks in `${CLAUDE_PLUGIN_ROOT}/hooks/` and `.claude/settings*.json`, the
 memory index (skip it if the overlay does not say where it is and you cannot find it), and the
 lessons log. Grep with the failure's keywords — never read the log whole:
@@ -47,7 +48,7 @@ This one grep also searches `cla.io/lessons-learned/lessons-learned-archive.md`,
 live; never read either file whole.
 
 - **A hit is a re-offense**: the rule existed and did not hold. Key it by that artifact's path or
-  hook name (`CLAUDE.md`, `hooks/block-cd-in-bash.py`), never by a slug you made up. In the
+  hook name (an instruction file, `hooks/block-cd-in-bash.py`), never by a slug you made up. In the
   lessons log only an APPLIED line names an artifact, and that artifact is the key; any other log
   hit is context, not a re-offense. Its fix goes **one rung above** that artifact (reference,
   "The ladder").
@@ -63,7 +64,8 @@ live; never read either file whole.
   is at most a second aid. Ask: could a config or script change have prevented the detour?
 - **Route by writability** (reference, "Is the plugin writable here?"). Read-only: a fix to a
   plugin file goes to `/cla:report-upstream`, and its line says so.
-- **Pick the home** (reference, "Which home"): repo lessons go to the repo's `CLAUDE.md`,
+- **Pick the home** (reference, "Which home"): repo lessons go to the repo's instruction file (which of `CLAUDE.md`
+  and `AGENTS.md`: `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/instruction-files.md`),
   `cla.io/project-facts.md` or `cla.io/overlays/`; memory holds only how this user personally likes to work.
 - **When a fix graduates a lesson**, the same fix deletes the lower-rung text it duplicates.
 - **Never propose edits to** a skill's bundled scripts (`**/scripts/**/*.py`), `openspec/**`, or a

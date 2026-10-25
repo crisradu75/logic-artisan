@@ -7,7 +7,7 @@ Opus, one change at a time: authoring sets the premise every later phase builds 
 ## Prompt template
 
 ```
-You are authoring one OpenSpec change proposal in this repo (its workspace shape is in `cla.io/project-facts.md`'s "Workspace shape"). Check the root `CLAUDE.md` "Repo layout" before naming a package; the list changes.
+You are authoring one OpenSpec change proposal in this repo (its workspace shape is in `cla.io/project-facts.md`'s "Workspace shape"). Check the repo's instruction files (`CLAUDE.md` and `AGENTS.md`, read both when both exist) for its "Repo layout" before naming a package; the list changes.
 
 **Change name:** <name>
 **One-line scope:** <one_line_scope from the plan>

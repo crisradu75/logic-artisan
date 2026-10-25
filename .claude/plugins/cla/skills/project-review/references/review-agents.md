@@ -49,7 +49,7 @@ about the dispatch (five agents, one message, the model routing, the caps) is un
 
 | Dimension | Reads instead of app source |
 |---|---|
-| 1 — Vision & Clarity | Root `README.md`, the plugin's own `README.md`, `CLAUDE.md`, the developer guide. Ask: can a new engineer tell what the harness is, who it is for, and how to install it, in minutes? Do the counts and version claims match the tree? |
+| 1 — Vision & Clarity | Root `README.md`, the plugin's own `README.md`, every instruction file (`CLAUDE.md` and `AGENTS.md`, root and nested; read both when both exist), the developer guide. Ask: can a new engineer tell what the harness is, who it is for, and how to install it, in minutes? Do the counts and version claims match the tree? |
 | 2 — Structure | The skill tree: one dir per skill, `SKILL.md`/`references/`/`scripts/`/`tests/` consistency, what lives in the shared references layer vs one skill's own, whether any skill's directory has become a de-facto common library. |
 | 3 — Requirements & Specs → **skill portfolio** | Every `SKILL.md` frontmatter (does the description state WHEN to trigger?), the body (actionable procedure vs vague prose), and the portfolio question: is each skill justified, is any redundant, is anything missing from the life cycle? |
 | 4 — Architecture | The fact/procedure split and the guards enforcing it; model routing for dispatched agents; hook wiring and the block/ask/warn taxonomy; the distribution mechanism; how per-repo state is kept out of portable core. |

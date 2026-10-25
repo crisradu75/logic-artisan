@@ -66,7 +66,7 @@ Direct `Edit`/`Write` calls — do NOT invoke `Skill(openspec-apply-change)` (th
    The first checks structure, not the limits in `rules.specs`: older requirements over them are rewritten when a change touches them. In the second, a `very long` warning on a requirement you edited (`requirements[<n>]`, the n-th `### Requirement:` from 0) is a fix before committing; on one you did not touch, it is that older text.
 
    `✗ spec/<cap>` in the output → fix it before committing. Non-zero with **no** `✗` line (`command not found`, `unknown option`) is a tooling fault, not a spec fault — say so rather than attributing it to this edit. `No items found to validate.` is **not** a pass: it means nothing was checked, which is also what a repo not using OpenSpec sees — there, say so once and skip the step rather than recording a vacuous success.
-3. Update the `CLAUDE.md` section(s) and the docs the plan named (`CLAUDE.md` most often "Allocation math" or "Conventions to preserve").
+3. Update the instruction-file section(s) (`CLAUDE.md` or `AGENTS.md`; see `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/instruction-files.md`) and the docs the plan named (the instruction file most often "Allocation math" or "Conventions to preserve").
 4. Add or update the test file(s) the plan named.
 
 **Show the new test failing before you trust it.** Steps 1–4 write the fix before

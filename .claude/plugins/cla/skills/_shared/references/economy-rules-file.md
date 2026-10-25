@@ -2,7 +2,7 @@
 
 Tokens are money. These rules keep an agent's cost down without dropping quality. They apply to any
 agent working in this repo, inside a skill or not. The setup step that wrote this file (`/cla:cla-setup`) replaces it
-on every run, so edit nothing here: a change belongs in the repo's own `CLAUDE.md`.
+on every run, so edit nothing here: a change belongs in the repo's own instruction file (`CLAUDE.md` or `AGENTS.md`).
 
 ## Model by task
 

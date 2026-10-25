@@ -81,7 +81,7 @@ IDENT_MIN = 12
 GENERIC_FILES = frozenset({
     "pyproject.toml", "package.json", "package-lock.json", "setup.py",
     "__init__.py", "tsconfig.json", "requirements.txt", "makefile",
-    "readme.md", "claude.md", "spec.md", "proposal.md", "tasks.md", "design.md",
+    "readme.md", "claude.md", "agents.md", "spec.md", "proposal.md", "tasks.md", "design.md",
     "skill.md", "todo.md",
 })
 
