@@ -156,8 +156,8 @@ _LINE_FIELD = (
 @pytest.mark.parametrize("path", [p for n in _REVIEWERS for p in (
     _AGENTS / f"{n}.md", _COPILOT_AGENTS / f"{n}.agent.md")], ids=lambda p: p.name)
 def test_each_reviewer_says_which_line_number_the_line_field_means(path: Path) -> None:
-    """A replay of 28 reviews found the old wording ("a line of the changed file, as shown in
-    the diff") read two ways, as a line counted inside the diff file or as a line of the changed
-    file. All six files, Claude and Copilot, must carry the one sentence that settles it."""
+    """The old wording ("a line of the changed file, as shown in the diff") read two ways: a line
+    counted inside the diff file, or a line of the changed file. All six files, Claude and
+    Copilot, must carry the agreed `line` wording that settles it."""
     text = " ".join(path.read_text(encoding="utf-8").split())
     assert _LINE_FIELD in text, f"{path.name} lacks the agreed `line` wording"
