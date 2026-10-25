@@ -154,6 +154,8 @@ def test_a_generic_filename_alone_is_not_evidence():
     # The same string names a different file in every directory, so two claims
     # sharing it are not talking about the same thing.
     assert OC.tokens_of({"raw": "update `pyproject.toml` and `SKILL.md`"}) == set()
+    # Both repo instruction files are generic: every folder may carry one.
+    assert OC.tokens_of({"raw": "update `CLAUDE.md` and `AGENTS.md`"}) == set()
 
 
 def test_a_generic_filename_inside_a_path_is_still_evidence():

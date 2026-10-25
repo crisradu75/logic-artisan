@@ -17,7 +17,7 @@ caller supplied — you are read-only and scope-only-what-you're-told.
 
 - **Cross-PR doc-staleness sweep (repo-scoped).** An orchestrator (e.g. `/cla:spec-to-pr` Review) has a
   change that retires some concepts and wants every lingering mention across the repo's docs found
-  before merge. The caller supplies the doc-path list, e.g.: root `CLAUDE.md`, `apps/operator/CLAUDE.md`
+  before merge. The caller supplies the doc-path list, e.g.: root `CLAUDE.md` and `AGENTS.md` (every instruction file that exists), `apps/operator/CLAUDE.md`
   (when the change touches operator), `README.md`, `docs/**/*.md`, `openspec/specs/**/*.md`.
 - **`.claude/`-meta skill sweep (skill-directory-scoped).** A change alters a `${CLAUDE_PLUGIN_ROOT}/skills/<name>/`
   skill's own mechanism/rule and needs every sibling reference doc checked. The caller supplies a

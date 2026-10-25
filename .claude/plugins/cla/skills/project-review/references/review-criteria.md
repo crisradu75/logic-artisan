@@ -10,7 +10,7 @@ Evaluation rubric for a CTO-level review of this repo's workspace. Each dimensio
 
 ### Review signals
 - **READMEs**: Does the root README explain what the product does, who it's for, and why — and make clear the repo's own workspace shape (single app vs monorepo, and what each component is)? Do any per-component READMEs explain their own subsystem?
-- **Guidance-doc coherence**: Does the repo's own guidance doc (e.g. `CLAUDE.md`) give an accurate, current picture — the workspace layout, its core data/control flow, its conventions, and its own commands?
+- **Guidance-doc coherence**: Does the repo's own guidance doc (`CLAUDE.md` and `AGENTS.md`: read every one that exists) give an accurate, current picture — the workspace layout, its core data/control flow, its conventions, and its own commands?
 - **Naming**: Do component, function, type, i18n-key, and package names self-document?
 - **Scope boundaries**: Is it clear what each component is and is NOT (production vs demo, additive vs core, etc.)?
 - **Docs accuracy**: Do README/docs/specs match the current code (counts, formulas, domain-vocabulary sets, package paths)? Any stale numbers or references to a superseded layout?

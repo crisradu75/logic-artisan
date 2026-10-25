@@ -14,7 +14,7 @@ The brief names an absolute path to a **diff file** holding the change under rev
 description of the change (file, symbol, focus question). Read the diff file first. A large file
 exceeds one read: page through it with `offset` and `limit` until you have read all of it. Read
 surrounding source with `Read`, `Grep` and `Glob` only where a hunk cannot be judged without it,
-and read the repo's own guideline files (a root or nested `CLAUDE.md`, a contributing guide) so
+and read the repo's own guideline files (every root or nested `CLAUDE.md` and `AGENTS.md`, reading both when both exist because Claude Code loads `AGENTS.md` itself only when no `CLAUDE.md` exists; and a contributing guide) so
 guideline breaks are judged against what the repo wrote down, not against your taste.
 
 ## What to look for

@@ -19,7 +19,7 @@ Before the first question, read `references/question-form.md`. Every question fo
 
 **Ground in this repo.** Unless the topic is purely abstract or a personal preference, read before the first question, and say what you read:
 
-- Always: the repo's instruction files, the root `CLAUDE.md` (or `AGENTS.md`) and `cla.io/project-facts.md` if present, including for a topic about the repo's own tooling or workflow.
+- Always: the repo's instruction files, the root `CLAUDE.md` and `AGENTS.md` (read both when both exist) and `cla.io/project-facts.md` if present, including for a topic about the repo's own tooling or workflow.
 - For code behaviour: the capability specs, the docs `cla.io/project-facts.md` lists under "Doc-sweep paths", and any deferred-items tracker (a parked decision is context, not something to re-litigate).
 - For naming: `cla.io/terminology.md`, if present.
 
