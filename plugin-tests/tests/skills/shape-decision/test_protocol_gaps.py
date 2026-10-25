@@ -1,121 +1,92 @@
-"""shape-decision closes the three gaps issue #273 found.
+"""shape-decision keeps the behaviours its rewrite exists to protect.
 
-An 8-question run on an LLM-backed feature produced a Decision Summary with five
-severe gaps that an independent reviewer found in one pass: no rate limit or cost
-cap, no timeout or retry, personal data in logs, facts an earlier research pass had
-already surfaced but nobody asked about, and a schema mismatch. The protocol now
-carries an external-dependency checklist, a map of what the session already learned,
-and a bounded gap check between the summary and the offer to persist.
-
-Every concern that is not asked, whichever step drops it, becomes one labelled
-**Noted, not asked** line, and that line reaches the opening, the summary and the
-persisted file, so nothing drops out silently.
-
-Steps are found by their bold titles, not their numbers, so renumbering the rules
-does not break these tests.
+The old skill stopped at a fixed question count and missed reversibility, release
+consequences and repo rules. Issue #273's gaps on outside-service concerns and
+facts research already surfaced are folded into the axis list; its closing gap check is now the cold check.
+Sections are found by heading or a short distinctive phrase, never by step number,
+so rewording around them does not break these tests.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-_SKILL = (
+_DIR = (
     Path(__file__).resolve().parents[4]
-    / ".claude" / "plugins" / "cla" / "skills" / "shape-decision" / "SKILL.md"
+    / ".claude" / "plugins" / "cla" / "skills" / "shape-decision"
 )
-_LABEL = "**Noted, not asked**"
-_OUTSIDE = "**When the topic adds a call to an outside service**"
-_MAPPED = "**Map what this session already learned.**"
-_ADAPTIVE = "**Adaptive flow.**"
-_SUMMARY = "**Summarize at the end.**"
-_GAP = "**Look for a severe gap before offering to persist.**"
-_PERSIST = "**Offer to persist.**"
-_OPENING = "6. State the topic"
+_SKILL = _DIR / "SKILL.md"
+_FORM = _DIR / "references" / "question-form.md"
 
 
 def _text() -> str:
     return _SKILL.read_text(encoding="utf-8")
 
 
-def _step(title: str) -> str:
-    """From this title to the next numbered line at the same indent: one step, sub-bullets included."""
+def _section(heading: str) -> str:
+    """The text from a '## heading' line to the next '## ' line."""
     text = _text()
-    assert title in text, f"shape-decision lost the step {title!r}"
-    start = text.index(title)
-    rest = text[start:].splitlines()
-    lines = [rest[0]]
-    for line in rest[1:]:
-        if not line.startswith("   "):
-            break
-        lines.append(line)
-    return "\n".join(lines)
+    marker = f"## {heading}\n"
+    assert marker in text, f"shape-decision lost the section {heading!r}"
+    body = text[text.index(marker) + len(marker):]
+    return body.split("\n## ", 1)[0]
 
 
-def test_an_outside_service_triggers_the_dependency_checklist():
-    step = _step(_OUTSIDE)
-    for concern in (
-        "rate limit",
+def test_model_signal_has_three_plain_tests_and_grounds_in_instruction_files():
+    start = _section("Start")
+    for test in ("hard to reverse", "ship to other repos or users", "several independent constraints"):
+        assert test in start, f"the model signal lost the test {test!r}"
+    assert "root `CLAUDE.md`" in start and "AGENTS.md" in start, "grounding lost the instruction files"
+
+
+def test_axis_list_has_three_always_axes_and_the_outside_service_items():
+    axes = _section("The axis list")
+    assert "The first three are always listed" in axes
+    for axis in ("**Reversibility**", "**Downstream consumers**", "**Release**"):
+        assert axis in axes, f"the axis list lost {axis}"
+    for item in (
+        "rate limits",
         "timeout and retry",
         "cost or usage caps",
-        "personal data",
+        "personal data in payloads",
         "abuse and injection",
         "not deterministic",
     ):
-        assert concern in step, f"the outside-service checklist lost {concern!r}"
-    assert "`**Noted, not asked:** <concern> — accepted or deferred, and why`" in step, (
-        "a checklist item can be dismissed without a labelled, reasoned line"
-    )
+        assert item in axes, f"the outside-service items lost {item!r}"
+    assert "**Noted, not asked:**" in axes
+    assert "A range or a bare question number is not evidence" in axes
+    assert "if no fragment can be quoted, the axis is Partial" in axes
 
 
-def test_earlier_research_maps_to_a_question_or_a_labelled_line():
-    step = _step(_MAPPED)
-    assert "`**Noted, not asked:** <concern> — considered, not asked because …`" in step
-    assert "must not silently drop out of the question set" in step
-
-
-def test_both_checks_run_before_the_question_set_is_formed():
+def test_stops_on_clarity_never_on_a_question_count():
     text = _text()
-    form = text.index('Formulate the question set per the "Right-size the question count" rule')
-    assert text.index(_OUTSIDE) < form
-    assert text.index(_MAPPED) < form
+    assert "Stop on clarity, never on a question count." in text
+    assert "Stop asking when every axis is Clear" in _section("Asking")
+    assert "3-8" not in text and "Right-size" not in text, "a question-count target came back"
 
 
-def test_a_question_skipped_by_adaptive_flow_keeps_its_concern():
-    step = _step(_ADAPTIVE)
-    assert "skip them silently" not in step
-    assert f"carried a concern from Getting started step 3 or 4 becomes a {_LABEL} line" in step
+def test_cold_check_cites_a_file_read_or_an_answer():
+    cold = _section("Cold check")
+    assert "Assume this failed in six months" in cold
+    assert "a file this run read or an answer by question number" in cold
 
 
-def test_the_opening_lists_the_noted_lines_and_names_what_was_mapped():
-    step = _step(_OPENING)
-    assert f"Then list the {_LABEL} lines from steps 3 and 4" in step
-    assert '"Prior research: <the reads and reports mapped>", or "Prior research: none."' in step
-    assert step.index("revision-support note") < step.index(_LABEL), (
-        "the noted lines now sit between the topic and the revision note, against rule 7"
-    )
-
-
-def test_noted_lines_reach_the_summary_and_the_persisted_file():
-    assert f"list every {_LABEL} line, whatever step wrote it" in _step(_SUMMARY)
-    assert f"- The final Decision Summary table, with its {_LABEL} lines" in _text()
-
-
-def test_the_gap_check_shows_three_probes_and_is_bounded():
-    step = _step(_GAP)
-    for probe in (
-        "a load-bearing axis nobody asked about",
-        "a decision that contradicts a fact you read",
-        "a choice the code or data cannot hold as decided",
+def test_persisted_file_keeps_its_bullets_including_the_noted_lines():
+    assert "list every Noted line" in _section("Decision Summary")
+    persist = _section("Persisting the decision")
+    for bullet in (
+        "- The topic, and what was inferred if it was not given",
+        "- Each question asked, the chosen option, and its one-line rationale",
+        "- The final Decision Summary table, with its **Noted, not asked** lines",
+        "- A short closing note on why the decision matters and the natural next step",
     ):
-        assert probe in step, f"the gap check lost the probe {probe!r}"
-    assert "Show one line for each probe, naming what you examined." in step
-    assert "Only after all three lines may you say that no gap was found." in step
-    assert "ask it, redraw the summary, then run this check again" in step
-    assert "Run it no more than two times" in step, "the gap check can loop without end"
-    assert f"or one the user declines to answer, becomes a {_LABEL} line" in step
+        assert bullet in persist, f"the persisted-file list lost {bullet!r}"
 
 
-def test_the_gap_check_sits_between_the_summary_and_the_persist_offer():
-    text = _text()
-    assert text.index(_SUMMARY) < text.index(_GAP) < text.index(_PERSIST)
-    assert "After the gap check, ask" in _step(_PERSIST)
+def test_core_points_to_the_form_reference_which_keeps_its_two_rules():
+    assert "`references/question-form.md`" in _text()
+    # the reference is read by relative path; a plugin-root variable there would not resolve
+    assert "${CLAUDE_PLUGIN_ROOT}" not in _FORM.read_text(encoding="utf-8")
+    form = _FORM.read_text(encoding="utf-8")
+    assert "When a simpler option fully meets the stated need, recommend it" in form
+    assert "from the smallest change to the largest" in form
