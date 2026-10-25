@@ -123,6 +123,8 @@ A prose edit here ships like code, and nothing compiles it. Each check comes fro
    that produced it, in the same commit, or delete the claim. A number holds only for the code,
    platform and shell it ran on. "Unchanged" must compare two runs on the same code. "Faster" must
    name both versions. Don't repeat an old number as if it were current.
+   A rate or score compared across variants uses the same inputs and the same judge on both
+   sides. A figure from another input set or judge is not a comparison.
 4. **Fixing a defect a review found?** Break the fix and confirm a test fails, then restore it. Do
    this by hand, once per fix. That is the whole floor. **A mutation batch is opt-in** (owner
    decision, 2026-10-14): run `python3 plugin-tests/mutate.py <batch.py>` (a batch is a Python file

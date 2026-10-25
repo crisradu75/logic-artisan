@@ -62,6 +62,8 @@ Finishing a piece of work **in conversation with the user** ends with three line
 - **What's open** — anything unresolved, deferred, or still running.
 - **What's next** — the concrete next action, offered as a `[y/n]`.
 
+The next-step `[y/n]` is the turn's only question. If a decision is already pending, that decision is the next-step line. Ask no second question beside it.
+
 This is for interactive work only. A `/cla:*` skill run ends with the report that skill
 specifies. Answering a question or finishing a single edit does not earn it.
 
