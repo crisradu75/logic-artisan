@@ -23,3 +23,5 @@ Leftover review suggestions (PR for issue 408 prose cleanups):
 - Review of the shape-decision V3 PR: the floor-history comment in plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py (near the scan floor) has no entry for the 111 to 112 floor move made when shape-decision/references/question-form.md was added.
 
 - Review of the reviewer `line` wording PR: the new sentence in the three reviewer agents (and Copilot copies) does not say that context lines count when counting forward through the hunk; consider adding "counting context and added lines".
+
+- Review of the catalog-pin docs PR: README.md line 60-61 states flatly that Copilot treats CLA as a 1.0 plugin; consider 'per GitHub's docs, ...' and splitting the long line at 'A 1.0 plugin offers'.
