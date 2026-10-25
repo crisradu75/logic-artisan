@@ -432,3 +432,72 @@ def test_the_claim_block_is_bounded_by_its_own_bullet(tmp_path) -> None:
     blocks = _claim_blocks(doc, _INVOCATION_CLAIM_PHRASE)
     assert len(blocks) == 1
     assert _skills_named_in(blocks[0], skills) == {"multi-lite", "multi-pr"}
+
+
+# A release tag written directly after "pin" or "pins" is a claim about the catalog's
+# current pin, so it must equal the marketplace `ref`. Historical mentions ("first
+# shipped in `cla--v2.1.1`") do not follow the word and pass. The 40-character window in
+# `_PIN_NEAR_TAG` is why "pins the current release tag; ... first shipped in `cla--v...`"
+# passes: keep that gap longer than 40 characters.
+_PIN_CLAIM = re.compile(r"\bpins?(?:'s)?,?\s+`cla--v(\d+\.\d+\.\d+)`")
+_PIN_NEAR_TAG = re.compile(r"\bpins?\b[^.`]{0,40}`cla--v\d")
+
+
+def catalog_pin_problems(docs: dict[str, Path], ref: str) -> list[str]:
+    """One message per doc line that names a catalog pin other than `ref`, or that
+    puts a tag near "pin" in a shape the claim pattern does not recognise."""
+    wanted = ref.removeprefix("cla--v")
+    problems = []
+    for name, path in docs.items():
+        text = path.read_text(encoding="utf-8")
+        claims = {m.start() for m in _PIN_CLAIM.finditer(text)}
+        for m in _PIN_CLAIM.finditer(text):
+            if m.group(1) != wanted:
+                line = text.count("\n", 0, m.start()) + 1
+                problems.append(
+                    f"{name}:{line} names the catalog pin as cla--v{m.group(1)}, "
+                    f"the marketplace ref is {ref}"
+                )
+        for m in _PIN_NEAR_TAG.finditer(text):
+            if not any(m.start() <= c <= m.end() for c in claims):
+                line = text.count("\n", 0, m.start()) + 1
+                problems.append(
+                    f"{name}:{line} puts a release tag near 'pin' in a shape the "
+                    f"claim pattern does not recognise; the marketplace ref is {ref}"
+                )
+    return problems
+
+
+def test_the_docs_name_no_catalog_pin_that_differs_from_the_marketplace_ref() -> None:
+    """The release check missed a stale "the catalog pins `cla--v<old>`" sentence.
+    Reword the sentence so it names no tag after "pin", or keep it equal to the ref."""
+    refs = {}
+    for rel in (".claude-plugin/marketplace.json", ".github/plugin/marketplace.json"):
+        data = json.loads((_REPO_ROOT / rel).read_text(encoding="utf-8"))
+        found = {p["source"]["ref"] for p in data["plugins"] if "ref" in p.get("source", {})}
+        refs[rel] = found
+    assert all(len(v) == 1 for v in refs.values()) and len(set().union(*refs.values())) == 1, (
+        f"the two marketplace catalogs disagree on the pinned ref: {refs}"
+    )
+    ref = next(iter(refs[".claude-plugin/marketplace.json"]))
+    docs = {k: _DOCS[k] for k in ("README.md", "DEVELOPER-GUIDE.md", "plugin README.md")}
+    assert catalog_pin_problems(docs, ref) == []
+
+
+def test_the_catalog_pin_reader_flags_a_stale_pin_and_ignores_history(tmp_path) -> None:
+    ref = "cla--v2.2.0"
+
+    def check(text: str) -> list[str]:
+        doc = tmp_path / "doc.md"
+        doc.write_text(text, encoding="utf-8")
+        return catalog_pin_problems({"doc.md": doc}, ref)
+
+    assert check("The catalog pins `cla--v2.2.0`.\n") == []
+    assert check("It first shipped in `cla--v2.1.1`, so every pin fetches it.\n") == []
+    stale = check("line one\nThe catalog pins `cla--v2.1.2`.\n")
+    assert len(stale) == 1 and stale[0].startswith("doc.md:2 ")
+    assert "cla--v2.1.2" in stale[0] and ref in stale[0]
+    comma = check("The catalog's pin, `cla--v2.1.2`, carries it.\n")
+    assert len(comma) == 1 and "names the catalog pin" in comma[0]
+    odd = check("The pin is now at tag `cla--v2.1.2`.\n")
+    assert len(odd) == 1 and "does not recognise" in odd[0]

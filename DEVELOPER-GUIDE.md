@@ -967,8 +967,8 @@ all five (a dry run of `claude plugin tag` with the Copilot pair left at an old 
 so it sees only the Claude pair). The root manifest also needed a fifteenth allowlist pattern in
 `check_shipped_tree.py`, or `/release` refused it. Claude Code did not take the plugin name from the
 root manifest: a copy whose root manifest had a different name still loaded as `cla` from
-`.claude-plugin/plugin.json`. The catalog's pin, `cla--v2.1.2`, carries the root manifest (it first
-shipped in `cla--v2.1.1`; `cla--v2.1.0` lacks it), so the Copilot behaviour described here applies to it. The root manifest's description does
+`.claude-plugin/plugin.json`. The catalog always pins the current release tag, which carries the root manifest (it first
+shipped in `cla--v2.1.1`; `cla--v2.1.0` lacks it), so the Copilot behaviour described here applies to every pin since. The root manifest's description does
 not say the install is untested (2026-10-16, owner decision): it ships inside the release tag, which
 is never moved, so the claim would outlive the first live test there. The README, this guide and the
 spec carry it, and the docs test requires it beside the install command, within one heading section.

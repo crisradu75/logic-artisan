@@ -2,6 +2,14 @@
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
 
+## 2026-10-26 — codify-learnings
+- APPLIED 1. Make the closing [y/n] the turn's only question (`.claude/plugins/cla/output-styles/CLA.md`, doc)
+- APPLIED 2. Name the matched inputs and judge when comparing scores (`CLAUDE.md`, doc)
+- APPLIED 3. Make the catalog-pin claim a test (`plugin-tests/tests/consistency/test_doc_facts.py`, script)
+- Re-offense: `~/.claude/CLAUDE.md` → doc (lateral); `CLAUDE.md` → doc (narrowed trigger); `.claude/skills/release/SKILL.md` → script
+
+---
+
 ## 2026-10-09 — codify-learnings
 - APPLIED 1. Merge a release PR only from a session that can push the tag (`.claude/skills/release/SKILL.md`, doc)
 - APPLIED 2. Docs match the code since the last tag, as a release precondition (`.claude/skills/release/SKILL.md`, doc)
