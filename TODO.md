@@ -21,3 +21,5 @@ Leftover review suggestions (PR for issue 408 prose cleanups):
 - Same-kind repo-specific leftovers still in shipped prose (not in the approved six): `review-change/references/dispatch.md:41` and `project-review/references/review-agents.md:84,113,127` (allocation-math, apps/packages split), `review-change/references/checklist.md:44,76,105` (i18n JSON, allocation-math), `lite-pr/SKILL.md:69` ("Allocation math"), `spec-to-pr/references/precheck.md:15` and `ship.md:59-61` (apps/*, packages/*), `agents/doc-sweeper.md:20` and `agents/fact-gatherer.md:69-70` (example paths), `multi-spec/references/review-gate.md:45`.
 
 - Review of the shape-decision V3 PR: the floor-history comment in plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py (near the scan floor) has no entry for the 111 to 112 floor move made when shape-decision/references/question-form.md was added.
+
+- Review of the reviewer `line` wording PR: the new sentence in the three reviewer agents (and Copilot copies) does not say that context lines count when counting forward through the hunk; consider adding "counting context and added lines".

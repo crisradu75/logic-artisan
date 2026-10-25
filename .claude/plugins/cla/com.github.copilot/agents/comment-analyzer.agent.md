@@ -37,7 +37,6 @@ unsupported. An empty list is a valid result.
 ## Output
 
 Return only findings, one per entry, in the shape the caller's schema or brief gives. When none is
-given, use: `severity` (Critical, Important or Suggestion), `file`, `line` (a line of the changed
-file, as shown in the diff), `summary` (the claim, what contradicts it, and the corrected wording
+given, use: `severity` (Critical, Important or Suggestion), `file`, `line` (the line number in the changed file after the change, which is the number after the `+` in the hunk header counted forward through the hunk, never a line counted inside the diff file; for a deleted line, give the line number in the old file and say so in the summary), `summary` (the claim, what contradicts it, and the corrected wording
 when it is clear). Critical is reserved for a comment that would mislead a reader into a harmful
 action; most findings are Important or Suggestion. No preamble.
