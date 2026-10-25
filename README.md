@@ -55,11 +55,10 @@ copilot plugin install cla@cris-logic-artisan
 ```
 
 What to expect, from GitHub's docs and not from a run: Copilot reads
-`.github/plugin/marketplace.json` and, once a release carries it, the Agent Plugins 1.0
+`.github/plugin/marketplace.json` and the Agent Plugins 1.0
 `plugin.json` at the plugin root, which takes precedence over `.claude-plugin/plugin.json`. **The
-catalog pins `cla--v2.1.0`, a tag cut before that root manifest existed**, so until the next release
-the pin fetches a plugin without it, and Copilot would treat that as a legacy plugin instead. After
-that release, a 1.0 plugin offers Copilot its `skills/` directory and an `mcp.json`; agents and hooks
+catalog pins `cla--v2.1.2`; the root manifest first shipped in `cla--v2.1.1`**, so the pin fetches
+it, and Copilot treats CLA as a 1.0 plugin, not a legacy one. A 1.0 plugin offers Copilot its `skills/` directory and an `mcp.json`; agents and hooks
 load only from a `com.github.copilot/` directory. CLA ships its five helper agents there
 (`com.github.copilot/agents/`), generated from the Claude Code agents in `agents/` with the same
 instructions, read-only `read` and `search` tools and a Copilot model ID, and also untested in a live

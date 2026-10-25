@@ -90,7 +90,7 @@ The phases, in order — Explore → Plan → Implement → Test → Ship → Re
 1. **Explore** (optional) — only when the ask is genuinely open-ended; it hands off to
    `shape-decision` for the same Q&A described in section 4.
 2. **Plan** — posted in the conversation for visibility, not a blocking gate.
-3. **Implement** on a branch: code + `spec.md`/`CLAUDE.md`/tests kept in sync.
+3. **Implement** on a branch: code + `spec.md`/the instruction file (`CLAUDE.md` or `AGENTS.md`)/tests kept in sync.
 4. **Test** — the flow's only stop point: an unresolved failure halts the run.
 5. **Ship** — commit, push, PR opened.
 6. **Review** — one automated PR-review pass on the opened PR, with a single fix round; a high-risk
@@ -507,7 +507,7 @@ The published plugin — everything here ships to a consuming repo:
   lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
   skills/_shared/references/   references two or more skills read as authority (no SKILL.md — not a skill);
-                               `model-routing.md` holds the review-sizing table, `orchestration-economy.md` the chain cost rules, `economy-rules-file.md` the frame `/cla:cla-setup` renders into a repo's `.claude/rules/cla-economy.md`
+                               `model-routing.md` holds the review-sizing table, `orchestration-economy.md` the chain cost rules, `economy-rules-file.md` the frame `/cla:cla-setup` renders into a repo's `.claude/rules/cla-economy.md`, `instruction-files.md` how skills read and write a repo's `CLAUDE.md` or `AGENTS.md`
   skills/<name>/
     SKILL.md                   the skill itself (portable procedure)
     references/                supporting docs (portable; overlays live in cla.io/overlays/); `lite-pr/references/`
@@ -967,8 +967,8 @@ all five (a dry run of `claude plugin tag` with the Copilot pair left at an old 
 so it sees only the Claude pair). The root manifest also needed a fifteenth allowlist pattern in
 `check_shipped_tree.py`, or `/release` refused it. Claude Code did not take the plugin name from the
 root manifest: a copy whose root manifest had a different name still loaded as `cla` from
-`.claude-plugin/plugin.json`. The catalog's pin, `cla--v2.1.0`, predates the root manifest, so the
-Copilot behaviour described here begins with the next release. The root manifest's description does
+`.claude-plugin/plugin.json`. The catalog's pin, `cla--v2.1.2`, carries the root manifest (it first
+shipped in `cla--v2.1.1`; `cla--v2.1.0` lacks it), so the Copilot behaviour described here applies to it. The root manifest's description does
 not say the install is untested (2026-10-16, owner decision): it ships inside the release tag, which
 is never moved, so the claim would outlive the first live test there. The README, this guide and the
 spec carry it, and the docs test requires it beside the install command, within one heading section.
