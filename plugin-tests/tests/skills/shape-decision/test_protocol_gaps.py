@@ -1,8 +1,8 @@
 """shape-decision keeps the behaviours its rewrite exists to protect.
 
 The old skill stopped at a fixed question count and missed reversibility, release
-consequences and repo rules. Issue #273's three gaps (outside-service concerns,
-facts research already surfaced, a closing gap check) are folded into the axis list.
+consequences and repo rules. Issue #273's gaps on outside-service concerns and
+facts research already surfaced are folded into the axis list; its closing gap check is now the cold check.
 Sections are found by heading or a short distinctive phrase, never by step number,
 so rewording around them does not break these tests.
 """
@@ -39,7 +39,7 @@ def test_model_signal_has_three_plain_tests_and_grounds_in_instruction_files():
     assert "root `CLAUDE.md`" in start and "AGENTS.md" in start, "grounding lost the instruction files"
 
 
-def test_axis_list_always_names_reversibility_consumers_release_and_outside_service():
+def test_axis_list_has_three_always_axes_and_the_outside_service_items():
     axes = _section("The axis list")
     assert "The first three are always listed" in axes
     for axis in ("**Reversibility**", "**Downstream consumers**", "**Release**"):
@@ -72,6 +72,7 @@ def test_cold_check_cites_a_file_read_or_an_answer():
 
 
 def test_persisted_file_keeps_its_bullets_including_the_noted_lines():
+    assert "list every Noted line" in _section("Decision Summary")
     persist = _section("Persisting the decision")
     for bullet in (
         "- The topic, and what was inferred if it was not given",
@@ -84,6 +85,7 @@ def test_persisted_file_keeps_its_bullets_including_the_noted_lines():
 
 def test_core_points_to_the_form_reference_which_keeps_its_two_rules():
     assert "`references/question-form.md`" in _text()
+    # the reference is read by relative path; a plugin-root variable there would not resolve
     assert "${CLAUDE_PLUGIN_ROOT}" not in _FORM.read_text(encoding="utf-8")
     form = _FORM.read_text(encoding="utf-8")
     assert "When a simpler option fully meets the stated need, recommend it" in form
