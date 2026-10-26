@@ -728,7 +728,7 @@ def _stale_in(tmp_path: Path, body: str) -> list[tuple[int, str]]:
 def test_a_stale_looking_path_inside_a_fenced_block_is_not_reported(tmp_path, fence):
     closer = fence.replace("bash", "").rstrip()
     body = f"Before: `apps/gone/before.ts`.\n{fence}\napps/gone/inside.ts\nrun apps/gone/cmd.sh\n{closer}\nAfter: `apps/gone/after.ts`.\n"
-    # the three lines of prose outside the block are checked; the two inside are not
+    # the two lines of prose outside the block are checked; the two inside are not
     assert _stale_in(tmp_path, body) == [(1, "apps/gone/before.ts"), (6, "apps/gone/after.ts")]
 
 
@@ -768,10 +768,23 @@ def test_an_inline_run_of_backticks_is_not_a_fence(tmp_path):
 def test_a_fenced_block_in_one_file_does_not_hide_the_next_file(tmp_path):
     _stale_in(tmp_path, "```\napps/gone/open.ts\n")  # never closed in the facts file
     (tmp_path / "cla.io" / "overlays").mkdir()
-    (tmp_path / "cla.io" / "overlays" / "x.md").write_text("`apps/gone/overlay.ts`\n", encoding="utf-8")
+    # the overlay closes a fence it never opened: carried-over state would pair them and hide its path
+    (tmp_path / "cla.io" / "overlays" / "x.md").write_text("`apps/gone/overlay.ts`\n```\n", encoding="utf-8")
     assert ("cla.io/overlays/x.md", 1, "apps/gone/overlay.ts") in scan(tmp_path)[1]
 
 
+def test_cli_says_how_many_lines_a_fence_left_unchecked(tmp_path):
+    # a stray fence that pairs with a later one hides the prose between them; the run must say how much
+    _seed_repo(tmp_path, "Real: `apps/real`.\n```\n`apps/gone/hidden.ts`\n```bash\nmore\n```\nEnd.\n")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+    assert "lines in fenced code blocks, not checked: cla.io/project-facts.md (5)" in result.stdout
+    # and nothing is said when nothing was skipped
+    _seed_repo(tmp_path, "Real: `apps/real`.\n")
+    assert "fenced" not in _run_cli("--repo-root", str(tmp_path)).stdout
+
+
+# requirement: repo-context / Checking recorded paths
 def test_cli_says_when_every_path_sits_in_a_fenced_block(tmp_path):
     _seed_repo(tmp_path, "```\napps/real\n```\n")
     result = _run_cli("--repo-root", str(tmp_path))

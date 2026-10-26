@@ -21,10 +21,11 @@ lines) with exactly one line in ``cla.io/project-facts.md``::
 A scenario marker takes two forms. ``scenario: <spec> / <scenario>`` is the canonical one.
 ``scenario: <spec> / <requirement> / <scenario>`` is accepted too, and also names the requirement
 the scenario sits under: it proves the scenario only when that requirement exists in the spec and
-holds the scenario. A scenario that sits under a different requirement is reported as ``wrong
+holds the scenario, read from the live specs and the active deltas together, as the two-part
+form is. A scenario that sits under a different requirement is reported as ``wrong
 requirement``, and a requirement the spec does not have as ``unknown requirement``. A scenario heading
-that itself holds `` / `` is read as the two-part form first. The ``requirement:`` marker has no
-three-part form: everything after the spec is its heading. See ``resolve_scenario_marker``.
+that itself holds `` / `` is read as the two-part form first. The ``requirement:`` marker, and the ``manual:`` and ``waiting:`` lines, have no
+three-part form: everything after the spec is the heading. See ``resolve_scenario_marker``.
 
 No such line means ``requirement``. A line that starts with the phrase but is
 not one of the two forms above, or a second such line, exits 2 and names the

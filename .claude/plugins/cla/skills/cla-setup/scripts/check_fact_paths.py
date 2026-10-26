@@ -72,7 +72,9 @@ COVERAGE LIMITS (read before trusting this guard blindly):
     paths, commands and config, not pointers. This also drops a LIVE path that sits in a block
     (a ``"sources": ["cla.io/decisions"]`` JSON block), so a stale one there goes unreported;
     write a path that must stay checked in the prose. A fence that is never closed hides nothing
-    (see ``_fenced_line_indexes``). It does not help an example path written in prose: that is
+    (see ``_fenced_line_indexes``). A fence opener is read loosely (any indent, any ``>``
+    quote prefix), so a stray opener pairs with the next fence and hides the prose between
+    them; the run prints how many lines per file went unchecked. It does not help an example path written in prose: that is
     still checked, and a first segment that is a tracked top-level name is still read as a
     pointer.
   - The extraction heuristic is deliberately conservative: on any ambiguous token
@@ -129,8 +131,8 @@ _TRAILING_LINE_COL_RE = re.compile(r":\d+(:\d+)?$")
 # bare path — "edit apps/x/y.ts: add a rule"). It comes AFTER `:line[:col]` in the
 # strip order (see `_clean_candidate`), so an `engine.test.ts:120` line-suffix is
 # removed by `_strip_line_col` first and only a genuine lone trailing `:` is wrapped.
-# `[` and `]` are here because a path inside a fenced JSON config block arrives
-# as `["…/src"` or `…/src"]` — without brackets the QUOTE never becomes an outer
+# `[` and `]` are here because a path inside a JSON array in prose (or in a fence that is
+# never closed, which is still checked) arrives as `["…/src"` or `…/src"]` — without brackets the QUOTE never becomes an outer
 # character, so a live path reads as stale forever. Both are needed, not one: a
 # single-element array (`["apps/x/src"]`) presents both at once.
 #
@@ -599,6 +601,25 @@ def _fenced_line_indexes(lines: list[str]) -> set[int]:
     return skipped
 
 
+def _fenced_lines_note(repo_root: Path, files: list[Path]) -> str:
+    """One report line naming how many lines per file sat in a fenced block and so went unchecked ('' when none).
+
+    A stray fence pairs with the next one and hides the prose between them, exactly as a renderer would
+    show it; this line is how the author sees that a file lost more than its examples."""
+    parts = []
+    for path in files:
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue  # `scan` already reported the unreadable file
+        n = len(_fenced_line_indexes(lines))
+        if n:
+            parts.append(f"{path.relative_to(repo_root).as_posix()} ({n})")
+    if not parts:
+        return ""
+    return f"{_PROG}: lines in fenced code blocks, not checked: " + ", ".join(parts)
+
+
 def _iter_scanned_files(repo_root: Path):
     """Yield ``cla.io/project-facts.md`` (if present) and every per-skill overlay
     under ``cla.io/overlays/`` (globbed generically, not a hardcoded skill list).
@@ -856,11 +877,13 @@ def main(argv: list[str] | None = None) -> int:
         f"{checked} path candidate(s) checked, {len(stale)} stale path(s)"
     )
 
+    print(summary)
+    fenced_note = _fenced_lines_note(repo_root, scanned_files)
+    if fenced_note:
+        print(fenced_note)  # a block skipped is coverage given up; say how much, so a stray fence is visible
     if not stale:
-        print(summary)
         return EXIT_CLEAN
 
-    print(summary)
     # Accumulate every violation and report them all. Never break out of this
     # loop on the first hit: surfacing one stale path at a time turns one run
     # into a fix-and-rerun loop.
