@@ -25,7 +25,12 @@ EXIT CODES:
     how many files, so a scan that inspected nothing is visible rather than
     indistinguishable from a clean result. A trivial pass states its reason.
   - ``1`` — stale paths found. Every one is named, one per line, in a single run;
-    the checker never stops at the first.
+    the checker never stops at the first. A line is ``<file>:<line>  stale path
+    '<candidate>'``; when the candidate also ends a tracked path elsewhere (a
+    relative example such as ``scripts/common.py`` meaning ``invest/scripts/common.py``)
+    a hint naming up to three such paths follows, and the prefix is unchanged. A path
+    containing a placeholder (``{...}`` or ``<...>``) is never checked, so write
+    example paths with one.
   - ``2`` — the checker could not do its job: bad arguments, a repo root that
     could not be resolved at all, an input that exists but cannot be read, or
     anything was scanned (a facts file OR overlays) yet it yielded zero path
@@ -485,6 +490,53 @@ def _is_machine_local(candidate: str, tracked: set[str] | None) -> bool:
     return rel not in tracked and not any(p.startswith(rel + "/") for p in tracked)
 
 
+_HINT_MAX_MATCHES = 3
+
+
+def _tail_matches(candidate: str, tracked: set[str] | None) -> list[str]:
+    """Tracked locations whose path ENDS with ``candidate`` but is not ``candidate``
+    itself: where a stale-looking relative example (``scripts/common.py`` meaning
+    ``invest/scripts/common.py``) may really live. A file match is the tracked path;
+    a directory match (``ls-files`` lists files only) is the tracked path cut after
+    the directory. Sorted, deduplicated. ``[]`` when ``tracked`` is ``None``.
+
+    This only EXPLAINS a finding; whether a candidate is reported at all is decided
+    elsewhere (``scan``), because no rule can tell shorthand from a moved file."""
+    if tracked is None:
+        return []
+    rel = candidate.rstrip("/")
+    if not rel:
+        return []
+    found: set[str] = set()
+    for path in tracked:
+        if path != rel and path.endswith("/" + rel):
+            found.add(path)
+            continue
+        # Search from index 1 so the occurrence AT the repo root (the candidate
+        # itself) is skipped and only a nested one counts.
+        at = ("/" + path).find("/" + rel + "/", 1)
+        if at != -1:
+            found.add(path[: at + len(rel)])
+    return sorted(found)
+
+
+def _stale_hint(candidate: str, tracked: set[str] | None) -> str:
+    """The text appended to a stale-path report line when the candidate also exists
+    as the tail of a tracked path (see ``_tail_matches``), else ``""``. Appended
+    after the line's fixed ``<file>:<line>  stale path '<candidate>'`` prefix, which
+    it never alters."""
+    matches = _tail_matches(candidate, tracked)
+    if not matches:
+        return ""
+    shown = ", ".join(matches[:_HINT_MAX_MATCHES])
+    if len(matches) > _HINT_MAX_MATCHES:
+        shown += f" (+{len(matches) - _HINT_MAX_MATCHES} more)"
+    return (
+        f" (not at the repo root; found at {shown} — if this is a relative example, "
+        f"write it with a placeholder such as {{plugin}}/{candidate})"
+    )
+
+
 def _keep_if_path(
     token: str, top_level_names: set[str], former_names: frozenset[str] | set[str] = frozenset()
 ) -> str | None:
@@ -746,7 +798,8 @@ def main(argv: list[str] | None = None) -> int:
     # The same warning for the index of tracked FILES, which the machine-local rule
     # reads: if it is unavailable every `*.local.*` path reads as untracked and is
     # skipped, so a rename of a tracked one goes unreported.
-    if _tracked_paths(repo_root) is None and (repo_root / ".git").exists():
+    tracked = _tracked_paths(repo_root)
+    if tracked is None and (repo_root / ".git").exists():
         print(
             f"{_PROG}: {repo_root} looks like a git repository but `git "
             "ls-files` could not list tracked files — every `*.local.*` path "
@@ -821,7 +874,7 @@ def main(argv: list[str] | None = None) -> int:
     # loop on the first hit: surfacing one stale path at a time turns one run
     # into a fix-and-rerun loop.
     for rel, lineno, candidate in stale:
-        print(f"{rel}:{lineno}  stale path {candidate!r}")
+        print(f"{rel}:{lineno}  stale path {candidate!r}{_stale_hint(candidate, tracked)}")
     # Report the derived top-level set too — a candidate's first segment not
     # being in this set is exactly what makes `_keep_if_path` skip it (never flag
     # it), so when a genuine staleness IS found, seeing which prefixes were
