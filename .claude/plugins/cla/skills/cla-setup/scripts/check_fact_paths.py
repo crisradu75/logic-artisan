@@ -509,6 +509,8 @@ def _tail_matches(candidate: str, tracked: set[str] | None) -> list[str]:
         return []
     found: set[str] = set()
     for path in tracked:
+        if rel not in path:
+            continue  # cheap pre-filter: both tests below need `rel` inside `path`
         if path != rel and path.endswith("/" + rel):
             found.add(path)
             continue

@@ -785,7 +785,9 @@ def test_a_path_with_a_placeholder_is_never_checked(tmp_path):
         tmp_path,
         ["invest/scripts/common.py"],
         # The real path keeps the scan from being the zero-candidates failure.
-        body="Real `scripts/placeholder.txt`; `{plugin}/scripts/common.py`; `<plugin>/scripts/common.py`.\n",
+        # The placeholders sit AFTER the recognized top-level name `scripts`, so only
+        # the placeholder rule (not the unknown-first-segment rule) can skip them.
+        body="Real `scripts/placeholder.txt`; `scripts/{x}/common.py`; `scripts/<x>/common.py`.\n",
     )
     result = _run_cli("--repo-root", str(repo))
     assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
