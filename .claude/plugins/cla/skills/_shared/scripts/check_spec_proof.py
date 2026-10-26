@@ -18,6 +18,15 @@ lines) with exactly one line in ``cla.io/project-facts.md``::
     - Test proof granularity: requirement
     - Test proof granularity: scenario
 
+A scenario marker takes two forms. ``scenario: <spec> / <scenario>`` is the canonical one.
+``scenario: <spec> / <requirement> / <scenario>`` is accepted too, and also names the requirement
+the scenario sits under: it proves the scenario only when that requirement exists in the spec and
+holds the scenario, read from the live specs and the active deltas together, as the two-part
+form is. A scenario that sits under a different requirement is reported as ``wrong
+requirement``, and a requirement the spec does not have as ``unknown requirement``. A scenario heading
+that itself holds `` / `` is read as the two-part form first. The ``requirement:`` marker, and the ``manual:`` and ``waiting:`` lines, have no
+three-part form: everything after the spec is the heading. See ``resolve_scenario_marker``.
+
 No such line means ``requirement``. A line that starts with the phrase but is
 not one of the two forms above, or a second such line, exits 2 and names the
 line: a value read loosely would turn the opt-in off without a word. See
@@ -30,8 +39,9 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     active change deltas and deltas the branch archives. Without a default branch
     this rule is off and the output says so.
   - ``dangling``: a marker, ``manual:`` or ``waiting:`` line naming a spec or
-    heading that no live spec or active delta holds. A marker of the other
-    granularity is also reported, since nothing reads it.
+    heading that no live spec or active delta holds (a three-part scenario marker whose
+    requirement is unknown, or does not hold the scenario, is named as such). A marker of the
+    other granularity is also reported, since nothing reads it.
   - ``repeated``: a heading repeated within one spec or delta.
   - ``prompt-half``: a ``manual: ... (prompt half)`` line with no marker beside it.
   - ``waiting``: a ``waiting:`` line in an archived change, or beside a unit a
@@ -1376,6 +1386,39 @@ def scan_notes(root: Path, known: set[str], universe: dict[str, set[str]] | None
     return notes
 
 
+def resolve_scenario_marker(
+    spec: str, rest: str, universe: dict[str, set[str]], owners: dict[str, dict[str, set[str]]], reqs: dict[str, set[str]]
+) -> tuple[str | None, str]:
+    """What a scenario marker ``scenario: <spec> / <rest>`` proves: (scenario heading, "") or (None, why not).
+
+    ``rest`` is the two-part form's scenario heading, or the three-part form's ``<requirement> / <scenario>``.
+    ``universe`` maps a spec to its scenario headings, ``owners`` a spec to each scenario's requirement headings
+    and ``reqs`` a spec to its requirement headings (live specs and active deltas, as ``universe`` is).
+
+    The whole of ``rest`` is tried as a scenario heading first, so a heading that itself holds `` / `` keeps
+    its two-part meaning and the three-part form never shadows it. Otherwise ``rest`` is split at each `` / ``
+    (a requirement or scenario heading may hold one too) and the marker proves the scenario when some split
+    names a requirement the scenario sits under. A split whose scenario exists but whose requirement does not
+    hold it is a named problem, never "names no scenario"."""
+    scenarios = universe.get(spec, set())
+    if rest in scenarios:
+        return rest, ""
+    parts = rest.split(" / ")
+    splits = [(" / ".join(parts[:i]), " / ".join(parts[i:])) for i in range(1, len(parts))]
+    found = [(req, scn) for req, scn in splits if scn in scenarios]
+    for req, scn in found:
+        if req in owners.get(spec, {}).get(scn, set()):
+            return scn, ""
+    if not found:
+        return None, "names no scenario in any live spec or active delta"
+    # Prefer the split whose requirement exists, so the message says "wrong requirement" when it can.
+    req, scn = next(((r, s) for r, s in found if r in reqs.get(spec, set())), found[0])
+    held = ", ".join(repr(r) for r in sorted(owners.get(spec, {}).get(scn, set())))
+    if req in reqs.get(spec, set()):
+        return None, f"wrong requirement: scenario {scn!r} sits under {held}, not under requirement {req!r}"
+    return None, f"unknown requirement: spec {spec!r} has no requirement {req!r} (scenario {scn!r} sits under {held})"
+
+
 def _validate(root: Path, problems: list[str], lines: list[str]) -> None:
     exe = shutil.which("openspec")
     if exe is None:
@@ -1411,6 +1454,16 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         if f.kind != "archived":
             universe.setdefault(f.spec, set()).update(u.heading for u in f.units)
     known = {h for hs in universe.values() for h in hs}
+    # For the three-part scenario marker: each spec's requirement headings, and the requirements each scenario sits under.
+    reqs: dict[str, set[str]] = {}
+    owners: dict[str, dict[str, set[str]]] = {}
+    if mode == "scenario":
+        for f in files:
+            if f.kind != "archived":
+                for req_heading, _, scns in _blocks(f.text, f.kind != "live"):
+                    reqs.setdefault(f.spec, set()).add(req_heading)
+                    for scn_heading, _ in scns:
+                        owners.setdefault(f.spec, {}).setdefault(scn_heading, set()).add(req_heading)
 
     for f in files:
         if f.kind == "archived":
@@ -1470,6 +1523,12 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
             problems.append(f"PROBLEM dangling: {rel}: {heading!r} looks like a marker but is not '{mode}: <spec> / <heading>' (lower-case spec name, spaces around the slash)")
         elif kind == other:
             problems.append(f"PROBLEM dangling: {rel}: '{kind}: {spec} / {heading}' is a {kind} marker; this repo proves per {mode}")
+        elif mode == "scenario":
+            proven, why = resolve_scenario_marker(spec, heading, universe, owners, reqs)
+            if proven is None:
+                problems.append(f"PROBLEM dangling: {rel}: '{kind}: {spec} / {heading}' {why}")
+            else:
+                marked.add((spec, proven))
         elif heading not in universe.get(spec, set()):
             problems.append(f"PROBLEM dangling: {rel}: '{kind}: {spec} / {heading}' names no {mode} in any live spec or active delta")
         else:
