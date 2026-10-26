@@ -31,7 +31,6 @@ Leftover review suggestions (use-toolkit-reviewers):
 - The added `review-agents` requirement carries four obligations in one sentence (diff file, named in the brief, no git or edits, model passed) against "one outcome per requirement", and the change did not set `skip_specs`. Decide whether to split it into two requirements or record in the proposal why one outcome ("a reviewer is dispatched safely") is enough.
 - The diff-review rule is checked as text at its sites; nothing checks that a dispatch prompt actually built at run time contains it. A live review round that records each reviewer prompt would close that gap.
 
-Leftover review suggestions (three-part scenario marker and fenced-path skip):
+Leftover review suggestions (three-part scenario marker):
 
 - `check_spec_proof.py` `resolve_scenario_marker`: when `A / B / C` reads two ways (scenario `B / C` under `A`, or scenario `C` under `A / B`), the first reading wins with no message. Consider reporting a marker that two readings both prove.
-- `check_fact_paths.py` `_FENCE_LINE_RE` accepts any indent (CommonMark allows 0 to 3 spaces for a fence outside a list) and a `>` prefix whose quote may end before the fence does. Tighten it only if a real file shows a mis-pairing.

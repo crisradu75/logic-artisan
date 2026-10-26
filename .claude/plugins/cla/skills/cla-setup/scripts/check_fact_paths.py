@@ -68,15 +68,6 @@ COVERAGE LIMITS (read before trusting this guard blindly):
     package but happens to start with a once-top-level name (``src/index.ts``)
     still is. With no usable history (shallow clone, not a git repo, no commits) only the
     first test applies, and stderr says so.
-  - A path inside a fenced code block (``` or ~~~) is NOT checked: a block holds example
-    paths, commands and config, not pointers. This also drops a LIVE path that sits in a block
-    (a ``"sources": ["cla.io/decisions"]`` JSON block), so a stale one there goes unreported;
-    write a path that must stay checked in the prose. A fence that is never closed hides nothing
-    (see ``_fenced_line_indexes``). A fence opener is read loosely (any indent, any ``>``
-    quote prefix), so a stray opener pairs with the next fence and hides the prose between
-    them; the run prints how many lines per file went unchecked. It does not help an example path written in prose: that is
-    still checked, and a first segment that is a tracked top-level name is still read as a
-    pointer.
   - The extraction heuristic is deliberately conservative: on any ambiguous token
     it skips rather than flags, because a false staleness failure trains people to
     ignore the guard (see ``design.md`` Decision E of ``cla-context-refresh``).
@@ -131,8 +122,8 @@ _TRAILING_LINE_COL_RE = re.compile(r":\d+(:\d+)?$")
 # bare path — "edit apps/x/y.ts: add a rule"). It comes AFTER `:line[:col]` in the
 # strip order (see `_clean_candidate`), so an `engine.test.ts:120` line-suffix is
 # removed by `_strip_line_col` first and only a genuine lone trailing `:` is wrapped.
-# `[` and `]` are here because a path inside a JSON array in prose (or in a fence that is
-# never closed, which is still checked) arrives as `["…/src"` or `…/src"]` — without brackets the QUOTE never becomes an outer
+# `[` and `]` are here because a path inside a fenced JSON config block arrives
+# as `["…/src"` or `…/src"]` — without brackets the QUOTE never becomes an outer
 # character, so a live path reads as stale forever. Both are needed, not one: a
 # single-element array (`["apps/x/src"]`) presents both at once.
 #
@@ -569,57 +560,6 @@ def extract_path_candidates(
     return candidates
 
 
-# A line that can open or close a fenced code block: optional indent and block-quote markers, a run of
-# three or more backticks or tildes (group 1), then the rest of the line (group 2: an info string, or
-# nothing on a closing fence).
-_FENCE_LINE_RE = re.compile(r"^[ \t]*(?:>[ \t]*)*(`{3,}|~{3,})(.*)$")
-
-
-def _fenced_line_indexes(lines: list[str]) -> set[int]:
-    """0-based indexes of the lines inside a fenced code block, fence lines included.
-
-    A block opens on a run of 3+ backticks or tildes (a backtick fence's info string may hold no
-    backtick, so an inline ```` ```x``` ```` run is not a fence) and closes on a run of the same
-    character at least as long with nothing after it. A fence that is NEVER closed contributes
-    nothing: CommonMark would hide the rest of the file, but a stray fence must not silently switch
-    the guard off for every later line, so those lines are checked as before."""
-    skipped: set[int] = set()
-    opened_at: int | None = None
-    opener = ""
-    for i, line in enumerate(lines):
-        m = _FENCE_LINE_RE.match(line)
-        if m is None:
-            continue
-        run, rest = m.group(1), m.group(2)
-        if opened_at is None:
-            if run[0] == "`" and "`" in rest:
-                continue
-            opened_at, opener = i, run
-        elif run[0] == opener[0] and len(run) >= len(opener) and not rest.strip():
-            skipped.update(range(opened_at, i + 1))
-            opened_at = None
-    return skipped
-
-
-def _fenced_lines_note(repo_root: Path, files: list[Path]) -> str:
-    """One report line naming how many lines per file sat in a fenced block and so went unchecked ('' when none).
-
-    A stray fence pairs with the next one and hides the prose between them, exactly as a renderer would
-    show it; this line is how the author sees that a file lost more than its examples."""
-    parts = []
-    for path in files:
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError):
-            continue  # `scan` already reported the unreadable file
-        n = len(_fenced_line_indexes(lines))
-        if n:
-            parts.append(f"{path.relative_to(repo_root).as_posix()} ({n})")
-    if not parts:
-        return ""
-    return f"{_PROG}: lines in fenced code blocks, not checked: " + ", ".join(parts)
-
-
 def _iter_scanned_files(repo_root: Path):
     """Yield ``cla.io/project-facts.md`` (if present) and every per-skill overlay
     under ``cla.io/overlays/`` (globbed generically, not a hardcoded skill list).
@@ -673,11 +613,7 @@ def scan(repo_root: Path, former_names: set[str] | None = None):
         except (OSError, UnicodeDecodeError) as exc:
             unreadable.append((rel, f"{type(exc).__name__}: {exc}"))
             continue
-        lines = text.splitlines()
-        fenced = _fenced_line_indexes(lines)
-        for lineno, line in enumerate(lines, start=1):
-            if lineno - 1 in fenced:
-                continue  # a path in a code block is an example or a command, not a pointer
+        for lineno, line in enumerate(text.splitlines(), start=1):
             for candidate in extract_path_candidates(line, top_level_names, former_names):
                 if _is_machine_local(candidate, tracked):
                     continue
@@ -865,8 +801,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"{_PROG}: {len(scanned_files)} file(s) scanned but zero path "
             "candidates were extracted — the path-extraction heuristic or "
-            "repo-root resolution is broken, or every path sits in a fenced code "
-            "block, which is not checked (the guard would silently check "
+            "repo-root resolution is broken (the guard would silently check "
             "nothing)",
             file=sys.stderr,
         )
@@ -877,13 +812,11 @@ def main(argv: list[str] | None = None) -> int:
         f"{checked} path candidate(s) checked, {len(stale)} stale path(s)"
     )
 
-    print(summary)
-    fenced_note = _fenced_lines_note(repo_root, scanned_files)
-    if fenced_note:
-        print(fenced_note)  # a block skipped is coverage given up; say how much, so a stray fence is visible
     if not stale:
+        print(summary)
         return EXIT_CLEAN
 
+    print(summary)
     # Accumulate every violation and report them all. Never break out of this
     # loop on the first hit: surfacing one stale path at a time turns one run
     # into a fix-and-rerun loop.
