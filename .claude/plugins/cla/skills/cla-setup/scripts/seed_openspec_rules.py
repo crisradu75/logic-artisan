@@ -3,7 +3,8 @@
 
     python3 seed_openspec_rules.py <repo-root>
 
-Reads and writes only `<repo-root>/openspec/config.yaml` (or reads `config.yml`):
+Reads and writes only `<repo-root>/openspec/config.yaml` (or reads `config.yml`), and
+reads `<repo-root>/cla.io/project-facts.md` for its `Test proof granularity:` line:
 
 - `openspec/` exists and neither config file does: writes `config.yaml` with `RULES`
   and prints `openspec/config.yaml: created`.
@@ -12,6 +13,10 @@ Reads and writes only `<repo-root>/openspec/config.yaml` (or reads `config.yml`)
   `RULES` the file lacks (`+`) and each earlier wording in `RETIRED` it still carries
   (`-`), also when the file holds that wording inside one pair of quotes; or says the
   rules are current.
+
+`RULES` holds the requirement-level `tasks` rule. When `cla.io/project-facts.md` holds
+`- Test proof granularity: scenario`, `SCENARIO_TASK` takes its place and the requirement
+rule is listed as an earlier wording instead, so a config never gets both.
 
 `RULES` and `RETIRED` live only here; the skill points at this file and a test checks `RULES`
 against this repo's own `openspec/config.yaml`. Each list item that contains `: ` stays
@@ -72,6 +77,37 @@ RETIRED = r"""rules:
     - "Give each requirement this change adds or modifies a test task whose test carries a `requirement: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. Scenarios are examples, not one test each."
 """.rstrip("\n")
 
+# The tasks rule for a repo that proves each scenario. `RULES` carries the requirement-level rule
+# (the default); a repo whose facts file says `- Test proof granularity: scenario` gets this one in
+# its place, and the requirement rule becomes an earlier wording (`-`) for it. The same text sits in
+# `RETIRED` for a requirement-level repo, where it is an earlier wording.
+SCENARIO_TASK = r'''    - "Give each scenario this change adds, or whose text it changes, a test task whose test carries a `scenario: <spec> / <heading>` comment line above it, or a line `manual: <heading>: <reason>`. A pure heading rename, or a scenario carried forward unchanged in a MODIFIED block, needs neither."'''
+
+FACTS = Path("cla.io") / "project-facts.md"
+_GRANULARITY = re.compile(r"^- Test proof granularity: (requirement|scenario)[ \t]*$", re.M)
+
+
+def _granularity(root: Path) -> str:
+    """`scenario` when the repo's facts file chose it, else `requirement` (the default, also when unreadable)."""
+    try:
+        text = (root / FACTS).read_bytes().decode("utf-8-sig", errors="replace").replace("\r", "")
+    except OSError:
+        return "requirement"
+    found = _GRANULARITY.findall(text)
+    return found[0] if found else "requirement"
+
+
+def _blocks(granularity: str) -> tuple[str, str]:
+    """The shipped and the earlier-wording blocks for a granularity."""
+    if granularity != "scenario":
+        return RULES, RETIRED
+    rules, retired = RULES.split("\n"), RETIRED.split("\n")
+    at = next(i for i, line in enumerate(rules) if "requirement: <spec> / <heading>" in line)
+    requirement_task = rules[at]
+    rules[at] = SCENARIO_TASK
+    retired = [line for line in retired if line != SCENARIO_TASK] + [requirement_task]
+    return "\n".join(rules), "\n".join(retired)
+
 
 def _out(text: str) -> None:
     sys.stdout.buffer.write(text.encode("utf-8"))
@@ -100,7 +136,7 @@ def _rule_lines(block: str, mark: str, want: bool, have: set[str], quoted: set[s
     return found
 
 
-def _compare(old: Path) -> int:
+def _compare(old: Path, rules: str, retired: str) -> int:
     name = f"openspec/{old.name}"
     try:
         raw = old.read_bytes()
@@ -116,7 +152,7 @@ def _compare(old: Path) -> int:
     text = raw.replace(b"\r", b"").decode("utf-8-sig", errors="surrogateescape")
     have = {line.strip(" \t\v\f") for line in text.split("\n")}
     quoted = {_unquote(line) for line in have}
-    diff = _rule_lines(RULES, "+", False, have, quoted) + _rule_lines(RETIRED, "-", True, have, quoted)
+    diff = _rule_lines(rules, "+", False, have, quoted) + _rule_lines(retired, "-", True, have, quoted)
     if not diff:
         _out(f"{name}: exists (skipped), rules current\n")
     else:
@@ -128,6 +164,7 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2 or not argv[1]:
         sys.stderr.write("usage: seed_openspec_rules.py <repo-root>\n")
         return 2
+    rules, retired = _blocks(_granularity(Path(argv[1])))
     spec = Path(argv[1]) / "openspec"
     cfg, yml = spec / "config.yaml", spec / "config.yml"
     if spec.is_dir() and not cfg.exists() and not yml.exists():
@@ -136,7 +173,7 @@ def main(argv: list[str]) -> int:
             # "x" refuses an existing file or a dangling symlink instead of writing through it.
             with open(cfg, "x", encoding="utf-8", newline="\n") as handle:
                 made = True
-                handle.write(f"schema: spec-driven\n\n{RULES}\n")
+                handle.write(f"schema: spec-driven\n\n{rules}\n")
         except OSError as err:
             sys.stderr.write(f"{err}\n")
             # A write that failed after the file was created leaves a partial config, which the next
@@ -146,14 +183,14 @@ def main(argv: list[str]) -> int:
                     cfg.unlink(missing_ok=True)
                 except OSError as unlink_err:
                     sys.stderr.write(f"a partial openspec/config.yaml may remain: {unlink_err}\n")
-            _out("openspec/config.yaml: write FAILED; add this block by hand:\n" + RULES + "\n")
+            _out("openspec/config.yaml: write FAILED; add this block by hand:\n" + rules + "\n")
             return 1
         _out("openspec/config.yaml: created\n")
         return 0
     if not spec.is_dir():
-        _out("openspec/config.yaml: not written, no openspec/ (run openspec init, then add this block):\n" + RULES + "\n")
+        _out("openspec/config.yaml: not written, no openspec/ (run openspec init, then add this block):\n" + rules + "\n")
         return 0
-    return _compare(cfg if cfg.exists() else yml)
+    return _compare(cfg if cfg.exists() else yml, rules, retired)
 
 
 if __name__ == "__main__":

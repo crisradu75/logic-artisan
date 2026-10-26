@@ -113,6 +113,6 @@ def test_skills_write_exactly_the_ledgers_the_writer_accepts():
 
 def test_cla_setup_seeds_exactly_the_ledgers_the_writer_accepts():
     text = _CLA_SETUP.read_text(encoding="utf-8")
-    match = re.search(r'for f in ([^;]*); do\n  \[ -e "\$ROOT/cla\.io/retro/\$f\.jsonl" \] \|\| :', text)
+    match = re.search(r'for f in ([^;]*); do\n  p="\$ROOT/cla\.io/retro/\$f\.jsonl"\n  if \[ -e "\$p" \]; then echo "exists \(skipped\): \$p"; else :', text)
     assert match, "cla-setup/SKILL.md: no ledger seed loop found"
     assert {f"{name}.jsonl" for name in match.group(1).split()} == set(log_run.SHAPES)
