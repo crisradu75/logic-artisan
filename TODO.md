@@ -25,3 +25,8 @@ Leftover review suggestions (PR for issue 408 prose cleanups):
 - Review of the reviewer `line` wording PR: the new sentence in the three reviewer agents (and Copilot copies) does not say that context lines count when counting forward through the hunk; consider adding "counting context and added lines".
 
 - Review of the catalog-pin docs PR: README.md line 60-61 states flatly that Copilot treats CLA as a 1.0 plugin; consider 'per GitHub's docs, ...' and splitting the long line at 'A 1.0 plugin offers'.
+
+Leftover review suggestions (use-toolkit-reviewers):
+
+- The added `review-agents` requirement carries four obligations in one sentence (diff file, named in the brief, no git or edits, model passed) against "one outcome per requirement", and the change did not set `skip_specs`. Decide whether to split it into two requirements or record in the proposal why one outcome ("a reviewer is dispatched safely") is enough.
+- The diff-review rule is checked as text at its sites; nothing checks that a dispatch prompt actually built at run time contains it. A live review round that records each reviewer prompt would close that gap.

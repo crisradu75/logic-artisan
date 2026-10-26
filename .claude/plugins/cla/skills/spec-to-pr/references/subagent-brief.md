@@ -116,10 +116,17 @@ shared, process-wide state: git's HEAD is per-clone, so one agent switching bran
 the ground under the orchestrator and every sibling in the same fan-out — and it leaves no
 diff to notice it by. Nor does a well-behaved agent undo it: it *restores* to the branch it
 assumes was the baseline, usually `main` rather than the branch the session was on. Spell
-out the forbidden verbs. For a diff review, a reviewer with no shell (`code-reviewer`,
-`silent-failure-hunter`, `comment-analyzer`) is given a diff file instead: you save the diff
-(`git diff origin/<pr-base>...<branch> -- <paths>`; `<pr-base>` is the branch the PR targets, as the calling skill defines it; you run this one, so it names the branch, while the read-only block quoted below is run by the reviewer in its own checkout and says `HEAD`) in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), outside the working tree, and name its absolute path in
-the brief. A reviewer that does hold a shell gets the read-only way to read it, with `<pr-base>` filled in before sending:
+out the forbidden verbs. For a diff review, the `pr-review-toolkit` reviewers (`code-reviewer`,
+`silent-failure-hunter`, `comment-analyzer`) hold Bash and Edit, and the toolkit's `code-reviewer`
+defaults to running `git diff` itself, so the brief is the only thing holding them back (an accepted
+risk; prose is the whole safeguard). Each is given a diff file instead and this sentence, verbatim,
+in its prompt (the diff-review rule; `lite-pr` Review and `revise.md` carry the same sentence):
+
+> Review only the change in the diff file at `<absolute path>`; run no git command (not `git diff`, and never `git checkout`, `git switch`, `git stash`, `git reset`, `git clean`, `git commit` or `git branch`) and edit, write or delete no file. Give `line` as the line number in the changed file after the change (the number after the `+` in the hunk header, counted forward through the hunk), never a line counted inside the diff file.
+
+You save the diff
+(`git diff origin/<pr-base>...<branch> -- <paths>`; `<pr-base>` is the branch the PR targets, as the calling skill defines it; you run this one, so it names the branch, while the read-only block quoted below is run, in its own checkout, by an agent that holds a shell and gets no diff file, and says `HEAD`) in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), outside the working tree, and name its absolute path in
+the brief. Any other agent that reads a diff and is given no diff file gets the read-only way to read it, with `<pr-base>` filled in before sending:
 
 > Read the diff with `git diff origin/<pr-base>...HEAD`, and a committed file with
 > `git show <ref>:<path>`. Do NOT run `git checkout`, `switch`, `stash`, `branch`, or

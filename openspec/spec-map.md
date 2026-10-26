@@ -28,7 +28,7 @@ is linked from no workflow step here, or a link points at a spec that does not e
 1. Write the specs under the repo's authoring rules and review the plan before building: [change-workflow](specs/change-workflow/spec.md)
 2. Prove each requirement with a test or a manual note: [spec-proof](specs/spec-proof/spec.md)
 3. Keep the repo's docs current: [docs-currency](specs/docs-currency/spec.md)
-4. Review the pull request with the plugin's own reviewers: [review-agents](specs/review-agents/spec.md)
+4. Review the pull request with reviewers dispatched under a diff file and a no-git-commands brief: [review-agents](specs/review-agents/spec.md)
 5. Record the run: [run-ledgers](specs/run-ledgers/spec.md)
 
 ### Run a batch of changes

@@ -161,9 +161,9 @@ def test_the_scan_is_not_vacuous():
     # Re-measured with this file's own `__main__`, which is why it has one::
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 115  .json 3  .md 82  .py 30  placeholder-refs 242 in 54 files
+    #     scanned 112  .json 3  .md 79  .py 30  placeholder-refs 240 in 54 files
     #
-    # The real count is 115. Pinned near it, not
+    # The real count is 112. Pinned near it, not
     # comfortably below it, matching the rule `test_subprocess_encoding.py`
     # states for its own floor: move it to the new real count when something is
     # deliberately added or deleted, never to a number chosen to be safe from
@@ -202,8 +202,9 @@ def test_the_scan_is_not_vacuous():
     # lite-pr-lazy-load added three `lite-pr/references/` files, and from 106 to 109 when
     # reviewer-agents added three `agents/` files, and from 109 to 110 when #272 added
     # `multi-pr/scripts/check_cite_drift.py`, and from 112 to 114 when agents-md-support
-    # added `_shared/references/instruction-files.md` (real count 114 to 115, margin one).
-    assert len(files) >= 114, f"scan set collapsed to {len(files)} files"
+    # added `_shared/references/instruction-files.md` (real count 114 to 115), and from 114 to 111
+    # when use-toolkit-reviewers deleted three `agents/` files (real count 112, margin one).
+    assert len(files) >= 111, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files
     ), "agents/ is not being scanned"
@@ -329,7 +330,7 @@ def test_the_replacement_is_actually_in_use():
     # line would be a second copy that `_PRINTER_LINE` cannot see:
     #
     #     $ python plugin-tests/tests/conformance/test_no_hardcoded_plugin_paths.py
-    #     scanned 115  .json 3  .md 82  .py 30  placeholder-refs 242 in 54 files
+    #     scanned 112  .json 3  .md 79  .py 30  placeholder-refs 240 in 54 files
     #
     # The file-count version sat at 34 under a comment claiming 36 while the real
     # figure was 48 — fourteen of headroom, found by running that printer for the

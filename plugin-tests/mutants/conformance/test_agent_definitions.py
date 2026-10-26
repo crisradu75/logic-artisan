@@ -2,7 +2,7 @@
 
 Each mutant breaks one thing the agent-definition guard claims to catch: a forbidden tool
 left out of the list, a model check loosened, a required key no longer required, or a shipped
-reviewer changed to something the guard must refuse.
+helper changed to something the guard must refuse.
 
 Run: python3 plugin-tests/mutate.py plugin-tests/mutants/conformance/test_agent_definitions.py
 """
@@ -13,9 +13,8 @@ PLUGIN = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla"
 DEV = Path(__file__).resolve().parents[2]
 AGENTS = PLUGIN / "agents"
 GUARD = DEV / "tests" / "conformance" / "test_agent_definitions.py"
-CODE_REVIEWER = AGENTS / "code-reviewer.md"
-HUNTER = AGENTS / "silent-failure-hunter.md"
 DOC_SWEEPER = AGENTS / "doc-sweeper.md"
+FACT_GATHERER = AGENTS / "fact-gatherer.md"
 
 TARGETS = [GUARD]
 TOOLS = '_FORBIDDEN_TOOLS = ("Edit", "MultiEdit", "Write", "NotebookEdit", "Bash")'
@@ -36,17 +35,17 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        "a reviewer gains a lower-case bash tool",
-        CODE_REVIEWER,
+        "a helper gains a lower-case bash tool",
+        DOC_SWEEPER,
         'tools: ["Read", "Grep", "Glob"]',
         'tools: ["Read", "Grep", "Glob", "bash"]',
         TARGETS,
     ),
     (
-        "silent-failure-hunter drifts from opus to haiku",
-        HUNTER,
-        "model: opus",
+        "the fact gatherer drifts from haiku to gpt",
+        FACT_GATHERER,
         "model: haiku",
+        "model: gpt",
         TARGETS,
     ),
     (
@@ -78,13 +77,13 @@ MUTANTS = [
      'if not isinstance(tools, list) or not tools:', 'if not tools:', TARGETS),
     ("the guard accepts a file with no frontmatter", GUARD,
      'if not lines or lines[0].strip() != "---":', 'if not lines:', TARGETS),
-    ("the code reviewer gains Bash", CODE_REVIEWER,
+    ("the doc sweeper gains Bash", DOC_SWEEPER,
      'tools: ["Read", "Grep", "Glob"]', 'tools: ["Read", "Grep", "Glob", "Bash"]', TARGETS),
-    ("the silent-failure hunter gains Edit", HUNTER,
+    ("the fact gatherer gains Edit", FACT_GATHERER,
      'tools: ["Read", "Grep", "Glob"]', 'tools: ["Read", "Grep", "Glob", "Edit"]', TARGETS),
-    ("the silent-failure hunter loses its model", HUNTER, "model: opus\n", "", TARGETS),
-    ("an existing helper agent names an unknown model", DOC_SWEEPER,
+    ("the fact gatherer loses its model", FACT_GATHERER, "model: haiku\n", "", TARGETS),
+    ("the doc sweeper names an unknown model", DOC_SWEEPER,
      "model: haiku", "model: gpt", TARGETS),
-    ("the code reviewer is renamed", CODE_REVIEWER,
-     "name: code-reviewer", "name: reviewer", TARGETS),
+    ("the doc sweeper is renamed", DOC_SWEEPER,
+     "name: doc-sweeper", "name: sweeper", TARGETS),
 ]

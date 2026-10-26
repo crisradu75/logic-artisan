@@ -59,7 +59,7 @@ What to expect, from GitHub's docs and not from a run: Copilot reads
 `plugin.json` at the plugin root, which takes precedence over `.claude-plugin/plugin.json`. **The
 catalog always pins the current release tag; the root manifest first shipped in `cla--v2.1.1`**, so every pin
 since then fetches it, and Copilot treats CLA as a 1.0 plugin, not a legacy one. A 1.0 plugin offers Copilot its `skills/` directory and an `mcp.json`; agents and hooks
-load only from a `com.github.copilot/` directory. CLA ships its five helper agents there
+load only from a `com.github.copilot/` directory. CLA ships its two helper agents there
 (`com.github.copilot/agents/`), generated from the Claude Code agents in `agents/` with the same
 instructions, read-only `read` and `search` tools and a Copilot model ID, and also untested in a live
 Copilot CLI. **CLA's guard hooks do not run in Copilot**: they ship Claude-only, and stay so until someone installs Copilot CLI and checks how they behave (decided 2026-10-16), because GitHub's hooks reference says a Copilot `preToolUse` timeout always lets the command through (read from the docs, untested in a live Copilot CLI). Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`)
@@ -106,7 +106,7 @@ plugin-tests/                  the plugin's tests — one pytest scope, NOT publ
   README.md                    the harness's scope + capabilities, by life-cycle phase
   skills/                      the workflow skills (spec-to-pr, lite-pr, multi-*, reviews, retro loops, …)
   skills/_shared/              references + scripts that several skills share (not a skill)
-  agents/                      helper agents (doc-sweeper, fact-gatherer) and PR reviewers (code-reviewer, silent-failure-hunter, comment-analyzer)
+  agents/                      helper agents (doc-sweeper, fact-gatherer)
   hooks/                       always-on guard hooks (blocks, asks, warns) + dispatchers
   lib/log_run.py               writes the one run ledger (spec-to-pr-runs.jsonl), invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)

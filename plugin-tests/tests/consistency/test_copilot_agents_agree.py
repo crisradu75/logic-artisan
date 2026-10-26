@@ -27,7 +27,7 @@ _COPILOT = sync.COPILOT_DIR
 # The frontmatter fields the copies may carry: all four are in the custom agents configuration
 # reference's property table. `color` is Claude Code's and Copilot's table has no such field.
 _COPILOT_FIELDS = ("name", "description", "tools", "model")
-# The tool aliases a read-only reviewer may be granted: `read` and `search` (Grep, Glob).
+# The tool aliases a read-only helper agent may be granted: `read` and `search` (Grep, Glob).
 _READ_ONLY_TOOLS = {"read", "search"}
 
 
