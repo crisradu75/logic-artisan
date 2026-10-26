@@ -501,7 +501,9 @@ recommendation, never written. A declined proposal leaves its file untouched.
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/check_fact_paths.py
 ```
 
-It MUST exit 0. Exit 1 names each stale path: fix every one and re-run. Exit 2 means it could not
+It MUST exit 0. Exit 1 names each stale path: fix every one and re-run. A path containing a
+placeholder (`{...}` or `<...>`) is never checked, so write an example path with one. A line that
+says `found at <path>` means the path exists only deeper in the tree: it is likely such an example. Exit 2 means it could not
 look (stderr says why): fix that, and never read a 2 as a pass. Nothing in the plugin runs it
 again; a repo that wants it standing wires it into its own gate. A gate still wiring the `0.x`
 `conformance-checks/tests` directory checks nothing: say so and recommend this program.

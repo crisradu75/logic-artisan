@@ -670,6 +670,130 @@ def test_cli_reports_every_stale_path_not_only_the_first(tmp_path):
     assert "apps/two/gone.ts" in result.stdout, result.stdout
 
 
+# --- the hint on a stale line whose path ends a tracked path elsewhere ---
+#
+# `scripts/common.py` written in an overlay to mean `invest/scripts/common.py` is
+# checked at the root, where a different `scripts/` exists, and reported stale. No
+# rule can tell that shorthand from a moved file, so it is still reported (exit 1);
+# the line only gains a hint saying where the tail does exist.
+
+_OVERLAY = Path("cla.io") / "overlays" / "review-change.md"
+_HINT_PREFIX = "cla.io/overlays/review-change.md:3  stale path 'scripts/common.py'"
+
+
+def _tail_repo(tmp_path: Path, files: list[str], body: str = "Run `scripts/common.py` first.\n") -> Path:
+    """A real repo with a root `scripts/` (so `scripts/…` is a recognized path), the
+    given extra tracked files, and an overlay holding `body` on its third line."""
+    _init_git_repo(tmp_path, tracked_dirs=["cla.io", "scripts"])
+    for rel in files:
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("x", encoding="utf-8")
+    overlay = tmp_path / _OVERLAY
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    overlay.write_text("# overlay\n\n" + body, encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    return tmp_path
+
+
+def _stale_lines(stdout: str) -> list[str]:
+    return [ln for ln in stdout.splitlines() if "  stale path " in ln]
+
+
+# requirement: repo-context / Checking recorded paths
+def test_a_stale_path_that_ends_a_tracked_path_elsewhere_carries_a_hint(tmp_path):
+    repo = _tail_repo(tmp_path, ["invest/scripts/common.py"])
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_STALE, result.stdout + result.stderr
+    (line,) = _stale_lines(result.stdout)
+    assert line.startswith(_HINT_PREFIX)
+    assert "not at the repo root; found at invest/scripts/common.py" in line
+    assert "write it with a placeholder such as {plugin}/scripts/common.py" in line
+
+
+def test_a_stale_path_with_no_tail_match_has_no_hint(tmp_path):
+    repo = _tail_repo(tmp_path, ["invest/scripts/other.py"])
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_STALE, result.stdout + result.stderr
+    assert _stale_lines(result.stdout) == [_HINT_PREFIX]
+
+
+def test_the_hint_never_alters_the_greppable_prefix_or_the_verdict(tmp_path):
+    # Same input with and without a tail match: the same line prefix, the same exit
+    # code, the same stale count. Only text after the prefix may differ.
+    (tmp_path / "with").mkdir()
+    (tmp_path / "without").mkdir()
+    with_tail = _tail_repo(tmp_path / "with", ["invest/scripts/common.py"])
+    without = _tail_repo(tmp_path / "without", [])
+    hinted = _run_cli("--repo-root", str(with_tail))
+    plain = _run_cli("--repo-root", str(without))
+    assert hinted.returncode == plain.returncode == EXIT_STALE
+    assert _stale_lines(hinted.stdout)[0].startswith(_stale_lines(plain.stdout)[0])
+    assert _stale_lines(plain.stdout) == [_HINT_PREFIX]
+    assert "1 stale path(s)" in hinted.stdout and "1 stale path(s)" in plain.stdout
+
+
+def test_a_stale_directory_path_hints_at_the_tracked_directory(tmp_path):
+    # `ls-files` lists files only, so a directory tail is found through its files.
+    repo = _tail_repo(
+        tmp_path, ["invest/scripts/sub/a.py"], body="See `scripts/sub` for the helpers.\n"
+    )
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_STALE, result.stdout + result.stderr
+    (line,) = _stale_lines(result.stdout)
+    assert line.startswith("cla.io/overlays/review-change.md:3  stale path 'scripts/sub'")
+    assert "found at invest/scripts/sub — " in line
+
+
+def test_the_hint_names_at_most_three_matches(tmp_path):
+    repo = _tail_repo(tmp_path, [f"pkg{i}/scripts/common.py" for i in range(5)])
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_STALE, result.stdout + result.stderr
+    (line,) = _stale_lines(result.stdout)
+    assert "found at pkg0/scripts/common.py, pkg1/scripts/common.py, pkg2/scripts/common.py (+2 more)" in line
+    assert "pkg3/" not in line and "pkg4/" not in line
+
+
+def test_without_git_the_line_has_no_hint_and_nothing_fails(monkeypatch, tmp_path, capsys):
+    repo = _tail_repo(tmp_path, ["invest/scripts/common.py"])
+    monkeypatch.setattr(_checker, "_tracked_paths", lambda repo_root: None)
+    assert main(["--repo-root", str(repo)]) == EXIT_STALE
+    assert _stale_lines(capsys.readouterr().out) == [_HINT_PREFIX]
+
+
+@pytest.mark.parametrize(
+    ("candidate", "tracked", "expected"),
+    [
+        ("scripts/common.py", None, []),
+        ("scripts/common.py", {"invest/scripts/common.py"}, ["invest/scripts/common.py"]),
+        # The candidate itself (deleted on disk but still in the index) is no "elsewhere".
+        ("scripts/common.py", {"scripts/common.py"}, []),
+        # A tail must start at a path segment, not mid-name.
+        ("scripts/common.py", {"xscripts/common.py", "a/xscripts/common.py"}, []),
+        ("scripts/sub", {"scripts/sub/a.py", "invest/scripts/sub/a.py", "invest/scripts/sub/b.py"},
+         ["invest/scripts/sub"]),
+        ("scripts/sub/", {"invest/scripts/sub/a.py"}, ["invest/scripts/sub"]),
+    ],
+)
+def test_tail_matches(candidate, tracked, expected):
+    assert _checker._tail_matches(candidate, tracked) == expected
+
+
+def test_a_path_with_a_placeholder_is_never_checked(tmp_path):
+    # What the hint tells the reader to write, and what the docs promise.
+    repo = _tail_repo(
+        tmp_path,
+        ["invest/scripts/common.py"],
+        # The real path keeps the scan from being the zero-candidates failure.
+        # The placeholders sit AFTER the recognized top-level name `scripts`, so only
+        # the placeholder rule (not the unknown-first-segment rule) can skip them.
+        body="Real `scripts/placeholder.txt`; `scripts/{x}/common.py`; `scripts/<x>/common.py`.\n",
+    )
+    result = _run_cli("--repo-root", str(repo))
+    assert result.returncode == EXIT_CLEAN, result.stdout + result.stderr
+    assert _stale_lines(result.stdout) == []
+
+
 def test_cli_exits_two_on_a_bad_argument():
     result = _run_cli("--not-a-real-flag")
     assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
