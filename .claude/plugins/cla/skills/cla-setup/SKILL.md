@@ -43,10 +43,11 @@ If this errors (not inside a git working tree), stop and tell the user to run fr
   seed file in Part 1 (the rules file of item 7a is the one exception, replaced whole), check existence FIRST; if present, skip it untouched (no truncate, no
   overwrite, no re-seed, no merge) and report `exists (skipped)`.
 - **The guard is load-bearing.** A bare `> "$f"` or `cat > "$f"` truncates an existing file and defeats
-  never-clobber. ALWAYS guard with `[ -e "$f" ] ||`. Pinned idioms:
-  - directory → `mkdir -p "$dir"` (idempotent by construction)
-  - 0-byte ledger → `[ -e "$f" ] || : > "$f"`
-  - seed file with content → `[ -e "$f" ] || cat > "$f" <<'EOF'` … `EOF`
+  never-clobber. ALWAYS guard with `if [ -e "$f" ]`. Every pinned idiom echoes its outcome, so the
+  per-target report below needs no second command:
+  - directory → `if [ -e "$dir" ]; then echo "exists (skipped): $dir"; else mkdir -p "$dir"; echo "created: $dir"; fi`
+  - 0-byte ledger → `if [ -e "$f" ]; then echo "exists (skipped): $f"; else : > "$f"; echo "created: $f"; fi`
+  - seed file with content → `if [ -e "$f" ]; then echo "exists (skipped): $f"; else cat > "$f" <<'EOF'` … `EOF`, then `echo "created: $f"; fi`
 - **Create only what is missing.** A partly set-up repo ends fully set up with every pre-existing
   piece byte-for-byte unchanged, the rules file aside: a `.jsonl` with history or a filled
   `notes.md` is ALWAYS skipped, even though the seed content differs.
@@ -66,7 +67,10 @@ All paths relative to `$ROOT`. Items 1 to 4 create what is missing and skip what
 ### 1. `cla.io/` directories
 
 ```bash
-mkdir -p "$ROOT/cla.io/decisions" "$ROOT/cla.io/feedback" "$ROOT/cla.io/retro" "$ROOT/cla.io/lessons-learned"
+for dir in decisions feedback retro lessons-learned; do
+  d="$ROOT/cla.io/$dir"
+  if [ -e "$d" ]; then echo "exists (skipped): $d"; else mkdir -p "$d"; echo "created: $d"; fi
+done
 ```
 
 `cla.io/decisions/` gets no seed file — an empty dir is the correct initial state (it holds ad-hoc
@@ -77,28 +81,33 @@ shaped-decision `.md` files created by `shape-decision`/`multi-spec`).
 ```bash
 # The one ledger lib/log_run.py accepts; /cla:spec-to-pr-retro reads it.
 for f in spec-to-pr-runs; do
-  [ -e "$ROOT/cla.io/retro/$f.jsonl" ] || : > "$ROOT/cla.io/retro/$f.jsonl"
+  p="$ROOT/cla.io/retro/$f.jsonl"
+  if [ -e "$p" ]; then echo "exists (skipped): $p"; else : > "$p"; echo "created: $p"; fi
 done
 ```
 
 ### 3. Feedback inbox — `cla.io/feedback/notes.md`
 
 ```bash
-[ -e "$ROOT/cla.io/feedback/notes.md" ] || cat > "$ROOT/cla.io/feedback/notes.md" <<'EOF'
+f="$ROOT/cla.io/feedback/notes.md"
+if [ -e "$f" ]; then echo "exists (skipped): $f"; else cat > "$f" <<'EOF'
 # App experience notes
 
 <!-- Captured feedback lands here as bullet points. One observation per line. -->
 EOF
+echo "created: $f"; fi
 ```
 
 ### 4. Lessons-learned log — `cla.io/lessons-learned/lessons-learned.md`
 
 ```bash
-[ -e "$ROOT/cla.io/lessons-learned/lessons-learned.md" ] || cat > "$ROOT/cla.io/lessons-learned/lessons-learned.md" <<'EOF'
+f="$ROOT/cla.io/lessons-learned/lessons-learned.md"
+if [ -e "$f" ]; then echo "exists (skipped): $f"; else cat > "$f" <<'EOF'
 # Lessons learned
 
 <!-- Rolling log written by /cla:codify-learnings, which prepends each report. Newest entries at the top. -->
 EOF
+echo "created: $f"; fi
 ```
 
 ### 5. OpenSpec authoring rules — `openspec/config.yaml`
@@ -134,6 +143,10 @@ SEED="${CLAUDE_PLUGIN_ROOT}/skills/cla-setup/scripts/seed_openspec_rules.py"
 [ -f "$SEED" ] || { echo "openspec/config.yaml: NOT checked, seed script not found at $SEED (plugin root unresolved?)"; exit 1; }
 python3 "$SEED" "$ROOT"
 ```
+
+The script reads the `Test proof granularity:` line of `cla.io/project-facts.md` and compares the `tasks`
+rule for that granularity (`requirement` when there is no line). When item 13 records a `scenario`
+choice, re-run the script after the facts file is written, so the `tasks` rule offered matches it.
 
 Each item in the script's `rules:` block that contains `: ` stays double-quoted, or YAML reads it as
 a mapping and OpenSpec drops that artifact's rules.
@@ -378,13 +391,13 @@ Links only: a rule lives in its spec, a value in its config.
 
 ## Capabilities
 
-- **<Capability, one line>.** Delivered by [<workflow name>](#<workflow-heading-anchor>).
+- **<Capability, one line>.** Delivered by <workflow name>.
 
 ## Workflows
 
 ### <Workflow name>
 
-1. <Step>: [<spec name>](<path to openspec/specs/<spec name>/spec.md, relative to this file>)
+1. <Step>: link the spec this step governs, moved from "Specs not yet placed".
 
 ## Specs not yet placed
 
@@ -442,6 +455,9 @@ makes it portable.
    cache, so an edit fails or is discarded by the next update. Record a one-line migration
    recommendation instead: its facts to `cla.io/project-facts.md`, its rules to
    `cla.io/overlays/<skill>.md`.
+4. **Test proof granularity**, when `openspec/` exists and the facts file has no `## Test proof`
+   line: draft `- Test proof granularity: requirement` under a `## Test proof` heading, unless the
+   user chooses `scenario` at item 13.
 
 ### 11. Optionally reconcile `cla.io/terminology.md`
 
@@ -469,6 +485,9 @@ Show the user, in order:
 5. Proposed `project-tokens.local.md` additions, each with its one-line justification.
 6. Any `cla.io/terminology.md` reconciliation from item 11.
 7. The spec map offer from "The spec map scaffold", when it applies, with its own yes and path.
+8. Test proof granularity, when `openspec/` exists and the facts file has no `## Test proof` line:
+   ask once, with `requirement` recommended (the line is item 10's draft 4). Without an answer the
+   checker silently uses `requirement`.
 
 Ask for a yes (`AskUserQuestion` or a plain yes/no) before writing anything; on a request for
 changes, revise and ask again rather than applying part of it. On yes, write each confirmed file
