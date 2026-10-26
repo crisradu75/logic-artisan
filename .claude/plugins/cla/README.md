@@ -234,7 +234,8 @@ to install.
   `cla.io/project-facts.md` or in a `cla.io/overlays/<skill>.md` must still resolve on disk. This is
   the one that guards your `cla.io/` content, and the one worth wiring in. `/cla:cla-setup` runs
   it once after it writes; **beyond that, you own when it runs** — your gate, your pre-commit, or by
-  hand. Nothing in the plugin schedules it.
+  hand. Nothing in the plugin schedules it. A path inside a fenced code block is an example, not a
+  pointer, and is not checked; keep a path that must stay checked in the prose.
 - **`check_no_project_tokens.py` reads a PLUGIN TREE**, and which one depends on how you installed.
   It scans that tree for leaked project tokens and hardcoded developer paths, using your
   `cla.io/project-tokens.local.md` as the vocabulary to scan *with*. `--repo-root` locates that

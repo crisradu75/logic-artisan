@@ -710,6 +710,75 @@ def test_cli_exits_two_when_a_present_facts_file_yields_no_candidates(tmp_path):
     assert "zero path candidates" in result.stderr
 
 
+# --------------------------------------------------------------------------- #
+# Fenced code blocks (issue #415): a path inside one is an example, not a pointer
+# --------------------------------------------------------------------------- #
+
+
+def _stale_in(tmp_path: Path, body: str) -> list[tuple[int, str]]:
+    """(line, path) of every stale path in a facts file holding `body`, in a repo whose top level is `apps`."""
+    (tmp_path / "cla.io").mkdir(exist_ok=True)
+    (tmp_path / "apps" / "real").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "cla.io" / "project-facts.md").write_text(body, encoding="utf-8")
+    return [(lineno, cand) for _rel, lineno, cand in scan(tmp_path)[1]]
+
+
+# requirement: repo-context / Checking recorded paths
+@pytest.mark.parametrize("fence", ["```", "~~~", "````", "```bash", "  ```", "> ```"])
+def test_a_stale_looking_path_inside_a_fenced_block_is_not_reported(tmp_path, fence):
+    closer = fence.replace("bash", "").rstrip()
+    body = f"Before: `apps/gone/before.ts`.\n{fence}\napps/gone/inside.ts\nrun apps/gone/cmd.sh\n{closer}\nAfter: `apps/gone/after.ts`.\n"
+    # the three lines of prose outside the block are checked; the two inside are not
+    assert _stale_in(tmp_path, body) == [(1, "apps/gone/before.ts"), (6, "apps/gone/after.ts")]
+
+
+# requirement: repo-context / Checking recorded paths
+def test_a_path_in_prose_is_still_reported_the_issue_415_case(tmp_path):
+    # The example that issue #415 reported sat in prose, not in a fence. Skipping fenced blocks does not change it.
+    body = "A lane example: verify existing symbols in apps/gone/common.py or apps/gone/lib/.\n"
+    assert _stale_in(tmp_path, body) == [(1, "apps/gone/common.py"), (1, "apps/gone/lib/")]
+
+
+# requirement: repo-context / Checking recorded paths
+def test_only_a_matching_fence_closes_a_block(tmp_path):
+    # a tilde fence is not closed by backticks, nor a four-backtick fence by three, nor any fence by text after the run
+    body = (
+        "~~~\n```\napps/gone/a.ts\n~~~ not a closer\n````\napps/gone/b.ts\n~~~\n"  # lines 1-7: one tilde block
+        "apps/gone/c.ts\n"  # line 8: prose
+        "````\n```\napps/gone/d.ts\n````\n"  # lines 9-12: one four-backtick block
+        "`apps/gone/e.ts`\n"  # line 13: prose
+    )
+    assert _stale_in(tmp_path, body) == [(8, "apps/gone/c.ts"), (13, "apps/gone/e.ts")]
+
+
+# requirement: repo-context / Checking recorded paths
+def test_a_fence_that_is_never_closed_hides_nothing(tmp_path):
+    # CommonMark would hide the rest of the file; a stray fence must not silently switch the guard off
+    body = "`apps/gone/before.ts`\n```\n`apps/gone/inside.ts`\n`apps/gone/last.ts`\n"
+    assert _stale_in(tmp_path, body) == [(1, "apps/gone/before.ts"), (3, "apps/gone/inside.ts"), (4, "apps/gone/last.ts")]
+
+
+# requirement: repo-context / Checking recorded paths
+def test_an_inline_run_of_backticks_is_not_a_fence(tmp_path):
+    body = "```apps/gone/inline.ts``` is a span.\n`apps/gone/after.ts`\n"
+    assert [c for _, c in _stale_in(tmp_path, body)] == ["apps/gone/inline.ts", "apps/gone/after.ts"]
+
+
+# requirement: repo-context / Checking recorded paths
+def test_a_fenced_block_in_one_file_does_not_hide_the_next_file(tmp_path):
+    _stale_in(tmp_path, "```\napps/gone/open.ts\n")  # never closed in the facts file
+    (tmp_path / "cla.io" / "overlays").mkdir()
+    (tmp_path / "cla.io" / "overlays" / "x.md").write_text("`apps/gone/overlay.ts`\n", encoding="utf-8")
+    assert ("cla.io/overlays/x.md", 1, "apps/gone/overlay.ts") in scan(tmp_path)[1]
+
+
+def test_cli_says_when_every_path_sits_in_a_fenced_block(tmp_path):
+    _seed_repo(tmp_path, "```\napps/real\n```\n")
+    result = _run_cli("--repo-root", str(tmp_path))
+    assert result.returncode == EXIT_CANNOT_RUN, result.stdout + result.stderr
+    assert "zero path candidates" in result.stderr and "fenced code block" in result.stderr
+
+
 def test_cli_exits_two_when_overlays_present_but_facts_file_absent_yields_no_candidates(tmp_path):
     # IMPORTANT-2: the zero-candidates blocker used to be gated on
     # `facts_file.is_file()`, so a repo with overlays but NO

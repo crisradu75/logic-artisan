@@ -1562,6 +1562,134 @@ def test_a_scenario_heading_takes_the_new_form_in_scenario_mode(repo, capsys):
     assert code == 0, out
 
 
+# ---- the three-part scenario marker: `scenario: <spec> / <requirement> / <scenario>` ----
+
+
+def _scenario_repo(repo, *reqs: tuple[str, str]) -> None:
+    """A scenario-granularity repo whose live spec holds `reqs` and whose only marker is a `tests/` file the caller writes."""
+    _write(repo, FACTS, "- Test proof granularity: scenario\n")
+    _write(repo, SPEC, _spec_text(*reqs))
+    _write(repo, "tests/test_old.py", "")
+
+
+TWO_REQS = (
+    ("Old rule", "Old SHALL.\n\n" + _scn("Old case")),
+    ("New rule", "New SHALL.\n\n" + _scn("New case")),
+)
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_scenario_marker_proves_its_scenario(repo, capsys):
+    _scenario_repo(repo, *TWO_REQS)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old rule / Old case") + _marker("scenario", "alpha", "New case"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    assert "repo-wide coverage (information only): 2/2" in out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_under_the_wrong_requirement_says_so(repo, capsys):
+    _scenario_repo(repo, *TWO_REQS)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "New rule / Old case") + _marker("scenario", "alpha", "New case"))
+    code, out, _ = run(repo, capsys)
+    dangling = [p for p in _problems(out) if "PROBLEM dangling" in p]
+    assert code == 1 and len(dangling) == 1, out
+    assert "wrong requirement: scenario 'Old case' sits under 'Old rule', not under requirement 'New rule'" in dangling[0]
+    assert "names no scenario" not in dangling[0]
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_with_an_unknown_requirement_says_so(repo, capsys):
+    _scenario_repo(repo, *TWO_REQS)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Gone rule / Old case") + _marker("scenario", "alpha", "New case"))
+    code, out, _ = run(repo, capsys)
+    dangling = [p for p in _problems(out) if "PROBLEM dangling" in p]
+    assert code == 1 and len(dangling) == 1, out
+    assert "unknown requirement: spec 'alpha' has no requirement 'Gone rule'" in dangling[0]
+    assert "names no scenario" not in dangling[0]
+    assert "repo-wide coverage (information only): 1/2" in out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_naming_no_scenario_keeps_the_plain_message(repo, capsys):
+    _scenario_repo(repo, *TWO_REQS)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old rule / No such case") + _marker("scenario", "alpha", "Old case") + _marker("scenario", "alpha", "New case"))
+    code, out, _ = run(repo, capsys)
+    dangling = [p for p in _problems(out) if "PROBLEM dangling" in p]
+    assert code == 1 and len(dangling) == 1, out
+    assert "'scenario: alpha / Old rule / No such case' names no scenario in any live spec or active delta" in dangling[0]
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_names_no_spec_that_does_not_exist(repo, capsys):
+    _scenario_repo(repo, *TWO_REQS)
+    _write(repo, "tests/test_old.py", _marker("scenario", "beta", "Old rule / Old case") + _marker("scenario", "alpha", "Old case") + _marker("scenario", "alpha", "New case"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "'scenario: beta / Old rule / Old case' names no scenario" in out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_slashes_inside_headings_do_not_confuse_either_form(repo, capsys):
+    reqs = (
+        ("Input / output", "SHALL.\n\n" + _scn("Read / write works") + "\n\n" + _scn("Plain")),
+        ("Other", "SHALL.\n\n" + _scn("Third")),
+    )
+    _scenario_repo(repo, *reqs)
+    # two-part with a slash in the scenario heading; three-part with a slash in the requirement and in the scenario
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Read / write works") + _marker("scenario", "alpha", "Input / output / Plain") + _marker("scenario", "alpha", "Other / Third"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Input / output / Read / write works") + _marker("scenario", "alpha", "Input / output / Plain") + _marker("scenario", "alpha", "Third"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+    # a three-part marker whose scenario holds the slash, filed under the wrong requirement, is still named
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Other / Read / write works") + _marker("scenario", "alpha", "Input / output / Plain") + _marker("scenario", "alpha", "Third"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "wrong requirement: scenario 'Read / write works' sits under 'Input / output', not under requirement 'Other'" in out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_two_part_reading_wins_when_both_forms_fit(repo, capsys):
+    # "Other / Third" is a whole scenario heading under "Input", and also "requirement Other, scenario Third".
+    # The two-part reading comes first, so the marker proves the scenario named "Other / Third" and not "Third".
+    _scenario_repo(repo, ("Input", "SHALL.\n\n" + _scn("Other / Third")), ("Other", "SHALL.\n\n" + _scn("Third", then="differently")))
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Other / Third"))
+    code, out, _ = run(repo, capsys)
+    uncovered = [p for p in _problems(out) if "uncovered" in p]
+    assert code == 1 and len(uncovered) == 1, out
+    assert "alpha / Third:" in uncovered[0] and "alpha / Other / Third:" not in uncovered[0], out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_reads_a_scenario_moved_by_an_active_delta(repo, capsys):
+    _scenario_repo(repo, *TWO_REQS)
+    # the delta MODIFIES "New rule" and puts "Old case" under it as well, so both requirements hold that scenario
+    _write(repo, "openspec/changes/c1/specs/alpha/spec.md", _delta_text(modified=[("New rule", "New SHALL.\n\n" + _scn("New case") + "\n\n" + _scn("Old case"))]))
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "New rule / Old case") + _marker("scenario", "alpha", "Old rule / Old case") + _marker("scenario", "alpha", "New case"))
+    code, out, _ = run(repo, capsys)
+    assert not [p for p in _problems(out) if "dangling" in p], out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_requirement_repo_gets_no_three_part_form_for_either_marker(repo, capsys):
+    # requirement granularity (the fixture default): a scenario marker is the wrong kind, in either form
+    _write(repo, "tests/test_old2.py", _marker("scenario", "alpha", "Old rule / Old case"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "'scenario: alpha / Old rule / Old case' is a scenario marker; this repo proves per requirement" in out
+    # and a requirement marker keeps everything after the spec as its heading: no split into parts
+    _write(repo, "tests/test_old2.py", _marker("requirement", "alpha", "Old rule / Old case"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "'requirement: alpha / Old rule / Old case' names no requirement in any live spec or active delta" in out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_scenario_repo_still_calls_a_requirement_marker_the_wrong_kind_in_either_form(repo, capsys):
+    _scenario_repo(repo, *TWO_REQS)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old case") + _marker("scenario", "alpha", "New case") + _marker("requirement", "alpha", "Old rule / Old case"))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and "'requirement: alpha / Old rule / Old case' is a requirement marker; this repo proves per scenario" in out
+
+
 # ---- purpose notes: where the Serves line ends ----
 
 

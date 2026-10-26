@@ -68,6 +68,13 @@ COVERAGE LIMITS (read before trusting this guard blindly):
     package but happens to start with a once-top-level name (``src/index.ts``)
     still is. With no usable history (shallow clone, not a git repo, no commits) only the
     first test applies, and stderr says so.
+  - A path inside a fenced code block (``` or ~~~) is NOT checked: a block holds example
+    paths, commands and config, not pointers. This also drops a LIVE path that sits in a block
+    (a ``"sources": ["cla.io/decisions"]`` JSON block), so a stale one there goes unreported;
+    write a path that must stay checked in the prose. A fence that is never closed hides nothing
+    (see ``_fenced_line_indexes``). It does not help an example path written in prose: that is
+    still checked, and a first segment that is a tracked top-level name is still read as a
+    pointer.
   - The extraction heuristic is deliberately conservative: on any ambiguous token
     it skips rather than flags, because a false staleness failure trains people to
     ignore the guard (see ``design.md`` Decision E of ``cla-context-refresh``).
@@ -560,6 +567,38 @@ def extract_path_candidates(
     return candidates
 
 
+# A line that can open or close a fenced code block: optional indent and block-quote markers, a run of
+# three or more backticks or tildes (group 1), then the rest of the line (group 2: an info string, or
+# nothing on a closing fence).
+_FENCE_LINE_RE = re.compile(r"^[ \t]*(?:>[ \t]*)*(`{3,}|~{3,})(.*)$")
+
+
+def _fenced_line_indexes(lines: list[str]) -> set[int]:
+    """0-based indexes of the lines inside a fenced code block, fence lines included.
+
+    A block opens on a run of 3+ backticks or tildes (a backtick fence's info string may hold no
+    backtick, so an inline ```` ```x``` ```` run is not a fence) and closes on a run of the same
+    character at least as long with nothing after it. A fence that is NEVER closed contributes
+    nothing: CommonMark would hide the rest of the file, but a stray fence must not silently switch
+    the guard off for every later line, so those lines are checked as before."""
+    skipped: set[int] = set()
+    opened_at: int | None = None
+    opener = ""
+    for i, line in enumerate(lines):
+        m = _FENCE_LINE_RE.match(line)
+        if m is None:
+            continue
+        run, rest = m.group(1), m.group(2)
+        if opened_at is None:
+            if run[0] == "`" and "`" in rest:
+                continue
+            opened_at, opener = i, run
+        elif run[0] == opener[0] and len(run) >= len(opener) and not rest.strip():
+            skipped.update(range(opened_at, i + 1))
+            opened_at = None
+    return skipped
+
+
 def _iter_scanned_files(repo_root: Path):
     """Yield ``cla.io/project-facts.md`` (if present) and every per-skill overlay
     under ``cla.io/overlays/`` (globbed generically, not a hardcoded skill list).
@@ -613,7 +652,11 @@ def scan(repo_root: Path, former_names: set[str] | None = None):
         except (OSError, UnicodeDecodeError) as exc:
             unreadable.append((rel, f"{type(exc).__name__}: {exc}"))
             continue
-        for lineno, line in enumerate(text.splitlines(), start=1):
+        lines = text.splitlines()
+        fenced = _fenced_line_indexes(lines)
+        for lineno, line in enumerate(lines, start=1):
+            if lineno - 1 in fenced:
+                continue  # a path in a code block is an example or a command, not a pointer
             for candidate in extract_path_candidates(line, top_level_names, former_names):
                 if _is_machine_local(candidate, tracked):
                     continue
@@ -801,7 +844,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"{_PROG}: {len(scanned_files)} file(s) scanned but zero path "
             "candidates were extracted — the path-extraction heuristic or "
-            "repo-root resolution is broken (the guard would silently check "
+            "repo-root resolution is broken, or every path sits in a fenced code "
+            "block, which is not checked (the guard would silently check "
             "nothing)",
             file=sys.stderr,
         )
