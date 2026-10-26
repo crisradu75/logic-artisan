@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -46,8 +47,16 @@ def _run(cmd: list[str], cwd: Path | None = None, check: bool = False) -> subpro
     JSON, so an uncaught exception yields NO output at all — strictly worse than
     a reported failure."""
     target_cwd = cwd if cwd is not None else REPO_ROOT
+    # Resolve the executable ourselves: on Windows `subprocess` without a shell
+    # does not apply PATHEXT to a bare name, so an npm `.cmd` shim such as
+    # `openspec` would raise FileNotFoundError and be reported as a missing
+    # tool. `shutil.which` does apply PATHEXT. When it finds nothing, keep the
+    # bare name so the FileNotFoundError branch below still records the tool.
+    argv = list(cmd)
+    if argv:
+        argv[0] = shutil.which(argv[0]) or argv[0]
     try:
-        return subprocess.run(cmd, cwd=target_cwd, check=check,
+        return subprocess.run(argv, cwd=target_cwd, check=check,
                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError) as exc:
         # `FileNotFoundError` alone was too narrow: `cwd=` also raises
