@@ -65,11 +65,37 @@ def test_each_dispatch_site_carries_the_rule_names_the_toolkit_agents_and_passes
 
 
 # requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
-def test_the_rule_names_every_state_changing_git_verb_and_forbids_edits() -> None:
+def test_the_rule_names_every_verb_the_spec_forbids_and_forbids_edits() -> None:
+    spec = _flat((_ROOT / "openspec" / "specs" / "review-agents" / "spec.md").read_text(encoding="utf-8"))
     for verb in _VERBS:
         assert f"`git {verb}`" in _RULE, f"the rule does not name git {verb}"
+        assert verb in spec, f"the review-agents spec does not name {verb}"
     assert "edit, write or delete no file" in _RULE
     assert "not `git diff`" in _RULE, "the toolkit code-reviewer defaults to `git diff`; the rule must stop that"
+
+
+# requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
+def test_the_second_pass_dispatches_also_carry_the_model_the_diff_file_and_the_rule() -> None:
+    """Round 1 is not the only dispatch: Revise round N and lite-pr's second pass re-dispatch the
+    reviewers, and a re-dispatch with no rule is a reviewer with Bash and Edit and no brief."""
+    revise = _flat(_SITES["Revise"].read_text(encoding="utf-8"))
+    round_n = revise.split("## Round N (N ≥ 2)", 1)[1]
+    assert "`model:` passed on every dispatch" in round_n and "diff-review rule verbatim" in round_n
+    assert "Save it to a diff file" in round_n
+    lite = _flat(_SITES["lite-pr Review"].read_text(encoding="utf-8"))
+    step4 = lite.split("4. **A second pass only for a high-risk fix.**", 1)[1].split("5. **", 1)[0]
+    assert "`model:` on EVERY dispatch" in step4 and "diff-review rule verbatim" in step4
+    assert "new diff file outside the working tree" in step4
+
+
+# requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
+@pytest.mark.parametrize("name", ["Revise", "lite-pr Review"])
+def test_each_site_gives_the_model_of_each_reviewer(name: str) -> None:
+    """The toolkit files name opus and inherit, so the site must say which model each reviewer gets."""
+    flat = _flat(_SITES[name].read_text(encoding="utf-8"))
+    assert "`silent-failure-hunter` `opus`" in flat
+    assert "`comment-analyzer` `sonnet`" in flat
+    assert "`code-reviewer` `sonnet`" in flat and "`opus`" in flat
 
 
 # requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model

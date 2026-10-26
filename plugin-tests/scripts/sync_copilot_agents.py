@@ -1,6 +1,6 @@
 """Generate the GitHub Copilot CLI copy of each helper agent from its Claude Code agent.
 
-The plugin's five helper agents live once, in `agents/`, as Claude Code agent files. Copilot CLI
+The plugin's two helper agents live once, in `agents/`, as Claude Code agent files. Copilot CLI
 reads a plugin's custom agents from `com.github.copilot/agents/` when the plugin has an Agent
 Plugins 1.0 root manifest, and the docs fix that location, so Copilot cannot be pointed at the
 Claude files. This script writes the second copy, so the instructions are authored once:

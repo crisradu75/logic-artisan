@@ -17,8 +17,8 @@
 
 ## 4. Gate
 
-- [x] 4.1 Run the full suite and `openspec validate --specs --strict` once each on the final commit. Done when both pass and the debris check is clean.
+- [x] 4.1 Run the full suite and `openspec validate --specs --strict` once each on the final commit. Done when both pass and the debris check is clean. measured: 2747 passed, 8 skipped (-n 2 --dist loadfile); validate 12 passed
 
 ## 5. Docs
 
-- [x] 5.1 docs and spec map: README.md, DEVELOPER-GUIDE.md, .claude/plugins/cla/README.md, `openspec/specs/review-agents/spec.md` Purpose (after archive); none affected: `openspec/spec-map.md` (it links the capability, whose name is unchanged), CLAUDE.md (names no reviewer).
+- [x] 5.1 docs and spec map: README.md, DEVELOPER-GUIDE.md, .claude/plugins/cla/README.md, `openspec/specs/review-agents/spec.md` Purpose (after archive); `openspec/spec-map.md` (link text for review-agents); none affected: CLAUDE.md (names no reviewer).

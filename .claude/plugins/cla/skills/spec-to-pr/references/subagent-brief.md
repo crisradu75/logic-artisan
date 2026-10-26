@@ -125,7 +125,7 @@ in its prompt (the diff-review rule; `lite-pr` Review and `revise.md` carry the 
 > Review only the change in the diff file at `<absolute path>`; run no git command (not `git diff`, and never `git checkout`, `git switch`, `git stash`, `git reset`, `git clean`, `git commit` or `git branch`) and edit, write or delete no file. Give `line` as the line number in the changed file after the change (the number after the `+` in the hunk header, counted forward through the hunk), never a line counted inside the diff file.
 
 You save the diff
-(`git diff origin/<pr-base>...<branch> -- <paths>`; `<pr-base>` is the branch the PR targets, as the calling skill defines it; you run this one, so it names the branch, while the read-only block quoted below is run by the reviewer in its own checkout and says `HEAD`) in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), outside the working tree, and name its absolute path in
+(`git diff origin/<pr-base>...<branch> -- <paths>`; `<pr-base>` is the branch the PR targets, as the calling skill defines it; you run this one, so it names the branch, while the read-only block quoted below is run, in its own checkout, by an agent that holds a shell and gets no diff file, and says `HEAD`) in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), outside the working tree, and name its absolute path in
 the brief. Any other agent that reads a diff and is given no diff file gets the read-only way to read it, with `<pr-base>` filled in before sending:
 
 > Read the diff with `git diff origin/<pr-base>...HEAD`, and a committed file with
