@@ -224,8 +224,8 @@ def test_the_copilot_agent_copies_ship_but_only_as_agent_files_in_their_director
     """Without the pattern the Copilot copies matched nothing and `/release`
     refused the release. It must admit `<name>.agent.md` in the one directory and
     nothing shaped like it."""
-    assert cst.is_allowed("com.github.copilot/agents/code-reviewer.agent.md")
-    for stray in ("com.github.copilot/agents/code-reviewer.md",
+    assert cst.is_allowed("com.github.copilot/agents/doc-sweeper.agent.md")
+    for stray in ("com.github.copilot/agents/doc-sweeper.md",
                   "com.github.copilot/agents/a.b.agent.md",
                   "com.github.copilot/agents/sub/x.agent.md",
                   "com.github.copilot/agents/x.agent.md.bak",

@@ -18,8 +18,7 @@ import pytest
 _AGENTS = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "agents"
 _MODELS = ("haiku", "sonnet", "opus")
 _FORBIDDEN_TOOLS = ("Edit", "MultiEdit", "Write", "NotebookEdit", "Bash")
-_REVIEWERS = ("code-reviewer", "silent-failure-hunter", "comment-analyzer")
-_ROUTING = _AGENTS.parent / "skills" / "_shared" / "references" / "model-routing.md"
+_HELPERS = ("doc-sweeper", "fact-gatherer")
 
 
 def _frontmatter(text: str) -> dict[str, str] | None:
@@ -102,62 +101,13 @@ def test_a_broken_agent_file_is_reported(label: str, text: str, expect: str) -> 
     assert any(expect in p for p in problems(text)), f"{label}: {problems(text)}"
 
 
-# requirement: review-agents / The plugin ships its own read-only reviewers
 @pytest.mark.parametrize("path", sorted(_AGENTS.glob("*.md")), ids=lambda p: p.name)
 def test_every_shipped_agent_conforms(path: Path) -> None:
     assert problems(path.read_text(encoding="utf-8")) == [], path.name
 
 
-# requirement: review-agents / The plugin ships its own read-only reviewers
-@pytest.mark.parametrize("name", _REVIEWERS)
-def test_each_reviewer_is_shipped(name: str) -> None:
+@pytest.mark.parametrize("name", _HELPERS)
+def test_each_helper_is_shipped(name: str) -> None:
     path = _AGENTS / f"{name}.md"
     assert path.is_file(), f"{path.name} is not shipped"
     assert (_frontmatter(path.read_text(encoding="utf-8")) or {}).get("name") == name
-
-
-def _sizing_rows() -> list[tuple[str, str]]:
-    """(reviewers cell, model cell) for each row of the review-sizing table, low risk first."""
-    rows = []
-    for line in _ROUTING.read_text(encoding="utf-8").splitlines():
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) == 3 and cells[0].lower().startswith(("low risk", "high risk")):
-            rows.append((cells[1], cells[2].lower()))
-    return rows
-
-
-def test_the_sizing_table_is_read() -> None:
-    assert len(_sizing_rows()) == 3, f"expected 3 review-sizing rows in model-routing.md, got {_sizing_rows()}"
-
-
-# requirement: review-agents / The plugin ships its own read-only reviewers
-@pytest.mark.parametrize("name", _REVIEWERS)
-def test_each_reviewers_model_is_its_lowest_sizing_row(name: str) -> None:
-    """An agent file's `model:` is its default. It must be the model of the lowest-risk row
-    that names it; a higher row raises it per dispatch. Otherwise a reviewer drifting from
-    opus to haiku in its own file would pass every other check."""
-    expected = next((model for cell, model in _sizing_rows() if f"`{name}`" in cell), None)
-    assert expected, f"no row of model-routing.md's review-sizing table names {name}"
-    fields = _frontmatter((_AGENTS / f"{name}.md").read_text(encoding="utf-8")) or {}
-    assert fields.get("model") == expected, (
-        f"{name}.md runs on {fields.get('model')!r}, but its lowest sizing row names {expected!r}"
-    )
-
-
-_COPILOT_AGENTS = _AGENTS.parent / "com.github.copilot" / "agents"
-_LINE_FIELD = (
-    "`line` (the line number in the changed file after the change, which is the number after the "
-    "`+` in the hunk header counted forward through the hunk, never a line counted inside the "
-    "diff file; for a deleted line, give the line number in the old file and say so in the summary)"
-)
-
-
-# requirement: review-agents / The plugin ships its own read-only reviewers
-@pytest.mark.parametrize("path", [p for n in _REVIEWERS for p in (
-    _AGENTS / f"{n}.md", _COPILOT_AGENTS / f"{n}.agent.md")], ids=lambda p: p.name)
-def test_each_reviewer_says_which_line_number_the_line_field_means(path: Path) -> None:
-    """The old wording ("a line of the changed file, as shown in the diff") read two ways: a line
-    counted inside the diff file, or a line of the changed file. All six files, Claude and
-    Copilot, must carry the agreed `line` wording that settles it."""
-    text = " ".join(path.read_text(encoding="utf-8").split())
-    assert _LINE_FIELD in text, f"{path.name} lacks the agreed `line` wording"

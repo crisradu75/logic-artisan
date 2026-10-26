@@ -30,18 +30,26 @@ Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and mode
 
 **Dispatch every row the diff matches** — no budget-based reduction, no degraded mode. The review-sizing table sets the floor: `code-reviewer` for any logic or behaviour code, plus `silent-failure-hunter` on high risk.
 
+**Dispatch names and models.** The three reviewers are `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter` and `pr-review-toolkit:comment-analyzer`. Pass `model:` on EVERY dispatch, never relying on the toolkit file (it names `opus` for `code-reviewer` and `inherit` for the other two): `code-reviewer` `sonnet` at low risk and `opus` at high, `silent-failure-hunter` `opus`, `comment-analyzer` `sonnet`, as "Review sizing by risk" in `model-routing.md` gives.
+
+**Every reviewer prompt carries the diff-review rule, verbatim** (these agents hold Bash and Edit, and the toolkit's `code-reviewer` otherwise reviews `git diff` itself; the prompt is the only safeguard, and the rule's source is `subagent-brief.md` slot 3):
+
+> Review only the change in the diff file at `<absolute path>`; run no git command (not `git diff`, and never `git checkout`, `git switch`, `git stash`, `git reset`, `git clean`, `git commit` or `git branch`) and edit, write or delete no file. Give `line` as the line number in the changed file after the change (the number after the `+` in the hunk header, counted forward through the hunk), never a line counted inside the diff file.
+
 ## Round 1 — Workflow fan-out
 
 Author one inline `Workflow` script that dispatches the selected agents in parallel and returns one merged findings list.
 
-**Write the diff to a file; pass its path, never the text.** The reviewers have no shell, so you run git, not them. Before dispatching, save `git diff origin/<pr-base>...<branch> -- <paths>` (you run this one, so it names the branch; a reviewer's own read-only command says `HEAD`) to one file per reviewer scope, using that row's diff slice (the full diff for the main reviewers). Put each file in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows) — never inside the working tree, where `git status` shows it and a `git add` can sweep it in. In each agent's prompt, name the file's absolute path beside the description of the diff by file + symbol + the focus questions (e.g. "`<module>`'s `<function>` now accepts a new parameter — check the caller passes the page's already-computed value, not a re-derived one"). Save each with `DIFF_FILE=<scratchpad>/review-round-1-<scope>.diff; git diff origin/<pr-base>...<branch> -- <paths> > "$DIFF_FILE"`. Delete every diff file when the round ends. A path is a plain string; raw diff text in the script string breaks its template literal (backticks, `${...}`, unbalanced quotes). Described this way, the `Workflow` handles any diff size, so round 1 uses it regardless of size and falls back only when the call itself fails.
+**Write the diff to a file; pass its path, never the text.** You run git, not the reviewers. Before dispatching, save `git diff origin/<pr-base>...<branch> -- <paths>` (you run this one, so it names the branch; a reviewer's own read-only command says `HEAD`) to one file per reviewer scope, using that row's diff slice (the full diff for the main reviewers). Put each file in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows) — never inside the working tree, where `git status` shows it and a `git add` can sweep it in. In each agent's prompt, name the file's absolute path beside the description of the diff by file + symbol + the focus questions (e.g. "`<module>`'s `<function>` now accepts a new parameter — check the caller passes the page's already-computed value, not a re-derived one"). Save each with `DIFF_FILE=<scratchpad>/review-round-1-<scope>.diff; git diff origin/<pr-base>...<branch> -- <paths> > "$DIFF_FILE"`. Delete every diff file when the round ends. A path is a plain string; raw diff text in the script string breaks its template literal (backticks, `${...}`, unbalanced quotes). Described this way, the `Workflow` handles any diff size, so round 1 uses it regardless of size and falls back only when the call itself fails.
 
 ```js
 // DISPATCHES: [{agent, model, effort, prompt}, ...] built from the table above.
-//   `agent` is the full registered subagent_type, e.g. "cla:code-reviewer",
-//   "cla:silent-failure-hunter", "cla:comment-analyzer", "pr-review-toolkit:pr-test-analyzer",
-//   "pr-review-toolkit:type-design-analyzer", "plugin-dev:skill-reviewer".
-//   Each prompt names its diff file's absolute path (never the diff text).
+//   `agent` is the full registered subagent_type, e.g. "pr-review-toolkit:code-reviewer",
+//   "pr-review-toolkit:silent-failure-hunter", "pr-review-toolkit:comment-analyzer",
+//   "pr-review-toolkit:pr-test-analyzer", "pr-review-toolkit:type-design-analyzer",
+//   "plugin-dev:skill-reviewer". `model` is set on every entry.
+//   Each prompt names its diff file's absolute path (never the diff text) and carries the
+//   diff-review rule above.
 // FINDINGS_SCHEMA: object {findings: [{severity:"Critical"|"Important"|"Suggestion", file, line, summary}]}
 //   — an OBJECT wrapping the array, so each result exposes r.findings below.
 const results = await parallel(DISPATCHES.map(d => () =>
@@ -72,7 +80,7 @@ Each stale doc is an Important finding (`docs: <path> still says <old>`) in this
 
 ## Round N (N ≥ 2)
 
-Dispatch via `Agent`, with the same reviewers and models as round 1, at round 1's final level (never lower), per "Review sizing by risk" in `model-routing.md`. Do not re-judge risk from the smaller fix diff. Scope it to the diff the previous fix commit added. Save it to a diff file (as in round 1: the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), never in the tree), name that file's absolute path in each prompt instead of pasting the diff, and delete it when the round ends:
+Dispatch via `Agent`, with the same reviewers and models as round 1 (the same `pr-review-toolkit:` names, `model:` passed on every dispatch, the diff-review rule verbatim in each prompt), at round 1's final level (never lower), per "Review sizing by risk" in `model-routing.md`. Do not re-judge risk from the smaller fix diff. Scope it to the diff the previous fix commit added. Save it to a diff file (as in round 1: the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows), never in the tree), name that file's absolute path in each prompt instead of pasting the diff, and delete it when the round ends:
 
 ```
 DIFF_FILE=<scratchpad>/review-round-N.diff   # the session scratchpad, as in round 1
@@ -87,7 +95,7 @@ On a resume, if you cannot tell whether the previous round fixed a Critical, or 
 > Does this fix introduce the defect it fixed, somewhere else? Enumerate every other instance of the resource or shape the fix concerns.
 
 - **You name the resource**, concretely: "every call site of `<function>`", "every branch of `<function>` that returns the args tuple", "every place `<key>` is read from config". You hold the finding and the remedy; an agent holds a diff.
-- **You grant repo search.** A sibling instance is outside the diff file, so for this question alone the prompt says: read and grep the repository freely to answer this question, under the read-only discipline in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md` slot 3.
+- **You grant repo search.** A sibling instance is outside the diff file, so for this question alone the prompt says: read and grep the repository freely (with `Read`, `Grep` and `Glob`, still no git command) to answer this question, under the read-only discipline in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md` slot 3.
 - **The enumeration is the deliverable:** every other instance, and per instance whether the defect is present there. An empty enumeration is a stated result — "no other instance exists" — never a skipped step.
 - **The return cites its search:** the command or paths scanned, then the list, then a verdict per instance. Nothing found returns `enumerated: no other instance of <the named resource>; searched: <the command>`. **An enumeration with no search behind it is not an empty result — it is a missing one.**
 

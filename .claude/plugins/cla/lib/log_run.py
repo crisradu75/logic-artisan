@@ -126,8 +126,8 @@ FLAG = _leaf(lambda v: isinstance(v, str) and len(v) > 2 and v.startswith("--")
 SPEC_TO_PR_PHASES = ("Precheck", "Propose", "Review", "Implement", "Test", "Ship",
                      "Revise", "Archive", "Handoff")
 STATUSES = ("ok", "warn", "skip", "fail")
-# The keys of `revise_findings_by_tier`: the bare id for the five reviewers — the three
-# this plugin ships and two from pr-review-toolkit — not the `cla:` or `pr-review-toolkit:`
+# The keys of `revise_findings_by_tier`: the bare id for the five reviewers, all from
+# pr-review-toolkit — not the `pr-review-toolkit:`
 # form passed to `Agent` — and the prefixed one
 # for the skill reviewer, which has no bare form. One spelling per agent, so the
 # retro's per-agent yield never splits one agent across two keys.
