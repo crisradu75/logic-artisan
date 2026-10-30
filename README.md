@@ -1,103 +1,157 @@
-# logic-artisan
+# CLA — Cris Logic Artisan
 
-Canonical home of **CLA — Cris Logic Artisan**, a Claude Code dev-workflow harness packaged as a
-plugin. This repo is the portable source of truth for the harness; individual projects install it
-from the GitHub marketplace and adapt it to their own context, keeping their project-specific facts
-local.
+**A Claude Code plugin that takes a change from idea to a reviewed pull request, with guardrails
+on, and learns from each run.**
 
-CLA holds no product/application code — it is the *process* layer: skills, guard hooks, and helper
-agents that carry a change from idea → spec → isolated implementation → review → opened PR, and
-feed learnings back into the next run.
+CLA holds no product code. It is the *process* layer: skills that run the workflow, guard hooks
+that stop risky commands, and helper agents that do the mechanical checking. You install it into a
+repo; the repo keeps its own facts.
 
-## Install (any repo)
-
-### CLA does not stand alone — install its dependencies first
-
-CLA is orchestration over existing skills, not a replacement for them, and `plugin.json` has no
-field for declaring a dependency: **nothing installs them for you and nothing warns when one is
-missing.** OpenSpec and `pr-review-toolkit` are required outright, `commit-commands` on the
-lightweight path, `plugin-dev` conditionally.
-
-The authoritative list — which skill reaches which, and how hard each dependency is — lives in
-[the plugin's own README](.claude/plugins/cla/README.md#install-these-first--cla-calls-out-to-them-and-cannot-substitute-for-them),
-because that is the file a consuming repo actually receives. Kept in one place on purpose.
-
-### The two commands, scoped to the project
-
-```bash
-claude plugin marketplace add crisradu75/logic-artisan
-claude plugin install cla@cris-logic-artisan --scope project
+```
+/cla:lite-pr Rename the `retry_count` config key to `max_retries`, keeping a fallback for the old name
 ```
 
-Then run `claude plugin list` and check `cla`'s status isn't an error (e.g. "isn't installed") —
-see the Windows note below for a way that can happen silently.
+That one line plans the change, implements it on a branch, keeps docs and tests in step, runs the
+tests, opens the PR, then reviews it and fixes what the review found. It never merges.
 
-> **Windows:** run the install from the same shell your sessions launch with — Git Bash, or a
-> Claude Code session's own Bash tool. PowerShell's `Set-Location` rewrites path casing to the
-> on-disk name, and Claude Code records an install keyed by that exact string; a session launched
-> from a shell using a different casing for the same directory can then find `cla` "enabled in
-> project settings but isn't installed" — a status `claude plugin list` reports as
-> "✘ failed to load" — with none of `cla`'s skills or guard hooks active, and nothing else saying
-> so. If both spellings are genuinely in use, install from each.
+## Why CLA
 
-Then, inside the repo: `/cla:cla-setup` (scaffold `cla.io/` and populate the repo's facts). Pick up later releases with `/plugin marketplace update`. Details:
-[Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo).
+- **Right-sized process.** A small change goes straight to `lite-pr`. A big one goes through an
+  OpenSpec proposal, a pre-build review and `spec-to-pr`. Batches of either run unattended.
+- **Review built in.** Every PR gets an automated review pass, sized by the risk the change
+  declares.
+- **Guardrails always on.** Nine hooks block, ask about or warn on risky tool calls: a force-push,
+  an `rm -rf`, a `git stash` mid-merge, a file rewritten shorter.
+- **Portable procedure, local facts.** The plugin carries only steps that work in any repo. Each
+  repo's commands, paths and ports live in its own `cla.io/project-facts.md`.
+- **It learns.** `codify-learnings` turns a session's failures into fixes, and `spec-to-pr-retro`
+  tunes the orchestrator from its run ledger.
 
-### GitHub Copilot CLI (experimental, untested in a live Copilot CLI)
+## The workflow at a glance
 
-**Copilot CLI only**: nothing here targets the Copilot app or the cloud agent. These two lines are written from GitHub's documentation and **have never been run: the
-install is untested in a live Copilot CLI** (it is not installed on the maintainer's machine), so
-expect it to need fixes.
+```
+idea ─► feedback / shape-decision ─┬─► lite-pr ─────────────────────────────► PR   small change
+                                   └─► multi-spec ─► review-change ─► spec-to-pr ─► PR   spec-scale
+        batches: multi-lite (small) · multi-pr (spec-scale)
+        after a session: codify-learnings · periodically: spec-to-pr-retro
+```
+
+Every skill runs as `/cla:<name>`. The [developer guide](DEVELOPER-GUIDE.md) walks the ladder one
+step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--which-skill) maps
+"I want to…" to a skill.
+
+## Quick start (Claude Code)
+
+1. **Install CLA's dependencies.** CLA orchestrates other plugins and cannot declare them, so
+   nothing installs them and nothing warns when one is missing. OpenSpec and `pr-review-toolkit`
+   are required; `commit-commands` and `plugin-dev` are needed by some paths. The list, with which
+   skill needs which, is in
+   [the plugin README](.claude/plugins/cla/README.md#install-these-first--cla-calls-out-to-them-and-cannot-substitute-for-them).
+2. **Install CLA into the repo:**
+
+   ```bash
+   claude plugin marketplace add crisradu75/logic-artisan
+   ```
+
+   ```bash
+   claude plugin install cla@cris-logic-artisan --scope project
+   ```
+
+   Then run `claude plugin list` and check that `cla` shows no error.
+3. **Set the repo up:** run `/cla:cla-setup` in a session. It creates `cla.io/` and fills in the
+   repo's facts.
+4. **Install the push guard**, once per clone. A plugin cannot write to `.git/hooks`. The command is
+   in [Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo).
+
+<details>
+<summary><b>Windows:</b> install from the shell your sessions launch with</summary>
+
+Use Git Bash, or a Claude Code session's own Bash tool. PowerShell's `Set-Location` rewrites path
+casing to the on-disk name, and Claude Code keys an install by that exact string. A session started
+from a shell with different casing for the same directory then finds `cla` "enabled in project
+settings but isn't installed" (`claude plugin list` shows "✘ failed to load"), with no skills or
+guard hooks active and nothing else saying so. If both spellings are in use, install from each.
+
+</details>
+
+**Updating:** `claude plugin marketplace update cris-logic-artisan`, then
+`claude plugin update cla@cris-logic-artisan`, then restart the session. An update never touches
+`cla.io/`, which lives in the repo, not in the plugin.
+
+## GitHub Copilot CLI (experimental)
+
+**Copilot CLI only**: nothing here targets the Copilot app or the cloud agent. These two lines come
+from GitHub's documentation and **have never been run: the install is untested in a live Copilot
+CLI**, so expect it to need fixes.
 
 ```bash
 copilot plugin marketplace add crisradu75/logic-artisan
 copilot plugin install cla@cris-logic-artisan
 ```
 
-What to expect, from GitHub's docs and not from a run: Copilot reads
-`.github/plugin/marketplace.json` and the Agent Plugins 1.0
-`plugin.json` at the plugin root, which takes precedence over `.claude-plugin/plugin.json`. **The
-catalog always pins the current release tag; the root manifest first shipped in `cla--v2.1.1`**, so every pin
-since then fetches it, and Copilot treats CLA as a 1.0 plugin, not a legacy one. A 1.0 plugin offers Copilot its `skills/` directory and an `mcp.json`; agents and hooks
-load only from a `com.github.copilot/` directory. CLA ships its two helper agents there
-(`com.github.copilot/agents/`), generated from the Claude Code agents in `agents/` with the same
-instructions, read-only `read` and `search` tools and a Copilot model ID, and also untested in a live
-Copilot CLI. **CLA's guard hooks do not run in Copilot**: they ship Claude-only, and stay so until someone installs Copilot CLI and checks how they behave (decided 2026-10-16), because GitHub's hooks reference says a Copilot `preToolUse` timeout always lets the command through (read from the docs, untested in a live Copilot CLI). Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`)
-is not ported, and whether skills answer to `/cla:<name>` in Copilot is unknown. Porting them is
-tracked under issue #302. The Claude Code install above is unchanged by any of this.
+What to expect, per GitHub's docs and not from a run:
 
-## Developing the harness (this repo only)
+- Copilot reads `.github/plugin/marketplace.json` and the Agent Plugins 1.0 `plugin.json` at the
+  plugin root, which takes precedence over `.claude-plugin/plugin.json`. The catalog pins the
+  current release tag, and every tag since `cla--v2.1.1` carries that manifest, so Copilot should
+  treat CLA as a 1.0 plugin.
+- A 1.0 plugin offers Copilot its `skills/` directory. Agents load only from
+  `com.github.copilot/agents/`, where CLA ships its two helper agents, generated from the Claude
+  Code ones; they are also untested in a live Copilot CLI.
+- **CLA's guard hooks do not run in Copilot.** They stay Claude-only until someone checks them in a
+  live Copilot CLI (decided 2026-10-16), because GitHub's hooks reference says a Copilot
+  `preToolUse` timeout lets the command through.
+- Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is
+  not ported, and whether skills answer to `/cla:<name>` is unknown. Tracked in issue #302.
 
-Do NOT use the marketplace install here. The launchers at the repo root load the plugin live from
-the working tree, so you run the harness you are editing rather than a cached snapshot:
+The Claude Code install above is unchanged by any of this.
+
+## Documentation
+
+| Read | When you want |
+|---|---|
+| [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md) | To learn CLA step by step: first session, first PR, the full ladder, worktrees, guardrails, adopting it in a repo |
+| [The plugin README](.claude/plugins/cla/README.md) | Every skill by life-cycle phase, the guardrails, and the dependency list (the file an installing repo receives) |
+| [CLAUDE.md](CLAUDE.md) | The rules for working in this repo (Claude Code reads it too) |
+
+## Working on CLA itself
+
+Here you run the plugin from the working tree, not from the marketplace, so a session uses the
+code you are editing:
 
 ```bash
 ./cla           # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
 ```
 
-Use `cla.cmd` on native Windows; both resolve their own path, so any cwd works. For isolated work,
-run `/cla:new-worktree` at any point — no penalty for deciding mid-session. **Note:**
-`--permission-mode auto` bypasses per-action confirmation prompts; the guard hooks are the safety
-layer. Without a launcher (or a manual `claude --plugin-dir`), the skills and hooks are inert files
-on disk — no `/cla:*` commands, no guards.
+Use `cla.cmd` on native Windows. `--permission-mode auto` skips confirmation prompts, so the guard
+hooks are the safety layer. Without the launcher the skills and hooks are inert files: no
+`/cla:*` commands, no guards. Run `/cla:new-worktree` whenever work needs its own copy of the repo.
 
-## Documentation
+**The gate.** There is no CI, by design. These two commands, run locally, are the whole check
+before a merge:
 
-- **[DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md)** — progressive introduction: first
-  session, first PR, the full workflow ladder, worktrees, guardrails, the learning loops.
-- **[.claude/plugins/cla/README.md](.claude/plugins/cla/README.md)** — the harness's full scope,
-  capabilities, and life-cycle map, skill by skill.
-- **[CLAUDE.md](CLAUDE.md)** — working-in-this-repo instructions (also read by Claude Code itself).
+```bash
+pytest plugin-tests -q -n auto --dist loadfile
+```
 
-## What's here
+```bash
+openspec validate --specs --strict
+```
 
-The plugin lives at **`.claude/plugins/cla/`** — exactly the directory the marketplace catalog
-publishes as the plugin's source path:
+`-n auto --dist loadfile` needs `pytest-xdist`; without it, drop both flags. Plain `-n auto` is a
+trap; CLAUDE.md, "The parallel gate", says why. Run one area with
+`pytest plugin-tests/tests/<area>`: `conformance`, `consistency`, `launcher`, `hooks`, `lib` or
+`skills/<name>`.
+
+**What ships.** Only `.claude/plugins/cla/` is published. The tests live outside it, in
+`plugin-tests/`, because an installing repo receives the whole plugin directory and can use only
+what is in it.
 
 ```
 cla (+ .cmd twin)              session launcher for THIS repo (loads the plugin from the tree)
-.claude-plugin/                marketplace.json — how every other repo installs CLA
-cla.io/                        this repo's own per-repo state (decisions, feedback, retro ledgers)
+.claude-plugin/                marketplace.json — the Claude Code catalog
+.github/plugin/                marketplace.json — the GitHub Copilot CLI catalog
+cla.io/                        this repo's own per-repo state (facts, decisions, feedback, retro ledgers)
 openspec/                      OpenSpec config + specs for this repo's own changes
 plugin-tests/                  the plugin's tests — one pytest scope, NOT published
 .claude/skills/release/        repo-local skill invoked as /release — NOT published
@@ -112,36 +166,13 @@ plugin-tests/                  the plugin's tests — one pytest scope, NOT publ
   output-styles/               the project's writing convention (force-for-plugin: true)
 ```
 
-## Canonical vs. per-repo
+**Facts stay out of the plugin.** This repo's own `cla.io/` is its own, like any installing repo's,
+and never ships. `skills/_shared/scripts/check_no_project_tokens.py` fails if a project-specific
+word or a developer's absolute path leaks into the plugin. It is a program, not a test, so an
+installing repo can run it too.
 
-The plugin carries **portable procedure only**. This repo's own `cla.io/` facts and overlays are
-its own, like any consumer's: they live in the repo, outside the plugin directory, and never ship.
-Overlays are optional, and nothing seeds one. Per-repo state (`cla.io/` decisions, feedback, retro
-logs) is never part of the distributed core. A conformance guard
-(`skills/_shared/scripts/check_no_project_tokens.py`) fails if a project-specific token or a
-hardcoded developer path leaks into the synced core. It is a program rather than a test, so it
-also runs in a consuming repo, which has no pytest gate over its plugin cache.
-
-## Testing
-
-There is **no CI, by design** — the two local commands below are the whole verification story
-and the only gate before a merge:
-
-```bash
-pytest plugin-tests -q -n auto --dist loadfile             # the whole suite
-openspec validate --specs --strict                         # the live specs
-```
-
-`-n auto --dist loadfile` needs `pytest-xdist` (`pip install pytest-xdist`); without it, drop both
-flags. Measured 2026-10-09 on `e445a77`, a 4-core Linux machine, Python 3.13:
-`python3 -m pytest plugin-tests -q` took 70.3s and
-`python3 -m pytest plugin-tests -q -n auto --dist loadfile` 24.1s, each 1820 passed, 12 skipped.
-`--dist loadfile` is not tuning — see CLAUDE.md, "The parallel gate", for why plain `-n auto` is the trap and what makes a parallel run trustworthy.
-
-The plugin's tests deliberately live outside the plugin: `.claude/plugins/cla/` is published whole
-to consuming repos and carries only assets a consumer can use. Run part of the suite with
-`pytest plugin-tests/tests/<area>` — the areas are `conformance`, `consistency`, `launcher`,
-`hooks`, `lib`, and `skills/<name>`.
+The full contributor reference (layout, every script and why it exists, adding a skill) is
+[DEVELOPER-GUIDE §11](DEVELOPER-GUIDE.md#11-working-on-cla-itself-this-repo).
 
 ---
 
