@@ -29,7 +29,7 @@ CLA is a *process* layer, not product code. It has three kinds of pieces:
   open and merge PRs unattended; the rest are run deliberately and kept out of the always-loaded
   listing) — can also start when you describe the task in plain words.
 - **Guard hooks** are always-on guardrails, wired when the plugin loads. They block, ask about or
-  warn on risky tool calls: a force-push, an `rm -rf`, a `cd` that would persist across calls. You
+  warn on risky tool calls: a force-push, an `rm -rf` through a symlink, a `cd` that would persist across calls. You
   never invoke them.
 - **Helper agents** (`doc-sweeper`, `fact-gatherer`) do the mechanical grep-and-verify work that
   the ship and review skills hand off. You rarely call them. The PR reviewers (`code-reviewer`,
@@ -266,12 +266,12 @@ Write: **9 leaf hooks**, in three severities.
 | Severity | Hook | Fires on |
 |---|---|---|
 | **Block**: the call does not run | `block-cd-in-bash` | a `cd`, which persists across calls (the working directory is already the repo root; use absolute paths) |
-| | `block-unsafe-recursive-delete` | `rm -rf` and its PowerShell equivalents |
+| | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a Write or Edit outside the current worktree (section 7) |
 | **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, and a saving `git stash` during a merge, cherry-pick or revert |
 | **Warn**: a caution, and the call runs | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
-| | `warn-stacked-pr-merge` | a merge into a branch that open child PRs are based on (states the retarget-or-close rules and the squash hazard) |
-| | `warn-stray-scratch-artifact` | scratch files left in the repo root |
+| | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
+| | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
 | | `warn-heredoc-escape-mangling` | a heredoc body whose backslash escape the shell layers eat (`\n` arrives as a real newline) |
 | | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one (it asks you to name what you dropped) |
 
@@ -280,8 +280,9 @@ turns off the usual confirmations, so this hook is what brings one back. Section
 `ALLOW_PR_MERGE` hatch.
 
 **Direct pushes to `main` are stopped by a git hook, not by these.** `hooks/git/pre-push` sees the
-refspec git has already resolved, so no spelling of the command gets past it, and it covers pushes
-from a terminal or an IDE too. A plugin cannot write to `.git/hooks`, so install it once per clone:
+refspec git has already resolved, so no way of naming the target branch gets past it, and it covers
+pushes from a terminal or an IDE too. Two things skip it: git's own `--no-verify` flag, and the
+`ALLOW_PUSH_TO_MAIN=1` override the hook keeps for a genuine emergency. A plugin cannot write to `.git/hooks`, so install it once per clone:
 
 ```bash
 cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
@@ -367,13 +368,13 @@ CLA installs *into* a repo, scoped to that project, not globally. In the repo th
 3. **Run `/cla:cla-setup`.** It creates whatever is missing of `cla.io/` (never overwriting what is
    there), seeds the OpenSpec authoring rules, and writes `.claude/rules/cla-economy.md`, the
    economy rules file the plugin owns and replaces whole on every run, so an agent outside any
-   skill still reads the cost rules. Then it fills `cla.io/project-facts.md` from the repo's own
-   manifests: workspace members, install/dev/build/test commands, ports, the affected-file map,
+   skill still reads the cost rules. Then it proposes `cla.io/project-facts.md` from the repo's own
+   manifests, and writes it on your yes: workspace members, install/dev/build/test commands, ports, the affected-file map,
    test locations, env files. In a repo with `openspec/` it asks whether tests prove each
    requirement or each scenario, and offers a spec-map scaffold. It also lists retired ledgers and
    offers to delete them, and adds a `.gitignore` line so `multi-lite` and `multi-pr` run notes stay
-   out of git. It is safe to re-run: apart from that line and the rules file, it changes an
-   existing file only on your yes. Re-run it whenever a skill reports missing or stale facts.
+   out of git. It is safe to re-run: apart from that line and the rules file, it writes facts and
+   changes an existing file only on your yes. Re-run it whenever a skill reports missing or stale facts.
 
 4. **Install the push guard**, once per clone (section 8):
 

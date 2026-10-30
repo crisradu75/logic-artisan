@@ -2,9 +2,9 @@
 
 Notable changes to the CLA plugin, by release tag. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
-[semantic versioning](https://semver.org/) as `CLAUDE.md` defines it for this plugin. Each entry
-links the pull request that made it. Releases before 2.0.0 are in the git tags and in
-[docs/history.md](docs/history.md).
+[semantic versioning](https://semver.org/) as `CLAUDE.md` defines it for this plugin. Entries link
+the pull request that made them. Releases before 2.0.0 are in the git tags;
+[docs/history.md](docs/history.md) tells the background.
 
 ## [Unreleased]
 
@@ -125,7 +125,8 @@ links the pull request that made it. Releases before 2.0.0 are in the git tags a
 
 ## [2.0.0] — 2026-10-09
 
-A simplification release: fewer skills, ledgers and checks, each kept one with a reader.
+A simplification release: fewer skills, ledgers and checks, and every one that stayed has a reader.
+Unless noted, every change below came in #315.
 
 ### Breaking
 
@@ -140,13 +141,13 @@ A simplification release: fewer skills, ledgers and checks, each kept one with a
 ### Changed
 
 - The live specs are split into six capabilities and rewritten at outcome level, with authoring
-  rules that keep new specs short and plain (#293, #308–#314).
+  rules that keep new specs short and plain (#308–#314, from issue #293).
 - Run records are validated when written, with a script to migrate old-shape records.
 - Revise's second round runs after every fix commit, with a narrower comment-analyzer.
 - spec-to-pr-retro is slimmed, and Handoff prints a one-line nudge when recent runs keep hitting a
   cap.
 - The always-loaded context shrinks: shorter descriptions, output style and `CLAUDE.md`, measured
-  with the new `measure_load.py` (#296–#307).
+  with the new `measure_load.py` (#301, #303–#307).
 - `CLAUDE.md` holds rules only; reference and history move to the developer guide.
 - OpenSpec upgraded to 1.14.0, then 1.14.1 (#285, #292).
 

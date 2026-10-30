@@ -898,7 +898,7 @@ def test_an_empty_inline_beside_a_block_is_not_promoted():
     assert not [w for w in warnings if "cannot be annotated" in w]
 
 
-@pytest.mark.skipif(not has_briefing(), reason="peer-repo document not present")
+@pytest.mark.skipif(not has_briefing(), reason="the designed sample document is not present")
 def test_the_real_document_has_nothing_unannotatable():
     """Before this fix it had 21 such passages, silently. The count is the point:
     a warning that can never fire is not evidence."""

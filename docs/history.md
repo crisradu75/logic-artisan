@@ -10,8 +10,8 @@ consuming repo has no catalog of its own to bump); this section is only the *why
 **How the catalog publishes.** `.claude-plugin/marketplace.json` at the repo root publishes one
 plugin, `cla`, from `.claude/plugins/cla/` (`git-subdir` source, `url` + `path`, schema verified
 against the live docs). It pins an **exact release tag**, not a moving major tag, which is why a
-release is a deliberate five-file edit and why consumers pick a new release up only on
-`/plugin marketplace update`. Consumers add the marketplace from the repo:
+release is a deliberate five-file edit and why consumers pick a new release up only when they
+refresh the catalog and update (`claude plugin marketplace update`, then `claude plugin update`). Consumers add the marketplace from the repo:
 
 ```bash
 claude plugin marketplace add crisradu75/logic-artisan

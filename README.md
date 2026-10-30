@@ -26,7 +26,7 @@ that was not run to completion.
 - **Review built in.** Every PR gets an automated review pass, sized by the risk the change
   declares.
 - **Guardrails always on.** Nine hooks block, ask about or warn on risky tool calls: a force-push,
-  an `rm -rf`, a `git stash` mid-merge, a file rewritten shorter.
+  an `rm -rf` through a symlink, a `git stash` mid-merge, a file rewritten shorter.
 - **Portable procedure, local facts.** The plugin carries only steps that work in any repo. Each
   repo's commands, paths and ports live in its own `cla.io/project-facts.md`.
 - **It learns.** `codify-learnings` turns a session's failures into fixes, and `spec-to-pr-retro`
@@ -50,14 +50,17 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 **19 skills · 9 guard hooks · 2,758 tests · 56 mutation batches · 12 live OpenSpec specs ·
 stdlib-only shipped Python**
 
-Each decision below was made on a measurement or a recorded incident, kept in
-[docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/history.md):
+Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
+in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/history.md):
 
 - **A git hook, not a parser, guards `main`.** A Claude Code hook would have to parse each push
   command, and every spelling it missed was a hole. The `pre-push` hook reads the refspec git has
-  already resolved, so no spelling gets past it.
+  already resolved, so no way of naming the target branch gets past it; only `--no-verify` or the
+  documented `ALLOW_PUSH_TO_MAIN=1` emergency override skips it
+  ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)).
 - **An allowlist decides what ships.** The obvious denylist was measured to miss 7 of 72 dev-only
-  files, including the release skill itself. A 16-pattern allowlist is checked before every tag.
+  files, including the release skill itself. A 16-pattern allowlist is checked before every tag
+  ([the script](.claude/skills/release/scripts/check_shipped_tree.py) records the measurement).
 - **A flaky parallel run was investigated, not retried.** Plain `pytest -n auto` failed 3 tests
   once and passed on the next run. The suspect shared state, a cache the tests wrote in the
   developer's own home directory, was found and removed; the write-up says plainly that the cause
@@ -109,8 +112,8 @@ quoting them.
    ```
 
    Then run `claude plugin list` and check that `cla` shows no error.
-3. **Set the repo up:** run `/cla:cla-setup` in a session. It creates `cla.io/` and fills in the
-   repo's facts.
+3. **Set the repo up:** run `/cla:cla-setup` in a session. It creates `cla.io/`, then proposes the
+   repo's facts from its own manifests and writes them on your yes.
 4. **Install the push guard**, once per clone. A plugin cannot write to `.git/hooks`. The command is
    in [Adopting CLA in another repo](DEVELOPER-GUIDE.md#10-adopting-cla-in-another-repo).
 
@@ -177,7 +180,8 @@ code you are editing:
 ./cla           # claude --plugin-dir <repo>/.claude/plugins/cla --permission-mode auto --model sonnet --effort medium
 ```
 
-Use `cla.cmd` on native Windows. `--permission-mode auto` skips confirmation prompts, so the guard
+Use `cla.cmd` on native Windows; both resolve their own path, so any working directory works.
+`--permission-mode auto` skips confirmation prompts, so the guard
 hooks are the safety layer. Without the launcher the skills and hooks are inert files: no
 `/cla:*` commands, no guards. Run `/cla:new-worktree` whenever work needs its own copy of the repo.
 
@@ -192,7 +196,8 @@ pytest plugin-tests -q -n auto --dist loadfile
 openspec validate --specs --strict
 ```
 
-`-n auto --dist loadfile` needs `pytest-xdist`; without it, drop both flags. Plain `-n auto` is a
+`-n auto --dist loadfile` needs `pytest-xdist` (`pip install pytest-xdist`); without it, drop both
+flags. Plain `-n auto` is a
 trap; CLAUDE.md, "The parallel gate", says why. Run one area with
 `pytest plugin-tests/tests/<area>`: `conformance`, `consistency`, `launcher`, `hooks`, `lib` or
 `skills/<name>`.

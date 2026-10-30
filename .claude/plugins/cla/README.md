@@ -101,18 +101,20 @@ hooks, active in every phase.
 | Severity | Hook | Fires on |
 |---|---|---|
 | **Block**: the call does not run | `block-cd-in-bash` | a `cd`, which persists and breaks later calls (the working directory is already the repo root) |
-| | `block-unsafe-recursive-delete` | `rm -rf` and its PowerShell equivalents |
+| | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a write that escapes the worktree boundary |
 | **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD` |
-| **Warn**: a caution, and the call runs | `warn-stacked-pr-merge` | a merge into a branch that open child PRs are based on (states the retarget-or-close rules and the squash hazard) |
+| **Warn**: a caution, and the call runs | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
 | | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
-| | `warn-stray-scratch-artifact` | scratch files left in the repo root |
+| | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
 | | `warn-heredoc-escape-mangling` | a heredoc body whose backslash escape the shell layers eat |
 | | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one |
 
 **Direct pushes to `main` are NOT guarded by any of these.** That protection is a git `pre-push`
-hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no command spelling
-can evade it — but a plugin cannot write to `.git/hooks`, so **every clone installs it once**:
+hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no way of naming the
+target branch evades it (only git's `--no-verify` flag, or the hook's `ALLOW_PUSH_TO_MAIN=1`
+emergency override, skips it). A plugin cannot write to `.git/hooks`, so **every clone installs it
+once**:
 
 ```bash
 cp "<plugin>/hooks/git/pre-push" .git/hooks/pre-push && chmod +x .git/hooks/pre-push

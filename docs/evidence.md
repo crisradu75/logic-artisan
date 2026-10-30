@@ -1,6 +1,6 @@
 # Evidence behind CLAUDE.md's rules
 
-Part of the [CLA developer guide](../DEVELOPER-GUIDE.md), section 12. `CLAUDE.md` states each rule once; this file keeps the measurement, incident or decision behind it.
+Part of the [CLA developer guide](../DEVELOPER-GUIDE.md), section 12.
 
 `CLAUDE.md` states each rule once, in its compressed form, and points here from its first
 paragraph for the measurement, incident or decision that produced it. Kept verbatim so the evidence
