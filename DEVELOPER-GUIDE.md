@@ -39,7 +39,7 @@ CLA is a *process* layer, not product code. It has three kinds of pieces:
 
 One split shapes everything: **procedure is portable, facts are per-repo.**
 
-- **Procedure** lives in the plugin (`skills/`, `agents/`, `hooks/`, `output-styles/`) and is the
+- **Procedure** lives in the plugin (`skills/`, `agents/`, `hooks/`, `output-styles/`, `lib/`) and is the
   same in every repo that uses CLA.
 - **Facts** live in the repo. `cla.io/project-facts.md` is the one home for every command, path,
   port, install step and env file a skill reads. The rest of the repo-root `cla.io/` tree holds
@@ -268,7 +268,7 @@ Write: **9 leaf hooks**, in three severities.
 | **Block**: the call does not run | `block-cd-in-bash` | a `cd`, which persists across calls (the working directory is already the repo root; use absolute paths) |
 | | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a Write or Edit outside the current worktree (section 7) |
-| **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, and a saving `git stash` during a merge, cherry-pick or revert |
+| **Ask**: a permission prompt, since the action may be fine | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete, PR merges, a `checkout`/`switch`/`restore`/`clean` that would discard uncommitted work, and a saving `git stash` during a merge, cherry-pick or revert; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
 | **Warn**: a caution, and the call runs | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
 | | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
@@ -282,7 +282,9 @@ turns off the usual confirmations, so this hook is what brings one back. Section
 **Direct pushes to `main` are stopped by a git hook, not by these.** `hooks/git/pre-push` sees the
 refspec git has already resolved, so no way of naming the target branch gets past it, and it covers
 pushes from a terminal or an IDE too. Two things skip it: git's own `--no-verify` flag, and the
-`ALLOW_PUSH_TO_MAIN=1` override the hook keeps for a genuine emergency. A plugin cannot write to `.git/hooks`, so install it once per clone:
+`ALLOW_PUSH_TO_MAIN=1` override the hook keeps for a genuine emergency. From a session,
+`ask-destructive-git` asks before either. It refuses the remote's own default branch as well as
+`main` and `master`. A plugin cannot write to `.git/hooks`, so install it once per clone:
 
 ```bash
 cp .claude/plugins/cla/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
@@ -376,7 +378,9 @@ CLA installs *into* a repo, scoped to that project, not globally. In the repo th
    out of git. It is safe to re-run: apart from that line and the rules file, it writes facts and
    changes an existing file only on your yes. Re-run it whenever a skill reports missing or stale facts.
 
-4. **Install the push guard**, once per clone (section 8):
+4. **Install the push guard**, once per clone (section 8). Here and below, `<plugin>` is the
+   installed plugin's directory, a version-keyed copy under `~/.claude/plugins/cache/`;
+   `find ~/.claude/plugins/cache -path '*hooks/git/pre-push'` prints the hook's path in each installed version.
 
    ```bash
    cp <plugin>/hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push

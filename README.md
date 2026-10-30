@@ -56,7 +56,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
 - **A git hook, not a parser, guards `main`.** A Claude Code hook would have to parse each push
   command, and every spelling it missed was a hole. The `pre-push` hook reads the refspec git has
   already resolved, so no way of naming the target branch gets past it; only `--no-verify` or the
-  documented `ALLOW_PUSH_TO_MAIN=1` emergency override skips it
+  documented `ALLOW_PUSH_TO_MAIN=1` emergency override skips it, and a session is asked first
   ([DEVELOPER-GUIDE §8](DEVELOPER-GUIDE.md#8-the-guardrails-youll-meet)).
 - **An allowlist decides what ships.** The obvious denylist was measured to miss 7 of 72 dev-only
   files, including the release skill itself. A 16-pattern allowlist is checked before every tag
@@ -96,6 +96,9 @@ quoting them.
 
 ## Quick start (Claude Code)
 
+0. **Prerequisites:** Claude Code, `git`, Python 3.8 or later on `PATH`, and the GitHub CLI
+   `gh`, signed in (`gh auth status`). On Windows, Git Bash. Every guard hook runs on that
+   Python: without it each hook prints "guard hooks are NOT running" and lets the call through.
 1. **Install CLA's dependencies.** CLA orchestrates other plugins and cannot declare them, so
    nothing installs them and nothing warns when one is missing. OpenSpec and `pr-review-toolkit`
    are required; `commit-commands` and `plugin-dev` are needed by some paths. The list, with which
@@ -235,4 +238,5 @@ The full contributor reference (layout, every script and why it exists, adding a
 
 ---
 
-MIT licensed — see [LICENSE](LICENSE).
+MIT licensed — see [LICENSE](LICENSE). The plugin manifests say so from release 2.2.2;
+`cla--v2.2.1` and earlier still read `UNLICENSED`.

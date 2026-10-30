@@ -103,7 +103,7 @@ hooks, active in every phase.
 | **Block**: the call does not run | `block-cd-in-bash` | a `cd`, which persists and breaks later calls (the working directory is already the repo root) |
 | | `block-unsafe-recursive-delete` | a recursive, forced delete (`rm -rf`, `Remove-Item -Recurse -Force`) whose target is itself a symlink or junction, which would delete the real files behind it |
 | | `block-worktree-path-escape` | a write that escapes the worktree boundary |
-| **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD` |
+| **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD`; a push that skips the `pre-push` guard (`--no-verify`, `core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) |
 | **Warn**: a caution, and the call runs | `warn-stacked-pr-merge` | `gh pr merge --delete-branch` on a PR whose branch open child PRs are based on (states the retarget-first rule and the squash hazard) |
 | | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
 | | `warn-stray-scratch-artifact` | a `git add` or `git commit` while an untracked root file named like a mangled temp path (`AppData`, `LocalTemp`, `scratchpad`) is present |
@@ -113,8 +113,10 @@ hooks, active in every phase.
 **Direct pushes to `main` are NOT guarded by any of these.** That protection is a git `pre-push`
 hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no way of naming the
 target branch evades it (only git's `--no-verify` flag, or the hook's `ALLOW_PUSH_TO_MAIN=1`
-emergency override, skips it). A plugin cannot write to `.git/hooks`, so **every clone installs it
-once**:
+emergency override, skips it, and `ask-destructive-git` asks before either). It refuses the
+remote's own default branch as well as `main` and `master`. A plugin cannot write to `.git/hooks`, so **every clone installs it
+once. `<plugin>` is this plugin's installed directory, a version-keyed copy under
+`~/.claude/plugins/cache/`; `find ~/.claude/plugins/cache -path '*hooks/git/pre-push'` prints the hook's path in each installed version:
 
 ```bash
 cp "<plugin>/hooks/git/pre-push" .git/hooks/pre-push && chmod +x .git/hooks/pre-push

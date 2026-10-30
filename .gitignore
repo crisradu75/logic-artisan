@@ -14,3 +14,9 @@ cla.io/retro/*-run-notes-*.md
 
 # this machine's list of repo roots for /cla:spec-to-pr-retro: absolute local paths, never committed
 cla.io/fleet.local.md
+
+# local Python environments and tool output from the dev flow: never committed
+.venv/
+.env
+*.egg-info/
+.coverage
