@@ -695,7 +695,8 @@ def main() -> int:
                     f"symlink or directory junction. {recursion}{destination} rather than "
                     f"removing the link. {remedy} This is the shape that "
                     "destroyed unrelated primary-clone files in the incident this hook exists "
-                    "for (see memory 'feedback-worktree-rmrf-junction-risk'). "
+                    "for: a recursive delete followed a junction and removed the real, "
+                    "untracked files behind it. "
                     "(hook: block-unsafe-recursive-delete.py)",
                 )
         except _Blocked as blocked:
