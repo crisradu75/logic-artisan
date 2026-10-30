@@ -45,8 +45,8 @@ repo: it has no product code.
 
 ## Cross-file lockstep doc sets
 
-- Root `CLAUDE.md` — the commands, the release line, and the sentence naming the skills with `disable-model-invocation: true` (also restated in `DEVELOPER-GUIDE.md` and the plugin README's phase table; `test_doc_facts.py` checks all three).
-- A release — `version` in `.claude/plugins/cla/.claude-plugin/plugin.json` and `.claude/plugins/cla/plugin.json`, `ref` in `.claude-plugin/marketplace.json` and `.github/plugin/marketplace.json`, and the CLAUDE.md release line; `test_marketplace_manifest.py` and `test_doc_facts.py` (in `plugin-tests/tests/consistency/`) fail when they disagree.
+- Root `CLAUDE.md` — the commands, the release line, and the sentence naming the `disable-model-invocation: true` skills (also in `DEVELOPER-GUIDE.md` and the phase table; `test_doc_facts.py`).
+- A release — both plugin manifests' `version`, both catalogs' `ref`, and the CLAUDE.md release line (`test_marketplace_manifest.py`, `test_doc_facts.py`).
 - `DEVELOPER-GUIDE.md` §11 — the script table.
 - `.claude/plugins/cla/README.md` — the phase table.
-- `.claude/plugins/cla/hooks/_dispatch_lib.py` — `HOOK_WORST_CASE_SECONDS` must match each hook's real (call sites × timeout); `plugin-tests/tests/hooks/test_hooks_wiring.py` checks that every entry exists, not that its value is right; only `ask-destructive-git.py`'s probe count is tested (`test_ask_destructive_git.py`).
+- `.claude/plugins/cla/hooks/_dispatch_lib.py` — `HOOK_WORST_CASE_SECONDS` must match each hook's real (call sites × timeout); `plugin-tests/tests/hooks/test_hooks_wiring.py` checks every entry exists; only `ask-destructive-git.py`'s value is tested.
