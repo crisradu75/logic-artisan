@@ -1,8 +1,9 @@
 # CLAUDE.md
 
 Rules for working in this repo. Reference material (layout, the script table) is in
-DEVELOPER-GUIDE §11. Where a rule came from an incident, a measurement or a decision, §12 tells
-that story under a heading naming the rule. Read it before you question or change a rule.
+DEVELOPER-GUIDE §11. Where a rule came from an incident, a measurement or a decision,
+`docs/evidence.md` (DEVELOPER-GUIDE §12) tells that story under a heading naming the rule. Read it
+before you question or change a rule.
 
 ## What this repo is
 

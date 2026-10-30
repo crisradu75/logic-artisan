@@ -7,7 +7,8 @@
 # walked past it, costing five bypass-closing commits and two reverted
 # redesigns. A `pre-push` hook is handed the resolved refspec by git itself,
 # AFTER git's own argument parsing — so there is no command shape to get wrong,
-# and no way to spell a push that evades it.
+# and no way to name the target branch that evades it. git itself skips the hook
+# on `git push --no-verify`; the override below is the hook's own exception.
 #
 # It is also strictly broader: it fires for pushes this harness never sees at
 # all — from a terminal, an IDE, or another tool.

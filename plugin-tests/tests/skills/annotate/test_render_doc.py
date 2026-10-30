@@ -513,7 +513,7 @@ def test_the_page_does_not_follow_the_system_theme(repo):
     css = page[page.index("<style>"):page.index("</style>")]
     # Comments are stripped before the check, because a comment EXPLAINING that
     # there is no such rule contains the token and passes a naive scan — the
-    # failure DEVELOPER-GUIDE §12 records under "Check 3: the escapes that
+    # failure docs/evidence.md records under "Check 3: the escapes that
     # produced it".
     rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     # The favicon keeps its own such rule — it sits on the tab strip, which does
@@ -1074,7 +1074,7 @@ def test_a_failed_undo_does_not_assert_what_the_file_says(doc_page):
     the file's contents, which the client cannot know from here."""
     # Over the COMMENT-STRIPPED script. The comment explaining why that wording
     # was dropped quotes it, so a raw scan finds the phrase in the very sentence
-    # saying it is gone — the failure DEVELOPER-GUIDE §12 records under "Check 3:
+    # saying it is gone — the failure docs/evidence.md records under "Check 3:
     # the escapes that produced it", reproduced here on the first run of this check.
     script = code_of(script_of(doc_page))
     assert "still deleted" not in script

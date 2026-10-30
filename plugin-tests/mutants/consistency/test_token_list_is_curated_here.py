@@ -37,7 +37,7 @@ directory git reports — measured from the checker's own location:
     branch B (.claude walk)  : <repo root>       resolve() equal: True
 
 Both then resolve the token list to the same existing file, so no input this repo
-can present distinguishes the two. That is DEVELOPER-GUIDE §12's "two candidate rules
+can present distinguishes the two. That is docs/evidence.md's "two candidate rules
 agree on every correct input" (under "A survivor"), and the rule is to mutate the input rather than the guard — but
 the discriminating input is a marketplace install, where the walk finds the user's
 GLOBAL `~/.claude` and the git call is what saves it. That environment cannot be

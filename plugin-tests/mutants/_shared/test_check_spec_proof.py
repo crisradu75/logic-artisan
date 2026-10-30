@@ -1,7 +1,7 @@
 """Mutation batch for test_check_spec_proof.py.
 
 Status: this batch was extended to 67 mutants but not run to completion, by owner decision on
-2026-10-14 (mutation testing is opt-in; see DEVELOPER-GUIDE section 12). It has not been run
+2026-10-14 (mutation testing is opt-in; see docs/evidence.md). It has not been run
 against the final code.
 
 `check_spec_proof.py` is a checker a consuming repo trusts to say "every changed

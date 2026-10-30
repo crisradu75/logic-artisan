@@ -216,6 +216,6 @@ def test_the_ci_wait_is_one_background_watch_under_a_watchdog_everywhere() -> No
     stale = re.compile(
         r"450000|7\.5.minute|`timeout`[^.\n]*at most twice|--watch[^\n]*\n?[^\n]*`timeout`", re.I
     )
-    docs = [*_SKILLS.rglob("*.md"), _README, _GUIDE, *(_ROOT / "openspec" / "specs").rglob("*.md")]
+    docs = [*_SKILLS.rglob("*.md"), _README, _GUIDE, *(_ROOT / "docs").glob("*.md"), *(_ROOT / "openspec" / "specs").rglob("*.md")]
     stale_hits = [str(p.relative_to(_ROOT)) for p in docs if stale.search(_read(p))]
     assert not stale_hits, f"these files still state the old foreground two-call CI wait: {stale_hits}"

@@ -285,6 +285,7 @@ def test_every_doc_offering_the_copilot_install_says_it_is_untested_beside_it():
         "DEVELOPER-GUIDE.md": _REPO_ROOT / "DEVELOPER-GUIDE.md",
         "CLAUDE.md": _REPO_ROOT / "CLAUDE.md",
         "plugin README.md": _PLUGIN_ROOT / "README.md",
+        "docs/history.md": _REPO_ROOT / "docs" / "history.md",
     }
     texts = {label: path.read_text(encoding="utf-8") for label, path in docs.items()}
     assert _disclosure_gaps(texts["README.md"]) == [], "README.md: " + str(_disclosure_gaps(texts["README.md"]))

@@ -11,3 +11,6 @@ cla.io/retro/*-run-notes-*.md
 
 # agent and /cla:new-worktree copies of the repo: never committed
 .claude/worktrees/
+
+# this machine's list of repo roots for /cla:spec-to-pr-retro: absolute local paths, never committed
+cla.io/fleet.local.md

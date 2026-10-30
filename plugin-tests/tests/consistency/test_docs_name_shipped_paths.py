@@ -79,15 +79,19 @@ _PLUGIN_ROOT = _REPO_ROOT / ".claude" / "plugins" / "cla"
 _PUBLISHED_PREFIX = ".claude/plugins/cla/"
 _RELEASE_TAG_GLOB = "cla--v*"
 
-# The four documents a consumer or a contributor reads on the way in. The plugin
-# README is the only one that ships; the other three are how this repo describes
-# the release to someone about to adopt it, and all four have carried a path that
-# stopped existing.
+# The documents a consumer or a contributor reads on the way in. The plugin
+# README is the only one that ships; the others are how this repo describes
+# the release to someone about to adopt it, and the first four have each carried a
+# path that stopped existing.
 _DOCS = {
     "plugin README.md": _PLUGIN_ROOT / "README.md",
     "README.md": _REPO_ROOT / "README.md",
     "DEVELOPER-GUIDE.md": _REPO_ROOT / "DEVELOPER-GUIDE.md",
     "CLAUDE.md": _REPO_ROOT / "CLAUDE.md",
+    # The developer guide's evidence and history, moved out of it into docs/. Like
+    # CLAUDE.md they carry no floor: they are archives, and the guide is floored.
+    "docs/evidence.md": _REPO_ROOT / "docs" / "evidence.md",
+    "docs/history.md": _REPO_ROOT / "docs" / "history.md",
 }
 
 # Naming a retired path is sometimes the POINT — a migration note that does not

@@ -30,6 +30,9 @@ _DOCS = {
     "README.md": _REPO_ROOT / "README.md",
     "DEVELOPER-GUIDE.md": _REPO_ROOT / "DEVELOPER-GUIDE.md",
     "plugin README.md": _PLUGIN_ROOT / "README.md",
+    # The developer guide's evidence and history, moved out of it into docs/.
+    "docs/evidence.md": _REPO_ROOT / "docs" / "evidence.md",
+    "docs/history.md": _REPO_ROOT / "docs" / "history.md",
 }
 
 
