@@ -8,6 +8,8 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+## [2.2.2] — 2026-10-30
+
 ### Fixed
 
 - `ask-destructive-git`: an inline `ALLOW_PR_MERGE=1` authorizes only the `gh pr merge` it
@@ -169,7 +171,8 @@ Unless noted, every change below came in #315.
 - `CLAUDE.md` holds rules only; reference and history move to the developer guide.
 - OpenSpec upgraded to 1.14.0, then 1.14.1 (#285, #292).
 
-[Unreleased]: https://github.com/crisradu75/logic-artisan/compare/cla--v2.2.1...HEAD
+[Unreleased]: https://github.com/crisradu75/logic-artisan/compare/cla--v2.2.2...HEAD
+[2.2.2]: https://github.com/crisradu75/logic-artisan/compare/cla--v2.2.1...cla--v2.2.2
 [2.2.1]: https://github.com/crisradu75/logic-artisan/compare/cla--v2.2.0...cla--v2.2.1
 [2.2.0]: https://github.com/crisradu75/logic-artisan/compare/cla--v2.1.2...cla--v2.2.0
 [2.1.2]: https://github.com/crisradu75/logic-artisan/compare/cla--v2.1.1...cla--v2.1.2
