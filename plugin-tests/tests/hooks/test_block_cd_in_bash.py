@@ -64,6 +64,38 @@ def test_quoted_or_unrelated_cd_is_allowed(cmd):
     assert mod.cd_outside_quotes(cmd) is False
 
 
+# requirement: guard-hooks / Unsafe commands are blocked
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "{ cd /tmp; }",
+        "builtin cd /tmp",
+        "command cd /tmp",
+        "if true; then cd /tmp; fi",
+        "if cd /tmp; then ls; fi",
+        "for d in a b; do cd $d; done",
+    ],
+)
+def test_every_persisting_directory_change_is_a_directive(cmd):
+    """Each of these changes the directory for later calls and used to pass the matcher."""
+    assert mod.cd_outside_quotes(cmd) is True, cmd
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "(cd /tmp && make)",  # a subshell's change ends with it
+        "echo $(cd /tmp && pwd)",
+        "Push-Location C:/wt; python3 x.py; Pop-Location",  # CLAUDE.md's sanctioned form
+        "find . -name x -exec rm {} +",
+        "git log --format='%h {cd x}'",
+    ],
+)
+def test_a_change_that_does_not_persist_is_allowed(cmd):
+    """Non-vacuity partner: subshells, braces that are not a group, and look-alike words."""
+    assert mod.cd_outside_quotes(cmd) is False, cmd
+
+
 @pytest.mark.parametrize(
     "cmd",
     [

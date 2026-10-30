@@ -11,6 +11,11 @@ shell directive. Specifically block:
   - leading `cd ` / `cd\t` / `cd;` / `cd&`
   - ` && cd `, ` || cd `, ` ; cd `
   - newline-followed-`cd `
+  - `{ cd x; }`, and `cd` after `if`, `then`, `elif`, `else`, `while`, `until` or `do`
+  - `builtin cd` and `command cd`
+A subshell (`( cd x && make )`, `$(cd x && pwd)`) is allowed: its change does not
+persist. So are `pushd`/`popd` and PowerShell's location cmdlets, whose paired form
+restores the directory.
 
 Allow `cd` when it appears inside quoted strings (commit messages, docstrings,
 echoed prose). The matcher walks the command token-by-token outside quotes.
@@ -73,13 +78,24 @@ def shadows_cd(cmd: str) -> bool:
     return bool(_SHADOW.search(_strip_quoted(cmd)))
 
 
+# A directory change that persists, as a directive: at the start, after a separator
+# (`;` `&` `|` newline), inside a `{ ...; }` group, or after a compound keyword
+# (`if`, `then`, `elif`, `else`, `while`, `until`, `do`);
+# optionally behind `builtin`/`command`, which call the real builtin. A subshell
+# `( cd x && ... )` or `$(cd x)` is left alone: its directory change ends with it.
+# `pushd`/`popd` and PowerShell's `Push-Location` are not matched: a paired
+# `Push-Location x; ...; Pop-Location` restores the directory, and CLAUDE.md names it
+# as the way to run a command in another worktree.
+_DIRECTIVE = re.compile(
+    r"(?:^|[;&|\n{]|\b(?:then|do|else|if|elif|while|until)\b)\s*(?:(?:builtin|command)\s+)?"
+    r"cd\s+\S",
+    re.MULTILINE,
+)
+
+
 def cd_outside_quotes(cmd: str) -> bool:
-    """Return True iff `cd ` appears outside quoted text in `cmd`."""
-    stripped = _strip_quoted(cmd)
-    # Match `cd` as a directive: start of string / after `;` / `&` / `|` /
-    # newline, followed by whitespace and at least one more char.
-    pattern = re.compile(r"(?:^|[;&|\n])\s*cd\s+\S", re.MULTILINE)
-    return bool(pattern.search(stripped))
+    """Return True iff a persisting directory change appears outside quoted text in `cmd`."""
+    return bool(_DIRECTIVE.search(_strip_quoted(cmd)))
 
 
 def main() -> int:
