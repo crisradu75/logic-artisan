@@ -69,7 +69,7 @@ def test_a_read_only_document_still_renders(repo, monkeypatch):
     import io
 
     src = repo / "doc.md"
-    src.write_text("hello\n", encoding="utf-8")
+    src.write_bytes(b"hello\n")
     real_open = builtins.open
 
     def guarded_open(file, mode="r", *args, **kwargs):
