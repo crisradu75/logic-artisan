@@ -1,7 +1,7 @@
 {
   "name": "cla",
   "description": "Cris Logic Artisan \u2014 a Claude Code dev-workflow harness (spec-to-pr, multi-pr, lite-pr, the review skills, the retro and codify self-improvement loops, and the git/worktree guard hooks). Repo state (facts, retro logs, lessons learned) stays in the repo's own cla.io/.",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "license": "MIT",
   "author": {
     "name": "Cris Radu"
