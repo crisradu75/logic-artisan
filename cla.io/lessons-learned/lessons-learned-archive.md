@@ -428,7 +428,7 @@ convention, but the hook's regex didn't fire.
 4. `[cost: low]` **`.claude/plugins/cla/skills/codify-learnings/references/failure-modes.md`** — added a bullet under "Tooling and codebase" about checking a peer repo's actual branch/`git log --all`/`git show` before concluding a path doesn't exist. — *(why: this session found `interoga-ro`'s `right-model` skill dir empty on disk because its working tree was on an unrelated feature branch; the content was on `main`.)* — **APPLIED**
 
 ### Memory candidates
-5. `[cost: low]` type: reference — Peer repo `interoga-ro`'s local CLA lives at `/Users/cradu/Documents/Git Personal/interoga-ro/.claude/plugins/cla/`. — **Why:** useful when porting skills/hooks between `cris`'s CLA-adopting repos. **How to apply:** check this path first for future cross-repo skill ports. — **APPLIED**
+5. `[cost: low]` type: reference — Peer repo `interoga-ro`'s local CLA lives at `.claude/plugins/cla/` inside that repo's local clone. — **Why:** useful when porting skills/hooks between `cris`'s CLA-adopting repos. **How to apply:** check this path first for future cross-repo skill ports. — **APPLIED**
 
 ### Lessons (meta)
 
