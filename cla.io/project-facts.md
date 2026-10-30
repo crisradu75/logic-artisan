@@ -6,9 +6,13 @@ repo: it has no product code.
 
 ## Workspace shape
 
-- `.claude/plugins/cla/` — the shipped plugin: skills, agents, hooks, output styles, `lib/`.
+- `.claude/plugins/cla/` — the shipped plugin: skills, agents, hooks, output styles, `lib/`, and `com.github.copilot/agents/` (Copilot copies of the agents).
+- `.claude-plugin/marketplace.json` — the Claude Code catalog; `.github/plugin/marketplace.json` — the Copilot CLI catalog.
 - `plugin-tests/` — every test, mutation batch, `mutate.py` and the pytest config; never ships.
 - `.claude/skills/release/` — the repo-local `/release` skill; never ships.
+- `.claude/skills/openspec-*/`, `.claude/commands/opsx/` — OpenSpec's generated skills and commands; never ship.
+- `openspec/` — live specs and active changes; `cla.io/` — this repo's facts, decisions, retros and overlays.
+- `cla`, `cla.cmd` — launchers that load the plugin from the working tree.
 
 ## Dev / build / test commands
 
@@ -31,7 +35,7 @@ repo: it has no product code.
 ## Test-file locations
 
 - `plugin-tests/tests/<area>/` — areas `conformance`, `consistency`, `launcher`, `hooks`, `lib`, and `skills/<name>`.
-- `plugin-tests/mutants/<area>/` — mutation batches, mirroring `tests/`, never collected.
+- `plugin-tests/mutants/<area>/` — mutation batches, never collected; a skill's batches sit at `mutants/<skill>/`, with no `skills/` level.
 
 ## Doc-sweep paths
 
@@ -41,7 +45,8 @@ repo: it has no product code.
 
 ## Cross-file lockstep doc sets
 
-- Root `CLAUDE.md` — the commands, the release line, and the sentence naming the skills with `disable-model-invocation: true`.
+- Root `CLAUDE.md` — the commands, the release line, and the sentence naming the skills with `disable-model-invocation: true` (also restated in `DEVELOPER-GUIDE.md` and the plugin README's phase table; `test_doc_facts.py` checks all three).
+- A release — `version` in `.claude/plugins/cla/.claude-plugin/plugin.json` and `.claude/plugins/cla/plugin.json`, `ref` in `.claude-plugin/marketplace.json` and `.github/plugin/marketplace.json`, and the CLAUDE.md release line; `test_marketplace_manifest.py` and `test_doc_facts.py` (in `plugin-tests/tests/consistency/`) fail when they disagree.
 - `DEVELOPER-GUIDE.md` §11 — the script table.
 - `.claude/plugins/cla/README.md` — the phase table.
-- `.claude/plugins/cla/hooks/_dispatch_lib.py` — `HOOK_WORST_CASE_SECONDS` must match each hook's real (call sites × timeout); `plugin-tests/tests/hooks/test_hooks_wiring.py` checks that every entry exists, not that its value is right.
+- `.claude/plugins/cla/hooks/_dispatch_lib.py` — `HOOK_WORST_CASE_SECONDS` must match each hook's real (call sites × timeout); `plugin-tests/tests/hooks/test_hooks_wiring.py` checks that every entry exists, not that its value is right; only `ask-destructive-git.py`'s probe count is tested (`test_ask_destructive_git.py`).
