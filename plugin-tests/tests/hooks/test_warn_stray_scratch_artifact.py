@@ -93,6 +93,7 @@ def test_main_no_op_on_unrelated_command(monkeypatch, capsys):
     assert capsys.readouterr().err == ""
 
 
+# requirement: guard-hooks / Risky actions warn
 def test_main_warns_when_a_stray_artifact_is_present(monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin", io.StringIO('{"tool_input": {"command": "git add openspec/"}}'))
     monkeypatch.setattr(hook, "_porcelain_lines", lambda cwd=None: ['?? "AppDataLocalTempscratchpaddiff.txt"'])

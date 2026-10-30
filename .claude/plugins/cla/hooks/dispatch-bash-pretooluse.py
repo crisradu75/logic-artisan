@@ -64,13 +64,22 @@ from __future__ import annotations
 import json
 import sys
 
-from _dispatch_lib import (
-    HOOK_WORST_CASE_SECONDS,
-    Deadline,
-    compose_output,
-    fit_json_payload,
-    run_hook_file,
-)
+# Guarded, because every guard this dispatcher runs goes through the library: an
+# import failure left uncaught exits 1, which Claude Code treats as a non-blocking
+# error, so every block and ask would silently become an allow. `_fail_closed`
+# below turns that, and a crash in `main()`, into an `ask` instead.
+try:
+    from _dispatch_lib import (
+        HOOK_WORST_CASE_SECONDS,
+        Deadline,
+        compose_output,
+        fit_json_payload,
+        run_hook_file,
+    )
+except Exception as _exc:  # noqa: BLE001 -- any load failure must fail closed
+    _LIB_ERROR: Exception | None = _exc
+else:
+    _LIB_ERROR = None
 
 _HOOK_FILES = [
     "block-cd-in-bash.py",
@@ -147,7 +156,12 @@ def main() -> int:
         # evaluation order: a block short-circuits, and any pending `ask` is
         # moot once the call is refused outright.
         if result.code == 2:
-            sys.stderr.write(compose_output(warnings, must_keep=result.stderr))
+            # A guard has already blocked: a failure while formatting the message must
+            # not turn that block into the crash path's ask, so fall back to the raw text.
+            try:
+                sys.stderr.write(compose_output(warnings, must_keep=result.stderr))
+            except Exception:  # noqa: BLE001
+                sys.stderr.write(result.stderr)
             return 2
 
         if result.stderr.strip():
@@ -243,5 +257,34 @@ def main() -> int:
     return 0
 
 
+def _fail_closed(why: str, exc: BaseException) -> int:
+    """Ask, at exit 0, when the dispatcher itself cannot run its guards.
+
+    Stdlib only, since it runs when `_dispatch_lib` may be what failed. An `ask` is
+    the rule a crashed enforcing hook already follows (see `main()`): it reaches the
+    user, and a non-zero exit would discard it and let the call through unguarded.
+    """
+    import traceback
+
+    trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    print(f"[dispatch] {why}\n{trace}", file=sys.stderr)
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "ask",
+        "permissionDecisionReason": (
+            f"the cla guard dispatcher could not run ({why}), so NO guard checked this "
+            "call. Confirm only if you know it is safe; re-run with `claude --debug` "
+            "for the traceback. (hook: " + __file__.replace("\\", "/").rsplit("/", 1)[-1] + ")"
+        ),
+    }}))
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    if _LIB_ERROR is not None:
+        sys.exit(_fail_closed(f"_dispatch_lib failed to load: {type(_LIB_ERROR).__name__}: {_LIB_ERROR}", _LIB_ERROR))
+    try:
+        _code = main()
+    except Exception as _crash:  # noqa: BLE001 -- a crash must fail closed, not exit 1
+        _code = _fail_closed(f"the dispatcher crashed: {type(_crash).__name__}: {_crash}", _crash)
+    sys.exit(_code)

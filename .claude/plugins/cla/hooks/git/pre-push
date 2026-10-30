@@ -28,10 +28,24 @@ if [ "${ALLOW_PUSH_TO_MAIN:-}" = "1" ]; then
     exit 0
 fi
 
+# The remote's own default branch is refused too, so a repo whose default is
+# `develop` or `trunk` is guarded. git passes the remote's name as $1 (a URL when
+# the push names one, which has no remote-tracking HEAD); without it, or with no
+# `refs/remotes/<remote>/HEAD`, only main and master are refused.
+default_ref=""
+remote_name=${1:-origin}
+if head=$(git symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null); then
+    default_ref="refs/heads/${head#refs/remotes/"$remote_name"/}"
+fi
+
 status=0
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
     [ -n "$remote_ref" ] || continue
-    case "$remote_ref" in
+    target="$remote_ref"
+    if [ -n "$default_ref" ] && [ "$remote_ref" = "$default_ref" ]; then
+        target=refs/heads/main  # route the remote's default through the refusal below
+    fi
+    case "$target" in
         refs/heads/main|refs/heads/master)
             branch=${remote_ref#refs/heads/}
             echo "cla: refusing to push directly to '$branch'." >&2

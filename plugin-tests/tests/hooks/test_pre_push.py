@@ -109,3 +109,27 @@ def test_empty_stdin_is_allowed():
     # `git push` with nothing to do hands the hook no lines at all.
     r = _run("")
     assert r.returncode == 0
+
+
+def _git(cwd, *args):
+    subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+
+
+# requirement: guard-hooks / Direct pushes to main are refused
+def test_refuses_a_push_to_the_remotes_own_default_branch(tmp_path):
+    """A repo whose default branch is not main or master is guarded too: the hook reads the
+    branch `refs/remotes/<remote>/HEAD` names, for the remote git passes as $1."""
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+    run = lambda ref, *args: subprocess.run(  # noqa: E731
+        [_SH, str(_PRE_PUSH), *args], input=_line(ref), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", cwd=tmp_path,
+    )
+    refused = run("refs/heads/develop", "origin", "https://example.invalid/repo.git")
+    assert refused.returncode == 1 and "develop" in refused.stderr
+    assert run("refs/heads/feature/x", "origin", "u").returncode == 0
+    assert run("refs/heads/main", "origin", "u").returncode == 1, "main stays refused"
+    # A push to a URL has no remote-tracking HEAD: only main and master are refused there.
+    assert run("refs/heads/develop", "https://example.invalid/repo.git", "u").returncode == 0

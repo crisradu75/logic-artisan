@@ -108,6 +108,10 @@ Detection scope
   whose repository cannot be named (`--git-dir`, `GIT_DIR=`, `-C ~/x`, `-C $V`, a `-C` path that does not exist)
   asks as unchecked. Any tail that is not a non-saving subcommand counts as
   saving, so `git stash 2>&1` and `(git stash)` are covered.
+- A push that skips the `pre-push` guard on the default branch: `--no-verify`
+  (down to `--no-veri`), `-c core.hooksPath=...`, or the hook's own
+  `ALLOW_PUSH_TO_MAIN=1` override typed into the command. That guard is the only
+  one on the default branch, and each of these skips it without a word.
 - `gh pr merge`, including behind global options and as `gh.exe`/`gh.cmd`. Not
   destructive in the same sense, but outward-facing and effectively
   irreversible, and the thing that fails there is AUTHORIZATION — which a hook
@@ -275,6 +279,26 @@ _FORCE_REFSPEC = re.compile(r"(?:^|\s)\+\S+")
 # `git reset --h` is an ordinary hard reset. It went unmatched — the loosest
 # abbreviation in the file, on the rule the module docstring names first.
 _HARD_FLAG = re.compile(r"(?:^|\s)--" + _abbrev("hard", 1) + _END)
+# The three ways a push skips the `pre-push` guard on the default branch: git's own
+# `--no-verify` (abbreviable down to `--no-veri`; `--no-ver` is ambiguous with
+# `--no-verbose`), a `core.hooksPath` pointed elsewhere for this one command, and the
+# hook's own `ALLOW_PUSH_TO_MAIN=1` override typed inline.
+_NO_VERIFY = re.compile(r"(?:^|\s)--" + _abbrev("no-verify", 7) + _END)
+# Read on the RAW command, not the quote-stripped one: `-c "core.hooksPath=/x"`,
+# `GIT_CONFIG_KEY_0=core.hooksPath`, `GIT_CONFIG_PARAMETERS="'core.hooksPath=/x'"`
+# and a `git config core.hooksPath /x && git push` all point the hooks elsewhere,
+# and quoting is what hides them from the stripped text. Prose naming the setting
+# beside a push asks too, which fails in the safe direction.
+_HOOKS_PATH = re.compile(r"(?i)\bcore\.hookspath\b")
+# On the stripped text, where a quoted `"1"` reads `"#"`; the value may be followed
+# by any separator (`export ALLOW_PUSH_TO_MAIN=1;git push`).
+_ALLOW_PUSH_TO_MAIN = re.compile(
+    r"(?:^|[\s;&|({])ALLOW_PUSH_TO_MAIN=(?:1|\"#\"|'#')(?=[\s;&|)]|$)"
+)
+PUSH_GUARD_SKIP_REASON = (
+    "a push that skips the pre-push guard on the default branch (`--no-verify`, "
+    "`core.hooksPath`, or `ALLOW_PUSH_TO_MAIN=1`) — confirm the user asked to bypass it"
+)
 
 # Force-deleting a branch is the same hazard class as `reset --hard`: on a branch
 # whose commit exists nowhere else it destroys that commit outright, recoverable
@@ -717,11 +741,44 @@ _GH_PR_MERGE = re.compile(
 # with the broad `ALLOW_DESTRUCTIVE_GIT` would have disarmed force-push,
 # branch-delete and
 # `reset --hard` for the same commands, which is a strictly worse trade.
-# An inline `ALLOW_PR_MERGE=1` env-assignment prefix, at the start of the whole
-# command or of a segment after a shell separator. Anchored so it cannot be
-# satisfied by the string appearing mid-command (inside an echoed message, say)
-# — it has to sit where a shell would actually treat it as an assignment.
-_ALLOW_MERGE_PREFIX = re.compile(r"(?:^|[&|;]\s*)ALLOW_PR_MERGE=1[ \t]")
+# An inline `ALLOW_PR_MERGE=1` env-assignment prefix authorizes a merge only when it
+# heads that merge's own simple command, where a shell actually treats it as an
+# assignment for that command. What may sit between the start of the merge's
+# segment and `gh`: the prefix, alone or among other `NAME=value` assignments.
+_WS = r"(?:[ \t]|\\\r?\n)"  # a `\`-continued newline is still the same command
+_MERGE_AUTH_HEAD = re.compile(
+    r"\s*(?:[A-Za-z_]\w*=\S*" + _WS + r"+)*?ALLOW_PR_MERGE=1" + _WS + r"+(?:[A-Za-z_]\w*=\S*" + _WS + r"+)*"
+)
+_SEGMENT_SEPARATORS = "&|;\n({"
+
+
+def _segment_start(scanned: str, end: int) -> int:
+    """Index where the simple command containing position `end` begins: after the last
+    separator before it, where a backslash-continued newline is not a separator."""
+    for i in range(end - 1, -1, -1):
+        if scanned[i] in _SEGMENT_SEPARATORS:
+            continued = scanned[i] == "\n" and scanned[:i].rstrip("\r").endswith("\\")
+            if not continued:
+                return i + 1
+    return 0
+
+
+def _every_merge_is_authorized(scanned: str) -> bool:
+    """True when every `gh pr merge` in the quote-stripped command is the command its own
+    `ALLOW_PR_MERGE=1` prefix heads.
+
+    The prefix authorizes the one simple command it is part of. Matching it anywhere let a
+    later, unrelated segment authorize an earlier merge (`gh pr merge 27; ALLOW_PR_MERGE=1
+    true`), and let one prefixed merge carry an unprefixed second one.
+    """
+    merges = list(_GH_PR_MERGE.finditer(scanned))
+    if not merges:
+        return False
+    for m in merges:
+        start = _segment_start(scanned, m.start())
+        if not _MERGE_AUTH_HEAD.fullmatch(scanned[start:m.start()]):
+            return False
+    return True
 
 MERGE_REASON = (
     "a PR merge, which publishes to a shared branch and cannot be cleanly "
@@ -837,6 +894,13 @@ def _reasons(command: str, cwd: str) -> list[str]:
             "a force-push, which rewrites a remote branch other worktrees or "
             "collaborators may already have based work on"
         )
+    pushes = list(_PUSH.finditer(scanned))
+    if pushes and (
+        _ALLOW_PUSH_TO_MAIN.search(scanned)
+        or _HOOKS_PATH.search(command)
+        or any(_NO_VERIFY.search(m.group(1)) for m in pushes)
+    ):
+        found.append(PUSH_GUARD_SKIP_REASON)
     if any(_HARD_FLAG.search(m.group(1)) for m in _RESET.finditer(scanned)):
         found.append(
             "`git reset --hard`, which discards uncommitted working-tree "
@@ -1072,7 +1136,7 @@ def main() -> int:
     # survives stripping intact and the per-command form still works.
     if found and (
         os.environ.get("ALLOW_PR_MERGE") == "1"
-        or _ALLOW_MERGE_PREFIX.search(_strip_quoted_spans(command))
+        or _every_merge_is_authorized(_strip_quoted_spans(command))
     ):
         kept = [r for r in found if r != MERGE_REASON]
         if len(kept) != len(found):
@@ -1093,7 +1157,7 @@ def main() -> int:
     # merge-only prompt sends the reader to a variable that silently does
     # nothing as an inline prefix. When the merge reason is the ONLY one
     # present, point at the narrow variable that's actually honoured from
-    # command text (`_ALLOW_MERGE_PREFIX`, above). Force-push and
+    # command text (`_every_merge_is_authorized`, above). Force-push and
     # `reset --hard` have no narrow equivalent, so those (and any mix that
     # includes them) still name the broad, env-only variable — worded as
     # "export" so the inline/environment distinction is explicit.

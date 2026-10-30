@@ -517,7 +517,7 @@ def test_the_merge_prompt_names_the_narrow_variable_a_reader_can_actually_use(
     monkeypatch, capsys
 ):
     """A merge-only prompt must name `ALLOW_PR_MERGE=1` — the variable honoured
-    from command text (`_ALLOW_MERGE_PREFIX`) — not `ALLOW_DESTRUCTIVE_GIT`,
+    from command text (`_every_merge_is_authorized`) — not `ALLOW_DESTRUCTIVE_GIT`,
     which is env-only and silently no-ops as the inline prefix a reader would
     naturally try. Regression test for the bug where the message recommended
     the broad, unusable variable for the narrowest, highest-consequence reason.
@@ -828,6 +828,86 @@ def test_the_prefix_is_honoured_after_a_shell_separator(monkeypatch, capsys):
     assert _run(
         "git fetch --prune && ALLOW_PR_MERGE=1 gh pr merge 27", monkeypatch, capsys
     ) is None
+
+
+# requirement: guard-hooks / Destructive git commands ask first
+@pytest.mark.parametrize(
+    "command",
+    [
+        # a later, unrelated segment carrying the prefix
+        "gh pr merge 27 --squash; ALLOW_PR_MERGE=1 true",
+        "gh pr merge 27 && ALLOW_PR_MERGE=1 echo done",
+        # one prefixed merge must not carry an unprefixed second one
+        "ALLOW_PR_MERGE=1 gh pr merge 1 --squash && gh pr merge 2 --squash",
+        # the prefix on another command in the same segment chain
+        "ALLOW_PR_MERGE=1 git fetch && gh pr merge 27",
+    ],
+)
+def test_the_prefix_authorizes_only_the_merge_it_heads(command, monkeypatch, capsys):
+    """The prefix used to match after any separator, so the guarded agent could type its own
+    way past the merge checkpoint from an unrelated segment of the same command."""
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    assert "PR merge" in _reason(_run(command, monkeypatch, capsys)), command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "GH_REPO=o/r ALLOW_PR_MERGE=1 gh pr merge 27 --squash",
+        "ALLOW_PR_MERGE=1 GH_REPO=o/r gh pr merge 27 --squash",
+        "ALLOW_PR_MERGE=1 gh pr merge 1 --squash && ALLOW_PR_MERGE=1 gh pr merge 2 --squash",
+        "(ALLOW_PR_MERGE=1 gh pr merge 27 --squash)",
+        "ALLOW_PR_MERGE=1 \\\n  gh pr merge 27 --squash",  # a continued line is one command
+    ],
+)
+def test_the_prefix_still_authorizes_every_merge_it_heads(command, monkeypatch, capsys):
+    """Non-vacuity partner: other assignments beside the prefix, and every merge prefixed."""
+    monkeypatch.delenv("ALLOW_PR_MERGE", raising=False)
+    assert _run(command, monkeypatch, capsys) is None, command
+
+
+# requirement: guard-hooks / Destructive git commands ask first
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push --no-verify origin main",
+        "git push --no-veri origin HEAD:main",
+        "git -c core.hooksPath=/dev/null push origin main",
+        "ALLOW_PUSH_TO_MAIN=1 git push origin main",
+        "git fetch && ALLOW_PUSH_TO_MAIN=1 git push",
+        # quoted values and a separator right after the value (review of #445)
+        'ALLOW_PUSH_TO_MAIN="1" git push origin main',
+        "ALLOW_PUSH_TO_MAIN='1' git push origin main",
+        "export ALLOW_PUSH_TO_MAIN=1;git push origin main",
+        # every other way to point git's hooks elsewhere for the push
+        'git -c "core.hooksPath=/dev/null" push origin main',
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/x git push origin main",
+        "GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/dev/null'\" git push origin main",
+        "git config core.hooksPath /dev/null && git push origin main",
+    ],
+)
+def test_a_push_that_skips_the_pre_push_guard_asks(command, monkeypatch, capsys):
+    """The pre-push hook is the only guard on the default branch, and these skip it with no
+    prompt: git honours `--no-verify` and `core.hooksPath`, and the hook its own override."""
+    monkeypatch.delenv("ALLOW_DESTRUCTIVE_GIT", raising=False)
+    assert "skips the pre-push guard" in _reason(_run(command, monkeypatch, capsys)), command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin feature/x",
+        "git push --no-ver origin x",  # ambiguous: git refuses it, so nothing is skipped
+        'git commit -m "note: ALLOW_PUSH_TO_MAIN=1 is the override" && git push',
+        "git -c core.hooksPath=/dev/null commit -m x",
+    ],
+)
+def test_an_ordinary_push_does_not_ask_about_the_pre_push_guard(command, monkeypatch, capsys):
+    """Non-vacuity partner: a plain push, an ambiguous abbreviation, the override named only in
+    prose, and `core.hooksPath` on a command that is not a push."""
+    monkeypatch.delenv("ALLOW_DESTRUCTIVE_GIT", raising=False)
+    payload = _run(command, monkeypatch, capsys)
+    assert payload is None or "skips the pre-push guard" not in _reason(payload), command
 
 
 # --------------------------------------------------------------------------- #

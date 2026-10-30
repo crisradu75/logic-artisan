@@ -215,8 +215,8 @@ def main() -> int:
         f"target '{target}' resolves outside it (into the primary clone or "
         "another worktree). Once EnterWorktree has run, every Write/Edit for the "
         "rest of the task must target a path inside the current worktree, never "
-        "a hardcoded path back to the primary clone. See memory "
-        "'worktree-isolation-file-paths' for the incident this rule came from. "
+        "a hardcoded path back to the primary clone; a stale absolute path in a "
+        "prompt is the usual cause. "
         "Override for a deliberate exception by setting "
         "ALLOW_WORKTREE_PATH_ESCAPE=1 in the environment. "
         "(hook: block-worktree-path-escape.py)",

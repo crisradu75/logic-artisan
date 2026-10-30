@@ -441,17 +441,23 @@ def test_a_failed_write_says_not_written_and_keeps_the_existing_file(tmp_path: P
     assert out.returncode != 0 and "NOT written" in out.stdout, (out.stdout, out.stderr)
     assert (root / _RULES).read_bytes() == good
     shutil.rmtree(root / _RULES.parent / "cla-economy.md.tmp", ignore_errors=True)
-    # A read-only stale temp file makes the redirect fail while a file is still there to be moved:
-    # the block must stop at the failed write, not install that stale text.
+    # A stale temp entry the redirect cannot write through, while something is still there to be
+    # moved: the block must stop at the failed write, not install it. On POSIX it is a symlink into
+    # a missing directory, which fails for root too; read-only bits do not stop root, so a 0o444
+    # file passed there only for non-root users. Windows keeps the read-only file, since a symlink
+    # needs a privilege there.
     stale = root / _RULES.parent / "cla-economy.md.tmp"
-    stale.write_bytes(b"stale text\n")
-    stale.chmod(0o444)
+    if os.name == "nt":
+        stale.write_bytes(b"stale text\n")
+        stale.chmod(0o444)
+    else:
+        stale.symlink_to(tmp_path / "missing-dir" / "target")
     try:
         out = _bash(script, root)
         assert out.returncode != 0 and "NOT written" in out.stdout, (out.stdout, out.stderr)
         assert (root / _RULES).read_bytes() == good
     finally:
-        if stale.exists():  # the block removes its own temp file on failure
+        if stale.exists() and not stale.is_symlink():  # the block removes its own temp file on failure
             stale.chmod(0o644)
     blocked = tmp_path / "blocked"
     blocked.mkdir()

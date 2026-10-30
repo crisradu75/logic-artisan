@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _HOOKS_DIR = Path(__file__).resolve().parents[3] / ".claude" / "plugins" / "cla" / "hooks"
 _BASH_DISPATCH = _HOOKS_DIR / "dispatch-bash-pretooluse.py"
 _EDIT_WRITE_DISPATCH = _HOOKS_DIR / "dispatch-edit-write-pretooluse.py"
@@ -149,6 +151,53 @@ def test_bash_dispatch_reports_a_crashed_hook_as_context(tmp_path):
     assert "boom" in context
     # Still written to stderr as well, for `claude --debug`.
     assert "boom" in r.stderr
+
+
+def _run_copy(hooks_dir: Path, name: str, payload: dict, cwd: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(hooks_dir / name)], input=json.dumps(payload),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(cwd),
+    )
+
+
+@pytest.mark.parametrize("name", ["dispatch-bash-pretooluse.py", "dispatch-edit-write-pretooluse.py"])
+def test_a_dispatcher_whose_library_fails_to_load_asks_instead_of_allowing(tmp_path, name):
+    """Every guard runs through `_dispatch_lib`. Left uncaught, its import failure exits 1, a
+    non-blocking error, so every block and ask would silently become an allow."""
+    hooks_dir = _hooks_copy(tmp_path)
+    (hooks_dir / "_dispatch_lib.py").write_text("raise ImportError('planted')\n", encoding="utf-8")
+    payload = {"tool_input": {"command": "ls", "file_path": str(tmp_path / "x.py"), "content": "x"},
+               "cwd": str(tmp_path)}
+    r = _run_copy(hooks_dir, name, payload, tmp_path)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "ask"
+    assert "_dispatch_lib failed to load" in out["permissionDecisionReason"]
+    assert "Traceback (most recent call last)" in r.stderr and "planted" in r.stderr
+
+
+def test_a_block_survives_a_failure_to_format_its_message(tmp_path):
+    """A guard that already blocked stays a block: the crash path's ask must not replace it."""
+    hooks_dir = _hooks_copy(tmp_path)
+    with (hooks_dir / "_dispatch_lib.py").open("a", encoding="utf-8") as lib:
+        lib.write("\n\ndef compose_output(*args, **kwargs):  # planted\n    raise RuntimeError('planted')\n")
+    r = _run_copy(hooks_dir, "dispatch-bash-pretooluse.py",
+                  {"tool_input": {"command": "cd /tmp && ls"}, "cwd": str(tmp_path)}, tmp_path)
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert "block-cd-in-bash" in r.stderr
+
+
+def test_a_dispatcher_that_crashes_in_main_asks_instead_of_allowing(tmp_path):
+    hooks_dir = _hooks_copy(tmp_path)
+    with (hooks_dir / "_dispatch_lib.py").open("a", encoding="utf-8") as lib:
+        lib.write("\n\nclass Deadline:  # planted: main() crashes on its first use\n"
+                  "    def __init__(self):\n        raise RuntimeError('planted crash')\n")
+    r = _run_copy(hooks_dir, "dispatch-bash-pretooluse.py",
+                  {"tool_input": {"command": "ls"}, "cwd": str(tmp_path)}, tmp_path)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)["hookSpecificOutput"]
+    assert out["permissionDecision"] == "ask"
+    assert "the dispatcher crashed: RuntimeError: planted crash" in out["permissionDecisionReason"]
 
 
 # --------------------------------------------------------------------------- #
