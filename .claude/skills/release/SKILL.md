@@ -73,8 +73,8 @@ it. Otherwise ask with `AskUserQuestion`, showing what changed since the last ta
 - **minor** — a skill added or removed, a new guard, a restructure consumers will notice.
 - **major** — a change that breaks a consuming repo's existing usage.
 
-The pre-1.0 validation line is closed; how it closed is in DEVELOPER-GUIDE.md, "Release and
-distribution history".
+The pre-1.0 validation line is closed; how it closed is in `docs/history.md`, "The versioning
+line".
 
 ## Step 3 — The five-file edit, in one commit
 
@@ -186,7 +186,8 @@ merge being checked.
 ## Step 5 — Report
 
 State: the version cut, the five files bumped, the tag pushed and confirmed, and the
-one command a consumer runs to pick it up (`/plugin marketplace update` for Claude Code; for
+commands a consumer runs to pick it up (`claude plugin marketplace update cris-logic-artisan`, then
+`claude plugin update cla@cris-logic-artisan` and a restart, for Claude Code; for
 GitHub Copilot CLI, which is untested, `copilot plugin marketplace update` then
 `copilot plugin update cla`). If any
 precondition was waived — it should not have been — say so prominently.
