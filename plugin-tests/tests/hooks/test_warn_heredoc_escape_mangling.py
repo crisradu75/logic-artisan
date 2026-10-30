@@ -43,6 +43,7 @@ def _run(cmd: str):
 # --------------------------------------------------------------------------- #
 
 
+# requirement: guard-hooks / Risky actions warn
 def test_a_python_heredoc_writing_a_backslash_n_is_flagged():
     cmd = "python3 - <<'PY'\ns = \"anchor\\nnext\"\nprint(s)\nPY"
     assert offending_heredocs(cmd), "the exact shape that mangled twice was not caught"

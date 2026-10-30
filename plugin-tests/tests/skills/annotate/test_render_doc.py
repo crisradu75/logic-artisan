@@ -62,15 +62,30 @@ def test_the_page_is_written_outside_the_repo(repo):
     assert store.rel_to_root(out, str(repo)) is None
 
 
-def test_a_read_only_document_still_renders(repo):
+def test_a_read_only_document_still_renders(repo, monkeypatch):
+    """Rendering never writes the document. The mode bits alone prove nothing as root, which
+    ignores them, so a write-mode open of the source is also made to fail for every user."""
+    import builtins
+    import io
+
     src = repo / "doc.md"
     src.write_text("hello\n", encoding="utf-8")
+    real_open = builtins.open
+
+    def guarded_open(file, mode="r", *args, **kwargs):
+        if any(c in mode for c in "wax+") and os.path.abspath(os.fspath(file)) == str(src):
+            raise PermissionError(f"planted: {src} is read-only")
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", guarded_open)
+    monkeypatch.setattr(io, "open", guarded_open)
     os.chmod(str(src), 0o444)
     try:
         out, _ctx, _w = render_doc.build(str(src), str(repo))
         assert os.path.exists(out)
     finally:
         os.chmod(str(src), 0o644)
+    assert src.read_bytes() == b"hello\n"
 
 
 # ---------------------------------------------------------------- addressing
