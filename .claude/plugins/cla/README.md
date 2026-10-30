@@ -1,11 +1,14 @@
 # CLA — Cris Logic Artisan
 
-A Claude Code **dev-workflow harness**, distributed as a marketplace plugin. CLA is not
-application code and holds no product logic — it is the *process*
-layer: a set of skills, guard hooks, and helper agents that carry a change from a raw idea through
-specification, isolated implementation, review, and a PR, then feed what was learned back into the
-next run. It builds on existing skills rather than replacing them, and keeps all per-repo state
-(decisions, feedback, retro logs, lessons-learned) in the repo's own `cla.io/` tree.
+A Claude Code **dev-workflow harness**, installed from a marketplace. CLA holds no product code. It
+is the *process* layer: skills, guard hooks and helper agents that carry a change from a raw idea
+through specification, isolated implementation and review to a PR, then feed what was learned into
+the next run. It builds on existing plugins rather than replacing them, and keeps all per-repo state
+(facts, decisions, feedback, retro logs, lessons learned) in the repo's own `cla.io/` tree.
+
+**New here?** Install the dependencies below, then follow *Installing and updating*. The
+[developer guide](https://github.com/crisradu75/logic-artisan/blob/main/DEVELOPER-GUIDE.md) walks
+through a first session and a first PR.
 
 ## Install these first — CLA calls out to them and cannot substitute for them
 
@@ -68,25 +71,18 @@ and invoked bare as `/release`.
 | **Any phase** (utility) | `right-model` | **you only** | Recommend the cheapest model + effort combo that can plausibly do a described task well, then optionally start it |
 | | `diagnose` | you or Claude | Find a failure's cause instead of guessing: deterministic loop, ranked falsifiable hypotheses, regression test before the fix. Escalated from either Test phase on one cause: after two rounds in spec-to-pr, after one fix and one retry in lite-pr |
 
-**"Invoked by" is derived, not curated.** A skill reads **you only** exactly when its
-`SKILL.md` frontmatter sets `disable-model-invocation: true`. Two reasons put a skill there.
-`multi-lite` and `multi-pr` are unattended orchestrators that open and merge pull requests, so
-a description match must never start one. The rest are run deliberately — onboarding, retros,
-settings — and marking them keeps their descriptions out of the skill listing every session
-loads. Everything else can be triggered either by
-you or by Claude recognising the task. The two non-skill rows are marked `n/a`: `opsx:explore`
-is OpenSpec's, not CLA's, and the agents are dispatched by other skills rather than invoked.
+**"Invoked by" comes from each skill's frontmatter.** A skill reads **you only** exactly when its
+`SKILL.md` sets `disable-model-invocation: true`, for one of two reasons. `multi-lite` and
+`multi-pr` open and merge pull requests unattended, so a description match must never start one.
+The rest are run deliberately (onboarding, retros, settings), and the flag keeps their descriptions
+out of the skill listing every session loads. Everything else starts either when you invoke it or
+when Claude recognises the task. The two `n/a` rows are not CLA skills: `opsx:explore` is
+OpenSpec's, and the agents are dispatched by other skills.
 
-**One reading was deliberately rejected, and is recorded so it does not arrive again: that this
-column also says something about what a skill may CALL.** It does not. It says how a skill
-*starts*, and CLA's skills compose across it in both directions. `lite-pr` invokes
-`Skill(shape-decision)` when a description is too open-ended to plan from — one `you or Claude`
-row calling another — and two **you only** rows are the heaviest callers in the tree:
-`multi-lite` drives a full `lite-pr` run per candidate, `multi-pr` a full `spec-to-pr` run per
-change. One distinction is worth stating, because it is easy to misread as a chain: consulting
-another skill's *reference file* is not calling that skill. `spec-to-pr`'s Review reads
-`skills/review-change/references/checklist.md` and executes it inline, and its `SKILL.md` forbids
-`Skill(cla:review-change)` outright — the hop would cost a skill load and buy no capability.
+The column says how a skill *starts*, not what it may call. `lite-pr` calls `shape-decision` when an
+ask is too open to plan, and `multi-lite` and `multi-pr` drive a full `lite-pr` or `spec-to-pr` run
+per item. Reading another skill's reference file is not calling it: `spec-to-pr`'s Review runs
+`skills/review-change/references/checklist.md` inline and never invokes `review-change`.
 
 ### Typical flows
 
@@ -97,31 +93,22 @@ another skill's *reference file* is not calling that skill. `spec-to-pr`'s Revie
 
 ## Always-on guardrails (hooks)
 
-Guard hooks wire themselves via the plugin's own `hooks/hooks.json` when the plugin loads — no
-`settings.json` step. Two dispatchers (one for Bash/PowerShell, one for Edit/Write) each run
-several leaf hooks in one Python process — 8 distinct leaf hooks between them (6 on the
-Bash/PowerShell matcher, 2 on Edit/Write) — plus `warn-wholesale-rewrite` wired
-directly on PostToolUse: 9 leaf hook files in all. They run throughout every phase.
-**Blocks** (`block-*`) stop a tool call; **asks** (`ask-*`) escalate to a permission prompt
-instead of blocking outright; **warns** (`warn-*`) surface a caution without blocking.
+The hooks wire themselves from the plugin's own `hooks/hooks.json` when it loads; there is no
+`settings.json` step. Two dispatchers (Bash/PowerShell and Edit/Write) run 8 leaf hooks between
+them in one Python process each, and `warn-wholesale-rewrite` runs on its own after a Write: 9 leaf
+hooks, active in every phase.
 
-**Blocks:** `block-cd-in-bash` (working dir is already repo root; a `cd` persists and breaks later
-calls) · `block-unsafe-recursive-delete` (`rm -rf` and PowerShell equivalents) ·
-`block-worktree-path-escape` (writes escaping a worktree boundary).
-
-**Asks:** `ask-destructive-git` (force-push, `reset --hard`, branch force-delete, PR merges, and other
-destructive-but-possibly-legitimate git/gh commands; `ALLOW_PR_MERGE=1` drops only the PR-merge
-confirmation, for the `multi-*` chainers' unattended runs). It also prompts on
-`git checkout <path>`, `git restore <path>`, a forced `git checkout -f`/`git switch -f`, and
-`git clean` — but only when they would actually destroy uncommitted work, so on a clean tree they
-stay silent. A `git stash` that saves and resets the tree also prompts, but only while a merge,
-cherry-pick or revert is in progress, because it drops `MERGE_HEAD` and loses one side.
-
-**Warns:** `warn-stacked-pr-merge` (a merge into a branch that open child PRs are based on — states the retarget-vs-close rules and the squash hazard) ·
-`warn-comment-dates` · `warn-stray-scratch-artifact` (scratch files left in the repo root) ·
-`warn-heredoc-escape-mangling` (a heredoc body carrying a backslash escape the shell/inner-language
-layering eats) · `warn-wholesale-rewrite` (a `Write` replacing a tracked file with a materially
-shorter one).
+| Severity | Hook | Fires on |
+|---|---|---|
+| **Block**: the call does not run | `block-cd-in-bash` | a `cd`, which persists and breaks later calls (the working directory is already the repo root) |
+| | `block-unsafe-recursive-delete` | `rm -rf` and its PowerShell equivalents |
+| | `block-worktree-path-escape` | a write that escapes the worktree boundary |
+| **Ask**: a permission prompt | `ask-destructive-git` | force-push, `reset --hard`, branch force-delete and PR merges (`ALLOW_PR_MERGE=1` drops only the merge prompt, for the chainers' unattended runs); `git checkout <path>`, `git restore <path>`, a forced `checkout -f`/`switch -f` and `git clean`, but only when they would destroy uncommitted work; a saving `git stash` while a merge, cherry-pick or revert is in progress, because it drops `MERGE_HEAD` |
+| **Warn**: a caution, and the call runs | `warn-stacked-pr-merge` | a merge into a branch that open child PRs are based on (states the retarget-or-close rules and the squash hazard) |
+| | `warn-comment-dates` | a bare `YYYY-MM-DD` date added to a code comment in a `.py` or `.sh` file |
+| | `warn-stray-scratch-artifact` | scratch files left in the repo root |
+| | `warn-heredoc-escape-mangling` | a heredoc body whose backslash escape the shell layers eat |
+| | `warn-wholesale-rewrite` | a Write that replaces a tracked file with a much shorter one |
 
 **Direct pushes to `main` are NOT guarded by any of these.** That protection is a git `pre-push`
 hook at `hooks/git/pre-push`, which sees the refspec git already resolved, so no command spelling
@@ -138,16 +125,13 @@ Until you run that, nothing stops a direct push.
 CLA is portable because it separates *procedure* (generic, synced everywhere) from *facts*
 (per-repo, never synced):
 
-- **Synced core** — `skills/`, `agents/`, `hooks/`, `output-styles/`: portable procedure only. A
-  **conformance guard** — `skills/_shared/scripts/check_no_project_tokens.py`, run as a program
-  (exit 0 clean / 1 violations / 2 could-not-run) — fails if a distinctive project token, or a
-  hardcoded absolute developer path, leaks into synced core: one scanner covers `SKILL.md`/reference
-  prose under `skills/`, a second covers source files across five roots — `skills/`, `agents/`,
-  `hooks/`, `output-styles/`, `lib/`. For which file types the second one opens, read
-  `_iter_scanned_source_files` in the checker itself: this file is exempt from every scanner, so a
-  suffix list copied here goes stale with nothing to catch it, and one did.
-  It is a program rather than a test precisely so it runs here — an installed plugin is a read-only
-  cache with no pytest gate over it, so a guard filed as a test module would be unreachable.
+- **The plugin** (`skills/`, `agents/`, `hooks/`, `output-styles/`, `lib/`) holds portable
+  procedure only. A conformance guard, `skills/_shared/scripts/check_no_project_tokens.py`, fails
+  if a project-specific word or a developer's absolute path leaks into it. One scanner reads
+  `SKILL.md` and reference prose under `skills/`; a second reads source files across all five
+  roots (for the file types, read `_iter_scanned_source_files` in the checker; a list copied here
+  went stale once). It is a program, not a test, so it runs in your repo too: an installed plugin
+  is a read-only cache with no pytest gate over it.
 - **Overlays** — optional `cla.io/overlays/<skill>.md` files holding a rule specific to one skill in
   your repo, plus the machine-read `*.local.md` files beside them (such as `branch-prefix.local.md`).
   A skill reads its overlay only if it is there; no skill needs one. Facts never go in an overlay.
@@ -167,7 +151,13 @@ CLA is installed from its marketplace and enabled per repo:
 ```bash
 claude plugin marketplace add crisradu75/logic-artisan
 claude plugin install cla@cris-logic-artisan --scope project
-claude plugin update cla@cris-logic-artisan      # take a newer release (restart to apply)
+```
+
+To take a newer release, refresh the catalog, update, then restart the session:
+
+```bash
+claude plugin marketplace update cris-logic-artisan
+claude plugin update cla@cris-logic-artisan
 ```
 
 **The installed tree is read-only.** Never edit it: it is a version-keyed cache, so an edit either
@@ -178,7 +168,10 @@ belongs to your repo goes in `cla.io/`.
 **Onboarding a fresh repo:** install (above) → `/cla:cla-setup` (scaffold `cla.io/`, write the economy rules file
 `.claude/rules/cla-economy.md` and populate the facts) → install the `pre-push` hook (see *Guardrails*).
 
-**Coming from 1.x?** The `cla-init` and `sync-context` skills were merged into `/cla:cla-setup`. Run
+<details>
+<summary><b>Coming from 1.x?</b> What changed and the one run that migrates you</summary>
+
+The `cla-init` and `sync-context` skills were merged into `/cla:cla-setup`. Run
 it once: it reports what your `cla.io/` is missing, proposes moving facts out of overlays into
 `project-facts.md` and the stories of dated incidents into `cla.io/lessons-learned/` (any rule they
 state stays in the overlay), and proposes deleting overlays left with no rule. The same run:
@@ -202,21 +195,18 @@ then again without `--dry-run`.
 The marketplace install is the only route in. `update-cla`, the old pull-based file-sync updater,
 has been deleted; a repo still carrying a `.cla-sync-lock.json` from it can delete that too.
 
+</details>
+
 ## Testing
 
-**The plugin ships no tests, and that is deliberate.** Everything under this directory is an asset
-you can invoke, read, or have fire on your behalf; nothing here is validation machinery you have no
-way to run. An installed plugin is a read-only, version-keyed cache with no pytest gate over it, so
-a test filed here would be unreachable in your repo by construction.
+**The plugin ships no tests, on purpose.** Everything in this directory is something you can
+invoke, read, or have fire on your behalf. An installed plugin is a read-only, version-keyed cache
+with no pytest gate over it, so a test filed here could never run in your repo.
 
-CLA's own suite therefore runs only in the repo that develops it, where it is one isolated
-pytest scope — 1 in total, down from 12 — living outside the plugin directory entirely. The 4
-shipped skills that have tests, plus the repo-local `/release`, keep them there rather than beside
-themselves (`ls plugin-tests/tests/skills` lists those five plus `_shared`, which is not a skill), alongside the guards over
-the hooks, the shared library, and the source repo's own launchers and catalog.
-
-There is no CI — that local run is the whole verification story. **Nothing in it is a command for
-you to run**; if you want to check your own repo's conformance, the two guards above are programs:
+CLA's own suite runs in the repo that develops it, as one pytest scope outside the plugin
+directory: the skills' tests, the guards over the hooks and the shared library, and the source
+repo's own launchers and catalog. There is no CI; that local run is the gate. **None of it is for
+you to run.** To check your own repo, the two guards above are programs:
 
 ```bash
 python3 <plugin>/skills/_shared/scripts/check_no_project_tokens.py
@@ -283,3 +273,6 @@ release workflow all live outside it, in the canonical source repo only — see 
 
 Per-repo state lives outside the plugin, at your repo root under `cla.io/` — including
 `overlays/<skill>.md`. Nothing in the plugin tree is yours to edit.
+
+MIT licensed; see [LICENSE](https://github.com/crisradu75/logic-artisan/blob/main/LICENSE) in the
+source repo.

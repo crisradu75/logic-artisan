@@ -14,6 +14,11 @@ repo; the repo keeps its own facts.
 That one line plans the change, implements it on a branch, keeps docs and tests in step, runs the
 tests, opens the PR, then reviews it and fixes what the review found. It never merges.
 
+**See a real run:** [PR #365](https://github.com/crisradu75/logic-artisan/pull/365), where
+`spec-to-pr` added the spec-proof checker. Its body records the risk level, two review rounds that
+found 12 issues, each fix broken by hand to prove a test catches it, and, plainly, the one check
+that was not run to completion.
+
 ## Why CLA
 
 - **Right-sized process.** A small change goes straight to `lite-pr`. A big one goes through an
@@ -39,6 +44,52 @@ idea ─► feedback / shape-decision ─┬─► lite-pr ───────
 Every skill runs as `/cla:<name>`. The [developer guide](DEVELOPER-GUIDE.md) walks the ladder one
 step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--which-skill) maps
 "I want to…" to a skill.
+
+## Engineering highlights
+
+**19 skills · 9 guard hooks · 2,758 tests · 56 mutation batches · 12 live OpenSpec specs ·
+stdlib-only shipped Python**
+
+Each decision below was made on a measurement or a recorded incident, kept in
+[docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/history.md):
+
+- **A git hook, not a parser, guards `main`.** A Claude Code hook would have to parse each push
+  command, and every spelling it missed was a hole. The `pre-push` hook reads the refspec git has
+  already resolved, so no spelling gets past it.
+- **An allowlist decides what ships.** The obvious denylist was measured to miss 7 of 72 dev-only
+  files, including the release skill itself. A 16-pattern allowlist is checked before every tag.
+- **A flaky parallel run was investigated, not retried.** Plain `pytest -n auto` failed 3 tests
+  once and passed on the next run. The suspect shared state, a cache the tests wrote in the
+  developer's own home directory, was found and removed; the write-up says plainly that the cause
+  was never proven ([the story](docs/evidence.md#the-parallel-gate-measurements-and-the-cache-incident)).
+- **Browser tests where string tests went blind.** 19 of 21 simulated regressions of the annotation
+  page survived all 46 string-level tests, so a small opt-in Playwright suite covers layout
+  ([why](docs/evidence.md#why-the-playwright-suite-earns-its-exception)).
+- **Mutation testing kept where it pays.** On one PR, review found 16 issues and mutation runs 2 test
+  gaps, and one killed mutant was defending a wrong behaviour. Mutation runs are now opt-in, kept
+  for guard hooks ([the evidence](docs/evidence.md#mutation-testing-is-opt-in-the-pr-behind-the-rule)).
+- **Features are deleted when the data says so.** A worktree-isolation guard recorded 0 blocks
+  across 127 session transcripts and was removed, with the launcher that existed to dodge it.
+- **No CI, by decision.** The local gate is the gate, and its consequences are written down: a
+  green run speaks only for the platform it ran on
+  ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
+
+<details>
+<summary>Where the numbers come from (counted 2026-10-30 on <code>main</code> at <code>5386237</code>)</summary>
+
+```bash
+ls .claude/plugins/cla/skills | grep -v '^_' | wc -l                         # skills
+ls .claude/plugins/cla/hooks | grep -E '^(block|ask|warn)-.*\.py$' | wc -l    # guard hooks
+pytest plugin-tests --collect-only -q | tail -1                            # tests
+find plugin-tests/mutants -name '*.py' | wc -l                             # mutation batches
+ls openspec/specs | wc -l                                                  # live specs
+```
+
+Stdlib-only: every import in the 30 Python files under `.claude/plugins/cla/` was checked against
+`sys.stdlib_module_names`. The numbers move as the code does; re-run the commands rather than
+quoting them.
+
+</details>
 
 ## Quick start (Claude Code)
 
@@ -113,6 +164,9 @@ The Claude Code install above is unchanged by any of this.
 | [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md) | To learn CLA step by step: first session, first PR, the full ladder, worktrees, guardrails, adopting it in a repo |
 | [The plugin README](.claude/plugins/cla/README.md) | Every skill by life-cycle phase, the guardrails, and the dependency list (the file an installing repo receives) |
 | [CLAUDE.md](CLAUDE.md) | The rules for working in this repo (Claude Code reads it too) |
+| [docs/evidence.md](docs/evidence.md) | The measurement, incident or decision behind each rule |
+| [docs/history.md](docs/history.md) | How CLA is released and distributed, and what was retired and why |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
 
 ## Working on CLA itself
 
@@ -176,4 +230,4 @@ The full contributor reference (layout, every script and why it exists, adding a
 
 ---
 
-Proprietary — see `.claude/plugins/cla/.claude-plugin/plugin.json`.
+MIT licensed — see [LICENSE](LICENSE).
