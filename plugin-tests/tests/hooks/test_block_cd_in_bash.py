@@ -74,6 +74,9 @@ def test_quoted_or_unrelated_cd_is_allowed(cmd):
         "if true; then cd /tmp; fi",
         "if cd /tmp; then ls; fi",
         "for d in a b; do cd $d; done",
+        "\\cd /tmp",
+        "! cd /tmp",
+        "time cd /tmp",
     ],
 )
 def test_every_persisting_directory_change_is_a_directive(cmd):
@@ -88,6 +91,11 @@ def test_every_persisting_directory_change_is_a_directive(cmd):
         "echo $(cd /tmp && pwd)",
         "Push-Location C:/wt; python3 x.py; Pop-Location",  # CLAUDE.md's sanctioned form
         "find . -name x -exec rm {} +",
+        "echo {cd x}",  # a brace group needs the space after `{`
+        "git log --format=%h{cd x}",
+        "echo to-do cd later",  # a keyword that is not at a command position
+        "git commit -F - <<'EOF'\ndocs: explain what happens if cd fails\nEOF",
+        "cat > notes.md <<'EOF'\nBuild it, then cd build and run the tests.\nEOF",
         "git log --format='%h {cd x}'",
     ],
 )

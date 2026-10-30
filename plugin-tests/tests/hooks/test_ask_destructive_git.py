@@ -857,6 +857,7 @@ def test_the_prefix_authorizes_only_the_merge_it_heads(command, monkeypatch, cap
         "ALLOW_PR_MERGE=1 GH_REPO=o/r gh pr merge 27 --squash",
         "ALLOW_PR_MERGE=1 gh pr merge 1 --squash && ALLOW_PR_MERGE=1 gh pr merge 2 --squash",
         "(ALLOW_PR_MERGE=1 gh pr merge 27 --squash)",
+        "ALLOW_PR_MERGE=1 \\\n  gh pr merge 27 --squash",  # a continued line is one command
     ],
 )
 def test_the_prefix_still_authorizes_every_merge_it_heads(command, monkeypatch, capsys):
@@ -874,6 +875,15 @@ def test_the_prefix_still_authorizes_every_merge_it_heads(command, monkeypatch, 
         "git -c core.hooksPath=/dev/null push origin main",
         "ALLOW_PUSH_TO_MAIN=1 git push origin main",
         "git fetch && ALLOW_PUSH_TO_MAIN=1 git push",
+        # quoted values and a separator right after the value (review of #445)
+        'ALLOW_PUSH_TO_MAIN="1" git push origin main',
+        "ALLOW_PUSH_TO_MAIN='1' git push origin main",
+        "export ALLOW_PUSH_TO_MAIN=1;git push origin main",
+        # every other way to point git's hooks elsewhere for the push
+        'git -c "core.hooksPath=/dev/null" push origin main',
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/x git push origin main",
+        "GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/dev/null'\" git push origin main",
+        "git config core.hooksPath /dev/null && git push origin main",
     ],
 )
 def test_a_push_that_skips_the_pre_push_guard_asks(command, monkeypatch, capsys):

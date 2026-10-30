@@ -173,7 +173,18 @@ def test_a_dispatcher_whose_library_fails_to_load_asks_instead_of_allowing(tmp_p
     out = json.loads(r.stdout)["hookSpecificOutput"]
     assert out["permissionDecision"] == "ask"
     assert "_dispatch_lib failed to load" in out["permissionDecisionReason"]
-    assert "planted" in r.stderr
+    assert "Traceback (most recent call last)" in r.stderr and "planted" in r.stderr
+
+
+def test_a_block_survives_a_failure_to_format_its_message(tmp_path):
+    """A guard that already blocked stays a block: the crash path's ask must not replace it."""
+    hooks_dir = _hooks_copy(tmp_path)
+    with (hooks_dir / "_dispatch_lib.py").open("a", encoding="utf-8") as lib:
+        lib.write("\n\ndef compose_output(*args, **kwargs):  # planted\n    raise RuntimeError('planted')\n")
+    r = _run_copy(hooks_dir, "dispatch-bash-pretooluse.py",
+                  {"tool_input": {"command": "cd /tmp && ls"}, "cwd": str(tmp_path)}, tmp_path)
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert "block-cd-in-bash" in r.stderr
 
 
 def test_a_dispatcher_that_crashes_in_main_asks_instead_of_allowing(tmp_path):

@@ -13,13 +13,17 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 - `ask-destructive-git`: an inline `ALLOW_PR_MERGE=1` authorizes only the `gh pr merge` it
   heads. A prefix in any other segment of the command used to silence the merge prompt.
 - `ask-destructive-git` asks before a push that skips the `pre-push` guard: `--no-verify`,
-  `-c core.hooksPath=...`, or an inline `ALLOW_PUSH_TO_MAIN=1`.
+  `core.hooksPath` set by `-c`, `git config` or `GIT_CONFIG_*`, or an inline `ALLOW_PUSH_TO_MAIN=1`
+  (quoted or not).
 - The `pre-push` guard also refuses the remote's own default branch, not only `main` and
   `master`.
 - Both dispatchers ask instead of failing open when `_dispatch_lib` fails to load or the
   dispatcher crashes; the old exit 1 let every guarded call through.
-- `block-cd-in-bash` catches `{ cd x; }`, `builtin cd`, `command cd`, and `cd` after `if`,
-  `then`, `elif`, `else`, `while`, `until` or `do`.
+- `block-cd-in-bash` catches `{ cd x; }`, `builtin cd`, `command cd`, `time cd`, `! cd`, a
+  backslash-escaped `cd`, and `cd` after `if`, `then`, `elif`, `else`, `while`, `until` or `do`
+  at a command position.
+- A dispatcher keeps a guard's block when formatting its message fails, and logs the full
+  traceback when it fails closed.
 - Two block messages no longer cite a session memory an installing repo does not have.
 
 ### Changed
