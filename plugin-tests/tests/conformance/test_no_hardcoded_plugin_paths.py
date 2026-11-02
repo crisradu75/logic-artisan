@@ -201,7 +201,9 @@ def test_the_scan_is_not_vacuous():
     # cla-economy-rules-file added `_shared/references/economy-rules-file.md`, and from 101 to 106 when
     # lite-pr-lazy-load added three `lite-pr/references/` files, and from 106 to 109 when
     # reviewer-agents added three `agents/` files, and from 109 to 110 when #272 added
-    # `multi-pr/scripts/check_cite_drift.py`, and from 112 to 114 when agents-md-support
+    # `multi-pr/scripts/check_cite_drift.py`, and from 110 to 111 when #368 added
+    # `_shared/references/retiring-specs.md`, and from 111 to 112 when #417 added
+    # `shape-decision/references/question-form.md`, and from 112 to 114 when agents-md-support
     # added `_shared/references/instruction-files.md` (real count 114 to 115), and from 114 to 111
     # when use-toolkit-reviewers deleted three `agents/` files (real count 112, margin one).
     assert len(files) >= 111, f"scan set collapsed to {len(files)} files"
