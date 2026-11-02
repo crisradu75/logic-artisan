@@ -1013,6 +1013,17 @@ def test_a_stray_backtick_no_later_line_of_the_paragraph_closes_hides_nothing():
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_code_span_closed_on_a_lazy_continuation_line_hides_the_link_between():
+    # Issue #430. An unquoted line that does not end the paragraph continues the quoted one (CommonMark lazy
+    # continuation), so on the page the span runs over the break and hides the link.
+    assert _read("> a `stray [x](a.md) here", "lazy closing ` end")[0] == []
+    assert _read(">> a `stray [x](a.md) here", "> lazy closing ` end")[0] == []
+    # A deeper quote starts a new block, and a blank quoted line ends the paragraph: neither closes the span.
+    assert _read("> a `stray [x](a.md) here", ">> deeper ` end")[0] == ["a.md"]
+    assert _read("> a `stray [x](a.md) here", ">", "> after ` end")[0] == ["a.md"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
 def test_a_numbered_line_less_indented_than_the_open_item_starts_a_list_of_its_own():
     # On the page `2026.` at the margin is outside the item's paragraph, so it is a new list and the item is over.
     targets, issues = _read("- step", "2026. more text", *_ITEM_FENCES)

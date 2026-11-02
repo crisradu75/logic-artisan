@@ -984,12 +984,14 @@ def _ends_paragraph(core: str) -> bool:
 def _later_closer_in(lines: list[str], n: int, depth: int):
     """A function that says whether a run of backticks of a given length sits on a line after line `n`
     (1-based) in the same paragraph, at quote depth `depth`: the lines up to the first one that ends the
-    paragraph (`_ends_paragraph`) or sits in another quote. `_render_code_spans` asks it before it lets an
-    unpaired run open a span over a line break."""
+    paragraph (`_ends_paragraph`) or sits in a deeper quote, which starts a new block. A line at a LOWER depth
+    that does not end the paragraph is a lazy continuation line (CommonMark): on the page it is still part of
+    the quoted paragraph, so a span can close there. `_render_code_spans` asks it before it lets an unpaired
+    run open a span over a line break."""
     def later_closer(length: int) -> bool:
         for line in lines[n:]:
             core, d = _strip_quote(line)
-            if d != depth or _ends_paragraph(core):
+            if d > depth or _ends_paragraph(core):
                 return False
             if any(len(m.group()) == length for m in _BACKTICK_RUN.finditer(core)):
                 return True
