@@ -207,3 +207,37 @@ MUTANTS.append((
     "is read as 'nothing would be lost' instead of 'ask'",
     HOOK, _l9, _l9 + " or False", TARGETS,
 ))
+
+# --- 10-13. The stash check's own handler and its multi-directory reason -----
+# Issue #438. The stash block once shared the discard check's `try`, so a
+# stash-side exception skipped the discard and clean checks; and a deliberate
+# multi-directory skip reported "COULD NOT BE RUN". Killed by
+# `test_a_raising_stash_check_still_runs_the_discard_and_clean_checks` and
+# `test_stashes_in_two_directories_ask_without_probing_each`.
+_l10 = _line("if STASH_UNCHECKED_REASON not in found:")
+MUTANTS.append((
+    "a raising stash check no longer asks: its handler drops the unchecked reason",
+    HOOK, _l10, _l10.replace("if STASH_UNCHECKED_REASON not in found:", "if False:"), TARGETS,
+))
+
+# The structural regression itself: a stash failure ends the function before the
+# discard and clean checks run. Inserted as a one-line `if` ahead of the comment
+# that opens the discard check's `try`, so the file still parses.
+_l11 = _line("# Wrapped for the same reason as the stash check")
+MUTANTS.append((
+    "a stash-side exception skips the discard and clean checks again",
+    HOOK, _l11,
+    "    if STASH_UNCHECKED_REASON in found: return found" + _NL + _l11, TARGETS,
+))
+
+_l12 = _line("if len(stash_dirs) > 1:")
+MUTANTS.append((
+    "stashes in two directories are probed (one directory only) instead of asked about",
+    HOOK, _l12, _l12.replace("> 1", "> 99"), TARGETS,
+))
+
+_l13 = _line("found.append(STASH_MULTI_DIR_REASON)")
+MUTANTS.append((
+    "the deliberate multi-directory skip reports 'COULD NOT BE RUN' again",
+    HOOK, _l13, _l13.replace("STASH_MULTI_DIR_REASON", "STASH_UNCHECKED_REASON"), TARGETS,
+))

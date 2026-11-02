@@ -831,6 +831,16 @@ STASH_UNCHECKED_REASON = (
     "one drops MERGE_HEAD and loses a side of it"
 )
 
+# A deliberate skip, not a failure: probing every directory would break the
+# stated `HOOK_WORST_CASE_SECONDS`, so the hook asks instead. Saying "COULD NOT
+# BE RUN" here reported a fault that never happened.
+STASH_MULTI_DIR_REASON = (
+    "`git stash` in more than one directory, which this hook did not probe "
+    "(it checks one directory per command) — check each directory for a merge, "
+    "cherry-pick or revert in progress, since a stash during one drops "
+    "MERGE_HEAD and loses a side of it"
+)
+
 
 def _stash_dirs(scanned: str, command: str, cwd: str) -> list[str | None]:
     """Distinct directories a saving `git stash` in `command` would run in.
@@ -934,12 +944,17 @@ def _reasons(command: str, cwd: str) -> list[str]:
     # after the four text-only reasons are already in `found`, would silently
     # un-prompt a force-push. Failing to check is the "could not run" case, and
     # that case asks.
+    # The stash check has its own handler. Sharing the discard check's handler
+    # meant a stash-side exception (a NUL in a `-C` path raises ValueError) was
+    # logged as the discard check and skipped the discard and clean checks.
     try:
         # At most ONE probe: a command whose stashes run in more than one
         # directory is asked about rather than probed once per directory, which
         # keeps `HOOK_WORST_CASE_SECONDS` at its stated 4 x 3s.
         stash_dirs = _stash_dirs(scanned, command, cwd)
-        if len(stash_dirs) > 1 or stash_dirs == [None]:
+        if len(stash_dirs) > 1:
+            found.append(STASH_MULTI_DIR_REASON)
+        elif stash_dirs == [None]:
             found.append(STASH_UNCHECKED_REASON)
         elif stash_dirs:
             in_progress = _operation_in_progress(stash_dirs[0])
@@ -947,7 +962,18 @@ def _reasons(command: str, cwd: str) -> list[str]:
                 found.append(STASH_REASON)
             elif in_progress is None:
                 found.append(STASH_UNCHECKED_REASON)
+    except Exception as exc:  # noqa: BLE001 — see the comment above the `try`
+        if STASH_UNCHECKED_REASON not in found:
+            found.append(STASH_UNCHECKED_REASON)
+        print(
+            f"[ask-destructive-git] the stash check raised "
+            f"{type(exc).__name__}: {exc} — asking rather than assuming. "
+            "(hook: ask-destructive-git.py)",
+            file=sys.stderr,
+        )
 
+    # Wrapped for the same reason as the stash check: see the comment above it.
+    try:
         discard_paths: list[str] = []
         discard_whole_tree = False
         # Accumulated per invocation and unioned, because the kinds at stake are

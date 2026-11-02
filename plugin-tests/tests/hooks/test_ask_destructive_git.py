@@ -2250,8 +2250,41 @@ def test_stashes_in_two_directories_ask_without_probing_each(
     calls = _counting_probe(monkeypatch)
     payload = _run(f"git stash && git -C {other} stash", monkeypatch, capsys, cwd=str(repo))
     assert payload is not None
-    assert "COULD NOT BE RUN" in _reason(payload)
+    reason = _reason(payload)
+    assert hook.STASH_MULTI_DIR_REASON in reason
+    # Issue #438: the skip is deliberate, so the prompt must not report a fault.
+    assert "COULD NOT BE RUN" not in reason
     assert calls == []
+
+
+def test_a_raising_stash_check_still_runs_the_discard_and_clean_checks(
+    dirty, monkeypatch, capsys
+):
+    """Issue #438: the stash block shared the discard check's handler, so a
+    stash-side exception was logged as the discard check and skipped the discard
+    and clean checks. The stash check now fails on its own and asks."""
+    def boom(*args, **kwargs):
+        raise ValueError("embedded null byte")
+
+    (dirty / "new.txt").write_text("untracked\n", encoding="utf-8")
+    monkeypatch.setattr(hook, "_stash_dirs", boom)
+    monkeypatch.setattr(
+        sys, "stdin",
+        io.StringIO(json.dumps({
+            "tool_input": {
+                "command": "git stash && git checkout -- tracked.txt && git clean -f"
+            },
+            "cwd": str(dirty),
+        })),
+    )
+    assert hook.main() == 0
+    captured = capsys.readouterr()
+    reason = _reason(json.loads(captured.out))
+    assert hook.STASH_UNCHECKED_REASON in reason
+    assert hook.DISCARD_REASON in reason
+    assert hook.CLEAN_REASON in reason
+    assert "the stash check raised ValueError: embedded null byte" in captured.err
+    assert "discard check raised" not in captured.err
 
 
 def test_a_stash_makes_exactly_one_probe(repo, monkeypatch, capsys):
