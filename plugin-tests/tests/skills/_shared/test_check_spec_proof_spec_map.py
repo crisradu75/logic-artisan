@@ -1031,7 +1031,7 @@ def test_a_code_span_closed_on_a_lazy_continuation_line_hides_the_link_between()
     [
         "2. close ` end",  # an ordered item not at 1 cannot interrupt a paragraph, but it does end the quote
         "-",  # an empty bullet likewise
-        "<span>close ` end</span>",  # an HTML block start
+        "<div>close ` end",  # an HTML block that can interrupt a paragraph (types 1-6)
     ],
 )
 def test_a_block_start_after_a_quote_is_not_a_lazy_continuation_line(after):
@@ -1041,9 +1041,52 @@ def test_a_block_start_after_a_quote_is_not_a_lazy_continuation_line(after):
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
-def test_link_text_wrapped_over_a_lazy_line_back_into_the_quote_is_one_link():
+@pytest.mark.parametrize(
+    "lazy",
+    [
+        "lazy",
+        "<span>lazy</span>",  # an HTML tag that cannot interrupt a paragraph (type 7) is text here
+        "===",  # a setext underline cannot be lazy, so it is text
+        "    2. lazy",  # an indented line cannot start a block here
+    ],
+)
+def test_link_text_wrapped_over_a_lazy_line_back_into_the_quote_is_one_link(lazy):
     # The lazy line keeps the quote's paragraph open, so the `>` line after it continues the same paragraph.
-    assert _read("> a [x", "lazy", "> y](a.md)")[0] == ["a.md"]
+    # Checked against micromark and markdown-it by a reviewer of PR #455.
+    assert _read("> a [x", lazy, "> y](a.md)")[0] == ["a.md"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_a_span_closed_on_an_html_tag_that_cannot_interrupt_is_still_a_span():
+    assert _read("> a `stray [x](a.md) here", "<span>close ` end</span>")[0] == []
+    # An indented lazy line is text even when it would read as a heading at the margin.
+    assert _read("> a `stray [x](a.md) here", "    # close ` end")[0] == []
+    # The span ends at the lazy line's first backtick, so the link after it renders and the last one is stray.
+    assert _read("> a `stray [x](a.md) here", "    # close ` [z](b.md) ` end")[0] == ["b.md"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize(
+    "lines",
+    [
+        # The quote's paragraph ended (a blank `>` line, a heading), so the plain line is a new block, and the
+        # `>` line after it starts a new quote: the bracket the plain line opened does not reach it.
+        ("> a", ">", "b [x", "> y](a.md)"),
+        ("> # H", "b [x", "> y](a.md)"),
+        # A block start that ends the quote ends its paragraph too, and the bracket the quote opened with it.
+        ("> a [x", "2. y](a.md)"),
+    ],
+)
+def test_a_bracket_does_not_cross_into_or_out_of_a_quote_that_ended(lines):
+    assert _read(*lines)[0] == []
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize("lines", [("> # h", "text [x", "> y][bar](a.md)"), ("> p", ">", "text [x", "> y][bar](a.md)")])
+def test_a_link_in_a_new_quote_is_not_swallowed_by_a_bracket_opened_before_it(lines):
+    # The quote's paragraph ended, so the plain line's open bracket does not reach the new quote, and the link
+    # there renders. Checked against micromark and markdown-it by a reviewer of PR #455.
+    assert _read(*lines)[0] == ["a.md"]
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
