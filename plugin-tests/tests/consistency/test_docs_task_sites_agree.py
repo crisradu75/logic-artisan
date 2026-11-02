@@ -199,3 +199,37 @@ def test_the_site_check_is_not_vacuous():
     # A site that dropped the token must be reported, and a site that keeps it must not be.
     assert _missing("no mention here", (TOKEN, HEADING)) == [TOKEN, HEADING]
     assert _missing(f"{TOKEN} and {HEADING}", (TOKEN, HEADING)) == []
+
+
+# The step names model-routing.md's second-pass paragraph cites, and the file each names a step in. Each must be
+# that step's own heading there: a `##` heading in revise.md, the bold lead of a paragraph in lite-pr's SKILL.md.
+# Issue #434: the site test above checks only that the words appear somewhere, so a renamed heading left
+# model-routing.md pointing at nothing while the suite stayed green.
+_NAMED_STEPS = {
+    "Docs currency": (_SKILLS / "spec-to-pr" / "references" / "revise.md", "heading"),
+    "Docs check": (_SKILLS / "lite-pr" / "SKILL.md", "bold lead"),
+}
+
+
+def _is_step_heading(text: str, name: str, form: str) -> bool:
+    """Whether `text` has a line that opens with `name` as a `##` heading or as a paragraph's bold lead."""
+    pattern = rf"^## {re.escape(name)}\b" if form == "heading" else rf"^\*\*{re.escape(name)}\b"
+    return re.search(pattern, text, re.MULTILINE) is not None
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
+def test_the_step_names_model_routing_cites_are_headings_in_their_files():
+    routing = _read(_SKILLS / "_shared" / "references" / "model-routing.md")
+    for name, (path, form) in _NAMED_STEPS.items():
+        assert f'"{name}"' in routing, f"model-routing.md no longer cites {name!r}; update _NAMED_STEPS"
+        assert _is_step_heading(_read(path), name, form), f"{path.name} has no {form} {name!r} that model-routing.md cites"
+
+
+# requirement: docs-currency / A change keeps the repo's docs current
+def test_the_step_heading_check_is_not_vacuous():
+    # A mention in running prose, or a heading at another level, is not the step's own heading.
+    assert not _is_step_heading("Run the Docs currency step first.", "Docs currency", "heading")
+    assert not _is_step_heading("### Docs currency", "Docs currency", "heading")
+    assert not _is_step_heading("See the **Docs check** below.", "Docs check", "bold lead")
+    assert _is_step_heading("x\n## Docs currency (round 1)\ny", "Docs currency", "heading")
+    assert _is_step_heading("x\n**Docs check, made by you** y", "Docs check", "bold lead")
