@@ -29,7 +29,7 @@ Evaluation rubric for a CTO-level review of this repo's workspace. Each dimensio
 **Question:** Does the workspace layout follow clear conventions and scale well?
 
 ### Review signals
-- **Workspace layout**: Is the apps/packages split (if any) clean, and are internal workspace deps sensible? Do shared packages have coherent public surfaces (barrel exports)?
+- **Workspace layout**: Is the workspace's split into members (if it has one) clean, and are internal workspace deps sensible? Do shared members have coherent public surfaces (barrel exports)?
 - **Package boundaries**: Do packages keep the boundaries the repo documents, and is the dependency *direction* healthy — nothing over-coupled, nothing that should be shared trapped inside one app?
 - **Per-app internal structure**: Is each app's own source tree cleanly bucketed by concern?
 - **File naming**: Consistent conventions across components/functions/keys/package names?
@@ -45,7 +45,7 @@ Evaluation rubric for a CTO-level review of this repo's workspace. Each dimensio
 - **Gitignore hygiene**: Build output, secrets, and local dev artifacts excluded?
 
 ### Grade definitions
-- **A**: Clean apps/packages split, healthy dependency direction, shared packages have coherent barrels, per-app trees are logical, components reasonably scoped.
+- **A**: Clean split into workspace members (if any), healthy dependency direction, shared members have coherent barrels, each member's tree is logical, components reasonably scoped.
 - **B**: Mostly clean with 1-2 minor issues.
 - **C**: Boundaries blur (e.g. logic that should be shared inlined in a component, or something app-specific wrongly shared). Some dead files.
 - **D**: No clear convention — layers and apps intermixed, or the workspace split is nominal only.
