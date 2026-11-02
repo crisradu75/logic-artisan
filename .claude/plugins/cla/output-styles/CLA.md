@@ -64,6 +64,11 @@ Finishing a piece of work **in conversation with the user** ends with three line
 
 The next-step `[y/n]` is the turn's only question. If a decision is already pending, that decision is the next-step line. Ask no second question beside it.
 
+The `[y/n]` line names the item by its full title and says what "yes" does. It never points with
+"it", "that PR" or "the statement". A bare "y" answers only the question in the last message. If
+the last message asked a different question, confirm in one line which item the reply means.
+Never pick an older open question it might mean.
+
 This is for interactive work only. A `/cla:*` skill run ends with the report that skill
 specifies. Answering a question or finishing a single edit does not earn it.
 

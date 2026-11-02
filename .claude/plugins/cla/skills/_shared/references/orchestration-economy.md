@@ -7,8 +7,15 @@ rule below saves some without dropping quality.
    one silently inherits the session model. Choose the model by the task.
 2. **Write a complete first brief.** Put every known item and every standing rule in it. Ask for a
    report of about 300 words. A finding added after review costs a full build-and-review cycle.
-3. **Test narrowly, then once.** While iterating, run only the touched test files. Run the full
-   suite once, on the final commit. The orchestrator re-verifies that commit itself before it offers a merge.
+3. **Test narrowly, then once, sized to the change.** While iterating, run only the touched test
+   files. On the final commit, run one verification sized to the change, and re-verify that commit
+   at the same size before offering a merge.
+   - A change to docs, config or infra-as-code that no test exercises gets the targeted gates:
+     lint, typecheck, the touched tests and the checks that read the changed files.
+   - Any other change gets the full suite once. When unsure, treat the change as code.
+   - A verification policy in the repo's instruction file (`CLAUDE.md` or `AGENTS.md`) or in
+     `cla.io/project-facts.md` overrides this sizing.
+   - A skill whose merge gate names the full suite keeps the full suite for that merge.
 4. **One PR at a time per area.** Different areas can run in parallel. Two PRs in one area cause
    rebases and version-bump clashes.
 5. **Hand off a long chat.** When the orchestrating chat grows long, write a handoff file and
@@ -31,7 +38,8 @@ rule below saves some without dropping quality.
    the agents finish.
 10. **Run full test suites one at a time across parallel agents.** Rule 3 sets the scope for each
     agent: its own area while iterating. Never let two full suites run together. After the merges,
-    the orchestrator runs the full suite once on the base branch.
+    the orchestrator verifies the base branch once, sized as rule 3 sizes it for all the merged
+    changes together.
 11. **Plan the merge order up front, and merge one PR at a time.** Only the last PR in the order
     edits a file that several areas share. Earlier PRs list the lines they need in their body.
     The last PR applies them, so no merge leaves the next PR conflicting.

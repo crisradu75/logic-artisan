@@ -237,6 +237,24 @@ def test_the_orchestration_rules_live_once_and_all_three_chains_cite_them() -> N
         assert "full suite once" not in text, f"{name}/SKILL.md copies a rule from {_ECONOMY.name}"
 
 
+def test_the_final_test_run_is_sized_to_the_change() -> None:
+    """Rule 3 once said "run the full suite once, on the final commit" with no condition, and a
+    repo cannot edit the economy rules file setup writes. A docs-only PR then paid a full
+    suite run. The rule sizes the run, names the override and keeps a skill's own merge gate.
+    Rule 10's post-merge run follows the same sizing."""
+    economy = " ".join(_read(_ECONOMY).split())
+    rule_3 = economy[economy.index("3. **Test narrowly"):economy.index("4. **One PR at a time")]
+    assert "sized to the change" in rule_3
+    assert "docs, config or infra-as-code that no test exercises gets the targeted gates" in rule_3
+    assert "Any other change gets the full suite once. When unsure, treat the change as code." in rule_3
+    assert "(`CLAUDE.md` or `AGENTS.md`) or in `cla.io/project-facts.md` overrides this sizing" in rule_3
+    assert "A skill whose merge gate names the full suite keeps the full suite" in rule_3
+    rule_10 = economy[economy.index("10. **Run full test suites"):economy.index("11. **Plan the merge")]
+    assert "sized as rule 3 sizes it" in rule_10
+    assert "runs the full suite once on the base branch" not in rule_10
+    assert "Run the full suite once, on the final commit." not in economy
+
+
 def test_the_economy_rules_keep_the_long_chat_handoff() -> None:
     """Rule 5 is the only place a chain is told to stop carrying a long context. A silent
     rewrite that drops the handoff file or the fresh session would pass every other test."""
