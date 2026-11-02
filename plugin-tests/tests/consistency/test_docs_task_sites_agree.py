@@ -213,7 +213,10 @@ _NAMED_STEPS = {
 
 def _is_step_heading(text: str, name: str, form: str) -> bool:
     """Whether `text` has a line that opens with `name` as a `##` heading or as a paragraph's bold lead."""
-    pattern = rf"^## {re.escape(name)}\b" if form == "heading" else rf"^\*\*{re.escape(name)}\b"
+    # The name ends at a space, `(`, `,`, `:` or the closing `**`, so `Docs currencies` or `Docs currency-x` is
+    # another name, not this one.
+    end = r"(?=[ \t(,:*]|$)"
+    pattern = rf"^## {re.escape(name)}{end}" if form == "heading" else rf"^\*\*{re.escape(name)}{end}"
     return re.search(pattern, text, re.MULTILINE) is not None
 
 
@@ -231,5 +234,11 @@ def test_the_step_heading_check_is_not_vacuous():
     assert not _is_step_heading("Run the Docs currency step first.", "Docs currency", "heading")
     assert not _is_step_heading("### Docs currency", "Docs currency", "heading")
     assert not _is_step_heading("See the **Docs check** below.", "Docs check", "bold lead")
+    # A longer or suffixed name is another step, and each form rejects the other.
+    assert not _is_step_heading("## Docs currencies", "Docs currency", "heading")
+    assert not _is_step_heading("## Docs currency-x", "Docs currency", "heading")
+    assert not _is_step_heading("**Docs checks** here", "Docs check", "bold lead")
+    assert not _is_step_heading("**Docs currency** here", "Docs currency", "heading")
+    assert not _is_step_heading("## Docs check", "Docs check", "bold lead")
     assert _is_step_heading("x\n## Docs currency (round 1)\ny", "Docs currency", "heading")
     assert _is_step_heading("x\n**Docs check, made by you** y", "Docs check", "bold lead")
