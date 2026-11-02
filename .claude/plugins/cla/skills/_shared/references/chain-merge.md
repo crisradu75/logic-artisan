@@ -152,6 +152,8 @@ of its own before these.
 
 ## Merge, then confirm it landed
 
+Each time a skill asks the user whether to merge a PR, the question names the base branch and the PR title.
+
 Pass the checked head to the merge, so GitHub refuses it if the branch moved after the checks:
 
 ```
