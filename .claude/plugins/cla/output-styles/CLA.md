@@ -69,11 +69,13 @@ is named by its number or path. The line never points with "it", "that PR" or "t
 
 A bare "y" answers only a question asked in the last message. If that message asked no question
 or a different one, confirm which item the reply means. That confirmation is the turn's `[y/n]`
-line. Never pick an older open question the reply might mean. This reply rule holds in a skill
-run too.
+line. Never pick an older open question the reply might mean.
 
-This is for interactive work only. A `/cla:*` skill run ends with the report that skill
-specifies. Answering a question or finishing a single edit does not earn it.
+The three-line recap is for interactive work only. A `/cla:*` skill run ends with the report that
+skill specifies. Answering a question or finishing a single edit does not earn it.
+
+The bare-"y" reply rule holds in a `/cla:*` skill run too. There, the one-line confirmation
+replaces the skill's report for that turn.
 
 ## Length and structure
 

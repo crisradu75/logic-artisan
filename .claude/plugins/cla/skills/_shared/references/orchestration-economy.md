@@ -17,8 +17,9 @@ rule below saves some without dropping quality.
    - Any other diff gets the full suite once. When unsure, treat the change as code.
    - A verification policy in the repo's instruction file (`CLAUDE.md` or `AGENTS.md`) or in
      `cla.io/project-facts.md` replaces the two bullets above.
-   - A skill whose merge gate names the full suite or the full gate keeps it for that merge. That
-     gate wins over a repo policy.
+   - A skill whose merge gate names the full suite or the full gate keeps it for that merge. Apply
+     that gate as the skill words it, including any skip the skill states. A repo policy may add
+     to that gate but never shrink it.
 4. **One PR at a time per area.** Different areas can run in parallel. Two PRs in one area cause
    rebases and version-bump clashes.
 5. **Hand off a long chat.** When the orchestrating chat grows long, write a handoff file and
@@ -42,7 +43,7 @@ rule below saves some without dropping quality.
 10. **Run full test suites one at a time across parallel agents.** Rule 3 sets the scope for each
     agent: its own area while iterating. Never let two full suites run together. After the merges,
     the orchestrator verifies the base branch once. Rule 3 sizes that run over every merged diff:
-    the full suite if any merged diff needs it.
+    the full suite if any merged diff falls outside the targeted case.
 11. **Plan the merge order up front, and merge one PR at a time.** Only the last PR in the order
     edits a file that several areas share. Earlier PRs list the lines they need in their body.
     The last PR applies them, so no merge leaves the next PR conflicting.

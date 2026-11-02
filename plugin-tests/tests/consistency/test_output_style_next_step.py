@@ -32,4 +32,5 @@ def test_a_bare_y_answers_only_the_last_question() -> None:
     assert "If that message asked no question or a different one, confirm which item the reply means." in section
     assert "That confirmation is the turn's `[y/n]` line." in section
     assert "Never pick an older open question the reply might mean." in section
-    assert "This reply rule holds in a skill run too." in section
+    assert 'The bare-"y" reply rule holds in a `/cla:*` skill run too.' in section
+    assert "the one-line confirmation replaces the skill's report for that turn" in section
