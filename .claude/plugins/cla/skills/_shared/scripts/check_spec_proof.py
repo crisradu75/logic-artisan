@@ -981,15 +981,51 @@ def _ends_paragraph(core: str) -> bool:
     return bool(item) and _interrupts_paragraph(core, item)
 
 
+# The HTML blocks that can interrupt a paragraph (CommonMark types 1-6). Type 7, any other tag such as `<span>`,
+# cannot, so a line opening one continues a paragraph like text.
+_HTML_INTERRUPT = re.compile(
+    r"<(?:(?:script|pre|style|textarea)(?:[\s>]|$)|!--|\?|![A-Za-z]|!\[CDATA\[|/?(?:address|article|aside|base|"
+    r"basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|"
+    r"figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|"
+    r"noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|"
+    r"ul)(?:[\s/>]|$))",
+    re.IGNORECASE,
+)
+
+
+def _continues_lazily(core: str) -> bool:
+    """True when `core`, a line at a LOWER quote depth than the paragraph before it, continues that paragraph
+    lazily (CommonMark): it is not blank and, with fewer than four spaces of indent, starts no block. That is
+    stricter than `_ends_paragraph` in one way: the line is checked against the outer container, so a list item
+    that could not interrupt a paragraph (`2.`, an empty `-`) still starts a list there and ends the quote. It
+    is looser in two: a setext underline (`===`) cannot be lazy, so it is text, and an indented line cannot
+    start a block, so it is text too. An HTML block ends the quote only if it is one that can interrupt a
+    paragraph (`_HTML_INTERRUPT`). Erring either way is not safe here: a line wrongly read as lazy can hide a
+    link the page shows, and one wrongly read as a block start can split a link the page shows."""
+    if not core.strip():
+        return False
+    body = core.lstrip(" ")
+    if len(core) - len(body) >= 4 or body.startswith("\t"):
+        return True  # an indented line cannot start a block here, and indented code cannot interrupt a paragraph
+    return not (
+        _NEW_BLOCK.match(body)
+        or _opens_fence(_FENCE_LINE.match(body))
+        or _ITEM.match(body)
+        or _HTML_INTERRUPT.match(body)
+    )
+
+
 def _later_closer_in(lines: list[str], n: int, depth: int):
     """A function that says whether a run of backticks of a given length sits on a line after line `n`
     (1-based) in the same paragraph, at quote depth `depth`: the lines up to the first one that ends the
-    paragraph (`_ends_paragraph`) or sits in another quote. `_render_code_spans` asks it before it lets an
-    unpaired run open a span over a line break."""
+    paragraph (`_ends_paragraph`) or sits in a deeper quote, which starts a new block. A line at a LOWER depth
+    that `_continues_lazily` is a lazy continuation line: on the page it is still part of the quoted
+    paragraph, so a span can close there. `_render_code_spans` asks it before it lets an unpaired run open a
+    span over a line break."""
     def later_closer(length: int) -> bool:
         for line in lines[n:]:
             core, d = _strip_quote(line)
-            if d != depth or _ends_paragraph(core):
+            if d > depth or (not _continues_lazily(core) if d < depth else _ends_paragraph(core)):
                 return False
             if any(len(m.group()) == length for m in _BACKTICK_RUN.finditer(core)):
                 return True
@@ -1011,6 +1047,7 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
     defs: dict[str, tuple[int, str]] = {}  # normalised label -> (line, target) of its first reference definition
     openers: list[tuple[int | None, bool]] = []  # the brackets open at the end of the last line of this paragraph
     was_quoted = False  # whether the last line read sat in a block quote
+    quote_para = False  # whether the last line read was paragraph text in a block quote, which a lazy line may continue
     used: set[str] = set()  # normalised labels some `[text][label]`, `[label][]` or `[label]` uses
     fence = None
     lists = _Lists()
@@ -1030,11 +1067,19 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
             continue
         core, quoted = _strip_quote(line)
         if _indented_code(core, cols_before, lazy_before):
-            was_quoted = quoted  # (no brackets can be open here: code never interrupts a paragraph, and a blank line cleared them)
+            was_quoted, quote_para = quoted, False  # (no brackets can be open here: code never interrupts a paragraph, and a blank line cleared them)
             continue
+        # A lazy continuation line: unquoted text that continues a quoted paragraph still open on the line before.
+        # It keeps that paragraph open, so the quote does not start again on the next `>` line, and its open
+        # brackets go on. Only an OPEN quoted paragraph can be continued: after a blank `>` line or a heading the
+        # quote's paragraph is over, and a plain line is a new block.
+        lazy = not quoted and quote_para and _continues_lazily(core)
         if quoted and not was_quoted:
             openers.clear()  # a quote starts here; the text before it was another block
-        was_quoted = quoted
+        elif was_quoted and not quoted and not lazy:
+            openers.clear()  # the quote ends here, and this line starts another block
+        was_quoted = quoted or lazy
+        quote_para = (bool(quoted) and not _ends_paragraph(core)) or lazy
         stripped = core.lstrip()
         if stripped.startswith("<!--"):
             openers.clear()
@@ -1042,7 +1087,7 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
             if "-->" not in stripped[4:]:
                 comment_from = n
             continue
-        breaks = _ends_paragraph(core)
+        breaks = not lazy and _ends_paragraph(core)  # a lazy line is paragraph text by definition
         if breaks:
             span_open = 0  # a span never runs over the end of its paragraph
         later = None if _NEW_BLOCK.match(stripped) else _later_closer_in(all_lines, n, quoted)
@@ -1059,8 +1104,8 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
         item = _ITEM.match(core)
         # A new list item ends the paragraph before it, unless it is an ordered item that does not start at 1 or an
         # empty one: those cannot interrupt a paragraph, so on the page the text goes on.
-        new_item = bool(item) and bool(core[item.end():].strip()) and (item.group(2) in ("-", "+", "*") or item.group(2)[:-1] == "1")
-        closes = bool(_NEW_BLOCK.match(stripped) or _SETEXT_UNDERLINE.match(stripped.strip()))  # a heading, a rule or an underline
+        new_item = not lazy and bool(item) and bool(core[item.end():].strip()) and (item.group(2) in ("-", "+", "*") or item.group(2)[:-1] == "1")
+        closes = not lazy and bool(_NEW_BLOCK.match(stripped) or _SETEXT_UNDERLINE.match(stripped.strip()))  # a heading, a rule or an underline
         if not stripped.strip() or closes or new_item:
             openers.clear()  # a blank line, a heading, a rule, an underline or a new list item ends the paragraph
         targets, labels = _scan_links(masked, openers)
