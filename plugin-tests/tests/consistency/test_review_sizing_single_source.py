@@ -237,6 +237,28 @@ def test_the_orchestration_rules_live_once_and_all_three_chains_cite_them() -> N
         assert "full suite once" not in text, f"{name}/SKILL.md copies a rule from {_ECONOMY.name}"
 
 
+def test_the_final_test_run_is_sized_to_the_change() -> None:
+    """Issue #448: rule 3 said "run the full suite once, on the final commit" with no condition.
+    A repo cannot edit the economy rules file that setup writes, so it could not size the run.
+    Rule 3 now sizes the run on the whole diff and keeps the orchestrator's own re-verification.
+    A repo policy replaces the sizing, but it cannot shrink a skill's full-suite merge gate.
+    Rule 10's post-merge run follows the same sizing."""
+    economy = " ".join(_read(_ECONOMY).split())
+    rule_3 = economy[economy.index("3. **Test narrowly"):economy.index("4. **One PR at a time")]
+    assert "The orchestrator re-verifies that commit itself" in rule_3
+    assert "Size the run on the whole diff" in rule_3
+    assert "only when every changed file is docs, config or infra-as-code" in rule_3
+    assert "only when neither the build nor the test suite loads them" in rule_3
+    assert "Any other diff gets the full suite once. When unsure, treat the change as code." in rule_3
+    assert "(`CLAUDE.md` or `AGENTS.md`) or in `cla.io/project-facts.md` replaces the two bullets" in rule_3
+    assert "names the full suite or the full gate keeps it for that merge." in rule_3
+    assert "including any skip the skill states. A repo policy may add to that gate but never shrink it." in rule_3
+    rule_10 = economy[economy.index("10. **Run full test suites"):economy.index("11. **Plan the merge")]
+    assert "Rule 3 sizes that run over every merged diff: the full suite if any merged diff falls outside the targeted case." in rule_10
+    assert "runs the full suite once on the base branch" not in rule_10
+    assert "Run the full suite once, on the final commit." not in economy
+
+
 def test_the_economy_rules_keep_the_long_chat_handoff() -> None:
     """Rule 5 is the only place a chain is told to stop carrying a long context. A silent
     rewrite that drops the handoff file or the fresh session would pass every other test."""
