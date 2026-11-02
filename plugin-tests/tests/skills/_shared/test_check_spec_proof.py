@@ -419,7 +419,114 @@ def test_a_requirement_repo_rejects_the_retired_scenario_marker(repo, capsys):
 def test_a_repeated_scenario_heading_is_reported_in_scenario_mode(repo, capsys):
     _write(repo, FACTS, "- Test proof granularity: scenario\n")
     _write(repo, SPEC, _spec_text(("One", _scn("Same")), ("Two", _scn("Same", then="y"))))
-    assert "PROBLEM repeated" in run(repo, capsys)[1]
+    repeated = [p for p in _problems(run(repo, capsys)[1]) if "PROBLEM repeated" in p]
+    # One line, the per-file one: the cross-file check leaves a heading one file repeats to that file's line.
+    assert repeated == [f"PROBLEM repeated: {SPEC}: heading 'Same' appears 2 times"], repeated
+
+
+DELTA = "openspec/changes/c1/specs/alpha/spec.md"
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_scenario_heading_under_two_requirements_in_two_files_is_reported(repo, capsys):
+    """Issue #457: proof is keyed by (spec, scenario heading), so a marker for `Old rule / Old case` also proved the
+    `Old case` a delta adds under `New rule`. Neither file repeats the heading, so the per-file check missed it."""
+    _scenario_repo(repo, ("Old rule", "Old SHALL.\n\n" + _scn("Old case")))
+    _write(repo, DELTA, _delta_text(added=[("New rule", "New SHALL.\n\n" + _scn("Old case", then="other"))]))
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old rule / Old case"))
+    code, out, _ = run(repo, capsys)
+    repeated = [p for p in _problems(out) if "PROBLEM repeated" in p]
+    assert code == 1 and len(repeated) == 1, out
+    assert (
+        "PROBLEM repeated: alpha: scenario 'Old case' sits under more than one requirement "
+        f"('New rule' in {DELTA}; 'Old rule' in {SPEC})"
+    ) in repeated[0]
+
+
+_RENAME = "## RENAMED Requirements\n\n{b}FROM: `### Requirement: Old rule`\n{b}TO: `### Requirement: Renamed rule`\n\n"
+_MOD_RENAMED = "## MODIFIED Requirements\n\n### Requirement: Renamed rule\n\nOld SHALL.\n\n" + _scn("Old case") + "\n\n"
+_ADD_NEW = "## ADDED Requirements\n\n### Requirement: New rule\n\nN SHALL.\n\n" + _scn("Old case", then="other") + "\n"
+_LIVE_OLD = (("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Kept", "K SHALL.\n\n" + _scn("Kept case")))
+
+
+C2 = "openspec/changes/c2/specs/alpha/spec.md"
+
+
+@pytest.mark.parametrize(
+    "deltas",
+    [
+        {DELTA: _RENAME.format(b="- ") + _MOD_RENAMED},
+        {DELTA: _RENAME.format(b="* ") + _MOD_RENAMED},
+        {DELTA: _RENAME.format(b="") + _MOD_RENAMED},
+        {DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n" + _ADD_NEW},
+        {DELTA: "## REMOVED Requirements\n\n- `### Requirement: Old rule`\n\n" + _ADD_NEW},
+        {DELTA: "## MODIFIED Requirements\n\n### Requirement: Old rule\n\nOld SHALL.\n\n" + _scn("Other case") + "\n\n" + _ADD_NEW},
+        # c2 builds on c1's rename: judged against the live spec alone it is not safe to place, so it is skipped.
+        {DELTA: _RENAME.format(b="- "), C2: _MOD_RENAMED},
+        # c2 modifies the requirement c1 adds in place of the one it removes.
+        {DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n" + _ADD_NEW,
+         C2: _ADD_NEW.replace("## ADDED", "## MODIFIED")},
+        # c2 removes the requirement c1 adds and moves `Old case` on again: after both, one requirement holds it.
+        {DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n" + _ADD_NEW,
+         C2: "## REMOVED Requirements\n\n### Requirement: New rule\n\n**Reason**: moved\n\n" + _ADD_NEW.replace("New rule", "Newest rule")},
+        # A rename onto live `Kept`, which the delta keeps, is a collision OpenSpec rejects: not guessed at.
+        {DELTA: "## RENAMED Requirements\n\n- FROM: `### Requirement: Old rule`\n- TO: `### Requirement: Kept`\n\n"
+         + _ADD_NEW.replace("Old case", "Kept case")},
+    ],
+    ids=["renamed", "renamed-star-bullet", "renamed-no-bullet", "removed", "removed-bullet", "moved-by-modified",
+         "modifies-another-changes-rename", "modifies-another-changes-addition", "removes-another-changes-addition",
+         "rename-collides-with-live"],
+)
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_requirement_a_delta_replaces_does_not_share_its_scenario(repo, capsys, deltas):
+    # Archiving the delta leaves `Old case` under one requirement only, so the live copy is not a second one.
+    _scenario_repo(repo, *_LIVE_OLD)
+    for rel, text in deltas.items():
+        _write(repo, rel, "# Spec Delta\n\n" + text)
+    _write(repo, "tests/test_old.py", "".join(_marker("scenario", "alpha", s) for s in ("Old case", "Kept case", "Other case")))
+    code, out, _ = run(repo, capsys)
+    assert "PROBLEM repeated" not in out, out
+
+
+@pytest.mark.parametrize(
+    "deltas, where",
+    [
+        # Renamed with no MODIFIED block: the scenario moves with the name, so it still clashes with the ADDED copy.
+        ({DELTA: _RENAME.format(b="- ") + _ADD_NEW}, f"'New rule' in {DELTA}; 'Renamed rule' in {SPEC}"),
+        ({DELTA: _RENAME.format(b="* ") + _ADD_NEW}, f"'New rule' in {DELTA}; 'Renamed rule' in {SPEC}"),
+        ({DELTA: _RENAME.format(b="") + _ADD_NEW}, f"'New rule' in {DELTA}; 'Renamed rule' in {SPEC}"),
+        # A rename shown inside a code fence is an example, not an operation.
+        ({DELTA: "## RENAMED Requirements\n\n```\n- FROM: `### Requirement: Old rule`\n- TO: `### Requirement: New rule`\n```\n\n" + _ADD_NEW},
+         f"'New rule' in {DELTA}; 'Old rule' in {SPEC}"),
+        # c1 removing `Old rule` does not hide it from c2, which leaves it in place.
+        ({DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: gone\n",
+          C2: _ADD_NEW},
+         f"'New rule' in {C2}; 'Old rule' in {SPEC}"),
+        # One file repeating the heading does not hide the live copy.
+        ({DELTA: _ADD_NEW + "\n### Requirement: Newer rule\n\nN SHALL.\n\n" + _scn("Old case", then="third") + "\n"},
+         f"'New rule' in {DELTA}; 'Newer rule' in {DELTA}; 'Old rule' in {SPEC}"),
+    ],
+    ids=["renamed-without-modified", "renamed-without-modified-star-bullet", "renamed-without-modified-no-bullet",
+         "fenced-rename", "removed-by-another-change", "one-file-repeats-plus-live"],
+)
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_scenario_heading_two_requirements_will_hold_is_reported(repo, capsys, deltas, where):
+    _scenario_repo(repo, *_LIVE_OLD)
+    for rel, text in deltas.items():
+        _write(repo, rel, "# Spec Delta\n\n" + text)
+    _write(repo, "tests/test_old.py", "".join(_marker("scenario", "alpha", s) for s in ("Old case", "Kept case", "Shared case")))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"sits under more than one requirement ({where})" in out, out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_heading_one_delta_file_repeats_is_reported_once_by_that_file(repo, capsys):
+    # Every copy sits in one file, so that file's own `repeated` line reports it and the cross-file check adds none.
+    _scenario_repo(repo, ("Kept", "K SHALL.\n\n" + _scn("Kept case")))
+    _write(repo, DELTA, "# Spec Delta\n\n" + _ADD_NEW + "\n### Requirement: Newer rule\n\nN SHALL.\n\n" + _scn("Old case", then="third") + "\n")
+    _write(repo, "tests/test_old.py", "".join(_marker("scenario", "alpha", s) for s in ("Kept case", "Old case")))
+    repeated = [p for p in _problems(run(repo, capsys)[1]) if "PROBLEM repeated" in p]
+    assert len(repeated) == 1 and "sits under more than one requirement" not in repeated[0], repeated
 
 
 @pytest.mark.parametrize(
@@ -1629,6 +1736,53 @@ def test_a_three_part_marker_names_no_spec_that_does_not_exist(repo, capsys):
 
 
 # requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_that_two_readings_both_prove_is_ambiguous(repo, capsys):
+    """Issue #431: `A / B / C` reads as scenario `B / C` under `A` and as scenario `C` under `A / B`. Both are
+    real here, so the first split used to win silently, and the marker could prove another scenario than meant."""
+    reqs = (
+        ("A", "SHALL.\n\n" + _scn("B / C")),
+        ("A / B", "SHALL.\n\n" + _scn("C")),
+    )
+    _scenario_repo(repo, *reqs)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "A / B / C") + _marker("scenario", "alpha", "C"))
+    code, out, _ = run(repo, capsys)
+    dangling = [p for p in _problems(out) if "PROBLEM dangling" in p]
+    assert code == 1 and len(dangling) == 1, out
+    assert "ambiguous: it reads as scenario 'B / C' under requirement 'A'; scenario 'C' under requirement 'A / B'" in dangling[0]
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_with_one_valid_reading_still_proves_it(repo, capsys):
+    # Both splits name a real scenario, but only one names the requirement it sits under: `C` sits under `Z`,
+    # not under `A / B`. One reading proves, so the marker is not ambiguous and proves `B / C`.
+    reqs = (
+        ("A", "SHALL.\n\n" + _scn("B / C")),
+        ("A / B", "SHALL.\n\n" + _scn("D")),
+        ("Z", "SHALL.\n\n" + _scn("C")),
+    )
+    _scenario_repo(repo, *reqs)
+    markers = _marker("scenario", "alpha", "A / B / C") + _marker("scenario", "alpha", "D") + _marker("scenario", "alpha", "Z / C")
+    _write(repo, "tests/test_old.py", markers)
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_marker_that_is_a_whole_heading_and_a_valid_split_is_ambiguous(repo, capsys):
+    # `A / B / C` is a scenario heading of its own, and `C` sits under requirement `A / B`: both readings hold.
+    reqs = (
+        ("X", "SHALL.\n\n" + _scn("A / B / C")),
+        ("A / B", "SHALL.\n\n" + _scn("C")),
+    )
+    _scenario_repo(repo, *reqs)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "A / B / C") + _marker("scenario", "alpha", "C"))
+    code, out, _ = run(repo, capsys)
+    dangling = [p for p in _problems(out) if "PROBLEM dangling" in p]
+    assert code == 1 and len(dangling) == 1, out
+    assert "ambiguous: it reads as scenario 'A / B / C'; scenario 'C' under requirement 'A / B'" in dangling[0]
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
 def test_slashes_inside_headings_do_not_confuse_either_form(repo, capsys):
     reqs = (
         ("Input / output", "SHALL.\n\n" + _scn("Read / write works") + "\n\n" + _scn("Plain")),
@@ -1649,15 +1803,18 @@ def test_slashes_inside_headings_do_not_confuse_either_form(repo, capsys):
 
 
 # requirement: spec-proof / A repo chooses proof per requirement or per scenario
-def test_a_two_part_reading_wins_when_both_forms_fit(repo, capsys):
+def test_a_marker_that_fits_both_forms_proves_neither(repo, capsys):
     # "Other / Third" is a whole scenario heading under "Input", and also "requirement Other, scenario Third".
-    # The two-part reading comes first, so the marker proves the scenario named "Other / Third" and not "Third".
+    # Issue #431: both readings hold, so the marker is ambiguous and proves neither. (Until #456 the two-part
+    # reading won silently.)
     _scenario_repo(repo, ("Input", "SHALL.\n\n" + _scn("Other / Third")), ("Other", "SHALL.\n\n" + _scn("Third", then="differently")))
     _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Other / Third"))
     code, out, _ = run(repo, capsys)
+    dangling = [p for p in _problems(out) if "PROBLEM dangling" in p]
+    assert code == 1 and len(dangling) == 1, out
+    assert "ambiguous: it reads as scenario 'Other / Third'; scenario 'Third' under requirement 'Other'" in dangling[0]
     uncovered = [p for p in _problems(out) if "uncovered" in p]
-    assert code == 1 and len(uncovered) == 1, out
-    assert "alpha / Third:" in uncovered[0] and "alpha / Other / Third:" not in uncovered[0], out
+    assert len(uncovered) == 1 and "alpha / Third:" in uncovered[0], out
 
 
 # requirement: spec-proof / A repo chooses proof per requirement or per scenario

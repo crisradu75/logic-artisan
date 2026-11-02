@@ -29,7 +29,7 @@ Defines the shipped checker that ties each changed requirement to its proof, and
 
 ### Requirement: A checker reports proof that points at nothing
 
-`check_spec_proof.py` SHALL report a marker or `manual:` line naming a spec or heading that does not exist, a heading repeated within one spec, and a repo with no specs at all, so a misconfigured run never passes silently.
+`check_spec_proof.py` SHALL report a marker or `manual:` line naming a spec or heading that does not exist, a heading repeated within one spec, a scenario heading under two of its requirements, and a repo with no specs at all, so a misconfigured run never passes silently.
 
 #### Scenario: A dangling marker
 

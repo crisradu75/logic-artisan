@@ -24,7 +24,8 @@ the scenario sits under: it proves the scenario only when that requirement exist
 holds the scenario, read from the live specs and the active deltas together, as the two-part
 form is. A scenario that sits under a different requirement is reported as ``wrong
 requirement``, and a requirement the spec does not have as ``unknown requirement``. A scenario heading
-that itself holds `` / `` is read as the two-part form first. The ``requirement:`` marker, and the ``manual:`` and ``waiting:`` lines, have no
+that itself holds `` / `` can also read as a three-part marker; when both readings hold, the marker is
+reported as ambiguous and proves neither. The ``requirement:`` marker, and the ``manual:`` and ``waiting:`` lines, have no
 three-part form: everything after the spec is the heading. See ``resolve_scenario_marker``.
 
 No such line means ``requirement``. A line that starts with the phrase but is
@@ -42,7 +43,9 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     heading that no live spec or active delta holds (a three-part scenario marker whose
     requirement is unknown, or does not hold the scenario, is named as such). A marker of the
     other granularity is also reported, since nothing reads it.
-  - ``repeated``: a heading repeated within one spec or delta.
+  - ``repeated``: a heading repeated within one spec or delta. In scenario mode, also a
+    scenario heading under two requirements of one spec across its files, since one marker
+    would prove both (a requirement a delta removes or renames away from does not count).
   - ``prompt-half``: a ``manual: ... (prompt half)`` line with no marker beside it.
   - ``waiting``: a ``waiting:`` line in an archived change, or beside a unit a
     marker or ``manual:`` line already proves.
@@ -447,6 +450,94 @@ def _removed_headings(text: str) -> set[str]:
             if r:
                 out.add(r.group(1))
     return out
+
+
+# OpenSpec's own line forms (its requirement-blocks parser): the bullet is optional and may be -, * or +.
+_RENAME_LINE = re.compile(r"^\s*(?:[-*+]\s*)?(FROM|TO):\s*`?\s*###\s*Requirement:\s*(.+?)\s*`?\s*$")
+_REMOVED_BULLET = re.compile(r"^\s*[-*+]\s*`?\s*###\s*Requirement:\s*(.+?)\s*`?\s*$")
+
+
+def _delta_ops(text: str) -> tuple[set[str], dict[str, str], set[str]]:
+    """(the requirements a delta's `## REMOVED` section removes, {old: new} from its `## RENAMED` section,
+    the requirements its `## MODIFIED` section names).
+
+    Lines inside a code fence are examples, not operations, so they are skipped."""
+    removed: set[str] = set()
+    renames: dict[str, str] = {}
+    modified: set[str] = set()
+    section, fence, pending = "", False, None
+    for line in text.splitlines():
+        if _FENCE.match(line):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        m = _H2.match(line)
+        if m:
+            section, pending = m.group(1).strip().upper(), None
+            continue
+        if section.startswith("REMOVED"):
+            r = _REQ.match(line) or _REMOVED_BULLET.match(line)
+            if r:
+                removed.add(r.group(1))
+        elif section.startswith("RENAMED"):
+            r = _RENAME_LINE.match(line)
+            if r and r.group(1) == "FROM":
+                pending = r.group(2)
+            elif r and pending is not None:
+                renames[pending] = r.group(2)
+                pending = None
+        elif section.startswith("MODIFIED"):
+            r = _REQ.match(line)
+            if r:
+                modified.add(r.group(1))
+    return removed, renames, modified
+
+
+def _shared_scenarios(files: list["SpecFile"]) -> list[str]:
+    """PROBLEM lines for a scenario heading one active delta would leave under two requirements of its spec.
+
+    A proven scenario is keyed by (spec, heading), so one marker would prove every copy. Each active delta is
+    read against the live spec alone, as archiving it would leave that spec: the live requirements minus the
+    ones it REMOVES, renamed as it RENAMES them (their scenarios move with them), with its ADDED and MODIFIED
+    blocks replacing the live copy. When one file holds every copy, that file's own `repeated` line reports
+    it, so this adds none.
+
+    Deliberately left unchecked, as before this check existed: (a) a clash between two active changes, and
+    (b) a delta this reading cannot place safely, which is skipped whole: one that MODIFIES, RENAMES FROM or
+    REMOVES a requirement the live spec (after the delta's own renames, for MODIFIED) does not hold, so it
+    builds on another active change; and one whose RENAMED TO names a live requirement it does not itself
+    remove or rename away, a collision OpenSpec rejects."""
+    live = {f.spec: f for f in files if f.kind == "live"}
+    problems: set[str] = set()
+    for d in (f for f in files if f.kind == "active"):
+        removed, renames, modified = _delta_ops(d.text)
+        base = _blocks(live[d.spec].text, False) if d.spec in live else []
+        names = {req for req, _, _ in base}
+        projected = {renames.get(req, req) for req in names if req not in removed}
+        if not (removed | set(renames)) <= names or not modified <= projected:
+            continue  # builds on a requirement only another active change holds
+        if any(new in names and new not in removed and new not in renames for new in renames.values()):
+            continue  # renames onto a live requirement it keeps
+        reqs: dict[str, tuple[list[str], str]] = {}  # requirement -> (its scenario headings, the file they come from)
+        for req, _, scns in base:
+            if req not in removed:
+                reqs[renames.get(req, req)] = ([s for s, _ in scns], live[d.spec].rel)
+        for req, _, scns in _blocks(d.text, True):
+            reqs[req] = ([s for s, _ in scns], d.rel)
+        held: dict[str, dict[str, set[str]]] = {}  # scenario -> requirement -> the files that put it there
+        for req, (scns, rel) in reqs.items():
+            for scn in scns:
+                held.setdefault(scn, {}).setdefault(req, set()).add(rel)
+        for scn, by_req in held.items():
+            if len(by_req) < 2 or len({rel for rs in by_req.values() for rel in rs}) < 2:
+                continue
+            where = "; ".join(f"{req!r} in {', '.join(sorted(rs))}" for req, rs in sorted(by_req.items()))
+            problems.add(
+                f"PROBLEM repeated: {d.spec}: scenario {scn!r} sits under more than one requirement ({where}), "
+                "so one marker would prove every copy; rename all but one"
+            )
+    return sorted(problems)
 
 
 def _statement(body: list[str]) -> str:
@@ -1440,20 +1531,26 @@ def resolve_scenario_marker(
     ``universe`` maps a spec to its scenario headings, ``owners`` a spec to each scenario's requirement headings
     and ``reqs`` a spec to its requirement headings (live specs and active deltas, as ``universe`` is).
 
-    The whole of ``rest`` is tried as a scenario heading first, so a heading that itself holds `` / `` keeps
-    its two-part meaning and the three-part form never shadows it. Otherwise ``rest`` is split at each `` / ``
+    The whole of ``rest`` is read as a scenario heading (the two-part form), and ``rest`` is also split at each `` / ``
     (a requirement or scenario heading may hold one too) and the marker proves the scenario when some split
     names a requirement the scenario sits under. A split whose scenario exists but whose requirement does not
-    hold it is a named problem, never "names no scenario"."""
+    hold it is a named problem, never "names no scenario". When MORE than one reading proves a scenario (the
+    whole heading and a split, or two splits), the marker is ambiguous: which scenario it proves would depend on
+    reading order, so it is a named problem that lists every reading rather than a silent pick of one."""
     scenarios = universe.get(spec, set())
-    if rest in scenarios:
-        return rest, ""
     parts = rest.split(" / ")
     splits = [(" / ".join(parts[:i]), " / ".join(parts[i:])) for i in range(1, len(parts))]
     found = [(req, scn) for req, scn in splits if scn in scenarios]
-    for req, scn in found:
-        if req in owners.get(spec, {}).get(scn, set()):
-            return scn, ""
+    proving = [(req, scn) for req, scn in found if req in owners.get(spec, {}).get(scn, set())]
+    readings = ([f"scenario {rest!r}"] if rest in scenarios else []) + [
+        f"scenario {scn!r} under requirement {req!r}" for req, scn in proving
+    ]
+    if len(readings) > 1:
+        return None, f"ambiguous: it reads as {'; '.join(readings)}; rename a heading so only one reading holds"
+    if rest in scenarios:
+        return rest, ""
+    if proving:
+        return proving[0][1], ""
     if not found:
         return None, "names no scenario in any live spec or active delta"
     # Prefer the split whose requirement exists, so the message says "wrong requirement" when it can.
@@ -1519,6 +1616,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         for h, n in sorted(seen.items()):
             if n > 1:
                 problems.append(f"PROBLEM repeated: {f.rel}: heading {h!r} appears {n} times")
+    if mode == "scenario":
+        problems += _shared_scenarios(files)
 
     for f in files:
         # A delta that writes requirements under a heading OpenSpec does not read
