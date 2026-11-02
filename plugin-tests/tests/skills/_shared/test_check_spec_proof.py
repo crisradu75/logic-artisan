@@ -419,7 +419,48 @@ def test_a_requirement_repo_rejects_the_retired_scenario_marker(repo, capsys):
 def test_a_repeated_scenario_heading_is_reported_in_scenario_mode(repo, capsys):
     _write(repo, FACTS, "- Test proof granularity: scenario\n")
     _write(repo, SPEC, _spec_text(("One", _scn("Same")), ("Two", _scn("Same", then="y"))))
-    assert "PROBLEM repeated" in run(repo, capsys)[1]
+    repeated = [p for p in _problems(run(repo, capsys)[1]) if "PROBLEM repeated" in p]
+    # One line, the per-file one: the cross-file check leaves a heading one file repeats to that file's line.
+    assert repeated == [f"PROBLEM repeated: {SPEC}: heading 'Same' appears 2 times"], repeated
+
+
+DELTA = "openspec/changes/c1/specs/alpha/spec.md"
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_scenario_heading_under_two_requirements_in_two_files_is_reported(repo, capsys):
+    """Issue #457: proof is keyed by (spec, scenario heading), so a marker for `Old rule / Old case` also proved the
+    `Old case` a delta adds under `New rule`. Neither file repeats the heading, so the per-file check missed it."""
+    _scenario_repo(repo, ("Old rule", "Old SHALL.\n\n" + _scn("Old case")))
+    _write(repo, DELTA, _delta_text(added=[("New rule", "New SHALL.\n\n" + _scn("Old case", then="other"))]))
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old rule / Old case"))
+    code, out, _ = run(repo, capsys)
+    repeated = [p for p in _problems(out) if "PROBLEM repeated" in p]
+    assert code == 1 and len(repeated) == 1, out
+    assert (
+        "PROBLEM repeated: alpha: scenario 'Old case' sits under more than one requirement "
+        f"('New rule' in {DELTA}; 'Old rule' in {SPEC})"
+    ) in repeated[0]
+
+
+@pytest.mark.parametrize(
+    "delta",
+    [
+        "## RENAMED Requirements\n\n- FROM: `### Requirement: Old rule`\n- TO: `### Requirement: Renamed rule`\n\n"
+        "## MODIFIED Requirements\n\n### Requirement: Renamed rule\n\nOld SHALL.\n\n" + _scn("Old case") + "\n",
+        "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n"
+        "## ADDED Requirements\n\n### Requirement: Renamed rule\n\nOld SHALL.\n\n" + _scn("Old case") + "\n",
+    ],
+    ids=["renamed", "removed-and-re-added"],
+)
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_requirement_a_delta_replaces_does_not_share_its_scenario(repo, capsys, delta):
+    # The delta replaces `Old rule`, so its `Old case` and the live one are the same scenario, not two.
+    _scenario_repo(repo, ("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Kept", "K SHALL.\n\n" + _scn("Kept case")))
+    _write(repo, DELTA, "# Spec Delta\n\n" + delta)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old case") + _marker("scenario", "alpha", "Kept case"))
+    code, out, _ = run(repo, capsys)
+    assert "PROBLEM repeated" not in out and code == 0, out
 
 
 @pytest.mark.parametrize(

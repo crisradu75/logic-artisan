@@ -43,7 +43,9 @@ WHAT IT REPORTS (each is a ``PROBLEM`` line; any problem exits 1):
     heading that no live spec or active delta holds (a three-part scenario marker whose
     requirement is unknown, or does not hold the scenario, is named as such). A marker of the
     other granularity is also reported, since nothing reads it.
-  - ``repeated``: a heading repeated within one spec or delta.
+  - ``repeated``: a heading repeated within one spec or delta. In scenario mode, also a
+    scenario heading under two requirements of one spec across its files, since one marker
+    would prove both (a requirement a delta removes or renames away from does not count).
   - ``prompt-half``: a ``manual: ... (prompt half)`` line with no marker beside it.
   - ``waiting``: a ``waiting:`` line in an archived change, or beside a unit a
     marker or ``manual:`` line already proves.
@@ -448,6 +450,57 @@ def _removed_headings(text: str) -> set[str]:
             if r:
                 out.add(r.group(1))
     return out
+
+
+_RENAMED_FROM = re.compile(r"^\s*-\s*FROM:\s*`?\s*###\s+Requirement:\s*(.+?)\s*`?\s*$", re.I)
+
+
+def _renamed_from(text: str) -> set[str]:
+    """The old requirement headings a delta's `## RENAMED` section renames away from."""
+    out, in_renamed = set(), False
+    for line in text.splitlines():
+        m = _H2.match(line)
+        if m:
+            in_renamed = m.group(1).strip().upper().startswith("RENAMED")
+        elif in_renamed:
+            r = _RENAMED_FROM.match(line)
+            if r:
+                out.add(r.group(1))
+    return out
+
+
+def _shared_scenarios(files: list["SpecFile"]) -> list[str]:
+    """PROBLEM lines for a scenario heading that sits under two requirements of one spec, in different files.
+
+    A proven scenario is keyed by (spec, heading), so one marker would prove both. The same heading twice in one
+    file is already `repeated` there. A requirement an active delta REMOVES or renames away from does not count:
+    its delta replaces it, so the old and new copy are one requirement."""
+    gone: dict[str, set[str]] = {}
+    for f in files:
+        if f.kind == "active":
+            gone.setdefault(f.spec, set()).update(_removed_headings(f.text) | _renamed_from(f.text))
+    held: dict[tuple[str, str], dict[str, set[str]]] = {}  # (spec, scenario) -> requirement -> files
+    for f in files:
+        if f.kind == "archived":
+            continue
+        for req, _, scns in _blocks(f.text, f.kind != "live"):
+            if f.kind == "live" and req in gone.get(f.spec, set()):
+                continue
+            for scn, _ in scns:
+                held.setdefault((f.spec, scn), {}).setdefault(req, set()).add(f.rel)
+    problems = []
+    for (spec, scn), by_req in sorted(held.items()):
+        if len(by_req) < 2:
+            continue
+        rels = [rel for rs in by_req.values() for rel in rs]
+        if len(rels) != len(set(rels)):
+            continue  # one file holds two of them, which that file's `repeated` line already reports
+        where = "; ".join(f"{req!r} in {', '.join(sorted(rs))}" for req, rs in sorted(by_req.items()))
+        problems.append(
+            f"PROBLEM repeated: {spec}: scenario {scn!r} sits under more than one requirement ({where}), "
+            "so one marker would prove every copy; rename all but one"
+        )
+    return problems
 
 
 def _statement(body: list[str]) -> str:
@@ -1526,6 +1579,8 @@ def check(root: Path, base_arg: str | None = None, globs: list[str] | None = Non
         for h, n in sorted(seen.items()):
             if n > 1:
                 problems.append(f"PROBLEM repeated: {f.rel}: heading {h!r} appears {n} times")
+    if mode == "scenario":
+        problems += _shared_scenarios(files)
 
     for f in files:
         # A delta that writes requirements under a heading OpenSpec does not read
