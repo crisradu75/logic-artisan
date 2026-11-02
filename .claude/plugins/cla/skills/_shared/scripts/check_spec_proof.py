@@ -1444,16 +1444,21 @@ def resolve_scenario_marker(
     its two-part meaning and the three-part form never shadows it. Otherwise ``rest`` is split at each `` / ``
     (a requirement or scenario heading may hold one too) and the marker proves the scenario when some split
     names a requirement the scenario sits under. A split whose scenario exists but whose requirement does not
-    hold it is a named problem, never "names no scenario"."""
+    hold it is a named problem, never "names no scenario". When MORE than one split proves a scenario, the
+    marker is ambiguous: which scenario it proves would depend on split order, so it is a named problem that
+    lists every reading rather than a silent pick of the first."""
     scenarios = universe.get(spec, set())
     if rest in scenarios:
         return rest, ""
     parts = rest.split(" / ")
     splits = [(" / ".join(parts[:i]), " / ".join(parts[i:])) for i in range(1, len(parts))]
     found = [(req, scn) for req, scn in splits if scn in scenarios]
-    for req, scn in found:
-        if req in owners.get(spec, {}).get(scn, set()):
-            return scn, ""
+    proving = [(req, scn) for req, scn in found if req in owners.get(spec, {}).get(scn, set())]
+    if len(proving) > 1:
+        readings = "; ".join(f"scenario {scn!r} under requirement {req!r}" for req, scn in proving)
+        return None, f"ambiguous: it reads as {readings}; rename a heading so only one reading holds"
+    if proving:
+        return proving[0][1], ""
     if not found:
         return None, "names no scenario in any live spec or active delta"
     # Prefer the split whose requirement exists, so the message says "wrong requirement" when it can.

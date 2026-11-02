@@ -1629,6 +1629,35 @@ def test_a_three_part_marker_names_no_spec_that_does_not_exist(repo, capsys):
 
 
 # requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_that_two_readings_both_prove_is_ambiguous(repo, capsys):
+    """Issue #431: `A / B / C` reads as scenario `B / C` under `A` and as scenario `C` under `A / B`. Both are
+    real here, so the first split used to win silently, and the marker could prove another scenario than meant."""
+    reqs = (
+        ("A", "SHALL.\n\n" + _scn("B / C")),
+        ("A / B", "SHALL.\n\n" + _scn("C")),
+    )
+    _scenario_repo(repo, *reqs)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "A / B / C") + _marker("scenario", "alpha", "C"))
+    code, out, _ = run(repo, capsys)
+    dangling = [p for p in _problems(out) if "PROBLEM dangling" in p]
+    assert code == 1 and len(dangling) == 1, out
+    assert "ambiguous: it reads as scenario 'B / C' under requirement 'A'; scenario 'C' under requirement 'A / B'" in dangling[0]
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
+def test_a_three_part_marker_with_one_valid_reading_still_proves_it(repo, capsys):
+    # Only `A` holds a `B / C` scenario; `A / B` exists but holds another, so one reading proves and one does not.
+    reqs = (
+        ("A", "SHALL.\n\n" + _scn("B / C")),
+        ("A / B", "SHALL.\n\n" + _scn("D")),
+    )
+    _scenario_repo(repo, *reqs)
+    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "A / B / C") + _marker("scenario", "alpha", "D"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
+
+
+# requirement: spec-proof / A repo chooses proof per requirement or per scenario
 def test_slashes_inside_headings_do_not_confuse_either_form(repo, capsys):
     reqs = (
         ("Input / output", "SHALL.\n\n" + _scn("Read / write works") + "\n\n" + _scn("Plain")),
