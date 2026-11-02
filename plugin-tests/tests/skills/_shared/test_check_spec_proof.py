@@ -449,23 +449,40 @@ _ADD_NEW = "## ADDED Requirements\n\n### Requirement: New rule\n\nN SHALL.\n\n" 
 _LIVE_OLD = (("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Kept", "K SHALL.\n\n" + _scn("Kept case")))
 
 
+C2 = "openspec/changes/c2/specs/alpha/spec.md"
+
+
 @pytest.mark.parametrize(
-    "delta",
+    "deltas",
     [
-        _RENAME.format(b="- ") + _MOD_RENAMED,
-        _RENAME.format(b="* ") + _MOD_RENAMED,
-        _RENAME.format(b="") + _MOD_RENAMED,
-        "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n" + _ADD_NEW,
-        "## REMOVED Requirements\n\n- `### Requirement: Old rule`\n\n" + _ADD_NEW,
-        "## MODIFIED Requirements\n\n### Requirement: Old rule\n\nOld SHALL.\n\n" + _scn("Other case") + "\n\n" + _ADD_NEW,
+        {DELTA: _RENAME.format(b="- ") + _MOD_RENAMED},
+        {DELTA: _RENAME.format(b="* ") + _MOD_RENAMED},
+        {DELTA: _RENAME.format(b="") + _MOD_RENAMED},
+        {DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n" + _ADD_NEW},
+        {DELTA: "## REMOVED Requirements\n\n- `### Requirement: Old rule`\n\n" + _ADD_NEW},
+        {DELTA: "## MODIFIED Requirements\n\n### Requirement: Old rule\n\nOld SHALL.\n\n" + _scn("Other case") + "\n\n" + _ADD_NEW},
+        # c2 builds on c1's rename: judged against the live spec alone it is not safe to place, so it is skipped.
+        {DELTA: _RENAME.format(b="- "), C2: _MOD_RENAMED},
+        # c2 modifies the requirement c1 adds in place of the one it removes.
+        {DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n" + _ADD_NEW,
+         C2: _ADD_NEW.replace("## ADDED", "## MODIFIED")},
+        # c2 removes the requirement c1 adds and moves `Old case` on again: after both, one requirement holds it.
+        {DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n" + _ADD_NEW,
+         C2: "## REMOVED Requirements\n\n### Requirement: New rule\n\n**Reason**: moved\n\n" + _ADD_NEW.replace("New rule", "Newest rule")},
+        # A rename onto live `Kept`, which the delta keeps, is a collision OpenSpec rejects: not guessed at.
+        {DELTA: "## RENAMED Requirements\n\n- FROM: `### Requirement: Old rule`\n- TO: `### Requirement: Kept`\n\n"
+         + _ADD_NEW.replace("Old case", "Kept case")},
     ],
-    ids=["renamed", "renamed-star-bullet", "renamed-no-bullet", "removed", "removed-bullet", "moved-by-modified"],
+    ids=["renamed", "renamed-star-bullet", "renamed-no-bullet", "removed", "removed-bullet", "moved-by-modified",
+         "modifies-another-changes-rename", "modifies-another-changes-addition", "removes-another-changes-addition",
+         "rename-collides-with-live"],
 )
 # requirement: spec-proof / A checker reports proof that points at nothing
-def test_a_requirement_a_delta_replaces_does_not_share_its_scenario(repo, capsys, delta):
+def test_a_requirement_a_delta_replaces_does_not_share_its_scenario(repo, capsys, deltas):
     # Archiving the delta leaves `Old case` under one requirement only, so the live copy is not a second one.
     _scenario_repo(repo, *_LIVE_OLD)
-    _write(repo, DELTA, "# Spec Delta\n\n" + delta)
+    for rel, text in deltas.items():
+        _write(repo, rel, "# Spec Delta\n\n" + text)
     _write(repo, "tests/test_old.py", "".join(_marker("scenario", "alpha", s) for s in ("Old case", "Kept case", "Other case")))
     code, out, _ = run(repo, capsys)
     assert "PROBLEM repeated" not in out, out
@@ -476,22 +493,21 @@ def test_a_requirement_a_delta_replaces_does_not_share_its_scenario(repo, capsys
     [
         # Renamed with no MODIFIED block: the scenario moves with the name, so it still clashes with the ADDED copy.
         ({DELTA: _RENAME.format(b="- ") + _ADD_NEW}, f"'New rule' in {DELTA}; 'Renamed rule' in {SPEC}"),
+        ({DELTA: _RENAME.format(b="* ") + _ADD_NEW}, f"'New rule' in {DELTA}; 'Renamed rule' in {SPEC}"),
+        ({DELTA: _RENAME.format(b="") + _ADD_NEW}, f"'New rule' in {DELTA}; 'Renamed rule' in {SPEC}"),
         # A rename shown inside a code fence is an example, not an operation.
         ({DELTA: "## RENAMED Requirements\n\n```\n- FROM: `### Requirement: Old rule`\n- TO: `### Requirement: New rule`\n```\n\n" + _ADD_NEW},
          f"'New rule' in {DELTA}; 'Old rule' in {SPEC}"),
         # c1 removing `Old rule` does not hide it from c2, which leaves it in place.
         ({DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: gone\n",
-          "openspec/changes/c2/specs/alpha/spec.md": _ADD_NEW},
-         f"'New rule' in openspec/changes/c2/specs/alpha/spec.md; 'Old rule' in {SPEC}"),
+          C2: _ADD_NEW},
+         f"'New rule' in {C2}; 'Old rule' in {SPEC}"),
         # One file repeating the heading does not hide the live copy.
         ({DELTA: _ADD_NEW + "\n### Requirement: Newer rule\n\nN SHALL.\n\n" + _scn("Old case", then="third") + "\n"},
          f"'New rule' in {DELTA}; 'Newer rule' in {DELTA}; 'Old rule' in {SPEC}"),
-        # Two changes adding the heading under different requirements clash with each other.
-        ({DELTA: _ADD_NEW.replace("Old case", "Shared case"),
-          "openspec/changes/c2/specs/alpha/spec.md": _ADD_NEW.replace("New rule", "Other rule").replace("Old case", "Shared case")},
-         f"'New rule' in {DELTA}; 'Other rule' in openspec/changes/c2/specs/alpha/spec.md"),
     ],
-    ids=["renamed-without-modified", "fenced-rename", "removed-by-another-change", "one-file-repeats-plus-live", "two-changes"],
+    ids=["renamed-without-modified", "renamed-without-modified-star-bullet", "renamed-without-modified-no-bullet",
+         "fenced-rename", "removed-by-another-change", "one-file-repeats-plus-live"],
 )
 # requirement: spec-proof / A checker reports proof that points at nothing
 def test_a_scenario_heading_two_requirements_will_hold_is_reported(repo, capsys, deltas, where):

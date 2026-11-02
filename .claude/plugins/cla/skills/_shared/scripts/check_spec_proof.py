@@ -457,12 +457,14 @@ _RENAME_LINE = re.compile(r"^\s*(?:[-*+]\s*)?(FROM|TO):\s*`?\s*###\s*Requirement
 _REMOVED_BULLET = re.compile(r"^\s*[-*+]\s*`?\s*###\s*Requirement:\s*(.+?)\s*`?\s*$")
 
 
-def _delta_ops(text: str) -> tuple[set[str], dict[str, str]]:
-    """(the requirements a delta's `## REMOVED` section removes, {old: new} from its `## RENAMED` section).
+def _delta_ops(text: str) -> tuple[set[str], dict[str, str], set[str]]:
+    """(the requirements a delta's `## REMOVED` section removes, {old: new} from its `## RENAMED` section,
+    the requirements its `## MODIFIED` section names).
 
     Lines inside a code fence are examples, not operations, so they are skipped."""
     removed: set[str] = set()
     renames: dict[str, str] = {}
+    modified: set[str] = set()
     section, fence, pending = "", False, None
     for line in text.splitlines():
         if _FENCE.match(line):
@@ -485,57 +487,56 @@ def _delta_ops(text: str) -> tuple[set[str], dict[str, str]]:
             elif r and pending is not None:
                 renames[pending] = r.group(2)
                 pending = None
-    return removed, renames
+        elif section.startswith("MODIFIED"):
+            r = _REQ.match(line)
+            if r:
+                modified.add(r.group(1))
+    return removed, renames, modified
 
 
 def _shared_scenarios(files: list["SpecFile"]) -> list[str]:
-    """PROBLEM lines for a scenario heading that sits under two requirements of one spec, in different files.
+    """PROBLEM lines for a scenario heading one active delta would leave under two requirements of its spec.
 
     A proven scenario is keyed by (spec, heading), so one marker would prove every copy. Each active delta is
-    read as archiving it would leave its spec: the live requirements minus the ones it REMOVES, renamed as it
-    RENAMES them (their scenarios move with them), with its ADDED and MODIFIED blocks replacing the live copy.
-    Two active changes are also compared with each other, under the names every active rename gives. When one
-    file holds every copy, that file's own `repeated` line reports it, so this adds none."""
-    live = {f.spec: f for f in files if f.kind == "live"}
-    deltas = [f for f in files if f.kind == "active"]
-    ops = {f.rel: _delta_ops(f.text) for f in deltas}
-    problems: set[str] = set()
+    read against the live spec alone, as archiving it would leave that spec: the live requirements minus the
+    ones it REMOVES, renamed as it RENAMES them (their scenarios move with them), with its ADDED and MODIFIED
+    blocks replacing the live copy. When one file holds every copy, that file's own `repeated` line reports
+    it, so this adds none.
 
-    def report(spec: str, held: dict[str, dict[str, set[str]]]) -> None:
-        # held: scenario -> requirement -> the files that put it there
+    Deliberately left unchecked, as before this check existed: (a) a clash between two active changes, and
+    (b) a delta this reading cannot place safely, which is skipped whole: one that MODIFIES, RENAMES FROM or
+    REMOVES a requirement the live spec (after the delta's own renames, for MODIFIED) does not hold, so it
+    builds on another active change; and one whose RENAMED TO names a live requirement it does not itself
+    remove or rename away, a collision OpenSpec rejects."""
+    live = {f.spec: f for f in files if f.kind == "live"}
+    problems: set[str] = set()
+    for d in (f for f in files if f.kind == "active"):
+        removed, renames, modified = _delta_ops(d.text)
+        base = _blocks(live[d.spec].text, False) if d.spec in live else []
+        names = {req for req, _, _ in base}
+        projected = {renames.get(req, req) for req in names if req not in removed}
+        if not (removed | set(renames)) <= names or not modified <= projected:
+            continue  # builds on a requirement only another active change holds
+        if any(new in names and new not in removed and new not in renames for new in renames.values()):
+            continue  # renames onto a live requirement it keeps
+        reqs: dict[str, tuple[list[str], str]] = {}  # requirement -> (its scenario headings, the file they come from)
+        for req, _, scns in base:
+            if req not in removed:
+                reqs[renames.get(req, req)] = ([s for s, _ in scns], live[d.spec].rel)
+        for req, _, scns in _blocks(d.text, True):
+            reqs[req] = ([s for s, _ in scns], d.rel)
+        held: dict[str, dict[str, set[str]]] = {}  # scenario -> requirement -> the files that put it there
+        for req, (scns, rel) in reqs.items():
+            for scn in scns:
+                held.setdefault(scn, {}).setdefault(req, set()).add(rel)
         for scn, by_req in held.items():
             if len(by_req) < 2 or len({rel for rs in by_req.values() for rel in rs}) < 2:
                 continue
             where = "; ".join(f"{req!r} in {', '.join(sorted(rs))}" for req, rs in sorted(by_req.items()))
             problems.add(
-                f"PROBLEM repeated: {spec}: scenario {scn!r} sits under more than one requirement ({where}), "
+                f"PROBLEM repeated: {d.spec}: scenario {scn!r} sits under more than one requirement ({where}), "
                 "so one marker would prove every copy; rename all but one"
             )
-
-    for d in deltas:
-        removed, renames = ops[d.rel]
-        reqs: dict[str, tuple[list[str], str]] = {}  # requirement -> (its scenario headings, the file they come from)
-        if d.spec in live:
-            for req, _, scns in _blocks(live[d.spec].text, False):
-                if req not in removed:
-                    reqs[renames.get(req, req)] = ([s for s, _ in scns], live[d.spec].rel)
-        for req, _, scns in _blocks(d.text, True):
-            reqs[req] = ([s for s, _ in scns], d.rel)
-        held: dict[str, dict[str, set[str]]] = {}
-        for req, (scns, rel) in reqs.items():
-            for scn in scns:
-                held.setdefault(scn, {}).setdefault(req, set()).add(rel)
-        report(d.spec, held)
-
-    renamed = {(d.spec, old): new for d in deltas for old, new in ops[d.rel][1].items()}
-    across: dict[str, dict[str, dict[str, set[str]]]] = {}
-    for d in deltas:
-        for req, _, scns in _blocks(d.text, True):
-            name = renamed.get((d.spec, req), req)
-            for scn, _ in scns:
-                across.setdefault(d.spec, {}).setdefault(scn, {}).setdefault(name, set()).add(d.rel)
-    for spec, held in across.items():
-        report(spec, held)
     return sorted(problems)
 
 
