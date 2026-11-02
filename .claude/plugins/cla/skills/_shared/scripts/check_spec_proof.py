@@ -1708,7 +1708,22 @@ def _report(text: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Report requirements with no test marker or manual note. Never edits anything.")
+    # Python 3.14 argparse colours by default and probes stdout with isatty() while building
+    # the parser. On a closed stdout that probe raises ValueError before the guarded report
+    # code runs, so the promised exit 2 never happens. Both the parser and its formatter probe:
+    # HelpFormatter.__init__ defaults to color=True before the parser's own setting is applied.
+    # Older versions reject the keyword, so it is passed only from 3.14 on.
+    no_colour = {"color": False} if sys.version_info >= (3, 14) else {}
+
+    class _PlainFormatter(argparse.HelpFormatter):
+        def __init__(self, prog: str, **kw: object) -> None:
+            super().__init__(prog, **{**no_colour, **kw})
+
+    ap = argparse.ArgumentParser(
+        description="Report requirements with no test marker or manual note. Never edits anything.",
+        formatter_class=_PlainFormatter,
+        **no_colour,
+    )
     ap.add_argument("--root", help="repo root (default: the git toplevel of the working directory)")
     ap.add_argument("--base", help="ref to compare with (default: the default branch)")
     ap.add_argument("--tests", action="append", default=[], metavar="GLOB", help="limit the marker scan to matching repo-relative paths; repeatable")
