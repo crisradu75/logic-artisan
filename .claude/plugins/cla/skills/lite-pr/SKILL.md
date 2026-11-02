@@ -98,6 +98,14 @@ git status --porcelain
 
 Take the path from each line (strip the two-char status prefix; untracked files show as `??`). If no changed path is source-affecting, there is nothing to gate — skip to Ship. Source-affecting means any path with a `src` component, or any file whose suffix belongs to the repo's own source or config — `.ts .tsx .js .jsx .mjs .cjs .py .go .rs .java .rb .php .sh .sql .vue .svelte .json .yaml .yml .toml .css .scss .html` and anything else this repo actually builds from. **The list is illustrative, not exhaustive: when a suffix is not on it, treat the path as source-affecting.** `.py` is called out because it was once missing, and in a Python repo a real source change then did not register as source-affecting at all — the run reported a clean docs-only skip having gated nothing. A closed list reproduces that defect for every language it omits.
 
+**Rename/docs-only tier.** Docs-only changes already skip the gate above. A change that only renames things gets a lighter gate:
+
+- Grep for stale references to the old names.
+- Run the build or typecheck command, then only the touched area's tests, once.
+- Review with one pass. Skip the second pass that Review step 4 allows.
+
+Every other source-affecting change uses the smoke and full tiers below, as written.
+
 Otherwise read the correctness gates out of `cla.io/project-facts.md` ("Dev / build / test commands", "Workspace shape") — this repo's own record of them, whatever its stack. Split them into two tiers: `smoke` is the cheap lint fast-fail, `full` is the build/typecheck command (primary gate) then the test command. Run smoke first; only run full once smoke is clean (smoke is a pre-filter, not a correctness proof, so full still runs in full). In a workspace/monorepo, the root `build`/`lint`/`test` commands are typically themselves a fan-out across every app/package, so running them at root covers the whole workspace in one shot; there is no separate per-app/package suite to union in. If the file names no commands and the change touches source, say so and treat it as a warning rather than a clean skip. Any standalone smoke/e2e scripts and any hard gate needing external local infra (a live database stack, etc.) are intentionally excluded from this gate — they need external state a plain `npm run` can't provide, and are manual/optional checks, not part of Test. See `cla.io/project-facts.md` ("Dev / build / test commands") for this repo's own concrete examples.
 
 Then, smoke tier first, then full:
@@ -173,7 +181,7 @@ Continuous — no "confirm to proceed?" prompts between phases, matching `/cla:s
 
 ## Scope
 
-Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call at invocation time (see the intro: no size rule, no automatic escalation). The actionable corollary: reassess mid-run if a change outgrows "lite" — stop, then re-plan or switch to `/cla:spec-to-pr` rather than forcing it through here.
+Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call at invocation time (see the intro: no size rule for choosing the workflow, no automatic escalation). The rename/docs-only tier in Test sizes the checking inside lite-pr; it does not choose the workflow. The actionable corollary: reassess mid-run if a change outgrows "lite" — stop, then re-plan or switch to `/cla:spec-to-pr` rather than forcing it through here.
 
 ## What this skill deliberately does not do
 

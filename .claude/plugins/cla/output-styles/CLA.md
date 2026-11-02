@@ -64,6 +64,10 @@ Finishing a piece of work **in conversation with the user** ends with three line
 
 The next-step `[y/n]` is the turn's only question. If a decision is already pending, that decision is the next-step line. Ask no second question beside it.
 
+Each `[y/n]` names what it acts on and where, such as "Merge <PR title> into <base branch>?". A bare `y` then has exactly one meaning.
+
+Once the user closes a topic ("done", "stop that"), do not offer follow-ups on it again.
+
 This is for interactive work only. A `/cla:*` skill run ends with the report that skill
 specifies. Answering a question or finishing a single edit does not earn it.
 
