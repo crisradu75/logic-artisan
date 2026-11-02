@@ -238,19 +238,22 @@ def test_the_orchestration_rules_live_once_and_all_three_chains_cite_them() -> N
 
 
 def test_the_final_test_run_is_sized_to_the_change() -> None:
-    """Rule 3 once said "run the full suite once, on the final commit" with no condition, and a
-    repo cannot edit the economy rules file setup writes. A docs-only PR then paid a full
-    suite run. The rule sizes the run, names the override and keeps a skill's own merge gate.
+    """Issue #448: rule 3 said "run the full suite once, on the final commit" with no condition.
+    A repo cannot edit the economy rules file that setup writes, so it could not size the run.
+    Rule 3 now sizes the run on the whole diff and keeps the orchestrator's own re-verification.
+    A repo policy replaces the sizing, and a skill's full-suite merge gate wins over that policy.
     Rule 10's post-merge run follows the same sizing."""
     economy = " ".join(_read(_ECONOMY).split())
     rule_3 = economy[economy.index("3. **Test narrowly"):economy.index("4. **One PR at a time")]
-    assert "sized to the change" in rule_3
-    assert "docs, config or infra-as-code that no test exercises gets the targeted gates" in rule_3
-    assert "Any other change gets the full suite once. When unsure, treat the change as code." in rule_3
-    assert "(`CLAUDE.md` or `AGENTS.md`) or in `cla.io/project-facts.md` overrides this sizing" in rule_3
-    assert "A skill whose merge gate names the full suite keeps the full suite" in rule_3
+    assert "The orchestrator re-verifies that commit itself" in rule_3
+    assert "Size the run on the whole diff" in rule_3
+    assert "only when every changed file is docs, config or infra-as-code" in rule_3
+    assert "only when neither the build nor the test suite loads them" in rule_3
+    assert "Any other diff gets the full suite once. When unsure, treat the change as code." in rule_3
+    assert "(`CLAUDE.md` or `AGENTS.md`) or in `cla.io/project-facts.md` replaces the two bullets" in rule_3
+    assert "names the full suite or the full gate keeps it for that merge. That gate wins over a repo policy." in rule_3
     rule_10 = economy[economy.index("10. **Run full test suites"):economy.index("11. **Plan the merge")]
-    assert "sized as rule 3 sizes it" in rule_10
+    assert "Rule 3 sizes that run over every merged diff: the full suite if any merged diff needs it." in rule_10
     assert "runs the full suite once on the base branch" not in rule_10
     assert "Run the full suite once, on the final commit." not in economy
 
