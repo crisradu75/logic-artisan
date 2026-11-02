@@ -1696,15 +1696,18 @@ def test_slashes_inside_headings_do_not_confuse_either_form(repo, capsys):
 
 
 # requirement: spec-proof / A repo chooses proof per requirement or per scenario
-def test_a_two_part_reading_wins_when_both_forms_fit(repo, capsys):
+def test_a_marker_that_fits_both_forms_proves_neither(repo, capsys):
     # "Other / Third" is a whole scenario heading under "Input", and also "requirement Other, scenario Third".
-    # The two-part reading comes first, so the marker proves the scenario named "Other / Third" and not "Third".
+    # Issue #431: both readings hold, so the marker is ambiguous and proves neither. (Until #456 the two-part
+    # reading won silently.)
     _scenario_repo(repo, ("Input", "SHALL.\n\n" + _scn("Other / Third")), ("Other", "SHALL.\n\n" + _scn("Third", then="differently")))
     _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Other / Third"))
     code, out, _ = run(repo, capsys)
+    dangling = [p for p in _problems(out) if "PROBLEM dangling" in p]
+    assert code == 1 and len(dangling) == 1, out
+    assert "ambiguous: it reads as scenario 'Other / Third'; scenario 'Third' under requirement 'Other'" in dangling[0]
     uncovered = [p for p in _problems(out) if "uncovered" in p]
-    assert code == 1 and len(uncovered) == 1, out
-    assert "alpha / Third:" in uncovered[0] and "alpha / Other / Third:" not in uncovered[0], out
+    assert len(uncovered) == 1 and "alpha / Third:" in uncovered[0], out
 
 
 # requirement: spec-proof / A repo chooses proof per requirement or per scenario

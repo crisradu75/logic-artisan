@@ -24,7 +24,8 @@ the scenario sits under: it proves the scenario only when that requirement exist
 holds the scenario, read from the live specs and the active deltas together, as the two-part
 form is. A scenario that sits under a different requirement is reported as ``wrong
 requirement``, and a requirement the spec does not have as ``unknown requirement``. A scenario heading
-that itself holds `` / `` is read as the two-part form first. The ``requirement:`` marker, and the ``manual:`` and ``waiting:`` lines, have no
+that itself holds `` / `` can also read as a three-part marker; when both readings hold, the marker is
+reported as ambiguous and proves neither. The ``requirement:`` marker, and the ``manual:`` and ``waiting:`` lines, have no
 three-part form: everything after the spec is the heading. See ``resolve_scenario_marker``.
 
 No such line means ``requirement``. A line that starts with the phrase but is
