@@ -1440,23 +1440,24 @@ def resolve_scenario_marker(
     ``universe`` maps a spec to its scenario headings, ``owners`` a spec to each scenario's requirement headings
     and ``reqs`` a spec to its requirement headings (live specs and active deltas, as ``universe`` is).
 
-    The whole of ``rest`` is tried as a scenario heading first, so a heading that itself holds `` / `` keeps
-    its two-part meaning and the three-part form never shadows it. Otherwise ``rest`` is split at each `` / ``
+    The whole of ``rest`` is read as a scenario heading (the two-part form), and ``rest`` is also split at each `` / ``
     (a requirement or scenario heading may hold one too) and the marker proves the scenario when some split
     names a requirement the scenario sits under. A split whose scenario exists but whose requirement does not
-    hold it is a named problem, never "names no scenario". When MORE than one split proves a scenario, the
-    marker is ambiguous: which scenario it proves would depend on split order, so it is a named problem that
-    lists every reading rather than a silent pick of the first."""
+    hold it is a named problem, never "names no scenario". When MORE than one reading proves a scenario (the
+    whole heading and a split, or two splits), the marker is ambiguous: which scenario it proves would depend on
+    reading order, so it is a named problem that lists every reading rather than a silent pick of one."""
     scenarios = universe.get(spec, set())
-    if rest in scenarios:
-        return rest, ""
     parts = rest.split(" / ")
     splits = [(" / ".join(parts[:i]), " / ".join(parts[i:])) for i in range(1, len(parts))]
     found = [(req, scn) for req, scn in splits if scn in scenarios]
     proving = [(req, scn) for req, scn in found if req in owners.get(spec, {}).get(scn, set())]
-    if len(proving) > 1:
-        readings = "; ".join(f"scenario {scn!r} under requirement {req!r}" for req, scn in proving)
-        return None, f"ambiguous: it reads as {readings}; rename a heading so only one reading holds"
+    readings = ([f"scenario {rest!r}"] if rest in scenarios else []) + [
+        f"scenario {scn!r} under requirement {req!r}" for req, scn in proving
+    ]
+    if len(readings) > 1:
+        return None, f"ambiguous: it reads as {'; '.join(readings)}; rename a heading so only one reading holds"
+    if rest in scenarios:
+        return rest, ""
     if proving:
         return proving[0][1], ""
     if not found:
