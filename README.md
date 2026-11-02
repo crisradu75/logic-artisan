@@ -88,9 +88,9 @@ find plugin-tests/mutants -name '*.py' | wc -l                             # mut
 ls openspec/specs | wc -l                                                  # live specs
 ```
 
-Stdlib-only: every import in the 30 Python files under `.claude/plugins/cla/` was checked against
-`sys.stdlib_module_names`. The numbers move as the code does; re-run the commands rather than
-quoting them.
+Stdlib-only: `plugin-tests/tests/conformance/test_shipped_imports_are_stdlib.py` checks every
+import in the Python files under `.claude/plugins/cla/` against `sys.stdlib_module_names`. The
+numbers move as the code does; re-run the commands rather than quoting them.
 
 </details>
 
