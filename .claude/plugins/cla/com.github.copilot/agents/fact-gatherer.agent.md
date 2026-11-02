@@ -65,8 +65,8 @@ Terse. No preamble, no prose analysis, no recommendations. Return ONLY a Markdow
 ```
 | Claim | Source location | Check | Result |
 |---|---|---|---|
-| "call `computeTotal` in Checkout" | tasks.md 4.1 | grep `computeTotal` in <core-member>/src/ | ✓ present, matching signature |
-| "`dashboard.example.late` key exists" | tasks.md 3.1 | read <ui-member>/<locale-dir>/en.json | ✗ not yet created (task 3.1 adds it) |
+| "call `computeTotal` in Checkout" | tasks.md 4.1 | grep `computeTotal` in src/billing/ | ✓ present, matching signature |
+| "`dashboard.example.late` key exists" | tasks.md 3.1 | read src/locales/en.json | ✗ not yet created (task 3.1 adds it) |
 ```
 
 Keep each cell to one line. The `Result` column starts with ✓ or ✗ and then the evidence. Do not add
