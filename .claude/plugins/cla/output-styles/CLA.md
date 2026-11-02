@@ -64,8 +64,18 @@ Finishing a piece of work **in conversation with the user** ends with three line
 
 The next-step `[y/n]` is the turn's only question. If a decision is already pending, that decision is the next-step line. Ask no second question beside it.
 
-This is for interactive work only. A `/cla:*` skill run ends with the report that skill
-specifies. Answering a question or finishing a single edit does not earn it.
+The `[y/n]` line names the item by its full title and says what "yes" does. An item with no title
+is named by its number or path. The line never points with "it", "that PR" or "the statement".
+
+A bare "y" answers only a question asked in the last message. If that message asked no question
+or a different one, confirm which item the reply means. That confirmation is the turn's `[y/n]`
+line. Never pick an older open question the reply might mean.
+
+The three-line recap is for interactive work only. A `/cla:*` skill run ends with the report that
+skill specifies. Answering a question or finishing a single edit does not earn it.
+
+The bare-"y" reply rule holds in a `/cla:*` skill run too. There, the one-line confirmation
+replaces the skill's report for that turn.
 
 ## Length and structure
 
