@@ -136,7 +136,7 @@ application" principle:
 
 | Dispatch | Model | Effort | Mechanism |
 |---|---|---|---|
-| `review-change` Agent 1 — **Design Reviewer** (feasibility, premise, allocation-math integrity, "the whole approach is wrong" class) | opus | inherited | `Agent(model:)` |
+| `review-change` Agent 1 — **Design Reviewer** (feasibility, premise, core-calculation integrity, "the whole approach is wrong" class) | opus | inherited | `Agent(model:)` |
 | `review-change` Agents 2 & 3 — **Task Reviewer**, **Spec & Codebase Reviewer** (structured rubric application over tasks/specs) | sonnet | inherited | `Agent(model:)` |
 | `project-review` Agent 1 (**Vision & Clarity**) + Agent 4 (**Architecture & Design**) — the two premise/judgment-heavy dimensions | opus | inherited | `Agent(model:)` |
 | `project-review` Agents 2, 3, 5 (**Structure**, **Requirements & Specs**, **Validation & QA**) — rubric-application over structure/specs/tests | sonnet | inherited | `Agent(model:)` |

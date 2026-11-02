@@ -42,7 +42,7 @@ Same model routing as `review-change/references/dispatch.md` (the checklist's St
 Use the same three agent prompts verbatim from `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/dispatch.md`, with these adaptations:
 
 - **"Change:"** becomes a list of all N change names.
-- **"Affected area:"** becomes the union of affected apps/packages across the batch.
+- **"Affected area:"** becomes the union of affected areas (workspace members, where the repo has them) across the batch.
 - **Content fields** (Proposal/Design/Tasks/Delta specs content) carry the FULL text of every change's corresponding artifact, or "(no design.md)" / "(skip_specs)" where it is absent, clearly delimited by a `## Change: <name>` heading per change, so the agent can attribute findings to the right one.
 - **Add check B1** (cross-change cross-reference verification) to each agent's existing check list, framed the same way `dispatch.md`'s agent prompts frame their own domain-specific checks.
 - **Output format** — same line kinds as the checklist, including its `- [Open] …` kind for a row that carries no severity, but each line is prefixed with `[<change-name>]` so Phase 4's fix-application step can route each finding to the right change directory: `- [<change-name>] [Critical/Important/Suggestion] Issue description`, and `- [<change-name>] [Open] <what could not be settled>: <what it would take to settle it>`.

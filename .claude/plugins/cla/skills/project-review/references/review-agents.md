@@ -81,7 +81,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 > **Start by reading:** <inject: this repo's workspace-config files to read for a structure pass (workspace manifest, root package manifest, lint config, each package's manifest)>. Use Glob to survey each app's and package's source tree.
 >
 > Evaluate:
-> 1. Workspace layout — is the apps/packages split clean and are workspace-internal deps sensible? Do the shared packages have coherent public surfaces (barrel exports)?
+> 1. Workspace layout — is the workspace's split into members (if it has one) clean, and are internal workspace deps sensible? Do the shared members have coherent public surfaces (barrel exports)?
 > 2. Package boundaries — do the packages keep the boundaries the repo documents (which must stay platform-safe, which may depend on which), and is the *dependency direction* healthy (no accidental over-coupling, nothing that should be shared living inside one app)?
 > 3. Per-app internal structure — <inject: this repo's own per-app source-tree bucketing convention>.
 > 4. File / symbol naming — consistent PascalCase components, camelCase functions, dotted i18n keys, kebab package names?
@@ -110,7 +110,7 @@ is reported as **N/A with one line of why**, never graded D for absence.
 > Evaluate:
 > 1. Data-flow discipline (core product) — is the gateway → projection → engine → component chain strictly one-directional? Is the app's root component the single source of truth for its draft/result state, re-running the engine on any live edit?
 > 2. Engine purity — is the core generate/compute function pure (no UI-framework imports, no side effects)? <inject: the grep recipe that should return empty confirming engine purity>.
-> 3. Allocation-math integrity — do the formulas match this repo's own allocation-engine spec? <inject: the exact formula set + invariants this repo's engine must preserve>. Excluded units zeroed? Fixed roster ordering preserved?
+> 3. Core-calculation integrity (only if `cla.io/project-facts.md` names a core calculation) — do the formulas match this repo's own spec for it? <inject: the exact formula set + invariants that calculation must preserve>. Does every invariant the spec states still hold?
 > 4. i18n architecture — is all user-facing text routed through the translation-key mechanism (every i18n layer)? Are any load-bearing enum-like values (e.g. a status or category enum) carried as keys end-to-end?
 > 5. Data seam — is the gateway a clean seam a real upstream data feed could replace? Is any simulated latency intentional/localized? Is the shared data-schema package genuinely reusable by a backend (platform-safe)?
 > 6. Backend design — is any LLM/external-API adapter interface vendor-neutral (no vendor SDK type leaking into routes/contract)? Is the wire contract duplicated-in-sync between server and frontend as documented?
