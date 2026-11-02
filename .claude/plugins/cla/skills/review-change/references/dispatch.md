@@ -70,7 +70,7 @@ Use the **Agent tool** to launch all three concurrently in a SINGLE message. Inc
 >
 > Check:
 > 1. **Task complexity (MOST IMPORTANT)** — Flag any task that:
->    - Has more than 5 subtasks in one task (per task)
+>    - Has more than 5 subtasks in one task
 >    - Touches more than 3 files across different concerns (e.g. a data-layer change + a UI component + an i18n update all in one task, or a schema migration + an authorization policy + a UI form all in one task)
 >    - Mixes creation, deletion, and modification of different components
 >    - Requires generating large amounts of content in one task (e.g. populating a large dataset/seed from scratch)
