@@ -5,8 +5,9 @@ shipped script works on the machine that wrote it and fails on the first one
 that lacks the package. CLAUDE.md states the rule ("Shipped scripts are
 stdlib-only Python"); until issue #441 no test held it.
 
-Absolute imports only: `import x` and `from x import y` with no leading dots. A
-name passes when its top-level module is in `sys.stdlib_module_names`, is
+A relative import (`from . import x`, `from .x import y`) is reported too: no
+shipped directory is a package, so one would fail at runtime. For an absolute
+import, a name passes when its top-level module is in `sys.stdlib_module_names`, is
 `__future__`, or is the stem of a `.py` file in the importing file's own directory
 (a script importing a sibling helper such as `_dispatch_lib`). Every own-module
 import the plugin makes is a sibling, so a shipped `yaml.py` elsewhere cannot
@@ -45,12 +46,15 @@ def _siblings(path: Path) -> set[str]:
 
 
 def _foreign_imports(source: str, own: set[str]) -> list[str]:
-    """Top-level names `source` imports that are not stdlib, `__future__` or `own`."""
+    """Names `source` imports that are relative, or not stdlib, `__future__` or `own`."""
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             names = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+        elif isinstance(node, ast.ImportFrom) and node.level > 0:
+            found.append("." * node.level + (node.module or ""))
+            continue
+        elif isinstance(node, ast.ImportFrom) and node.module:
             names = [node.module]
         else:
             continue
@@ -81,7 +85,9 @@ def test_the_scanner_is_not_vacuous() -> None:
     assert _foreign_imports("def f():\n    import attr\n", set()) == ["attr"]
     # Allowed forms stay quiet.
     assert _foreign_imports("import os.path\nfrom __future__ import annotations\n", set()) == []
-    assert _foreign_imports("from . import sibling\nfrom .x import y\n", set()) == []
+    # A relative import is a defect here, not an exemption: no shipped directory
+    # is a package.
+    assert _foreign_imports("from . import sibling\nfrom .x import y\n", set()) == [".", ".x"]
     assert _foreign_imports("import _dispatch_lib\n", {"_dispatch_lib"}) == []
 
 
