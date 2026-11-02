@@ -452,55 +452,91 @@ def _removed_headings(text: str) -> set[str]:
     return out
 
 
-_RENAMED_FROM = re.compile(r"^\s*-\s*FROM:\s*`?\s*###\s+Requirement:\s*(.+?)\s*`?\s*$", re.I)
+# OpenSpec's own line forms (its requirement-blocks parser): the bullet is optional and may be -, * or +.
+_RENAME_LINE = re.compile(r"^\s*(?:[-*+]\s*)?(FROM|TO):\s*`?\s*###\s*Requirement:\s*(.+?)\s*`?\s*$")
+_REMOVED_BULLET = re.compile(r"^\s*[-*+]\s*`?\s*###\s*Requirement:\s*(.+?)\s*`?\s*$")
 
 
-def _renamed_from(text: str) -> set[str]:
-    """The old requirement headings a delta's `## RENAMED` section renames away from."""
-    out, in_renamed = set(), False
+def _delta_ops(text: str) -> tuple[set[str], dict[str, str]]:
+    """(the requirements a delta's `## REMOVED` section removes, {old: new} from its `## RENAMED` section).
+
+    Lines inside a code fence are examples, not operations, so they are skipped."""
+    removed: set[str] = set()
+    renames: dict[str, str] = {}
+    section, fence, pending = "", False, None
     for line in text.splitlines():
+        if _FENCE.match(line):
+            fence = not fence
+            continue
+        if fence:
+            continue
         m = _H2.match(line)
         if m:
-            in_renamed = m.group(1).strip().upper().startswith("RENAMED")
-        elif in_renamed:
-            r = _RENAMED_FROM.match(line)
+            section, pending = m.group(1).strip().upper(), None
+            continue
+        if section.startswith("REMOVED"):
+            r = _REQ.match(line) or _REMOVED_BULLET.match(line)
             if r:
-                out.add(r.group(1))
-    return out
+                removed.add(r.group(1))
+        elif section.startswith("RENAMED"):
+            r = _RENAME_LINE.match(line)
+            if r and r.group(1) == "FROM":
+                pending = r.group(2)
+            elif r and pending is not None:
+                renames[pending] = r.group(2)
+                pending = None
+    return removed, renames
 
 
 def _shared_scenarios(files: list["SpecFile"]) -> list[str]:
     """PROBLEM lines for a scenario heading that sits under two requirements of one spec, in different files.
 
-    A proven scenario is keyed by (spec, heading), so one marker would prove both. The same heading twice in one
-    file is already `repeated` there. A requirement an active delta REMOVES or renames away from does not count:
-    its delta replaces it, so the old and new copy are one requirement."""
-    gone: dict[str, set[str]] = {}
-    for f in files:
-        if f.kind == "active":
-            gone.setdefault(f.spec, set()).update(_removed_headings(f.text) | _renamed_from(f.text))
-    held: dict[tuple[str, str], dict[str, set[str]]] = {}  # (spec, scenario) -> requirement -> files
-    for f in files:
-        if f.kind == "archived":
-            continue
-        for req, _, scns in _blocks(f.text, f.kind != "live"):
-            if f.kind == "live" and req in gone.get(f.spec, set()):
+    A proven scenario is keyed by (spec, heading), so one marker would prove every copy. Each active delta is
+    read as archiving it would leave its spec: the live requirements minus the ones it REMOVES, renamed as it
+    RENAMES them (their scenarios move with them), with its ADDED and MODIFIED blocks replacing the live copy.
+    Two active changes are also compared with each other, under the names every active rename gives. When one
+    file holds every copy, that file's own `repeated` line reports it, so this adds none."""
+    live = {f.spec: f for f in files if f.kind == "live"}
+    deltas = [f for f in files if f.kind == "active"]
+    ops = {f.rel: _delta_ops(f.text) for f in deltas}
+    problems: set[str] = set()
+
+    def report(spec: str, held: dict[str, dict[str, set[str]]]) -> None:
+        # held: scenario -> requirement -> the files that put it there
+        for scn, by_req in held.items():
+            if len(by_req) < 2 or len({rel for rs in by_req.values() for rel in rs}) < 2:
                 continue
+            where = "; ".join(f"{req!r} in {', '.join(sorted(rs))}" for req, rs in sorted(by_req.items()))
+            problems.add(
+                f"PROBLEM repeated: {spec}: scenario {scn!r} sits under more than one requirement ({where}), "
+                "so one marker would prove every copy; rename all but one"
+            )
+
+    for d in deltas:
+        removed, renames = ops[d.rel]
+        reqs: dict[str, tuple[list[str], str]] = {}  # requirement -> (its scenario headings, the file they come from)
+        if d.spec in live:
+            for req, _, scns in _blocks(live[d.spec].text, False):
+                if req not in removed:
+                    reqs[renames.get(req, req)] = ([s for s, _ in scns], live[d.spec].rel)
+        for req, _, scns in _blocks(d.text, True):
+            reqs[req] = ([s for s, _ in scns], d.rel)
+        held: dict[str, dict[str, set[str]]] = {}
+        for req, (scns, rel) in reqs.items():
+            for scn in scns:
+                held.setdefault(scn, {}).setdefault(req, set()).add(rel)
+        report(d.spec, held)
+
+    renamed = {(d.spec, old): new for d in deltas for old, new in ops[d.rel][1].items()}
+    across: dict[str, dict[str, dict[str, set[str]]]] = {}
+    for d in deltas:
+        for req, _, scns in _blocks(d.text, True):
+            name = renamed.get((d.spec, req), req)
             for scn, _ in scns:
-                held.setdefault((f.spec, scn), {}).setdefault(req, set()).add(f.rel)
-    problems = []
-    for (spec, scn), by_req in sorted(held.items()):
-        if len(by_req) < 2:
-            continue
-        rels = [rel for rs in by_req.values() for rel in rs]
-        if len(rels) != len(set(rels)):
-            continue  # one file holds two of them, which that file's `repeated` line already reports
-        where = "; ".join(f"{req!r} in {', '.join(sorted(rs))}" for req, rs in sorted(by_req.items()))
-        problems.append(
-            f"PROBLEM repeated: {spec}: scenario {scn!r} sits under more than one requirement ({where}), "
-            "so one marker would prove every copy; rename all but one"
-        )
-    return problems
+                across.setdefault(d.spec, {}).setdefault(scn, {}).setdefault(name, set()).add(d.rel)
+    for spec, held in across.items():
+        report(spec, held)
+    return sorted(problems)
 
 
 def _statement(body: list[str]) -> str:

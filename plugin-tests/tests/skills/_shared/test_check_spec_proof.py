@@ -443,24 +443,74 @@ def test_a_scenario_heading_under_two_requirements_in_two_files_is_reported(repo
     ) in repeated[0]
 
 
+_RENAME = "## RENAMED Requirements\n\n{b}FROM: `### Requirement: Old rule`\n{b}TO: `### Requirement: Renamed rule`\n\n"
+_MOD_RENAMED = "## MODIFIED Requirements\n\n### Requirement: Renamed rule\n\nOld SHALL.\n\n" + _scn("Old case") + "\n\n"
+_ADD_NEW = "## ADDED Requirements\n\n### Requirement: New rule\n\nN SHALL.\n\n" + _scn("Old case", then="other") + "\n"
+_LIVE_OLD = (("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Kept", "K SHALL.\n\n" + _scn("Kept case")))
+
+
 @pytest.mark.parametrize(
     "delta",
     [
-        "## RENAMED Requirements\n\n- FROM: `### Requirement: Old rule`\n- TO: `### Requirement: Renamed rule`\n\n"
-        "## MODIFIED Requirements\n\n### Requirement: Renamed rule\n\nOld SHALL.\n\n" + _scn("Old case") + "\n",
-        "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n"
-        "## ADDED Requirements\n\n### Requirement: Renamed rule\n\nOld SHALL.\n\n" + _scn("Old case") + "\n",
+        _RENAME.format(b="- ") + _MOD_RENAMED,
+        _RENAME.format(b="* ") + _MOD_RENAMED,
+        _RENAME.format(b="") + _MOD_RENAMED,
+        "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: moved\n\n" + _ADD_NEW,
+        "## REMOVED Requirements\n\n- `### Requirement: Old rule`\n\n" + _ADD_NEW,
+        "## MODIFIED Requirements\n\n### Requirement: Old rule\n\nOld SHALL.\n\n" + _scn("Other case") + "\n\n" + _ADD_NEW,
     ],
-    ids=["renamed", "removed-and-re-added"],
+    ids=["renamed", "renamed-star-bullet", "renamed-no-bullet", "removed", "removed-bullet", "moved-by-modified"],
 )
 # requirement: spec-proof / A checker reports proof that points at nothing
 def test_a_requirement_a_delta_replaces_does_not_share_its_scenario(repo, capsys, delta):
-    # The delta replaces `Old rule`, so its `Old case` and the live one are the same scenario, not two.
-    _scenario_repo(repo, ("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Kept", "K SHALL.\n\n" + _scn("Kept case")))
+    # Archiving the delta leaves `Old case` under one requirement only, so the live copy is not a second one.
+    _scenario_repo(repo, *_LIVE_OLD)
     _write(repo, DELTA, "# Spec Delta\n\n" + delta)
-    _write(repo, "tests/test_old.py", _marker("scenario", "alpha", "Old case") + _marker("scenario", "alpha", "Kept case"))
+    _write(repo, "tests/test_old.py", "".join(_marker("scenario", "alpha", s) for s in ("Old case", "Kept case", "Other case")))
     code, out, _ = run(repo, capsys)
-    assert "PROBLEM repeated" not in out and code == 0, out
+    assert "PROBLEM repeated" not in out, out
+
+
+@pytest.mark.parametrize(
+    "deltas, where",
+    [
+        # Renamed with no MODIFIED block: the scenario moves with the name, so it still clashes with the ADDED copy.
+        ({DELTA: _RENAME.format(b="- ") + _ADD_NEW}, f"'New rule' in {DELTA}; 'Renamed rule' in {SPEC}"),
+        # A rename shown inside a code fence is an example, not an operation.
+        ({DELTA: "## RENAMED Requirements\n\n```\n- FROM: `### Requirement: Old rule`\n- TO: `### Requirement: New rule`\n```\n\n" + _ADD_NEW},
+         f"'New rule' in {DELTA}; 'Old rule' in {SPEC}"),
+        # c1 removing `Old rule` does not hide it from c2, which leaves it in place.
+        ({DELTA: "## REMOVED Requirements\n\n### Requirement: Old rule\n\n**Reason**: gone\n",
+          "openspec/changes/c2/specs/alpha/spec.md": _ADD_NEW},
+         f"'New rule' in openspec/changes/c2/specs/alpha/spec.md; 'Old rule' in {SPEC}"),
+        # One file repeating the heading does not hide the live copy.
+        ({DELTA: _ADD_NEW + "\n### Requirement: Newer rule\n\nN SHALL.\n\n" + _scn("Old case", then="third") + "\n"},
+         f"'New rule' in {DELTA}; 'Newer rule' in {DELTA}; 'Old rule' in {SPEC}"),
+        # Two changes adding the heading under different requirements clash with each other.
+        ({DELTA: _ADD_NEW.replace("Old case", "Shared case"),
+          "openspec/changes/c2/specs/alpha/spec.md": _ADD_NEW.replace("New rule", "Other rule").replace("Old case", "Shared case")},
+         f"'New rule' in {DELTA}; 'Other rule' in openspec/changes/c2/specs/alpha/spec.md"),
+    ],
+    ids=["renamed-without-modified", "fenced-rename", "removed-by-another-change", "one-file-repeats-plus-live", "two-changes"],
+)
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_scenario_heading_two_requirements_will_hold_is_reported(repo, capsys, deltas, where):
+    _scenario_repo(repo, *_LIVE_OLD)
+    for rel, text in deltas.items():
+        _write(repo, rel, "# Spec Delta\n\n" + text)
+    _write(repo, "tests/test_old.py", "".join(_marker("scenario", "alpha", s) for s in ("Old case", "Kept case", "Shared case")))
+    code, out, _ = run(repo, capsys)
+    assert code == 1 and f"sits under more than one requirement ({where})" in out, out
+
+
+# requirement: spec-proof / A checker reports proof that points at nothing
+def test_a_heading_one_delta_file_repeats_is_reported_once_by_that_file(repo, capsys):
+    # Every copy sits in one file, so that file's own `repeated` line reports it and the cross-file check adds none.
+    _scenario_repo(repo, ("Kept", "K SHALL.\n\n" + _scn("Kept case")))
+    _write(repo, DELTA, "# Spec Delta\n\n" + _ADD_NEW + "\n### Requirement: Newer rule\n\nN SHALL.\n\n" + _scn("Old case", then="third") + "\n")
+    _write(repo, "tests/test_old.py", "".join(_marker("scenario", "alpha", s) for s in ("Kept case", "Old case")))
+    repeated = [p for p in _problems(run(repo, capsys)[1]) if "PROBLEM repeated" in p]
+    assert len(repeated) == 1 and "sits under more than one requirement" not in repeated[0], repeated
 
 
 @pytest.mark.parametrize(
