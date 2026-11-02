@@ -1021,6 +1021,29 @@ def test_a_code_span_closed_on_a_lazy_continuation_line_hides_the_link_between()
     # A deeper quote starts a new block, and a blank quoted line ends the paragraph: neither closes the span.
     assert _read("> a `stray [x](a.md) here", ">> deeper ` end")[0] == ["a.md"]
     assert _read("> a `stray [x](a.md) here", ">", "> after ` end")[0] == ["a.md"]
+    # The scan STOPS at a deeper quote: a closer on a lazy line after it does not count.
+    assert _read("> a `stray [x](a.md) here", ">> mid", "lazy ` end")[0] == ["a.md"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+@pytest.mark.parametrize(
+    "after",
+    [
+        "2. close ` end",  # an ordered item not at 1 cannot interrupt a paragraph, but it does end the quote
+        "-",  # an empty bullet likewise
+        "<span>close ` end</span>",  # an HTML block start
+    ],
+)
+def test_a_block_start_after_a_quote_is_not_a_lazy_continuation_line(after):
+    # A line that leaves the quote is checked against the document, where any block start ends the quote. The
+    # span never closes, so on the page the link shows.
+    assert _read("> a `stray [x](a.md) here", after, "close ` end")[0] == ["a.md"]
+
+
+# requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere
+def test_link_text_wrapped_over_a_lazy_line_back_into_the_quote_is_one_link():
+    # The lazy line keeps the quote's paragraph open, so the `>` line after it continues the same paragraph.
+    assert _read("> a [x", "lazy", "> y](a.md)")[0] == ["a.md"]
 
 
 # requirement: spec-proof / A checker reports specs a declared map leaves out and links that point nowhere

@@ -981,17 +981,26 @@ def _ends_paragraph(core: str) -> bool:
     return bool(item) and _interrupts_paragraph(core, item)
 
 
+def _continues_lazily(core: str) -> bool:
+    """True when `core`, a line at a LOWER quote depth than the paragraph before it, continues that paragraph
+    lazily (CommonMark). The test is stricter than `_ends_paragraph`: a line that leaves the quote is checked
+    against the outer container, so ANY block start ends the quote there, including a list item that could
+    not interrupt a paragraph (`2.`, an empty `-`) and an HTML block. A line starting with `<` is treated as
+    an HTML block: stopping too early only reports a link the page might hide, never the reverse."""
+    return not (_ends_paragraph(core) or _ITEM.match(core) or core.lstrip().startswith("<"))
+
+
 def _later_closer_in(lines: list[str], n: int, depth: int):
     """A function that says whether a run of backticks of a given length sits on a line after line `n`
     (1-based) in the same paragraph, at quote depth `depth`: the lines up to the first one that ends the
     paragraph (`_ends_paragraph`) or sits in a deeper quote, which starts a new block. A line at a LOWER depth
-    that does not end the paragraph is a lazy continuation line (CommonMark): on the page it is still part of
-    the quoted paragraph, so a span can close there. `_render_code_spans` asks it before it lets an unpaired
-    run open a span over a line break."""
+    that `_continues_lazily` is a lazy continuation line: on the page it is still part of the quoted
+    paragraph, so a span can close there. `_render_code_spans` asks it before it lets an unpaired run open a
+    span over a line break."""
     def later_closer(length: int) -> bool:
         for line in lines[n:]:
             core, d = _strip_quote(line)
-            if d > depth or _ends_paragraph(core):
+            if d > depth or (d < depth and not _continues_lazily(core)) or _ends_paragraph(core):
                 return False
             if any(len(m.group()) == length for m in _BACKTICK_RUN.finditer(core)):
                 return True
@@ -1036,7 +1045,9 @@ def map_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
             continue
         if quoted and not was_quoted:
             openers.clear()  # a quote starts here; the text before it was another block
-        was_quoted = quoted
+        # A lazy continuation line keeps the quote's paragraph open, so the quote does not start again on the
+        # next `>` line: that line continues the same paragraph, and its open brackets with it.
+        was_quoted = quoted or (bool(was_quoted) and _continues_lazily(core))
         stripped = core.lstrip()
         if stripped.startswith("<!--"):
             openers.clear()
