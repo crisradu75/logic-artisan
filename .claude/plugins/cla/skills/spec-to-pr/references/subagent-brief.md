@@ -177,7 +177,7 @@ Where the agent is read-only, prefer the mechanical form: per "What the brief ca
 below, a `tools:` allowlist or `permissionMode: plan` makes these commands impossible
 rather than merely forbidden.
 
-**Review briefs add a field: `Stated constraints / out of scope`.** The caller fills it from what the user said, such as "data is mock, no privacy review". Reviewers raise no finding that falls inside that list. Write `none` when the user stated nothing.
+**Review briefs add a field: `Stated constraints / out of scope`.** The caller fills it from what the user said, such as "data is mock, no privacy review". Reviewers raise no finding that falls inside that list. The list never suppresses a Critical security, money or data-loss finding. Report those always, flagged as outside the stated constraints. Write `none` when the user stated nothing.
 
 ### 4. Report — what to write, and where
 
@@ -281,11 +281,11 @@ Put it in the brief in these words:
 > If a gate cannot finish inside one foreground call, do not background it. Return `blocked`,
 > name the gate, and say what you did produce.
 
-Report a dispatched agent as finished only on its real completion notification. Never infer it from elapsed time or a guess.
-
 **The rule keys on the runner, not on the duration.** The orchestrator's own backgrounding is
 unchanged, because a completion notification *does* re-invoke a session. Only the dispatched
 agent has a turn that ends for good.
+
+Report a dispatched agent as finished only on its real completion notification. Never infer it from elapsed time or a guess.
 
 **This rule has no detector, and saying so is part of stating it.** Nothing the orchestrator
 observes distinguishes a gate run in the foreground from one backgrounded and summarised

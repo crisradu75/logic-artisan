@@ -181,7 +181,7 @@ Continuous — no "confirm to proceed?" prompts between phases, matching `/cla:s
 
 ## Scope
 
-Which workflow to use — lite-pr or `/cla:spec-to-pr` — is your judgment call at invocation time (see the intro: no size rule for choosing the workflow, no automatic escalation). The rename/docs-only tier in Test sizes the checking inside lite-pr; it does not choose the workflow. The actionable corollary: reassess mid-run if a change outgrows "lite" — stop, then re-plan or switch to `/cla:spec-to-pr` rather than forcing it through here.
+Which workflow to use, lite-pr or `/cla:spec-to-pr`, is your judgment call at invocation time. The intro says there is no size rule for choosing the workflow and no automatic escalation. The rename/docs-only tier in Test sizes the checking inside lite-pr. It does not choose the workflow. The actionable corollary: reassess mid-run if a change outgrows "lite". Stop, then re-plan or switch to `/cla:spec-to-pr` rather than forcing it through here.
 
 ## What this skill deliberately does not do
 

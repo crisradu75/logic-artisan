@@ -66,7 +66,7 @@ The next-step `[y/n]` is the turn's only question. If a decision is already pend
 
 Each `[y/n]` names what it acts on and where, such as "Merge <PR title> into <base branch>?". A bare `y` then has exactly one meaning.
 
-Once the user closes a topic ("done", "stop that"), do not offer follow-ups on it again.
+Once the user closes a topic ("done", "stop that"), do not offer follow-ups on it again. The topic stays closed for the rest of the current session unless the user reopens it.
 
 This is for interactive work only. A `/cla:*` skill run ends with the report that skill
 specifies. Answering a question or finishing a single edit does not earn it.
