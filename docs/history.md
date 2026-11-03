@@ -37,11 +37,11 @@ marketplace and installed `cla--v2.2.3`; `/cla:right-model` and both helper agen
 This is not a full workflow test. The current install instructions are Copilot CLI only and were
 validated with Copilot CLI 1.0.105: `copilot plugin marketplace add crisradu75/logic-artisan`, then
 `copilot plugin install cla@cris-logic-artisan`.
-The decisions are in `cla.io/decisions/copilot-cli-port-2026-10-16.md`; skills and hooks are
-not ported yet (issue #302). **The guard hooks do not run in Copilot**: the owner decided on
-2026-10-16 to wait for a live test, because the decisions file records (from a docs summary, untested
-in a live Copilot CLI) that a Copilot `preToolUse` timeout always lets the command through, which would
-weaken a guard meant to block when it fails.
+The decisions are in `cla.io/decisions/copilot-cli-port-2026-10-16.md`; remaining hook and skill
+porting work is tracked in #469 and #471, respectively. **The guard hooks do not run in Copilot**:
+the 2026-10-16 decision was to wait for a live test, because the decisions file records (from a docs
+summary, untested in a live Copilot CLI) that a Copilot `preToolUse` timeout always lets the command
+through, which would weaken a guard meant to block when it fails.
 
 **The Copilot CLI helper agents (2026-10-16; live validation recorded 2026-11-03).**
 GitHub's plugin reference says an Agent Plugins 1.0 plugin keeps Copilot custom agents in

@@ -137,9 +137,9 @@ def test_the_plugin_declares_its_own_repository():
 
 # ---------------------------------------------------------------------------
 # GitHub Copilot CLI: a catalog under .github/plugin/ and an Agent Plugins 1.0
-# manifest at the plugin root. NOT tested against a live Copilot CLI (none is
-# installed); these tests pin the shape GitHub's docs describe, so they catch a
-# typo or a drift, and say nothing about whether Copilot accepts the install.
+# manifest at the plugin root. These tests pin the documented manifest shape;
+# they do not exercise the live CLI, whose install and smoke checks are recorded
+# in the Copilot CLI section of README.md.
 #
 # Sources, read raw from github/docs (content/copilot/reference/copilot-cli-
 # reference/cli-plugin-reference.md) and the agentplugins/agent-plugins-spec
@@ -342,3 +342,13 @@ def test_the_copilot_marketplace_describes_the_live_smoke_validation():
     assert "Copilot CLI 1.0.105" in description
     assert "Copilot CLI 1.0.105" in plugin["description"]
     assert "untested" not in (description + plugin["description"]).lower()
+
+
+# requirement: plugin-distribution / Documenting Copilot CLI validation status
+def test_history_links_remaining_copilot_work_to_open_followups():
+    history = (_REPO_ROOT / "docs" / "history.md").read_text(encoding="utf-8")
+    copilot_section = history.split("The Copilot CLI catalog and manifest", 1)[1]
+    copilot_section = copilot_section.split("\n**The Copilot CLI helper agents", 1)[0]
+    assert "remaining hook and skill" in copilot_section
+    assert "#469" in copilot_section and "#471" in copilot_section
+    assert "issue #302" not in copilot_section
