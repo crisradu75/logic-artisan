@@ -4,12 +4,12 @@
     "name": "Cris Radu"
   },
   "metadata": {
-    "description": "Cris Logic Artisan (CLA), a dev-workflow harness. The GitHub Copilot CLI entry is untested in a live Copilot CLI."
+    "description": "Cris Logic Artisan (CLA), a dev-workflow harness. Copilot CLI 1.0.105 marketplace, install, skill, and helper-agent smoke checks passed; guard hooks remain Claude-only."
   },
   "plugins": [
     {
       "name": "cla",
-      "description": "Cris Logic Artisan, a dev-workflow harness. Pinned to an exact release tag; bump the ref here to publish a new one. Copilot CLI only, untested.",
+      "description": "Cris Logic Artisan, a dev-workflow harness. Copilot CLI 1.0.105 smoke-tested; CLI only, guard hooks remain Claude-only.",
       "source": {
         "source": "github",
         "repo": "crisradu75/logic-artisan",

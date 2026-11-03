@@ -235,11 +235,11 @@ def test_the_agent_plugins_name_rule_rejects_what_the_docs_reject():
         assert _AGENT_PLUGINS_NAME.fullmatch(good), f"{good!r} must be accepted"
 
 
-# The disclosure must sit beside the command: in the same heading section and within this many
-# characters of each occurrence of either install command (whitespace collapsed).
+# The validation scope must sit beside the command: in the same heading section and within this
+# many characters of each occurrence of either install command (whitespace collapsed).
 _DISCLOSURE_WINDOW = 1000
 _INSTALL_COMMANDS = ("copilot plugin marketplace add", "copilot plugin install")
-_DISCLOSURE_PHRASES = ("Copilot CLI only", "untested in a live Copilot CLI")
+_DISCLOSURE_PHRASES = ("Copilot CLI only", "validated with Copilot CLI 1.0.105")
 _FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 _HEADING = re.compile(r"#{1,6} ")
 
@@ -276,10 +276,9 @@ def _disclosure_gaps(text: str) -> list[str]:
     return gaps
 
 
-# requirement: plugin-distribution / Disclosing the Copilot CLI install is untested
-def test_every_doc_offering_the_copilot_install_says_it_is_untested_beside_it():
-    """The install was never run in a live Copilot CLI. A doc that gives the
-    command without saying so, beside it, would read as a tested instruction."""
+# requirement: plugin-distribution / Documenting Copilot CLI validation status
+def test_every_doc_offering_the_copilot_install_states_its_validation_scope():
+    """A current install command must identify the tested Copilot CLI surface and version."""
     docs = {
         "README.md": _REPO_ROOT / "README.md",
         "DEVELOPER-GUIDE.md": _REPO_ROOT / "DEVELOPER-GUIDE.md",
@@ -292,20 +291,25 @@ def test_every_doc_offering_the_copilot_install_says_it_is_untested_beside_it():
     assert any(c in texts["README.md"] for c in _INSTALL_COMMANDS), (
         "README.md no longer gives the Copilot install line"
     )
+    readme = " ".join(texts["README.md"].split())
+    assert "release `cla--v2.2.3`" in readme
+    assert "/cla:right-model" in readme
+    assert "doc-sweeper" in readme and "fact-gatherer" in readme
+    assert "fell back to `auto`" in readme
     for label, text in texts.items():
         gaps = _disclosure_gaps(text)
         assert not gaps, f"{label} offers the Copilot install without the disclosure beside it: {gaps}"
 
 
-# requirement: plugin-distribution / Disclosing the Copilot CLI install is untested
-def test_the_disclosure_check_needs_the_phrases_in_the_same_section_and_near_the_command():
-    disclosure = "Copilot CLI only and untested in a live Copilot CLI."
+# requirement: plugin-distribution / Documenting Copilot CLI validation status
+def test_the_validation_check_needs_the_phrases_in_the_same_section_and_near_the_command():
+    disclosure = "Copilot CLI only. validated with Copilot CLI 1.0.105."
     command = "copilot plugin install cla@x"
     assert _disclosure_gaps(f"### Copilot\n\n{disclosure}\n\n```bash\n{command}\n```\n") == []
     # A heading in a bash fence is a comment, not a section break.
     assert _disclosure_gaps(f"### Copilot\n{disclosure}\n```bash\n# install\n{command}\n```\n") == []
     # Wrapped across lines, the phrase still matches.
-    assert _disclosure_gaps(f"### C\nCopilot CLI only, untested in a\nlive Copilot CLI.\n{command}\n") == []
+    assert _disclosure_gaps(f"### C\nCopilot CLI only, validated with\nCopilot CLI 1.0.105.\n{command}\n") == []
     # The same words in another section do not count.
     elsewhere = f"### Notes\n\n{disclosure}\n\n### Install\n\n```bash\n{command}\n```\n"
     assert len(_disclosure_gaps(elsewhere)) == 2
@@ -316,15 +320,25 @@ def test_the_disclosure_check_needs_the_phrases_in_the_same_section_and_near_the
     two = f"### Install\n{command}\n{disclosure}\n" + "filler " * 400 + "\ncopilot plugin marketplace add y\n"
     assert len(_disclosure_gaps(two)) == 2
     # One phrase present and the other missing is reported by name.
-    only = _disclosure_gaps("### Install\nuntested in a live Copilot CLI.\n" + command + "\n")
-    assert len(only) == 1 and "Copilot CLI only" in only[0]
+    only = _disclosure_gaps("### Install\nCopilot CLI only.\n" + command + "\n")
+    assert len(only) == 1 and "validated with Copilot CLI 1.0.105" in only[0]
     assert _disclosure_gaps("no command here, no gap\n") == []
 
 
-# requirement: plugin-distribution / Disclosing the Copilot CLI install is untested
-def test_the_shipped_copilot_manifest_does_not_say_the_install_is_untested():
+# requirement: plugin-distribution / Listing for GitHub Copilot CLI
+def test_the_shipped_copilot_manifest_does_not_claim_the_install_is_untested():
     """The manifest sits inside the release tag, which is never moved, so a claim there would
-    outlive the first live test. The docs and the spec carry it instead."""
+    outlive a change in support status. The docs and the spec carry status instead."""
     description = _copilot_manifest().get("description", "")
     assert description, "the root manifest needs a description"
     assert "untested" not in description.lower(), "the tagged manifest must not carry the untested claim"
+
+
+# requirement: plugin-distribution / Documenting Copilot CLI validation status
+def test_the_copilot_marketplace_describes_the_live_smoke_validation():
+    catalog = _copilot_catalog()
+    description = catalog["metadata"]["description"]
+    plugin = next(entry for entry in catalog["plugins"] if entry["name"] == "cla")
+    assert "Copilot CLI 1.0.105" in description
+    assert "Copilot CLI 1.0.105" in plugin["description"]
+    assert "untested" not in (description + plugin["description"]).lower()

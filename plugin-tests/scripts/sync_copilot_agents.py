@@ -20,8 +20,9 @@ Sources, read raw from github/docs:
   ("Supported models", and "A declared model ... that can't be honored falls back to the session's
   value instead of failing the dispatch")
 
-NOT TESTED in a live Copilot CLI (none is installed). The tests that call this module check that
-each committed copy equals what `render` produces, plus the checks listed in that test file.
+Live smoke-tested in Copilot CLI 1.0.105: both profiles loaded and were invoked. The tests that
+call this module check that each committed copy equals what `render` produces, plus the checks
+listed in that test file; they do not replace validation in Copilot CLI.
 
     python3 plugin-tests/scripts/sync_copilot_agents.py           # report copies out of step or orphaned
     python3 plugin-tests/scripts/sync_copilot_agents.py --write   # regenerate them, delete the orphans

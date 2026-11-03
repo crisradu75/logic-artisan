@@ -393,10 +393,12 @@ because it lives in the repo and not in the plugin directory.
 Overlays are optional: add `cla.io/overlays/<skill>.md` only when one skill needs a rule specific
 to this repo.
 
-**On GitHub Copilot CLI** the install is experimental: Copilot CLI only, untested in a live Copilot
-CLI. The skills and the two helper agents are offered to Copilot, but the
-guard hooks do not run in Copilot. The [README](README.md#github-copilot-cli-experimental) has the
-commands and what to expect; issue #302 tracks the port.
+**On GitHub Copilot CLI** the install, one skill and both helper agents were smoke-tested with
+Copilot CLI 1.0.105 against `cla--v2.2.3`. This does not establish full workflow parity: the guard
+hooks remain Claude-only and do not run in Copilot. Some skills name Claude-specific tools, and the
+agent model selection fell back to `auto`. The Copilot app and cloud agent are out of scope. The
+[README](README.md#github-copilot-cli-experimental) has the commands and details; follow-up work is
+linked from issue #302.
 
 ### Going further
 
@@ -496,9 +498,9 @@ The published plugin; everything here ships to an installing repo:
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
-  plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, untested in a live Copilot CLI
+  plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, smoke-tested with CLI 1.0.105
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers other skills delegate to)
-  com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/ (untested in a live Copilot CLI)
+  com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/
   hooks/                       guard hooks + hooks.json wiring
   lib/log_run.py               the one ledger writer, invoked as a program
   output-styles/               the project's writing convention (force-for-plugin: true)
