@@ -63,10 +63,30 @@ def test_a_missing_marker_is_only_a_suggestion():
 
 
 _LIVE_SPECS = _REPO / "openspec" / "specs"
+_ACTIVE_CHANGES = _REPO / "openspec" / "changes"
 
 
 def _live_specs() -> list[Path]:
     return sorted(_LIVE_SPECS.glob("*/spec.md"))
+
+
+def _requirement_headings(path: Path, *, delta: bool = False) -> set[str]:
+    headings = set()
+    in_scope = False
+    fence = False
+    for line in _read(path).splitlines():
+        if re.match(r"^\s*(```|~~~)", line):
+            fence = not fence
+        elif not fence:
+            section = re.match(r"^##\s+(?!#)(.+?)\s*$", line)
+            if section:
+                title = section.group(1).strip().upper()
+                in_scope = title.startswith(("ADDED", "MODIFIED")) if delta else title.startswith("REQUIREMENTS")
+            elif in_scope:
+                requirement = re.match(r"^###\s+Requirement:\s*(.+?)\s*$", line, re.I)
+                if requirement:
+                    headings.add(requirement.group(1))
+    return headings
 
 
 def _asks(path: Path) -> str:
@@ -97,22 +117,24 @@ def _markers(prefix: str) -> list[tuple[Path, str, str]]:
     return found
 
 
-def test_every_requirement_marker_names_a_live_requirement():
+def test_every_requirement_marker_names_a_current_requirement():
     """A `requirement: <spec> / <heading>` comment is a claim that the test
-    proves that requirement. One naming a spec or heading that no longer exists
-    proves nothing and reads as coverage, which is what a spec rewrite or a
-    heading rename leaves behind unless something checks."""
+    proves that requirement. It must name a requirement in a live spec or an
+    active delta's ADDED/MODIFIED sections; archived deltas are not current."""
     specs = _live_specs()
-    live = set()
+    current = set()
     for spec in specs:
-        live |= {(spec.parent.name, h.strip()) for h in re.findall(r"^### Requirement: (.+)$", _read(spec), re.M)}
+        current |= {(spec.parent.name, h) for h in _requirement_headings(spec)}
+    deltas = sorted(_ACTIVE_CHANGES.glob("*/specs/*/spec.md"))
+    for delta in deltas:
+        current |= {(delta.parent.name, h) for h in _requirement_headings(delta, delta=True)}
     # OpenSpec refuses a spec with no requirement, so fewer than one per spec
     # means the heading pattern stopped matching.
-    assert len(live) >= len(specs) >= 6, f"only {len(live)} live requirements in {len(specs)} specs"
+    assert len(current) >= len(specs) >= 6, f"only {len(current)} current requirements in {len(specs)} live specs"
     markers = _markers("requirement")
     assert len(markers) >= 10, f"only {len(markers)} requirement markers found"
-    dangling = [f"{t}: {cap} / {h}" for t, cap, h in markers if (cap, h) not in live]
-    assert not dangling, f"requirement markers naming no live requirement: {dangling}"
+    dangling = [f"{t}: {cap} / {h}" for t, cap, h in markers if (cap, h) not in current]
+    assert not dangling, f"requirement markers naming no current requirement: {dangling}"
 
 
 def test_no_test_carries_the_retired_scenario_marker():
