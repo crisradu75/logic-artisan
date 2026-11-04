@@ -298,10 +298,10 @@ machine that lacks the package. The rule is as old as this repo's first CLAUDE.m
 "All scripts are stdlib-only Python"). The one exception, the Playwright browser suite, is test-only
 and opt-in; its case is under "Why the Playwright suite earns its exception" above.
 
-### Guard decisions of 2026-11-04: four kept as they are
+### Guard decisions of 2026-11-04: five kept as they are
 
-The project review of 2026-10-30 left five open questions about guards (issue #444). The owner
-decided on 2026-11-04. Four stay as they are. Each is a decision, not an incident.
+The project review of 2026-10-30 left open questions about guards (issue #444). The owner
+decided on 2026-11-04. Five stay as they are, and a sixth item stays opt-in. Each is a decision, not an incident.
 
 **Reviewers keep Bash and Edit.** The `pr-review-toolkit` reviewers are not ours, and they hold
 Bash and Edit. The diff-review rule in each prompt forbids git commands and file edits, and
@@ -321,6 +321,14 @@ only the merge reason, so a force-push in the same command still asks
 prefix. The hint makes that easier. The owner chose to keep the hint over honouring only a launch-time
 setting, which would also have changed `chain-merge.md`.
 
+**Commands inside backticks or `"$(...)"` stay invisible to `ask-destructive-git`.** The guard
+scans the command after `strip_quoted_spans` has blanked every quoted and backtick span
+(`ask-destructive-git.py:897`; `_dispatch_lib.py:484-525`). A command inside such a span is blanked
+with it. An unquoted `$(...)` is not blanked, so it is still scanned. The accepted weakness: a
+`gh pr merge` or a `git push --no-verify` inside backticks or inside a double-quoted `$(...)` runs
+with no ask. The owner decided to leave it. No incident count
+is known.
+
 **`pushd` and `Set-Location` stay unblocked.** `block-cd-in-bash` leaves `pushd`/`popd` and
 PowerShell's location cmdlets alone (`block-cd-in-bash.py:17-18`, `:88-90`). `CLAUDE.md` names
 `Push-Location` for running a worktree's checks (`CLAUDE.md:66-67`), and the guard's comment calls
@@ -334,7 +342,7 @@ known.
 the same code. A higher skip count is how a dropped area shows. The cost: that check is a human
 step, not a failure.
 
-A fifth item, mutation batches for the `warn-*` hooks, stays opt-in under the 2026-10-14 decision
+One more item, mutation batches for the `warn-*` hooks, stays opt-in under the 2026-10-14 decision
 (see "Mutation testing is opt-in" above).
 
 ### Releasing: the history behind the rules
