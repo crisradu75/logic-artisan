@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "bash": "PYEXE=; [ -n \"$COPILOT_PLUGIN_ROOT\" ] || { echo \"cla: COPILOT_PLUGIN_ROOT is missing — guard hooks are NOT running\" >&2; exit 1; }; _cla_probe=\"$COPILOT_PLUGIN_ROOT/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"$COPILOT_PLUGIN_ROOT/hooks/copilot-pretooluse.py\"",
+            "powershell": "$probe = Join-Path $env:COPILOT_PLUGIN_ROOT 'hooks/probe-python.ps1'; if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) { Write-Error 'cla: Copilot Python probe is missing — guard hooks are NOT running'; exit 1 }; . $probe; if (-not $CLA_PYTHON_COMMAND) { Write-Error 'cla: no working Python 3.8+ found — guard hooks are NOT running'; exit 1 }; $adapter = Join-Path $env:COPILOT_PLUGIN_ROOT 'hooks/copilot-pretooluse.py'; $runArgs = @($CLA_PYTHON_PREFIX) + @($adapter); & $CLA_PYTHON_COMMAND @runArgs; exit $LASTEXITCODE",
+            "timeoutSec": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "bash": "PYEXE=; [ -n \"$COPILOT_PLUGIN_ROOT\" ] || { echo \"cla: COPILOT_PLUGIN_ROOT is missing — guard hooks are NOT running\" >&2; exit 1; }; _cla_probe=\"$COPILOT_PLUGIN_ROOT/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"$COPILOT_PLUGIN_ROOT/hooks/copilot-pretooluse.py\"",
+            "powershell": "$probe = Join-Path $env:COPILOT_PLUGIN_ROOT 'hooks/probe-python.ps1'; if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) { Write-Error 'cla: Copilot Python probe is missing — guard hooks are NOT running'; exit 1 }; . $probe; if (-not $CLA_PYTHON_COMMAND) { Write-Error 'cla: no working Python 3.8+ found — guard hooks are NOT running'; exit 1 }; $adapter = Join-Path $env:COPILOT_PLUGIN_ROOT 'hooks/copilot-pretooluse.py'; $runArgs = @($CLA_PYTHON_PREFIX) + @($adapter); & $CLA_PYTHON_COMMAND @runArgs; exit $LASTEXITCODE",
+            "timeoutSec": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "bash": "PYEXE=; [ -n \"$COPILOT_PLUGIN_ROOT\" ] || { echo \"cla: COPILOT_PLUGIN_ROOT is missing — guard hooks are NOT running\" >&2; exit 1; }; _cla_probe=\"$COPILOT_PLUGIN_ROOT/hooks/probe-python.sh\"; [ -r \"$_cla_probe\" ] && . \"$_cla_probe\"; [ -x \"$PYEXE\" ] || { echo \"cla: interpreter probe at $_cla_probe is missing or unusable — guard hooks are NOT running\" >&2; exit 1; }; \"$PYEXE\" \"$COPILOT_PLUGIN_ROOT/hooks/copilot-posttooluse.py\"",
+            "powershell": "$probe = Join-Path $env:COPILOT_PLUGIN_ROOT 'hooks/probe-python.ps1'; if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) { Write-Error 'cla: Copilot Python probe is missing — guard hooks are NOT running'; exit 1 }; . $probe; if (-not $CLA_PYTHON_COMMAND) { Write-Error 'cla: no working Python 3.8+ found — guard hooks are NOT running'; exit 1 }; $adapter = Join-Path $env:COPILOT_PLUGIN_ROOT 'hooks/copilot-posttooluse.py'; $runArgs = @($CLA_PYTHON_PREFIX) + @($adapter); & $CLA_PYTHON_COMMAND @runArgs; exit $LASTEXITCODE",
+            "timeoutSec": 30
+          }
+        ]
+      }
+    ]
+  }
+}

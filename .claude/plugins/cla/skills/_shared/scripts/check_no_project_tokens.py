@@ -323,6 +323,13 @@ SOURCE_SCAN_ROOTS = (
     "output-styles",
     "lib",
 )
+# Shipped files that sit outside every root above and are scanned by exact path.
+# `com.github.copilot/hooks/hooks.json` is the Copilot CLI hook wiring; a root
+# would make `_missing_source_roots` treat a partial install as broken, and a file
+# list keeps the surface to the one file. An absent file is skipped.
+SOURCE_SCAN_EXTRA_FILES = (
+    "com.github.copilot/hooks/hooks.json",
+)
 CACHE_DIRS = frozenset({"__pycache__", ".pytest_cache"})
 
 
@@ -342,7 +349,7 @@ def _missing_source_roots(plugin_root: Path) -> list[str]:
 def _iter_scanned_source_files(plugin_root: Path):
     """Yield every synced-core SOURCE file the prose scan cannot see.
 
-    `.py`, `.json` and `.sh` anywhere under the synced roots (including `tests/`
+    `.py`, `.json`, `.sh` and `.ps1` anywhere under the synced roots (including `tests/`
     and `scripts/`), plus every `.md` under `agents/` or `output-styles/` (agent
     definitions and output-style files, neither reachable from the prose scan's
     `skills/` root). Overlays stay exempt by the same convention, and
@@ -374,6 +381,11 @@ def _iter_scanned_source_files(plugin_root: Path):
     One shipped file, identical in every install, so this adds no per-repo
     surface either.
 
+    `.ps1` was added for `hooks/probe-python.ps1`, the Copilot CLI PowerShell
+    twin of `probe-python.sh`, and `SOURCE_SCAN_EXTRA_FILES` names the Copilot
+    hook wiring `com.github.copilot/hooks/hooks.json`, which no root reaches.
+    Both are single shipped files, identical in every install.
+
     Still NOT widened to the suffix-less `hooks/git/pre-push`: it has no
     demonstrated leak, and reaching it needs a rule that is not keyed on suffix
     at all. It is recorded as a deliberate exemption rather than an oversight —
@@ -390,10 +402,14 @@ def _iter_scanned_source_files(plugin_root: Path):
                 continue
             if any(part in CACHE_DIRS for part in path.relative_to(root).parts):
                 continue
-            if path.suffix in (".py", ".json", ".sh") or (
+            if path.suffix in (".py", ".json", ".sh", ".ps1") or (
                 root_name in md_roots and path.suffix == ".md"
             ):
                 yield path
+    for rel in SOURCE_SCAN_EXTRA_FILES:
+        extra = plugin_root / rel
+        if extra.is_file():
+            yield extra
 
 
 def find_source_violations(plugin_root: Path, tokens: list[str]):

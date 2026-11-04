@@ -152,7 +152,16 @@ Validated in that run:
   invoked. This was a smoke check, not an end-to-end test of every skill or agent workflow.
 - Copilot did not honor the agents' declared model and fell back to `auto`.
 
-**Limitations:** CLA's guard hooks remain Claude-only and do not run in Copilot. Skill text that
+**Guard-hook source support:** the working tree now has separate Copilot Agent Plugins 1.0
+`PreToolUse`/`PostToolUse` wiring for the CLA guards; Claude's hook configuration is unchanged.
+Live checks with Copilot CLI 1.0.105 covered an allowed command, a blocked `cd`, a destructive-git
+confirmation (denied by autopilot, which cannot prompt), and a warning. Copilot documents hook
+timeouts as fail-open, but the live timeout probe was inconclusive. Edit/Write hook behavior is
+covered by adapter tests but was not live-tested, and Windows PowerShell wiring has not been tested.
+The timeout is 30 seconds; a timeout does not block the tool call. Direct pushes to `main` remain
+guarded separately by the Git `pre-push` hook, which must be installed once per clone.
+
+These hook changes are not in the tagged `cla--v2.2.3` marketplace release yet. Skill text that
 names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is not ported, so not
 every skill workflow is Copilot-compatible. Copilot app and cloud agent support are out of scope.
 Follow-up work is tracked from issue #302.
