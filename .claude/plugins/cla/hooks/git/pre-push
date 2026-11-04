@@ -41,7 +41,8 @@ remote_name=${1:-origin}
 if ! git remote 2>/dev/null | grep -qxF -- "$remote_name"; then
     url=${2:-$remote_name}
     for candidate in $(git remote 2>/dev/null); do
-        if [ "$(git remote get-url "$candidate" 2>/dev/null)" = "$url" ]; then
+        # Every fetch URL and every push URL: git passes the push URL it will use.
+        if { git remote get-url --all "$candidate"; git remote get-url --push --all "$candidate"; } 2>/dev/null | grep -qxF -- "$url"; then
             remote_name=$candidate
             break
         fi

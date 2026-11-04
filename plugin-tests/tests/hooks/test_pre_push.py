@@ -153,3 +153,10 @@ def test_a_push_to_a_remotes_url_gets_that_remotes_default_branch_check(tmp_path
     assert run("refs/heads/main", url).returncode == 1, "main stays refused"
     # A URL that is not that remote's is not matched to it.
     assert run("refs/heads/develop", url + ".x").returncode == 0
+    # A remote's push URL, and a second push URL, match it too.
+    push = "https://example.invalid/push.git"
+    push2 = "https://example.invalid/push2.git"
+    _git(tmp_path, "remote", "set-url", "--push", "origin", push)
+    _git(tmp_path, "remote", "set-url", "--add", "--push", "origin", push2)
+    assert run("refs/heads/develop", push).returncode == 1
+    assert run("refs/heads/develop", push2).returncode == 1
