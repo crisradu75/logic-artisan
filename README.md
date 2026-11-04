@@ -47,7 +47,7 @@ step at a time; its [cheat sheet](DEVELOPER-GUIDE.md#cheat-sheet-i-want-to--whic
 
 ## Engineering highlights
 
-**19 skills · 9 guard hooks · 2,898 tests · 56 mutation batches · 12 live OpenSpec specs ·
+**19 skills · 9 guard hooks · 2,944 tests · 56 mutation batches · 12 live OpenSpec specs ·
 stdlib-only shipped Python**
 
 Each decision below rests on a measurement, a recorded incident or an owner decision. Most are told
@@ -78,7 +78,7 @@ in full in [docs/evidence.md](docs/evidence.md) and [docs/history.md](docs/histo
   ([the decision](docs/evidence.md#no-ci-the-decision-behind-the-rule)).
 
 <details>
-<summary>Where the numbers come from (counted 2026-11-02 on <code>main</code> at <code>3349863</code>)</summary>
+<summary>Where the numbers come from (counted 2026-11-04 on <code>main</code> at <code>d090293</code>)</summary>
 
 ```bash
 ls .claude/plugins/cla/skills | grep -v '^_' | wc -l                         # skills
@@ -152,7 +152,7 @@ Validated in that run:
   invoked. This was a smoke check, not an end-to-end test of every skill or agent workflow.
 - Copilot did not honor the agents' declared model and fell back to `auto`.
 
-**Guard-hook source support:** the working tree now has separate Copilot Agent Plugins 1.0
+**Guard-hook support (`cla--v2.3.0`):** the plugin has separate Copilot Agent Plugins 1.0
 `PreToolUse`/`PostToolUse` wiring for the CLA guards; Claude's hook configuration is unchanged.
 Live checks with Copilot CLI 1.0.105 covered an allowed command, a blocked `cd`, a destructive-git
 confirmation (denied by autopilot, which cannot prompt), and a warning. Copilot documents hook
@@ -161,7 +161,7 @@ covered by adapter tests but was not live-tested, and Windows PowerShell wiring 
 The timeout is 30 seconds; a timeout does not block the tool call. Direct pushes to `main` remain
 guarded separately by the Git `pre-push` hook, which must be installed once per clone.
 
-These hook changes are not in the tagged `cla--v2.2.3` marketplace release yet. Skill text that
+The hook wiring first ships in `cla--v2.3.0`; the smoke check above predates it. Skill text that
 names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is not ported, so not
 every skill workflow is Copilot-compatible. Copilot app and cloud agent support are out of scope.
 Follow-up work is tracked from issue #302.

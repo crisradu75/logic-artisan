@@ -394,15 +394,15 @@ Overlays are optional: add `cla.io/overlays/<skill>.md` only when one skill need
 to this repo.
 
 **On GitHub Copilot CLI**, the marketplace install, one skill and both helper agents were
-smoke-tested with Copilot CLI 1.0.105 against `cla--v2.2.3`. The current source tree also has
+smoke-tested with Copilot CLI 1.0.105 against `cla--v2.2.3`. Release `cla--v2.3.0` also has
 separate Copilot `PreToolUse`/`PostToolUse` guard wiring; Claude's hook configuration is unchanged.
 Live CLI checks covered allow, block, warning, and destructive-git confirmation. In autopilot, a
 confirmation cannot prompt and is denied. Copilot documents hook timeouts as fail-open, but the
 live timeout probe was inconclusive. Edit/Write hook behavior is adapter-tested but not live-tested;
 Windows PowerShell wiring is also untested. The 30-second hook timeout is fail-open, so it is not a
 guarantee that a guard will block a call. Direct pushes to `main` are still protected separately by
-the Git `pre-push` hook, installed once per clone. The new hook source is not in the tagged
-`cla--v2.2.3` release yet. Some skills name Claude-specific tools, and the agent model selection
+the Git `pre-push` hook, installed once per clone. The Copilot hook wiring first ships in
+`cla--v2.3.0`; the smoke test above predates it. Some skills name Claude-specific tools, and the agent model selection
 fell back to `auto`; this is not full workflow parity. The Copilot app and cloud agent are out of
 scope. The [README](README.md#github-copilot-cli-experimental) has the details; follow-up work is
 linked from issue #302.
