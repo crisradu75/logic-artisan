@@ -260,9 +260,9 @@ to install.
 ```
 .claude/plugins/cla/
   .claude-plugin/plugin.json   manifest
-  plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, untested in a live Copilot CLI
+  plugin.json                  GitHub Copilot CLI (Agent Plugins 1.0) manifest, smoke-tested with CLI 1.0.105
   agents/                      doc-sweeper, fact-gatherer (mechanical helpers)
-  com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/ (untested in a live Copilot CLI)
+  com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/
   hooks/                       guard hooks + hooks.json wiring, and git/pre-push
   lib/                         log_run.py — writes the one run ledger, spec-to-pr-runs.jsonl
   output-styles/               the project's writing convention (force-for-plugin: true)
@@ -271,6 +271,11 @@ to install.
     references/                supporting refs (portable — overlays live in your cla.io/)
     scripts/                   deterministic helpers (stdlib Python)
 ```
+
+The Copilot CLI marketplace install, one skill and both helper agents were smoke-tested against
+`cla--v2.2.3` with Copilot CLI 1.0.105. The agents fell back to `auto` because their declared
+models were unavailable. Guard hooks remain Claude-only, and skills that require Claude-specific
+tools are not ported; the Copilot app and cloud agent are out of scope.
 
 That is the whole published tree. The suite, the mutation corpora, the pytest configuration and the
 release workflow all live outside it, in the canonical source repo only — see *Testing* above.

@@ -137,29 +137,25 @@ guard hooks active and nothing else saying so. If both spellings are in use, ins
 
 ## GitHub Copilot CLI (experimental)
 
-**Copilot CLI only**: nothing here targets the Copilot app or the cloud agent. These two lines come
-from GitHub's documentation and **have never been run: the install is untested in a live Copilot
-CLI**, so expect it to need fixes.
+**Copilot CLI only**: nothing here targets the Copilot app or the cloud agent. Install and smoke
+checks below: validated with Copilot CLI 1.0.105 against release `cla--v2.2.3`.
 
 ```bash
 copilot plugin marketplace add crisradu75/logic-artisan
 copilot plugin install cla@cris-logic-artisan
 ```
 
-What to expect, per GitHub's docs and not from a run:
+Validated in that run:
 
-- Copilot reads `.github/plugin/marketplace.json` and the Agent Plugins 1.0 `plugin.json` at the
-  plugin root, which takes precedence over `.claude-plugin/plugin.json`. The catalog pins the
-  current release tag, and every tag since `cla--v2.1.1` carries that manifest, so Copilot should
-  treat CLA as a 1.0 plugin.
-- A 1.0 plugin offers Copilot its `skills/` directory. Agents load only from
-  `com.github.copilot/agents/`, where CLA ships its two helper agents, generated from the Claude
-  Code ones; they are also untested in a live Copilot CLI.
-- **CLA's guard hooks do not run in Copilot.** They stay Claude-only until someone checks them in a
-  live Copilot CLI (decided 2026-10-16), because GitHub's hooks reference says a Copilot
-  `preToolUse` timeout lets the command through.
-- Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is
-  not ported, and whether skills answer to `/cla:<name>` is unknown. Tracked in issue #302.
+- Marketplace registration and browsing succeeded, and installation listed 19 skills.
+- The `/cla:right-model` skill and helper agents `cla:doc-sweeper` and `cla:fact-gatherer` were
+  invoked. This was a smoke check, not an end-to-end test of every skill or agent workflow.
+- Copilot did not honor the agents' declared model and fell back to `auto`.
+
+**Limitations:** CLA's guard hooks remain Claude-only and do not run in Copilot. Skill text that
+names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is not ported, so not
+every skill workflow is Copilot-compatible. Copilot app and cloud agent support are out of scope.
+Follow-up work is tracked from issue #302.
 
 The Claude Code install above is unchanged by any of this.
 
