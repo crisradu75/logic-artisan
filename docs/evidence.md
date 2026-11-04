@@ -301,7 +301,8 @@ and opt-in; its case is under "Why the Playwright suite earns its exception" abo
 ### Guard decisions of 2026-11-04: five kept as they are
 
 The project review of 2026-10-30 left open questions about guards (issue #444). The owner
-decided on 2026-11-04. Five stay as they are, and a sixth item stays opt-in. Each is a decision, not an incident.
+decided on 2026-11-04. Items 1 to 4 and 6 stay as they are, and item 5 stays opt-in. Item 7, a push to a URL, is being
+fixed in a separate change and is not recorded here. Each is a decision, not an incident.
 
 **Reviewers keep Bash and Edit.** The `pr-review-toolkit` reviewers are not ours, and they hold
 Bash and Edit. The diff-review rule in each prompt forbids git commands and file edits, and
