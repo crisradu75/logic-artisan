@@ -84,6 +84,17 @@ git log -1 --format='%(trailers:key=Measured-by,valueonly=true,unfold=true)' | g
 
 The first counts what you wrote, the second what git's parser sees. Equal passes, `0` and `0` included. Different means the block is split: `git commit --amend` before pushing. Nothing else reports it — `git log --grep` still finds a broken block.
 
+**Run the push with `run_in_background`.** A pre-push hook can run for minutes. The harness moves a foreground Bash call past 120 s to the background, and that call returns no exit code. Wait for the completion notice, then read the exit code.
+
+**Then check the remote head.** Compare, each value read in context (not piped through `grep`/`awk`):
+
+```
+git rev-parse HEAD
+git ls-remote origin <branch>
+```
+
+They must be equal. Different, or no exit code: report the push as unverified and STOP before step 4. Do not retry the push blindly; a rejected or half-run hook needs a look first.
+
 ## 4. Open the PR
 
 Single-line body, no Markdown headers and no `\n#` (the `gh pr create --body` parser bug; a mid-line `#1234` is fine):
