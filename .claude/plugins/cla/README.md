@@ -274,14 +274,14 @@ to install.
 
 The Copilot CLI marketplace install, one skill and both helper agents were smoke-tested against
 `cla--v2.2.3` with Copilot CLI 1.0.105. The agents fell back to `auto` because their declared
-models were unavailable. The current source tree adds separate Copilot `PreToolUse`/`PostToolUse`
+models were unavailable. Release `cla--v2.3.0` adds separate Copilot `PreToolUse`/`PostToolUse`
 guard wiring without changing Claude's hooks. Live checks covered allow, block, warning, and
 destructive-git confirmation. In autopilot, confirmation is denied because Copilot cannot prompt.
 Copilot documents hook timeouts as fail-open, but the live timeout probe was inconclusive. Edit/Write
 behavior is adapter-tested but not live-tested; Windows PowerShell wiring is untested. Hook timeout
 is 30 seconds and fail-open, so it is not a guaranteed block. Direct pushes to `main` remain
-protected by the separately installed Git `pre-push` hook. These hook changes are not in the tagged
-`cla--v2.2.3` release yet. Claude-specific skill tools are not ported; the Copilot app and cloud
+protected by the separately installed Git `pre-push` hook. The hook wiring first ships in
+`cla--v2.3.0`; the smoke test above predates it. Claude-specific skill tools are not ported; the Copilot app and cloud
 agent are out of scope.
 
 That is the whole published tree. The suite, the mutation corpora, the pytest configuration and the
