@@ -350,7 +350,7 @@ other repo-wide fact you find):
   any other form, so never reword or merge it. A reconcile keeps an existing line as written.
 - **Full gate** (optional, only for a repo whose full gate is slow) — never proposed by default.
   When the user asks for one full run on the final commit, write the line
-  `- Full gate: final-commit-only`; `/cla:spec-to-pr` Test then runs smoke and touched tests only.
+  `- Full gate: final-commit-only`; `/cla:spec-to-pr` Test then runs smoke and touched tests only, and the one full gate runs after Archive.
   A reconcile keeps an existing line as written.
 - **Spec map** (a repo with `openspec/` only, and only if the user takes the offer in "The spec map
   scaffold") — the path or glob of the file that maps the repo's capabilities and workflows to its

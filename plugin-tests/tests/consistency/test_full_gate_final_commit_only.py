@@ -36,5 +36,9 @@ def test_every_site_names_the_fact(site: str) -> None:
 def test_the_test_phase_keeps_both_ends_of_the_rule() -> None:
     text = _read(_SITES["spec-to-pr Test"])
     para = text.split(f"**`{FACT}`.**", 1)[1].split("\n\n", 1)[0]
-    for wanted in ("smoke and the touched tests only", "after Archive's push post-check", "orchestration-economy.md", "`/cla:multi-pr` skip", "The line absent"):
+    for wanted in ("smoke and the touched tests only", "after Archive's push post-check", "orchestration-economy.md", "names `/cla:multi-pr` as its caller", "`ok` to `warn`", "The line absent"):
         assert wanted in para, f"the Full gate paragraph lost {wanted!r}"
+
+
+def test_multi_pr_tells_spec_to_pr_it_is_the_caller() -> None:
+    assert "Name `/cla:multi-pr` as the caller" in _read(_SITES["multi-pr change loop"])
