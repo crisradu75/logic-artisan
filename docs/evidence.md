@@ -298,6 +298,54 @@ machine that lacks the package. The rule is as old as this repo's first CLAUDE.m
 "All scripts are stdlib-only Python"). The one exception, the Playwright browser suite, is test-only
 and opt-in; its case is under "Why the Playwright suite earns its exception" above.
 
+### Guard decisions of 2026-11-04: five kept as they are
+
+The project review of 2026-10-30 left open questions about guards (issue #444). The owner
+decided on 2026-11-04. Items 1 to 4 and 6 stay as they are, and item 5 stays opt-in. Item 7, a push to a URL, is being
+fixed in a separate change and is not recorded here. Each is a decision, not an incident.
+
+**Reviewers keep Bash and Edit.** The `pr-review-toolkit` reviewers are not ours, and they hold
+Bash and Edit. The diff-review rule in each prompt forbids git commands and file edits, and
+`model-routing.md:39-42` calls that rule "the only safeguard, an accepted risk".
+`spec-to-pr/references/subagent-brief.md:358-360` says a worker briefed a third time should move
+to `.claude/agents/` with a `tools:` allowlist. The same file states the risk at lines 119-125 ("an
+accepted risk; prose is the whole safeguard") and holds the rule itself at line 125. Issue #444
+records that the cost was already accepted in #426. Keeping it is fine because the dispatching phase hands each reviewer a diff file outside the working tree
+(`model-routing.md:39-41`), so the reviewer has no reason to run git at all.
+
+**The merge prompt keeps naming `ALLOW_PR_MERGE=1`.** When a merge is the only reason to ask, the
+prompt tells the reader to prefix that one command (`ask-destructive-git.py:1200-1204`). The prefix
+is scoped: it counts only when it heads the merge's own simple command, and a later segment or
+quoted text cannot authorize an earlier merge (`ask-destructive-git.py:766-781`). It also drops
+only the merge reason, so a force-push in the same command still asks
+(`ask-destructive-git.py:1163-1176`). The accepted weakness: the agent being guarded can type the
+prefix. The hint makes that easier. The owner chose to keep the hint over honouring only a launch-time
+setting, which would also have changed `chain-merge.md`.
+
+**Commands inside backticks or `"$(...)"` stay invisible to `ask-destructive-git`.** The guard
+scans the command after `strip_quoted_spans` has blanked every quoted and backtick span
+(`ask-destructive-git.py:897`; `_dispatch_lib.py:484-525`). A command inside such a span is blanked
+with it. An unquoted `$(...)` is not blanked, so it is still scanned. The accepted weakness: a
+`gh pr merge` or a `git push --no-verify` inside backticks or inside a double-quoted `$(...)` runs
+with no ask. The owner decided to leave it. No incident count
+is known.
+
+**`pushd` and `Set-Location` stay unblocked.** `block-cd-in-bash` leaves `pushd`/`popd` and
+PowerShell's location cmdlets alone (`block-cd-in-bash.py:17-18`, `:88-90`). `CLAUDE.md` names
+`Push-Location` for running a worktree's checks (`CLAUDE.md:66-67`), and the guard's comment calls
+its paired form with `Pop-Location` the way to do it (`block-cd-in-bash.py:88-90`). A
+guard that tells paired from unpaired is fragile, so none was added. The accepted risk: an
+unpaired one moves the session to another folder for every later command. No incident count is
+known.
+
+**No expected-skip table and no `CLA_REQUIRE_CONSISTENCY` canary.** The control stays what
+`CLAUDE.md` says: trust a parallel run only when its pass and skip counts match a serial run of
+the same code. A higher skip count is how a dropped area shows. The cost: that check is a human
+step, not a failure.
+
+One more item, mutation batches for the `warn-*` hooks, stays opt-in under the 2026-10-14 decision
+(see "Mutation testing is opt-in" above).
+
 ### Releasing: the history behind the rules
 
 The never-move-a-tag rule, the no-local-marketplace rule, and why a release is a five-file edit
