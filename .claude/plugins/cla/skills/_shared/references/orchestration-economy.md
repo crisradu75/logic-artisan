@@ -52,3 +52,7 @@ rule below saves some without dropping quality.
     because an agent's report can be stale.
 13. **Plan for an agent that cannot push.** A guard hook or a deleted shared file can block it.
     The agent reports and stops. The orchestrator then pushes the branch and opens the PR.
+14. **Read-only agents may run beside the verify run.** An agent that only reads, such as a review
+    or an analysis, can run while the single verify run is live. An agent that edits the checkout,
+    runs tests, or shares the test database waits for the verify run to end. Rule 10 still holds:
+    one full suite at a time.
