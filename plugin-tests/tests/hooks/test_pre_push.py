@@ -131,5 +131,25 @@ def test_refuses_a_push_to_the_remotes_own_default_branch(tmp_path):
     assert refused.returncode == 1 and "develop" in refused.stderr
     assert run("refs/heads/feature/x", "origin", "u").returncode == 0
     assert run("refs/heads/main", "origin", "u").returncode == 1, "main stays refused"
-    # A push to a URL has no remote-tracking HEAD: only main and master are refused there.
-    assert run("refs/heads/develop", "https://example.invalid/repo.git", "u").returncode == 0
+    # A URL that matches no configured remote has no remote-tracking HEAD: only main and master are refused.
+    other = "https://example.invalid/other.git"
+    assert run("refs/heads/develop", other, other).returncode == 0
+    assert run("refs/heads/main", other, other).returncode == 1
+
+
+# requirement: guard-hooks / Direct pushes to main are refused
+def test_a_push_to_a_remotes_url_gets_that_remotes_default_branch_check(tmp_path):
+    url = "https://example.invalid/repo.git"
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "remote", "add", "origin", url)
+    _git(tmp_path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+    run = lambda ref, u: subprocess.run(  # noqa: E731
+        [_SH, str(_PRE_PUSH), u, u], input=_line(ref), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", cwd=tmp_path,
+    )
+    refused = run("refs/heads/develop", url)
+    assert refused.returncode == 1 and "develop" in refused.stderr
+    assert run("refs/heads/feature/x", url).returncode == 0
+    assert run("refs/heads/main", url).returncode == 1, "main stays refused"
+    # A URL that is not that remote's is not matched to it.
+    assert run("refs/heads/develop", url + ".x").returncode == 0
