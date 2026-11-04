@@ -25,7 +25,8 @@ def _text(name: str) -> str:
 
 def test_ship_pushes_in_background_and_compares_the_remote_head():
     text = _text("ship.md")
-    assert "**Run the push with `run_in_background`.**" in text
+    assert "**Run the push with `run_in_background`, once the trailer check above agrees.**" in text
+    assert "report `push not verified`" in text
     assert "git ls-remote origin <branch>" in text
     assert "Do not retry the push blindly" in text
     # The check sits after the push and before the PR is opened.
