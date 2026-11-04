@@ -203,9 +203,12 @@ def test_the_scan_is_not_vacuous():
     # reviewer-agents added three `agents/` files, and from 109 to 110 when #272 added
     # `multi-pr/scripts/check_cite_drift.py`, and from 110 to 111 when #368 added
     # `_shared/references/retiring-specs.md`, and from 111 to 112 when #417 added
-    # `shape-decision/references/question-form.md`. This change adds the two Copilot
-    # hook adapters, taking the recorded count from 112 to 114; the floor moves to
-    # 113, one below the measured count.
+    # `shape-decision/references/question-form.md`, and from 112 to 114 when agents-md-support
+    # added `_shared/references/instruction-files.md` (real count 114 to 115), and from 114 to 111
+    # when use-toolkit-reviewers deleted three `agents/` files (real count 112, margin one), and
+    # from 111 to 113 when the Copilot CLI guard hooks added `hooks/copilot-pretooluse.py` and
+    # `hooks/copilot-posttooluse.py` (real count 114, measured with this file's `__main__`, margin
+    # one).
     assert len(files) >= 113, f"scan set collapsed to {len(files)} files"
     assert any(
         p.relative_to(_PLUGIN_ROOT).as_posix().startswith("agents/") for p in files

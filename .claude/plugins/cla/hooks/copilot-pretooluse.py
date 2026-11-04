@@ -19,7 +19,15 @@ _DISPATCHERS = {
     "Edit": "dispatch-edit-write-pretooluse.py",
     "Write": "dispatch-edit-write-pretooluse.py",
 }
-_FAILURE_MARKERS = ("could not run", "did not run")
+# The dispatchers report "a guard did not run" as an `ask` whose reason carries one
+# of these phrases (`dispatch-*-pretooluse.py`: the enforcing-guard escalation in
+# main() and `_fail_closed`). Copilot cannot resolve that ask as a confirmation of
+# a real action, and an unchecked call must never become an approval, so the
+# adapter turns it into a deny. This is wording-matched because the dispatchers
+# emit no structured flag and are a Claude contract this change does not edit;
+# `test_copilot_hooks.py` fails if a dispatcher's failure wording drifts from
+# these phrases.
+FAILURE_MARKERS = ("could not run", "did not run")
 
 
 def _plugin_root() -> Path:
@@ -104,7 +112,7 @@ def _normalize(stdout_text: str, stderr_text: str, code: int) -> int:
     if decision == "ask":
         if not isinstance(reason, str) or not reason.strip():
             return _deny("CLA guard dispatcher requested confirmation without a reason; refusing the call.")
-        if any(marker in reason.lower() for marker in _FAILURE_MARKERS):
+        if any(marker in reason.lower() for marker in FAILURE_MARKERS):
             return _deny(reason)
         print(json.dumps({
             "permissionDecision": "ask",
@@ -149,6 +157,11 @@ def main() -> int:
     if tool_name in ("Bash", "PowerShell"):
         if not isinstance(tool_input.get("command"), str):
             return _deny("CLA guard received no shell command to check; refusing the call.")
+    # UNVERIFIED ASSUMPTION: GitHub's hooks-configuration reference types
+    # `tool_input` as `unknown` and names no per-tool argument keys, so
+    # `file_path` (the Claude key the dispatchers read) is assumed. If Copilot
+    # names it differently, every Edit/Write is denied (fail closed) rather than
+    # passed unchecked; confirm against a live payload before relying on it.
     elif not isinstance(tool_input.get("file_path"), str) or not tool_input["file_path"]:
         return _deny("CLA guard received no file path to check; refusing the call.")
     if not isinstance(event.get("cwd"), str) or not event["cwd"]:

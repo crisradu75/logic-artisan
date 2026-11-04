@@ -13,3 +13,7 @@
 ## 3. Documentation
 
 - [x] 3.1 docs and spec map: README.md, DEVELOPER-GUIDE.md, `.claude/plugins/cla/README.md`, or none affected: `openspec/spec-map.md` already links `guard-hooks` and `plugin-distribution`; document Copilot CLI coverage, timeout and autopilot limitations, and the unchanged Claude and Git pre-push behavior.
+
+## 4. Archiving order
+
+- [x] 4.1 `record-copilot-cli-live-validation` (merged, unarchived) is archived in this PR so its "Documenting Copilot CLI validation status" requirement is live in the main spec; this change MODIFIES it instead of removing the untested-disclosure requirement or adding a duplicate.

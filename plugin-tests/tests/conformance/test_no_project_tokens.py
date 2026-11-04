@@ -898,3 +898,29 @@ def test_the_real_repo_is_clean_when_invoked_as_a_subprocess():
     source = _SOURCE_COUNT_RE.search(result.stdout)
     assert prose and int(prose.group(1)) > 0, f"zero prose files scanned {detail}"
     assert source and int(source.group(1)) > 0, f"zero source files scanned {detail}"
+
+
+def test_source_scan_reports_a_token_in_a_ps1_file(tmp_path):
+    # `hooks/probe-python.ps1` is the Copilot CLI twin of `probe-python.sh`; a
+    # project word in its comments must fail the scan like one in the `.sh`.
+    _seed(tmp_path, "hooks/probe-python.ps1", "# wiring for funnel-demo\n$X = 1\n")
+    _seed(tmp_path, "skills/demo/scripts/helper.ps1", "# helper for funnel-demo\n")
+    rels = sorted(h[0] for h in find_source_violations(tmp_path, ["funnel-demo"]))
+    assert rels == ["hooks/probe-python.ps1", "skills/demo/scripts/helper.ps1"]
+
+
+def test_source_scan_reports_a_token_in_the_copilot_hook_wiring(tmp_path):
+    # `com.github.copilot/hooks/hooks.json` sits outside every scan root and is
+    # reached by exact path. A same-named file elsewhere stays out of scope, and
+    # the in-scope seed is the positive control for that absence.
+    _seed(tmp_path, "com.github.copilot/hooks/hooks.json", '{"note": "funnel-demo"}\n')
+    _seed(tmp_path, "other/hooks/hooks.json", '{"note": "funnel-demo"}\n')
+    rels = [h[0] for h in find_source_violations(tmp_path, ["funnel-demo"])]
+    assert rels == ["com.github.copilot/hooks/hooks.json"]
+
+
+def test_source_scan_of_the_real_plugin_reaches_the_copilot_files():
+    scanned = {p.relative_to(_plugin_root()).as_posix()
+               for p in _iter_scanned_source_files(_plugin_root())}
+    assert "com.github.copilot/hooks/hooks.json" in scanned
+    assert "hooks/probe-python.ps1" in scanned

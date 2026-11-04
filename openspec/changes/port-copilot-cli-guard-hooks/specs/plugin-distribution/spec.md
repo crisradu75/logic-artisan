@@ -1,29 +1,6 @@
-## REMOVED Requirements
+## MODIFIED Requirements
 
-### Requirement: Disclosing the Copilot CLI install is untested
-
-Every document offering the Copilot CLI install, except the manifest shipped inside a release tag,
-SHALL say, beside the install command, that it covers Copilot CLI only and is untested in a live
-Copilot CLI. The manifest shipped inside a release tag SHALL NOT say the install is untested.
-
-#### Scenario: A reader looks for the Copilot install
-
-- **WHEN** a reader opens the install instructions
-- **THEN** they say the Copilot install is Copilot CLI only and untested
-
-#### Scenario: The disclosure sits in another section
-
-- **WHEN** a document gives the install command and says it is untested only in a different section
-- **THEN** the test suite fails
-
-#### Scenario: The shipped manifest is read
-
-- **WHEN** the description in the plugin's Copilot manifest is read
-- **THEN** it does not say the install is untested
-
-## ADDED Requirements
-
-### Requirement: Documenting Copilot CLI support status
+### Requirement: Documenting Copilot CLI validation status
 
 Documentation for Copilot CLI SHALL identify the supported surface, the validated plugin
 capabilities, and the behavior that remains unsupported or unverified.
