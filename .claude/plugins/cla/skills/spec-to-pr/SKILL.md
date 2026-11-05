@@ -6,6 +6,9 @@ argument-hint: "[change-name | description | (empty)]"
 
 # /cla:spec-to-pr — full-workflow orchestrator
 
+> **Copilot CLI support: unsupported.** This workflow requires Claude Code's agent delegation,
+> nested skill invocation, and structured question tool.
+
 Drives one OpenSpec change from a description, a change name or an `/opsx:explore` result to an opened, archived PR with its review fixes applied. Order: Precheck → Propose → Review → Implement → Test → Ship → Revise → Archive → Handoff (`references/workflow-diagram.md`).
 
 **Each phase that names a reference reads it first; its stub here carries only the rules that gate correctness.** Why a rule exists is in `references/design-tradeoffs.md`, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/past-offenses.md` and this repo's `cla.io/lessons-learned/`. Read those only when revising the skill, never during a run.

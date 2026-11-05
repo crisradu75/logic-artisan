@@ -1,50 +1,53 @@
-## REMOVED Requirements
+# Spec Delta
 
-### Requirement: Disclosing the Copilot CLI install is untested
+## MODIFIED Requirements
 
-Every document offering the Copilot CLI install, except the manifest shipped inside a release tag,
-SHALL say, beside the install command, that it covers Copilot CLI only and is untested in a live
-Copilot CLI. The manifest shipped inside a release tag SHALL NOT say the install is untested.
+### Requirement: Helper agents in GitHub Copilot CLI
 
-#### Scenario: A reader looks for the Copilot install
+The plugin SHALL offer each helper agent to GitHub Copilot CLI with the same instructions,
+description, and read-only tools as its Claude Code agent. Generated Copilot profiles SHALL omit
+account-specific model IDs so they inherit the session model, and the local release check SHALL
+reject unmapped source aliases, stale copies, or explicit Copilot model pins.
 
-- **WHEN** a reader opens the install instructions
-- **THEN** they say the Copilot install is Copilot CLI only and untested
+#### Scenario: A source agent changes without a matching Copilot copy
 
-#### Scenario: The disclosure sits in another section
-
-- **WHEN** a document gives the install command and says it is untested only in a different section
+- **WHEN** a helper agent is added or changed without a matching generated Copilot profile
 - **THEN** the test suite fails
 
-#### Scenario: The shipped manifest is read
+#### Scenario: A Copilot agent is read-only
 
-- **WHEN** the description in the plugin's Copilot manifest is read
-- **THEN** it does not say the install is untested
+- **WHEN** a Copilot agent's definition is read
+- **THEN** it grants only the tools for reading and searching files
 
-## ADDED Requirements
+#### Scenario: A Copilot profile does not inherit the session model
 
-### Requirement: Documenting Copilot CLI support status
+- **WHEN** the local release check finds an unmapped source alias, stale generated copy, or explicit
+  Copilot model ID
+- **THEN** the release check fails with a diagnostic
 
-Documentation for Copilot CLI SHALL identify the supported surface, the validated plugin
-capabilities, and the behavior that remains unsupported or unverified.
+### Requirement: Documenting Copilot CLI validation status
 
-#### Scenario: A reader checks the Copilot CLI installation
+Copilot CLI documentation SHALL identify its supported surface, validated capabilities,
+unsupported behavior, and troubleshooting steps. It SHALL document marketplace registration,
+installation, update, and instruction discovery, and explain how to copy the response style to
+`.github/copilot-instructions.md`.
 
-- **WHEN** a reader follows the Copilot CLI install guidance
-- **THEN** it states that marketplace registration and browsing, installation, a skill invocation,
-  and both helper-agent invocations were validated with Copilot CLI 1.0.105 and release
-  `cla--v2.2.3`
+#### Scenario: A reader installs or updates the Copilot CLI plugin
+
+- **WHEN** a reader follows the Copilot CLI guidance
+- **THEN** it gives marketplace registration, install, update, and troubleshooting commands, and
+  says the source-style file must be copied to `.github/copilot-instructions.md`
 
 #### Scenario: A reader checks Copilot support boundaries
 
 - **WHEN** a reader checks which Copilot surfaces and plugin features are supported
-- **THEN** the guidance says the scope is Copilot CLI only, describes the current source-tree
+- **THEN** the guidance says the scope is Copilot CLI only, describes the source-tree
   `PreToolUse`/`PostToolUse` guard support and its fail-open timeout and autopilot-confirmation
-  limitations, distinguishes those source changes from the tagged `cla--v2.2.3` release, and says
-  Claude-specific skill tool instructions are not ported
+  limitations, distinguishes those source changes from release `cla--v2.2.3`, and marks workflows
+  requiring Claude-only delegation, chaining, model routing, or permission settings unsupported
 
 #### Scenario: A reader checks the helper-agent model behavior
 
 - **WHEN** a reader checks the current Copilot helper-agent profiles
-- **THEN** the guidance discloses that Copilot CLI does not honor their declared model and falls
-  back to `auto`
+- **THEN** the guidance says they inherit the session model because profiles omit account-specific
+  model IDs

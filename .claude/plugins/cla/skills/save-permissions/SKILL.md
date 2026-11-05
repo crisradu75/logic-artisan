@@ -8,6 +8,9 @@ disable-model-invocation: true
 
 # Save session permissions
 
+> **Copilot CLI support: unsupported.** This skill edits Claude Code's `.claude/settings.local.json`
+> permission state, which Copilot CLI does not use.
+
 Collect every tool permission the user granted during this conversation session and persist them to the project's `.claude/settings.local.json`.
 
 ## Steps

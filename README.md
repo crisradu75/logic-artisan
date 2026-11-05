@@ -145,26 +145,48 @@ copilot plugin marketplace add crisradu75/logic-artisan
 copilot plugin install cla@cris-logic-artisan
 ```
 
+**Updating:** run `copilot plugin marketplace update cris-logic-artisan`, then
+`copilot plugin update cla@cris-logic-artisan`.
+
+**Response style:** Copilot CLI does not load plugin output styles automatically. Copy the
+contents of `.claude/plugins/cla/output-styles/COPILOT.md` from the installed plugin into the
+consuming repository's `.github/copilot-instructions.md`. This is a repository-level instruction
+file, not an automatic plugin setting; it does not change Claude Code's `CLA.md` output style.
+
+**Troubleshooting:** use `copilot --version` to confirm the CLI, `copilot plugin marketplace list`
+to check marketplace registration, and `copilot plugin list` to check installation. Run
+`copilot instruction list` from the consuming repository to confirm `.github/copilot-instructions.md`
+is discovered. Copilot CLI plugins do not cover the Copilot app or cloud agent.
+
 Validated in that run:
 
 - Marketplace registration and browsing succeeded, and installation listed 19 skills.
 - The `/cla:right-model` skill and helper agents `cla:doc-sweeper` and `cla:fact-gatherer` were
   invoked. This was a smoke check, not an end-to-end test of every skill or agent workflow.
-- Copilot did not honor the agents' declared model and fell back to `auto`.
+- The `cla--v2.2.3` agent profiles fell back because their declared models were unavailable. The
+  current source omits profile model IDs so both agents inherit the Copilot CLI session model
+  without a fallback warning.
 
 **Guard-hook support (`cla--v2.3.0`):** the plugin has separate Copilot Agent Plugins 1.0
 `PreToolUse`/`PostToolUse` wiring for the CLA guards; Claude's hook configuration is unchanged.
 Live checks with Copilot CLI 1.0.105 covered an allowed command, a blocked `cd`, a destructive-git
 confirmation (denied by autopilot, which cannot prompt), and a warning. Copilot documents hook
-timeouts as fail-open, but the live timeout probe was inconclusive. Edit/Write hook behavior is
-covered by adapter tests but was not live-tested, and Windows PowerShell wiring has not been tested.
-The timeout is 30 seconds; a timeout does not block the tool call. Direct pushes to `main` remain
-guarded separately by the Git `pre-push` hook, which must be installed once per clone.
+timeouts as fail-open. A live timeout probe used a temporary plugin with a `PreToolUse` hook set to
+`timeoutSec: 1` that wrote a start marker, slept 8 seconds, then wrote a completion marker. The
+command `copilot --no-auto-update --no-color --plugin-dir <temp>/plugin --allow-all-tools
+--output-format json --silent -C <temp> -p 'Use Bash to run exactly: echo COPILOT_TIMEOUT_PROBE.
+Then report the output.'` exited 0: the start marker existed, the completion marker did not, and
+the command output was present. The 30-second production timeout is therefore fail-open and does
+not block a tool call. Edit/Write hook behavior is covered by adapter tests but was not live-tested,
+and Windows PowerShell wiring has not been tested. Direct pushes to `main` remain guarded separately
+by the Git `pre-push` hook, which must be installed once per clone.
 
-The hook wiring first ships in `cla--v2.3.0`; the smoke check above predates it. Skill text that
-names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is not ported, so not
-every skill workflow is Copilot-compatible. Copilot app and cloud agent support are out of scope.
-Follow-up work is tracked from issue #302.
+The hook wiring first ships in `cla--v2.3.0`; the smoke check above predates it. Skills that depend
+on Claude-only delegation, skill chaining, model routing, or permission settings are marked
+unsupported in their instructions. Other skills may still name `AskUserQuestion` or
+`${CLAUDE_PLUGIN_ROOT}`; use the interactive-question and plugin-path rules in the copied
+instructions file rather than assuming Claude's runtime expansion.
+Copilot app and cloud agent support are out of scope. Follow-up work is tracked from issue #302.
 
 The Claude Code install above is unchanged by any of this.
 

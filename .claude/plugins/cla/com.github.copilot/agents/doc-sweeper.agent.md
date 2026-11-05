@@ -1,7 +1,6 @@
 ---
 name: doc-sweeper
 description: "Read-only grep of a caller-supplied list of documentation paths for references to retired symbols, returning a path:line hit list with a scanned-files footer. The caller supplies the paths and judges the hits. Used by spec-to-pr Review's doc-staleness sweeps and post-rename checks."
-model: claude-haiku-5.5
 tools: ["read", "search"]
 ---
 

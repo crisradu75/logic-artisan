@@ -2,14 +2,21 @@
 
 ## Why
 
-CLA's guard logic currently runs through Claude Code hook wiring only. Copilot CLI supports plugin-provided hooks, but a live check showed that installing CLA there does not enforce its guards: `cd .` ran despite the existing Claude dispatcher blocking the equivalent payload. Porting the hook integration would extend CLA's safety checks to Copilot CLI users without replacing the Claude integration.
+CLA's guard logic and helper agents use Claude Code-specific interfaces. Copilot CLI supports its
+own plugin hooks and agents, but explicit profile models can be unavailable to an account, and
+several skills depend on Claude-only delegation or skill chaining. Copilot CLI also does not apply
+plugin output styles automatically. This change records the Copilot CLI behavior and its limits
+without changing Claude Code.
 
 ## What Changes
 
 - Add Copilot CLI-specific hook configuration and an adapter for Copilot's event payloads and decision output.
 - Enforce the applicable existing CLA guards for Copilot CLI tool calls, preserving block, confirmation, and warning behavior where Copilot supports it.
 - Add tests for allow, deny, confirmation, warning, malformed or unavailable hook execution, and documented timeout behavior; verify with a live Copilot CLI session.
-- Update Copilot-facing documentation to state the supported coverage and limitations. Keep Claude Code wiring and the Git `pre-push` hook unchanged.
+- Have generated Copilot helper-agent profiles inherit the session model and validate that policy locally before release.
+- Mark skill workflows that require Claude-only agent delegation, skill chaining, model routing, or permission settings as unsupported; map interactive questions and plugin-path references for Copilot CLI.
+- Add a Copilot CLI response-style counterpart, document copying it to `.github/copilot-instructions.md`, and explain install, update, and troubleshooting.
+- Keep Claude Code wiring, settings, and output style plus the Git `pre-push` hook unchanged.
 - Scope this change to Copilot CLI; Copilot cloud is not included.
 
 ## Capabilities
@@ -21,7 +28,8 @@ None.
 ### Modified Capabilities
 
 - `guard-hooks`: specify that applicable CLA guard behavior is available in Copilot CLI sessions as well as Claude Code sessions.
+- `plugin-distribution`: specify Copilot session-model inheritance and the Copilot CLI compatibility, instruction, and support boundaries.
 
 ## Impact
 
-Copilot-specific plugin hook configuration and adapter code under `.claude/plugins/cla/`, hook tests under `plugin-tests/`, and Copilot support documentation. No new dependency is expected. Git-level `pre-push` remains independent of either agent's session hooks. Track implementation under issue #469.
+Copilot-specific hook configuration, generated agent profiles, skill support notes, a response-style file, and focused tests and documentation. No new dependency is expected. Git-level `pre-push` remains independent of either agent's session hooks. This change covers the ordered Copilot validation follow-ups in #469–#472.

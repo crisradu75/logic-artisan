@@ -6,6 +6,9 @@ argument-hint: "[decisions-file-path | (empty = most recent under cla.io/decisio
 
 # /cla:multi-spec — decisions file → batch of committed OpenSpec proposals
 
+> **Copilot CLI support: unsupported.** This workflow requires Claude Code's agent delegation and
+> session-resumption guarantees.
+
 Automates a manual precedent: one shape-decision output authored out into N full OpenSpec change proposals, reviewed once as a batch, opened as one PR. **Proposals only** — implementation is `/cla:spec-to-pr` (per-change) or `/cla:multi-pr` (the whole produced sequence), invoked separately afterward.
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a

@@ -33,6 +33,8 @@ Alternative: rely only on nonzero exits. Rejected because it cannot preserve the
 
 Validate required input and surface launcher, import, and dispatcher failures as denies rather than allowing a call that was never checked. Set a bounded Copilot timeout based on measured guard runtime and keep each guard's behavior covered by tests. Copilot CLI timeouts are documented to fail open, so no adapter can convert a killed timed-out hook into a deny; disclose that residual risk and test the timeout path.
 
+The live timeout probe confirmed this behavior: Copilot killed the timed-out hook, then proceeded with the tool call. Launcher tests also confirm that missing Python or the interpreter probe exits with an explicit failure before dispatch.
+
 Alternative: silently accept Copilot's timeout behavior. Rejected because it would overstate the protection offered by the guards.
 
 ### Resolve plugin paths from Copilot's supported hook environment
@@ -40,6 +42,26 @@ Alternative: silently accept Copilot's timeout behavior. Rejected because it wou
 Use only a plugin-root mechanism supported by Copilot CLI hook commands, verified on the minimum supported CLI version and a locally mounted plugin. Keep shell launchers platform-specific where needed and invoke the existing stdlib-only Python guard code without adding a shipped dependency.
 
 Alternative: use checkout-specific or installation-cache absolute paths. Rejected because plugin consumers install CLA at different paths and platforms.
+
+### Inherit the Copilot session model
+
+Generated Copilot agent profiles omit the `model` field. An account may not support an otherwise
+valid model ID, and silent fallback to Auto is less predictable than honoring the user's session.
+The local release check validates source aliases, generated-copy parity, and absence of explicit
+Copilot model pins.
+
+### Mark runtime-dependent workflows explicitly
+
+Keep neutral skill instructions shared. Mark complete workflows unsupported when Claude Code agent
+delegation, explicit model routing, permission settings, or nested skill invocation cannot be
+guaranteed in Copilot CLI. The Copilot instruction counterpart maps user-question steps to ordinary
+conversation and warns against running an unresolved `${CLAUDE_PLUGIN_ROOT}` placeholder.
+
+### Install response style as repository instructions
+
+Copilot CLI discovers `.github/copilot-instructions.md` for the current repository, not a plugin's
+output-style directory. Ship a counterpart beside the Claude style and document manual copying;
+do not change Claude Code's style loading.
 
 ## Risks / Trade-offs
 

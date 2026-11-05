@@ -7,6 +7,9 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash, AskUserQuestion, Agent
 
 # /cla:diagnose — find the cause, then fix it
 
+> **Copilot CLI support: unsupported.** The full workflow requires Claude Code agent delegation
+> and structured question handling.
+
 Debugging is the one job every other skill in this harness refuses. `feedback`
 refuses it mechanically — no `Edit` and no `Bash` in its `allowed-tools`, so it
 cannot investigate even when it wants to. `lite-pr` and `spec-to-pr` both bound

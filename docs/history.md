@@ -38,10 +38,10 @@ This is not a full workflow test. The current install instructions are Copilot C
 validated with Copilot CLI 1.0.105: `copilot plugin marketplace add crisradu75/logic-artisan`, then
 `copilot plugin install cla@cris-logic-artisan`.
 The decisions are in `cla.io/decisions/copilot-cli-port-2026-10-16.md`; remaining hook and skill
-porting work is tracked in #469 and #471, respectively. **The guard hooks do not run in Copilot**:
-the 2026-10-16 decision was to wait for a live test, because the decisions file records (from a docs
-summary, untested in a live Copilot CLI) that a Copilot `preToolUse` timeout always lets the command
-through, which would weaken a guard meant to block when it fails.
+porting work is tracked in #469 and #471, respectively. **The guard hooks now run in Copilot**:
+the follow-up live test confirmed that a timed-out hook is killed while the tool call proceeds.
+Copilot guard hooks are enabled with that fail-open limit documented; tests also verify missing
+Python and interpreter-probe cases deny.
 
 **The Copilot CLI helper agents (2026-10-16; live validation recorded 2026-11-03).**
 GitHub's plugin reference says an Agent Plugins 1.0 plugin keeps Copilot custom agents in
@@ -51,11 +51,11 @@ and `test_copilot_agents_agree.py` fails when a copy's instructions, description
 its Claude agent. The root manifest needs no entry for them (the docs list no fields for its
 `com.github.copilot` extension), and `check_shipped_tree.py` took a sixteenth pattern. The mapping:
 `tools: ["Read","Grep","Glob"]` becomes `["read","search"]` (the docs' primary aliases; the docs say the Claude
-names are accepted too, untested), `model` becomes a Copilot model ID from the CLI reference's supported-models
-table (the docs say an ID Copilot cannot honour falls back to the session model; in the 2026-11-03
-smoke test, Copilot CLI 1.0.105 warned that the declared agent model was unavailable and fell back
-to `auto`; `/release` therefore runs `check_copilot_models.py`, which refuses when a `MODEL_MAP` ID
-is not in that table), and `color` is dropped. The script also reports a copy
+names are accepted too, untested), `model` is omitted so the profile inherits the session model
+(the docs say an ID Copilot cannot honour falls back to the session model; in the 2026-11-03 smoke
+test, Copilot CLI 1.0.105 warned that the declared agent model was unavailable and fell back to
+`auto`), and `color` is dropped. The local release checker verifies source-model aliases and
+generated-copy consistency without network access. The script also reports a copy
 whose Claude agent is gone, and `--write` deletes it. The instruction text still names the
 tools `Read`, `Grep` and `Glob` and the `offset` and `limit` read arguments; the docs say Copilot accepts the
 aliases (untested), but its own read tool may take different arguments. Claude Code did not load the copies: a

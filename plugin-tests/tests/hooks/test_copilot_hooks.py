@@ -378,6 +378,56 @@ def _denied(result, fragment: str) -> None:
 
 
 # requirement: guard-hooks / Copilot hook failures have an explicit policy
+def test_copilot_bash_launcher_denies_when_python_is_unavailable(tmp_path):
+    root = tmp_path / "plugin"
+    hooks = root / "hooks"
+    hooks.mkdir(parents=True)
+    shutil.copy2(_PLUGIN / "hooks" / "probe-python.sh", hooks / "probe-python.sh")
+    (hooks / "copilot-pretooluse.py").write_text("", encoding="utf-8")
+    command = _config()["hooks"]["PreToolUse"][0]["hooks"][0]["bash"]
+    env = {
+        **os.environ,
+        "COPILOT_PLUGIN_ROOT": str(root),
+        "CLA_PROBE_NO_CACHE": "1",
+        "CLA_PYTHON": str(tmp_path / "missing-python"),
+        "CLA_PY_SEARCH": "",
+        "PATH": str(tmp_path / "empty-path"),
+    }
+    Path(env["PATH"]).mkdir()
+    result = subprocess.run(
+        [shutil.which("bash"), "-c", command],
+        input="{}",
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=env,
+    )
+    assert result.returncode == 1
+    assert "guard hooks are NOT running" in result.stderr
+    assert "not a working Python" in result.stderr
+
+
+# requirement: guard-hooks / Copilot hook failures have an explicit policy
+def test_copilot_bash_launcher_denies_when_the_interpreter_probe_is_missing(tmp_path):
+    root = tmp_path / "plugin"
+    hooks = root / "hooks"
+    hooks.mkdir(parents=True)
+    (hooks / "copilot-pretooluse.py").write_text("", encoding="utf-8")
+    command = _config()["hooks"]["PreToolUse"][0]["hooks"][0]["bash"]
+    result = subprocess.run(
+        [shutil.which("bash"), "-c", command],
+        input="{}",
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env={**os.environ, "COPILOT_PLUGIN_ROOT": str(root)},
+    )
+    assert result.returncode == 1
+    assert "interpreter probe" in result.stderr
+    assert "guard hooks are NOT running" in result.stderr
+
+
+# requirement: guard-hooks / Copilot hook failures have an explicit policy
 def test_copilot_pretooluse_denies_when_the_plugin_root_is_missing(tmp_path):
     adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
     result = _run_no_root(adapter, _pre_event("Bash", {"command": "echo safe"}, tmp_path), tmp_path)

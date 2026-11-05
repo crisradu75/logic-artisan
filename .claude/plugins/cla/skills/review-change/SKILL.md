@@ -6,6 +6,9 @@ argument-hint: "[change-name]"
 
 # review-change — pre-implementation review of an OpenSpec change
 
+> **Copilot CLI support: unsupported.** Large changes require Claude Code's parallel agent
+> dispatch; use Claude Code for the complete review workflow.
+
 The full review workflow lives in `references/checklist.md` and, for a large change's agent prompts, `references/dispatch.md` (the single source of truth, also read directly by `/cla:spec-to-pr`'s Review phase).
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a

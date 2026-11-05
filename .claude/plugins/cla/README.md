@@ -265,7 +265,7 @@ to install.
   com.github.copilot/agents/   the same two agents for GitHub Copilot CLI, generated from agents/
   hooks/                       guard hooks + hooks.json wiring, and git/pre-push
   lib/                         log_run.py — writes the one run ledger, spec-to-pr-runs.jsonl
-  output-styles/               the project's writing convention (force-for-plugin: true)
+  output-styles/               CLA.md applies to Claude Code; COPILOT.md is copied to repository instructions
   skills/<name>/               (references/ scripts/ present as each skill needs)
     SKILL.md                   the skill (portable procedure)
     references/                supporting refs (portable — overlays live in your cla.io/)
@@ -274,15 +274,27 @@ to install.
 
 The Copilot CLI marketplace install, one skill and both helper agents were smoke-tested against
 `cla--v2.2.3` with Copilot CLI 1.0.105. The agents fell back to `auto` because their declared
-models were unavailable. Release `cla--v2.3.0` adds separate Copilot `PreToolUse`/`PostToolUse`
+models were unavailable; the current source omits profile model IDs so Copilot inherits the
+session model. Release `cla--v2.3.0` adds separate Copilot `PreToolUse`/`PostToolUse`
 guard wiring without changing Claude's hooks. Live checks covered allow, block, warning, and
 destructive-git confirmation. In autopilot, confirmation is denied because Copilot cannot prompt.
-Copilot documents hook timeouts as fail-open, but the live timeout probe was inconclusive. Edit/Write
-behavior is adapter-tested but not live-tested; Windows PowerShell wiring is untested. Hook timeout
-is 30 seconds and fail-open, so it is not a guaranteed block. Direct pushes to `main` remain
-protected by the separately installed Git `pre-push` hook. The hook wiring first ships in
-`cla--v2.3.0`; the smoke test above predates it. Claude-specific skill tools are not ported; the Copilot app and cloud
-agent are out of scope.
+Copilot documents hook timeouts as fail-open. Edit/Write behavior is adapter-tested but not
+live-tested; Windows PowerShell wiring is untested. A live
+Copilot CLI timeout probe confirmed the hook is killed at its timeout while the tool call proceeds;
+the exact probe command and result are in the repository README. Hook timeout is 30 seconds and
+fail-open, so it is not a guaranteed block. Direct pushes to `main` remain protected by the
+separately installed Git `pre-push` hook. The hook wiring first ships in
+`cla--v2.3.0`; the smoke test above predates it. Skills that require Claude-only agent delegation,
+skill chaining, model routing, or permission settings are marked unsupported in their `SKILL.md`
+files. Copilot app and cloud agent support are out of scope.
+
+To update the Copilot CLI install, run `copilot plugin marketplace update cris-logic-artisan`,
+then `copilot plugin update cla@cris-logic-artisan`. Copilot CLI does not apply plugin output styles
+automatically. Copy `output-styles/COPILOT.md` into the consuming repository as
+`.github/copilot-instructions.md`. Check registration with `copilot plugin marketplace list`,
+installation with `copilot plugin list`, and instruction discovery from the consuming repository
+with `copilot instruction list`. Skills that require Claude-only agent delegation, skill chaining,
+model routing, or permission settings are marked unsupported in their `SKILL.md` files.
 
 That is the whole published tree. The suite, the mutation corpora, the pytest configuration and the
 release workflow all live outside it, in the canonical source repo only — see *Testing* above.
