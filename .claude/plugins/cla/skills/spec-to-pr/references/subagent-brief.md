@@ -283,6 +283,10 @@ Put it in the brief in these words:
 >
 > If a gate cannot finish inside one foreground call, do not background it. Return `blocked`,
 > name the gate, and say what you did produce.
+>
+> Send ONE final report and end your turn. Start no sleep or timer monitors. A gate you
+> started in the foreground is read to its end, with short foreground waits, and you report the
+> real result from its log.
 
 **The rule keys on the runner, not on the duration.** The orchestrator's own backgrounding is
 unchanged, because a completion notification *does* re-invoke a session. Only the dispatched

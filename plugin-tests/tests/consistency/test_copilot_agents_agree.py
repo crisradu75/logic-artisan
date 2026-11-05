@@ -197,7 +197,7 @@ def test_the_generator_runs_when_the_copilot_directory_does_not_exist(monkeypatc
 
 
 def test_the_install_docs_distinguish_copilot_guard_support_and_limits():
-    """Document source-tree hook support without implying the released plugin has it."""
+    """Document Copilot hook support and name the release that first carries it."""
     repo = _PLUGIN_ROOT.parents[2]
     for doc in ("README.md", "DEVELOPER-GUIDE.md", ".claude/plugins/cla/README.md"):
         text = " ".join((repo / doc).read_text(encoding="utf-8").split())
@@ -205,7 +205,7 @@ def test_the_install_docs_distinguish_copilot_guard_support_and_limits():
         assert "fail-open" in text, f"{doc} must disclose timeout behavior"
         assert "live timeout probe was inconclusive" in text, f"{doc} must not overstate live timeout validation"
         assert "pre-push" in text, f"{doc} must distinguish the Git push guard"
-        assert "not in the tagged" in text, f"{doc} must distinguish current source from the release"
+        assert "first ships in `cla--v2.3.0`" in text, f"{doc} must say which release first carries the hooks"
     # Whitespace-joined, since the prose wraps lines. The install guide names the plugin profiles
     # and discloses the live model fallback.
     readme = " ".join((repo / "README.md").read_text(encoding="utf-8").split())

@@ -320,3 +320,357 @@ def test_copilot_pretooluse_denies_when_dispatcher_crashes(tmp_path):
     assert decision["permissionDecision"] == "deny"
     assert "could not run" in decision["permissionDecisionReason"]
     assert "dispatcher crash" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Failure paths, launchers and wording drift. Everything writes under tmp_path.
+# ---------------------------------------------------------------------------
+
+_ROOT_VARS = ("COPILOT_PLUGIN_ROOT", "PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT")
+
+
+def _run_no_root(script: Path, payload: dict | str, cwd: Path) -> subprocess.CompletedProcess:
+    env = {k: v for k, v in os.environ.items() if k not in _ROOT_VARS}
+    return subprocess.run(
+        [sys.executable, str(script)],
+        input=payload if isinstance(payload, str) else json.dumps(payload),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=cwd, env=env,
+    )
+
+
+def _post_event(work: Path, **overrides) -> dict:
+    cwd = work
+    event = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "test-session",
+        "timestamp": "2026-11-04T00:00:00Z",
+        "cwd": str(cwd),
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(cwd / "x.md"), "content": "x\n"},
+        "tool_result": {"result_type": "success", "text_result_for_llm": "ok"},
+    }
+    event.update(overrides)
+    return event
+
+
+def _fake_dispatcher(tmp_path: Path, body: str) -> tuple[Path, Path]:
+    """A copied plugin tree whose Bash dispatcher is replaced by `body`."""
+    root, adapter = _copy_adapter_tree(tmp_path)
+    (root / "hooks" / "dispatch-bash-pretooluse.py").write_text(body, encoding="utf-8")
+    return root, adapter
+
+
+def _pre_with_fake(tmp_path: Path, body: str) -> subprocess.CompletedProcess:
+    root, adapter = _fake_dispatcher(tmp_path, body)
+    return _run_hook(adapter, _pre_event("Bash", {"command": "echo safe"}, tmp_path), tmp_path, root)
+
+
+def _nested(**fields) -> str:
+    return "import json\ndef main():\n    print(json.dumps({'hookSpecificOutput': %r}))\n    return 0\n" % (fields,)
+
+
+def _denied(result, fragment: str) -> None:
+    assert result.returncode == 0, result.stderr
+    decision = json.loads(result.stdout)
+    assert decision["permissionDecision"] == "deny"
+    assert fragment in decision["permissionDecisionReason"], decision
+
+
+# requirement: guard-hooks / Copilot hook failures have an explicit policy
+def test_copilot_pretooluse_denies_when_the_plugin_root_is_missing(tmp_path):
+    adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
+    result = _run_no_root(adapter, _pre_event("Bash", {"command": "echo safe"}, tmp_path), tmp_path)
+    _denied(result, "could not run")
+    assert "did not provide a plugin root" in result.stderr
+
+
+def test_copilot_pretooluse_denies_when_the_plugin_root_does_not_match(tmp_path):
+    other = tmp_path / "other-plugin"
+    other.mkdir()
+    adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
+    result = _run_hook(adapter, _pre_event("Bash", {"command": "echo safe"}, tmp_path), tmp_path, other)
+    _denied(result, "could not run")
+    assert "does not match" in result.stderr
+
+
+def test_copilot_pretooluse_denies_the_wrong_event_name(tmp_path):
+    adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
+    event = _pre_event("Bash", {"command": "echo safe"}, tmp_path)
+    event["hook_event_name"] = "PostToolUse"
+    _denied(_run_hook(adapter, event, tmp_path), "invalid Copilot PreToolUse event")
+
+
+def test_copilot_pretooluse_denies_an_unsupported_tool_and_bad_arguments(tmp_path):
+    adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
+    _denied(_run_hook(adapter, _pre_event("Read", {"file_path": "x"}, tmp_path), tmp_path),
+            "unsupported tool name")
+    _denied(_run_hook(adapter, _pre_event("Bash", "not-a-dict", tmp_path), tmp_path),
+            "invalid tool arguments")
+    _denied(_run_hook(adapter, _pre_event("Edit", {"new_string": "x"}, tmp_path), tmp_path),
+            "no file path")
+    event = _pre_event("Bash", {"command": "echo safe"}, tmp_path)
+    event["cwd"] = ""
+    _denied(_run_hook(adapter, event, tmp_path), "no working directory")
+
+
+def test_copilot_pretooluse_denies_the_dispatcher_wrong_event_output(tmp_path):
+    result = _pre_with_fake(tmp_path, _nested(hookEventName="PostToolUse", permissionDecision="allow"))
+    _denied(result, "wrong event")
+
+
+def test_copilot_pretooluse_denies_an_unsupported_decision(tmp_path):
+    result = _pre_with_fake(tmp_path, _nested(hookEventName="PreToolUse", permissionDecision="defer"))
+    _denied(result, "unsupported decision")
+
+
+def test_copilot_pretooluse_denies_invalid_warning_context(tmp_path):
+    result = _pre_with_fake(tmp_path, _nested(hookEventName="PreToolUse", additionalContext=5))
+    _denied(result, "invalid warning context")
+
+
+def test_copilot_pretooluse_denies_a_non_integer_exit_code(tmp_path):
+    result = _pre_with_fake(tmp_path, "def main():\n    return 'ok'\n")
+    _denied(result, "could not run")
+    assert "non-integer exit code" in result.stderr
+
+
+def test_copilot_pretooluse_denies_exit_status_two_with_the_stderr_reason(tmp_path):
+    body = "import sys\ndef main():\n    print('blocked by test', file=sys.stderr)\n    return 2\n"
+    _denied(_pre_with_fake(tmp_path, body), "blocked by test")
+
+
+def test_copilot_pretooluse_denies_other_nonzero_exit_status(tmp_path):
+    _denied(_pre_with_fake(tmp_path, "def main():\n    return 7\n"), "status 7")
+
+
+def test_copilot_pretooluse_denies_unknown_and_non_object_output(tmp_path):
+    _denied(_pre_with_fake(tmp_path, "import json\ndef main():\n    print(json.dumps({'x': 1}))\n    return 0\n"),
+            "unknown decision")
+    _denied(_pre_with_fake(tmp_path / "b", "def main():\n    print('[1]')\n    return 0\n"), "invalid output")
+
+
+def test_copilot_pretooluse_denies_an_ask_without_a_reason(tmp_path):
+    result = _pre_with_fake(tmp_path, _nested(hookEventName="PreToolUse", permissionDecision="ask"))
+    _denied(result, "without a reason")
+
+
+def test_copilot_pretooluse_turns_a_failure_ask_into_a_deny(tmp_path):
+    reason = "an ENFORCING guard could not run on this call"
+    result = _pre_with_fake(
+        tmp_path, _nested(hookEventName="PreToolUse", permissionDecision="ask", permissionDecisionReason=reason))
+    _denied(result, "could not run")
+
+
+def test_copilot_pretooluse_passes_an_ask_with_context_and_a_dispatcher_deny(tmp_path):
+    result = _pre_with_fake(tmp_path, _nested(
+        hookEventName="PreToolUse", permissionDecision="ask",
+        permissionDecisionReason="force-push needs confirmation", additionalContext="heads up"))
+    decision = json.loads(result.stdout)
+    assert decision == {
+        "permissionDecision": "ask",
+        "permissionDecisionReason": "force-push needs confirmation",
+        "additionalContext": "heads up",
+    }
+    result = _pre_with_fake(tmp_path / "d", _nested(
+        hookEventName="PreToolUse", permissionDecision="deny", permissionDecisionReason="no"))
+    _denied(result, "no")
+
+
+# The adapter treats a dispatcher `ask` as a failed guard by matching wording.
+# These tests drive each dispatcher into each way it reports "a guard did not
+# run" and require the adapter's marker list to still recognise the wording.
+def _adapter_markers() -> tuple[str, ...]:
+    spec = importlib.util.spec_from_file_location(
+        "copilot_pretooluse_markers", _PLUGIN / "hooks" / "copilot-pretooluse.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.FAILURE_MARKERS
+
+
+def _run_dispatcher(root: Path, name: str, payload: dict, cwd: Path) -> dict:
+    result = _run_hook(root / "hooks" / name, payload, cwd, root)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)["hookSpecificOutput"]
+
+
+def test_failure_wording_of_every_dispatcher_matches_the_adapter_markers(tmp_path):
+    markers = _adapter_markers()
+    bash_event = _pre_event("Bash", {"command": "echo safe"}, tmp_path)
+    edit_event = _pre_event("Edit", {"file_path": str(tmp_path / "a.py"), "new_string": "x"}, tmp_path)
+    cases = [
+        ("dispatch-bash-pretooluse.py", bash_event, "block-cd-in-bash.py"),
+        ("dispatch-edit-write-pretooluse.py", edit_event, "block-worktree-path-escape.py"),
+    ]
+    for index, (dispatcher, event, guard) in enumerate(cases):
+        # An enforcing guard that is missing: the escalation inside main().
+        root, _ = _copy_adapter_tree(tmp_path / f"guard{index}")
+        (root / "hooks" / guard).unlink()
+        reason = _run_dispatcher(root, dispatcher, event, tmp_path)["permissionDecisionReason"]
+        assert any(m in reason.lower() for m in markers), (dispatcher, reason)
+        # The shared library missing: the `_fail_closed` path.
+        root, _ = _copy_adapter_tree(tmp_path / f"lib{index}")
+        (root / "hooks" / "_dispatch_lib.py").unlink()
+        reason = _run_dispatcher(root, dispatcher, event, tmp_path)["permissionDecisionReason"]
+        assert any(m in reason.lower() for m in markers), (dispatcher, reason)
+
+
+def test_the_adapter_denies_each_dispatcher_failure_ask_end_to_end(tmp_path):
+    root, adapter = _copy_adapter_tree(tmp_path / "e")
+    (root / "hooks" / "_dispatch_lib.py").unlink()
+    _denied(_run_hook(adapter, _pre_event("Bash", {"command": "echo safe"}, tmp_path), tmp_path, root),
+            "could not run")
+    root, adapter = _copy_adapter_tree(tmp_path / "w")
+    (root / "hooks" / "block-worktree-path-escape.py").unlink()
+    event = _pre_event("Edit", {"file_path": str(tmp_path / "a.py"), "new_string": "x"}, tmp_path)
+    _denied(_run_hook(adapter, event, tmp_path, root), "could not run")
+
+
+# requirement: guard-hooks / Copilot hook failures have an explicit policy
+def _post(tmp_path: Path, event: dict | str, root: Path | None = None, adapter: Path | None = None):
+    if adapter is None:
+        adapter, root = _PLUGIN / "hooks" / "copilot-posttooluse.py", _PLUGIN
+    return _run_hook(adapter, event, tmp_path, root)
+
+
+def _post_tree(tmp_path: Path, warn_body: str | None) -> tuple[Path, Path]:
+    root, _ = _copy_adapter_tree(tmp_path)
+    warn = root / "hooks" / "warn-wholesale-rewrite.py"
+    if warn_body is None:
+        warn.unlink()
+    else:
+        warn.write_text(warn_body, encoding="utf-8")
+    return root, root / "hooks" / "copilot-posttooluse.py"
+
+
+def test_copilot_posttooluse_fails_on_malformed_or_invalid_events(tmp_path):
+    result = _post(tmp_path, "{")
+    assert result.returncode == 1 and "malformed" in result.stderr
+    for bad in (
+        _post_event(tmp_path, hook_event_name="PreToolUse"),
+        _post_event(tmp_path, tool_name="Edit"),
+        _post_event(tmp_path, tool_input="x"),
+        _post_event(tmp_path, cwd=""),
+    ):
+        result = _post(tmp_path, bad)
+        assert result.returncode == 1 and "invalid Copilot PostToolUse event" in result.stderr, bad
+        assert result.stdout.strip() == ""
+
+
+def test_copilot_posttooluse_fails_when_the_plugin_root_is_missing_or_wrong(tmp_path):
+    adapter = _PLUGIN / "hooks" / "copilot-posttooluse.py"
+    result = _run_no_root(adapter, _post_event(tmp_path), tmp_path)
+    assert result.returncode == 1 and "did not provide a plugin root" in result.stderr
+    other = tmp_path / "other-plugin"
+    other.mkdir()
+    result = _post(tmp_path, _post_event(tmp_path), other, adapter)
+    assert result.returncode == 1 and "does not match" in result.stderr
+
+
+def test_copilot_posttooluse_fails_when_the_warning_hook_is_missing(tmp_path):
+    root, adapter = _post_tree(tmp_path / "t", None)
+    result = _post(tmp_path, _post_event(tmp_path), root, adapter)
+    assert result.returncode == 1 and "hook is missing" in result.stderr
+
+
+def test_copilot_posttooluse_fails_when_the_warning_hook_crashes_or_fails(tmp_path):
+    root, adapter = _post_tree(tmp_path / "c", "def main():\n    raise RuntimeError('boom')\n")
+    result = _post(tmp_path, _post_event(tmp_path), root, adapter)
+    assert result.returncode == 1 and "boom" in result.stderr
+    root, adapter = _post_tree(tmp_path / "n", "def main():\n    return 3\n")
+    result = _post(tmp_path, _post_event(tmp_path), root, adapter)
+    assert result.returncode == 1 and "exited with status 3" in result.stderr
+
+
+def test_copilot_posttooluse_fails_on_malformed_or_invalid_warning_output(tmp_path):
+    root, adapter = _post_tree(tmp_path / "m", "def main():\n    print('not json')\n    return 0\n")
+    result = _post(tmp_path, _post_event(tmp_path), root, adapter)
+    assert result.returncode == 1 and "malformed output" in result.stderr
+    root, adapter = _post_tree(
+        tmp_path / "i", "import json\ndef main():\n    print(json.dumps({'hookSpecificOutput': {}}))\n    return 0\n")
+    result = _post(tmp_path, _post_event(tmp_path), root, adapter)
+    assert result.returncode == 1 and "invalid context" in result.stderr
+
+
+def test_copilot_posttooluse_stays_silent_when_nothing_is_warned(tmp_path):
+    root, adapter = _post_tree(tmp_path / "s", "def main():\n    return 0\n")
+    result = _post(tmp_path, _post_event(tmp_path), root, adapter)
+    assert result.returncode == 0 and result.stdout.strip() == ""
+
+
+# Launchers: run the exact command strings from hooks.json where the platform
+# allows. A missing shell skips; a present shell that cannot launch fails.
+def _launcher_commands(key: str) -> list[str]:
+    return [hook[key]
+            for groups in _config()["hooks"].values()
+            for group in groups
+            for hook in group["hooks"]]
+
+
+def _run_launcher(argv: list[str], command: str, event: dict, cwd: Path, root: str | None):
+    env = {k: v for k, v in os.environ.items() if k not in _ROOT_VARS}
+    env.update({"ALLOW_DESTRUCTIVE_GIT": "", "CLAUDE_PROJECT_DIR": str(cwd)})
+    if root is not None:
+        env["COPILOT_PLUGIN_ROOT"] = root
+    return subprocess.run(
+        [*argv, command], input=json.dumps(event), capture_output=True, text=True,
+        encoding="utf-8", errors="replace", cwd=cwd, env=env, timeout=60,
+    )
+
+
+def _shells() -> list[tuple[str, list[str], str]]:
+    found = []
+    if shutil.which("bash"):
+        found.append(("bash", [shutil.which("bash"), "-c"], "bash"))
+    ps = shutil.which("pwsh") or shutil.which("powershell")
+    if ps:
+        found.append(("powershell", [ps, "-NoProfile", "-NonInteractive", "-Command"], "powershell"))
+    return found
+
+
+def test_copilot_launchers_run_the_adapter_and_refuse_without_a_plugin_root(tmp_path):
+    shells = _shells()
+    if not shells:
+        import pytest
+        pytest.skip("neither bash nor PowerShell is available")
+    pre_bash = _config()["hooks"]["PreToolUse"][0]
+    root = str(_PLUGIN.resolve())
+    clean = _pre_event("Bash", {"command": "git status --short"}, tmp_path)
+    blocked = _pre_event("Bash", {"command": "cd /tmp && pwd"}, tmp_path)
+    for name, argv, key in shells:
+        command = pre_bash["hooks"][0][key]
+        if name == "bash":
+            root_arg = Path(root).as_posix()
+        else:
+            root_arg = root
+        ok = _run_launcher(argv, command, clean, tmp_path, root_arg)
+        assert ok.returncode == 0, (name, ok.stderr)
+        assert ok.stdout.strip() == "", (name, ok.stdout)
+        deny = _run_launcher(argv, command, blocked, tmp_path, root_arg)
+        assert deny.returncode == 0, (name, deny.stderr)
+        assert json.loads(deny.stdout)["permissionDecision"] == "deny", name
+        missing = _run_launcher(argv, command, clean, tmp_path, None)
+        assert missing.returncode != 0, name
+        assert "guard hooks are NOT running" in (missing.stderr + missing.stdout), name
+
+
+def test_powershell_probe_finds_python_and_honours_the_override(tmp_path):
+    ps = shutil.which("pwsh") or shutil.which("powershell")
+    if not ps:
+        import pytest
+        pytest.skip("PowerShell is not available")
+    probe = _PLUGIN / "hooks" / "probe-python.ps1"
+    script = f". '{probe}'; [Console]::Out.Write(\"$CLA_PYTHON_COMMAND|$($CLA_PYTHON_PREFIX -join ' ')\")"
+    env = {k: v for k, v in os.environ.items() if k != "CLA_PYTHON"}
+    found = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command", script],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           env=env, cwd=tmp_path, timeout=60)
+    assert found.returncode == 0, found.stderr
+    command = found.stdout.split("|")[0]
+    assert command, found.stderr
+    env["CLA_PYTHON"] = "cla-no-such-python"
+    missing = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command", script],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           env=env, cwd=tmp_path, timeout=60)
+    assert missing.stdout.split("|")[0] == ""
+    assert "CLA_PYTHON=cla-no-such-python is not a working Python" in missing.stderr

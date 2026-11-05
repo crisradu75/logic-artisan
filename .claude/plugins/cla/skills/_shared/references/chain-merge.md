@@ -106,7 +106,8 @@ of its own before these.
 3. **The full Test gate is green on `head_sha`.** Every merge needs this, because review fixes are
    committed after the item's own Test phase. Run the full gate the skill names, from
    `cla.io/project-facts.md`. A green run this session on exactly `head_sha`, with the tree
-   unchanged since, counts.
+   unchanged since, counts. Under `Full gate: final-commit-only` in `cla.io/project-facts.md`, this
+   is the run `/cla:spec-to-pr` skipped: the item's own Test phase ran smoke and touched tests only.
    - Green → continue.
    - Red → do not merge; the reason is `full gate red: <failing check>`. Do not re-run it hoping
      for green. A flaky gate is a finding for the user, not a retry.

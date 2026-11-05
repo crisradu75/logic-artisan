@@ -348,6 +348,10 @@ other repo-wide fact you find):
   or `- Test proof granularity: scenario`.
   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/scripts/check_spec_proof.py` reads that line and exits 2 on
   any other form, so never reword or merge it. A reconcile keeps an existing line as written.
+- **Full gate** (optional, only for a repo whose full gate is slow) — never proposed by default.
+  When the user asks for one full run on the final commit, write the line
+  `- Full gate: final-commit-only`; `/cla:spec-to-pr` Test then runs smoke and touched tests only, and the one full gate runs after Archive.
+  A reconcile keeps an existing line as written.
 - **Spec map** (a repo with `openspec/` only, and only if the user takes the offer in "The spec map
   scaffold") — the path or glob of the file that maps the repo's capabilities and workflows to its
   specs, one bullet per path under a `## Spec map` heading, any layout. `check_spec_proof.py` reads
