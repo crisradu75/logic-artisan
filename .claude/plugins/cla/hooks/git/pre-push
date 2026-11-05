@@ -34,6 +34,20 @@ fi
 # `refs/remotes/<remote>/HEAD`, only main and master are refused.
 default_ref=""
 remote_name=${1:-origin}
+# A push that names a URL hands the hook that URL as $1 and $2. When $1 is not a
+# configured remote, use the remote whose URL equals $2, so a URL push is checked
+# against the same default branch. An exact string match only; with no match the
+# fallback below stays: only main and master are refused.
+if ! git remote 2>/dev/null | grep -qxF -- "$remote_name"; then
+    url=${2:-$remote_name}
+    for candidate in $(git remote 2>/dev/null); do
+        # Every fetch URL and every push URL: git passes the push URL it will use.
+        if { git remote get-url --all "$candidate"; git remote get-url --push --all "$candidate"; } 2>/dev/null | grep -qxF -- "$url"; then
+            remote_name=$candidate
+            break
+        fi
+    done
+fi
 if head=$(git symbolic-ref --quiet "refs/remotes/$remote_name/HEAD" 2>/dev/null); then
     default_ref="refs/heads/${head#refs/remotes/"$remote_name"/}"
 fi
