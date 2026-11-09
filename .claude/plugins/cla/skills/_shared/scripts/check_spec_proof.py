@@ -157,7 +157,7 @@ _H4 = re.compile(r"^####\s+(?!#)")
 def _fence_after(line: str, fence: tuple[str, int] | None) -> tuple[str, int] | None:
     """The code-fence state after `line`: None outside a fence, else (marker character, run length) of the open one.
 
-    Same rules as `_fence_step`: a run of 3 or more backticks (info string without a backtick) or tildes opens
+    Same marker rules as `_fence_step` (not its blockquote and list handling): a run of 3 or more backticks (info string without a backtick) or tildes opens
     a fence; only a bare run of the SAME character at least as long closes it. A `~~~` line inside a ``` fence,
     a shorter run, or a run with an info string (```` ```python ````) is content, not a closer."""
     m = _FENCE_LINE.match(line)

@@ -9,3 +9,9 @@ Leftover review suggestions (PR #481, orchestration-economy rule 14).
 Leftover review suggestions (PR #482, pre-push URL match).
 
 - pre-push URL match: when two remotes share one URL, the first by name wins. Add a comment or a test saying so.
+
+Leftover review suggestions (PR #486, check_spec_proof fences and requirement names).
+
+- `_FENCE_LINE` accepts any indentation, so a fence indented 4 or more spaces counts as a fence where CommonMark treats it as code; no test pins indented fences, CRLF, or an indented closer.
+- `### Requirement: ##` yields the name `##` where OpenSpec's `normalizeRequirementName` gives an empty name (no practical impact).
+- Scenario names (`_SCN`) do not strip a closing `#` run although OpenSpec does.
