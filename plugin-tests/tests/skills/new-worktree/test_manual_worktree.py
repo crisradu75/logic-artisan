@@ -355,6 +355,23 @@ def test_a_registered_worktree_with_uncommitted_work_is_never_force_removed(repo
     assert (path / "seed.txt").read_text(encoding="utf-8") == "work in progress\n"
 
 
+def test_a_worktree_holding_only_a_gitignored_file_is_not_force_removed(repo):
+    """`status --porcelain` hides ignored files, yet `remove --force` deletes
+    them: scratch notes kept there must survive the cleanup."""
+    path = repo / ".claude/worktrees/ignored"
+    _git(repo, "worktree", "add", "-q", str(path), "-b", "ignored-branch", "origin/main")
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.parent.mkdir(exist_ok=True)
+    exclude.write_text("scratch/\n", encoding="utf-8")
+    (path / "scratch").mkdir()
+    (path / "scratch" / "notes.txt").write_text("irreplaceable\n", encoding="utf-8")
+
+    with pytest.raises(mw.GitError) as exc:
+        mw.clean_stale_worktree(repo, path)
+    assert "cleanup.md step 2" in str(exc.value)
+    assert (path / "scratch" / "notes.txt").read_text(encoding="utf-8") == "irreplaceable\n"
+
+
 def test_a_clean_registered_worktree_is_still_cleaned(repo):
     """Non-vacuity for the guard above: if the dirty check refused everything,
     the stale-entry cleanup this script exists for would be dead."""

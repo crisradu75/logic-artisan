@@ -243,7 +243,8 @@ def clean_stale_worktree(repo: Path, path: Path) -> bool:
     repo cannot verify; the cleanup below is written to be correct either way.
 
     Two different safety postures, deliberately:
-    - A registered worktree is removed only when `git status` says it is CLEAN.
+    - A registered worktree is removed only when `git status --ignored` says it is CLEAN (no modified,
+      untracked or gitignored files; `remove --force` deletes all three).
       A dirty one raises instead, because `remove --force` would delete
       uncommitted work and `unlock` first is what lets it.
     - An UNREGISTERED leftover directory is removed only when empty.
@@ -272,12 +273,14 @@ def clean_stale_worktree(repo: Path, path: Path) -> bool:
         # `git status` there as "dirty, refuse" would block the exact cleanup
         # this function exists for.
         if path.exists():
-            status = run_git(path, ["status", "--porcelain"], check=False)
+            status = run_git(path, ["status", "--porcelain", "--ignored"], check=False)
             if status.returncode != 0 or (status.stdout or "").strip():
                 raise GitError(
                     f"a worktree already exists at {path} and it has uncommitted "
-                    "changes (or its state could not be read), so it was left "
-                    "untouched. Inspect it, then remove it yourself with "
+                    "changes or untracked/gitignored files (or its state could "
+                    "not be read), so it was left untouched. List what removal "
+                    "would delete first (multi-pr references/cleanup.md step 2), "
+                    "then remove it yourself with "
                     f"`git worktree remove {path}` if it really is finished with."
                 )
             run_git(repo, ["worktree", "unlock", str(path)], check=False)

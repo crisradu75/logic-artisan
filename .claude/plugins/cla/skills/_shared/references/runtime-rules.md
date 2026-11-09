@@ -24,4 +24,4 @@ Independent reads/greps/checks with no data dependency between them MUST go in a
 
 ## 4. Prefer terse, schema'd agent output over prose
 
-Dispatched agents return a structured (schema'd) object — a findings list, a pass/fail table — not a prose essay the parent must re-parse. The Revise round-1 fan-out pins `FINDINGS_SCHEMA`; Review agents and `doc-sweeper` follow the same shape (see the Review section). A schema'd return is smaller, machine-mergeable, and keeps the parent's triage step cheap.
+Dispatched agents return a structured (schema'd) object — a findings list, a pass/fail table — not a prose essay the parent must re-parse. The opted-in Revise round-1 `Workflow` pins `FINDINGS_SCHEMA` (the default `Agent` path asks for the same fields in the prompt); Review agents and `doc-sweeper` follow the same shape (see the Review section). A schema'd return is smaller, machine-mergeable, and keeps the parent's triage step cheap.
