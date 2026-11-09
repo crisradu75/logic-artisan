@@ -1959,3 +1959,61 @@ def test_an_unknown_console_encoding_falls_back_to_ascii_escapes(monkeypatch):
 
     monkeypatch.setattr(sys, "stdout", Odd())
     assert csp._console_safe("Café ✓ done") == "Caf\\xe9 \\u2713 done"
+
+
+# --- #462: a fence closes only on its own marker; a requirement name drops a closing `#` run ---
+
+
+def _req_names(text: str, delta: bool = False) -> list[str]:
+    return [h for h, _, _ in csp._blocks(text, delta)]
+
+
+@pytest.mark.parametrize(
+    "opener, inner, closer",
+    [
+        ("```", "~~~", "```"),  # a tilde line inside a backtick fence is content
+        ("~~~", "```", "~~~"),  # and the other way round
+        ("````", "```", "````"),  # a shorter run does not close
+        ("```", "```python", "```"),  # a run with an info string does not close
+    ],
+)
+def test_a_mismatched_fence_marker_does_not_close_a_fence(opener, inner, closer):
+    text = f"## Requirements\n\n### Requirement: Real\n\nSHALL.\n\n{opener}\n{inner}\n### Requirement: Fenced\n{closer}\n"
+    assert _req_names(text) == ["Real"]
+    assert csp._unclosed_fence(text) is False
+    # the same fence in a delta's REMOVED section hides its example heading from the operations
+    delta = f"## REMOVED Requirements\n\n### Requirement: Gone\n\n{opener}\n{inner}\n### Requirement: Fenced\n{closer}\n"
+    assert csp._delta_ops(delta)[0] == {"Gone"}
+
+
+def test_a_fence_still_open_after_a_mismatched_marker_is_unclosed():
+    assert csp._unclosed_fence("```\n~~~\nx\n") is True
+    assert csp._unclosed_fence("````\n```\nx\n") is True
+
+
+def test_a_mismatched_marker_in_a_statement_or_purpose_does_not_end_the_fence():
+    assert "#### Scenario: hidden" in csp._statement(["SHALL.", "```", "~~~", "#### Scenario: hidden", "```", "#### Scenario: real"])
+    assert "#### Scenario: real" not in csp._statement(["SHALL.", "```", "~~~", "x", "```", "#### Scenario: real"])
+    purpose = "## Purpose\n\nOne.\n\n```\n~~~\n## Requirements\n```\n\nTwo.\n\n## Requirements\n"
+    paras = csp._purpose_paragraphs(purpose)
+    assert paras is not None and ["Two."] in paras and ["```", "~~~", "## Requirements", "```"] in paras
+
+
+def test_a_closing_hash_run_is_not_part_of_a_requirement_name():
+    text = "## Requirements\n\n### Requirement: Foo ##\n\nSHALL.\n\n### Requirement: C#\n\nSHALL.\n\n### Requirement: Bar #  \n\nSHALL.\n"
+    assert _req_names(text) == ["Foo", "C#", "Bar"]
+    delta = (
+        "## RENAMED Requirements\n\n- FROM: `### Requirement: Old ##`\n- TO: `### Requirement: New ###`\n\n"
+        "## REMOVED Requirements\n\n### Requirement: Gone ##\n\n- `### Requirement: Also gone #`\n\n"
+        "## MODIFIED Requirements\n\n### Requirement: Mod ##\n"
+    )
+    removed, renames, modified = csp._delta_ops(delta)
+    assert removed == {"Gone", "Also gone"} and renames == {"Old": "New"} and modified == {"Mod"}
+    assert csp._removed_headings(delta) == {"Gone"}
+
+
+def test_a_requirement_with_a_closing_hash_run_is_proven_by_its_bare_name(repo, capsys):
+    _write(repo, SPEC, _spec_text(("Old rule", "Old SHALL.\n\n" + _scn("Old case")), ("Hashed ##", "SHALL.\n\n" + _scn("Hashed case"))))
+    _write(repo, "tests/test_h.py", _marker("requirement", "alpha", "Hashed"))
+    code, out, _ = run(repo, capsys)
+    assert code == 0, out
