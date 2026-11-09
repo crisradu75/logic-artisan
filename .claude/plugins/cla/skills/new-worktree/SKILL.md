@@ -143,7 +143,9 @@ path must target the worktree explicitly, and the final report must say this mod
 - Doesn't run `ExitWorktree` — that's a separate, explicit user action later. (If a
   later `ExitWorktree --remove` fails with a file lock, that's normal on Windows right
   after an install — a process/AV scan may still hold a handle; leaving it "kept"
-  is fine, no action needed from this skill.)
+  is fine, no action needed from this skill.) Before removing any worktree by hand or with
+  `ExitWorktree --remove`, list its untracked and gitignored files first, as in the multi-pr
+  `references/cleanup.md` step 2: removal deletes gitignored files silently.
 - Doesn't create a *second* worktree from inside one — `EnterWorktree` intentionally disallows
   nesting. That refusal is not an error here: step 1 treats it as the setup-only signal and runs
   step 2 against the worktree you are already in.

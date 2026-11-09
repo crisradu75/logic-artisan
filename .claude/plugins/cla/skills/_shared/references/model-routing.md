@@ -23,8 +23,8 @@ creative-writing-shaped work, so there's no fit for it here.)
 
 | Mechanism | Model knob | Effort knob | Used for |
 |---|---|---|---|
-| `Agent(subagent_type, model:)` | yes (per call) | **no** (inherits session) | Implement delegate, Revise round ≥2, escalate-up dispatches, `fact-gatherer`/`doc-sweeper` dispatches |
-| `Workflow` `agent(prompt, {model, effort, agentType, schema})` | yes | **yes** (per call) | Revise round 1 fan-out ONLY |
+| `Agent(subagent_type, model:)` | yes (per call) | **no** (inherits session) | Implement delegate, Revise round 1 (default) and round ≥2, escalate-up dispatches, `fact-gatherer`/`doc-sweeper` dispatches |
+| `Workflow` `agent(prompt, {model, effort, agentType, schema})` | yes | **yes** (per call) | Revise round 1 fan-out ONLY, and only when the user has opted into workflows |
 | `${CLAUDE_PLUGIN_ROOT}/agents/*.md` frontmatter | yes (`model:`) | **no** (no effort key exists) | our own agents: `fact-gatherer`, `doc-sweeper` |
 
 The agents we own get model-only pinning via frontmatter plus an output instruction in their body.
@@ -48,9 +48,9 @@ and file edits. That rule is the only safeguard, an accepted risk.
 | Propose authoring, Review verdict, Revise triage | inline (session) | session | main loop — escalate-up (Propose authoring + verdict seconding of RETHINK or Critical-bearing FIX FIRST ONLY; triage never escalated) when session < Opus |
 | Review Step-2 fact-gathering offload (large changes) | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/fact-gatherer.md` |
 | Cross-PR / `.claude/`-meta doc-staleness sweep | haiku | low (body-instructed) | `${CLAUDE_PLUGIN_ROOT}/agents/doc-sweeper.md` |
-| Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff; `model:` is passed on every dispatch) | medium | `Workflow` `agent()`; `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter` |
-| Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; `plugin-dev:skill-reviewer` on a prose-dominant diff per "Review sizing by risk" below | medium | `Workflow` `agent()` |
-| Revise R1 — `comment-analyzer` | sonnet | medium | `Workflow` `agent()`; `pr-review-toolkit:comment-analyzer` |
+| Revise R1 — `code-reviewer`, `silent-failure-hunter` | per "Review sizing by risk" below (opus on a high-risk diff; `model:` is passed on every dispatch) | medium | `Agent`; `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter` (`Workflow` `agent()` only if opted in) |
+| Revise R1 — `pr-test-analyzer`, `type-design-analyzer`, `plugin-dev:skill-reviewer` | sonnet; `plugin-dev:skill-reviewer` on a prose-dominant diff per "Review sizing by risk" below | medium | `Agent` (`Workflow` `agent()` only if opted in) |
+| Revise R1 — `comment-analyzer` | sonnet | medium | `Agent`; `pr-review-toolkit:comment-analyzer` (`Workflow` `agent()` only if opted in) |
 | Implement big-mechanical delegate (sized trigger — see SKILL.md Implement) | sonnet | inherited | `Agent(model:)` |
 | Revise round ≥2 (scoped fix-diff) | round 1's reviewers and tiers, at its final level and never lower; see "Review sizing by risk" below | inherited | `Agent(model:)` |
 | Ship / Archive / Handoff / prechecks / Test runs | inline, unchanged | — | no dispatch |
@@ -145,7 +145,7 @@ Rationale mirrors the high-risk bug-hunter economics (see "Why high-risk diffs k
 catch the expensive "the premise itself is wrong" class, where a cheaper model's miss ships a bad
 design; the task/spec/structure/validation reviewers apply a well-specified rubric where sonnet is
 sufficient. **These dispatches are `Agent`-based, so effort is not dialable** (inherits the session —
-see the mechanism table above); only the Revise round-1 `Workflow` fan-out can set effort per call.
+see the mechanism table above); only an opted-in Revise round-1 `Workflow` fan-out can set effort per call; on the default `Agent` path round 1 inherits the session effort, as round 2 onward does.
 
 **Which branch is the normal path depends on how the session was started, so check rather than
 assume.** Every rule below phrased as "when the session is sub-Opus" applies only when it actually
