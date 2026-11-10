@@ -91,6 +91,7 @@ The plugin SHALL offer each of its helper agents to GitHub Copilot CLI with the 
 ### Requirement: Listing for GitHub Copilot CLI
 
 The plugin SHALL be listed for GitHub Copilot CLI with `copilot plugin marketplace add crisradu75/logic-artisan` followed by `copilot plugin install cla@cris-logic-artisan`, pinned to the same exact release tag as the Claude Code install.
+
 #### Scenario: Both installs pin one release
 
 - **WHEN** a release is published
