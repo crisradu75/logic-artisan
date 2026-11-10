@@ -106,7 +106,6 @@ def test_the_routing_guidance_says_to_pass_the_model_on_every_reviewer_dispatch(
         assert f"`pr-review-toolkit:{reviewer}`" in flat, f"model-routing.md does not name {reviewer}"
 
 
-# requirement: review-agents / A reviewer makes no git or file changes
 def test_no_shipped_file_dispatches_or_ships_a_cla_reviewer() -> None:
     """A `cla:` reviewer name would dispatch to nothing; the removed agents must not return unnoticed."""
     stale = re.compile(r"cla:(?:%s)\b|agents/(?:%s)\b" % ("|".join(_REVIEWERS), "|".join(_REVIEWERS)))

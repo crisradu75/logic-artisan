@@ -12,7 +12,7 @@ Defines how the plugin dispatches pull-request reviewers: the diff file they rea
 
 A skill that dispatches a pull-request reviewer SHALL save the change to a diff file outside the working tree and name that file in the reviewer's brief.
 
-#### Scenario: A review round starts
+#### Scenario: Each brief names a diff file
 
 - **WHEN** a skill dispatches reviewers for a pull request
 - **THEN** each brief names a diff file
@@ -26,7 +26,7 @@ A skill that dispatches a pull-request reviewer SHALL save the change to a diff 
 
 A skill that dispatches a pull-request reviewer SHALL tell the reviewer in its brief to run no git command and edit no file.
 
-#### Scenario: A review round starts
+#### Scenario: Each brief forbids git commands and edits
 
 - **WHEN** a skill dispatches reviewers for a pull request
 - **THEN** each brief forbids git checkout, switch, stash, reset, clean, commit and branch and any file edit
@@ -35,7 +35,7 @@ A skill that dispatches a pull-request reviewer SHALL tell the reviewer in its b
 
 A skill that dispatches a pull-request reviewer SHALL pass the reviewer's model on that dispatch.
 
-#### Scenario: A review round starts
+#### Scenario: Each dispatch names a model
 
 - **WHEN** a skill dispatches reviewers for a pull request
 - **THEN** the dispatch names a model
