@@ -57,14 +57,14 @@ def site_problems(name: str, text: str, *, dispatches: bool) -> list[str]:
     return found
 
 
-# requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
+# requirement: review-agents / A reviewer makes no git or file changes
 @pytest.mark.parametrize("name", sorted(_SITES))
 def test_each_dispatch_site_carries_the_rule_names_the_toolkit_agents_and_passes_a_model(name: str) -> None:
     text = _SITES[name].read_text(encoding="utf-8")
     assert site_problems(name, text, dispatches=name != "the shared brief") == []
 
 
-# requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
+# requirement: review-agents / A reviewer makes no git or file changes
 def test_the_rule_names_every_verb_the_spec_forbids_and_forbids_edits() -> None:
     spec = _flat((_ROOT / "openspec" / "specs" / "review-agents" / "spec.md").read_text(encoding="utf-8"))
     for verb in _VERBS:
@@ -74,7 +74,7 @@ def test_the_rule_names_every_verb_the_spec_forbids_and_forbids_edits() -> None:
     assert "not `git diff`" in _RULE, "the toolkit code-reviewer defaults to `git diff`; the rule must stop that"
 
 
-# requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
+# requirement: review-agents / A reviewer gets a diff file named in its brief
 def test_the_second_pass_dispatches_also_carry_the_model_the_diff_file_and_the_rule() -> None:
     """Round 1 is not the only dispatch: Revise round N and lite-pr's second pass re-dispatch the
     reviewers, and a re-dispatch with no rule is a reviewer with Bash and Edit and no brief."""
@@ -88,7 +88,7 @@ def test_the_second_pass_dispatches_also_carry_the_model_the_diff_file_and_the_r
     assert "new diff file outside the working tree" in step4
 
 
-# requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
+# requirement: review-agents / A reviewer runs on a named model
 @pytest.mark.parametrize("name", ["Revise", "lite-pr Review"])
 def test_each_site_gives_the_model_of_each_reviewer(name: str) -> None:
     """The toolkit files name opus and inherit, so the site must say which model each reviewer gets."""
@@ -98,7 +98,7 @@ def test_each_site_gives_the_model_of_each_reviewer(name: str) -> None:
     assert "`code-reviewer` `sonnet`" in flat and "`opus`" in flat
 
 
-# requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
+# requirement: review-agents / A reviewer runs on a named model
 def test_the_routing_guidance_says_to_pass_the_model_on_every_reviewer_dispatch() -> None:
     flat = _flat(_ROUTING.read_text(encoding="utf-8"))
     assert _MODEL_PHRASE in flat
@@ -106,7 +106,7 @@ def test_the_routing_guidance_says_to_pass_the_model_on_every_reviewer_dispatch(
         assert f"`pr-review-toolkit:{reviewer}`" in flat, f"model-routing.md does not name {reviewer}"
 
 
-# requirement: review-agents / A reviewer is dispatched with a diff file, a ban on state changes and a named model
+# requirement: review-agents / A reviewer makes no git or file changes
 def test_no_shipped_file_dispatches_or_ships_a_cla_reviewer() -> None:
     """A `cla:` reviewer name would dispatch to nothing; the removed agents must not return unnoticed."""
     stale = re.compile(r"cla:(?:%s)\b|agents/(?:%s)\b" % ("|".join(_REVIEWERS), "|".join(_REVIEWERS)))
