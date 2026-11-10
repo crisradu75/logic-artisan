@@ -97,6 +97,11 @@ The plugin SHALL be listed for GitHub Copilot CLI with `copilot plugin marketpla
 - **WHEN** a release is published
 - **THEN** the Copilot catalog and the Claude catalog name the same release tag
 
+#### Scenario: A released plugin does not claim its own install is untested
+
+- **WHEN** a reader checks what a release says about its own Copilot CLI install
+- **THEN** it makes no claim that the install is untested, and the documentation carries the validation status
+
 ### Requirement: Documenting Copilot CLI validation status
 
 Documentation for Copilot CLI SHALL identify the supported surface, the validated plugin
