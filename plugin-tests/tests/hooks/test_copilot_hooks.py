@@ -720,7 +720,7 @@ def _make_repo(path: Path) -> Path:
     _git(path, "config", "user.name", "Test")
     (path / "README.md").write_text("hello\n", encoding="utf-8")
     _git(path, "add", "README.md")
-    _git(path, "commit", "-qm", "baseline")
+    _git(path, "-c", "commit.gpgsign=false", "commit", "-qm", "baseline")
     return path
 
 
@@ -805,6 +805,8 @@ def test_copilot_pretooluse_stays_quiet_when_the_branch_is_kept(tmp_path):
     assert result.returncode == 0, result.stderr
     # The only output is the merge-confirmation-disabled note from another guard.
     assert "warn-stacked-pr-merge" not in result.stdout, result.stdout
+    # The adapter exits 0 even when it denies, so rule a decision out explicitly.
+    assert "permissionDecision" not in json.loads(result.stdout), result.stdout
 
 
 def test_copilot_pretooluse_warns_about_a_stray_scratch_file_before_git_add(tmp_path):
@@ -825,7 +827,7 @@ def test_copilot_pretooluse_warns_when_a_heredoc_would_eat_an_escape(tmp_path):
 
 
 def test_copilot_pretooluse_allows_a_heredoc_without_escapes(tmp_path):
-    _silent(_bash(tmp_path, "cat <<'EOF'\nplain text\nEOF"))
+    _silent(_bash(tmp_path, "python3 - <<'PY'\ns = \"anchor next\"\nprint(s)\nPY"))
 
 
 def _linked_worktree(tmp_path: Path) -> tuple[Path, Path]:
