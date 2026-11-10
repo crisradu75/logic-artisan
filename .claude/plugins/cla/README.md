@@ -172,6 +172,48 @@ belongs to your repo goes in `cla.io/`.
 **Onboarding a fresh repo:** install (above) → `/cla:cla-setup` (scaffold `cla.io/`, write the economy rules file
 `.claude/rules/cla-economy.md` and populate the facts) → install the `pre-push` hook (see *Guardrails*).
 
+### GitHub Copilot CLI
+
+Scope is Copilot CLI only; the Copilot app and cloud agent are not supported. Commands and file
+locations below are from GitHub's Copilot CLI documentation, read 2026-11-11
+(*Adding custom instructions for GitHub Copilot CLI*, *Finding and installing plugins for GitHub
+Copilot CLI*, *GitHub Copilot CLI plugin reference*, all on docs.github.com). What was live-tested
+is under *Layout* above (install and both helper agents validated with Copilot CLI 1.0.105 and
+release `cla--v2.2.3`); the instructions file below was not.
+
+```bash
+copilot plugin marketplace add crisradu75/logic-artisan
+copilot plugin install cla@cris-logic-artisan
+copilot plugin update cla            # takes the plugin name, per the docs
+copilot plugin list
+```
+
+- **Update.** The docs show `copilot plugin update PLUGIN-NAME`. Whether it first refreshes the
+  marketplace catalog is not documented: if it reports nothing newer, run
+  `copilot plugin marketplace list` and re-add the marketplace, then update again (unverified).
+- **Troubleshoot.** `copilot plugin <subcommand> --help` lists the options. `copilot plugin disable
+  cla` turns the plugin off without removing it. A marketplace cannot be removed while its plugins
+  are installed; add `--force` to uninstall them too, and name the marketplace as `list` shows it.
+  Installed plugins live under `~/.copilot/installed-plugins/`; a repository default is turned off
+  with `"cla@cris-logic-artisan": false` under `enabledPlugins` in the uncommitted
+  `.github/copilot/settings.local.json`.
+- **Instructions are not shipped by the plugin.** The plugin reference lists no instructions
+  component, so the plugin cannot deliver the writing convention that `output-styles/CLA.md` gives
+  Claude Code. Copilot CLI instead reads instructions from files you own: in your repo
+  `.github/copilot-instructions.md` or `AGENTS.md`, or for all your repos
+  `$HOME/.copilot/copilot-instructions.md` (the docs say `COPILOT_HOME` replaces `$HOME/.copilot`).
+  The docs define no precedence between these files and say to avoid conflicting instructions, so
+  put the text below in one of them, not several. Claude Code keeps the output style unchanged.
+
+```markdown
+# Writing style
+
+- Short plain sentences. Bullets, not paragraphs.
+- Cut preamble, recaps and play-by-play. Never cut evidence: a file:line, a test result, real output.
+- Keep real caveats and say what you do not know. Never trade correctness for brevity.
+- Code, commands, paths, identifiers and error text are quoted exactly, never shortened.
+```
+
 <details>
 <summary><b>Coming from 1.x?</b> What changed and the one run that migrates you</summary>
 
