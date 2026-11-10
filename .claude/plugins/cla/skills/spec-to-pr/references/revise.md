@@ -6,7 +6,7 @@ Cap: `--pr-rounds N` (default `2`). Round 2 runs only after round 1 fixed a Crit
 
 ## Dispatch mechanism by round (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/model-routing.md`)
 
-- **Round 1** runs as ONE `Workflow` fan-out (per-call effort, schema-forced findings).
+- **Round 1** dispatches its reviewers in parallel: one message, one `Agent` call per reviewer. A `Workflow` fan-out (per-call effort, schema-forced findings) only when the user has opted into workflows (said so, or workflow mode is on). A skill run is not that opt-in; never start a `Workflow` without it.
 - **Round N ≥ 2** dispatches directly via `Agent`, with the reviewers and models that "Review sizing by risk" in `model-routing.md` gives for round 1's final level. A later round never uses a lower level than round 1.
 
 Never chain through `Skill(pr-review-toolkit:review-pr)`; dispatch its agents yourself.
@@ -36,11 +36,13 @@ Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and mode
 
 > Review only the change in the diff file at `<absolute path>`; run no git command (not `git diff`, and never `git checkout`, `git switch`, `git stash`, `git reset`, `git clean`, `git commit` or `git branch`) and edit, write or delete no file. Give `line` as the line number in the changed file after the change (the number after the `+` in the hunk header, counted forward through the hunk), never a line counted inside the diff file.
 
-## Round 1 — Workflow fan-out
+## Round 1 — parallel fan-out
 
-Author one inline `Workflow` script that dispatches the selected agents in parallel and returns one merged findings list.
+**Default: direct `Agent` dispatch.** Send every selected reviewer in ONE message, one `Agent` call each, with an explicit `model:` and the diff-review rule verbatim in its prompt. Per-call `effort` is not available on this path (the reviewers inherit the session's), as in round 2 onward. Each reviewer returns its findings as a list of `{severity, file, line, summary}`; you merge them by hand, keeping the highest severity per `(file, line)` and every distinct summary. Pass diff files by path as described below.
 
-**Write the diff to a file; pass its path, never the text.** You run git, not the reviewers. Before dispatching, save `git diff origin/<pr-base>...<branch> -- <paths>` to one file per reviewer scope, using that row's diff slice (the full diff for the main reviewers). Put each file in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows) — never inside the working tree, where `git status` shows it and a `git add` can sweep it in. In each agent's prompt, name the file's absolute path beside the description of the diff by file + symbol + the focus questions (e.g. "`<module>`'s `<function>` now accepts a new parameter — check the caller passes the page's already-computed value, not a re-derived one"). Save each with `DIFF_FILE=<scratchpad>/review-round-1-<scope>.diff; git diff origin/<pr-base>...<branch> -- <paths> > "$DIFF_FILE"`. Delete every diff file when the round ends. The command names `<branch>` because you run it; an agent that runs its own read-only command in its own checkout says `HEAD` instead. A path is a plain string; raw diff text in the script string breaks its template literal (backticks, `${...}`, unbalanced quotes). Described this way, the `Workflow` handles any diff size, so round 1 uses it regardless of size and falls back only when the call itself fails.
+**Opted-in variant: `Workflow`.** Only when the user has opted into workflows, you may instead author one inline `Workflow` script that dispatches the selected agents in parallel and returns one merged findings list.
+
+**Write the diff to a file; pass its path, never the text.** You run git, not the reviewers. Before dispatching, save `git diff origin/<pr-base>...<branch> -- <paths>` to one file per reviewer scope, using that row's diff slice (the full diff for the main reviewers). Put each file in the session scratchpad; when none is listed, a `mktemp` file passed as a native path (`cygpath -w` in Git Bash on Windows) — never inside the working tree, where `git status` shows it and a `git add` can sweep it in. In each agent's prompt, name the file's absolute path beside the description of the diff by file + symbol + the focus questions (e.g. "`<module>`'s `<function>` now accepts a new parameter — check the caller passes the page's already-computed value, not a re-derived one"). Save each with `DIFF_FILE=<scratchpad>/review-round-1-<scope>.diff; git diff origin/<pr-base>...<branch> -- <paths> > "$DIFF_FILE"`. Delete every diff file when the round ends. The command names `<branch>` because you run it; an agent that runs its own read-only command in its own checkout says `HEAD` instead. A path is a plain string; raw diff text in the script string breaks its template literal (backticks, `${...}`, unbalanced quotes). Described this way, the opted-in `Workflow` handles any diff size, so on that path it is used regardless of size and falls back only when the call itself fails.
 
 ```js
 // DISPATCHES: [{agent, model, effort, prompt}, ...] built from the table above.
@@ -63,10 +65,10 @@ const findings = dedupeByFileAndLine(reported.flatMap(r => r.findings));
 return {findings, launched: DISPATCHES.length, reported: reported.length};
 ```
 
-- **Completeness (mandatory).** If `reported < launched`, a reviewer dropped out. Read `<transcriptDir>/journal.jsonl` — the `transcriptDir` the `Workflow` result reports — which records each agent's actual return; the top-level summary alone is not trustworthy (it has reported a retried agent as failed). Re-dispatch ONLY the agents the journal confirms never returned, individually via `Agent`, before triage. One that still does not return → Revise **`warn`**, reason `"revise fan-out shortfall: {reported} of {launched} reviewers reported"`, captured for Handoff. A crashed reviewer never vanishes silently.
-- **Workflow fallback (mandatory).** Round 1 always happens. If the `Workflow` tool is **unavailable** in the session (a capability gap), dispatch the same table via direct `Agent` calls (explicit `model:`) and mark Revise **`ok`** with the note `"workflow tool unavailable — used direct Agent dispatch"`; an absent capability is not a run problem. If a **present** `Workflow` call **fails** (errors, is killed, malformed script), the same fallback → **`warn`**, reason `"workflow fan-out failed — fell back to Agent dispatches"`.
+- **Completeness (mandatory).** On the `Agent` path, count the returns against the dispatches. On the `Workflow` path, if `reported < launched`, a reviewer dropped out. Read `<transcriptDir>/journal.jsonl` — the `transcriptDir` the `Workflow` result reports — which records each agent's actual return; the top-level summary alone is not trustworthy (it has reported a retried agent as failed). Re-dispatch ONLY the agents the journal confirms never returned, individually via `Agent`, before triage. One that still does not return → Revise **`warn`**, reason `"revise fan-out shortfall: {reported} of {launched} reviewers reported"`, captured for Handoff. A crashed reviewer never vanishes silently.
+- **Round 1 always happens.** Direct `Agent` dispatch is the default path and needs no note. If an opted-in `Workflow` call **fails** (errors, is killed, malformed script), dispatch the same table via direct `Agent` calls (explicit `model:`) → **`warn`**, reason `"workflow fan-out failed — fell back to Agent dispatches"`. A reviewer `Agent` call that returns nothing is re-dispatched once, then recorded as above.
 - An **empty `findings` array** from any agent is accepted at face value (`found: 0` for that agent); do not re-dispatch to fish for findings.
-- Triage, verification, fixes and commits stay in the main loop below; the Workflow only produces the findings list.
+- Triage, verification, fixes and commits stay in the main loop below; the fan-out (`Agent` or `Workflow`) only produces the findings list.
 
 ## Docs currency (round 1, beside the reviewers)
 
@@ -114,7 +116,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    The comparison changes no counts. A re-dispatch it triggers is an ordinary dispatch: its findings enter this round's counts and triage.
 
-   **SEV-MAX:** the same underlying finding rated differently by two agents is triaged at the **higher** severity, always. The Workflow's merge does this when both key it to the same `(file, line)`; apply it by hand when they describe one issue at different lines or with none.
+   **SEV-MAX:** the same underlying finding rated differently by two agents is triaged at the **higher** severity, always. A `Workflow` merge does this when both key it to the same `(file, line)`; apply it by hand when they describe one issue at different lines or with none.
 
 2. **Triage every Critical and Important finding into one of three buckets:**
    - **Applied** — the fix lands this round via Edit/Write. *Closed.*
