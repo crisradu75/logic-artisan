@@ -15,3 +15,8 @@ Leftover review suggestions (PR #486, check_spec_proof fences and requirement na
 - `_FENCE_LINE` accepts any indentation, so a fence indented 4 or more spaces counts as a fence where CommonMark treats it as code; no test pins indented fences, CRLF, or an indented closer.
 - `### Requirement: ##` yields the name `##` where OpenSpec's `normalizeRequirementName` gives an empty name (no practical impact).
 - Scenario names (`_SCN`) do not strip a closing `#` run although OpenSpec does.
+
+Leftover review suggestions (PR #487, Copilot guard coverage tests).
+
+- Add a PowerShell-tool-event test for `block-unsafe-recursive-delete` through the Copilot adapter (`Remove-Item -Recurse -Force` on a link); the guard handles it but only the Bash form is tested there.
+- The bash launcher test picks `bash` from PATH, which on some Windows machines is WSL's `System32\bash.exe`, not Git Bash; resolve the shell explicitly so the test does not depend on which one wins.
