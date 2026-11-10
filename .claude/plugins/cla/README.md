@@ -178,19 +178,19 @@ Scope is Copilot CLI only; the Copilot app and cloud agent are not supported. Co
 locations below are from GitHub's Copilot CLI documentation, read 2026-11-11
 (*Adding custom instructions for GitHub Copilot CLI*, *Finding and installing plugins for GitHub
 Copilot CLI*, *GitHub Copilot CLI plugin reference*, all on docs.github.com). What was live-tested
-is under *Layout* above (install and both helper agents validated with Copilot CLI 1.0.105 and
+is under *Layout* below (install and both helper agents validated with Copilot CLI 1.0.105 and
 release `cla--v2.2.3`); the instructions file below was not.
 
 ```bash
 copilot plugin marketplace add crisradu75/logic-artisan
 copilot plugin install cla@cris-logic-artisan
-copilot plugin update cla            # takes the plugin name, per the docs
+copilot plugin marketplace update    # re-fetch the catalog
+copilot plugin update cla            # takes the plugin name
 copilot plugin list
 ```
 
-- **Update.** The docs show `copilot plugin update PLUGIN-NAME`. Whether it first refreshes the
-  marketplace catalog is not documented: if it reports nothing newer, run
-  `copilot plugin marketplace list` and re-add the marketplace, then update again (unverified).
+- **Update.** Run `copilot plugin marketplace update` (alias `refresh`; it re-fetches the catalog,
+  and every registered marketplace if no name is given), then `copilot plugin update cla`.
 - **Troubleshoot.** `copilot plugin <subcommand> --help` lists the options. `copilot plugin disable
   cla` turns the plugin off without removing it. A marketplace cannot be removed while its plugins
   are installed; add `--force` to uninstall them too, and name the marketplace as `list` shows it.
@@ -203,7 +203,9 @@ copilot plugin list
   `.github/copilot-instructions.md` or `AGENTS.md`, or for all your repos
   `$HOME/.copilot/copilot-instructions.md` (the docs say `COPILOT_HOME` replaces `$HOME/.copilot`).
   The docs define no precedence between these files and say to avoid conflicting instructions, so
-  put the text below in one of them, not several. Claude Code keeps the output style unchanged.
+  put the text below in one of them, not several. Copilot CLI also reads `CLAUDE.md`, `GEMINI.md`,
+  `.github/instructions/**/*.instructions.md` and any directory in `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`,
+  so check those do not conflict with it. Claude Code keeps the output style unchanged.
 
 ```markdown
 # Writing style
