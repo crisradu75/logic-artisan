@@ -18,7 +18,7 @@ _ROUTING = _SKILLS / "_shared" / "references" / "model-routing.md"
 _ECONOMY = _SKILLS / "_shared" / "references" / "orchestration-economy.md"
 _ECONOMY_RULES_FILE = _SKILLS / "_shared" / "references" / "economy-rules-file.md"
 _REVISE = _SKILLS / "spec-to-pr" / "references" / "revise.md"
-_SHIP = _SKILLS / "spec-to-pr" / "references" / "ship.md"
+_SHIP = _SKILLS / "_shared" / "references" / "ship.md"
 _S2P = _SKILLS / "spec-to-pr" / "SKILL.md"
 _LITE_PR = _SKILLS / "lite-pr" / "SKILL.md"
 _HANDOFF = _SKILLS / "spec-to-pr" / "references" / "handoff.md"
@@ -190,7 +190,7 @@ def test_other_skills_cite_the_table_and_carry_no_row() -> None:
     citing = {
         "spec-to-pr/SKILL.md": _S2P,
         "spec-to-pr/references/revise.md": _REVISE,
-        "spec-to-pr/references/ship.md": _SHIP,
+        "_shared/references/ship.md": _SHIP,
         "lite-pr/SKILL.md": _LITE_PR,
         "multi-lite/SKILL.md": _CHAINS["multi-lite"],
         "multi-pr/SKILL.md": _CHAINS["multi-pr"],

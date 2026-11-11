@@ -94,7 +94,7 @@ Before any workflow step, compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/referenc
 | PR body (Ship) | one line — `Closes openspec/changes/<name>/. Checks: <the checks that ran>. Risk: <level> — <reason>; reviewers: <list>.` |
 | PR body update (Handoff, only when issues exist) | one line with the `Risk:` clause kept, or one short Markdown file via `--body-file` that keeps it |
 
-Subjects only; no commit bodies, Test-plan checklists or restated proposals. **One exception:** a commit asserting a measurement carries one `Measured-by: <command> — <claim>` trailer per claim in its last paragraph (`references/ship.md` §2b). No per-phase logs: the only run log is Handoff's record, and resume reads repo state.
+Subjects only; no commit bodies, Test-plan checklists or restated proposals. **One exception:** a commit asserting a measurement carries one `Measured-by: <command> — <claim>` trailer per claim in its last paragraph (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/ship.md` §2b). No per-phase logs: the only run log is Handoff's record, and resume reads repo state.
 
 ## Concurrent runs
 
@@ -183,7 +183,7 @@ The exceptions:
 
 ### Ship — commit, push, open PR (inline)
 
-**Read `references/ship.md` first** — branch preflight, the hygiene scans, the `Measured-by:` trailers, staging and the PR. Gate rules: `git_state.py --expect-branch <branch>` before staging (exit 2/3 → halt and surface); a branch that already exists, or a remote that cannot answer, → `warn`, and Ship, Revise and Archive become `skip`; the PR body is one line with no `\n#`; `gh pr view --json state` not `OPEN` → ⚠ and Revise `skip`.
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/ship.md` first** — branch preflight, the hygiene scans, the `Measured-by:` trailers, staging and the PR. Gate rules: `git_state.py --expect-branch <branch>` before staging (exit 2/3 → halt and surface); a branch that already exists, or a remote that cannot answer, → `warn`, and Ship, Revise and Archive become `skip`; the PR body is one line with no `\n#`; `gh pr view --json state` not `OPEN` → ⚠ and Revise `skip`.
 
 ### Revise — PR-review loop
 
@@ -211,4 +211,4 @@ Cap: `--pr-rounds N` (default `2`): round 2 runs only after round 1 fixed a Crit
 
 ## References
 
-Read first by their phase: `precheck.md`, `ship.md`, `revise.md`, `archive.md`, `handoff.md`. Read when their trigger fires: `branch-and-pr-base.md`, `scope-asks.md`, `review-sweeps.md`, `implement-delegate.md`, `subagent-brief.md`, `test-notes.md`, `concurrent-runs.md`, `required-permissions-narrow.json`. Orientation: `workflow-diagram.md`. Only when revising the skill: `design-tradeoffs.md`. Shared, under `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/`: `model-routing.md`, `runtime-rules.md`, `bash-discipline.md`, `run-log-schema.md`, `skill-authoring.md`, `past-offenses.md`, `required-permissions.json`.
+Read first by their phase: `precheck.md`, `ship.md` (shared, see below), `revise.md`, `archive.md`, `handoff.md`. Read when their trigger fires: `branch-and-pr-base.md`, `scope-asks.md`, `review-sweeps.md`, `implement-delegate.md`, `subagent-brief.md` (shared, see below), `test-notes.md`, `concurrent-runs.md`, `required-permissions-narrow.json`. Orientation: `workflow-diagram.md`. Only when revising the skill: `design-tradeoffs.md`. Shared, under `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/`: `model-routing.md`, `runtime-rules.md`, `bash-discipline.md`, `run-log-schema.md`, `skill-authoring.md`, `past-offenses.md`, `required-permissions.json`, `ship.md`, `subagent-brief.md`.

@@ -38,7 +38,7 @@ so a dispatch with no `model:` runs on an unplanned tier. The tier is the one "R
 below gives: `code-reviewer` `sonnet` at low risk and `opus` at high, `silent-failure-hunter` `opus`,
 `comment-analyzer` `sonnet`. A per-call `model` overrides the agent file's (verified live in both the `Workflow` `agent()` path and the `Agent` tool, on this plugin's former reviewer agents, and not re-run on the toolkit ones). These agents hold Bash and Edit, so the
 dispatching phase writes the change to a diff file outside the working tree and each prompt carries
-the diff-review rule (`spec-to-pr/references/subagent-brief.md` slot 3), which forbids git commands
+the diff-review rule (`_shared/references/subagent-brief.md` slot 3), which forbids git commands
 and file edits. That rule is the only safeguard, an accepted risk.
 
 ## Routing table

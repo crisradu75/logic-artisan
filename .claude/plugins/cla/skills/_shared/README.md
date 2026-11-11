@@ -36,6 +36,8 @@ One skill's own procedure stays in that skill's `references/`, however long it i
 | `skill-authoring.md` | plugin-wide doctrine for writing a skill: progressive disclosure + completion criteria |
 | `chain-merge.md` | the bootstrap and merge procedure `multi-lite` and `multi-pr` share: record the head, pre-merge checks, merge with `--match-head-commit` |
 | `instruction-files.md` | which instruction files a repo has (`CLAUDE.md`, `AGENTS.md`), the rule to read all of them, and which one a new rule is written to |
+| `ship.md` | the Ship procedure (branch preflight, hygiene scans, `Measured-by:` trailers, staging, PR); `spec-to-pr` runs it and `diagnose` cites its §2a |
+| `subagent-brief.md` | the five-slot brief every dispatched agent gets; `spec-to-pr`, `lite-pr` and `model-routing.md` all point at it |
 | `terminology-format.md` | the entry format for `cla.io/terminology.md`: `shape-decision` writes entries, `cla-setup` reconciles them |
 
 ## `scripts/`

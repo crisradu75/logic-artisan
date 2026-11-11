@@ -307,7 +307,7 @@ fixed in a separate change and is not recorded here. Each is a decision, not an 
 **Reviewers keep Bash and Edit.** The `pr-review-toolkit` reviewers are not ours, and they hold
 Bash and Edit. The diff-review rule in each prompt forbids git commands and file edits, and
 `model-routing.md:39-42` calls that rule "the only safeguard, an accepted risk".
-`spec-to-pr/references/subagent-brief.md:358-360` says a worker briefed a third time should move
+`_shared/references/subagent-brief.md:358-360` says a worker briefed a third time should move
 to `.claude/agents/` with a `tools:` allowlist. The same file states the risk at lines 119-125 ("an
 accepted risk; prose is the whole safeguard") and holds the rule itself at line 125. Issue #444
 records that the cost was already accepted in #426. Keeping it is fine because the dispatching phase hands each reviewer a diff file outside the working tree

@@ -66,7 +66,7 @@ def repo_root() -> Path:
 # from "nothing has been done yet". The orchestrator acts on that by redoing
 # completed work, and can open a duplicate branch and PR.
 #
-# Two live triggers, not hypotheticals: `ship.md` explicitly permits shortening
+# Two live triggers, not hypotheticals: `_shared/references/ship.md` explicitly permits shortening
 # a verbose change name, and a convention that varies its middle segment
 # (`claude/fix/x` vs `claude/feature/x`) cannot be expressed by one prefix at
 # all.

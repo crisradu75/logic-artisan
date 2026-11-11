@@ -1,6 +1,6 @@
 # ship — commit, push, open PR
 
-The Ship phase's procedure. **Run inline**: stage, commit, push and open the PR yourself, one base command per Bash call so the allowlist matches. Why: `design-tradeoffs.md` "Ship".
+The Ship phase's procedure. **Run inline**: stage, commit, push and open the PR yourself, one base command per Bash call so the allowlist matches. Why: spec-to-pr's `design-tradeoffs.md` "Ship".
 
 ## 1. Branch preflight
 
