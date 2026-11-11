@@ -58,7 +58,7 @@ PROFILES: dict[str, dict[str, str | None]] = {
     # Baseline in #296: one change, tests written, PR opened, no delegate.
     "spec-to-pr": {
         _SPEC: None,
-        f"{_SPEC_REFS}/precheck.md": _SPEC,  # Precheck: "Read ... first"
+        f"{_SHARED}/precheck.md": _SPEC,  # Precheck: "Read ... first"
         _CHECKLIST: _SPEC,  # Review: "Read ... and execute it inline"
         f"{_SPEC_REFS}/review-sweeps.md": _SPEC,  # Review: sweeps + a FIX FIRST round's fixes
         f"{_SHARED}/test-quality.md": _SPEC,  # Implement: tests "follow" it

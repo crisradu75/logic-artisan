@@ -80,7 +80,7 @@ Before any workflow step, compare `${CLAUDE_PLUGIN_ROOT}/skills/_shared/referenc
 
 ## Working-tree precheck
 
-**Read `references/precheck.md` first.** It runs after permissions, before Propose, so a run does not sweep another scope's uncommitted work into its first commit. `git_state.py` exit 2 (an in-progress op `git status` cannot see) or any out-of-scope dirty path is an `AskUserQuestion` with three paths, never a silent decision; do not proceed until answered. `--no-tree-check` skips it.
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/precheck.md` first.** It runs after permissions, before Propose, so a run does not sweep another scope's uncommitted work into its first commit. `git_state.py` exit 2 (an in-progress op `git status` cannot see) or any out-of-scope dirty path is an `AskUserQuestion` with three paths, never a silent decision; do not proceed until answered. `--no-tree-check` skips it.
 
 ## Commit + PR message style — minimal
 
@@ -211,4 +211,4 @@ Cap: `--pr-rounds N` (default `2`): round 2 runs only after round 1 fixed a Crit
 
 ## References
 
-Read first by their phase: `precheck.md`, `ship.md` (shared, see below), `revise.md`, `archive.md`, `handoff.md`. Read when their trigger fires: `branch-and-pr-base.md`, `scope-asks.md`, `review-sweeps.md`, `implement-delegate.md`, `subagent-brief.md` (shared, see below), `test-notes.md`, `concurrent-runs.md`, `required-permissions-narrow.json`. Orientation: `workflow-diagram.md`. Only when revising the skill: `design-tradeoffs.md`. Shared, under `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/`: `model-routing.md`, `runtime-rules.md`, `bash-discipline.md`, `run-log-schema.md`, `skill-authoring.md`, `past-offenses.md`, `required-permissions.json`, `ship.md`, `subagent-brief.md`.
+Read first by their phase: `precheck.md` (shared, see below), `ship.md` (shared, see below), `revise.md`, `archive.md`, `handoff.md`. Read when their trigger fires: `branch-and-pr-base.md`, `scope-asks.md`, `review-sweeps.md`, `implement-delegate.md`, `subagent-brief.md` (shared, see below), `test-notes.md`, `concurrent-runs.md`, `required-permissions-narrow.json`. Orientation: `workflow-diagram.md`. Only when revising the skill: `design-tradeoffs.md`. Shared, under `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/`: `model-routing.md`, `runtime-rules.md`, `bash-discipline.md`, `run-log-schema.md`, `skill-authoring.md`, `past-offenses.md`, `required-permissions.json`, `ship.md`, `subagent-brief.md`, `precheck.md`.
