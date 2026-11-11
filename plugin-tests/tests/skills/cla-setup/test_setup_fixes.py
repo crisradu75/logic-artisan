@@ -37,7 +37,7 @@ def _section(start: str, end: str) -> str:
     return text[a : text.index(end, a)]
 
 
-# requirement: repo-context / Repo facts and overlay rules on setup
+# requirement: cla-setup / Repo facts and overlay rules on setup
 def test_item_13_asks_the_granularity_question_and_item_10_drafts_the_line():
     item_13 = _section("### 13. Confirm, write, check", "**Then run the staleness checker")
     item_10 = _section("### 10. Draft the changes", "### 11.")
@@ -47,7 +47,17 @@ def test_item_13_asks_the_granularity_question_and_item_10_drafts_the_line():
     assert "- Test proof granularity: requirement" in item_10
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setup asks the test-proof question once
+def test_the_question_is_asked_once_and_only_when_there_is_no_line():
+    text = " ".join(_text().split())
+    item_13 = " ".join(_section("### 13. Confirm, write, check", "**Then run the staleness checker").split())
+    assert "when `openspec/` exists and the facts file has no `## Test proof` line: ask once" in item_13
+    assert "Ask the user once, with the default recommended" in text
+    assert "so never reword or merge it. A reconcile keeps an existing line as written." in text
+    assert "Ask for a yes" in item_13 and "before writing anything" in item_13
+
+
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_bash
 def test_every_part_1_seed_idiom_reports_created_then_exists(tmp_path: Path):
     part_1 = _section("### 1. `cla.io/` directories", "### 5. OpenSpec authoring rules")
@@ -81,7 +91,7 @@ def test_the_pinned_idioms_in_the_contract_echo_their_outcome():
     assert "|| cat >" not in contract and "|| : >" not in contract
 
 
-# requirement: repo-context / Repo facts and overlay rules on setup
+# requirement: cla-setup / Repo facts and overlay rules on setup
 def test_the_spec_map_scaffold_passes_the_checker_as_written(tmp_path: Path):
     scaffold = re.search(r"````markdown\n(.*?)````", _text(), re.DOTALL).group(1)
     # The placeholders carry no link, so only the bullet under "Specs not yet placed" is one.
@@ -158,13 +168,13 @@ def test_the_scenario_wording_is_also_the_requirement_repos_earlier_wording():
     assert _scenario_task() in _const("RETIRED").splitlines()
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_scenario_repo_is_not_offered_the_requirement_rule(tmp_path: Path):
     repo = _repo(tmp_path, "scenario", _config_with(_scenario_task()))
     assert "rules current" in _seed(repo)
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_scenario_repo_holding_the_requirement_rule_is_told_to_swap_it(tmp_path: Path):
     repo = _repo(tmp_path, "scenario", _config_with(_requirement_task()))
     assert _seed(repo).splitlines() == [
@@ -172,7 +182,7 @@ def test_a_scenario_repo_holding_the_requirement_rule_is_told_to_swap_it(tmp_pat
     ]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_requirement_repo_holding_the_scenario_rule_is_told_to_swap_it(tmp_path: Path):
     repo = _repo(tmp_path, "requirement", _config_with(_scenario_task()))
     assert _seed(repo).splitlines() == [
@@ -180,13 +190,13 @@ def test_a_requirement_repo_holding_the_scenario_rule_is_told_to_swap_it(tmp_pat
     ]
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_no_facts_line_means_requirement(tmp_path: Path):
     repo = _repo(tmp_path, None, _config_with(_requirement_task()))
     assert "rules current" in _seed(repo)
 
 
-# requirement: repo-context / OpenSpec authoring rules on setup
+# requirement: cla-setup / OpenSpec authoring rules on setup
 def test_a_scenario_repo_is_seeded_with_the_scenario_rule_only(tmp_path: Path):
     repo = _repo(tmp_path, "scenario", None)
     assert "openspec/config.yaml: created" in _seed(repo)

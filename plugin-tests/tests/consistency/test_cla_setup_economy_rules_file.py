@@ -117,7 +117,7 @@ def _written(root: Path) -> str:
     return (root / _RULES).read_bytes().decode("utf-8")
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_a_repo_without_the_file_gets_it_created_with_no_paths_frontmatter(tmp_path: Path) -> None:
     root, plugin = tmp_path / "repo", _plugin(tmp_path / "plugin")
@@ -129,7 +129,7 @@ def test_a_repo_without_the_file_gets_it_created_with_no_paths_frontmatter(tmp_p
     assert not text.startswith("---")
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_an_edited_copy_is_replaced_and_the_next_run_is_unchanged(tmp_path: Path) -> None:
     root, plugin = tmp_path / "repo", _plugin(tmp_path / "plugin")
@@ -154,7 +154,7 @@ def _hashes(root: Path) -> dict[str, str]:
             for p in sorted(root.rglob("*")) if p.is_file() and ".git" not in p.relative_to(root).parts}
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_a_full_part_1_run_changes_no_existing_file_but_the_gitignore_and_the_rules_file(tmp_path: Path) -> None:
     root, plugin = tmp_path / "repo", _plugin(tmp_path / "plugin")
@@ -189,7 +189,7 @@ def test_a_full_part_1_run_changes_no_existing_file_but_the_gitignore_and_the_ru
     assert (root / ".gitignore").read_text(encoding="utf-8").startswith("node_modules/\n")
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_the_written_file_holds_both_sources_and_no_plugin_only_name(tmp_path: Path) -> None:
     root, plugin = tmp_path / "repo", _plugin(tmp_path / "plugin")
@@ -215,7 +215,7 @@ def test_the_written_file_holds_both_sources_and_no_plugin_only_name(tmp_path: P
     assert "`/cla:cla-setup`" in text, "the file does not name the setup step that rewrites it"
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_crlf_and_lf_sources_render_the_same_bytes_and_compare_unchanged(tmp_path: Path) -> None:
     crlf_plugin = _plugin(tmp_path / "crlf", crlf=True)
@@ -231,7 +231,7 @@ def test_crlf_and_lf_sources_render_the_same_bytes_and_compare_unchanged(tmp_pat
     assert _run(from_lf, crlf_plugin) == ".claude/rules/cla-economy.md: unchanged"
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_the_markers_occur_once_and_a_footnote_after_the_table_still_extracts(tmp_path: Path) -> None:
     routing = _ROUTING.read_text(encoding="utf-8")
@@ -247,7 +247,7 @@ def test_the_markers_occur_once_and_a_footnote_after_the_table_still_extracts(tm
     assert footnote in _written(root)
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_a_missing_source_or_plugin_root_writes_nothing_and_says_so(tmp_path: Path) -> None:
     root = tmp_path / "repo"
@@ -263,7 +263,7 @@ def test_a_missing_source_or_plugin_root_writes_nothing_and_says_so(tmp_path: Pa
     assert not (root / _RULES).exists()
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @pytest.mark.parametrize("chain", ["multi-lite", "multi-pr", "multi-spec"])
 def test_each_chain_names_the_rules_file_reference_and_copies_none_of_its_rules(chain: str) -> None:
     text = (_SKILLS / chain / "SKILL.md").read_text(encoding="utf-8")
@@ -291,7 +291,7 @@ def _part_1_block(marker: str) -> str:
     return matches[0]
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_a_full_part_1_run_on_an_empty_repo_builds_the_tree_and_creates_no_overlay(tmp_path: Path) -> None:
     root, plugin = tmp_path / "repo", _plugin(tmp_path / "plugin")
@@ -313,7 +313,7 @@ def test_a_full_part_1_run_on_an_empty_repo_builds_the_tree_and_creates_no_overl
     assert not (root / "openspec").exists()
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_a_clone_local_or_machine_wide_ignore_of_the_notes_still_gets_the_gitignore_line(tmp_path: Path) -> None:
     """Only a committed `.gitignore` protects other clones, so a hidden-here pattern does not count."""
@@ -337,7 +337,7 @@ def test_a_clone_local_or_machine_wide_ignore_of_the_notes_still_gets_the_gitign
         assert (root / ".gitignore").read_bytes() == b"cla.io/retro/*-run-notes-*.md\n", where
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_an_existing_file_with_crlf_endings_that_equals_the_render_is_unchanged(tmp_path: Path) -> None:
     root, plugin, fresh = _rendered(tmp_path)
@@ -347,7 +347,7 @@ def test_an_existing_file_with_crlf_endings_that_equals_the_render_is_unchanged(
     assert (root / _RULES).read_bytes() == crlf, "an unchanged file must not be rewritten"
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_a_file_differing_only_in_trailing_blank_lines_is_replaced_not_unchanged(tmp_path: Path) -> None:
     root, plugin, fresh = _rendered(tmp_path)
@@ -357,7 +357,7 @@ def test_a_file_differing_only_in_trailing_blank_lines_is_replaced_not_unchanged
     assert (root / _RULES).read_bytes() == fresh
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_a_replaced_file_says_local_edits_were_overwritten(tmp_path: Path) -> None:
     root, plugin, fresh = _rendered(tmp_path)
@@ -407,7 +407,7 @@ _BAD_SOURCES = {
 }
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 @pytest.mark.parametrize("case", sorted(_BAD_SOURCES))
 def test_a_bad_source_writes_nothing_and_leaves_a_good_file_untouched(tmp_path: Path, case: str) -> None:
@@ -428,7 +428,7 @@ def test_a_bad_source_writes_nothing_and_leaves_a_good_file_untouched(tmp_path: 
     assert sorted(p.name for p in (root / ".claude" / "rules").iterdir()) == ["cla-economy.md"], "a temp file was left behind"
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 @_needs_tools
 def test_a_failed_write_says_not_written_and_keeps_the_existing_file(tmp_path: Path) -> None:
     """The text is rendered to a temp file first: a failure there never truncates a good file.

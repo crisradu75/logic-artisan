@@ -64,7 +64,7 @@ def test_quoted_or_unrelated_cd_is_allowed(cmd):
     assert mod.cd_outside_quotes(cmd) is False
 
 
-# requirement: guard-hooks / Unsafe commands are blocked
+# requirement: guard-hooks / A cd inside a shell command is blocked
 @pytest.mark.parametrize(
     "cmd",
     [
@@ -188,7 +188,7 @@ def _run(monkeypatch, capsys, command):
     return code, capsys.readouterr().err
 
 
-# requirement: guard-hooks / Unsafe commands are blocked
+# requirement: guard-hooks / A cd inside a shell command is blocked
 def test_main_blocks_a_directive(monkeypatch, capsys):
     code, err = _run(monkeypatch, capsys, "cd /tmp && ls")
     assert code == 2

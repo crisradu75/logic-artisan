@@ -66,7 +66,7 @@ def _reason(payload: dict) -> str:
 # --------------------------------------------------------------------------- #
 
 
-# requirement: guard-hooks / Destructive git commands ask first
+# requirement: git-guards / A force-push, hard reset or forced branch delete asks first
 @pytest.mark.parametrize(
     "command",
     [
@@ -95,7 +95,7 @@ def test_force_push_shapes_prompt(command, monkeypatch, capsys):
     assert "force-push" in _reason(payload)
 
 
-# requirement: guard-hooks / Destructive git commands ask first
+# requirement: git-guards / A force-push, hard reset or forced branch delete asks first
 @pytest.mark.parametrize(
     "command",
     [
@@ -112,6 +112,7 @@ def test_reset_hard_shapes_prompt(command, monkeypatch, capsys):
     assert "reset --hard" in _reason(payload)
 
 
+# requirement: git-guards / A force-push, hard reset or forced branch delete asks first
 @pytest.mark.parametrize(
     "command",
     [
@@ -391,7 +392,7 @@ def test_a_force_push_mentioned_inside_a_quoted_string_does_not_prompt(monkeypat
 # --------------------------------------------------------------------------- #
 
 
-# requirement: guard-hooks / Destructive git commands ask first
+# requirement: git-guards / One override silences every git prompt
 def test_override_env_var_silences_the_prompt(monkeypatch, capsys):
     monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "1")
     assert _run("git push --force origin feature/x", monkeypatch, capsys) is None
@@ -455,6 +456,7 @@ def test_reason_names_the_override_so_the_prompt_is_actionable(monkeypatch, caps
 # --------------------------------------------------------------------------- #
 
 
+# requirement: git-guards / A pull request merge asks first
 @pytest.mark.parametrize(
     "command",
     [
@@ -645,6 +647,7 @@ def test_the_merge_match_does_not_span_a_shell_separator(command, monkeypatch, c
 # --------------------------------------------------------------------------- #
 
 
+# requirement: git-guards / A pull request merge asks first
 def test_allow_pr_merge_silences_the_merge_prompt(monkeypatch, capsys):
     monkeypatch.setenv("ALLOW_PR_MERGE", "1")
     assert _run("gh pr merge 27 --squash --delete-branch", monkeypatch, capsys) is None
@@ -830,7 +833,7 @@ def test_the_prefix_is_honoured_after_a_shell_separator(monkeypatch, capsys):
     ) is None
 
 
-# requirement: guard-hooks / Destructive git commands ask first
+# requirement: git-guards / A pull request merge asks first
 @pytest.mark.parametrize(
     "command",
     [
@@ -866,7 +869,7 @@ def test_the_prefix_still_authorizes_every_merge_it_heads(command, monkeypatch, 
     assert _run(command, monkeypatch, capsys) is None, command
 
 
-# requirement: guard-hooks / Destructive git commands ask first
+# requirement: git-guards / A push that skips the pre-push guard asks first
 @pytest.mark.parametrize(
     "command",
     [
@@ -966,6 +969,7 @@ def dirty(repo: Path) -> Path:
     return repo
 
 
+# requirement: git-guards / Discarding uncommitted work asks first
 @pytest.mark.parametrize(
     "command",
     [
@@ -987,6 +991,7 @@ def test_a_discard_of_dirty_tracked_work_prompts(command, dirty, monkeypatch, ca
     assert "discard of uncommitted work" in _reason(payload)
 
 
+# requirement: git-guards / Discarding uncommitted work asks first
 @pytest.mark.parametrize(
     "command",
     [
@@ -1052,6 +1057,7 @@ def test_a_quoted_path_containing_a_space_still_reaches_the_probe(
 # --- git clean -------------------------------------------------------------- #
 
 
+# requirement: git-guards / Discarding uncommitted work asks first
 def test_clean_prompts_when_untracked_files_exist(repo, monkeypatch, capsys):
     (repo / "scratch.txt").write_text("untracked\n", encoding="utf-8")
     payload = _run("git clean -fd", monkeypatch, capsys, cwd=str(repo))
@@ -2158,7 +2164,7 @@ _SAVING_STASHES = [
 ]
 
 
-# requirement: guard-hooks / Destructive git commands ask first
+# requirement: git-guards / A stash during an unfinished merge asks first
 @pytest.mark.parametrize("command", _SAVING_STASHES)
 def test_a_saving_stash_during_a_merge_asks(command, repo, monkeypatch, capsys):
     _conflicted_merge(repo)

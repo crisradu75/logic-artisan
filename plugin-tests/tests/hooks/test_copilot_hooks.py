@@ -19,7 +19,7 @@ def _config() -> dict:
     return json.loads(_COPILOT_HOOKS.read_text(encoding="utf-8"))
 
 
-# requirement: guard-hooks / Copilot CLI enforces session guards
+# requirement: copilot-cli / Copilot CLI enforces session guards
 def test_copilot_plugin_wires_matching_pre_and_post_tool_hooks():
     config = _config()
     assert config["version"] == 1
@@ -73,7 +73,7 @@ def test_claude_hook_wiring_remains_separate():
                for hook in group["hooks"])
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_copilot_timeout_covers_the_dispatcher_budget():
     spec = importlib.util.spec_from_file_location(
         "copilot_wiring_dispatch_lib",
@@ -133,7 +133,7 @@ def _pre_event(tool_name: str, tool_input: dict, cwd: Path) -> dict:
     }
 
 
-# requirement: guard-hooks / Copilot CLI enforces session guards
+# requirement: copilot-cli / Copilot CLI enforces session guards
 def test_copilot_pretooluse_leaves_a_clean_call_to_normal_permission_flow(tmp_path):
     adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
     result = _run_hook(
@@ -238,7 +238,7 @@ def _copy_adapter_tree(tmp_path: Path) -> tuple[Path, Path]:
     return root, hooks / "copilot-pretooluse.py"
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_copilot_pretooluse_denies_malformed_input(tmp_path):
     adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
     result = _run_hook(adapter, "{", tmp_path)
@@ -379,7 +379,7 @@ def _denied(result, fragment: str) -> None:
     assert fragment in decision["permissionDecisionReason"], decision
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_copilot_pretooluse_denies_when_the_plugin_root_is_missing(tmp_path):
     adapter = _PLUGIN / "hooks" / "copilot-pretooluse.py"
     result = _run_no_root(adapter, _pre_event("Bash", {"command": "echo safe"}, tmp_path), tmp_path)
@@ -528,7 +528,7 @@ def test_the_adapter_denies_each_dispatcher_failure_ask_end_to_end(tmp_path):
     _denied(_run_hook(adapter, event, tmp_path, root), "could not run")
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def _post(tmp_path: Path, event: dict | str, root: Path | None = None, adapter: Path | None = None):
     if adapter is None:
         adapter, root = _PLUGIN / "hooks" / "copilot-posttooluse.py", _PLUGIN
@@ -680,7 +680,7 @@ def test_powershell_probe_finds_python_and_honours_the_override(tmp_path):
     assert "CLA_PYTHON=cla-no-such-python is not a working Python" in missing.stderr
 
 
-# requirement: guard-hooks / Copilot hook failures have an explicit policy
+# requirement: copilot-cli / Copilot hook failures have an explicit policy
 def test_bash_launcher_refuses_loudly_when_cla_python_is_unusable(tmp_path):
     """Missing interpreter, bash probe: an unusable CLA_PYTHON must stop the
     launcher non-zero with a message, not fall through to another interpreter
@@ -742,7 +742,7 @@ def _warned(result, fragment: str) -> None:
     assert fragment in decision["additionalContext"], decision
 
 
-# requirement: guard-hooks / Copilot CLI enforces session guards
+# requirement: copilot-cli / Copilot CLI enforces session guards
 def test_copilot_pretooluse_blocks_a_recursive_delete_of_a_symlink(tmp_path):
     real = tmp_path / "real"
     real.mkdir()

@@ -29,6 +29,7 @@ def _shipped_prose():
                 yield path
 
 
+# requirement: instruction-files / Every instruction file is read
 def test_shipped_text_naming_claude_md_also_names_agents_md():
     files = list(_shipped_prose())
     assert len(files) > 50, "the scan found too few files to mean anything"
