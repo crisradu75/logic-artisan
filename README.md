@@ -145,6 +145,9 @@ copilot plugin marketplace add crisradu75/logic-artisan
 copilot plugin install cla@cris-logic-artisan
 ```
 
+Update, troubleshooting and a Copilot-side writing-style stand-in are in the "GitHub Copilot CLI"
+subsection of the plugin README (`.claude/plugins/cla/README.md`).
+
 Validated in that run:
 
 - Marketplace registration and browsing succeeded, and installation listed 19 skills.
