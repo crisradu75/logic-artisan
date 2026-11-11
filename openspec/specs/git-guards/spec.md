@@ -71,7 +71,7 @@ The guard hooks SHALL ask the user before a `git stash` that saves work while a 
 
 ### Requirement: One override silences every git prompt
 
-Setting `ALLOW_DESTRUCTIVE_GIT=1` SHALL drop every prompt the guard hooks raise before a destructive git command.
+Setting `ALLOW_DESTRUCTIVE_GIT=1` SHALL drop every prompt the guard hooks raise before a destructive git command, the pull request merge prompt included.
 
 #### Scenario: The broad override
 

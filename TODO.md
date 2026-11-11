@@ -20,7 +20,3 @@ Leftover review suggestions (PR #487, Copilot guard coverage tests).
 
 - Add a PowerShell-tool-event test for `block-unsafe-recursive-delete` through the Copilot adapter (`Remove-Item -Recurse -Force` on a link); the guard handles it but only the Bash form is tested there.
 - The bash launcher test picks `bash` from PATH, which on some Windows machines is WSL's `System32\bash.exe`, not Git Bash; resolve the shell explicitly so the test does not depend on which one wins.
-
-Leftover from issue 442 (spec coverage).
-
-- Eight skills are named in no spec (checkpoint, feedback, new-worktree, project-review, report-upstream, right-model, save-permissions, shape-decision). Owner decision: a spec each, or a line in `openspec/spec-map.md` saying the repo CLAUDE.md governs decision and utility skills (recommended).

@@ -16,7 +16,7 @@ A skill that reads a repo's standing rules SHALL read every instruction file tha
 
 ### Requirement: A rule is written to the file the repo already uses
 
-When a skill adds a rule or lesson to a repo's instruction file, it SHALL write to the only file at the root when one exists, to `AGENTS.md` when `CLAUDE.md` imports or links it, and otherwise to `CLAUDE.md`, saying in its report which file and why.
+When a skill adds a rule or lesson to a repo's instruction file, it SHALL write to the only file at the root when one exists, to `AGENTS.md` when `CLAUDE.md` imports or links it, and, when both exist and are not linked, to `CLAUDE.md`, saying in its report which file and why.
 
 #### Scenario: One file at the root
 

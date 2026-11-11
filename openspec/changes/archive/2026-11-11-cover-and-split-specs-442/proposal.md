@@ -34,4 +34,4 @@ Behaviour the plugin ships has no requirement, and the specs that should hold it
 
 ## Impact
 
-Specs, `openspec/spec-map.md` and test comment lines only. No shipped plugin file changes. Skills still unnamed in a spec (checkpoint, feedback, new-worktree, project-review, report-upstream, right-model, save-permissions, shape-decision) wait on an owner decision and are not touched here.
+Specs, `openspec/spec-map.md` and test comment lines only. No shipped plugin file changes. Owner decision: the skills named in no spec (checkpoint, feedback, new-worktree, project-review, report-upstream, right-model, save-permissions, shape-decision) get no spec; `openspec/spec-map.md` says `CLAUDE.md` governs them.

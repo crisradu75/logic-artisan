@@ -562,6 +562,7 @@ def test_a_reset_and_merge_mix_also_names_the_broad_variable(monkeypatch, capsys
     assert "ALLOW_PR_MERGE" not in reason
 
 
+# requirement: git-guards / One override silences every git prompt
 def test_the_override_silences_the_merge_prompt_too(monkeypatch, capsys):
     """The hatch is shared, so this is expected — pinned because a stale
     exported var silencing the authorization guard is the worst silencing this
@@ -911,6 +912,12 @@ def test_an_ordinary_push_does_not_ask_about_the_pre_push_guard(command, monkeyp
     monkeypatch.delenv("ALLOW_DESTRUCTIVE_GIT", raising=False)
     payload = _run(command, monkeypatch, capsys)
     assert payload is None or "skips the pre-push guard" not in _reason(payload), command
+
+
+# requirement: git-guards / One override silences every git prompt
+def test_the_override_silences_the_push_skip_prompt_too(monkeypatch, capsys):
+    monkeypatch.setenv("ALLOW_DESTRUCTIVE_GIT", "1")
+    assert _run("git push --no-verify origin main", monkeypatch, capsys) is None
 
 
 # --------------------------------------------------------------------------- #

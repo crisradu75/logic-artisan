@@ -56,6 +56,10 @@ is linked from no workflow step here, or a link points at a spec that does not e
 1. Say what a release contains and publish it: [plugin-distribution](specs/plugin-distribution/spec.md)
 2. Offer the plugin, its helper agents and its guards to GitHub Copilot CLI: [copilot-cli](specs/copilot-cli/spec.md)
 
+### Skills without a spec
+
+The skills checkpoint, feedback, new-worktree, project-review, report-upstream, right-model, save-permissions and shape-decision have no spec; the repo's `CLAUDE.md` governs them.
+
 ### Read the run records
 
 1. Summarise recent runs and suggest a retro: [run-ledgers](specs/run-ledgers/spec.md)

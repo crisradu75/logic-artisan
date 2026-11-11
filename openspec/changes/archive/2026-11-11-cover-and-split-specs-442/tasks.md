@@ -15,4 +15,4 @@
 
 ## 3. Docs
 
-- [x] 3.1 docs and spec map: `openspec/spec-map.md` (new specs linked from workflow steps); none affected: no other doc names these specs.
+- [x] 3.1 docs and spec map: `openspec/spec-map.md` (new specs linked from workflow steps; one line saying `CLAUDE.md` governs the skills with no spec); none affected: no other doc names these specs.
