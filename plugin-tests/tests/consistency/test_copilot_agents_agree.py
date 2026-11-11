@@ -51,7 +51,7 @@ def _copilot_agents() -> dict[str, str]:
             for p in sorted(_COPILOT.glob("*"))}
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_every_claude_agent_has_a_copilot_copy_and_no_copy_is_orphaned():
     claude, copilot = set(_claude_agents()), set(_copilot_agents())
     assert claude, "no Claude agents found; the test would pass on nothing"
@@ -68,7 +68,7 @@ def test_every_claude_agent_has_a_copilot_copy_and_no_copy_is_orphaned():
     )
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_each_copilot_copy_has_the_same_instructions_and_description_as_its_claude_agent():
     """Read independently of the generator, so a bug in `render` cannot hide a drift."""
     copilot = _copilot_agents()
@@ -83,7 +83,7 @@ def test_each_copilot_copy_has_the_same_instructions_and_description_as_its_clau
         assert p_fields["description"] == c_fields["description"], f"{name}: description differs"
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_each_copilot_copy_is_exactly_what_the_generator_produces():
     copilot = _copilot_agents()
     for filename, expected in sync.expected_copies().items():
@@ -94,7 +94,7 @@ def test_each_copilot_copy_is_exactly_what_the_generator_produces():
         )
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_a_copilot_copy_grants_only_the_read_only_tools_its_claude_agent_has():
     for name, text in _copilot_agents().items():
         fields, _ = _parts(text)
@@ -213,7 +213,7 @@ def test_the_install_docs_distinguish_copilot_guard_support_and_limits():
     assert "Copilot did not honor the agents' declared model and fell back to `auto`" in readme
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_the_install_guide_names_claude_only_skill_tool_instructions():
     repo = _PLUGIN_ROOT.parents[2]
     readme = " ".join((repo / "README.md").read_text(encoding="utf-8").split())
@@ -222,7 +222,7 @@ def test_the_install_guide_names_claude_only_skill_tool_instructions():
     assert "Agent" in readme
 
 
-# requirement: plugin-distribution / Helper agents in GitHub Copilot CLI
+# requirement: copilot-cli / Helper agents in GitHub Copilot CLI
 def test_the_claude_install_does_not_load_the_copilot_copies():
     """Claude Code discovers agents in `agents/` only; the copies must never sit there, and the
     Claude manifest must not point at the Copilot directory."""

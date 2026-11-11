@@ -173,7 +173,7 @@ def _repo_slug() -> str:
     return url.removeprefix("https://github.com/").removesuffix(".git").strip("/")
 
 
-# requirement: plugin-distribution / Listing for GitHub Copilot CLI
+# requirement: copilot-cli / Listing for GitHub Copilot CLI
 def test_the_copilot_catalog_names_this_plugin_with_a_github_source():
     assert _COPILOT_CATALOG.is_file(), (
         f"{_COPILOT_CATALOG} is missing; Copilot CLI checks .github/plugin/ for a "
@@ -200,7 +200,7 @@ def test_the_copilot_catalog_names_this_plugin_with_a_github_source():
     assert src.get("ref"), "no ref, so the entry would track the default branch"
 
 
-# requirement: plugin-distribution / Listing for GitHub Copilot CLI
+# requirement: copilot-cli / Listing for GitHub Copilot CLI
 def test_the_copilot_root_manifest_uses_only_agent_plugins_1_0_fields():
     data = _copilot_manifest()
     assert data.get("$schema") == _AGENT_PLUGINS_SCHEMA, (
@@ -276,7 +276,7 @@ def _disclosure_gaps(text: str) -> list[str]:
     return gaps
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_every_doc_offering_the_copilot_install_states_its_validation_scope():
     """A current install command must identify the tested Copilot CLI surface and version."""
     docs = {
@@ -301,7 +301,7 @@ def test_every_doc_offering_the_copilot_install_states_its_validation_scope():
         assert not gaps, f"{label} offers the Copilot install without the disclosure beside it: {gaps}"
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_the_validation_check_needs_the_phrases_in_the_same_section_and_near_the_command():
     disclosure = "Copilot CLI only. validated with Copilot CLI 1.0.105."
     command = "copilot plugin install cla@x"
@@ -325,7 +325,7 @@ def test_the_validation_check_needs_the_phrases_in_the_same_section_and_near_the
     assert _disclosure_gaps("no command here, no gap\n") == []
 
 
-# requirement: plugin-distribution / Listing for GitHub Copilot CLI
+# requirement: copilot-cli / Listing for GitHub Copilot CLI
 def test_the_shipped_copilot_manifest_does_not_claim_the_install_is_untested():
     """The manifest sits inside the release tag, which is never moved, so a claim there would
     outlive a change in support status. The docs and the spec carry status instead."""
@@ -334,7 +334,7 @@ def test_the_shipped_copilot_manifest_does_not_claim_the_install_is_untested():
     assert "untested" not in description.lower(), "the tagged manifest must not carry the untested claim"
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_the_copilot_marketplace_describes_the_live_smoke_validation():
     catalog = _copilot_catalog()
     description = catalog["metadata"]["description"]
@@ -344,7 +344,7 @@ def test_the_copilot_marketplace_describes_the_live_smoke_validation():
     assert "untested" not in (description + plugin["description"]).lower()
 
 
-# requirement: plugin-distribution / Documenting Copilot CLI validation status
+# requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_history_links_remaining_copilot_work_to_open_followups():
     history = (_REPO_ROOT / "docs" / "history.md").read_text(encoding="utf-8")
     copilot_section = history.split("The Copilot CLI catalog and manifest", 1)[1]

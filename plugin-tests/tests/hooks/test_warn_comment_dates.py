@@ -32,7 +32,7 @@ def _warning(result: subprocess.CompletedProcess) -> str:
     return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
 
 
-# requirement: guard-hooks / Risky actions warn
+# requirement: guard-warnings / A dated comment warns
 @pytest.mark.parametrize(
     "tool_input",
     [

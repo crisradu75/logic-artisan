@@ -60,14 +60,14 @@ def _run(root: Path) -> list[str]:
 _needs_bash = pytest.mark.skipif(_BASH is None, reason="bash is not installed")
 
 
-# requirement: repo-context / Retired ledgers on setup
+# requirement: cla-setup / Retired ledgers on setup
 def test_the_list_is_the_retired_ledgers_and_no_live_one() -> None:
     live = {name.removesuffix(".jsonl") for name in log_run.SHAPES}
     assert not live & set(_listed()), "cla-setup offers to delete a ledger log_run.py still writes"
     assert _listed() == RETIRED
 
 
-# requirement: repo-context / Retired ledgers on setup
+# requirement: cla-setup / Retired ledgers on setup
 @_needs_bash
 def test_only_the_retired_ledgers_present_are_listed_and_none_is_deleted(tmp_path: Path) -> None:
     retro = tmp_path / "cla.io" / "retro"
@@ -84,7 +84,7 @@ def test_only_the_retired_ledgers_present_are_listed_and_none_is_deleted(tmp_pat
     assert sorted(p.name for p in retro.iterdir()) == sorted(present)
 
 
-# requirement: repo-context / Retired ledgers on setup
+# requirement: cla-setup / Retired ledgers on setup
 @_needs_bash
 def test_nothing_is_listed_when_none_is_present(tmp_path: Path) -> None:
     assert _run(tmp_path) == []  # no cla.io/retro/ at all

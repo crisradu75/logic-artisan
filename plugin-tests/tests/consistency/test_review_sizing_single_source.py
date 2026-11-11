@@ -225,7 +225,7 @@ def test_the_row_scanner_is_not_vacuous() -> None:
     assert _OLD_ROUND_2.search("Round 2 runs whenever round 1 committed fixes")
 
 
-# requirement: repo-context / Setting up a repo's cla.io tree and economy rules file
+# requirement: cla-setup / Setting up a repo's cla.io tree and economy rules file
 def test_the_orchestration_rules_live_once_and_all_three_chains_cite_them() -> None:
     assert _ECONOMY.is_file() and _ECONOMY_RULES_FILE.is_file()
     economy = _read(_ECONOMY)
