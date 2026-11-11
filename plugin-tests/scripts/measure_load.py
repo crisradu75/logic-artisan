@@ -62,7 +62,7 @@ PROFILES: dict[str, dict[str, str | None]] = {
         _CHECKLIST: _SPEC,  # Review: "Read ... and execute it inline"
         f"{_SPEC_REFS}/review-sweeps.md": _SPEC,  # Review: sweeps + a FIX FIRST round's fixes
         f"{_SHARED}/test-quality.md": _SPEC,  # Implement: tests "follow" it
-        f"{_SPEC_REFS}/ship.md": _SPEC,  # Ship: "Read ... first"
+        f"{_SHARED}/ship.md": _SPEC,  # Ship: "Read ... first"
         f"{_SPEC_REFS}/revise.md": _SPEC,  # Revise: "Read ... first"
         f"{_SPEC_REFS}/archive.md": _SPEC,  # Archive: "Read ... first"
         f"{_SPEC_REFS}/handoff.md": _SPEC,  # Handoff: "Read ... first"

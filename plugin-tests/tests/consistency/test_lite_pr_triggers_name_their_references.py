@@ -28,7 +28,7 @@ def test_subagent_brief_is_never_named_by_a_bare_filename() -> None:
     """A bare `subagent-brief.md` opens nothing from lite-pr's directory: the file lives
     under spec-to-pr. The reference lint only catches bare `references/<file>` paths, so
     a bare filename inside the moved gate text went unnoticed."""
-    full = "${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md"
+    full = "${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md"
     for path in [_LITE_PR / "SKILL.md", *sorted((_LITE_PR / "references").glob("*.md"))]:
         text = path.read_text(encoding="utf-8")
         assert text.count("subagent-brief.md") == text.count(full), (

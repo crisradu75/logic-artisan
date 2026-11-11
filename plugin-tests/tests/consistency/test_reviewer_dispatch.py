@@ -21,7 +21,7 @@ _SKILLS = _PLUGIN / "skills"
 _SITES = {
     "lite-pr Review": _SKILLS / "lite-pr" / "SKILL.md",
     "Revise": _SKILLS / "spec-to-pr" / "references" / "revise.md",
-    "the shared brief": _SKILLS / "spec-to-pr" / "references" / "subagent-brief.md",
+    "the shared brief": _SKILLS / "_shared" / "references" / "subagent-brief.md",
 }
 _ROUTING = _SKILLS / "_shared" / "references" / "model-routing.md"
 _REVIEWERS = ("code-reviewer", "silent-failure-hunter", "comment-analyzer")

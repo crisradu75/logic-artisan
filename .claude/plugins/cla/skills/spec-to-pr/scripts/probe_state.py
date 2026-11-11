@@ -238,7 +238,7 @@ def _resolve_branch(change_name: str) -> str:
     duplicate branch and PR.
 
     Two live triggers, both created by this skill's own docs rather than
-    hypothetical: `references/ship.md` explicitly permits shortening a verbose
+    hypothetical: `_shared/references/ship.md` explicitly permits shortening a verbose
     change name, and a convention that varies its MIDDLE segment
     (`claude/fix/x` vs `claude/feature/x`) cannot be expressed by any single
     prefix. Resolving one configured prefix covers a repo with a fixed

@@ -32,7 +32,7 @@ Read the `Risk:` line Ship wrote in the PR body. Dispatch the reviewers and mode
 
 **Dispatch names and models.** The three reviewers are `pr-review-toolkit:code-reviewer`, `pr-review-toolkit:silent-failure-hunter` and `pr-review-toolkit:comment-analyzer`. Pass `model:` on EVERY dispatch, never relying on the toolkit file (it names `opus` for `code-reviewer` and `inherit` for the other two): `code-reviewer` `sonnet` at low risk and `opus` at high, `silent-failure-hunter` `opus`, `comment-analyzer` `sonnet`, as "Review sizing by risk" in `model-routing.md` gives.
 
-**Every reviewer prompt carries the diff-review rule, verbatim** (these agents hold Bash and Edit, and the toolkit's `code-reviewer` otherwise reviews `git diff` itself; the prompt is the only safeguard, and the rule's source is `subagent-brief.md` slot 3):
+**Every reviewer prompt carries the diff-review rule, verbatim** (these agents hold Bash and Edit, and the toolkit's `code-reviewer` otherwise reviews `git diff` itself; the prompt is the only safeguard, and the rule's source is `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md` slot 3):
 
 > Review only the change in the diff file at `<absolute path>`; run no git command (not `git diff`, and never `git checkout`, `git switch`, `git stash`, `git reset`, `git clean`, `git commit` or `git branch`) and edit, write or delete no file. Give `line` as the line number in the changed file after the change (the number after the `+` in the hunk header, counted forward through the hunk), never a line counted inside the diff file.
 
@@ -97,7 +97,7 @@ On a resume, if you cannot tell whether the previous round fixed a Critical, or 
 > Does this fix introduce the defect it fixed, somewhere else? Enumerate every other instance of the resource or shape the fix concerns.
 
 - **You name the resource**, concretely: "every call site of `<function>`", "every branch of `<function>` that returns the args tuple", "every place `<key>` is read from config". You hold the finding and the remedy; an agent holds a diff.
-- **You grant repo search.** A sibling instance is outside the diff file, so for this question alone the prompt says: read and grep the repository freely (with `Read`, `Grep` and `Glob`, still no git command) to answer this question, under the read-only discipline in `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md` slot 3.
+- **You grant repo search.** A sibling instance is outside the diff file, so for this question alone the prompt says: read and grep the repository freely (with `Read`, `Grep` and `Glob`, still no git command) to answer this question, under the read-only discipline in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md` slot 3.
 - **The enumeration is the deliverable:** every other instance, and per instance whether the defect is present there. An empty enumeration is a stated result — "no other instance exists" — never a skipped step.
 - **The return cites its search:** the command or paths scanned, then the list, then a verdict per instance. Nothing found returns `enumerated: no other instance of <the named resource>; searched: <the command>`. **An enumeration with no search behind it is not an empty result — it is a missing one.**
 
@@ -149,7 +149,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
 
    **Fix-delegate default (thin orchestrator, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/runtime-rules.md`).** A fix-set past the sized trigger (> ~15 subtasks-equivalent OR > ~8 files) delegates the EDIT APPLICATION to the generic coding `Agent(model: sonnet)` Implement uses — there is no separate fix-applier agent. **The orchestrator keeps its own post-fix re-verification (INT-CAP / INT-SYC / SIR-TEST below); that is never delegated.** Below the trigger, apply inline.
 
-   **Brief it in the fix-brief form:** `${CLAUDE_PLUGIN_ROOT}/skills/spec-to-pr/references/subagent-brief.md` §2's `Defect (binding)` / `Facts this defect rests on (checkable)` / `Candidate remedy (rejectable)` fields and §5's three-status terminal contract — never the two-status `done`/`blocked` form, which lets a compliant delegate implement a wrong remedy. The brief enumerates every finding; the return carries a **per-finding outcome list** beside the overall status.
+   **Brief it in the fix-brief form:** `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md` §2's `Defect (binding)` / `Facts this defect rests on (checkable)` / `Candidate remedy (rejectable)` fields and §5's three-status terminal contract — never the two-status `done`/`blocked` form, which lets a compliant delegate implement a wrong remedy. The brief enumerates every finding; the return carries a **per-finding outcome list** beside the overall status.
 
    **Route each row of that list, not the overall status:**
    - **`done`** — valid only with §5's defect-gone evidence for that finding. "The remedy was applied" alone is **not done**: re-verify it yourself and keep it open if the defect stands. No per-finding list at all → recount inline.
@@ -182,7 +182,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
    `ask-destructive-git` hook prompts before this checkout, because the mutated file differs from
    the index. Unattended, take the other route. Back up the fixed file, before any mutant, to the
    session scratchpad. Copy it back after each mutant. Never put a backup anywhere else outside the
-   checkout. A delegate briefed per `subagent-brief.md` follows that brief's own mutation route
+   checkout. A delegate briefed per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/subagent-brief.md` follows that brief's own mutation route
    instead. It mutates a scratchpad copy, never the live file. Its result is not verified against
    the live tree. The orchestrator treats it as unverified and runs the mutant itself before
    committing. **A test that DOES fail is not thereby correct:
@@ -205,7 +205,7 @@ Skip the question on the two rounds it does not fit: a round entered on an empty
    git commit -m "fix: review round <N>"
    git push
    ```
-   **Every measurement this round asserts names its command** in a `Measured-by:` trailer, parse-checked before pushing — rules and recipe in `ship.md` §2b and §3; a fix round is where mutation results and counts get written.
+   **Every measurement this round asserts names its command** in a `Measured-by:` trailer, parse-checked before pushing — rules and recipe in `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/ship.md` §2b and §3; a fix round is where mutation results and counts get written.
 
    **`git diff --cached --name-only` must list at least one path. Empty output means NOTHING was staged — stop.** Do not commit or push; name which of `<changed-paths>` produced nothing and mark Revise `warn`. (`--name-only`, not `--quiet`: `--quiet`'s healthy exit code is 1, which the hoisted rule would read as a failure.) `git add` on an unmodified path exits 0, and `git push` then prints "Everything up-to-date" and exits 0, so the push exit code cannot catch this.
 

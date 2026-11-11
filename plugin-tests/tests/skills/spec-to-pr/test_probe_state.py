@@ -715,7 +715,7 @@ def test_the_configured_branch_is_used_when_it_exists(tmp_repo: Path):
 
 
 def test_a_branch_on_another_convention_is_found_and_announced(tmp_repo, capsys):
-    """The reported bug. `references/ship.md` permits shortening a change name,
+    """The reported bug. `_shared/references/ship.md` permits shortening a change name,
     and a convention varying its MIDDLE segment (`claude/fix/x`) cannot be
     expressed by any single prefix — so all three probes missed, `rev-parse
     --verify --quiet` exited 1 with empty stderr, and the orchestrator read
