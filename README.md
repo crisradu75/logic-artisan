@@ -163,9 +163,23 @@ Validated in that run:
 - Marketplace registration and browsing succeeded, and installation listed 19 skills.
 - The `/cla:right-model` skill and helper agents `cla:doc-sweeper` and `cla:fact-gatherer` were
   invoked. This was a smoke check, not an end-to-end test of every skill or agent workflow.
-- The `cla--v2.2.3` agent profiles fell back because their declared models were unavailable. The
-  current source omits profile model IDs so both agents inherit the Copilot CLI session model
-  without a fallback warning.
+- The `cla--v2.2.3` agent profiles fell back to `auto` because their declared models were unavailable;
+  current profiles omit model IDs so both agents inherit the Copilot CLI session model without a
+  fallback warning.
+
+**Follow-up live validation (2026-11-12, Copilot CLI 1.0.109, local working-tree plugin):**
+both helper agents were invoked with `cla:`-qualified names. `doc-sweeper` searched `README.md`;
+`fact-gatherer` read `shape-decision/SKILL.md` and checked a claim. Both used their read/search
+tools, completed without model-fallback warnings, and ran with shell, write and edit tools denied.
+The `/cla:shape-decision` workflow was also invoked: it read its question-format reference and
+presented its first decision question in ordinary conversation, without changing files. Example
+invocation:
+
+```bash
+copilot --no-auto-update --no-color --plugin-dir .claude/plugins/cla \
+  --deny-tool shell --deny-tool write --deny-tool edit \
+  -p '/cla:shape-decision For a purely abstract preference, should a short project title or a descriptive title be preferred? Do not change files; start the workflow.'
+```
 
 **Guard-hook support (`cla--v2.3.0`):** the plugin has separate Copilot Agent Plugins 1.0
 `PreToolUse`/`PostToolUse` wiring for the CLA guards; Claude's hook configuration is unchanged.

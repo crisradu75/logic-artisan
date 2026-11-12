@@ -399,6 +399,8 @@ def test_copilot_bash_launcher_denies_when_python_is_unavailable(tmp_path):
         input="{}",
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=tmp_path,
         env=env,
     )
@@ -419,6 +421,8 @@ def test_copilot_bash_launcher_denies_when_the_interpreter_probe_is_missing(tmp_
         input="{}",
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=tmp_path,
         env={**os.environ, "COPILOT_PLUGIN_ROOT": str(root)},
     )
