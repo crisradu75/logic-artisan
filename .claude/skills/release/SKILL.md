@@ -95,6 +95,12 @@ Step 4 compares only the Claude pair, so the two GitHub Copilot CLI files are he
    `source.ref` → `"cla--v<new>"`
 5. `CLAUDE.md` → `**Current release: `cla--v<new>`.**`
 
+**The changelog goes in the same commit, though it is not one of the five.** In `CHANGELOG.md`,
+turn `## [Unreleased]` into `## [<new>] — <date>` and leave an empty `## [Unreleased]` above it. If
+`[Unreleased]` is empty, write the entry from `git log --oneline <last-tag>..HEAD`: one line per
+change a consumer notices, with its PR number, under Added, Changed or Fixed. No test pins the
+changelog, so this step is the only thing that keeps it current.
+
 Then re-run the suite — the version-agreement test, the two manifest tests and the doc-fact
 test are what confirm the five copies agree — and commit all five together:
 
@@ -114,7 +120,7 @@ git checkout -b release/<new>
 pytest plugin-tests -q -n auto --dist loadfile
 openspec validate --specs --strict
 python3 .claude/skills/release/scripts/check_shipped_tree.py
-git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude/plugins/cla/plugin.json .claude-plugin/marketplace.json .github/plugin/marketplace.json CLAUDE.md
+git add -- .claude/plugins/cla/.claude-plugin/plugin.json .claude/plugins/cla/plugin.json .claude-plugin/marketplace.json .github/plugin/marketplace.json CLAUDE.md CHANGELOG.md
 git commit -m "release: <new>"
 ```
 

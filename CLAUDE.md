@@ -40,7 +40,8 @@ which never ships.
   `.claude/plugins/cla/plugin.json`, the `ref` in `.claude-plugin/marketplace.json` and in the
   Copilot catalog `.github/plugin/marketplace.json`, and the release line below. A test fails when
   they disagree. `claude plugin tag` checks only the Claude pair, so the Copilot files are held by
-  that test alone.
+  that test alone. The same commit also moves `CHANGELOG.md`'s `[Unreleased]` entries under the new
+  version heading; no test pins it, so the release skill's Step 3 is what keeps it current.
 - Cut the tag with **`claude plugin tag .claude/plugins/cla`**. The path is required: without it the
   command looks for `plugin.json` at the repo root, where this repo keeps `marketplace.json`. The
   tag is `cla--v<version>`, and the command refuses unless `plugin.json` and `marketplace.json`

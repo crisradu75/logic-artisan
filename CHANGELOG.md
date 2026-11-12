@@ -8,6 +8,38 @@ the pull request that made them. Releases before 2.0.0 are in the git tags;
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-11-04
+
+### Added
+
+- **Copilot CLI guard hooks:** separate Agent Plugins 1.0 `PreToolUse`/`PostToolUse` wiring
+  (`com.github.copilot/hooks/hooks.json`, `copilot-pretooluse.py`, `copilot-posttooluse.py`, and a
+  PowerShell Python probe) runs the CLA guards under Copilot CLI. Claude's hook configuration is
+  unchanged (#474).
+
+### Changed
+
+- The docs record the live validation of the Copilot CLI install and helper agents, and name what
+  was not live-tested (#473, #476).
+
+## [2.2.3] — 2026-11-02
+
+### Changed
+
+- Merge prompts name the target; lite-pr's review tier is renamed; the review brief states its
+  constraints (#452).
+- The final test run is sized to the change, and the `[y/n]` line names the item (#448, #449, #450).
+- Shipped prose is written in neutral terms, not one repo's domain and layout (#432, #460), with
+  five prose cleanups in lite-pr, spec-to-pr and review-change references (#433, #461).
+
+### Fixed
+
+- `ask-destructive-git`'s stash check has its own handler and a reason that covers several
+  directories (#453).
+- `check_spec_proof.py` pairs a code span over a lazy continuation line (#455), reports a
+  three-part marker that two readings both prove (#456), and exits 2 on a closed stdout under
+  Python 3.14 (#451).
+
 ## [2.2.2] — 2026-10-30
 
 ### Fixed
