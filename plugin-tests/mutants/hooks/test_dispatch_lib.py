@@ -75,23 +75,57 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the odd-delimiter cases (`END-OF-FILE`) which must stay visible.
-        "any quoted word, hyphens included, counts as a plain delimiter",
+        # Killed by the `git commit -m $(cat <<'EOF'` and bare `$(cat` ask-cases:
+        # a substitution NOT wrapped in double quotes has its output run.
+        "the message shape no longer requires a double quote before $(",
         LIB,
-        "<<(?!<)[ \\t]*(?:'([A-Za-z0-9_]+)'",
-        "<<(?!<)[ \\t]*(?:'([^'\\n]+)'",
+        r'''_MESSAGE_OPEN = re.compile(r"\"\$\(\s*cat\s*$")''',
+        r'''_MESSAGE_OPEN = re.compile(r"\$\(\s*cat\s*$")''',
         TARGETS,
     ),
     (
-        # Killed by the `ssh`/`source`/`fish`/`pwsh`/`bash` ask-cases.
-        "the interpreter-word check on the operator line is off",
+        # Killed by the `echo "$(cat <<'EOF'` visible case.
+        "echo counts as a message verb",
         LIB,
-        "    if _line_runs_an_interpreter(line):",
+        r'''r"^\s*(?:git(?:\s+-[cC]\s+\S+)*\s+(?:commit|tag|notes)"''',
+        r'''r"^\s*(?:echo|git(?:\s+-[cC]\s+\S+)*\s+(?:commit|tag|notes)"''',
+        TARGETS,
+    ),
+    (
+        # Killed by the `git log "$(cat <<'EOF'` visible case: a git command that
+        # is not a message consumer.
+        "a command with no message verb in it still qualifies",
+        LIB,
+        "    return consumer_seen",
+        "    return True",
+        TARGETS,
+    ),
+    (
+        # Killed by the `| tee` visible case (no interpreter word, only a pipe).
+        "a pipe anywhere in the command no longer keeps the body visible",
+        LIB,
+        'if "|" in outside or _runs_an_interpreter(outside):',
+        "if _runs_an_interpreter(outside):",
+        TARGETS,
+    ),
+    (
+        # Killed by the `git -c core.editor=bash commit` visible case.
+        "an interpreter word elsewhere in the command no longer keeps the body visible",
+        LIB,
+        'if "|" in outside or _runs_an_interpreter(outside):',
+        'if "|" in outside:',
+        TARGETS,
+    ),
+    (
+        # Killed by the `$SHELL`/`$0` ask-cases.
+        "$SHELL and $0 no longer count as interpreters",
+        LIB,
+        "    if _SHELL_VAR.search(text):",
         "    if False:",
         TARGETS,
     ),
     (
-        # Killed by the `/bin/bash <<'EOF'` ask-case.
+        # Killed by the `git -c core.editor=/bin/bash commit` visible case.
         "an interpreter given by path is no longer recognised",
         LIB,
         'base = word.replace("\\\\", "/").rsplit("/", 1)[-1].lower()',
@@ -99,7 +133,7 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the `bash.exe <<'EOF'` ask-case.
+        # Killed by the `core.editor=bash.exe` visible case.
         "an interpreter with an .exe suffix is no longer recognised",
         LIB,
         "            if base.endswith(ext):",
@@ -107,25 +141,48 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the `cat <<'EOF' && git status` case: anything after the
-        # operator but a redirect must keep the body visible.
-        "text after the operator (a chain) no longer keeps the body visible",
+        # Killed by the continued-line (`git commit \` newline `-m "$(cat`) case.
+        "a backslash-continued earlier line no longer keeps the body visible",
         LIB,
-        "    if tail is None:",
-        "    if False:",
+        'if any(line.rstrip("\\r").endswith("\\\\") for line in cmd[: starts[k]].split("\\n")):',
+        "if False:",
         TARGETS,
     ),
     (
-        # Killed by the x.sh / no-suffix ask-cases.
-        "any redirect target counts as a document",
+        # Killed by the `; ./run.sh` visible case.
+        "any segment after a separator is allowed",
         LIB,
-        "    return target.strip(\"'\\\"\").lower().endswith(_DOC_SUFFIXES)",
-        "    return True",
+        "        elif _SAFE_SEGMENT_VERB.match(seg):",
+        "        elif True:",
         TARGETS,
     ),
     (
-        # Killed by the same-body-first-then-exec ask-case: an operator written
-        # inside an earlier body is data, one after it is not.
+        # Killed by the `)` with a leading space visible case.
+        "the substitution no longer has to close straight after the body",
+        LIB,
+        "    if term_end < 0 or not cmd.startswith(')\"', term_end + 1):",
+        "    if term_end < 0:",
+        TARGETS,
+    ),
+    (
+        # Killed by the `<<'END-X'` visible case.
+        "any quoted word, hyphens included, counts as a plain delimiter",
+        LIB,
+        "<<(?!<)[ \\t]*(?:'([A-Za-z0-9_]+)'",
+        "<<(?!<)[ \\t]*(?:'([^'\\n]+)'",
+        TARGETS,
+    ),
+    (
+        # Killed by `bash <<<'EOF'` + a backtick line: with the lookbehind gone
+        # the second `<<` is read as an operator and blanks the backtick line.
+        "the lookbehind that keeps `<<<` from being a heredoc operator is gone",
+        LIB,
+        '    r"(?<!<)<<(?!<)[ \\t]*',
+        '    r"<<(?!<)[ \\t]*',
+        TARGETS,
+    ),
+    (
+        # Killed by the nested-operator test (the backtick line after A).
         "an operator inside an earlier body is no longer skipped",
         LIB,
         "        if k <= skip_to:",
@@ -152,8 +209,8 @@ MUTANTS = [
         # Killed by test_strip_quoted_spans_keeps_line_structure_and_crlf_of_a_blanked_body.
         "a CRLF terminator line is no longer found",
         LIB,
-        '.rstrip("\\r")',
-        "",
+        'cmd[starts[k] : ends[k]].rstrip("\\r")',
+        "cmd[starts[k] : ends[k]]",
         TARGETS,
     ),
     (
@@ -167,7 +224,7 @@ MUTANTS = [
     (
         # Killed by the "$body" silent case: Markdown spans in a visible quoted
         # body stay blanked, as before.
-        "backtick spans in a not-known-data quoted body are no longer blanked",
+        "backtick spans in a not-message quoted body are no longer blanked",
         LIB,
         "            ticks.append(piece)",
         "            pass",

@@ -517,7 +517,7 @@ def _blank_keeping_substitutions(text: str) -> str:
 
 
 _HEREDOC_OP = re.compile(
-    r"<<(?!<)[ \t]*(?:'([A-Za-z0-9_]+)'|\"([A-Za-z0-9_]+)\"|\\([A-Za-z0-9_]+))"
+    r"(?<!<)<<(?!<)[ \t]*(?:'([A-Za-z0-9_]+)'|\"([A-Za-z0-9_]+)\"|\\([A-Za-z0-9_]+))"
 )
 # Any heredoc operator at all, used only for the operator-count cap.
 _ANY_HEREDOC = re.compile(r"<<(?!<)")
@@ -525,27 +525,33 @@ _ANY_HEREDOC = re.compile(r"<<(?!<)")
 _HEREDOC_MAX_OPS = 200
 _HEREDOC_MAX_LINE = 4096
 
-# Words that run, or hand text to, an interpreter. Matched on the basename of
-# every word of the operator line, so `/bin/bash` and `bash.exe` count.
+# Words that run, or hand text to, an interpreter, or wrap a command that does.
+# Matched on the basename of every word of the command, so `/bin/bash` and
+# `bash.exe` count.
 _INTERPRETERS = frozenset(
     "bash sh zsh dash ksh csh tcsh fish pwsh powershell cmd node deno bun perl "
-    "ruby php lua ssh source eval xargs exec busybox su .".split()
+    "ruby php lua ssh source eval xargs exec busybox su sudo env nohup command".split()
 )
 _WORD_SPLIT = re.compile(r"[\s|;&()<>\"'`$={},]+")
-_REDIRECT_TAIL = re.compile(r"^\s*(?:\d*>>?\s*(\S+))?\s*$")
-_MESSAGE_ARG = re.compile(r"\$\(\s*cat\s*$")
-_CAT_READER = re.compile(r"^\s*cat(?:\s+-\w+)*\s*(?:>>?\s*(\S+))?\s*$")
-_TEE_READER = re.compile(r"^\s*tee(?:\s+-\w+)*(?:\s+(\S+))?\s*$")
-_GIT_COMMIT_READER = re.compile(r"^\s*git\b[^|;&<>]*\bcommit\b[^|;&<>]*\s(?:-F|--file)\s+-\s*$")
-_GH_BODY_READER = re.compile(r"^\s*gh\b[^|;&<>]*\s(?:--body-file|-F)\s+-\s*$")
-# A file a heredoc is written to is data only when its name says so. An
-# executable-looking suffix, or none, may be run later (`cat > x.sh <<'EOF'`
-# then `bash x.sh`), so that body stays visible.
-_DOC_SUFFIXES = (".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".html")
+_SHELL_VAR = re.compile(r"\$\{?(?:SHELL|0)\b")
+_SEGMENT_SPLIT = re.compile(r"&&|\|\||;|\n")
+# The ONLY heredoc shape that is blanked: a message argument,
+# `<verb> … "$(cat <<'WORD'` … `WORD` newline `)"`, where the verb just stores
+# the text. The opening `"` must sit immediately before `$(`.
+_MESSAGE_OPEN = re.compile(r"\"\$\(\s*cat\s*$")
+_MESSAGE_VERB = re.compile(
+    r"^\s*(?:git(?:\s+-[cC]\s+\S+)*\s+(?:commit|tag|notes)"
+    r"|gh\s+(?:pr\s+(?:create|edit|comment|review|merge)"
+    r"|issue\s+(?:create|edit|comment)|release\s+create))\b"
+)
+# Segments that may share the command with the message consumer.
+_SAFE_SEGMENT_VERB = re.compile(r"^\s*(?:git|gh|cd)\b")
 
 
-def _line_runs_an_interpreter(line: str) -> bool:
-    for word in _WORD_SPLIT.split(line):
+def _runs_an_interpreter(text: str) -> bool:
+    if _SHELL_VAR.search(text):
+        return True
+    for word in _WORD_SPLIT.split(text):
         base = word.replace("\\", "/").rsplit("/", 1)[-1].lower()
         for ext in (".exe", ".cmd", ".bat", ".com", ".ps1"):
             if base.endswith(ext):
@@ -556,49 +562,49 @@ def _line_runs_an_interpreter(line: str) -> bool:
     return False
 
 
-def _heredoc_is_known_data(before: str, after: str, line: str) -> bool:
-    """True only when the operator's line positively shows a data reader."""
-    if _line_runs_an_interpreter(line):
+def _is_message_heredoc(
+    cmd: str, before: str, after: str, k: int, starts: list[int], body: tuple[int, int],
+    delim: str,
+) -> bool:
+    """True only for a `"$(cat <<'WORD' … WORD\\n)"` argument of a message verb
+    in a command that nothing else could be running the text of."""
+    if after.strip() or _MESSAGE_OPEN.search(before) is None:
         return False
-    tail = _REDIRECT_TAIL.match(after)
-    if tail is None:
+    a, b = body
+    term_end = cmd.find("\n", b)
+    if term_end < 0 or not cmd.startswith(')"', term_end + 1):
+        return False  # the substitution is not closed straight after the body
+    outside = cmd[:a] + cmd[b:]
+    if "|" in outside or _runs_an_interpreter(outside):
         return False
-    target = tail.group(1)
-    if _MESSAGE_ARG.search(before):  # `"$(cat <<'EOF'`: a message argument
-        return target is None
-    if _GIT_COMMIT_READER.match(before) or _GH_BODY_READER.match(before):
-        return target is None
-    m = _CAT_READER.match(before)
-    if m is not None:
-        if m.group(1) is not None and target is not None:
+    if any(line.rstrip("\r").endswith("\\") for line in cmd[: starts[k]].split("\n")):
+        return False  # a continued line may join with this one
+    consumer_seen = False
+    for segment in _SEGMENT_SPLIT.split(outside):
+        seg = segment.strip()
+        if not seg or seg == delim or seg.startswith(')"'):
+            continue
+        if _MESSAGE_VERB.match(seg) and not consumer_seen:
+            consumer_seen = True
+        elif _SAFE_SEGMENT_VERB.match(seg):
+            continue
+        else:
             return False
-        target = m.group(1) or target
-    else:
-        m = _TEE_READER.match(before)
-        if m is None:
-            return False
-        if m.group(1) is not None and target is not None:
-            return False
-        target = m.group(1) or target
-    if target is None:
-        return True
-    return target.strip("'\"").lower().endswith(_DOC_SUFFIXES)
+    return consumer_seen
 
 
 def _blank_heredoc_bodies(cmd: str) -> str:
-    """Blank the body of a heredoc that is POSITIVELY known to be data.
+    """Blank the body of a message heredoc; leave every other body as it was.
 
-    Default is VISIBLE (as before): a body is blanked only when every one holds.
-    The delimiter is a plain quoted word (`'EOF'`, `"EOF"`, `\\EOF`, letters,
-    digits, underscore); the operator line is the only operator on it, is short,
-    and shows a data reader (`_heredoc_is_known_data`: a `"$(cat <<'EOF'`
-    message argument, `cat`/`tee` to a document-like file or to stdout,
-    `git commit -F -`, `gh ... --body-file -`), with no interpreter word
-    anywhere on it and nothing after the operator but an optional redirect.
-    Unquoted delimiters, `<<-`, odd delimiter shapes, piped or chained lines and
-    executable-looking targets all stay visible. Newlines and length are kept.
-    One linear pass: line starts and a line->positions index are built once, and
-    past `_HEREDOC_MAX_OPS` operators nothing is blanked."""
+    Default is VISIBLE. A body is blanked only when `_is_message_heredoc` says it
+    is the text of a `"$(cat <<'WORD' … )"` argument to `git commit|tag|notes` or
+    a `gh pr|issue|release` message verb, with a plain quoted delimiter, and no
+    interpreter word, pipe, line continuation or foreign verb anywhere in the
+    command. Everything else stays visible, as before this function existed,
+    except that Markdown backtick spans in a plain-quoted body stay blanked, as
+    they always were. Newlines and length are kept. One linear pass: line starts
+    and a line->positions index are built once; past `_HEREDOC_MAX_OPS`
+    operators nothing is blanked."""
     if "<<" not in cmd:
         return cmd
     ops = list(_HEREDOC_OP.finditer(cmd))
@@ -630,8 +636,9 @@ def _blank_heredoc_bodies(cmd: str) -> str:
             continue
         line = cmd[starts[k] : ends[k]]
         piece = (starts[k + 1], starts[term])
-        if _heredoc_is_known_data(
-            line[: m.start() - starts[k]], line[m.end() - starts[k] :], line
+        if _is_message_heredoc(
+            cmd, line[: m.start() - starts[k]], line[m.end() - starts[k] :], k, starts,
+            piece, delim,
         ):
             pieces.append(piece)
         else:
@@ -640,9 +647,9 @@ def _blank_heredoc_bodies(cmd: str) -> str:
         return cmd
     out = list(cmd)
     for a, b in ticks:
-        # Not known data, so the body stays visible, except Markdown code spans:
-        # main blanked every backtick span, and a quoted delimiter means the
-        # shell does not expand them in the body itself.
+        # Not a message body, so it stays visible, except Markdown code spans:
+        # the shell does not expand them in a quoted body, and they were always
+        # blanked.
         for span in re.finditer(r"`[^`]*`", cmd[a:b]):
             _blank_data(out, a + span.start() + 1, a + span.end() - 1)
     for a, b in pieces:
@@ -681,20 +688,25 @@ def strip_quoted_spans(cmd: str) -> str:
 
     Scope, stated precisely so nobody assumes more than it does:
 
-    - Heredoc bodies stay VISIBLE unless positively known to be data
-      (`_blank_heredoc_bodies`, an allowlist): a plain quoted delimiter
-      (`'EOF'`, `"EOF"`, `\\EOF`), the only operator on a short line, a data
-      reader on that line (`"$(cat <<'EOF'` message argument, `cat`/`tee` to
-      stdout or a .md/.txt/.json/.yaml/.yml/.csv/.html file, `git commit -F -`,
-      `gh … --body-file -`), no interpreter word anywhere on the line (`bash`,
-      `sh`, `ssh`, `source`, `eval`, `xargs`, `python*`, … in any path or `.exe`
-      form), and nothing after the operator but a redirect. Unquoted or odd
-      delimiters, `<<-`, pipes and chains, executable-looking or suffix-less
-      targets (`cat > x.sh <<'EOF'` may be run later), a missing terminator and
-      `<<<` here-strings are all left visible, as on main (except that, for a
-      plain quoted delimiter, Markdown backtick spans in the body stay blanked,
-      as on main). Past 200 operators
-      or a 4096-char operator line nothing is blanked.
+    - Heredoc bodies stay VISIBLE (as on main) except ONE shape,
+      `<verb> … "$(cat <<'WORD'` newline body newline `WORD` newline `)"`
+      (`_blank_heredoc_bodies`): a message argument, with a plain quoted
+      delimiter, the opening `"` immediately before `$(`, and `<verb>` one of
+      `git commit|tag|notes` or `gh pr create|edit|comment|review|merge`,
+      `gh issue create|edit|comment`, `gh release create`. Even then it stays
+      visible when anywhere else in the command there is an interpreter word
+      (`bash sh ssh source eval xargs sudo env python* …`, `$SHELL`, `$0`, any
+      path or `.exe` form), a `|`, a line ending in a backslash before it, or a
+      segment after `;`/`&&`/`||`/newline that is not `git`, `gh` or `cd`. A
+      bare `$(cat <<…)` never qualifies: its output may be run. Bare
+      `cat <<'EOF'`, `tee`, `git commit -F -`, `gh --body-file -`, unquoted or
+      odd delimiters, `<<-`, a missing terminator and `<<<` here-strings are
+      visible. In any plain-quoted body that is not blanked, Markdown backtick
+      spans stay blanked, as on main. Past 200 operators or a 4096-char
+      operator line nothing is blanked.
+    - Accepted: a flag now ends at `)` or a backtick (`ask-destructive-git`'s
+      `_END`), so prose such as `# undo with (git reset --hard)` in a comment, or
+      a PowerShell backtick escape, can ask; comments were always scanned.
     - NOT handled — `bash -c '…'` / `sh -c` / `eval '…'` bodies: single-quoted,
       so blanked, as on main.
     - NOT handled — the paren counter ignores quotes and `case` patterns, and
