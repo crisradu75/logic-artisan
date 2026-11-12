@@ -35,7 +35,7 @@ _SITES = {
     "review-change dispatch": (_SKILLS / "review-change" / "references" / "dispatch.md", (LINE, EXCUSE)),
     "spec-to-pr Implement post-check": (_SKILLS / "spec-to-pr" / "SKILL.md", (LINE, EXCUSE)),
     "spec-to-pr Revise": (_SKILLS / "spec-to-pr" / "references" / "revise.md", (TOKEN, EXCUSE, HEADING, "Docs currency")),
-    "spec-to-pr sweeps": (_SKILLS / "spec-to-pr" / "references" / "review-sweeps.md", (HEADING,)),
+    "spec-to-pr sweeps": (_SKILLS / "_shared" / "references" / "review-sweeps.md", (HEADING,)),
     "lite-pr": (_SKILLS / "lite-pr" / "SKILL.md", (HEADING, EXCUSE, "Docs check")),
     "cla-setup": (_SKILLS / "cla-setup" / "SKILL.md", (f"**{HEADING}**",)),
 }

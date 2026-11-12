@@ -117,14 +117,14 @@ Cap: `--review-rounds N` (default `1`).
 
 **Read `${CLAUDE_PLUGIN_ROOT}/skills/review-change/references/checklist.md` and execute it inline against `<change-name>`.** It is the single source of truth for review behaviour: change selection, the 12 high-yield verification checks (`0a`–`0l`), the size gate (a large change also reads `dispatch.md` beside it, and checks 0a–0h default to a `fact-gatherer` dispatch whose ✗ rows you still adjudicate), and the report and verdict rubric. Never `Skill(cla:review-change)`; never add review logic here.
 
-**Doc-staleness sweeps — read `references/review-sweeps.md` and run them in the same pass** whenever the proposal retires a symbol, concept or mechanism. Re-search every zero-count symbol yourself; every hit is an Important finding.
+**Doc-staleness sweeps — read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/review-sweeps.md` and run them in the same pass** whenever the proposal retires a symbol, concept or mechanism. Re-search every zero-count symbol yourself; every hit is an Important finding.
 
 **Inherited obligations — hand `<inherits>` (set by `--inherits`) to the checklist; do not restate its rules here.** When `<inherits>` is non-empty, split it on `;` and pass the entries into the checklist's **Step 2b**, which owns settling them, the `### Inherited obligations` report section and the verdict carve-out. Two duties stay here: pass the entries in, and **run Step 2b even when the probe skips Review** ("Resume / dry-run").
 
 For each round:
 1. Run the review and parse its verdict (`READY` / `FIX FIRST` / `RETHINK`). On a sub-Opus session, a `RETHINK` verdict, or a `FIX FIRST` verdict with at least one Critical finding, is seconded by one `opus` `Agent` fed the same context brief; a FIX FIRST with only Important or Suggestion findings is not.
 2. `READY` → `ok`, exit the loop.
-3. `FIX FIRST` / `RETHINK` → before the first fix, read `references/review-sweeps.md` "Applying a round's fixes" and capture the `design.md` rejected-alternatives snapshot. Apply every Critical and Important to `openspec/changes/<name>/` and re-check each landed. A remedy that reintroduces a rejected alternative is a Critical on the fix; no snapshot captured → Review `warn`. Then `openspec validate <name> --strict`.
+3. `FIX FIRST` / `RETHINK` → before the first fix, read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/review-sweeps.md` "Applying a round's fixes" and capture the `design.md` rejected-alternatives snapshot. Apply every Critical and Important to `openspec/changes/<name>/` and re-check each landed. A remedy that reintroduces a rejected alternative is a Critical on the fix; no snapshot captured → Review `warn`. Then `openspec validate <name> --strict`.
 4. Decrement the budget. Exhausted → `warn`, residue to Handoff. RETHINK with Critical > 0 after re-validation → `warn` even with budget left; the next round is the user's call.
 
 ### Implement
@@ -211,4 +211,4 @@ Cap: `--pr-rounds N` (default `2`): round 2 runs only after round 1 fixed a Crit
 
 ## References
 
-Read first by their phase: `precheck.md` (shared, see below), `ship.md` (shared, see below), `revise.md`, `archive.md`, `handoff.md`. Read when their trigger fires: `branch-and-pr-base.md`, `scope-asks.md`, `review-sweeps.md`, `implement-delegate.md`, `subagent-brief.md` (shared, see below), `test-notes.md`, `concurrent-runs.md`, `required-permissions-narrow.json`. Orientation: `workflow-diagram.md`. Only when revising the skill: `design-tradeoffs.md`. Shared, under `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/`: `model-routing.md`, `runtime-rules.md`, `bash-discipline.md`, `run-log-schema.md`, `skill-authoring.md`, `past-offenses.md`, `required-permissions.json`, `ship.md`, `subagent-brief.md`, `precheck.md`.
+Read first by their phase: `precheck.md` (shared, see below), `ship.md` (shared, see below), `revise.md`, `archive.md`, `handoff.md`. Read when their trigger fires: `branch-and-pr-base.md`, `scope-asks.md`, `review-sweeps.md` (shared, see below), `implement-delegate.md`, `subagent-brief.md` (shared, see below), `test-notes.md`, `concurrent-runs.md`, `required-permissions-narrow.json`. Orientation: `workflow-diagram.md`. Only when revising the skill: `design-tradeoffs.md`. Shared, under `${CLAUDE_PLUGIN_ROOT}/skills/_shared/references/`: `model-routing.md`, `runtime-rules.md`, `bash-discipline.md`, `run-log-schema.md`, `skill-authoring.md`, `past-offenses.md`, `required-permissions.json`, `ship.md`, `subagent-brief.md`, `precheck.md`, `review-sweeps.md`.
