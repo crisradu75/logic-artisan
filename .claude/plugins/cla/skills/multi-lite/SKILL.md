@@ -12,6 +12,9 @@ disable-model-invocation: true
 
 # /cla:multi-lite — chain multiple lite-pr runs from one decision-shaped doc
 
+> **Copilot CLI support: unsupported.** This workflow requires nested skill invocation and
+> unattended orchestration.
+
 Orchestrates `/cla:lite-pr` across a **sequence** of small candidates extracted from a single decision-shaped markdown doc. Where `/cla:lite-pr` drives one small change from description to an opened PR and then stops, `multi-lite` adds the layer on top: extract every lite-pr-sized candidate the doc describes, figure out what order they must run in, confirm that plan once, run the full `/cla:lite-pr` workflow on each, and keep going through the whole set unattended — serializing only the genuine dependencies and quarantining a failure without abandoning the independents.
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a

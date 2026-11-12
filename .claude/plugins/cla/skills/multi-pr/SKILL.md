@@ -13,6 +13,9 @@ disable-model-invocation: true
 
 # /cla:multi-pr — chain multiple OpenSpec changes to landed PRs
 
+> **Copilot CLI support: unsupported.** This workflow requires nested skill invocation and
+> unattended orchestration.
+
 Orchestrates `/cla:spec-to-pr` across a **sequence** of OpenSpec changes rather than one. Where `/cla:spec-to-pr` drives a single change from idea to an opened, archived PR and then stops, `multi-pr` adds the layer on top: figure out which order the open changes must ship in, run the full `/cla:spec-to-pr` workflow on each one, make sure nothing gets left half-resolved, merge every change a later one needs before starting that later one, and end with a clean repo. This is the skill for "I'm about to be away for a few hours — take every open change to done."
 
 **Resolving `${CLAUDE_PLUGIN_ROOT}`.** This `SKILL.md` arrives with the placeholder substituted, but a

@@ -24,9 +24,9 @@ import sync_copilot_agents as sync
 _PLUGIN_ROOT = sync.PLUGIN_ROOT
 _CLAUDE = sync.CLAUDE_DIR
 _COPILOT = sync.COPILOT_DIR
-# The frontmatter fields the copies may carry: all four are in the custom agents configuration
+# The frontmatter fields the copies may carry: these are in the custom agents configuration
 # reference's property table. `color` is Claude Code's and Copilot's table has no such field.
-_COPILOT_FIELDS = ("name", "description", "tools", "model")
+_COPILOT_FIELDS = ("name", "description", "tools")
 # The tool aliases a read-only helper agent may be granted: `read` and `search` (Grep, Glob).
 _READ_ONLY_TOOLS = {"read", "search"}
 
@@ -117,19 +117,20 @@ def test_a_copilot_copy_grants_only_the_read_only_tools_its_claude_agent_has():
         )
 
 
-def test_each_copilot_model_matches_the_generators_model_map():
-    """The IDs themselves are from the CLI reference's supported-models table and are NOT
-    checked against it here; this pins that a copy carries the map's ID for its alias."""
+# requirement: copilot-cli / Copilot helper-agent profiles inherit the session model
+def test_each_copilot_agent_inherits_the_session_model():
     for name, text in _claude_agents().items():
         alias = _parts(text)[0]["model"]
-        assert alias in sync.MODEL_MAP, f"{name}: model {alias!r} has no Copilot mapping"
-        assert _parts(_copilot_agents()[name])[0]["model"] == sync.MODEL_MAP[alias]
+        assert alias in sync.SOURCE_MODEL_ALIASES, f"{name}: model {alias!r} has no Copilot policy"
+        assert "model" not in _parts(_copilot_agents()[name])[0], (
+            f"{name}: Copilot must inherit the session model instead of pinning an account-specific ID"
+        )
 
 
 def test_the_generator_refuses_what_it_cannot_map_instead_of_dropping_it():
     base = '---\nname: x\ndescription: "d"\nmodel: sonnet\ncolor: blue\ntools: ["Read"]\n---\nBody\n'
     assert sync.render(base) == (
-        '---\nname: x\ndescription: "d"\nmodel: claude-sonnet-5.5\ntools: ["read"]\n---\nBody\n'
+        '---\nname: x\ndescription: "d"\ntools: ["read"]\n---\nBody\n'
     )
     # Copilot ignores a tool name it does not know, which would silently shrink the tool set.
     for broken in (base.replace('["Read"]', '["Frobnicate"]'),
@@ -203,9 +204,11 @@ def test_the_install_docs_distinguish_copilot_guard_support_and_limits():
     text = " ".join((repo / doc).read_text(encoding="utf-8").split())
     assert "PreToolUse" in text and "PostToolUse" in text, f"{doc} must describe Copilot hook coverage"
     assert "fail-open" in text, f"{doc} must disclose timeout behavior"
-    assert "live timeout probe was inconclusive" in text, f"{doc} must not overstate live timeout validation"
+    assert "timeout probe confirmed" in text, f"{doc} must report live timeout validation"
     assert "pre-push" in text, f"{doc} must distinguish the Git push guard"
     assert "first ships in `cla--v2.3.0`" in text, f"{doc} must say which release first carries the hooks"
+    assert "After updating the plugin, refresh any copied CLA guidance" in text
+    assert "does not provide those Claude-specific interfaces or expand that placeholder" in text
     # GitHub's slug for this heading is the anchor the other docs link to; the heading must be unique.
     headings = [ln for ln in (repo / doc).read_text(encoding="utf-8").splitlines()
                 if ln.strip() == "### Copilot CLI hook caveats"]
@@ -216,16 +219,17 @@ def test_the_install_docs_distinguish_copilot_guard_support_and_limits():
             f"{other} must link to the caveats in {doc}"
         )
     # Whitespace-joined, since the prose wraps lines. The install guide names the plugin profiles
-    # and discloses the live model fallback.
+    # and documents model inheritance.
     readme = " ".join((repo / "README.md").read_text(encoding="utf-8").split())
     assert "cla:doc-sweeper" in readme and "cla:fact-gatherer" in readme
-    assert "Copilot did not honor the agents' declared model and fell back to `auto`" in readme
+    assert "inherit the Copilot CLI session model" in readme
+    assert "timeoutSec: 1" in readme and "COPILOT_TIMEOUT_PROBE" in readme
 
 
 # requirement: copilot-cli / Documenting Copilot CLI validation status
 def test_the_install_guide_names_claude_only_skill_tool_instructions():
     repo = _PLUGIN_ROOT.parents[2]
-    readme = " ".join((repo / "README.md").read_text(encoding="utf-8").split())
+    readme = " ".join((repo / ".claude/plugins/cla/README.md").read_text(encoding="utf-8").split())
     assert "AskUserQuestion" in readme
     assert "CLAUDE_PLUGIN_ROOT" in readme
     assert "Agent" in readme

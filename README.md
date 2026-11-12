@@ -146,22 +146,47 @@ copilot plugin install cla@cris-logic-artisan
 ```
 
 Update, troubleshooting and a Copilot-side writing-style stand-in are in the "GitHub Copilot CLI"
-subsection of the plugin README (`.claude/plugins/cla/README.md`).
+subsection of the [plugin README](.claude/plugins/cla/README.md).
 
 Validated in that run:
 
 - Marketplace registration and browsing succeeded, and installation listed 19 skills.
 - The `/cla:right-model` skill and helper agents `cla:doc-sweeper` and `cla:fact-gatherer` were
   invoked. This was a smoke check, not an end-to-end test of every skill or agent workflow.
-- Copilot did not honor the agents' declared model and fell back to `auto`.
+- The `cla--v2.2.3` agent profiles fell back to `auto` because their declared models were unavailable;
+  current profiles omit model IDs so both agents inherit the Copilot CLI session model without a
+  fallback warning.
 
-**Guard hooks on Copilot CLI (since `cla--v2.3.0`):** what was live-tested, and the caveats
-(fail-open timeout, untested paths), are stated once, in the
-[plugin README](.claude/plugins/cla/README.md#copilot-cli-hook-caveats).
+**Follow-up live validation (2026-11-12, Copilot CLI 1.0.109, local working-tree plugin):**
+both helper agents were invoked with `cla:`-qualified names. `doc-sweeper` searched `README.md`;
+`fact-gatherer` read `shape-decision/SKILL.md` and checked a claim. Both used their read/search
+tools, completed without model-fallback warnings, and ran with shell, write and edit tools denied.
+The `/cla:shape-decision` workflow was also invoked: it read its question-format reference and
+presented its first decision question in ordinary conversation, without changing files. Example
+invocation:
 
-Skill text that names Claude Code tools (`AskUserQuestion`, `Agent`, `${CLAUDE_PLUGIN_ROOT}`) is not
-ported, so not every skill workflow is Copilot-compatible. Copilot app and cloud agent support are
-out of scope. Follow-up work is tracked from issue #302.
+```bash
+copilot --no-auto-update --no-color --plugin-dir .claude/plugins/cla \
+  --deny-tool shell --deny-tool write --deny-tool edit \
+  -p '/cla:shape-decision For a purely abstract preference, should a short project title or a descriptive title be preferred? Do not change files; start the workflow.'
+```
+
+**Guard-hook support (`cla--v2.3.0`):** the plugin has separate Copilot Agent Plugins 1.0
+`PreToolUse`/`PostToolUse` wiring for the CLA guards; Claude's hook configuration is unchanged.
+Live checks with Copilot CLI 1.0.105 covered an allowed command, a blocked `cd`, a destructive-git
+confirmation (denied by autopilot, which cannot prompt), and a warning. The
+[plugin README hook-caveats section](.claude/plugins/cla/README.md#copilot-cli-hook-caveats)
+centralizes support limits, including the fail-open timeout and unsupported workflows.
+
+The timeout probe used a temporary plugin with a `PreToolUse` hook set to `timeoutSec: 1` that
+wrote a start marker, slept 8 seconds, then wrote a completion marker. The command
+`copilot --no-auto-update --no-color --plugin-dir <temp>/plugin --allow-all-tools --output-format
+json --silent -C <temp> -p 'Use Bash to run exactly: echo COPILOT_TIMEOUT_PROBE. Then report the
+output.'` exited 0: the start marker existed, the completion marker did not, and the command output
+was present. This confirms that a timed-out hook does not block the tool call. Edit/Write hook
+behavior is adapter-tested but was not live-tested; Windows PowerShell wiring is also untested.
+The hook wiring first ships in `cla--v2.3.0`; the smoke test above predates it. Follow-up work is
+tracked from issue #302.
 
 The Claude Code install above is unchanged by any of this.
 

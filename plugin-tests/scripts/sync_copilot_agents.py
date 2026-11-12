@@ -8,7 +8,7 @@ Claude files. This script writes the second copy, so the instructions are author
 - the Markdown body is copied unchanged;
 - `name` and `description` are copied unchanged;
 - `tools` is mapped to the tool aliases Copilot documents;
-- `model` is mapped to a Copilot model ID;
+- `model` is omitted so the Copilot agent inherits the session model;
 - `color` is dropped (Copilot's frontmatter has no such field).
 
 Sources, read raw from github/docs:
@@ -16,13 +16,14 @@ Sources, read raw from github/docs:
   `description`, `tools`, `model`, the tool alias table; unrecognized tool names are ignored)
 - https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference
   (an Agent Plugins 1.0 plugin keeps Copilot custom agents in `com.github.copilot/agents/`)
-- https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference
-  ("Supported models", and "A declared model ... that can't be honored falls back to the session's
-  value instead of failing the dispatch")
+- https://docs.github.com/en/copilot/reference/custom-agents-configuration
+  (`model` is optional and an omitted value inherits the default model)
 
-Live smoke-tested in Copilot CLI 1.0.105: both profiles loaded and were invoked. The tests that
-call this module check that each committed copy equals what `render` produces, plus the checks
-listed in that test file; they do not replace validation in Copilot CLI.
+Live-tested in Copilot CLI 1.0.105: both profiles loaded and were invoked without model-fallback
+warnings when `model` was omitted. The account did not honor explicit profile model values, so the
+generated profiles inherit the session model. The tests that call this module check that each
+committed copy equals what `render` produces, plus the checks listed in that test file; they do not
+replace validation in Copilot CLI.
 
     python3 plugin-tests/scripts/sync_copilot_agents.py           # report copies out of step or orphaned
     python3 plugin-tests/scripts/sync_copilot_agents.py --write   # regenerate them, delete the orphans
@@ -39,15 +40,9 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[2] / ".claude" / "plugins" / "cla
 CLAUDE_DIR = PLUGIN_ROOT / "agents"
 COPILOT_DIR = PLUGIN_ROOT / "com.github.copilot" / "agents"
 
-# Claude Code agent `model` aliases -> Copilot model IDs from the CLI command reference's
-# "Supported models" table. Copilot falls back to the session model for an ID it cannot honor, so a
-# stale ID costs the model choice and does not break the agent. Update this table when GitHub
-# renames a model.
-MODEL_MAP = {
-    "haiku": "claude-haiku-5.5",
-    "sonnet": "claude-sonnet-5.5",
-    "opus": "claude-opus-5.5",
-}
+# Claude Code model aliases understood by the source agent files. Copilot profile model
+# availability varies by account; generated profiles deliberately inherit the session model.
+SOURCE_MODEL_ALIASES = frozenset({"haiku", "sonnet", "opus"})
 
 # Tool aliases from the "Tool aliases" table of the custom agents configuration reference: every
 # listed name (case-insensitive) -> its primary alias.
@@ -92,8 +87,8 @@ def render(claude_text: str) -> str:
     seen = {line.partition(":")[0] for line in front}
     for required in ("tools", "model"):
         if required not in seen:
-            # A missing `tools` means all tools in both products; a missing `model` loses the choice.
-            raise ValueError(f"the Claude agent has no {required!r} line; a copy would not mirror it")
+            # Missing tools grants all tools; a missing model alias has no Copilot policy to validate.
+            raise ValueError(f"the Claude agent has no {required!r} line; cannot generate a safe copy")
     for line in front:
         key, sep, value = line.partition(":")
         if not sep:
@@ -102,9 +97,8 @@ def render(claude_text: str) -> str:
         if key in _PASS_THROUGH:
             out.append(line)
         elif key == "model":
-            if value not in MODEL_MAP:
-                raise ValueError(f"no Copilot model ID for model {value!r}")
-            out.append(f"model: {MODEL_MAP[value]}")
+            if value not in SOURCE_MODEL_ALIASES:
+                raise ValueError(f"no Copilot session-model policy for model {value!r}")
         elif key == "tools":
             out.append("tools: " + json.dumps(map_tools(json.loads(value))))
         elif key == "color":

@@ -10,6 +10,9 @@ disable-model-invocation: true
 
 # Right-model: cost-aware model + effort picker
 
+> **Copilot CLI support: unsupported.** This workflow depends on Claude Code model selection and
+> agent model-routing controls.
+
 Recommend the cheapest model and effort likely to do a described task well, then optionally start
 it. Bias downward: "it will probably get this wrong on Sonnet" justifies escalating; "it would do a
 bit better on Opus" does not. **Quality floor, not a race to the bottom:** cost breaks ties only

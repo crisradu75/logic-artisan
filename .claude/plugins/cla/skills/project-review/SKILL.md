@@ -6,6 +6,9 @@ allowed-tools: Read, Bash, Grep, Glob, Agent
 
 # Project Review
 
+> **Copilot CLI support: unsupported.** The workflow requires five concurrent Claude Code agent
+> dispatches and explicit model routing.
+
 Run a comprehensive CTO-level review of this repo. Spine: **Step 0 build, lint and test (run FIRST) → Step 1 snapshot → Step 2 five parallel review agents → Step 3 aggregate, report, log.**
 
 **When to run:** After several incremental changes, before a pitch/demo, or when you want a fresh first-principles assessment.

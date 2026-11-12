@@ -394,12 +394,14 @@ Overlays are optional: add `cla.io/overlays/<skill>.md` only when one skill need
 to this repo.
 
 **On GitHub Copilot CLI**, the marketplace install, one skill and both helper agents were
-smoke-tested with Copilot CLI 1.0.105 against `cla--v2.2.3`. The guard-hook wiring since
-`cla--v2.3.0` and its caveats (fail-open timeout, untested paths) are stated once, in the
-[plugin README](.claude/plugins/cla/README.md#copilot-cli-hook-caveats). Some skills name Claude-specific tools and
-the agent model selection fell back to `auto`; this is not full workflow parity. The Copilot app
-and cloud agent are out of scope. The [README](README.md#github-copilot-cli-experimental) has the
-details; follow-up work is linked from issue #302.
+smoke-tested with Copilot CLI 1.0.105 against `cla--v2.2.3`. Those tagged profiles fell back to
+`auto`; current source profiles omit model IDs and inherit the session model. The guard-hook wiring
+since `cla--v2.3.0` and its caveats are stated once, in the
+[plugin README](.claude/plugins/cla/README.md#copilot-cli-hook-caveats). Some skills requiring
+Claude-only delegation, skill chaining, model routing, or permission settings are marked unsupported.
+The Copilot app and cloud agent are out of scope. The
+[README](README.md#github-copilot-cli-experimental) has live-validation details; follow-up work is
+linked from issue #302.
 
 ### Going further
 
@@ -597,7 +599,7 @@ no leading `skills/`) for a script that belongs to one.
 | `spec-to-pr-retro/scripts/spec_to_pr_aggregate.py` | Deterministic counting over every repo's spec-to-pr ledger listed in `cla.io/fleet.local.md` (falling back to this repo's, and saying so), because any one repo's sample is thin enough to mislead; reports how often Revise's round 2 (which runs only after round 1 fixed a Critical, or an Important on a high-risk PR) still finds something, the evidence its default rests on; `--nudge` is the one line Handoff prints when recent runs keep exhausting a cap (Revise: with findings left open) or repeating a warn reason. |
 | `new-worktree/scripts/manual_worktree.py` | Routes around the Windows path-casing refusal, and refuses to remove a worktree holding uncommitted work — where a model slip destroys work. |
 | `.claude/skills/release/scripts/check_shipped_tree.py` *(repo-local)* | Enumerates the tracked plugin tree against a 16-pattern allowlist before a tag is cut. `git-subdir` has no exclusion field, and the obvious denylist was measured to miss 7 of 72 dev-only files — including the two runners and the release skill itself. |
-| `.claude/skills/release/scripts/check_copilot_models.py` *(repo-local)* | Fetches GitHub's supported-models table for Copilot CLI and refuses the release when a `MODEL_MAP` ID is missing from it. A model GitHub renamed makes Copilot use the session model with no error, and nothing else reads the IDs against that list, so a sentence of prose in the skill would be skipped. It needs the network (exit 2 when the page cannot be read); its tests build a page with the table's layout. |
+| `.claude/skills/release/scripts/check_copilot_models.py` *(repo-local)* | Verifies the Copilot agent copies match their Claude sources, have a mapped source-model alias, and omit account-specific model IDs so Copilot inherits the session model. An explicit model can silently fall back for an account that cannot select it, so this check runs locally before a tag; its tests cover invalid aliases, stale copies and explicit model pins. |
 | `annotate/scripts/annotations_store.py` | The annotation corpus: append-only merge rule, tombstones, and a refusal to read past a conflict marker rather than fabricate a corpus from both sides. |
 | `annotate/scripts/render_doc.py` | Markdown → an annotatable page whose every block carries a source line, plus the anchor check that says which annotations the last edit orphaned. |
 | `annotate/scripts/render_html.py` | Instruments an author's own HTML in place — attributes spliced at source offsets, so stripping them returns the original bytes and the document under review stays the document under review. Refuses a file whose markup already uses those attributes, because that collision mis-anchors every annotation in the element and is invisible on the page. |
