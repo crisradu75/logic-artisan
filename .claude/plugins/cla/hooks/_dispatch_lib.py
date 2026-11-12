@@ -44,6 +44,7 @@ Claude never sees it.
 
 from __future__ import annotations
 
+import bisect
 import contextlib
 import importlib.util
 import io
@@ -481,7 +482,7 @@ def clone_paths(cwd: str) -> tuple[str, str] | None:
 GIT_CMD = r"\b(?i:git)(?:\.(?i:exe|cmd|bat|com|ps1))?"
 
 
-def _blank_keeping_substitutions(text: str, keep_newlines: bool) -> str:
+def _blank_keeping_substitutions(text: str) -> str:
     """`text` with every character replaced by `#`, EXCEPT the `$(...)` and
     backtick substitutions the shell executes, which stay verbatim. Same length.
     An escaped `$` or backtick is literal text and is blanked."""
@@ -507,7 +508,7 @@ def _blank_keeping_substitutions(text: str, keep_newlines: bool) -> str:
                 j += 2 if text[j] == "\\" else 1
             end = min(j, len(text) - 1)
         else:
-            out.append(ch if keep_newlines and ch in "\r\n" else "#")
+            out.append("#")
             i += 1
             continue
         out.append(text[i : end + 1])
@@ -516,62 +517,144 @@ def _blank_keeping_substitutions(text: str, keep_newlines: bool) -> str:
 
 
 _HEREDOC_OP = re.compile(
-    r"(?<!<)<<(?!<)(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z_]\w*))"
+    r"<<(?!<)[ \t]*(?:'([A-Za-z0-9_]+)'|\"([A-Za-z0-9_]+)\"|\\([A-Za-z0-9_]+))"
 )
-# A heredoc fed to a shell RUNS its body (`bash <<'EOF' … EOF`), so that body is
-# code, not data. Looked for before the operator, on its own line.
-_SHELL_WORD = re.compile(r"(?<![\w.\-/])(?:ba|z|da|k|c)?sh(?![\w.\-])|(?<![\w.\-])eval(?![\w.\-])")
+# Any heredoc operator at all, used only for the operator-count cap.
+_ANY_HEREDOC = re.compile(r"<<(?!<)")
+# Caps. Past either, every body is left VISIBLE (a guard fails toward asking).
+_HEREDOC_MAX_OPS = 200
+_HEREDOC_MAX_LINE = 4096
+
+# Words that run, or hand text to, an interpreter. Matched on the basename of
+# every word of the operator line, so `/bin/bash` and `bash.exe` count.
+_INTERPRETERS = frozenset(
+    "bash sh zsh dash ksh csh tcsh fish pwsh powershell cmd node deno bun perl "
+    "ruby php lua ssh source eval xargs exec busybox su .".split()
+)
+_WORD_SPLIT = re.compile(r"[\s|;&()<>\"'`$={},]+")
+_REDIRECT_TAIL = re.compile(r"^\s*(?:\d*>>?\s*(\S+))?\s*$")
+_MESSAGE_ARG = re.compile(r"\$\(\s*cat\s*$")
+_CAT_READER = re.compile(r"^\s*cat(?:\s+-\w+)*\s*(?:>>?\s*(\S+))?\s*$")
+_TEE_READER = re.compile(r"^\s*tee(?:\s+-\w+)*(?:\s+(\S+))?\s*$")
+_GIT_COMMIT_READER = re.compile(r"^\s*git\b[^|;&<>]*\bcommit\b[^|;&<>]*\s(?:-F|--file)\s+-\s*$")
+_GH_BODY_READER = re.compile(r"^\s*gh\b[^|;&<>]*\s(?:--body-file|-F)\s+-\s*$")
+# A file a heredoc is written to is data only when its name says so. An
+# executable-looking suffix, or none, may be run later (`cat > x.sh <<'EOF'`
+# then `bash x.sh`), so that body stays visible.
+_DOC_SUFFIXES = (".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".html")
+
+
+def _line_runs_an_interpreter(line: str) -> bool:
+    for word in _WORD_SPLIT.split(line):
+        base = word.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        for ext in (".exe", ".cmd", ".bat", ".com", ".ps1"):
+            if base.endswith(ext):
+                base = base[: -len(ext)]
+                break
+        if base in _INTERPRETERS or base.startswith("python"):
+            return True
+    return False
+
+
+def _heredoc_is_known_data(before: str, after: str, line: str) -> bool:
+    """True only when the operator's line positively shows a data reader."""
+    if _line_runs_an_interpreter(line):
+        return False
+    tail = _REDIRECT_TAIL.match(after)
+    if tail is None:
+        return False
+    target = tail.group(1)
+    if _MESSAGE_ARG.search(before):  # `"$(cat <<'EOF'`: a message argument
+        return target is None
+    if _GIT_COMMIT_READER.match(before) or _GH_BODY_READER.match(before):
+        return target is None
+    m = _CAT_READER.match(before)
+    if m is not None:
+        if m.group(1) is not None and target is not None:
+            return False
+        target = m.group(1) or target
+    else:
+        m = _TEE_READER.match(before)
+        if m is None:
+            return False
+        if m.group(1) is not None and target is not None:
+            return False
+        target = m.group(1) or target
+    if target is None:
+        return True
+    return target.strip("'\"").lower().endswith(_DOC_SUFFIXES)
 
 
 def _blank_heredoc_bodies(cmd: str) -> str:
-    """Blank heredoc bodies, keeping newlines and length.
+    """Blank the body of a heredoc that is POSITIVELY known to be data.
 
-    A QUOTED delimiter (`<<'EOF'`, `<<"EOF"`, `<<\\EOF`) makes the body data the
-    shell never expands: blanked whole. An UNQUOTED one is expanded, so only its
-    `$(...)` and backtick substitutions stay visible; that includes Markdown
-    code spans in the prose, which the shell really does run. A body with no
-    terminator line is left alone (fails toward being seen), as is a body fed to
-    a shell on the same line (`bash <<'EOF'`), which executes it."""
-    out = cmd
-    last_nl, last_end = -1, 0
-    for m in _HEREDOC_OP.finditer(cmd):
-        if last_nl < m.start() < last_end:
-            continue  # an operator written inside an earlier body is data
-        nl = cmd.find("\n", m.end())
-        if nl < 0:
+    Default is VISIBLE (as before): a body is blanked only when every one holds.
+    The delimiter is a plain quoted word (`'EOF'`, `"EOF"`, `\\EOF`, letters,
+    digits, underscore); the operator line is the only operator on it, is short,
+    and shows a data reader (`_heredoc_is_known_data`: a `"$(cat <<'EOF'`
+    message argument, `cat`/`tee` to a document-like file or to stdout,
+    `git commit -F -`, `gh ... --body-file -`), with no interpreter word
+    anywhere on it and nothing after the operator but an optional redirect.
+    Unquoted delimiters, `<<-`, odd delimiter shapes, piped or chained lines and
+    executable-looking targets all stay visible. Newlines and length are kept.
+    One linear pass: line starts and a line->positions index are built once, and
+    past `_HEREDOC_MAX_OPS` operators nothing is blanked."""
+    if "<<" not in cmd:
+        return cmd
+    ops = list(_HEREDOC_OP.finditer(cmd))
+    if not ops or len(_ANY_HEREDOC.findall(cmd)) > _HEREDOC_MAX_OPS:
+        return cmd
+    newlines = [i for i, c in enumerate(cmd) if c == "\n"]
+    starts = [0] + [i + 1 for i in newlines]
+    ends = newlines + [len(cmd)]
+    by_text: dict[str, list[int]] = {}
+    for k in range(len(starts)):
+        by_text.setdefault(cmd[starts[k] : ends[k]].rstrip("\r"), []).append(k)
+    pieces: list[tuple[int, int]] = []
+    ticks: list[tuple[int, int]] = []
+    skip_to = -1  # last line of an earlier body: an operator there is data
+    for m in ops:
+        k = bisect.bisect_right(newlines, m.start())
+        if k <= skip_to:
             continue
-        quoted = m.group(2) is not None or m.group(3) is not None or m.group(4) == "\\"
-        delim = m.group(2) if m.group(2) is not None else (
-            m.group(3) if m.group(3) is not None else m.group(5)
-        )
-        start = last_end if nl == last_nl else nl + 1
-        pos = start
-        found = False
-        while pos <= len(cmd):
-            eol = cmd.find("\n", pos)
-            line = cmd[pos : eol if eol >= 0 else len(cmd)].rstrip("\r")
-            if (line.lstrip("\t") if m.group(1) else line) == delim:
-                found = True
-                break
-            if eol < 0:
-                break
-            pos = eol + 1
-        if not found:
+        if k >= len(newlines):
+            continue  # no body line follows
+        delim = m.group(1) or m.group(2) or m.group(3)
+        later = by_text.get(delim, [])
+        j = bisect.bisect_right(later, k)
+        if j == len(later):
+            continue  # no terminator line: left visible
+        term = later[j]
+        skip_to = term
+        if ends[k] - starts[k] > _HEREDOC_MAX_LINE:
             continue
-        end_of_terminator = cmd.find("\n", pos)
-        last_nl = nl
-        last_end = len(cmd) if end_of_terminator < 0 else end_of_terminator + 1
-        line_start = cmd.rfind("\n", 0, m.start()) + 1
-        if _SHELL_WORD.search(cmd[line_start : m.start()]):
-            continue
-        body = cmd[start:pos]
-        body = (
-            "".join(c if c in "\r\n" else "#" for c in body)
-            if quoted
-            else _blank_keeping_substitutions(body, True)
-        )
-        out = out[:start] + body + out[pos:]
-    return out
+        line = cmd[starts[k] : ends[k]]
+        piece = (starts[k + 1], starts[term])
+        if _heredoc_is_known_data(
+            line[: m.start() - starts[k]], line[m.end() - starts[k] :], line
+        ):
+            pieces.append(piece)
+        else:
+            ticks.append(piece)
+    if not pieces and not ticks:
+        return cmd
+    out = list(cmd)
+    for a, b in ticks:
+        # Not known data, so the body stays visible, except Markdown code spans:
+        # main blanked every backtick span, and a quoted delimiter means the
+        # shell does not expand them in the body itself.
+        for span in re.finditer(r"`[^`]*`", cmd[a:b]):
+            _blank_data(out, a + span.start() + 1, a + span.end() - 1)
+    for a, b in pieces:
+        _blank_data(out, a, b)
+    return "".join(out)
+
+
+def _blank_data(out: list[str], a: int, b: int) -> None:
+    """Blank `out[a:b]` in place, keeping line breaks so line structure holds."""
+    for i in range(a, b):
+        if out[i] not in "\r\n":
+            out[i] = "#"
 
 
 def strip_quoted_spans(cmd: str) -> str:
@@ -598,11 +681,20 @@ def strip_quoted_spans(cmd: str) -> str:
 
     Scope, stated precisely so nobody assumes more than it does:
 
-    - Heredoc bodies are blanked first (`_blank_heredoc_bodies`): wholly for a
-      quoted delimiter, keeping only executed substitutions for an unquoted one
-      (Markdown code spans in an unquoted body DO run, so they stay visible).
-      Not blanked: a body fed to a shell on the operator's line (`bash <<'EOF'`,
-      `eval`), a body with no terminator line, and `<<<` here-strings.
+    - Heredoc bodies stay VISIBLE unless positively known to be data
+      (`_blank_heredoc_bodies`, an allowlist): a plain quoted delimiter
+      (`'EOF'`, `"EOF"`, `\\EOF`), the only operator on a short line, a data
+      reader on that line (`"$(cat <<'EOF'` message argument, `cat`/`tee` to
+      stdout or a .md/.txt/.json/.yaml/.yml/.csv/.html file, `git commit -F -`,
+      `gh … --body-file -`), no interpreter word anywhere on the line (`bash`,
+      `sh`, `ssh`, `source`, `eval`, `xargs`, `python*`, … in any path or `.exe`
+      form), and nothing after the operator but a redirect. Unquoted or odd
+      delimiters, `<<-`, pipes and chains, executable-looking or suffix-less
+      targets (`cat > x.sh <<'EOF'` may be run later), a missing terminator and
+      `<<<` here-strings are all left visible, as on main (except that, for a
+      plain quoted delimiter, Markdown backtick spans in the body stay blanked,
+      as on main). Past 200 operators
+      or a 4096-char operator line nothing is blanked.
     - NOT handled — `bash -c '…'` / `sh -c` / `eval '…'` bodies: single-quoted,
       so blanked, as on main.
     - NOT handled — the paren counter ignores quotes and `case` patterns, and
@@ -627,7 +719,7 @@ def strip_quoted_spans(cmd: str) -> str:
 
     def _double_quoted(match: re.Match[str]) -> str:
         span = match.group(0)
-        return span[0] + _blank_keeping_substitutions(span[1:-1], False) + span[-1]
+        return span[0] + _blank_keeping_substitutions(span[1:-1]) + span[-1]
 
     stripped = _blank_heredoc_bodies(cmd)
     stripped = re.sub(r"'[^']*'", _placeholder, stripped)

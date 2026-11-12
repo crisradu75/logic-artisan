@@ -702,8 +702,44 @@ def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch
         ("x=`git reset --hard`", "reset --hard"),
         # an UNQUOTED heredoc is expanded, so its substitutions run
         ("cat <<EOF\nnow $(git reset --hard HEAD)\nEOF", "reset --hard"),
-        # a heredoc fed to a shell executes its body
+        # a heredoc fed to a shell executes its body, however the shell is spelled
         ("bash <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("/bin/bash <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("bash.exe <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("cat <<'EOF' | bash\ngit reset --hard HEAD~1\nEOF", "reset --hard"),
+        ("cat <<'EOF' | sh -s\ngit reset --hard HEAD~1\nEOF", "reset --hard"),
+        ("cat <<EOF | bash\ngit reset --hard HEAD~1\nEOF", "reset --hard"),
+        ("tee x.sh <<'EOF' | bash\ngit reset --hard HEAD~1\nEOF", "reset --hard"),
+        ("ssh host <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        # the interpreter is the only thing on an otherwise data-looking line
+        ("/bin/bash -c \"$(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)\"", "reset --hard"),
+        ("bash.exe -c \"$(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)\"", "reset --hard"),
+        ("C:\\\\Git\\\\bin\\\\bash.exe -c \"$(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)\"", "reset --hard"),
+        ("source /dev/stdin <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        (". /dev/stdin <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("fish <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("pwsh -Command - <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("source <(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)", "reset --hard"),
+        ("eval \"$(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)\"", "reset --hard"),
+        # a script written and then run, or written to a name that may be run
+        ("cat > x.sh <<'EOF'\ngit reset --hard HEAD\nEOF\nbash x.sh", "reset --hard"),
+        ("cat > x.sh <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("cat > runme <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        # only a plain quoted word is a delimiter we trust
+        ("cat <<-'EOF' > n.md\n\tgit reset --hard HEAD\n\tEOF", "reset --hard"),
+        ("cat > n.md <<EOF\nplain git reset --hard prose\nEOF", "reset --hard"),
+        ('cat <<E"O"F\nhello\nEOF\ngit reset --hard\nE', "reset --hard"),
+        ("cat <<'END-OF-FILE'\nx\nEND-OF-FILE\ngit reset --hard HEAD\nEND", "reset --hard"),
+        # an operator that is not a real heredoc must not hide the lines after it
+        ('echo "<<EOF"\ngit reset --hard HEAD\nEOF', "reset --hard"),
+        ("# cat <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        # a heredoc body written inside another heredoc body is data; what follows is not
+        ("cat <<'A'\ncat <<'B'\nA\ngit reset --hard\nB", "reset --hard"),
+        # an unquoted body is expanded, so quotes and case do not hide the command
+        ('cat <<EOF\n$(echo ")"; git reset --hard)\nEOF', "reset --hard"),
+        ("cat <<EOF\n$(case x in x) git reset --hard;; esac)\nEOF", "reset --hard"),
+        # CRLF line endings: the body is data but what follows is not
+        ("cat <<'EOF'\r\nx\r\nEOF\r\ngit reset --hard HEAD\r\n", "reset --hard"),
     ],
 )
 def test_bash_dispatch_asks_on_a_destructive_command_inside_a_substitution(
@@ -735,11 +771,15 @@ def test_bash_dispatch_asks_on_a_destructive_command_inside_a_substitution(
         "cat > notes.md <<'EOF'\nRun `git push --force origin x` to fix.\nEOF",
         "cat > notes.md <<'EOF'\n```bash\ngit reset --hard HEAD\n```\nEOF",
         "gh pr comment 5 --body-file - <<'EOF'\nuse `git branch -D old` after\nEOF",
-        "cat <<-'EOF' > n.md\n\tgit reset --hard HEAD\n\tEOF",
-        # an unquoted heredoc's prose is data; only its substitutions run
-        "cat > n.md <<EOF\nplain git reset --hard prose\nEOF",
-        # a script written (not run) from a heredoc
-        "cat > x.sh <<'EOF'\ngit reset --hard HEAD\nEOF",
+        "git commit -F - <<'EOF'\nfix: git reset --hard docs\nEOF",
+        # an unknown target is not known data, but its Markdown code spans stay
+        # blanked, as they always were
+        'cat > "$body" <<\'EOF\'\nuse `git reset --hard` to undo\n```\ngit push -f\n```\nEOF',
+        'cat <<"EOF"\nprint git reset --hard\nEOF',
+        "cat <<\\EOF\nprint git reset --hard\nEOF",
+        "cat << 'EOF'\nprint git reset --hard\nEOF",
+        "cat <<'EOF' > notes.md\nthen run gh pr merge 12 --squash\nEOF",
+        "cat <<'EOF'\r\nprint git reset --hard HEAD\r\nEOF\r\n",
     ],
 )
 def test_bash_dispatch_stays_silent_when_the_shell_would_not_run_the_text(tmp_path, command):

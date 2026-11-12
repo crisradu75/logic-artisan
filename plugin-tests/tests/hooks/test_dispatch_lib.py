@@ -237,11 +237,78 @@ def test_strip_quoted_spans_blanks_a_quoted_delimiter_heredoc_body():
     assert len(scanned) == len(command) and scanned.count("\n") == command.count("\n")
 
 
-def test_strip_quoted_spans_keeps_substitutions_in_an_unquoted_heredoc_only():
+def test_strip_quoted_spans_keeps_an_unquoted_heredoc_body_fully_visible():
     command = "cat <<EOF\nprose git reset --hard $(git push -f) `git branch -D x`\nEOF"
+    assert lib.strip_quoted_spans(command) == command
+
+
+def test_strip_quoted_spans_keeps_line_structure_and_crlf_of_a_blanked_body():
+    command = "cat <<'EOF'\r\nsecret one\r\nsecret two\r\nEOF\r\ngit status"
     scanned = lib.strip_quoted_spans(command)
-    assert "prose" not in scanned and "reset --hard" not in scanned
-    assert "$(git push -f)" in scanned and "`git branch -D x`" in scanned
+    assert "secret" not in scanned
+    assert scanned.count("\r\n") == command.count("\r\n") and len(scanned) == len(command)
+    assert scanned.endswith("EOF\r\ngit status")
+
+
+def test_strip_quoted_spans_skips_an_operator_written_inside_a_blanked_body():
+    command = "cat <<'A'\ncat <<'B'\nA\ngit reset --hard\nB"
+    assert "git reset --hard" in lib.strip_quoted_spans(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat > x.sh <<'EOF'\ngit reset --hard\nEOF",       # may be run later
+        "cat > x <<'EOF'\ngit reset --hard\nEOF",          # no suffix
+        "cat <<'EOF' | bash\ngit reset --hard\nEOF",
+        "cat <<'EOF' && git status\ngit reset --hard\nEOF",
+        "cat <<'A' <<'B'\ngit reset --hard\nA\nx\nB",       # two operators on a line
+        "cat <<-'EOF'\n\tgit reset --hard\n\tEOF",
+        "cat <<'END-OF-FILE'\ngit reset --hard\nEND-OF-FILE",
+    ],
+)
+def test_strip_quoted_spans_defaults_to_visible_unless_known_data(command):
+    assert "git reset --hard" in lib.strip_quoted_spans(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat > n.md <<'EOF'\ngit reset --hard\nEOF",
+        "cat <<'EOF' >> notes.txt\ngit reset --hard\nEOF",
+        "tee out.json <<'EOF'\ngit reset --hard\nEOF",
+        "git commit -F - <<'EOF'\ngit reset --hard\nEOF",
+        "gh pr create --body-file - <<'EOF'\ngit reset --hard\nEOF",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+    ],
+)
+def test_strip_quoted_spans_blanks_a_body_with_a_data_reader(command):
+    assert "git reset --hard" not in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_blanks_nothing_past_the_operator_and_line_caps():
+    one = "cat > n.md <<'EOF'\nsecret\nEOF\n"
+    assert "secret" not in lib.strip_quoted_spans(one * 5)
+    assert "secret" in lib.strip_quoted_spans(one * 201)       # too many operators
+    assert "secret" not in lib.strip_quoted_spans(" " * 100 + one)
+    assert "secret" in lib.strip_quoted_spans(" " * 5000 + one)  # operator line too long
+
+
+def test_strip_quoted_spans_stays_fast_and_total_on_hostile_input():
+    import time
+
+    cases = [
+        "cat <<A\n" * 8000,                       # 64 KB of unterminated operators
+        "cat <<A\n" * 25000,                      # 200 KB
+        "printf '" + "x << y; " * 14000 + "'",    # 107 KB of `<<` on one line
+        "cat <<'A'\n" * 3000 + "A\n",
+        "cat <<'EOF'\n" + "line\n" * 40000 + "EOF\n",
+    ]
+    for command in cases:
+        started = time.perf_counter()
+        scanned = lib.strip_quoted_spans(command)
+        assert time.perf_counter() - started < 2.0, len(command)
+        assert len(scanned) == len(command)
 
 
 @pytest.mark.parametrize(

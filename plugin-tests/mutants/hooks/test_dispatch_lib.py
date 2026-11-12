@@ -67,8 +67,7 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the quoted-delimiter heredoc silent cases (commit and PR
-        # body shapes), which the substitution fix would otherwise turn into asks.
+        # Killed by the commit/PR-body silent cases: those bodies would ask.
         "heredoc bodies are no longer blanked before the quote passes",
         LIB,
         "    stripped = _blank_heredoc_bodies(cmd)",
@@ -76,43 +75,102 @@ MUTANTS = [
         TARGETS,
     ),
     (
-        # Killed by the Markdown-code-span-in-a-quoted-heredoc silent cases.
-        "a quoted heredoc delimiter is treated as unquoted, so backtick prose runs",
+        # Killed by the odd-delimiter cases (`END-OF-FILE`) which must stay visible.
+        "any quoted word, hyphens included, counts as a plain delimiter",
         LIB,
-        'quoted = m.group(2) is not None or m.group(3) is not None or m.group(4) == "\\\\"',
-        "quoted = False",
+        "<<(?!<)[ \\t]*(?:'([A-Za-z0-9_]+)'",
+        "<<(?!<)[ \\t]*(?:'([^'\\n]+)'",
         TARGETS,
     ),
     (
-        # Killed by the `bash <<'EOF'` ask-case.
-        "a heredoc fed to a shell is blanked although the shell runs it",
+        # Killed by the `ssh`/`source`/`fish`/`pwsh`/`bash` ask-cases.
+        "the interpreter-word check on the operator line is off",
         LIB,
-        "if _SHELL_WORD.search(cmd[line_start : m.start()]):",
-        "if False:",
+        "    if _line_runs_an_interpreter(line):",
+        "    if False:",
         TARGETS,
     ),
     (
-        # Killed by test_strip_quoted_spans_leaves_executed_heredoc_shapes_visible.
-        "an unterminated heredoc body is blanked to the end of the command",
+        # Killed by the `/bin/bash <<'EOF'` ask-case.
+        "an interpreter given by path is no longer recognised",
         LIB,
-        "        if not found:",
+        'base = word.replace("\\\\", "/").rsplit("/", 1)[-1].lower()',
+        "base = word.lower()",
+        TARGETS,
+    ),
+    (
+        # Killed by the `bash.exe <<'EOF'` ask-case.
+        "an interpreter with an .exe suffix is no longer recognised",
+        LIB,
+        "            if base.endswith(ext):",
+        "            if False:",
+        TARGETS,
+    ),
+    (
+        # Killed by the `cat <<'EOF' && git status` case: anything after the
+        # operator but a redirect must keep the body visible.
+        "text after the operator (a chain) no longer keeps the body visible",
+        LIB,
+        "    if tail is None:",
+        "    if False:",
+        TARGETS,
+    ),
+    (
+        # Killed by the x.sh / no-suffix ask-cases.
+        "any redirect target counts as a document",
+        LIB,
+        "    return target.strip(\"'\\\"\").lower().endswith(_DOC_SUFFIXES)",
+        "    return True",
+        TARGETS,
+    ),
+    (
+        # Killed by the same-body-first-then-exec ask-case: an operator written
+        # inside an earlier body is data, one after it is not.
+        "an operator inside an earlier body is no longer skipped",
+        LIB,
+        "        if k <= skip_to:",
         "        if False:",
         TARGETS,
     ),
     (
-        # Killed by the here-string case in the same test.
-        "a `<<<` here-string is read as a heredoc operator",
+        # Killed by test_strip_quoted_spans_blanks_nothing_past_the_operator_and_line_caps.
+        "the operator-count cap is gone",
         LIB,
-        '    r"(?<!<)<<(?!<)(-?)',
-        '    r"<<(?!<)(-?)',
+        "if not ops or len(_ANY_HEREDOC.findall(cmd)) > _HEREDOC_MAX_OPS:",
+        "if not ops:",
         TARGETS,
     ),
     (
-        # Killed by the unquoted-heredoc tests: its executed substitutions go dark.
-        "an unquoted heredoc body is blanked whole, hiding its substitutions",
+        # Killed by the same test (5000-char operator line).
+        "the operator-line length cap is gone",
         LIB,
-        "else _blank_keeping_substitutions(body, True)",
-        'else "".join(c if c in "\\r\\n" else "#" for c in body)',
+        "ends[k] - starts[k] > _HEREDOC_MAX_LINE",
+        "ends[k] - starts[k] > 10**9",
+        TARGETS,
+    ),
+    (
+        # Killed by test_strip_quoted_spans_keeps_line_structure_and_crlf_of_a_blanked_body.
+        "a CRLF terminator line is no longer found",
+        LIB,
+        '.rstrip("\\r")',
+        "",
+        TARGETS,
+    ),
+    (
+        # Killed by the same test: blanking must keep the line breaks.
+        "blanking a heredoc body also blanks its line breaks",
+        LIB,
+        '        if out[i] not in "\\r\\n":',
+        "        if True:",
+        TARGETS,
+    ),
+    (
+        # Killed by the "$body" silent case: Markdown spans in a visible quoted
+        # body stay blanked, as before.
+        "backtick spans in a not-known-data quoted body are no longer blanked",
+        LIB,
+        "            ticks.append(piece)",
+        "            pass",
         TARGETS,
     ),
     (
