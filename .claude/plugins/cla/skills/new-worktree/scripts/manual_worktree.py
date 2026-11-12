@@ -417,7 +417,7 @@ def default_base(repo: Path) -> str:
 
     The final `HEAD` arm cannot tell "this repo genuinely has no remote" from
     "origin/HEAD is dangling after an upstream rename, and I guessed", so it
-    says which it did — the same posture as `_dispatch_lib.default_base_branch`.
+    says which it did — the same posture as `probe_state._base_branch`.
     Silently branching off whatever happens to be checked out is how a day's
     work ends up rooted in an unrelated half-finished change, and the skill's
     own step 1 insists the base be reported.
