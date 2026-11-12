@@ -204,24 +204,171 @@ def test_strip_quoted_spans_still_hides_a_git_command_mentioned_in_quoted_prose(
 # --------------------------------------------------------------------------- #
 
 
-def test_strip_quoted_spans_collapses_backtick_spans_too():
-    # Backticks are the third quoting form the helper handles; the other two
-    # had coverage and this one did not.
-    command = "echo `git commit -m x` && ls"
-    scanned = lib.strip_quoted_spans(command)
-    assert "git commit" not in scanned
-    assert len(scanned) == len(command)
+def test_strip_quoted_spans_keeps_executed_substitution_bodies_visible():
+    # A backtick span and a `$(...)` inside double quotes are RUN by the shell,
+    # so the guards must see them; the surrounding prose is still blanked.
+    for command in (
+        "echo `git commit -m x` && ls",
+        'echo "say $(git commit -m x) now" && ls',
+        'echo "say `git commit -m x` now" && ls',
+    ):
+        scanned = lib.strip_quoted_spans(command)
+        assert "git commit -m x" in scanned, command
+        assert len(scanned) == len(command)
+    assert "say" not in lib.strip_quoted_spans('echo "say $(git commit -m x) now"')
 
 
-def test_strip_quoted_spans_does_not_cover_heredoc_bodies():
-    # Pins a NAMED non-coverage, so nobody re-adds the (previously wrong)
-    # docstring claim that heredocs are handled. A heredoc body is unquoted
-    # text, so a git command inside one survives the scan and a caller WILL
-    # match it. This is the git hooks' most likely real-world false positive;
-    # it is accepted, and this test exists so it stays a known quantity.
-    command = "cat > x.sh <<'EOF'\ngit " + "push origin main\nEOF"
+def test_strip_quoted_spans_blanks_unexecuted_substitution_text():
+    for command in (
+        "echo '$(git commit -m x)' && ls",
+        "echo '`git commit -m x`' && ls",
+        'echo "\\$(git commit -m x)" && ls',
+        'echo "\\`git commit -m x\\`" && ls',
+    ):
+        scanned = lib.strip_quoted_spans(command)
+        assert "git commit" not in scanned, command
+        assert len(scanned) == len(command)
+
+
+M = "git commit -m \"$(cat <<'EOF'\n{body}\nEOF\n)\""
+
+
+def test_strip_quoted_spans_blanks_a_commit_message_heredoc_body():
+    command = M.format(body="fix: git push origin main `git reset --hard`")
     scanned = lib.strip_quoted_spans(command)
-    assert "push origin main" in scanned
+    assert "push origin main" not in scanned and "reset" not in scanned
+    assert len(scanned) == len(command) and scanned.count("\n") == command.count("\n")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git tag -a v1 -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "gh pr create --title t --body \"$(cat <<\"EOF\"\ngit reset --hard\nEOF\n)\"",
+        "gh issue comment 5 --body \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "gh pr create --title \"fix: x (y)\" --body \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git add . && git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && git status",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && git push origin feat",
+    ],
+)
+def test_strip_quoted_spans_blanks_each_message_verb_shape(command):
+    assert "git reset --hard" not in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_keeps_an_unquoted_heredoc_body_fully_visible():
+    command = "cat <<EOF\nprose git reset --hard $(git push -f) `git branch -D x`\nEOF"
+    assert lib.strip_quoted_spans(command) == command
+
+
+def test_strip_quoted_spans_keeps_line_structure_and_crlf_of_a_blanked_body():
+    command = "git commit -m \"$(cat <<'EOF'\r\nsecret one\r\nsecret two\r\nEOF\r\n)\"\r\n"
+    scanned = lib.strip_quoted_spans(command)
+    assert "secret" not in scanned
+    assert scanned.count("\r\n") == command.count("\r\n") and len(scanned) == len(command)
+    assert scanned.endswith("EOF\r\n)\"\r\n")
+
+
+def test_strip_quoted_spans_skips_an_operator_written_inside_a_blanked_body():
+    # `B`'s operator is inside A's body, so the backtick line after A is not B's
+    # body and must stay visible.
+    nested = "cat <<'A'\ncat <<'B'\nA\n`git reset --hard`\nB"
+    assert "git reset --hard" in lib.strip_quoted_spans(nested)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat > n.md <<'EOF'\ngit reset --hard\nEOF",                # bare heredocs: as on main
+        "git commit -F - <<'EOF'\ngit reset --hard\nEOF",
+        "cat <<'EOF' | bash\ngit reset --hard\nEOF",
+        "x=$(cat <<'EOF'\ngit reset --hard\nEOF\n)\nbash -c \"$x\"",  # bare substitution
+        "git commit -m \"$(cat <<EOF\ngit reset --hard\nEOF\n)\"",      # unquoted delimiter
+        "git commit -m \"$(cat <<'END-X'\ngit reset --hard\nEND-X\n)\"",
+        "git commit -m $(cat <<'EOF'\ngit reset --hard\nEOF\n)",        # no `\"` before `$(`
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && bash x.sh",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"; eval \"$x\"",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" | sh",
+        "git commit \\\n-m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",   # continued line
+        "echo \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",                # not a message verb
+        "$SHELL -c \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "$0 -c \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" -- $SHELL",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" -- ${SHELL}",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" -- $0",
+        "git status \\\ngit commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",  # joined lines
+        "git commit -m $(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",           # no `\"` before `$(`
+        "git log \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",              # no message verb
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" | tee log",  # a pipe
+        "git -c core.editor=bash commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git -c core.editor=/bin/bash commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git -c core.editor=bash.exe commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n )\"",       # not closed at once
+        "git commit -m \"$(cat <<'EOF'\nEOF)\"; git reset --hard; : \"\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOFx)\"; git reset --hard; : \"\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOF\t)\"; git reset --hard; : \"\nEOF\n)\"",
+        "cat > x.sh <<'EOF'\n echo ' ` '; git reset --hard; echo ' ` '\nEOF",   # quotes pair first
+        "git commit -m x # \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",   # a comment
+        "git commit -m 'a \"$(cat <<'EOF'\n'; git reset --hard\nEOF\n)\"",  # single quotes
+        "git commit -m \"a | b\" -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\"",
+        "git commit -m \"$(cat <<'EOF'\nEOF\ngit reset --hard\nEOF\n)\"",   # ends at the FIRST EOF
+        "echo `cat <<'EOF'\n`git reset --hard`\nEOF",                       # backtick before the operator
+        "echo 'x\ncat > f <<'EOF'\n`git reset --hard`\nEOF",                # stray single quote
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" && bash x.sh",
+        "git commit -m \"$(cat <<'EOF'\ngit reset --hard\nEOF\n)\" ; ./run.sh",
+    ],
+)
+def test_strip_quoted_spans_defaults_to_visible_unless_a_message_heredoc(command):
+    assert "git reset --hard" in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_blanks_markdown_spans_after_balanced_earlier_quotes():
+    command = "git commit -q -m 'chore: x' && cat > p.md <<'EOF'\nuse `git reset --hard`\nEOF"
+    assert "git reset --hard" not in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_blanks_nothing_past_the_operator_and_line_caps():
+    def span(pad: int, ops: int) -> str:
+        return "cat" + " " * pad + " > f <<'EOF'\nuse `git reset --hard` " + "<< " * ops + "\nEOF"
+
+    assert "git reset --hard" not in lib.strip_quoted_spans(span(100, 100))
+    assert "git reset --hard" in lib.strip_quoted_spans(span(100, 201))   # too many operators
+    assert "git reset --hard" in lib.strip_quoted_spans(span(5000, 1))    # operator line too long
+
+
+def test_strip_quoted_spans_stays_fast_and_total_on_hostile_input():
+    import time
+
+    cases = [
+        "cat <<A\n" * 8000,                       # 64 KB of unterminated operators
+        "cat <<A\n" * 25000,                      # 200 KB
+        "printf '" + "x << y; " * 14000 + "'",    # 107 KB of `<<` on one line
+        "cat <<'A'\n" * 3000 + "A\n",
+        M.format(body="line\n" * 40000),
+    ]
+    for command in cases:
+        started = time.perf_counter()
+        scanned = lib.strip_quoted_spans(command)
+        assert time.perf_counter() - started < 2.0, len(command)
+        assert len(scanned) == len(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "bash <<'EOF'\ngit reset --hard\nEOF",   # a shell runs its stdin
+        "cat <<'EOF'\ngit reset --hard\n",        # no terminator line: leave it visible
+        "cat <<<x\ngit reset --hard\nx",          # here-string, not a heredoc
+        "bash <<<'EOF'\ngit reset --hard\nEOF",   # a quoted here-string is not one either
+    ],
+)
+def test_strip_quoted_spans_leaves_executed_heredoc_shapes_visible(command):
+    assert "reset --hard" in lib.strip_quoted_spans(command)
+
+
+def test_strip_quoted_spans_heredoc_in_substitution_ignores_apostrophes():
+    command = "x=\"$(cat <<'EOF'\ndon't\nEOF\n)\" && git reset --hard"
+    scanned = lib.strip_quoted_spans(command)
+    assert "git reset --hard" in scanned
 
 
 def test_strip_quoted_spans_matches_shell_semantics_for_a_midword_apostrophe():

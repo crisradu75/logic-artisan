@@ -304,6 +304,21 @@ def test_edit_write_dispatch_does_not_drop_earlier_warning_when_later_hook_block
     assert "2026-01-01" in r.stderr  # the earlier warning survived
 
 
+def test_override_notice_reaches_claude_through_the_edit_write_dispatcher(tmp_path):
+    primary, wt = _primary_and_worktree(tmp_path)
+    payload = {"tool_input": {"file_path": (primary / "src" / "thing.py").as_posix(),
+                              "content": "x = 1\n"}}
+    r = subprocess.run(
+        [sys.executable, str(_EDIT_WRITE_DISPATCH)],
+        input=json.dumps(payload),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(wt),
+        env={**os.environ, "ALLOW_WORKTREE_PATH_ESCAPE": "1", "CLAUDE_PROJECT_DIR": str(primary)},
+    )
+    assert r.returncode == 0
+    context = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "DISABLED by ALLOW_WORKTREE_PATH_ESCAPE=1" in context
+
+
 def test_edit_write_dispatch_isolates_a_broken_sibling_hook(tmp_path):
     hooks_dir = _hooks_copy(tmp_path)
     (hooks_dir / "warn-comment-dates.py").write_text("this is ) not ( valid python !!!", encoding="utf-8")
@@ -655,6 +670,19 @@ def test_the_edit_write_dispatcher_also_escalates_without_crashing(monkeypatch):
     assert "ENFORCING" in nested.get("permissionDecisionReason", "")
 
 
+def test_bash_dispatch_stays_well_inside_the_hook_timeout_on_a_hostile_command(tmp_path):
+    """Per-operator work once made 199 message heredocs plus 36000 plain lines take
+    23 s against a 15 s hook timeout, and a killed hook lets the command through."""
+    import time
+
+    message = "git commit -m \"$(cat <<'EOF'\nfix: x\nEOF\n)\"\n"
+    command = message * 199 + "git status\n" * 36000 + "git reset --hard HEAD~1"
+    started = time.perf_counter()
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": command}, "cwd": str(tmp_path)})
+    assert time.perf_counter() - started < 8.0
+    assert json.loads(r.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
 def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch):
     """Non-vacuity partner for the dispatcher that had no coverage at all."""
     mod = _load_dispatcher("dispatch-edit-write-pretooluse.py")
@@ -664,3 +692,166 @@ def test_the_edit_write_dispatcher_leaves_advisory_errors_as_context(monkeypatch
     )
     assert rc == 0
     assert "permissionDecision" not in nested
+
+
+# --------------------------------------------------------------------------- #
+# Command substitution inside double quotes / backticks EXECUTES, so the guards
+# must see its body; single-quoted text and plain prose must stay hidden.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "command, reason_word",
+    [
+        ('echo "$(git reset --hard HEAD~1)"', "reset --hard"),
+        ("echo `git push --force origin feat`", "force-push"),
+        ('echo "`git push --force origin feat`"', "force-push"),
+        ('echo "x $(echo y; git push --force origin feat) z"', "force-push"),
+        ('git commit -m "$(git reset --hard HEAD~1)"', "reset --hard"),
+        # the flag is the LAST thing before the substitution closes
+        ('echo "$(git reset --hard)"', "reset --hard"),
+        ('echo "$(git push -f)"', "force-push"),
+        ('echo "$(git push --force)"', "force-push"),
+        ("x=`git reset --hard`", "reset --hard"),
+        # an UNQUOTED heredoc is expanded, so its substitutions run
+        ("cat <<EOF\nnow $(git reset --hard HEAD)\nEOF", "reset --hard"),
+        # a heredoc fed to a shell executes its body, however the shell is spelled
+        ("bash <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("/bin/bash <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("bash.exe <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("cat <<'EOF' | bash\ngit reset --hard HEAD~1\nEOF", "reset --hard"),
+        ("cat <<'EOF' | sh -s\ngit reset --hard HEAD~1\nEOF", "reset --hard"),
+        ("cat <<EOF | bash\ngit reset --hard HEAD~1\nEOF", "reset --hard"),
+        ("tee x.sh <<'EOF' | bash\ngit reset --hard HEAD~1\nEOF", "reset --hard"),
+        ("ssh host <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        # the interpreter is the only thing on an otherwise data-looking line
+        ("/bin/bash -c \"$(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)\"", "reset --hard"),
+        ("bash.exe -c \"$(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)\"", "reset --hard"),
+        ("C:\\\\Git\\\\bin\\\\bash.exe -c \"$(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)\"", "reset --hard"),
+        ("source /dev/stdin <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        (". /dev/stdin <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("fish <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("pwsh -Command - <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("source <(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)", "reset --hard"),
+        ("eval \"$(cat <<'EOF'\ngit reset --hard HEAD\nEOF\n)\"", "reset --hard"),
+        # a script written and then run, or written to a name that may be run
+        ("cat > x.sh <<'EOF'\ngit reset --hard HEAD\nEOF\nbash x.sh", "reset --hard"),
+        ("cat > x.sh <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        ("cat > runme <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        # only a plain quoted word is a delimiter we trust
+        ("cat <<-'EOF' > n.md\n\tgit reset --hard HEAD\n\tEOF", "reset --hard"),
+        ("cat > n.md <<EOF\nplain git reset --hard prose\nEOF", "reset --hard"),
+        ('cat <<E"O"F\nhello\nEOF\ngit reset --hard\nE', "reset --hard"),
+        ("cat <<'END-OF-FILE'\nx\nEND-OF-FILE\ngit reset --hard HEAD\nEND", "reset --hard"),
+        # an operator that is not a real heredoc must not hide the lines after it
+        ('echo "<<EOF"\ngit reset --hard HEAD\nEOF', "reset --hard"),
+        ("# cat <<'EOF'\ngit reset --hard HEAD\nEOF", "reset --hard"),
+        # a heredoc body written inside another heredoc body is data; what follows is not
+        ("cat <<'A'\ncat <<'B'\nA\ngit reset --hard\nB", "reset --hard"),
+        # an unquoted body is expanded, so quotes and case do not hide the command
+        ('cat <<EOF\n$(echo ")"; git reset --hard)\nEOF', "reset --hard"),
+        ("cat <<EOF\n$(case x in x) git reset --hard;; esac)\nEOF", "reset --hard"),
+        # CRLF line endings: the body is data but what follows is not
+        ("cat <<'EOF'\r\nx\r\nEOF\r\ngit reset --hard HEAD\r\n", "reset --hard"),
+        # the "operator" is not one the shell sees: comment, single quotes, another body
+        ("git commit -m x # \"x \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
+        ("git status; # \"x \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
+        ("git commit -m 'a \"$(cat <<'EOF'\n'; git reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
+        ("git commit -F - <<X\ngit commit -m \"$(cat <<'EOF'\nX\n: \\\"\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
+        ("git commit -F - <<<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
+        ("git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\" ; git reset --hard HEAD~1", "reset --hard"),
+        # inside $( ), bash also ends a heredoc at a line that only STARTS with the word
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\nEOF)\"; git reset --hard HEAD~1; : \"\nEOF\n)\"", "reset --hard"),
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\nEOF )\"; git reset --hard HEAD~1; : \"\nEOF\n)\"", "reset --hard"),
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\nEOF\t)\"; git reset --hard HEAD~1; : \"\nEOF\n)\"", "reset --hard"),
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\nEOFx)\"; git reset --hard HEAD~1; : \"\nEOF\n)\"", "reset --hard"),
+        # a backtick inside a quote must not pair across real commands
+        ("cat > x.sh <<'EOF'\n echo ' ` '; git reset --hard HEAD~1; echo ' ` '\nEOF\nchmod +x x.sh && ./x.sh", "reset --hard"),
+        ("cat > Makefile <<'EOF'\nall:\n\t@echo ' ` '; git reset --hard HEAD~1; echo ' ` '\nEOF\nmake", "reset --hard"),
+        # backtick spans are not blanked when the heredoc is not plainly data
+        ("# `cat <<'EOF'\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        ("bash <<'EOF' # `\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        ("sh <<'EOF'\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        ("$SHELL <<'EOF'\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        ("$0 <<'EOF'\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        ("/bin/bash <<'EOF'\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        ("bash.exe <<'EOF'\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        ("ls # cat <<'EOF'\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        # an earlier unquoted heredoc may make the quoted "operator" a body line
+        ("cat <<X\ncat > f <<'EOF'\nX\n`git reset --hard HEAD~1`\nEOF", "reset --hard"),
+        # `.` runs a script: an alias or a sourced stdin reads the message back
+        ("git commit --allow-empty -m \"$(cat <<'EOF'\n: \\\"\ngit reset --hard HEAD~1\nEOF\n)\" && git -c alias.r='!. /dev/stdin <<< \"$(git log -1 --format=%B)\"' r", "reset --hard"),
+        # a `<<<` here-string is never a heredoc operator
+        ("bash <<<'EOF'\n`git reset --hard HEAD`\nEOF", "reset --hard"),
+        # the substitution's OUTPUT is run: the command that runs it may sit elsewhere
+        ("$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)", "reset --hard"),
+        ("x=$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\n$x", "reset --hard"),
+        ("x=$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\nbash -c \"$x\"", "reset --hard"),
+        ("eval \\\n$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)", "reset --hard"),
+        ("eval $(\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)", "reset --hard"),
+        ("bash <(\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)", "reset --hard"),
+        ("source <(\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)", "reset --hard"),
+        ("$SHELL <<< $(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)", "reset --hard"),
+        ("$0 <<< $(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)", "reset --hard"),
+        ("{\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n} | bash", "reset --hard"),
+        ("(\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n) | bash", "reset --hard"),
+        ("f() {\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n}\nf | bash", "reset --hard"),
+        ("for i in 1; do\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\ndone | sh", "reset --hard"),
+        ("if true; then\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\nfi | bash", "reset --hard"),
+        ("while true; do\ncat <<'EOF'\ngit reset --hard HEAD~1\nEOF\ndone | bash", "reset --hard"),
+        ("cat <<'EOF' > out.md\ngit reset --hard HEAD~1\nEOF\nbash out.md", "reset --hard"),
+        ("cat > out.txt <<'EOF'\ngit reset --hard HEAD~1\nEOF\nsource out.txt", "reset --hard"),
+        # a consumer on a LATER line (or after `;`/`&&`) keeps even a message body visible
+        ("git commit -m \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\" && bash x.sh", "reset --hard"),
+        ("git commit -m \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\"; eval \"$x\"", "reset --hard"),
+        ("git commit -m \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\"\nbash x.sh", "reset --hard"),
+        ("git commit -m \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\" | bash", "reset --hard"),
+        ("echo \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
+        ("git commit -m $(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)", "reset --hard"),
+        ("git commit \\\n-m \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
+        ("git commit -m \"$(cat <<'EOF'\ngit reset --hard HEAD~1\nEOF\n)\" && ./run.sh", "reset --hard"),
+        # the message text itself is not blanked unless it is a plain quoted delimiter
+        ("git commit -m \"$(cat <<EOF\ngit reset --hard HEAD~1\nEOF\n)\"", "reset --hard"),
+        ("git commit -m \"$(cat <<'END-X'\ngit reset --hard HEAD~1\nEND-X\n)\"", "reset --hard"),
+    ],
+)
+def test_bash_dispatch_asks_on_a_destructive_command_inside_a_substitution(
+    tmp_path, command, reason_word
+):
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": command}, "cwd": str(tmp_path)})
+    assert r.returncode == 0
+    nested = json.loads(r.stdout)["hookSpecificOutput"]
+    assert nested["permissionDecision"] == "ask"
+    assert reason_word in nested["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "reset --hard docs"',
+        "echo 'literal $(git reset --hard HEAD~1) text'",
+        "echo '`git push --force origin feat`'",
+        'echo "escaped \\$(git reset --hard HEAD~1) text"',
+        'echo "git push --force origin feat"',
+        # text AFTER a closed substitution is still prose
+        'echo "$(date) then git reset --hard HEAD~1"',
+        'echo "`date` then git push --force origin feat"',
+        # heredoc bodies with a QUOTED delimiter are data, in every wrapper
+        'git commit -m "$(cat <<\'EOF\'\nfix: now asks on git reset --hard in a substitution\nEOF\n)"',
+        'git commit -m "$(cat <<\'EOF\'\nfix: do not git push -f; it\'s a git branch -D thing\nEOF\n)"',
+        'gh pr create --title t --body "$(cat <<\'EOF\'\nuse `gh pr merge 12` or Bash(gh pr merge:*)\nEOF\n)"',
+        'git commit -m "$(cat <<"EOF"\nreset --hard (see git reset --hard HEAD)\nEOF\n)"',
+        "cat > notes.md <<'EOF'\nRun `git push --force origin x` to fix.\nEOF",
+        "cat > notes.md <<'EOF'\n```bash\ngit reset --hard HEAD\n```\nEOF",
+        "gh pr comment 5 --body-file - <<'EOF'\nuse `git branch -D old` after\nEOF",
+        'git tag -a v1 -m "$(cat <<\'EOF\'\nrelease: git reset --hard docs\nEOF\n)"',
+        'git add . && git commit -m "$(cat <<\'EOF\'\nfix: git reset --hard docs\nEOF\n)" && git status',
+        'gh issue comment 5 --body "$(cat <<\'EOF\'\nwe run gh pr merge 12 next\nEOF\n)"',
+        # any other body keeps main's behaviour for Markdown code spans: blanked
+        'cat > "$body" <<\'EOF\'\nuse `git reset --hard` to undo\n```\ngit push -f\n```\nEOF',
+    ],
+)
+def test_bash_dispatch_stays_silent_when_the_shell_would_not_run_the_text(tmp_path, command):
+    r = _run(_BASH_DISPATCH, {"tool_input": {"command": command}, "cwd": str(tmp_path)})
+    assert r.returncode == 0
+    assert "permissionDecision" not in r.stdout

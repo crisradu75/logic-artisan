@@ -197,4 +197,28 @@ MUTANTS = [
         "file_path if os.path.isabs(file_path) else file_path",
         TARGETS,
     ),
+    (
+        # The override branch at the block point: an override must turn the
+        # block into an announced allow. Inverting it blocks a deliberate
+        # escape when the switch is set and silently allows a real escape when
+        # it is not. Killed by test_override_env_var_allows_a_deliberate_escape
+        # (rc 2 instead of 0) and test_blocks_an_escape_using_the_payload_cwd_
+        # not_the_process_cwd (rc 0 instead of 2).
+        "the override branch is inverted, so a deliberate escape is blocked "
+        "and an undeclared one is waved through",
+        HOOK,
+        "    if override:",
+        "    if not override:",
+        TARGETS,
+    ),
+    (
+        # The active-notice wording: the override must say it disabled a check.
+        # Killed by test_override_env_var_allows_a_deliberate_escape, which
+        # asserts on the notice text in stderr.
+        "the override notice no longer says the check was disabled",
+        HOOK,
+        "but the check is DISABLED by ALLOW_WORKTREE_PATH_ESCAPE=1",
+        "but the check is fine with ALLOW_WORKTREE_PATH_ESCAPE=1",
+        TARGETS,
+    ),
 ]
